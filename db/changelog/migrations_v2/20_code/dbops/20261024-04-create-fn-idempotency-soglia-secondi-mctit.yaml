@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_idempotency_soglia_secondi — LA SOGLIA DI RIPRESA, LETTA DA UNA SEDE
+#   Brief: brief-be-verifica-documentazione-api §I.11 (richiesta del BE),
+#   §I.11.0 (forma decisa da Tid il 2026-10-24).
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   La soglia SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI la leggono due chiamanti: la
+#   prenotazione (ramo 5 di dbops.fn_idempotency_prenota) e il presidio di BE-5
+#   all'avvio di gunicorn, che rifiuta di partire se la soglia non supera il
+#   timeout. Il presidio vale solo se legge la soglia ESATTAMENTE come la legge
+#   la prenotazione: quindi la chiede qui, invece di ricopiarne lettura e regola.
+#
+# -- CHE COSA FA -----------------------------------------------------------------
+#   Legge il default NUDO del parametro (senza override: la soglia non si
+#   personalizza per utente, vedi la sua descrizione) e lo valida con
+#   script.fn_intero_positivo_da_testo (20261024-03). Parametro assente, vuoto
+#   o non intero positivo: E_CONFIG_MANCANTE.
+#
+#   Consumatori: dbops.fn_idempotency_prenota (20261024-05) e il backend
+#   (soglia_idempotenza.verifica_soglia_contro_timeout, §I.11.2), come
+#   zeroerp_app: l'EXECUTE arriva dai privilegi di default di dbops.
+#   SECURITY INVOKER esplicito; nessuna firma da ancorare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261024-04-create-fn-idempotency-soglia-secondi-mctit.yaml
+
+  - changeSet:
+      id: 20261024-04-create-fn-idempotency-soglia-secondi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_idempotency_soglia_secondi: la soglia di ripresa delle Idempotency-Key letta e
+        validata in una sede; la usano fn_idempotency_prenota e il presidio di BE-5 all'avvio del
+        backend. Brief: brief-be-verifica-documentazione-api §I.11.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_idempotency_soglia_secondi()
+               -- secondi: un intero validato, nessuna colonna di cui sia il riflesso
+               RETURNS integer
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- il valore grezzo del parametro, prima della validazione
+                  v_soglia_testo config.parameters.default_value%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La soglia oltre cui una Idempotency-Key in_progress conta
+                  --   come abbandonata (D6). Default nudo, senza override.
+                  --   Zero righe lasciano NULL: la validazione lo rifiuta come
+                  --   parametro mancante.
+                  -- =========================================================
+                  SELECT p.default_value INTO v_soglia_testo
+                    FROM config.parameters p
+                   WHERE p.code = 'SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI';
+
+                  RETURN script.fn_intero_positivo_da_testo(
+                      v_soglia_testo,
+                      'SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI',
+                      'dbops.fn_idempotency_soglia_secondi');
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_idempotency_soglia_secondi()
+                IS 'La soglia in secondi oltre cui una Idempotency-Key rimasta in_progress conta come abbandonata e si puo'' riprendere (D6): il default nudo di SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI, senza override, validato da script.fn_intero_positivo_da_testo (E_CONFIG_MANCANTE se assente, vuoto o non intero positivo). La sede unica della lettura: la usano dbops.fn_idempotency_prenota e il presidio di BE-5 all''avvio del backend, che rifiuta di partire se la soglia non supera il timeout di gunicorn. SECURITY INVOKER. Brief: brief-be-verifica-documentazione-api §I.11.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_idempotency_soglia_secondi();

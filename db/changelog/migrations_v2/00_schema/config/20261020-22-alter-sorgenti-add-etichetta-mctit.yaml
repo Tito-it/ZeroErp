@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — L2b-1: config.sorgenti.etichetta
+#   Brief: brief-db-grammatica-unica-documenti §12.9 (L2b-1 = (a), decisa da Tid
+#   il 2026-10-19: l'etichetta sta in una colonna a DB).
+#
+#   Dal lotto 2b l'origine di un ordine e' un codice di config.sorgenti
+#   (OFFERTA_COMMERCIALE), e la stampa lo metteva sulla carta cosi' com'e'.
+#   Il nome leggibile di un tipo di documento non aveva una sede nel DB:
+#   `descrizione` e' una nota tecnica («Offerta commerciale (testata)»), e le
+#   etichette vivevano solo nelle traduzioni del frontend, che il backend di
+#   stampa non legge. La stampa prende le parole dal catalogo del DB, come la
+#   fattura fa gia' con tipo_doc_fiscale.descrizione.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   * Nullable QUI, NOT NULL in 90_end (20261020-23). La riempie il mirror
+#     del CSV (80_data, 20251002-21), che gira DOPO: in 00_schema la tabella
+#     ha gia' righe (le INSERT dei 20260928-62/-85, e da zero anche quelle
+#     dei changeSet precedenti), e un NOT NULL qui fallirebbe. E' la sede che
+#     il progetto usa per questo caso (20260904-42).
+#   * Il CHECK di non-vuoto nasce qui: il NULL lo passa (resta al NOT NULL
+#     di 90_end), una stringa vuota no.
+#   * varchar(60): un nome da carta, non una frase (descrizione e' 160).
+#   * Una sola lingua, l'italiano, come le altre parole di stampa del
+#     catalogo. Le stampe in piu' lingue sono un cantiere loro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261020-22-alter-sorgenti-add-etichetta-mctit.yaml
+
+  - changeSet:
+      id: 20261020-22-alter-sorgenti-add-etichetta
+      author: mctit
+      comment: >
+        Aggiunge config.sorgenti.etichetta (varchar(60), CHECK non vuota): il nome del tipo di
+        documento come lo legge una persona, sulla carta. NOT NULL in 90_end (20261020-23), dopo
+        il mirror del CSV. Brief: brief-db-grammatica-unica-documenti §12.9 (L2b-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: sorgenti
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: sorgenti
+                    columnName: etichetta
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.sorgenti
+                ADD COLUMN etichetta character varying(60);
+
+              ALTER TABLE config.sorgenti
+                ADD CONSTRAINT chk_sorgenti_etichetta_non_vuota
+                CHECK (btrim(etichetta::text) <> '');
+
+              COMMENT ON COLUMN config.sorgenti.etichetta IS
+                  'Il nome del tipo di documento (o di riga) come lo legge una persona, sulla '
+                  'carta: «Preventivo», «Offerta», «Ordine», «DDT», «Reso». La legge la stampa '
+                  '(per esempio la provenienza di un ordine: ordine.origine.etichetta). '
+                  'Diversa da `descrizione`, che e'' la nota tecnica della sorgente. NOT NULL per '
+                  'ogni riga (20261020-23): una sorgente nuova entra col suo nome. Il valore sta '
+                  'nel CSV 80_data/sql/config/sorgenti.csv. Una sola lingua, l''italiano. '
+                  'Brief: brief-db-grammatica-unica-documenti §12.9 (L2b-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.sorgenti DROP COLUMN etichetta;

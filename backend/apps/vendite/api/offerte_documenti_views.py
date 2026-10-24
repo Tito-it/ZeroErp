@@ -22,6 +22,7 @@ from typing import Any
 
 from rest_framework.request import Request
 
+from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE
 from apps.documenti.api.sorgente_documenti_views import (
     build_documenti_sorgente_views,
 )
@@ -31,9 +32,6 @@ from apps.documenti.services.document_generation_service import (
 from apps.vendite.db.offerte_repository import OfferteRepository
 from apps.vendite.services.offerte_service import OfferteService
 
-# Codice sorgente OFFERTA_COMMERCIALE -> id risolto runtime via repo
-# (memoria feedback_no_hardcoded_ids: lookup per codice, non ID numerici).
-_CODICE_SORGENTE_OFFERTA = "OFFERTA_COMMERCIALE"
 
 
 # Scopo: Closure di dominio per il factory: contesto minimo (id, uid,
@@ -58,7 +56,7 @@ def _emetti_call(request: Request, offerta_id: int) -> dict[str, Any]:
 
 _views = build_documenti_sorgente_views(
     schema_prefix="Offerta",
-    sorgente_codice=_CODICE_SORGENTE_OFFERTA,
+    sorgente_codice=SORGENTE_OFFERTA_COMMERCIALE,
     not_found_message="Offerta commerciale non trovata.",
     emittente_message="Emittente fiscale non risolto per l'offerta.",
     get_entity=_get_entity,

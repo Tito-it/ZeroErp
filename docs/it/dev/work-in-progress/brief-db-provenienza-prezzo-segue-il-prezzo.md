@@ -69,13 +69,21 @@ versione precedente risulta «diverso» pur essendo venuto dal listino.
 
 ## 4. Rapporto con gli altri brief
 
-* [brief-db-coerenza-listino-della-riga-di-commessa](brief-db-coerenza-listino-della-riga-di-commessa.md)
+* [brief-db-coerenza-listino-della-riga-di-commessa](../work-done/brief-db-coerenza-listino-della-riga-di-commessa.md) (chiuso il 2026-10-17)
   dice che cosa la colonna `listino_riga_id` **può** contenere (stessa versione,
   stesso emittente, versione in vigore). Questo dice **quando** si scrive. Il guard
   di quel brief va montato anche sulle righe di documento di R-1: la stessa regola,
   in più tabelle — candidato building block.
 * Il percorso rapido del resolver che legge una versione in `BOZZA` (stesso brief,
   §1) riguarda anche la precompilazione delle righe di documento.
+* Il 2026-10-21 (richiesta BE dello smoke `smoke-group-attivita-contratto`, D-1 di
+  Tid) è nata la regola gemella su `contratto_id`: il contratto citato è del billing
+  account della commessa (`vendite.fn_check_contratto_provenienza` +
+  `vendite.trgfn_attivita_guard_contratto`, `20261021-64…66`), su `commesse_attivita`
+  e `attivita_fatturabili`. Dice che cosa `contratto_id` **può** contenere, come il
+  brief qui sopra per `listino_riga_id`. Se R-1 porta `contratto_id` sulle righe di
+  documento, la stessa regola va montata anche lì; la coerenza fra `origine_prezzo
+  CONTRATTO_*` e `contratto_id` valorizzato resta di R-2.
 
 ## 5. Fuori da questo brief
 

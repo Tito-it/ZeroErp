@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE POLICY DELLO STORICO GIA' ARMATE PASSANO AL PERIMETRO UNA VOLTA
+#   storico.* — le policy rls_sto_<tabella>_ef_whitelist (FOR SELECT)
+#   Brief: brief-db-plancache-funzioni-con-query-incorporate §5quinquies, D-3b-2 (ondata 1a).
+#
+# Il generatore (-20) crea la policy solo se manca: quelle gia' armate
+# restano nella forma per riga finche' qualcuno non le riscrive. Questo
+# changeSet lo fa, una per una, su quelle che chiamano ancora
+# script.fn_scope_ef_whitelist: stessa forma del generatore e di -19.
+# Quante sono dipende dalla mappa dbops.storico_scope_policy (un seed di
+# 80_data): nessuna preCondition sul numero (linee-guida-sql §11.4). Su un
+# database ricostruito da zero non ne trova (le shadow le arma 90_end col
+# generatore gia' nuovo), ed e' corretto.
+# Rollback: lo stesso ciclo all'indietro, sulla forma nuova.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/storico/20261018-21-alter-policy-storico-ef-whitelist-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261018-21-alter-policy-storico-ef-whitelist-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le policy di lettura delle shadow storico gia' armate passano a script.fn_scope_ef_perimetro col perimetro calcolato una volta per istruzione (stessa forma del generatore, -20). D-3b-2 di brief-db-plancache-funzioni-con-query-incorporate.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid = to_regprocedure('script.fn_scope_ef_perimetro(boolean,bigint[],bigint)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $r$
+              DECLARE
+                  r record;
+              BEGIN
+                  -- Le policy di lettura delle shadow storico armate dal generatore:
+                  -- nome rls_sto_<tabella>_ef_whitelist, FOR SELECT, scope congelato.
+                  FOR r IN
+                      SELECT p.polname, format('%I.%I', n.nspname, c.relname) AS tab
+                        FROM pg_catalog.pg_policy p
+                        JOIN pg_catalog.pg_class c     ON c.oid = p.polrelid
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = 'storico'
+                         AND p.polcmd = 'r'
+                         AND p.polname LIKE 'rls\_sto\_%\_ef\_whitelist'
+                         AND pg_catalog.pg_get_expr(p.polqual, p.polrelid) ~ 'fn_scope_ef_whitelist\('
+                  LOOP
+                      EXECUTE format('ALTER POLICY %I ON %s USING (%s)', r.polname, r.tab,
+                                     $q$(current_setting('app.ruolo_applicativo', true) = 'OPERATORE') AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids(NULLIF(current_setting('app.current_user_id', true), '')::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids(NULLIF(current_setting('app.current_user_id', true), '')::integer)), scope_emittente_fiscale_id)$q$);
+                  END LOOP;
+              END
+              $r$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $r$
+              DECLARE
+                  r record;
+              BEGIN
+                  -- Le policy di lettura delle shadow storico armate dal generatore:
+                  -- nome rls_sto_<tabella>_ef_whitelist, FOR SELECT, scope congelato.
+                  FOR r IN
+                      SELECT p.polname, format('%I.%I', n.nspname, c.relname) AS tab
+                        FROM pg_catalog.pg_policy p
+                        JOIN pg_catalog.pg_class c     ON c.oid = p.polrelid
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = 'storico'
+                         AND p.polcmd = 'r'
+                         AND p.polname LIKE 'rls\_sto\_%\_ef\_whitelist'
+                         AND pg_catalog.pg_get_expr(p.polqual, p.polrelid) ~ 'fn_scope_ef_perimetro\('
+                  LOOP
+                      EXECUTE format('ALTER POLICY %I ON %s USING (%s)', r.polname, r.tab,
+                                     $q$(current_setting('app.ruolo_applicativo', true) = 'OPERATORE') AND script.fn_scope_ef_whitelist(NULLIF(current_setting('app.current_user_id', true), '')::integer, scope_emittente_fiscale_id)$q$);
+                  END LOOP;
+              END
+              $r$;

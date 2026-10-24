@@ -37,6 +37,11 @@
 --     valle NON e' soddisfatto (la pratica puo' chiudersi, niente smistamento)
 -- 19) Senza aggancio a una pratica -> 0 avanzamenti anche con un verdetto
 --     (uscita anticipata prima di fn_stato_sorgente, 20261005-22)
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i preventivi nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano
+--   gia' EMESSO/ACCETTATO/RIFIUTATO), PRIMA dell'aggancio alla pratica: il
+--   trigger z90 di riconciliazione scatta a ogni passaggio di stato, e senza
+--   aggancio non ha niente da riconciliare.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -98,10 +103,19 @@ SELECT
   (SELECT sd.id FROM config.stati_doc_preventivi sd WHERE sd.codice_interno = 'ACCETTATO' LIMIT 1) AS stato_accettato_id,
   (SELECT id FROM pratiche.template_flussi_handler_eventi WHERE evento = 'COMPLETATO' LIMIT 1) AS any_handler_evento_id;
 
--- Un handler_id valido per costruire un binding handler_eventi di fixture.
+-- Un handler ATTIVO di fixture per costruire un binding handler_eventi attivo
+-- (trgfn_child_requires_active_parent rifiuta un binding attivo verso un
+-- handler spento). Fabbricato qui e non pescato dai binding del seed: quale
+-- handler del seed sia acceso e' un dato che cambia (vendita.accetta_preventivo
+-- e' stato ritirato).
 CREATE TEMP TABLE tmp_g_hid AS
-SELECT (SELECT handler_id FROM pratiche.template_flussi_handler_eventi
-         WHERE evento = 'COMPLETATO' AND handler_id IS NOT NULL LIMIT 1) AS handler_id;
+WITH ins AS (
+  INSERT INTO pratiche.handler_flussi (handler_key, codice, descrizione, attivo)
+  VALUES ('pgtap.guida_fixture', 'PGTAP_GUIDA_FIXTURE',
+          'Handler di fixture del pgTAP GUIDA (mai dispatchato)', true)
+  RETURNING id
+)
+SELECT id AS handler_id FROM ins;
 
 -- ============================================================
 -- Tipo prestazione + step di fixture
@@ -223,31 +237,30 @@ SELECT throws_like(
 -- Fixture pratiche/flussi/preventivi
 -- ============================================================
 -- Preventivi: 3 EMESSO (adv, noop-milestone, additivita') + 1 ACCETTATO (tie-break).
+-- ⚠️ rev 2026-10-24 (brief-modello-documento-vendita N-1): nascono in bozza
+--   (lo stato non si scrive: lo mette il trigger della nascita) e si portano
+--   avanti con dbops.fn_pgtap_porta_a_stato subito sotto, senza righe: i guard
+--   di EMESSO/ACCETTATO non trovano motivi su un preventivo vuoto.
 CREATE TEMP TABLE tmp_g_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi
     (numero, rev, billing_account_id, istanza_utility_id, utility_id, validita_dal, validita_al, valuta_id,
-     stato_doc_preventivo_id, data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
+     data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT
     'PGTAP-GUIDA-' || x.suffisso || '-' || substr(md5(clock_timestamp()::text || x.suffisso), 1, 8),
     0, r.billing_account_id, r.istanza_utility_id, r.utility_id, DATE '2026-07-01', DATE '2026-07-31', r.valuta_id,
-    x.stato_id, DATE '2026-07-01', false, false,
+    DATE '2026-07-01', false, false,
     '{"test_scope":"pgtap_guida"}'::jsonb, r.emittente_id
   FROM tmp_g_refs r
   CROSS JOIN (
-    SELECT 'ADV'   AS suffisso, (SELECT stato_emesso_id    FROM tmp_g_refs) AS stato_id
-    UNION ALL SELECT 'NOV',     (SELECT stato_emesso_id    FROM tmp_g_refs)
-    UNION ALL SELECT 'ADD',     (SELECT stato_emesso_id    FROM tmp_g_refs)
-    UNION ALL SELECT 'AMB',     (SELECT stato_accettato_id FROM tmp_g_refs)
+    SELECT 'ADV'   AS suffisso
+    UNION ALL SELECT 'NOV'
+    UNION ALL SELECT 'ADD'
+    UNION ALL SELECT 'AMB'
   ) x
-  RETURNING id, (uid)::text AS uid, stato_doc_preventivo_id
+  RETURNING id, (uid)::text AS uid
 )
-SELECT i.id, i.uid,
-       CASE
-         WHEN i.stato_doc_preventivo_id = (SELECT stato_accettato_id FROM tmp_g_refs) THEN 'AMB'
-         ELSE row_number() OVER (ORDER BY i.id)::text
-       END AS tag_raw,
-       i.stato_doc_preventivo_id
+SELECT i.id, i.uid
 FROM ins i;
 
 -- Etichettatura stabile per suffisso nel numero (ADV/NOV/ADD/AMB).
@@ -256,6 +269,20 @@ SELECT p.id, p.uid,
        split_part(v.numero, '-', 3) AS tag
 FROM tmp_g_prev p
 JOIN vendite.preventivi v ON v.id = p.id;
+
+-- Lo stato della fixture, per la matrice e sotto i guard veri: AMB ad
+--   ACCETTATO (passa da EMESSO), gli altri tre a EMESSO. Prima dell'aggancio
+--   alla pratica: il reconcile z90 che scatta qui non trova legami.
+DO $porta$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN SELECT l.id, l.tag FROM tmp_g_prev_lbl l ORDER BY l.id LOOP
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', r.id,
+              CASE r.tag WHEN 'AMB' THEN 'ACCETTATO' ELSE 'EMESSO' END);
+  END LOOP;
+END
+$porta$;
 
 -- 3 pratiche (adv, nov, add) + 1 pratica tie-break (amb).
 CREATE TEMP TABLE tmp_g_prat AS
@@ -464,18 +491,23 @@ INSERT INTO pratiche.template_flussi_avanzamento_proiezione (template_flusso_id,
 VALUES ((SELECT tf_id FROM tmp_g_neg), NULL);
 
 -- Preventivo RIFIUTATO (proietta verdetto NEGATIVO).
+-- ⚠️ rev 2026-10-24: nasce in bozza e va a RIFIUTATO per la matrice
+--   (DRAFT -> EMESSO -> RIFIUTATO), prima dell'aggancio del test 17a.
 CREATE TEMP TABLE tmp_g_prev_rif AS
 WITH ins AS (
   INSERT INTO vendite.preventivi
     (numero, rev, billing_account_id, istanza_utility_id, utility_id, validita_dal, validita_al, valuta_id,
-     stato_doc_preventivo_id, data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
+     data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-GUIDA-RIF-' || substr(md5(clock_timestamp()::text), 1, 8), 0,
          r.billing_account_id, r.istanza_utility_id, r.utility_id, DATE '2026-07-01', DATE '2026-07-31', r.valuta_id,
-         (SELECT id FROM config.stati_doc_preventivi WHERE codice_interno = 'RIFIUTATO'),
          DATE '2026-07-01', false, false, '{"test_scope":"pgtap_guida"}'::jsonb, r.emittente_id
   FROM tmp_g_refs r
   RETURNING id, (uid)::text AS uid
 ) SELECT id, uid FROM ins;
+
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_g_prev_rif), 'RIFIUTATO');
+END $porta$;
 
 -- Pratica NEG + flusso MS_NEG (DA_ESEGUIRE) + link ROOT col flusso_id.
 CREATE TEMP TABLE tmp_g_prat_neg AS

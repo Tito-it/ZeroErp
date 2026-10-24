@@ -7,6 +7,8 @@ CREATE FUNCTION fn_run_automations_storico(p_exec_mode text, p_schemas text[], p
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_run_automations_storico(p_exec_mode text, p_schemas text[], p_dry_run boolean)
  RETURNS void
@@ -14,6 +16,9 @@ CREATE OR REPLACE FUNCTION dbops.fn_run_automations_storico(p_exec_mode text, p_
 AS $function$
 
 DECLARE
+  -- ⭐ Rev 2026-10-16: il contesto dell'errore, costruito una volta e usato
+  --   dalle due chiamate del gestore (registro e involucro).
+  v_ctx_errore dbops.error_log.context%TYPE;
   v_schemas text[];
   rtab record;
   rrule record;
@@ -178,8 +183,21 @@ LOOP
                 p_params        => jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name,'trigger', trg_name::text),
                 p_message       => 'Trigger already present');
             WHEN OTHERS THEN
-              PERFORM script.fn_log_and_raise_error('dbops','run_automations','E_STORICO_UD',
-                jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name,'error',SQLERRM), NULL::uuid, SQLERRM);
+              -- ⭐ Rev 2026-10-16 (brief-db-presidio-job-run-a-chi-tocca D8, D10, D11):
+              --   un guasto dell'AMBIENTE (script.fn_sqlstate_di_ambiente: connessione,
+              --   risorse, arresto, sistema, privilegio, lock) si rilancia COM'E', col suo
+              --   SQLSTATE: l'involucro lo faceva diventare P0001, e il presidio dei job lo
+              --   mandava allo sviluppo. Prima si scrive nel registro errori, col contesto.
+              v_ctx_errore := jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name,'error',SQLERRM);
+              IF script.fn_sqlstate_di_ambiente(SQLSTATE) THEN
+                PERFORM script.fn_log_error_only(
+                    'dbops', 'run_automations', 'E_STORICO_UD',
+                    v_ctx_errore, NULL::uuid, SQLERRM);
+                RAISE;
+              END IF;
+              PERFORM script.fn_log_and_raise_error(
+                  'dbops', 'run_automations', 'E_STORICO_UD',
+                  v_ctx_errore, NULL::uuid, SQLERRM);
             END;
           END IF;
         END IF;
@@ -193,8 +211,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_storico(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Automazione STORICO: monta il trigger generico di storicizzazione sulle tabelle che hanno la gemella in schema storico, passandogli la colonna FK della gemella (override STORICO_FK, altrimenti <tabella>_id). rev 2026-09-25: prima di montare il trigger verifica che quella colonna esista nella gemella, e se no solleva E_STORICO_FK_COL_ASSENTE: un trigger con una colonna che non c''e'' muore alla prima chiusura di uno snapshot, cioe'' su ogni UPDATE/DELETE di una riga storicizzata. Cinque gemelle del 2025 (parameters, comuni, indirizzi, indirizzi_dettaglio, catasto_unita_immobiliari) erano nate col nome al singolare e senza eccezione; rinominate da 20260925-26. Brief: brief-db-storico-colonna-fk-dei-trigger. rev 2026-09-01: rimosso il ramo drop_legacy_ud, una pulizia puntata su nomi di trigger che non sono mai esistiti (brief-db-richieste-aperte-dal-backend-2, coda C).';
+IS 'Automazione STORICO: monta il trigger generico di storicizzazione sulle tabelle che hanno la gemella in schema storico, passandogli la colonna FK della gemella (override STORICO_FK, altrimenti <tabella>_id). rev 2026-09-25: prima di montare il trigger verifica che quella colonna esista nella gemella, e se no solleva E_STORICO_FK_COL_ASSENTE: un trigger con una colonna che non c''e'' muore alla prima chiusura di uno snapshot, cioe'' su ogni UPDATE/DELETE di una riga storicizzata. Cinque gemelle del 2025 (parameters, comuni, indirizzi, indirizzi_dettaglio, catasto_unita_immobiliari) erano nate col nome al singolare e senza eccezione; rinominate da 20260925-26. Brief: brief-db-storico-colonna-fk-dei-trigger. rev 2026-09-01: rimosso il ramo drop_legacy_ud, una pulizia puntata su nomi di trigger che non sono mai esistiti (brief-db-richieste-aperte-dal-backend-2, coda C). ⭐ Rev 2026-10-16: nel gestore WHEN others, un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia COM''E'', col suo SQLSTATE, dopo averlo scritto nel registro errori con lo stesso codice e contesto (fn_log_error_only). Prima diventava P0001 col codice dell''involucro, e il presidio dei job (maintenance.vw_job_run_da_guardare) lo mandava allo sviluppo. I difetti di struttura escono come prima. Brief: brief-db-presidio-job-run-a-chi-tocca D8, D11.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

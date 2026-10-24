@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ddt_righe_componenti_guard_pending()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_righe_componenti_guard_pending()
  RETURNS trigger
@@ -70,6 +72,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_ddt_righe_componenti_guard_pending()
 IS 'BEFORE UPDATE guard L3 su ddt_righe_componenti: blocca modifiche ai campi struttura quando stato_approvazione_prezzo=PENDING. Pattern simmetrico a trgfn_preventivi_righe_componenti_guard_pending. Raise E_COMPONENTE_PREZZO_PENDENTE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

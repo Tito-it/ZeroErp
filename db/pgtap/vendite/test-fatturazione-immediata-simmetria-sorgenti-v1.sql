@@ -5,6 +5,10 @@
 --       + presidio di immutabilita' dopo il push in commessa
 -- Brief: brief-db-emissione-fattura-per-documento-sorgente PARTE B (step B6)
 -- Changeset coperti: 20260727-01..09
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): il DDT SPEDITO del test 10 dal builder dbops.fn_pgtap_crea_ddt_da_ordine (trigger SPEDITO, causale VENDITA); restano a mano gli ordini col flag (6-8, 14-17: nessuna bolla, il flag e' il caso), il contratto e il preventivo.
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
+--   preventivo dei test 18-20 nasceva gia' ACCETTATO).
 -- ------------------------------------------------------------
 -- Indice test (1..20):
 --  1) colonna fatturazione_immediata presente su vendite.ordini
@@ -121,53 +125,40 @@ SELECT is(
 );
 
 -- ============================================================
--- Riferimenti minimi (dati esistenti, nessuna creazione da zero)
+-- Riferimenti minimi: il mondo COSTRUITO, dal DB solo il catalogo di seed
 -- ============================================================
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti). Prima BA, ruolo, emittente e articolo si pescavano col
+--   LIMIT 1: su zeroerp_ci erano NULL e l'ordine moriva sul NOT NULL di
+--   soggetto_ruolo_id. Ora un'azienda nuova col suo operatore (contesto aperto
+--   su di lui), il cliente legato a lei (dbops.fn_pgtap_crea_mondo_cliente) e un
+--   articolo merce non gestito. Modello: test-ddt-magazzino-testata-v1.
+CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _az)); END $ctx$;
+CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP fi simmetria');
+
 CREATE TEMP TABLE tmp_refs_fi AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                        AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                        AS utility_id,
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-      AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1) AS articolo_id,
+  m.billing_account_id,
+  m.utility_id,
+  m.cliente_soggetto_ruolo_id AS soggetto_ruolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-FI-SIMM', false) AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT i.id FROM config.iva i
     WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)  AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  m.emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS stato_ord_conf_id,
+    WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1)      AS stato_ord_draft_id,
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)      AS stato_ord_draft_id,
   (SELECT s.id FROM config.sorgenti s
-    WHERE s.codice_interno = 'ORDINE_VENDITA' LIMIT 1) AS sorgente_ordine_id,
+    WHERE s.codice_interno = 'ORDINE_VENDITA' ORDER BY s.id LIMIT 1) AS sorgente_ordine_id,
   (SELECT s.id FROM config.sorgenti s
-    WHERE s.codice_interno = 'PREVENTIVO' LIMIT 1)     AS sorgente_preventivo_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                            AS istanza_utility_id,
+    WHERE s.codice_interno = 'PREVENTIVO' ORDER BY s.id LIMIT 1)     AS sorgente_preventivo_id,
+  m.istanza_utility_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_prev_accettato_id;
+    WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_prev_accettato_id
+FROM _m m;
 
 -- ============================================================
 -- FIXTURE: due ordini CONFERMATO nello stesso perimetro,
@@ -278,6 +269,52 @@ SELECT is(
 --   documento, su tutti i documenti eleggibili trovati nel DB.
 --   Nessun documento eleggibile -> skip (vedi NOTA COPERTURA in testa).
 -- ============================================================
+-- ⛔ rev 2026-10-13: i documenti eleggibili si COSTRUISCONO. Con l'azienda
+--   nuova del mondo, cercarli «fra quelli del DB» dava zero righe sotto la RLS
+--   e i test 9-10 andavano sempre in skip. Si costruiscono quindi, coi verbi
+--   del dominio, un contratto ATTIVO con una riga UNA_TANTUM (modello:
+--   test-push-contratto-dalla-madre-v1) e un DDT SPEDITO causale VENDITA nato
+--   da un ordine con trigger SPEDITO (modello: test-fn-list-ordini-da-pushare-v3,
+--   caso 9b). Lo skip resta come ripiego dichiarato: se il dominio smette di
+--   renderli eleggibili, il file lo dice.
+CREATE TEMP TABLE tmp_ctr_fi AS
+WITH ins AS (
+  INSERT INTO vendite.contratti (
+    numero, billing_account_id, istanza_utility_id, utility_id,
+    valido_dal, valido_al, stato_doc_contratto_id, data, meta)
+  SELECT 'PGT-FI-' || substr(md5(clock_timestamp()::text), 1, 8),
+         r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         date_trunc('month', script.fn_data_operativa())::date,
+         (date_trunc('month', script.fn_data_operativa()) + interval '1 year - 1 day')::date,
+         (SELECT s.id FROM config.stati_doc_contratti s
+           WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1),
+         script.fn_data_operativa(),
+         jsonb_build_object('test_scope', 'pgtap_fi_simmetria_ctr')
+    FROM tmp_refs_fi r
+  RETURNING id)
+SELECT * FROM ins;
+
+INSERT INTO vendite.contratti_righe (
+  contratto_id, articolo_id, prezzo_unitario, tipo_erogazione,
+  qta_operativa, quantita, fonte_quantita_attesa, tipo_eccezione, attivo, meta)
+SELECT c.id, r.articolo_id, 50, 'UNA_TANTUM',
+       1, 1, 'FISSA', 'AGGIUNTA'::vendite.tipo_eccezione_contratto, true,
+       jsonb_build_object('test_scope', 'pgtap_fi_simmetria_ctr')
+  FROM tmp_ctr_fi c, tmp_refs_fi r;
+
+UPDATE vendite.contratti
+   SET stato_doc_contratto_id = (SELECT s.id FROM config.stati_doc_contratti s
+                                  WHERE s.codice_interno = 'ATTIVO' AND s.attivo IS TRUE
+                                  ORDER BY s.id LIMIT 1)
+ WHERE id = (SELECT id FROM tmp_ctr_fi);
+
+-- Il DDT: ordine 1 @10 trigger SPEDITO, bolla SPEDITA causale VENDITA, dal builder.
+CREATE TEMP TABLE tmp_ddt_fi AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('fi simmetria DDT', 'SPEDITO',
+    (SELECT billing_account_id FROM tmp_refs_fi), p_quantita => 1, p_prezzo => 10,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs_fi),
+    p_fatturazione_trigger => 'SPEDITO', p_causale_codice => 'VENDITA');
+
 CREATE TEMP TABLE tmp_chk_contratti AS
 SELECT count(*)::int AS totali,
        count(*) FILTER (
@@ -414,9 +451,13 @@ SELECT vendite.fn_link_commessa_sorgente(
 -- ============================================================
 -- TEST 15 (G17): dopo il push il cambio e' respinto.
 --   Non e' pignoleria: dopo il push il flag e' GIA' inerte (e' nella
---   chiave di dedup della commessa, e il documento e' legato a una sola
---   commessa per sempre). Senza guard il campo resterebbe editabile a
---   video senza produrre alcun effetto.
+--   chiave di dedup della commessa, e il documento sta in una sola
+--   commessa aperta). Senza guard il campo resterebbe editabile a video
+--   senza produrre alcun effetto.
+--   ⭐ Dal 2026-10-12 (20261012-47, D-14) il blocco vale solo finche' la
+--   commessa e' APERTA: il caso «commessa annullata, flag di nuovo
+--   modificabile» e' in vendite/test-annullo-commessa-v1 (14c, 14d), che le
+--   fixture se le costruisce.
 -- ============================================================
 SELECT throws_ok(
   $$ UPDATE vendite.ordini
@@ -459,16 +500,24 @@ CREATE TEMP TABLE tmp_prev_fi AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-FI-SIMM', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_prev_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', true, false,
          jsonb_build_object('test_scope', 'pgtap_fi_simmetria_prev'),
          r.emittente_fiscale_id
   FROM tmp_refs_fi r
   RETURNING id, uid)
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-24: il preventivo nasce in bozza (lo stato non si scrive: lo
+--   mette il trigger della nascita) e va ad ACCETTATO con
+--   dbops.fn_pgtap_porta_a_stato, sotto i guard veri: senza righe non hanno
+--   motivi da sollevare.
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_prev_fi), 'ACCETTATO');
+END $porta$;
 
 -- 18) prima del push: modificabile
 SELECT lives_ok(

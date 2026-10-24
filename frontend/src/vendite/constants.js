@@ -4,6 +4,7 @@
 // `config.azioni_processo`).
 
 import { aspettoAzione } from '../core/aspettoAzioni'
+import { SORGENTE_CODES } from '../documenti/constants'
 
 // Stati di workflow approvazione prezzo applicabili al campo
 // `vendite.preventivi_righe.stato_approvazione_prezzo` (ENUM nativo
@@ -132,9 +133,12 @@ export const STATO_PREVENTIVO = Object.freeze({
 // (`config.nature_vendita.destinazione_tipo`, natura NULL = pregresso →
 // COMMESSA lato DB). Guida il ROUTING di "Smista selezionate" nel
 // PreventiviSmistamentoDialog: merce → ordine, servizi → commessa.
+// ⭐ I valori sono codici di `config.sorgenti` (FK dal 2026-10-19,
+//    brief-db-grammatica-unica-documenti lotto 2b): si leggono da
+//    `SORGENTE_CODES`, non si riscrivono. Le chiavi dicono il ramo.
 export const DESTINAZIONE_SMISTAMENTO = Object.freeze({
-  ORDINE: 'ORDINE',
-  COMMESSA: 'COMMESSA',
+  ORDINE: SORGENTE_CODES.ORDINE_VENDITA,
+  COMMESSA: SORGENTE_CODES.COMMESSA,
 })
 
 // Stato autorevole di smistamento riga preventivo (colonna derivata
@@ -158,6 +162,29 @@ export const STATO_CONTRATTO = Object.freeze({
   ATTIVO: 'ATTIVO',
   CESSATO: 'CESSATO',
   ANNULLATO: 'ANNULLATO',
+})
+
+// Stati della testata di commessa (`vendite.stati_commessa.codice_interno`)
+// che il frontend NOMINA: solo l'annullo, che passa dalla conferma dei legami
+// (brief-db-annullo-a-valle-riapre-a-monte). Le altre azioni di stato
+// arrivano data-driven dalle capability e non si nominano qui.
+// ⚠️ Femminile, a differenza dei documenti (ANNULLATO): e' il codice del DB.
+export const STATO_COMMESSA = Object.freeze({
+  ANNULLATA: 'ANNULLATA',
+})
+
+// La natura del legame del lettore dei legami (`vendite.fn_documento_legami`),
+// che la finestra di conferma dell'annullo distingue: CONSUMO e PROVENIENZA si
+// riaprono, ANNULLO si annulla con il documento (gli oneri della commessa).
+// ⛔ Il documento che si annulla e l'origine del legame NON si nominano qui:
+// sono codici di `config.sorgenti`, cioe' `SORGENTE_CODES` di
+// `documenti/constants` (dal 2026-10-19, grammatica unica: lotto 2a il
+// documento, `DOCUMENTO_LEGAMI` ritirato; lotto 2b l'origine, `ORIGINE_LEGAME`
+// ritirato).
+export const NATURA_LEGAME = Object.freeze({
+  CONSUMO: 'CONSUMO',
+  PROVENIENZA: 'PROVENIENZA',
+  ANNULLO: 'ANNULLO',
 })
 
 // Forma di un contratto, DERIVATA (non persistita) da `contratti.listino_id`:
@@ -221,12 +248,13 @@ export const TIPO_EROGAZIONE = Object.freeze({
 // (erogazione, fonte) una riga puo' avere NON si scrive qui: lo dice il DB
 // dall'articolo (`vendite.fn_documento_riga_erogazioni`, letta dal form delle
 // righe), dal 2026-10-07 (brief-db-offerta-emissione-ed-erogazione B-R4).
+// ⛔ DERIVATA_COMPONENTI non c'e' piu' (I-D1, 2026-10-21): il vocabolario del DB
+// (`config.erogazioni_fonti`) ha le quattro fonti qui sotto.
 export const FONTE_QUANTITA_ATTESA = Object.freeze({
   FISSA: 'FISSA',
   MANUALE: 'MANUALE',
   TIMESHEET: 'TIMESHEET',
   LETTURE: 'LETTURE',
-  DERIVATA_COMPONENTI: 'DERIVATA_COMPONENTI',
 })
 
 // I due modi del dialog della data documento (`NumerazioneDataDialog`).

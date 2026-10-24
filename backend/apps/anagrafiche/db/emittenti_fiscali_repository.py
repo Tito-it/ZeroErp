@@ -4,24 +4,26 @@
 # Doc: Python
 # Scopo: Repository per gestione emittenti fiscali (ruolo EF).
 #        CRUD emittenti, lista paginata via JOIN soggetti_ruoli + soggetti.
-#        Accesso DB-first via cursor e funzione script.fn_get_or_create_soggetto_ruolo.
+#        Accesso DB-first via cursor; la creazione e' la madre
+#        anagrafiche.fn_crea_emittente_fiscale.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from django.db import connection
 
 from apps.core.api.constants import DEFAULT_LIMIT
-from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.core.db._helpers import (
+    colonna_ordinamento,
+    sql_order_direction_lista,
     RicercaFull,
     add_ricerca_full_condition,
     sql_lateral_primo_motivo,
     sql_order_clause,
-    sql_order_direction,
     sql_tiebreak_direction,
     fetch_paged_with_total,
     jsonb_out,
@@ -131,38 +133,30 @@ class EmittentiFiscaliRepository:
     # Creazione
     # =================================================================
 
-    # Scopo: Ottiene o crea il ruolo EMITTENTE FISCALE per un soggetto.
-    #        Delega alla funzione DB script.fn_get_or_create_soggetto_ruolo con codice 'EF'.
-    def get_or_create_ruolo_emittente(self, soggetto_id: str) -> int:
-        return get_or_create_soggetto_ruolo(soggetto_id, 'EF')
-
-    # Colonne scrivibili in create (whitelist RIGIDA del BB, 2026-09-26).
-    _CREATE_COLS: frozenset[str] = frozenset({
-        "soggetto_ruolo_id", "codice",
-        "attivo", "regime_fiscale_rf", "bollo_auto", "bollo_soglia",
-        "rounding_policy", "valuta_id",
-    })
-
-    # Scopo: Crea record emittente fiscale.
-    #        I trigger DB gestiscono: guard ruolo EF, normalize, audit, tx_id, storicizzazione,
-    #        bootstrap del default mapping in emittenti_fiscali_billing_account (primo emittente).
-    #        Campi obbligatori (NOT NULL su tabella): soggetto_ruolo_id, codice.
-    #        `descrizione` non esiste piu' dal 2026-08-02 (DROP `20260802-22`): il
-    #        nome dell'emittente e' la ragione sociale del soggetto, non un testo
-    #        digitato a parte.
-    # ⭐ Dal 2026-09-26 compone il BB `execute_dynamic_insert` con
-    #    `skip_none=True`: le colonne opzionali a None si OMETTONO, cosi' il
-    #    DEFAULT del DB resta attivo (la semantica di prima). Una chiave fuori
-    #    `_CREATE_COLS` e' `RuntimeError`: i kwargs li scrive il service.
-    # ⛔ Le colonne della conferma NON sono in `_CREATE_COLS`: un kwarg
-    #    `regime_fiscale_confermato_*` e' un `RuntimeError` del BB. La INSERT
-    #    non conferma il regime nemmeno quando lo porta (vedi sopra).
-    def create_emittente(self, **kwargs: Any) -> int:
-        riga = execute_dynamic_insert(
-            "anagrafiche.emittenti_fiscali", kwargs,
-            allowed=self._CREATE_COLS, skip_none=True,
-        )
-        return riga["id"]
+    # Scopo: Crea l'emittente fiscale di un soggetto con la madre del DB
+    #        `anagrafiche.fn_crea_emittente_fiscale`: il ruolo EF (creato se
+    #        manca) e la riga, in un'istruzione. `campi` sono le chiavi
+    #        opzionali (le assenti al DEFAULT; una chiave estranea la rifiuta
+    #        il DB, `E_CAMPO_NON_AMMESSO`). Un regime indicato e' CONFERMATO dal
+    #        verbo. Registri e mapping di default nascono dai trigger.
+    #        Ritorna `(emittente_fiscale_id, soggetto_ruolo_id)`.
+    # ⭐ Dal 2026-10-18 (2b-2 del brief-db-processi-accensione-per-ambiente):
+    #    fino ad allora la saga ruolo + INSERT + UPDATE di conferma era scritta
+    #    qui e nel builder pgTAP; la madre e' la sede unica.
+    def crea_emittente_fiscale(
+        self, soggetto_id: str, codice: str, campi: dict[str, Any],
+    ) -> tuple[int, int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT emittente_fiscale_id, soggetto_ruolo_id
+                  FROM anagrafiche.fn_crea_emittente_fiscale(%s::uuid, %s, %s::jsonb)
+                """,
+                [soggetto_id, codice, json.dumps(campi, default=str)],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0]), int(row[1])
 
     # =================================================================
     # Lista e dettaglio
@@ -361,10 +355,13 @@ class EmittentiFiscaliBillingAccountRepository:
         order_by: str = "billing_account_codice",
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = self._ORDER_COLS.get(
-            order_by, self._ORDER_COLS["billing_account_codice"]
+        order_col = (
+            colonna_ordinamento(order_by, self._ORDER_COLS)
+            or self._ORDER_COLS["billing_account_codice"]
         )
-        direction = sql_order_direction(order_dir)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=self._ORDER_COLS, default=order_col,
+        )
         tiebreak_dir = sql_tiebreak_direction(direction)
         # Default-first e' il prefisso fisso dell'ordinamento (la riga default
         # in testa qualunque colonna si ordini). Se pero' l'operatore ordina

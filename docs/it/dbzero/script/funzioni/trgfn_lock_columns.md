@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_lock_columns()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_lock_columns()
  RETURNS trigger
@@ -71,6 +73,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_lock_columns()
 IS 'Impedisce modifica colonne protette. Override: SET LOCAL zeroerp.allow_lock_columns_override = ''on''. Argomenti a coppie (colonna, codice_messaggio).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

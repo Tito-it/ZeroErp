@@ -7,6 +7,8 @@ CREATE FUNCTION fn_posta_rettifica(p_rettifica_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION magazzino.fn_posta_rettifica(p_rettifica_id bigint)
  RETURNS TABLE(movimento_id bigint, riga_id bigint, qta numeric)
@@ -113,6 +115,8 @@ $function$
 COMMENT ON FUNCTION magazzino.fn_posta_rettifica(p_rettifica_id bigint)
 IS 'VERBO (rev 2026-09-24, brief-db-magazzino-verbi-con-permesso): registra una rettifica CONFIRM (D-L2-g). Prima riga: script.fn_guard_azione(utente, ''registra_magazzino''), lo stesso permesso dell''endpoint (E_PERMESSO_NEGATO, anche senza utente). SECURITY DEFINER del proprietario con search_path bloccato: e'' la sola strada verso la primitiva. La RLS qui non vale: la testata si prende FOR UPDATE con il predicato della policy (script.fn_scope_ef_whitelist_via_magazzino) nella WHERE — fuori perimetro E_MAG_DOCUMENTO_NON_TROVATO (404 no-leak) e nessun lock. Poi come prima: per ogni riga posta qta_delta con RETT_POS/RETT_NEG dal segno attraverso la primitiva (sorgente RETTIFICA_RIGA; costo della riga solo su un''entrata; is_rettifica: i blocchi non fermano, il fisico si''), porta la testata a POSTED con la GUC transazionale zeroerp.magazzino_posting_rettifica. UNA transazione. Ritorna (movimento_id, riga_id, qta) per riga.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

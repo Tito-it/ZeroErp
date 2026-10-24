@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -21,6 +22,7 @@ from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
     fetch_con_sonda,
+    jsonb_out,
     fetch_paged_with_total,
     row_to_dict,
     sql_order_clause,
@@ -239,6 +241,35 @@ _RICERCA_CONVERSIONI = RicercaFull("catalogo.conversioni_uom", {
 })
 
 
+# Il tetto dei picker degli articoli (ricerca libera e righe di documento): una
+# sede sola, la leggono il repository (che taglia) e il service (che rifiuta un
+# `limit` oltre). Due numeri scritti a mano divergerebbero al primo ritocco.
+LOOKUP_ARTICOLI_MAX = 50
+
+
+# Le colonne dell'articolo che un picker porta a video: le stesse per la ricerca
+# libera (`lookup_articoli`) e per le righe di documento
+# (`lookup_articoli_ammessi`), che le uniscono da `catalogo.vw_articoli_dettaglio`
+# (alias `a`). Una sede: i form di riga leggono questi campi dall'articolo scelto.
+# I flag di MAGAZZINO (Lotto 2, 2026-09-18): il form di riga dell'inventario
+# mostra lotto e seriale SOLO se l'articolo li pretende, e li legge dalla riga
+# scelta nel picker — mai ricalcolati (piano-be-fe-magazzino-lotto-2-motore §5.3).
+_LOOKUP_ARTICOLI_COLONNE = """a.id,
+                a.codice,
+                a.descrizione,
+                a.uom_codice,
+                a.uom_descrizione,
+                a.is_composito,
+                a.attivo,
+                a.iva_id,
+                a.iva_codice,
+                a.iva_descrizione,
+                a.iva_aliquota_iva,
+                a.gestito_a_magazzino,
+                a.requires_lotto,
+                a.requires_serial"""
+
+
 class CatalogoRepository:
     """Repository generico per query articoli e lookup UoM."""
 
@@ -397,6 +428,30 @@ class CatalogoRepository:
                 [articolo_id],
             )
 
+    # Scopo: Il SUPER_ADMIN corregge i flag strutturali di un articolo anche se
+    #        usato (A-10 di brief-db-articoli-ammessi-per-documento): verbo
+    #        `catalogo.fn_articolo_correggi_struttura`, la sola porta. Il permesso,
+    #        la forma di `campi`, le colonne ammesse e l'esistenza li giudica il
+    #        verbo: `campi` passa com'e' (None diventa il jsonb `null`, rifiutato).
+    def correggi_struttura_articolo(self, articolo_id: UUID | str, campi: Any) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT catalogo.fn_articolo_correggi_struttura(%s, %s::jsonb)",
+                [articolo_id, json.dumps(campi)],
+            )
+
+    # Scopo: Le colonne STRUTTURALI dell'articolo, quelle che la correzione
+    #        riapre, dalla sede del DB `catalogo.fn_articolo_colonne_struttura`
+    #        (R-DB-3, 2026-10-18: le regole del form sul predicato dell'uso),
+    #        nell'ordine della dichiarazione. La stessa sede da cui il verbo
+    #        della correzione legge le colonne ammesse.
+    def colonne_struttura_articolo(self) -> list[str]:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT catalogo.fn_articolo_colonne_struttura()")
+            row = cursor.fetchone()
+        assert row is not None
+        return list(row[0] or [])
+
     # Scopo: Restituisce lookup articoli per autocomplete cross-dominio.
     def lookup_articoli(
         self,
@@ -404,17 +459,15 @@ class CatalogoRepository:
         search: str | None,
         attivo: bool | None,
         is_composito: bool | None,
-        is_solo_componente: bool | None = None,
         gestito_a_magazzino: bool | None = None,
-        escludi_destinazione_tipi: list[str] | None = None,
         solo_oneri: bool = False,
         limit: int,
     ) -> tuple[list[dict[str, Any]], bool]:
-        safe_limit = max(1, min(int(limit), 50))
+        safe_limit = max(1, min(int(limit), LOOKUP_ARTICOLI_MAX))
         conditions: list[str] = []
         params: list[Any] = []
-        # Il JOIN sulla base `catalogo.articoli` serve a piu' filtri (natura,
-        # causale onere): si aggiunge UNA volta sola, con lo stesso alias.
+        # Il JOIN sulla base `catalogo.articoli` (oggi lo chiede il filtro
+        # degli oneri): si aggiunge UNA volta sola, con lo stesso alias.
         needs_articoli_join = False
         join_clause = ""
 
@@ -437,9 +490,6 @@ class CatalogoRepository:
         if is_composito is not None:
             conditions.append("a.is_composito = %s")
             params.append(is_composito)
-        if is_solo_componente is not None:
-            conditions.append("a.is_solo_componente = %s")
-            params.append(is_solo_componente)
         # R-5 del brief magazzino 2-bis: il picker di riga di un inventario o
         # di una rettifica propone SOLO gli articoli gestiti a magazzino — un
         # articolo non gestito si potrebbe anche salvare, ma il piano lo
@@ -451,25 +501,14 @@ class CatalogoRepository:
         if gestito_a_magazzino is not None:
             conditions.append("a.gestito_a_magazzino = %s")
             params.append(gestito_a_magazzino)
-        # Filtro natura data-driven (difesa in profondità del modello split per
-        # natura, brief-preventivi-ordini.md §7.3): esclude gli articoli la cui
-        # natura ha una destinazione vietata sul documento chiamante — es. la
-        # destinazione CONTRATTO (ricorrente) non è ammessa sul preventivo (D9).
-        # Il filtro è sulla DESTINAZIONE, non sul codice natura (coerente col
-        # guard DB data-driven). JOIN dalla base `catalogo.articoli` perché la
-        # vista non espone la natura. **LEFT JOIN + NULL-tolerant**: un articolo
-        # con natura NULL (pregresso/anomalia) NON viene nascosto silenziosamente
-        # dal picker — viene escluso solo se la sua destinazione è tra quelle
-        # vietate. Coerente col "NULL = include" di fn_list_preventivi_da_pushare.
-        if escludi_destinazione_tipi:
-            needs_articoli_join = True
-            join_clause += " LEFT JOIN config.nature_vendita nv ON nv.id = art.natura_vendita_id"
-            conditions.append(
-                "(nv.destinazione_tipo IS NULL"
-                " OR nv.destinazione_tipo <> ALL(%s::text[]))"
-            )
-            params.append(list(escludi_destinazione_tipi))
-
+        # ⛔ Qui NON si filtra per le righe di un documento (natura, solo
+        #    componente, composito): quali articoli ammette una riga lo dice il DB,
+        #    in `lookup_articoli_ammessi` qui sotto. I filtri liberi che il
+        #    chiamante sceglieva (`is_solo_componente`, `escludi_destinazione_tipi`)
+        #    sono ritirati il 2026-10-14 (brief-db-articoli-ammessi-per-documento
+        #    §9.6, Lotto 4): erano una copia della regola dei guard, e divergevano.
+        #    Restano i filtri delle CONSULTAZIONI, che non sono righe di quella
+        #    check: attivi/inattivi, `is_composito`, `gestito_a_magazzino`, oneri.
         # Porta oneri: un articolo E' un onere se ha una causale collegata
         # (`causale_onere_id` NOT NULL, legame 1:1 — brief porta-oneri §4c.8).
         # La vista dettaglio non espone la causale: JOIN sulla base + vocabolario
@@ -496,31 +535,14 @@ class CatalogoRepository:
         #    due sedi che divergono al primo cambio. Il `+1`, il taglio e il
         #    flag stanno insieme dentro `fetch_con_sonda` — sono una cosa sola.
         #    Vedi migliorie-generali-BE-FE-da-test-valutazione.md §D6.
-        # ⚠️ La sonda regge perche' i tre JOIN qui sopra sono 1:1 (`art` sulla
-        #    PK, `nv` e `co` su una FK): un JOIN che moltiplicasse le righe le
+        # ⚠️ La sonda regge perche' i due JOIN qui sopra sono 1:1 (`art` sulla
+        #    PK, `co` su una FK): un JOIN che moltiplicasse le righe le
         #    farebbe contare due volte, e l'elenco direbbe «troncato» quando e'
         #    intero. Chi aggiunge un JOIN a questa query deve guardare qui.
         return fetch_con_sonda(
             f"""
             SELECT
-                a.id,
-                a.codice,
-                a.descrizione,
-                a.uom_codice,
-                a.uom_descrizione,
-                a.is_composito,
-                a.attivo,
-                a.iva_id,
-                a.iva_codice,
-                a.iva_descrizione,
-                a.iva_aliquota_iva,
-                -- I flag di MAGAZZINO (Lotto 2, 2026-09-18): il form di riga
-                -- dell'inventario mostra lotto e seriale SOLO se l'articolo li
-                -- pretende, e li legge dalla riga scelta nel picker — mai
-                -- ricalcolati (piano-be-fe-magazzino-lotto-2-motore §5.3).
-                a.gestito_a_magazzino,
-                a.requires_lotto,
-                a.requires_serial{extra_cols}
+                {_LOOKUP_ARTICOLI_COLONNE}{extra_cols}
             FROM catalogo.vw_articoli_dettaglio a
             {join_clause}
             {where_clause}
@@ -530,6 +552,67 @@ class CatalogoRepository:
             params,
             limite=safe_limit,
         )
+
+    # Scopo: Il picker degli articoli di una RIGA di documento: gli articoli
+    #        attivi che la ricerca trova, ciascuno col primo motivo per cui il
+    #        documento non lo ammette (`motivo` None = ammesso), prima gli
+    #        ammessi. Ritorna `(righe, troncato)` come `lookup_articoli`.
+    # ⭐ La regola la dice il DB, una volta: `catalogo.fn_articoli_ammessi` legge
+    #    la stessa check dei guard di riga (brief-db-articoli-ammessi-per-documento
+    #    §9.4, A-2). Il backend la trasporta: niente filtri scelti qui.
+    # ⚠️ Il TETTO sta in una sede sola, `fetch_con_sonda`: alla funzione si passa
+    #    `p_limit` NULL (nessun tetto) e il `LIMIT` esterno taglia sull'`ordine`
+    #    che la funzione ha deciso dopo aver giudicato tutti i trovati. Due tetti
+    #    (dentro e fuori) sarebbero due numeri da tenere uguali.
+    # ⚠️ Il JOIN con la vista e' 1:1 (`articolo_id` = PK): la sonda regge.
+    def lookup_articoli_ammessi(
+        self,
+        *,
+        documento: str,
+        documento_id: int | None,
+        search: str | None,
+        tipo_eccezione: str | None,
+        articolo_padre_id: UUID | str | None,
+        limit: int,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        safe_limit = max(1, min(int(limit), LOOKUP_ARTICOLI_MAX))
+        righe, troncato = fetch_con_sonda(
+            f"""
+            SELECT
+                {_LOOKUP_ARTICOLI_COLONNE},
+                am.motivo
+            FROM catalogo.fn_articoli_ammessi(
+                %s, %s, %s, NULL,
+                %s::vendite.tipo_eccezione_contratto, %s::uuid
+            ) am
+            JOIN catalogo.vw_articoli_dettaglio a ON a.id = am.articolo_id
+            ORDER BY am.ordine
+            LIMIT %s
+            """,  # noqa: S608 — colonne da costante interna, valori parametrizzati
+            [documento, documento_id, search, tipo_eccezione, articolo_padre_id],
+            limite=safe_limit,
+        )
+        # ⚠️ Fuori dall'ORM psycopg 3 consegna il jsonb come `str`: il FE leggerebbe
+        #    `motivo.reason_key` su una stringa, e ogni articolo sembrerebbe
+        #    ammesso. `jsonb_out` decodifica e tiene il NULL, che qui vuol dire
+        #    «ammesso».
+        for riga in righe:
+            riga["motivo"] = jsonb_out(riga["motivo"])
+        return righe, troncato
+
+    # Scopo: Dice se `valore` e' un tipo d'eccezione di contratto/offerta
+    #        (l'enum `vendite.tipo_eccezione_contratto`), prima di passarlo al
+    #        picker col cast. Un valore fuori enum al cast sarebbe un 500
+    #        (22P02); il vocabolario si legge dal DB, non si ricopia qui.
+    def tipo_eccezione_valido(self, valore: str) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT %s = ANY(enum_range(NULL::vendite.tipo_eccezione_contratto)::text[])",
+                [valore],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            return bool(row[0])
 
     # --- Sezione CRUD uom_tipi ---
 

@@ -13,6 +13,7 @@ Indice test eseguiti:
  1) test_create_indirizzo_ruolo_ok — POST crea indirizzo normalizzato
  2) test_create_indirizzo_ruolo_with_istanza — POST crea con istanza_utility_id
  3) test_create_indirizzo_ruolo_libero — POST crea indirizzo libero
+ 3b) test_create_indirizzo_ruolo_senza_tipo_400 — tipo mancante → 400 senza toccare il DB
  4) test_update_indirizzo_ruolo_ok — PATCH aggiorna
  5) test_update_indirizzo_ruolo_not_found — PATCH indirizzo inesistente
  5b) test_update_indirizzo_ruolo_chiave_ignota_400 — chiave fuori contratto → 400
@@ -23,7 +24,8 @@ Indice test eseguiti:
 import json
 from unittest.mock import Mock, patch
 
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
@@ -38,13 +40,16 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
+    # Il POST passa dal service dal 2026-10-19 (R-DB-16b): l'indirizzo arriva
+    # alla madre del DB `fn_crea_indirizzo_ruolo` come un oggetto, codice del
+    # tipo compreso (lo risolve la madre).
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_REPO)
-    def test_create_indirizzo_ruolo_ok(self, mock_repo, _auth):
+    @patch(_SVC_REPO)
+    def test_create_indirizzo_ruolo_ok(self, mock_repo_cls, _auth):
         """POST /anagrafiche/ruoli/{id}/indirizzi/ — crea normalizzato."""
-        mock_repo.resolve_tipo_indirizzo_id.return_value = 1
+        mock_repo = mock_repo_cls.return_value
         mock_repo.crea_indirizzo_ruolo.return_value = {
             "id": 50, "soggetto_ruolo_id": 10, "tipo_indirizzo_id": 1,
             "istanza_utility_id": None, "indirizzo_dettaglio_id": 100,
@@ -58,18 +63,16 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertEqual(body["data"]["id"], 50)
-        # Verifica che istanza_utility_id sia None
-        mock_repo.crea_indirizzo_ruolo.assert_called_once()
-        call_kwargs = mock_repo.crea_indirizzo_ruolo.call_args
-        self.assertIsNone(call_kwargs[1]["istanza_utility_id"])
+        self.assertEqual(resp.json()["data"]["id"], 50)
+        mock_repo.crea_indirizzo_ruolo.assert_called_once_with(
+            10, {"tipo_indirizzo_codice": "RES", "indirizzo_dettaglio_id": 100},
+        )
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_REPO)
-    def test_create_indirizzo_ruolo_with_istanza(self, mock_repo, _auth):
+    @patch(_SVC_REPO)
+    def test_create_indirizzo_ruolo_with_istanza(self, mock_repo_cls, _auth):
         """POST con istanza_utility_id — crea indirizzo specifico istanza."""
-        mock_repo.resolve_tipo_indirizzo_id.return_value = 1
+        mock_repo = mock_repo_cls.return_value
         mock_repo.crea_indirizzo_ruolo.return_value = {
             "id": 51, "soggetto_ruolo_id": 10, "tipo_indirizzo_id": 1,
             "istanza_utility_id": 5, "indirizzo_dettaglio_id": 100,
@@ -84,17 +87,14 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertEqual(body["data"]["istanza_utility_id"], 5)
-        # Verifica che istanza_utility_id=5 sia stato passato al repo
-        call_kwargs = mock_repo.crea_indirizzo_ruolo.call_args
-        self.assertEqual(call_kwargs[1]["istanza_utility_id"], 5)
+        self.assertEqual(resp.json()["data"]["istanza_utility_id"], 5)
+        self.assertEqual(mock_repo.crea_indirizzo_ruolo.call_args.args[1]["istanza_utility_id"], 5)
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_REPO)
-    def test_create_indirizzo_ruolo_libero(self, mock_repo, _auth):
+    @patch(_SVC_REPO)
+    def test_create_indirizzo_ruolo_libero(self, mock_repo_cls, _auth):
         """POST con indirizzo_libero — crea indirizzo in modalita' libera."""
-        mock_repo.resolve_tipo_indirizzo_id.return_value = 3
+        mock_repo = mock_repo_cls.return_value
         mock_repo.crea_indirizzo_ruolo.return_value = {
             "id": 52, "soggetto_ruolo_id": 10, "tipo_indirizzo_id": 3,
             "istanza_utility_id": None, "indirizzo_libero": "123 Main St, London",
@@ -110,8 +110,19 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertEqual(body["data"]["indirizzo_libero"], "123 Main St, London")
+        self.assertEqual(resp.json()["data"]["indirizzo_libero"], "123 Main St, London")
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_SVC_REPO)
+    def test_create_indirizzo_ruolo_senza_tipo_400(self, mock_repo_cls, _auth):
+        """POST senza tipo → 400, la madre non si chiama."""
+        resp = self.client.post(
+            "/api/v1/anagrafiche/ruoli/10/indirizzi/",
+            data=json.dumps({"indirizzo_dettaglio_id": 100}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        mock_repo_cls.return_value.crea_indirizzo_ruolo.assert_not_called()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC_REPO)

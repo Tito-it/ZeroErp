@@ -1,6 +1,6 @@
 # Guida — Gestione Preventivi vendita
 
-> **Ultimo aggiornamento**: 14 settembre 2026
+> **Ultimo aggiornamento**: 12 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -146,16 +146,34 @@ selettore di data nel form) e compare nella tabella delle righe.
 del cliente, e lì la promessa (`data_consegna_confermata`) nasce vuota. Vedi
 [Gestione Ordini §3.5](/guide/gestione-ordini).
 
-⚠️ **Non viene copiata da `fn_crea_revisione_preventivo`**: una nuova revisione
-nasce con le righe senza data richiesta (§4.2). Sul preventivo la data sta sulla
-riga e la riga è **per documento**, quindi in una revisione va reinserita.
+⛔ **Non viene prima del preventivo.** Una data richiesta anteriore alla data del
+preventivo si rifiuta, dal form di riga e da «Aggiorna date di consegna»; la
+stessa data del preventivo e il campo vuoto vanno bene. Al contrario, la data del
+preventivo non si sposta *dopo* la richiesta di una riga attiva.
+
+**Nella revisione e nello smistamento.** Anche `fn_crea_revisione_preventivo`
+copia la data sulla riga della revisione nuova. La revisione e l'ordine nascono
+però con la data di oggi: una richiesta **già passata** arriva vuota sulla
+copia, e si riscrive lì (la copia è in bozza). La revisione precedente e il
+preventivo smistato conservano la loro.
+
+**In blocco.** Finché il preventivo è in `DRAFT`, l'azione **«Aggiorna date di
+consegna»** della barra del drawer scrive la stessa data richiesta su più righe:
+*solo quelle senza data*, oppure *tutte*, che sovrascrive anche le date già
+scritte e chiede prima conferma col numero di righe. È anche il modo rapido di
+rimettere la data sulle righe di una revisione nuova. Fuori bozza l'azione non
+compare. Una riga col prezzo in attesa di approvazione non si modifica, e ferma
+il gesto per intero: nessuna riga cambia. Lo stesso gesto, sull'ordine, in
+[Gestione Ordini §3.5](/guide/gestione-ordini).
 
 #### Quali articoli possono stare su un preventivo
 
 Sul preventivo puoi mettere **merce** e **servizi una tantum**. **Non** puoi
-inserire articoli a **servizio ricorrente** (canone/abbonamento): se ci provi, il
-sistema rifiuta la riga con un messaggio che ti invita a usare l'**offerta
-commerciale**. Il motivo è semplice — la ricorrenza ha un suo ciclo di vita
+inserire articoli a **servizio ricorrente** (canone/abbonamento): nella ricerca
+dell'articolo compaiono in grigio, col motivo sotto, e non si possono scegliere; il
+motivo ti invita a usare l'**offerta commerciale**. Lo stesso vale per un articolo
+che si vende solo dentro un kit e per un kit senza componenti. La ricerca e il
+rifiuto al salvataggio usano la stessa regola. Il motivo è semplice — la ricorrenza ha un suo ciclo di vita
 ([offerta → contratto → fatturazione periodica](gestione-offerte-commerciali.md))
 che non passa dal preventivo. Ogni articolo porta con sé questa "natura" dal
 catalogo, e l'operatore non può cambiarla sulla riga.
@@ -163,11 +181,15 @@ catalogo, e l'operatore non può cambiarla sulla riga.
 > **Come funziona sotto il cofano.** Ogni articolo ha una *natura di vendita*
 > (`catalogo.articoli.natura_vendita_id` → `config.nature_vendita`) con una
 > *destinazione*: `MERCE → ordine`, `SERVIZIO_UNA_TANTUM → commessa`,
-> `SERVIZIO_RICORRENTE → contratto`. Quando aggiungi una riga, un trigger
-> (`trgfn_preventivi_righe_set_natura_vendita`) copia e **congela** la natura
-> dall'articolo sulla riga. Se la destinazione è `CONTRATTO`, il trigger blocca
-> subito l'inserimento con l'errore `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`: il
-> blocco è *data-driven* (vale per qualunque natura mappata a contratto) e scatta
+> `SERVIZIO_RICORRENTE → contratto`. Quando aggiungi una riga, il sistema copia e
+> **congela** la natura dall'articolo sulla riga
+> ([`script.trgfn_righe_natura_vendita`](/dbzero/script/manual/trgfn_righe_natura_vendita)).
+> Se la destinazione è `CONTRATTO`, l'inserimento è bloccato subito con l'errore
+> `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`; lo stesso vale per un articolo «solo
+> componente», che si vende solo dentro il suo kit, e per un kit senza componenti
+> (dal 2026-10-14), che va prima completato. Le regole stanno in un controllo
+> unico ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)),
+> sono *data-driven* (valgono per qualunque natura mappata a contratto) e scattano
 > all'inserimento, non alla conferma. Le destinazioni operative del preventivo
 > sono quindi solo **ordine** e **commessa**.
 
@@ -237,17 +259,19 @@ DRAFT      → EMESSO     (emetti)
 DRAFT      → ANNULLATO  (annulla)
 EMESSO     → ACCETTATO  (accetta)
 EMESSO     → RIFIUTATO  (rifiuta)
+EMESSO     → ANNULLATO  (annulla)
+ACCETTATO  → ANNULLATO  (annulla)
 ```
 
-> **L'annullamento manuale è ammesso solo da DRAFT** (le transizioni
-> `EMESSO → ANNULLATO` e `ACCETTATO → ANNULLATO` esistono in matrice ma sono
-> disattivate). Un preventivo EMESSO si **rifiuta** (è il "no" del cliente) o
-> **scade**; uno ACCETTATO ha già avviato il downstream.
+> **Rifiutare non è annullare.** Un preventivo EMESSO che il cliente non vuole si
+> **rifiuta** (è il "no" del cliente) o **scade**; l'annullo è la rinuncia di chi
+> lo ha emesso. Annullare un preventivo che ha già spinto lavoro in commessa
+> chiede una conferma (§3.2).
 
 `EMESSO → SCADUTO` è automatica (job notturno quando supera `validita_al`).
-`ACCETTATO → EVASO` è automatica: la scatena il backend dopo lo smistamento, quando
-non resta residuo su **nessun** ramo (vedi §8); non c'è un pulsante. `EVASO` è
-terminale.
+`ACCETTATO ↔ EVASO` è automatica, nei due versi, e la fa il database: il preventivo
+è `EVASO` quando non resta residuo su **nessun** ramo, e torna `ACCETTATO` appena uno
+dei due ne ha di nuovo (vedi §8); non c'è un pulsante.
 
 Le azioni disponibili in ogni momento sono esposte dal backend tramite
 [`fn_available_actions_preventivo`](/dbzero/script/funzioni/fn_available_actions_preventivo)
@@ -258,7 +282,47 @@ ACCETTATO compaiono **due** azioni distinte e simmetriche: `push_commessa` (se
 restano righe-servizio da smistare) e `genera_ordine` (se restano righe-merce da
 smistare) — vedi §8.
 
-### 3.2 Stati terminali e stato "abortito"
+### 3.2 Annullare un preventivo che ha generato altro
+
+* **Il preventivo annullato.** Se ha spinto righe in commessa ancora da emettere,
+  annullarlo le annulla. Non succede in silenzio: «Annulla preventivo» apre una
+  **finestra di conferma** con le righe di commessa che tornano annullate, e
+  l'operatore dichiara quante ne ha viste. Le righe **già emesse** non si
+  riaprono: bloccano l'annullo.
+* **L'ordine annullato.** Se si annulla un ordine nato dallo smistamento, le righe
+  del preventivo che occupava si liberano e si possono ordinare di nuovo; un
+  preventivo `EVASO` torna `ACCETTATO` (in automatico, non è un pulsante).
+* **La commessa annullata.** Se si annulla la commessa in cui sono finite le righe
+  di servizio (con la conferma, vedi
+  [Gestione Commesse](/guide/gestione-commesse) §«Annullare una commessa»), le righe
+  escono dalla commessa e tornano **da mandare in commessa**; un preventivo `EVASO`
+  torna `ACCETTATO` e di nuovo smistabile.
+
+⚠️ **Il preventivo con un ordine vivo non si annulla**: prima l'ordine
+(`ORDINE_GIA_GENERATO`). Con righe in una commessa viva **non ancora emesse**, invece,
+si annulla con la conferma: è un'eccezione voluta, perché la commessa raccoglie righe
+di più documenti, e il blocco costringerebbe ad annullarla tutta (dettaglio nella
+guida delle commesse).
+
+#### Il preventivo misto
+
+Ogni riga del preventivo va da una parte sola: la merce nell'ordine, i servizi in
+commessa. Il preventivo è `EVASO` quando **nessuna** delle due strade ha un residuo,
+e torna `ACCETTATO` appena **una** delle due ne ha di nuovo.
+
+| Cosa si annulla | Il preventivo |
+| --- | --- |
+| l'ordine | le righe di merce tornano da ordinare, torna `ACCETTATO`; le righe in commessa restano |
+| la commessa | le righe di servizio tornano da mandare, torna `ACCETTATO`; l'ordine resta vivo |
+| tutti e due, uno dopo l'altro | ognuno riapre la sua parte; `ACCETTATO` una volta sola |
+| il preventivo, con un ordine vivo | bloccato: prima l'ordine |
+| il preventivo, senza ordine, con righe in commessa non emesse | con la conferma; le righe escono dalla commessa |
+
+⭐ **Si torna indietro un passo alla volta.** Nella catena preventivo → ordine →
+commessa, annullare la commessa riapre solo l'ordine: il preventivo non si muove,
+perché le sue righe le usa ancora l'ordine.
+
+### 3.3 Stati terminali e stato "abortito"
 
 `config.stati_doc_preventivi` ha un campo `is_abortito` che marca lo stato
 **ANNULLATO** come "rinuncia". Tutti gli altri stati terminali (RIFIUTATO,
@@ -606,8 +670,16 @@ Il preventivo transita a **EVASO** **solo** quando non resta residuo da smistare
 ancora in commessa. Poiché il push commessa smista solo i servizi, un preventivo che
 contiene anche righe-merce non ancora ordinate **resta ACCETTATO** finché anche quel
 ramo è completato. In altre parole: *EVASO significa "tutte le righe smistate", non
-"push commessa eseguito"*. La verifica usa
-`fn_preventivo_ha_residuo_ordine` e `fn_preventivo_ha_residuo_commessa`.
+"push commessa eseguito"*.
+
+La regola ha **una sede sola**, nel database:
+[`vendite.fn_preventivo_proietta_stato_smistamento`](/dbzero/vendite/funzioni/fn_preventivo_proietta_stato_smistamento),
+che legge il residuo dei due rami (`fn_preventivo_ha_residuo_ordine`,
+`fn_preventivo_ha_residuo_commessa`). La chiamano la generazione dell'ordine
+(`fn_push_preventivo_a_ordine`) e il trigger delle righe di commessa, che a ogni
+riga del preventivo che nasce, cambia stato di emissione o esce dalla commessa
+riproietta il preventivo: per questo l'annullo di una commessa lo riporta da solo
+ad `ACCETTATO`. Una riga di commessa `ANNULLATA` non conta come «già mandata».
 
 > **Percorso pratica.** Quando lo smistamento avviene nel contesto di una pratica,
 > l'orchestratore `CONFERMA_VENDITA` (handler `vendita.push_preventivo`) esegue

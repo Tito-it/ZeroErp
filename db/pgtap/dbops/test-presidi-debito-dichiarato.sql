@@ -124,10 +124,12 @@ DO $dichiarato$
 DECLARE
     v_id dbops.processi.id%TYPE := 9402;
 BEGIN
-    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
+    -- 20261016-20: chi ha una sveglia dichiara l'accensione; un CODA no.
+    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
     VALUES (v_id, 'PGTAP-DB2-DICHIARATO',
             'processo di prova con un bersaglio scoperto ma DICHIARATO',
-            'DOMINIO', 'COMMAND');
+            'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA', true);
 
     -- Padre e figlio in DUE istruzioni: una CTE unica condividerebbe la stessa
     -- snapshot e la FK non troverebbe il padre.
@@ -175,10 +177,12 @@ DO $allarme$
 DECLARE
     v_id dbops.processi.id%TYPE := 9401;
 BEGIN
-    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
+    -- 20261016-20: chi ha una sveglia dichiara l'accensione; un CODA no.
+    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
     VALUES (v_id, 'PGTAP-DB2-ALLARME',
             'processo di prova col percorso su una colonna inesistente',
-            'DOMINIO', 'COMMAND');
+            'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA', true);
 
     -- Padre e figlio in DUE istruzioni: una CTE unica condividerebbe la stessa
     -- snapshot e la FK non troverebbe il padre.

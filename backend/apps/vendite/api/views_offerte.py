@@ -28,9 +28,10 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
+    optional_bool,
     paginated_envelope,
     parse_list_params,
-    qp_bool,
+    qp_bool_optional,
     qp_int_optional,
     qp_str,
 )
@@ -185,7 +186,7 @@ class ApiOfferteList(DomainAPIView):
             listino_id=qp_int_optional(qp.get("listino_id"), "listino_id"),
             validita_dal_min=qp_str(qp.get("validita_dal_min")),
             validita_dal_max=qp_str(qp.get("validita_dal_max")),
-            solo_ultima_revisione=qp_bool(qp.get("solo_ultima_revisione"), default=True),
+            solo_ultima_revisione=qp_bool_optional(qp.get("solo_ultima_revisione"), "solo_ultima_revisione", default=True),
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],
@@ -261,7 +262,7 @@ class ApiOfferteExportView(DomainAPIView):
         listino_id = qp_int_optional(qp.get("listino_id"), "listino_id")
         validita_dal_min = qp_str(qp.get("validita_dal_min"))
         validita_dal_max = qp_str(qp.get("validita_dal_max"))
-        solo_ultima_revisione = qp_bool(qp.get("solo_ultima_revisione"), default=True)
+        solo_ultima_revisione = qp_bool_optional(qp.get("solo_ultima_revisione"), "solo_ultima_revisione", default=True)
 
         svc = OfferteService()
         results, total = svc.list_offerte(
@@ -326,7 +327,8 @@ class ApiOffertaDetail(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Aggiorna testata offerta (solo in BOZZA, guard lato service).
+    # Scopo: Aggiorna testata offerta. Quali campi in quale stato lo decide il
+    #        lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`).
     def patch(self, request: Request, offerta_id: int) -> JsonResponse:
         return success_response(
             OfferteService().aggiorna_offerta(offerta_id, corpo_oggetto(request))
@@ -394,8 +396,9 @@ class ApiOffertaAnnulla(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: BOZZA -> ANNULLATA. Motivazione obbligatoria. Annullamento
-    #        post-EMESSA non ammesso (state machine DB).
+    # Scopo: -> ANNULLATA, da BOZZA o da ACCETTATA. Motivazione obbligatoria.
+    #        Da quali stati e a quali condizioni lo dice il DB (transizioni e
+    #        guard: da ACCETTATA, nessun contratto o ordine vivo a valle).
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
         body = corpo_oggetto(request)
         motivazione = body.get("motivazione", "")
@@ -451,10 +454,9 @@ class ApiOffertaGeneraOrdine(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Genera un ordine DRAFT da un'offerta ACCETTATA (copia testata +
-    #        righe espanse listino+eccezioni + componenti BoM, prezzi negoziati
-    #        preservati + documento_origine). Delega a ordini_service (stesso app
-    #        vendite, righe da `fn_offerta_righe_espanse`).
+    # Scopo: Genera un ordine DRAFT da un'offerta ACCETTATA: il verbo DB
+    #        `vendite.fn_genera_ordine_da_offerta` (testata, provenienza, righe
+    #        espanse coi prezzi negoziati, componenti BoM), via ordini_service.
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
         from apps.vendite.services import ordini_service
 
@@ -520,7 +522,9 @@ class ApiOffertaPushContratto(DomainAPIView):
                     context={"pratica_id": pratica_id_raw},
                     cause=exc,
                 )
-        chiudi_esistente = bool(body.get("chiudi_esistente"))
+        # ⛔ Dal BB, non `bool(...)`: `bool("false")` e' True, e la successione
+        #    CHIUDE il contratto esistente. Un non-booleano e' un 400.
+        chiudi_esistente = optional_bool(body, "chiudi_esistente", default=False)
         return success_response(
             OfferteService().push_a_contratto(
                 offerta_id,
@@ -749,6 +753,9 @@ class ApiOffertaEccezionePreviewComponenti(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "offerta_commerciale")
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -790,8 +797,8 @@ class ApiOffertaEccezioneComponentiList(DomainAPIView):
     def get(
         self, request: Request, offerta_id: int, eccezione_id: int,
     ) -> JsonResponse:
-        solo_attivi_raw = request.query_params.get("solo_attivi", "true")
-        solo_attivi = str(solo_attivi_raw).lower() not in ("false", "0", "no", "off")
+        # Il BB dei flag di trasporto (§A6), come i gemelli DDT e ordini.
+        solo_attivi = qp_bool_optional(request.query_params.get("solo_attivi"), "solo_attivi", default=True)
         return success_response(
             OfferteService().list_componenti_eccezione(
                 offerta_id, eccezione_id, solo_attivi=solo_attivi,
@@ -824,6 +831,7 @@ class ApiOffertaEccezioneComponenteDetail(DomainAPIView):
         return success_response(
             OfferteService().update_componente_eccezione(
                 offerta_id, eccezione_id, componente_id, dict(corpo_oggetto(request)),
+                auth_user_id=get_actor_user_id(request),
             )
         )
 

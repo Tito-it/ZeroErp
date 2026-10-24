@@ -40,6 +40,13 @@ from django.db import connection, transaction
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services import _kit_meta as kit_meta  # noqa: F401 (parita' fixture)
 from apps.vendite.services.fatture_righe_service import FattureRigheService
+from scripts.tests._smoke_indirizzo import crea_indirizzo_libero_ruolo
+from scripts.tests._smoke_contesto import apri_contesto_smoke
+from scripts.tests._smoke_fatturazione import (
+    costruisci_base_fatturazione,
+    crea_attivita_di_commessa,
+    crea_lotto_di_prova,
+)
 
 FAIL: list[str] = []
 
@@ -51,17 +58,6 @@ def check(label, cond, detail=""):
         FAIL.append(label)
 
 
-SQL_TEMPLATE = """
-    SELECT a.commessa_id, a.articolo_id, a.istanza_utility_id,
-           a.billing_account_id, a.uom_id, a.valuta_id, a.tipo_doc_fiscale_id,
-           a.sorgente_tipo_id, a.sorgente_origine_tipo_id, a.competenza_mese,
-           c.emittente_soggetto_ruolo_id, c.utility_id
-      FROM vendite.attivita_fatturabili a
-      JOIN vendite.commesse c ON c.id = a.commessa_id
-     WHERE a.commessa_id IS NOT NULL
-     ORDER BY a.id DESC
-     LIMIT 1
-"""
 
 print("\n=== SMOKE snapshot indirizzi fattura (accettazione + ciclo D-Q) ===\n")
 
@@ -69,23 +65,12 @@ repo = VenditePipelineRepository()
 
 with transaction.atomic():
     with connection.cursor() as cur:
-        cur.execute(
-            "SELECT set_config('app.ruolo_applicativo','OPERATORE',false),"
-            "       set_config('app.current_user_id', (SELECT auth_user_id::text"
-            "         FROM config.user_emittenti_fiscali LIMIT 1), false)"
-        )
-        cur.execute(SQL_TEMPLATE)
-        row = cur.fetchone()
-        if not row:
-            raise SystemExit("Nessuna attivita' fatturabile da usare come template.")
-        t = {
-            "commessa_id": row[0], "articolo_id": row[1], "istanza_utility_id": row[2],
-            "billing_account_id": row[3], "uom_id": row[4], "valuta_id": row[5],
-            "tipo_doc_fiscale_id": row[6], "sorgente_tipo_id": row[7],
-            "sorgente_origine_tipo_id": row[8], "competenza_mese": row[9],
-            "emittente_sr_id": row[10], "utility_id": row[11],
-        }
-        t["data"] = t["competenza_mese"]
+        apri_contesto_smoke(cur)
+        # La base della fixture si COSTRUISCE dalle radici di prova
+        # (brief-be-utenti-di-sviluppo T-7b): niente attivita' esistente da
+        # copiare, che su un database nuovo non c'e'.
+        marker = uuid.uuid4().hex[:8]
+        t = costruisci_base_fatturazione(cur, marker=marker)
 
         # Il soggetto_ruolo del cliente: e' su di lui che si toglie/mette FATT.
         cur.execute(
@@ -98,71 +83,13 @@ with transaction.atomic():
 
         # --- lotto + 2 AF semplici (niente kit: qui contano gli indirizzi) ---
         lock_batch_id = str(uuid.uuid4())
-        marker = uuid.uuid4().hex[:8]
-        cur.execute(
-            """
-            INSERT INTO vendite.fatturazione_lotti (
-                codice, competenza_mese, utility_id, tipo_doc_fiscale_id,
-                stato_doc_fiscale_id, emittente_soggetto_ruolo_id, tipo_lotto,
-                stato_lotto, stato_operativo, lock_batch_id, meta
-            )
-            SELECT %s, %s, %s, %s,
-                   (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno='DRAFT'),
-                   %s, 'MASSIVO', 'IN_ESECUZIONE', 'APERTO', %s,
-                   '{"smoke": true}'::jsonb
-            RETURNING id
-            """,
-            [f"SMOKE-{marker}", t["competenza_mese"], t["utility_id"],
-             t["tipo_doc_fiscale_id"], t["emittente_sr_id"], lock_batch_id],
-        )
-        lotto_id = cur.fetchone()[0]
+        lotto_id = crea_lotto_di_prova(cur, t, codice=f"SMOKE-{marker}", lock_batch_id=lock_batch_id)
 
         for seg, qta, prezzo in [(f"SMOKE:{marker}:A1", Decimal("1"), Decimal("10.00")),
                                  (f"SMOKE:{marker}:A2", Decimal("2"), Decimal("20.00"))]:
-            cur.execute(
-                """
-                SELECT attivita_id FROM vendite.fn_upsert_commessa_attivita(
-                    p_commessa_id => %s, p_segment_key => %s, p_articolo_id => %s,
-                    p_istanza_utility_id => %s, p_data_attivita => %s, p_uom_id => %s,
-                    p_quantita => %s, p_competenza_mese => %s, p_competenza_dal => %s,
-                    p_competenza_al => %s, p_prezzo_snapshot => %s,
-                    p_prezzo_base_snapshot => NULL, p_origine_prezzo => NULL,
-                    p_tipo_variazione_applicata => NULL,
-                    p_valore_variazione_applicata => NULL, p_promo_id => NULL,
-                    p_contratto_id => NULL, p_categoria_cliente_id_snapshot => NULL,
-                    p_classe_utenza_id_snapshot => NULL,
-                    p_tipo_doc_fiscale_id => %s, p_valuta_id => %s,
-                    p_prezzo_bloccato => true, p_meta => '{}'::jsonb
-                )
-                """,
-                [t["commessa_id"], seg, t["articolo_id"], t["istanza_utility_id"],
-                 t["data"], t["uom_id"], qta, t["competenza_mese"], t["data"],
-                 t["data"], prezzo, t["tipo_doc_fiscale_id"], t["valuta_id"]],
-            )
-            ca_id = cur.fetchone()[0]
-            cur.execute(
-                """
-                INSERT INTO vendite.attivita_fatturabili (
-                    articolo_id, istanza_utility_id, billing_account_id, data_attivita,
-                    quantita, uom_id, qta_operativa, uom_operativa_id, factor_to_base,
-                    prezzo_unitario, valuta_id, tipo_doc_fiscale_id,
-                    competenza_mese, competenza_dal, competenza_al,
-                    commessa_id, commessa_attivita_id,
-                    sorgente_tipo_id, sorgente_uid, sorgente_origine_tipo_id,
-                    lock_batch_id, lock_in_fatturazione, approvato,
-                    stato_esecuzione, prezzo_bloccato, meta
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, TRUE, TRUE, 'PENDING', TRUE, '{}'::jsonb
-                )
-                """,
-                [t["articolo_id"], t["istanza_utility_id"], t["billing_account_id"],
-                 t["data"], qta, t["uom_id"], qta, t["uom_id"], prezzo,
-                 t["valuta_id"], t["tipo_doc_fiscale_id"], t["competenza_mese"],
-                 t["data"], t["data"], t["commessa_id"], ca_id,
-                 t["sorgente_tipo_id"], str(uuid.uuid4()),
-                 t["sorgente_origine_tipo_id"], lock_batch_id],
+            crea_attivita_di_commessa(
+                cur, t, segment_key=seg, lock_batch_id=lock_batch_id,
+                prezzo=prezzo, quantita=qta,
             )
 
     # Righe/fatture reali dal percorso vivo.
@@ -184,7 +111,7 @@ with transaction.atomic():
         # morire lo smoke nella fixture invece che in un'asserzione — successo
         # davvero il 2026-07-31, appena un DDT ha congelato quell'indirizzo.
         # Si ri-puntano a un tipo «di parcheggio»: ammesso al ruolo, ma fuori
-        # dall'ambito FATTURE. La riga sopravvive (FK salva) e la catena non
+        # dall'ambito FATTURA. La riga sopravvive (FK salva) e la catena non
         # trova piu' FATT. Effimero come tutto il resto: rollback finale.
         # I filtri attivo/valido_dal/valido_al DEVONO rispecchiare il guard
         # trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo per intero: una riga
@@ -201,7 +128,7 @@ with transaction.atomic():
                AND (m.valido_al  IS NULL OR m.valido_al  >= CURRENT_DATE)
                AND m.tipo_indirizzo_id NOT IN (
                      SELECT a.tipo_indirizzo_id FROM config.tipi_indirizzi_allowed a
-                      WHERE a.ambito = 'FATTURE' AND a.attivo IS TRUE)
+                      WHERE a.ambito = 'FATTURA' AND a.attivo IS TRUE)
                AND m.tipo_indirizzo_id NOT IN (
                      SELECT i.tipo_indirizzo_id FROM anagrafiche.indirizzi i
                       WHERE i.soggetto_ruolo_id = %s)
@@ -292,19 +219,10 @@ with transaction.atomic():
 
     # --- CORREZIONE + RILANCIO -------------------------------------------
     with connection.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO anagrafiche.indirizzi
-                   (soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-                    indirizzo_libero, stato_id, locality, postal_box,
-                    administrative_area)
-            VALUES (%s, %s, NULL, 'Via Fatturazione 1 - smoke',
-                    (SELECT id FROM config.stati WHERE codice_iso2 = 'IT'),
-                    'Roma', '00100', 'RM')
-            RETURNING id
-            """, [sr_id, tipo_fatt],
+        id_fatt_nuovo = crea_indirizzo_libero_ruolo(
+            cur, soggetto_ruolo_id=sr_id, tipo_indirizzo_id=tipo_fatt,
+            testo="Via Fatturazione 1 - smoke",
         )
-        id_fatt_nuovo = cur.fetchone()[0]
 
     esito_ok = repo.run_snapshot_indirizzi_lotto_task(lotto_id=lotto_id)
     check("3) rilancio dopo correzione: failed_rows = 0 e riga FATT per ogni fattura",

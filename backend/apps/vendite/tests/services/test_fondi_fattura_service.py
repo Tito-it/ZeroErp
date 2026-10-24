@@ -14,10 +14,9 @@ Indice test eseguiti:
 5) FondiFatturaDaDecidereServiceTests.test_ordinamento_inoltrato
 6) FondiFatturaDaDecidereServiceTests.test_order_by_non_valido
 7) FondiFatturaDaDecidereServiceTests.test_order_dir_non_valido
-8) FondiFatturaDaDecidereServiceTests.test_page_invalida
-9) FondiFatturaDaDecidereServiceTests.test_page_size_oltre_massimo
+8) FondiFatturaDaDecidereServiceTests.test_envelope_pagina_dall_offset
 10) FondiFatturaDaDecidereServiceTests.test_auth_user_id_inoltrato_defense_in_depth
-11) FondiFatturaDaDecidereServiceTests.test_offset_dalla_pagina
+11) FondiFatturaDaDecidereServiceTests.test_limit_offset_arrivano_al_repository
 11-bis) FondiFatturaDaDecidereServiceTests.test_export_salta_la_paginazione
 11-ter) FondiFatturaDaDecidereServiceTests.test_export_max_rows_non_positivo
 11-quater) CancellaFondoFatturaServiceTests.test_ok_conteggi_dalla_madre
@@ -135,17 +134,19 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
             fn_fondi_fattura_da_decidere(order_dir="alfabetico")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    # Scopo: Paginazione validata (page >= 1).
-    def test_page_invalida(self):
-        with self.assertRaises(ServiceError) as ctx:
-            fn_fondi_fattura_da_decidere(page=0)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-
-    # Scopo: page_size oltre il massimo (200) -> 400.
-    def test_page_size_oltre_massimo(self):
-        with self.assertRaises(ServiceError) as ctx:
-            fn_fondi_fattura_da_decidere(page_size=500)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+    # Scopo: l'envelope resta quello delle liste paginate: la pagina si
+    #        ricava dall'offset (`offset // limit + 1`), riportata all'ultima
+    #        se l'offset e' oltre il totale.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_fondi_fattura_da_decidere",
+        return_value=([], 120),
+    )
+    def test_envelope_pagina_dall_offset(self, _mock_repo):
+        data = fn_fondi_fattura_da_decidere(limit=25, offset=50)
+        self.assertEqual((data["page"], data["page_size"], data["total_pages"]), (3, 25, 5))
+        data = fn_fondi_fattura_da_decidere(limit=25, offset=500)
+        self.assertEqual(data["page"], 5)
 
     # Scopo: `auth_user_id` arriva al repository. La vista e' security_invoker e
     #        la RLS filtra da se', ma il filtro applicativo resta come
@@ -165,8 +166,10 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
         "list_fondi_fattura_da_decidere",
         return_value=([], 0),
     )
-    def test_offset_dalla_pagina(self, mock_repo):
-        fn_fondi_fattura_da_decidere(page=3, page_size=25)
+    def test_limit_offset_arrivano_al_repository(self, mock_repo):
+        # ⛔ Dal 2026-10-20 la lista pagina con `limit`/`offset` (§A4): prima
+        #    con `page`/`page_size`, unica fra le liste di vendite.
+        fn_fondi_fattura_da_decidere(limit=25, offset=50)
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["limit"], 25)
         self.assertEqual(kwargs["offset"], 50)
@@ -182,7 +185,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
         return_value=([], 0),
     )
     def test_export_salta_la_paginazione(self, mock_repo):
-        fn_fondi_fattura_da_decidere(page=4, page_size=25, max_rows=10_001)
+        fn_fondi_fattura_da_decidere(limit=25, offset=75, max_rows=10_001)
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["limit"], 10_001)
         self.assertEqual(kwargs["offset"], 0)

@@ -67,6 +67,14 @@ SELECT id AS stato_id
 FROM config.stati
 ORDER BY id
 LIMIT 1;
+-- rev 2026-10-18: i campi della forma che il guard vuole per questo stato
+--   (dbops.fn_pgtap_indirizzo_libero_forma: comune e CAP per l'Italia).
+ALTER TABLE tmp_stato_test ADD COLUMN comune_id integer, ADD COLUMN codice_postale_id integer,
+                           ADD COLUMN locality varchar, ADD COLUMN postal_code varchar;
+UPDATE tmp_stato_test
+   SET (comune_id, codice_postale_id, locality, postal_code) =
+       (SELECT f.comune_id, f.codice_postale_id, f.locality, f.postal_code
+          FROM dbops.fn_pgtap_indirizzo_libero_forma(tmp_stato_test.stato_id) f);
 SELECT ok(
         (
             SELECT count(*)
@@ -166,13 +174,13 @@ FROM anagrafiche.soggetti s
 WHERE s.codice = 'TST-NAT-PG-001-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id, tipo_indirizzo_id, indirizzo_libero,
-        stato_id, locality, postal_box, administrative_area
+        stato_id, comune_id, codice_postale_id, locality, postal_code
     )
 SELECT s.id,
     (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_sedeleg),
     'Via Test PG SEDELEG',
     (SELECT stato_id FROM tmp_stato_test),
-    'Test City', '00100', 'TS'
+    (SELECT comune_id FROM tmp_stato_test), (SELECT codice_postale_id FROM tmp_stato_test), (SELECT locality FROM tmp_stato_test), (SELECT postal_code FROM tmp_stato_test)
 FROM anagrafiche.soggetti s
 WHERE s.codice = 'TST-NAT-PG-001-' || (SELECT sfx FROM tmp_run_sfx);
         -- Saga completa: qui i guard verificano davvero.
@@ -232,24 +240,24 @@ FROM anagrafiche.soggetti s
 WHERE s.codice = 'TST-NAT-PF-001-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id, tipo_indirizzo_id, indirizzo_libero,
-        stato_id, locality, postal_box, administrative_area
+        stato_id, comune_id, codice_postale_id, locality, postal_code
     )
 SELECT s.id,
     (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_res),
     'Via Test PF RES',
     (SELECT stato_id FROM tmp_stato_test),
-    'Test City', '00100', 'TS'
+    (SELECT comune_id FROM tmp_stato_test), (SELECT codice_postale_id FROM tmp_stato_test), (SELECT locality FROM tmp_stato_test), (SELECT postal_code FROM tmp_stato_test)
 FROM anagrafiche.soggetti s
 WHERE s.codice = 'TST-NAT-PF-001-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id, tipo_indirizzo_id, indirizzo_libero,
-        stato_id, locality, postal_box, administrative_area
+        stato_id, comune_id, codice_postale_id, locality, postal_code
     )
 SELECT s.id,
     (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_domfisc),
     'Via Test PF DOMFISC',
     (SELECT stato_id FROM tmp_stato_test),
-    'Test City', '00100', 'TS'
+    (SELECT comune_id FROM tmp_stato_test), (SELECT codice_postale_id FROM tmp_stato_test), (SELECT locality FROM tmp_stato_test), (SELECT postal_code FROM tmp_stato_test)
 FROM anagrafiche.soggetti s
 WHERE s.codice = 'TST-NAT-PF-001-' || (SELECT sfx FROM tmp_run_sfx);
         -- Saga completa: qui i guard verificano davvero.
@@ -307,13 +315,13 @@ FROM anagrafiche.soggetti s
 WHERE s.codice = 'TST-NAT-ENC-001-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id, tipo_indirizzo_id, indirizzo_libero,
-        stato_id, locality, postal_box, administrative_area
+        stato_id, comune_id, codice_postale_id, locality, postal_code
     )
 SELECT s.id,
     (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_sedeleg),
     'Via Test ENC SEDELEG',
     (SELECT stato_id FROM tmp_stato_test),
-    'Test City', '00100', 'TS'
+    (SELECT comune_id FROM tmp_stato_test), (SELECT codice_postale_id FROM tmp_stato_test), (SELECT locality FROM tmp_stato_test), (SELECT postal_code FROM tmp_stato_test)
 FROM anagrafiche.soggetti s
 WHERE s.codice = 'TST-NAT-ENC-001-' || (SELECT sfx FROM tmp_run_sfx);
         -- Saga completa: qui i guard verificano davvero.
@@ -337,25 +345,25 @@ SELECT lives_ok(
         WHERE s.codice = 'TST-NAT-PG-001-' || (SELECT sfx FROM tmp_run_sfx);
         INSERT INTO anagrafiche.indirizzi (
                 soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_libero,
-                stato_id, locality, postal_box, administrative_area
+                stato_id, comune_id, codice_postale_id, locality, postal_code
             )
         SELECT sr.id,
             (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_sedeleg),
             'Via Test GE SEDELEG',
             (SELECT stato_id FROM tmp_stato_test),
-            'Test City', '00100', 'TS'
+            (SELECT comune_id FROM tmp_stato_test), (SELECT codice_postale_id FROM tmp_stato_test), (SELECT locality FROM tmp_stato_test), (SELECT postal_code FROM tmp_stato_test)
         FROM anagrafiche.soggetti_ruoli sr
         JOIN anagrafiche.soggetti s ON sr.soggetto_id = s.id
         WHERE s.codice = 'TST-NAT-PG-001-' || (SELECT sfx FROM tmp_run_sfx) AND sr.tipo_ruolo_id = 3;
         INSERT INTO anagrafiche.indirizzi (
                 soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_libero,
-                stato_id, locality, postal_box, administrative_area
+                stato_id, comune_id, codice_postale_id, locality, postal_code
             )
         SELECT sr.id,
             (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_fatt),
             'Via Test GE FATT',
             (SELECT stato_id FROM tmp_stato_test),
-            'Test City', '00100', 'TS'
+            (SELECT comune_id FROM tmp_stato_test), (SELECT codice_postale_id FROM tmp_stato_test), (SELECT locality FROM tmp_stato_test), (SELECT postal_code FROM tmp_stato_test)
         FROM anagrafiche.soggetti_ruoli sr
         JOIN anagrafiche.soggetti s ON sr.soggetto_id = s.id
         WHERE s.codice = 'TST-NAT-PG-001-' || (SELECT sfx FROM tmp_run_sfx) AND sr.tipo_ruolo_id = 3;
@@ -408,13 +416,13 @@ SELECT lives_ok(
         WHERE s.codice = 'TST-NAT-PF-001-' || (SELECT sfx FROM tmp_run_sfx);
         INSERT INTO anagrafiche.indirizzi (
                 soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_libero,
-                stato_id, locality, postal_box, administrative_area
+                stato_id, comune_id, codice_postale_id, locality, postal_code
             )
         SELECT sr.id,
             (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_fatt),
             'Via Test CL FATT',
             (SELECT stato_id FROM tmp_stato_test),
-            'Test City', '00100', 'TS'
+            (SELECT comune_id FROM tmp_stato_test), (SELECT codice_postale_id FROM tmp_stato_test), (SELECT locality FROM tmp_stato_test), (SELECT postal_code FROM tmp_stato_test)
         FROM anagrafiche.soggetti_ruoli sr
         JOIN anagrafiche.soggetti s ON sr.soggetto_id = s.id
         WHERE s.codice = 'TST-NAT-PF-001-' || (SELECT sfx FROM tmp_run_sfx) AND sr.tipo_ruolo_id = 1;
@@ -439,13 +447,13 @@ SELECT lives_ok(
         WHERE s.codice = 'TST-NAT-ENC-001-' || (SELECT sfx FROM tmp_run_sfx);
         INSERT INTO anagrafiche.indirizzi (
                 soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_libero,
-                stato_id, locality, postal_box, administrative_area
+                stato_id, comune_id, codice_postale_id, locality, postal_code
             )
         SELECT sr.id,
             (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_fatt),
             'Via Test CL FATT',
             (SELECT stato_id FROM tmp_stato_test),
-            'Test City', '00100', 'TS'
+            (SELECT comune_id FROM tmp_stato_test), (SELECT codice_postale_id FROM tmp_stato_test), (SELECT locality FROM tmp_stato_test), (SELECT postal_code FROM tmp_stato_test)
         FROM anagrafiche.soggetti_ruoli sr
         JOIN anagrafiche.soggetti s ON sr.soggetto_id = s.id
         WHERE s.codice = 'TST-NAT-ENC-001-' || (SELECT sfx FROM tmp_run_sfx) AND sr.tipo_ruolo_id = 1;

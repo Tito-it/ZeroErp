@@ -18,6 +18,9 @@
 -- 7) Preventivo DRAFT → tutte le azioni hanno key valorizzato (nessun null da meta={})
 -- 8) Guard namespace i18n: label_key (da seed) e reason_key (da capability)
 --    iniziano per 'vendite.preventivi.' (20260719-14 + seed)
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
+--   preventivo dei test 2-5 nasceva gia' ACCETTATO).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -77,6 +80,9 @@ SELECT
   ) AS stato_draft_id;
 
 -- Preventivo ACCETTATO (fixture per test 2-5)
+-- ⚠️ rev 2026-10-24 (brief-modello-documento-vendita N-1): nasce DRAFT e va ad
+--   ACCETTATO (DRAFT -> EMESSO -> ACCETTATO) con dbops.fn_pgtap_porta_a_stato,
+--   sotto i guard veri: senza righe non hanno motivi da sollevare.
 CREATE TEMP TABLE tmp_prev_aa_accettato AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -90,13 +96,17 @@ WITH ins AS (
     0,
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_accettato_id, DATE '2026-06-01', false,
+    r.stato_draft_id, DATE '2026-06-01', false,
     false, '{"test_scope":"pgtap_fn_available_actions"}'::jsonb,
     r.emittente_fiscale_id
   FROM tmp_refs_aa r
   RETURNING id
 )
 SELECT * FROM ins;
+
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_prev_aa_accettato), 'ACCETTATO');
+END $porta$;
 
 -- Preventivo DRAFT (fixture per test 6-7)
 CREATE TEMP TABLE tmp_prev_aa_draft AS

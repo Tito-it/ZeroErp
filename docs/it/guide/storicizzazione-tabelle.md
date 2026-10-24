@@ -147,12 +147,11 @@ provisioning fa il resto. Il pregresso si converte con il backfill
 ([dbops.fn_storico_backfill_scope](/dbzero/dbops/manual/fn_storico_backfill_scope)), e
 l'applicazione non cancella mai una versione: è un privilegio, non una convenzione.
 
-⚠️ **Un passaggio da superuser, dove serve.** Su un database in cui il job pgAgent ha
-creato shadow come `postgres`, quelle tabelle non sono alterabili dai changeSet, e il
-trigger nuovo — che scrive le due colonne — si ferma finché una tabella ne è priva.
-`scripts/sql/provision_storico_scope.sql` le allinea e ne riassegna la proprietà al
-migratore: serve su qualunque database dove il job abbia creato shadow come `postgres`.
-Dettagli in [Provisioning ruoli DB](/dev/backend/provisioning-db-roles).
+**Le tabelle di storico sono del proprietario.** I lavori notturni girano come il
+proprietario del database, quindi le tabelle di storico che creano nascono sue, come
+tutto il resto, e le migrazioni possono modificarle. Se in un database qualcuno ne ha
+create da amministratore, `scripts/sql/provision_storico_scope.sql` le riporta al
+proprietario e le completa. Dettagli in [Provisioning ruoli DB](/dev/backend/provisioning-db-roles).
 
 Controlli: `db/pgtap/dbops/test-storico-scope-policy-v1.sql` (la mappa) e
 `db/pgtap/storico/test-storico-scope-congelato-v1.sql` (colonne, policy,
@@ -162,11 +161,8 @@ operatore, privilegi, proprietario delle shadow).
 ### Cosa sta dentro lo schema `storico`
 
 * **La shadow è di chi possiede la madre.** Il generatore, creata e armata una
-  tabella di storico, la **cede al proprietario della madre**: così anche le shadow
-  che il job pgAgent crea come `postgres` restano del migratore, e la convergenza da
-  Liquibase non le salta. Il passaggio da superuser del riquadro sopra resta
-  necessario **una volta**, sui database dove il job ha creato shadow prima di questa
-  regola. Dettagli in
+  tabella di storico, la **cede al proprietario della madre**: chiunque l'abbia
+  creata, resta del proprietario, e le migrazioni non la saltano. Dettagli in
   [dbops.fn_ensure_storico_table](/dbzero/dbops/manual/fn_ensure_storico_table).
 * **Il debito della mappa si vede anche fuori dalla CI.**
   [dbops.vw_storico_scope_da_dichiarare](/dbzero/dbops/manual/vw_storico_scope_da_dichiarare)

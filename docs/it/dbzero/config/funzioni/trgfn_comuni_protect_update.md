@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_comuni_protect_update()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_comuni_protect_update()
  RETURNS trigger
@@ -60,6 +62,8 @@ BEGIN
 END;
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

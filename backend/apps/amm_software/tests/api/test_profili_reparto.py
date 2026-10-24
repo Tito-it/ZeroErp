@@ -142,16 +142,19 @@ class TestRepartiListRepository(TestCase):
 
     @patch("apps.amm_software.db.amm_software_repository.fetch_paged_with_total")
     def test_default_e_fuori_whitelist(self, mock_fetch):
-        """Senza ordinamento, o con uno sconosciuto: descrizione ASC."""
+        """Senza ordinamento: descrizione ASC. Uno sconosciuto: 400 (dal 2026-10-20)."""
         from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
 
         mock_fetch.return_value = ([], 0)
         repo = AmmSoftwareRepository()
-        for order_by in (None, "uo.id; DROP TABLE x"):
-            repo.list_reparti(order_by=order_by)
-            sql = mock_fetch.call_args.args[0]
-            self.assertIn("ORDER BY rp.descrizione ASC NULLS FIRST, rp.id ASC", sql)
-            self.assertNotIn("DROP", sql)
+        repo.list_reparti(order_by=None)
+        self.assertIn(
+            "ORDER BY rp.descrizione ASC NULLS FIRST, rp.id ASC", mock_fetch.call_args.args[0],
+        )
+        mock_fetch.reset_mock()
+        with self.assertRaisesRegex(ValueError, "order_by_invalid"):
+            repo.list_reparti(order_by="uo.id; DROP TABLE x")
+        mock_fetch.assert_not_called()
 
 
 class TestRepartoProfiloView(TestCase):
@@ -229,6 +232,27 @@ class TestRepartoProfiloView(TestCase):
                 _make_request("PUT", {"aree": [], "azioni": [], "richiede_secondo_fattore": "true"}), uo_id=1,
             )
         self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+        mock_repo_cls.return_value.put_profilo_reparto.assert_not_called()
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_department")
+    def test_put_profilo_voci_validate_prima_del_repository(self, _invalidate, mock_repo_cls):
+        """⛔ Le voci si validano prima di scrivere (2026-10-21, §B5): una chiave
+        mancante era un `KeyError` nel repository (500), e una lista ASSENTE
+        diventava `[]` e svuotava il profilo con un 200."""
+        from apps.core.services.service_errors import ServiceError
+
+        for nome, corpo, campo in (
+            ("area senza livello", {"aree": [{"area_id": 2}], "azioni": []}, "livello"),
+            ("azione senza abilitata", {"aree": [], "azioni": [{"azione_id": 3}]}, "abilitata"),
+            ("voce non oggetto", {"aree": [7], "azioni": []}, "aree"),
+            ("aree assente", {"azioni": []}, "aree"),
+            ("azioni assente", {"aree": []}, "azioni"),
+        ):
+            with self.subTest(caso=nome), self.assertRaises(ServiceError) as ctx:
+                RepartoProfiloView().put(_make_request("PUT", corpo), uo_id=1)
+            self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+            self.assertEqual(ctx.exception.context.get("field"), campo)
         mock_repo_cls.return_value.put_profilo_reparto.assert_not_called()
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")

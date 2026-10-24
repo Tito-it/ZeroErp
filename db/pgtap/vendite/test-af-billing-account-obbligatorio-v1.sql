@@ -167,7 +167,6 @@ SELECT r.attivita_id AS commessa_attivita_id
                                          WHERE s.codice_interno = 'COMMESSA' AND s.attivo LIMIT 1),
     p_sorgente_uid                  => (SELECT commessa_id FROM _commessa)::text,
     p_tipo_movimento                => 'NORMALE',
-    p_tipo_consumo                  => 'CONGUAGLIO',
     p_meta                          => jsonb_build_object('case', 'AF_BA_NOTNULL')
   ) r;
 

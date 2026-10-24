@@ -210,7 +210,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_refs),
   p_sorgente_uid => ('EXT-TDF1-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'NORMALIZE')
 ) r;
 
@@ -267,7 +266,6 @@ SELECT 1 FROM vendite.fn_upsert_commessa_attivita(
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_refs),
   p_sorgente_uid => ('EXT-TDF1-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'NO_REGRESSIONE')
 );
 
@@ -320,7 +318,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_refs),
   p_sorgente_uid => ('EXT-TDF2-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'BOZZA_NULL')
 ) r;
 

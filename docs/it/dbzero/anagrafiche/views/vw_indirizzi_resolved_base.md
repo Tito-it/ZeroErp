@@ -1,6 +1,8 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/vw_indirizzi_resolved_base.md" %}
 # 🔍 View `vw_indirizzi_resolved_base`
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_resolved_base AS
 SELECT b.scope,
@@ -19,7 +21,7 @@ SELECT b.scope,
     b.administrative_area,
     b.locality,
     b.sublocality,
-    b.postal_box,
+    b.postal_box AS postal_code,
     COALESCE(vidd.comune_id, b.comune_id) AS comune_id,
     COALESCE(vidd.descrizione_comune, co_ai.descrizione, co_s.descrizione, ic.comune) AS comune_descrizione,
     COALESCE(vidd.cap, ic.codice_postale) AS cap,
@@ -63,7 +65,7 @@ SELECT b.scope,
             i.administrative_area,
             i.locality,
             i.sublocality,
-            i.postal_box,
+            i.postal_code AS postal_box,
             i.comune_id,
             i.codice_postale_id,
             i.geoloc,
@@ -88,7 +90,7 @@ SELECT b.scope,
             isg.administrative_area,
             isg.locality,
             isg.sublocality,
-            isg.postal_box,
+            isg.postal_code AS postal_box,
             isg.comune_id,
             isg.codice_postale_id,
             isg.geoloc,
@@ -113,6 +115,8 @@ SELECT b.scope,
      LEFT JOIN config.regioni re_s ON ((re_s.id = pr_s.regione_id)))
      LEFT JOIN config.stati st ON ((st.id = COALESCE(b.stato_id, re_ai.stato_id, re_s.stato_id))));
 ```
+
+</div>
 
 
 ---

@@ -277,67 +277,29 @@ class LookupRepository:
             return rows_to_list(cursor)
 
     # Scopo: Lista utility per popolare la combo "Utility" nei drawer e
-    #        nei filtri lista. Regola di business:
+    #        nei filtri lista: le utility AMMESSE per il ruolo emittente
+    #        fiscale (`EF`) in `config.utilities_tipi_ruolo` (riga attiva e
+    #        valida alla data operativa), intersecate — se
+    #        `ruolo_codice_soggetto` e' dato (es. 'CL'/'FO') — con quelle
+    #        ammesse anche per il ruolo del soggetto.
+    # ⛔ NON legge `anagrafiche.emittenti_fiscali_utilities`. Quella tabella e'
+    #    OPZIONALE e porta i PARAMETRI di fatturazione di una coppia
+    #    (emittente, utility) — soglie della fattura minima, arrotondamento del
+    #    totale — non l'elenco delle utility dell'emittente: la sola
+    #    ammissibilita' del modello e' `utilities_tipi_ruolo` (changeSet
+    #    `20260408-01`, che tolse la guard «almeno una riga per emittente»), e la
+    #    funzione DB gemella `fn_lookup_utilities_per_ba` la legge in LEFT JOIN,
+    #    come override. Fino al 2026-10-14 questo lookup la usava come filtro:
+    #    un emittente con i parametri della sola luce si vedeva sparire il gas
+    #    dalla combo (analisi-be-difetti-emersi-verifica-doc-api-core §6).
     #
-    #        - `emittente_fiscale_id` valorizzato + matrice popolata:
-    #          restituisce SOLO le utility configurate in
-    #          `anagrafiche.emittenti_fiscali_utilities` per quell'emittente.
-    #          L'operatore non vede utility globali non attivate sul suo EF.
-    #        - `emittente_fiscale_id` valorizzato + matrice vuota: fallback
-    #          a "tutte le utility EF". L'admin non ha ancora popolato la
-    #          matrice per quell'emittente; nel frattempo l'operatore deve
-    #          poter selezionare comunque (regola di business: la combo
-    #          non resta mai vuota se ci sono utility EF nel sistema).
-    #        - `emittente_fiscale_id` None (super-admin cross-emittente,
-    #          flussi pre-emittente): TUTTE le utility con ruolo EF.
-    #
-    #        Filtro orthogonale `ruolo_codice_soggetto`:
-    #        - se fornito (es. 'CL'/'FO'), applica intersezione con
-    #          `config.utilities_tipi_ruolo` per il ruolo soggetto target.
-    #        - se None, nessuna intersezione.
-    #
-    #        Nota tabella: `emittenti_fiscali_utilities` ha FK a
-    #        `emittente_soggetto_ruolo_id` (PK soggetto_ruolo), NON a
-    #        `emittenti_fiscali.id`. Per matchare il `emittente_fiscale_id`
-    #        passato in input (PK emittenti_fiscali risolta da
-    #        `parameter_repository.get_emittente_fiscale_id_for_user`)
-    #        serve il doppio JOIN passando per `emittenti_fiscali` (linea
-    #        guida memoria `feedback_emittente_pk_vs_soggetto_ruolo`).
-    #
-    #        Ritorna solo id/codice/codice_interno/descrizione (per combo
-    #        filtro, non editing). codice_interno serve al FE per
-    #        risolvere DEFAULT_UTILITY (che stocca codice_interno stabile,
-    #        non id) -> id locale.
+    #        Ritorna id/codice/codice_interno/descrizione (per combo filtro,
+    #        non editing). codice_interno serve al FE per risolvere
+    #        DEFAULT_UTILITY (che stocca codice_interno stabile, non id) -> id.
     def list_utilities_per_emittente(
         self,
-        emittente_fiscale_id: int | None,
         ruolo_codice_soggetto: str | None = None,
     ) -> list[dict[str, Any]]:
-        # Pre-check matrice non vuota: se l'emittente non ha alcuna riga
-        # attiva in `emittenti_fiscali_utilities`, applichiamo il fallback
-        # "no filtro emittente". Implementato in Python invece che con
-        # CTE+EXISTS per leggibilita': il check e' una query banale e il
-        # main path (JOIN condizionale) resta pulito.
-        if emittente_fiscale_id is not None:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT EXISTS(
-                      SELECT 1
-                        FROM anagrafiche.emittenti_fiscali_utilities efu
-                        JOIN anagrafiche.emittenti_fiscali ef
-                          ON ef.id = %s
-                       WHERE efu.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
-                         AND efu.attivo = true
-                    )
-                    """,
-                    [emittente_fiscale_id],
-                )
-                row = cursor.fetchone()
-                if not row or not row[0]:
-                    # Matrice vuota -> fallback: super-admin-like
-                    emittente_fiscale_id = None
-
         sql = """
             SELECT u.id, u.codice, u.codice_interno, u.descrizione
               FROM config.utilities u
@@ -351,21 +313,6 @@ class LookupRepository:
                AND COALESCE(tr_ef.codice_interno, tr_ef.codice) = 'EF'
         """
         params: list = []
-
-        # Filtro per emittente specifico (matrice EF utility):
-        # solo se emittente_fiscale_id valorizzato e matrice non vuota
-        # (verificato sopra). JOIN a 2 step:
-        # emittenti_fiscali.id -> soggetto_ruolo_id -> matrice.
-        if emittente_fiscale_id is not None:
-            sql += """
-              JOIN anagrafiche.emittenti_fiscali ef_match
-                ON ef_match.id = %s
-              JOIN anagrafiche.emittenti_fiscali_utilities efu
-                ON efu.emittente_soggetto_ruolo_id = ef_match.soggetto_ruolo_id
-               AND efu.utility_id = u.id
-               AND efu.attivo = true
-            """
-            params.append(emittente_fiscale_id)
 
         # Intersezione opzionale con ruolo soggetto (es. CL, FO).
         if ruolo_codice_soggetto:

@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGI: le regole sull'articolo su versione di listino e distinta — e
+#   RITIRO dei quattro guard per regola che la check ha assorbito (Lotto 3c)
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-2, D-3, D-4; §9.3.4)
+#
+# -- I MONTAGGI ----------------------------------------------------------
+#   vendite.listini_righe: script.trgfn_righe_guard_articolo_ammesso
+#     ('LISTINO_VERSIONE', 'listino_versione_id'), BEFORE INSERT OR UPDATE OF
+#     articolo_id, listino_versione_id (le colonne del guard della tipologia che
+#     sostituisce).
+#   catalogo.articoli_componenti: catalogo.trgfn_articoli_componenti_guard_componente
+#     (20261013-60), BEFORE INSERT OR UPDATE OF componente_id, prodotto_id, attivo.
+#     Il nome lo fa parlare DOPO i guard sul padre (block_solo_componente,
+#     guard_is_composito): prima la testata, poi la riga.
+#   ⛔ Nomi sotto i 63 caratteri (51 e 57).
+#
+# -- IL RITIRO -----------------------------------------------------------
+#   vendite.trgfn_listini_righe_guard_tipologia, vendite.trgfn_listini_righe_guard_no_composito,
+#   catalogo.trgfn_articoli_componenti_guard_un_livello (Lotto 1),
+#   catalogo.trgfn_articoli_componenti_guard_iva, coi loro trigger: le regole
+#   sono ora i motivi di script.fn_check_articolo_riga (20261013-59), con gli
+#   stessi codici. Ciascuno montato solo qui (pg_trigger, 2026-10-13). Le copie
+#   si ritirano nello stesso giro (regola del 2). Trigger scritti a mano, non da
+#   ci_apply: il DROP e' lecito (linee-guida-sql §11.5).
+#   Restano: i guard sul padre della distinta, il guard di stato delle righe di
+#   listino, e dal lato articolo trgfn_articoli_guard_flags_struttura_bom_attiva,
+#   trgfn_articoli_guard_iva_bom_attiva e la regola dell'articolo usato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261013-61-create-trigger-listino-distinta-guard-articolo-mctit.yaml
+
+  - changeSet:
+      id: 20261013-61-create-trigger-listino-distinta-guard-articolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta le regole sull'articolo su listini_righe (guard di tabella delle righe) e su
+        articoli_componenti (guard della distinta); ritira i quattro guard per regola (tipologia e
+        composito del listino, un livello e IVA della distinta). Brief:
+        brief-db-articoli-ammessi-per-documento (§9.3.4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+               WHERE t.tgname IN ('trg_listini_righe_a10_guard_articolo_ammesso_ins_upd',
+                                  'trg_articoli_componenti_a10_guard_riga_componente_ins_upd')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_righe_a10_guard_tipologia_ins_upd ON vendite.listini_righe;
+              DROP TRIGGER IF EXISTS trg_listini_righe_a10_guard_no_composito_ins ON vendite.listini_righe;
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_guard_is_un_livello_ins_upd ON catalogo.articoli_componenti;
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_guard_iva_bom_ins_upd ON catalogo.articoli_componenti;
+              DROP FUNCTION IF EXISTS vendite.trgfn_listini_righe_guard_tipologia();
+              DROP FUNCTION IF EXISTS vendite.trgfn_listini_righe_guard_no_composito();
+              DROP FUNCTION IF EXISTS catalogo.trgfn_articoli_componenti_guard_un_livello();
+              DROP FUNCTION IF EXISTS catalogo.trgfn_articoli_componenti_guard_iva();
+
+              CREATE TRIGGER trg_listini_righe_a10_guard_articolo_ammesso_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id, listino_versione_id
+                  ON vendite.listini_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('LISTINO_VERSIONE', 'listino_versione_id');
+
+              CREATE TRIGGER trg_articoli_componenti_a10_guard_riga_componente_ins_upd
+                  BEFORE INSERT OR UPDATE OF componente_id, prodotto_id, attivo
+                  ON catalogo.articoli_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_componente();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_righe_a10_guard_articolo_ammesso_ins_upd ON vendite.listini_righe;
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_guard_riga_componente_ins_upd ON catalogo.articoli_componenti;
+              -- ⚠️ I quattro guard ritirati non tornano da soli: vanno ri-applicati i
+              --    loro changeSet d'origine (funzione e trigger).

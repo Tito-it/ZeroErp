@@ -11,7 +11,7 @@
 > * [api.md](api.md) §«Ricerca e throttling» — la soglia di ricerca e `is_search_endpoint`
 > * [api.md](api.md) §«Endpoint attivi», voce «UI — Export liste» — l'export CSV/XLSX
 > * [catalogo BB backend](backend/catalogo-building-block-backend.md) §«Ordinamento SQL — direzione e tiebreak»
-> * [API pagination (core)](../backend/core/manual/api_pagination.md) — `validate_pagination` e le classi DRF
+> * [API pagination (core)](../backend/core/manual/api_pagination.md) — `pagina_da_query`, l'envelope da offset e le classi DRF (non usate)
 > * [frontend-standards](frontend/frontend-standards.md) — `<ListaConfigurabile>`, che consuma tutto questo
 
 ---
@@ -32,8 +32,11 @@ tetto suo. Lo scopo è che nessuna richiesta — neanche una ricerca di una lett
 
 ## 1) Paginazione — obbligatoria, con un tetto deciso dal server
 
-* Ogni lista a video è paginata. Due forme in uso: `page`/`page_size` e
-  `limit`/`offset` (api.md §«Paginazione»).
+* Ogni lista a video è paginata, in **una forma sola**: `limit`/`offset`,
+  letti da `pagina_da_query` (api.md §«Paginazione»). ⛔ Dal 2026-10-21
+  `page`/`page_size` in query sono un 400 su ogni lista (prima erano la seconda
+  forma in uso, di una ventina di liste). La risposta conserva `page` e
+  `page_size`, ricavati dall'offset.
 * Il **tetto di pagina lo decide il server**, il client non lo supera.
 * Il `count` della risposta è calcolato **indipendentemente** dalle righe
   consegnate, con lo stesso perimetro della lista (api.md, «Il `count` non si
@@ -41,18 +44,20 @@ tetto suo. Lo scopo è che nessuna richiesta — neanche una ricerca di una lett
   una lista troncata senza dirlo.
 * La forma in uso è a **offset**: la lista configurabile mostra il totale e il
   numero di pagine, che una paginazione a cursore non sa dare. Le classi DRF
-  `StandardCursorPagination` / `StandardPageNumberPagination` esistono in
-  `apps/core/api/pagination.py`, ma nessuna view le usa (le usa solo l'esempio
-  `apps/core/api/examples/domain_search_example.py`). Se una lista avrà bisogno
+  `StandardCursorPagination` / `StandardPageNumberPagination`, che nessuna
+  view usava, sono state rimosse il 2026-10-21. Se una lista avrà bisogno
   del cursore (un registro che cresce mentre lo si scorre), va deciso **per
   quella lista**, perché cambia il contratto verso il frontend.
 
-⚠️ **Fuori tetto, le due forme rispondono in modo diverso.** `validate_pagination`
-(page-based) **rifiuta** un `page_size` fuori dai limiti. `parse_list_params`
-(offset-based) invece lo **riduce in silenzio** (`min(limit, max_limit)`), e
-alcuni repository fanno lo stesso a mano. Vale la regola del rifiuto: il client
-che chiede 500 righe e ne riceve 200 senza un segnale crede di averle tutte. La
-riduzione silenziosa è un **debito dichiarato**, non una seconda regola.
+⛔ **Fuori tetto è un 400, su ogni lista** (decisione di Tid del 2026-10-21).
+`pagina_da_query` rifiuta con `E_VALIDATION_INPUT` un `limit` fuori da
+1..tetto (`limit_fuori_limiti_1_<tetto>`), un `offset` negativo
+(`offset_negativo`) e un valore non intero: il client che chiede 500 righe e ne
+riceve 200 senza un segnale crede di averle tutte. ✅ Il debito dichiarato qui —
+la riduzione silenziosa, che fino a quel giorno valeva per le liste
+offset-based e, col dialetto unico, per tutte — è chiuso. Il clamp
+`limiti_pagina` resta solo come difesa interna dei repository, non come
+risposta all'utente.
 
 ## 2) Ordinamento — sempre deterministico
 

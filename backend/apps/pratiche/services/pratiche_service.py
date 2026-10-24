@@ -10,6 +10,7 @@
 #        funzioni per creare/gestire pratiche legate ai propri eventi.
 # ------------------------------------------------------------
 
+from collections.abc import Callable
 from datetime import date, datetime
 from typing import Any, NoReturn
 
@@ -18,10 +19,14 @@ from django.db import DatabaseError, IntegrityError, transaction
 from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI
 from apps.core.services.db_error_fields import diagnostica_db
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.payload_helpers import map_integrity_error
+from apps.core.services.payload_helpers import PayloadValidator, map_integrity_error
 from apps.core.services.service_errors import ServiceError
 from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
-from apps.pratiche.db.pratiche_repository import PraticheRepository, coerce_jsonb_dict
+from apps.pratiche.db.pratiche_repository import (
+    PRATICA_UPDATE_SET,
+    PraticheRepository,
+    coerce_jsonb_dict,
+)
 
 # Marker → codice per i guard DB workflow v2 (fn_log_and_raise_error solleva
 # il solo testo localizzato, senza codice: substring-match sul messaggio,
@@ -128,7 +133,7 @@ def _campo_per_codice_db(code: str) -> tuple[str, ...] | None:
 # Mapping vincoli DB sospensioni -> codici errore applicativi.
 # L'EXCLUDE ex_sospensioni_no_overlap (framework dbops.automazione_overlap)
 # solleva un native 23P01 IntegrityError: lo mappiamo per nome constraint,
-# pattern speculare a ex_contratti_no_overlap -> E_VENDITE_CONTRATTO_OVERLAP.
+# pattern speculare a ex_contratti_no_overlap -> E_CONTRATTO_OVERLAP_ESISTENTE.
 _SOSPENSIONE_OVERLAP_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "ex_sospensioni_no_overlap": (
         "E_SOSPENSIONE_OVERLAP",
@@ -432,6 +437,20 @@ def crea_pratica(
         _raise_known_db_error(exc, function_name="pratiche_service.crea_pratica")
 
 
+_V_PRATICA = PayloadValidator(validation_code="E_PRATICA_VALIDATION")
+# ⛔ I VALORI passano dal BB, non solo le chiavi: una data o un uuid
+#    illeggibili erano un 500 del cast, `""` non diventava NULL e
+#    `meta: "x"` scriveva una stringa jsonb. Il campo assente resta assente.
+_LETTURE_PATCH_PRATICA: dict[str, Callable[[dict[str, Any], str], Any]] = {
+    "descrizione": _V_PRATICA.optional_string,
+    "data_scadenza": _V_PRATICA.optional_date,
+    "soggetto_id": _V_PRATICA.optional_uuid,
+    "risorsa_umana_id": _V_PRATICA.optional_positive_int,
+    "unita_organizzativa_id": _V_PRATICA.optional_positive_int,
+    "meta": _V_PRATICA.optional_meta,
+}
+
+
 # Scopo: Aggiorna i campi modificabili di una pratica.
 @transaction.atomic()
 def aggiorna_pratica(pratica_id: int, data: dict[str, Any]) -> None:
@@ -451,7 +470,31 @@ def aggiorna_pratica(pratica_id: int, data: dict[str, Any]) -> None:
     )
     assert pratica is not None
 
-    repo.update_pratica(pratica_id, data)
+    # ⛔ Una chiave fuori contratto e' un 400, e un PATCH senza campi pure (Tid,
+    #    2026-10-20, brief-be-verifica-documentazione-api §A2/§B2): fino a quel
+    #    giorno le chiavi ignote si scartavano e il PATCH vuoto rispondeva 200
+    #    senza scrivere.
+    _V_PRATICA.validate_allowed_keys(
+        data, allowed=frozenset(PRATICA_UPDATE_SET), message="Campi della pratica non modificabili.",
+    )
+    _V_PRATICA.require_campi_da_aggiornare(data)
+    dati = {k: leggi(data, k) for k, leggi in _LETTURE_PATCH_PRATICA.items() if k in data}
+    try:
+        repo.update_pratica(pratica_id, dati)
+    except IntegrityError as exc:
+        map_integrity_error(
+            exc,
+            fk_constraints={
+                "fk_pratiche_soggetto": ("E_PRATICA_VALIDATION", "Soggetto inesistente.", "soggetto_id"),
+                "fk_pratiche_risorsa_umana": (
+                    "E_PRATICA_VALIDATION", "Risorsa umana inesistente.", "risorsa_umana_id",
+                ),
+                "fk_pratiche_unita_organizzativa": (
+                    "E_PRATICA_VALIDATION", "Unita' organizzativa inesistente.", "unita_organizzativa_id",
+                ),
+            },
+            fallback_code="E_PRATICA_VALIDATION",
+        )
 
 
 # Scopo: Transizione di stato di una pratica tramite codice_interno.
@@ -471,7 +514,11 @@ def cambia_stato_pratica(pratica_id: int, nuovo_stato: str) -> None:
 
     repo = PraticheRepository()
     try:
-        repo.update_stato_pratica(pratica_id, nuovo_stato)
+        # Lo stato l'ha scelto il client: uno che non esiste e' un 400 sul
+        # campo, non il 500 di un seed mancante (2026-10-20).
+        repo.update_stato_pratica(
+            pratica_id, nuovo_stato, codice_errore="E_PRATICA_VALIDATION", campo="nuovo_stato",
+        )
     except DatabaseError as exc:
         # Guard chiusura (D4, trg_pratiche_a10_guard_chiusura_flussi_upd) →
         # PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI parlante.
@@ -536,7 +583,7 @@ def cerca_pratiche(
     )
     ErrorManager.require(
         lenti_attive <= 1,
-        code="PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI",
+        code="E_PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI",
         message=(
             "Parametri di contesto non ammessi: indicare al massimo una lente "
             "tra ruolo soggetto, istanza utility e solo interne."
@@ -874,7 +921,11 @@ def cambia_stato_flusso(
 
     repo = PraticheRepository()
     try:
-        repo.update_stato_flusso(flusso_id, nuovo_stato, esito=esito, note_esito=note_esito)
+        # Lo stato l'ha scelto il client: vedi `cambia_stato_pratica`.
+        repo.update_stato_flusso(
+            flusso_id, nuovo_stato, esito=esito, note_esito=note_esito,
+            codice_errore="E_FLUSSO_VALIDATION", campo="nuovo_stato",
+        )
     except DatabaseError as exc:
         # Guard pratica terminale → PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE.
         _raise_known_db_error(exc, function_name="pratiche_service.cambia_stato_flusso")

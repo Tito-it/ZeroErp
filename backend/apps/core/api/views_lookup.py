@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 from django.http import JsonResponse
+from apps.core.api.openapi_params import risposta_lookup
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -18,12 +19,11 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.payload_validators import (
     optional_int,
     parse_list_params,
-    qp_int,
+    qp_int_strict,
     qp_str,
 )
 from apps.core.api.success_responses import success_response
 from apps.core.db.lookup_repository import LookupRepository
-from apps.core.api.endpoint_helpers import utente_autenticato_id
 
 
 class LookupTipiSoggettoDettaglioView(DomainAPIView):
@@ -31,10 +31,7 @@ class LookupTipiSoggettoDettaglioView(DomainAPIView):
     skip_area_check = True
 
     @extend_schema(
-        responses={200: inline_serializer(
-            name="TipiSoggettoDettaglioResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("TipiSoggettoDettaglioResponse")},
     )
     # Scopo: Restituisce i tipi soggetto dettaglio con natura, CF/PIVA/dati societari policy.
     # Il frontend usa questi dati per guidare la visibilita' dei campi nel SoggettoForm.
@@ -52,10 +49,7 @@ class LookupTipiRuoliPerNaturaView(DomainAPIView):
         parameters=[
             OpenApiParameter(name="natura_soggetto", type=str, required=False),
         ],
-        responses={200: inline_serializer(
-            name="TipiRuoliPerNaturaResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("TipiRuoliPerNaturaResponse")},
     )
     # Scopo: Restituisce tipi ruolo ammessi per la natura, filtrati dalla matrice.
     def get(self, request: Request) -> JsonResponse:
@@ -73,10 +67,7 @@ class LookupFormeGiuridicheView(DomainAPIView):
         parameters=[
             OpenApiParameter(name="tipo_soggetto_dettaglio_id", type=int, required=False),
         ],
-        responses={200: inline_serializer(
-            name="FormeGiuridicheResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("FormeGiuridicheResponse")},
     )
     # Scopo: Restituisce forme giuridiche con policy, opzionalmente filtrate per tipo soggetto.
     def get(self, request: Request) -> JsonResponse:
@@ -91,10 +82,7 @@ class LookupMatriceIndirizziView(DomainAPIView):
     skip_area_check = True
 
     @extend_schema(
-        responses={200: inline_serializer(
-            name="MatriceIndirizziResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("MatriceIndirizziResponse")},
     )
     # Scopo: Restituisce la matrice tipi indirizzo ammessi/obbligatori per un tipo
     # soggetto dettaglio. Il frontend usa questi dati per mostrare i form indirizzo
@@ -110,10 +98,7 @@ class LookupMatriceIndirizziRuoloView(DomainAPIView):
     skip_area_check = True
 
     @extend_schema(
-        responses={200: inline_serializer(
-            name="MatriceIndirizziRuoloResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("MatriceIndirizziRuoloResponse")},
     )
     def get(self, request: Request, tipo_ruolo_codice: str) -> JsonResponse:
         repo = LookupRepository()
@@ -131,10 +116,7 @@ class LookupUtilitiesPerRuoloView(DomainAPIView):
     skip_area_check = True
 
     @extend_schema(
-        responses={200: inline_serializer(
-            name="UtilitiesPerRuoloResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("UtilitiesPerRuoloResponse")},
     )
     # Scopo: Restituisce le utility ammesse per il tipo ruolo passato in path,
     # con filtro strict basato sulla matrice config.utilities_tipi_ruolo.
@@ -147,16 +129,14 @@ class LookupUtilitiesPerRuoloView(DomainAPIView):
 class LookupUtilitiesPerEmittenteView(DomainAPIView):
     """Utility per popolare la combo "Utility" del FE.
 
-    Regola di business:
+    Regola: le utility **ammesse per il ruolo emittente fiscale** (`EF`) in
+    `config.utilities_tipi_ruolo`, uguali per ogni operatore. «Per emittente»
+    nel nome della rotta vuol dire il **ruolo** EF, non l'emittente attivo.
 
-    - **Operatore con emittente fiscale**: vede SOLO le utility configurate
-      nella matrice `anagrafiche.emittenti_fiscali_utilities` per il proprio
-      emittente. Le utility globali non attivate sul suo EF non sono
-      visibili. Il pattern impedisce all'operatore di selezionare utility
-      che il proprio emittente non gestisce.
-    - **Super-admin senza emittente** (cross-emittente, configurazioni di
-      sistema, audit): vede TUTTE le utility con ruolo EF — niente filtro
-      matrice perche' non e' associato a uno specifico emittente.
+    ⛔ Non filtra con `anagrafiche.emittenti_fiscali_utilities`: quella e' la
+    tabella opzionale dei PARAMETRI di fatturazione per (emittente, utility),
+    non l'elenco delle utility dell'emittente (dettaglio nel repository,
+    `list_utilities_per_emittente`). Fino al 2026-10-14 la usava come filtro.
 
     Filtro orthogonale `?ruolo=CL|FO|...`:
 
@@ -168,9 +148,7 @@ class LookupUtilitiesPerEmittenteView(DomainAPIView):
 
     Default lato FE: `useUtilityDefaultId` legge il parametro
     `DEFAULT_UTILITY` (catena user/group/emittente/sistema) e fa match
-    `codice_interno -> id` sul set ritornato qui. Il default e' quindi
-    automaticamente coerente con il filtro applicato (l'operatore non
-    riceve come default un'utility che non avrebbe potuto vedere).
+    `codice_interno -> id` sul set ritornato qui.
     """
     skip_area_check = True
 
@@ -180,31 +158,17 @@ class LookupUtilitiesPerEmittenteView(DomainAPIView):
                 name="ruolo",
                 type=str,
                 location=OpenApiParameter.QUERY,
-                description="Codice ruolo soggetto (es. CL, FO). Se omesso, ritorna tutte le utility EF dell'emittente.",
+                description="Codice ruolo soggetto (es. CL, FO). Se omesso, ritorna tutte le utility ammesse per il ruolo EF.",
                 required=False,
             ),
         ],
-        responses={200: inline_serializer(
-            name="UtilitiesPerEmittenteResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("UtilitiesPerEmittenteResponse")},
     )
-    # Scopo: Restituisce utility configurate per l'emittente dell'utente.
-    #        Se ruolo fornito, applica intersezione con ruolo soggetto.
-    #        Super-admin senza emittente -> tutte le utility EF (fallback).
+    # Scopo: Restituisce le utility ammesse per il ruolo EF; se `ruolo` e'
+    #        fornito, intersecate con quelle ammesse per il ruolo del soggetto.
     def get(self, request: Request) -> JsonResponse:
-        from apps.core.services.parameter_service import ParameterService
-
         ruolo = (request.query_params.get("ruolo") or "").strip().upper() or None
-
-        # Risolve emittente dell'utente corrente (stessa catena di parameter settings).
-        # Se None (es. super-admin cross-emittente), si delega alla repo che
-        # ritorna tutte le utility EF (eventualmente filtrate per ruolo).
-        svc = ParameterService()
-        emittente_fiscale_id = svc.get_emittente_fiscale_id_for_user(utente_autenticato_id(request))
-
-        repo = LookupRepository()
-        results = repo.list_utilities_per_emittente(emittente_fiscale_id, ruolo)
+        results = LookupRepository().list_utilities_per_emittente(ruolo)
         return success_response({"results": results})
 
 
@@ -228,10 +192,7 @@ class LookupContiContabiliView(DomainAPIView):
                 required=False,
             ),
         ],
-        responses={200: inline_serializer(
-            name="ContiContabiliLookupResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("ContiContabiliLookupResponse")},
     )
     # Scopo: Lista conti contabili filtrati per tipo (A/V) per le combo articolo.
     def get(self, request: Request) -> JsonResponse:
@@ -257,20 +218,14 @@ class LookupTipiEntitaView(DomainAPIView):
     skip_area_check = True
 
     @extend_schema(
-        responses={200: inline_serializer(
-            name="TipiEntitaLookupResponse",
-            fields={"data": inline_serializer(
-                name="TipiEntitaLookupData",
-                fields={"results": serializers.ListField(child=inline_serializer(
-                    name="TipoEntitaLookupRow",
-                    fields={
-                        "codice": serializers.CharField(),
-                        "etichetta_key": serializers.CharField(),
-                        "key_selector": serializers.CharField(),
-                    },
-                ))},
-            )},
-        )},
+        responses={200: risposta_lookup("TipiEntitaLookupResponse", riga=inline_serializer(
+            name="TipoEntitaLookupRow",
+            fields={
+                "codice": serializers.CharField(),
+                "etichetta_key": serializers.CharField(),
+                "key_selector": serializers.CharField(),
+            },
+        ))},
     )
     # Scopo: Restituisce i tipi di entita' vivi, con l'indirizzo i18n dichiarato dal DB.
     def get(self, request: Request) -> JsonResponse:
@@ -295,10 +250,17 @@ class LookupSistemaCodiciView(DomainAPIView):
     # Scopo: Verifica se esiste configurazione sistema codici.
     #        Se configurato: auto=true, il codice viene generato dal DB.
     #        Se non configurato: auto=false, il codice deve essere inserito manualmente.
+    # ⛔ `schema` e `tabella` sono obbligatori: assenti o vuoti → 400
+    #    `E_VALIDATION_INPUT`. Fino al 2026-10-14 valevano "" e la risposta era
+    #    «non configurato», cioe' un «scrivi il codice a mano» detto a una
+    #    domanda mai fatta (§6 di analisi-be-difetti-emersi-verifica-doc-api-core).
     def get(self, request: Request) -> JsonResponse:
-        schema = request.query_params.get("schema", "")
-        tabella = request.query_params.get("tabella", "")
-        colonna = request.query_params.get("colonna", "codice")
+        schema = qp_str(request.query_params.get("schema"))
+        tabella = qp_str(request.query_params.get("tabella"))
+        if not schema or not tabella:
+            mancanti = [nome for nome, valore in (("schema", schema), ("tabella", tabella)) if not valore]
+            raise ValueError(f"Parametri obbligatori mancanti: {', '.join(mancanti)}.")
+        colonna = qp_str(request.query_params.get("colonna")) or "codice"
         repo = LookupRepository()
         config = repo.get_sistema_codici(schema, tabella, colonna)
         if config:
@@ -361,10 +323,7 @@ class SearchStradarioView(DomainAPIView):
             OpenApiParameter(name="limit", type=int, required=False,
                              description="Righe massime (default 30, max 100)."),
         ],
-        responses={200: inline_serializer(
-            name="StradarioSearchResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("StradarioSearchResponse")},
     )
     # Scopo: Ricerca vie per autocomplete. Chiama script.fn_search_stradario.
     # Il frontend usa questo endpoint dopo che l'utente ha selezionato un comune.
@@ -373,7 +332,7 @@ class SearchStradarioView(DomainAPIView):
         qp = request.query_params
         comune_id = optional_int(qp, "comune_id")
         search = qp_str(qp.get("search"))
-        limit = min(qp_int(qp.get("limit"), 30), 100)
+        limit = min(qp_int_strict(qp.get("limit"), "limit", 30), 100)
 
         repo = LookupRepository()
         results = repo.search_stradario(
@@ -396,10 +355,7 @@ class SearchStradarioGeneraleView(DomainAPIView):
             OpenApiParameter(name="limit", type=int, required=False,
                              description="Righe massime (default 30, max 100)."),
         ],
-        responses={200: inline_serializer(
-            name="StradarioGeneraleSearchResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("StradarioGeneraleSearchResponse")},
     )
     # Scopo: Ricerca vie su stradario_generale per autocomplete via nuova.
     # L'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
@@ -407,7 +363,7 @@ class SearchStradarioGeneraleView(DomainAPIView):
         qp = request.query_params
         search = qp_str(qp.get("search"))
         toponomastica_id = optional_int(qp, "toponomastica_id")
-        limit = min(qp_int(qp.get("limit"), 30), 100)
+        limit = min(qp_int_strict(qp.get("limit"), "limit", 30), 100)
 
         repo = LookupRepository()
         results = repo.search_stradario_generale(

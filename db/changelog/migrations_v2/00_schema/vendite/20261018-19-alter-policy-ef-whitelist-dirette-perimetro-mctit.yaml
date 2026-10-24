@@ -1,0 +1,175 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE 13 POLICY EF_WHITELIST DIRETTE CALCOLANO IL PERIMETRO UNA VOLTA
+#   anagrafiche.soggetti_titoli_iva (+ _ambiti, _movimenti),
+#   documenti.documenti_generati, magazzino.assets, magazzino.magazzini,
+#   pratiche.pratiche, vendite.contratti, vendite.ddt,
+#   vendite.offerte_commerciali, vendite.ordini, vendite.preventivi,
+#   vendite.resi
+#   Brief: brief-db-plancache-funzioni-con-query-incorporate §5quinquies, D-3b-2 (ondata 1a).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   script.fn_scope_ef_whitelist(utente, emittente) per riga: dentro, la
+#   canonica plpgsql ricalcolava a ogni riga il perimetro dell'utente
+#   (super admin, veste utilizzabile, giorno operativo, fuso, whitelist),
+#   che non dipende dalla riga. Costo per costruzione: righe lette x catena.
+#
+# ── LA CURA ─────────────────────────────────────────────────────────
+#   La stessa condizione con script.fn_scope_ef_perimetro (-16), a cui la
+#   policy passa il perimetro in due sottoquery scalari NON correlate su
+#   script.fn_get_emittenti_scope_pk_ids (-17: COST): PostgreSQL le valuta una volta per
+#   istruzione (InitPlan), e per riga resta `emittente = ANY (...)`.
+#   Gate della veste OPERATORE, USING e WITH CHECK, comando, ruoli:
+#   invariati. Solo la chiamata cambia, in entrambe le clausole.
+#   Generato dal testo vivo (search_path = pg_catalog), identico su dbdev
+#   e sullo scratch (2026-10-18). Rollback: i testi di prima.
+#
+# Fatto datato (2026-10-18, dbdev, da owner, prova di concetto §5quinquies):
+#   lo stesso filtro su 330 righe, 33-62 ms per riga contro 2-6 ms una volta.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261018-19-alter-policy-ef-whitelist-dirette-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261018-19-alter-policy-ef-whitelist-dirette-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le 13 policy ef_whitelist dirette passano a script.fn_scope_ef_perimetro col perimetro calcolato una volta per istruzione (InitPlan) invece che per riga. Gate, clausole, comando e ruoli invariati. D-3b-2 di brief-db-plancache-funzioni-con-query-incorporate.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 13
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname <> 'storico'
+                 AND coalesce(qual, '') || coalesce(with_check, '') ~ 'fn_scope_ef_whitelist\('
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid = to_regprocedure('script.fn_scope_ef_perimetro(boolean,bigint[],bigint)')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid = to_regprocedure('script.fn_get_emittenti_scope_pk_ids(integer)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER POLICY rls_soggetti_titoli_iva_ef_whitelist ON anagrafiche.soggetti_titoli_iva
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)));
+
+              ALTER POLICY rls_soggetti_titoli_iva_ambiti_ef_whitelist ON anagrafiche.soggetti_titoli_iva_ambiti
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1 FROM anagrafiche.soggetti_titoli_iva t WHERE ((t.id = soggetti_titoli_iva_ambiti.titolo_iva_id) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), t.emittente_fiscale_id))))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1 FROM anagrafiche.soggetti_titoli_iva t WHERE ((t.id = soggetti_titoli_iva_ambiti.titolo_iva_id) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), t.emittente_fiscale_id))))));
+
+              ALTER POLICY rls_soggetti_titoli_iva_movimenti_ef_whitelist ON anagrafiche.soggetti_titoli_iva_movimenti
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1 FROM anagrafiche.soggetti_titoli_iva t WHERE ((t.id = soggetti_titoli_iva_movimenti.titolo_iva_id) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), t.emittente_fiscale_id))))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1 FROM anagrafiche.soggetti_titoli_iva t WHERE ((t.id = soggetti_titoli_iva_movimenti.titolo_iva_id) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), t.emittente_fiscale_id))))));
+
+              ALTER POLICY rls_documenti_generati_ef_whitelist ON documenti.documenti_generati
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)));
+
+              ALTER POLICY rls_assets_ef_whitelist ON magazzino.assets
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)));
+
+              ALTER POLICY rls_magazzini_ef_whitelist ON magazzino.magazzini
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)));
+
+              ALTER POLICY rls_pratiche_ef_whitelist ON pratiche.pratiche
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)));
+
+              ALTER POLICY rls_contratti_ef_whitelist ON vendite.contratti
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)));
+
+              ALTER POLICY rls_ddt_ef_whitelist ON vendite.ddt
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)));
+
+              ALTER POLICY rls_offerte_commerciali_ef_whitelist ON vendite.offerte_commerciali
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)));
+
+              ALTER POLICY rls_ordini_ef_whitelist ON vendite.ordini
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)));
+
+              ALTER POLICY rls_preventivi_ef_whitelist ON vendite.preventivi
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)));
+
+              ALTER POLICY rls_resi_ef_whitelist ON vendite.resi
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER POLICY rls_soggetti_titoli_iva_ef_whitelist ON anagrafiche.soggetti_titoli_iva
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)));
+
+              ALTER POLICY rls_soggetti_titoli_iva_ambiti_ef_whitelist ON anagrafiche.soggetti_titoli_iva_ambiti
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1 FROM anagrafiche.soggetti_titoli_iva t WHERE ((t.id = soggetti_titoli_iva_ambiti.titolo_iva_id) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, t.emittente_fiscale_id))))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1 FROM anagrafiche.soggetti_titoli_iva t WHERE ((t.id = soggetti_titoli_iva_ambiti.titolo_iva_id) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, t.emittente_fiscale_id))))));
+
+              ALTER POLICY rls_soggetti_titoli_iva_movimenti_ef_whitelist ON anagrafiche.soggetti_titoli_iva_movimenti
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1 FROM anagrafiche.soggetti_titoli_iva t WHERE ((t.id = soggetti_titoli_iva_movimenti.titolo_iva_id) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, t.emittente_fiscale_id))))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1 FROM anagrafiche.soggetti_titoli_iva t WHERE ((t.id = soggetti_titoli_iva_movimenti.titolo_iva_id) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, t.emittente_fiscale_id))))));
+
+              ALTER POLICY rls_documenti_generati_ef_whitelist ON documenti.documenti_generati
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)));
+
+              ALTER POLICY rls_assets_ef_whitelist ON magazzino.assets
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)));
+
+              ALTER POLICY rls_magazzini_ef_whitelist ON magazzino.magazzini
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)));
+
+              ALTER POLICY rls_pratiche_ef_whitelist ON pratiche.pratiche
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)));
+
+              ALTER POLICY rls_contratti_ef_whitelist ON vendite.contratti
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)));
+
+              ALTER POLICY rls_ddt_ef_whitelist ON vendite.ddt
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)));
+
+              ALTER POLICY rls_offerte_commerciali_ef_whitelist ON vendite.offerte_commerciali
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)));
+
+              ALTER POLICY rls_ordini_ef_whitelist ON vendite.ordini
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)));
+
+              ALTER POLICY rls_preventivi_ef_whitelist ON vendite.preventivi
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)));
+
+              ALTER POLICY rls_resi_ef_whitelist ON vendite.resi
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, emittente_fiscale_id)));

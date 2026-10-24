@@ -10,7 +10,7 @@
 
 ## Scopo
 
-(latest review 2026-05-22)
+(latest review 2026-10-13: check 3, un componente non diventa composito)
 
 Blocca le modifiche ai flag di struttura `is_composito`, `is_solo_componente` e
 `requires_serial` su `catalogo.articoli` quando esiste una BoM attiva che renderebbe
@@ -58,7 +58,8 @@ LANGUAGE plpgsql
 
 ## Logica
 
-Due controlli distinti in sequenza, con semantiche opposte (`prodotto_id` vs `componente_id`).
+Tre controlli distinti in sequenza: i primi due con semantiche opposte (`prodotto_id` vs
+`componente_id`), il terzo sul passaggio a composito.
 Ogni controllo esegue la query EXISTS solo se il flag corrispondente cambia effettivamente
 (`IS DISTINCT FROM`).
 
@@ -67,14 +68,15 @@ Ogni controllo esegue la query EXISTS solo se il flag corrispondente cambia effe
 Attivo se `OLD.is_composito IS DISTINCT FROM NEW.is_composito`
 **oppure** `OLD.requires_serial IS DISTINCT FROM NEW.requires_serial`.
 
-Cerca in `articoli_componenti` almeno un figlio attivo valido oggi:
+Cerca in `articoli_componenti` almeno un figlio attivo valido oggi (il giorno aziendale,
+`script.fn_data_operativa()`, dal 2026-10-09):
 
 ```sql
 SELECT EXISTS (
     SELECT 1 FROM catalogo.articoli_componenti
      WHERE prodotto_id = NEW.id
        AND attivo IS TRUE
-       AND validita @> CURRENT_DATE
+       AND validita @> (SELECT script.fn_data_operativa())
 )
 ```
 
@@ -91,11 +93,28 @@ SELECT EXISTS (
     SELECT 1 FROM catalogo.articoli_componenti
      WHERE componente_id = NEW.id
        AND attivo IS TRUE
-       AND validita @> CURRENT_DATE
+       AND validita @> (SELECT script.fn_data_operativa())
 )
 ```
 
 Se trovato → raise `E_BOM_MODIFICA_VIETATA` (387).
+
+### Check 3 — `is_composito` da FALSE a TRUE (l'articolo e' figlio)
+
+Dal 2026-10-13 (`20261013-03`, brief-db-articoli-ammessi-per-documento D-4). La distinta ha
+un livello solo ([modello componenti BoM §9.2](/dev/manual/modello-componenti-bom)): un
+articolo che e' componente di una distinta **in vigore o futura** non diventa composito.
+
+Attivo solo se `NEW.is_composito` e' vero e `OLD.is_composito` non lo era. Cerca il primo
+padre (per codice) di un legame attivo con `validita && [oggi, inf)`: a differenza dei check 1
+e 2 guarda anche i legami che entrano in vigore piu' avanti, perche' da quel giorno la distinta
+avrebbe due livelli. Un legame scaduto e' storia e non conta.
+
+Se trovato → raise `E_BOM_COMPONENTE_DIVENTA_COMPOSITO` (1294), campo `is_composito`, con il
+codice dell'articolo e quello del padre nel messaggio. Il lato legame e'
+[`catalogo.trgfn_articoli_componenti_guard_componente`](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente) (motivo `E_BOM_COMPONENTE_COMPOSITO` di `script.fn_check_articolo_riga`).
+Il gemello per il form e' la regola su `is_composito` in `dbops.lock_columns_conditional`
+(`20261013-04`), che spegne il campo solo su un articolo ancora semplice.
 
 ---
 
@@ -105,8 +124,9 @@ Se trovato → raise `E_BOM_MODIFICA_VIETATA` (387).
 | --- | --- | --- | --- | --- |
 | 1 | `is_composito`, `requires_serial` | Padre composito | `prodotto_id = NEW.id` | `E_BOM_MODIFICA_VIETATA` (387) |
 | 2 | `is_solo_componente` | Figlio in BoM | `componente_id = NEW.id` | `E_BOM_MODIFICA_VIETATA` (387) |
+| 3 | `is_composito` FALSE→TRUE | Figlio in BoM in vigore o futura | `componente_id = NEW.id` | `E_BOM_COMPONENTE_DIVENTA_COMPOSITO` (1294) |
 
-Condizione BoM attiva: `attivo IS TRUE AND validita @> CURRENT_DATE`
+Condizione BoM attiva (check 1 e 2): `attivo IS TRUE AND validita @> script.fn_data_operativa()`; check 3: `attivo IS TRUE AND validita && [oggi, inf)`
 (colonna `validita` GENERATED ALWAYS STORED su `articoli_componenti`).
 
 ---
@@ -116,6 +136,7 @@ Condizione BoM attiva: `attivo IS TRUE AND validita @> CURRENT_DATE`
 | Codice | ID | Quando |
 | --- | --- | --- |
 | `E_BOM_MODIFICA_VIETATA` | 387 | Flag di struttura modificato con BoM attiva incompatibile |
+| `E_BOM_COMPONENTE_DIVENTA_COMPOSITO` | 1294 | Un componente di una distinta in vigore o futura marcato composito |
 
 Contesto JSON (Check 1): `articolo_id`, `hint` (indica is_composito/requires_serial bloccati).
 Contesto JSON (Check 2): `articolo_id`, `hint` (indica is_solo_componente bloccato).

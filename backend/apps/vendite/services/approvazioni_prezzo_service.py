@@ -54,9 +54,9 @@ from apps.vendite.services._approvazioni_prezzo_constants import (
     META_KEY_RIGA_OFFERTA_ID,
     META_KEY_RIGA_PREVENTIVO_ID,
     META_KEY_SORGENTE,
-    SORGENTE_CONTRATTO,
-    SORGENTE_OFFERTA,
-    SORGENTE_PREVENTIVO,
+    META_SORGENTE_CONTRATTO,
+    META_SORGENTE_OFFERTA,
+    META_SORGENTE_PREVENTIVO,
     STATO_APPROVAZIONE_APPROVED,
     STATO_APPROVAZIONE_PENDING,
     STATO_APPROVAZIONE_REJECTED,
@@ -128,7 +128,7 @@ def _update_riga_offerta(riga_id: int, fields: dict[str, Any]) -> None:
 
 
 _SORGENTE_CONFIG: dict[str, dict[str, Any]] = {
-    SORGENTE_PREVENTIVO: {
+    META_SORGENTE_PREVENTIVO: {
         "table": "vendite.preventivi_righe",
         "doc_fk_column": "preventivo_id",
         "meta_key_riga": META_KEY_RIGA_PREVENTIVO_ID,
@@ -138,7 +138,7 @@ _SORGENTE_CONFIG: dict[str, dict[str, Any]] = {
         "label_doc": "preventivo",
         "update_riga": _update_riga_preventivo,
     },
-    SORGENTE_CONTRATTO: {
+    META_SORGENTE_CONTRATTO: {
         "table": "vendite.contratti_righe",
         "doc_fk_column": "contratto_id",
         "meta_key_riga": META_KEY_RIGA_CONTRATTO_ID,
@@ -148,7 +148,7 @@ _SORGENTE_CONFIG: dict[str, dict[str, Any]] = {
         "label_doc": "contratto",
         "update_riga": _update_riga_contratto,
     },
-    SORGENTE_OFFERTA: {
+    META_SORGENTE_OFFERTA: {
         "table": "vendite.offerte_commerciali_eccezioni",
         "doc_fk_column": "offerta_id",
         "meta_key_riga": META_KEY_RIGA_OFFERTA_ID,
@@ -376,7 +376,7 @@ def crea_richiesta_approvazione(
     assert contesto is not None
 
     return _crea_richiesta_approvazione_impl(
-        sorgente=SORGENTE_PREVENTIVO,
+        sorgente=META_SORGENTE_PREVENTIVO,
         documento_id=preventivo_id,
         riga_id=None,  # popolato dopo da link_riga_a_pratica
         # ⚠️ La testata del preventivo ha `numero` (`PreventivoDetailRow`), non
@@ -429,7 +429,7 @@ def crea_richiesta_approvazione_contratto(
     assert contesto is not None
 
     return _crea_richiesta_approvazione_impl(
-        sorgente=SORGENTE_CONTRATTO,
+        sorgente=META_SORGENTE_CONTRATTO,
         documento_id=contratto_id,
         riga_id=riga_id,
         numero_documento=testata.get("numero"),
@@ -483,7 +483,7 @@ def crea_richiesta_approvazione_offerta(
     assert contesto is not None
 
     return _crea_richiesta_approvazione_impl(
-        sorgente=SORGENTE_OFFERTA,
+        sorgente=META_SORGENTE_OFFERTA,
         documento_id=offerta_id,
         riga_id=riga_id,
         numero_documento=testata.get("codice"),
@@ -505,14 +505,14 @@ def crea_richiesta_approvazione_offerta(
 #        determina la tabella riga (vendite.preventivi_righe o
 #        vendite.contratti_righe). Default `preventivo` per back-compat
 #        con i call site Sprint E. L'endpoint contratti
-#        (/righe-contratto/<id>/approva-prezzo/) passa SORGENTE_CONTRATTO.
+#        (/righe-contratto/<id>/approva-prezzo/) passa META_SORGENTE_CONTRATTO.
 @transaction.atomic
 def approva(
     *,
     riga_id: int,
     auth_user_id: int | None,
     nota: str | None = None,
-    sorgente: str = SORGENTE_PREVENTIVO,
+    sorgente: str = META_SORGENTE_PREVENTIVO,
 ) -> dict[str, Any]:
     _require_sorgente(sorgente)
 
@@ -555,7 +555,7 @@ def rifiuta(
     riga_id: int,
     auth_user_id: int | None,
     motivazione: str | None = None,
-    sorgente: str = SORGENTE_PREVENTIVO,
+    sorgente: str = META_SORGENTE_PREVENTIVO,
 ) -> dict[str, Any]:
     _require_sorgente(sorgente)
 
@@ -680,7 +680,15 @@ def _user_can_approve_or_reject(user) -> bool:
 # Scopo: helper Fase 5.B1. Calcola capability di riga + reason i18n key.
 #        Reason possibili (codici stabili esportati come costanti modulo,
 #        traduzione lato FE):
-#          - PERMESSO_MANCANTE  → utente senza azione approva_prezzo_override
+#          - PERMESSO_MANCANTE  → utente senza azione approva_prezzo_override.
+#            ⚠️ Dall'endpoint della coda NON arriva: la view chiede la stessa
+#            azione (`get_permission`), e chi non ce l'ha riceve 403 prima di
+#            vedere una riga. Il ramo resta perche' la capability si calcola dal
+#            permesso, non dalla porta da cui si e' entrati: `lista_coda` e' un
+#            service, e un chiamante che non passa da quella view (o una coda
+#            aperta un giorno anche a chi legge soltanto) deve ricevere bottoni
+#            spenti col motivo, non accesi (brief-be-verifica-documentazione-api
+#            §B11, 2026-10-21).
 #          - RIGA_NON_LINKATA   → META_KEY_RIGA_PREVENTIVO_ID assente nel meta
 #            (pratica legacy o crash post-create_riga)
 #          - None               → can_approve/can_reject = True
@@ -690,7 +698,7 @@ def _capabilities_per_pratica(pratica: dict[str, Any], *, user_can_act: bool) ->
     # denied) per coerenza FE: il router endpoint approva/rifiuta usa sempre
     # `sorgente` per scegliere /righe/<id>/.. vs /righe-contratto/<id>/..
     meta = _coerce_meta_to_dict_safe(pratica.get("meta"))
-    sorgente_raw = meta.get(META_KEY_SORGENTE) or SORGENTE_PREVENTIVO
+    sorgente_raw = meta.get(META_KEY_SORGENTE) or META_SORGENTE_PREVENTIVO
     cfg = _SORGENTE_CONFIG.get(sorgente_raw)
     # Sorgente sconosciuta: trattata come `RIGA_NON_LINKATA` (UI bottoni
     # disabilitati). Esponiamo comunque la chiave `sorgente_raw` cosi' il
@@ -923,7 +931,7 @@ def _risolvi_email_approver(emittente_fiscale_id: int) -> str | None:
 #        Refactor 2026-05-19: parametro `sorgente` per la chiave meta corretta
 #        (`riga_preventivo_id` vs `riga_contratto_id`).
 def link_riga_a_pratica(
-    *, pratica_id: int, riga_id: int, sorgente: str = SORGENTE_PREVENTIVO,
+    *, pratica_id: int, riga_id: int, sorgente: str = META_SORGENTE_PREVENTIVO,
 ) -> None:
     cfg = _require_sorgente(sorgente)
 

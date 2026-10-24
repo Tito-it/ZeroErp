@@ -53,6 +53,12 @@ from apps.vendite.services.pipeline_runner import (
     LottoPipelineParams,
     LottoPipelineRunner,
 )
+from scripts.tests._smoke_contesto import apri_contesto_smoke
+from scripts.tests._smoke_fatturazione import (
+    costruisci_base_fatturazione,
+    crea_attivita_di_commessa,
+    crea_lotto_di_prova,
+)
 
 FAIL: list[str] = []
 
@@ -98,123 +104,35 @@ with transaction.atomic():
     with connection.cursor() as cur:
         # RLS: lotti, fatture e commesse sono scoped per emittente. Senza GUC
         # le letture tornano 0 righe e lo smoke mentirebbe.
-        cur.execute(
-            "SELECT set_config('app.ruolo_applicativo','OPERATORE',false),"
-            "       set_config('app.current_user_id', (SELECT auth_user_id::text"
-            "         FROM config.user_emittenti_fiscali LIMIT 1), false)"
-        )
-
-        # Template da un'attivita' reale: BA, istanza, uom, valuta e tipo doc
-        # coerenti con la configurazione dell'ambiente.
-        cur.execute(
-            """
-            SELECT a.articolo_id, a.istanza_utility_id, a.billing_account_id,
-                   a.uom_id, a.valuta_id, a.tipo_doc_fiscale_id,
-                   c.emittente_soggetto_ruolo_id, c.utility_id
-              FROM vendite.attivita_fatturabili a
-              JOIN vendite.commesse c ON c.id = a.commessa_id
-             WHERE a.commessa_id IS NOT NULL
-             ORDER BY a.id DESC LIMIT 1
-            """
-        )
-        row = cur.fetchone()
-        if not row:
-            raise SystemExit("Nessuna attivita' fatturabile da usare come template.")
-        t = dict(zip(
-            ["articolo_id", "istanza_utility_id", "billing_account_id", "uom_id",
-             "valuta_id", "tipo_doc_fiscale_id", "emittente_sr_id", "utility_id"],
-            row, strict=True,
-        ))
+        apri_contesto_smoke(cur)
 
         # Competenza ISOLATA nel futuro: la selezione del lotto non può
-        # rastrellare attività vive dell'ambiente.
+        # rastrellare attività vive dell'ambiente. La base della fixture si
+        # COSTRUISCE dalle radici di prova (brief-be-utenti-di-sviluppo T-7b),
+        # con la commessa su quella competenza.
         competenza = (oggi_aziendale() + timedelta(days=760)).replace(day=1)
         marker = uuid.uuid4().hex[:8]
+        t = costruisci_base_fatturazione(cur, marker=marker, competenza_mese=competenza)
+        commessa_id = t["commessa_id"]
         lock_batch_id = str(uuid.uuid4())
 
-        cur.execute(
-            """
-            INSERT INTO vendite.fatturazione_lotti (
-                codice, competenza_mese, utility_id, tipo_doc_fiscale_id,
-                stato_doc_fiscale_id, emittente_soggetto_ruolo_id, tipo_lotto,
-                stato_lotto, stato_operativo, lock_batch_id, meta
-            )
-            SELECT %s, %s, %s, %s,
-                   (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno='DRAFT'),
-                   %s, 'MASSIVO', 'IN_ESECUZIONE', 'APERTO', %s, '{"smoke": true}'::jsonb
-            RETURNING id
-            """,
-            [f"SMOKE-F6-{marker}", competenza, t["utility_id"],
-             t["tipo_doc_fiscale_id"], t["emittente_sr_id"], lock_batch_id],
-        )
-        lotto_id = cur.fetchone()[0]
+        lotto_id = crea_lotto_di_prova(cur, t, codice=f"SMOKE-F6-{marker}", lock_batch_id=lock_batch_id)
 
-        # Commessa + riga + attivita' lockata sul lotto: lo stato in cui il
-        # task `select_attivita` le consegna al generatore righe.
-        cur.execute(
-            """
-            SELECT vendite.fn_get_or_create_commessa(
-                p_billing_account_id => %s, p_utility_id => %s,
-                p_competenza_dal => %s, p_competenza_al => %s,
-                p_meta => %s::jsonb, p_force_new => true)
-            """,
-            [t["billing_account_id"], t["utility_id"],
-             competenza, competenza, f'{{"smoke": "{marker}"}}'],
+        # Riga + attivita' lockata sul lotto: lo stato in cui il task
+        # `select_attivita` le consegna al generatore righe. Una riga gia'
+        # APPROVATA ed EMESSA.
+        # ⛔ 2026-09-04 (changeSet 20260904-50): `fn_select_attivita_fatturabili`
+        #   prende SOLO le righe marchiate col proprio giro
+        #   (`a.emit_batch_id = p_lock_batch_id`). Senza marchio la select
+        #   torna zero, il rilancio non rigenera righe e i test 3-4-6
+        #   falliscono — non e' un difetto da aggirare, e' l'effetto voluto
+        #   dal cantiere «esito parziale». La fixture si marchia col PROPRIO
+        #   giro, come fa il backend nel task di pull.
+        ca_id, af_id = crea_attivita_di_commessa(
+            cur, t, segment_key=f"SMOKE:F6:{marker}", lock_batch_id=lock_batch_id,
+            prezzo=Decimal("250.00"), stato_approvazione="APPROVATA",
+            stato_emissione="EMESSA", emit_batch_id=lock_batch_id,
         )
-        commessa_id = cur.fetchone()[0]
-
-        cur.execute(
-            """
-            SELECT attivita_id FROM vendite.fn_upsert_commessa_attivita(
-                p_commessa_id => %s, p_segment_key => %s, p_articolo_id => %s,
-                p_istanza_utility_id => %s, p_data_attivita => %s,
-                p_uom_id => %s, p_quantita => 1, p_competenza_mese => %s,
-                p_competenza_dal => %s, p_competenza_al => %s,
-                p_prezzo_snapshot => %s, p_prezzo_base_snapshot => NULL,
-                p_origine_prezzo => NULL, p_tipo_variazione_applicata => NULL,
-                p_valore_variazione_applicata => NULL, p_promo_id => NULL,
-                p_contratto_id => NULL, p_categoria_cliente_id_snapshot => NULL,
-                p_classe_utenza_id_snapshot => NULL,
-                p_tipo_doc_fiscale_id => %s, p_valuta_id => %s,
-                p_prezzo_bloccato => true, p_stato_approvazione => 'APPROVATA',
-                p_stato_emissione => 'EMESSA', p_meta => '{}'::jsonb)
-            """,
-            [commessa_id, f"SMOKE:F6:{marker}", t["articolo_id"],
-             t["istanza_utility_id"], competenza, t["uom_id"], competenza,
-             competenza, competenza, Decimal("250.00"),
-             t["tipo_doc_fiscale_id"], t["valuta_id"]],
-        )
-        ca_id = cur.fetchone()[0]
-
-        cur.execute(
-            """
-            INSERT INTO vendite.attivita_fatturabili (
-                articolo_id, istanza_utility_id, billing_account_id,
-                data_attivita, quantita, uom_id, qta_operativa, uom_operativa_id,
-                factor_to_base, prezzo_unitario, valuta_id, tipo_doc_fiscale_id,
-                competenza_mese, competenza_dal, competenza_al,
-                commessa_id, commessa_attivita_id, lock_batch_id, emit_batch_id,
-                lock_in_fatturazione, approvato, stato_esecuzione,
-                prezzo_bloccato, meta
-            ) VALUES (
-                %s, %s, %s, %s, 1, %s, 1, %s, 1, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, TRUE, TRUE, 'PENDING', TRUE,
-                '{}'::jsonb
-            ) RETURNING id
-            """,
-            # ⛔ 2026-09-04 (changeSet 20260904-50): `fn_select_attivita_fatturabili`
-            #   prende SOLO le righe marchiate col proprio giro
-            #   (`a.emit_batch_id = p_lock_batch_id`). Senza marchio la select
-            #   torna zero, il rilancio non rigenera righe e i test 3-4-6
-            #   falliscono — non e' un difetto da aggirare, e' l'effetto voluto
-            #   dal cantiere «esito parziale». La fixture si marchia col PROPRIO
-            #   giro, come fa il backend nel task di pull.
-            [t["articolo_id"], t["istanza_utility_id"], t["billing_account_id"],
-             competenza, t["uom_id"], t["uom_id"], Decimal("250.00"),
-             t["valuta_id"], t["tipo_doc_fiscale_id"], competenza, competenza,
-             competenza, commessa_id, ca_id, lock_batch_id, lock_batch_id],
-        )
-        af_id = cur.fetchone()[0]
         print(f"lotto {lotto_id} · commessa {commessa_id} · attivita' {af_id}\n")
 
     # --- il giro che porta il lotto ad avere righe fattura -----------------

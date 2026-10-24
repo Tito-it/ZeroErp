@@ -1,5 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-24 (brief-modello-documento-vendita R-6/Q-4): cliente ed
+--   emittente dal mondo costruito (dbops.fn_pgtap_crea_mondo_cliente); prima
+--   erano il primo billing account e il primo emittente attivo del database,
+--   che non vanno d'accordo (il file moriva col «valore nullo» di
+--   billing_account_id) e su un database ricostruito non ci sono. Le testate
+--   restano scritte qui, perche' validita', competenza e data SONO il caso;
+--   numero e stato non si scrivono piu': li assegnano il dominio e il
+--   trigger della nascita.
 -- pgTAP test per Zero ERP
 --
 -- Test: vendite.fn_list_preventivi_da_pushare competenza (20260610-06).
@@ -36,32 +44,31 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(5);
 
 -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): le testate nascono DRAFT, prendono la riga, poi passano ad ACCETTATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-91).
+-- ⭐ rev 2026-10-24 (Q-4): il cliente e l'emittente si COSTRUISCONO.
+--   dbops.fn_pgtap_crea_mondo_cliente, col contesto gia' aperto, riusa
+--   l'azienda di chi agisce e le lega un cliente nuovo: emittente e BA vanno
+--   d'accordo per costruzione. ⛔ Cio' che il builder scrive si legge in
+--   un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('list prev competenza');
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS art_serv_id,
-  (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_accettato_id,
-  (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE) AS stato_bozza_id,
+  m.billing_account_id,
+  m.utility_id,
+  m.istanza_utility_id,
+  -- ⛔ rev 2026-10-13: l'articolo si COSTRUISCE. Prima era il primo del catalogo
+  --   per id, e gli si cambiava la natura qui sotto: su dbdev e' ART_TEST_BASE,
+  --   gia' usato, e dal 20261013-48 un articolo usato non cambia natura (A-10 di
+  --   brief-db-articoli-ammessi-per-documento).
+  -- Nasce SERVIZIO_UNA_TANTUM: natura destinazione COMMESSA, per essere incluso.
+  dbops.fn_pgtap_crea_articolo('PGT-LPPC-SERV', false,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'SERVIZIO_UNA_TANTUM')) AS art_serv_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT id FROM config.nature_vendita WHERE codice_interno = 'SERVIZIO_UNA_TANTUM') AS natura_serv_id;
-
--- L'articolo di test deve avere natura destinazione COMMESSA per essere incluso.
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_serv_id FROM tmp_refs)
- WHERE id = (SELECT art_serv_id FROM tmp_refs);
+  m.emittente_fiscale_id,
+  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id
+FROM tmp_mondo m;
 
 -- ============================================================
 -- Preventivo 1: SENZA validita (validita_dal/al NULL, competenza_mese NULL).
@@ -70,11 +77,11 @@ UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_serv_id FROM tmp
 CREATE TEMP TABLE tmp_noval AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, competenza_mese, valuta_id, stato_doc_preventivo_id, data,
+    billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, competenza_mese, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-COMP-NOVAL', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         NULL, NULL, NULL, r.valuta_id, r.stato_bozza_id, DATE '2080-06-10',
+  SELECT r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         NULL, NULL, NULL, r.valuta_id, DATE '2080-06-10',
          false, false, jsonb_build_object('test_scope','pgtap_competenza'), r.emittente_fiscale_id
     FROM tmp_refs r
   RETURNING id)
@@ -90,11 +97,11 @@ DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SEL
 CREATE TEMP TABLE tmp_diff AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, competenza_mese, valuta_id, stato_doc_preventivo_id, data,
+    billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, competenza_mese, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-COMP-DIFF', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-06-15', DATE '2080-06-20', DATE '2080-09-01', r.valuta_id, r.stato_bozza_id, DATE '2080-06-10',
+  SELECT r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2080-06-15', DATE '2080-06-20', DATE '2080-09-01', r.valuta_id, DATE '2080-06-10',
          false, false, jsonb_build_object('test_scope','pgtap_competenza'), r.emittente_fiscale_id
     FROM tmp_refs r
   RETURNING id)
@@ -110,11 +117,11 @@ DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SEL
 CREATE TEMP TABLE tmp_preg AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, competenza_mese, valuta_id, stato_doc_preventivo_id, data,
+    billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, competenza_mese, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-COMP-PREG', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-06-15', DATE '2080-06-20', NULL, r.valuta_id, r.stato_bozza_id, DATE '2080-06-10',
+  SELECT r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2080-06-15', DATE '2080-06-20', NULL, r.valuta_id, DATE '2080-06-10',
          false, false, jsonb_build_object('test_scope','pgtap_competenza'), r.emittente_fiscale_id
     FROM tmp_refs r
   RETURNING id)
@@ -132,11 +139,11 @@ DO $edge$
 DECLARE v_prev bigint;
 BEGIN
   INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, competenza_mese, valuta_id, stato_doc_preventivo_id, data,
+    billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, competenza_mese, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-COMP-EDGE', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         NULL, DATE '2080-07-15', DATE '2080-09-01', r.valuta_id, r.stato_bozza_id, DATE '2080-06-10',
+  SELECT r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         NULL, DATE '2080-07-15', DATE '2080-09-01', r.valuta_id, DATE '2080-06-10',
          false, false, jsonb_build_object('test_scope','pgtap_competenza'), r.emittente_fiscale_id
     FROM tmp_refs r
   RETURNING id INTO v_prev;

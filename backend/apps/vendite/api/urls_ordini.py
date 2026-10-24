@@ -7,6 +7,7 @@
 
 from django.urls import path
 
+from apps.vendite.api.legami_views import ApiOrdineLegami
 from apps.vendite.api.lineage_views import ApiOrdinePassaggi
 from apps.vendite.api.situazione_merce_views import ApiOrdineSituazioneMerce
 from apps.vendite.api.note_views import ApiOrdineNoteDetail, ApiOrdineNoteList
@@ -34,6 +35,7 @@ from apps.vendite.api.views_ordini import (
     ApiOrdineRigaComponenteDetail,
     ApiOrdineRigaComponentiList,
     ApiOrdineRigaDataConsegnaConfermata,
+    ApiOrdineRigheDateConsegna,
     ApiOrdineRigaDetail,
     ApiOrdineRigaPreviewComponenti,
     ApiOrdineRighe,
@@ -66,6 +68,9 @@ urlpatterns = [
     # Genealogia/lineage (pannello "Passaggi", brief-be-fe-lineage).
     path("<int:ordine_id>/passaggi/", ApiOrdinePassaggi.as_view(),
          name="vendite-ordine-passaggi"),
+    # I legami dell'ordine, per la conferma dell'annullo (legami_views).
+    path("<int:ordine_id>/legami/", ApiOrdineLegami.as_view(),
+         name="vendite-ordine-legami"),
     # Situazione merce (pannello cantiere 2): riassunto per riga d'ordine +
     # partite + le due code, in un round-trip. Sola lettura.
     path("<int:ordine_id>/situazione-merce/", ApiOrdineSituazioneMerce.as_view(),
@@ -106,6 +111,9 @@ urlpatterns = [
          name="vendite-ordine-righe-lista"),
     path("<int:ordine_id>/righe/lista/export/", ApiOrdineRigheListaExportView.as_view(),
          name="vendite-ordine-righe-lista-export"),
+    # Le date di consegna in blocco (brief-db-date-consegna-righe-in-blocco).
+    path("<int:ordine_id>/righe/date-consegna/", ApiOrdineRigheDateConsegna.as_view(),
+         name="vendite-ordine-righe-date-consegna"),
     path("<int:ordine_id>/righe/preview-componenti/",
          ApiOrdineRigaPreviewComponenti.as_view(),
          name="vendite-ordine-righe-preview-componenti"),

@@ -47,6 +47,14 @@
 --   ChangeSet: 20260912-12 (helper classe per giro), -13 (lotto da batch),
 --   -14 (emit dall'helper), -15 (discovery con p_emit_batch_id), -16 (D2).
 --   Brief: brief-db-rilancio-step-non-rivede-le-proprie-commesse.md
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
+--   portano avanti con dbops.fn_pgtap_porta_a_stato (prima le commesse nascevano gia'
+--   nello stato emittibile, PRONTA_FATTURAZIONE).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): le due commesse emittibili
+--   le costruisce dbops.fn_pgtap_crea_commessa sul billing account del test (testata,
+--   riga APPROVATA con l'articolo costruito, passaggio per la matrice); prima erano
+--   scritte a mano con articolo, unita' di misura e tipo documento pescati «il primo per
+--   id». Lotti e riga in BOZZA del test 10 prendono quei valori dalla riga scritta.
 --
 -- ────────────────────────────────────────────────────────────────
 -- 🔴 PERCHE' QUESTO TEST ESISTE — il collaudo del 2026-09-09.
@@ -73,6 +81,12 @@
 --   mano. Su un database ricostruito da zero non c'e' niente da «trovare».
 --
 -- ChangeSet: 20260909-62-update-fn-emit-attivita-non-prende-trattenuti
+-- rev 2026-10-24 (brief-modello-documento-vendita R-3/R-4): la sorgente ROOT delle due
+--   commesse la scrive dbops.fn_pgtap_crea_commessa (p_con_sorgente_root => true); i due
+--   lotti DRAFT e l'esito ERRORE E_PULL_COMMESSA che trattiene la commessa bloccata nascono
+--   da dbops.fn_pgtap_crea_lotto (madre vendite.fn_create_fatturazione_lotto, tipo
+--   documento della riga, cliente del test, p_gruppo_key_trattenuto). Prima ROOT, lotti
+--   ed esito erano INSERT a mano. Le asserzioni non leggono codice ne' utility del lotto.
 -- Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L3, §5.3, §5.4)
 -- ------------------------------------------------------------
 
@@ -108,21 +122,31 @@ SELECT plan(13);
 -- ============================================================
 -- Fixture
 -- ============================================================
+-- Due commesse emittibili del cliente del test, dal builder: `bloccata`
+--   (trattenuta da un altro lotto) e `libera`. Ognuna con UNA riga
+--   APPROVATA/NON_EMESSA, in PRONTA_FATTURAZIONE per la matrice.
+CREATE TEMP TABLE tmp_pt_comm AS
+SELECT 'bloccata'::text AS caso, c.*
+  FROM dbops.fn_pgtap_crea_commessa('pull trattenuti bloccata', 'PRONTA_FATTURAZIONE',
+                                    (SELECT billing_account_id FROM tmp_pt_cliente),
+                                    p_con_sorgente_root => true) c;
+
+INSERT INTO tmp_pt_comm
+SELECT 'libera'::text, c.*
+  FROM dbops.fn_pgtap_crea_commessa('pull trattenuti libera', 'PRONTA_FATTURAZIONE',
+                                    (SELECT billing_account_id FROM tmp_pt_cliente),
+                                    p_con_sorgente_root => true) c;
+
 CREATE TEMP TABLE tmp_pt_rif AS
 SELECT
   (SELECT m.soggetto_ruolo_id FROM tmp_pt_mondo m)         AS emittente_sr,
   (SELECT c.billing_account_id FROM tmp_pt_cliente c)      AS billing_account_id,
-  (SELECT c.utility_id FROM tmp_pt_cliente c)              AS utility_id,
   (SELECT c.istanza_utility_id FROM tmp_pt_cliente c)      AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS articolo_id,
-  (SELECT u.id FROM catalogo.unita_misura u
-    WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)          AS uom_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t
-    WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)          AS tipo_doc_fiscale_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT sc.id FROM vendite.stati_commessa sc
-    WHERE sc.attivo IS TRUE AND sc.emittibile IS TRUE ORDER BY sc.id LIMIT 1) AS stato_ok,
+  -- articolo, unita' di misura, tipo documento e valuta: quelli della riga che
+  --   il builder ha scritto sulla commessa bloccata, non un pescato.
+  ca.articolo_id, ca.uom_id, ca.tipo_doc_fiscale_id, ca.valuta_id,
+  (SELECT bool_and(sc.emittibile) FROM tmp_pt_comm c
+     JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id)    AS stato_ok,
   -- ⚠️ La sorgente si sceglie per `codice_interno`, non «la prima attiva»: un
   --   guard confronta `sorgente_uid` con il `key_selector` del tipo E verifica
   --   che la riga ESISTA nella target_table. COMMESSA punta a vendite.commesse
@@ -131,17 +155,20 @@ SELECT
   --   ordine o DDT da citare.
   (SELECT s.id FROM config.sorgenti s
     WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE) AS sorgente_id,
-  date_trunc('month', script.fn_data_operativa())::date                  AS mese;
+  date_trunc('month', script.fn_data_operativa())::date                  AS mese
+  FROM tmp_pt_comm c
+  JOIN vendite.commesse_attivita ca ON ca.id = c.attivita_id
+ WHERE c.caso = 'bloccata';
 
 SELECT ok(
   (SELECT r.emittente_sr IS NOT NULL AND r.billing_account_id IS NOT NULL
       AND r.articolo_id IS NOT NULL AND r.tipo_doc_fiscale_id IS NOT NULL
-      AND r.stato_ok IS NOT NULL AND r.sorgente_id IS NOT NULL
+      AND r.stato_ok IS TRUE AND r.sorgente_id IS NOT NULL
+      AND (SELECT count(*) FROM tmp_pt_comm) = 2
      FROM tmp_pt_rif r),
   '0. riferimenti minimi risolti'
 );
 
--- Due commesse: `bloccata` (trattenuta da un altro lotto) e `libera`.
 CREATE TEMP TABLE tmp_pt (caso text, commessa_id bigint, ca_id bigint, gruppo_key text);
 CREATE TEMP TABLE tmp_pt_lotti (caso text, lotto_id bigint, lock_batch_id uuid);
 
@@ -151,69 +178,37 @@ DECLARE
     r       record;
     v_comm  vendite.commesse.id%TYPE;
     v_ca    vendite.commesse_attivita.id%TYPE;
-    v_lot   vendite.fatturazione_lotti.id%TYPE;
-    v_lock  vendite.fatturazione_lotti.lock_batch_id%TYPE;
 BEGIN
     SELECT * INTO v_rif FROM tmp_pt_rif;
 
-    FOR r IN SELECT * FROM (VALUES ('bloccata'), ('libera')) AS v(caso)
+    FOR r IN SELECT c.caso, c.commessa_id, c.attivita_id FROM tmp_pt_comm c ORDER BY c.caso
     LOOP
-        INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                      emittente_soggetto_ruolo_id, stato_commessa_id)
-        VALUES ('PGTAP-PT-' || upper(r.caso) || '-'
-                            || substr(md5(clock_timestamp()::text), 1, 6),
-                v_rif.billing_account_id, v_rif.utility_id, v_rif.emittente_sr,
-                v_rif.stato_ok)
-        RETURNING id INTO v_comm;
+        v_comm := r.commessa_id;
+        v_ca   := r.attivita_id;
 
         -- ⚠️ Il pull PRETENDE una sorgente ROOT: senza, solleva
-        --   E_VALORE_MANCANTE prima ancora di guardare le righe.
-        -- ⚠️ E `sorgente_uid` non e' testo libero: un guard lo confronta col
-        --   `key_selector` del tipo a catalogo E pretende che la riga esista
-        --   nella target_table. Con la sorgente COMMESSA la target e'
-        --   vendite.commesse: l'id appena creato la soddisfa per costruzione.
-        INSERT INTO vendite.commesse_sorgenti
-            (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-        VALUES (v_comm, v_rif.sorgente_id, v_comm::text, 'ROOT');
-
-        INSERT INTO vendite.commesse_attivita (
-            commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
-            uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
-            tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-            stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-        VALUES (v_comm,
-                'PGTAP-PT-' || r.caso || '-' || substr(md5(clock_timestamp()::text), 1, 12),
-                v_rif.articolo_id, v_rif.istanza_utility_id, v_rif.mese,
-                v_rif.uom_id, 1, v_rif.mese, v_rif.mese,
-                (v_rif.mese + INTERVAL '1 month - 1 day')::date,
-                v_rif.tipo_doc_fiscale_id, v_rif.valuta_id, 10.000000, 'FIXED',
-                'APPROVATA', 'NON_EMESSA', NULL, NULL)
-        RETURNING id INTO v_ca;
-
+        --   E_VALORE_MANCANTE prima ancora di guardare le righe. L'ha scritta
+        --   il builder della commessa (COMMESSA, uid = id della commessa).
         INSERT INTO tmp_pt VALUES (r.caso, v_comm, v_ca,
-            vendite.fn_build_gruppo_fatturabile_key(NULL, NULL, v_comm));
+            vendite.fn_build_gruppo_fatturabile_key(
+                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text, v_comm));
     END LOOP;
 
-    -- Due lotti IN GIOCO: «altrui» tiene la commessa bloccata, «mio» e' quello
-    -- che eseguira' il pull nei test 3.
+    -- Due lotti DRAFT IN GIOCO, dal builder: «altrui» tiene la commessa
+    -- bloccata (l'esito ERRORE E_PULL_COMMESSA lo scrive il builder), «mio» e'
+    -- quello che eseguira' il pull nei test 3.
     FOR r IN SELECT * FROM (VALUES ('altrui'), ('mio')) AS v(caso)
     LOOP
-        INSERT INTO vendite.fatturazione_lotti
-            (codice, competenza_mese, tipo_doc_fiscale_id,
-             emittente_soggetto_ruolo_id, stato_doc_fiscale_id)
-        VALUES ('PGTAP-PT-LOTTO-' || upper(r.caso), v_rif.mese,
-                v_rif.tipo_doc_fiscale_id, v_rif.emittente_sr,
-                (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT'))
-        RETURNING id, lock_batch_id INTO v_lot, v_lock;
-        INSERT INTO tmp_pt_lotti VALUES (r.caso, v_lot, v_lock);
+        INSERT INTO tmp_pt_lotti
+        SELECT r.caso, l.lotto_id, l.lock_batch_id
+          FROM dbops.fn_pgtap_crea_lotto(
+                   'pull trattenuti ' || r.caso, 'DRAFT',
+                   v_rif.billing_account_id,
+                   p_tipo_doc_fiscale_id   => v_rif.tipo_doc_fiscale_id,
+                   p_competenza_mese       => v_rif.mese,
+                   p_gruppo_key_trattenuto => CASE WHEN r.caso = 'altrui'
+                       THEN (SELECT t.gruppo_key FROM tmp_pt t WHERE t.caso = 'bloccata') END) l;
     END LOOP;
-
-    -- L'esito che TRATTIENE: il lotto ALTRUI tiene la commessa bloccata.
-    INSERT INTO vendite.fatturazione_lotti_esiti
-        (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio)
-    SELECT (SELECT lotto_id FROM tmp_pt_lotti WHERE caso = 'altrui'),
-           t.gruppo_key, 'ERRORE', 'E_PULL_COMMESSA', 'rotto per la prova'
-      FROM tmp_pt t WHERE t.caso = 'bloccata';
 END;
 $fixture$;
 
@@ -401,7 +396,8 @@ SELECT t.commessa_id,
        r.articolo_id, r.istanza_utility_id, r.mese,
        r.uom_id, 1, r.mese, r.mese, (r.mese + INTERVAL '1 month - 1 day')::date,
        r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
-       'BOZZA', 'NON_EMESSA', NULL, NULL
+       'BOZZA', 'NON_EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+         (t.commessa_id)::text
   FROM tmp_pt_rif r, tmp_pt t WHERE t.caso = 'bloccata';
 
 SELECT is(

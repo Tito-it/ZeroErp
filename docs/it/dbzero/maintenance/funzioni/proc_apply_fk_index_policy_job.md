@@ -2,28 +2,39 @@
 # ⚙️ Procedura `proc_apply_fk_index_policy_job`
 
 ```sql
-CREATE PROCEDURE proc_apply_fk_index_policy_job()
+CREATE PROCEDURE proc_apply_fk_index_policy_job(IN p_populate boolean)
 ```
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
-CREATE OR REPLACE PROCEDURE maintenance.proc_apply_fk_index_policy_job()
+CREATE OR REPLACE PROCEDURE maintenance.proc_apply_fk_index_policy_job(IN p_populate boolean DEFAULT false)
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'topology', 'pg_temp'
 AS $procedure$
   BEGIN
     PERFORM maintenance.fn_run_and_log(
       p_jobname  := 'apply_fk_index_policy',
       p_stepname := 'run_apply_fk_index_policy',
-      p_sql      := 'CALL dbops.apply_fk_index_policy();',
+      p_sql      := CASE
+                      WHEN p_populate THEN
+                        'SELECT dbops.fn_populate_fk_index_policy(); CALL dbops.apply_fk_index_policy();'
+                      ELSE
+                        'CALL dbops.apply_fk_index_policy();'
+                    END,
       p_lock_key := hashtext('apply_fk_index_policy')
     );
   END;
 $procedure$
 
-COMMENT ON PROCEDURE maintenance.proc_apply_fk_index_policy_job()
+COMMENT ON PROCEDURE maintenance.proc_apply_fk_index_policy_job(IN p_populate boolean)
 IS 'Job wrapper per chiamare apply_fk_index_policy con logging e lock.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

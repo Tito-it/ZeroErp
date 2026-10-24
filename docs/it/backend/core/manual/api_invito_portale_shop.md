@@ -37,7 +37,7 @@ sullo stesso `auth_user`, senza email/token.
 | `InvitoPortaleService` (gestisce tutte e 3 le vesti) | Parte della veste: entità → `soggetto_ruolo_id`, credenziale e veste spenta |
 | `InvitoVeste` · `attiva_veste` · `PORTA_PORTALE` / `PORTA_SHOP` | Building block unico (`apps/core/services/invito_veste.py`): token, reinvio, email, attivazione; la porta porta tipi token, template, link, codici |
 | `TokenService` | Token monouso tipo `INVITO_PORTALE` / `ATTIVAZIONE_PORTALE_CROSS` / `INVITO_SHOP` / `ATTIVAZIONE_SHOP_CROSS`, scadenza 72h |
-| `EmailDispatchService` | Template `INVITO_PORTALE` (clienti/fornitori) e `INVITO_SHOP` (shop customer) |
+| `EmailDispatchService` | Template `INVITO_PORTALE` (clienti/fornitori) e `INVITO_SHOP` (shop customer); nel flusso CROSS `INVITO_PORTALE_CROSS` / `INVITO_SHOP_CROSS` |
 | `apply_new_password` | Set password + reset flag `deve_cambiare_password` in transazione |
 | `AuthRepository.auth_user_ha_password` | Discriminante dei due flussi: l'`auth_user` ha una password utilizzabile? |
 | `AuthRepository.attiva_identita` | UPDATE `attivo=true` su `identita_digitali` al consumo del token (entrambi i flussi), col guard su credenziale e porta |
@@ -52,9 +52,15 @@ sullo stesso `auth_user`, senza email/token.
 ### POST `/api/v1/anagrafiche/clienti/{cliente_id}/invita-portale/`
 
 Invita il cliente come `CLIENTE_PORTALE`. Auth: JWT operatore con livello
-area `anagrafiche` = `TUTTO` (POST senza `post_permission`: vale
-`METHOD_REQUIRES['POST'] = 'add'`). Lo stesso vale per tutti gli inviti e le
-disattivazioni qui sotto.
+area `anagrafiche` = `TUTTO`; la view dichiara `model_permission =
+("anagrafiche", "cliente")` (`("anagrafiche", "fornitore")` per gli endpoint
+fornitore), e il POST senza `post_permission` chiede `METHOD_REQUIRES['POST'] =
+'add'`. Lo stesso vale per tutti gli inviti e le disattivazioni qui sotto; lo
+stato accessi chiede lo stesso `model_permission` in lettura.
+
+`reinvio` e' opzionale (default `false`) e deve essere un **booleano JSON**:
+`"false"`, `0` → 400 `E_VALIDATION_INPUT` col campo (2026-10-20: prima si
+accettavano anche stringhe).
 
 **Body**:
 
@@ -78,7 +84,7 @@ utilizzabile. ⚠️ Fino al 2026-09-24 il primo invito creava l'identita' gia'
 `attivo=true` con una password temporanea, e il flusso si sceglieva da «l'utente
 e' stato appena creato»: il reinvio cadeva nel CROSS ed era rifiutato con
 `E_INVITO_PORTALE` («ha gia' accesso»), cioe' **impossibile** (M-3 della
-[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 **Semantica transazionale del reinvio (fix analisi-fix-transazioni #17, 2026-07-08).**
 L'invalidazione dei token precedenti e la ri-emissione identita/token avvengono nella
@@ -105,7 +111,7 @@ lo shop aveva ancora l'invalidazione fuori-atomic).
 ```
 
 `inviato` e' l'esito **dell'email** (dal 2026-09-28, F-3 dell'
-[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)):
+[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)):
 `false` se non e' partita. La chiamata non fallisce — veste e token ci sono, l'invito si
 recupera col reinvio — ma `invito_inviato_at` non si aggiorna e il fallimento si logga.
 Stesso contratto per le tre vesti (la strada e' una: `InvitoVeste.spedisci`).
@@ -129,7 +135,7 @@ Simmetrico al precedente per `FORNITORE_PORTALE`.
 
 Invita il cliente come `SHOP_CUSTOMER` (B1 §13.7). Riusa lo stesso flow
 del portale ma con tipi token `INVITO_SHOP` / `ATTIVAZIONE_SHOP_CROSS`,
-template `INVITO_SHOP` e link `{FRONTEND_URL}/attivazione-shop/{token}`.
+template `INVITO_SHOP` (`INVITO_SHOP_CROSS` nel flusso CROSS) e link `{FRONTEND_URL}/attivazione-shop/{token}`.
 
 `SHOP_CUSTOMER` e `CLIENTE_PORTALE` condividono il ruolo anagrafico `CL`
 del soggetto: la nuova identita vive sullo stesso `soggetto_ruolo` del
@@ -190,7 +196,7 @@ volta che un token vivo esiste, quindi anche su `ATTIVO`.
 
 Dopo un invito, in entrambi i flussi, la veste e' **`PENDING`** fino
 all'attivazione — **`NON_SPEDITO`** se l'email non e' partita (dal 2026-09-28, F-3
-dell'[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md):
+dell'[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md):
 prima un link pendente bastava a dire «invito inviato»). La regola e' la funzione
 pura `stato_veste` di `portale_repository.py`. ⚠️ Fino al 2026-09-24 l'invito con email nuova creava l'identita'
 gia' attiva, e quel cliente risultava `ATTIVO` prima di aver scelto la password
@@ -267,7 +273,9 @@ e la riattiva il consumo del token nuovo (`AuthRepository.attiva_identita`).
 
 I 4 endpoint seguenti **non richiedono JWT** (`AllowAny`,
 `authentication_classes = []`). I due `conferma` sono throttled tramite
-`PasswordResetRateThrottle`; i due `validate` non hanno throttling dedicato.
+`ConfermaTokenRateThrottle` (10 richieste / 15 minuti per IP; fino al 2026-10-02
+condividevano il 3/15m della richiesta di reset); i due `validate` non hanno
+throttling dedicato.
 
 ### Portale
 
@@ -342,7 +350,7 @@ Simmetrici ai precedenti del portale, con tipi token `INVITO_SHOP` /
 `ATTIVAZIONE_SHOP_CROSS`. Codice errore distinto: `E_ATTIVAZIONE_SHOP`.
 
 ⚠️ Esiste anche `POST /api/v1/shop/register/check-email/`, ma **oggi e' uno stub
-che risponde 501**: e' il buco lasciato apposta per la registrazione autonoma
+che risponde 501** con codice `E_SHOP_NON_DISPONIBILE`: e' il buco lasciato apposta per la registrazione autonoma
 (PR-C), che dovra' distinguere tre casi da una sola email — nuova (onboarding
 guest), gia' `auth_user` (cross-shop), gia' `SHOP_CUSTOMER` (login). Il body non
 viene nemmeno letto, perche' nessuna logica dipende ancora dall'input: chiamarlo
@@ -436,6 +444,7 @@ ogni porta dice cio' che distingue un invito dall'altro:
 | `token_invito` | `INVITO_PORTALE` | `INVITO_SHOP` |
 | `token_cross` | `ATTIVAZIONE_PORTALE_CROSS` | `ATTIVAZIONE_SHOP_CROSS` |
 | `template` | `INVITO_PORTALE` | `INVITO_SHOP` |
+| `template_cross` | `INVITO_PORTALE_CROSS` | `INVITO_SHOP_CROSS` |
 | `link_path` | `/attivazione-portale` | `/attivazione-shop` |
 | `codice_invito` / `codice_attivazione` | `E_INVITO_PORTALE` / `E_ATTIVAZIONE_PORTALE` | `E_INVITO_PORTALE` / `E_ATTIVAZIONE_SHOP` |
 | `scadenza_ore` | 72 | 72 |

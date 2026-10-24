@@ -110,6 +110,9 @@ CREATE TEMP TABLE tmp_ca_au AS
 SELECT r.attivita_id AS commessa_attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_au),
+  -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+  p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+  p_sorgente_uid => ((SELECT commessa_id FROM tmp_commessa_au))::text,
   p_segment_key => ('SEG-AU-' || substr(md5(clock_timestamp()::text), 1, 14))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_au),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_au),
@@ -134,7 +137,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'AUDIT')
 ) r;
 

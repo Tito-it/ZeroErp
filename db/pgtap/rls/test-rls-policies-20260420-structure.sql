@@ -86,8 +86,11 @@ SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'shop' AND tablename = 'ricevute'
         AND policyname = 'rls_shop_ricevute_self_ownership')
-    ~ 'SHOP_CUSTOMER.*fn_scope_cliente_ownership|fn_scope_cliente_ownership.*SHOP_CUSTOMER',
-    '4. rls_shop_ricevute_self_ownership: USING gate SHOP_CUSTOMER + fn_scope_cliente_ownership'
+    -- Rev 2026-10-21 (20261021-35): la forma col perimetro, nella veste del gate.
+    --   Lo schema e' facoltativo: come app `script` e' nel search_path e il
+    --   catalogo stampa il nome senza.
+    ~ 'SHOP_CUSTOMER.*fn_scope_sr_perimetro\(\( SELECT (script\.)?fn_get_identita_sr_perimetro\(.*ARRAY\[''SHOP_CUSTOMER''.*, soggetto_ruolo_id\)',
+    '4. rls_shop_ricevute_self_ownership: USING gate SHOP_CUSTOMER + perimetro del cliente shop'
 );
 
 -- -------- 5-8: rls_billing_account_shop --------

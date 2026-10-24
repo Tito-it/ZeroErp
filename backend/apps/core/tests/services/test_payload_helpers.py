@@ -90,6 +90,8 @@ Indice test eseguiti:
 77) test_optional_bool_porta_il_campo             — idem
 78) test_optional_meta_porta_il_campo             — idem, sui due rifiuti (JSON rotto, non oggetto)
 79) test_optional_upper                         — 2026-10-09 (regola del 2): strip + upper, vuoto -> None; non-stringa -> VALIDATION col campo
+80) test_require_campi_da_aggiornare_*          — 2026-10-14 (regola del 2, ~45 copie): vuoto -> VALIDATION col codice del dominio; un None e' un reset e conta; un sotto-oggetto conta solo se ha chiavi
+81) test_solo_chiavi_ammesse_*                 — 2026-10-20 (regola del 2, 11 copie): chiave ignota -> VALIDATION; ritorna il dict con vuoti a None; `colonne` tiene le sole colonne
 """
 
 from decimal import Decimal
@@ -129,6 +131,27 @@ class TestValidateAllowedKeys(_Base):
             self.v.validate_allowed_keys({"a": 1, "x": 2}, allowed=frozenset({"a"}))
         self.assertEqual(ctx.exception.code, _CODE)
         self.assertIn("x", ctx.exception.context["unknown_keys"])
+
+
+class TestSoloChiaviAmmesse(_Base):
+    def test_solo_chiavi_ammesse_rifiuta_la_chiave_ignota(self):
+        with self.assertRaisesValidation() as ctx:
+            self.v.solo_chiavi_ammesse({"a": 1, "x": 2}, ammesse=frozenset({"a"}))
+        self.assertEqual(ctx.exception.code, _CODE)
+        self.assertEqual(ctx.exception.context["unknown_keys"], ["x"])
+
+    def test_solo_chiavi_ammesse_ritorna_il_dict_normalizzato(self):
+        self.assertEqual(
+            self.v.solo_chiavi_ammesse({"a": "", "b": 2}, ammesse=frozenset({"a", "b", "c"})),
+            {"a": None, "b": 2},
+        )
+
+    def test_solo_chiavi_ammesse_colonne_tiene_le_sole_colonne(self):
+        dati = self.v.solo_chiavi_ammesse(
+            {"a": 1, "mappa": {"7": "1.00"}},
+            ammesse=frozenset({"a", "mappa"}), colonne=frozenset({"a"}),
+        )
+        self.assertEqual(dati, {"a": 1})
 
 
 class TestGuardPositiveInt(_Base):
@@ -940,3 +963,41 @@ class TestTranslateDbErrorsHint(TestCase):
             with traduttore("op"):
                 raise make_db_error("errore secco", codice="E_TEST_SECCO")
         self.assertIsNone(cm.exception.hint)
+
+
+class TestRequireCampiDaAggiornare(TestCase):
+    """Un PATCH deve portare almeno un campo: mai un «salvato» a vuoto."""
+
+    def setUp(self) -> None:
+        self.v = PayloadValidator(validation_code=_CODE)
+
+    # Scopo: niente campi -> 400 col codice del dominio e il messaggio di default.
+    def test_require_campi_da_aggiornare_vuoto(self) -> None:
+        with self.assertRaises(ServiceError) as ctx:
+            self.v.require_campi_da_aggiornare({})
+        self.assertEqual(ctx.exception.code, _CODE)
+        self.assertEqual(ctx.exception.message, "Nessun campo aggiornabile presente nel payload.")
+
+    # Scopo: una chiave col valore None e' un reset, cioe' una modifica.
+    def test_require_campi_da_aggiornare_none_e_un_reset(self) -> None:
+        self.v.require_campi_da_aggiornare({"descrizione": None})
+
+    # Scopo: ⛔ il caso che passava (2026-10-14): `{"utility": {}}` da solo non
+    #        e' una modifica, ne' un sotto-oggetto None o non-dict.
+    def test_require_campi_da_aggiornare_sotto_oggetto_vuoto(self) -> None:
+        for satellite in ({}, None, []):
+            with self.subTest(satellite=satellite), self.assertRaises(ServiceError):
+                self.v.require_campi_da_aggiornare({}, sotto_oggetti={"utility": satellite})
+
+    # Scopo: un sotto-oggetto con almeno una chiave basta, anche senza testata.
+    def test_require_campi_da_aggiornare_sotto_oggetto_pieno(self) -> None:
+        self.v.require_campi_da_aggiornare({}, sotto_oggetti={"utility": {"classe_utenza_id": None}})
+
+    # Scopo: messaggio e context del chiamante arrivano nell'errore.
+    def test_require_campi_da_aggiornare_override(self) -> None:
+        with self.assertRaises(ServiceError) as ctx:
+            self.v.require_campi_da_aggiornare(
+                {}, message="Payload riga non valido.", context={"op": "x"},
+            )
+        self.assertEqual(ctx.exception.message, "Payload riga non valido.")
+        self.assertEqual(ctx.exception.context.get("op"), "x")

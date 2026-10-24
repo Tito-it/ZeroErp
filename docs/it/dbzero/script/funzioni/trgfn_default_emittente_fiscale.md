@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_default_emittente_fiscale()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_default_emittente_fiscale()
  RETURNS trigger
@@ -125,6 +127,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_default_emittente_fiscale()
 IS 'BEFORE INSERT generico: riempie emittente_fiscale_id, se NULL, con l''emittente di lavoro di chi scrive (script.fn_resolve_emittente_for_user dalla GUC app.current_user_id). TG_ARGV[0] = SOLLEVA (niente da cui dedurre -> E_EMITTENTE_NON_RISOLTO, DATO_ERRATO, campo emittente_fiscale_id) oppure LASCIA_NULL (RETURN NEW: decide un normalize a valle o il NOT NULL). TG_ARGV[1] facoltativo = SALTA_CON_SORGENTE: se la riga porta sorgente_tipo_id e sorgente_uid non si tocca, l''emittente e'' quello del documento padre. Un valore esplicito non si sovrascrive mai. Argomenti non ammessi -> E_TRIGGER_ARGOMENTI_INVALIDI. Colonna fissa emittente_fiscale_id (l''ancora del perimetro). Sostituisce dal 2026-09-15 le quattro copie vendite.trgfn_ordini/preventivi/contratti/ddt_default_emittente. Brief: brief-db-emittente-di-default-un-bb-solo, sezione 4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

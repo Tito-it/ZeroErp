@@ -1,12 +1,12 @@
 id,codice_interno,descrizione,descrizione_breve,check_lettura,abilita_fattura,codice,stato_cliente_ia,data_insert,user_insert,data_update,user_update
-4,SC,Sospeso non fatturabile,SOSPESO NO FATT     ,S,N,SM,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
-3,SF,Sospeso fatturabile,SOSPESO FATT.       ,S,S,SM,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
-2,CH,Chiuso,CHIUSO              ,S,S,CH,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
-20,RS,Richiesta sospensione,RIC.SOSP.           ,S,S,AT,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
-14,AN,annulla servizio,ANNULLA SERV.       ,N,N,AN,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
-1,AT,Attivo,ATTIVO              ,S,S,AT,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
-21,PR,Pre-contrattuale,PRE-CONTRATTO       ,N,S,IS,A,2025-08-04 10:11:44.305119+02,postgres,2026-01-16 16:05:27.0351+01,titodb
-16,AG,Aggregante,AGGREGANTE          ,N,S,AN,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
-13,CW,Chiuso per switch,CHIUSO SWITCH       ,N,S,CH,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
-6,CF,Chiuso e fatturato,CHIUSO FATTURAT     ,S,N,CH,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
-5,CM,Chiuso per morosità,CHIUSO MOROSITA     ,S,S,CH,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
+4,SC,Sospeso non fatturabile,SOSPESO NO FATT,S,N,SM,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
+3,SF,Sospeso fatturabile,SOSPESO FATT.,S,S,SM,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
+2,CH,Chiuso,CHIUSO,S,S,CH,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
+20,RS,Richiesta sospensione,RIC.SOSP.,S,S,AT,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
+14,AN,annulla servizio,ANNULLA SERV.,N,N,AN,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
+1,AT,Attivo,ATTIVO,S,S,AT,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
+21,PR,Pre-contrattuale,PRE-CONTRATTO,N,S,IS,A,2025-08-04 10:11:44.305119+02,postgres,2026-01-16 16:05:27.0351+01,titodb
+16,AG,Aggregante,AGGREGANTE,N,S,AN,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
+13,CW,Chiuso per switch,CHIUSO SWITCH,N,S,CH,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
+6,CF,Chiuso e fatturato,CHIUSO FATTURAT,S,N,CH,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb
+5,CM,Chiuso per morosità,CHIUSO MOROSITA,S,S,CH,A,2025-04-22 19:00:59.665141+02,postgres,2026-01-16 16:05:27.0351+01,titodb

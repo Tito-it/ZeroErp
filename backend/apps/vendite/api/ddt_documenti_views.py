@@ -24,6 +24,7 @@ from typing import Any
 
 from rest_framework.request import Request
 
+from apps.config.sorgenti import SORGENTE_DDT_VENDITA
 from apps.documenti.api.sorgente_documenti_views import (
     build_documenti_sorgente_views,
 )
@@ -33,10 +34,6 @@ from apps.documenti.services.document_generation_service import (
 from apps.vendite.db.ddt_repository import DdtRepository
 from apps.vendite.services import ddt_service
 
-# Codice sorgente DDT_VENDITA -> id risolto runtime via repo (memoria
-# feedback_no_hardcoded_ids). Allineato a config.sorgenti.codice_interno +
-# documenti.tipi_documento_output.codice + template_documenti.context_builder_code.
-_CODICE_SORGENTE_DDT = "DDT_VENDITA"
 
 
 # Scopo: Closure di dominio per il factory: contesto minimo (id, uid,
@@ -61,7 +58,7 @@ def _emetti_call(request: Request, ddt_id: int) -> dict[str, Any]:
 
 _views = build_documenti_sorgente_views(
     schema_prefix="Ddt",
-    sorgente_codice=_CODICE_SORGENTE_DDT,
+    sorgente_codice=SORGENTE_DDT_VENDITA,
     not_found_message="DDT non trovato.",
     emittente_message="Emittente fiscale non risolto per il DDT.",
     get_entity=_get_entity,
@@ -69,6 +66,11 @@ _views = build_documenti_sorgente_views(
     emetti_call=_emetti_call,
     emetti_response_key="ddt",
     model_permission=("vendite", "ddt"),
+    # ⛔ L'azione di processo che il verbo DB applica all'emissione
+    #    (`fn_cambia_stato_ddt` -> EMESSO: `emetti_ddt`), dichiarata qui come il
+    #    gemello preventivo dichiara `cambia_stato_preventivi`
+    #    (brief-be-verifica-documentazione-api §A5, 2026-10-20).
+    emetti_post_permission="emetti_ddt",
 )
 
 ApiDdtEmetti = _views.emetti

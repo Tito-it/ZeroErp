@@ -19,9 +19,10 @@ import json
 import logging
 from typing import Any
 
+from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_order_params, validate_pagination
+from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     make_db_errors_translator,
@@ -30,7 +31,7 @@ from apps.pagamenti.db.pagamenti_repository import (
     ENTI_INCASSO_SORT_COLUMNS,
     PagamentiRepository,
 )
-from apps.pagamenti.services._helpers import E_VALIDAZIONE, risposta_paginata
+from apps.pagamenti.services._helpers import E_VALIDAZIONE
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +103,8 @@ def list_enti_incasso(
     attivo: bool | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     _valida_tipo(tipo, obbligatorio=False)
     order_by, order_dir = validate_order_params(
@@ -111,10 +112,6 @@ def list_enti_incasso(
         order_dir or "asc",
         allowed_columns=frozenset(ENTI_INCASSO_SORT_COLUMNS),
         error_code=E_VALIDAZIONE,
-        function_name=f"{_FN}.list_enti_incasso",
-    )
-    offset = validate_pagination(
-        page, page_size, error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_enti_incasso",
     )
 
@@ -125,10 +122,10 @@ def list_enti_incasso(
         attivo=attivo,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
-    return risposta_paginata(results, total, page, page_size)
+    return envelope_da_offset(results, total, limit=limit, offset=offset)
 
 
 # Scopo: Legge il canale o solleva il 404 di dominio.
@@ -299,7 +296,9 @@ def aggiorna_ente_incasso(ente_id: int, payload: dict[str, Any]) -> dict[str, An
     repository = PagamentiRepository()
     _ente_o_404(repository, ente_id)
     campi = _campi_dal_payload(payload, creazione=False)
-    if campi:
-        with _db_errors("aggiorna_ente_incasso"):
-            repository.update_ente_incasso(ente_id, campi)
+    # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+    #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+    _PAYLOAD.require_campi_da_aggiornare(campi)
+    with _db_errors("aggiorna_ente_incasso"):
+        repository.update_ente_incasso(ente_id, campi)
     return {"ente_incasso": _ente_o_404(repository, ente_id)}

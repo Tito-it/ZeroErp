@@ -11,7 +11,7 @@ Indice test eseguiti:
  2) test_operativo_can_view_self
  3) test_operativo_denied_other_user
  4) test_tabella_invalida_rejected
- 5) test_page_size_capped_at_200
+ 5) test_limit_oltre_200_e_400
  6) test_empty_audit_returns_empty_list
  7) test_events_mapped_correctly
  8) test_filter_data_da
@@ -85,7 +85,7 @@ class PermissionsAuditRepositoryTests(TestCase):
 
         result = self.repo.list_audit_events(
             auth_user_id=5, uo_id=None, data_da=None, data_a=None,
-            tabella=None, page=1, page_size=50,
+            tabella=None, limit=50, offset=0,
         )
 
         sql = mock_cursor.execute.call_args[0][0]
@@ -108,7 +108,7 @@ class PermissionsAuditRepositoryTests(TestCase):
 
         result = self.repo.list_audit_events(
             auth_user_id=5, uo_id=None, data_da=None, data_a=None,
-            tabella=None, page=1, page_size=50,
+            tabella=None, limit=50, offset=0,
         )
 
         self.assertEqual(result["count"], 0)
@@ -131,7 +131,7 @@ class PermissionsAuditRepositoryTests(TestCase):
 
         result = self.repo.list_audit_events(
             auth_user_id=5, uo_id=None, data_da=None, data_a=None,
-            tabella=None, page=1, page_size=50,
+            tabella=None, limit=50, offset=0,
         )
 
         self.assertEqual(result["count"], 3)
@@ -158,7 +158,7 @@ class PermissionsAuditRepositoryTests(TestCase):
 
         self.repo.list_audit_events(
             auth_user_id=5, uo_id=None, data_da=date(2026, 1, 1), data_a=None,
-            tabella=None, page=1, page_size=50,
+            tabella=None, limit=50, offset=0,
         )
 
         sql = mock_cursor.execute.call_args[0][0]
@@ -181,7 +181,7 @@ class PermissionsAuditRepositoryTests(TestCase):
 
         self.repo.list_audit_events(
             auth_user_id=5, uo_id=None, data_da=None, data_a=date(2026, 1, 31),
-            tabella=None, page=1, page_size=50,
+            tabella=None, limit=50, offset=0,
         )
 
         sql = mock_cursor.execute.call_args[0][0]
@@ -201,7 +201,7 @@ class PermissionsAuditRepositoryTests(TestCase):
 
         self.repo.list_audit_events(
             auth_user_id=5, uo_id=10, data_da=None, data_a=None,
-            tabella="user_override_aree", page=1, page_size=50,
+            tabella="user_override_aree", limit=50, offset=0,
         )
 
         sql = mock_cursor.execute.call_args[0][0]
@@ -213,7 +213,7 @@ class PermissionsAuditRepositoryTests(TestCase):
         self.assertNotIn("profili_accesso_bindings", sql)
         self.assertNotIn("profili_reparto", sql)
 
-    # Scopo: Paginazione page/page_size applicata correttamente.
+    # Scopo: Finestra limit/offset applicata, e la pagina dell'envelope ricavata dall'offset.
     @patch(_CONN)
     def test_pagination(self, mock_conn):
         ts = datetime(2026, 2, 28, 10, 0, 0, tzinfo=timezone.utc)
@@ -227,12 +227,12 @@ class PermissionsAuditRepositoryTests(TestCase):
 
         result = self.repo.list_audit_events(
             auth_user_id=5, uo_id=None, data_da=None, data_a=None,
-            tabella=None, page=3, page_size=10,
+            tabella=None, limit=10, offset=20,
         )
 
         params = mock_cursor.execute.call_args[0][1]
-        self.assertIn(10, params)   # page_size (LIMIT)
-        self.assertIn(20, params)   # offset = (3-1)*10
+        self.assertIn(10, params)   # LIMIT
+        self.assertIn(20, params)   # OFFSET
 
         self.assertEqual(result["page"], 3)
         self.assertEqual(result["page_size"], 10)
@@ -400,8 +400,9 @@ class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
 
         self.assertEqual(ctx.exception.code, "E_CORE_VALIDATION")
 
-    # Scopo: `page=0` e' rifiutata prima del DB (400 E_VALIDATION_INPUT via
-    # `ValueError`): dava un OFFSET negativo, cioe' un errore del DB (F-4).
+    # Scopo: `page`/`page_size` sono rifiutati prima del DB (400 E_VALIDATION_INPUT
+    # via `ValueError`): dal 2026-10-21 la finestra e' `limit`/`offset`
+    # (`pagina_da_query`), e un `offset` negativo si riporta a 0 (F-4).
     @patch("apps.core.api.views.PermissionResolver")
     @patch("apps.core.api.views.get_user_model")
     @patch(_CONN)
@@ -413,17 +414,22 @@ class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
         target.id = 5
         mock_get_user.return_value.objects.get.return_value = target
 
-        for qp, atteso in (({"page": "0"}, "page_invalid"), ({"page_size": "0"}, "page_size_invalid")):
+        for qp, atteso in (
+            ({"page": "0"}, "page_non_ammesso_usare_limit_offset"),
+            ({"page_size": "0"}, "page_size_non_ammesso_usare_limit_offset"),
+            ({"limit": "abc"}, "limit_invalid"),
+        ):
             with self.subTest(qp=qp), self.assertRaises(ValueError) as ctx:
                 ApiPermessiAudit().get(_mock_request(user_id=1, query_params=qp), user_id=5)
             self.assertEqual(str(ctx.exception), atteso)
         mock_conn.cursor.assert_not_called()
 
-    # Scopo: page_size viene limitato a 200 anche se il client passa un valore piu' alto.
+    # Scopo: ⛔ un `limit` oltre 200 e' un 400 (Tid 2026-10-21), non una
+    #        riduzione muta a 200: la query non parte.
     @patch("apps.core.api.views.PermissionResolver")
     @patch("apps.core.api.views.get_user_model")
     @patch(_CONN)
-    def test_page_size_capped_at_200(self, mock_conn, mock_get_user, mock_resolver):
+    def test_limit_oltre_200_e_400(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
         self.richiedente_amministratore()
@@ -439,10 +445,8 @@ class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
 
-        request = _mock_request(user_id=1, query_params={"page_size": "9999"})
+        request = _mock_request(user_id=1, query_params={"limit": "9999"})
         view = ApiPermessiAudit()
-        view.get(request, user_id=5)
-
-        params = mock_cursor.execute.call_args[0][1]
-        # Il LIMIT deve essere 200, non 9999
-        self.assertIn(200, params)
+        with self.assertRaisesRegex(ValueError, "limit_fuori_limiti_1_200"):
+            view.get(request, user_id=5)
+        mock_cursor.execute.assert_not_called()

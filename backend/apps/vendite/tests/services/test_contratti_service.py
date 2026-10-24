@@ -41,9 +41,11 @@ Indice test eseguiti:
 29) get_contratto_righe_count_usa_preview_per_modalita_ab
 30) get_contratto_righe_count_usa_righe_persistite_per_modalita_c
 31) create/update/delete_riga_rifiutata_su_contratto_attivo — E_RIGA_DOC_NON_BOZZA (il codice del DB sulle stesse righe, BB richiedi_righe_in_bozza; frase a catalogo, verbo)
-32) create/update_utility_rifiutata_su_contratto_attivo — E_CONTRATTO_NON_MODIFICABILE (la utility non e' una riga)
+32) create/update_utility_su_contratto_attivo_decide_il_db — lo stato lo giudica il lock dei satelliti (E_DOC_DATI_COLLEGATI_NON_BOZZA)
 33) update_componente_contratto_attivo — E_RIGA_DOC_NON_BOZZA, etichetta dal `numero` dello scope
 33b) update_componente_campi_del_workflow_rifiutati — niente auto-approvazione L3 dal client
+34) update_contratto_cambio/rimozione_listino_decide_il_db — il listino sotto le righe lo giudica il DB (E_DOC_LISTINO_*)
+35) riga_di_un_altro_contratto_rifiutata — update/delete_riga di una riga di un altro contratto: 404, il repository non e' toccato
 """
 
 from datetime import date, timedelta
@@ -258,6 +260,33 @@ class ContrattiServiceTests(TestCase):
         # numero e stato DRAFT sono risolti dalla fn madre: il BE non li passa.
         self.assertNotIn("numero", testata)
         self.assertNotIn("stato_doc_contratto_id", testata)
+        # Lo slot di default lo riempie `vendite.fn_create_contratto` da se':
+        # il service non lo chiede una seconda volta (R-BE-1).
+        repo.riempi_indirizzo_default.assert_not_called()
+
+    # ⛔ Il gate L2 sulla variazione globale vale anche alla NASCITA, col
+    #    cliente del payload (2026-10-21, §B9 del brief-be-verifica-
+    #    documentazione-api): prima lo applicava la sola PATCH. Se il gate
+    #    rifiuta, il contratto non nasce.
+    @patch("apps.vendite.services.contratti_service.check_limite_variazione_globale")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_contratto_applica_il_gate_l2(self, repo_cls, gate):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        payload = {
+            "billing_account_id": 10, "istanza_utility_id": 20, "utility_id": 3,
+            "valido_dal": "2026-01-01", "listino_id": 100,
+            "tipo_variazione_globale": "percentuale", "valore_variazione_globale": "-40",
+        }
+        gate.side_effect = ServiceError(code="E_VENDITE_VALIDATION", message="oltre soglia")
+        with self.assertRaises(ServiceError):
+            ContrattiService().create_contratto(payload, auth_user_id=7)
+        kwargs = gate.call_args.kwargs
+        self.assertEqual(
+            (kwargs["auth_user_id"], kwargs["tipo_variazione"], kwargs["ba_id"]),
+            (7, "PERCENTUALE", 10),
+        )
+        repo_cls.return_value.create_contratto_atomico.assert_not_called()
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_contratto_modalita_C_ok(self, repo_cls):
@@ -363,7 +392,7 @@ class ContrattiServiceTests(TestCase):
                 "utility_id": 3,
                 "valido_dal": "2026-01-01",
             })
-        self.assertEqual(ctx.exception.code, "E_VENDITE_CONTRATTO_OVERLAP")
+        self.assertEqual(ctx.exception.code, "E_CONTRATTO_OVERLAP_ESISTENTE")
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_contratto_overlap_exclusion_partial_mappato(self, repo_cls):
@@ -386,7 +415,7 @@ class ContrattiServiceTests(TestCase):
                 "utility_id": 3,
                 "valido_dal": "2026-01-01",
             })
-        self.assertEqual(ctx.exception.code, "E_VENDITE_CONTRATTO_OVERLAP")
+        self.assertEqual(ctx.exception.code, "E_CONTRATTO_OVERLAP_ESISTENTE")
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_contratto_delega_numero_e_stato_alla_fn_madre(self, repo_cls):
@@ -625,7 +654,7 @@ class ContrattiServiceTests(TestCase):
         }
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_riga(99, {"prezzo_unitario": "20"})
+            ContrattiService().update_riga(1, 99, {"prezzo_unitario": "20"})
         self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
         self.assertIn(" modificare ", ctx.exception.message)
 
@@ -642,15 +671,16 @@ class ContrattiServiceTests(TestCase):
         }
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().delete_riga(99)
+            ContrattiService().delete_riga(1, 99)
         self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
         self.assertIn(" togliere ", ctx.exception.message)
 
-    # Scopo: contratto ATTIVO -> create_utility rifiutato: la utility NON e' una
-    #        riga, resta E_CONTRATTO_NON_MODIFICABILE (lo stesso guard di
-    #        update_utility — fino al 22-09 era una copia inline).
+    # Scopo: contratto ATTIVO -> la fornitura: lo stato lo giudica il lock
+    #        «solo in bozza» dei satelliti a DB (`E_DOC_DATI_COLLEGATI_NON_BOZZA`,
+    #        brief-db-testata-dopo-emissione §11, R-BE-6). Il service non ha
+    #        piu' `_assert_contratto_draft` e passa la scrittura.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_utility_rifiutata_su_contratto_attivo(self, repo_cls):
+    def test_create_utility_su_contratto_attivo_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
@@ -658,26 +688,26 @@ class ContrattiServiceTests(TestCase):
             **_testata_default(),
             "stato_codice_interno": "ATTIVO",
         }
+        repo.get_utility.return_value = {"id": 1}
 
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().create_utility(1, {"istanza_utility_id": 20, "utility_id": 3})
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
-        repo.create_utility.assert_not_called()
+        ContrattiService().create_utility(
+            1, {"tipo_utenza_id": 2, "classe_utenza_id": 7},
+        )
+        repo.create_utility.assert_called_once()
 
-    # Scopo: contratto ATTIVO -> update_utility rifiutato.
+    # Scopo: idem per update_utility.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_utility_rifiutata_su_contratto_attivo(self, repo_cls):
+    def test_update_utility_su_contratto_attivo_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_contratto.return_value = {
-            **_testata_default(),
-            "stato_codice_interno": "ATTIVO",
+        repo.get_stato_codice.return_value = "ATTIVO"
+        repo.get_utility.return_value = {
+            "id": 1, "istanza_utility_id": 20, "utility_id": 3,
         }
 
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_utility(1, {"tipo_utenza_id": 5})
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
+        ContrattiService().update_utility(1, {"tipo_utenza_id": 5})
+        repo.update_utility.assert_called_once()
 
     # Scopo: cessazione immediata (valido_al passata) -> applica entrambi
     #        in transazione: PATCH valido_al + UPDATE stato CESSATO.
@@ -789,17 +819,36 @@ class ContrattiServiceTests(TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 9  # ANNULLATO id
-        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_stato_id_by_codice.return_value = 9  # SOSPESO id
+        repo.get_stato_codice.return_value = "ATTIVO"
         repo.update_stato.return_value = True
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
 
-        ContrattiService().cambia_stato(1, codice_interno="ANNULLATO")
+        ContrattiService().cambia_stato(1, codice_interno="SOSPESO")
 
         repo.update_contratto.assert_not_called()
         repo.update_stato.assert_called_once_with(1, 9)
+
+    # brief-db-annullo-documento-con-legami: ANNULLATO passa SEMPRE dal verbo
+    # `fn_annulla_contratto`, con la dichiarazione della conferma.
+    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_annullo_passa_dal_verbo(self, repo_cls, _atomic):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_stato_id_by_codice.return_value = 4
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+
+        ContrattiService().cambia_stato(1, codice_interno="ANNULLATO", legami_confermati=2)
+
+        repo.annulla.assert_called_once_with(1, 2)
+        repo.update_stato.assert_not_called()
 
     # Scopo: cambia_stato con valido_al < valido_dal NON lo giudica il
     #        service: la data arriva al DB, dove il guard comune delle date
@@ -844,8 +893,6 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
-        # Lock listino_id richiede 0 righe attive (refactor 2026-05-20).
-        repo.count_righe_attive.return_value = 0
 
         ContrattiService().update_contratto(1, {
             "listino_id": 200,
@@ -970,7 +1017,7 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()  # DRAFT
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_riga(5, {"prezzo_unitario": None})
+            ContrattiService().update_riga(1, 5, {"prezzo_unitario": None})
 
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         self.assertIn("prezzo_unitario obbligatorio", ctx.exception.detail or "")
@@ -1048,87 +1095,75 @@ class ContrattiServiceTests(TestCase):
         self.assertTrue(ctx.exception.retryable)
         repo.update_contratto.assert_not_called()
 
-    # Scopo: refactor §3-bis-F. Rimuovere il listino con eccezioni
-    # OVERRIDE/ESCLUSIONE attive deve sollevare 422 con codice dedicato e
-    # NON tentare l'UPDATE del contratto.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_contratto_rimuove_listino_con_eccezioni_bloccato(self, repo_cls):
+    # Scopo: ⛔ il gate L2 scatta quando cambia UNO QUALUNQUE dei suoi ingressi
+    #        (valore, tipo, cliente), e misura i valori che il contratto AVRA':
+    #        spostare su un altro cliente un contratto a -20% lo rimisura.
+    #        Fino al 2026-10-21 guardava il solo valore.
+    @patch("apps.vendite.services.contratti_service.check_limite_variazione_globale")
+    def test_gate_l2_scatta_su_ogni_ingresso(self, gate):
         from apps.vendite.services.contratti_service import ContrattiService
 
-        repo = repo_cls.return_value
-        repo.get_contratto.return_value = _testata_default()  # listino_id=100
-        repo.count_eccezioni_bloccanti.return_value = {
-            "OVERRIDE": 3, "ESCLUSIONE": 2,
+        existing = {
+            "tipo_variazione_globale": "PERCENTUALE",
+            "valore_variazione_globale": Decimal("-20"),
+            "billing_account_id": 1,
         }
-
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_contratto(1, {"listino_id": None})
-
-        self.assertEqual(
-            ctx.exception.code,
-            "E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI",
+        svc = ContrattiService()
+        svc._check_limite_variazione_globale(
+            existing=existing, data={"billing_account_id": 2}, auth_user_id=42,
         )
-        self.assertIn("3 OVERRIDE", ctx.exception.detail or "")
-        self.assertIn("2 ESCLUSIONE", ctx.exception.detail or "")
-        repo.update_contratto.assert_not_called()
+        kwargs = gate.call_args.kwargs
+        self.assertEqual(kwargs["ba_id"], 2)
+        self.assertEqual(kwargs["valore_variazione"], Decimal("-20"))
+        self.assertEqual(kwargs["tipo_variazione"], "PERCENTUALE")
 
-    # Scopo: aggiungere o sostituire il `listino_id` con righe attive blocca
-    # (refactor 2026-05-20). Caso: contratto DRAFT senza listino, AGGIUNTE
-    # caricate, l'utente prova a settare un listino → blocco semantico.
+        svc._check_limite_variazione_globale(
+            existing={**existing, "tipo_variazione_globale": "VALORE_FISSO"},
+            data={"tipo_variazione_globale": "PERCENTUALE"}, auth_user_id=42,
+        )
+        self.assertEqual(gate.call_args.kwargs["tipo_variazione"], "PERCENTUALE")
+        self.assertEqual(gate.call_args.kwargs["ba_id"], 1)
+
+        gate.reset_mock()
+        svc._check_limite_variazione_globale(
+            existing=existing, data={"note": "x"}, auth_user_id=42,
+        )
+        gate.assert_not_called()
+
+    # Scopo: il listino sotto le righe lo giudica il DB, per contratto e
+    #        offerta (`script.trgfn_doc_guard_listino_con_righe`,
+    #        brief-db-testata-dopo-emissione §11, R-DB-4 e R-BE-5). Il service
+    #        non conta piu' righe ne' eccezioni: passa la scrittura, e il 422
+    #        (`E_DOC_LISTINO_CAMBIO_CON_RIGHE`) arriva dal DB.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_contratto_aggiunge_listino_con_righe_bloccato(self, repo_cls):
-        from apps.vendite.services.contratti_service import ContrattiService
-
-        repo = repo_cls.return_value
-        # Contratto attualmente senza listino (negoziato puro).
-        testata = _testata_default()
-        testata["listino_id"] = None
-        repo.get_contratto.return_value = testata
-        repo.count_righe_attive.return_value = 2  # 2 AGGIUNTE persistite
-
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_contratto(1, {"listino_id": 500})
-
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE")
-        self.assertIn("listino", (ctx.exception.detail or "").lower())
-        repo.update_contratto.assert_not_called()
-
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_contratto_sostituisce_listino_con_righe_bloccato(self, repo_cls):
-        # Sostituzione listino_id (100 → 200) con righe attive: blocco
-        # anche se ci sono solo AGGIUNTE (potrebbero conflittare col nuovo listino).
+    def test_update_contratto_cambio_listino_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
         repo.get_contratto.return_value = _testata_default()  # listino_id=100
-        repo.count_righe_attive.return_value = 1
+        repo.update_contratto.return_value = True
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
 
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_contratto(1, {"listino_id": 200})
+        ContrattiService().update_contratto(1, {"listino_id": 200})
 
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE")
-        repo.update_contratto.assert_not_called()
+        self.assertEqual(repo.update_contratto.call_args.args[1]["listino_id"], 200)
 
-    # Scopo: rimuovere il listino con SOLE AGGIUNTE (no OVERRIDE/ESCLUSIONE)
-    # e' ammesso — le AGGIUNTE restano valide anche senza listino.
+    # Scopo: idem per la rimozione del listino (`E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI`
+    #        dal DB): `null` arriva al repository.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_contratto_rimuove_listino_solo_aggiunte_ok(self, repo_cls):
+    def test_update_contratto_rimozione_listino_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
         repo.get_contratto.return_value = _testata_default()  # listino_id=100
-        repo.count_eccezioni_bloccanti.return_value = {
-            "OVERRIDE": 0, "ESCLUSIONE": 0,
-        }
         repo.update_contratto.return_value = True
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
 
         ContrattiService().update_contratto(1, {"listino_id": None})
 
-        repo.update_contratto.assert_called_once()
-        args = repo.update_contratto.call_args.args
-        self.assertIsNone(args[1]["listino_id"])
+        self.assertIsNone(repo.update_contratto.call_args.args[1]["listino_id"])
 
     # --- cambio stato --------------------------------------------------
 
@@ -1167,7 +1202,6 @@ class ContrattiServiceTests(TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_contratto_sovrapposto.return_value = None  # nessun overlap
         repo.get_stato_id_by_codice.return_value = 2  # ATTIVO id
         repo.update_stato.side_effect = DatabaseError(
             "contratto senza listino e nessuna riga AGGIUNTA con prezzo: "
@@ -1186,7 +1220,6 @@ class ContrattiServiceTests(TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_contratto_sovrapposto.return_value = None  # nessun overlap
         repo.get_stato_id_by_codice.return_value = 2  # ATTIVO id
         repo.update_stato.return_value = True
         repo.get_contratto.return_value = _testata_default()
@@ -1197,29 +1230,26 @@ class ContrattiServiceTests(TestCase):
 
         repo.update_stato.assert_called_once_with(1, 2)
 
-    # Scopo: guard proattivo overlap §3.3 — se esiste un contratto ATTIVO
-    # sovrapposto, `emetti()` blocca PRIMA di update_stato con
-    # E_VENDITE_CONTRATTO_OVERLAP e un messaggio che NOMINA l'incumbent.
-    # La fn DB ignora i DRAFT (esclusivita' solo all'attivazione, brief §3.4).
+    # Scopo: la sovrapposizione la rifiuta il guard della transizione del DB
+    #        (2026-10-19, `script.fn_check_contratto_sovrapposto`) col codice del
+    #        catalogo, che passa com'e' con la sua frase: il backend non ha piu'
+    #        una copia Python della regola (che scattava solo alla conferma).
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_emetti_bloccato_da_contratto_sovrapposto(self, repo_cls):
+    def test_emetti_sovrapposto_lo_rifiuta_il_db(self, repo_cls):
+        from apps.core.tests.db_error_fakes import make_db_error
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_contratto_sovrapposto.return_value = {
-            "id": 27,
-            "numero": "CNT0000027",
-            "valido_dal": "2026-05-16",
-            "valido_al": "2026-05-28",
-        }
+        repo.get_stato_id_by_codice.return_value = 2  # ATTIVO id
+        repo.update_stato.side_effect = make_db_error(
+            "Il periodo si sovrappone al contratto CNT0000027, gia' vincolante.",
+            codice="E_CONTRATTO_OVERLAP_ESISTENTE",
+        )
 
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().emetti(1)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_CONTRATTO_OVERLAP")
+        self.assertEqual(ctx.exception.code, "E_CONTRATTO_OVERLAP_ESISTENTE")
         self.assertIn("CNT0000027", ctx.exception.message or "")
-        # Non deve nemmeno tentare la transizione di stato.
-        repo.update_stato.assert_not_called()
-        repo.get_stato_id_by_codice.assert_not_called()
 
     # --- righe ---------------------------------------------------------
 
@@ -1333,7 +1363,7 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()  # DRAFT
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_riga(77, {"articolo_id": "...".ljust(36, "0")})
+            ContrattiService().update_riga(1, 77, {"articolo_id": "...".ljust(36, "0")})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
@@ -1345,7 +1375,7 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()  # DRAFT
         repo.update_riga.return_value = True
 
-        ContrattiService().update_riga(77, {"prezzo_unitario": "30"})
+        ContrattiService().update_riga(1, 77, {"prezzo_unitario": "30"})
 
         args = repo.update_riga.call_args.args
         self.assertEqual(args[0], 77)
@@ -1548,7 +1578,7 @@ class ContrattiServiceTests(TestCase):
         mock_gate.return_value = (Decimal("28"), {"origine_prezzo": "MANUALE"})
 
         ContrattiService().update_riga(
-            77, {"prezzo_unitario": "28"}, auth_user_id=42,
+            1, 77, {"prezzo_unitario": "28"}, auth_user_id=42,
         )
 
         mock_gate.assert_called_once()
@@ -1575,7 +1605,7 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.update_riga.return_value = True
 
-        ContrattiService().update_riga(77, {"ordine": 50}, auth_user_id=42)
+        ContrattiService().update_riga(1, 77, {"ordine": 50}, auth_user_id=42)
 
         mock_gate.assert_not_called()
 
@@ -1589,8 +1619,33 @@ class ContrattiServiceTests(TestCase):
         repo.delete_riga.return_value = False
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().delete_riga(77)
+            ContrattiService().delete_riga(1, 77)
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+    # Scopo: ⛔ una riga di UN ALTRO contratto, chiesta con l'URL di questo,
+    #        e' un 404 e non arriva al repository. L'UPDATE e il DELETE vanno
+    #        per il solo `riga_id`: prima la bozza si verificava sul contratto
+    #        della riga, e la riga si modificava (o cancellava) da un URL che
+    #        non era il suo.
+    # ⚠️ Tutti e due i contratti sono in bozza: e' il caso che il vecchio
+    #    controllo lasciava passare.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_riga_di_un_altro_contratto_rifiutata(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 77, "contratto_id": 2}
+        repo.get_contratto.return_value = _testata_default()  # DRAFT
+
+        for nome, chiamata in (
+            ("update_riga", lambda: ContrattiService().update_riga(1, 77, {"ordine": 50})),
+            ("delete_riga", lambda: ContrattiService().delete_riga(1, 77)),
+        ):
+            with self.subTest(nome), self.assertRaises(ServiceError) as ctx:
+                chiamata()
+            self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+        repo.update_riga.assert_not_called()
+        repo.delete_riga.assert_not_called()
 
     # --- utility 1:1 ---------------------------------------------------
 
@@ -1993,7 +2048,7 @@ class ContrattiServiceComponentiTests(TestCase):
                 "articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa",
                 "tipo_eccezione": "AGGIUNTA",
                 "prezzo_unitario": "0",
-                "quantita": "1",
+                "qta_operativa": "1",
                 "componenti_overrides": {"figlio-1": "5.50"},
             },
             auth_user_id=42,
@@ -2042,7 +2097,7 @@ class ContrattiServiceComponentiTests(TestCase):
                 "articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa",
                 "tipo_eccezione": "AGGIUNTA",
                 "prezzo_unitario": "5.50",
-                "quantita": "1",
+                "qta_operativa": "1",
                 "componenti_overrides": {"figlio-1": "5.50"},
             },
             auth_user_id=42,
@@ -2081,7 +2136,7 @@ class ContrattiServiceComponentiTests(TestCase):
                     "articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa",
                     "tipo_eccezione": "AGGIUNTA",
                     "prezzo_unitario": "0",
-                    "quantita": "1",
+                    "qta_operativa": "1",
                 },
                 auth_user_id=None,
             )
@@ -2122,7 +2177,7 @@ class ContrattiServiceComponentiTests(TestCase):
                     "articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa",
                     "tipo_eccezione": "AGGIUNTA",
                     "prezzo_unitario": "0",
-                    "quantita": "1",
+                    "qta_operativa": "1",
                 },
                 auth_user_id=42,
             )
@@ -2152,7 +2207,7 @@ class ContrattiServiceComponentiTests(TestCase):
                 "articolo_id": "019d53f6-58ca-7cb7-b77b-86d201ce9787",
                 "tipo_eccezione": "OVERRIDE",
                 "prezzo_unitario": "10",
-                "quantita": "1",
+                "qta_operativa": "1",
             },
             auth_user_id=42,
         )
@@ -2231,6 +2286,8 @@ class ContrattiServiceFonteQuantitaTests(TestCase):
     1) test_fonte_a_valle_la_quantita_arriva_al_db_com_e — niente azzeramento silenzioso
     2) test_fonte_fissa_senza_quantita_non_e_un_rifiuto_python — lo dice il DB
     3) test_nessun_giudizio_sulla_coppia_ne_default — la coppia la decide il DB
+    4) test_quantita_non_e_una_chiave_del_payload — contratto e offerta, create e
+       update: la calcola il DB (I-D1, 2026-10-21, ritiro della DERIVATA)
     """
 
     def _service(self):
@@ -2273,6 +2330,23 @@ class ContrattiServiceFonteQuantitaTests(TestCase):
         # Erogazione senza fonte: nessun default inventato qui, la eredita il DB.
         data = svc._build_data_riga({"tipo_erogazione": "CANONE"}, for_create=False)
         self.assertNotIn("fonte_quantita_attesa", data)
+
+    def test_quantita_non_e_una_chiave_del_payload(self):
+        from apps.vendite.services import contratti_service, offerte_service
+
+        svc = self._service()
+        whitelist = {
+            "contratto create": contratti_service.CREATE_KEYS_RIGA,
+            "contratto update": contratti_service.UPDATE_KEYS_RIGA,
+            "offerta create": offerte_service.CREATE_KEYS_ECCEZIONE,
+            "offerta update": offerte_service.UPDATE_KEYS_ECCEZIONE,
+        }
+        for nome, ammesse in whitelist.items():
+            with self.subTest(nome):
+                # La `qta_operativa` si', la `quantita` e' un 400 sulla chiave.
+                svc._v.validate_allowed_keys({"qta_operativa": "1"}, allowed=ammesse)
+                with self.assertRaises(ServiceError):
+                    svc._v.validate_allowed_keys({"quantita": "1"}, allowed=ammesse)
 
 
 class ContrattiServicePricingGateTests(TestCase):
@@ -2944,6 +3018,10 @@ class ContrattiCatenaUpdateTests(TestCase):
     # qui un campione fa fallire il primo test — che è il momento in cui serve
     # fermarsi a pensare se il mapper la gestisce.
     _CAMPIONI: dict[str, object] = {
+        # Il cliente in coppia: il BB `risolvi_cliente_coppia` e' finto nel
+        # test 2 e restituisce questi due.
+        "billing_account_id": 7,
+        "istanza_utility_id": 8,
         "ambito": "COMMODITY",
         "valido_dal": "2026-03-01",
         "valido_al": "2026-12-31",
@@ -2992,10 +3070,10 @@ class ContrattiCatenaUpdateTests(TestCase):
     def test_update_keys_accettate_anche_in_create(self) -> None:
         from apps.vendite.services.contratti_service import (
             CREATE_KEYS_TESTATA,
-            UPDATE_KEYS_TESTATA,
+            UPDATE_KEYS_CONTRATTO,
         )
 
-        solo_update = sorted(set(UPDATE_KEYS_TESTATA) - set(CREATE_KEYS_TESTATA))
+        solo_update = sorted(set(UPDATE_KEYS_CONTRATTO) - set(CREATE_KEYS_TESTATA))
         self.assertEqual(
             solo_update, [],
             "Chiavi accettate in UPDATE ma non in CREATE. Il drawer spreda il "
@@ -3019,8 +3097,12 @@ class ContrattiCatenaUpdateTests(TestCase):
 
     # 2) ⭐ Anello 1 → 2: ogni chiave accettata ATTRAVERSA il mapper e arriva al
     #    repository. È il test che sarebbe stato rosso sul difetto reale.
+    @patch(
+        "apps.vendite.services.contratti_service.risolvi_cliente_coppia",
+        return_value=(7, 8),
+    )
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_ogni_chiave_attraversa_il_mapper(self, repo_cls) -> None:
+    def test_ogni_chiave_attraversa_il_mapper(self, repo_cls, _cliente) -> None:
         from apps.vendite.services.contratti_service import (
             UPDATE_KEYS_TESTATA,
             ContrattiService,
@@ -3030,8 +3112,6 @@ class ContrattiCatenaUpdateTests(TestCase):
         repo.update_contratto.return_value = True
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
-        repo.count_righe_attive.return_value = 0
-        repo.count_eccezioni_bloccanti.return_value = {}
 
         for chiave in sorted(UPDATE_KEYS_TESTATA):
             with self.subTest(chiave=chiave):

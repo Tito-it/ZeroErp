@@ -7,6 +7,8 @@ CREATE FUNCTION fn_split_gruppo_fatturabile_key(p_gruppo_key text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_split_gruppo_fatturabile_key(p_gruppo_key text)
  RETURNS TABLE(sorgente_tipo_id bigint, sorgente_uid text, commessa_id bigint)
@@ -93,6 +95,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_split_gruppo_fatturabile_key(p_gruppo_key text)
 IS 'Verso INVERSO di vendite.fn_build_gruppo_fatturabile_key: da una chiave di gruppo fatturabile torna la coppia sorgente (''<codice_interno>:<uid>'') oppure la commessa (''MAN:<commessa_id>''). ⭐ Esiste perche'' chi legge una SEGNALAZIONE ha in mano solo la chiave, e per mostrare il numero del documento deve tornare alla sorgente. ⛔ Le due funzioni sono GEMELLE e si leggono insieme: il prefisso ''MAN'' e la forma della chiave sono decisi nella funzione che costruisce, qui si rileggono. Il presidio non e'' l''occhio ma un pgTAP di ANDATA E RITORNO — split(build(x)) = x sulle due forme. ⚠️ NON SOLLEVA MAI, e non e'' pigrizia: la chiama una lista, e una chiave storta deve produrre un ripiego e non una lista rotta. Torna sempre UNA riga, con tre NULL quando non riconosce la forma. ⚠️ `substr` e non `split_part` sul resto: una chiave malformata con un secondo '':'' verrebbe troncata in silenzio. ⛔ L''aggancio della sorgente e'' su codice_interno, mai su codice (linee-guida-sql §6c/§6d). ⚠️ Non risale a commesse_attivita di proposito: la chiave su una segnalazione e'' un fatto STORICO, e quel lavoro puo'' essere gia'' fatturato o uscito dal giro — la risoluzione si svuoterebbe proprio dopo. STABLE, SECURITY INVOKER. Brief: brief-db-uscita-documento-dal-giro §6.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

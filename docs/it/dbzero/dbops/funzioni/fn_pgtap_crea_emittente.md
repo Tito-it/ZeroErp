@@ -6,6 +6,8 @@ CREATE FUNCTION fn_pgtap_crea_emittente(p_sigla character varying)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_emittente(p_sigla character varying DEFAULT NULL::character varying)
  RETURNS TABLE(emittente_fiscale_id bigint, emittente_codice character varying, soggetto_ruolo_id bigint, soggetto_id uuid)
@@ -61,21 +63,28 @@ BEGIN
     --   ⛔ Il primo anello non basta: quando il resolver gira
     --   dentro un trigger sull'INSERT del billing account, la
     --   riga del BA non e' ancora visibile.
-    -- ⭐ Nascendo, l'emittente fa nascere anche i propri registri
+    -- ⭐ Rev 2026-10-17: la riga la scrive il verbo di dominio
+    --   anagrafiche.fn_crea_emittente_fiscale, come l'applicazione
+    --   (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1).
+    --   Il ruolo esiste gia' (sopra, con i suoi indirizzi): il verbo lo
+    --   ritrova. Nascendo, l'emittente fa nascere anche i propri registri
     --   di numerazione (vendite.fn_provision_registri_emittente).
-    INSERT INTO anagrafiche.emittenti_fiscali
-        (soggetto_ruolo_id, codice, valuta_id)
-    VALUES (v_sr_id, v_codice,
-            (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1))
-    RETURNING id INTO v_ef_id;
+    SELECT e.emittente_fiscale_id
+      INTO v_ef_id
+      FROM anagrafiche.fn_crea_emittente_fiscale(
+               v_soggetto_id, v_codice,
+               jsonb_build_object('valuta_id',
+                   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1))) AS e;
 
     RETURN QUERY SELECT v_ef_id, v_codice, v_sr_id, v_soggetto_id;
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_emittente(p_sigla character varying)
-IS 'Helper di fixture pgTAP: crea un emittente fiscale nuovo — soggetto persona giuridica, ruolo EF, riga in anagrafiche.emittenti_fiscali con una sigla PGTRnnnn libera e la VALUTA valorizzata. ⚠️ La valuta non e'' un di piu'': vendite.fn_get_valuta_id risolve «BA -> emittente -> gestore», e su un database ricostruito dai changelog nessuno dei tre e'' valorizzato — il primo documento morirebbe su E_CONFIG_MANCANTE. Da sola NON basta a far vedere l''emittente a un test: per quello serve dbops.fn_pgtap_crea_emittente_operatore. Rev 20260909-32.';
+IS 'Helper di fixture pgTAP: crea un emittente fiscale nuovo — soggetto persona giuridica, ruolo EF, riga in anagrafiche.emittenti_fiscali con una sigla PGTRnnnn libera e la VALUTA valorizzata. ⚠️ La valuta non e'' un di piu'': vendite.fn_get_valuta_id risolve «BA -> emittente -> gestore», e su un database ricostruito dai changelog nessuno dei tre e'' valorizzato — il primo documento morirebbe su E_CONFIG_MANCANTE. Da sola NON basta a far vedere l''emittente a un test: per quello serve dbops.fn_pgtap_crea_emittente_operatore. Rev 20260909-32. Rev 2026-10-17: la riga di emittenti_fiscali la scrive il verbo anagrafiche.fn_crea_emittente_fiscale (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1); firma e ritorno invariati.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

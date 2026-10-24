@@ -253,7 +253,8 @@ WITH ins AS (
            r.tipo_doc_fiscale_id, r.valuta_id, 1.000000, 'FIXED',
            -- BOZZA di proposito: righe di fixture non devono comparire nelle
            -- corsie di emissione degli altri test.
-           'BOZZA', 'NON_EMESSA', NULL, NULL
+           'BOZZA', 'NON_EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+         ((SELECT id FROM tmp_commessa_af))::text
       FROM tmp_refs_af r, generate_series(1, 13) AS g(n)
     RETURNING id, segment_key)
 SELECT substring(segment_key FROM 'PGTAPAF([0-9]+)X')::int AS slot, id AS attivita_id

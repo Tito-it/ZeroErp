@@ -30,24 +30,23 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
 - Path: `/api/v1/vendite/preventivi/`
 - Auth: JWT, `area_funzionale = "vendite"`, `is_search_endpoint = True`
 - Query param (tutti opzionali):
-  - `stato` (string) — `codice_interno` stato (es. `DRAFT`, `EMESSO`, `ACCETTATO`); filtro su `stato_codice_interno`
+  - `stato` (string) — `codice_interno` stato (es. `DRAFT`, `EMESSO`, `ACCETTATO`); filtro su `stato_codice_interno`. Fuori vocabolario `config.stati_doc_preventivi` → 400 `E_PREV_VALIDAZIONE` col campo `stato_codice_interno` (2026-10-20: prima lista vuota con 200)
   - `billing_account_id` (int) — filtro per BA/cliente
   - `utility_id` (int) — filtro per utility
   - `data_da` (date ISO) — data minima (su `data` preventivo). **Default: 1 gennaio anno-1** (regola standard liste con date, lato frontend)
   - `data_al` (date ISO) — data massima
   - `search` (string, min 3 char) — ILIKE su `numero`, `ragione_sociale_completa`, `ba_codice` e `id_fiscale_univoco_cf_piva`
-  - `solo_attiva` (bool, default `true`) — solo l'ultima revisione viva per numero (`is_attiva`); `false` = storico revisioni completo (toggle "Mostra storico")
-  - `page` (int, default 1) — pagina
-  - `page_size` (int, default 50, max 200) — righe per pagina
-  - `order_by` (string, default `data`) — `campo_sorgente` colonna catalogo `vendite.preventivi`: `numero` `data` `ragione_sociale_completa` `ba_codice` `id_fiscale_univoco_cf_piva` `utility_codice` `utility_descrizione` `istanza_utility_codice` `totale_documento` `totale_imponibile` `totale_iva` `validita_al` `validita_dal` `stato_descrizione` `stato_codice_interno` `valuta_codice` `emittente_fiscale_codice` `competenza_mese` `data_insert`. `rev` **non ordinabile**. Valore fuori whitelist → fallback `data`
-  - `order_dir` (string, default `desc`) — `asc` o `desc`
+  - `solo_ultima_revisione` (bool, default `true`) — solo l'ultima revisione per numero; `false` = storico revisioni completo (toggle "Mostra storico")
+  - `limit` (int, default 25, max 200) / `offset` (int, default 0) — paginazione
+  - `order_by` (string, default `data`) — `campo_sorgente` colonna catalogo `vendite.preventivi`: `numero` `data` `ragione_sociale_completa` `ba_codice` `id_fiscale_univoco_cf_piva` `utility_codice` `utility_descrizione` `istanza_utility_codice` `totale_documento` `totale_imponibile` `totale_iva` `validita_al` `validita_dal` `stato_descrizione` `valuta_codice` `competenza_mese` `data_insert` `pratica_numero` `fase`. `rev` **non ordinabile**
+  - `order_dir` (string, default `desc`) — `asc` o `desc`; assente vale `desc` («dal più recente»)
 - Output `200`:
 ```json
 {
   "data": {
     "count": 42,
     "page": 1,
-    "page_size": 50,
+    "page_size": 25,
     "total_pages": 1,
     "results": [
       {
@@ -98,7 +97,7 @@ permessi — colonne nascoste escluse, ordine utente rispettato).
 | Parametro | Tipo | Descrizione |
 |---|---|---|
 | `formato` | string | `csv` (default) o `xlsx`. **NB**: parametro `formato` (italiano), NON `format` (magic param DRF) |
-| `search`, `stato`, `billing_account_id`, `utility_id`, `data_da`, `data_al`, `solo_attiva`, `order_by`, `order_dir` | — | stessi della lista |
+| `search`, `stato`, `billing_account_id`, `utility_id`, `data_da`, `data_al`, `solo_ultima_revisione`, `order_by`, `order_dir` | — | stessi della lista |
 
 - Hard cap **10.000 righe**: oltre → `422 E_UI_EXPORT_LIMIT_EXCEEDED`.
 - `formato` non valido → `400 E_UI_EXPORT_FORMAT_INVALID`.
@@ -120,7 +119,10 @@ permessi — colonne nascoste escluse, ordine utente rispettato).
   - `validita_dal` (date, opzionale)
   - `validita_al` (date, opzionale)
   - `competenza_mese` (date, opzionale — primo del mese)
+  - `emittente_fiscale_id` (int, opzionale; fermo dopo la creazione)
   - `fatturazione_immediata` (bool, default false)
+  - `meta` (object, opzionale)
+- Una chiave fuori elenco (es. `iva_id`, `codice`) → 400 `E_PREV_VALIDAZIONE` (2026-10-20: prima scartata in silenzio)
 - Output `200`: `{ "data": { "id": 1, "uid": "...", "numero": "P-0001" } }`
 - Regole: crea sempre in stato BOZZA, numero generato da trigger `trgfn_preventivi_gen_codice`
 - Errori: `E_PREV_VALIDAZIONE` (400), `E_CONFIG_MANCANTE` (500 se BOZZA non configurato)
@@ -170,7 +172,19 @@ tutti ritirati
 - Metodo: `PATCH`
 - Path: `/api/v1/vendite/preventivi/{id}/`
 - Body JSON: campi modificabili — **`billing_account_id`**, `istanza_utility_id`, `valuta_id`, `termine_pagamento_id`, `validita_dal`, `validita_al`, `competenza_mese`, `fatturazione_immediata`, `meta`. Passare `null` per azzerare campi nullable. **`utility_id` non e' aggiornabile** (regola di dominio, vedi `non_editable_fields` nel detail).
-- Regole: ammesso solo in stato BOZZA
+- Regole: **nessun guard di stato nel service**: quali colonne si cambiano in quale stato lo decide il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`: in bozza tutto, in EMESSO/ACCETTATO note e competenza), il cui 409 `E_DOC_*` passa com'è. `utility_id` ed `emittente_fiscale_id` → 400 `E_PREV_VALIDAZIONE` sul campo (colonne ferme); ogni altra chiave ignota → 400. BA e istanza si cambiano per coppia
+- Output `200`: `{ "data": { "status": "ok", "preventivo_id": 1 } }`
+- Errori: `E_PREV_NOT_FOUND` (404), `E_PREV_VALIDAZIONE` (400), `E_DOC_*` (409, lock di testata)
+
+---
+
+### 4b. Elimina bozza orfana
+
+- Metodo: `DELETE`
+- Path: `/api/v1/vendite/preventivi/{id}/`
+- Scopo: pulizia della bozza abbandonata dal drawer (pattern «abbandono bozza»). Un preventivo reale non si cancella, si annulla (`POST /{id}/stato/` con `ANNULLATO`)
+- Regole: stato BOZZA, zero righe, zero pratiche collegate; altrimenti 409 `E_PREV_STATO_NON_MODIFICABILE` (messaggio dedicato per ciascun caso)
+- Output `200`: `{ "data": { "status": "ok" | "noop", "preventivo_id": 1 } }`
 - Errori: `E_PREV_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409)
 
 ---
@@ -180,12 +194,30 @@ tutti ritirati
 - Metodo: `POST`
 - Path: `/api/v1/vendite/preventivi/{id}/stato/`
 - Auth: `post_permission = "cambia_stato_preventivi"`
-- Body JSON: `{ "nuovo_stato": "ACCETTATO" }`
+- Body JSON: `{ "nuovo_stato": "ACCETTATO", "fatturazione_immediata": false, "competenza_mese": "2026-11-01", "legami_confermati": 2 }`
 - Regole: delega a `vendite.fn_cambia_stato_preventivo()` che valida transizioni e prerequisiti
+- **Verso ACCETTATO** (da EMESSO, o ACCETTATO→ACCETTATO per correggere la modalità): `fatturazione_immediata` (booleano JSON) è **obbligatorio**, altrimenti 400 `E_PREV_VALIDAZIONE`; con `false` serve anche `competenza_mese` (data ISO, primo del mese), altrimenti 400; con `true` la competenza è forzata al mese corrente. I due campi si scrivono sulla testata nella stessa transazione del cambio stato. Sulle altre transizioni sono ignorati
 - Transizioni: EMESSO→ACCETTATO/RIFIUTATO/SCADUTO/ANNULLATO, BOZZA→ANNULLATO
 - **Transizione BOZZA→EMESSO non ammessa da questo endpoint** (refactor 2026-05-28): il service fail-fast con `E_PREV_VALIDAZIONE` (400) e indirizza all'endpoint dedicato `POST /<id>/emetti/` (§5b). Motivo: l'emissione deve orchestrare atomicamente cambio stato + generazione documento + allegati per garantire l'invariante "stato EMESSO ⇒ esiste un documento PDF persistito".
 - **Prezzi non autorizzati verso ACCETTATO**: la Regola 3 di `vendite.trgfn_preventivi_guard_transizione` rifiuta la transizione se una riga o un componente BoM attivo ha il prezzo `PENDING` o `REJECTED` (building block `script.fn_check_prezzi_autorizzati`, vedi `api_approvazioni_prezzo.md`): si attende l'esito, si corregge il prezzo o si toglie la riga. Annulla resta sempre ammesso.
-- Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400), `E_DOC_PREZZO_PENDENTE` (409), `E_DOC_PREZZO_RIFIUTATO` (409), `E_PREV_VALIDAZIONE` (400 se `nuovo_stato="EMESSO"`)
+- **Verso ANNULLATO** passa sempre dal verbo `vendite.fn_annulla_preventivo`: con righe di commessa da emettere risponde `E_DOC_ANNULLO_CON_LEGAMI` (409, `confirm_and_retry`) finché il body non dichiara `legami_confermati` (intero, letto da `GET /{id}/legami/`). Risposta con la stessa forma di `fn_cambia_stato_preventivo` (`preventivo_id`, `stato_precedente`, `stato_nuovo`).
+- Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400), `E_DOC_PREZZO_PENDENTE` (409), `E_DOC_PREZZO_RIFIUTATO` (409), `E_PREV_VALIDAZIONE` (400: `nuovo_stato="EMESSO"`, modalità di fatturazione mancante verso ACCETTATO), `E_DOC_ANNULLO_CON_LEGAMI` (409, conferma)
+
+### 5-bis. Cambio stato dalla pratica `POST /api/v1/vendite/preventivi/da-pratica/{pratica_id}/stato/`
+
+«Accetta/Rifiuta» dentro la pratica: cambia lo stato del preventivo **ROOT** della
+pratica. Stesso permesso (`cambia_stato_preventivi`), stesso corpo
+(`nuovo_stato`, `fatturazione_immediata`, `competenza_mese`) e stesse regole e
+risposta di §5; il preventivo lo risolve il backend dal `pratica_id`. Pratica
+senza preventivo ROOT → 422 `E_VENDITA_PREVENTIVO_NON_COLLEGATO`. Il milestone
+della pratica avanza da sé (trigger DB `fn_reconcile_sorgente`).
+
+### 5a. Legami `GET /<id>/legami/` (factory `build_legami_view`, BB
+`_annullo_con_legami.legami_del_documento`): `{documento, id, legami, righe}`,
+una riga per legame di `vendite.fn_documento_legami` con `origine` (codice di `config.sorgenti`), `natura`
+(CONSUMO/PROVENIENZA), `origine_id` e il nome del documento dall'altra parte
+dal lineage (`origine_tipo_codice_interno`, `origine_codice`). `legami` e' il
+numero da dichiarare. Alimenta la finestra di conferma dell'annullo.
 
 ---
 
@@ -231,7 +263,7 @@ Nuovo endpoint multipart 2026-05-28. Mirror del flusso offerta `POST /api/v1/ven
   - `E_PREV_STATO_TRANSIZIONE` (409) — preventivo non in BOZZA
   - `E_PREV_NESSUNA_RIGA` (400) — nessuna riga attiva
   - `E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO` (409) — prezzi in attesa di approvazione o rifiutati
-  - `E_DOCUMENTI_VALIDATION` (400/422) — emittente non risolto / sorgente PREVENTIVO non attiva / template non trovato / MIME allegato non ammesso / size oltre limite
+  - `E_DOCUMENTI_VALIDATION` (400) — emittente non risolto / sorgente PREVENTIVO non attiva / template non trovato / MIME allegato non ammesso / size oltre limite
   - `E_DOCUMENTI_NOT_FOUND` (404) — entity attesa non trovata dal resolver di contesto
 
 ---
@@ -252,27 +284,27 @@ Nuovo endpoint 2026-05-28. Mirror di `GET /api/v1/vendite/offerte/<id>/revisioni
 - Metodo: `GET`
 - Path: `/api/v1/vendite/preventivi/{id}/revisioni/`
 - Auth: JWT, `area_funzionale = "vendite"`. Lettura libera in ogni stato (utile per timeline UI revisioni anche su preventivi annullati/scaduti)
-- Scopo: ritorna tutte le revisioni che condividono lo stesso `numero` del preventivo passato, ordinate per `rev` ASC. Il frontend lo consuma per il tab "Revisioni" del drawer e per il deep-link revisione → revisione precedente
-- Output `200`:
+- Scopo: ritorna, **paginate**, le revisioni che condividono lo stesso `numero` del preventivo passato (lista configurabile `vendite.preventivo_revisioni`, tab "Revisioni" del drawer)
+- Query param: `limit` (default 25) / `offset`; `order_by` = `rev` (default) | `numero` | `data` | `stato_descrizione` | `totale_documento`; `order_dir` assente = `asc`, `desc` su `data`; `emittente_fiscale_id` (PK) letto solo dal cancello di perimetro per chi vede più emittenti
+- Output `200` (righe della vista `vw_preventivi_lista`):
 
 ```json
 {
-  "data": [
-    {"id": 1,  "numero": "P-0001", "rev": 1,
-     "stato_codice": "SUPERATO", "is_attiva": false,
-     "data_emissione": "2026-04-10T09:15:00Z"},
-    {"id": 7,  "numero": "P-0001", "rev": 2,
-     "stato_codice": "SUPERATO", "is_attiva": false,
-     "data_emissione": "2026-05-02T16:40:00Z"},
-    {"id": 42, "numero": "P-0001", "rev": 3,
-     "stato_codice": "EMESSO", "is_attiva": true,
-     "data_emissione": "2026-05-25T11:00:00Z"}
-  ]
+  "data": {
+    "count": 3, "page": 1, "page_size": 25, "total_pages": 1,
+    "results": [
+      {"id": 1, "numero": "P-0001", "rev": 1,
+       "stato_codice_interno": "SUPERATO", "stato_descrizione": "Superato",
+       "data": "2026-04-10", "totale_documento": "1220.00", "...": "..."},
+      {"id": 42, "numero": "P-0001", "rev": 3,
+       "stato_codice_interno": "EMESSO", "stato_descrizione": "Emesso",
+       "data": "2026-05-25", "totale_documento": "1300.00", "...": "..."}
+    ]
+  }
 }
 ```
 
-- Implementazione: query su `vendite.preventivi` filtrando per `numero = (SELECT numero FROM preventivi WHERE id=<id>)` con `ORDER BY rev ASC`. Indice esistente `(numero, rev)`
-- Errori: `E_PREV_NOT_FOUND` (404) se l'id passato non esiste
+- Errori: `E_PREV_NOT_FOUND` (404) se l'id passato non esiste o è fuori perimetro
 
 ---
 
@@ -280,7 +312,7 @@ Nuovo endpoint 2026-05-28. Mirror di `GET /api/v1/vendite/offerte/<id>/revisioni
 
 **Modello split per natura** (brief [brief-preventivi-ordini.md](../../../dev/work-done/brief-preventivi-ordini.md) D8 — sostituisce il vecchio copia-tutto 1:1).
 Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
-(natura con `destinazione_tipo='ORDINE'`), valorizzando `documento_origine =
+(natura con `destinazione_tipo='ORDINE_VENDITA'`), valorizzando `documento_origine =
 ('PREVENTIVO', preventivo_id)` sull'ordine.
 
 - View `ApiPreventivoGeneraOrdine` (area `vendite`) → delega a
@@ -290,7 +322,7 @@ Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
   righe da smistare (smistamento selettivo). **Assente/null** = tutte le righe
   MERCE residue; **lista vuota** = `E_PREV_VALIDAZIONE` (non degrada a "tutte").
 - **Cosa fa la fn DB** (non più orchestrazione Python):
-  - copia **solo** le righe natura `ORDINE` (i **servizi una-tantum** vanno a
+  - copia **solo** le righe natura `ORDINE_VENDITA` (i **servizi una-tantum** vanno a
     commessa via push commessa; il **ricorrente** è bloccato a monte, D9);
   - **snapshot prezzi** + componenti BoM (`fn_ordine_riga_componenti_init`);
   - scrive il **link di riga** `ordini_righe.preventivo_riga_id` → **idempotenza
@@ -310,9 +342,10 @@ Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
   `script.fn_available_actions_preventivo` (gate su **residuo merce**) resta
   esposta dal BE ma è filtrata dalla barra azioni del drawer.
 - **Gate EVASO bi-ramo** (§5b brief smistamento): dopo il push, se non resta
-  residuo su **nessun** ramo (`fn_preventivo_ha_residuo_ordine` +
-  `fn_preventivo_ha_residuo_commessa`), il service transita ACCETTATO→EVASO
-  (warning-tolerant al deploy parziale, come il gemello su push-commessa §13).
+  residuo su **nessun** ramo, il preventivo passa ACCETTATO→EVASO **dentro**
+  `vendite.fn_push_preventivo_a_ordine`, dal BB DB
+  `vendite.fn_preventivo_proietta_stato_smistamento` (lo stesso del ramo commessa,
+  §13).
 - **Percorso pratica (bivio-per-esito rev.3)**: lo smistamento merce si esegue da
   qui (Pannello Smistamento); quando il preventivo è in una pratica, **l'aggancio
   dell'ordine** come `pratiche_sorgenti` `COLLEGATO` avviene alla chiusura di
@@ -336,7 +369,7 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   `preventivi_service.list_righe_smistabili_ordine` →
   `PreventiviRepository.list_righe_smistabili_ordine`.
 - **Criterio**: legge dalla **vista** `vendite.vw_preventivi_righe_smistabili_ordine`
-  — la **fonte unica** del predicato (natura `destinazione_tipo='ORDINE'`, riga
+  — la **fonte unica** del predicato (natura `destinazione_tipo='ORDINE_VENDITA'`, riga
   attiva, **non ancora allocata** a un ordine), consumata anche da
   `fn_preventivo_ha_residuo_ordine` e `fn_push_preventivo_a_ordine`
   (consolidamento DB 2026-06-10). Le righe restituite sono quindi **esattamente**
@@ -373,23 +406,35 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   - `qta_operativa` (decimal, **obbligatorio**, `<> 0`) — quantità nell'UoM operativa scelta (sorgente). La colonna base `quantita` è **derivata dal trigger DB** `trgfn_qta_from_operativa` (`quantita = qta_operativa × factor_to_base`) e **non va inviata** (refactor 2026-05-31, allineamento a contratti/offerte). Zero vietato, negativi ammessi (es. resi/note credito)
   - `prezzo_unitario` (decimal, opzionale — **auto-fill dal resolver pricing v5 se omesso**; per articoli **compositi** non va inviato: il padre e' SUM(figli × coeff_qta) calcolato dai trigger DB)
   - `sconto_percentuale` (decimal, opzionale, default 0)
-  - `iva_id` (int, opzionale)
-  - `uom_operativa_id` (int, opzionale)
+  - `uom_operativa_id` (int, opzionale); `factor_to_base` (decimal, opzionale)
   - `ordine` (int, opzionale)
+  - `meta` (object, opzionale)
+  - ⛔ `iva_id` **non c'è** (dal 2026-08-31 l'aliquota la decide il risolutore): inviato, come ogni chiave fuori contratto, è un 400 `E_PREV_VALIDAZIONE` (2026-10-20: prima scartato in silenzio)
   - `data_consegna_richiesta_cliente` (date ISO, opzionale, nullable — 2026-09-14, Blocco A di `brief-db-modifiche-certe-ciclo-vendita-e-articolo`): quando il cliente vuole la merce. Sul preventivo c'è **solo la richiesta** (non c'è ancora niente da confermare); `fn_push_preventivo_a_ordine` la porta avanti sulla riga d'ordine. Anche in `PATCH` (`null` esplicito azzera); malformata → `400` `E_PREV_VALIDAZIONE` col campo. Esce da `list_righe`/`get_riga`
-  - `richiesta_approvazione` (bool, opzionale, default `false`) — **L3 workflow Sprint E**: se `true` e il prezzo viola L2, invece di sollevare `E_PRICING_SCONTO_ECCESSIVO`/`E_PRICING_MAGGIORAZIONE_ECCESSIVA` la riga viene salvata con `stato_approvazione_prezzo='PENDING'` collegata a una pratica `APPROVAZIONE_PREZZO` aperta automaticamente
+  - `richiesta_approvazione` (booleano JSON, opzionale, default `false`; un altro tipo → 400) — **L3 workflow Sprint E**: se `true` e il prezzo viola L2, invece di sollevare `E_PRICING_SCONTO_ECCESSIVO`/`E_PRICING_MAGGIORAZIONE_ECCESSIVA` la riga viene salvata con `stato_approvazione_prezzo='PENDING'` collegata a una pratica `APPROVAZIONE_PREZZO` aperta automaticamente
   - `componenti_overrides` (object `{componente_id: prezzo_string}`, opzionale) — **modello unificato componenti BoM 2026-05-13**: mappa di prezzi manuali per i figli del padre composito. Solo se l'articolo `is_composito=TRUE`. Richiede l'azione `prezzo_override_manuale` come per il prezzo padre; altrimenti `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403). Per i componenti senza entry, il backend invoca il resolver bundle-aware (STADIO 0 listino bundle del padre, fallback STADIO 1 standalone). Vedi `modello-componenti-bom.md`.
-  - `componenti_attivazioni` (object `{componente_id: bool}`, opzionale) — **modello unificato**: mappa per attivare/disattivare componenti opzionali. Default DB: obbligatori `attivo=TRUE`, opzionali `attivo=FALSE`. Inviare solo i delta. Disattivare componenti `obbligatorio=TRUE` e' bloccato dal trigger DB con `E_DOC_COMPONENTE_OBBLIGATORIO` (422). Nessun gate L1 dedicato — decisione operativa, non economica
+  - `componenti_attivazioni` (object `{componente_id: bool}`, opzionale) — **modello unificato**: mappa per attivare/disattivare componenti opzionali. Default DB: obbligatori `attivo=TRUE`, opzionali `attivo=FALSE`. Inviare solo i delta. Disattivare componenti `obbligatorio=TRUE` e' bloccato dal trigger DB con `E_DOC_COMPONENTE_OBBLIGATORIO` (400). Nessun gate L1 dedicato — decisione operativa, non economica
 - Regole:
   - Ammesso solo in stato BOZZA
   - **Auto-fill prezzo**: se `prezzo_unitario` non e' nel payload e la testata ha BA+utility+data validi, il service chiama `PricingService.resolve_prezzo` e popola il prezzo dal resolver v5 (3 stadi: promo/contratto/categoria)
   - **L1 override**: se `prezzo_unitario` e' passato e differisce dal resolver, serve l'azione di processo `prezzo_override_manuale`; altrimenti `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403). Stessa autorizzazione per `componenti_overrides` non vuoto. Superuser bypassato
   - **L2 limite variazione (Sprint D)**: dopo L1, se `prezzo_resolver` e' noto e non zero, calcola `delta_pct` firmato; sconto > `VENDITE_MAX_SCONTO_PCT` o maggiorazione > `VENDITE_MAX_MAGGIORAZIONE_PCT` -> `E_PRICING_SCONTO_ECCESSIVO`/`E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403, **`retryable=True`** dopo Fase 5.B2: il FE puo' offrire CTA "richiedi approvazione" e ri-tentare con `richiesta_approvazione=true`). Parametri risolti via `ParameterService` con **cascata estesa (refactor 2026-05-15)**: `user → categoria_cliente → group → emittente → session → function → default`. La `categoria_cliente_id` viene recuperata dal BA della testata preventivo (`BillingAccountRepository.get_categoria_cliente_id`) e propagata al risolutore: cosi' un'azienda puo' configurare soglie commerciali per categoria cliente (es. PREMIUM max sconto 5% indipendentemente dal seniority dell'operatore). Superuser bypass.
   - **L3 workflow approvazione (Sprint E)**: se `richiesta_approvazione=true` e L2 viola, l'errore L2 viene catturato, viene creata pratica `APPROVAZIONE_PREZZO` (stato APERTA) e la riga inserita con `stato_approvazione_prezzo='PENDING'` + `pratica_approvazione_prezzo_id`. Email best-effort al recipient configurato in parameter `VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL`. La pratica e' visibile nella coda approver via `GET /vendite/approvazioni-prezzo/`.
-  - **Componenti BoM CASO composito**: dopo `create_riga`, se l'articolo e' `is_composito=TRUE`, il service invoca `fn_preventivo_riga_componenti_init` che popola `preventivi_righe_componenti` per tutti i figli BoM validi alla data. Errori bloccanti: `E_DOC_COMPOSITO_BOM_VUOTA` (422) se la BoM e' vuota/scaduta alla data del documento; `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422) se un override mette prezzo 0 su un obbligatorio; `E_DOC_COMPONENTE_LISTINO_MANCANTE` (422) se il resolver fallisce per un componente senza override. Tutta la transazione e' atomica (init + UPDATE attivazioni avvengono in `@transaction.atomic`).
+  - **Componenti BoM CASO composito**: dopo `create_riga`, se l'articolo e' `is_composito=TRUE`, il service invoca `fn_preventivo_riga_componenti_init` che popola `preventivi_righe_componenti` per tutti i figli BoM validi alla data. Errori bloccanti: `E_DOC_COMPOSITO_BOM_VUOTA` (422) se la BoM e' vuota/scaduta alla data del documento; `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (400) se un override mette prezzo 0 su un obbligatorio; `E_DOC_COMPONENTE_LISTINO_MANCANTE` (422) se il resolver fallisce per un componente senza override. Tutta la transazione e' atomica (init + UPDATE attivazioni avvengono in `@transaction.atomic`).
   - **Meta audit**: popolato sempre con `origine_prezzo` (PROMO/CONTRATTO_OVERRIDE/CONTRATTO_LISTINO/CATEGORIA/MANUALE/LISTINO_BUNDLE) + `prezzo_resolver_context` (listino/contratto/promo + variazione). Se override manuale: anche `prezzo_base_resolver`, `delta_override`, `delta_override_pct`, `override_user_id`. Se workflow L3: anche `richiesta_approvazione_pending=true` + `violazione_l2` (tipo, variazione_abs_pct, limite_pct).
   - Ricalcolo totali automatico dopo insert (trigger DB). Per padri compositi il prezzo unitario padre viene **immediatamente sovrascritto** dal trigger `_z90_ricalcola_padre` come SUM(figli × coeff_qta_snapshot).
-- Errori: `E_PREV_VALIDAZIONE` (400), `E_RIGA_DOC_NON_BOZZA` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_PRICING_SCONTO_ECCESSIVO` (403), `E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403), `E_DOC_COMPOSITO_BOM_VUOTA` (422), `E_DOC_COMPONENTE_OBBLIGATORIO` (422), `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422), `E_DOC_COMPONENTE_LISTINO_MANCANTE` (422)
+- Errori: `E_PREV_VALIDAZIONE` (400), `E_RIGA_DOC_NON_BOZZA` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_PRICING_SCONTO_ECCESSIVO` (403), `E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403), `E_DOC_COMPOSITO_BOM_VUOTA` (422), `E_DOC_COMPONENTE_OBBLIGATORIO` (400), `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (400), `E_DOC_COMPONENTE_LISTINO_MANCANTE` (422)
+
+---
+
+### 8a-bis. Date di consegna in blocco
+
+- Metodo: `POST`
+- Path: `/api/v1/vendite/preventivi/{id}/righe/date-consegna/`
+- Body JSON: `colonna` (`data_consegna_richiesta_cliente`, l'unica data della riga di preventivo), `data` (`AAAA-MM-GG`, **obbligatoria**), `modalita` (`TUTTE` | `SOLO_VUOTE`), `anteprima` (bool, opzionale: esegue lo stesso UPDATE e lo annulla — i numeri della scrittura, il rifiuto del DB già qui, niente resta scritto)
+- Scopo: scrive la stessa data richiesta su più righe attive, in un solo UPDATE ([brief-db-date-consegna-righe-in-blocco](/dev/work-done/brief-db-date-consegna-righe-in-blocco) §5, §8). La giudica il lock delle righe: solo in `DRAFT`. Nessun pre-check di stato nel backend
+- Output `200`: `{ "data": { "documento_id": 9, "colonna": "data_consegna_richiesta_cliente", "data": "2026-11-20", "modalita": "SOLO_VUOTE", "anteprima": false, "aggiornate": 3, "saltate_spedite": 0 } }`
+- Errori: `E_PREV_NOT_FOUND` (404), `E_PREV_VALIDAZIONE` (400, col campo), `E_RIGA_DOC_NON_BOZZA` (409), `E_RIGA_PREZZO_PENDENTE` (409: una riga col prezzo in attesa di approvazione ferma il gesto per intero)
 
 ---
 
@@ -403,8 +448,8 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 - Scopo: calcola il prezzo suggerito dal resolver v5 senza creare la riga. Usato dal FE per pre-compilare il campo prezzo all'apertura del drawer. Nessun side-effect
 - Output `200`: `{ "data": { "prezzo_finale": "50.00", "prezzo_base_snapshot": "52.50", "origine": "CATEGORIA", "listino_id": 100, "contratto_id": null, "promo_id": null, "tipo_variazione_applicata": "PERCENTUALE", "valore_variazione_applicata": "-5.00" } }`
 - Contesto derivato: BA, utility, data dalla testata preventivo; emittente dal JWT operatore
-- Area: `vendite` livello LETTURA sufficiente (pura lettura)
-- Errori: `E_PREV_NOT_FOUND` (404), `E_PREV_VALIDAZIONE` (400 — testata senza BA/utility/data o utente senza emittenti autorizzati), errori applicativi del resolver (`E_PREZZO_LISTINO_NON_TROVATO`, `E_CATEGORIA_LISTINO_NON_MAPPATA`, ...)
+- Permesso: oggetto `("vendite", "preventivo")` livello **TUTTO** — è un `POST`, e i POST non di ricerca chiedono il livello pieno anche se non scrivono
+- Errori: `E_PREV_NOT_FOUND` (404), `E_PREV_VALIDAZIONE` (400 — testata senza BA/utility/data o utente senza emittenti autorizzati), errori applicativi del resolver (es. `E_CATEGORIA_LISTINO_NON_MAPPATA`)
 
 ---
 
@@ -422,10 +467,10 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   - Resolver invocato in modalita' **bundle-aware**: STADIO 0 cerca prezzo in `vendite.listini_righe_componenti` (bundle del padre, origine `LISTINO_BUNDLE`); fallback STADIO 1 standalone (origine `CATEGORIA`/`PROMO`/`CONTRATTO_LISTINO`/`CONTRATTO_OVERRIDE`)
   - Resolver fallito su un componente → `prezzo_suggerito: null` + `resolver_error_reason: "messaggio"`; l'operatore deve inserire prezzo manuale via `componenti_overrides` al save riga
 - Contesto derivato: BA, utility, data, emittente dalla testata preventivo (precedenza `emittente_fiscale_id` esplicito > operatore JWT)
-- Area: `vendite` livello LETTURA sufficiente
+- Permesso: oggetto `("vendite", "preventivo")` livello **TUTTO** (`POST`, come §8b)
 - Errori:
   - `E_PREV_NOT_FOUND` (404) — preventivo inesistente
-  - `E_PREV_VALIDAZIONE` (422) — data preventivo NULL, utility NULL, emittente non risolvibile
+  - `E_PREV_VALIDAZIONE` (400) — data preventivo NULL, utility NULL, emittente non risolvibile
 - Vedi anche: [`modello-componenti-bom.md`](../../../dev/manual/modello-componenti-bom.md)
 
 ---
@@ -438,7 +483,7 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   - `solo_attivi` (bool, opzionale, default `true`) — `true`: solo componenti `attivo=TRUE` (vista compatta retro-compatibile, expander tabella righe). `false`: include anche opzionali disattivati — usato dall'EDIT panel FE per consentire riattivazione via toggle. Accetta `"false"`/`"0"`/`"no"`/`"off"` come falsy
 - Scopo: lista i componenti BoM persistiti su `preventivi_righe_componenti` per la riga padre composita, con denormalizzazioni catalogo/uom/iva + flag `obbligatorio` e modo `esposizione_in_fattura` (JOIN runtime su `articoli_componenti` — BoM immutabile per design)
 - Output `200`: `{ "data": [ { "id": 1, "riga_preventivo_id": 10, "articolo_componente_id": "...", "componente_id": "...", "componente_codice": "...", "componente_descrizione": "...", "coeff_qta_snapshot": "1.5", "quantita": "3.0", "uom_operativa_id": 1, "uom_codice": "PZ", "factor_to_base": "1.0", "qta_operativa": "3.0", "prezzo_unitario": "10.00", "iva_id": 1, "iva_codice": "22", "iva_aliquota": "22.00", "origine_prezzo": "LISTINO_BUNDLE", "prezzo_resolver_context": {...}, "stato_approvazione_prezzo": null, "pratica_approvazione_prezzo_id": null, "meta": {}, "ordine": 1, "attivo": true, "obbligatorio": true, "esposizione_in_fattura": "DESCRITTIVO" } ] }`
-- Area: `vendite` livello LETTURA sufficiente
+- Area: `vendite` livello LETTURA sufficiente (`GET`)
 - Errori: `E_PREV_RIGA_NOT_FOUND` (404 — riga inesistente o non appartenente al preventivo)
 
 ---
@@ -447,18 +492,19 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 
 - Metodo: `PATCH`
 - Path: `/api/v1/vendite/preventivi/{id}/righe/{rid}/componenti/{cid}/`
-- Body JSON (campi nella whitelist `_COMPONENTE_UPDATE_ALLOWED`):
-  - `prezzo_unitario` (decimal, opzionale)
-  - `origine_prezzo` (string, opzionale)
-  - `iva_id` (int, opzionale)
-  - `ordine` (int, opzionale)
+- Body JSON (contratto dell'operatore, BB `COMPONENTE_PATCH_OPERATORE`, uguale sui cinque documenti):
+  - `prezzo_unitario` (decimal o `null`, opzionale) — non nullo richiede l'azione `prezzo_override_manuale` (403 `E_PRICING_OVERRIDE_NON_AUTORIZZATO`)
+  - `attivo` (bool, opzionale)
+  - `meta` (object, opzionale)
+  - Ogni altra chiave (anche `origine_prezzo`, `iva_id`, `ordine`) → 400 `E_PREV_VALIDAZIONE`; `{}` → 400. `origine_prezzo` la calcola il server (`MANUALE` col prezzo, `null` senza)
+- Output `200`: `{ "data": { "status": "ok", "componente_id": 1 } }`
 - Regole:
-  - Ammesso solo se il preventivo e' in stato BOZZA
-  - Anti-tampering URL: il service verifica che `componente_id` appartenga davvero alla `riga_id` URL (altrimenti `E_PREV_RIGA_NOT_FOUND`)
+  - Ammesso solo se il preventivo e' in stato BOZZA (`E_RIGA_DOC_NON_BOZZA`)
+  - Anti-tampering URL: il componente deve esistere ed essere della `riga_id` e del preventivo dell'URL, altrimenti 404 `E_PREV_COMPONENTE_NOT_FOUND`
   - Trigger DB `_z90_ricalcola_padre` aggiorna il `prezzo_unitario` della riga padre come SUM(figli × coeff_qta) post-update
-  - **Guard prezzo zero**: `prezzo_unitario=0` su componente obbligatorio rejected dal trigger `script.trgfn_componenti_check_prezzo_obbligatorio` con `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422)
-- Area: `vendite` livello SCRITTURA + azione `prezzo_override_manuale` per modifica `prezzo_unitario`
-- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_RIGA_DOC_NON_BOZZA` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422)
+  - **Guard prezzo zero**: `prezzo_unitario=0` su componente obbligatorio rejected dal trigger `script.trgfn_componenti_check_prezzo_obbligatorio` con `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (400)
+- Area: `vendite` livello TUTTO + azione `prezzo_override_manuale` per un `prezzo_unitario` non nullo
+- Errori: `E_PREV_COMPONENTE_NOT_FOUND` (404), `E_PREV_VALIDAZIONE` (400), `E_RIGA_DOC_NON_BOZZA` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (400)
 
 ---
 
@@ -469,10 +515,10 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 - Regole:
   - Soft delete (`attivo=FALSE`), ammesso solo in stato BOZZA
   - Anti-tampering URL come §8e
-  - **Guard componente obbligatorio**: tentativo di disattivare un componente `obbligatorio=TRUE` rejected dal trigger `script.trgfn_componenti_guard_obbligatorio` con `E_DOC_COMPONENTE_OBBLIGATORIO` (422)
+  - **Guard componente obbligatorio**: tentativo di disattivare un componente `obbligatorio=TRUE` rejected dal trigger `script.trgfn_componenti_guard_obbligatorio` con `E_DOC_COMPONENTE_OBBLIGATORIO` (400)
   - Trigger DB `_z90_ricalcola_padre` aggiorna il `prezzo_unitario` della riga padre post-delete
-- Output `200`: `{ "data": { "status": "deleted", "componente_id": 1, "deleted": true } }`
-- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_RIGA_DOC_NON_BOZZA` (409), `E_DOC_COMPONENTE_OBBLIGATORIO` (422)
+- Output `200`: `{ "data": { "status": "ok", "componente_id": 1, "deleted": true } }` (`deleted: false` se era già disattivato: non è un errore)
+- Errori: `E_PREV_COMPONENTE_NOT_FOUND` (404), `E_RIGA_DOC_NON_BOZZA` (409), `E_DOC_COMPONENTE_OBBLIGATORIO` (400)
 
 ---
 
@@ -480,12 +526,13 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 
 - Metodo: `PATCH`
 - Path: `/api/v1/vendite/preventivi/{id}/righe/{rid}/`
-- Body JSON: campi modificabili (`qta_operativa`, `prezzo_unitario`, `sconto_percentuale`, `descrizione`, `uom_operativa_id`, `iva_id`, `ordine`, `richiesta_approvazione`). `quantita` (base) è derivata dal trigger e **non aggiornabile dal client**: la sorgente è `qta_operativa`
-- Regole: ammesso solo in stato BOZZA, ricalcolo totali dopo update
+- Body JSON: campi modificabili (`qta_operativa`, `prezzo_unitario`, `sconto_percentuale`, `descrizione`, `uom_operativa_id`, `factor_to_base`, `ordine`, `meta`, `data_consegna_richiesta_cliente`, `richiesta_approvazione`). `quantita` (base) è derivata dal trigger e **non aggiornabile dal client**: la sorgente è `qta_operativa`. `iva_id` non c'è: come ogni chiave ignota è un 400 `E_PREV_VALIDAZIONE` (2026-10-20: prima scartata)
+- Regole: ammesso solo in stato BOZZA, ricalcolo totali dopo update. La riga deve essere del preventivo dell'URL, altrimenti 404 `E_PREV_RIGA_NOT_FOUND` (2026-10-20: prima si modificava una riga di un altro preventivo)
+- Output `200`: `{ "data": { "status": "ok", "riga_id": 10 } }`
 - **L1+L2+L3 su PATCH**: se il payload tocca `prezzo_unitario`, scattano gli stessi check dell'insert (autorizzazione + audit meta + L2 limite + L3 workflow opzionale via flag `richiesta_approvazione=true`). L'articolo/UoM della riga esistente sono usati come contesto resolver
 - **Trigger DB guard riga PENDING**: se la riga ha `stato_approvazione_prezzo='PENDING'`, il trigger `trg_preventivi_righe_a10_guard_pending_upd` (Sprint E) blocca modifica di campi struttura (prezzo, qta, articolo, sconto, ecc.) con `E_RIGA_PREZZO_PENDENTE` (409). Solo `stato_approvazione_prezzo`, `pratica_approvazione_prezzo_id` e `meta` sono ammessi. Per modificare prezzo: prima chiudere il workflow (approva/rifiuta) o annullare la pratica.
-- **Guard componenti via PATCH riga**: payload con `componenti_overrides` o `componenti_attivazioni` viene rifiutato con `E_PREV_VALIDAZIONE` (422). La PATCH riga e' solo testata; per modificare i componenti BoM usare gli endpoint dedicati §8e (PATCH componente) / §8f (DELETE componente).
-- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_RIGA_DOC_NON_BOZZA` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_PRICING_SCONTO_ECCESSIVO` (403), `E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403), `E_RIGA_PREZZO_PENDENTE` (409), `E_PREV_VALIDAZIONE` (422 — payload con campi componenti)
+- **Guard componenti via PATCH riga**: payload con `componenti_overrides` o `componenti_attivazioni` viene rifiutato con `E_PREV_VALIDAZIONE` (400). La PATCH riga e' solo testata; per modificare i componenti BoM usare gli endpoint dedicati §8e (PATCH componente) / §8f (DELETE componente).
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_RIGA_DOC_NON_BOZZA` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_PRICING_SCONTO_ECCESSIVO` (403), `E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403), `E_RIGA_PREZZO_PENDENTE` (409), `E_PREV_VALIDAZIONE` (400 — chiave ignota o campi componenti)
 
 ---
 
@@ -493,8 +540,20 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 
 - Metodo: `DELETE`
 - Path: `/api/v1/vendite/preventivi/{id}/righe/{rid}/`
-- Regole: soft delete (attivo=false), ammesso solo in stato BOZZA, ricalcolo totali
+- Regole: **hard delete** (i componenti BoM vanno via per `ON DELETE CASCADE`), ammesso solo in stato BOZZA, ricalcolo totali da trigger. La riga deve essere del preventivo dell'URL, altrimenti 404 `E_PREV_RIGA_NOT_FOUND`
+- Output `200`: `{ "data": { "status": "ok", "riga_id": 10 } }`
 - Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_RIGA_DOC_NON_BOZZA` (409)
+
+---
+
+### 10b. Riepilogo IVA `GET /api/v1/vendite/preventivi/{id}/riepilogo-iva/`
+
+Una riga per aliquota (`imponibile`, `imposta`, `arrotondamento`, `totale_riga` e le
+decodifiche `iva_*`), letta dalla vista derivata del DB (IVA per gruppo aliquota,
+DPR 633/72 art. 21): nessun calcolo Python. Stessa view factory
+(`build_riepilogo_iva_view`) di ordini e DDT. Prima la testata: preventivo
+inesistente o fuori perimetro → 404 `E_PREV_NOT_FOUND`. Usato dal pannello
+«Riepilogo IVA» del drawer e dal context builder PDF.
 
 ---
 
@@ -503,11 +562,14 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 - `GET /api/v1/vendite/preventivi/{id}/indirizzi/` → `{tipi_ammessi[], indirizzi[]}`
 - `POST /api/v1/vendite/preventivi/{id}/indirizzi/` — upsert uno-per-tipo:
   flusso PICKER `{tipo_indirizzo_id, origine_indirizzo_id}` (snapshot composto
-  server-side + guard ownership cliente) o UNA-TANTUM `{tipo_indirizzo_id, snapshot}`.
-  Solo stato BOZZA. **Breaking vs contratto pre-refactor**: lo `snapshot`
-  geografico non è più accettato dal client nel flusso picker e
-  `origine_soggetto_ruolo_id` non è più nel payload (derivato dal BE).
-- `DELETE /api/v1/vendite/preventivi/{id}/indirizzi/{indirizzo_id}/` — rimozione slot (solo BOZZA).
+  server-side; dal payload solo i contatti) o UNA-TANTUM `{tipo_indirizzo_id, snapshot,
+  origine_soggetto_ruolo_id?}`. Nel picker `origine_soggetto_ruolo_id` lo deriva il
+  backend dall'indirizzo; nell'una-tantum il client può dichiararlo (provenienza
+  «anagrafica soggetto»). Che l'indirizzo sia del cliente lo giudica il guard DB
+  `vendite.trgfn_doc_indirizzi_guard_cliente` (`E_INDIRIZZO_DOC_NON_DEL_CLIENTE`, 400);
+  lo stato il lock dei satelliti a DB (`E_DOC_DATI_COLLEGATI_NON_BOZZA`, 409: in
+  pratica solo BOZZA). Il service non ha guard di stato né di proprietà suoi.
+- `DELETE /api/v1/vendite/preventivi/{id}/indirizzi/{indirizzo_id}/` — rimozione slot (stesso lock DB).
 - Dettagli completi (shape, errori, whitelist ambito PREVENTIVI):
   [api_indirizzi_documento.md](api_indirizzi_documento.md)
 
@@ -529,12 +591,16 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   handler → CommesseRepository.fetch_pushable_rows` (5° parametro, supportato
   dalla sola sorgente `PREVENTIVO` — whitelist `_SORGENTE_SUPPORTA_RIGHE_IDS`).
 - Regole: ammesso solo in stato ACCETTATO, verifica righe eleggibili via `fn_list_preventivi_da_pushare`
-- **Gate EVASO bi-ramo** (D6 + brief smistamento §5b): a push `COMPLETATO`
-  transita ACCETTATO→EVASO **solo** se non resta residuo su **nessun** ramo
-  (`fn_preventivo_ha_residuo_ordine` **e** `fn_preventivo_ha_residuo_commessa`
-  entrambe false). Il check commessa non è ridondante: con `righe_ids`
-  COMPLETATO si riferisce al solo sottoinsieme. Lo **stesso gate** vive anche
-  sul ramo ordine (`ordini_service.crea_ordine_da_preventivo`).
+- **Gate EVASO bi-ramo** (D6 + brief smistamento §5b): il preventivo passa
+  ACCETTATO→EVASO **solo** se non resta residuo su **nessun** ramo (merce da
+  ordinare, servizi da mandare in commessa). ⭐ Dal 2026-10-12 lo fa il **DB**
+  (D-10 / R-8 di brief-db-annullo-a-valle-riapre-a-monte): il trigger delle righe
+  di commessa riproietta il preventivo col BB
+  `vendite.fn_preventivo_proietta_stato_smistamento`, nella stessa transazione
+  dell'invio — lo stesso BB che lo riporta ad ACCETTATO quando la commessa si
+  annulla, e che usa il ramo ordine (`vendite.fn_push_preventivo_a_ordine`). Il
+  backend non tocca lo stato: `transiziona_a_evaso_se_smistato` (e il modulo
+  `_smistamento_gate_helpers.py`) è ritirato.
 - **Aggancio pratica (ramo servizi dello split, bivio rev.3)**: se il preventivo
   appartiene a una pratica, a push `COMPLETATO` la commessa-servizi viene legata
   alla pratica come `pratiche_sorgenti` **COLLEGATO** (idempotente). È il punto
@@ -542,13 +608,11 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   la commessa-servizi non passa da lì. No-op per i push standalone (preventivo non
   in pratica).
 - **Semantica transazionale (fix analisi-fix-transazioni #5, 2026-07-08)**: push +
-  transizione EVASO + aggancio commessa-servizi alla pratica avvengono in un **unico**
+  aggancio commessa-servizi alla pratica avvengono in un **unico**
   `transaction.atomic()`. Un fallimento dell'**aggancio-pratica** rolla l'**intero
-  push** (commesse + ponte emittibilità): non resta mai una commessa-servizi orfana
-  senza link pratica (prima l'aggancio era una scrittura separata post-push). Il push
-  è idempotente/ri-eseguibile (advisory lock + dedup `segment_key`) → retry sicuro. La
-  sola **transizione EVASO** resta best-effort, isolata su un **savepoint dedicato** (un
-  suo fallimento logga e prosegue, senza rollbackare push+aggancio).
+  push** (commesse + ponte emittibilità, e con loro lo stato proiettato dal DB): non
+  resta mai una commessa-servizi orfana senza link pratica. Il push è
+  idempotente/ri-eseguibile (advisory lock + dedup `segment_key`) → retry sicuro.
 - Output `200`: report orchestrator `{ stato, push_log_id, durata_ms, handlers,
   commesse_ids, righe_pushable, fatturazione_immediata }`
 - Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400)
@@ -579,7 +643,7 @@ natura-aware il 2026-06-12: `vw_preventivi_smistamento` + `_righe`, le vecchie
     "righe": [
       { "riga_id": 10, "riga_descrizione": "...", "articolo_codice": "ART1",
         "qta_operativa": "2", "uom_codice": "PZ", "natura_vendita_codice": "MERCE",
-        "destinazione_tipo": "ORDINE", "stato_smistamento": "A_ORDINE",
+        "destinazione_tipo": "ORDINE_VENDITA", "stato_smistamento": "A_ORDINE",
         "ordine_id": 7, "ordine_numero": "ORD-0007" }
     ]
   }
@@ -643,8 +707,8 @@ di chiusura template-based lo legge subito.
 - Path: `/api/v1/vendite/preventivi/{id}/genera-pratica/`
 - Auth: `post_permission = "genera_pratica_preventivi"`, `Idempotency-Key` obbligatoria
 - Body JSON:
-  - `tipo_prestazione_id` (int, **obbligatorio**)
-  - `priorita_id` (int, **obbligatorio**)
+  - `tipo_prestazione_id` (int positivo, **obbligatorio**)
+  - `priorita_id` (int positivo, **obbligatorio**) — assenti o non validi → 400 `E_PREV_VALIDAZIONE` col campo (2026-10-20: prima un 500)
   - `descrizione` (string, opzionale)
 - Regole:
   - Ammesso solo in stato ACCETTATO con `billing_account_id` valorizzato
@@ -717,7 +781,7 @@ aprono lo stesso `PreventiviDrawer`. Ritornano `{"preventivo_id": <id|null>}`.
   - `"NONE"`: nessuna config (no contratto, no mapping categoria-listino). Il FE mostra warning all'admin. Resolver fallira' al calcolo prezzi riga.
 - Pattern lookup: replica intenzionalmente STADIO 1+2 del resolver per coerenza UI (vedi `feedback_db_actions_passaggio_team` — refactor a fn DB `fn_get_contesto_pricing` rimandato).
 - Area: `vendite` livello LETTURA sufficiente.
-- Errori: nessuno specifico (preventivo inesistente → `{}` payload). Errori DB → `E_DATABASE` middleware.
+- Errori: preventivo inesistente o fuori perimetro → 404 `E_PREV_NOT_FOUND` (2026-10-20: prima `200 {}`).
 
 ---
 
@@ -746,14 +810,14 @@ Payload `genera/` e `anteprima/` (JSON):
 }
 ```
 
-Entrambi opzionali; selezione default come §5b. Permessi: area `vendite` livello LETTURA (Decisione 75 — la "generazione documento" non è modifica del preventivo ma riproduzione PDF di dato già visibile).
+Entrambi opzionali; selezione default come §5b. Permessi: oggetto `("vendite", "preventivo")`; i `GET` con LETTURA, i `POST` (`genera`, `anteprima`, append allegati) con **TUTTO**, come ogni POST non di ricerca. `genera/` risponde `200`.
 
 **Endpoint `allegati/` (nuovi 2026-05-28)**:
 
 - GET: ritorna `{"data": {"principale": {...}, "allegati": [{...}, {...}]}}`. Consumato dal row-expand di `DocumentiGeneratiSorgenteList` per popolare `filesPerDoc`
 - POST: multipart con campo ripetuto `allegati`. Modalità append post-emissione. Non rigenera il PDF principale, aggiunge solo file secondari al documento esistente
 
-Errori comuni di tutta la sezione: `E_DOCUMENTI_VALIDATION` (400/422), `E_DOCUMENTI_NOT_FOUND` (404).
+Errori comuni di tutta la sezione: `E_DOCUMENTI_VALIDATION` (400), `E_DOCUMENTI_NOT_FOUND` (404).
 
 ---
 
@@ -818,12 +882,12 @@ righe di preventivo.
 | Codice | HTTP | Descrizione |
 |---|---|---|
 | `E_PREV_NOT_FOUND` | 404 | Preventivo non trovato |
-| `E_PREV_VALIDAZIONE` | 400 | Validazione input fallita |
+| `E_PREV_VALIDAZIONE` | 400 | Validazione input fallita (incluse chiavi fuori contratto, filtro di stato fuori vocabolario, booleani non JSON) |
 | `E_PREV_STATO_TRANSIZIONE` | 409 | Transizione stato non ammessa |
-| `E_PREV_STATO_NON_MODIFICABILE` | 409 | Non modificabile nello stato corrente |
-| `E_PREV_RIGA_NOT_FOUND` | 404 | Riga non trovata |
+| `E_PREV_STATO_NON_MODIFICABILE` | 409 | DELETE di un preventivo non BOZZA, con righe o con pratiche collegate (§4b) |
+| `E_PREV_RIGA_NOT_FOUND` | 404 | Riga non trovata, o non del preventivo dell'URL |
+| `E_PREV_COMPONENTE_NOT_FOUND` | 404 | Componente inesistente o non della riga/preventivo dell'URL |
 | `E_PREV_NESSUNA_RIGA` | 400 | Nessuna riga attiva/eleggibile |
-| `E_PREV_GIA_IN_COMMESSA` | 409 | Gia' inviato a fatturazione |
 | `E_PREV_REVISIONE_ATTIVA` | 409 | Revisione attiva esistente |
 | `E_PREV_PRATICA_STATO` | 409 | Stato non ammette generazione pratica |
 | `E_PRICING_OVERRIDE_NON_AUTORIZZATO` | 403 | Modifica manuale del prezzo riga non autorizzata (serve azione `prezzo_override_manuale`). L1 del sistema autorizzazioni prezzi. **`retryable=False`**: senza permesso non c'e' nulla da ritentare. Vedi [sviluppo-autorizzazioni-prezzi](../../../dev/work-in-progress/sviluppo-autorizzazioni-prezzi) |
@@ -831,13 +895,17 @@ righe di preventivo.
 | `E_PRICING_MAGGIORAZIONE_ECCESSIVA` | 403 | Maggiorazione > `VENDITE_MAX_MAGGIORAZIONE_PCT`. **`retryable=True`** come sconto eccessivo |
 | `E_RIGA_PREZZO_PENDENTE` | 409 | Riga con prezzo in approvazione PENDING: modifica campi struttura bloccata dal trigger DB `trg_preventivi_righe_a10_guard_pending_upd` |
 | `E_DOC_COMPOSITO_BOM_VUOTA` | 422 | Articolo composito senza componenti BoM validi alla data del documento. Sollevato da `fn_preventivo_riga_componenti_init` al primo init. **Bloccante**: la riga padre non viene creata (rollback transazionale via `@transaction.atomic`) |
-| `E_DOC_COMPONENTE_OBBLIGATORIO` | 422 | Tentativo di disattivare un componente `obbligatorio=TRUE` via `componenti_attivazioni` o DELETE componente. Sollevato dal trigger DB `script.trgfn_componenti_guard_obbligatorio` |
-| `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` | 422 | Prezzo 0 su componente `obbligatorio=TRUE`. Sollevato da `fn_preventivo_riga_componenti_init` (su `componenti_overrides`) o dal trigger DB `script.trgfn_componenti_check_prezzo_obbligatorio` (su PATCH componente). Componenti opzionali ammettono prezzo 0 |
+| `E_DOC_COMPONENTE_OBBLIGATORIO` | 400 | Tentativo di disattivare un componente `obbligatorio=TRUE` via `componenti_attivazioni` o DELETE componente. Sollevato dal trigger DB `script.trgfn_componenti_guard_obbligatorio` |
+| `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` | 400 | Prezzo 0 su componente `obbligatorio=TRUE`. Sollevato da `fn_preventivo_riga_componenti_init` (su `componenti_overrides`) o dal trigger DB `script.trgfn_componenti_check_prezzo_obbligatorio` (su PATCH componente). Componenti opzionali ammettono prezzo 0 |
 | `E_DOC_COMPONENTE_LISTINO_MANCANTE` | 422 | Resolver fallito per un componente senza override esplicito. L'operatore deve aggiungere il prezzo manuale in `componenti_overrides` (richiede `prezzo_override_manuale`) o l'admin deve configurare il listino bundle/standalone per quel componente |
-| `E_DOCUMENTI_VALIDATION` | 400/422 | Endpoint §5b + §18: emittente non risolto, sorgente PREVENTIVO non attiva, template assente/non applicabile, MIME allegato non ammesso, size oltre limite. Sollevato da `apps.documenti.api.contesto_helpers.resolve_contesto_documentale` o da `DocumentGenerationService` |
+| `E_DOCUMENTI_VALIDATION` | 400 | Endpoint §5b + §18: emittente non risolto, sorgente PREVENTIVO non attiva, template assente/non applicabile, MIME allegato non ammesso, size oltre limite. Sollevato da `apps.documenti.api.contesto_helpers.resolve_contesto_documentale` o da `DocumentGenerationService` |
 | `E_DOCUMENTI_NOT_FOUND` | 404 | Endpoint §5b + §18: preventivo o documento atteso non trovato dal resolver di contesto |
 | `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO` | 409 | §6c genera-ordine: preventivo non `ACCETTATO`. Sollevato dalla fn DB `fn_push_preventivo_a_ordine` |
-| `E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE` | 422 | §6c genera-ordine: nessuna riga **merce** residua da smistare (nessuna riga natura `ORDINE`, o tutte già allocate a un ordine — idempotenza di riga). Sollevato dalla fn DB `fn_push_preventivo_a_ordine` |
+| `E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE` | 409 | §6c genera-ordine: nessuna riga **merce** residua da smistare (nessuna riga natura `ORDINE_VENDITA`, o tutte già allocate a un ordine — idempotenza di riga). Sollevato dalla fn DB `fn_push_preventivo_a_ordine` |
+
+> Codici ritirati, non più sollevati: `E_PREV_GIA_IN_COMMESSA` (2026-08-26: annullare
+> un preventivo in commessa ora ritira le righe non emesse) ed
+> `E_PREZZO_LISTINO_NON_TROVATO` (2026-08-19).
 
 ## Integrazione pricing v5
 
@@ -854,3 +922,4 @@ Per la roadmap L2 (limite sconto via parametri) e L3 (approvazione out-of-policy
 ## Form-defaults BA-aware (Fase 2.B4)
 
 Il drawer FE preventivi popola valuta_id/termine_pagamento_id/iva_id automaticamente al cambio BA via `GET /api/v1/vendite/preventivi/form-defaults/?billing_account_id=...`. Risolve dal cliente associato al BA tramite tripletta `(istanza_utility_id, soggetto_ruolo_id, utility_id)`. `valuta_id` segue la catena del BB `resolve_valuta_default` (BA → EF del BA → EF utente → fallback gestore globale), allineata 2026-05-29 alla fn DB `vendite.fn_get_valuta_id`. Vedi [api_vendite_form_defaults.md](api_vendite_form_defaults.md).
+

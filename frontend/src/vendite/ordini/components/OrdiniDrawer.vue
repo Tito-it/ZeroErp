@@ -12,6 +12,7 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useNotify } from '../../../core/composables/useNotify'
 import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
+import { useForzaturaConfermata } from '../../../core/composables/useForzaturaConfermata'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
@@ -22,6 +23,7 @@ import { useEntityCapabilities } from '../../../core/composables/useEntityCapabi
 import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { statoOrdineSeverity } from '../../../core/utils/severity'
+import { labelOrCode } from '../../../core/utils/i18nLabel'
 import {
   CAMPI_FORM_TESTATA_ORDINE,
   STATO_ORDINE,
@@ -35,7 +37,7 @@ import { getOrdineFormDefaults } from '../../api/formDefaults'
 import { createOrdine } from '../api/ordiniApi'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
 import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
-import { getBillingAccountLookupById } from '../../../core/apiCore'
+import { ripristinaBillingAccount } from '../../../core/utils/ripristinaLookup'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import AppDrawer from '../../../core/components/AppDrawer.vue'
@@ -49,7 +51,10 @@ import OrdiniForm from './OrdiniForm.vue'
 import OrdiniRigheTable from './OrdiniRigheTable.vue'
 import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
 import OrdineEvasioneDialog from './dialogs/OrdineEvasioneDialog.vue'
+import DocumentoAnnulloLegamiDialog from '../../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
 import OrdineEmissioneDialog from './dialogs/OrdineEmissioneDialog.vue'
+import DateConsegnaRigheDialog from '../../_shared/dateConsegna/DateConsegnaRigheDialog.vue'
+import { useDateConsegnaRighe } from '../../_shared/dateConsegna/useDateConsegnaRighe'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 
@@ -133,6 +138,7 @@ provide(READONLY_KEY, isReadonly)
 // availableActions + can_edit_testata + non_editable_fields. Composable
 // centralizzato, uniforme a Preventivi/Contratti (Fase 4.F2).
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
@@ -192,22 +198,71 @@ const showEvasione = computed(
 // pannello in coda al contenuto del drawer — le azioni di processo stanno in
 // alto, come per il «Genera reso» del DDT.
 const evasioneDialogVisible = ref(false)
-// Ref alla barra collegamenti (chip pratica/origine/destinazioni).
-const collegamentiRef = ref(null)
-// Ref alla barra situazione merce: l'evasione sposta merce, quindi cambia il
-// conto (consegnato sale, `da_spedire` scende) e non solo il grafo.
-const merceRef = ref(null)
+// ⭐ Il cambio di stato e' un gesto CONFERMABILE (brief-db-annullo-documento-
+//    con-legami): l'annullo di un ordine con legami (righe di preventivo,
+//    offerta d'origine, righe di commessa da emettere) il DB lo rifiuta
+//    (`confirm_and_retry`) finche' chi conferma non dichiara quanti legami ha
+//    visto. La domanda la porta a video `DocumentoAnnulloLegamiDialog`; un
+//    ordine senza legami passa al primo colpo.
+const cambioStato = useForzaturaConfermata()
+const { richiestaConferma: domandaAnnullo } = cambioStato
+
+// «Aggiorna date di consegna» (brief-db-date-consegna-righe-in-blocco): le
+// due date della riga d'ordine. La richiesta si scrive in bozza; la confermata
+// in bozza e dopo la conferma (D-3). Le colonne sono l'unica cosa che
+// l'utility sa del documento (D-4).
+const dateConsegna = useDateConsegnaRighe({
+  colonne: [
+    {
+      colonna: 'data_consegna_richiesta_cliente',
+      labelKey: 'vendite.ordini.riga_data_consegna_richiesta_cliente',
+      attiva: () => caps.flag('can_edit_righe'),
+    },
+    {
+      colonna: 'data_consegna_confermata',
+      labelKey: 'vendite.ordini.riga_data_consegna_confermata',
+      attiva: () => caps.flag('can_edit_righe') || caps.flag('can_edit_data_consegna_confermata'),
+      motivo: () => labelOrCode(
+        t, te,
+        capabilities.value.can_edit_data_consegna_confermata_reason_key,
+        capabilities.value.can_edit_data_consegna_confermata_reason,
+      ),
+    },
+  ],
+  readonlyPuro: () => isReadonlyPuro.value,
+  presente: () => hasDetail.value,
+  righe: () => detail.value?.righe_count ?? 0,
+})
+const dateConsegnaAzione = dateConsegna.azione
+const dateConsegnaVisible = dateConsegna.dialogVisible
+const dateConsegnaColonne = dateConsegna.colonneAttive
+
+// Scopo: le date sono cambiate sulle righe: si rileggono le righe e la
+//        testata, come dopo il verbo per riga (`@changed` della tabella righe).
+function onDateConsegnaAggiornate() {
+  righeTableRef.value?.loadRighe()
+  loadDetail()
+}
+
+// Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
+//        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
+//        ordine riapre il residuo e riaccende «Genera DDT» — quindi si
+//        rileggono testata (stato, capability) e righe. Chip e situazione
+//        merce li rileggono le barre su quel dettaglio nuovo (`:versione`).
+//        Le liste in ascolto le ha gia' avvisate lo store del
+//        verbo, nel drawer impilato.
+async function onDocumentoCollegatoChiuso() {
+  await loadDetail()
+  righeTableRef.value?.loadRighe()
+}
 
 // Scopo: callback @evaso della dialog — generato un DDT dall'ordine: ricarica il
 // detail (lo stato ordine viene proiettato dal BE: CONFERMATO/PARZIALMENTE_EVASO/
 // EVASO) e le capability. Il tab DDT lo ha gia' avvisato il verbo `generaDdt` dello store.
 async function onEvaso() {
+  // L'evasione crea un DDT (nuovo arco ordine->DDT) e sposta merce: chip e
+  // situazione merce li rileggono le barre, agganciate al dettaglio.
   await loadDetail()
-  // L'evasione crea un DDT: nuovo arco ordine->DDT, quindi i chip dei
-  // collegamenti vanno ricaricati (senza questo il chip «DDT» comparirebbe
-  // solo alla riapertura del drawer).
-  collegamentiRef.value?.reload()
-  merceRef.value?.reload()
   // ⭐ E la LISTA dietro: l'ordine e' passato a PARZIALMENTE_EVASO e mostra un
   // transito nuovo. `changed` e non `saved` perche' il lavoro continua — il DDT
   // nasce DRAFT e si rifinisce dal tab DDT, quindi il drawer deve restare
@@ -280,7 +335,7 @@ async function loadDetail(id = null) {
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
     utility_id: data.utility_id ?? null,
     billing_account_id: data.billing_account_id ?? null,
-    billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
+    billing_account_obj: null,  // popolato sotto da ripristinaBillingAccount
     valuta_id: data.valuta_id ?? null,
     modalita_pagamento_id: data.modalita_pagamento_id ?? null,
     termine_pagamento_id: data.termine_pagamento_id ?? null,
@@ -292,16 +347,8 @@ async function loadDetail(id = null) {
   // avrebbe cancellato (BB useDrawerFormPreserve).
   applicaModifiche()
   await nextTick()
-  // Restore BillingAccountLookup _obj per visualizzazione ricca. Best-effort.
-  if (data.billing_account_id) {
-    try {
-      const res = await getBillingAccountLookupById(data.billing_account_id)
-      const ba = res?.data?.data
-      if (ba) form.value.billing_account_obj = ba
-    } catch {
-      // Resto: l'autocomplete parte vuoto, l'operatore puo' ri-selezionare.
-    }
-  }
+  // Il cliente per l'etichetta del lookup (BB `ripristinaBillingAccount`).
+  await ripristinaBillingAccount(form.value, data.billing_account_id)
   // Riepilogo IVA: il trigger DB mantiene i totali in sync con le righe a ogni
   // mutazione; qui leggiamo lo stato corrente (best-effort).
   await loadRiepilogoIva(targetId)
@@ -552,13 +599,26 @@ function onAction(action) {
 }
 
 // Transizione di stato generica (es. annulla DRAFT->ANNULLATO). Il trigger DB
-// valida l'ammissibilita'; qui orchestriamo chiamata + refresh detail.
+// valida l'ammissibilita'; qui orchestriamo chiamata + refresh detail. Il primo
+// tentativo va SEMPRE senza dichiarazione (`useForzaturaConfermata`).
 async function eseguiCambioStato(action) {
-  const result = await execute(
-    () => store.cambiaStato(effectiveOrdineId.value, action.target_state),
+  const result = await cambioStato.esegui(
+    (dichiarazione) => store.cambiaStato(effectiveOrdineId.value, action.target_state, dichiarazione),
     { successMessage: t('vendite.ordini.stato_cambiato') },
   )
+  await dopoCambioStato(result)
+}
+
+// Scopo: l'operatore ha visto i legami e conferma l'annullo: si ripete la
+//        chiamata DICHIARANDO quanti erano.
+async function onConfermaAnnullo(dichiarazione) {
+  await dopoCambioStato(await cambioStato.conferma(dichiarazione))
+}
+
+async function dopoCambioStato(result) {
   if (result !== null) {
+    // L'annullo ritira i legami: collegamenti e merce li rileggono le barre,
+    // agganciate al dettaglio (`:versione`).
     await loadDetail()
     emit('saved', result)
   }
@@ -598,6 +658,7 @@ const drawerActions = computed(() => {
           command: () => { evasioneDialogVisible.value = true },
         }]
       : []),
+    ...dateConsegnaAzione.value,
     {
       key: 'manage-note',
       kind: 'manage',
@@ -676,9 +737,10 @@ const drawerActions = computed(() => {
            segnalazione a colpo d'occhio sotto i pulsanti — «Preventivo»,
            «2 DDT». Il grafo completo si apre dai chip stessi in dialog. -->
       <DocumentoCollegamentiBar
-        ref="collegamentiRef"
         base-path="/vendite/ordini"
+        :versione="detail"
         :doc-id="effectiveOrdineId"
+        @documento-chiuso="onDocumentoCollegatoChiuso"
         :readonly="isReadonlyPuro" />
 
       <!-- Situazione merce dell'ordine: il riassunto per riga ordinata —
@@ -688,8 +750,8 @@ const drawerActions = computed(() => {
            schermate per ricostruire una storia, e la riga che la riassume
            non esisteva. -->
       <SituazioneMerceBar
-        ref="merceRef"
         base-path="/vendite/ordini"
+        :versione="detail"
         :doc-id="effectiveOrdineId"
         :readonly="isReadonlyPuro" />
     </template>
@@ -713,15 +775,13 @@ const drawerActions = computed(() => {
       <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default CON,
            contatore "+N altri", pulsante "Indirizzi" che apre il drawer
            di gestione. -->
-      <!-- Indirizzi: seguono lo stato (in bozza), non la capability della
-           testata, che dal 2026-10-10 e' vera anche fuori bozza per le
-           colonne ancora aperte (brief-db-testata-dopo-emissione). -->
       <DocumentoIndirizziSection
         dominio="ordini"
         :doc-id="effectiveOrdineId"
         :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
         :istanza-utility-id="detail?.istanza_utility_id ?? null"
-        :readonly="isReadonly"
+        :readonly="isReadonlyPuro"
+        :capabilities="capabilities"
         :bordo="false" />
 
       <Divider />
@@ -732,6 +792,7 @@ const drawerActions = computed(() => {
         :is-modificabile="canEditRighe && !isReadonly"
         :capabilities="capabilities"
         :readonly="isReadonlyPuro"
+        :data-documento="detail?.data ?? null"
         @changed="loadDetail()"
         @form-aperto="onFormAperto" />
 
@@ -767,6 +828,31 @@ const drawerActions = computed(() => {
        aperta dal pulsante in barra azioni. Il DDT nasce DRAFT e si rifinisce
        dal tab DDT; lo stato ordine (PARZIALMENTE_EVASO/EVASO) e' proiettato dal
        BE e si vede dopo il reload del detail. -->
+  <!-- La conferma dell'annullo di un ordine con legami: aperta dalla domanda
+       del DB, chiusa dalla conferma o dalla rinuncia. -->
+  <DocumentoAnnulloLegamiDialog
+    v-if="effectiveOrdineId"
+    :visible="domandaAnnullo !== null"
+    base-path="/vendite/ordini"
+    :doc-id="effectiveOrdineId"
+    :header="t('vendite.ordini.azione_annulla')"
+    :domanda="domandaAnnullo"
+    :loading="cambioStato.loading.value"
+    :readonly="isReadonlyPuro"
+    @conferma="onConfermaAnnullo"
+    @cancel="cambioStato.annulla()"
+  />
+
+  <DateConsegnaRigheDialog
+    v-if="effectiveOrdineId"
+    v-model:visible="dateConsegnaVisible"
+    :invia="(payload) => store.aggiornaDateConsegna(effectiveOrdineId, payload)"
+    :colonne="dateConsegnaColonne"
+    :data-documento="detail?.data ?? null"
+    :readonly="isReadonlyPuro"
+    @aggiornate="onDateConsegnaAggiornate"
+  />
+
   <OrdineEvasioneDialog
     v-if="effectiveOrdineId && showEvasione"
     v-model:visible="evasioneDialogVisible"

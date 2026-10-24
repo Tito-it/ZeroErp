@@ -77,7 +77,7 @@ di `contratti_righe`:
 
 - `tipo_erogazione` — `CANONE | UNA_TANTUM | ORARIO | CONSUMO` (CHECK
   `chk_offerte_eccezioni_tipo_erog`).
-- `fonte_quantita_attesa` — `FISSA | MANUALE | TIMESHEET | LETTURE | DERIVATA_COMPONENTI`
+- `fonte_quantita_attesa` — `FISSA | MANUALE | TIMESHEET | LETTURE` (le combinazioni di `config.erogazioni_fonti`; `DERIVATA_COMPONENTI` ritirata il 2026-10-21, e sul composito solo la `FISSA`: `brief-db-offerta-emissione-ed-erogazione` §I.1)
   (CHECK `chk_offerte_eccezioni_fonte_qta`), NOT NULL.
 - CHECK `chk_offerte_eccezioni_coerenza_canone` — se `tipo_erogazione = 'CANONE'`,
   `generazione_canone` deve essere in `('INIZIO_PERIODO', 'FINE_PERIODO', 'PRORATA')`.
@@ -173,12 +173,16 @@ ha le stesse regole, con le stesse funzioni:
 * **Un'esclusione non si modifica**: si crea e si cancella
   ([`trgfn_righe_guard_esclusione_immutabile`](/dbzero/script/funzioni/trgfn_righe_guard_esclusione_immutabile)
   → `E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE`).
-* **Un'aggiunta è un articolo fuori listino**
-  ([`trgfn_righe_guard_aggiunta_fuori_listino`](/dbzero/script/funzioni/trgfn_righe_guard_aggiunta_fuori_listino)
-  → `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO`).
-* **Si esclude il bundle, non il suo componente**
-  ([`trgfn_righe_guard_esclusione_figlio_bundle`](/dbzero/script/funzioni/trgfn_righe_guard_esclusione_figlio_bundle)
-  → `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA`).
+* **Quali articoli ammette la riga** lo dice una check sola per tipo di riga,
+  [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga), sollevata dal guard di tabella
+  [script.trgfn_righe_guard_articolo_ammesso](/dbzero/script/manual/trgfn_righe_guard_articolo_ammesso) (2026-10-13, brief-db-articoli-ammessi-per-documento, Lotto 3b):
+  un'**aggiunta** è un articolo fuori listino (`E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO`);
+  un **prezzo diverso** (OVERRIDE) o un'**esclusione** si fanno solo su un articolo del
+  listino del documento (`E_RIGA_ECCEZIONE_FUORI_LISTINO`, `E_RIGA_ECCEZIONE_SENZA_LISTINO`:
+  prima si scrivevano anche fuori, e la riga non compariva); **si esclude il bundle, non il
+  suo componente** (`E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA`); un articolo **solo
+  componente** non sta in una riga autonoma, e uno **senza erogazioni** non sta in
+  un'offerta. «Nel listino» vuol dire nella versione espansa, standalone e bundle.
 * **Il tipo di una riga non si cambia**: lock di colonna su `tipo_eccezione`
   → `E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE`.
 

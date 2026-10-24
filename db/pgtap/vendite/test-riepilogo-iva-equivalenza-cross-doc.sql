@@ -139,11 +139,12 @@ SELECT
     WHERE ba.utility_id IS NOT NULL
       AND ba.istanza_utility_id IS NOT NULL
     ORDER BY ba.id LIMIT 1)                 AS istanza_utility_id,
-  (SELECT a.id
-     FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST, a.id
-    LIMIT 1)                                AS articolo_id,
+-- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-1/D-2): l'articolo si
+--   COSTRUISCE. Prima si pescava dal catalogo (il primo per id, o il piu' recente):
+--   il primo per id e' l'onere del seed ONERE_SENZA_CONTRATTO (natura servizio), e
+--   da 20261013-42 ordine e bolla portano solo merce. Un articolo costruito ha solo
+--   le proprieta' che il test gli da' (merce, non gestito a magazzino).
+  dbops.fn_pgtap_crea_articolo('PGT-RIEC-ART', false)                                AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT s.id FROM config.stati_doc_ordini s
     WHERE s.attivo IS TRUE ORDER BY s.id LIMIT 1)          AS stato_doc_ordine_id,

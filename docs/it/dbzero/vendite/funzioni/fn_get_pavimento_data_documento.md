@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_pavimento_data_documento(p_registro_id bigint, p_serie ch
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_pavimento_data_documento(p_registro_id bigint, p_serie character varying, p_competenza_mese date)
  RETURNS TABLE(pavimento date, origine text)
@@ -85,6 +87,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_pavimento_data_documento(p_registro_id bigint, p_serie character varying, p_competenza_mese date)
 IS 'Il pavimento EFFETTIVO della data di un documento — il maggiore fra il pavimento della SEQUENZA e quello del LIMITE DI EMISSIONE — e quale dei due ha vinto. ⛔ E'' LA SEDE UNICA: la usano la nascita del documento (fn_calcola_data_documento), la targa del dialog (fn_get_pavimento_lotto) e il cancello (fn_get_next_progressivo). ⭐ DUE PERIMETRI, imparati a due giorni di distanza e finiti entrambi QUI per la stessa ragione. (1) rev 2026-08-31 / 20260831-05: il LIMITE DI EMISSIONE vale sulla sola famiglia FATTURA — risponde a «questo documento e'' ancora emettibile?», che e'' una regola della fattura differita, e ⛔ NON si spegne da solo, perche'' vendite.fn_get_pavimento_emissione «torna SEMPRE una data, mai NULL» e senza override sul registro legge i giorni da config.parameters (misurato: su un registro DDT il pavimento era 2026-08-19, attivo). (2) rev 2026-08-31 / 20260831-12: il pavimento di SEQUENZA vale sulle famiglie con vendite.famiglie_documento.presidia_data_documento = true. Non lo e'' l''ORDINE, che si numera all''INSERT: il numero esce quando qualcuno crea la riga, e rifiutare un ordine datato indietro rispetto all''ultimo creato sarebbe un comportamento NUOVO, fuori dal perimetro del cantiere. ℹ️ La COMMESSA si numera anch''essa all''INSERT ma presidia lo stesso, e non e'' una svista: la sua data e'' quella di CREAZIONE, quindi e'' sempre oggi e il pavimento non puo'' morderla — presidiare le costa niente e resta vero se un domani quella data cambiasse natura. ⚠️ Entrambe le distinzioni stanno QUI e non nel cancello proprio perche'' questa e'' la sede unica: scritte nel solo cancello, la nascita e la targa continuerebbero a proporre e a mostrare un pavimento che nessuno applica — tre risposte diverse alla stessa domanda. ⚠️ La FIRMA non e'' cambiata in nessuna delle due revisioni: famiglia e flag si leggono dal registro, che la funzione gia'' identifica con p_registro_id. ⚠️ COALESCE del flag a TRUE: se una famiglia non fosse a catalogo si presidia comunque — il verso prudente e'' quello che rifiuta, non quello che lascia passare. ⭐ `pavimento` e'' SEMPRE quello EFFETTIVO, mai quello di `origine`. ⚠️ Il PAREGGIO VA A SEQUENZA: a parita'' di data la sua frase puo'' portare un BERSAGLIO. ℹ️ GREATEST ignora i NULL, e sulle famiglie senza pavimenti «entrambi NULL» e'' il caso normale. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-4, rivisto da brief-db-registri-di-numerazione-emittente-e-trasloco C2-6 e C2-9.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN CLIENTE MANUALE PER SOGGETTO, UTILITY E AZIENDA
+#   NASCONO
+#     anagrafiche.fn_guard_cliente_chiave_unica(cliente)        -- la regola
+#     anagrafiche.fn_guard_clienti_chiave_unica_di(ba, istanza) -- i clienti di un BA o di un'istanza
+#     anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale() -- raggio N
+#   Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility (C-1, C-2, C-3)
+#
+# -- LA REGOLA -------------------------------------------------------
+#   Fra le istanze fittizie, due clienti con la stessa chiave (soggetto +
+#   utility + azienda) e periodi sovrapposti sono un doppione (C-1, C-2).
+#   Sorella di ex_clienti_no_overlap_stesso_pdp, il cui perno e' il PDP. La
+#   chiave tocca quattro tabelle e non sta in un indice: si controlla al
+#   COMMIT, come E_ISTANZA_SENZA_BA. Il predicato «chi occupa la chiave» e'
+#   uno solo, anagrafiche.fn_clienti_stessa_chiave (20261014-10).
+#   Il rifiuto porta il codice del BA del cliente esistente (C-3).
+#
+# -- I MOVIMENTI CHE LA ROMPONO ---------------------------------------
+#   1. si scrive un cliente (nascita, stato, date)  -> per cliente;
+#   2. cambia l'azienda di un BA (collegamento)     -> i clienti del BA;
+#   3. un'istanza diventa fittizia                   -> i clienti dell'istanza;
+#   4. si sposta l'azienda predefinita               -> raggio N: i clienti
+#      fittizi dei BA senza collegamento. Stessa tassonomia di
+#      anagrafiche.trgfn_efba_guard_istanza_emittente.
+#   Le colonne della chiave sul cliente sono ferme (lock E_CLIENTE_FORNITURA_IMMUTABILE).
+#   I trigger: 20261014-12, -13, -14.
+#
+# -- SECURITY DEFINER ------------------------------------------------
+#   Leggono clienti e billing_account, in RLS: da INVOKER il doppione di
+#   un'altra azienda dell'operatore sarebbe invisibile proprio quando
+#   va rifiutato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261014-11-create-fn-guard-cliente-chiave-unica-mctit.yaml
+
+  - changeSet:
+      id: 20261014-11-create-fn-guard-cliente-chiave-unica
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea il guard «un cliente manuale per soggetto, utility e azienda» (E_CLIENTE_STESSA_CHIAVE)
+        e i due lettori dei movimenti che lo chiamano. Brief:
+        brief-db-cliente-manuale-uno-per-soggetto-e-utility.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_cliente_chiave_unica(
+                  p_cliente_id anagrafiche.clienti.id%TYPE)
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_sr         anagrafiche.clienti.soggetto_ruolo_id%TYPE;
+                  v_utility_id anagrafiche.clienti.utility_id%TYPE;
+                  v_ef_sr      anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+                  v_altro_id   anagrafiche.clienti.id%TYPE;
+                  v_altro_ba   anagrafiche.billing_account.codice%TYPE;
+              BEGIN
+                  -- ⚠️ SECURITY DEFINER: legge clienti e billing_account,
+                  --   in RLS. Da INVOKER il doppione fuori perimetro di chi
+                  --   scrive sarebbe invisibile.
+                  IF p_cliente_id IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  SELECT c.soggetto_ruolo_id, c.utility_id,
+                         script.fn_get_ba_emittente_sr_id_installazione(c.billing_account_id)
+                    INTO v_sr, v_utility_id, v_ef_sr
+                    FROM anagrafiche.clienti c
+                   WHERE c.id = p_cliente_id;
+
+                  -- Cliente cancellato nella stessa transazione: niente
+                  -- da presidiare.
+                  IF NOT FOUND THEN
+                      RETURN;
+                  END IF;
+
+                  -- Un solo predicato (C-4). Se il cliente stesso non
+                  -- occupa la chiave (istanza non fittizia, AN, PR, AG,
+                  -- senza periodo) il suo periodo e' NULL e nessuno si
+                  -- sovrappone.
+                  WITH k AS (
+                      SELECT *
+                        FROM anagrafiche.fn_clienti_stessa_chiave(v_sr, v_utility_id, v_ef_sr)
+                  )
+                  SELECT a.cliente_id, a.billing_account_codice
+                    INTO v_altro_id, v_altro_ba
+                    FROM k a
+                   WHERE a.cliente_id <> p_cliente_id
+                     AND a.periodo && (SELECT s.periodo FROM k s WHERE s.cliente_id = p_cliente_id)
+                   ORDER BY a.data_attivazione, a.cliente_id
+                   LIMIT 1;
+
+                  IF NOT FOUND THEN
+                      RETURN;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'anagrafiche',
+                      'fn_guard_cliente_chiave_unica',
+                      'E_CLIENTE_STESSA_CHIAVE',
+                      jsonb_build_object(
+                          'cliente_id',         p_cliente_id,
+                          'altro_cliente_id',   v_altro_id,
+                          'soggetto_ruolo_id',  v_sr,
+                          'utility_id',         v_utility_id,
+                          'emittente_sr',       v_ef_sr
+                      ),
+                      NULL::uuid,
+                      v_altro_ba::text
+                  );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_guard_cliente_chiave_unica(anagrafiche.clienti.id%TYPE)
+              IS 'Guard fail-fast (C-1, C-2, C-3 di Tid del 2026-10-13): fra le istanze fittizie un cliente non si sovrappone nel periodo a un altro con lo stesso soggetto, utility e azienda emittente. Il predicato di chi occupa la chiave e'' anagrafiche.fn_clienti_stessa_chiave. Solleva E_CLIENTE_STESSA_CHIAVE col codice del billing account del cliente esistente. Cliente inesistente o fuori dalla chiave: niente da presidiare. Lo chiamano al COMMIT i constraint trigger su clienti, sul collegamento BA -> azienda e su istanze_utilities.fittizia. SECURITY DEFINER: clienti e billing_account sono in RLS. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_clienti_chiave_unica_di(
+                  p_billing_account_id anagrafiche.clienti.billing_account_id%TYPE,
+                  p_istanza_utility_id anagrafiche.clienti.istanza_utility_id%TYPE)
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  r record;
+              BEGIN
+                  -- ⚠️ SECURITY DEFINER: i clienti di un BA o di
+                  --   un'istanza si cercano sotto RLS altrimenti, e un
+                  --   cliente fuori perimetro salterebbe il controllo.
+                  -- Due parametri NULL non vogliono dire «tutti»: non si
+                  -- controlla niente (il raggio N ha la sua funzione).
+                  FOR r IN
+                      SELECT c.id
+                        FROM anagrafiche.clienti c
+                       WHERE c.billing_account_id = p_billing_account_id
+                          OR c.istanza_utility_id = p_istanza_utility_id
+                       ORDER BY c.id
+                  LOOP
+                      PERFORM anagrafiche.fn_guard_cliente_chiave_unica(r.id);
+                  END LOOP;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_guard_clienti_chiave_unica_di(
+                  anagrafiche.clienti.billing_account_id%TYPE,
+                  anagrafiche.clienti.istanza_utility_id%TYPE)
+              IS 'Applica anagrafiche.fn_guard_cliente_chiave_unica (E_CLIENTE_STESSA_CHIAVE) ai clienti di un billing account o di un''istanza. La chiamano i constraint trigger sul collegamento BA -> azienda (cambia l''azienda del BA, quindi la chiave dei suoi clienti) e su istanze_utilities.fittizia (l''istanza entra o esce dalla regola). Due NULL: nessun controllo, non «tutti». SECURITY DEFINER: clienti in RLS. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale()
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  r record;
+              BEGIN
+                  -- ⚠️ RAGGIO N: spostare l'azienda predefinita cambia la
+                  --   chiave di TUTTI i clienti dei BA senza collegamento.
+                  --   Si controllano quelli fittizi; un doppione fra due
+                  --   collegati non nasce da questo movimento.
+                  FOR r IN
+                      SELECT c.id
+                        FROM anagrafiche.clienti c
+                        JOIN anagrafiche.istanze_utilities iu
+                          ON iu.id = c.istanza_utility_id
+                       WHERE iu.fittizia
+                         AND c.periodo IS NOT NULL
+                         AND NOT EXISTS (
+                                 SELECT 1
+                                   FROM anagrafiche.emittenti_fiscali_billing_account e
+                                  WHERE e.billing_account_id = c.billing_account_id)
+                       ORDER BY c.id
+                  LOOP
+                      PERFORM anagrafiche.fn_guard_cliente_chiave_unica(r.id);
+                  END LOOP;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale()
+              IS 'Raggio N di anagrafiche.fn_guard_cliente_chiave_unica (E_CLIENTE_STESSA_CHIAVE): quando l''azienda predefinita cambia o sparisce, cambia la chiave di tutti i clienti dei BA senza collegamento; si controllano quelli delle istanze fittizie. La chiama il constraint trigger sul collegamento BA -> azienda per la riga di default. Gemella di anagrafiche.fn_guard_istanza_ba_gestore_globale. SECURITY DEFINER: clienti in RLS. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale();
+              DROP FUNCTION IF EXISTS anagrafiche.fn_guard_clienti_chiave_unica_di(bigint, bigint);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_guard_cliente_chiave_unica(bigint);

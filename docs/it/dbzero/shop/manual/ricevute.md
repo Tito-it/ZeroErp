@@ -118,8 +118,9 @@ dall'automation post-creazione tabella — non elencati qui.
 ### Policy RLS (dry-run)
 
 * **`rls_shop_ricevute_self_ownership`** (CREATE POLICY migration
-  `20260420-07-01`): gate `SHOP_CUSTOMER` + match via
-  `fn_scope_cliente_ownership(identita_id, soggetto_ruolo_id)`. DRY-RUN:
+  `20260420-07-01`): gate `SHOP_CUSTOMER` + il soggetto della ricevuta confrontato col
+  perimetro dell'identità (`fn_scope_sr_perimetro` su `fn_get_identita_sr_perimetro`,
+  calcolato una volta per istruzione, dal 21-10-2026). DRY-RUN:
   nessun `ENABLE` / `FORCE`, attivazione post-PR-B stabile.
 
 Policy admin operatore prevista in migration dedicata: probabile `FOR ALL`

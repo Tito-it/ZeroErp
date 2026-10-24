@@ -27,10 +27,17 @@
 | ci_ordine | integer | YES |  |
 | ci_procedura | text | YES |  |
 | ci_esclusione | text | YES |  |
+| acceso_in_sviluppo | boolean | YES |  |
+| acceso_in_produzione | boolean | YES |  |
+| spegnibile | boolean | YES |  |
+| causa_fallimento | text | NO |  |
+| corsa_verdetto_completo | boolean | NO | false |
+| accendibile_in_produzione | boolean | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_processi_accensione |  |
 | CHECK | chk_processi_canale |  |
 | CHECK | chk_processi_classe |  |
 | CHECK | chk_processi_contratto_solo_command |  |
@@ -39,6 +46,7 @@
 | CHECK | chk_processi_segno_di_vita |  |
 | CHECK | chk_processi_sessione_senza_tolleranza |  |
 | CHECK | chk_processi_tolleranza_positiva |  |
+| FOREIGN KEY | fk_processi_cause_fallimento | causa_fallimento |
 | PRIMARY KEY | pk_processi | id |
 | UNIQUE | uq_processi_ci_ordine | ci_ordine |
 | UNIQUE | uq_processi_codice | codice |

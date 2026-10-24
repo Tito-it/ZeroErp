@@ -11,8 +11,10 @@
     "azione_reason": {
       "senza_righe": "Il documento non ha righe: aggiungine almeno una per procedere.",
       "indirizzi_mancanti": "Mancano gli indirizzi obbligatori del documento: compilali dalla sezione Indirizzi.",
+      "indirizzo_non_del_cliente": "Un indirizzo del documento non è del suo cliente: sceglilo fra quelli del cliente, o scrivilo a mano, dalla sezione Indirizzi.",
       "prezzo_pendente": "Ci sono prezzi in attesa di approvazione ({0}).",
-      "prezzo_rifiutato": "Ci sono prezzi rifiutati dal responsabile ({0}): correggili o togli le righe."
+      "prezzo_rifiutato": "Ci sono prezzi rifiutati dal responsabile ({0}): correggili o togli le righe.",
+      "riga_non_ammessa": "{0}: la riga dell'articolo {1} non è ammessa."
     },
     "refine_hint_troncato": "Mostrati i primi {shown}. Affina la ricerca per vedere gli altri.",
     "save": "Salva",
@@ -464,9 +466,12 @@
       "aliquota_iva": "Aliquota IVA",
       "applica_fattura": "Si applica alla fattura",
       "applica_lotto": "Si applica al lotto",
+        "apribile": "Apribile (ha una sua pagina)",
       "area": "Area",
       "arrotondamento_decimali": "Decimali di arrotondamento",
       "arrotondamento_metodo": "Metodo di arrotondamento",
+      "arrotondamento_importi_dec": "Decimali degli importi",
+      "metodo_arrotondamento_importi": "Arrotondamento degli importi",
       "assoggettamento_id": "Assoggettamento IVA",
       "attende_sorgente_tipo_id": "Attende documento sorgente di tipo",
       "attivo": "Attivo",
@@ -503,6 +508,7 @@
       "entita_tabella": "Tabella entità",
       "esito": "Esito",
       "esito_default": "Esito predefinito",
+        "etichetta": "Etichetta",
       "extra_country": "Dati paese (JSON)",
       "fase": "Fase",
       "fatturabile": "Fatturabile",
@@ -514,6 +520,7 @@
       "handler_key": "Chiave handler",
       "handler_params": "Parametri handler (JSON)",
       "id_iva_split": "IVA split payment",
+      "iniziale": "Stato iniziale",
       "intervallo": "Intervallo (giorni)",
       "is_abortito": "Stato di abbandono",
       "is_bozza": "Stato di bozza",
@@ -619,7 +626,8 @@
     "back_home": "Torna alla Home",
     "lookup_load_failed": "Caricamento elenco non riuscito. Riprova oppure contatta l'amministratore.",
     "bersaglio_apri_senza_id": "Apri {entita}",
-    "http_413_file_troppo_grande": "Il file è troppo grande: supera la dimensione massima che il server accetta. Usa un file più piccolo."
+    "http_413_file_troppo_grande": "Il file è troppo grande: supera la dimensione massima che il server accetta. Usa un file più piccolo.",
+    "soluzione_riprova_fra_poco": "Attendi qualche secondo e riprova: l'operazione non verrà eseguita due volte."
   },
   "placeholder": {
     "wip_title": "Area in costruzione",
@@ -1057,10 +1065,12 @@
       "sezione_dove_vive": "Dove vive il documento",
       "sezione_forma": "Forma con cui nascono i registri",
       "sezione_stato": "Stato",
-      "schema_tabella": "Schema",
-      "nome_tabella": "Tabella",
+      "sorgente_placeholder": "Scegli la sorgente del documento",
+      "sorgente_hint": "Una famiglia è quella di una sorgente: il suo codice diventa il codice interno della famiglia, e la tabella dei documenti è quella della sorgente. Alla creazione il codice mostrato in lista vale il codice interno; si cambia poi, in modifica.",
+      "sorgente_ha_famiglia": "Ha già una famiglia: se è spenta, si riaccende quella.",
+      "sorgente_tabella_numerata": "La sua tabella è già numerata dalla famiglia attiva «{famiglia}».",
+      "tabella_dalla_sorgente": "È la tabella della sorgente: non si scrive, la dice il catalogo delle sorgenti.",
       "codice_immutabile": "Il codice non si cambia: è il bersaglio del riferimento dei registri, e cambiarlo li staccherebbe tutti.",
-      "codice_nasce_dal_interno": "Alla creazione il codice mostrato in lista vale il codice interno; si cambia poi, in modifica.",
       "serie_hint": "Vuota = questa famiglia non gestisce le serie. Se la compili, quella colonna deve distinguere il numero anche sul documento.",
       "billing_account_hint": "Vuota = questa famiglia non ha un billing account (per esempio un ordine di acquisto, la cui controparte è un fornitore).",
       "registri_totali": "Registri, su tutti gli emittenti",
@@ -1639,6 +1649,10 @@
     "col_override": "Override",
     "mostra_permessi": "Mostra permessi",
     "mostra_permessi_hint": "Sotto ogni operatore le sue aree: livello effettivo, override impostati e voci limitate dall'area.",
+    "mostra_di_prova": "Mostra gli utenti di prova",
+    "mostra_di_prova_hint": "Gli utenti creati dal provisioning di sviluppo (dev.*): di default sono nascosti.",
+    "di_prova_badge": "Di prova",
+    "di_prova_tooltip": "Utente di prova, creato dal provisioning di sviluppo: esiste solo nelle installazioni di sviluppo.",
     "permessi_nessuna_area": "Nessuna area corrisponde ai filtri.",
     "permessi_area_senza_voci": "Quest'area non ha oggetti né azioni di processo da configurare: vale il solo livello dell'area.",
     "azione_abilitata": "Abilitata",
@@ -1680,7 +1694,8 @@
       "col_jobname": "Job",
       "col_origine": "Origine",
       "col_esito": "Esito",
-      "presidi_titolo": "Controlli che devono restare vuoti",
+      "tab_processi": "Processi",
+      "tab_presidi": "Presidi",
       "presidi_help": "Ogni riga qui sotto è una cosa da sistemare. La spiegazione di ciascun controllo arriva dal database, che è dove quella regola è scritta.",
       "presidi_errore": "Non è stato possibile leggere i controlli. «Nessuna riga» qui sotto significherebbe «tutto a posto»: non è quello che sta succedendo.",
       "presidi_troncato": "prime {n} righe",
@@ -1705,17 +1720,39 @@
       "presidi_badge_tooltip": "Presidi di sistema: {allarmi} da guardare, {non_letti} non letti — letti alle {ora}",
       "tab_sveglie": "Sveglie",
       "sveglie_help": "Le sveglie di deploy dichiarate per questo processo: chi lo fa partire e con quale cadenza. È il dichiarato di progetto, non lo stato di questo host: che cosa sta girando davvero lo dicono le corse.",
+      "ambiente": "Ambiente: {ambiente}",
+      "ambiente_valore": {
+        "SVILUPPO": "Sviluppo",
+        "PRODUZIONE": "Produzione"
+      },
+      "ambiente_non_dichiarato": "Ambiente dell'installazione non dichiarato",
+      "acceso": "Acceso",
+      "spento": "Spento",
+      "accensione_non_decidibile": "Accensione non decidibile",
+      "accensione_mai_spento": "Non si spegne mai: spento, si romperebbe qualcosa senza che nessuno se ne accorga.",
+      "accensione_a_mano": "Scelta a mano: {motivo} ({quando}, {chi})",
+      "accensione_a_mano_non_ammessa": "Scelta a mano non applicata: in produzione questo processo non si accende a mano ({motivo}, {quando}, {chi}). «Torna al default» la toglie.",
+      "accensione_default": "Default del processo per l'ambiente {ambiente}",
+      "accendi": "Accendi",
+      "spegni": "Spegni",
+      "torna_al_default": "Torna al default",
+      "accendi_blocco": {
+        "non_accendibile_in_produzione": "Questo processo non si accende a mano in un'installazione di produzione: serve solo in sviluppo (per esempio scrive dati di prova). Si può spegnere o riportare al default.",
+        "non_decidibile": "Non si sa se accenderlo a mano sia ammesso: l'ambiente di questa installazione non è dichiarato."
+      },
+      "accendi_spiegazione": "Il processo ripartirà alla prossima sveglia, su questa installazione.",
+      "spegni_spiegazione": "Il processo non partirà più, né dalla sveglia né con «Esegui ora», finché non lo riaccendi.",
+      "torna_al_default_spiegazione": "Si toglie la scelta a mano: il processo torna acceso o spento come dice il suo default per l'ambiente.",
+      "accensione_motivo": "Motivo",
+      "accensione_ok": "Accensione del processo aggiornata.",
       "sveglie_nessuna": "Nessuna sveglia di deploy dichiarata per questo processo: se gira, lo sveglia qualcun altro (per esempio pgAgent).",
       "col_unit": "Unit",
       "col_forma": "Forma",
       "col_cadenza": "Cadenza",
-      "col_abilita": "Su questa installazione",
       "col_comando": "Comando",
       "forma_timer": "timer",
       "forma_servizio": "servizio",
       "sveglia_sempre_accesa": "sempre acceso",
-      "sveglia_abilitata": "attiva",
-      "sveglia_spenta": "spenta",
       "sveglia_dovuto_giorno": "ogni giorno dalle {dalle} (ora dell'azienda)",
       "sveglia_dovuto_settimana": "ogni {giorno} dalle {dalle} (ora dell'azienda)",
       "sveglia_dovuto_mese": "il giorno {giorno} di ogni mese dalle {dalle} (ora dell'azienda)",
@@ -1726,7 +1763,8 @@
       "esegui_ora_accodato": "Lavoro #{job_id} accodato: parte alla prossima corsa del drenatore.",
       "esegui_ora_blocco": {
         "non_avviabile_a_mano": "Questa sveglia è dichiarata non avviabile a mano nel deploy: il suo comando non è adatto a «Esegui ora» (è lungo per natura, oppure è il drenatore stesso).",
-        "non_abilitata": "La sveglia è spenta su questa installazione: si accende dal deploy, non da qui.",
+        "non_abilitata": "Il processo è spento su questa installazione: riaccendilo prima di eseguirlo.",
+        "non_decidibile": "Non si sa se il processo sia acceso: l'ambiente di questa installazione non è dichiarato.",
         "gia_in_coda": "È già in coda (lavoro #{job_id}): si potrà premere di nuovo quando quel lavoro sarà finito."
       }
     },
@@ -1918,6 +1956,10 @@
     "disattiva_dialog_messaggio": "L'articolo {codice} verra' disattivato. Eventuali UoM operative, righe BoM e listini collegati restano invariati. Confermi?",
     "riattiva_dialog_titolo": "Riattivare articolo",
     "riattiva_dialog_messaggio": "L'articolo {codice} verra' riattivato. Le entita' figlie (UoM operative, righe BoM) restano nello stato corrente: vanno riattivate separatamente se necessario. Confermi?",
+    "correggi_struttura": "Correggi struttura",
+    "correggi_struttura_dialog_titolo": "Correggere la struttura dell'articolo",
+    "correggi_struttura_dialog_messaggio": "L'articolo {codice} è già usato: la sua struttura (natura, tipologia di listino, composito, solo componente, magazzino, lotti e seriali) di norma non si cambia, e per vendere o gestire diversamente si crea un articolo nuovo. Usa la correzione solo per un errore di caricamento: i documenti già scritti non cambiano. Continuare?",
+    "correggi_struttura_attiva": "Correzione di struttura: i campi strutturali sono riaperti. Al salvataggio passano dalla correzione dell'amministratore.",
     "uom_creata": "Unita' di misura creata",
     "uom_salvata": "Unita' di misura salvata",
     "uom_tipo_creato": "Tipo UoM creato",
@@ -2079,7 +2121,14 @@
     "section_uso": "Utilizzo",
     "section_regole_input": "Regole Input",
     "section_extra": "Altro",
-    "select_rounding_mode": "Seleziona modo arrotondamento"
+    "select_rounding_mode": "Seleziona modo arrotondamento",
+    "distinta": {
+      "componente_reason": {
+        "componente_padre": "È l'articolo stesso: non può essere componente della propria distinta.",
+        "componente_composito": "È a sua volta un kit: una distinta contiene solo articoli semplici.",
+        "iva_discordante": "Ha un'aliquota IVA diversa dal kit: i componenti hanno l'IVA del padre."
+      }
+    }
   },
   "billing_account": {
     "search_placeholder": "Cerca BA per codice, ragione sociale, id fiscale o PDP...",
@@ -2107,6 +2156,37 @@
     "indirizzo_label": "Indirizzo"
   },
   "vendite": {
+    "righe": {
+      "articolo_reason": {
+        "solo_componente": "Articolo usabile solo dentro un kit: inserisci il kit che lo contiene.",
+        "ricorrente_usa_offerta": "Servizio ricorrente: si vende con un'offerta commerciale, non con un preventivo.",
+        "natura_non_merce": "È un servizio: in un ordine o in una bolla vanno solo merci.",
+        "senza_erogazione": "Articolo senza erogazioni ammesse: non può stare in un'offerta o in un contratto.",
+        "aggiunta_gia_in_listino": "È già nel listino del documento: per cambiargli il prezzo usa «prezzo diverso», non una riga nuova.",
+        "eccezione_senza_listino": "Il documento non ha un listino in vigore: un prezzo diverso o un'esclusione vale solo per un articolo del listino.",
+        "eccezione_fuori_listino": "Non è nel listino del documento: aggiungilo come riga nuova.",
+        "composito_come_bundle": "È un kit: in un listino entra come bundle, coi prezzi dei suoi componenti.",
+        "tipologia_mancante": "L'articolo non ha una tipologia di listino: in un listino non può entrare.",
+        "tipologia_incompatibile": "La tipologia dell'articolo non è quella del listino.",
+        "kit_senza_componenti": "Kit senza componenti: completa la sua distinta prima di usarlo."
+      }
+    },
+    "date_consegna": {
+      "azione": "Aggiorna date di consegna",
+      "nessuna_riga": "Il documento non ha righe.",
+      "titolo": "Aggiorna date di consegna",
+      "intro": "Scrive una data di consegna su più righe del documento.",
+      "colonna": "Data da aggiornare",
+      "data": "Data",
+      "modalita": "Su quali righe",
+      "modalita_solo_vuote": "Solo le righe senza data",
+      "modalita_tutte": "Tutte le righe (sovrascrive le date già scritte)",
+      "conferma_titolo": "Sovrascrivere le date?",
+      "conferma_tutte": "La data verrà scritta su {aggiornate} righe, sostituendo quelle già presenti. Continuare?",
+      "conferma_tutte_con_saltate": "La data verrà scritta su {aggiornate} righe, sostituendo quelle già presenti. {saltate} righe sono già partite con un DDT e restano come sono. Continuare?",
+      "esito": "Data di consegna aggiornata su {aggiornate} righe.",
+      "esito_con_saltate": "Data di consegna aggiornata su {aggiornate} righe; {saltate} già partite con un DDT restano come sono."
+    },
     "approvazioni_prezzo": {
       "page_title": "Approvazioni prezzo",
       "page_description": "Richieste in attesa di approvazione delle variazioni di prezzo proposte dagli operatori.",
@@ -2382,6 +2462,8 @@
       "field_codice_commessa": "Codice Commessa",
       "field_tipo_utenza": "Tipo utenza",
       "field_classe_utenza": "Classe utenza",
+      "field_param_1_num": "Parametro 1 (numero)",
+      "field_param_2_txt": "Parametro 2 (testo)",
       "field_pdp": "PDP/POD",
       "field_nr_righe": "Numero righe",
       "field_utility_associata": "Utility associata",
@@ -2399,11 +2481,9 @@
       "fonte_quantita_value_manuale": "Manuale (sul documento)",
       "fonte_quantita_value_timesheet": "Da rendicontazione ore",
       "fonte_quantita_value_letture": "Da letture utility",
-      "fonte_quantita_value_derivata_componenti": "Derivata dai componenti BoM",
       "fonte_quantita_tag_manuale": "Definita sul documento",
       "fonte_quantita_tag_timesheet": "Da rendicontazione ore",
       "fonte_quantita_tag_letture": "Da letture utility",
-      "fonte_quantita_tag_derivata_componenti": "Derivata dai componenti",
       "fonte_quantita_tag_tooltip": "La quantita' sara' determinata downstream, non si imposta qui.",
       "select_categoria_cliente": "Seleziona categoria...",
       "select_billing_account": "Cerca cliente...",
@@ -2520,7 +2600,8 @@
       "tipo_erogazione_orario": "A ore",
       "erogazioni_articolo_non_ammesso": "Questo articolo non si vende su questo documento: la sua tipologia non è fra quelle previste dalla utility.",
       "azione_reason": {
-        "listino_senza_versione_in_vigore": "Il listino non ha una versione in vigore oggi: il contratto non si può attivare."
+        "listino_senza_versione_in_vigore": "Il listino non ha una versione in vigore oggi: il contratto non si può attivare.",
+        "contratto_sovrapposto": "Il periodo si sovrappone al contratto {0}, già vincolante per lo stesso cliente e punto di fornitura: cambia le date o chiudi prima quel contratto."
       },
       "pdf": {
         "label_anteprima": "Anteprima",
@@ -2537,13 +2618,13 @@
       }
     },
     "dash_comune": {
-      "area_preventivi": "Preventivi",
-      "area_ordini": "Ordini",
-      "area_offerte": "Offerte",
-      "area_contratti": "Contratti",
-      "area_commesse": "Commesse",
-      "area_ddt": "DDT",
-      "area_resi": "Resi",
+      "area_preventivo": "Preventivi",
+      "area_ordine_vendita": "Ordini",
+      "area_offerta_commerciale": "Offerte",
+      "area_contratto": "Contratti",
+      "area_commessa": "Commesse",
+      "area_ddt_vendita": "DDT",
+      "area_reso_vendita": "Resi",
       "fase_aperto": "In lavorazione",
       "fase_in_attesa": "In attesa cliente",
       "fase_in_corso": "In corso",
@@ -2815,6 +2896,31 @@
       "section_trasporto": "Trasporto",
       "field_causale_trasporto": "Causale trasporto",
       "field_causale_richiesta_emissione": "Obbligatoria per emettere il DDT: dichiara se la merce è una vendita da fatturare o solo trasporto",
+      "field_magazzino": "Magazzino di partenza",
+      "field_magazzino_placeholder": "Il predefinito dell'azienda, se non lo scegli",
+      "field_magazzino_richiesto_emissione": "Obbligatorio per emettere una bolla che muove merce: è il magazzino da cui la merce esce",
+      "field_magazzino_arrivo": "Magazzino di arrivo",
+      "prelievi": {
+        "titolo": "Prelievi",
+        "intro": "Da dove esce la merce, riga per riga: lotto, seriale, scaffale. Le righe senza scelte da fare si prelevano da sole all'emissione.",
+        "senza_magazzino": "Scegli prima il magazzino di partenza: lotti, seriali e scaffali dipendono da lui.",
+        "voce_riga": "Riga {nr}",
+        "componente": "componente del kit",
+        "prelevata": "{prelevata} di {qta} {uom}",
+        "automatico": "Automatico all'emissione",
+        "completo": "Completo",
+        "da_completare": "Da completare",
+        "oltre": "Oltre la riga",
+        "campo_qta": "Quantità",
+        "campo_lotto": "Lotto",
+        "campo_seriale": "Seriale",
+        "campo_ubicazione": "Scaffale",
+        "campo_ubicazione_arrivo": "Scaffale di arrivo",
+        "aggiungi": "Aggiungi prelievo",
+        "togli": "Togli prelievo",
+        "salvato": "Prelievo salvato",
+        "tolto": "Prelievo tolto"
+      },
       "field_aspetto_bene": "Aspetto dei beni",
       "field_modalita_addebito": "Addebito trasporto",
       "field_vettore": "Vettore",
@@ -2933,7 +3039,18 @@
         "prelievi_incompleti": "Una o più righe non hanno prelievi che ne coprano la quantità: completa i prelievi prima di emettere.",
         "merce_non_prelevabile": "Un prelievo indicato non è ammesso dal magazzino (lotto, seriale o ubicazione non validi per l'articolo): aprilo dai prelievi della riga.",
         "merce_non_disponibile": "La merce da spedire non è disponibile a magazzino in quantità sufficiente."
-      }
+      },
+      "correggi_qta_evasa_reason": {
+        "ddt_non_in_bozza": "La quantità evasa si corregge solo finché la bolla è in bozza.",
+        "riga_non_evasa": "La riga non viene da un ordine o da un reso: la quantità si modifica dalla riga.",
+        "ddt_senza_origine": "La bolla non nasce da un ordine o da un reso: la quantità si modifica dalla riga.",
+        "legami_multipli": "La riga è legata a più righe d'origine: la quantità evasa non si può correggere da sola."
+      },
+      "correggi_qta_evasa": "Correggi quantità evasa",
+      "correggi_qta_evasa_ok": "Quantità evasa corretta",
+      "correggi_qta_evasa_spiegazione": "La riga {riga} viene da un ordine o da un reso: la nuova quantità cambia anche quanto risulta spedito per l'origine, e lo stato dell'ordine.",
+      "correggi_qta_evasa_nuova": "Nuova quantità",
+      "riga_evasa_hint": "Riga evasa da un ordine o da un reso: articolo, unità di misura e quantità non si cambiano da qui. La quantità si corregge con «Correggi quantità evasa»."
     },
     "famiglie_documento": {
       "col_codice_interno": "Codice interno",
@@ -2952,10 +3069,11 @@
       "col_attivo": "Attiva",
       "col_data_insert": "Creazione",
       "FATTURA": "Fatture",
-      "DDT": "DDT",
-      "ORDINE": "Ordini",
+      "DDT_VENDITA": "DDT",
+      "ORDINE_VENDITA": "Ordini",
       "COMMESSA": "Commesse",
-      "RESO": "Resi"
+      "RESO_VENDITA": "Resi",
+      "DISTINTA_INCASSO": "Distinte d'incasso"
     },
     "fatturazione": {
       "esiti_titolo": "Esiti fatturazione",
@@ -3057,6 +3175,11 @@
       "collegamento_cliente": "Fatture di {valore} — senza limite di data.",
       "collegamento_rimuovi": "Togli il filtro"
     },
+    "cliente": {
+      "cambio_titolo": "Cambia cliente",
+      "cambio_messaggio": "Il cliente del documento cambia subito: gli indirizzi passano al nuovo cliente. Le altre modifiche restano da salvare.",
+      "cambio_messaggio_con_fornitura": "Il cliente del documento cambia subito: indirizzi e scheda di fornitura passano al nuovo cliente. Le altre modifiche restano da salvare."
+    },
     "indirizzi": {
       "da_soggetto": "da soggetto",
       "tt_slot": "Indirizzo di {tipo} impostato su questo documento",
@@ -3102,6 +3225,12 @@
       "nessuna_origine": "Nessun documento a monte",
       "nessuna_pratica": "Documento creato senza pratica",
       "ramo_inverso": "ramo di ritorno",
+      "legame_ritirato": "legame ritirato",
+      "legame_ritirato_tooltip": "Questo documento non porta più niente qui: le sue righe sono state ritirate (annullate). Lo stato accanto è quello del documento, che può restare vivo per le righe di altri documenti.",
+      "chip_ritirato": "legame ritirato | legami ritirati",
+      "chip_ritirato_tooltip": "Legame ritirato: questo documento e l'altro non si portano più niente. Resta nei passaggi come storia: clicca per vederli.",
+      "chip_annullato": "legame annullato | legami annullati",
+      "chip_annullato_tooltip": "Documento annullato: non conta più fra i collegamenti. Resta nei passaggi come storia: clicca per vederli.",
       "collegamenti_apri": "Apri i passaggi per il dettaglio",
       "collegamenti_apri_pratica": "Apri la pratica collegata",
       "commessa_titolo": "Genealogia commessa",
@@ -3116,9 +3245,24 @@
       "tipo_fattura": "Fattura",
       "tipo_commessa": "Commessa",
       "tipo_reso_vendita": "Reso",
+      "tipo_attivita_consumi": "Consumi",
       "natura_fattura": "Fattura",
       "natura_nota_credito": "Nota di credito",
       "natura_nota_debito": "Nota di debito"
+    },
+    "annullo_legami": {
+      "righe": "Che cosa si riapre",
+      "riga": "riga {riga} · {qta} tornano disponibili",
+      "riga_senza_qta": "riga {riga} torna disponibile",
+      "commessa": "una riga da emettere torna annullata",
+      "provenienza": "torna trasformabile",
+      "spiegazione": "Confermando, il documento si annulla e queste cose tornano disponibili: quantità da spedire, righe da ordinare, righe di commessa, l'offerta da trasformare.",
+      "commessa_da_mandare": "torna da mandare in commessa · righe: {n}",
+      "commessa_da_accreditare": "torna da accreditare · righe: {n}",
+      "si_annulla": "Che cosa si annulla",
+      "oneri_annullati": "oneri che si annullano con la commessa: {n}",
+      "spiegazione_commessa": "Confermando, la commessa si annulla: le righe non ancora emesse escono dalla commessa, i documenti da cui vengono tornano da mandare in commessa, il reso torna da accreditare, gli oneri si annullano.",
+      "nessun_legame": "I legami con altri documenti non ci sono più: confermando, il documento si annulla senza ritirare niente."
     },
     "listini": {
       "search_placeholder": "Cerca per codice o descrizione listino...",
@@ -3129,6 +3273,7 @@
       "listino": "Listino",
       "listino_creato": "Listino creato",
       "listino_salvato": "Listino salvato",
+      "attivo_con_storia": "Il listino ha una storia: si spegne mettendo la fine validità alla sua versione, non da qui.",
       "versione": "Versione",
       "versione_creata": "Versione creata",
       "warning_bozza_esistente": "Esiste gia' una versione in BOZZA per questo listino ({codice}). Puoi procedere, ma verifica che non ci siano sovrapposizioni.",
@@ -3567,7 +3712,7 @@
       "esito_rifiutata_messaggio": "Confermi che il cliente ha rifiutato l'offerta? Lo stato è terminale: per riproporre, crea una nuova offerta.",
       "esito_rifiutata_conferma": "Rifiuta",
       "esito_annullata_titolo": "Annulla offerta",
-      "esito_annullata_messaggio": "Confermi l'annullamento dell'offerta? L'annullamento è ammesso solo in BOZZA (prima dell'emissione).",
+      "esito_annullata_messaggio": "Confermi l'annullamento dell'offerta? Un'offerta annullata non si emette e non si trasforma più.",
       "esito_annullata_conferma": "Annulla offerta",
       "esito_warn_motivazione": "La motivazione è obbligatoria e resta nello storico dell'offerta.",
       "crea_revisione_titolo": "Crea revisione",
@@ -3593,7 +3738,8 @@
       "successione_effetto": "Confermando, il contratto esistente verrà chiuso al {data} e verrà generato il nuovo contratto in BOZZA.",
       "azione_reason": {
         "listino_senza_versione_in_vigore": "Il listino non ha una versione in vigore oggi: pubblicane una o scegli un altro listino.",
-        "listino_versione_non_attiva": "La versione di listino collegata non è ATTIVA."
+        "listino_versione_non_attiva": "La versione di listino collegata non è ATTIVA.",
+        "documenti_vivi": "L'offerta ha generato un contratto o un ordine non annullato: per annullarla, annulla prima quel documento."
       },
       "col_descrizione": "Descrizione",
       "col_qta": "Qta",
@@ -3718,7 +3864,8 @@
       },
       "data_consegna_confermata_reason": {
         "in_bozza": "In bozza la data si cambia modificando la riga.",
-        "stato_non_ammette": "In questo stato la data di consegna non si cambia più."
+        "stato_non_ammette": "In questo stato la data di consegna non si cambia più.",
+        "riga_spedita": "La merce di questa riga è già partita con un DDT: la data di consegna confermata resta quella con cui è partita."
       },
       "azione_data_consegna_confermata": "Cambia la data di consegna confermata",
       "data_consegna_confermata_titolo": "Data di consegna confermata",
@@ -4010,7 +4157,10 @@
       "col_valido_al": "Al",
       "col_attivo": "Stato",
       "saved": "Promo aggiornata.",
-      "created": "Promo creata."
+      "created": "Promo creata.",
+      "articolo_reason": {
+        "solo_componente": "Articolo usabile solo dentro un kit: una promo su di lui non si applicherebbe mai. Metti la promo sul kit."
+      }
     },
     "resi": {
       "reso": "Reso",
@@ -4036,6 +4186,33 @@
       "field_data": "Data",
       "field_valuta": "Valuta",
       "field_ddt_origine": "DDT di origine",
+      "field_magazzino": "Magazzino di rientro",
+      "field_magazzino_richiesto_conferma": "Obbligatorio per confermare un reso che fa rientrare merce: è il magazzino in cui la merce rientra",
+      "rientri": {
+        "titolo": "Rientri",
+        "intro": "Dove rientra la merce resa: per ogni riga, da quale prelievo della bolla (lotto, seriale) e in quale scaffale. Le righe senza scelte da fare rientrano da sole alla conferma.",
+        "senza_magazzino": "Scegli prima il magazzino di rientro: gli scaffali dipendono da lui.",
+        "voce_riga": "Riga {nr}",
+        "componente": "componente del kit",
+        "rientrata": "{rientrata} di {qta} {uom}",
+        "automatico": "Automatico alla conferma",
+        "completo": "Completo",
+        "da_completare": "Da completare",
+        "oltre": "Oltre la riga",
+        "lotto": "Lotto",
+        "seriale": "Seriale",
+        "da_ubicazione": "da scaffale",
+        "in_ubicazione": "in scaffale",
+        "senza_posizione": "Senza lotto né scaffale",
+        "uscito": "usciti {qta} {uom}",
+        "campo_origine": "Da quale prelievo della bolla",
+        "campo_qta": "Quantità",
+        "campo_ubicazione": "Scaffale",
+        "aggiungi": "Aggiungi rientro",
+        "togli": "Togli rientro",
+        "salvato": "Rientro salvato",
+        "tolto": "Rientro tolto"
+      },
       "reso_salvato": "Reso salvato",
       "reso_confermato": "Reso confermato",
       "reso_annullato": "Reso annullato",
@@ -4811,6 +4988,25 @@
     }
   },
   "magazzino": {
+    "blocchi": {
+      "blocca": "Blocca merce",
+      "titolo_apri": "Blocca merce",
+      "apri_conferma": "Blocca",
+      "aperto": "Merce bloccata",
+      "campo_qta": "Pezzi da bloccare",
+      "campo_soggetto": "Per chi",
+      "campo_nota": "Nota",
+      "per_chi_aiuto": "Un blocco dice per chi è: indica il soggetto o scrivi una nota. Ferma gli scarichi degli altri finché non lo liberi.",
+      "campo_lotto": "Lotto",
+      "campo_seriale": "Seriale",
+      "campo_ubicazione": "Scaffale",
+      "libera": "Libera",
+      "titolo_libera": "Libera il blocco",
+      "libera_conferma": "Libera",
+      "libera_domanda": "Liberare {qta} pezzi bloccati?",
+      "campo_nota_liberazione": "Perché lo liberi (facoltativo)",
+      "liberato": "Blocco liberato"
+    },
     "disponibilita": {
       "blocco": {
         "giacenza_insufficiente": "Giacenza insufficiente: la quantità in uscita è maggiore di quella che il registro dà come presente per l'articolo, oppure per il lotto o il seriale indicati.",
@@ -5524,6 +5720,32 @@
       "col_sorgente": "Sorgente",
       "col_emittente": "Emittente fiscale",
       "col_is_default": "Default",
+      "col_standard": "Standard",
+      "col_stato_scarto": "Allineamento allo standard",
+      "standard_hint": "Modello standard di sistema: lo usano le aziende che per questo documento non hanno un modello loro. Non si modifica dall'applicazione: per cambiarlo, personalizzalo per un'azienda.",
+      "scarto": {
+        "ALLINEATA": "Allineata",
+        "ALLINEATA_hint": "La copia parte dalla versione con cui il modello standard stampa oggi.",
+        "STANDARD_AVANTI": "Standard più avanti",
+        "STANDARD_AVANTI_hint": "Il modello standard ha pubblicato una versione nuova: la copia funziona, ma non ne ha le modifiche.",
+        "CONTESTO_SUPERATO": "Forma dei dati superata",
+        "CONTESTO_SUPERATO_hint": "La copia legge una forma dei dati più vecchia di quella del modello standard: alla stampa si fermerà. Va ripartita dallo standard o aggiornata.",
+        "ORIGINE_NON_DICHIARATA": "Origine non dichiarata",
+        "ORIGINE_NON_DICHIARATA_hint": "Il modello non dichiara da quale versione standard deriva: si confronta solo la forma dei dati."
+      },
+      "personalizza": {
+        "action": "Personalizza",
+        "title": "Personalizza per un'azienda",
+        "hint": "Crea il modello dell'azienda partendo dalla versione con cui lo standard stampa oggi. La prima versione nasce in bozza: finché non la pubblichi, l'azienda continua a stampare con lo standard.",
+        "nomi_hint": "Codice, codice interno e descrizione vuoti: quelli del modello standard.",
+        "predefinito_auto": "Decide il sistema (sì, se l'azienda non ne ha già uno)",
+        "done": "Modello personalizzato creato: pubblica la sua prima versione per usarlo."
+      },
+      "risoluzione": {
+        "titolo_standard": "Stampano con il modello standard:",
+        "SENZA_PREDEFINITO": "{azienda}: ha modelli suoi per {documento}, ma nessuno è predefinito. La stampa di questo documento si ferma: segna come predefinito uno dei suoi modelli.",
+        "NON_RISOLTO": "{azienda}: nessun modello stampa {documento}, nemmeno quello standard. Va riattivato il modello standard o pubblicata una sua versione valida."
+      },
       "field_codice": "Codice",
       "field_codice_interno": "Codice interno",
       "field_descrizione": "Descrizione",
@@ -5668,10 +5890,40 @@
       "lotto": "Lotto",
       "task_run": "Giro",
       "contratto": "Contratto",
-      "ordine_vendita": "Ordine",
+      "ordine_vendita": "Ordine di vendita",
       "preventivo": "Preventivo",
       "flusso": "Flusso",
-      "definizione_workflow": "Edizione workflow"
+      "definizione_workflow": "Edizione workflow",
+      "offerta_commerciale": "Offerta",
+      "ddt_vendita": "DDT di vendita",
+      "listino_versione": "Versione di listino",
+      "articolo": "Articolo",
+      "promo_articolo": "Promo articolo",
+      "attivita": "Attività fatturabile",
+      "attivita_consumi": "Attività a consumo",
+      "reso_vendita": "Reso di vendita",
+      "preventivo_riga": "Riga di preventivo",
+      "contratto_riga": "Riga di contratto",
+      "ordine_vendita_riga": "Riga d'ordine di vendita",
+      "ddt_vendita_riga": "Riga di DDT di vendita",
+      "fattura_riga": "Riga di fattura",
+      "reso_vendita_riga": "Riga di reso di vendita",
+      "ddt_vendita_prelievo": "Prelievo",
+      "reso_vendita_rientro": "Rientro",
+      "ordine_acquisto": "Ordine d'acquisto",
+      "ddt_acquisto": "DDT d'acquisto",
+      "inventario": "Inventario",
+      "inventario_riga": "Riga d'inventario",
+      "rettifica": "Rettifica",
+      "rettifica_riga": "Riga di rettifica",
+      "trasferimento": "Trasferimento",
+      "trasferimento_riga": "Riga di trasferimento",
+      "evento_asset": "Evento dell'asset",
+      "distinta_incasso": "Distinta d'incasso",
+      "email": "Email",
+      "articolo_componente": "Componente di distinta",
+      "asset": "Asset",
+      "movimento": "Movimento di magazzino"
     },
     "registri_giornale": {
       "event_log": "Eventi di dominio",
@@ -5882,6 +6134,9 @@
       "indirizzo_libero": "Indirizzo",
       "stato": "Stato",
       "locality": "Città / Località",
+      "postal_code": "Codice postale",
+      "administrative_area": "Regione / Provincia",
+      "sublocality": "Frazione / Quartiere",
       "auto_clone": "Usa stesso indirizzo per tutti gli obbligatori",
       "obbligatorio": "Obbligatorio",
       "tipo_gia_creato": "Tipo indirizzo gia' presente",

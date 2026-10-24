@@ -2,27 +2,28 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Le INSERT di clienti, billing account e fornitori migrate sul BB
-#        `execute_dynamic_insert` (2026-09-26), sul DATABASE VERO: le
-#        `espressioni` letterali (stato iniziale per codice, `fn_data_operativa()`)
-#        finiscono davvero nel testo SQL e i None omessi lasciano lavorare i
-#        DEFAULT del DB — cio' che i test di servizio, che mockano il
-#        repository, non vedono.
+# Scopo: La creazione di clienti (con billing account) e fornitori sul
+#        DATABASE VERO. Dal 2026-10-18 (2b-2 di
+#        brief-db-processi-accensione-per-ambiente) la fanno le madri del DB
+#        `anagrafiche.fn_crea_cliente` e `fn_crea_fornitore`, chiamate dai
+#        service: lo stato di nascita, la data operativa e i DEFAULT delle
+#        chiavi assenti sono regole della madre, e qui si prova che arrivino —
+#        cio' che i test di servizio, che mockano il repository, non vedono.
 # Note: ⚠️ Il mondo si COSTRUISCE (`dbops.fn_pgtap_crea_mondo_cliente`,
 #       `fn_pgtap_crea_soggetto_pg`), in transazione ANNULLATA. Opt-in
 #       `ZEROERP_TEST_DB_E2E=1` (acceso in CI).
-#       ⛔ Il rifiuto delle chiavi fuori whitelist e' senza DB (classe 1).
+#       ⛔ Fino al 2026-10-18 il file provava le INSERT del repository
+#       (`execute_dynamic_insert`) e il rifiuto delle chiavi fuori whitelist
+#       senza DB: quelle INSERT sono ritirate, e la chiave estranea la
+#       rifiuta la madre (`E_CAMPO_NON_AMMESSO`, pgTAP delle madri).
 # ------------------------------------------------------------
 """
-Indice test eseguiti:
-Rifiuto (senza DB):
-1) RifiutoChiaviClientiFornitoriTests.test_chiave_estranea_e_runtime_error
-Opt-in `ZEROERP_TEST_DB_E2E=1`:
-2) ScritturaClientiFornitoriDbTests.test_billing_account_e_cliente
-   BA: `fatturazione_ordini` None -> DEFAULT CONFERMATO, parent NULL.
-   Cliente: stato AT e data di attivazione di oggi dalle espressioni.
-3) ScritturaClientiFornitoriDbTests.test_fornitore_nasce_ve
-   stato VE dall'espressione, opzionali None omessi, `note` scritta.
+Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
+1) ScritturaClientiFornitoriDbTests.test_billing_account_e_cliente
+   BA nuovo: `fatturazione_ordini` assente -> DEFAULT CONFERMATO, parent NULL.
+   Cliente: stato AT e data di attivazione di oggi dalla madre, garanzia al DEFAULT.
+2) ScritturaClientiFornitoriDbTests.test_fornitore_nasce_ve
+   stato VE dalla madre, opzionali assenti al DEFAULT, `note` scritta, codice generato.
 """
 from __future__ import annotations
 
@@ -30,56 +31,34 @@ import unittest
 
 from django.db import connection, transaction
 
-from apps.anagrafiche.db.clienti_repository import ClientiRepository
-from apps.anagrafiche.db.fornitori_repository import FornitoriRepository
 from apps.core.tests.db_e2e import Annulla, apri_contesto_operatore, richiedi_db_provvisto
-
-
-class RifiutoChiaviClientiFornitoriTests(unittest.TestCase):
-    """⛔ Una chiave fuori whitelist e' `RuntimeError`, mai uno scarto."""
-
-    # 1. Il BB verifica le colonne PRIMA di aprire il cursore: niente DB.
-    #    `stato_*_id` e' la chiave che collide con l'espressione dello stato
-    #    iniziale: fino al 2026-09-26 veniva ignorata in silenzio.
-    def test_chiave_estranea_e_runtime_error(self):
-        cli, forn = ClientiRepository(), FornitoriRepository()
-        casi = (
-            ("create_cliente ignota", lambda: cli.create_cliente(
-                istanza_utility_id=1, billing_account_id=1, soggetto_ruolo_id=1, iva_id=5)),
-            ("create_cliente stato", lambda: cli.create_cliente(
-                istanza_utility_id=1, billing_account_id=1, soggetto_ruolo_id=1,
-                stato_cliente_id=3)),
-            ("create_fornitore ignota", lambda: forn.create_fornitore(
-                soggetto_ruolo_id=1, campo_ignoto="x")),
-            ("create_fornitore stato", lambda: forn.create_fornitore(
-                soggetto_ruolo_id=1, stato_fornitore_id=3)),
-            ("update_cliente_atomico", lambda: cli.update_cliente_atomico(
-                1, ba_categoria_cliente_id=None, cliente_fields={"stato_cliente_id": 3})),
-        )
-        for nome, chiama in casi:
-            with self.subTest(nome), self.assertRaises(RuntimeError):
-                chiama()
 
 
 class ScritturaClientiFornitoriDbTests(unittest.TestCase):
     def setUp(self):
         richiedi_db_provvisto("dbops.fn_pgtap_crea_mondo_cliente(text,character varying)")
 
-    # 2. Istanza -> BA -> cliente dal repository, come fa `crea_cliente`.
+    # 1. Un cliente manuale dal service, cioe' dalla madre: istanza fittizia,
+    #    BA nuovo e cliente in un'istruzione.
     def test_billing_account_e_cliente(self):
+        from apps.anagrafiche.services.clienti_service import ClientiService
+
         try:
             with transaction.atomic(), connection.cursor() as cur:
+                # Il contesto dell'operatore pgTAP (con un emittente): la madre
+                # rilegge BA e cliente sotto la RLS, e il legame BA → emittente
+                # lo scrive il trigger da chi agisce.
+                cur.execute("SELECT script.fn_pgtap_set_contesto_operatore()")
                 cur.execute(
                     "CREATE TEMP TABLE _mondo AS "
                     "SELECT m.* FROM dbops.fn_pgtap_crea_mondo_cliente('SCRCLI') m"
                 )
                 cur.execute(
-                    "SELECT m.cliente_soggetto_id, m.cliente_soggetto_ruolo_id, m.utility_id,"
-                    "       ba.categoria_cliente_id"
+                    "SELECT ba.categoria_cliente_id"
                     "  FROM _mondo m"
                     "  JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id"
                 )
-                soggetto_id, sr_id, _, categoria_id = cur.fetchone()
+                (categoria_id,) = cur.fetchone()
                 # ⚠️ L'utility del cliente MANUALE: `richiede_pdp = false`, come
                 #    pretende `crea_cliente` (e il trigger
                 #    `trgfn_clienti_sync_utility_from_ba`, E_PDP_OBBLIGATORIO).
@@ -90,75 +69,79 @@ class ScritturaClientiFornitoriDbTests(unittest.TestCase):
                 if riga is None:
                     self.skipTest("nessuna utility senza PDP a catalogo")
                 utility_id = riga[0]
-                # La finestra differita: l'istanza vuole il suo satellite (il
-                # BA) al COMMIT, e il BA si scrive un'istruzione dopo.
+                # Un soggetto NUOVO: «un cliente manuale per soggetto, utility e
+                # azienda» (D33) rifiuterebbe un secondo cliente sul mondo.
+                cur.execute("SELECT dbops.fn_pgtap_crea_soggetto_pg('Cliente scrcli')")
+                soggetto_id = str(cur.fetchone()[0])
+                # La finestra differita: istanza e indirizzi del ruolo li
+                # pretendono i guard al COMMIT, che qui non arriva.
                 cur.execute("SET CONSTRAINTS ALL DEFERRED")
-                repo = ClientiRepository()
-                istanza_id = repo.create_istanza_fittizia(soggetto_id=str(soggetto_id))
-                ba_id = repo.create_billing_account(
-                    istanza_utility_id=istanza_id, soggetto_ruolo_id=sr_id,
-                    utility_id=utility_id, categoria_cliente_id=categoria_id,
-                )
-                cur.execute(
-                    "SELECT fatturazione_ordini, parent_account_id, categoria_cliente_id"
-                    "  FROM anagrafiche.billing_account WHERE id = %s",
-                    [ba_id],
-                )
-                self.assertEqual(cur.fetchone(), ("CONFERMATO", None, categoria_id))
 
-                cliente_id = repo.create_cliente(
-                    istanza_utility_id=istanza_id, billing_account_id=ba_id,
-                    soggetto_ruolo_id=sr_id, garanzia_tipo=None, garanzia_importo=None,
-                    servizio_da_fatturare=False,
+                esito = ClientiService().crea_cliente({
+                    "soggetto_id": soggetto_id, "utility_id": utility_id,
+                    "ba_categoria_cliente_id": categoria_id, "servizio_da_fatturare": False,
+                })
+                cur.execute(
+                    "SELECT fatturazione_ordini, parent_account_id, categoria_cliente_id,"
+                    "       istanza_utility_id"
+                    "  FROM anagrafiche.billing_account WHERE id = %s",
+                    [esito["billing_account_id"]],
+                )
+                self.assertEqual(
+                    cur.fetchone(),
+                    ("CONFERMATO", None, categoria_id, esito["istanza_utility_id"]),
                 )
                 cur.execute(
                     """
                     SELECT sc.codice_interno, cl.data_attivazione, cl.garanzia_tipo,
-                           cl.servizio_da_fatturare
+                           cl.servizio_da_fatturare, cl.soggetto_ruolo_id
                       FROM anagrafiche.clienti cl
                       JOIN config.stati_cliente sc ON sc.id = cl.stato_cliente_id
                      WHERE cl.id = %s
                     """,
-                    [cliente_id],
+                    [esito["id"]],
                 )
-                stato, attivazione, garanzia_tipo, da_fatturare = cur.fetchone()
+                stato, attivazione, garanzia_tipo, da_fatturare, sr_id = cur.fetchone()
                 self.assertEqual(stato, "AT")
+                self.assertEqual(sr_id, esito["soggetto_ruolo_id"])
                 cur.execute("SELECT script.fn_data_operativa()")
                 self.assertEqual(attivazione, cur.fetchone()[0])
-                # None omesso -> DEFAULT 'D' della colonna, come prima.
+                # Chiave assente -> DEFAULT 'D' della colonna, come prima.
                 self.assertEqual(garanzia_tipo, "D")
                 self.assertFalse(da_fatturare)
                 raise Annulla
         except Annulla:
             pass
 
-    # 3. Fornitore: nasce VE, gli opzionali None non si scrivono.
+    # 2. Fornitore dal service, cioe' dalla madre: nasce VE, gli opzionali
+    #    assenti non si scrivono, il codice lo genera `sistema_codici`.
     def test_fornitore_nasce_ve(self):
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 apri_contesto_operatore(cur)
                 cur.execute("SELECT dbops.fn_pgtap_crea_soggetto_pg('Fornitore scrfor')")
                 soggetto_id = str(cur.fetchone()[0])
                 cur.execute("SET CONSTRAINTS ALL DEFERRED")
-                repo = FornitoriRepository()
-                sr_id = repo.get_or_create_ruolo_fornitore(soggetto_id)
-                fornitore_id = repo.create_fornitore(
-                    soggetto_ruolo_id=sr_id, note="Nota scrfor", rating=None,
-                )
+                esito = FornitoriService().crea_fornitore({
+                    "soggetto_id": soggetto_id, "note": "Nota scrfor", "rating": None,
+                })
                 cur.execute(
                     """
-                    SELECT sf.codice_interno, f.note, f.rating, f.codice
+                    SELECT sf.codice_interno, f.note, f.rating, f.codice, f.soggetto_ruolo_id
                       FROM anagrafiche.fornitori f
                       JOIN config.stati_fornitore sf ON sf.id = f.stato_fornitore_id
                      WHERE f.id = %s
                     """,
-                    [fornitore_id],
+                    [esito["id"]],
                 )
-                stato, note, rating, codice = cur.fetchone()
+                stato, note, rating, codice, sr_id = cur.fetchone()
                 self.assertEqual(stato, "VE")
                 self.assertEqual(note, "Nota scrfor")
                 self.assertIsNone(rating)
                 self.assertTrue(codice)  # dal sistema_codici: la chiave e' stata omessa
+                self.assertEqual(sr_id, esito["soggetto_ruolo_id"])
                 raise Annulla
         except Annulla:
             pass

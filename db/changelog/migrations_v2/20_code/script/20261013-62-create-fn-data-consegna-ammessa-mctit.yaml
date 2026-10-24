@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: script.fn_data_consegna_ammessa(date, date) -> boolean
+#   LA regola: una data di consegna non viene prima della data del documento.
+#   Segnalazione dal collaudo (2026-10-13): sulle righe di ordine e preventivo
+#   di vendita si salvavano date di consegna anteriori alla data del documento,
+#   dal form di riga e da «Aggiorna date di consegna» in blocco.
+#
+# -- PERCHE' UNA FUNZIONE PER UN CONFRONTO ---------------------------------
+#   Il confronto e' banale, il SIGNIFICATO no: lo leggono quattro posti — il
+#   lettore DEFINER dei due guard (righe e testata,
+#   script.fn_doc_date_consegna_anteriori) e le due copie di righe
+#   (vendite.fn_push_preventivo_a_ordine, vendite.fn_crea_revisione_preventivo),
+#   che per la stessa regola AZZERANO la data invece di rifiutare (decisione di
+#   Tid, 2026-10-13). Se un giorno la regola cambia (una consegna lo stesso
+#   giorno vietata, un margine di giorni) cambia qui, e i quattro posti
+#   rispondono uguale.
+#
+# -- IL CONTRATTO -----------------------------------------------------------
+#   * data di consegna NULL = «nessuna data»: ammessa;
+#   * stessa data del documento: ammessa (consegna in giornata);
+#   * data del documento NULL: ammessa — senza riferimento non c'e' confronto.
+#     Le testate hanno data NOT NULL: il ramo esiste per un chiamante senza
+#     documento, non per un caso delle testate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261013-62-create-fn-data-consegna-ammessa-mctit.yaml
+
+  - changeSet:
+      id: 20261013-62-create-fn-data-consegna-ammessa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova script.fn_data_consegna_ammessa: una data di consegna non e' anteriore alla data del
+        documento (NULL ammessa). Sede unica della regola per i guard di riga e di testata e per le
+        copie di righe (push preventivo->ordine, revisione preventivo).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_data_consegna_ammessa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_data_consegna_ammessa(
+                  p_data_consegna  date,
+                  p_data_documento date)
+              RETURNS boolean
+              LANGUAGE sql
+              IMMUTABLE PARALLEL SAFE
+              AS $function$
+                  -- ⚠️ Tipi nudi DICHIARATI: la funzione serve tre colonne di
+                  --   consegna su due tabelle e la data di due testate; non c'e'
+                  --   UNA colonna da ancorare.
+                  SELECT p_data_consegna IS NULL
+                      OR p_data_documento IS NULL
+                      OR p_data_consegna >= p_data_documento;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_data_consegna_ammessa(date, date) IS
+                  'Regola (2026-10-13, collaudo date di consegna): una data di consegna e'' ammessa se non e'' anteriore alla data del documento. TRUE anche con la data di consegna NULL («nessuna data») e con la data del documento NULL (nessun riferimento: le testate l''hanno NOT NULL, il ramo e'' per chi chiama senza documento). Stessa data del documento: ammessa. Sede unica: la leggono script.fn_doc_date_consegna_anteriori (il lettore dei guard di riga e di testata) e le copie di righe vendite.fn_push_preventivo_a_ordine e vendite.fn_crea_revisione_preventivo, che con una data non ammessa la azzerano (decisione di Tid, 2026-10-13).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_data_consegna_ammessa(date, date);

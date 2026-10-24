@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_consumi_da_pushare
 -- ------------------------------------------------------------
@@ -7,7 +8,7 @@
 -- 1) fn_list_consumi_da_pushare presente
 -- 2) Riferimenti minimi disponibili
 -- 3) Consumo con stato_calcolo OK restituito
--- 4) Segment key formato corretto (CONS:<uid>)
+-- 4) Segment key formato corretto (ATTIVITA_CONSUMI:<uid>)
 -- 5) articolo_id = NULL (handler risolve)
 -- 6) Consumo con stato_calcolo diverso da OK escluso
 -- 7) Consumo con fattura_id NOT NULL escluso
@@ -119,9 +120,9 @@ SELECT ok(
     SELECT 1
     FROM tmp_result_cons rc
     WHERE rc.consumo_id = (SELECT id FROM tmp_consumo_ok)
-      AND rc.segment_key = 'CONS:' || (SELECT uid FROM tmp_consumo_ok)::text
+      AND rc.segment_key = 'ATTIVITA_CONSUMI:' || (SELECT uid FROM tmp_consumo_ok)::text
   ),
-  'Segment key formato corretto (CONS:<uid>)'
+  'Segment key formato corretto (ATTIVITA_CONSUMI:<uid>)'
 );
 
 -- ============================================================

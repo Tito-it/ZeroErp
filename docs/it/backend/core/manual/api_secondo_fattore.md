@@ -24,7 +24,7 @@ Gestisce il secondo fattore di autenticazione (codice a tempo, RFC 6238) di una 
 
 Logica: `apps/core/services/secondo_fattore_service.py`. View:
 `apps/core/api/secondo_fattore_views.py` (la propria credenziale) e
-`apps/amm_software/api/secondo_fattore_views.py` (SUPER_ADMIN).
+`apps/amm_software/api/accessi_views.py` (SUPER_ADMIN).
 
 ## Endpoint — la propria credenziale
 
@@ -79,7 +79,9 @@ operatore per un operatore. Prima stava sotto `operatori/<id>/`: ritirato.
 | `POST …/secondo-fattore/disattiva/` | `{motivo}` (obbligatorio) | lo stato |
 
 * `obbligo/` accende o spegne il solo flag della **credenziale**: un obbligo che
-  viene da un profilo resta (`motivo = PROFILO`).
+  viene da un profilo resta (`motivo = PROFILO`). `valore` deve essere un booleano
+  JSON: assente, `null` o di altro tipo → 400 `E_AMM_VALIDAZIONE`, verificato
+  **prima** dell'esistenza della credenziale.
 * `disattiva/` (telefono perso) cancella il device; senza motivo il DB rifiuta
   (`E_TOTP_MOTIVO_OBBLIGATORIO`). Le sessioni aperte **restano** (decisione 8 del
   brief). Traccia come sopra, con `chi_agisce` = il SUPER_ADMIN.
@@ -104,6 +106,7 @@ Envelope standard. Errori principali:
 | `E_TOTP_DEVICE_ASSENTE` | 409 | conferma senza configurazione avviata, prova senza device attivo |
 | `E_TOTP_DEVICE_GIA_ATTIVO` | 409 | `registra/` o `conferma/` su un device attivo |
 | `E_TOTP_MOTIVO_OBBLIGATORIO` | 400 | disattivazione da amministratore senza motivo |
+| `E_AMM_VALIDAZIONE` | 400 | `obbligo/` senza un `valore` booleano JSON |
 | `E_PERMESSO_NEGATO` | 403 | disattivazione da amministratore sulla propria credenziale |
 | `E_TOTP_CONFIGURAZIONE_RICHIESTA` | 403 | (il cancello) ogni altra API con l'obbligo pendente |
 

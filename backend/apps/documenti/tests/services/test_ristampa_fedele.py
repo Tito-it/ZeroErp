@@ -36,13 +36,19 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 from unittest import expectedFailure
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
+)
+from apps.documenti.tests.services.generazione_fakes import (
+    make_user,
+    patch_render,
+    patch_scope,
+    service_with_mocks,
 )
 
 _PDF = b"%PDF-1.4 ristampa"
@@ -102,40 +108,6 @@ def _snapshot(**overrides: Any) -> dict[str, Any]:
     return base
 
 
-def _make_user(*, is_authenticated: bool = True, user_id: int = 5) -> Any:
-    user = MagicMock()
-    user.is_authenticated = is_authenticated
-    user.id = user_id
-    return user
-
-
-def _service_with_mocks(
-    *, repo_methods: dict[str, Any] | None = None,
-) -> tuple[DocumentGenerationService, MagicMock]:
-    repo = MagicMock()
-    if repo_methods:
-        for name, value in repo_methods.items():
-            getattr(repo, name).return_value = value
-    svc = DocumentGenerationService(
-        repo=repo, reader=MagicMock(), storage=MagicMock(),
-    )
-    return svc, repo
-
-
-def _patch_render(return_value: bytes = _PDF):
-    return patch(
-        "apps.documenti.services.document_generation_service.render_pdf",
-        return_value=return_value,
-    )
-
-
-def _patch_scope(value: list[int] | None = None):
-    return patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
-        return_value=value,
-    )
-
-
 def _patch_atomic():
     return patch(
         "apps.documenti.services.document_generation_service.transaction.atomic",
@@ -149,13 +121,13 @@ class RistampaFedeleTests(SimpleTestCase):
     #    (non ricostruito) arrivano al render esattamente come sono a DB.
     def test_ristampa_usa_versione_pinnata_e_contesto_congelato(self) -> None:
         versione = _versione_pinnata()
-        svc, repo = _service_with_mocks(repo_methods={
+        svc, repo, _, _ = service_with_mocks(repo_methods={
             "get_documento_generato_snapshot": _snapshot(),
             "get_versione_by_id": versione,
         })
-        with _patch_scope(), _patch_atomic(), _patch_render() as mock_render, \
+        with patch_scope(), _patch_atomic(), patch_render(_PDF) as mock_render, \
                 patch.object(DocumentGenerationService, "_risolutore_asset") as mock_ris:
-            result = svc.ristampa_fedele(_make_user(), 99)
+            result = svc.ristampa_fedele(make_user(), 99)
 
         # Gli asset: quelli dell'emittente del DOCUMENTO, anche se oggi scaduti
         # o disattivati (sono immutabili: il codice_interno indica il file di
@@ -165,9 +137,11 @@ class RistampaFedeleTests(SimpleTestCase):
 
         # La versione caricata e' quella pinnata sul documento.
         repo.get_versione_by_id.assert_called_once_with(12)
-        # NON e' stata chiesta la versione pubblicata di oggi: sarebbe l'errore
-        # che rende la "ristampa" un documento nuovo.
-        repo.get_versione_pubblicata_attiva.assert_not_called()
+        # NON e' stata chiesta la versione che stampa oggi (la porta della
+        # stampa nuova): sarebbe l'errore che rende la "ristampa" un documento
+        # nuovo.
+        repo.risolvi_template_applicabile.assert_not_called()
+        repo.get_versione.assert_not_called()
 
         kwargs = mock_render.call_args.kwargs
         self.assertIs(kwargs["template_versione"], versione)
@@ -181,38 +155,38 @@ class RistampaFedeleTests(SimpleTestCase):
 
     # 1. Nessun context_builder invocato: il contesto si legge, non si costruisce.
     def test_ristampa_non_ricostruisce_il_contesto(self) -> None:
-        svc, _ = _service_with_mocks(repo_methods={
+        svc, _, _, _ = service_with_mocks(repo_methods={
             "get_documento_generato_snapshot": _snapshot(),
             "get_versione_by_id": _versione_pinnata(),
         })
-        with _patch_scope(), _patch_atomic(), _patch_render():
+        with patch_scope(), _patch_atomic(), patch_render(_PDF):
             with patch(
                 "apps.documenti.services.document_generation_service.get_builder_del_template",
             ) as mock_builder:
-                svc.ristampa_fedele(_make_user(), 99)
+                svc.ristampa_fedele(make_user(), 99)
         mock_builder.assert_not_called()
 
     # 2. Non e' un'emissione: nessuna riga nuova, nessun file, nessun
     #    progressivo consumato (§5.1.4 del brief).
     def test_ristampa_non_persiste_documento_ne_file(self) -> None:
-        svc, repo = _service_with_mocks(repo_methods={
+        svc, repo, _, _ = service_with_mocks(repo_methods={
             "get_documento_generato_snapshot": _snapshot(),
             "get_versione_by_id": _versione_pinnata(),
         })
-        with _patch_scope(), _patch_atomic(), _patch_render():
-            svc.ristampa_fedele(_make_user(), 99)
+        with patch_scope(), _patch_atomic(), patch_render(_PDF):
+            svc.ristampa_fedele(make_user(), 99)
         repo.create_documento_generato.assert_not_called()
         repo.create_documento_generato_file.assert_not_called()
         repo.next_progressivo_sorgente.assert_not_called()
 
     # 3. Byte identici -> match dichiarato, evento OK.
     def test_ristampa_pdf_hash_coincide_esito_ok(self) -> None:
-        svc, repo = _service_with_mocks(repo_methods={
+        svc, repo, _, _ = service_with_mocks(repo_methods={
             "get_documento_generato_snapshot": _snapshot(),
             "get_versione_by_id": _versione_pinnata(),
         })
-        with _patch_scope(), _patch_atomic(), _patch_render():
-            result = svc.ristampa_fedele(_make_user(), 99)
+        with patch_scope(), _patch_atomic(), patch_render(_PDF):
+            result = svc.ristampa_fedele(make_user(), 99)
         self.assertTrue(result["pdf_hash_match"])
         self.assertEqual(result["pdf_hash_ristampa"], _PDF_HASH)
         evento = repo.emit_evento_documento.call_args.args[0]
@@ -222,12 +196,12 @@ class RistampaFedeleTests(SimpleTestCase):
     #    decisione §8.2 e' "fedele nel contenuto, non nei byte", e il fatto
     #    va DETTO invece che nascosto.
     def test_ristampa_pdf_hash_diverso_non_solleva_ed_e_dichiarato(self) -> None:
-        svc, repo = _service_with_mocks(repo_methods={
+        svc, repo, _, _ = service_with_mocks(repo_methods={
             "get_documento_generato_snapshot": _snapshot(pdf_hash="f" * 64),
             "get_versione_by_id": _versione_pinnata(),
         })
-        with _patch_scope(), _patch_atomic(), _patch_render():
-            result = svc.ristampa_fedele(_make_user(), 99)
+        with patch_scope(), _patch_atomic(), patch_render(_PDF):
+            result = svc.ristampa_fedele(make_user(), 99)
         self.assertFalse(result["pdf_hash_match"])
         self.assertEqual(result["pdf_hash_atteso"], "f" * 64)
         self.assertEqual(result["pdf_hash_ristampa"], _PDF_HASH)
@@ -242,24 +216,24 @@ class RistampaFedeleTests(SimpleTestCase):
     #    la versione e' cambiata dopo la generazione (possibile solo su BOZZA).
     #    Dichiarato, non bloccante.
     def test_ristampa_template_hash_diverso_dichiarato(self) -> None:
-        svc, _ = _service_with_mocks(repo_methods={
+        svc, _, _, _ = service_with_mocks(repo_methods={
             "get_documento_generato_snapshot": _snapshot(template_hash="9" * 64),
             "get_versione_by_id": _versione_pinnata(),
         })
-        with _patch_scope(), _patch_atomic(), _patch_render():
-            result = svc.ristampa_fedele(_make_user(), 99)
+        with patch_scope(), _patch_atomic(), patch_render(_PDF):
+            result = svc.ristampa_fedele(make_user(), 99)
         self.assertFalse(result["template_hash_match"])
         self.assertTrue(result["pdf_hash_match"])
 
     # 6. Documento inesistente o fuori scope emittente -> 404 unificato,
     #    nessun render sprecato.
     def test_ristampa_documento_inesistente_o_fuori_scope_not_found(self) -> None:
-        svc, repo = _service_with_mocks(repo_methods={
+        svc, repo, _, _ = service_with_mocks(repo_methods={
             "get_documento_generato_snapshot": None,
         })
-        with _patch_scope([11]), _patch_render() as mock_render:
+        with patch_scope([11]), patch_render(_PDF) as mock_render:
             with self.assertRaises(ServiceError) as ctx:
-                svc.ristampa_fedele(_make_user(), 999)
+                svc.ristampa_fedele(make_user(), 999)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
         mock_render.assert_not_called()
         repo.emit_evento_documento.assert_not_called()
@@ -267,12 +241,12 @@ class RistampaFedeleTests(SimpleTestCase):
     # 7. Documento senza versione pinnata: non e' ristampabile fedelmente, e
     #    va detto con un messaggio di dominio (non un crash a valle).
     def test_ristampa_senza_versione_pinnata_raises_validation(self) -> None:
-        svc, repo = _service_with_mocks(repo_methods={
+        svc, repo, _, _ = service_with_mocks(repo_methods={
             "get_documento_generato_snapshot": _snapshot(template_versione_id=None),
         })
-        with _patch_scope(), _patch_render() as mock_render:
+        with patch_scope(), patch_render(_PDF) as mock_render:
             with self.assertRaises(ServiceError) as ctx:
-                svc.ristampa_fedele(_make_user(), 99)
+                svc.ristampa_fedele(make_user(), 99)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         mock_render.assert_not_called()
         repo.get_versione_by_id.assert_not_called()
@@ -280,13 +254,13 @@ class RistampaFedeleTests(SimpleTestCase):
     # 8. Versione pinnata sparita dal DB (non dovrebbe: il DB la protegge
     #    dalla cancellazione finche' e' referenziata) -> 404 parlante.
     def test_ristampa_versione_pinnata_sparita_raises_not_found(self) -> None:
-        svc, _ = _service_with_mocks(repo_methods={
+        svc, _, _, _ = service_with_mocks(repo_methods={
             "get_documento_generato_snapshot": _snapshot(),
             "get_versione_by_id": None,
         })
-        with _patch_scope(), _patch_render() as mock_render:
+        with patch_scope(), patch_render(_PDF) as mock_render:
             with self.assertRaises(ServiceError) as ctx:
-                svc.ristampa_fedele(_make_user(), 99)
+                svc.ristampa_fedele(make_user(), 99)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
         mock_render.assert_not_called()
 
@@ -294,25 +268,25 @@ class RistampaFedeleTests(SimpleTestCase):
     #    comunque, ma con un errore che parla di Jinja invece che del
     #    documento. Meglio dirlo prima e nel linguaggio del dominio.
     def test_ristampa_contesto_vuoto_raises_validation(self) -> None:
-        svc, _ = _service_with_mocks(repo_methods={
+        svc, _, _, _ = service_with_mocks(repo_methods={
             "get_documento_generato_snapshot": _snapshot(context_json={}),
             "get_versione_by_id": _versione_pinnata(),
         })
-        with _patch_scope(), _patch_render() as mock_render:
+        with patch_scope(), patch_render(_PDF) as mock_render:
             with self.assertRaises(ServiceError) as ctx:
-                svc.ristampa_fedele(_make_user(), 99)
+                svc.ristampa_fedele(make_user(), 99)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         mock_render.assert_not_called()
 
     # 10. Evento di audit (decisione Tid §8.3): unica scrittura del percorso,
     #     sul documento ESISTENTE, col dettaglio di fedelta'.
     def test_ristampa_evento_audit_emesso_con_dettaglio_fedelta(self) -> None:
-        svc, repo = _service_with_mocks(repo_methods={
+        svc, repo, _, _ = service_with_mocks(repo_methods={
             "get_documento_generato_snapshot": _snapshot(),
             "get_versione_by_id": _versione_pinnata(),
         })
-        with _patch_scope(), _patch_atomic(), _patch_render():
-            svc.ristampa_fedele(_make_user(user_id=42), 99)
+        with patch_scope(), _patch_atomic(), patch_render(_PDF):
+            svc.ristampa_fedele(make_user(user_id=42), 99)
         repo.emit_evento_documento.assert_called_once()
         evento = repo.emit_evento_documento.call_args.args[0]
         self.assertEqual(evento["evento_tipo"], "RISTAMPA_FEDELE")
@@ -327,27 +301,27 @@ class RistampaFedeleTests(SimpleTestCase):
     #     (es. il CHECK evento_tipo non ammette ancora RISTAMPA_FEDELE) il
     #     PDF esce comunque — negarlo sarebbe peggio del log mancante.
     def test_ristampa_evento_fallito_ritorna_comunque_il_pdf(self) -> None:
-        svc, repo = _service_with_mocks(repo_methods={
+        svc, repo, _, _ = service_with_mocks(repo_methods={
             "get_documento_generato_snapshot": _snapshot(),
             "get_versione_by_id": _versione_pinnata(),
         })
         repo.emit_evento_documento.side_effect = RuntimeError("check violation")
-        with _patch_scope(), _patch_atomic(), _patch_render():
-            result = svc.ristampa_fedele(_make_user(), 99)
+        with patch_scope(), _patch_atomic(), patch_render(_PDF):
+            result = svc.ristampa_fedele(make_user(), 99)
         self.assertEqual(result["pdf_bytes"], _PDF)
 
     # 12. Utente non autenticato -> validazione, niente lettura.
     def test_ristampa_anon_user_raises_validation(self) -> None:
-        svc, repo = _service_with_mocks()
+        svc, repo, _, _ = service_with_mocks()
         with self.assertRaises(ServiceError):
-            svc.ristampa_fedele(_make_user(is_authenticated=False), 99)
+            svc.ristampa_fedele(make_user(is_authenticated=False), 99)
         repo.get_documento_generato_snapshot.assert_not_called()
 
     # 13. Guard input: id non positivo -> errore prima di qualunque round-trip.
     def test_ristampa_input_guard_id_non_positivo(self) -> None:
-        svc, repo = _service_with_mocks()
+        svc, repo, _, _ = service_with_mocks()
         with self.assertRaises(ServiceError):
-            svc.ristampa_fedele(_make_user(), 0)
+            svc.ristampa_fedele(make_user(), 0)
         repo.get_documento_generato_snapshot.assert_not_called()
 
     # 14. Una versione OBSOLETA e' AMMESSA: e' il caso normale della ristampa
@@ -356,14 +330,14 @@ class RistampaFedeleTests(SimpleTestCase):
     #     questo test diventerebbe rosso.
     def test_ristampa_versione_obsoleta_e_ammessa(self) -> None:
         versione = _versione_pinnata(stato="OBSOLETA")
-        svc, _ = _service_with_mocks(repo_methods={
+        svc, _, _, _ = service_with_mocks(repo_methods={
             "get_documento_generato_snapshot": _snapshot(
                 template_hash=_template_hash_di(versione),
             ),
             "get_versione_by_id": versione,
         })
-        with _patch_scope(), _patch_atomic(), _patch_render():
-            result = svc.ristampa_fedele(_make_user(), 99)
+        with patch_scope(), _patch_atomic(), patch_render(_PDF):
+            result = svc.ristampa_fedele(make_user(), 99)
         self.assertEqual(result["versione_stato"], "OBSOLETA")
         self.assertTrue(result["template_hash_match"])
 
@@ -386,14 +360,14 @@ class RistampaFedeleTests(SimpleTestCase):
             "margin_bottom_mm": 10, "margin_left_mm": 10,
         }
         oggi = {**allora, "page_format": "A3", "page_orientation": "LANDSCAPE"}
-        svc, _ = _service_with_mocks(repo_methods={
+        svc, _, _, _ = service_with_mocks(repo_methods={
             "get_documento_generato_snapshot": _snapshot(
                 template_hash=_hash_del_service(allora),
             ),
             "get_versione_by_id": oggi,
         })
-        with _patch_scope(), _patch_atomic(), _patch_render():
-            result = svc.ristampa_fedele(_make_user(), 99)
+        with patch_scope(), _patch_atomic(), patch_render(_PDF):
+            result = svc.ristampa_fedele(make_user(), 99)
         self.assertFalse(result["template_hash_match"])
 
 
@@ -401,5 +375,5 @@ class RistampaFedeleTests(SimpleTestCase):
 #        formula di `_template_hash_di`): il test 15 deve seguire la formula
 #        vera, o il giorno che la si corregge resterebbe rosso per la copia.
 def _hash_del_service(versione: dict[str, Any]) -> str:
-    svc, _ = _service_with_mocks()
+    svc, _, _, _ = service_with_mocks()
     return svc._compute_template_hash(versione)

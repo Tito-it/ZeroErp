@@ -17,8 +17,19 @@ from typing import Any
 
 from django.db import DatabaseError, connection, transaction
 
+from apps.config.sorgenti import (
+    SORGENTE_COMMESSA,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+    SORGENTE_RESO_VENDITA,
+)
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import (
+    colonna_ordinamento,
+    sql_order_direction_lista,
     limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
@@ -65,7 +76,6 @@ from apps.vendite.types import (
     FondoFatturaDaDecidereRow,
     LineageNodoRow,
     LineagePassaggioRow,
-    LineageSorgenteRow,
     LottoFattureRow,
     LottoGruppoRow,
     LottoListRow,
@@ -170,7 +180,7 @@ GIORNALE_GRAVITA: tuple[str, ...] = ("ERROR", "WARN", "INFO")
 #    non solleva niente.
 def _giornale_order_clause(sort_by: str | None, sort_dir: str | None) -> str:
     direzione = sql_order_direction(sort_dir, default_desc=True)
-    colonna = GIORNALE_SORT_COLUMNS.get(sort_by or "") or GIORNALE_SORT_COLUMNS[GIORNALE_ORDINE_DEFAULT]
+    colonna = colonna_ordinamento(sort_by, GIORNALE_SORT_COLUMNS) or GIORNALE_SORT_COLUMNS[GIORNALE_ORDINE_DEFAULT]
     if colonna == "rango":
         # ⚠️ Dentro la stessa gravita' ordina il TEMPO, sempre dal piu' recente,
         #    e NON segue il verso scelto: «i piu' gravi, e fra quelli i piu'
@@ -223,36 +233,41 @@ LOTTO_GRUPPI_SORT_COLUMNS: dict[str, str] = {
 # vendite.vw_dash_fatturazione_documenti (6 aree documento) + il ramo RESI
 # che vive SOLO nel Backlog (union dedicata in vw_dash_backlog_documenti,
 # fuori dal funnel pre-commessa). Usate dalla Lente 2 Backlog (che include
-# COMMESSE e RESI).
+# commesse e resi).
+# ⭐ L'area e' il codice della SORGENTE (`config.sorgenti.codice_interno`): dal
+#    2026-10-20 le viste `vw_dash_*` non scrivono piu' il plurale (`ORDINI`,
+#    `RESI`…), ritirato col sotto-giro 2d di brief-db-grammatica-unica-documenti
+#    (G-6). Quali aree mostra la dashboard resta una scelta di presentazione,
+#    ed e' questa tupla.
 DASH_FATTURAZIONE_AREE: tuple[str, ...] = (
-    "PREVENTIVI",
-    "ORDINI",
-    "DDT",
-    "OFFERTE",
-    "CONTRATTI",
-    "COMMESSE",
-    "RESI",
+    SORGENTE_PREVENTIVO,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_CONTRATTO,
+    SORGENTE_COMMESSA,
+    SORGENTE_RESO_VENDITA,
 )
 
-# Aree con valore monetario (imponibile, decisione D-4). OFFERTE e CONTRATTI
-# restano a conteggi (decisioni D-2/D-3 confermate da DL-11), RESI idem
+# Aree con valore monetario (imponibile, decisione D-4). Offerte e contratti
+# restano a conteggi (decisioni D-2/D-3 confermate da DL-11), resi idem
 # (DL-24: nessun importo sui resi in questa slice): valore_* = NULL.
 DASH_FATTURAZIONE_AREE_EURO: frozenset[str] = frozenset(
-    {"PREVENTIVI", "ORDINI", "DDT", "COMMESSE"}
+    {SORGENTE_PREVENTIVO, SORGENTE_ORDINE_VENDITA, SORGENTE_DDT_VENDITA, SORGENTE_COMMESSA}
 )
 
 # Aree della Situazione aperta (stock documenti, §6-bis/§6-quater design
-# due-lenti): le 5 aree documento nell'ordine del funnel — NIENTE COMMESSE
-# (coperte dalla Lente 1), NIENTE RESI (DL-24: REVERSE_FLOW, non serbatoio).
+# due-lenti): le 5 aree documento nell'ordine del funnel — NIENTE commesse
+# (coperte dalla Lente 1), NIENTE resi (DL-24: REVERSE_FLOW, non serbatoio).
 # Il DDT entra con la popolazione ristretta del resolver (DL-21: solo DDT
 # con ruolo di fatturazione). Allineate al WHERE di
 # vendite.vw_dash_aperto_documenti.
 DASH_APERTO_AREE: tuple[str, ...] = (
-    "PREVENTIVI",
-    "ORDINI",
-    "DDT",
-    "OFFERTE",
-    "CONTRATTI",
+    SORGENTE_PREVENTIVO,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_CONTRATTO,
 )
 
 # Fasi VIVE del serbatoio pre-commessa (v2, DL-15/16): solo aperti-non-chiusi
@@ -260,6 +275,12 @@ DASH_APERTO_AREE: tuple[str, ...] = (
 # → palla al cliente → da lavorare. Non tutte le aree emettono tutte le fasi
 # (es. ORDINI non ha IN_ATTESA): il pivot le espone comunque tutte (griglia
 # simmetrica, il FE decide quali card mostrare — DL-13).
+# Il vocabolario INTERO della fase normalizzata dei documenti: specchio del
+# CHECK `chk_stati_doc_*_fase`, uguale su tutte le `config.stati_doc_*`
+# (presidio: `core/tests/db/test_specchi_dei_check_db`). `DASH_APERTO_FASI`
+# qui sotto ne e' il sottoinsieme VIVO, quello che il pivot mostra.
+FASI_DOCUMENTO: tuple[str, ...] = ("APERTO", "IN_ATTESA", "IN_CORSO", "CHIUSO")
+
 DASH_APERTO_FASI: tuple[str, ...] = (
     "APERTO",
     "IN_ATTESA",
@@ -347,6 +368,11 @@ STATI_ESECUZIONE_DOCUMENTO: tuple[str, ...] = (
     STATO_ESECUZIONE_ESCLUSO,
 )
 
+# Il vocabolario dello stato del LOTTO (il suo job), per il filtro della lista
+# lotti: specchio del CHECK `chk_fatturazione_lotti_stato_job`, che il
+# guardrail `test_specchi_dei_check_db` confronta col database (2026-10-20).
+STATI_LOTTO: tuple[str, ...] = ("IN_ESECUZIONE", "COMPLETATO", "ERRORE")
+
 DASH_STADIO_DA_APPROVARE = "DA_APPROVARE"
 DASH_COMPETENZA_STADI: tuple[str, ...] = (
     DASH_STADIO_DA_APPROVARE,
@@ -426,7 +452,7 @@ _RETTIFICHE_VERSI: dict[str, tuple[str, str]] = {
 # lo usa — e solo quando quel filtro e' davvero attivo.
 _ACCESSORI_COLONNE_AGGREGATI = (
     "g.tipo_gruppo",
-    "g.area_documento",
+    "g.documento_apribile",
     "g.n_attivita",
     "g.valore",
     "g.ba_fatturazione_id",
@@ -1109,11 +1135,11 @@ class VenditeRepository:
         # order_by assente o non ammesso -> ordine storico (il piu' recente
         # prima), cioe' esattamente il comportamento precedente: la lista non
         # cambia aspetto finche' l'utente non tocca un'intestazione.
-        sort_col = self.LOTTI_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.LOTTI_SORT_COLUMNS)
         # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): il ramo storico la
         #    ignora, e un `order_dir` estraneo passava muto (il service non la
         #    valida). Il BB la rifiuta anche quando poi non la si usa.
-        direction = sql_order_direction(order_dir)
+        direction = sql_order_direction_lista(order_by, order_dir, colonne=self.LOTTI_SORT_COLUMNS)
         if sort_col is not None:
             tiebreak_dir = sql_tiebreak_direction(direction)
             order_clause = f"ORDER BY {sort_col} {direction}, fl.id {tiebreak_dir}"
@@ -1412,9 +1438,9 @@ class VenditeRepository:
         # ASC/DESC, con tiebreak stabile (area, documento_id) per paginazione
         # deterministica. order_by assente/non ammesso -> ordine storico
         # "in essere da" (i piu' vecchi prima).
-        sort_col = self.DASH_APERTO_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.DASH_APERTO_SORT_COLUMNS)
         if sort_col is not None:
-            direction = sql_order_direction(order_dir)
+            direction = sql_order_direction_lista(order_by, order_dir, colonne=self.DASH_APERTO_SORT_COLUMNS)
             tiebreak_dir = sql_tiebreak_direction(direction)
             order_clause = (
                 f"ORDER BY {sort_col} {direction}, "
@@ -1727,12 +1753,14 @@ class VenditeRepository:
         # whitelist + direzione ASC/DESC, tiebreak stabile (commessa,
         # commessa_attivita_id). order_by assente/non ammesso -> default storico
         # (valore DESC).
-        sort_col = self.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS)
         # Direzione risolta PRIMA del ramo: il default (valore DESC) deve
         # avere il tiebreak coerente quanto la colonna scelta dall'utente.
         # `commessa_codice` raggruppa (resta ASC), `commessa_attivita_id` e' la
         # chiave tecnica univoca e segue la direzione (2026-08-03).
-        direction = sql_order_direction(order_dir, default_desc=sort_col is None)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=self.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS, default_desc=True,
+        )
         tiebreak_dir = sql_tiebreak_direction(direction)
         tiebreak = f"commessa_codice ASC, commessa_attivita_id {tiebreak_dir}"
         if sort_col is not None:
@@ -1876,14 +1904,14 @@ class VenditeRepository:
         params: list[Any] = [competenza_mese, MOTIVO_NON_FATTURATA_RESIDUO]
         where_clause = "WHERE " + " AND ".join(conditions)
 
-        sort_col = self.DASH_COMPETENZA_RESIDUI_SORT_COLUMNS.get(order_by or "")
-        # ⚠️ `default_desc=False`, al contrario delle liste sorelle: il default
-        #    dichiarato a catalogo e' `competenza_mese` ASC, e la direzione deve
-        #    valere anche per il TIEBREAK — altrimenti la primaria salirebbe e lo
-        #    spareggio scenderebbe, cioe' dentro lo stesso mese l'elenco andrebbe
-        #    al contrario di come e' stato chiesto (e' il difetto corretto in 30
-        #    punti il 2026-08-03).
-        direction = sql_order_direction(order_dir, default_desc=False)
+        sort_col = colonna_ordinamento(order_by, self.DASH_COMPETENZA_RESIDUI_SORT_COLUMNS)
+        # ⚠️ Senza `order_dir` le colonne data partono DESC (regola «date DESC»,
+        #    inferita dal nome con `e_chiave_data`, 2026-10-20), le altre ASC; la
+        #    stessa direzione vale per il TIEBREAK — altrimenti la primaria
+        #    salirebbe e lo spareggio scenderebbe, cioe' dentro lo stesso mese
+        #    l'elenco andrebbe al contrario di come e' stato chiesto (e' il
+        #    difetto corretto in 30 punti il 2026-08-03).
+        direction = sql_order_direction_lista(order_by, order_dir, colonne=self.DASH_COMPETENZA_RESIDUI_SORT_COLUMNS)
         tiebreak_dir = sql_tiebreak_direction(direction)
         # ⚠️ Il tiebreak e' `attivita_fatturabile_id`: e' la chiave del verbo,
         #    quindi l'unica univoca su questa lista — e su un elenco da cui si
@@ -2012,12 +2040,14 @@ class VenditeRepository:
         # colonna dalla whitelist + direzione, tiebreak stabile su commessa.
         # Assente/non ammesso -> default valore_tot DESC (le commesse piu' pesanti
         # prima), coerente col default a grana attivita'.
-        sort_col = self.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS)
         # sql_order_direction ritorna gia' 'ASC NULLS FIRST'/'DESC NULLS LAST':
         # NON aggiungere un secondo NULLS (errore di sintassi PG). Direzione
         # risolta prima del ramo cosi' anche il default DESC ha il tiebreak
         # coerente; `commessa_codice` raggruppa, `commessa_id` segue.
-        direction = sql_order_direction(order_dir, default_desc=sort_col is None)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=self.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS, default_desc=True,
+        )
         tiebreak_dir = sql_tiebreak_direction(direction)
         tiebreak = f"commessa_codice ASC, commessa_id {tiebreak_dir}"
         if sort_col is not None:
@@ -2344,10 +2374,12 @@ class VenditeRepository:
         # gruppo_key l'ordine fra quelle righe sarebbe indefinito e la
         # paginazione non deterministica (frontend-standards §Paginazione
         # deterministica): righe ripetute o saltate cambiando pagina.
-        sort_col = self.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS)
         # sql_order_direction ritorna gia' 'ASC NULLS FIRST'/'DESC NULLS LAST'.
         # Direzione prima del ramo: vale anche per il default DESC.
-        direction = sql_order_direction(order_dir, default_desc=sort_col is None)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=self.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS, default_desc=True,
+        )
         tiebreak_dir = sql_tiebreak_direction(direction)
         tiebreak = f"gruppo_key ASC, stadio {tiebreak_dir}"
         if sort_col is not None:
@@ -2380,7 +2412,7 @@ class VenditeRepository:
             SELECT
                 g.gruppo_key,
                 g.tipo_gruppo,
-                g.area_documento,
+                g.documento_apribile,
                 g.riferimento,
                 g.commessa_id,
                 g.commessa_codice,
@@ -2449,7 +2481,7 @@ class VenditeRepository:
                 {
                     "gruppo_key": str(row[0]),
                     "tipo_gruppo": str(row[1]),
-                    "area_documento": None if row[2] is None else str(row[2]),
+                    "documento_apribile": None if row[2] is None else bool(row[2]),
                     # Nessun ramo NULL, come `gruppo_key` e `tipo_gruppo` qui
                     # sopra: `riferimento` e' NOT NULL per contratto della vista
                     # (`COALESCE(documento_numero, commessa_codice, gruppo_key)`,
@@ -2761,7 +2793,9 @@ class VenditeRepository:
                 ),
                 tipi AS (
                     SELECT g.tipo_gruppo,
-                           MIN(g.area_documento)                  AS area_documento,
+                           -- valori identici per tipo (la sorgente e' una):
+                           -- `bool_and` e non `MIN`, che sui boolean non c'e'.
+                           bool_and(g.documento_apribile)         AS documento_apribile,
                            COUNT(*)::int                          AS n_gruppi,
                            COALESCE(SUM(g.n_attivita), 0)::bigint AS n_attivita
                       FROM base g
@@ -2931,9 +2965,9 @@ class VenditeRepository:
         _tiebreak = """tipo_evento ASC,
                      lotto_id ASC NULLS LAST, fattura_id ASC NULLS LAST,
                      task_code ASC NULLS LAST"""
-        sort_col = self.DASH_COMPETENZA_ERRORI_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.DASH_COMPETENZA_ERRORI_SORT_COLUMNS)
         if sort_col is not None:
-            direction = sql_order_direction(order_dir)
+            direction = sql_order_direction_lista(order_by, order_dir, colonne=self.DASH_COMPETENZA_ERRORI_SORT_COLUMNS)
             # Il tiebreak qui e' una catena di chiavi NATURALI (la union non ha
             # una PK): resta fissa, non e' uno spareggio tecnico da allineare.
             #
@@ -3170,9 +3204,9 @@ class VenditeRepository:
         # whitelist DASH_BACKLOG_SORT_COLUMNS + direzione ASC/DESC, tiebreak
         # stabile (area, documento_id). order_by assente/non ammesso -> ordine
         # storico "fermo da" (i piu' vecchi prima).
-        sort_col = self.DASH_BACKLOG_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.DASH_BACKLOG_SORT_COLUMNS)
         if sort_col is not None:
-            direction = sql_order_direction(order_dir)
+            direction = sql_order_direction_lista(order_by, order_dir, colonne=self.DASH_BACKLOG_SORT_COLUMNS)
             tiebreak_dir = sql_tiebreak_direction(direction)
             order_clause = (
                 f"ORDER BY {sort_col} {direction}, "
@@ -3413,7 +3447,7 @@ class VenditeRepository:
         # sorgente puo' portare piu' di un atto vivo (l'indice parziale
         # `uq_fondi_source_atto_vivo_automatico` presidia i soli AUTOMATICI).
         # `COALESCE(..., 0)` perche' negli altri tre rami l'atto non esiste.
-        sort_col = self.FONDI_DA_DECIDERE_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.FONDI_DA_DECIDERE_SORT_COLUMNS)
         direction = sql_order_direction(order_dir, default_desc=True)
         tiebreak_dir = sql_tiebreak_direction(direction)
         order_clause = (
@@ -3494,8 +3528,8 @@ class VenditeRepository:
         lotto_id: int,
         stato_esecuzione: str | None,
         auth_user_id: int | None = None,
-        sort_by: str,
-        sort_dir: str,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int,
         offset: int,
         max_rows: int | None = None,
@@ -3512,7 +3546,7 @@ class VenditeRepository:
         # `sql_order_clause` (NULL come valore minimo; tiebreak `fattura_id`
         # allineato alla direzione, e omesso quando e' gia' la colonna scelta).
         order_clause = sql_order_clause(
-            sort_by, sort_dir,
+            order_by, order_dir,
             colonne=LOTTO_FATTURE_SORT_COLUMNS, default="fllf.fattura_id",
             colonne_desc=LOTTO_FATTURE_SORT_COLONNE_DATA, tiebreak="fllf.fattura_id",
         )
@@ -3816,7 +3850,7 @@ class VenditeRepository:
         auth_user_id: int | None = None,
         stato_esecuzione: str | None = None,
         sort_by: str | None = None,
-        sort_dir: str = "asc",
+        sort_dir: str | None = None,
         limit: int,
         offset: int,
         max_rows: int | None = None,
@@ -3844,7 +3878,7 @@ class VenditeRepository:
             params.append(stato_esecuzione)
 
         # Ordinamento: solo valori dalla whitelist entrano nella query.
-        sort_col = LOTTO_GRUPPI_SORT_COLUMNS.get(sort_by or "")
+        sort_col = colonna_ordinamento(sort_by, LOTTO_GRUPPI_SORT_COLUMNS)
         order_params: list[Any] = []
         if sort_col is not None:
             # Direzione dal BB `sql_order_direction` (NULL come valore minimo).
@@ -3852,7 +3886,7 @@ class VenditeRepository:
             #    della tabella «Regola d'uso» del catalogo BB, non uno spareggio
             #    tecnico da allineare.
             order_clause = (
-                f"ORDER BY {sort_col} {sql_order_direction(sort_dir)}, gruppo_key ASC"
+                f"ORDER BY {sort_col} {sql_order_direction_lista(sort_by, sort_dir, colonne=LOTTO_GRUPPI_SORT_COLUMNS)}, gruppo_key ASC"
             )
         else:
             # ⭐ DEFAULT: i falliti in cima. Non e' l'ordine alfabetico dello
@@ -3970,7 +4004,7 @@ class VenditeRepository:
                 SELECT g.gruppo_key,
                        min(g.riferimento)                  AS riferimento,
                        min(g.tipo_gruppo)                  AS tipo_gruppo,
-                       min(g.area_documento)               AS area_documento,
+                       bool_and(g.documento_apribile)      AS documento_apribile,
                        min(g.documento_id)                 AS documento_id,
                        count(DISTINCT g.commessa_id)       AS commesse_n,
                        CASE WHEN count(DISTINCT g.commessa_id) = 1
@@ -4015,7 +4049,7 @@ class VenditeRepository:
                    END AS n_trascinati,
                    ref.riferimento,
                    ref.tipo_gruppo,
-                   ref.area_documento,
+                   ref.documento_apribile,
                    ref.documento_id,
                    ref.commessa_id,
                    ref.commessa_codice,
@@ -4077,7 +4111,7 @@ class VenditeRepository:
                     # scheda esiste. Il frontend ripiega sulla chiave.
                     "riferimento": row["riferimento"],
                     "tipo_gruppo": row["tipo_gruppo"],
-                    "area_documento": row["area_documento"],
+                    "documento_apribile": row["documento_apribile"],
                     "documento_id": (
                         None if row["documento_id"] is None else int(row["documento_id"])
                     ),
@@ -4476,31 +4510,10 @@ class VenditeRepository:
 
     # ------------------------------------------------------------------
     # Lineage documenti (genealogia/transiti — brief-be-fe-lineage)
-    # Letture generiche sulla famiglia vw_documento_lineage* +
-    # fn_documento_lineage. Tutte security_invoker/SECURITY INVOKER: la
+    # Letture generiche su vw_documento_lineage_nodi, fn_documento_lineage e
+    # fn_documento_lineage_sintesi. Tutte security_invoker/SECURITY INVOKER: la
     # RLS emittente del chiamante si applica da sola (niente auth_user_id).
     # ------------------------------------------------------------------
-
-    # Scopo: Risolve una sorgente lineage da config.sorgenti per
-    #        codice_interno (chiave stabile): id, key_selector e tabella
-    #        target per la traduzione doc_id -> chiave nodo polimorfa.
-    def get_lineage_sorgente(self, codice_interno: str) -> LineageSorgenteRow | None:
-        sql = """
-            SELECT s.id, s.key_selector, s.target_table::text
-            FROM config.sorgenti s
-            WHERE s.codice_interno = %s
-              AND s.attivo IS TRUE
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [codice_interno])
-            row = cursor.fetchone()
-        if not row:
-            return None
-        return {
-            "id": int(row[0]),
-            "key_selector": str(row[1]),
-            "target_table": str(row[2]),
-        }
 
     # Scopo: Traduce il doc_id di dominio nella chiave nodo lineage secondo
     #        la convenzione key_selector (config manual sorgenti): 'id' ->
@@ -4508,10 +4521,14 @@ class VenditeRepository:
     #        target. Ritorna None se il documento non esiste (o e' fuori
     #        scope RLS: indistinguibile per design).
     def resolve_lineage_node_uid(
-        self, *, target_table: str, key_selector: str, doc_id: int
+        self, *, target_table: str | None, key_selector: str, doc_id: int
     ) -> str | None:
         if key_selector == "id":
             return str(doc_id)
+        # ⚠️ `config.sorgenti.target_table` e' nullable: una sorgente con chiave
+        #    `uid` e senza tabella e' un seed incoerente, e lo si dice.
+        if target_table is None:
+            raise ValueError("target_table assente per una sorgente con key_selector 'uid'")
         # Guardia identifier: target_table viene da config.sorgenti
         # (regclass seedata), mai da input utente — la regex intercetta
         # solo dati sporchi da refactor (stesso pattern del repo note).
@@ -4524,14 +4541,17 @@ class VenditeRepository:
         return None if not row else str(row[0])
 
     # Scopo: Riga summary lineage di un documento (nodo + pratica +
-    #        frontiera + contatori) da vw_documento_lineage, con decodifica
-    #        dei tipi in codice_interno via JOIN a config.sorgenti (mai id
-    #        numerici verso il FE). None se il nodo non esiste.
+    #        frontiera + contatori) da fn_documento_lineage_sintesi, seminata
+    #        sul solo documento (brief-db-lineage-seminata-per-chiave B1: la
+    #        vista vw_documento_lineage, che calcolava il grafo intero, e'
+    #        ritirata col 20261011-98). I tipi arrivano gia' come
+    #        codice_interno (mai id numerici verso il FE). None se il nodo non
+    #        esiste o e' fuori perimetro RLS.
     def get_lineage_nodo(self, *, tipo_id: int, node_uid: str) -> LineageNodoRow | None:
         sql = """
             SELECT
                 l.tipo_id,
-                -- ⭐ Il CODICE del tipo lo porta la vista (20260829-02): fino a
+                -- ⭐ Il CODICE del tipo lo porta il grafo (20260829-02): fino a
                 -- ieri il grafo esponeva solo l'id e ogni consumatore lo
                 -- traduceva da se' con lo stesso join a config.sorgenti —
                 -- UNDICI volte nel backend, e una di quelle undici era stata
@@ -4539,9 +4559,9 @@ class VenditeRepository:
                 -- a database, niente a video e nessun errore).
                 -- ⚠️ E qui c'era una `JOIN` (INNER) a config.sorgenti: la
                 -- garanzia che il tipo esista non e' sparita insieme al join,
-                -- si e' SPOSTATA — `vw_documento_lineage` legge
-                -- `FROM vw_documento_lineage_nodi`, e la vista nodi costruisce
-                -- ogni suo ramo con una `JOIN sorgenti` interna. Un nodo senza
+                -- si e' SPOSTATA — la sintesi esce solo per i nodi di
+                -- `vendite.fn_documento_lineage_nodi`, che costruisce ogni
+                -- suo ramo con una `JOIN config.sorgenti` interna. Un nodo senza
                 -- sorgente attiva non esiste proprio, quindi la colonna non e'
                 -- mai NULL ed e' lecito il `str()` sul lato Python. E' una
                 -- garanzia STRUTTURALE (una join interna in una definizione di
@@ -4569,8 +4589,8 @@ class VenditeRepository:
                 l.n_sorgenti,
                 l.root_codice,
                 l.natura_doc_codice_interno,
-                -- ⭐ La natura della FRONTIERA la porta LA VISTA, dal
-                -- changeSet 20260828-22. Fino ad allora la summary non ce
+                -- ⭐ La natura della FRONTIERA la porta LA SINTESI (prima la
+                -- vista, dal changeSet 20260828-22). Fino ad allora la summary non ce
                 -- l'aveva e questo repository se la ricavava da solo, con un
                 -- LEFT JOIN a vw_documento_lineage_nodi sulla chiave del nodo
                 -- di frontiera. Erano DUE SEDI per la stessa regola, e la
@@ -4590,9 +4610,8 @@ class VenditeRepository:
                 -- documento fiscale»: la natura e' un asse diverso dal tipo ed
                 -- esiste solo per le fatture.
                 l.frontiera_natura_doc_codice_interno
-            FROM vendite.vw_documento_lineage l
-            WHERE l.tipo_id = %s
-              AND l.uid = %s
+            FROM vendite.fn_documento_lineage_sintesi(
+                     ARRAY[%s]::bigint[], ARRAY[%s]::text[]) l
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [tipo_id, node_uid])
@@ -4626,6 +4645,26 @@ class VenditeRepository:
             "natura_doc_codice_interno": row[23],
             "frontiera_natura_doc_codice_interno": row[24],
         }
+
+    # Scopo: I legami di un documento che si annulla
+    #        (`vendite.fn_documento_legami`, lettore unico di avviso, conferma e
+    #        finestra; brief-db-annullo-documento-con-legami D-4): una riga per
+    #        legame — riga_id, riga_nr (NULL per testata e commessa), origine
+    #        (ORDINE, RESO, PREVENTIVO, OFFERTA, COMMESSA), natura (CONSUMO o
+    #        PROVENIENZA), origine_id (la testata dall'altra parte),
+    #        origine_riga_id, qta.
+    #        ⚠️ La funzione e' SECURITY DEFINER: non applica il perimetro. Il
+    #        chiamante deve aver gia' letto la testata del documento.
+    def list_documento_legami(self, documento: str, documento_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT l.riga_id, l.riga_nr, l.origine, l.natura, l.origine_id,
+                   l.origine_riga_id, l.qta
+              FROM vendite.fn_documento_legami(%s, %s) AS l
+             ORDER BY l.riga_nr NULLS LAST, l.origine, l.origine_id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [documento, int(documento_id)])
+            return rows_to_list(cursor)
 
     # Scopo: Catena dei passaggi di un documento via
     #        fn_documento_lineage(tipo, uid, direzione), decodificando i
@@ -4670,24 +4709,35 @@ class VenditeRepository:
                 -- una fattura quando la tappa e' la seconda di fila sotto lo
                 -- stesso tipo documento (arco N).
                 p.from_natura_doc_codice_interno,
-                p.to_natura_doc_codice_interno
+                p.to_natura_doc_codice_interno,
+                -- Il LEGAME, non il nodo (brief-db-annullo-a-valle-riapre-a-monte
+                -- §11, 2026-10-13): la commessa puo' essere viva e il contributo
+                -- di QUESTO documento ritirato (preventivo annullato). A tre
+                -- stati: NULL = arco non censito dal DB.
+                p.is_legame_ritirato
             FROM vendite.fn_documento_lineage(%s, %s, %s) p
             LEFT JOIN config.sorgenti sf ON sf.id = p.from_tipo_id
             LEFT JOIN config.sorgenti st ON st.id = p.to_tipo_id
             LEFT JOIN vendite.vw_documento_lineage_nodi nf
                    ON nf.tipo_id = p.from_tipo_id AND nf.uid = p.from_uid
             LEFT JOIN vendite.preventivi pfrom
-                   ON sf.codice_interno = 'PREVENTIVO' AND pfrom.uid::text = p.from_uid
+                   ON sf.codice_interno = %s AND pfrom.uid::text = p.from_uid
             LEFT JOIN vendite.offerte_commerciali ofrom
-                   ON sf.codice_interno = 'OFFERTA_COMMERCIALE' AND ofrom.uid::text = p.from_uid
+                   ON sf.codice_interno = %s AND ofrom.uid::text = p.from_uid
             LEFT JOIN vendite.preventivi pto
-                   ON st.codice_interno = 'PREVENTIVO' AND pto.uid::text = p.to_uid
+                   ON st.codice_interno = %s AND pto.uid::text = p.to_uid
             LEFT JOIN vendite.offerte_commerciali oto
-                   ON st.codice_interno = 'OFFERTA_COMMERCIALE' AND oto.uid::text = p.to_uid
+                   ON st.codice_interno = %s AND oto.uid::text = p.to_uid
             ORDER BY p.ordine
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [tipo_id, node_uid, direzione])
+            # ⚠️ Ordine dei parametri = ordine nel testo: i tre della funzione,
+            #    poi i codici delle quattro LEFT JOIN (from, from, to, to).
+            cursor.execute(sql, [
+                tipo_id, node_uid, direzione,
+                SORGENTE_PREVENTIVO, SORGENTE_OFFERTA_COMMERCIALE,
+                SORGENTE_PREVENTIVO, SORGENTE_OFFERTA_COMMERCIALE,
+            ])
             rows = cursor.fetchall()
 
         result: list[LineagePassaggioRow] = []
@@ -4716,6 +4766,9 @@ class VenditeRepository:
                     "is_ramo_inverso": bool(row[19]),
                     "from_natura_doc_codice_interno": row[20],
                     "to_natura_doc_codice_interno": row[21],
+                    # ⛔ Niente `bool()`: NULL e' «non censito», e diventerebbe
+                    #    «legame vivo» — un'affermazione che il DB non ha fatto.
+                    "is_legame_ritirato": row[22],
                 }
             )
         return result

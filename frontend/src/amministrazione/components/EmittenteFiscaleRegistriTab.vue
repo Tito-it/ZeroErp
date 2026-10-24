@@ -30,6 +30,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
+import { useApiHandler } from '../../core/composables/useApiHandler'
 import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import { useRegistriNumerazioneStore } from '../stores/registriNumerazione'
@@ -44,6 +45,7 @@ const { t, te } = useI18n()
 const notify = useNotify()
 const store = useRegistriNumerazioneStore()
 const { confirmAction } = useConfirmAction()
+const { execute } = useApiHandler()
 const isReadonly = useInjectReadonly()
 
 const props = defineProps({
@@ -102,15 +104,15 @@ function cambiaAttivo(riga, attivo) {
       ? t('amministrazione.registri_numerazione.riattiva_confirm', { codice: riga.codice })
       : t('amministrazione.registri_numerazione.disattiva_confirm', { codice: riga.codice }),
     danger: !attivo,
+    // ⛔ Fino al 2026-10-23 l'errore finiva in un `catch` vuoto, «gestito
+    //    dall'interceptor axios globale»: l'interceptor di `core/api.js` non
+    //    mostra toast, e il rifiuto di uno dei sei trigger restava muto.
     onAccept: async () => {
-      try {
-        await store.cambiaAttivo(riga.id, attivo)
-        notify.success(attivo
-          ? t('amministrazione.registri_numerazione.riattivato')
-          : t('amministrazione.registri_numerazione.disattivato'))
-      } catch {
-        // Errore gestito dall'interceptor axios globale.
-      }
+      const esito = await execute(() => store.cambiaAttivo(riga.id, attivo))
+      if (esito === null) return
+      notify.success(attivo
+        ? t('amministrazione.registri_numerazione.riattivato')
+        : t('amministrazione.registri_numerazione.disattivato'))
     },
   })
 }

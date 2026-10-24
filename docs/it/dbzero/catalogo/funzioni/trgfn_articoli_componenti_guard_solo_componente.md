@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_articoli_componenti_guard_solo_componente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_guard_solo_componente()
  RETURNS trigger
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_guard_solo_componente()
 IS 'Blocca articoli marcati is_solo_componente come prodotto in distinta base.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

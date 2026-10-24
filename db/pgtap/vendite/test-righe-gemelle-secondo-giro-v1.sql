@@ -1,6 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 --
 -- Test: righe e componenti di contratto e offerta — secondo giro. Decisione di
 --   Tid del 2026-10-04. Brief: brief-db-righe-esclusione-solo-non-si-vende §8
@@ -39,7 +44,8 @@
 --   6) fn_get_testata_id_di_riga: contratto, offerta, riga assente, id non positivo
 --   7) fn_get_testata_id_di_riga: tipo sconosciuto -> E_DOC_TIPO_NON_GESTITO
 --   8) building block: livello sconosciuto -> E_DOC_RIGHE_LOCK_MONTAGGIO
---   9) sette adottanti a livello RIGA, con gli argomenti giusti (tre dal 20261008-34, i prelievi dal 20261008-93)
+--   9) nove adottanti a livello RIGA, con gli argomenti giusti (tre dal 20261008-34, i prelievi dal 20261008-93,
+--      i due legami della riga di DDT dal 20261011-15)
 --  10) su ogni nipote il lock e' il primo BEFORE ROW
 --  11) rientri: la copia ritirata, il guard di coerenza in _a10_ su INSERT/UPDATE
 --  12) revisione: stessi componenti della rev1 (anche lo spento)
@@ -152,7 +158,8 @@ CREATE TEMP TABLE tmp_rg2_listino AS
 SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_rg2_mondo), 'righe gemelle secondo giro');
 
 CREATE TEMP TABLE tmp_rg2_art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-RG2-' || v.sigla) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-RG2-' || v.sigla,
+                                             p_is_composito => v.sigla = 'P') AS id
   FROM (VALUES ('P'), ('F'), ('G'), ('X'), ('Y')) AS v(sigla);
 
 -- Scopo: id di un articolo della fixture per sigla.
@@ -161,8 +168,7 @@ RETURNS uuid LANGUAGE sql STABLE AS $fx$
   SELECT id FROM tmp_rg2_art WHERE sigla = p_sigla;
 $fx$;
 
--- Il composito: F obbligatorio (coeff 2), G opzionale (coeff 1).
-UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.art('P');
+-- Il composito P: F obbligatorio (coeff 2), G opzionale (coeff 1).
 INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, obbligatorio, valido_dal)
 VALUES (pg_temp.art('P'), pg_temp.art('F'), 2, TRUE,  '2020-01-01'),
        (pg_temp.art('P'), pg_temp.art('G'), 1, FALSE, '2020-01-01');
@@ -302,17 +308,17 @@ SELECT ok(
                                   'vendite.ordini_righe'::regclass,
                                   'vendite.ddt_righe'::regclass))
        FROM pg_proc p
-      WHERE p.oid = 'script.fn_get_testata_id_di_riga(text, bigint)'::regprocedure),
+      WHERE p.oid = 'script.fn_get_testata_id_di_riga(character varying, bigint)'::regprocedure),
     '5) fn_get_testata_id_di_riga: DEFINER del PROPRIETARIO delle sei tabelle di righe, STABLE, search_path chiuso');
 
 SELECT is(
     concat_ws(',',
-        script.fn_get_testata_id_di_riga('OFFERTA', pg_temp.riga_offerta(pg_temp.doc('rev1'), 'P'))
+        script.fn_get_testata_id_di_riga('OFFERTA_COMMERCIALE', pg_temp.riga_offerta(pg_temp.doc('rev1'), 'P'))
             = pg_temp.doc('rev1'),
-        script.fn_get_testata_id_di_riga('OFFERTA', -1) IS NULL,
+        script.fn_get_testata_id_di_riga('OFFERTA_COMMERCIALE', -1) IS NULL,
         script.fn_get_testata_id_di_riga('CONTRATTO', 0) IS NULL,
         script.fn_get_testata_id_di_riga('CONTRATTO', 9223372036854775806) IS NULL,
-        script.fn_get_testata_id_di_riga('RESO', NULL) IS NULL),
+        script.fn_get_testata_id_di_riga('RESO_VENDITA', NULL) IS NULL),
     't,t,t,t,t',
     '6) fn_get_testata_id_di_riga: la testata della riga; NULL per riga assente o id non positivo');
 
@@ -339,15 +345,19 @@ SELECT is(
       WHERE NOT t.tgisinternal AND p.proname = 'trgfn_doc_righe_lock_fuori_bozza'
         AND pg_get_triggerdef(t.oid) LIKE '%''RIGA''%'),
     'contratti_righe_componenti:trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt:''CONTRATTO'', ''riga_contratto_id'', ''DRAFT'', ''RIGA'''
-    ' | ddt_righe_componenti:trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt:''DDT'', ''riga_ddt_id'', ''DRAFT'', ''RIGA'''
+    ' | ddt_righe_componenti:trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt:''DDT_VENDITA'', ''riga_ddt_id'', ''DRAFT'', ''RIGA'''
     -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): il settimo, i
     --   prelievi del DDT, con l'eccezione dell'ubicazione d'arrivo (20261008-93).
-    ' | ddt_righe_prelievi:trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt:''DDT'', ''ddt_riga_id'', ''DRAFT'', ''RIGA'', ''ubicazione_arrivo_id'', ''EMESSO,SPEDITO'''
-    ' | offerte_commerciali_eccezioni_componenti:trg_oce_comp_a05_doc_bozza_ins_upd_dlt:''OFFERTA'', ''eccezione_offerta_id'', ''BOZZA'', ''RIGA'''
-    ' | ordini_righe_componenti:trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt:''ORDINE'', ''riga_ordine_id'', ''DRAFT'', ''RIGA'''
+    ' | ddt_righe_prelievi:trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt:''DDT_VENDITA'', ''ddt_riga_id'', ''DRAFT'', ''RIGA'', ''ubicazione_arrivo_id'', ''EMESSO,SPEDITO'''
+    ' | offerte_commerciali_eccezioni_componenti:trg_oce_comp_a05_doc_bozza_ins_upd_dlt:''OFFERTA_COMMERCIALE'', ''eccezione_offerta_id'', ''BOZZA'', ''RIGA'''
+    ' | ordini_righe_componenti:trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt:''ORDINE_VENDITA'', ''riga_ordine_id'', ''DRAFT'', ''RIGA'''
+    -- rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-4/D-6/D-7, 20261011-15):
+    -- i due legami di una riga di DDT con la sua origine.
+    ' | ordini_righe_fulfillment:trg_ordini_righe_fulfillment_a05_doc_bozza_ins_upd:''DDT_VENDITA'', ''ddt_riga_id'', ''DRAFT'', ''RIGA'''
     ' | preventivi_righe_componenti:trg_preventivi_righe_componenti_a05_doc_bozza_ins_upd_dlt:''PREVENTIVO'', ''riga_preventivo_id'', ''DRAFT'', ''RIGA'''
-    ' | resi_righe_rientri:trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt:''RESO'', ''resi_riga_id'', ''DRAFT'', ''RIGA''',
-    '9) sette adottanti a livello RIGA: componenti di tutti i documenti di vendita, rientri del reso, prelievi del DDT');
+    ' | resi_righe_riconsegne:trg_resi_righe_riconsegne_a05_doc_bozza_ins_upd:''DDT_VENDITA'', ''ddt_riga_id'', ''DRAFT'', ''RIGA'''
+    ' | resi_righe_rientri:trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt:''RESO_VENDITA'', ''resi_riga_id'', ''DRAFT'', ''RIGA''',
+    '9) nove adottanti a livello RIGA: componenti di tutti i documenti di vendita, rientri del reso, prelievi del DDT, i due legami della riga di DDT');
 
 -- Fra i BEFORE ROW parla per primo il nome minore: su ogni nipote dev'essere il lock.
 SELECT is(

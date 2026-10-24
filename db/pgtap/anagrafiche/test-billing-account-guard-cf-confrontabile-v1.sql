@@ -211,7 +211,7 @@ SELECT throws_like($$
        SET parent_account_id = (SELECT ba_id FROM _t_invisibile)
      WHERE id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio_b')
 $$, '%non rientra nel tuo perimetro%',
-    '5. * padre fuori dal perimetro RLS -> E_PARENT_NON_RAGGIUNGIBILE (era E_ID_FISCALI_DIVERSI)');
+    '5. * padre fuori dal perimetro RLS -> E_PARENT_NON_RAGGIUNGIBILE (era E_ID_FISCALI_DIVERSI) (rosso da owner, che salta la RLS; verde come app)');
 
 -- 6) Padre inesistente: stesso codice, e il guard BEFORE arriva prima della FK.
 SELECT throws_like($$

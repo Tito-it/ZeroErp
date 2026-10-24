@@ -4,6 +4,26 @@
 -- Test: le madri DB per lotto del fondo fattura — scope, chiavi, atomicita'
 --       R-3 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.3
 --       (changeSet 20260815-33 .. 20260815-35)
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le sorgenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima
+--   nascevano gia' DEFINITIVA).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-4): cliente, azienda e
+--   registro li costruisce dbops.fn_pgtap_crea_mondo_cliente (+
+--   script.fn_pgtap_registro_fattura) invece di pescare il primo billing
+--   account, che su un database ricostruito non c'e'. Il contesto si apre
+--   DOPO, sull'operatore del mondo. Lotti, figlie e sorgenti restano costruiti
+--   dal file: sono il caso del test.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-5): F1, F2, la figlia sana
+--   del lotto rotto e le due sorgenti le scrive dbops.fn_pgtap_crea_fattura
+--   (minimo e totale alla nascita; le sorgenti fino a DEFINITIVA coi suoi
+--   snapshot). Restano a mano F3 (utility diversa dal BA) e la figlia senza
+--   utility: sono il caso, e il builder la utility la scrive sempre. I lotti
+--   e il ponte restano del test.
+-- rev 2026-10-24 (brief-modello-documento-vendita §4-octies): la figlia senza
+--   utility la scrive dbops.fn_pgtap_crea_fattura(..., p_senza_utility => true)
+--   (changeSet 20261024-42), sul cliente del mondo. Resta a mano solo F3, la
+--   utility DIVERSA da quella del cliente: compare in questo file soltanto
+--   (regola del 2), niente builder.
 -- ------------------------------------------------------------
 -- Indice test
 --  1) Riferimenti minimi presenti
@@ -27,9 +47,13 @@ BEGIN;
 --   coerenza degli stati, e senza SET CONSTRAINTS non scatterebbe mai.
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
--- OPERATORE + RLS attiva), non come owner.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- Il mondo PRIMA del contesto: azienda, operatore e cliente. Poi il test
+-- gira come gira l'applicazione (ruolo OPERATORE + RLS attiva), sull'operatore
+-- del mondo.
+CREATE TEMP TABLE tmp_mondo_ffl AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('fondi_lotto');
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_mondo_ffl)); END $ctx$;
 
 SELECT plan(14);
 
@@ -39,36 +63,27 @@ SELECT plan(14);
 CREATE TEMP TABLE tmp_cost_ffl AS
 SELECT 'pgtap_fondi_lotto'::text AS test_scope;
 
-CREATE TEMP TABLE tmp_refs_ffl AS WITH ba AS (
-  SELECT b.id, b.utility_id
-  FROM anagrafiche.billing_account b
-  ORDER BY b.data_insert DESC NULLS LAST, b.id DESC
-  LIMIT 1
-)
-SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(ba.id)) AS registro_id,
-  ba.id AS billing_account_id,
-  ba.utility_id AS utility_id,
+-- I riferimenti del documento sono quelli del mondo: il registro e' quello
+-- della sua azienda (lo crea se non c'e').
+CREATE TEMP TABLE tmp_refs_ffl AS
+SELECT script.fn_pgtap_registro_fattura(m.emittente_soggetto_ruolo_id) AS registro_id,
+  m.billing_account_id,
+  m.utility_id,
   -- ⚠️ Una SECONDA utility, diversa da quella del billing account: e' il
   --    perno del test 3. Se lo scope leggesse la utility dal lotto o dal BA
   --    — com'era in Python — la fattura che la usa sparirebbe dentro la
   --    chiave delle altre e nessuno se ne accorgerebbe.
   (
     SELECT u.id FROM config.utilities u
-     WHERE u.id <> ba.utility_id
+     WHERE u.id <> m.utility_id
      ORDER BY u.id LIMIT 1
   ) AS utility_altra_id,
   (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id,
   (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DEFINITIVA' AND attivo IS TRUE ORDER BY id LIMIT 1) AS stato_definitiva_id,
   (SELECT id FROM vendite.tipi_fondi_fattura WHERE attivo IS TRUE AND codice_interno = 'F_F_ADD_ACC' ORDER BY id LIMIT 1) AS tipo_fondo_id,
-  (
-    SELECT m.emittente_soggetto_ruolo_id
-    FROM anagrafiche.emittenti_fiscali_billing_account m
-    WHERE (m.billing_account_id = ba.id OR m.is_default IS TRUE)
-    ORDER BY CASE WHEN m.billing_account_id = ba.id THEN 0 ELSE 1 END, m.id
-    LIMIT 1
-  ) AS emittente_soggetto_ruolo_id
-FROM ba;
+  m.emittente_soggetto_ruolo_id
+FROM tmp_mondo_ffl m;
 
 SELECT ok(
     (SELECT registro_id IS NOT NULL
@@ -90,6 +105,10 @@ SELECT ok(
 
 -- Il lotto «buono». Nessuno stato fiscale: le figlie nascono senza stato, e
 -- il guard di coerenza del ponte vuole che i due lati combacino.
+-- ⚠️ rev 2026-10-24: le figlie non nascono piu' «senza stato» ma in DRAFT
+--    (lo stato iniziale, che il trigger della nascita scrive). Provato sullo
+--    scratch con un mondo costruito: il ponte verso il lotto senza stato
+--    resta accettato dal guard di coerenza.
 CREATE TEMP TABLE tmp_lotto_ffl AS WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti (
       competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id, meta)
@@ -101,22 +120,36 @@ CREATE TEMP TABLE tmp_lotto_ffl AS WITH ins AS (
 ) SELECT * FROM ins;
 
 -- F1 e F2: STESSA chiave. F3: stessa chiave tranne la utility.
-CREATE TEMP TABLE tmp_figlie_ffl AS WITH ins AS (
+-- ⭐ F1 e F2 le scrive il builder (rev 2026-10-24, R-5): cliente del mondo
+--    (terzo parametro), totale alla nascita, in bozza. Un builder per
+--    istruzione: la tabella si legge dopo.
+CREATE TEMP TABLE tmp_figlie_ffl AS
+SELECT f.fattura_id AS id, 'F1'::text AS ruolo
+  FROM dbops.fn_pgtap_crea_fattura(
+         'fondi_lotto', 'DRAFT', (SELECT billing_account_id FROM tmp_refs_ffl),
+         false, false, p_minimo => false, p_totale_a_pagare => 300.00) f;
+
+INSERT INTO tmp_figlie_ffl (id, ruolo)
+SELECT f.fattura_id, 'F2'
+  FROM dbops.fn_pgtap_crea_fattura(
+         'fondi_lotto', 'DRAFT', (SELECT billing_account_id FROM tmp_refs_ffl),
+         false, false, p_minimo => false, p_totale_a_pagare => 400.00) f;
+
+-- ⚠️ F3 resta a mano: la sua utility NON e' quella del billing account, ed e'
+--    il perno del test 3; il builder scrive sempre quella del BA.
+WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, v.utility_id, FALSE, v.totale,
+         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_altra_id, FALSE, 500.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffl),
-                            'ruolo', v.ruolo)
+                            'ruolo', 'F3')
     FROM tmp_refs_ffl r
-    CROSS JOIN LATERAL (VALUES
-        (r.utility_id,       300.00::NUMERIC, 'F1'),
-        (r.utility_id,       400.00::NUMERIC, 'F2'),
-        (r.utility_altra_id, 500.00::NUMERIC, 'F3')
-    ) AS v(utility_id, totale, ruolo)
   RETURNING id, meta->>'ruolo' AS ruolo
-) SELECT * FROM ins;
+)
+INSERT INTO tmp_figlie_ffl (id, ruolo)
+SELECT id, ruolo FROM ins;
 
 INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id, meta)
 SELECT (SELECT id FROM tmp_lotto_ffl), g.id,
@@ -125,23 +158,19 @@ SELECT (SELECT id FROM tmp_lotto_ffl), g.id,
 
 -- Due sorgenti «di minimo», DEFINITIVE, con la chiave di F1/F2. ⚠️ NON stanno
 -- nel lotto: le sorgenti si trovano per chiave, non per appartenenza.
-CREATE TEMP TABLE tmp_sorgenti_ffl AS WITH ins AS (
-  INSERT INTO vendite.fatture (
-      registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
-      minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
-         TRUE, v.totale,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffl),
-                            'ruolo', v.ruolo)
-    FROM tmp_refs_ffl r
-    CROSS JOIN LATERAL (VALUES
-        (100.00::NUMERIC, 'S1'),
-        ( 60.00::NUMERIC, 'S2')
-    ) AS v(totale, ruolo)
-  RETURNING id, meta->>'ruolo' AS ruolo
-) SELECT * FROM ins;
+-- ⭐ Le scrive il builder (rev 2026-10-24, R-5): minimo e totale alla nascita,
+--    e fuori bozza indirizzi, intestazione e matrice fino a DEFINITIVA.
+CREATE TEMP TABLE tmp_sorgenti_ffl AS
+SELECT f.fattura_id AS id, 'S1'::text AS ruolo
+  FROM dbops.fn_pgtap_crea_fattura(
+         'fondi_lotto', 'DEFINITIVA', (SELECT billing_account_id FROM tmp_refs_ffl),
+         false, false, p_minimo => true, p_totale_a_pagare => 100.00) f;
+
+INSERT INTO tmp_sorgenti_ffl (id, ruolo)
+SELECT f.fattura_id, 'S2'
+  FROM dbops.fn_pgtap_crea_fattura(
+         'fondi_lotto', 'DEFINITIVA', (SELECT billing_account_id FROM tmp_refs_ffl),
+         false, false, p_minimo => true, p_totale_a_pagare => 60.00) f;
 
 -- Un lotto VUOTO: esiste, non ha fatture. Non e' un errore — e' un giro che
 -- non ha niente da fare, e va distinto dal lotto inesistente.
@@ -169,29 +198,23 @@ CREATE TEMP TABLE tmp_lotto_bad_ffl AS WITH ins AS (
   RETURNING id
 ) SELECT * FROM ins;
 
-CREATE TEMP TABLE tmp_figlia_bad_ffl AS WITH ins AS (
-  INSERT INTO vendite.fatture (
-      registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, FALSE, 250.00,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffl))
-    FROM tmp_refs_ffl r
-  RETURNING id
-) SELECT * FROM ins;
+-- ⭐ La fattura SENZA utility dal builder (rev 2026-10-24, §4-octies):
+--    p_senza_utility, sul cliente del mondo, totale alla nascita, in bozza.
+CREATE TEMP TABLE tmp_figlia_bad_ffl AS
+SELECT f.fattura_id AS id
+  FROM dbops.fn_pgtap_crea_fattura(
+         'fondi_lotto', 'DRAFT', (SELECT billing_account_id FROM tmp_refs_ffl),
+         p_minimo => false, p_totale_a_pagare => 250.00,
+         p_senza_utility => true) f;
 
 -- La fattura SANA del lotto rotto: stessa chiave di F1/F2, quindi se il giro
 -- scrivesse prima di validare, le sorgenti S1/S2 avrebbero gia' il loro fondo.
-CREATE TEMP TABLE tmp_figlia_sana_bad_ffl AS WITH ins AS (
-  INSERT INTO vendite.fatture (
-      registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, FALSE, 150.00,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffl))
-    FROM tmp_refs_ffl r
-  RETURNING id
-) SELECT * FROM ins;
+-- ⭐ Dal builder (rev 2026-10-24, R-5): e' una figlia qualunque del cliente.
+CREATE TEMP TABLE tmp_figlia_sana_bad_ffl AS
+SELECT f.fattura_id AS id
+  FROM dbops.fn_pgtap_crea_fattura(
+         'fondi_lotto', 'DRAFT', (SELECT billing_account_id FROM tmp_refs_ffl),
+         false, false, p_minimo => false, p_totale_a_pagare => 150.00) f;
 
 INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id, meta)
 SELECT (SELECT id FROM tmp_lotto_bad_ffl), v.fattura_id,

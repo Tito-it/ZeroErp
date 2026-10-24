@@ -1,0 +1,150 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO DELLA BOLLA SI RIALLINEA AL BB COMUNE
+#   vendite.fn_annulla_ddt(p_ddt_id, p_legami_confermati) -> movimenti
+#   Brief: brief-db-annullo-documento-con-legami (§7.2, D-4 di Tid)
+#
+# ── REGOLA DEL 2, NELLO STESSO GIRO ─────────────────────────────────
+#   La prima versione (20261011-35) contava le righe legate, ritirava i
+#   legami e apriva la sua porta (zeroerp.ddt_annullo) da se'. Ora conferma
+#   e ritiro sono il BB vendite.fn_documento_ritira_legami (20261011-84),
+#   comune ai quattro verbi di annullo: qui restano il perimetro e il
+#   cambio di stato.
+#
+# ── COSA CAMBIA PER CHI CHIAMA ──────────────────────────────────────
+#   La conferma dichiara i LEGAMI visti (le righe di
+#   vendite.fn_documento_legami('DDT', id)), non piu' le righe legate: la
+#   finestra elenca i legami, uno per riga, e una riga di ri-consegna da
+#   ordine ne ha due. Il parametro cambia nome (p_righe_legate_confermate
+#   -> p_legami_confermati), quindi DROP e CREATE: il backend non chiama
+#   ancora il verbo (§3.4 del brief, da fare), e i pgTAP lo chiamano per
+#   posizione. Nei legami entrano anche le righe di commessa NON_EMESSA
+#   spinte dalla bolla (D-5).
+#
+# ── COSA FA, IN ORDINE ──────────────────────────────────────────────
+#   1. guard di parametro; 2. testata FOR UPDATE nel perimetro (fuori:
+#   E_DDT_NOT_FOUND); 3. conferma e ritiro dal BB, che apre la porta;
+#   4. lo stato da vendite.fn_cambia_stato_ddt (matrice, permesso
+#   emetti_ddt sull'annullo di una emessa, storno del magazzino), di cui
+#   restituisce i movimenti; 5. porta chiusa. UNA transazione.
+#   SECURITY DEFINER con search_path bloccato: la porta vuole il
+#   proprietario. EXECUTE solo all'app.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-85-update-fn-annulla-ddt-dal-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261011-85-update-fn-annulla-ddt-dal-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_annulla_ddt: conferma e ritiro dal BB vendite.fn_documento_ritira_legami; la
+        conferma dichiara i legami visti (p_legami_confermati). Perimetro e cambio di stato restano
+        qui. D-4 di brief-db-annullo-documento-con-legami.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_documento_ritira_legami';
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_annulla_ddt';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION vendite.fn_annulla_ddt(bigint, integer);
+
+              CREATE FUNCTION vendite.fn_annulla_ddt(
+                  p_ddt_id             vendite.ddt.id%TYPE,
+                  p_legami_confermati  integer DEFAULT NULL)
+              RETURNS TABLE(
+                  movimento_id magazzino.movimenti.id%TYPE,
+                  prelievo_id  vendite.ddt_righe_prelievi.id%TYPE,
+                  qta          magazzino.movimenti.qta%TYPE)
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              #variable_conflict use_column
+              -- =========================================================
+              -- Scopo: annullare una bolla. Con legami: conferma e ritiro dal
+              --   BB vendite.fn_documento_ritira_legami, poi lo stato dal verbo
+              --   di stato. p_legami_confermati e' un CONTEGGIO: tipo nudo.
+              --   Vedi l'intestazione del changeSet.
+              -- Ritorna: i movimenti di storno del verbo di stato (nessuno se
+              --   la bolla non muove merce).
+              -- =========================================================
+              DECLARE
+                  v_utente  config.user_override_azioni.auth_user_id%TYPE;
+                  v_trovato boolean;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametri.
+                  IF p_ddt_id IS NULL OR p_ddt_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_annulla_ddt',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_ddt_id', p_ddt_id),
+                          NULL::uuid, 'vendite.fn_annulla_ddt',
+                          'p_ddt_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- 2. La testata FOR UPDATE, nel perimetro (predicato della
+                  --    policy: DEFINER). Fuori perimetro come inesistente.
+                  SELECT true
+                    INTO v_trovato
+                    FROM vendite.ddt d
+                   WHERE d.id = p_ddt_id
+                     AND script.fn_scope_ef_whitelist_via_ddt(v_utente, d.id)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_annulla_ddt',
+                          'E_DDT_NOT_FOUND', jsonb_build_object('ddt_id', p_ddt_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 3. Conferma e ritiro: il BB apre la porta e la lascia aperta.
+                  PERFORM vendite.fn_documento_ritira_legami('DDT', p_ddt_id, p_legami_confermati);
+
+                  -- 4. Lo stato, dal verbo di stato: matrice, permesso, storno.
+                  RETURN QUERY
+                      SELECT c.movimento_id, c.prelievo_id, c.qta
+                        FROM vendite.fn_cambia_stato_ddt(p_ddt_id, 'ANNULLATO') AS c;
+
+                  -- 5. Porta chiusa.
+                  PERFORM set_config('zeroerp.doc_ritira_legami', '', true);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_annulla_ddt(vendite.ddt.id%TYPE, integer) IS
+                  'VERBO (2026-10-11; brief-db-ddt-righe-evase-dall-ordine D-8, riallineato da brief-db-annullo-documento-con-legami D-4): annulla una bolla. Testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_ddt; fuori perimetro E_DDT_NOT_FOUND). Conferma e ritiro dal BB vendite.fn_documento_ritira_legami: chi conferma DICHIARA quanti legami ha visto (p_legami_confermati, le righe di vendite.fn_documento_legami(''DDT'', id): legami con ordini e resi, righe di commessa NON_EMESSA); se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI. Poi lo stato da vendite.fn_cambia_stato_ddt (matrice, permesso emetti_ddt sull''annullo di una emessa, storno del magazzino), di cui restituisce i movimenti, e la porta del ritiro si chiude. UNA transazione. Una bolla senza legami non ha niente da confermare. SECURITY DEFINER con search_path bloccato; EXECUTE solo all''app.';
+
+              REVOKE EXECUTE ON FUNCTION vendite.fn_annulla_ddt(vendite.ddt.id%TYPE, integer) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_annulla_ddt(vendite.ddt.id%TYPE, integer) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ritorno: rieseguire il corpo di 20261011-35 (firma con p_righe_legate_confermate).
+              SELECT 'ripristino rieseguendo 20261011-35' AS note;

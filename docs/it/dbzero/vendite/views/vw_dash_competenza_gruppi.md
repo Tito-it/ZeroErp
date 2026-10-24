@@ -3,9 +3,11 @@
 
 > 📝 **Descrizione**
 >
-> I documenti da emettere di una competenza, un gruppo per riga, con l'esito dell'ULTIMO tentativo di fatturazione (ultimo_esito, ultimo_errore_codice, ultimo_errore_messaggio, ultimo_errore_quando, ultimo_lotto_codice). Rev 2026-09-07: l'esito si legge da vendite.fatturazione_lotti_esiti e non piu' dalle colonne del perimetro — quelle non esistevano sui giri che un perimetro non lo dichiarano, quindi un documento fallito in un giro di massa restava senza segno. Il segno NON spegne stadio ne' commessa_emittibile (decisione di Tid): dice che un tentativo e' fallito, non che il documento non si possa fatturare. Il legame e' (documento, mese di competenza): senza il mese, il documento di settembre erediterebbe l'errore di agosto. Brief: brief-db-esito-gruppo-lotto.
+> I documenti da emettere di una competenza, un gruppo per riga, con l'esito dell'ULTIMO tentativo di fatturazione (ultimo_esito, ultimo_errore_codice, ultimo_errore_messaggio, ultimo_errore_quando, ultimo_lotto_codice). Rev 2026-09-07: l'esito si legge da vendite.fatturazione_lotti_esiti e non piu' dalle colonne del perimetro — quelle non esistevano sui giri che un perimetro non lo dichiarano, quindi un documento fallito in un giro di massa restava senza segno. Il segno NON spegne stadio ne' commessa_emittibile (decisione di Tid): dice che un tentativo e' fallito, non che il documento non si possa fatturare. Il legame e' (documento, mese di competenza): senza il mese, il documento di settembre erediterebbe l'errore di agosto. Brief: brief-db-esito-gruppo-lotto. Rev 2026-10-20 (20261020-82, brief-db-grammatica-unica-documenti 2d e L2c-1): area_documento (il plurale) diventa documento_apribile, e il numero del documento si risolve quando la sorgente e' apribile (config.sorgenti.area e' ritirata); ricreata dopo l'allargamento di registri_fatturazione.codice.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
+<div data-search-exclude markdown>
 
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi
@@ -40,7 +42,7 @@ WITH aggregato AS (
  SELECT g.competenza_mese,
     g.gruppo_key,
     COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
-    s.area AS area_documento,
+    s.apribile AS documento_apribile,
     COALESCE(doc.documento_numero, g.commessa_codice, g.gruppo_key) AS riferimento,
     g.commessa_id,
     g.commessa_codice,
@@ -93,7 +95,7 @@ WITH aggregato AS (
     esito.lotto_pre_fiscale AS ultimo_lotto_pre_fiscale
    FROM ((((((((((aggregato g
      LEFT JOIN config.sorgenti s ON ((s.id = g.sorgente_tipo_id)))
-     LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(g.sorgente_tipo_id, g.sorgente_uid) doc(documento_id, documento_numero) ON ((s.area IS NOT NULL)))
+     LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(g.sorgente_tipo_id, g.sorgente_uid) doc(documento_id, documento_numero) ON (s.apribile))
      LEFT JOIN anagrafiche.billing_account ba_riga ON ((ba_riga.id = g.billing_account_id)))
      LEFT JOIN anagrafiche.billing_account ba_fatt ON ((ba_fatt.id = COALESCE(ba_riga.parent_account_id, ba_riga.id))))
      LEFT JOIN anagrafiche.soggetti_ruoli sr_fatt ON ((sr_fatt.id = ba_fatt.soggetto_ruolo_id)))
@@ -115,6 +117,8 @@ WITH aggregato AS (
          LIMIT 1) esito ON (true))
      LEFT JOIN vendite.vw_lotti_fase fb ON ((fb.lotto_id = g.lotto_blocco_id)));
 ```
+
+</div>
 
 
 ---

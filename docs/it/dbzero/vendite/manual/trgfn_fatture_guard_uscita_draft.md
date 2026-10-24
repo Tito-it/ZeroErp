@@ -16,13 +16,27 @@
 (latest review 02-08-2026)
 
 Impedisce a una fattura di **lasciare lo stato DRAFT** finché non è completa:
-indirizzi obbligatori presenti **e** intestazione fiscale congelata.
+indirizzi obbligatori presenti **e** intestazione fiscale congelata, con dentro
+la **sede legale del cedente** (dal 21-10-2026, brief-db-modelli-documento-standard
+§10.7 R-5).
 
 Codice: **`E_FATTURA_NON_EMETTIBILE_INCOMPLETA` (575)**, mappato **409** dal
 backend — è uno stato della risorsa, non un input malformato.
 
 Un codice solo per entrambi i casi: chi lo riceve rilancia comunque lo step DRAFT,
-e il dettaglio (`indirizzi_mancanti` / `intestazione_mancante`) sta nel payload.
+e il dettaglio (`indirizzi_mancanti` / `intestazione_mancante` /
+`intestazione_incompleta`) sta nel payload.
+
+### La sede legale del cedente
+
+Lo snapshot dell'emittente porta la sede (`emittente_snapshot.sede`) quando
+l'azienda ce l'ha: la cerca sul ruolo e poi sul soggetto, come l'indirizzo del
+cliente. Senza sede la chiave manca. Il guard la pretende **dentro** un'intestazione
+che c'è: messaggio «intestazione incompleta: manca la sede legale
+dell'emittente», contesto `intestazione_incompleta`. Il rimedio è anagrafico:
+inserire la sede legale dell'azienda e rieseguire lo step DRAFT, che riscrive lo
+snapshot. Una sede a `{}` non vale, per lo stesso motivo dell'intestazione
+(sotto).
 
 ---
 

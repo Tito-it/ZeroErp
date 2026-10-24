@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed config.transizioni_stati_cliente (C-6 di Tid del 2026-10-14):
+#   PR         -> AT, AN
+#   AT         -> RS, SF, SC, CH, CM, CW, AN
+#   RS         -> AT, SF, SC
+#   SF, SC     -> AT, l'altro sospeso, CH, CM, CW
+#   CH, CM, CW -> CF
+#   CF, AN     -> terminali; AG fuori dal grafo (C-7)
+# Gli stati per id: config.stati_cliente e' seminato con id espliciti
+#   (20250813-04), gli stessi su ogni installazione.
+# ⭐ Chiave del mirror = la coppia (da, a), non l'id della identity.
+# Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261014-09-seed-transizioni-stati-cliente-mctit.yaml
+
+  - changeSet:
+      id: 20261014-09-seed-transizioni-stati-cliente
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: transizioni_stati_cliente
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/transizioni_stati_cliente.csv
+            tableName: transizioni_stati_cliente
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "stato_da_id,stato_a_id"
+            columns:
+              - column: { name: stato_da_id, type: NUMERIC }
+              - column: { name: stato_a_id, type: NUMERIC }
+              - column: { name: attivo, type: BOOLEAN }

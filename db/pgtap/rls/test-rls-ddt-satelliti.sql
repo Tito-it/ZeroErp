@@ -106,12 +106,20 @@ SELECT c.lato, d.id AS ddt_id, d.emittente_fiscale_id
 
 -- ⚠️ `qta_operativa` va valorizzata: `trgfn_qta_from_operativa` ne deriva
 --   `quantita`, e il CHECK `k_ddt_righe_qta_operativa_pos` la vuole positiva.
+-- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-1/D-2): l'articolo si
+--   COSTRUISCE. Prima si pescava dal catalogo (il primo per id, o il piu' recente):
+--   il primo per id e' l'onere del seed ONERE_SENZA_CONTRATTO (natura servizio), e
+--   da 20261013-42 ordine e bolla portano solo merce. Un articolo costruito ha solo
+--   le proprieta' che il test gli da' (merce, non gestito a magazzino).
+CREATE TEMP TABLE _art_fix AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-RLSDS-ART', false) AS id;
+
 CREATE TEMP TABLE _righe AS
 WITH r AS (
     INSERT INTO vendite.ddt_righe
         (ddt_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa, prezzo_unitario)
     SELECT d.ddt_id, 1,
-           (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1),
+           (SELECT id FROM _art_fix),
            'Riga pgTAP RLS', 1, 1, 100.00
       FROM _ddt d
     RETURNING id, ddt_id
@@ -217,7 +225,7 @@ BEGIN
         INSERT INTO vendite.ddt_righe
             (ddt_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa, prezzo_unitario)
         VALUES (v_b.ddt_id, 99,
-                (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1),
+                (SELECT id FROM _art_fix),
                 'intrusione', 1, 1, 1.00);
         PERFORM set_config('pgtap.scrittura', 'PASSATA', true);
     EXCEPTION WHEN insufficient_privilege OR check_violation THEN

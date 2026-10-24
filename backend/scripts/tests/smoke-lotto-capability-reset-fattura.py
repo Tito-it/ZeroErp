@@ -41,15 +41,16 @@ def check(nome: str, ok: bool, dettaglio: str = "") -> None:
         FAIL.append(nome)
 
 
-# Scopo: righe della lista fatture di un lotto, con la firma completa che il
-#        repository pretende (nessun default: sort_by/sort_dir sono obbligatori
-#        e un `None` esploderebbe su `.lower()`).
+# Scopo: righe della lista fatture di un lotto, ordinate per id come le
+#        legge il test (`fattura_id`, la chiave della whitelist). I nomi sono quelli del contratto di lista
+#        (`order_by`/`order_dir`, rinominati da `sort_by`/`sort_dir` il
+#        2026-10-21, brief-be-verifica-documentazione-api).
 def righe_lotto(lotto_id: int, limit: int = 20):
     rows, _ = VenditeRepository().list_lotto_fatture(
         lotto_id=lotto_id,
         stato_esecuzione=None,
-        sort_by="id",
-        sort_dir="asc",
+        order_by="fattura_id",
+        order_dir="asc",
         limit=limit,
         offset=0,
     )

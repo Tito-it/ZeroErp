@@ -22,7 +22,8 @@
 -- 13) fn_init guard p_emittente_sr_id NULL → E_PARAMETRO_INVALIDO
 -- 14) fn_init eccezione non trovata → E_OFFERTA_ECCEZIONE_NON_TROVATA
 -- 15) fn_init articolo non composito → 0
--- 16) fn_init quantita NULL → 0 (consumo)
+-- 16) il kit non si vende a consumo: una riga composita con una fonte a valle e'
+--     fuori perimetro (I-D6, rev 2026-10-21; era «fn_init quantita NULL → 0»)
 -- 17) fn_init idempotenza → 0 alla seconda chiamata [skip se no composito]
 -- 18) fn_init happy path: componenti inseriti > 0   [skip se no composito]
 -- 19) fn_init override: prezzo overriddato           [skip se no composito]
@@ -47,171 +48,152 @@ SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(27);
 
 -- ============================================================
--- Contesto dati-dipendenti (skip se assenti)
+-- FIXTURE COSTRUITA (rev 2026-10-13)
 -- ============================================================
--- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe
---   stanno nel PERIMETRO dell'articolo, e la tipologia dell'articolo dev'essere fra quelle
---   della utility del cliente. I due articoli si scelgono PRIMA, e il billing account e' il
---   primo la cui utility ne ammette le tipologie (su dbdev il composito e' SERVIZI, che la
---   utility del primo cliente non prevede). Le erogazioni sono quelle che il perimetro
---   ammette: UNA_TANTUM sul semplice, CANONE/DERIVATA_COMPONENTI e CONSUMO/MANUALE sul
---   composito (CONSUMO/LETTURE non lo ammette una tipologia non a contatore).
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b, A-5):
+--   FIXTURE RISCRITTA, TUTTA COSTRUITA. Prima composito, semplice, cliente e
+--   listino si pescavano dal database («il fixture non si ricostruisce: si
+--   FILTRA»): sullo scratch e in CI non c'era niente da filtrare, e 22 test su 27
+--   si saltavano (verde per sottrazione); su dbdev le OVERRIDE puntavano ad
+--   articoli fuori dal listino del documento, che dal Lotto 3b sono rifiutate.
+--   Ora: un cliente; un listino con la versione 2021+ (BOZZA, righe, ATTIVA) che
+--   contiene il semplice S e il bundle P (componenti F1, F2 opzionali, F2
+--   NASCOSTO in fattura, prezzi dei componenti a listino). Le offerte restano
+--   datate 2082: la versione e' aperta, e lo e' la distinta.
+--   Le erogazioni si scelgono fra quelle che P ammette (la tipologia del listino
+--   dipende dalla utility): la COMPOSITA con la fonte FISSA, la CONSUMO con una
+--   fonte a valle (MANUALE o LETTURE). Il semplice eredita.
+--   ⚠️ rev 2026-10-21 (brief-db-offerta-emissione-ed-erogazione §I.1, I-D1 di Tid):
+--   la COMPOSITA era DERIVATA_COMPONENTI con `quantita` scritta a mano — la FISSA
+--   con un altro nome che il brief ha trovato. DERIVATA ritirata: FISSA, e la
+--   quantita' arriva da qta_operativa come per ogni riga FISSA. E per la I-D6 dello
+--   stesso giorno un kit si vende SOLO a quantita' fissa (i componenti si calcolano
+--   dalla quantita' della riga): il listino passa su una tipologia della utility che
+--   ammette la FISSA e una fonte a valle, perche' il builder sceglie la prima, che
+--   puo' essere solo a consumo; e il test 16 prova il rifiuto del kit a consumo.
+CREATE TEMP TABLE tmp_oce_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('offerte eccezioni componenti');
+
+-- La versione del builder nasce ATTIVA, e i componenti di un bundle non si
+-- scrivono su una versione ATTIVA: la si chiude nel 2020 e quella buona nasce qui.
+CREATE TEMP TABLE tmp_oce_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino(
+    (SELECT utility_id FROM tmp_oce_mondo), 'offerte eccezioni componenti',
+    '2020-01-01'::date, '2020-12-31'::date);
+
+-- La tipologia del listino (rev 2026-10-21, I-D6): una della utility che ammette la
+-- FISSA (il kit) e una fonte a valle (il rifiuto del test 16). Il listino e' appena
+-- nato, senza righe: la tipologia si sceglie qui. Se la utility non ne ha una, la
+-- fixture muore: NOT NULL, mai uno skip.
+UPDATE tmp_oce_listino t
+   SET tipologia_id = (
+       SELECT ltu.tipologia_id
+         FROM config.listini_tipologie_utilities ltu
+        WHERE ltu.utility_id = (SELECT utility_id FROM tmp_oce_mondo)
+          AND ltu.attivo
+          AND EXISTS (SELECT 1 FROM config.listini_tipologie_erogazioni te
+                       WHERE te.tipologia_id = ltu.tipologia_id
+                         AND te.fonte_quantita_attesa = 'FISSA')
+          AND EXISTS (SELECT 1 FROM config.listini_tipologie_erogazioni te
+                       WHERE te.tipologia_id = ltu.tipologia_id
+                         AND te.fonte_quantita_attesa <> 'FISSA')
+        ORDER BY ltu.tipologia_id
+        LIMIT 1);
+ALTER TABLE tmp_oce_listino ALTER COLUMN tipologia_id SET NOT NULL;
+UPDATE vendite.listini l
+   SET tipologia_id = t.tipologia_id
+  FROM tmp_oce_listino t
+ WHERE l.id = t.listino_id;
+
+CREATE TEMP TABLE tmp_oce_ver AS
+WITH ins AS (
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
+    SELECT listino_id, 'PGTAP_OCE_V2', '2021-01-01'::date, 'BOZZA' FROM tmp_oce_listino
+    RETURNING id
+)
+SELECT id FROM ins;
+
+-- Struttura alla nascita: tutti nella tipologia del listino; il bundle P nasce
+-- composito.
+CREATE TEMP TABLE tmp_oce_art AS
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGT-OCE-' || v.sigla, false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_oce_listino),
+           p_is_composito         => v.sigla = 'P') AS id
+  FROM (VALUES ('S'), ('P'), ('F1'), ('F2')) AS v(sigla);
+
+-- Scopo: id di un articolo della fixture per sigla.
+CREATE OR REPLACE FUNCTION pg_temp.oce(p_sigla text)
+RETURNS uuid LANGUAGE sql STABLE AS $fx$
+  SELECT id FROM tmp_oce_art WHERE sigla = p_sigla;
+$fx$;
+
+-- Il bundle: P composito, F1 e F2 componenti opzionali (il fallback prezzo 0 del
+-- risolutore e' ammesso solo sugli opzionali), F2 NASCOSTO in fattura (test 26).
+INSERT INTO catalogo.articoli_componenti
+       (prodotto_id, componente_id, coeff_qta, obbligatorio, esposizione_in_fattura, valido_dal)
+VALUES (pg_temp.oce('P'), pg_temp.oce('F1'), 1, false, 'VALORIZZATO', '2020-01-01'),
+       (pg_temp.oce('P'), pg_temp.oce('F2'), 2, false, 'NASCOSTO',    '2020-01-01');
+
+INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
+SELECT (SELECT id FROM tmp_oce_ver), a.id, a.uom_id, 100.00
+  FROM catalogo.articoli a
+ WHERE a.id IN (pg_temp.oce('S'), pg_temp.oce('F1'), pg_temp.oce('F2'));
+
+INSERT INTO vendite.listini_righe_componenti (listino_versione_id, articolo_componente_id,
+       articolo_padre_id, articolo_figlio_id, prezzo, valido_dal)
+SELECT (SELECT id FROM tmp_oce_ver), ac.id, ac.prodotto_id, ac.componente_id, 40.00, '2021-01-01'
+  FROM catalogo.articoli_componenti ac
+ WHERE ac.prodotto_id = pg_temp.oce('P');
+
+UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM tmp_oce_ver);
+
 CREATE TEMP TABLE tmp_oce_comp AS
-    -- Articolo composito con almeno un componente attivo valido al DATE '2082-01-01'
-    -- (fixture) e tutti opzionali (obbligatorio=FALSE): il fallback prezzo=0 del
-    -- resolver e' ammesso solo su componenti opzionali. Nessun filtro esposto_in_fattura
-    -- (modello unificato rev 2026-05-27).
-SELECT (SELECT a.id
-       FROM catalogo.articoli a
-      WHERE a.is_composito = TRUE
-        AND EXISTS (
-            SELECT 1 FROM catalogo.articoli_componenti ac
-             WHERE ac.prodotto_id = a.id
-               AND COALESCE(ac.attivo, TRUE) = TRUE
-               AND ac.validita @> DATE '2082-01-01'
-        )
-        AND NOT EXISTS (
-            SELECT 1 FROM catalogo.articoli_componenti ac
-             WHERE ac.prodotto_id = a.id
-               AND COALESCE(ac.attivo, TRUE) = TRUE
-               AND COALESCE(ac.obbligatorio, TRUE) = TRUE
-        )
-        -- rev 2026-10-07 (giro B3): le combinazioni che il test scrive sono nel perimetro
-        AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
-                     WHERE e.tipo_erogazione = 'CANONE' AND e.fonte_quantita_attesa = 'DERIVATA_COMPONENTI')
-        AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
-                     WHERE e.tipo_erogazione = 'CONSUMO' AND e.fonte_quantita_attesa = 'MANUALE')
-      ORDER BY a.id LIMIT 1) AS articolo_composito_id;
+SELECT pg_temp.oce('P') AS articolo_composito_id;
 
 CREATE TEMP TABLE tmp_oce_sempl AS
-    -- Articolo non composito (per test 15)
-SELECT (SELECT a.id
-       FROM catalogo.articoli a
-      WHERE COALESCE(a.is_composito, FALSE) = FALSE
-        -- rev 2026-10-07 (giro B3): UNA_TANTUM/FISSA nel perimetro
-        AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
-                     WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
-      ORDER BY a.id LIMIT 1) AS articolo_semplice_id;
+SELECT pg_temp.oce('S') AS articolo_semplice_id;
 
 CREATE TEMP TABLE tmp_oce_ctx AS
 SELECT
-    (SELECT articolo_composito_id FROM tmp_oce_comp) AS articolo_composito_id,
-
-    (SELECT articolo_semplice_id FROM tmp_oce_sempl) AS articolo_semplice_id,
-
-    -- Contesto billing/utility: BA senza tipi_utenze (evita guard tipo/classe)
-    (SELECT ba.id
-       FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (
-          SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
-      )
-        -- rev 2026-10-07 (giro B3): la utility ammette le tipologie dei due articoli
-        AND NOT EXISTS (
-            SELECT 1 FROM catalogo.articoli a
-             WHERE a.id IN ((SELECT articolo_composito_id FROM tmp_oce_comp),
-                            (SELECT articolo_semplice_id FROM tmp_oce_sempl))
-               AND a.listino_tipologia_id IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
-                                WHERE ltu.utility_id = ba.utility_id
-                                  AND ltu.tipologia_id = a.listino_tipologia_id
-                                  AND ltu.attivo))
-      ORDER BY ba.id LIMIT 1) AS billing_account_id,
-
-    (SELECT ba.istanza_utility_id
-       FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (
-          SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
-      )
-        -- rev 2026-10-07 (giro B3): la utility ammette le tipologie dei due articoli
-        AND NOT EXISTS (
-            SELECT 1 FROM catalogo.articoli a
-             WHERE a.id IN ((SELECT articolo_composito_id FROM tmp_oce_comp),
-                            (SELECT articolo_semplice_id FROM tmp_oce_sempl))
-               AND a.listino_tipologia_id IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
-                                WHERE ltu.utility_id = ba.utility_id
-                                  AND ltu.tipologia_id = a.listino_tipologia_id
-                                  AND ltu.attivo))
-      ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-
-    (SELECT ba.utility_id
-       FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (
-          SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
-      )
-        -- rev 2026-10-07 (giro B3): la utility ammette le tipologie dei due articoli
-        AND NOT EXISTS (
-            SELECT 1 FROM catalogo.articoli a
-             WHERE a.id IN ((SELECT articolo_composito_id FROM tmp_oce_comp),
-                            (SELECT articolo_semplice_id FROM tmp_oce_sempl))
-               AND a.listino_tipologia_id IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
-                                WHERE ltu.utility_id = ba.utility_id
-                                  AND ltu.tipologia_id = a.listino_tipologia_id
-                                  AND ltu.attivo))
-      ORDER BY ba.id LIMIT 1) AS utility_id,
-
-    (SELECT ef.id
-       FROM anagrafiche.emittenti_fiscali ef
-      WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
-
-    (SELECT ef.soggetto_ruolo_id
-       FROM anagrafiche.emittenti_fiscali ef
-      WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_sr_id,
-
-    (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1)
-        AS listino_id,
-
-    (SELECT lv.id FROM vendite.listini_versioni lv
-      WHERE lv.stato = 'ATTIVA' ORDER BY lv.id LIMIT 1)
-        AS listino_versione_id,
-
-    (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'ACCETTATA')
-        AS stato_accettata_id,
+    pg_temp.oce('P')                               AS articolo_composito_id,
+    pg_temp.oce('S')                               AS articolo_semplice_id,
+    m.billing_account_id,
+    m.istanza_utility_id,
+    m.utility_id,
+    m.emittente_fiscale_id,
+    m.emittente_soggetto_ruolo_id                  AS emittente_sr_id,
+    (SELECT listino_id FROM tmp_oce_listino)       AS listino_id,
+    (SELECT id FROM tmp_oce_ver)                   AS listino_versione_id,
+    (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'ACCETTATA') AS stato_accettata_id,
     -- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): le righe
     --   dell'offerta si scrivono solo in BOZZA. Le offerte nascono in BOZZA, e la
     --   COMPOSITA va in EMESSA e poi ACCETTATA solo prima del push (test 20).
-    (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')
-        AS stato_bozza_id,
-    (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')
-        AS stato_emessa_id;
+    (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')     AS stato_bozza_id,
+    (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')    AS stato_emessa_id,
+    -- Le erogazioni di P: la composita con la FISSA. La consumo e' una
+    --   combinazione della TIPOLOGIA con una fonte a valle: il kit non la ha
+    --   (I-D6), ed e' il rifiuto del test 16.
+    (SELECT e.tipo_erogazione FROM vendite.fn_articolo_erogazioni(pg_temp.oce('P')) e
+      WHERE e.fonte_quantita_attesa = 'FISSA' ORDER BY e.ordine LIMIT 1) AS erog_composita,
+    (SELECT te.tipo_erogazione FROM config.listini_tipologie_erogazioni te
+      WHERE te.tipologia_id = (SELECT tipologia_id FROM tmp_oce_listino)
+        AND te.fonte_quantita_attesa <> 'FISSA' ORDER BY te.id LIMIT 1) AS erog_consumo,
+    (SELECT te.fonte_quantita_attesa FROM config.listini_tipologie_erogazioni te
+      WHERE te.tipologia_id = (SELECT tipologia_id FROM tmp_oce_listino)
+        AND te.fonte_quantita_attesa <> 'FISSA' ORDER BY te.id LIMIT 1) AS fonte_consumo
+  FROM tmp_oce_mondo m;
 
--- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
---   documento e' della sua utility e del suo emittente (guard nuovo). Qui gli
---   articoli (composito, semplice) e i loro prezzi vengono dai dati, quindi il
---   fixture non si ricostruisce: si FILTRA. L'emittente si deriva dal BA (il
---   guard emittente/cliente lo pretendeva gia'), il listino e' il primo attivo
---   della utility e dell'emittente del BA, la versione la prima ATTIVA di QUEL
---   listino (prima era la prima ATTIVA di un listino qualsiasi). Senza un
---   listino cosi' il fixture salta, come senza BA.
-UPDATE tmp_oce_ctx c
-   SET emittente_fiscale_id = anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),
-       emittente_sr_id = (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
-                           WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id))
- -- Senza BA il fixture salta: fn_get_emittente_fiscale_pk rifiuta un id NULL.
- WHERE c.billing_account_id IS NOT NULL;
-UPDATE tmp_oce_ctx c
-   SET listino_id = (SELECT l.id FROM vendite.listini l
-                      WHERE l.attivo IS TRUE
-                        AND l.utility_id = c.utility_id
-                        AND l.emittente_soggetto_ruolo_id = c.emittente_sr_id
-                      ORDER BY l.id LIMIT 1);
-UPDATE tmp_oce_ctx c
-   SET listino_versione_id = (SELECT lv.id FROM vendite.listini_versioni lv
-                               WHERE lv.listino_id = c.listino_id AND lv.stato = 'ATTIVA'
-                               ORDER BY lv.id LIMIT 1);
-
--- Flag: dati composito disponibili?
+-- Flag: il bundle c'e' (costruito: sempre).
 CREATE TEMP TABLE tmp_oce_has_composito AS
 SELECT (articolo_composito_id IS NOT NULL
         AND billing_account_id IS NOT NULL
         AND listino_id IS NOT NULL
-        AND emittente_sr_id IS NOT NULL) AS disponibile
+        AND emittente_sr_id IS NOT NULL
+        AND erog_composita IS NOT NULL) AS disponibile
   FROM tmp_oce_ctx;
 
 -- ============================================================
--- Fixture: offerta con eccezioni semplice + composita + consumo
--- (solo se dati disponibili)
+-- Le offerte: eccezioni semplice + composita + consumo + esclusione
 -- ============================================================
 CREATE TEMP TABLE tmp_oce_ids (
     slot       text PRIMARY KEY,
@@ -219,110 +201,57 @@ CREATE TEMP TABLE tmp_oce_ids (
     eccezione_id bigint
 );
 
+-- Scopo: un'offerta in BOZZA sul listino della fixture; ritorna l'id.
+CREATE OR REPLACE FUNCTION pg_temp.oce_offerta()
+RETURNS bigint LANGUAGE sql AS $fx$
+  INSERT INTO vendite.offerte_commerciali (
+      emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
+      listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id)
+  SELECT c.emittente_fiscale_id, c.billing_account_id, c.istanza_utility_id, c.utility_id,
+         c.listino_id, c.listino_versione_id, DATE '2082-01-01', c.stato_bozza_id
+    FROM tmp_oce_ctx c
+  RETURNING id;
+$fx$;
+
 DO $$
 DECLARE
-    v_ctx         record;
-    v_off_id      bigint;
-    v_off_consumo bigint;
-    v_ecc_id      bigint;
+    v_ctx    record;
+    v_off_id bigint;
+    v_altra  bigint;
+    v_ecc_id bigint;
 BEGIN
     SELECT * INTO v_ctx FROM tmp_oce_ctx;
+    v_off_id := pg_temp.oce_offerta();
 
-    IF v_ctx.billing_account_id IS NULL
-       OR v_ctx.emittente_fiscale_id IS NULL
-       OR v_ctx.listino_id IS NULL
-    THEN RETURN; END IF;
+    -- Eccezione col semplice (test 15): eredita erogazione e fonte; la quantita'
+    --   c'e' se la fonte ereditata e' FISSA.
+    INSERT INTO vendite.offerte_commerciali_eccezioni (
+        offerta_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
+    VALUES (v_off_id, v_ctx.articolo_semplice_id, 'OVERRIDE', 10.00,
+            (SELECT 1 FROM vendite.fn_articolo_erogazioni(v_ctx.articolo_semplice_id) e
+              WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA' LIMIT 1))
+    RETURNING id INTO v_ecc_id;
+    INSERT INTO tmp_oce_ids VALUES ('SEMPLICE', v_off_id, v_ecc_id);
 
-    -- Offerta in BOZZA: le righe si scrivono solo li' (rev 2026-10-04, R5a).
-    INSERT INTO vendite.offerte_commerciali (
-        emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
-        listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
-    )
-    SELECT v_ctx.emittente_fiscale_id, v_ctx.billing_account_id,
-           v_ctx.istanza_utility_id, v_ctx.utility_id,
-           v_ctx.listino_id, v_ctx.listino_versione_id,
-           DATE '2082-01-01', v_ctx.stato_bozza_id
-    RETURNING id INTO v_off_id;
+    -- Eccezione col composito (test 17-19), FISSA: 2 pezzi.
+    INSERT INTO vendite.offerte_commerciali_eccezioni (
+        offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
+        prezzo_unitario, qta_operativa, tipo_erogazione)
+    VALUES (v_off_id, v_ctx.articolo_composito_id, 'OVERRIDE',
+            'FISSA', 0.00, 2, v_ctx.erog_composita)
+    RETURNING id INTO v_ecc_id;
+    INSERT INTO tmp_oce_ids VALUES ('COMPOSITA', v_off_id, v_ecc_id);
 
-    -- Eccezione con articolo semplice (test 15).
-    -- fonte=FISSA richiede qta_operativa NOT NULL (trigger a10 qta_from_operativa,
-    -- bind 20260531-11): si valorizza qta_operativa e il trigger deriva quantita.
-    IF v_ctx.articolo_semplice_id IS NOT NULL THEN
-        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
-        INSERT INTO vendite.offerte_commerciali_eccezioni (
-            offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-            prezzo_unitario, qta_operativa, tipo_erogazione
-        )
-        VALUES (v_off_id, v_ctx.articolo_semplice_id, 'OVERRIDE', 'FISSA', 10.00, 1, 'UNA_TANTUM')
-        RETURNING id INTO v_ecc_id;
-        INSERT INTO tmp_oce_ids VALUES ('SEMPLICE', v_off_id, v_ecc_id);
-    END IF;
+    -- Il kit a consumo (test 16): un'offerta sua, la riga si tenta nel test.
+    INSERT INTO tmp_oce_ids VALUES ('CONSUMO', pg_temp.oce_offerta(), NULL);
 
-    -- Eccezione con articolo composito (test 17-19)
-    IF v_ctx.articolo_composito_id IS NOT NULL THEN
-        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
-        INSERT INTO vendite.offerte_commerciali_eccezioni (
-            offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-            prezzo_unitario, quantita, tipo_erogazione
-        )
-        VALUES (v_off_id, v_ctx.articolo_composito_id, 'OVERRIDE',
-                'DERIVATA_COMPONENTI', 0.00, 2, 'CANONE')
-        RETURNING id INTO v_ecc_id;
-        INSERT INTO tmp_oce_ids VALUES ('COMPOSITA', v_off_id, v_ecc_id);
-    END IF;
-
-    -- Eccezione con quantita NULL (test 16) — offerta separata per evitare
-    -- violazione uq_offerte_eccezioni_one_eccezione_per_articolo (OVERRIDE
-    -- sullo stesso articolo composito già inserito in v_off_id).
-    IF v_ctx.articolo_composito_id IS NOT NULL THEN
-        INSERT INTO vendite.offerte_commerciali (
-            emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
-            listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
-        )
-        SELECT v_ctx.emittente_fiscale_id, v_ctx.billing_account_id,
-               v_ctx.istanza_utility_id, v_ctx.utility_id,
-               v_ctx.listino_id, v_ctx.listino_versione_id,
-               DATE '2082-01-01', v_ctx.stato_bozza_id
-        RETURNING id INTO v_off_consumo;
-
-        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
-        INSERT INTO vendite.offerte_commerciali_eccezioni (
-            offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-            prezzo_unitario, quantita, tipo_erogazione
-        )
-        VALUES (v_off_consumo, v_ctx.articolo_composito_id, 'OVERRIDE',
-                'MANUALE', 0.00, NULL, 'CONSUMO')
-        RETURNING id INTO v_ecc_id;
-        INSERT INTO tmp_oce_ids VALUES ('CONSUMO', v_off_consumo, v_ecc_id);
-    END IF;
-
-    -- Eccezione ESCLUSIONE su articolo composito (test 27).
-    -- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R1): l'esclusione
-    --   nasce VUOTA — niente fonte, niente quantita'. Prima portava quantita' 2 per
-    --   provare che l'init la salta pur avendo una quantita'; oggi un'esclusione con
-    --   quantita' non si scrive (E_RIGA_ESCLUSIONE_CON_DATI), e il test prova l'esito
-    --   (0 componenti, prezzo padre NULL) sull'esclusione come il modello la ammette.
-    -- Offerta separata: l'unique parziale uq_offerte_eccezioni_one_eccezione_per_articolo
-    -- ammette al piu' 1 riga OVERRIDE/ESCLUSIONE per (offerta, articolo) e la COMPOSITA
-    -- ha gia' un OVERRIDE sullo stesso articolo. prezzo_unitario NULL (CHECK ESCLUSIONE).
-    IF v_ctx.articolo_composito_id IS NOT NULL THEN
-        INSERT INTO vendite.offerte_commerciali (
-            emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
-            listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
-        )
-        SELECT v_ctx.emittente_fiscale_id, v_ctx.billing_account_id,
-               v_ctx.istanza_utility_id, v_ctx.utility_id,
-               v_ctx.listino_id, v_ctx.listino_versione_id,
-               DATE '2082-01-01', v_ctx.stato_bozza_id
-        RETURNING id INTO v_off_consumo;
-
-        INSERT INTO vendite.offerte_commerciali_eccezioni (
-            offerta_id, articolo_id, tipo_eccezione
-        )
-        VALUES (v_off_consumo, v_ctx.articolo_composito_id, 'ESCLUSIONE')
-        RETURNING id INTO v_ecc_id;
-        INSERT INTO tmp_oce_ids VALUES ('ESCLUSIONE', v_off_consumo, v_ecc_id);
-    END IF;
+    -- ESCLUSIONE del composito (test 27): nasce vuota (R1 del 2026-10-04), su
+    --   un'offerta sua.
+    v_altra := pg_temp.oce_offerta();
+    INSERT INTO vendite.offerte_commerciali_eccezioni (offerta_id, articolo_id, tipo_eccezione)
+    VALUES (v_altra, v_ctx.articolo_composito_id, 'ESCLUSIONE')
+    RETURNING id INTO v_ecc_id;
+    INSERT INTO tmp_oce_ids VALUES ('ESCLUSIONE', v_altra, v_ecc_id);
 END;
 $$;
 
@@ -474,21 +403,42 @@ SELECT CASE
 END;
 
 -- ============================================================
--- TEST 16) fn_init quantita NULL → 0 (consumo)
+-- TEST 16) il kit non si vende a consumo (I-D6, rev 2026-10-21)
 -- ============================================================
-SELECT CASE
-    WHEN (SELECT eccezione_id FROM tmp_oce_ids WHERE slot = 'CONSUMO') IS NOT NULL
-    THEN is(
-        vendite.fn_offerta_eccezione_componenti_init(
-            (SELECT eccezione_id FROM tmp_oce_ids WHERE slot = 'CONSUMO'),
-            (SELECT emittente_sr_id FROM tmp_oce_ctx),
-            script.fn_data_operativa()
-        ),
-        0,
-        '16) fn_init su eccezione con quantita NULL → 0 (consumo no-op)'
-    )
-    ELSE skip('16) skip: nessuna eccezione consumo disponibile')
+-- La riga composita con una fonte a valle (la combinazione la ammette la
+-- tipologia, non il kit) e' fuori dal perimetro dell'articolo. Fino al
+-- 2026-10-21 nasceva, con quantita' NULL, senza componenti e con prezzo 0.
+-- Il codice si legge dal canale CONSTRAINT dell'eccezione.
+CREATE OR REPLACE FUNCTION pg_temp.oce_codice(p_sql text)
+RETURNS text LANGUAGE plpgsql AS $fx$
+DECLARE v_cst text;
+BEGIN
+    BEGIN
+        EXECUTE p_sql;
+        RETURN 'NESSUN ERRORE';
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS v_cst = CONSTRAINT_NAME;
+        RETURN coalesce(nullif(v_cst, ''), '-');
+    END;
 END;
+$fx$;
+
+SELECT is(
+    (SELECT count(*)::int FROM vendite.fn_articolo_erogazioni(pg_temp.oce('P')) e
+      WHERE e.fonte_quantita_attesa <> 'FISSA')
+    || ' ' ||
+    pg_temp.oce_codice(format(
+        $$INSERT INTO vendite.offerte_commerciali_eccezioni (
+              offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
+              prezzo_unitario, tipo_erogazione)
+          VALUES (%s, %L, 'OVERRIDE', %L, 0.00, %L)$$,
+        (SELECT offerta_id FROM tmp_oce_ids WHERE slot = 'CONSUMO'),
+        (SELECT articolo_composito_id FROM tmp_oce_ctx),
+        (SELECT fonte_consumo FROM tmp_oce_ctx),
+        (SELECT erog_consumo FROM tmp_oce_ctx))),
+    '0 E_RIGA_EROGAZIONE_FUORI_PERIMETRO',
+    '16) il kit non si vende a consumo: nessuna fonte a valle nel suo perimetro, la riga e'' rifiutata'
+);
 
 -- Setup: prima chiamata fn_init (popola componenti per test 17-19)
 DO $$
@@ -564,10 +514,10 @@ BEGIN
     -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
     INSERT INTO vendite.offerte_commerciali_eccezioni (
         offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-        prezzo_unitario, quantita, tipo_erogazione
+        prezzo_unitario, qta_operativa, tipo_erogazione
     )
     VALUES (v_off_id, (SELECT articolo_composito_id FROM tmp_oce_ctx),
-            'OVERRIDE', 'DERIVATA_COMPONENTI', 0.00, 3, 'CANONE')
+            'OVERRIDE', 'FISSA', 0.00, 3, (SELECT erog_composita FROM tmp_oce_ctx))
     RETURNING id INTO v_ovr_ecc_id;
 
     INSERT INTO tmp_oce_ids VALUES ('COMPOSITA-OVR', v_off_id, v_ovr_ecc_id);

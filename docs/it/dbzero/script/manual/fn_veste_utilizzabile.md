@@ -60,8 +60,9 @@ Nel database, le sedi che prima ricopiavano la regola, ognuna a modo suo:
 `fn_has_identita_attiva`, `fn_is_super_admin_account`, `fn_check_ultimo_super_admin_attivo`,
 `fn_check_almeno_un_super_admin_attivo`, `fn_get_profili_accesso_applicabili`,
 `fn_get_setup_status`, `fn_get_user_profile`, le funzioni di scope sulle vesti
-(`fn_scope_cliente_ownership`, `fn_scope_fornitore_ownership`, `fn_scope_ba_ownership`,
-`fn_scope_ba_ownership_via_fattura`, `fn_scope_identita_processo`),
+(`fn_scope_fornitore_ownership`, `fn_scope_identita_processo` e, per le vesti di
+cliente, `fn_get_identita_sr_perimetro`, da cui passano dal 21-10-2026 le policy di
+cliente e shop e `fn_scope_ba_ownership`),
 `anagrafiche.fn_sync_auth_user_is_active` e il batch notturno
 `anagrafiche.fn_sync_auth_user_expired`.
 

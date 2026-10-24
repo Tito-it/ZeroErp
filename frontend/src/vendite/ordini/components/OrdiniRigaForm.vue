@@ -30,6 +30,7 @@ import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useIvaRisolta } from '../../_shared/righe/useIvaRisolta'
+import { SORGENTE_CODES } from '../../../documenti/constants'
 import { DATE_FORMAT } from '../../../core/constants'
 import { parseIsoDate, toDateString } from '../../../core/utils/date'
 
@@ -41,13 +42,17 @@ const loading = ref(false)
 const props = defineProps({
   ordineId: { type: Number, required: true },
   riga: { type: Object, default: null },
+  // La data del documento (ISO, dal dettaglio): il minimo del calendario
+  // delle date di consegna. Solo un aiuto: il rifiuto vero e' del DB
+  // (`E_DOC_RIGA_DATA_CONSEGNA_ANTERIORE`).
+  dataDocumento: { type: String, default: null },
 })
 const {
   ivaOrigine,
   origineLabel: ivaOrigineLabel,
   risolviPer: risolviIvaPer,
   reset: resetIva,
-} = useIvaRisolta({ documentoTipo: 'ORDINE', documentoId: () => props.ordineId })
+} = useIvaRisolta({ documentoTipo: SORGENTE_CODES.ORDINE_VENDITA, documentoId: () => props.ordineId })
 
 const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
 
@@ -56,6 +61,8 @@ const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
 // Stanno sulla RIGA e non sulla testata: una riga puo' essere pronta e un'altra
 // no. Entrambe facoltative; nessun vincolo fra le due (si puo' confermare PRIMA
 // di quanto chiesto, ed e' una buona notizia — brief §2.3).
+const minDataConsegna = computed(() => parseIsoDate(props.dataDocumento))
+
 const form = ref({
   articolo_id: null,
   descrizione: '',
@@ -237,7 +244,7 @@ defineExpose({ modificato, chiudiConConferma })
     <div class="form-field">
       <label>{{ t('vendite.ordini.riga_articolo') }} <span v-if="!isEdit">*</span></label>
       <ArticoloLookup :model-value="articoloObj" :disabled="isEdit"
-        :filtri="{ soloComponenti: 'escludi' }"
+        documento="ORDINE_VENDITA" :documento-id="ordineId"
         :placeholder="t('vendite.ordini.riga_cerca_articolo')" @select="onArticoloSelect" />
     </div>
 
@@ -311,12 +318,12 @@ defineExpose({ modificato, chiudiConConferma })
       <div class="form-field">
         <label>{{ t('vendite.ordini.riga_data_consegna_richiesta_cliente') }}</label>
         <DatePicker v-model="form.data_consegna_richiesta_cliente"
-          :date-format="DATE_FORMAT" show-icon show-button-bar />
+          :date-format="DATE_FORMAT" :min-date="minDataConsegna" show-icon show-button-bar />
       </div>
       <div class="form-field">
         <label>{{ t('vendite.ordini.riga_data_consegna_confermata') }}</label>
         <DatePicker v-model="form.data_consegna_confermata"
-          :date-format="DATE_FORMAT" show-icon show-button-bar />
+          :date-format="DATE_FORMAT" :min-date="minDataConsegna" show-icon show-button-bar />
       </div>
     </div>
 

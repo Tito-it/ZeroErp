@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_offerte_commerciali_rientro_padre()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre()
  RETURNS trigger
@@ -121,6 +123,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre()
 IS 'AFTER UPDATE OF stato_doc_offerta_id su vendite.offerte_commerciali: quando una revisione viene annullata e non resta nessun''altra revisione viva dello stesso padre, riporta il padre da SUPERATA a EMESSA. Inverso di trgfn_offerte_commerciali_revisione. Chiude il limite «ultima revisione annullata senza successore -> nessuna offerta del lineage attiva» e allinea le offerte alla regola che i preventivi hanno per costruzione: una revisione abortita non rimpiazza nessuno. La META'' che VIETA il rientro fuori da questo caso sta nel guard di transizione, perche'' e'' una regola e non un automatismo. rev 2026-08-28.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -4,6 +4,11 @@
 --
 -- Test: guard MODALITA' A (brief-preventivi-ordini.md D9) sul trigger
 --       vendite.trgfn_preventivi_righe_set_natura_vendita (20260609-02).
+--       ⚠️ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3a): quella
+--       funzione e' ritirata. La natura la scrive script.trgfn_righe_natura_vendita
+--       (_a10_natura_vendita_ins_upd), il blocco della ricorrenza e' il motivo 2 di
+--       script.fn_check_articolo_riga (_a10_regole_articolo_ins_upd), stesso codice e
+--       stessa frase. L'ordine «lock prima, poi natura» del test 10 vale identico.
 --       Un articolo la cui natura ha destinazione_tipo='CONTRATTO' (ricorrenza)
 --       NON puo' essere inserito su un preventivo: blocco fail-fast
 --       all'inserimento riga con E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA.
@@ -40,7 +45,7 @@
 --
 -- ⚠️ Il test 10 e' il presidio dell'ORDINE ALFABETICO fra i due BEFORE ROW.
 --    `trg_preventivi_righe_a10_lock_columns_upd` precede
---    `trg_preventivi_righe_a10_set_natura_vendita_ins_upd`, quindi il lock legge
+--    `trg_preventivi_righe_a10_natura_vendita_ins_upd`, quindi il lock legge
 --    la natura NON ancora riscritta dall'ereditarieta' e il cambio articolo passa.
 --    Se qualcuno rinominasse i due trigger invertendone l'ordine, il lock
 --    bloccherebbe anche il cambio articolo legittimo: il test 10 e' l'unica cosa
@@ -93,34 +98,44 @@ SELECT ok(
 -- ============================================================
 -- Fixture: riferimenti + preventivo DRAFT + 2 articoli distinti
 -- ============================================================
+-- ⛔ rev 2026-10-13: anche il cliente e l'azienda si COSTRUISCONO. Prima si
+--   pescavano il primo billing account e il primo emittente attivo: su un
+--   database ricostruito non ce ne sono, e la fixture non creava il preventivo
+--   (test 3 rosso, e con lui tutti quelli a valle). Il mondo apre anche il
+--   contesto sull'operatore che lo ha costruito.
+CREATE TEMP TABLE tmp_nat_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('natura ricorrente preventivo');
+
 CREATE TEMP TABLE tmp_nat_refs AS
 SELECT
-    (SELECT ba.id FROM anagrafiche.billing_account ba
-      WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      ORDER BY ba.id LIMIT 1) AS billing_account_id,
-    (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-      WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      ORDER BY ba.id LIMIT 1) AS utility_id,
-    (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-      WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-    (SELECT a.id FROM catalogo.articoli a
-      WHERE a.attivo IS TRUE AND a.is_composito = FALSE
-      ORDER BY a.id LIMIT 1 OFFSET 0) AS articolo_a_id,
-    (SELECT a.id FROM catalogo.articoli a
-      WHERE a.attivo IS TRUE AND a.is_composito = FALSE
-      ORDER BY a.id LIMIT 1 OFFSET 1) AS articolo_b_id,
+    (SELECT m.billing_account_id FROM tmp_nat_mondo m) AS billing_account_id,
+    (SELECT m.utility_id         FROM tmp_nat_mondo m) AS utility_id,
+    (SELECT m.istanza_utility_id FROM tmp_nat_mondo m) AS istanza_utility_id,
+    -- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento A-9): i tre
+    --   articoli si COSTRUISCONO. Prima si pescavano i primi tre del catalogo
+    --   per id e la fixture ne cambiava la natura: i primi per id sono gli
+    --   articoli-onere del seed (00000000-…-e1), e un onere non puo' prendere
+    --   la natura MERCE (catalogo.trgfn_articoli_guard_onere_natura,
+    --   20261013-05). Riclassificare un articolo del seed era comunque un
+    --   difetto della fixture: il mondo si costruisce, non si cerca.
+    -- La natura si sceglie alla nascita: A=ricorrente (CONTRATTO), B=MERCE.
+    dbops.fn_pgtap_crea_articolo('PGT-NATRIC-A', false,
+        p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                                 WHERE codice_interno='SERVIZIO_RICORRENTE')) AS articolo_a_id,
+    dbops.fn_pgtap_crea_articolo('PGT-NATRIC-B', false,
+        p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                                 WHERE codice_interno='MERCE')) AS articolo_b_id,
     -- Terzo articolo per il test 10: serve un bersaglio di cambio articolo che
     -- NON sia ricorrente, altrimenti a bloccare sarebbe il guard MODALITA' A e
-    -- non si vedrebbe se il lock lascia passare.
-    (SELECT a.id FROM catalogo.articoli a
-      WHERE a.attivo IS TRUE AND a.is_composito = FALSE
-      ORDER BY a.id LIMIT 1 OFFSET 2) AS articolo_c_id,
+    -- non si vedrebbe se il lock lascia passare. C = una tantum (destinazione
+    -- COMMESSA): il guard MODALITA' A lo lascia passare.
+    dbops.fn_pgtap_crea_articolo('PGT-NATRIC-C', false,
+        p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                                 WHERE codice_interno='SERVIZIO_UNA_TANTUM')) AS articolo_c_id,
     (SELECT s.id FROM config.stati_doc_preventivi s
       WHERE s.codice='DRAFT' AND s.attivo IS TRUE LIMIT 1) AS stato_draft_id,
     (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-    (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-      ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+    (SELECT m.emittente_fiscale_id FROM tmp_nat_mondo m) AS emittente_fiscale_id,
     (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
       ORDER BY i.id LIMIT 1) AS iva_id,
     (SELECT id FROM config.nature_vendita WHERE codice_interno='SERVIZIO_RICORRENTE') AS natura_ric_id,
@@ -145,16 +160,6 @@ SELECT ok(
     EXISTS(SELECT 1 FROM vendite.preventivi WHERE numero='PGTAP-NAT-RIC'),
     '3) fixture: preventivo DRAFT creato + 2 articoli distinti disponibili'
 );
-
--- Classifica gli articoli per il test: A=ricorrente (CONTRATTO), B=MERCE.
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_ric_id FROM tmp_nat_refs)
- WHERE id = (SELECT articolo_a_id FROM tmp_nat_refs);
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tmp_nat_refs)
- WHERE id = (SELECT articolo_b_id FROM tmp_nat_refs);
--- C = una tantum (destinazione COMMESSA): non ricorrente, quindi il guard
--- MODALITA' A lo lascia passare ed e' un bersaglio valido per il test 10.
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_ut_id FROM tmp_nat_refs)
- WHERE id = (SELECT articolo_c_id FROM tmp_nat_refs);
 
 -- ============================================================
 -- 4) INSERT con articolo a natura CONTRATTO -> BLOCCO
@@ -255,7 +260,7 @@ SELECT throws_like(
 -- 10) UPDATE OF articolo_id verso articolo NON ricorrente -> AMMESSO
 --     Presidio dell'ordine alfabetico fra i due BEFORE ROW: il lock
 --     (trg_..._a10_lock_columns_upd) gira PRIMA dell'ereditarieta'
---     (trg_..._a10_set_natura_vendita_ins_upd), quindi legge la natura non
+--     (trg_..._a10_natura_vendita_ins_upd), quindi legge la natura non
 --     ancora riscritta e non vede nessuna modifica. Invertire i due nomi
 --     bloccherebbe il cambio articolo legittimo, e questo e' il solo test che
 --     se ne accorgerebbe.

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_sorgente_chiave_uuid(p_sorgente_uid text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_sorgente_chiave_uuid(p_sorgente_uid text)
  RETURNS uuid
@@ -46,6 +48,8 @@ $function$
 COMMENT ON FUNCTION script.fn_sorgente_chiave_uuid(p_sorgente_uid text)
 IS 'Building block della sorgente polimorfa (20261005-24): la chiave testuale di una sorgente (pratiche_sorgenti.sorgente_uid, vw_stato_sorgente.sorgente_uid) nel suo tipo uuid, per cercarla su script.vw_stato_sorgente.sorgente_chiave_uuid. NULL se il testo non e'' un uuid in forma CANONICA (identica a uuid::text): maiuscole, graffe o trattini mancanti non trovano niente, come non lo trovava il confronto testuale. Mai un errore (pg_input_is_valid prima del cast). Esiste perche'' sotto RLS il confronto sul testo non arriva all''indice (uuid_out non e'' leakproof) e quello sull''uuid si'': chi cerca converte il parametro, non la colonna. plpgsql e non sql: una sql si inlinea e con un argomento costante il cast verrebbe piegato prima del controllo. Gemella: script.fn_sorgente_chiave_id. Consumatori: pratiche.fn_stato_sorgente, script.vw_pratica_doc_sorgente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

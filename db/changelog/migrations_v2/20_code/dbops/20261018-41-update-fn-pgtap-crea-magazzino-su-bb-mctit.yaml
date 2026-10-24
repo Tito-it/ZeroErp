@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BUILDER pgTAP DEL MAGAZZINO: UN INVOLUCRO SOPRA IL BB
+#   dbops.fn_pgtap_crea_magazzino non scrive piu' la riga: chiama
+#   magazzino.fn_crea_magazzino (20261018-40). Firma, ritorno e comportamento
+#   invariati: l'emittente dell'operatore in sessione, un indirizzo
+#   fabbricato, usa_ubicazioni scelto dal test.
+#   Brief: brief-db-processi-accensione-per-ambiente, §5-ter.2 (2b-1, lotto 7).
+#   Corpo di partenza: la doc auto-generata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261018-41-update-fn-pgtap-crea-magazzino-su-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261018-41-update-fn-pgtap-crea-magazzino-su-bb
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il builder dbops.fn_pgtap_crea_magazzino chiama magazzino.fn_crea_magazzino invece di scrivere
+        la riga (regola del 2). Firma e comportamento invariati.
+        Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 7).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'magazzino' AND p.proname = 'fn_crea_magazzino';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_magazzino(
+                  p_codice         character varying,
+                  p_usa_ubicazioni boolean DEFAULT false)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un magazzino dell'EMITTENTE DELL'OPERATORE
+              --   in sessione (script.fn_pgtap_emittente_operatore: il guard di scope lo
+              --   pretende), con un indirizzo fabbricato e usa_ubicazioni scelto dal test
+              --   (D-L2-m). Da chiamare DOPO fn_pgtap_set_contesto_operatore.
+              -- Uso: v_mag := dbops.fn_pgtap_crea_magazzino('PGT-MAG-A', true);
+              -- ⭐ Rev 20261018-41: la riga la scrive il BB magazzino.fn_crea_magazzino
+              --   (regola del 2).
+              DECLARE
+                  v_ef  magazzino.magazzini.emittente_fiscale_id%TYPE;
+              BEGIN
+                  v_ef := script.fn_pgtap_emittente_operatore();
+                  IF v_ef IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_crea_magazzino: nessun emittente per l''operatore in sessione — chiamare prima fn_pgtap_set_contesto_operatore';
+                  END IF;
+                  RETURN magazzino.fn_crea_magazzino(
+                             p_codice,
+                             'Fixture pgTAP: ' || p_codice,
+                             dbops.fn_pgtap_crea_indirizzo_dettaglio(p_codice),
+                             jsonb_build_object('usa_ubicazioni', COALESCE(p_usa_ubicazioni, false)),
+                             v_ef);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_magazzino(character varying, boolean) IS
+                  'Fixture pgTAP: un magazzino dell''emittente dell''operatore in sessione (script.fn_pgtap_emittente_operatore: il guard di scope lo pretende), con un indirizzo fabbricato (dbops.fn_pgtap_crea_indirizzo_dettaglio) e usa_ubicazioni scelto dal test. Da chiamare dopo fn_pgtap_set_contesto_operatore. Rev 20261018-41: la riga la scrive il BB magazzino.fn_crea_magazzino (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 7).';
+      rollback:
+        - sql:
+            sql: >
+              SELECT 'rollback manuale: ripristinare il corpo precedente dalla doc auto-generata';

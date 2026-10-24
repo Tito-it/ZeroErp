@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGI: script.trgfn_righe_guard_articolo_ammesso su preventivi_righe,
+#   ordini_righe, ddt_righe — e RITIRO del guard della ricorrenza del preventivo
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-2, D-1, D-2, D-3, §9.3.1)
+#
+# -- I MONTAGGI ----------------------------------------------------------
+#   BEFORE INSERT OR UPDATE OF articolo_id: la regola giudica l'articolo, e
+#   l'articolo di una riga cambia solo cosi' (nessun trigger BEFORE delle tre
+#   tabelle scrive articolo_id). La natura non e' nell'elenco: la scrive
+#   script.trgfn_righe_natura_vendita, e a mano non si cambia (lock di colonna).
+#   ⭐ L'ordine dei nomi e' PORTANTE, fascia _a10_:
+#     ..._a10_lock_columns_upd        (generato) la natura scritta a mano
+#     ..._a10_natura_vendita_ins_upd  la natura della riga (20261013-09)
+#     ..._a10_regole_articolo_ins_upd QUESTO: legge la natura scritta sopra
+#   Invertire natura e regole farebbe giudicare la natura vecchia.
+#   ⛔ Nomi sotto i 63 caratteri (il piu' lungo: 48).
+#
+# -- IL RITIRO -----------------------------------------------------------
+#   vendite.trgfn_preventivi_righe_set_natura_vendita (dal 20261013-10 solo il
+#   guard della ricorrenza) e il suo trigger se ne vanno: la regola e' ora il
+#   motivo 2 di script.fn_check_articolo_riga per il PREVENTIVO, con lo stesso
+#   codice (E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA) e la stessa frase. Le copie
+#   si ritirano nello stesso giro dell'estrazione (AGENTS.md, regola del 2).
+#   Trigger scritto a mano (20260609-02), non da ci_apply: il DROP e' lecito
+#   (linee-guida-sql §11.5). Nessun changeSet di 70/80/90 lo nomina se non nei
+#   commenti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261013-42-create-trigger-righe-regole-articolo-mctit.yaml
+
+  - changeSet:
+      id: 20261013-42-create-trigger-righe-regole-articolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta script.trgfn_righe_guard_articolo_ammesso su preventivi_righe (PREVENTIVO), ordini_righe
+        (ORDINE_VENDITA) e ddt_righe (DDT_VENDITA); ritira trgfn_preventivi_righe_set_natura_vendita,
+        la cui regola e' ora nella check. Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'vendite'
+                 AND t.tgname LIKE 'trg_%_a10_regole_articolo_ins_upd'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_a10_set_natura_vendita_ins_upd
+                  ON vendite.preventivi_righe;
+              DROP FUNCTION IF EXISTS vendite.trgfn_preventivi_righe_set_natura_vendita();
+
+              CREATE TRIGGER trg_preventivi_righe_a10_regole_articolo_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id
+                  ON vendite.preventivi_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('PREVENTIVO', 'preventivo_id');
+
+              CREATE TRIGGER trg_ordini_righe_a10_regole_articolo_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id
+                  ON vendite.ordini_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('ORDINE_VENDITA', 'ordine_id');
+
+              CREATE TRIGGER trg_ddt_righe_a10_regole_articolo_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id
+                  ON vendite.ddt_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('DDT_VENDITA', 'ddt_id');

@@ -141,7 +141,20 @@ Dal changeSet `20261004-33`:
   non vende quell'articolo: non è una riga da fatturare. Prima arrivava in
   commessa senza prezzo, e per quell'articolo il calcolo del prezzo risponde
   `E_ARTICOLO_ESCLUSO_DA_CONTRATTO`;
-* `tipo_consumo` è l'erogazione della riga, **senza ripiego** su `CANONE`.
+* l'erogazione della riga, **senza ripiego** su `CANONE`, andava nella colonna
+  `tipo_consumo`; dal `20261013-19` quella colonna non c'è più (la madre la
+  rifiutava, e nessun contratto arrivava in commessa) e l'erogazione viaggia
+  in `meta.tipo_erogazione`.
+
+Dal changeSet `20261013-24` (D-1 e D-2 di Tid, 2026-10-13):
+
+* si listano **solo le righe `UNA_TANTUM`**. `CANONE`, `ORARIO` e `CONSUMO` partivano una volta sola,
+  con la quantità fissa del contratto e la competenza di tutto il contratto: un canone diventava un
+  addebito unico. Aspettano la loro generazione:
+  [brief-db-contratto-righe-periodiche-in-commessa](../../../dev/work-in-progress/brief-db-contratto-righe-periodiche-in-commessa.md);
+* la competenza della riga è il **giorno di attivazione** (`valido_dal`) in tutte e due le colonne,
+  come per ordini e DDT. Prima era `valido_dal`…`valido_al`, e con un contratto senza scadenza
+  `competenza_al` usciva NULL e la madre la rifiutava.
   L'erogazione è obbligatoria su ogni riga che non è un'esclusione (vedi
   [`trgfn_righe_guard_erogazione_obbligatoria`](/dbzero/script/funzioni/trgfn_righe_guard_erogazione_obbligatoria)),
   quindi su ogni riga che questa funzione restituisce.

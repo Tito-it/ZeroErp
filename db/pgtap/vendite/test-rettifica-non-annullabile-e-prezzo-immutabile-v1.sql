@@ -179,7 +179,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_sorgente_tipo_id    => NULL,
   p_sorgente_uid        => NULL,
   p_tipo_movimento      => 'RETTIFICA',
-  p_tipo_consumo        => 'CONGUAGLIO',
   p_meta                => jsonb_build_object('case', 'RNP_RETTIFICA')
 ) r;
 

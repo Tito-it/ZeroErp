@@ -196,6 +196,18 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # pannello riconosce il comportamento (`useForzaturaConfermata`) e apre il
     # dialog con username e vesti. La classe resta CONFLITTO_STATO (409).
     "E_CREDENZIALE_DA_CONFERMARE": "confirm_and_retry",  # classe CONFLITTO_STATO
+    # L'annullo di un documento con legami (brief-db-annullo-documento-con-
+    # legami, D-4 di Tid, 2026-10-11): stesso stampo. L'avviso unico di bolla,
+    # ordine, preventivo e contratto ferma l'annullo di un documento che ha
+    # consumato qualcosa di altri documenti (o nasce da un'offerta), e il verbo
+    # del documento (`vendite.fn_annulla_<documento>`) lo ACCETTA quando il
+    # secondo tentativo DICHIARA quanti legami l'operatore ha visto
+    # (`legami_confermati`). Col banner l'operatore resterebbe fermo su un
+    # annullo che il modello ammette: la finestra (`useForzaturaConfermata`)
+    # elenca i legami (`GET …/<documento>/<id>/legami/`) e ripete con la
+    # dichiarazione. ⛔ Sostituisce `E_DDT_ANNULLO_CON_LEGAMI` (della sola
+    # bolla), ritirato lo stesso giorno: il suo override si e' tolto con lui.
+    "E_DOC_ANNULLO_CON_LEGAMI": "confirm_and_retry",  # classe CONFLITTO_STATO
     # ⚠️ La guard e' `attivo IS NOT TRUE`, che copre DUE casi: conto
     # disattivato e conto inesistente (SELECT INTO -> NULL). Il 400 con
     # il campo evidenziato e' corretto in entrambi; un 404 sarebbe
@@ -203,13 +215,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_CONTO_BANCARIO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO": "highlight_form_fields",  # classe NON_ESEGUIBILE
     "E_CONTRATTO_CLASSE_TIPO_INCOERENTE": "highlight_form_fields",  # classe DATO_ERRATO
-    # Guard Profilo A contratti: in stati post-DRAFT (ATTIVO/CESSATO)
-    # le modifiche sono limitate o vietate. La testata ammette solo
-    # `valido_al` e `meta` in ATTIVO; CESSATO immutabile. Le sotto
-    # -entita' (righe override, utility 1:1) sono CRUD-able solo in
-    # DRAFT. Per modifiche sostanziali post-DRAFT serve creare un
-    # nuovo contratto (eventualmente con parent_contratto_id).
-    "E_CONTRATTO_NON_MODIFICABILE": "show_toast_error",  # classe CONFLITTO_STATO
     #   Stessa forma dei due sopra, trovati dalla lente
     #   `scripts/sql/check_messaggio_vs_condizione.sql` dopo che i primi due
     #   erano stati chiusi. Tutti e tre `show_error_banner`: sono scritture
@@ -366,6 +371,9 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # sollevato da script.fn_snapshot_indirizzo (flusso picker) quando
     # origine_indirizzo_id non esiste piu' in anagrafiche.indirizzi.
     "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
+    # Indirizzi, contatti e conti del ruolo con l'istanza (o il ruolo) di un
+    # altro soggetto: il DB dice il campo (R-DB-17a, 2026-10-19).
+    "E_ISTANZA_ALTRO_SOGGETTO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_IVA_CONTO_ACQ_ERR": "highlight_form_fields",  # classe DATO_ERRATO
     "E_IVA_CONTO_VEN_ERR": "highlight_form_fields",  # classe DATO_ERRATO
     "E_JWT_SENZA_IDENTITA": "redirect_login",  # classe NON_AUTENTICATO
@@ -482,8 +490,8 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_PROMO_INIZIATA_CAMPI_RISTRETTI": "show_toast_error",  # classe CONFLITTO_STATO
     # Guard Profilo A promo data-driven (vendite.promo_articoli):
     # le date governano lo stato (FUTURA / INIZIATA / SCADUTA) e vincolano
-    # i campi modificabili. Pattern simmetrico a Profilo A contratti
-    # (E_CONTRATTO_NON_MODIFICABILE) ma data-driven invece che stato-driven.
+    # i campi modificabili. Pattern simmetrico al lock di testata dei
+    # documenti (`E_DOC_*` fuori bozza) ma data-driven invece che stato-driven.
     # Defense-in-depth: trigger DB applica le stesse regole su bypass via psql.
     "E_PROMO_RETROATTIVA": "highlight_form_fields",  # classe DATO_ERRATO
     "E_PROMO_SCADUTA_IMMUTABILE": "show_toast_error",  # classe CONFLITTO_STATO
@@ -538,6 +546,7 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # ripeteva la regola del guard (`E_VENDITE_RIGA_GIA_PROPAGATA`, ritirato).
     "E_RIGA_LISTINO_PROPAGATA": "show_toast_error",  # classe CONFLITTO_STATO
     "E_RISORSA_UMANA_SOGGETTO_MISMATCH": "highlight_form_fields",  # classe DATO_ERRATO
+    "E_RUOLO_ALTRO_SOGGETTO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_SESSIONE_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
     # §8.4.3/§8.4.4/§8.4.5: endpoint shop rispondono 501 finche' PR-C
     # non porta il MVP. Codice dedicato (non E_TASK_NOT_IMPLEMENTED

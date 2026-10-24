@@ -36,6 +36,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useNotify } from '../../core/composables/useNotify'
+import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 // ⛔ Mai formattare una data inline: la sede è unica
@@ -65,6 +66,8 @@ const { t, te } = useI18n()
 const notify = useNotify()
 const store = useRegistriNumerazioneStore()
 const isReadonly = useInjectReadonly()
+// `campiErrati`: i campi che il backend nomina nel rifiuto (`error.fields`).
+const { execute, campiErrati } = useApiHandler()
 
 const props = defineProps({
   visible: Boolean,
@@ -130,7 +133,9 @@ async function caricaRegistriEsistenti() {
   if (isEdit.value || !store.emittenteSoggettoRuoloId) return
   const res = await listRegistri({
     emittente_soggetto_ruolo_id: store.emittenteSoggettoRuoloId,
-    limit: 500,
+    // ⛔ 200, il massimo della lista: dal 2026-10-21 oltre il massimo e' un 400
+    //    (fino a quel giorno il `500` di qui veniva ridotto a 200 in silenzio).
+    limit: 200,
     offset: 0,
   })
   registriEsistenti.value = res.data.data.results || []
@@ -279,6 +284,7 @@ watch(() => props.visible, async (aperto) => {
   if (!aperto) {
     return
   }
+  campiErrati.value = []
   await Promise.all([caricaFamiglie(), carica(), caricaRegistriEsistenti()])
   // Fotografia DOPO i tre caricamenti: il form e' popolato dal codice.
   if (props.visible) fissa()
@@ -360,19 +366,21 @@ function payload() {
   return p
 }
 
+// ⛔ Fino al 2026-10-23 l'errore finiva in un `catch` vuoto, «gestito
+//    dall'interceptor axios globale»: l'interceptor di `core/api.js` non mostra
+//    toast, quindi un rifiuto chiudeva il giro in silenzio e il `prefisso` che i
+//    due `23505` nominano non si accendeva. Ora passa da `execute`.
 async function salva() {
   salvando.value = true
   try {
-    const dati = isEdit.value
-      ? await store.aggiorna(props.registroId, payload())
-      : await store.crea(payload())
+    const dati = await execute(() => (isEdit.value
+      ? store.aggiorna(props.registroId, payload())
+      : store.crea(payload())))
+    if (dati === null) return
     notify.success(t('amministrazione.registri_numerazione.salvato'))
     fissa()
     emit('saved', dati)
     chiudi()
-  } catch {
-    // Errore gestito dall'interceptor axios globale: i due `23505` arrivano
-    // già parlanti dal backend, e uno dei due accende il campo `prefisso`.
   } finally {
     salvando.value = false
   }
@@ -413,6 +421,7 @@ const titolo = computed(() => {
           v-model="form.codice"
           :maxlength="FIELD_LENGTH.REGISTRO_CODICE_MAX"
           :disabled="isReadonly"
+          :invalid="campiErrati.includes('codice')"
         />
       </div>
       <div class="form-field">
@@ -421,6 +430,7 @@ const titolo = computed(() => {
           v-model="form.descrizione"
           :maxlength="FIELD_LENGTH.REGISTRO_DESCRIZIONE_MAX"
           :disabled="isReadonly"
+          :invalid="campiErrati.includes('descrizione')"
         />
       </div>
 
@@ -436,6 +446,7 @@ const titolo = computed(() => {
           option-label="label"
           option-value="value"
           :disabled="isReadonly"
+          :invalid="campiErrati.includes('famiglia_documento')"
         />
         <span v-else>{{ dettaglio?.famiglia_descrizione || form.famiglia_documento }}</span>
       </div>
@@ -481,6 +492,7 @@ const titolo = computed(() => {
           option-label="label"
           option-value="value"
           :disabled="isReadonly"
+          :invalid="campiErrati.includes('reset_policy')"
         />
         <span v-else>{{ resetLabel }}</span>
         <small class="app-field-hint">
@@ -506,6 +518,7 @@ const titolo = computed(() => {
           v-model="form.prefisso"
           :maxlength="FIELD_LENGTH.REGISTRO_PREFISSO_MAX"
           :disabled="isReadonly || formaBloccata"
+          :invalid="campiErrati.includes('prefisso')"
         />
       </div>
       <div class="form-field">
@@ -514,6 +527,7 @@ const titolo = computed(() => {
           v-model="form.suffisso"
           :maxlength="FIELD_LENGTH.REGISTRO_SUFFISSO_MAX"
           :disabled="isReadonly || formaBloccata"
+          :invalid="campiErrati.includes('suffisso')"
         />
       </div>
       <div class="form-field">
@@ -523,6 +537,7 @@ const titolo = computed(() => {
           :min="REGISTRO_CIFRE_MIN"
           :max="REGISTRO_CIFRE_MAX"
           :disabled="isReadonly || formaBloccata"
+          :invalid="campiErrati.includes('lunghezza_numero')"
         />
       </div>
       <!-- ⭐ L'ANNO NELLA STRINGA — in SOLA LETTURA, sempre, anche in
@@ -564,6 +579,7 @@ const titolo = computed(() => {
             option-label="label"
             option-value="value"
             :disabled="isReadonly"
+            :invalid="campiErrati.includes('politica_data_documento')"
           />
         </div>
         <div class="form-field">
@@ -571,6 +587,7 @@ const titolo = computed(() => {
           <InputNumber
             v-model="form.limite_emissione_giorni"
             :disabled="isReadonly"
+            :invalid="campiErrati.includes('limite_emissione_giorni')"
           />
         </div>
         <div class="form-field">
@@ -578,6 +595,7 @@ const titolo = computed(() => {
           <InputNumber
             v-model="form.limite_emissione_giorno_mese"
             :disabled="isReadonly"
+            :invalid="campiErrati.includes('limite_emissione_giorno_mese')"
           />
         </div>
       </div>

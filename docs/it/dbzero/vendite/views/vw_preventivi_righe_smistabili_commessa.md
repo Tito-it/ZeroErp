@@ -3,9 +3,11 @@
 
 > 📝 **Descrizione**
 >
-> Righe preventivo eleggibili al push commessa (servizi una tantum): attive, qta&gt;0, prezzo&gt;=0, natura NULL/COMMESSA, non gia' instradate in commessa (esiste attivita sul segment_key di riga, inclusi componenti BoM #CMP, qualsiasi stato_emissione). Simmetrica a vw_preventivi_righe_smistabili_ordine (esclude su allocazione, non su fatturazione). Predicato di riga unico condiviso con fn_list_preventivi_da_pushare e fn_preventivo_ha_residuo_commessa; condizioni di testata a carico dei consumer. Fix gate EVASO (brief-db-gate-evaso-ramo-commessa-asimmetria.md).
+> Righe preventivo eleggibili al push commessa (servizi una tantum): attive, qta&gt;0, prezzo&gt;=0, natura NULL/COMMESSA, non gia' mandate in commessa. Simmetrica a vw_preventivi_righe_smistabili_ordine (esclude su allocazione, non su fatturazione). Predicato di riga unico condiviso con fn_list_preventivi_da_pushare e fn_preventivo_ha_residuo_commessa; condizioni di testata a carico dei consumer. Fix gate EVASO (brief-db-gate-evaso-ramo-commessa-asimmetria.md). ⭐ rev 2026-10-12 (20261012-08/-09, brief-db-annullo-a-valle-riapre-a-monte D-5): «gia' mandata» non e' piu' un predicato proprio: e' script.fn_get_stato_push_segment('PREV:&lt;uid&gt;:R:&lt;id&gt;') = 'LIBERA', la fonte unica del «gia' inviato» (componenti #CMP e rettifiche #RET compresi). Una riga di commessa ANNULLATA non occupa: annullata la commessa, la riga torna smistabile. Prima la vista contava le righe ANNULLATA e non vedeva #RET: una terza copia della regola, gia' diversa dalle altre due. Rev 2026-10-20 (20261020-97, brief-db-grammatica-unica-documenti 2e, G-8): la chiave della riga di preventivo la compone script.fn_segment_key (PREVENTIVO:&lt;uid&gt;:R:&lt;riga&gt;, era PREV:...).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
+<div data-search-exclude markdown>
 
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_smistabili_commessa
@@ -27,10 +29,10 @@ SELECT pr.preventivo_id,
    FROM ((vendite.preventivi_righe pr
      JOIN vendite.preventivi p ON ((p.id = pr.preventivo_id)))
      LEFT JOIN config.nature_vendita nv ON ((nv.id = pr.natura_vendita_id)))
-  WHERE ((pr.attivo IS TRUE) AND (pr.quantita > (0)::numeric) AND (pr.prezzo_unitario >= (0)::numeric) AND ((pr.natura_vendita_id IS NULL) OR ((nv.destinazione_tipo)::text = 'COMMESSA'::text)) AND (NOT (EXISTS ( SELECT 1
-           FROM vendite.commesse_attivita ca
-          WHERE (((ca.segment_key)::text = ((('PREV:'::text || (p.uid)::text) || ':R:'::text) || (pr.id)::text)) OR ((ca.segment_key)::text ~~ (((('PREV:'::text || (p.uid)::text) || ':R:'::text) || (pr.id)::text) || '#CMP:%'::text)))))));
+  WHERE ((pr.attivo IS TRUE) AND (pr.quantita > (0)::numeric) AND (pr.prezzo_unitario >= (0)::numeric) AND ((pr.natura_vendita_id IS NULL) OR ((nv.destinazione_tipo)::text = 'COMMESSA'::text)) AND (script.fn_get_stato_push_segment(script.fn_segment_key('PREVENTIVO'::character varying, (p.uid)::text, pr.id)) = 'LIBERA'::text));
 ```
+
+</div>
 
 
 ---

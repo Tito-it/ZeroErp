@@ -96,14 +96,15 @@ SELECT is(
 SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'vendite' AND tablename = 'fatture'
-        AND policyname = 'rls_fatture_ba_ownership') ~ 'fn_scope_ba_ownership'
+        AND policyname = 'rls_fatture_ba_ownership') ~ 'fn_scope_sr_perimetro\(\( SELECT (script\.)?fn_get_identita_sr_perimetro\(.*fn_resolve_controparte_sr_id\(''billing_account'''
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'vendite' AND tablename = 'fatture'
             AND policyname = 'rls_fatture_ba_ownership') ~ 'CLIENTE_PORTALE'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'vendite' AND tablename = 'fatture'
             AND policyname = 'rls_fatture_ba_ownership') !~ 'SHOP_CUSTOMER',
-    '4. rls_fatture_ba_ownership: USING chiama fn_scope_ba_ownership + gate solo CLIENTE_PORTALE (no SHOP_CUSTOMER post 20-04-2026)'
+    -- Rev 2026-10-21 (20261021-32): la regola BA_OWNERSHIP nella forma col perimetro.
+    '4. rls_fatture_ba_ownership: USING perimetro del cliente + cliente del BA della riga, gate solo CLIENTE_PORTALE (no SHOP_CUSTOMER post 20-04-2026)'
 );
 
 -- =========================================================
@@ -139,11 +140,11 @@ SELECT is(
 SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'vendite' AND tablename = 'fatture'
-        AND policyname = 'rls_fatture_ef_whitelist') ~ 'fn_scope_ef_whitelist'
+        AND policyname = 'rls_fatture_ef_whitelist') ~ 'fn_scope_ef_perimetro'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'vendite' AND tablename = 'fatture'
             AND policyname = 'rls_fatture_ef_whitelist') ~ 'OPERATORE',
-    '8. rls_fatture_ef_whitelist: USING chiama fn_scope_ef_whitelist + gate OPERATORE'
+    '8. rls_fatture_ef_whitelist: USING chiama fn_scope_ef_perimetro (rev 2026-10-18) + gate OPERATORE'
 );
 
 -- =========================================================
@@ -177,11 +178,12 @@ SELECT is(
 SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'vendite' AND tablename = 'ordini'
-        AND policyname = 'rls_ordini_cliente_ownership') ~ 'fn_scope_cliente_ownership'
+        AND policyname = 'rls_ordini_cliente_ownership') ~ 'fn_scope_sr_perimetro\(\( SELECT (script\.)?fn_get_identita_sr_perimetro\(.*, soggetto_ruolo_id\)'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'vendite' AND tablename = 'ordini'
             AND policyname = 'rls_ordini_cliente_ownership') ~ 'CLIENTE_PORTALE',
-    '12. rls_ordini_cliente_ownership: USING chiama fn_scope_cliente_ownership + gate CLIENTE_PORTALE'
+    -- Rev 2026-10-21 (20261021-35): la forma col perimetro; l'ordine porta il suo cliente.
+    '12. rls_ordini_cliente_ownership: USING perimetro del cliente + soggetto dell''ordine, gate CLIENTE_PORTALE'
 );
 
 -- =========================================================
@@ -215,8 +217,9 @@ SELECT is(
 SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'vendite' AND tablename = 'fatture_scadenze'
-        AND policyname = 'rls_fatture_scadenze_ba_ownership') ~ 'fn_scope_ba_ownership_via_fattura',
-    '16. rls_fatture_scadenze_ba_ownership: USING chiama fn_scope_ba_ownership_via_fattura'
+        AND policyname = 'rls_fatture_scadenze_ba_ownership') ~ 'fn_scope_sr_perimetro\(\( SELECT (script\.)?fn_get_identita_sr_perimetro\(.*fn_resolve_controparte_sr_id\(''fattura''',
+    -- Rev 2026-10-21 (20261021-32): era fn_scope_ba_ownership_via_fattura.
+    '16. rls_fatture_scadenze_ba_ownership: USING perimetro del cliente + cliente della fattura della riga'
 );
 
 -- =========================================================
@@ -250,11 +253,12 @@ SELECT is(
 SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'acquisti' AND tablename = 'ordini'
-        AND policyname = 'rls_acquisti_ordini_fornitore_ownership') ~ 'fn_scope_fornitore_ownership'
+        AND policyname = 'rls_acquisti_ordini_fornitore_ownership') ~ 'fn_scope_sr_perimetro\(\( SELECT (script\.)?fn_get_identita_sr_perimetro\(.*, soggetto_ruolo_id\)'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'acquisti' AND tablename = 'ordini'
             AND policyname = 'rls_acquisti_ordini_fornitore_ownership') ~ 'FORNITORE_PORTALE',
-    '20. rls_acquisti_ordini_fornitore_ownership: USING chiama fn_scope_fornitore_ownership + gate FORNITORE_PORTALE'
+    -- Rev 2026-10-21 (20261021-43): la forma col perimetro; schema facoltativo (come app non si stampa).
+    '20. rls_acquisti_ordini_fornitore_ownership: USING perimetro del fornitore + soggetto dell''ordine, gate FORNITORE_PORTALE'
 );
 
 -- =========================================================
@@ -288,14 +292,15 @@ SELECT is(
 SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'acquisti' AND tablename = 'ddt'
-        AND policyname = 'rls_acquisti_ddt_fornitore_ownership') ~ 'fn_scope_fornitore_ownership'
+        AND policyname = 'rls_acquisti_ddt_fornitore_ownership') ~ 'fn_scope_sr_perimetro\(\( SELECT (script\.)?fn_get_identita_sr_perimetro\(.*, mittente_soggetto_ruolo_id\)'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'acquisti' AND tablename = 'ddt'
             AND policyname = 'rls_acquisti_ddt_fornitore_ownership') ~ 'FORNITORE_PORTALE'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'acquisti' AND tablename = 'ddt'
             AND policyname = 'rls_acquisti_ddt_fornitore_ownership') ~ 'mittente_soggetto_ruolo_id',
-    '24. rls_acquisti_ddt_fornitore_ownership: USING contiene fn_scope_fornitore_ownership + gate + colonna mittente'
+    -- Rev 2026-10-21 (20261021-43): la forma col perimetro.
+    '24. rls_acquisti_ddt_fornitore_ownership: USING perimetro del fornitore + gate + colonna mittente'
 );
 
 -- =========================================================
@@ -332,14 +337,15 @@ SELECT is(
 SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'anagrafiche' AND tablename = 'billing_account'
-        AND policyname = 'rls_billing_account_self_ownership') ~ 'fn_scope_ba_ownership'
+        AND policyname = 'rls_billing_account_self_ownership') ~ 'fn_scope_sr_perimetro\(\( SELECT (script\.)?fn_get_identita_sr_perimetro\(.*, soggetto_ruolo_id\)'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'anagrafiche' AND tablename = 'billing_account'
             AND policyname = 'rls_billing_account_self_ownership') ~ 'CLIENTE_PORTALE'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'anagrafiche' AND tablename = 'billing_account'
             AND policyname = 'rls_billing_account_self_ownership') !~ 'SHOP_CUSTOMER',
-    '28. rls_billing_account_self_ownership: USING chiama fn_scope_ba_ownership + gate solo CLIENTE_PORTALE (no SHOP_CUSTOMER post 20-04-2026)'
+    -- Rev 2026-10-21 (20261021-32): il BA e' la riga, il suo cliente e' la sua colonna.
+    '28. rls_billing_account_self_ownership: USING perimetro del cliente + soggetto del BA, gate solo CLIENTE_PORTALE (no SHOP_CUSTOMER post 20-04-2026)'
 );
 
 SELECT * FROM finish();

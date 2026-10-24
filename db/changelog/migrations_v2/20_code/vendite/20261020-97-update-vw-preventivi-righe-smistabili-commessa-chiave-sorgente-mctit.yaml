@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2e (G-8, L2e-2 = (a)): vw_preventivi_righe_smistabili_commessa compone la chiave col BB
+#   Brief: brief-db-grammatica-unica-documenti §7.9 G-8, §13.3.
+#
+#   Lo stato del push di una riga di preventivo si chiede con la chiave composta da script.fn_segment_key (PREVENTIVO).
+#
+#   Corpo e COMMENT dal catalogo vivo di dbdev (2026-10-20), non da uno YAML; sostituzioni
+#   contate. Firma e RETURNS TABLE ricostruiti dal catalogo e ancorati con %TYPE dove una colonna
+#   con lo stesso nome e lo stesso tipo esiste (verificato); nudi, col motivo, i valori calcolati.
+#   ⚠️ Le chiavi gia' scritte nei dati di dbdev si convertono con lo SQL una tantum del giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261020-97-update-vw-preventivi-righe-smistabili-commessa-chiave-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261020-97-update-vw-preventivi-righe-smistabili-commessa-chiave-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_preventivi_righe_smistabili_commessa: la chiave della riga di preventivo da script.fn_segment_key (PREVENTIVO). Grammatica unica, 2e (G-8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- security_invoker si AZZERA a ogni CREATE OR REPLACE VIEW: si ripete dal catalogo.
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_smistabili_commessa WITH (security_invoker=on) AS
+              SELECT pr.preventivo_id,
+                  pr.id,
+                  p.uid AS preventivo_uid,
+                  pr.natura_vendita_id,
+                  pr.articolo_id,
+                  pr.descrizione,
+                  pr.prezzo_unitario,
+                  pr.sconto_percentuale,
+                  pr.iva_id,
+                  pr.quantita,
+                  pr.qta_operativa,
+                  pr.uom_operativa_id,
+                  pr.factor_to_base,
+                  pr.ordine
+                 FROM ((vendite.preventivi_righe pr
+                   JOIN vendite.preventivi p ON ((p.id = pr.preventivo_id)))
+                   LEFT JOIN config.nature_vendita nv ON ((nv.id = pr.natura_vendita_id)))
+                WHERE ((pr.attivo IS TRUE) AND (pr.quantita > (0)::numeric) AND (pr.prezzo_unitario >= (0)::numeric) AND ((pr.natura_vendita_id IS NULL) OR ((nv.destinazione_tipo)::text = 'COMMESSA'::text)) AND (script.fn_get_stato_push_segment(script.fn_segment_key('PREVENTIVO'::character varying, (p.uid)::text, pr.id)) = 'LIBERA'::text));
+
+              COMMENT ON VIEW vendite.vw_preventivi_righe_smistabili_commessa IS
+                'Righe preventivo eleggibili al push commessa (servizi una tantum): attive, qta>0, prezzo>=0, natura NULL/COMMESSA, non gia'' mandate in commessa. Simmetrica a vw_preventivi_righe_smistabili_ordine (esclude su allocazione, non su fatturazione). Predicato di riga unico condiviso con fn_list_preventivi_da_pushare e fn_preventivo_ha_residuo_commessa; condizioni di testata a carico dei consumer. Fix gate EVASO (brief-db-gate-evaso-ramo-commessa-asimmetria.md). ⭐ rev 2026-10-12 (20261012-08/-09, brief-db-annullo-a-valle-riapre-a-monte D-5): «gia'' mandata» non e'' piu'' un predicato proprio: e'' script.fn_get_stato_push_segment(''PREV:<uid>:R:<id>'') = ''LIBERA'', la fonte unica del «gia'' inviato» (componenti #CMP e rettifiche #RET compresi). Una riga di commessa ANNULLATA non occupa: annullata la commessa, la riga torna smistabile. Prima la vista contava le righe ANNULLATA e non vedeva #RET: una terza copia della regola, gia'' diversa dalle altre due. Rev 2026-10-20 (20261020-97, brief-db-grammatica-unica-documenti 2e, G-8): la chiave della riga di preventivo la compone script.fn_segment_key (PREVENTIVO:<uid>:R:<riga>, era PREV:...).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_smistabili_commessa WITH (security_invoker=on) AS
+              SELECT pr.preventivo_id,
+                  pr.id,
+                  p.uid AS preventivo_uid,
+                  pr.natura_vendita_id,
+                  pr.articolo_id,
+                  pr.descrizione,
+                  pr.prezzo_unitario,
+                  pr.sconto_percentuale,
+                  pr.iva_id,
+                  pr.quantita,
+                  pr.qta_operativa,
+                  pr.uom_operativa_id,
+                  pr.factor_to_base,
+                  pr.ordine
+                 FROM ((vendite.preventivi_righe pr
+                   JOIN vendite.preventivi p ON ((p.id = pr.preventivo_id)))
+                   LEFT JOIN config.nature_vendita nv ON ((nv.id = pr.natura_vendita_id)))
+                WHERE ((pr.attivo IS TRUE) AND (pr.quantita > (0)::numeric) AND (pr.prezzo_unitario >= (0)::numeric) AND ((pr.natura_vendita_id IS NULL) OR ((nv.destinazione_tipo)::text = 'COMMESSA'::text)) AND (script.fn_get_stato_push_segment((((('PREV:'::text || (p.uid)::text) || ':R:'::text) || (pr.id)::text))::character varying) = 'LIBERA'::text));
+
+
+              COMMENT ON VIEW vendite.vw_preventivi_righe_smistabili_commessa IS
+                'Righe preventivo eleggibili al push commessa (servizi una tantum): attive, qta>0, prezzo>=0, natura NULL/COMMESSA, non gia'' mandate in commessa. Simmetrica a vw_preventivi_righe_smistabili_ordine (esclude su allocazione, non su fatturazione). Predicato di riga unico condiviso con fn_list_preventivi_da_pushare e fn_preventivo_ha_residuo_commessa; condizioni di testata a carico dei consumer. Fix gate EVASO (brief-db-gate-evaso-ramo-commessa-asimmetria.md). ⭐ rev 2026-10-12 (20261012-08/-09, brief-db-annullo-a-valle-riapre-a-monte D-5): «gia'' mandata» non e'' piu'' un predicato proprio: e'' script.fn_get_stato_push_segment(''PREV:<uid>:R:<id>'') = ''LIBERA'', la fonte unica del «gia'' inviato» (componenti #CMP e rettifiche #RET compresi). Una riga di commessa ANNULLATA non occupa: annullata la commessa, la riga torna smistabile. Prima la vista contava le righe ANNULLATA e non vedeva #RET: una terza copia della regola, gia'' diversa dalle altre due.';

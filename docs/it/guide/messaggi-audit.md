@@ -210,7 +210,6 @@ cancellare, non svuotare. Lo stesso vale per il registro gemello degli errori,
 | ------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------ |
 | `zeroerp_app` (l'applicazione)                                | `SELECT`, `INSERT` | legge il registro dall'area di amministrazione e vi aggiunge righe con `fn_audit_log_once` |
 | chi possiede la tabella (il migratore, i job di manutenzione) | tutto              | è chi scrive le automazioni e chi, un giorno, farà la retention su `cleanup_at`            |
-| `zeroerp_batch_*`                                             | `SELECT`           | i ruoli batch leggono; il loro perimetro sta nel provisioning                              |
 
 **La modalità sessione è riservata.** Chiudere una sessione (`fn_audit_end`) è un
 `UPDATE` del registro: per questo la coppia `fn_audit_begin` / `fn_audit_end` **non
@@ -224,7 +223,7 @@ dell'applicazione vengono riallineati a ogni passata `ci_apply` da un loop che l
 concede in blocco su tutte le tabelle: un `REVOKE` isolato sarebbe annullato alla
 passata successiva. La postura più stretta dei registri è **dichiarata dentro
 quel loop** (`90_end/ci_apply/20260205-41`), che concede a questi due solo
-`SELECT, INSERT` e revoca il resto — **e** in `scripts/sql/provision_db_roles.sql`
+`SELECT, INSERT` e revoca il resto — **e** in `scripts/sql/provision_zeroerp.sql`, fase `post`
 (blocco «POSTURA DICHIARATA»), che in CI gira **dopo** quel loop, concede in
 blocco su tutte le tabelle ed è l'ultima parola. Chi aggiunge un registro
 append-only lo dichiara in **entrambi**, più il changeSet `90_end` forward che

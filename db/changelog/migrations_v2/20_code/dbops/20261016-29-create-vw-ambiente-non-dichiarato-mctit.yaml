@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PRESIDIO DELL'AMBIENTE NON DICHIARATO
+#   dbops.vw_ambiente_non_dichiarato: una riga se questa installazione non ha
+#   ancora dichiarato il suo ambiente. DEVE restare vuota.
+#   Brief: brief-db-processi-accensione-per-ambiente (R-2)
+#
+# -- PERCHE' ---------------------------------------------------------
+#   La tabella dbops.installazione nasce vuota (R-2): fra l'apply e la fase
+#   post del provisioning il lettore script.fn_ambiente_installazione() da'
+#   E_CONFIG_MANCANTE, il provisioning di sviluppo non parte e le sveglie
+#   spegnibili falliscono. Rumoroso, ma ogni voce dice il sintomo. Questo
+#   presidio dice la causa, una volta, a chi la sistema (SISTEMISTA: la fase
+#   post con -v ambiente=...).
+#   ⚠️ Il panorama dei processi non ha una causa per questo: con l'ambiente
+#   non dichiarato `acceso` e' NULL e i processi seguono i rami di sempre. Un
+#   fatto, un presidio.
+#
+#   Legge script.fn_ambiente_dichiarato(), che non solleva. In CI l'ambiente
+#   e' dichiarato (SVILUPPO), quindi la vista e' vuota: il caso positivo lo
+#   costruisce il pgTAP (dbops/test-installazione-ambiente-v1).
+#   Nessun GRANT: le ALTER DEFAULT PRIVILEGES coprono la vista nuova.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261016-29-create-vw-ambiente-non-dichiarato-mctit.yaml
+
+  - changeSet:
+      id: 20261016-29-create-vw-ambiente-non-dichiarato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea il presidio dbops.vw_ambiente_non_dichiarato: una riga se l'installazione non ha
+        dichiarato il suo ambiente. Brief: brief-db-processi-accensione-per-ambiente (R-2).
+      preConditions:
+        - onFail: HALT
+        - not:
+            - viewExists:
+                schemaName: dbops
+                viewName: vw_ambiente_non_dichiarato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW dbops.vw_ambiente_non_dichiarato AS
+              SELECT current_database()::text AS database_nome
+               WHERE script.fn_ambiente_dichiarato() IS NULL;
+
+              COMMENT ON VIEW dbops.vw_ambiente_non_dichiarato IS
+                  'PRESIDIO: una riga se questa installazione non ha ancora dichiarato il suo ambiente (dbops.installazione vuota). DEVE restare vuota. La tabella nasce vuota di proposito (nessun default da un changeSet, R-2): l''ambiente lo scrive la fase post di scripts/sql/provision_zeroerp.sql con -v ambiente=SVILUPPO|PRODUZIONE, una volta. Finche'' manca, script.fn_ambiente_installazione() da'' E_CONFIG_MANCANTE: il provisioning di sviluppo non parte e le sveglie spegnibili falliscono. Questo presidio dice la causa una volta, a chi la sistema. Il panorama dei processi non ha una causa per questo: un fatto, un presidio. Legge script.fn_ambiente_dichiarato(), che non solleva. Brief: brief-db-processi-accensione-per-ambiente (R-2).';
+              COMMENT ON COLUMN dbops.vw_ambiente_non_dichiarato.database_nome IS
+                  'Il database che non ha dichiarato l''ambiente (current_database()).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DROP VIEW IF EXISTS dbops.vw_ambiente_non_dichiarato;

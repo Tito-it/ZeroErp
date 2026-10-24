@@ -129,7 +129,6 @@ def _make_row(**overrides) -> PushableRow:
         "prezzo_bloccato": True,
         "pricing_mode": "FIXED",
         "tipo_movimento": "NORMALE",
-        "tipo_consumo": "CONGUAGLIO",
         "valuta_id": 1,
         "meta": {"tipo_commessa": "AUTO", "policy_fatturazione": "DA_DOCUMENTO"},
         "tipo_doc_fiscale_id": 7,
@@ -143,7 +142,6 @@ def _mock_repo(commessa_id: int = 10, inserted: int = 1, updated: int = 0) -> Ma
     repo = MagicMock(spec=CommesseRepository)
     repo.fetch_pushable_rows.return_value = []
     repo.get_or_create_commessa.return_value = commessa_id
-    repo.link_sorgente.return_value = 1
     repo.batch_upsert_attivita.return_value = BatchUpsertResult(
         total_rows=inserted + updated, inserted=inserted, updated=updated, errors=[],
     )
@@ -159,7 +157,9 @@ class CommesseSourceHandlersTests(TestCase):
         self.assertEqual(handler.sorgente_codice, "ORDINE_VENDITA")
         self.assertEqual(handler.name, "HandlerOrdini")
 
-    # Scopo: Happy path — una riga → get_or_create_commessa + link + batch_upsert.
+    # Scopo: Happy path — una riga → get_or_create_commessa + batch_upsert. Il
+    #        link della sorgente NON lo scrive il backend: lo scrive la madre DB
+    #        delle righe (D-13), quindi il repository non ha piu' il metodo.
     def test_process_rows_crea_commessa_e_upsert(self):
         repo = _mock_repo()
         row = _make_row()
@@ -171,7 +171,7 @@ class CommesseSourceHandlersTests(TestCase):
         self.assertEqual(result.created, 1)
         self.assertEqual(result.errors, [])
         repo.get_or_create_commessa.assert_called_once()
-        repo.link_sorgente.assert_called_once()
+        self.assertFalse(hasattr(CommesseRepository, "link_sorgente"))
         repo.batch_upsert_attivita.assert_called_once()
         inputs = repo.batch_upsert_attivita.call_args[0][0]
         self.assertEqual(len(inputs), 1)
@@ -302,7 +302,7 @@ class CommesseSourceHandlersTests(TestCase):
         kwargs = repo.fetch_pushable_rows.call_args.kwargs
         self.assertIsNone(kwargs["righe_ids"])
 
-    # Scopo: dry_run=True → nessuna chiamata batch_upsert, ma commessa creata e linked.
+    # Scopo: dry_run=True → nessuna chiamata batch_upsert, ma commessa risolta.
     def test_process_rows_dry_run_skippa_upsert(self):
         repo = _mock_repo()
         repo.fetch_pushable_rows.return_value = [_make_row()]
@@ -312,7 +312,6 @@ class CommesseSourceHandlersTests(TestCase):
 
         self.assertEqual(result.created, 1)
         repo.get_or_create_commessa.assert_called_once()
-        repo.link_sorgente.assert_called_once()
         repo.batch_upsert_attivita.assert_not_called()
 
     # Scopo: tipo_commessa estratto da meta (#6).
@@ -411,7 +410,7 @@ class CommesseSourceHandlersTests(TestCase):
     def test_handler_consumi_expand_rows_fanout(self):
         repo = _mock_repo(inserted=2)
         row = _make_row(
-            segment_key="CONS:uid-001",
+            segment_key="ATTIVITA_CONSUMI:uid-001",
             articolo_id=None,
             prezzo_snapshot=None,
             meta={"tipo_commessa": "AUTO", "policy_fatturazione": "DA_DOCUMENTO"},
@@ -446,8 +445,8 @@ class CommesseSourceHandlersTests(TestCase):
         inputs = repo.batch_upsert_attivita.call_args[0][0]
         self.assertEqual(len(inputs), 2)
         keys = [inp.segment_key for inp in inputs]
-        self.assertIn("CONS:uid-001:COMP:COMP_A", keys)
-        self.assertIn("CONS:uid-001:COMP:COMP_B", keys)
+        self.assertIn("ATTIVITA_CONSUMI:uid-001:COMP:COMP_A", keys)
+        self.assertIn("ATTIVITA_CONSUMI:uid-001:COMP:COMP_B", keys)
 
     # Scopo: due righe con stessi parametri commessa → get_or_create_commessa chiamata una sola volta (cache).
     def test_process_rows_cache_commessa_evita_chiamate_ripetute(self):
@@ -463,8 +462,6 @@ class CommesseSourceHandlersTests(TestCase):
         self.assertEqual(result.created, 2)
         # Cache: get_or_create_commessa chiamata 1 volta, non 2.
         repo.get_or_create_commessa.assert_called_once()
-        # link_sorgente comunque chiamata per ogni riga (sorgente diversa).
-        self.assertEqual(repo.link_sorgente.call_count, 2)
         # Batch upsert: 1 sola chiamata con 2 input.
         repo.batch_upsert_attivita.assert_called_once()
         self.assertEqual(len(repo.batch_upsert_attivita.call_args[0][0]), 2)
@@ -485,11 +482,21 @@ class CommesseSourceHandlersTests(TestCase):
         row2 = _make_row(segment_key="TEST:uid-002:R:1", sorgente_uid="uid-002")
         repo.fetch_pushable_rows.return_value = [row1, row2]
         # La 1a riga cade DOPO get_or_create_commessa (che ha gia' popolato la
-        # cache nella vecchia forma); la 2a passa.
-        repo.link_sorgente.side_effect = [RuntimeError("link ko"), 1]
+        # cache nella vecchia forma), nella costruzione del suo input; la 2a passa.
         handler = HandlerPreventivi(repo)
+        build_vero = handler._build_attivita_input
+        chiamate = {"n": 0}
 
-        result = handler.run()
+        def _build_che_cade_la_prima_volta(commessa_id, row):
+            chiamate["n"] += 1
+            if chiamate["n"] == 1:
+                raise RuntimeError("riga ko")
+            return build_vero(commessa_id, row)
+
+        with patch.object(
+            handler, "_build_attivita_input", side_effect=_build_che_cade_la_prima_volta,
+        ):
+            result = handler.run()
 
         # La 2a riga NON ha riusato la cache: e' tornata al database.
         self.assertEqual(repo.get_or_create_commessa.call_count, 2)
@@ -536,7 +543,7 @@ def _make_composito_row(**overrides) -> PushableRow:
         "fatturazione_immediata": False,
         "sorgente_tipo_id": 7,
         "sorgente_uid": "uid-preventivo-001",
-        "segment_key": "PREV:uid-preventivo-001:R:42",
+        "segment_key": "PREVENTIVO:uid-preventivo-001:R:42",
         "articolo_id": "art-composito-01",
         "istanza_utility_id": 11,
         "data_attivita": date(2026, 6, 15),
@@ -550,7 +557,6 @@ def _make_composito_row(**overrides) -> PushableRow:
         "prezzo_bloccato": False,
         "pricing_mode": "FIXED",
         "tipo_movimento": "NORMALE",
-        "tipo_consumo": "CONGUAGLIO",
         "valuta_id": 9,
         "meta": {"tipo_commessa": "AUTO", "policy_fatturazione": "DA_DOCUMENTO"},
         "tipo_doc_fiscale_id": 77,
@@ -999,7 +1005,7 @@ class BoMHandlerIntegrationTests(TestCase):
         repo = _mock_repo(inserted=2)
         # Riga consumo con articolo_id=None (default per consumi pre fan-out).
         repo.fetch_pushable_rows.return_value = [
-            _make_row(articolo_id=None, prezzo_snapshot=None, segment_key="CONS:uid-1")
+            _make_row(articolo_id=None, prezzo_snapshot=None, segment_key="ATTIVITA_CONSUMI:uid-1")
         ]
         handler = HandlerConsumi(repo, bom_expander=expander)
         # Stub fan-out consumi: 2 componenti.
@@ -1038,13 +1044,13 @@ class BoMHandlerIntegrationTests(TestCase):
         repo.fetch_pushable_rows.return_value = [
             _make_composito_row(
                 articolo_id="art-composito",
-                segment_key="PREV:uid-1:R:1",
+                segment_key="PREVENTIVO:uid-1:R:1",
                 sorgente_uid="uid-1",
                 riga_sorgente_id=11,
             ),
             _make_composito_row(
                 articolo_id="art-semplice",
-                segment_key="PREV:uid-1:R:2",
+                segment_key="PREVENTIVO:uid-1:R:2",
                 sorgente_uid="uid-1",
                 riga_sorgente_id=12,
             ),
@@ -1059,9 +1065,9 @@ class BoMHandlerIntegrationTests(TestCase):
         keys = sorted(inp.segment_key for inp in inputs)
         # Verifica: 2 componenti BoM + 1 riga semplice pass-through.
         self.assertEqual(keys, [
-            "PREV:uid-1:R:1#CMP:cmp-A",
-            "PREV:uid-1:R:1#CMP:cmp-B",
-            "PREV:uid-1:R:2",
+            "PREVENTIVO:uid-1:R:1#CMP:cmp-A",
+            "PREVENTIVO:uid-1:R:1#CMP:cmp-B",
+            "PREVENTIVO:uid-1:R:2",
         ])
 
     # Scopo: idempotenza pipeline. Re-run dell'handler con stesso snapshot
@@ -1075,7 +1081,7 @@ class BoMHandlerIntegrationTests(TestCase):
         ])
         repo1 = _mock_repo(inserted=2)
         repo1.fetch_pushable_rows.return_value = [
-            _make_composito_row(segment_key="PREV:uid-X:R:7", riga_sorgente_id=7),
+            _make_composito_row(segment_key="PREVENTIVO:uid-X:R:7", riga_sorgente_id=7),
         ]
         handler1 = HandlerPreventivi(repo1, bom_expander=expander1)
         handler1.run()
@@ -1088,7 +1094,7 @@ class BoMHandlerIntegrationTests(TestCase):
         ])
         repo2 = _mock_repo(updated=2)
         repo2.fetch_pushable_rows.return_value = [
-            _make_composito_row(segment_key="PREV:uid-X:R:7", riga_sorgente_id=7),
+            _make_composito_row(segment_key="PREVENTIVO:uid-X:R:7", riga_sorgente_id=7),
         ]
         handler2 = HandlerPreventivi(repo2, bom_expander=expander2)
         handler2.run()

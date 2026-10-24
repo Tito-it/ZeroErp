@@ -5,7 +5,7 @@
 --       si CONGELA — script.fn_check_riga_contabile_eliminabile +
 --       pagamenti.trgfn_vendite_contabili_righe_guard_contenuto
 --
--- Elenco test (plan 30):
+-- Elenco test (plan 35):
 --  1) la check esiste con la firma dichiarata
 --  2) il guard e' montato: BEFORE INSERT / UPDATE OF fatti / DELETE
 --  3) manuale in BOZZA: la check risponde [] — si puo' eliminare
@@ -36,6 +36,11 @@
 -- 28) ...e richiusa la GUC, la porta e' di nuovo chiusa
 -- 29) una riga che non si legge: E_RIGA_CONTABILE_NON_TROVATA, non []
 -- 30) un id non valido: chiamata non valida (TECNICO)
+-- 31) la meta' su distinta esiste, con la riga della testata come parametro
+-- 32) ⭐ le due strade danno la stessa risposta, sulle tre distinte della fixture
+-- 33) ⭐ la meta' giudica la distinta RICEVUTA, non la rilegge (nessun perimetro)
+-- 34) una distinta senza id: chiamata non valida (TECNICO)
+-- 35) ⭐ il guard del contenuto eredita ancora i quattro codici attraverso la delega
 --
 -- Scopo:
 --  - D17 (§2.2): la riga digitata male su una manuale in bozza non e' un
@@ -55,6 +60,12 @@
 --    (test 22, 25, 26), aperto SOLO a chi dichiara di essere il giro dei fondi
 --    con la GUC transazionale (test 27) e richiuso subito dopo (test 28) —
 --    vendite.fn_cancella_fondo_fattura e' l'unico che la imposta;
+--  - ⭐ LETTURA E GIUDIZIO IN DUE META' (rev 2026-10-21, 20261021-62/-63): i
+--    motivi stanno in fn_check_riga_contabile_eliminabile_su_distinta, che le
+--    liste chiamano con la testata gia' letta; la firma per id legge sotto RLS e
+--    delega. I test 32-35 tengono la promessa: stessa risposta per le due
+--    strade (32), nessuna rilettura nella meta' (33), i codici che il guard
+--    eredita non si perdono nella delega (35);
 --  - ⚠️ la fixture SI COSTRUISCE: un'azienda con il suo operatore, un cliente
 --    fatturabile, una fattura. Su un database ricostruito dai changelog non
 --    c'e' niente di tutto questo, e un test che lo pescasse resterebbe
@@ -80,7 +91,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(30);
+SELECT plan(35);
 
 -- ============================================================
 -- Fixture
@@ -465,6 +476,63 @@ SELECT throws_like(
     $q$SELECT script.fn_check_riga_contabile_eliminabile(0)$q$,
     '%Chiamata non valida%',
     '30) un id non valido e'' un chiamante rotto: E_PAGAMENTI_CHIAMATA_NON_VALIDA');
+
+-- ============================================================
+-- 31-35) Lettura e giudizio in due meta' (rev 2026-10-21)
+-- ============================================================
+SELECT has_function(
+    'script', 'fn_check_riga_contabile_eliminabile_su_distinta',
+    ARRAY['pagamenti.vendite_contabili'],
+    '31) script.fn_check_riga_contabile_eliminabile_su_distinta esiste, con la riga della testata come parametro');
+
+-- ⭐ Le due strade, sulle righe della fixture: a questo punto D1 e' VALIDATA
+--    (test 20), D2 e' la GENERATA, D3 e' CHIUSA (test 23). ⛔ Non verde per
+--    sottrazione: si pretendono le TRE distinte e TRE risposte diverse, cosi'
+--    un'uguaglianza su un insieme vuoto, o su risposte tutte uguali, e' rossa.
+SELECT ok(
+    (SELECT count(DISTINCT c.id) = 3
+        AND count(DISTINCT script.fn_check_riga_contabile_eliminabile_su_distinta(c)) = 3
+        AND bool_and(script.fn_check_riga_contabile_eliminabile(r.id)
+                     = script.fn_check_riga_contabile_eliminabile_su_distinta(c))
+       FROM pagamenti.vendite_contabili_righe r
+       JOIN pagamenti.vendite_contabili c ON c.id = r.contabile_id
+      WHERE c.id IN (SELECT id FROM tmp_distinte)),
+    '32) per id o su distinta, la risposta e'' la stessa — su tre distinte e tre risposte diverse');
+
+-- ⭐ La meta' giudica il VALORE che riceve: una copia di D1 portata in
+--    ANNULLATA risponde DISTINTA_ANNULLATA, mentre la D1 scritta e' VALIDATA.
+--    Se la meta' rileggesse la testata (e con lei il perimetro) risponderebbe
+--    DISTINTA_VALIDATA. ⚠️ La copia ha le colonne della tabella nello stesso
+--    ordine (CREATE TABLE AS SELECT *), quindi il cast della riga regge.
+CREATE TEMP TABLE tmp_d1_annullata AS
+SELECT c.* FROM pagamenti.vendite_contabili c
+ WHERE c.id = (SELECT id FROM tmp_distinte WHERE et = 'D1');
+
+UPDATE tmp_d1_annullata
+   SET stato_id = (SELECT s.id FROM pagamenti.vendite_contabili_stati s
+                    WHERE s.codice_interno = 'ANNULLATA' ORDER BY s.id LIMIT 1);
+
+SELECT is(
+    (SELECT script.fn_check_riga_contabile_eliminabile_su_distinta(
+                ROW(t.*)::pagamenti.vendite_contabili) -> 0 ->> 'reason'
+       FROM tmp_d1_annullata t),
+    'DISTINTA_ANNULLATA',
+    '33) la meta'' giudica la distinta ricevuta e non la rilegge: nessun perimetro per riga');
+
+SELECT throws_like(
+    $q$SELECT script.fn_check_riga_contabile_eliminabile_su_distinta(NULL::pagamenti.vendite_contabili)$q$,
+    '%Chiamata non valida%',
+    '34) una distinta senza id (un LEFT JOIN che non ha trovato la testata): E_PAGAMENTI_CHIAMATA_NON_VALIDA');
+
+-- ⭐ La forma `v_motivi := script.fn_check_…(` della firma per id e' cio' che fa
+--    arrivare i codici della meta' al guard che la chiama: senza, il guard
+--    perderebbe i suoi quattro codici in dbops.vw_funzioni_check_codici.
+SELECT set_eq(
+    $q$SELECT codice FROM dbops.vw_funzioni_check_codici
+        WHERE funzione = 'pagamenti.trgfn_vendite_contabili_righe_guard_contenuto'$q$,
+    ARRAY['E_RIGA_CONTABILE_DISTINTA_ANNULLATA', 'E_RIGA_CONTABILE_DISTINTA_FINALE',
+          'E_RIGA_CONTABILE_DISTINTA_NON_MANUALE', 'E_RIGA_CONTABILE_DISTINTA_VALIDATA'],
+    '35) il guard del contenuto eredita ancora i quattro codici attraverso la delega');
 
 -- ⚠️ Niente cleanup: ci pensa il ROLLBACK.
 SELECT * FROM finish();

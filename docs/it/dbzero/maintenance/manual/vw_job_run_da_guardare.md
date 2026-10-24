@@ -10,10 +10,15 @@ Approfondimenti funzioni:
 >
 [`maintenance.fn_job_run_log_failure`](/dbzero/maintenance/manual/fn_job_run_log_failure) ·
 [`maintenance.fn_run_and_log`](/dbzero/maintenance/manual/fn_run_and_log)
+>
+Approfondimenti cause:
+>
+[`dbops.cause_fallimento`](/dbzero/dbops/manual/cause_fallimento) ·
+[`dbops.presidi_cause`](/dbzero/dbops/manual/presidi_cause)
 
 ---
 ### 🎯 Scopo Principale
-(latest review 05-09-2026)
+(latest review 18-10-2026)
 
 **Il posto dove guardare**: i lavori automatici che chiedono un occhio. Deve
 restare vuota.
@@ -55,7 +60,7 @@ emergere. Brief: `brief-db-corsa-saltata-non-e-una-corsa`.
 | --- | --- |
 | **l'ultima corsa è fallita** | il lavoro è arrivato in fondo e ha detto perché |
 | **presa e mai chiusa** | ⛔ non ha parlato nemmeno il gestore d'errore: il processo è morto di colpo |
-| **intermittente** | l'ultima è andata bene, ma di recente no |
+| **intermittente** | l'ultima è andata bene, oppure è in corso adesso, ma di recente il lavoro ha fallito (per un verdetto completo: è ricaduto, sezione sotto) |
 
 ⭐ **Il terzo è il più insidioso, e senza di lui la vista sarebbe cieca proprio
 dove serve.** Un lavoro che fallisce e passa, fallisce e passa, ha l'ultima corsa
@@ -66,12 +71,105 @@ Ed è giusto — un lavoro che ha fallito cinque minuti fa **ha appena fallito**
 
 ---
 
+### ⭐ Il verde di un verdetto completo spegne la spia, salvo ricaduta *(rev 2026-10-18)*
+
+«Intermittente» tiene insieme **due guasti diversi**:
+
+| Guasto | Che cos'è | Per chi |
+| --- | --- | --- |
+| **il residuo** | la corsa lavora una parte (una coda, un lotto): un rosso lascia indietro qualcosa che il verde dopo non riprende | i lavori a verdetto parziale |
+| **l'instabilità** | il lavoro cade, si rialza, ricade | tutti |
+
+Per un lavoro il cui ogni giro è un **verdetto completo** — ricontrolla tutto il
+suo perimetro, come lo smoke notturno, le automazioni, il digest; lo dichiara il
+processo in
+[`dbops.processi.corsa_verdetto_completo`](/dbzero/dbops/manual/processi) — il
+residuo non esiste: il verde di oggi **sostituisce** il rosso di ieri.
+
+⇒ Per questi lavori la riga resta accesa solo se il lavoro è **ricaduto**: nei
+sette giorni ci sono almeno **due tratti rossi** separati da un verde. Un solo
+tratto rosso esce al primo verde. Il motivo dice «ricaduto dopo essere tornato
+verde: instabile».
+
+⭐ **Si contano i tratti, non i rossi.** Tre rossi di fila e poi verde sono un
+guasto riparato una volta; rosso, verde, rosso, verde sono un lavoro che non sta
+in piedi.
+
+⛔ **Perché non basta l'ultima corsa.** Un verdetto completo instabile si nasconde
+quando gira più spesso di quanto lo si guardi: fra due digest l'ultima corsa è
+verde, e i rossi in mezzo non li vede nessuno. È proprio il caso del 2026-09-05:
+quel comando riallineava **tutti** gli utenti a ogni corsa, era un verdetto
+completo, e falliva e passava. La regola non legge la frequenza delle corse, che
+sta nelle sveglie e non nel catalogo: guarda la forma della storia.
+
+⚠️ **La corsa in corso non è un verdetto.** Per un verdetto completo, una corsa
+partita da meno di un'ora non conta finché non chiude: un rosso seguito da un
+giro nuovo resta «fallita». Oltre l'ora la corsa è appesa, come per tutti.
+
+`falliti_ultimi_7_giorni` resta per tutti: dice quanti rossi ha avuto il lavoro,
+anche quando non accende più la riga.
+
+Brief: `brief-db-intermittente-e-verdetto-completo`.
+
+---
+
 ### ⚠️ La soglia di un'ora è una scelta, non una misura
 
 Una corsa senza fine da meno di un'ora può essere semplicemente **in corso**.
 L'ora viene dal fatto che questi lavori durano secondi.
 
+⛔ *(rev 2026-10-16)* La soglia vale anche per il **motivo**, non solo per
+l'ingresso nella vista. Prima una corsa partita cinque minuti fa, di un lavoro
+con fallimenti recenti, era detta «presa e mai chiusa»: era in corso, non morta.
+Ora il suo motivo è «in corso adesso, ma ha fallito di recente».
+
 ⛔ Una soglia dedotta dai tempi di oggi si taglierebbe addosso al carico di oggi.
+
+---
+
+### ⭐ A chi tocca: la causa di ogni riga *(rev 2026-10-16)*
+
+Le righe di questa vista sono guasti di natura diversa: un disco pieno va a chi
+gestisce il server, le regressioni dello smoke notturno allo sviluppo. Un
+destinatario unico per tutto il presidio mandava metà delle righe alla persona
+sbagliata.
+
+Per questo ogni riga porta una **causa** (colonna `causa`, vocabolario
+[`dbops.cause_fallimento`](/dbzero/dbops/manual/cause_fallimento)), e
+[`dbops.presidi_cause`](/dbzero/dbops/manual/presidi_cause) dice a chi tocca:
+
+| Causa | Chi agisce |
+| --- | --- |
+| `AMBIENTE` | chi gestisce il server |
+| `PROGRAMMA` | lo sviluppo |
+| `CONFIGURAZIONE` | l'amministratore, dalle impostazioni dell'applicazione |
+
+La causa si decide **in quest'ordine**:
+
+1. la corsa è appesa (morta senza chiudersi) → `AMBIENTE`, qualunque lavoro sia;
+2. l'errore è passato dal database con un codice di guasto dell'ambiente
+   (connessione, spazio o memoria, arresto, errore di sistema, permesso mancante,
+   tabella occupata) → `AMBIENTE`. La lista sta in
+   [`script.fn_sqlstate_di_ambiente`](/dbzero/script/manual/fn_sqlstate_di_ambiente).
+   ⭐ *(rev 2026-10-16)* Anche le automazioni rilanciano questi errori così come sono,
+   invece di coprirli col loro codice: un permesso mancante in un'automazione arriva
+   al sistemista, non allo sviluppo;
+3. il codice d'errore dichiara la sua causa
+   ([`config.codici_errore`](/dbzero/config/manual/codici_errore)) → quella;
+4. altrimenti decide il processo, che dichiara la natura dei suoi fallimenti
+   ([`dbops.processi`](/dbzero/dbops/manual/processi));
+5. una corsa senza processo (solo righe vecchie) → `PROGRAMMA`.
+
+⭐ Nessuna riga resta senza causa, quindi nessuna finisce fra quelle «senza
+indicazione di chi agisce».
+
+⭐ La causa si legge dall'**ultimo fallimento**, non dall'ultima corsa: per un
+intermittente l'ultima corsa è andata bene e non ha errore. La colonna
+`ultimo_rosso_job_run_id` dice da quale corsa è stata letta.
+
+⚠️ Per i lavori lanciati dal backend il punto 2 vede il guasto dell'ambiente
+solo quando il backend scrive il codice del database nel giornale
+(`job_run_log.sqlstate`).
 
 ---
 
@@ -101,6 +199,9 @@ con l'area funzionale e il profilo, come per le altre viste di presidio.
 `db/pgtap/maintenance/test-vw-job-run-da-guardare.sql` — i casi costruiti uno per
 uno, compreso il rientro automatico e la corsa ancora in corso che **non** deve
 comparire. La corsa appesa seguita da una skip: `test-job-run-saltata-v1.sql`, test 7.
+La causa, ramo per ramo: `test-vw-job-run-da-guardare-causa-v1.sql`.
+Verdetto completo contro parziale, con la stessa storia di corse:
+`test-vw-job-run-da-guardare-verdetto-completo-v1.sql`.
 
 ---
 

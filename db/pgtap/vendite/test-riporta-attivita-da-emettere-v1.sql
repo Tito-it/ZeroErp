@@ -178,7 +178,8 @@ BEGIN
              --   forma in cui «gia' disponibile» esiste ancora (motivo 3): con
              --   la riga EMESSA sarebbe la divergenza, che il verbo accetta.
              'BOZZA', CASE WHEN s = 'LIBERA' THEN 'NON_EMESSA' ELSE 'EMESSA' END,
-             NULL, NULL
+             (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+         ((SELECT id FROM tmp_commessa_rde))::text
         FROM tmp_refs_rde r
       RETURNING id)
     INSERT INTO tmp_ca_rde(slot, attivita_id) SELECT s, ins.id FROM ins;

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_attivita_fatturabili_guard_commessa()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()
  RETURNS trigger
@@ -79,6 +81,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()
 IS 'Guard anti-bypass: commessa_id+commessa_attivita_id obbligatori e coerenti. Bypass GUC solo superuser.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

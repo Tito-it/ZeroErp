@@ -219,10 +219,9 @@ class PartitionedNoteRepository:
         *,
         target_riga_id: int | None = None,
         include_invisible: bool = True,
-        page: int = 1,
-        page_size: int = DEFAULT_LIMIT,
+        limit: int = DEFAULT_LIMIT,
+        offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        offset = max(0, (page - 1) * page_size)
         where = ["n.target_tipo = %s", "n.target_id = %s"]
         params: list[Any] = [self._target_tipo, target_id]
         if target_riga_id is not None:
@@ -253,7 +252,7 @@ class PartitionedNoteRepository:
             total = int(fetchone_scalar(cursor))
             if total == 0:
                 return [], 0
-            cursor.execute(list_sql, [*params, page_size, offset])
+            cursor.execute(list_sql, [*params, limit, offset])
             rows = rows_to_list(cursor)
         return rows, total
 

@@ -50,7 +50,7 @@ contesto:
 
 | Campo | Grana | Fonte |
 | --- | --- | --- |
-| `contesto` | `"ORDINE"` \| `"DDT"` — **quale lista è il saldo del documento** | il filtro della chiamata |
+| `contesto` | `"ORDINE_VENDITA"` \| `"DDT_VENDITA"` (i codici di `config.sorgenti`; fino al 2026-10-19 `"ORDINE"` \| `"DDT"`) — **quale lista è il saldo del documento** | il filtro della chiamata |
 | `righe_ordine` | riga d'ordine (su entrambi i lati) | `vw_situazione_merce_ordine` |
 | `partite` | riga di DDT | `vw_partite_merce` |
 | `accrediti` | riga di reso | `vw_resi_da_accreditare` |
@@ -81,10 +81,10 @@ nomina.
 Esempio reale (l'ordine del §3 del brief pannello, la riga da 21 pezzi):
 
 ```text
-contesto      ORDINE   (dal DDT sarebbe DDT, e il saldo sarebbe quello delle partite)
+contesto      ORDINE_VENDITA   (dal DDT sarebbe DDT_VENDITA, e il saldo sarebbe quello delle partite)
 righe_ordine  riga 1 · ordinato 21 · tenuti 13 · fatturato 21
                      · differenza −8 · da_spedire 3 · DA_ACCREDITARE
-partite       DDT0010839 · origine ORDINE · consegnato 21 · −8 · DA_ACCREDITARE
+partite       DDT0010839 · origine ORDINE_VENDITA · consegnato 21 · −8 · DA_ACCREDITARE
 accrediti     RESO0005122 · 5 · DOVUTA      RESO0005123 · 3 · FACOLTATIVA
 riconsegne    RESO0005123 · residua 3 · DA_RICONSEGNARE
 ```
@@ -174,7 +174,8 @@ solo posto in cui una persona lo guarda.
 scritto introspezionando la vista **viva** prima del push: il corpo pubblicato
 coincide con quello su cui è costruito.
 
-**Frontend**: il pannello non esiste ancora. Le tre richieste FE del §19.2 del
-brief partita — `NON_MISURABILE` visibilmente diverso da `PAREGGIATA`,
-`sospetto_duplicato_ordine` mostrato, `fatturato_anticipato` mai sommato al saldo
-— sono la definizione di fatto di quel cantiere, non di questo endpoint.
+**Frontend**: il pannello c'è, nei drawer di ordine e DDT (composable
+`frontend/src/vendite/_shared/situazioneMerce/useSituazioneMerce.js`). Le tre
+richieste FE del §19.2 del brief partita — `NON_MISURABILE` visibilmente diverso
+da `PAREGGIATA`, `sospetto_duplicato_ordine` mostrato, `fatturato_anticipato` mai
+sommato al saldo — restano il contratto di quel pannello, non di questo endpoint.

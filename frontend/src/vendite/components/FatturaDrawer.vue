@@ -70,7 +70,7 @@ import {
 } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate } from '../../core/utils/date'
-import { formatCurrency, formatNumber } from '../../core/utils/format'
+import { formatCurrency, formatNumber, formatQuantita } from '../../core/utils/format'
 import { statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { downloadBlob } from '../../core/utils/download'
 import { exportRigheLista, getFatturaDettaglio } from '../api/fatture'
@@ -478,7 +478,9 @@ function onNoteSaved(total) {
              numerazione questa barra e' l'unica delle due che parla. -->
         <DocumentoCollegamentiBar
           base-path="/vendite/fatture"
+          :versione="dettaglio"
           :doc-id="fatturaId"
+          @documento-chiuso="loadDettaglio"
           :readonly="isReadonly" />
 
         <!-- F5 · IL LEGAME DOCUMENTALE. «Questo accredito vale 12 € perché la
@@ -639,7 +641,7 @@ function onNoteSaved(total) {
                 {{ c.descrizione || '—' }}
                 <!-- Quantita' al massimo alla precisione della colonna (6). -->
                 <span class="app-text-muted">
-                  · {{ formatNumber(c.quantita, { placeholder: '—', minimumFractionDigits: 0, maximumFractionDigits: 6 }) }}
+                  · {{ formatQuantita(c.quantita, { placeholder: '—' }) }}
                   {{ c.uom_codice || '' }}
                 </span>
                 <!-- Il VALORIZZATO porta prezzo, sconto e importo suoi, fuori

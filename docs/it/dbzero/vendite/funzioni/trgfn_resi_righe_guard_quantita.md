@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_resi_righe_guard_quantita()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_resi_righe_guard_quantita()
  RETURNS trigger
@@ -70,6 +72,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_resi_righe_guard_quantita()
 IS 'Guard over-return resi_righe: Sigma quantita non-ANNULLATI su ddt_riga <= consegnato (E_RESO_QTA_SUPERA_CONSEGNATO). Lock FOR UPDATE. Mirror trgfn_ordini_ful_guard_consistenza. Fase a20 (dopo qta_from_operativa). rev 2026-07-13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

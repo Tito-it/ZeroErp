@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_risorse_umane_notify_cambio_reparto()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_notify_cambio_reparto()
  RETURNS trigger
@@ -39,6 +41,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_notify_cambio_reparto()
 IS 'Trigger function: emette NOTIFY cambio_reparto al cambio unita organizzativa della risorsa.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

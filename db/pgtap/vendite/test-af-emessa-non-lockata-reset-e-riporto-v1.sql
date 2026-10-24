@@ -48,6 +48,18 @@
 --   mano: e' il percorso che il difetto attraversa.
 --
 -- ChangeSet: 20260912-34 (cleanup), 20260912-35 (check).
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
+--   portano avanti con dbops.fn_pgtap_porta_a_stato (prima la commessa nasceva gia' nello
+--   stato emittibile, PRONTA_FATTURAZIONE).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): la commessa emittibile la
+--   costruisce dbops.fn_pgtap_crea_commessa sul billing account del test (testata, riga
+--   APPROVATA con l'articolo costruito, passaggio per la matrice); prima testata e riga
+--   erano scritte a mano con articolo, unita' di misura e tipo documento pescati «il
+--   primo per id». Il tipo documento dei lotti si legge dalla riga scritta.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-3/R-4): la sorgente ROOT della commessa
+--   la scrive dbops.fn_pgtap_crea_commessa (p_con_sorgente_root => true) e i due lotti
+--   DRAFT nascono da dbops.fn_pgtap_crea_lotto (madre vendite.fn_create_fatturazione_lotto,
+--   tipo documento della riga, cliente del test); prima ROOT e lotti erano INSERT a mano.
 -- Brief: brief-db-rilancio-step-non-rivede-le-proprie-commesse.md §10.4
 -- ------------------------------------------------------------
 
@@ -74,21 +86,24 @@ SELECT plan(9);
 -- ============================================================
 -- Fixture: una commessa con una riga, due lotti DRAFT
 -- ============================================================
+-- La commessa emittibile dal builder, sul cliente del test: testata dalla madre,
+--   UNA riga APPROVATA/NON_EMESSA, PRONTA_FATTURAZIONE per la matrice.
+CREATE TEMP TABLE tmp_ar_comm AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa(
+    'af emessa non lockata', 'PRONTA_FATTURAZIONE',
+    (SELECT billing_account_id FROM tmp_ar_cliente),
+    p_con_sorgente_root => true);
+
 CREATE TEMP TABLE tmp_ar_rif AS
 SELECT
   (SELECT m.soggetto_ruolo_id FROM tmp_ar_mondo m)         AS emittente_sr,
-  (SELECT c.billing_account_id FROM tmp_ar_cliente c)      AS billing_account_id,
-  (SELECT c.utility_id FROM tmp_ar_cliente c)              AS utility_id,
-  (SELECT c.istanza_utility_id FROM tmp_ar_cliente c)      AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS articolo_id,
-  (SELECT u.id FROM catalogo.unita_misura u
-    WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)          AS uom_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t
-    WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)          AS tipo_doc_fiscale_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT sc.id FROM vendite.stati_commessa sc
-    WHERE sc.attivo IS TRUE AND sc.emittibile IS TRUE ORDER BY sc.id LIMIT 1) AS stato_ok,
+  (SELECT c.billing_account_id FROM tmp_ar_comm c)         AS billing_account_id,
+  (SELECT c.commessa_id FROM tmp_ar_comm c)                AS commessa_id,
+  (SELECT c.attivita_id FROM tmp_ar_comm c)                AS ca_id,
+  -- il tipo documento dei lotti e' quello della riga scritta, non un pescato
+  (SELECT ca.tipo_doc_fiscale_id FROM vendite.commesse_attivita ca
+    WHERE ca.id = (SELECT c.attivita_id FROM tmp_ar_comm c)) AS tipo_doc_fiscale_id,
+  (SELECT c.stato_commessa_id FROM tmp_ar_comm c)          AS stato_ok,
   (SELECT s.id FROM config.sorgenti s
     WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE) AS sorgente_id,
   (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT') AS stato_draft,
@@ -96,7 +111,7 @@ SELECT
 
 SELECT ok(
   (SELECT r.emittente_sr IS NOT NULL AND r.billing_account_id IS NOT NULL
-      AND r.articolo_id IS NOT NULL AND r.tipo_doc_fiscale_id IS NOT NULL
+      AND r.ca_id IS NOT NULL AND r.tipo_doc_fiscale_id IS NOT NULL
       AND r.stato_ok IS NOT NULL AND r.sorgente_id IS NOT NULL AND r.stato_draft IS NOT NULL
      FROM tmp_ar_rif r),
   '0. riferimenti minimi risolti'
@@ -111,47 +126,27 @@ DECLARE
     r      record;
     v_comm vendite.commesse.id%TYPE;
     v_ca   vendite.commesse_attivita.id%TYPE;
-    v_lot  vendite.fatturazione_lotti.id%TYPE;
-    v_lock vendite.fatturazione_lotti.lock_batch_id%TYPE;
 BEGIN
     SELECT * INTO v_rif FROM tmp_ar_rif;
 
-    INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                  emittente_soggetto_ruolo_id, stato_commessa_id)
-    VALUES ('PGTAP-AR-' || substr(md5(clock_timestamp()::text), 1, 6),
-            v_rif.billing_account_id, v_rif.utility_id, v_rif.emittente_sr, v_rif.stato_ok)
-    RETURNING id INTO v_comm;
+    v_comm := v_rif.commessa_id;
+    v_ca   := v_rif.ca_id;
 
-    -- Il pull PRETENDE una sorgente ROOT (vedi P-5 per il perche' della chiave).
-    INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-    VALUES (v_comm, v_rif.sorgente_id, v_comm::text, 'ROOT');
-
-    INSERT INTO vendite.commesse_attivita (
-        commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
-        uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
-        tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-        stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-    VALUES (v_comm, 'PGTAP-AR-' || substr(md5(clock_timestamp()::text), 1, 12),
-            v_rif.articolo_id, v_rif.istanza_utility_id, v_rif.mese,
-            v_rif.uom_id, 1, v_rif.mese, v_rif.mese,
-            (v_rif.mese + INTERVAL '1 month - 1 day')::date,
-            v_rif.tipo_doc_fiscale_id, v_rif.valuta_id, 10.000000, 'FIXED',
-            'APPROVATA', 'NON_EMESSA', NULL, NULL)
-    RETURNING id INTO v_ca;
-
+    -- Il pull PRETENDE una sorgente ROOT: l'ha scritta il builder della commessa.
     INSERT INTO tmp_ar VALUES (v_comm, v_ca, NULL);
 
     -- Due lotti DRAFT, in gioco: «primo» fara' il pull e verra' annullato;
     -- «secondo» fara' il pull e poi MORIRA' senza reset (la divergenza).
+    --   Dal builder: madre del dominio, tipo documento della riga, cliente del test.
     FOR r IN SELECT * FROM (VALUES ('primo'), ('secondo')) AS v(caso)
     LOOP
-        INSERT INTO vendite.fatturazione_lotti
-            (codice, competenza_mese, tipo_doc_fiscale_id,
-             emittente_soggetto_ruolo_id, stato_doc_fiscale_id)
-        VALUES ('PGTAP-AR-LOTTO-' || upper(r.caso), v_rif.mese,
-                v_rif.tipo_doc_fiscale_id, v_rif.emittente_sr, v_rif.stato_draft)
-        RETURNING id, lock_batch_id INTO v_lot, v_lock;
-        INSERT INTO tmp_ar_lotti VALUES (r.caso, v_lot, v_lock);
+        INSERT INTO tmp_ar_lotti
+        SELECT r.caso, l.lotto_id, l.lock_batch_id
+          FROM dbops.fn_pgtap_crea_lotto(
+                   'af emessa ' || r.caso, 'DRAFT',
+                   v_rif.billing_account_id,
+                   p_tipo_doc_fiscale_id => v_rif.tipo_doc_fiscale_id,
+                   p_competenza_mese     => v_rif.mese) l;
     END LOOP;
 END;
 $fixture$;

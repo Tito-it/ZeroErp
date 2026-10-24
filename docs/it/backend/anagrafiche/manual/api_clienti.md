@@ -71,15 +71,18 @@ Compone la catena **istanza → BA → cliente** in **una `transaction.atomic()`
 | `billing_account_id` | — | BA pre-esistente da riusare; se assente lo crea |
 | `indirizzo_dettaglio_id`, `ba_fatturazione_ordini`, `ba_parent_account_id` | — | Dati istanza/BA opzionali |
 | `termine_pagamento_id`, `modalita_pagamento_id` | — | Parametri pagamento |
-| `tipo_gg_scadenza_ft`, `nr_giorni_scadenza`³ | — | Scadenza fattura (coppia vincolata, vedi sotto) |
-| `servizio_da_fatturare`, `garanzia_tipo`, `garanzia_importo` | — | Servizio / garanzia |
+| `servizio_da_fatturare` | — | Booleano JSON; se la chiave è presente non può essere `null` né `"true"`/`1` (400) |
+| `garanzia_tipo`, `garanzia_importo` | — | Garanzia |
 | `contatto`, `indirizzi` | — | Contatto + indirizzi ruolo inline (opzionali, da drawer) |
 
 ¹ Solo se `billing_account_id` è assente (BA nuovo). Se il BA è pre-esistente la categoria
 è già sul BA e il valore qui è ignorato.
-³ Vedi **Coppia scadenza** in fondo.
 
-### ⛔ Sei chiavi che il cliente NON accetta più (2026-08-29, cantiere IVA `I0`/`I8`)
+Le chiavi ammesse sono **solo** quelle della tabella: una chiave fuori contratto
+(anche `tipo_gg_scadenza_ft`, `nr_giorni_scadenza` e le sei chiavi ritirate qui sotto)
+→ `400 E_ANAG_VALIDAZIONE` (2026-10-20: prima la creazione le scartava in silenzio).
+
+### ⛔ Sei chiavi che il cliente NON accetta più (2026-08-29, cantiere IVA `I0`/`I8`; inviate → 400)
 
 Fino a quella data il payload portava anche `iva_id`, `cliente_pa`,
 `split_payment`, `codice_cig`, `codice_cup`, `codice_commessa`. **Non esistono
@@ -103,7 +106,7 @@ una scelta che non aveva effetto.
 
 | Codice | HTTP | Quando |
 | --- | --- | --- |
-| `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id`/`utility_id`/`ba_categoria_cliente_id` mancanti; utility con PDP in creazione manuale |
+| `E_ANAG_VALIDAZIONE` | 400 | Chiave fuori contratto; `soggetto_id`/`utility_id`/`ba_categoria_cliente_id` mancanti; `servizio_da_fatturare` non booleano; utility con PDP in creazione manuale |
 | `E_ANAG_NOT_FOUND` | 404 | `istanza_utility_id`/`billing_account_id` pre-esistenti non trovati |
 | `E_BA_ADMIN_GLOBALE_VIETATO` | 403 | Creazione BA senza un emittente fiscale di lavoro (super admin in «Tutti gli emittenti») con emittenti presenti: scegliere l'emittente in alto |
 | `E_ANAG_DUPLICATO` | 409 | Esiste già un cliente per il billing account (`uq_clienti_billing_account`, dal 2026-10-08: un cliente per BA, un'istanza ha tanti clienti quanti BA) |
@@ -118,7 +121,7 @@ Risposta `200`: `{ id, istanza_utility_id, billing_account_id, soggetto_ruolo_id
 
 Dettaglio completo: campi cliente + BA (`ba_codice`, `ba_categoria_cliente_id`/codice/
 descrizione, `ba_fatturazione_ordini`, `ba_parent_account_id`, validità), istanza,
-soggetto (ragione sociale, CF, P.IVA), descrizioni FK (utility, stato, iva, modalità/
+soggetto (ragione sociale, CF, P.IVA), descrizioni FK (utility, stato, modalità/
 termine pagamento) e **stato-evento corrente** (`data_evento_stato`, `tipo_evento_stato`)
 risolto data-driven dalla fn DB. `404 E_ANAG_NOT_FOUND` se inesistente o **fuori scope**
 emittente (identico a inesistente, fail-closed RLS).
@@ -138,18 +141,17 @@ lasciava la categoria BA committata su uno stato parziale.
 
 **Campi editabili** (delta: solo le chiavi presenti vengono scritte; chiave presente con
 valore vuoto/`null` → campo azzerato dove nullable):
-`iva_id`, `modalita_pagamento_id`, `termine_pagamento_id`, `tipo_gg_scadenza_ft`,
-`nr_giorni_scadenza`, `cliente_pa`, `split_payment`, `codice_cig`, `codice_cup`,
-`codice_commessa`, `servizio_da_fatturare`, `garanzia_tipo`, `garanzia_importo`, più
-`ba_categoria_cliente_id` (scritto sul BA). Le stringhe vuote sono **normalizzate a NULL**
-lato BE per i campi che lo ammettono.
+`modalita_pagamento_id`, `termine_pagamento_id`, `servizio_da_fatturare`,
+`garanzia_tipo`, `garanzia_importo`, più `ba_categoria_cliente_id` (scritto sul BA;
+`null` = non toccarla). Qualsiasi altra chiave → `400 E_ANAG_VALIDAZIONE`. Le stringhe
+vuote sono **normalizzate a NULL** lato BE per i campi che lo ammettono.
 
 **Errori**
 
 | Codice | HTTP | Quando |
 | --- | --- | --- |
 | `E_ANAG_NOT_FOUND` | 404 | Cliente inesistente o fuori scope emittente |
-| `E_ANAG_VALIDAZIONE` | 400 | `ba_categoria_cliente_id` non intero positivo; **oppure nessun campo valido da aggiornare** (il cliente esiste → validazione, non not-found)⁴ |
+| `E_ANAG_VALIDAZIONE` | 400 | Chiave fuori dai campi editabili; `ba_categoria_cliente_id` non intero positivo; **oppure nessun campo valido da aggiornare** (il cliente esiste → validazione, non not-found)⁴ |
 
 ⁴ Contratto aggiornato il 2026-07-08 (review): il caso "niente da aggiornare" era `404
 E_ANAG_NOT_FOUND`; poiché l'esistenza è già garantita dal guard, ora è `400
@@ -176,11 +178,9 @@ per il pattern export condiviso.
 
 ## Note di dominio
 
-- **Coppia scadenza `tipo_gg_scadenza_ft` / `nr_giorni_scadenza`.** Vincolata dal trigger
-  `anagrafiche.trgfn_clienti_normalize_giorni_scadenza`: combinazioni valide `('G', >0)`,
-  `('F', >0)`, `('N', NULL)`, `('M', NULL)`. Con `tipo NOT IN ('G','F')` il DB **forza**
-  `nr_giorni_scadenza = NULL`; con `tipo IN ('G','F')` e `nr_giorni` NULL/≤0 solleva
-  `E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI`. Impostare la coppia insieme.
+- **Pagamento**: unico meccanismo termine di catalogo + modalità
+  (`termine_pagamento_id`, `modalita_pagamento_id`); la coppia legacy
+  `tipo_gg_scadenza_ft`/`nr_giorni_scadenza` non è più nel contratto.
 - **Categoria cliente** = dimensione commerciale del pricing, vive sul BA
   (`billing_account.categoria_cliente_id`, NOT NULL). Non ha default implicito in creazione.
 - **Stati cliente** (`config.stati_cliente`): il cliente nasce ATTIVO; sospensione/

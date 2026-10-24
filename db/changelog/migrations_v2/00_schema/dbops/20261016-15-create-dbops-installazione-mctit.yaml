@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AMBIENTE DELL'INSTALLAZIONE
+#   NASCE dbops.installazione: una riga sola, che dice se questo database e'
+#   di SVILUPPO o di PRODUZIONE.
+#   Brief: brief-db-processi-accensione-per-ambiente (A-1, R-1…R-3)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il default di accensione di un processo dipende dall'ambiente (A-2), e
+#   altre attivita' lo chiederanno (il provisioning di sviluppo, R-4). Il
+#   modello non sapeva che cosa fosse un'installazione di sviluppo.
+#
+# -- LA SEDE (R-3) -----------------------------------------------------
+#   FUORI da config.parameters: il mirror CSV la riscriverebbe a ogni migrate,
+#   e la pagina di configurazione la lascerebbe cambiare all'app («la metto a
+#   SVILUPPO, lancio il command, la rimetto a posto»). Qui l'app LEGGE e non
+#   scrive (loop 20260205-41, forward 90_end/20261016-32, blocco del
+#   provisioning).
+#
+# -- ⛔ LA TABELLA NASCE VUOTA (R-2, decisione di Tid del 2026-10-16) ----
+#   Nessun default scritto da un changeSet: troverebbe database gia'
+#   esistenti (dbdev, lo scratch, la CI) e li dichiarerebbe al posto di chi li
+#   conosce. Il valore lo scrive la fase `post` di
+#   scripts/sql/provision_zeroerp.sql col parametro `-v ambiente=…`, una volta
+#   sola: poi e' immutabile (guard 20261016-16/-17).
+#
+# -- LA FORMA -------------------------------------------------------
+#   Una riga sola per costruzione: id = 1, CHECK. `ambiente` testo a due
+#   valori, CHECK. Solo l'audit di nascita (data_insert, user_insert): la riga
+#   non cambia mai, quindi niente data_update/user_update, tx_id o storicizza.
+#   ⚠️ Le automazioni di ci_apply non coprono dbops (automation_scope.csv:
+#   solo sessioni_utente): colonne che solo loro valorizzano resterebbero
+#   inerti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261016-15-create-dbops-installazione-mctit.yaml
+
+  - changeSet:
+      id: 20261016-15-create-dbops-installazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea dbops.installazione: l'ambiente (SVILUPPO o PRODUZIONE) di questo database, una riga
+        sola, vuota alla nascita. Brief: brief-db-processi-accensione-per-ambiente (A-1, R-2, R-3).
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                schemaName: dbops
+                tableName: installazione
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE dbops.installazione (
+                  id          smallint    NOT NULL DEFAULT 1,
+                  ambiente    text        NOT NULL,
+                  data_insert timestamptz NOT NULL DEFAULT now(),
+                  user_insert text        NOT NULL DEFAULT CURRENT_USER,
+                  CONSTRAINT pk_installazione PRIMARY KEY (id),
+                  CONSTRAINT chk_installazione_riga_unica CHECK (id = 1),
+                  CONSTRAINT chk_installazione_ambiente
+                      CHECK (ambiente IN ('SVILUPPO', 'PRODUZIONE'))
+              );
+
+              COMMENT ON TABLE dbops.installazione IS
+                  'L''ambiente di questa installazione: SVILUPPO o PRODUZIONE. Una riga sola (id = 1), vuota alla nascita: la scrive la fase post di scripts/sql/provision_zeroerp.sql col parametro -v ambiente=..., una volta, e poi non cambia piu'' (guard trgfn_installazione_guard_immutabile, E_AMBIENTE_IMMUTABILE). Nessun default: un changeSet troverebbe database gia'' esistenti e li dichiarerebbe al posto di chi li conosce. Fuori da config.parameters: il mirror CSV la riscriverebbe e l''app la potrebbe cambiare. L''app la legge e non la scrive. Si legge con script.fn_ambiente_installazione() (che fallisce se manca) o script.fn_ambiente_dichiarato() (che torna NULL, per i panorami). Brief: brief-db-processi-accensione-per-ambiente (A-1, R-1, R-2, R-3).';
+              COMMENT ON COLUMN dbops.installazione.id IS
+                  'Sempre 1 (chk_installazione_riga_unica): la tabella ha una riga sola per costruzione.';
+              COMMENT ON COLUMN dbops.installazione.ambiente IS
+                  'SVILUPPO o PRODUZIONE. Si sceglie all''installazione, come parametro della fase post del provisioning, e non cambia piu'': un database di sviluppo contiene dati nati fuori da ogni regola (smoke, prove) e non si certifica pulito; una copia della produzione resta produzione. Brief: brief-db-processi-accensione-per-ambiente (R-2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DROP TABLE IF EXISTS dbops.installazione;

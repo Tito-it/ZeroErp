@@ -31,7 +31,7 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 _RIEPILOGO_RESPONSE = {
     "aree": [
         {
-            "area": "PREVENTIVI",
+            "area": "PREVENTIVO",
             "n_documenti": 5,
             "valore_totale": "2000.50",
             "fasi": [{"fase": "APERTO", "n_documenti": 3, "valore_totale": "1500.00"}],
@@ -48,7 +48,7 @@ _DOCUMENTI_RESPONSE = {
     "total_pages": 1,
     "results": [
         {
-            "area": "PREVENTIVI",
+            "area": "PREVENTIVO",
             "documento_id": 42,
             "codice": "PRV0000123",
             "cliente_display": "Rossi Impianti SRL",
@@ -84,7 +84,7 @@ class DashboardApertoApiTests(JwtMockedApiTest):
         data = response.json()["data"]
         area = data["aree"][0]
         # Passthrough dei campi FE-critici delle card (totali + griglia fasi).
-        self.assertEqual(area["area"], "PREVENTIVI")
+        self.assertEqual(area["area"], "PREVENTIVO")
         self.assertEqual(area["n_documenti"], 5)
         self.assertEqual(area["valore_totale"], "2000.50")
         self.assertEqual(area["fasi"][0]["fase"], "APERTO")
@@ -109,7 +109,7 @@ class DashboardApertoDocumentiApiTests(JwtMockedApiTest):
     @patch("apps.vendite.api.views_dashboard_aperto.fn_dash_aperto_documenti")
     def test_documenti_ok(self, mocked_fn, _mock_auth):
         mocked_fn.return_value = _DOCUMENTI_RESPONSE
-        response = self.client.get(f"{self._URL}?area=PREVENTIVI&fase=IN_CORSO")
+        response = self.client.get(f"{self._URL}?area=PREVENTIVO&fase=IN_CORSO")
         self.assertEqual(response.status_code, 200)
         data = response.json()["data"]
         self.assertEqual(data["count"], 1)
@@ -122,7 +122,7 @@ class DashboardApertoDocumentiApiTests(JwtMockedApiTest):
         self.assertEqual(row["anzianita_giorni"], 57)
         self.assertEqual(row["data_riferimento"], "2026-05-12")
         kwargs = mocked_fn.call_args.kwargs
-        self.assertEqual(kwargs["area"], "PREVENTIVI")
+        self.assertEqual(kwargs["area"], "PREVENTIVO")
         self.assertEqual(kwargs["fase"], "IN_CORSO")
 
     # Scopo: Verifica il caso `test_documenti_requires_jwt`.
@@ -135,9 +135,9 @@ class DashboardApertoDocumentiApiTests(JwtMockedApiTest):
     @patch("apps.vendite.api.views_dashboard_aperto.fn_dash_aperto_documenti")
     def test_documenti_filtri_lowercase_normalizzati(self, mocked_fn, _mock_auth):
         mocked_fn.return_value = _DOCUMENTI_RESPONSE
-        self.client.get(f"{self._URL}?area=offerte&fase=in_corso")
+        self.client.get(f"{self._URL}?area=offerta_commerciale&fase=in_corso")
         kwargs = mocked_fn.call_args.kwargs
-        self.assertEqual(kwargs["area"], "OFFERTE")
+        self.assertEqual(kwargs["area"], "OFFERTA_COMMERCIALE")
         self.assertEqual(kwargs["fase"], "IN_CORSO")
 
     # Scopo: Filtri assenti -> None al service (tutte le aree/fasi); anche
@@ -168,10 +168,10 @@ class DashboardApertoDocumentiApiTests(JwtMockedApiTest):
     @patch("apps.vendite.api.views_dashboard_aperto.fn_dash_aperto_documenti")
     def test_documenti_paginazione_parametri(self, mocked_fn, _mock_auth):
         mocked_fn.return_value = _DOCUMENTI_RESPONSE
-        self.client.get(f"{self._URL}?page=3&page_size=10")
+        self.client.get(f"{self._URL}?limit=10&offset=20")
         kwargs = mocked_fn.call_args.kwargs
-        self.assertEqual(kwargs["page"], 3)
-        self.assertEqual(kwargs["page_size"], 10)
+        self.assertEqual(kwargs["limit"], 10)
+        self.assertEqual(kwargs["offset"], 20)
 
     # Scopo: order_by/order_dir (ordinamento colonne, convenzione standard)
     #        inoltrati al service; la whitelist/validazione e' definizione unica

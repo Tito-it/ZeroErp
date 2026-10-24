@@ -148,7 +148,7 @@ fanno, non i valori.
 | `DJANGO_ALLOWED_HOSTS` | | host ammessi, separati da virgola: IP **e** nome MagicDNS di Tailscale, perché Nginx passa a Django il nome che il browser ha usato |
 | `DJANGO_API_DOCS_ENABLED` | | Swagger/OpenAPI (`/api/docs/`, `/api/schema/`); segue `DEBUG` salvo scelta esplicita |
 | `DJANGO_API_EXPOSE_TECHNICAL_DETAILS` | | dettaglio tecnico nell'envelope di errore: vedi [error-handling-api](../../backend/core/manual/error-handling-api.md). Solo sviluppo |
-| `DJANGO_API_STRONG_IDEMPOTENCY_ENABLED`, `DJANGO_API_RETRY_AFTER_SECONDS`, `DJANGO_API_SEARCH_THROTTLE_RATE`, `DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED`, `DJANGO_REQUEST_LOG_ENABLED` | | comportamento dell'API: idempotenza forte, `Retry-After`, freno sulle ricerche, middleware delle eccezioni, giornale delle richieste |
+| `DJANGO_API_STRONG_IDEMPOTENCY_ENABLED`, `DJANGO_API_RETRY_AFTER_SECONDS`, `DJANGO_API_SEARCH_THROTTLE_RATE`, `DJANGO_API_LOGIN_THROTTLE_RATE`, `DJANGO_API_SECONDO_FATTORE_THROTTLE_RATE`, `DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED`, `DJANGO_REQUEST_LOG_ENABLED` | | comportamento dell'API: idempotenza forte, `Retry-After`, freno sulle ricerche e sul login (default `5/5m`, il presidio di produzione: si alza solo in sviluppo, per gli smoke), middleware delle eccezioni, giornale delle richieste |
 | `CACHE_BACKEND`, `REDIS_URL`, `PERMISSIONS_CACHE_TTL` | | cache: Redis di default, `CACHE_BACKEND=locmem` in CI/test |
 | `DOCUMENTI_STORAGE_ROOT` | | cartella dei documenti generati (default `backend/var/documenti`) |
 | `LOG_DIR` | | cartella dei log applicativi (default `backend/logs/`, file `app.log`) |
@@ -185,6 +185,15 @@ di `env.sh` e lancia Gunicorn. Bind, numero di worker, timeout e `--reload` si
 regolano con le variabili `ZEROERP_GUNICORN_*`, descritte in
 [Gunicorn in sviluppo](gunicorn-dev-autoreload.md). Il default è
 `127.0.0.1:8000`, 3 worker, timeout 60 s, niente reload.
+
+⛔ **Il timeout non si alza da solo.** Gunicorn carica da sé `backend/gunicorn.conf.py`
+(dalla directory di lavoro: `backend/` qui, `/app` nel Dockerfile), che all'avvio e a ogni
+`kill -HUP` (gli hook `on_starting` e `on_reload`), con la modalità forte accesa, rifiuta di
+partire se `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` non supera il timeout **effettivo** di almeno 30 secondi, se il timeout è 0 o se il worker non è `sync`.
+Il motivo: oltre quella soglia una Idempotency-Key «in corso» si riprende, e una richiesta ancora
+viva verrebbe eseguita due volte. Timeout e soglia si cambiano insieme
+([API — Idempotency-Key](../api.md), guida
+[Le operazioni che non si ripetono](/guide/operazioni-che-non-si-ripetono)).
 
 ### Unit systemd
 

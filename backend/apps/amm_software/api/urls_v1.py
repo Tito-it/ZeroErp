@@ -48,6 +48,7 @@ urlpatterns = [
     path("processi/<str:codice>/identita/", views.ProcessiIdentitaView.as_view(), name="amm-processi-identita"),
     path("processi/<str:codice>/identita/riattiva/", views.ProcessiIdentitaRiattivaView.as_view(), name="amm-processi-identita-riattiva"),
     path("processi/<str:codice>/esegui-ora/", views.ProcessiEseguiOraView.as_view(), name="amm-processi-esegui-ora"),
+    path("processi/<str:codice>/accensione/", views.ProcessiAccensioneView.as_view(), name="amm-processi-accensione"),
     # Setup status (refactor operatore-emittenti)
     path("setup-status/", views.SetupStatusView.as_view(), name="amm-setup-status"),
     # Reparti e profili

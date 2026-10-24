@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c): la famiglia della distinta e' DISTINTA_INCASSO, e la sua tabella viene dalla sorgente (config.fn_sorgente_tabella).
 -- pgTAP test per Zero ERP
 -- Test: la distinta contabile prende il numero dal REGISTRO, e sa di chi e'
 --       (brief-db-distinta-numerata-sul-registro, D1..D6 — L15)
@@ -169,10 +170,10 @@ SELECT (SELECT ente_a FROM tmp_ente_a) AS ente_a,
 -- degli emittenti (registri_fatturazione non ha RLS).
 CREATE TEMP TABLE tmp_registri AS
 SELECT (SELECT r.id FROM vendite.registri_fatturazione r
-         WHERE r.famiglia_documento = 'DISTINTA'
+         WHERE r.famiglia_documento = 'DISTINTA_INCASSO'
            AND r.emittente_soggetto_ruolo_id = (SELECT a_sr FROM tmp_ab)) AS reg_a,
        (SELECT r.id FROM vendite.registri_fatturazione r
-         WHERE r.famiglia_documento = 'DISTINTA'
+         WHERE r.famiglia_documento = 'DISTINTA_INCASSO'
            AND r.emittente_soggetto_ruolo_id = (SELECT b_sr FROM tmp_ab)) AS reg_b;
 
 -- ============================================================
@@ -195,12 +196,14 @@ SELECT ok(
 -- 2) La famiglia e' a catalogo com'e' dichiarata
 -- ============================================================
 SELECT is(
-  (SELECT concat_ws('|', fd.schema_tabella, fd.nome_tabella, fd.colonna_numero,
+  (SELECT concat_ws('|', t.schema_tabella, t.nome_tabella, fd.colonna_numero,
                     COALESCE(fd.colonna_billing_account, '<null>'),
                     COALESCE(fd.colonna_serie, '<null>'),
                     fd.prefisso_default, fd.lunghezza_default,
                     fd.anno_nel_numero_default, fd.presidia_data_documento, fd.attivo)
-     FROM vendite.famiglie_documento fd WHERE fd.codice_interno = 'DISTINTA'),
+     FROM vendite.famiglie_documento fd
+     CROSS JOIN LATERAL config.fn_sorgente_tabella(fd.codice_interno) t
+    WHERE fd.codice_interno = 'DISTINTA_INCASSO'),
   'pagamenti|vendite_contabili|codice|<null>|<null>|DIS-|7|t|f|t',
   '2) La famiglia DISTINTA: pagamenti.vendite_contabili/codice, senza BA ne'' serie, DIS-/7, anno nel numero, senza presidio di data'
 );
@@ -214,7 +217,7 @@ SELECT is(
   (SELECT count(*) FROM anagrafiche.emittenti_fiscali ef
     WHERE ef.attivo IS TRUE
       AND NOT EXISTS (SELECT 1 FROM vendite.registri_fatturazione r
-                       WHERE r.famiglia_documento = 'DISTINTA'
+                       WHERE r.famiglia_documento = 'DISTINTA_INCASSO'
                          AND r.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
                          AND r.attivo IS TRUE
                          AND r.anno_nel_numero IS TRUE)),

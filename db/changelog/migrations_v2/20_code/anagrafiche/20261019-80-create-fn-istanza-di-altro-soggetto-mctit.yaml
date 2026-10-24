@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: L'ISTANZA E' DI UN ALTRO SOGGETTO?
+#   anagrafiche.fn_istanza_di_altro_soggetto(istanza, soggetto) risponde col
+#   soggetto dell'istanza quando NON e' quello dato, NULL altrimenti.
+#   R-BE-15, D-17b di Tid, brief-db-processi-accensione-per-ambiente §6.17.1.
+#
+# -- LA REGOLA ------------------------------------------------------------------
+#   Una riga che porta un'istanza (istanza_utility_id) parla dell'istanza di UN
+#   soggetto: quello della riga, o del suo ruolo. Un'istanza di un altro
+#   soggetto darebbe a un soggetto la fornitura, l'indirizzo o il contatto di
+#   un altro.
+#
+# -- REGOLA DEL 2 ---------------------------------------------------------------
+#   Il confronto era scritto due volte (il guard del BA, la regola 4 del
+#   contesto delle pratiche) e serviva altre tre volte (indirizzi, contatti,
+#   conti del ruolo). I lettori: 20261019-82 (indirizzi e conti), -83
+#   (contatti), -84 (BA), -85 (pratiche).
+#
+# -- LA FORMA ---------------------------------------------------------------------
+#   * un predicato, non un guard: il rifiuto resta nel chiamante, col suo
+#     codice e il suo 'campo' scritti nella chiamata (il presidio del canale,
+#     dbops/test-punti-canale-campo-v1, li legge li');
+#   * risponde col soggetto dell'istanza, che il chiamante mette nel contesto
+#     e nella frase;
+#   * istanza NULL, istanza che non esiste, soggetto NULL: NULL. Niente da
+#     dire per questa regola: l'istanza che manca la rifiuta la FK, a fine
+#     istruzione, col suo codice;
+#   * istanze_utilities non ha RLS (2026-10-19): INVOKER basta, la lettura
+#     risponde sempre.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261019-80-create-fn-istanza-di-altro-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20261019-80-create-fn-istanza-di-altro-soggetto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea anagrafiche.fn_istanza_di_altro_soggetto: il soggetto dell'istanza quando non e'
+        quello dato, NULL altrimenti. BB comune ai guard di indirizzi, contatti, conti del ruolo,
+        billing account e pratiche. R-BE-15, D-17b di Tid,
+        brief-db-processi-accensione-per-ambiente §6.17.1.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_istanza_di_altro_soggetto(
+                  p_istanza_utility_id anagrafiche.istanze_utilities.id%TYPE,
+                  p_soggetto_id        anagrafiche.istanze_utilities.soggetto_id%TYPE)
+               RETURNS anagrafiche.istanze_utilities.soggetto_id%TYPE
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+                  SELECT iu.soggetto_id
+                    FROM anagrafiche.istanze_utilities iu
+                   WHERE iu.id = p_istanza_utility_id
+                     AND p_soggetto_id IS NOT NULL
+                     AND iu.soggetto_id IS DISTINCT FROM p_soggetto_id;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_istanza_di_altro_soggetto(
+                  anagrafiche.istanze_utilities.id%TYPE,
+                  anagrafiche.istanze_utilities.soggetto_id%TYPE) IS
+                  'BB (2026-10-19): il soggetto dell''istanza (istanze_utilities.soggetto_id) quando NON e'' p_soggetto_id; NULL quando e'' lo stesso, o quando non c''e'' niente da confrontare (istanza NULL o che non esiste, soggetto NULL: l''istanza che manca la rifiuta la FK). Un predicato: il rifiuto lo solleva il chiamante, col suo codice e il suo campo. Lettori: anagrafiche.trgfn_guard_istanza_del_ruolo (indirizzi, soggetti_ruoli_conti_bancari), anagrafiche.trgfn_contatti_guard_contesto_soggetto, anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza, pratiche.trgfn_pratiche_guard_contesto. Regola del 2: il confronto era scritto nel guard del BA e nella regola 4 delle pratiche. R-BE-15, D-17b di Tid, brief-db-processi-accensione-per-ambiente §6.17.1.';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS anagrafiche.fn_istanza_di_altro_soggetto(anagrafiche.istanze_utilities.id%TYPE, anagrafiche.istanze_utilities.soggetto_id%TYPE);

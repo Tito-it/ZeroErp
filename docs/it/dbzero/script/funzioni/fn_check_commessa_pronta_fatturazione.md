@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_commessa_pronta_fatturazione(p_commessa_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_commessa_pronta_fatturazione(p_commessa_id bigint)
  RETURNS jsonb
@@ -87,6 +89,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_commessa_pronta_fatturazione(p_commessa_id bigint)
 IS 'Pure check: motivi che impediscono a una commessa di passare a PRONTA_FATTURAZIONE. [] = transizione lecita. Specchio dei filtri di vendite.fn_list_emittibili_lane (riga APPROVATA + NON_EMESSA + tipo_doc valorizzato; testata con emittente). Sede unica condivisa da vendite.trgfn_commesse_guard_transizione e script.fn_available_actions_commessa: il bottone non puo'' divergere dal guard. Terza sorella di fn_check_commessa_chiudibile / _annullabile.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

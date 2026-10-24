@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2d (G-6): l'ambito degli
+#   indirizzi e' il codice della sorgente.
+#   Brief: brief-db-grammatica-unica-documenti §7.9 G-6, §10.4.
+#
+#   config.tipi_indirizzi_allowed.ambito: dalle aree al plurale ai codici di config.sorgenti
+#   (FATTURE -> FATTURA, ORDINI -> ORDINE_VENDITA, DDT -> DDT_VENDITA, PREVENTIVI ->
+#   PREVENTIVO, OFFERTE -> OFFERTA_COMMERCIALE, CONTRATTI -> CONTRATTO, ACQUISTI_DDT ->
+#   DDT_ACQUISTO). Il CHECK scritto a mano lascia il posto a una FK (G-3).
+#
+# -- LA FORMA ------------------------------------------------------------
+#   * text -> varchar(50), come config.sorgenti.codice_interno; conversione sul posto.
+#   * Nessuna dipendenza in pg_depend (viste, BEGIN ATOMIC) e nessun trigger UPDATE OF ambito.
+#   * Da zero la tabella e' vuota qui: la semina il mirror 20260711-18 in 80_data, dopo
+#     quello delle sorgenti (20251002-21), dal CSV coi codici nuovi.
+#   * La FK non vuole una policy d'indice: ambito e' la prima colonna della PK.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261020-47-alter-tipi-indirizzi-allowed-ambito-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261020-47-alter-tipi-indirizzi-allowed-ambito-sorgente
+      author: mctit
+      failOnError: true
+      comment: >
+        config.tipi_indirizzi_allowed.ambito ai codici di config.sorgenti (varchar(50), conversione sul posto), FK al posto del CHECK. Grammatica unica, 2d (G-6).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint WHERE conname = 'chk_tipi_indirizzi_ambito'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.tipi_indirizzi_allowed
+                DROP CONSTRAINT chk_tipi_indirizzi_ambito;
+
+              -- Sul posto: DDL, nessun trigger di riga. La PK (ambito, tipo_indirizzo_id) e
+              -- l'indice dello slot di default si ricostruiscono sul tipo nuovo.
+              ALTER TABLE config.tipi_indirizzi_allowed
+                ALTER COLUMN ambito TYPE character varying(50)
+                USING (CASE ambito WHEN 'FATTURE' THEN 'FATTURA' WHEN 'ORDINI' THEN 'ORDINE_VENDITA' WHEN 'DDT' THEN 'DDT_VENDITA' WHEN 'PREVENTIVI' THEN 'PREVENTIVO' WHEN 'OFFERTE' THEN 'OFFERTA_COMMERCIALE' WHEN 'CONTRATTI' THEN 'CONTRATTO' WHEN 'ACQUISTI_DDT' THEN 'DDT_ACQUISTO' ELSE ambito END);
+
+              ALTER TABLE config.tipi_indirizzi_allowed
+                ADD CONSTRAINT fk_tipi_indirizzi_allowed_sorgenti
+                FOREIGN KEY (ambito) REFERENCES config.sorgenti (codice_interno);
+
+              COMMENT ON COLUMN config.tipi_indirizzi_allowed.ambito IS
+                'Il documento per cui vale la regola sull''indirizzo: e'' il codice_interno della sua sorgente in config.sorgenti (FK fk_tipi_indirizzi_allowed_sorgenti): FATTURA, ORDINE_VENDITA, DDT_VENDITA, PREVENTIVO, OFFERTA_COMMERCIALE, CONTRATTO, DDT_ACQUISTO. Un documento nuovo che ha indirizzi e'' una riga del CSV, non un CHECK da riscrivere. Rev 2026-10-20 (20261020-47, brief-db-grammatica-unica-documenti 2d, G-6): prima erano le aree al plurale (FATTURE, ORDINI, DDT, PREVENTIVI, OFFERTE, CONTRATTI, ACQUISTI_DDT), un vocabolario a parte, col CHECK scritto a mano.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.tipi_indirizzi_allowed DROP CONSTRAINT fk_tipi_indirizzi_allowed_sorgenti;
+
+              ALTER TABLE config.tipi_indirizzi_allowed
+                ALTER COLUMN ambito TYPE text
+                USING (CASE ambito WHEN 'FATTURA' THEN 'FATTURE' WHEN 'ORDINE_VENDITA' THEN 'ORDINI' WHEN 'DDT_VENDITA' THEN 'DDT' WHEN 'PREVENTIVO' THEN 'PREVENTIVI' WHEN 'OFFERTA_COMMERCIALE' THEN 'OFFERTE' WHEN 'CONTRATTO' THEN 'CONTRATTI' WHEN 'DDT_ACQUISTO' THEN 'ACQUISTI_DDT' ELSE ambito END);
+
+              ALTER TABLE config.tipi_indirizzi_allowed
+                ADD CONSTRAINT chk_tipi_indirizzi_ambito CHECK ((ambito = ANY (ARRAY['FATTURE'::text, 'ORDINI'::text, 'DDT'::text, 'PREVENTIVI'::text, 'OFFERTE'::text, 'CONTRATTI'::text, 'ACQUISTI_DDT'::text])));
+
+              COMMENT ON COLUMN config.tipi_indirizzi_allowed.ambito IS
+                NULL;

@@ -27,13 +27,15 @@ from typing import Any
 
 from django.db import transaction
 
+from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.services.fan_out import run_fan_out
+from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.services.list_helpers import (
+    validate_enum_param,
     validate_order_params,
-    validate_pagination,
 )
 from apps.core.services.payload_helpers import (
     PayloadValidator,
@@ -43,7 +45,6 @@ from apps.pagamenti.services._helpers import (
     E_FATTURA_NON_TROVATA,
     E_RATA_NON_TROVATA,
     E_VALIDAZIONE,
-    risposta_paginata as _risposta_paginata,
 )
 from apps.pagamenti.db.pagamenti_repository import (
     DISTINTA_RIGHE_SORT_COLUMNS,
@@ -126,6 +127,10 @@ STATI_RIGA_RICHIEDIBILI: tuple[str, ...] = (
 # Le origini che il backend puo' creare. ⭐ Solo `MANUALE`: `GENERATA` la scrive
 # il giro dei fondi fattura, `AUTOMATICA` l'import.
 ORIGINE_MANUALE = "MANUALE"
+# Il vocabolario INTERO dell'origine, per il filtro della lista: specchio del
+# CHECK `chk_vendite_contabili_origine`, che il guardrail
+# `test_specchi_dei_check_db` confronta col database.
+ORIGINI_VENDITA_CONTABILE: tuple[str, ...] = (ORIGINE_MANUALE, "AUTOMATICA", "GENERATA")
 
 # Gli stati in cui i due oggetti NASCONO. Sono codici di catalogo, non id: gli
 # id sono seminati e non si scrivono a mano da nessuna parte.
@@ -385,8 +390,8 @@ def list_distinte(
     search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     order_by, order_dir = validate_order_params(
         order_by or "data_contabile",
@@ -395,8 +400,17 @@ def list_distinte(
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_distinte",
     )
-    offset = validate_pagination(
-        page, page_size, error_code=E_VALIDAZIONE, function_name=f"{_FN}.list_distinte"
+    # ⛔ I due filtri nel loro vocabolario, o un 400 sul campo — come la doc
+    #    promette («un 400, mai una lista vuota»): fino al 2026-10-20 andavano
+    #    nel WHERE senza controllo. Lo stato e' una tabella (codici dismessi
+    #    ammessi), l'origine un CHECK (lo specchio qui sopra).
+    richiedi_codice_a_vocabolario(
+        "pagamenti.vendite_contabili_stati", "codice_interno", stato,
+        codice_errore=E_VALIDAZIONE, parametro="stato",
+    )
+    validate_enum_param(
+        origine, allowed=ORIGINI_VENDITA_CONTABILE, param_name="origine",
+        error_code=E_VALIDAZIONE, function_name=f"{_FN}.list_distinte",
     )
 
     repository = PagamentiRepository()
@@ -410,10 +424,10 @@ def list_distinte(
         search=search,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
-    return _risposta_paginata(results, total, page, page_size)
+    return envelope_da_offset(results, total, limit=limit, offset=offset)
 
 
 # Scopo: Le transizioni che una PERSONA puo' chiedere, stato per stato, lette
@@ -624,9 +638,11 @@ def aggiorna_distinta(contabile_id: int, payload: dict[str, Any]) -> dict[str, A
             "meta": lambda p: _meta_json(p),
         },
     )
-    if campi:
-        with _db_errors("aggiorna_distinta"):
-            repository.update_distinta(contabile_id, campi)
+    # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+    #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+    _PAYLOAD.require_campi_da_aggiornare(campi)
+    with _db_errors("aggiorna_distinta"):
+        repository.update_distinta(contabile_id, campi)
     return get_distinta(contabile_id)
 
 
@@ -976,9 +992,9 @@ def crea_righe_da_rate(contabile_id: int, payload: dict[str, Any]) -> dict[str, 
 #    un'altra cosa (denaro arrivato, non nostro) e CONTA nella quadratura: con
 #    un totale dichiarato, scartare la riga sbagliata non ha via d'uscita.
 # ⛔ Nessuna copia del predicato in Python: i motivi li da' il database
-#    (`script.fn_check_riga_contabile_eliminabile`, la stessa funzione che
-#    alimenta il cestino spento in lista) e il guard rifiuta con
-#    `E_RIGA_CONTABILE_DISTINTA_*` (409), tradotto come ogni altro.
+#    (`script.fn_check_riga_contabile_eliminabile`, i cui motivi sono quelli
+#    di `_su_distinta` che alimenta il cestino spento in lista) e il guard
+#    rifiuta con `E_RIGA_CONTABILE_DISTINTA_*` (409), tradotto come ogni altro.
 # ⚠️ Una riga eliminata non e' piu' raggiungibile da nessun verbo: `get_riga`
 #    filtra `attivo`, quindi un secondo DELETE — come un PATCH o un abbina —
 #    risponde «non trovata», che e' la stessa risposta di «non la vedi». Il
@@ -1035,14 +1051,16 @@ def aggiorna_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
             ),
         },
     )
+    # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+    #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+    _PAYLOAD.require_campi_da_aggiornare(campi)
     _guard_motivo_con_forzatura(
         campi.get("forzata", False),
         campi.get("motivo_forzatura"),
         function_name=f"{_FN}.aggiorna_riga",
     )
-    if campi:
-        with _db_errors("aggiorna_riga"):
-            repository.update_riga(riga_id, campi)
+    with _db_errors("aggiorna_riga"):
+        repository.update_riga(riga_id, campi)
     return {"riga": _riga_o_404(repository, riga_id)}
 
 
@@ -1070,23 +1088,28 @@ def cambia_stato_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
 
     repository = PagamentiRepository()
     _riga_o_404(repository, riga_id)
-    with _db_errors("cambia_stato_riga"):
-        # Il motivo accompagna la sospensione nello stesso giro: sospendere
-        # senza dire perche' lascia la riga in una coda dove il prossimo che
-        # la guarda non sa che cosa si era gia' capito.
-        if motivo_sospeso is not None:
-            repository.update_riga(riga_id, {"motivo_sospeso": motivo_sospeso})
-        toccate = repository.set_stato_riga(riga_id, nuovo_stato)
-    # Stessa ragione della testata: la riga esiste, quindi a non risolvere e'
-    # il codice di stato — e un 200 sopra un gesto non avvenuto e' peggio di
-    # un errore.
-    ErrorManager.require(
-        toccate > 0,
-        code=E_STATO_NON_CONFIGURATO,
-        message="Stato riga contabile non configurato.",
-        detail=f"codice_interno={nuovo_stato} assente o non attivo a catalogo.",
-        function_name=f"{_FN}.cambia_stato_riga",
-    )
+    # ⛔ Un `atomic` suo (2026-10-24): motivo e stato sono due UPDATE, e senza
+    #    il motivo restava scritto anche quando lo stato veniva rifiutato. Il
+    #    brief-be-verifica-documentazione-api §I.7.2 contava sull'`atomic`
+    #    esterno di `handle_post_json`, che pero' c'e' solo in modalita' forte.
+    with transaction.atomic():
+        with _db_errors("cambia_stato_riga"):
+            # Il motivo accompagna la sospensione nello stesso giro: sospendere
+            # senza dire perche' lascia la riga in una coda dove il prossimo che
+            # la guarda non sa che cosa si era gia' capito.
+            if motivo_sospeso is not None:
+                repository.update_riga(riga_id, {"motivo_sospeso": motivo_sospeso})
+            toccate = repository.set_stato_riga(riga_id, nuovo_stato)
+        # Stessa ragione della testata: la riga esiste, quindi a non risolvere e'
+        # il codice di stato — e un 200 sopra un gesto non avvenuto e' peggio di
+        # un errore. Dentro l'`atomic`: il rifiuto si porta via anche il motivo.
+        ErrorManager.require(
+            toccate > 0,
+            code=E_STATO_NON_CONFIGURATO,
+            message="Stato riga contabile non configurato.",
+            detail=f"codice_interno={nuovo_stato} assente o non attivo a catalogo.",
+            function_name=f"{_FN}.cambia_stato_riga",
+        )
     return {"riga": _riga_o_404(repository, riga_id)}
 
 
@@ -1193,8 +1216,8 @@ def list_coda_righe(
     search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     chiave = (coda or "TUTTE").upper()
     ErrorManager.require(
@@ -1202,7 +1225,7 @@ def list_coda_righe(
         code=E_VALIDAZIONE,
         message="Coda non riconosciuta.",
         detail=f"Ammesse: {', '.join(CODE_RIGHE)}.",
-        context={"field": "coda", "coda": chiave},
+        context={"parametro": "coda", "coda": chiave},
         function_name=f"{_FN}.list_coda_righe",
     )
     order_by, order_dir = validate_order_params(
@@ -1210,10 +1233,6 @@ def list_coda_righe(
         order_dir or "desc",
         allowed_columns=frozenset(RIGHE_SORT_COLUMNS),
         error_code=E_VALIDAZIONE,
-        function_name=f"{_FN}.list_coda_righe",
-    )
-    offset = validate_pagination(
-        page, page_size, error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_coda_righe",
     )
 
@@ -1226,7 +1245,7 @@ def list_coda_righe(
         search=search,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
     # ⭐ Il catalogo degli stati di riga e le uscite richiedibili DA OGNI STATO
@@ -1238,7 +1257,7 @@ def list_coda_righe(
     #    registro lotti).
     _grafo_distinta, grafo_riga = repository.list_transizioni()
     return {
-        **_risposta_paginata(results, total, page, page_size),
+        **envelope_da_offset(results, total, limit=limit, offset=offset),
         "stati_riga": repository.list_stati_riga(),
         "transizioni_riga": _transizioni_richiedibili(grafo_riga, STATI_RIGA_RICHIEDIBILI),
     }
@@ -1255,8 +1274,8 @@ def list_rate_fuori_capienza(
     search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     # Fail-fast sul vocabolario chiuso: un motivo inventato darebbe una lista
     # vuota, che su due soli valori possibili e' indistinguibile da «non c'e'
@@ -1266,7 +1285,7 @@ def list_rate_fuori_capienza(
         code=E_VALIDAZIONE,
         message="Motivo non riconosciuto.",
         detail=f"Ammessi: {', '.join(MOTIVI_FUORI_CAPIENZA)}.",
-        context={"field": "motivo", "motivo": motivo},
+        context={"parametro": "motivo", "motivo": motivo},
         function_name=f"{_FN}.list_rate_fuori_capienza",
     )
     order_by, order_dir = validate_order_params(
@@ -1274,10 +1293,6 @@ def list_rate_fuori_capienza(
         order_dir or "desc",
         allowed_columns=frozenset(RATE_FUORI_CAPIENZA_SORT_COLUMNS),
         error_code=E_VALIDAZIONE,
-        function_name=f"{_FN}.list_rate_fuori_capienza",
-    )
-    offset = validate_pagination(
-        page, page_size, error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_rate_fuori_capienza",
     )
 
@@ -1288,10 +1303,10 @@ def list_rate_fuori_capienza(
         search=search,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
-    return _risposta_paginata(results, total, page, page_size)
+    return envelope_da_offset(results, total, limit=limit, offset=offset)
 
 
 # ══════════════════════════════════════════════════════════════════

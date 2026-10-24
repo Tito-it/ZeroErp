@@ -5,6 +5,8 @@
 >
 > Vista note per articoli con dati stile e lingua.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW catalogo.vw_articoli_note AS
 SELECT a.id AS articolo_id,
@@ -38,6 +40,8 @@ SELECT a.id AS articolo_id,
      LEFT JOIN config.note_stili ns ON ((ns.id = n.id_stile)))
      LEFT JOIN config.lingue l ON ((l.id = n.id_lingua)));
 ```
+
+</div>
 
 
 ---

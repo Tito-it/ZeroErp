@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL DEFAULT DI ACCENSIONE E' DEL PROCESSO
+#   dbops.processi: acceso_in_sviluppo, acceso_in_produzione, spegnibile.
+#   Brief: brief-db-processi-accensione-per-ambiente (A-2, A-3, A-5, §5.1)
+#
+# -- PERCHE' QUI ----------------------------------------------------
+#   «Gli smoke scrivono dati di prova» e' vero su ogni macchina: il default
+#   per ambiente e' una proprieta' del processo, come il suo contratto di
+#   liveness (tolleranza_minuti, segno_di_vita), e sta nel catalogo. Si ritira
+#   `abilita` di backend/deploy/sveglie.json, che lo diceva uguale per ogni
+#   host (giro BE, §6).
+#
+# -- SPEGNIBILE (A-5) -----------------------------------------------
+#   Un processo non si spegne quando, spento, si rompe la sicurezza o la
+#   correttezza dei dati senza che nessuno se ne accorga. Un non spegnibile
+#   e' acceso di default in tutti e due gli ambienti (CHECK), e la scelta a
+#   mano non lo spegne (guard su dbops.processi_accensione, 20261016-22).
+#
+# -- CHI NON HA UNA SVEGLIA -----------------------------------------
+#   I processi CODA (li avvia una persona o il drenatore) e quelli ritirati
+#   (obsoleto_dal) non hanno niente da accendere: le tre colonne sono NULL.
+#   Tutti gli altri le dichiarano tutte e tre.
+#
+# -- ⚠️ IL CHECK NASCE NOT VALID ------------------------------------
+#   Le righe esistenti hanno le colonne NULL finche' non passa il CSV di
+#   80_data (mirror 20260904-13). La convalida sta in 90_end/20261016-31, come
+#   per chk_processi_convergenza_ci (20260926-08/-09).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261016-20-alter-processi-add-accensione-mctit.yaml
+
+  - changeSet:
+      id: 20261016-20-alter-processi-add-accensione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.processi: acceso_in_sviluppo, acceso_in_produzione, spegnibile. Il default di
+        accensione per ambiente e i processi che non si spengono mai.
+        Brief: brief-db-processi-accensione-per-ambiente (A-2, A-5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: dbops, tableName: processi }
+            - not:
+                - columnExists: { schemaName: dbops, tableName: processi, columnName: spegnibile }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi
+                  ADD COLUMN acceso_in_sviluppo   boolean,
+                  ADD COLUMN acceso_in_produzione boolean,
+                  ADD COLUMN spegnibile           boolean;
+
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_accensione CHECK (
+                      CASE
+                        WHEN canale = 'CODA' OR obsoleto_dal IS NOT NULL THEN
+                             acceso_in_sviluppo IS NULL
+                         AND acceso_in_produzione IS NULL
+                         AND spegnibile IS NULL
+                        ELSE
+                             acceso_in_sviluppo IS NOT NULL
+                         AND acceso_in_produzione IS NOT NULL
+                         AND spegnibile IS NOT NULL
+                         AND (spegnibile OR (acceso_in_sviluppo AND acceso_in_produzione))
+                      END
+                  ) NOT VALID;
+
+              COMMENT ON COLUMN dbops.processi.acceso_in_sviluppo IS
+                  'Se la sveglia del processo e'' accesa di default in un''installazione di SVILUPPO (dbops.installazione.ambiente). NULL per i processi senza sveglia (CODA, ritirati). La scelta a mano di una macchina (dbops.processi_accensione) lo scavalca. Brief: brief-db-processi-accensione-per-ambiente (A-2).';
+              COMMENT ON COLUMN dbops.processi.acceso_in_produzione IS
+                  'Se la sveglia del processo e'' accesa di default in un''installazione di PRODUZIONE. NULL per i processi senza sveglia (CODA, ritirati). La scelta a mano di una macchina (dbops.processi_accensione) lo scavalca. Brief: brief-db-processi-accensione-per-ambiente (A-2).';
+              COMMENT ON COLUMN dbops.processi.spegnibile IS
+                  'Se la sveglia del processo si puo'' spegnere. false quando, spento, si rompe la sicurezza o la correttezza dei dati senza che nessuno se ne accorga (A-5): un non spegnibile e'' acceso di default in tutti e due gli ambienti (chk_processi_accensione), la scelta a mano non lo spegne (E_PROCESSO_NON_SPEGNIBILE) e lo stato effettivo non legge l''ambiente. NULL per i processi senza sveglia. Brief: brief-db-processi-accensione-per-ambiente (A-5).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE dbops.processi
+                  DROP CONSTRAINT IF EXISTS chk_processi_accensione,
+                  DROP COLUMN IF EXISTS spegnibile,
+                  DROP COLUMN IF EXISTS acceso_in_produzione,
+                  DROP COLUMN IF EXISTS acceso_in_sviluppo;

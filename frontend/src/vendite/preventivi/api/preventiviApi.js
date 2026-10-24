@@ -4,7 +4,7 @@
 
 import api from '../../../core/api'
 import { makeRigheListaApi } from '../../_shared/righe/righeListaApi'
-import { generateIdempotencyKey } from '../../../core/utils/idempotency'
+import { makeDateConsegnaApi } from '../../_shared/dateConsegna/dateConsegnaApi'
 import { makeComponentiBomApi } from '../../../core/api/componentiBom'
 
 const BASE = '/vendite/preventivi'
@@ -100,6 +100,8 @@ export function listRevisioni(id, params = {}) {
 // righe qui: il FE non ne ha consumatori (a differenza di ordine e reso, per
 // i dialog di evasione e ri-consegna). `GET …/righe/` resta lato backend.
 export const { listRigheLista, exportRigheLista } = makeRigheListaApi(BASE)
+// «Aggiorna date di consegna» (brief-db-date-consegna-righe-in-blocco).
+export const { aggiornaDateConsegna } = makeDateConsegnaApi(BASE)
 
 export function createRiga(preventivoId, payload) {
   return api.post(`${BASE}/${preventivoId}/righe/`, payload)
@@ -170,7 +172,6 @@ export function pushCommessa(preventivoId, righeIds = null) {
   return api.post(
     `${BASE}/${preventivoId}/push-commessa/`,
     body,
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -195,7 +196,6 @@ export function completaSmistamento(preventivoId) {
   return api.post(
     `${BASE}/${preventivoId}/completa-smistamento/`,
     {},
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -205,7 +205,6 @@ export function generaPratica(preventivoId, payload) {
   return api.post(
     `${BASE}/${preventivoId}/genera-pratica/`,
     payload,
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 

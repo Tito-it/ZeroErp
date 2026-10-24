@@ -1,298 +1,298 @@
-id,sigla_stato,descrizione,codice_iso2,codice_iso3,codice_telefonico,continente,data_insert,user_insert,data_update,user_update,extra_country
-107,"",Singapore,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z230""}"
-277,"",Nuove Ebridi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z717""}"
-278,"",Nuova Guinea,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z718""}"
-182,"",Somalia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z345""}"
-172,"",Nigeria,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z335""}"
-42,"",Polonia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z127""}"
-49,"",Ungheria,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z134""}"
-202,"",Transkei,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z365""}"
-205,"",Eritrea,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z368""}"
-206,"",Bermude,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z400""}"
-208,"",Groenlandia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z402""}"
-192,"",Zambia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z355""}"
-193,"",Zanzibar,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z356""}"
-194,"",Tanzania,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z357""}"
-195,"",Botswana,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z358""}"
-196,"",Lesotho,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z359""}"
-203,"",Venda,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z366""}"
-233,"",Barbados,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z522""}"
-209,"",Saint Pierre,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z403""}"
-98,"",Hong Kong,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z221""}"
-100,"",Indonesia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z223""}"
-101,"",Iran,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z224""}"
-102,"",Iraq,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z225""}"
-103,"",Israele,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z226""}"
-54,"",Bielorussia=Russia Bianca,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 9, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z139""}"
-72,"",Serbia E Montenegro,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z157""}"
-223,"",Honduras Britannico,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z512""}"
-112,"",Oman,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z235""}"
-212,"",Antille Olandesi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z501""}"
-118,"",Thailandia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z241""}"
-119,"",Timor,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z242""}"
-120,"",Turchia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z243""}"
-121,"",Vietnam Del Sud,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z244""}"
-131,"",Georgia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z254""}"
-198,"",Gibuti,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z361""}"
-45,"",San Marino,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z130""}"
-197,"",Mayotte (Isola),  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z360""}"
-92,"",Emirati Arabi Uniti,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z215""}"
-201,"",Bophuthatswana,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z364""}"
-71,"",Ceca Repubblica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z156""}"
-58,"",Uzbekistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z143""}"
-139,"",Angola,AO,AGO,+244,Africa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z302""}"
-134,"",Tagikistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z257""}"
-135,"",Turkemenistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z258""}"
-136,"",Uzbekistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z259""}"
-137,"",Africa Sud-Ovest,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z300""}"
-143,"",Camerun,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z306""}"
-64,"",Croazia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z149""}"
-79,"",Arabia Saudita,SA,SAU,+966,Asia,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z203""}"
-239,"",Saint Vincent E Grenadine,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z528""}"
-155,"",Ghana,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z318""}"
-159,"",Kenya,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z322""}"
-160,"",Ifni,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z323""}"
-161,"",Isole Reunion,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z324""}"
-140,"",Basutoland,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z303""}"
-174,"",Rhodesia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z337""}"
-175,"",Ruanda,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z338""}"
-67,"",Kazakistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z152""}"
-68,"",Bosnia Ed Erzegovina,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z153""}"
-73,"",Serbia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z158""}"
-74,"",Montenegro,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z159""}"
-75,"",Kossovo,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z160""}"
-13,ZAF,Sudafrica,ZA,ZAF,+27,Africa,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z""}"
-251,"",Guayana Britannica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z606""}"
-30,"",Grecia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z115""}"
-57,"",Kirghizistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 15, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z142""}"
-78,"",Prot. Arabia Merid.,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z202""}"
-81,"",Bhutan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z205""}"
-151,"",Dahomey,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z314""}"
-280,"",Papuasia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z720""}"
-166,"",Mali,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z329""}"
-168,"",Mauritania,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z331""}"
-236,"",Vergini Britanniche (Isole),  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z525""}"
-169,"",Isole Maurizio,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z332""}"
-270,"",Isole Marianne,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z710""}"
-271,"",Isole Marshall,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z711""}"
-76,"",Afghanistan,AF,AFG,+93,Asia,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z200""}"
-80,"",Bahrein,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z204""}"
-85,"",Ceylon,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z209""}"
-4,USA,Stati Uniti,US,USA,+1,Nord America,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 199, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z404""}"
-221,"",Haiti,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z510""}"
-224,"",Martinica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z513""}"
-225,"",Messico,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z514""}"
-226,"",Nicaragua,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z515""}"
-227,"",Panama,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z516""}"
-228,"",Canale Di Panama,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z517""}"
-229,"",Puerto Rico,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z518""}"
-230,"",Turks E Caicos,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z519""}"
-231,"",Isole Vergini,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z520""}"
-232,"",Antille Britanniche,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z521""}"
-234,"",Antille Britanniche,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z523""}"
-235,"",Grenada,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z524""}"
-241,"",Cayman (Isole),  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z530""}"
-65,"",Slovenia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z150""}"
-66,"",Turkemenistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z151""}"
-87,"",Cipro,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z211""}"
-88,"",Isole Cocos,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z212""}"
-264,"",Isole Figi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z704""}"
-282,"",Pitcairn,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z722""}"
-162,"",Liberia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z325""}"
-157,"",Guinea Portoghese,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z320""}"
-20,"",Cecoslovacchia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z105""}"
-181,"",Sierra Leone,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z344""}"
-183,"",Somalia Francese,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z346""}"
-184,"",Rep. Sudafricana,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z347""}"
-185,"",Sudan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z348""}"
-249,"",Colombia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z604""}"
-243,"",Antigua E Barbuda,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z532""}"
-211,"",Antille Britanniche,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z500""}"
-165,"",Malawi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z328""}"
-189,"",Tunisia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z352""}"
-240,"",Anguilla (Isola),  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z529""}"
-150,"",Costa D'Avorio,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z313""}"
-152,"",Etiopia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z315""}"
-153,"",Gabon,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z316""}"
-154,"",Gambia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z317""}"
-21,"",Citta`Del Vaticano,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z106""}"
-22,"",Danimarca,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z107""}"
-23,"",Faer Oer,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z108""}"
-261,"",Isole Caroline,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z701""}"
-158,"",Guinea Spagnola,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z321""}"
-163,"",Libia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z326""}"
-41,"",Paesi Bassi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z126""}"
-130,"",Azerbaigian,AZ,AZE,+994,Asia,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 14, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z253""}"
-167,"",Marocco,MA,MAR,+212,Africa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 244, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z330""}"
-190,"",Uganda,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z353""}"
-191,"",Alto Volta,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z354""}"
-138,"",Algeria,DZ,DZA,+213,Africa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z301""}"
-93,"",Filippine,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z216""}"
-94,"",Formosa,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z217""}"
-199,"",Sahara Meridionale,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z362""}"
-200,"",Sahara Settentrionale,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z363""}"
-8,BRA,Brasile,BR,BRA,+55,Sud America,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z602""}"
-91,"",Costa Dei Pirati,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z215""}"
-142,"",Burundi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z305""}"
-269,"",Isole Marcus,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z709""}"
-113,"",Pakistan,PK,PAK,+92,Asia,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 149, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z236""}"
-11,RUS,Russia=Federazione Russa,RU,RUS,+7,Europa,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z154""}"
-7,JPN,Giappone,JP,JPN,+81,Asia,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z219""}"
-12,AUS,Australia,AU,AUS,+61,Oceania,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z700""}"
-245,"",Argentina,AR,ARG,+54,Sud America,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z600""}"
-214,"",Costa Rica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z503""}"
-215,"",Cuba,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z504""}"
-216,"",Rep. Dominicana,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z505""}"
-217,"",El Salvador,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z506""}"
-218,"",Giamaica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z507""}"
-254,"",Isole Falkland,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z609""}"
-255,"",Paraguay,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z610""}"
-256,"",Peru`,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z611""}"
-257,"",Trinidad,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z612""}"
-258,"",Uruguay,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z613""}"
-275,"",Isole Norfolk,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z715""}"
-276,"",Nuova Caledonia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z716""}"
-1,ITA,Italia,IT,ITA,+39,Europa,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,{}
-59,"",Estonia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z144""}"
-60,"",Lettonia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z145""}"
-61,"",Lituania,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z146""}"
-62,"",Tagikistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z147""}"
-63,"",Macedonia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z148""}"
-56,"",Azerbaigian,AZ,AZE,+994,Asia,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 14, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z141""}"
-186,"",Swaziland,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z349""}"
-187,"",Tanganica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z350""}"
-164,"",Madagascar,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z327""}"
-132,"",Kazakistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z255""}"
-141,"",Beciuania,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z304""}"
-279,"",Nuova Zelanda,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z719""}"
-48,"",Svizzera,CH,CHE,+41,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 125, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z133""}"
-171,"",Niger,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z334""}"
-283,"",Polinesia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z723""}"
-284,"",Isole Salomone,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z724""}"
-219,"",Guadalupa,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z508""}"
-220,"",Guatemala,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z509""}"
-176,"",Sahara Spagnolo,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z339""}"
-177,"",Sant'Elena,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z340""}"
-40,"",Norvegia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z125""}"
-262,"",Isole Christmas,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z702""}"
-50,"",Unione Sovietica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z135""}"
-51,"",Georgia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z136""}"
-24,"",Finlandia,GB,GBR,+44,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 126, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z109""}"
-46,"",Spagna,ES,ESP,+34,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 111, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z131""}"
-53,"",Ucraina,UA,UKR,+380,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 183, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z138""}"
-265,"",Isole Gilbert,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z705""}"
-266,"",Isole Guam,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z706""}"
-268,"",Isole Macquarie,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z708""}"
-272,"",Isole Midway,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z712""}"
-273,"",Isole Nauru,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z713""}"
-26,"",Germania Est,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z111""}"
-28,"",Gibilterra,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z113""}"
-29,"",Irlanda Del Nord,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z114""}"
-31,"",Irlanda,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z116""}"
-32,"",Islanda,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z117""}"
-294,"",Palau Repubblica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z734""}"
-295,"",Micronesia Stati Federati,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z735""}"
-296,"",Dipendenze Canadesi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z800""}"
-298,"",Dipendenze Russe,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z802""}"
-104,"",Kuwait,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z227""}"
-82,"",Birmania,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z206""}"
-83,"",Brunei,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z207""}"
-222,"",Honduras,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z511""}"
-84,"",Cambogia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z208""}"
-274,"",Isole Savage,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z714""}"
-47,"",Svezia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z132""}"
-297,"",Dipendenze Norvegesi Artiche,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z801""}"
-299,"",Dipendenze Sovietiche,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z802""}"
-300,"",Gran Bretagna,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z888""}"
-301,"",Dipendenze Australiane,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z900""}"
-302,"",Dipendenze Britanniche,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z901""}"
-303,"",Dipendenze Francesi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z902""}"
-307,"",Dipendenze Sudafricane,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z906""}"
-308,"",Malesia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z999""}"
-52,"",Armenia,AM,ARM,+374,Asia,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z137""}"
-95,"",Gaza,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z218""}"
-43,"",Portogallo,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z128""}"
-44,"",Romania,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z129""}"
-133,"",Kirghizistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 15, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z256""}"
-15,"",Albania,AL,ALB,+355,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 2, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z100""}"
-16,"",Andorra,AD,AND,+376,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 3, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z101""}"
-17,"",Austria,AT,AUT,+43,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 4, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z102""}"
-18,"",Belgio,BE,BEL,+32,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 5, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z103""}"
-19,"",Bulgaria,BG,BGR,+359,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 6, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z104""}"
-116,"",Sikkim,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z239""}"
-204,"",Ciskei,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z367""}"
-173,"",Egitto,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z336""}"
-250,"",Ecuador,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z605""}"
-252,"",Guayana Francese,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z607""}"
-129,"",Armenia,AM,ARM,+374,Asia,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z252""}"
-122,"",Vietnam Del Nord,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z245""}"
-125,"",Singapore,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z248""}"
-126,"",Bangladesh,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z249""}"
-127,"",Yemen Repubblica Democratica Popolare,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z250""}"
-128,"",Vietnam,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z251""}"
-253,"",Guayana Olandese,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z608""}"
-242,"",Montserrat,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z531""}"
-259,"",Venezuela,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z614""}"
-213,"",Bahamas,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z502""}"
-244,"",Saint Kitts E Nevis=Saint Christopher E,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z533""}"
-246,"",Bolivia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z601""}"
-111,"",Nepal,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z234""}"
-144,"",Capo Verde,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z307""}"
-145,"",Rep. Centrafricana,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z308""}"
-147,"",Isole Comore,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z310""}"
-148,"",Congo,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z311""}"
-149,"",Congo Leopodville,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z312""}"
-170,"",Mozambico,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z333""}"
-237,"",Dominica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z526""}"
-267,"",Irian Occ.,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z707""}"
-263,"",Isole Cook,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z703""}"
-105,"",Laos,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z228""}"
-106,"",Libano,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z229""}"
-114,"",Qatar,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z237""}"
-115,"",Isole Ryukyu,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z238""}"
-77,"",Fed. Arabia Merid.,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z201""}"
-55,"",Moldavia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 12, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z140""}"
-156,"",Guinea,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z319""}"
-117,"",Siria,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z240""}"
-304,"",Dipendenze Neozelandesi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z903""}"
-305,"",Dipendenze Norvegesi Antartiche,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z904""}"
-306,"",Dipendenze Statunitensi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z905""}"
-70,"",Slovacchia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z155""}"
-10,GBR,Regno Unito,GB,GBR,+44,Europa,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 126, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z109""}"
-90,"",Corea Del Nord,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z214""}"
-238,"",Saint Lucia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z527""}"
-109,"",Maldive,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z232""}"
-281,"",Isola Di Pasqua,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z721""}"
-9,CAN,Canada,CA,CAN,+1,Nord America,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 190, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z401""}"
-5,CHN,Cina,CN,CHN,+86,Asia,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 141, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z210""}"
-2,FRA,Francia,FR,FRA,+33,Europa,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 104, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z110""}"
-3,DEU,Germania,DE,DEU,+49,Europa,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 117, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z112""}"
-6,IND,India,IN,IND,+91,Asia,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 147, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z222""}"
-97,"",Giordania,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z220""}"
-123,"",Yemen,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z246""}"
-124,"",Malaysia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z247""}"
-146,"",Ciad,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z309""}"
-178,"",Sao Tome`,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z341""}"
-179,"",Isole Seicelle,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z342""}"
-180,"",Senegal,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z343""}"
-188,"",Togo,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z351""}"
-33,"",Jugoslavia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z118""}"
-34,"",Liechtenstein,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z119""}"
-35,"",Lussemburgo,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z120""}"
-36,"",Malta,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z121""}"
-37,"",Man,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z122""}"
-285,"",Samoa Americane,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z725""}"
-286,"",Samoa Occidentali,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z726""}"
-287,"",Tokelau,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z727""}"
-38,"",Monaco,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z123""}"
-39,"",Isole Normanne,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z124""}"
-288,"",Isole Tonga,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z728""}"
-289,"",Isole Wallis,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z729""}"
-290,"",Papua Nuova Guinea,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z730""}"
-291,"",Kiribati,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z731""}"
-292,"",Tuvalu,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z732""}"
-293,"",Vanuatu,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z733""}"
-248,"",Cile,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z603""}"
-89,"",Corea Del Sud,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z213""}"
-108,"",Macao,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z231""}"
-110,"",Mongolia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z233""}"
+id,sigla_stato,descrizione,codice_iso2,codice_iso3,codice_telefonico,continente,data_insert,user_insert,data_update,user_update,extra_country,catalogo_comuni_completo
+107,"",Singapore,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z230""}",f
+277,"",Nuove Ebridi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z717""}",f
+278,"",Nuova Guinea,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z718""}",f
+182,"",Somalia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z345""}",f
+172,"",Nigeria,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z335""}",f
+42,"",Polonia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z127""}",f
+49,"",Ungheria,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z134""}",f
+202,"",Transkei,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z365""}",f
+205,"",Eritrea,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z368""}",f
+206,"",Bermude,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z400""}",f
+208,"",Groenlandia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z402""}",f
+192,"",Zambia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z355""}",f
+193,"",Zanzibar,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z356""}",f
+194,"",Tanzania,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z357""}",f
+195,"",Botswana,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z358""}",f
+196,"",Lesotho,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z359""}",f
+203,"",Venda,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z366""}",f
+233,"",Barbados,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z522""}",f
+209,"",Saint Pierre,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z403""}",f
+98,"",Hong Kong,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z221""}",f
+100,"",Indonesia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z223""}",f
+101,"",Iran,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z224""}",f
+102,"",Iraq,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z225""}",f
+103,"",Israele,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z226""}",f
+54,"",Bielorussia=Russia Bianca,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 9, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z139""}",f
+72,"",Serbia E Montenegro,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z157""}",f
+223,"",Honduras Britannico,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z512""}",f
+112,"",Oman,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z235""}",f
+212,"",Antille Olandesi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z501""}",f
+118,"",Thailandia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z241""}",f
+119,"",Timor,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z242""}",f
+120,"",Turchia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z243""}",f
+121,"",Vietnam Del Sud,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z244""}",f
+131,"",Georgia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z254""}",f
+198,"",Gibuti,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z361""}",f
+45,"",San Marino,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z130""}",f
+197,"",Mayotte (Isola),  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z360""}",f
+92,"",Emirati Arabi Uniti,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z215""}",f
+201,"",Bophuthatswana,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z364""}",f
+71,"",Ceca Repubblica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z156""}",f
+58,"",Uzbekistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z143""}",f
+139,"",Angola,AO,AGO,+244,Africa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z302""}",f
+134,"",Tagikistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z257""}",f
+135,"",Turkemenistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z258""}",f
+136,"",Uzbekistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z259""}",f
+137,"",Africa Sud-Ovest,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z300""}",f
+143,"",Camerun,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z306""}",f
+64,"",Croazia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z149""}",f
+79,"",Arabia Saudita,SA,SAU,+966,Asia,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z203""}",f
+239,"",Saint Vincent E Grenadine,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z528""}",f
+155,"",Ghana,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z318""}",f
+159,"",Kenya,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z322""}",f
+160,"",Ifni,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z323""}",f
+161,"",Isole Reunion,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z324""}",f
+140,"",Basutoland,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z303""}",f
+174,"",Rhodesia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z337""}",f
+175,"",Ruanda,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z338""}",f
+67,"",Kazakistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z152""}",f
+68,"",Bosnia Ed Erzegovina,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z153""}",f
+73,"",Serbia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z158""}",f
+74,"",Montenegro,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z159""}",f
+75,"",Kossovo,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z160""}",f
+13,ZAF,Sudafrica,ZA,ZAF,+27,Africa,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z""}",f
+251,"",Guayana Britannica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z606""}",f
+30,"",Grecia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z115""}",f
+57,"",Kirghizistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 15, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z142""}",f
+78,"",Prot. Arabia Merid.,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z202""}",f
+81,"",Bhutan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z205""}",f
+151,"",Dahomey,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z314""}",f
+280,"",Papuasia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z720""}",f
+166,"",Mali,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z329""}",f
+168,"",Mauritania,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z331""}",f
+236,"",Vergini Britanniche (Isole),  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z525""}",f
+169,"",Isole Maurizio,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z332""}",f
+270,"",Isole Marianne,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z710""}",f
+271,"",Isole Marshall,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z711""}",f
+76,"",Afghanistan,AF,AFG,+93,Asia,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z200""}",f
+80,"",Bahrein,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z204""}",f
+85,"",Ceylon,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z209""}",f
+4,USA,Stati Uniti,US,USA,+1,Nord America,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 199, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z404""}",f
+221,"",Haiti,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z510""}",f
+224,"",Martinica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z513""}",f
+225,"",Messico,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z514""}",f
+226,"",Nicaragua,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z515""}",f
+227,"",Panama,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z516""}",f
+228,"",Canale Di Panama,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z517""}",f
+229,"",Puerto Rico,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z518""}",f
+230,"",Turks E Caicos,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z519""}",f
+231,"",Isole Vergini,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z520""}",f
+232,"",Antille Britanniche,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z521""}",f
+234,"",Antille Britanniche,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z523""}",f
+235,"",Grenada,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z524""}",f
+241,"",Cayman (Isole),  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z530""}",f
+65,"",Slovenia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z150""}",f
+66,"",Turkemenistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z151""}",f
+87,"",Cipro,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z211""}",f
+88,"",Isole Cocos,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z212""}",f
+264,"",Isole Figi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z704""}",f
+282,"",Pitcairn,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z722""}",f
+162,"",Liberia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z325""}",f
+157,"",Guinea Portoghese,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z320""}",f
+20,"",Cecoslovacchia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z105""}",f
+181,"",Sierra Leone,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z344""}",f
+183,"",Somalia Francese,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z346""}",f
+184,"",Rep. Sudafricana,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z347""}",f
+185,"",Sudan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z348""}",f
+249,"",Colombia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z604""}",f
+243,"",Antigua E Barbuda,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z532""}",f
+211,"",Antille Britanniche,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z500""}",f
+165,"",Malawi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z328""}",f
+189,"",Tunisia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z352""}",f
+240,"",Anguilla (Isola),  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z529""}",f
+150,"",Costa D'Avorio,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z313""}",f
+152,"",Etiopia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z315""}",f
+153,"",Gabon,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z316""}",f
+154,"",Gambia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z317""}",f
+21,"",Citta`Del Vaticano,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z106""}",f
+22,"",Danimarca,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z107""}",f
+23,"",Faer Oer,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z108""}",f
+261,"",Isole Caroline,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z701""}",f
+158,"",Guinea Spagnola,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z321""}",f
+163,"",Libia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z326""}",f
+41,"",Paesi Bassi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z126""}",f
+130,"",Azerbaigian,AZ,AZE,+994,Asia,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 14, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z253""}",f
+167,"",Marocco,MA,MAR,+212,Africa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 244, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z330""}",f
+190,"",Uganda,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z353""}",f
+191,"",Alto Volta,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z354""}",f
+138,"",Algeria,DZ,DZA,+213,Africa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z301""}",f
+93,"",Filippine,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z216""}",f
+94,"",Formosa,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z217""}",f
+199,"",Sahara Meridionale,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z362""}",f
+200,"",Sahara Settentrionale,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z363""}",f
+8,BRA,Brasile,BR,BRA,+55,Sud America,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z602""}",f
+91,"",Costa Dei Pirati,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z215""}",f
+142,"",Burundi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z305""}",f
+269,"",Isole Marcus,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z709""}",f
+113,"",Pakistan,PK,PAK,+92,Asia,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 149, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z236""}",f
+11,RUS,Russia=Federazione Russa,RU,RUS,+7,Europa,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z154""}",f
+7,JPN,Giappone,JP,JPN,+81,Asia,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z219""}",f
+12,AUS,Australia,AU,AUS,+61,Oceania,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z700""}",f
+245,"",Argentina,AR,ARG,+54,Sud America,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z600""}",f
+214,"",Costa Rica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z503""}",f
+215,"",Cuba,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z504""}",f
+216,"",Rep. Dominicana,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z505""}",f
+217,"",El Salvador,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z506""}",f
+218,"",Giamaica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z507""}",f
+254,"",Isole Falkland,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z609""}",f
+255,"",Paraguay,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z610""}",f
+256,"",Peru`,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z611""}",f
+257,"",Trinidad,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z612""}",f
+258,"",Uruguay,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z613""}",f
+275,"",Isole Norfolk,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z715""}",f
+276,"",Nuova Caledonia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z716""}",f
+1,ITA,Italia,IT,ITA,+39,Europa,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,{},t
+59,"",Estonia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z144""}",f
+60,"",Lettonia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z145""}",f
+61,"",Lituania,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z146""}",f
+62,"",Tagikistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z147""}",f
+63,"",Macedonia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z148""}",f
+56,"",Azerbaigian,AZ,AZE,+994,Asia,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 14, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z141""}",f
+186,"",Swaziland,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z349""}",f
+187,"",Tanganica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z350""}",f
+164,"",Madagascar,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z327""}",f
+132,"",Kazakistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z255""}",f
+141,"",Beciuania,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z304""}",f
+279,"",Nuova Zelanda,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z719""}",f
+48,"",Svizzera,CH,CHE,+41,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 125, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z133""}",f
+171,"",Niger,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z334""}",f
+283,"",Polinesia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z723""}",f
+284,"",Isole Salomone,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z724""}",f
+219,"",Guadalupa,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z508""}",f
+220,"",Guatemala,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z509""}",f
+176,"",Sahara Spagnolo,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z339""}",f
+177,"",Sant'Elena,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z340""}",f
+40,"",Norvegia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z125""}",f
+262,"",Isole Christmas,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z702""}",f
+50,"",Unione Sovietica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z135""}",f
+51,"",Georgia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z136""}",f
+24,"",Finlandia,FI,FIN,+358,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z109""}",f
+46,"",Spagna,ES,ESP,+34,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 111, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z131""}",f
+53,"",Ucraina,UA,UKR,+380,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 183, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z138""}",f
+265,"",Isole Gilbert,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z705""}",f
+266,"",Isole Guam,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z706""}",f
+268,"",Isole Macquarie,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z708""}",f
+272,"",Isole Midway,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z712""}",f
+273,"",Isole Nauru,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z713""}",f
+26,"",Germania Est,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z111""}",f
+28,"",Gibilterra,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z113""}",f
+29,"",Irlanda Del Nord,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z114""}",f
+31,"",Irlanda,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z116""}",f
+32,"",Islanda,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z117""}",f
+294,"",Palau Repubblica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z734""}",f
+295,"",Micronesia Stati Federati,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z735""}",f
+296,"",Dipendenze Canadesi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z800""}",f
+298,"",Dipendenze Russe,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z802""}",f
+104,"",Kuwait,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z227""}",f
+82,"",Birmania,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z206""}",f
+83,"",Brunei,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z207""}",f
+222,"",Honduras,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z511""}",f
+84,"",Cambogia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z208""}",f
+274,"",Isole Savage,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z714""}",f
+47,"",Svezia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z132""}",f
+297,"",Dipendenze Norvegesi Artiche,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z801""}",f
+299,"",Dipendenze Sovietiche,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z802""}",f
+300,"",Gran Bretagna,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z888""}",f
+301,"",Dipendenze Australiane,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z900""}",f
+302,"",Dipendenze Britanniche,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z901""}",f
+303,"",Dipendenze Francesi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z902""}",f
+307,"",Dipendenze Sudafricane,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z906""}",f
+308,"",Malesia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z999""}",f
+52,"",Armenia,AM,ARM,+374,Asia,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z137""}",f
+95,"",Gaza,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z218""}",f
+43,"",Portogallo,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z128""}",f
+44,"",Romania,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z129""}",f
+133,"",Kirghizistan,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 15, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z256""}",f
+15,"",Albania,AL,ALB,+355,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 2, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z100""}",f
+16,"",Andorra,AD,AND,+376,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 3, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z101""}",f
+17,"",Austria,AT,AUT,+43,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 4, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z102""}",f
+18,"",Belgio,BE,BEL,+32,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 5, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z103""}",f
+19,"",Bulgaria,BG,BGR,+359,Europa,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 6, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z104""}",f
+116,"",Sikkim,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z239""}",f
+204,"",Ciskei,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z367""}",f
+173,"",Egitto,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z336""}",f
+250,"",Ecuador,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z605""}",f
+252,"",Guayana Francese,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z607""}",f
+129,"",Armenia,AM,ARM,+374,Asia,2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z252""}",f
+122,"",Vietnam Del Nord,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z245""}",f
+125,"",Singapore,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z248""}",f
+126,"",Bangladesh,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z249""}",f
+127,"",Yemen Repubblica Democratica Popolare,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z250""}",f
+128,"",Vietnam,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z251""}",f
+253,"",Guayana Olandese,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z608""}",f
+242,"",Montserrat,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z531""}",f
+259,"",Venezuela,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z614""}",f
+213,"",Bahamas,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z502""}",f
+244,"",Saint Kitts E Nevis=Saint Christopher E,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z533""}",f
+246,"",Bolivia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z601""}",f
+111,"",Nepal,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z234""}",f
+144,"",Capo Verde,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z307""}",f
+145,"",Rep. Centrafricana,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z308""}",f
+147,"",Isole Comore,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z310""}",f
+148,"",Congo,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z311""}",f
+149,"",Congo Leopodville,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z312""}",f
+170,"",Mozambico,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z333""}",f
+237,"",Dominica,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z526""}",f
+267,"",Irian Occ.,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z707""}",f
+263,"",Isole Cook,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z703""}",f
+105,"",Laos,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z228""}",f
+106,"",Libano,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z229""}",f
+114,"",Qatar,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z237""}",f
+115,"",Isole Ryukyu,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z238""}",f
+77,"",Fed. Arabia Merid.,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z201""}",f
+55,"",Moldavia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 12, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z140""}",f
+156,"",Guinea,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z319""}",f
+117,"",Siria,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z240""}",f
+304,"",Dipendenze Neozelandesi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z903""}",f
+305,"",Dipendenze Norvegesi Antartiche,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z904""}",f
+306,"",Dipendenze Statunitensi,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z905""}",f
+70,"",Slovacchia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z155""}",f
+10,GBR,Regno Unito,GB,GBR,+44,Europa,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 126, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z114""}",f
+90,"",Corea Del Nord,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z214""}",f
+238,"",Saint Lucia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z527""}",f
+109,"",Maldive,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z232""}",f
+281,"",Isola Di Pasqua,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z721""}",f
+9,CAN,Canada,CA,CAN,+1,Nord America,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 190, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z401""}",f
+5,CHN,Cina,CN,CHN,+86,Asia,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 141, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z210""}",f
+2,FRA,Francia,FR,FRA,+33,Europa,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 104, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z110""}",f
+3,DEU,Germania,DE,DEU,+49,Europa,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 117, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z112""}",f
+6,IND,India,IN,IND,+91,Asia,2025-04-05 00:35:36.420624+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""codice_istat"": 147, ""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z222""}",f
+97,"",Giordania,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z220""}",f
+123,"",Yemen,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z246""}",f
+124,"",Malaysia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z247""}",f
+146,"",Ciad,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z309""}",f
+178,"",Sao Tome`,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z341""}",f
+179,"",Isole Seicelle,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z342""}",f
+180,"",Senegal,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z343""}",f
+188,"",Togo,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z351""}",f
+33,"",Jugoslavia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z118""}",f
+34,"",Liechtenstein,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z119""}",f
+35,"",Lussemburgo,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z120""}",f
+36,"",Malta,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z121""}",f
+37,"",Man,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z122""}",f
+285,"",Samoa Americane,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z725""}",f
+286,"",Samoa Occidentali,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z726""}",f
+287,"",Tokelau,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z727""}",f
+38,"",Monaco,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z123""}",f
+39,"",Isole Normanne,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z124""}",f
+288,"",Isole Tonga,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z728""}",f
+289,"",Isole Wallis,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z729""}",f
+290,"",Papua Nuova Guinea,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z730""}",f
+291,"",Kiribati,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z731""}",f
+292,"",Tuvalu,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z732""}",f
+293,"",Vanuatu,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z733""}",f
+248,"",Cile,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z603""}",f
+89,"",Corea Del Sud,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z213""}",f
+108,"",Macao,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z231""}",f
+110,"",Mongolia,  ,   ,"","",2025-04-05 00:41:07.976989+02,postgres,2026-01-16 16:02:08.783216+01,titodb,"{""stato_utilizzo"": ""ITA"", ""codice_catastale"": ""Z233""}",f

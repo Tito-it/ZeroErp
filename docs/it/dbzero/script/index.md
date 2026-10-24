@@ -1,11 +1,19 @@
+---
+search:
+  exclude: true
+---
+
 # Schema `script`
 
 ## 📚 Tabelle
 
 ## ⚙️ Funzioni
+- [fn_ambiente_dichiarato](funzioni/fn_ambiente_dichiarato.md)
+- [fn_ambiente_installazione](funzioni/fn_ambiente_installazione.md)
 - [fn_area_consente_azione](funzioni/fn_area_consente_azione.md) — (scritta il 04-10-2026)
 - [fn_area_di_oggetto](funzioni/fn_area_di_oggetto.md) — (scritta il 25-09-2026)
 - [fn_arrotonda_importo](funzioni/fn_arrotonda_importo.md) — Arrotondare un importo secondo i **decimali** e il **metodo** configurati, in **un punto solo** per tutto il database.
+- [fn_articolo_riga_contesto](funzioni/fn_articolo_riga_contesto.md) — (nasce 2026-10-14, brief-db-articoli-ammessi-per-documento, Lotto 4: R-5)
 - [fn_audit_summary](funzioni/fn_audit_summary.md)
 - [fn_available_actions_commessa](funzioni/fn_available_actions_commessa.md) — (latest review 16-06-2026) Espone le **capability del ciclo di vita di una commessa** per il detail/stato API: quali azioni di stato l'utente può eseguire e cosa può modificare. Mirror del pattern `fn_available_actions_ordine` / `_offerta` / `_contratto` / `_preventivo`, **senza azioni applicative** (il push è *verso* la commessa, non un'azione della commessa).
 - [fn_available_actions_contratto](funzioni/fn_available_actions_contratto.md)
@@ -26,6 +34,8 @@
 - [fn_check_accredito_annullabile](funzioni/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](funzioni/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_annullo_movimento_titolo_iva](funzioni/fn_check_annullo_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
+- [fn_check_articolo_riga](funzioni/fn_check_articolo_riga.md) — (latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto; Lotto 3c, `20261013-59`: versione di listino e distinta; Lotto 4, `20261014-03`: due metà, e la promo; `20261014-06`: il kit senza componenti, D-7)
+- [fn_check_articolo_riga_su_contesto](funzioni/fn_check_articolo_riga_su_contesto.md) — (nasce 2026-10-14, brief-db-articoli-ammessi-per-documento, Lotto 4: A-2, D-6)
 - [fn_check_attivita_riportabile_da_emettere](funzioni/fn_check_attivita_riportabile_da_emettere.md) — (latest review 26-08-2026)
 - [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 - [fn_check_ba_cambio_emittente](funzioni/fn_check_ba_cambio_emittente.md) — (latest review 27-08-26)
@@ -35,10 +45,12 @@
 - [fn_check_commessa_chiudibile](funzioni/fn_check_commessa_chiudibile.md) — (rev 2026-08-21 — funzione rev 2026-07-24)
 - [fn_check_commessa_pronta_fatturazione](funzioni/fn_check_commessa_pronta_fatturazione.md) — (rev 2026-08-21)
 - [fn_check_contabile_validabile](funzioni/fn_check_contabile_validabile.md) — (scritta il 18-09-2026)
+- [fn_check_contratto_sovrapposto](funzioni/fn_check_contratto_sovrapposto.md) — (latest review 20-10-2026)
 - [fn_check_credenziale_bloccabile](funzioni/fn_check_credenziale_bloccabile.md) — (scritta il 03-10-2026)
 - [fn_check_credenziale_eliminabile](funzioni/fn_check_credenziale_eliminabile.md) — (scritta il 06-10-2026)
 - [fn_check_ddt_emittibile](funzioni/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
 - [fn_check_ddt_merce](funzioni/fn_check_ddt_merce.md)
+- [fn_check_ddt_riga_correggi_qta_evasa](funzioni/fn_check_ddt_riga_correggi_qta_evasa.md)
 - [fn_check_disponibilita_uscita](funzioni/fn_check_disponibilita_uscita.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_documento_escludibile_da_giro](funzioni/fn_check_documento_escludibile_da_giro.md) — (latest review 2026-09-08)
 - [fn_check_documento_interno_registrabile](funzioni/fn_check_documento_interno_registrabile.md) — (scritta il 22-09-2026)
@@ -46,18 +58,23 @@
 - [fn_check_famiglia_documento_disattivabile](funzioni/fn_check_famiglia_documento_disattivabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_famiglia_documento_struttura_modificabile](funzioni/fn_check_famiglia_documento_struttura_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_fattura_eliminabile_da_lotto](funzioni/fn_check_fattura_eliminabile_da_lotto.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono di togliere una fattura da un lotto**. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando la fattura si può togliere.
+- [fn_check_fattura_emettibile](funzioni/fn_check_fattura_emettibile.md) — (rev 2026-10-22, D-3 di Tid)
 - [fn_check_fatture_con_plafond_consumato](funzioni/fn_check_fatture_con_plafond_consumato.md) — (funzione nata il 2026-10-04, `20261004-07`)
 - [fn_check_fatture_con_rettifiche](funzioni/fn_check_fatture_con_rettifiche.md)
+- [fn_check_indirizzi_documento_cliente](funzioni/fn_check_indirizzi_documento_cliente.md)
 - [fn_check_indirizzo_duplicato](funzioni/fn_check_indirizzo_duplicato.md)
+- [fn_check_listino_cambiabile](funzioni/fn_check_listino_cambiabile.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-4 e D-11 di Tid)
 - [fn_check_listino_congelabile](funzioni/fn_check_listino_congelabile.md)
 - [fn_check_listino_documento](funzioni/fn_check_listino_documento.md)
 - [fn_check_lotto_annullabile](funzioni/fn_check_lotto_annullabile.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono l'annullamento** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando l'annullamento è lecito.
 - [fn_check_lotto_fatture_pre_fiscali](funzioni/fn_check_lotto_fatture_pre_fiscali.md) — (latest review 04-08-2026) Dice se le fatture di un lotto sono ancora **demolibili**, cioè se nessuna ha superato lo stato pre-fiscale. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando tutte le fatture del lotto sono pre-fiscali.
 - [fn_check_lotto_riportabile_a_draft](funzioni/fn_check_lotto_riportabile_a_draft.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono il ritorno in bozza** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando il ritorno è lecito.
+- [fn_check_offerta_annullabile](funzioni/fn_check_offerta_annullabile.md)
 - [fn_check_operatore_invitabile](funzioni/fn_check_operatore_invitabile.md)
 - [fn_check_ordine_annullabile](funzioni/fn_check_ordine_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-15)
 - [fn_check_ordine_confermabile](funzioni/fn_check_ordine_confermabile.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [fn_check_ordine_data_consegna_confermata](funzioni/fn_check_ordine_data_consegna_confermata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_check_ordine_riga_data_consegna_confermata](funzioni/fn_check_ordine_riga_data_consegna_confermata.md)
 - [fn_check_parameter_fk_surrogate](funzioni/fn_check_parameter_fk_surrogate.md) — (latest review 02-05-2026)
 - [fn_check_preventivo_annullabile](funzioni/fn_check_preventivo_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-10)
 - [fn_check_preventivo_emettibile](funzioni/fn_check_preventivo_emettibile.md) — (rev 2026-09-24 — MOTIVO 2, i prezzi non autorizzati; funzione nata il 2026-08-29)
@@ -68,8 +85,12 @@
 - [fn_check_registro_serie_ammessa](funzioni/fn_check_registro_serie_ammessa.md)
 - [fn_check_reso_merce](funzioni/fn_check_reso_merce.md)
 - [fn_check_riga_contabile_eliminabile](funzioni/fn_check_riga_contabile_eliminabile.md) — (scritta il 14-09-2026, rev 30-09-2026)
+- [fn_check_riga_contabile_eliminabile_su_distinta](funzioni/fn_check_riga_contabile_eliminabile_su_distinta.md) — (scritta il 21-10-2026)
+- [fn_check_riga_documento_su_contesto](funzioni/fn_check_riga_documento_su_contesto.md)
 - [fn_check_riga_erogazione](funzioni/fn_check_riga_erogazione.md)
 - [fn_check_riga_magazzino](funzioni/fn_check_riga_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_check_righe_documento](funzioni/fn_check_righe_documento.md)
+- [fn_check_righe_offerta_in_ordine](funzioni/fn_check_righe_offerta_in_ordine.md)
 - [fn_check_rinuncia_reversibile](funzioni/fn_check_rinuncia_reversibile.md) — (creata 2026-07-26 — brief-db-chiusura-riconsegna-reso-definitivo §5.1)
 - [fn_check_scadenza_di_fattura](funzioni/fn_check_scadenza_di_fattura.md) — (rev 2026-08-22)
 - [fn_check_sorgente_chiudibile](funzioni/fn_check_sorgente_chiudibile.md) — (latest review 26-08-2026)
@@ -84,12 +105,16 @@
 - [fn_credenziale_ha_vesti](funzioni/fn_credenziale_ha_vesti.md) — (scritta il 06-10-2026)
 - [fn_credenziali](funzioni/fn_credenziali.md)
 - [fn_current_identita_context](funzioni/fn_current_identita_context.md) — (latest review 19-04-2026)
+- [fn_data_consegna_ammessa](funzioni/fn_data_consegna_ammessa.md) — (nata il 2026-10-13, dal collaudo)
 - [fn_data_operativa](funzioni/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md) — (rev 2026-08-21)
 - [fn_doc_colonna_modificabile](funzioni/fn_doc_colonna_modificabile.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_date_consegna_anteriori](funzioni/fn_doc_date_consegna_anteriori.md) — (nata il 2026-10-13, dal collaudo)
+- [fn_doc_indirizzi_sede](funzioni/fn_doc_indirizzi_sede.md)
 - [fn_doc_lock_colonna_bloccata](funzioni/fn_doc_lock_colonna_bloccata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_doc_lock_montaggi](funzioni/fn_doc_lock_montaggi.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_doc_lock_regola](funzioni/fn_doc_lock_regola.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_riga_modificabile](funzioni/fn_doc_riga_modificabile.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-3)
 - [fn_doc_testata_in_stato](funzioni/fn_doc_testata_in_stato.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 2)
 - [fn_elimina_credenziale](funzioni/fn_elimina_credenziale.md) — (scritta il 06-10-2026)
 - [fn_ensure_logconn](funzioni/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
@@ -103,17 +128,19 @@
 - [fn_get_auth_user_stato](funzioni/fn_get_auth_user_stato.md) — Dire, per un utente dell'anagrafica di Django, **come si chiama** e **se è attivo**. Nient'altro.
 - [fn_get_ba_emittente_sr_id](funzioni/fn_get_ba_emittente_sr_id.md) — (latest review 13-09-26)
 - [fn_get_ba_emittente_sr_id_installazione](funzioni/fn_get_ba_emittente_sr_id_installazione.md) — (latest review 10-10-26)
+- [fn_get_ba_id_da_coppia](funzioni/fn_get_ba_id_da_coppia.md) — (nata il 2026-10-21, `20261021-24`)
 - [fn_get_catasto_source_by_istanza](funzioni/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
+- [fn_get_cliente_testata_documento](funzioni/fn_get_cliente_testata_documento.md)
 - [fn_get_contatti](funzioni/fn_get_contatti.md) — (latest review 25-03-26) * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
 - [fn_get_contatto_default](funzioni/fn_get_contatto_default.md) — (latest review 25-03-26) La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:
 - [fn_get_conto_bancario_predefinito](funzioni/fn_get_conto_bancario_predefinito.md) — (latest review 25-03-26)
 - [fn_get_credenziale_per_email](funzioni/fn_get_credenziale_per_email.md)
-- [fn_get_default_by_param](funzioni/fn_get_default_by_param.md) — (latest update 21-12-25) Recuperare in modo dinamico un valore (tipicamente una **PK**) da una tabella qualsiasi, basandosi su un **codice parametro**.
 - [fn_get_deve_cambiare_password](funzioni/fn_get_deve_cambiare_password.md) — (scritta il 25-09-2026)
 - [fn_get_emittenti_scope_pk_ids](funzioni/fn_get_emittenti_scope_pk_ids.md)
 - [fn_get_emittenti_scope_sr_ids](funzioni/fn_get_emittenti_scope_sr_ids.md) — (latest review 02-05-2026 — wrapper su `_pk_ids`)
 - [fn_get_entita_ruolo_detail](funzioni/fn_get_entita_ruolo_detail.md) — * **Dati entita' per ruolo**: dato un `soggetto_ruolo_id`, recupera automaticamente il tipo ruolo e interroga la tabella/vista configurata in `tipi_ruoli.entita_tabella`.
 - [fn_get_fattura_intestazione](funzioni/fn_get_fattura_intestazione.md) — (rev 2026-08-22)
+- [fn_get_identita_sr_perimetro](funzioni/fn_get_identita_sr_perimetro.md) — (nata il 2026-10-21, `20261021-29`)
 - [fn_get_indirizzi_by_ruolo](funzioni/fn_get_indirizzi_by_ruolo.md) — (latest review 25-03-26) Restituisce gli **indirizzi** associati a uno specifico `soggetto_ruolo`, con filtro opzionale per **istanza utility**, producendo per ciascuno:
 - [fn_get_indirizzi_by_soggetto](funzioni/fn_get_indirizzi_by_soggetto.md) — (latest review 15-02-26) Restituisce tutti gli **indirizzi** associati direttamente a un **soggetto** (`anagrafiche.indirizzi_soggetti`), utilizzando come sorgente la vista `anagrafiche.vw_indirizzi_resolved_soggetto` per ottenere un output **uniforme e human-readable**.
 - [fn_get_indirizzo](funzioni/fn_get_indirizzo.md) — *(latest review 25-03-26)* La funzione **`script.fn_get_indirizzo`** restituisce **uno o più indirizzi tecnici** associati a un determinato **`soggetto_ruolo`**, filtrando per **tipo di indirizzo** identificato dal **codice interno** (`config.tipi_indirizzi.codice_interno`) e opzionalmente per **istanza utility** (`anagrafiche.istanze_utilities.id`).
@@ -123,6 +150,7 @@
 - [fn_get_operatore_detail](funzioni/fn_get_operatore_detail.md)
 - [fn_get_or_create_soggetto_ruolo](funzioni/fn_get_or_create_soggetto_ruolo.md) — (latest review 09-12-25) La funzione **`script.fn_get_or_create_soggetto_ruolo`** è una **factory di dominio** per garantire l’esistenza di un legame tra:
 - [fn_get_override_scaduti](funzioni/fn_get_override_scaduti.md) — (latest review 08-03-2026) La funzione **`script.fn_get_override_scaduti`** restituisce tutti gli override utente la cui data `valido_al` e scaduta. Unisce le 3 tabelle override (aree, oggetti, azioni) in un unico risultato.
+- [fn_get_parameter_di_sessione](funzioni/fn_get_parameter_di_sessione.md) — (18-10-2026 — decisioni D-13a e D-13b di Tid, richiesta del backend R-BE-13 in `brief-db-processi-accensione-per-ambiente` §6.12)
 - [fn_get_parameter_full](funzioni/fn_get_parameter_full.md)
 - [fn_get_permessi_effettivi_azioni](funzioni/fn_get_permessi_effettivi_azioni.md) — (scritta il 04-10-2026)
 - [fn_get_permessi_effettivi_oggetti](funzioni/fn_get_permessi_effettivi_oggetti.md) — (scritta il 04-10-2026)
@@ -166,7 +194,9 @@
 - [fn_imposta_deve_cambiare_password](funzioni/fn_imposta_deve_cambiare_password.md) — (scritta il 25-09-2026)
 - [fn_imposta_totp_obbligatorio](funzioni/fn_imposta_totp_obbligatorio.md) — (scritta il 29-09-2026)
 - [fn_indirizzi_obbligatori_mancanti](funzioni/fn_indirizzi_obbligatori_mancanti.md) — (rev 2026-07-11)
+- [fn_indirizzo_documento_fuori_cliente](funzioni/fn_indirizzo_documento_fuori_cliente.md)
 - [fn_inizio_giorno_operativo](funzioni/fn_inizio_giorno_operativo.md)
+- [fn_intero_positivo_da_testo](funzioni/fn_intero_positivo_da_testo.md)
 - [fn_is_proprietario_tabella](funzioni/fn_is_proprietario_tabella.md) — (scritta il 25-09-2026)
 - [fn_is_super_admin](funzioni/fn_is_super_admin.md) — (latest review 20-04-2026 — filtro OPERATORE)
 - [fn_is_super_admin_account](funzioni/fn_is_super_admin_account.md) — (scritta il 29-09-2026)
@@ -189,10 +219,12 @@
 - [fn_pgtap_registro_fattura](funzioni/fn_pgtap_registro_fattura.md)
 - [fn_pgtap_set_contesto_operatore](funzioni/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
 - [fn_predicato_soggetto_ruolo_visibile](funzioni/fn_predicato_soggetto_ruolo_visibile.md) — (latest review 10-10-2026)
+- [fn_prima_chiave_estranea](funzioni/fn_prima_chiave_estranea.md)
 - [fn_raise_primo_motivo_se_presente](funzioni/fn_raise_primo_motivo_se_presente.md)
 - [fn_regime_fiscale_documento](funzioni/fn_regime_fiscale_documento.md)
 - [fn_registra_tentativo_login](funzioni/fn_registra_tentativo_login.md) — (riscritta il 25-09-2026)
 - [fn_resolve_codice_postale](funzioni/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
+- [fn_resolve_controparte_sr_id](funzioni/fn_resolve_controparte_sr_id.md) — (nata il 2026-10-21, `20261021-30`)
 - [fn_resolve_emittente_fiscale_id](funzioni/fn_resolve_emittente_fiscale_id.md) — (rev 2026-08-22)
 - [fn_resolve_emittente_for_user](funzioni/fn_resolve_emittente_for_user.md)
 - [fn_resolve_emittente_sr_id](funzioni/fn_resolve_emittente_sr_id.md)
@@ -203,11 +235,7 @@
 - [fn_ricalcola_prezzo_padre_da_componenti](funzioni/fn_ricalcola_prezzo_padre_da_componenti.md)
 - [fn_sblocca_credenziale](funzioni/fn_sblocca_credenziale.md) — (scritta il 25-09-2026)
 - [fn_scope_ba_ownership](funzioni/fn_scope_ba_ownership.md) — (latest review 20-04-2026 — ruolo-aware)
-- [fn_scope_ba_ownership_via_fattura](funzioni/fn_scope_ba_ownership_via_fattura.md) — (latest review 19-04-2026)
-- [fn_scope_ba_ownership_via_fattura_sdi](funzioni/fn_scope_ba_ownership_via_fattura_sdi.md)
-- [fn_scope_cliente_ownership](funzioni/fn_scope_cliente_ownership.md) — (latest review 19-04-2026)
-- [fn_scope_cliente_ownership_via_ordine](funzioni/fn_scope_cliente_ownership_via_ordine.md)
-- [fn_scope_cliente_ownership_via_ordine_riga](funzioni/fn_scope_cliente_ownership_via_ordine_riga.md)
+- [fn_scope_ef_perimetro](funzioni/fn_scope_ef_perimetro.md) — (nata il 2026-10-18; firma attuale da `20261018-24`)
 - [fn_scope_ef_whitelist](funzioni/fn_scope_ef_whitelist.md) — (rev 2026-06-01 — refactor RLS: delega alla canonica)
 - [fn_scope_ef_whitelist_via_asset](funzioni/fn_scope_ef_whitelist_via_asset.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_attivita_fatturabile](funzioni/fn_scope_ef_whitelist_via_attivita_fatturabile.md)
@@ -216,7 +244,6 @@
 - [fn_scope_ef_whitelist_via_contabile](funzioni/fn_scope_ef_whitelist_via_contabile.md) — (rev 2026-08-22, corretta il 2026-09-15)
 - [fn_scope_ef_whitelist_via_contratto](funzioni/fn_scope_ef_whitelist_via_contratto.md)
 - [fn_scope_ef_whitelist_via_contratto_riga](funzioni/fn_scope_ef_whitelist_via_contratto_riga.md)
-- [fn_scope_ef_whitelist_via_coppia](funzioni/fn_scope_ef_whitelist_via_coppia.md) — (rev 2026-10-08)
 - [fn_scope_ef_whitelist_via_ddt](funzioni/fn_scope_ef_whitelist_via_ddt.md)
 - [fn_scope_ef_whitelist_via_ddt_riga](funzioni/fn_scope_ef_whitelist_via_ddt_riga.md)
 - [fn_scope_ef_whitelist_via_documento_generato](funzioni/fn_scope_ef_whitelist_via_documento_generato.md)
@@ -244,22 +271,29 @@
 - [fn_scope_ef_whitelist_via_sr](funzioni/fn_scope_ef_whitelist_via_sr.md) — (rev 2026-06-01)
 - [fn_scope_ef_whitelist_via_trasferimento](funzioni/fn_scope_ef_whitelist_via_trasferimento.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_email_ambito](funzioni/fn_scope_email_ambito.md)
+- [fn_scope_email_ambito_perimetro](funzioni/fn_scope_email_ambito_perimetro.md) — (nata il 2026-10-21, `20261021-41`)
 - [fn_scope_fornitore_ownership](funzioni/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
 - [fn_scope_identita_processo](funzioni/fn_scope_identita_processo.md) — (latest review 05-09-2026)
-- [fn_scope_note_cliente](funzioni/fn_scope_note_cliente.md)
-- [fn_scope_note_ef_whitelist](funzioni/fn_scope_note_ef_whitelist.md)
-- [fn_scope_note_magazzino_ef_whitelist](funzioni/fn_scope_note_magazzino_ef_whitelist.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [fn_scope_note_shop](funzioni/fn_scope_note_shop.md)
-- [fn_scope_shop_via_ba](funzioni/fn_scope_shop_via_ba.md)
-- [fn_scope_shop_via_ordine](funzioni/fn_scope_shop_via_ordine.md)
-- [fn_scope_shop_via_ordine_riga](funzioni/fn_scope_shop_via_ordine_riga.md)
+- [fn_scope_note_cliente_perimetro](funzioni/fn_scope_note_cliente_perimetro.md)
+- [fn_scope_note_ef_perimetro](funzioni/fn_scope_note_ef_perimetro.md)
+- [fn_scope_note_magazzino_ef_perimetro](funzioni/fn_scope_note_magazzino_ef_perimetro.md) — (rev 2026-10-21, `20261021-25`)
+- [fn_scope_note_shop_perimetro](funzioni/fn_scope_note_shop_perimetro.md)
+- [fn_scope_sr_perimetro](funzioni/fn_scope_sr_perimetro.md)
+- [fn_scrivi_riga_da_jsonb](funzioni/fn_scrivi_riga_da_jsonb.md)
 - [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 - [fn_search_stradario](funzioni/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.
 - [fn_search_stradario_generale](funzioni/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
+- [fn_segment_key](funzioni/fn_segment_key.md)
+- [fn_segment_key_riga](funzioni/fn_segment_key_riga.md)
+- [fn_segment_key_sorgente](funzioni/fn_segment_key_sorgente.md)
 - [fn_snapshot_indirizzo](funzioni/fn_snapshot_indirizzo.md)
 - [fn_snapshot_indirizzo_soggetto](funzioni/fn_snapshot_indirizzo_soggetto.md) — (latest review 02-08-2026)
 - [fn_sorgente_chiave_id](funzioni/fn_sorgente_chiave_id.md) — (scritta il 05-10-2026)
 - [fn_sorgente_chiave_uuid](funzioni/fn_sorgente_chiave_uuid.md) — (scritta il 05-10-2026)
+- [fn_sqlstate_di_ambiente](funzioni/fn_sqlstate_di_ambiente.md) — (latest review 16-10-2026)
+- [fn_stato_id_da_iso2](funzioni/fn_stato_id_da_iso2.md) — (18-10-2026 — decisione D-1 di Tid)
+- [fn_stato_iniziale_id](funzioni/fn_stato_iniziale_id.md)
+- [fn_stato_proposto_id](funzioni/fn_stato_proposto_id.md) — (18-10-2026 — decisione D-1 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
 - [fn_stato_veste](funzioni/fn_stato_veste.md)
 - [fn_subentro_cliente](funzioni/fn_subentro_cliente.md) — (latest review 01-03-26)
 - [fn_totp_conferma_device](funzioni/fn_totp_conferma_device.md) — (scritta il 29-09-2026)
@@ -290,7 +324,11 @@
 - [trgfn_default_emittente_fiscale](funzioni/trgfn_default_emittente_fiscale.md) — > Brief: `brief-db-emittente-di-default-un-bb-solo` (decisione di Tid, 2026-09-15). > ChangeSet `20260915-36` (la funzione), `-37 … -40` (le quattro copie di vendite > ritirate), `-42 … -46` (i sette montaggi nuovi).
 - [trgfn_delete_block_by_guc](funzioni/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
 - [trgfn_doc_guard_emittente_ba](funzioni/trgfn_doc_guard_emittente_ba.md) — **Un documento di vendita è emesso dall'azienda del suo cliente.**
+- [trgfn_doc_guard_listino_con_righe](funzioni/trgfn_doc_guard_listino_con_righe.md) — (nato il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-4)
 - [trgfn_doc_guard_listino_documento](funzioni/trgfn_doc_guard_listino_documento.md)
+- [trgfn_doc_righe_guard_data_consegna](funzioni/trgfn_doc_righe_guard_data_consegna.md) — (nato il 2026-10-13, dal collaudo)
+- [trgfn_doc_stato_iniziale](funzioni/trgfn_doc_stato_iniziale.md)
+- [trgfn_doc_testata_guard_data_consegna_righe](funzioni/trgfn_doc_testata_guard_data_consegna_righe.md) — (nato il 2026-10-13, dal collaudo)
 - [trgfn_guard_date_validita](funzioni/trgfn_guard_date_validita.md)
 - [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
 - [trgfn_guard_sorgente_polimorfa_testuale](funzioni/trgfn_guard_sorgente_polimorfa_testuale.md) — Valida la sorgente polimorfa delle **tabelle di collegamento a chiave unica TESTUALE** (modello B): la colonna `sorgente_uid` è **TEXT** e contiene la chiave nel **formato dettato da `config.sorgenti.key_selector`**:
@@ -304,14 +342,14 @@
 - [trgfn_qta_from_operativa](funzioni/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
 - [trgfn_righe_default_erogazione_da_articolo](funzioni/trgfn_righe_default_erogazione_da_articolo.md)
 - [trgfn_righe_default_fonte_qta](funzioni/trgfn_righe_default_fonte_qta.md) — (rev 2026-08-21)
-- [trgfn_righe_guard_aggiunta_fuori_listino](funzioni/trgfn_righe_guard_aggiunta_fuori_listino.md) — (funzione nata il 2026-10-04, `20261004-45`; trigger `20261004-48` e `-49`)
+- [trgfn_righe_guard_articolo_ammesso](funzioni/trgfn_righe_guard_articolo_ammesso.md) — (latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2, A-6, D-6; Lotti 3b e 3c, `20261013-56/-57/-61`; Lotto 4, `20261014-05`: la promo)
 - [trgfn_righe_guard_erogazione_obbligatoria](funzioni/trgfn_righe_guard_erogazione_obbligatoria.md) — (funzione nata il 2026-10-04, `20261004-31`; trigger `20261004-32`)
 - [trgfn_righe_guard_erogazione_perimetro](funzioni/trgfn_righe_guard_erogazione_perimetro.md)
-- [trgfn_righe_guard_esclusione_figlio_bundle](funzioni/trgfn_righe_guard_esclusione_figlio_bundle.md) — (funzione nata il 2026-10-04, `20261004-44`; trigger `20261004-48` e `-49`)
 - [trgfn_righe_guard_esclusione_immutabile](funzioni/trgfn_righe_guard_esclusione_immutabile.md) — (funzione nata il 2026-10-04, `20261004-46`; trigger `20261004-48` e `-49`)
 - [trgfn_righe_guard_esclusione_senza_dati](funzioni/trgfn_righe_guard_esclusione_senza_dati.md) — (funzione nata il 2026-10-04, `20261004-47`; trigger `20261004-48` e `-49`)
 - [trgfn_righe_guard_pending](funzioni/trgfn_righe_guard_pending.md) — (rev 2026-06-01 — estrazione)
 - [trgfn_righe_guard_quantita_per_fonte](funzioni/trgfn_righe_guard_quantita_per_fonte.md)
+- [trgfn_righe_natura_vendita](funzioni/trgfn_righe_natura_vendita.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-4; `20261013-14`)
 - [trgfn_storico_generic](funzioni/trgfn_storico_generic.md) — (latest review 02-02-26) * **Unificazion- logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger. * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento. * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.
 - [trgfn_sync_stato_iso2](funzioni/trgfn_sync_stato_iso2.md) — * **Sincronizzazione automatica** del campo `stato_iso2` all’interno delle tabelle che lo richiedono. * **Garantire coerenza** tra il campo `stato_id` e il relativo `codice_iso2`, estraendolo dinamicamente da `config.stati`.
 - [uuid_nil](funzioni/uuid_nil.md) — * Fornire un valore UUID costante, composto interamente da zeri. * Usato come **fallback** o **default** quando non è possibile generare o recuperare un UUID valido.
@@ -324,6 +362,7 @@
 - [vw_lotto_documento_righe](views/vw_lotto_documento_righe.md) — (latest review 2026-09-08)
 - [vw_override_operatore_area](views/vw_override_operatore_area.md) — (scritta il 06-10-2026)
 - [vw_pratica_doc_sorgente](views/vw_pratica_doc_sorgente.md) — (latest review 2026-09-07) `script.vw_pratica_doc_sorgente` risolve, **per ogni pratica**, *quale documento* rappresenta lo stato vivo della pratica, e ne proietta il descrittore normalizzato (brief-db-proiezione-stato-dominio roll-out, deliverable D3b). Restituisce **una riga per `pratica_id`**: il documento **più vivo** tra tutti i link della pratica (ROOT + COLLEGATO) in `pratiche.pratiche_sorgenti`, con il descrittore letto da `script.vw_stato_sorgente`.
+- [vw_stati_doc_ddt_merce_partita](views/vw_stati_doc_ddt_merce_partita.md) — (latest review 2026-10-12)
 - [vw_stati_estesi](views/vw_stati_estesi.md) — La vista `script.vw_stati_estesi` fornisce un accesso **arricchito** ai dati della tabella `config.stati`, estraendo e presentando in colonne dedicate alcune informazioni aggiuntive memorizzate nel campo JSON `extra_country`.
 - [vw_stato_sorgente](views/vw_stato_sorgente.md) — (latest review 01-07-2026) `script.vw_stato_sorgente` è la **union dei resolver di dominio** della proiezione stato (brief-db-proiezione-stato-dominio, deliverable D3): è l'**unica superficie di dispatch** — niente `resolver_key`, niente CASE statico. Un tipo sorgente senza ramo semplicemente **non ha righe** = non risolto: il wrapper `pratiche.fn_stato_sorgente` degrada a `UNKNOWN` e il milestone resta manuale come oggi.
 - [vw_stradario_esteso](views/vw_stradario_esteso.md) — * **Aggregazione logica**: unire in un’unica sorgente i dati di via, toponomastica e stato, evitando join ripetuti nei client e nelle applicazioni. * **Pulizia dati**: fornire alias chiari (`id_via`, `id_toponomastica`, `tipo_toponimo`, `sigla_stato`, `nome_strada`) per facilitare l’interpretazione dei risultati. * **Performance**: ridurre il carico di join runtime raggruppando più tabelle in un’unica view materializzata (se necessario).

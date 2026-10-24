@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_config_sistema_codici_sync_gen_codice()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_config_sistema_codici_sync_gen_codice()
  RETURNS trigger
@@ -193,6 +195,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_config_sistema_codici_sync_gen_codice()
 IS 'Sincronizza trigger e sequenza di generazione codici in base a config.sistema_codici (crea/aggiorna/distrugge per usa_sequenza).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

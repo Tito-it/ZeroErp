@@ -362,6 +362,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
         repo.update_stato_flusso.assert_called_once_with(
             1, "SOSPESO", esito=None, note_esito=None,
+            codice_errore="E_FLUSSO_VALIDATION", campo="nuovo_stato",
         )
 
     # Scopo: Verifica errore se nuovo_stato e' vuoto.

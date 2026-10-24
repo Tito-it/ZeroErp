@@ -21,6 +21,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.config.sorgenti import SORGENTE_DDT_VENDITA
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
@@ -35,6 +36,7 @@ from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
+from apps.vendite.db._lineage_sintesi import unisci_sintesi_lineage
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
 from apps.vendite.db._righe_repo_mixin import (
     COLONNE_RIGHE_COMMERCIALI,
@@ -122,17 +124,11 @@ class DdtRepository(
     _riepilogo_iva_vista = "vendite.vw_ddt_riepilogo_iva_dettaglio"
     _riepilogo_iva_fk_documento = "ddt_id"
 
-    # Configurazione mixin indirizzi documento (whitelist ambito DDT: CON
+    # Configurazione mixin indirizzi documento (whitelist ambito DDT_VENDITA: CON
     # obbligatorio all'emissione, guard trigger a DB).
     _indirizzi_table = "vendite.ddt_indirizzi"
     _indirizzi_fk_documento = "ddt_id"
-    _indirizzi_ambito = "DDT"
-    _indirizzi_documento_table = "vendite.ddt"
-    # Ancora ownership/auto-default = DESTINATARIO (chi riceve la merce),
-    # NOT NULL in testata: coerente col picker FE. Col BA e' il ruolo del BA
-    # (`fk_ddt_ba_cliente`); senza — causale che non manda merce a un
-    # cliente — e' il terzista o il deposito, e resta l'unica ancora.
-    _indirizzi_doc_sr_column = "destinatario_soggetto_ruolo_id"
+    _indirizzi_documento = SORGENTE_DDT_VENDITA
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_ddt_lista)
@@ -238,6 +234,9 @@ class DdtRepository(
             cursor.execute(data_sql, [*params, safe_limit, safe_offset])
             results = rows_to_list(cursor)
 
+        # Le colonne del grafo dalla sintesi, per le chiavi della pagina
+        # (brief-db-lineage-seminata-per-chiave B1): la vista non le porta piu'.
+        unisci_sintesi_lineage(results, tipo_codice_interno=SORGENTE_DDT_VENDITA)
         return results, total_count
 
     # Scopo: Dettaglio singolo DDT. Riusa la vista canonica (decodifiche +
@@ -264,13 +263,24 @@ class DdtRepository(
                 -- COALESCE: al FE serve distinguere «non vende» (false) da
                 -- «causale non ancora scelta» (NULL), e un default a false
                 -- cancellerebbe proprio quella differenza.
-                ct.fatturabile AS causale_trasporto_fatturabile
+                ct.fatturabile AS causale_trasporto_fatturabile,
+                -- Magazzino di partenza e di arrivo (Lotto 3 D-L3-a), con le
+                -- etichette: la tendina le mostra anche per un magazzino che
+                -- non propone piu' (disattivato dopo la scelta).
+                d.magazzino_id,
+                mp.codice AS magazzino_codice,
+                mp.descrizione AS magazzino_descrizione,
+                d.magazzino_arrivo_id,
+                ma.codice AS magazzino_arrivo_codice,
+                ma.descrizione AS magazzino_arrivo_descrizione
               FROM vendite.vw_ddt_lista v
               JOIN vendite.ddt d ON d.id = v.id
               LEFT JOIN anagrafiche.billing_account ba
                 ON ba.id = v.billing_account_id
               LEFT JOIN config.causali_trasporto ct
                 ON ct.id = d.causale_trasporto_id
+              LEFT JOIN magazzino.magazzini mp ON mp.id = d.magazzino_id
+              LEFT JOIN magazzino.magazzini ma ON ma.id = d.magazzino_arrivo_id
              WHERE v.id = %s
         """
         with connection.cursor() as cursor:
@@ -362,14 +372,14 @@ class DdtRepository(
     #        (prefill FE dal profilo, mirror ordini — uniformazione 2026-07-13);
     #        se None lo risolve `trgfn_ddt_normalize` dal billing_account (o
     #        dall'ordine sorgente per i DDT da evasione).
-    #        `stato_doc_ddt_id` (DRAFT) obbligatorio. Destinatario e utility,
+    #        Lo stato non si scrive: lo mette il DB, lo stato iniziale del
+    #        vocabolario (`script.trgfn_doc_stato_iniziale`). Destinatario e utility,
     #        col BA, li scrive `trgfn_ddt_normalize` (la utility non si passa
     #        mai: e' copia del BA); senza BA il destinatario e' del chiamante.
     def create_ddt(
         self,
         *,
         destinatario_soggetto_ruolo_id: int | None,
-        stato_doc_ddt_id: int,
         billing_account_id: int | None = None,
         emittente_fiscale_id: int | None = None,
         valuta_id: int | None = None,
@@ -388,13 +398,14 @@ class DdtRepository(
         data: date | None = None,
         meta: dict[str, Any] | None = None,
         fatturazione_immediata: bool | None = None,
+        magazzino_id: int | None = None,
+        magazzino_arrivo_id: int | None = None,
     ) -> dict[str, Any]:
         # BB `execute_dynamic_insert`: i None si omettono (`skip_none`) così i
         # DEFAULT del DB restano attivi; le chiavi sono letterali del metodo
         # (`allowed=None`). `meta` e' un dict -> `::jsonb` dal BB.
         valori: dict[str, Any] = {
             "destinatario_soggetto_ruolo_id": destinatario_soggetto_ruolo_id,
-            "stato_doc_ddt_id": stato_doc_ddt_id,
             "billing_account_id": billing_account_id,
             "emittente_fiscale_id": emittente_fiscale_id,
             "valuta_id": valuta_id,
@@ -413,6 +424,9 @@ class DdtRepository(
             "data": data,
             # Corsia di instradamento: None = DEFAULT false del DB (differita).
             "fatturazione_immediata": fatturazione_immediata,
+            # None = il default del DB (il magazzino predefinito dell'emittente).
+            "magazzino_id": magazzino_id,
+            "magazzino_arrivo_id": magazzino_arrivo_id,
             "meta": meta or {},
         }
         return execute_dynamic_insert(
@@ -431,7 +445,7 @@ class DdtRepository(
         "vettore_soggetto_ruolo_id", "causale_trasporto_id", "aspetto_bene_id",
         "modalita_addebito_trasporto_id", "num_colli", "peso_lordo", "peso_netto",
         "volume", "targa", "autista", "tracking_code", "data", "meta",
-        "fatturazione_immediata",
+        "fatturazione_immediata", "magazzino_id", "magazzino_arrivo_id",
     })
     RIGA_UPDATE_COLUMNS: frozenset[str] = frozenset({
         "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
@@ -453,18 +467,23 @@ class DdtRepository(
             cursor.execute("DELETE FROM vendite.ddt WHERE id = %s", [ddt_id])
             return cursor.rowcount > 0
 
-    # Scopo: Cambia stato DDT via UPDATE diretto di stato_doc_ddt_id. La
-    #        transizione e' validata dal trigger DB `trgfn_ddt_guard_transizione`
-    #        (matrice `config.transizioni_stati_ddt`); l'emissione (→EMESSO)
-    #        assegna il numero via `trgfn_ddt_gen_numero_emesso`; il guard
-    #        approvazione blocca EMESSO con componenti PENDING.
-    def update_stato(self, ddt_id: int, stato_doc_ddt_id: int) -> bool:
+    # Scopo: Cambia stato della bolla dal verbo DB `vendite.fn_cambia_stato_ddt`
+    #        (Lotto 3 D-L3-e): permesso (`emetti_ddt` per l'emissione e
+    #        l'annullo di una bolla emessa, `registra_magazzino` per la consegna
+    #        di un trasferimento), matrice e guard di sempre, e — se la bolla
+    #        muove merce — prelievi automatici e movimenti di magazzino nella
+    #        stessa transazione. ⛔ Mai un `UPDATE` diretto dello stato: su una
+    #        bolla che muove merce la porta del registro lo rifiuta
+    #        (E_DDT_STATO_SOLO_DA_VERBO). Fuori perimetro: E_DDT_NOT_FOUND.
+    # Ritorna: i movimenti scritti (movimento_id, prelievo_id, qta); nessuno se
+    #          il passaggio non tocca il registro.
+    def cambia_stato(self, ddt_id: int, stato_codice: str) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                "UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s",
-                [stato_doc_ddt_id, ddt_id],
+                "SELECT * FROM vendite.fn_cambia_stato_ddt(%s, %s)",
+                [int(ddt_id), stato_codice],
             )
-            return cursor.rowcount > 0
+            return rows_to_list(cursor)
 
     # ══════════════════════════════════════════════════════════
     #  SCRITTURE — Righe (quantita base derivata da qta_operativa via trigger DB)
@@ -535,11 +554,171 @@ class DdtRepository(
 
     # Scopo: Elimina una riga DDT (HARD DELETE). La FK
     #        ddt_righe_componenti.riga_ddt_id ha ON DELETE CASCADE. Il trigger DB
-    #        `trgfn_dlt_block_ordrig_ddtrig` blocca la delete se la riga e' gia'
-    #        collegata a un ordine via fulfillment.
+    #        `trgfn_dlt_block_ordrig_ddtrig`: in bozza la riga evasa si cancella
+    #        e i suoi legami (fulfillment, ponte di ri-consegna) si ritirano con
+    #        lei, riproiettando l'ordine (brief-db-ddt-righe-evase-dall-ordine
+    #        D-3, D-7); blocca solo se la riga e' l'origine di un reso
+    #        (E_DELETE_RIGA_DOC_REFERENZIATA).
     def delete_riga(self, riga_id: int) -> bool:
         with connection.cursor() as cursor:
             cursor.execute("DELETE FROM vendite.ddt_righe WHERE id = %s", [riga_id])
+            return cursor.rowcount > 0
+
+    # Scopo: Corregge la quantita' evasa di una riga in bozza via il verbo DB
+    #        `vendite.fn_ddt_riga_correggi_qta_evasa` (D-2): riga, componenti,
+    #        legami e stato dell'ordine nella stessa operazione. Perimetro,
+    #        stato, residuo e copertura del reso li giudica il DB.
+    # Ritorna: la nuova quantita' evasa, in unita' base.
+    def correggi_qta_evasa(self, riga_id: int, qta_operativa: Any) -> Any:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_ddt_riga_correggi_qta_evasa(%s, %s)",
+                [int(riga_id), qta_operativa],
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    # Scopo: Annulla la bolla via il verbo DB `vendite.fn_annulla_ddt`: con
+    #        legami, `legami_confermati` dichiara quanti legami l'operatore ha
+    #        visto (se non corrisponde: E_DOC_ANNULLO_CON_LEGAMI); poi ritiro
+    #        dei legami e `fn_cambia_stato_ddt(…, 'ANNULLATO')` (matrice,
+    #        permesso, storno del magazzino).
+    # Ritorna: i movimenti di storno (movimento_id, prelievo_id, qta).
+    def annulla(
+        self, ddt_id: int, legami_confermati: int | None,
+    ) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM vendite.fn_annulla_ddt(%s, %s)",
+                [int(ddt_id), legami_confermati],
+            )
+            return rows_to_list(cursor)
+
+    # ══════════════════════════════════════════════════════════
+    #  Prelievi — da dove esce la merce (Lotto 3 D-L3-b, R-2b)
+    #  `vendite.ddt_righe_prelievi`: di questa riga (o componente del kit),
+    #  questa quantita', da questo lotto / seriale / ubicazione. Le regole
+    #  (solo in bozza salvo l'ubicazione di arrivo fino al CONSEGNATO, kit,
+    #  `usa_ubicazioni`, lotto/seriale dell'articolo) sono dei trigger DB.
+    # ══════════════════════════════════════════════════════════
+
+    # Scopo: Le VOCI della bolla che muovono merce, da
+    #        `vendite.fn_ddt_merce_da_movimentare` (la regola del kit in una
+    #        sede sola): riga o componente, quantita' da muovere e gia'
+    #        prelevata (UoM base), se il prelievo e' automatico. Con le
+    #        etichette dell'articolo, i flag che decidono quali campi servono
+    #        (`requires_lotto`, `requires_serial`) e la UoM base.
+    def list_merce_da_movimentare(self, ddt_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT m.ddt_riga_id, m.ddt_riga_componente_id, m.riga_nr,
+                       m.articolo_id::text AS articolo_id,
+                       a.codice AS articolo_codice, a.descrizione AS articolo_descrizione,
+                       a.requires_lotto, a.requires_serial,
+                       u.codice AS uom_codice,
+                       m.qta, m.prelevata, m.automatico
+                  FROM vendite.ddt d
+                  CROSS JOIN LATERAL vendite.fn_ddt_merce_da_movimentare(d) m
+                  JOIN catalogo.articoli a ON a.id = m.articolo_id
+                  LEFT JOIN catalogo.unita_misura u ON u.id = a.uom_id
+                 WHERE d.id = %s
+                 ORDER BY m.riga_nr, m.ddt_riga_id, m.ddt_riga_componente_id NULLS FIRST
+                """,
+                [int(ddt_id)],
+            )
+            return rows_to_list(cursor)
+
+    # Scopo: La testata vista dai prelievi: se la bolla muove merce
+    #        (`vendite.fn_ddt_muove_merce`: causale con causale di magazzino E
+    #        almeno una voce gestita) e i due magazzini con `usa_ubicazioni`,
+    #        che dice se l'ubicazione (di partenza, di arrivo) si sceglie.
+    #        None se la bolla non e' visibile.
+    def get_testata_prelievi(self, ddt_id: int) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT d.id AS ddt_id,
+                       vendite.fn_ddt_muove_merce(d) AS muove_merce,
+                       d.magazzino_id, mp.usa_ubicazioni AS magazzino_usa_ubicazioni,
+                       d.magazzino_arrivo_id, ma.usa_ubicazioni AS magazzino_arrivo_usa_ubicazioni
+                  FROM vendite.ddt d
+                  LEFT JOIN magazzino.magazzini mp ON mp.id = d.magazzino_id
+                  LEFT JOIN magazzino.magazzini ma ON ma.id = d.magazzino_arrivo_id
+                 WHERE d.id = %s
+                """,
+                [int(ddt_id)],
+            )
+            return row_to_dict(cursor)
+
+    # Scopo: I prelievi della bolla, con le etichette di lotto, seriale e
+    #        ubicazioni (la griglia li mostra senza un giro per riga).
+    def list_prelievi(self, ddt_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT p.id, p.ddt_riga_id, p.ddt_riga_componente_id, p.qta,
+                       p.lotto_id, l.codice AS lotto_codice,
+                       p.asset_id, s.seriale AS asset_seriale,
+                       p.ubicazione_id, ub.codice AS ubicazione_codice,
+                       p.ubicazione_arrivo_id, ua.codice AS ubicazione_arrivo_codice
+                  FROM vendite.ddt_righe_prelievi p
+                  JOIN vendite.ddt_righe r ON r.id = p.ddt_riga_id
+                  LEFT JOIN magazzino.lotti l       ON l.id = p.lotto_id
+                  LEFT JOIN magazzino.assets s      ON s.id = p.asset_id
+                  LEFT JOIN magazzino.ubicazioni ub ON ub.id = p.ubicazione_id
+                  LEFT JOIN magazzino.ubicazioni ua ON ua.id = p.ubicazione_arrivo_id
+                 WHERE r.ddt_id = %s
+                 ORDER BY p.ddt_riga_id, p.ddt_riga_componente_id NULLS FIRST, p.id
+                """,
+                [int(ddt_id)],
+            )
+            return rows_to_list(cursor)
+
+    # Scopo: Un prelievo con la sua riga (per il guard «e' di questa riga»).
+    #        None se non esiste o non e' visibile.
+    def get_prelievo(self, prelievo_id: int) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT p.id, p.ddt_riga_id, p.ddt_riga_componente_id"
+                "  FROM vendite.ddt_righe_prelievi p WHERE p.id = %s",
+                [int(prelievo_id)],
+            )
+            return row_to_dict(cursor)
+
+    # ⛔ Whitelist RIGIDA dei BB di scrittura: le colonne che QUESTI metodi
+    #    scrivono. Il contratto dell'operatore sta nel service
+    #    (`ddt_service.CREATE_KEYS_PRELIEVO / UPDATE_KEYS_PRELIEVO`).
+    PRELIEVO_INSERT_COLUMNS: frozenset[str] = frozenset({
+        "ddt_riga_id", "ddt_riga_componente_id", "qta",
+        "lotto_id", "asset_id", "ubicazione_id", "ubicazione_arrivo_id",
+    })
+    PRELIEVO_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "qta", "lotto_id", "asset_id", "ubicazione_id", "ubicazione_arrivo_id",
+    })
+
+    # Scopo: Scrive un prelievo. I None si omettono: la colonna resta NULL.
+    def create_prelievo(self, valori: dict[str, Any]) -> dict[str, Any]:
+        return execute_dynamic_insert(
+            "vendite.ddt_righe_prelievi", valori,
+            allowed=self.PRELIEVO_INSERT_COLUMNS, skip_none=True,
+        )
+
+    # Scopo: Aggiorna un prelievo (None azzera le colonne nullable).
+    def update_prelievo(self, prelievo_id: int, **kwargs: Any) -> bool:
+        return execute_dynamic_update(
+            "vendite.ddt_righe_prelievi", prelievo_id, kwargs,
+            allowed=self.PRELIEVO_UPDATE_COLUMNS,
+        )
+
+    # Scopo: Cancella un prelievo (HARD DELETE: e' un dettaglio della bozza;
+    #        fuori bozza lo rifiuta il lock delle righe del DB).
+    def delete_prelievo(self, prelievo_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM vendite.ddt_righe_prelievi WHERE id = %s",
+                [int(prelievo_id)],
+            )
             return cursor.rowcount > 0
 
     # ══════════════════════════════════════════════════════════

@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — LOTTO 2a (le testate): script.fn_doc_indirizzi_sede
+#   Brief: brief-db-grammatica-unica-documenti §11 (G-1, G-4 di Tid; L2-1 del
+#   2026-10-19: il lotto 2 in cinque sotto-giri, questo e' il primo).
+#
+#   La grammatica delle testate (V3 del censimento) passa ai codici di
+#   config.sorgenti: DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA,
+#   OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL.
+#   PREVENTIVO, CONTRATTO, COMMESSA, FATTURA sono gia' i codici delle sorgenti.
+#
+#   p_documento era un text nudo «senza colonna-vocabolario»: col lotto 0 la
+#   colonna c'e', config.sorgenti.codice_interno, e il parametro si ancora
+#   li' (%TYPE in firma). Il tipo passa da text a character varying: la firma
+#   cambia, quindi DROP + CREATE (un CREATE OR REPLACE lascerebbe due
+#   overload). Nessun dipendente registrato in pg_depend (verificato su dbdev,
+#   2026-10-19); i chiamanti plpgsql si risolvono a runtime, il backend passa
+#   il codice come parametro semplice.
+#
+#   Corpo dalla definizione viva (dbdev, 2026-10-19); firma e RETURNS
+#   dall'ultimo YAML che li ha ancorati (20261011-44); proprieta' (volatilita',
+#   SECURITY, SET search_path) dal catalogo vivo, ripetute. COMMENT vivo con la
+#   nota di revisione in coda.
+#
+#   La quinta colonna (l'ambito degli indirizzi, al plurale) resta: la
+#   cambia il 2d (G-6).
+#
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261019-43-update-fn-doc-indirizzi-sede-codice-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261019-43-update-fn-doc-indirizzi-sede-codice-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_doc_indirizzi_sede: p_documento e' il codice della sorgente, ancorato a config.sorgenti.codice_interno (DROP + CREATE). Grammatica unica, lotto 2a.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION script.fn_doc_indirizzi_sede(text);
+
+              CREATE FUNCTION script.fn_doc_indirizzi_sede(
+                  p_documento config.sorgenti.codice_interno%TYPE)
+              RETURNS TABLE (
+                  schema_tabella pg_catalog.pg_namespace.nspname%TYPE,
+                  tabella        pg_catalog.pg_class.relname%TYPE,
+                  colonna_fk     pg_catalog.pg_attribute.attname%TYPE,
+                  ambito         config.tipi_indirizzi_allowed.ambito%TYPE)
+              LANGUAGE plpgsql
+              IMMUTABLE
+              SECURITY INVOKER
+              AS $function$
+
+              -- ⚠️ Tipo nudo DICHIARATO: p_documento e' un selettore senza colonna
+              --   di vocabolario (lo stesso di script.fn_get_stato_testata_documento).
+              --   Schema, tabella e colonna sono nomi del catalogo: ancorati li'.
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dove stanno gli indirizzi di un documento. Zero righe =
+                  --   selettore ignoto: decide il chiamante.
+                  -- ⭐ IMMUTABLE: e' una mappa scritta qui, non legge tabelle.
+                  -- =========================================================
+                  RETURN QUERY
+                  SELECT v.s::name, v.t::name, v.fk::name, v.amb
+                    FROM (VALUES
+                        ('DDT_VENDITA', 'vendite', 'ddt_indirizzi',                 'ddt_id',        'DDT'),
+                        ('ORDINE_VENDITA', 'vendite', 'ordini_indirizzi',              'ordine_id',     'ORDINI'),
+                        ('PREVENTIVO', 'vendite', 'preventivi_indirizzi',          'preventivo_id', 'PREVENTIVI'),
+                        ('OFFERTA_COMMERCIALE', 'vendite', 'offerte_commerciali_indirizzi', 'offerta_id',    'OFFERTE'),
+                        ('CONTRATTO',  'vendite', 'contratti_indirizzi',           'contratto_id',  'CONTRATTI'),
+                        ('FATTURA',    'vendite', 'fatture_indirizzi',             'fattura_id',    'FATTURE')
+                    ) AS v(doc, s, t, fk, amb)
+                   WHERE v.doc = p_documento;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_doc_indirizzi_sede(config.sorgenti.codice_interno%TYPE) IS
+                'Dove stanno gli indirizzi di un documento: schema e tabella dei suoi *_indirizzi, la colonna verso la testata, l''ambito di config.tipi_indirizzi_allowed. Selettore: DDT, ORDINE, PREVENTIVO, OFFERTA, CONTRATTO (il vocabolario di script.fn_get_stato_testata_documento) e FATTURA. Zero righe = selettore ignoto, decide il chiamante. Schema e nome separati, non regclass: il testo di un regclass dipende dal search_path, e qui finisce in un format(%I). La usano il guard degli indirizzi del cliente, il riempimento dello slot di default e il motivo d''emissione. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§7.2 c). ⭐ rev 2026-10-19 (20261019-43, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato). L''ambito (quinta colonna) resta al plurale fino al 2d (G-6).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION script.fn_doc_indirizzi_sede(config.sorgenti.codice_interno%TYPE);
+
+              CREATE FUNCTION script.fn_doc_indirizzi_sede(
+                  p_documento text)
+              RETURNS TABLE (
+                  schema_tabella pg_catalog.pg_namespace.nspname%TYPE,
+                  tabella        pg_catalog.pg_class.relname%TYPE,
+                  colonna_fk     pg_catalog.pg_attribute.attname%TYPE,
+                  ambito         config.tipi_indirizzi_allowed.ambito%TYPE)
+              LANGUAGE plpgsql
+              IMMUTABLE
+              SECURITY INVOKER
+              AS $function$
+
+              -- ⚠️ Tipo nudo DICHIARATO: p_documento e' un selettore senza colonna
+              --   di vocabolario (lo stesso di script.fn_get_stato_testata_documento).
+              --   Schema, tabella e colonna sono nomi del catalogo: ancorati li'.
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dove stanno gli indirizzi di un documento. Zero righe =
+                  --   selettore ignoto: decide il chiamante.
+                  -- ⭐ IMMUTABLE: e' una mappa scritta qui, non legge tabelle.
+                  -- =========================================================
+                  RETURN QUERY
+                  SELECT v.s::name, v.t::name, v.fk::name, v.amb
+                    FROM (VALUES
+                        ('DDT',        'vendite', 'ddt_indirizzi',                 'ddt_id',        'DDT'),
+                        ('ORDINE',     'vendite', 'ordini_indirizzi',              'ordine_id',     'ORDINI'),
+                        ('PREVENTIVO', 'vendite', 'preventivi_indirizzi',          'preventivo_id', 'PREVENTIVI'),
+                        ('OFFERTA',    'vendite', 'offerte_commerciali_indirizzi', 'offerta_id',    'OFFERTE'),
+                        ('CONTRATTO',  'vendite', 'contratti_indirizzi',           'contratto_id',  'CONTRATTI'),
+                        ('FATTURA',    'vendite', 'fatture_indirizzi',             'fattura_id',    'FATTURE')
+                    ) AS v(doc, s, t, fk, amb)
+                   WHERE v.doc = p_documento;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_doc_indirizzi_sede(text) IS
+                'Dove stanno gli indirizzi di un documento: schema e tabella dei suoi *_indirizzi, la colonna verso la testata, l''ambito di config.tipi_indirizzi_allowed. Selettore: DDT, ORDINE, PREVENTIVO, OFFERTA, CONTRATTO (il vocabolario di script.fn_get_stato_testata_documento) e FATTURA. Zero righe = selettore ignoto, decide il chiamante. Schema e nome separati, non regclass: il testo di un regclass dipende dal search_path, e qui finisce in un format(%I). La usano il guard degli indirizzi del cliente, il riempimento dello slot di default e il motivo d''emissione. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§7.2 c).';

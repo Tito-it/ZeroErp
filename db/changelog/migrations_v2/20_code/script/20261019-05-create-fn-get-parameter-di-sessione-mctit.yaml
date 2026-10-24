@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: UN PARAMETRO LETTO COL CONTESTO DELLA SESSIONE
+#   script.fn_get_parameter_di_sessione(p_code, p_chi): il valore di un
+#   parametro con la cascata degli override di script.fn_get_parameter_full,
+#   ma con utente, gruppi, emittente e session key ricavati dalla SESSIONE
+#   invece che passati dal chiamante.
+#   D-13a e D-13b di Tid (2026-10-18), richiesta BE R-BE-13 in
+#   brief-db-processi-accensione-per-ambiente §6.12.
+#
+# -- PERCHE' SERVE --------------------------------------------------------------
+#   Il backend, quando legge un parametro, passa lui utente, gruppi ed
+#   emittente a fn_get_parameter_full. Un lettore DENTRO il database (un
+#   trigger normalize, una madre) non riceve niente: il contesto lo deve
+#   ricavare dalla sessione. Nessuno lo faceva: script.fn_stato_proposto_id
+#   passava NULL a utente, gruppi ed emittente, e dei sette livelli della
+#   cascata restavano vivi sessione, funzione e default. L'override per
+#   utente promesso dalla sua manual non scattava mai. Prima di lei
+#   script.fn_get_default_by_param (ritirata, 20261018-93) faceva lo stesso.
+#
+# -- DA DOVE VIENE IL CONTESTO ----------------------------------------------------
+#   * utente: app.current_user_id = auth_user.id, lo stesso id di
+#     config.parameter_overrides.django_user_id (lo scrive il backend in
+#     JwtAuditAuthentication, linee-guida-sql §10.4);
+#   * gruppi: django.auth_user_groups dell'utente. Lo schema django e' del
+#     secondo migratore (manage.py migrate, dopo Liquibase): si legge solo da
+#     plpgsql e senza %TYPE (linee-guida-sql §11.9). La tabella si cerca nel
+#     catalogo PER OID, insieme ai privilegi: su un database dove non esiste,
+#     o per un ruolo che non la legge (zeroerp_job non ha USAGE su django),
+#     il livello gruppo resta spento invece di fermare il chiamante. Fail-open
+#     voluto: il valore di un parametro letto cosi' e' una proposta, non apre
+#     nessun accesso. La SELECT su django.auth_user_groups gira solo DOPO il
+#     controllo: plpgsql risolve il nome alla prima esecuzione, non al CREATE;
+#   * emittente: app.current_emittente_id, l'emittente attivo della sessione;
+#   * session key: app.session_key;
+#   * funzione: p_chi, cioe' chi chiede (il nome del trigger o della funzione);
+#   * categoria cliente: NON fa parte del contesto della sessione (dipende dal
+#     BA del documento): resta NULL, il livello salta da solo.
+#   Ogni GUC vuota o mai scritta vale NULL, e il suo livello salta.
+#
+# -- QUELLO CHE NON FA --------------------------------------------------------------
+#   Non valida il valore: quello resta al lettore specifico (per lo stato
+#   proposto, fn_stato_proposto_id). Gli errori sono quelli di
+#   fn_get_parameter_full (parametro non dichiarato: E_ERRORE_PARAMETRI_TABELLA).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261019-05-create-fn-get-parameter-di-sessione-mctit.yaml
+
+  - changeSet:
+      id: 20261019-05-create-fn-get-parameter-di-sessione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea script.fn_get_parameter_di_sessione: un parametro con la cascata di
+        script.fn_get_parameter_full, con utente, gruppi, emittente e session key ricavati
+        dalla sessione. Primo lettore script.fn_stato_proposto_id (20261019-06). D-13a e
+        D-13b di Tid, R-BE-13 in brief-db-processi-accensione-per-ambiente §6.12.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_parameter_di_sessione(
+                  p_code config.parameters.code%TYPE,
+                  p_chi  config.parameter_overrides.function_name%TYPE DEFAULT NULL)
+               RETURNS config.parameters.default_value%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               STABLE
+              AS $function$
+              DECLARE
+                  v_user_id    config.parameter_overrides.django_user_id%TYPE :=
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  v_emittente  config.parameter_overrides.emittente_fiscale_id%TYPE :=
+                      NULLIF(current_setting('app.current_emittente_id', true), '')::bigint;
+                  v_session    config.parameter_overrides.session_key%TYPE :=
+                      NULLIF(current_setting('app.session_key', true), '');
+                  -- %TYPE[] non esiste: tipo esplicito, come in fn_get_parameter_full
+                  -- (django_group_id e' integer).
+                  v_group_ids  integer[];
+                  -- un interruttore calcolato qui: niente colonna da ancorare
+                  v_gruppi_leggibili boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il valore di p_code con la cascata degli override
+                  --   (utente, gruppo, emittente, sessione, funzione,
+                  --   default), col contesto preso dalla sessione. p_chi:
+                  --   chi lo chiede, per il livello «function» e per il log.
+                  --
+                  -- Regole:
+                  --   - GUC vuota o assente = NULL: il livello salta;
+                  --   - i gruppi si leggono solo se la tabella di Django
+                  --     c'e' e il ruolo la puo' leggere: altrimenti il
+                  --     livello resta spento, senza errore (e' una proposta);
+                  --   - nessuna validazione del valore: e' del lettore.
+                  -- =========================================================
+                  IF v_user_id IS NOT NULL THEN
+                      -- Per OID: un nome in uno schema senza USAGE solleva
+                      -- 42501 anche dentro to_regclass.
+                      SELECT has_schema_privilege(n.oid, 'USAGE')
+                             AND has_table_privilege(c.oid, 'SELECT')
+                        INTO v_gruppi_leggibili
+                        FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = 'django'
+                         AND c.relname = 'auth_user_groups';
+
+                      -- Zero righe (tabella assente) lascia NULL: IS TRUE.
+                      IF v_gruppi_leggibili IS TRUE THEN
+                          SELECT array_agg(ug.group_id ORDER BY ug.group_id)
+                            INTO v_group_ids
+                            FROM django.auth_user_groups ug
+                           WHERE ug.user_id = v_user_id;
+                      END IF;
+                  END IF;
+
+                  RETURN script.fn_get_parameter_full(
+                      p_code,
+                      v_emittente,
+                      v_user_id,
+                      v_group_ids,
+                      v_session,
+                      p_chi);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_parameter_di_sessione(config.parameters.code%TYPE, config.parameter_overrides.function_name%TYPE) IS
+                  'BB (2026-10-18): il valore di un parametro con la cascata degli override di script.fn_get_parameter_full, col contesto preso dalla SESSIONE invece che dal chiamante. Per i lettori dentro il database (trigger, madri), che non ricevono utente, gruppi ed emittente: il backend li passa da se''. Utente da app.current_user_id (auth_user.id = parameter_overrides.django_user_id); gruppi da django.auth_user_groups, letti solo se la tabella esiste e il ruolo la legge (cercata per OID nel catalogo), altrimenti il livello gruppo resta spento senza errore: e'' una proposta, non apre accessi (zeroerp_job non ha USAGE su django; su un database senza le tabelle di Django la tabella non c''e''); emittente da app.current_emittente_id; session key da app.session_key; funzione da p_chi (chi chiede). La categoria cliente non fa parte della sessione: resta NULL. GUC vuota o assente = livello saltato. Non valida il valore: e'' compito del lettore. Primo lettore: script.fn_stato_proposto_id. D-13a e D-13b di Tid, R-BE-13 in brief-db-processi-accensione-per-ambiente §6.12.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_get_parameter_di_sessione(config.parameters.code%TYPE, config.parameter_overrides.function_name%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS script.fn_get_parameter_di_sessione(config.parameters.code%TYPE, config.parameter_overrides.function_name%TYPE);

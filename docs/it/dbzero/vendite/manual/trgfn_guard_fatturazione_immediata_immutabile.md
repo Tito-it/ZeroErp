@@ -26,8 +26,14 @@
 
 ### 🎯 Scopo Principale
 
-Impedire la modifica di `fatturazione_immediata` su un documento **già inviato
-in commessa**.
+Impedire la modifica di `fatturazione_immediata` su un documento che sta in una
+commessa **aperta**.
+
+> ⭐ **Dal 2026-10-12** (brief-db-annullo-a-valle-riapre-a-monte, D-14) conta solo
+> la commessa **aperta**, chiesta a
+> [vendite.fn_commessa_viva_di_sorgente](/dbzero/vendite/funzioni/fn_commessa_viva_di_sorgente).
+> Il link verso una commessa chiusa o annullata resta come storia, e il documento
+> torna da mandare: il suo flag torna una scelta da fare.
 
 Il flag decide su quale **corsia** finisce il lavoro:
 
@@ -53,10 +59,12 @@ funzionare. Tre ragioni concorrenti rendono il flag inerte dopo il push:
    emittente, competenza_dal/al)`. Cambiarlo sul documento **non sposta** le
    righe già pushate: quelle stanno in una commessa che è nata con il vecchio
    valore.
-2. **Un documento è legato a una sola commessa per sempre.**
-   `vendite.commesse_sorgenti` ha un `UNIQUE` **globale** su
-   `(sorgente_tipo_id, sorgente_uid)`: ri-pushare verso una commessa di corsia
-   diversa darebbe `E_COMMESSA_ROOT_CONFLITTO`.
+2. **Un documento sta in una sola commessa aperta.** Finché la sua commessa è
+   aperta, ri-pusharlo verso una commessa di corsia diversa darebbe
+   `E_COMMESSA_SORGENTE_ALTRA_COMMESSA` (la porta,
+   `vendite.fn_link_commessa_sorgente`). Fino al 2026-10-12 il legame era «per
+   sempre» (`UNIQUE` globale); ora vale finché la commessa non si chiude o non
+   si annulla.
 3. **Anche potendo, si sposterebbe l'intera commessa**, che è multi-sorgente
    (`ROOT` + N `COLLEGATO`): trascinerebbe con sé documenti che nessuno ha
    chiesto di spostare.
@@ -116,7 +124,7 @@ dell'insert.
 
 | Codice | Quando |
 |---|---|
-| `E_FATT_IMMEDIATA_NON_MODIFICABILE` (561) | il documento ha già una riga in `commesse_sorgenti` |
+| `E_FATT_IMMEDIATA_NON_MODIFICABILE` (561) | il documento sta in una commessa aperta (dal 2026-10-12; prima: qualunque riga in `commesse_sorgenti`) |
 | `E_PARAMETRO_INVALIDO` | `TG_ARGV[0]` mancante o vuoto (trigger mal configurato) |
 | `E_CODICE` | `codice_interno` non presente in `config.sorgenti` |
 | `E_SORG_CONF` | `key_selector` fuori dominio (`id`/`uid`) |

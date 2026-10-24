@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_auth_user_stato(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_auth_user_stato(p_auth_user_id integer)
  RETURNS TABLE(username text, is_active boolean)
@@ -30,6 +32,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_auth_user_stato(p_auth_user_id integer)
 IS 'Lo stato di un utente Django (username, is_active) per auth_user_id. ⭐ Esiste per una ragione sola e va detta: una VISTA si risolve alla CREATE, e le tabelle dello schema django le crea manage.py migrate — non Liquibase — quindi durante il migrate non esistono. Una funzione plpgsql invece e'' late-bound. ⇒ Il DB puo'' CHIAMARE dentro django.*, non puo'' DIPENDERNE strutturalmente (vista, FK, colonna generata): chi ha bisogno di auth_user dentro una vista passa da qui. ⚠️ Zero righe su id assente e'' la risposta giusta, non un errore: e'' la chiave di un join, e in un INNER JOIN LATERAL fa sparire la riga (fail-closed).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -212,7 +212,10 @@ END;
 -- row_security_active() risponde per il current_user, che dentro una SECURITY
 -- DEFINER e' il PROPRIETARIO: false sempre. Provato il 18-09: la stessa riga
 -- senza GUC era rifiutata diretta e passava via config.fn_accoda_email_sistema.
--- La rev del guard: dentro una DEFINER (current_user <> session_user), senza
+-- La rev del guard: dentro una DEFINER (current_user diverso dal ruolo di
+-- sessione: il parametro role, o session_user se none — rev 2026-10-15,
+-- 20261015-06, perche' un utente personale che lavora come proprietario con
+-- SET role non e' una DEFINER), senza
 -- identita', si risolve comunque l'emittente e ci si ferma se la riga HA un
 -- padrone; una riga SENZA padrone passa come prima — ed e' il caso delle email
 -- di sistema (emittente NULL), da cui dipende il reset password senza sessione.
@@ -225,10 +228,10 @@ SELECT lives_ok(
     '7. una DEFINER senza identita'' che scrive una riga SENZA padrone (email di sistema) passa'
 );
 SELECT ok(
-    (SELECT pg_get_functiondef(p.oid) LIKE '%current_user = session_user%'
+    (SELECT pg_get_functiondef(p.oid) LIKE '%current_user = coalesce(nullif(current_setting(''role''), ''none''), session_user)%'
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'script' AND p.proname = 'trgfn_guard_emittente_scope'),
-    '8. il guard distingue «dentro una DEFINER» (current_user <> session_user): la rev C1 e'' in servizio'
+    '8. il guard distingue «dentro una DEFINER» (current_user diverso dal ruolo di sessione): la rev C1 e'' in servizio'
 );
 DO $ctx3$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx3$;
 

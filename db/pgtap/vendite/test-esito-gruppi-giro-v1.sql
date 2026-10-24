@@ -231,9 +231,10 @@ CREATE TEMP TABLE tmp_eg_fattura (slot text, fattura_id bigint);
 WITH inf AS (
   INSERT INTO vendite.fatture (
     registro_id, data, tipo_doc_fiscale_id, stato_doc_fiscale_id,
-    emittente_soggetto_ruolo_id, billing_account_id, meta)
+    emittente_soggetto_ruolo_id, billing_account_id, utility_id, meta)
   SELECT r.registro_id, DATE '2081-02-15', r.tipo_doc_fiscale_id, r.stato_fiscale_id,
          r.ef_sr, r.billing_account_id,
+         (SELECT ba.utility_id FROM anagrafiche.billing_account ba WHERE ba.id = r.billing_account_id),
          jsonb_build_object('test_scope', 'pgtap_esito_gruppi_giro')
     FROM tmp_eg_refs r
   RETURNING id)
@@ -242,9 +243,10 @@ INSERT INTO tmp_eg_fattura SELECT 'F1', id FROM inf;
 WITH inf AS (
   INSERT INTO vendite.fatture (
     registro_id, data, tipo_doc_fiscale_id, stato_doc_fiscale_id,
-    emittente_soggetto_ruolo_id, billing_account_id, meta)
+    emittente_soggetto_ruolo_id, billing_account_id, utility_id, meta)
   SELECT r.registro_id, DATE '2081-02-16', r.tipo_doc_fiscale_id, r.stato_fiscale_id,
          r.ef_sr, r.billing_account_id,
+         (SELECT ba.utility_id FROM anagrafiche.billing_account ba WHERE ba.id = r.billing_account_id),
          jsonb_build_object('test_scope', 'pgtap_esito_gruppi_giro')
     FROM tmp_eg_refs r
   RETURNING id)

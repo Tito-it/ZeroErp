@@ -7,15 +7,22 @@ CREATE FUNCTION fn_push_preventivo_a_ordine(p_preventivo_id bigint, p_righe_ids 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_push_preventivo_a_ordine(p_preventivo_id bigint, p_righe_ids bigint[] DEFAULT NULL::bigint[], p_pratica_id bigint DEFAULT NULL::bigint, p_fatturazione_trigger character varying DEFAULT NULL::character varying, p_flusso_id bigint DEFAULT NULL::bigint)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-24 (20261024-20, brief-modello-documento-vendita N-1/P-2):
+--   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+--   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
+-- rev 2026-10-20 (20261020-58, brief-db-grammatica-unica-documenti, 2d G-6):
+--   l'ambito degli indirizzi ORDINI diventa ORDINE_VENDITA, il codice
+--   della sorgente; firma e RETURNS ancorati.
 DECLARE
     v_stato_accettato_id   config.stati_doc_preventivi.id%TYPE;
     v_stato_draft_ord_id   config.stati_doc_ordini.id%TYPE;
-    v_stato_evaso_id       config.stati_doc_preventivi.id%TYPE;
     v_ba_id                vendite.preventivi.billing_account_id%TYPE;
     v_utility_id           vendite.preventivi.utility_id%TYPE;
     v_emittente_fiscale_id vendite.preventivi.emittente_fiscale_id%TYPE;
@@ -114,9 +121,9 @@ BEGIN
     SELECT soggetto_ruolo_id INTO v_emittente_sr_id
       FROM anagrafiche.emittenti_fiscali WHERE id = v_emittente_fiscale_id;
 
-    SELECT id INTO v_stato_draft_ord_id
-      FROM config.stati_doc_ordini
-     WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
+    -- Lo stato iniziale delle RIGHE dell'ordine, dal vocabolario (rev
+    -- 2026-10-24): la testata lo riceve dal trigger della nascita.
+    v_stato_draft_ord_id := script.fn_stato_iniziale_id('config.stati_doc_ordini'::regclass);
 
     v_fatt_trigger := p_fatturazione_trigger;   -- NULL = «non scelto» -> eredita dal BA (trgfn_ordini_normalize)
 
@@ -144,12 +151,12 @@ BEGIN
     INSERT INTO vendite.ordini (
         soggetto_ruolo_id, billing_account_id, utility_id, valuta_id,
         termine_pagamento_id, emittente_fiscale_id, data,
-        stato_doc_ordine_id, fatturazione_trigger,
+        fatturazione_trigger,
         documento_origine_tipo, documento_origine_id)
     VALUES (
         v_soggetto_ruolo_id, v_ba_id, v_utility_id, v_valuta_id,
         v_termine_pag_id, v_emittente_fiscale_id, v_data,
-        v_stato_draft_ord_id, v_fatt_trigger,
+        v_fatt_trigger,
         'PREVENTIVO', p_preventivo_id)
     RETURNING id INTO v_ordine_id;
 
@@ -164,7 +171,7 @@ BEGIN
       FROM vendite.preventivi_indirizzi pi
       JOIN config.tipi_indirizzi_allowed a
         ON a.tipo_indirizzo_id = pi.tipo_indirizzo_id
-       AND a.ambito = 'ORDINI'
+       AND a.ambito = 'ORDINE_VENDITA'
        AND a.attivo IS TRUE
      WHERE pi.preventivo_id = p_preventivo_id
     ON CONFLICT (ordine_id, tipo_indirizzo_id) DO NOTHING;
@@ -182,6 +189,7 @@ BEGIN
                -- preventivo, esposta dalla vista in 20260913-16. Si porta avanti
                -- qui, nel punto in cui il documento cambia natura, o si perde.
                v.data_consegna_richiesta_cliente,
+               v.natura_vendita_id,
                a.is_composito,
                row_number() OVER (ORDER BY v.ordine NULLS LAST, v.id) AS rn
           FROM vendite.vw_preventivi_righe_smistabili_ordine v
@@ -195,7 +203,7 @@ BEGIN
             prezzo_unitario, sconto_percentuale, iva_id,
             qta_operativa, uom_operativa_id, factor_to_base,
             stato_doc_ordine_id, preventivo_riga_id,
-            data_consegna_richiesta_cliente)
+            data_consegna_richiesta_cliente, natura_vendita_id)
         VALUES (
             v_ordine_id, v_riga.rn::integer, v_riga.articolo_id,
             COALESCE(v_riga.descrizione,
@@ -210,7 +218,18 @@ BEGIN
             v_stato_draft_ord_id, v_riga.riga_id,
             -- La richiesta del cliente si copia; la conferma (nostra) resta
             -- NULL: su un preventivo non c'e' ancora niente da confermare.
-            v_riga.data_consegna_richiesta_cliente)
+            -- rev 2026-10-13 (collaudo date di consegna, decisione di Tid): una
+            -- richiesta ANTERIORE alla data dell'ordine arriva NULL. La regola e'
+            -- script.fn_data_consegna_ammessa, la stessa del guard di riga. Non si
+            -- rifiuta (il preventivo e' fuori bozza: li' la data non si
+            -- correggerebbe piu') e non si porta alla data dell'ordine (sarebbe una
+            -- richiesta che il cliente non ha fatto): quella vera resta sulla riga
+            -- di preventivo, raggiungibile da preventivo_riga_id.
+            CASE WHEN script.fn_data_consegna_ammessa(v_riga.data_consegna_richiesta_cliente, v_data)
+                 THEN v_riga.data_consegna_richiesta_cliente END,
+            -- La natura con cui il preventivo ha venduto la riga (A-4): la
+            -- riga d'ordine la porta, anche se l'articolo nel frattempo e' cambiato.
+            v_riga.natura_vendita_id)
         RETURNING id INTO v_new_riga_id;
 
         -- 6) BoM CASO A: prezzi snapshot del preventivo come override
@@ -251,35 +270,24 @@ BEGIN
         DO NOTHING;
     END IF;
 
-    -- 8) Gate EVASO bi-ramo (atomico con la creazione ordine, finding #10):
-    --    se non resta residuo smistabile su NESSUN ramo (merce->ordine +
-    --    servizi->commessa, predicati DB simmetrici) il preventivo ACCETTATO
-    --    transita a EVASO. Sostituisce la chiamata separata (non atomica)
-    --    transiziona_a_evaso_se_smistato del service: la transizione ora
-    --    rolla insieme all'ordine se qualcosa fallisce.
-    IF NOT vendite.fn_preventivo_ha_residuo_ordine(p_preventivo_id)
-       AND NOT vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id) THEN
-        SELECT id INTO v_stato_evaso_id
-          FROM config.stati_doc_preventivi
-         WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
-        IF NOT FOUND THEN
-            PERFORM script.fn_log_and_raise_error(
-                'vendite', 'fn_push_preventivo_a_ordine', 'E_CONFIG_MANCANTE',
-                jsonb_build_object('config', 'config.stati_doc_preventivi.EVASO'),
-                NULL::uuid, 'stato EVASO (config.stati_doc_preventivi)');
-        END IF;
-        UPDATE vendite.preventivi
-           SET stato_doc_preventivo_id = v_stato_evaso_id
-         WHERE id = p_preventivo_id;
-    END IF;
+    -- 8) Lo stato del preventivo dal suo smistamento (atomico con la
+    --    creazione dell'ordine, finding #10): ACCETTATO senza residuo su
+    --    nessuna strada -> EVASO. rev 2026-10-12 (20261012-13): la regola
+    --    non e' piu' scritta qui ma nel BB
+    --    vendite.fn_preventivo_proietta_stato_smistamento, la sede unica che
+    --    leggono anche l'annullo dell'ordine e l'invio in commessa
+    --    (brief-db-annullo-a-valle-riapre-a-monte, D-10).
+    PERFORM vendite.fn_preventivo_proietta_stato_smistamento(p_preventivo_id);
 
     RETURN v_ordine_id;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_preventivo_a_ordine(p_preventivo_id bigint, p_righe_ids bigint[], p_pratica_id bigint, p_fatturazione_trigger character varying, p_flusso_id bigint)
-IS 'Push preventivo ACCETTATO -> ordine DRAFT (testata + righe + BoM). Aggancio pratica opzionale (ROOT preventivo + COLLEGATO ordine con flusso_id, D-B). Sezione 8: gate EVASO bi-ramo atomico (finding #10 analisi-fix-transazioni): niente piu'' ordine creato + preventivo bloccato in ACCETTATO. p_flusso_id DEFAULT NULL retro-compatibile. rev 2026-08-17: p_fatturazione_trigger NON viene piu'' portato a ''CONFERMATO'' con un COALESCE locale — passa in testata cosi'' com''e'', NULL compreso, e la risoluzione (testata -> billing_account -> CONFERMATO) sta in un posto solo, vendite.trgfn_ordini_normalize. Prima questa funzione raccoglieva il parametro e quel trigger lo sovrascriveva un istante dopo: il parametro era inerte (segnalazione BE 2026-08-16; brief-be-fan-out-isolato-e-esito-parziale.md §13.2, brief-design-fatturazione-due-lenti.md §6-quater DL-19). ⭐ rev 2026-08-24: il rifiuto porta il BERSAGLIO sul preventivo, e lo cita per ID — primo uso reale di config.tipi_entita.key_selector: il progetto indirizza preventivi e offerte con l''uid (come dichiara config.sorgenti), e mandare l''id numerico avrebbe prodotto un pulsante che non apre niente. ⛔ Solo se il preventivo ESISTE: questo errore copre due casi — «non c''e''» e «c''e'' ma non e'' ACCETTATO» — e solo il secondo ha un posto dove mandare qualcuno; se non esiste, il messaggio si mostra lo stesso e il pulsante non compare. ⚠️ La lettura dell''uid e'' senza filtro di stato: quello di sopra ha appena fallito proprio per lo stato. Brief: brief-db-bersaglio-errore.md §6 L6. ⚠️ rev 2026-08-24 (correzione): il bersaglio cita l''ID e non piu'' l''uid. Rilievo del backend, misurato: le rotte del preventivo sono <int:preventivo_id> e gli endpoint che accettano un uid sono zero — un bersaglio a uid avrebbe prodotto un pulsante che non apre niente, cioe'' esattamente il difetto che config.tipi_entita.key_selector esiste per evitare. ⭐ La lezione: quella colonna dice con quale chiave si RAGGIUNGE l''entita'', e il valore si misura sulle ROTTE; config.sorgenti.key_selector dice un''altra cosa (con quale chiave il lineage collega il documento) e non si eredita. ⭐ rev 2026-09-13 (P-5, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 2.4): porta avanti data_consegna_richiesta_cliente dalla riga di preventivo alla riga d''ordine, leggendola dalla vista-predicato vw_preventivi_righe_smistabili_ordine (20260913-16) e non con un JOIN suo, che sarebbe una seconda sede della stessa lista di righe. Senza, la data si perdeva nel punto in cui il documento cambia natura, cioe'' dove gli utenti smetterebbero di fidarsene. data_consegna_confermata resta NULL: e'' la promessa nostra e si decide alla conferma dell''ordine. Tolto il nome morto trgfn_ordini_gen_codice dal commento del passo 4 (era dichiarato «alla prossima occasione» nel brief prefisso-sul-registro 6.3): il numero lo assegna trgfn_ordini_gen_numero dal motore dei registri. ⚠️ rev 2026-09-14: nessun cambio di comportamento — la FIRMA torna ANCORATA (%TYPE su preventivi.id, pratiche.pratiche.id, ordini.fatturazione_trigger, pratiche.flussi.id, RETURNS ordini.id) com''era in 20260824-02: 20260824-10 e 20260913-20 l''avevano ricopiata sciolta dal corpo vivo di pg_get_functiondef, che scioglie i %TYPE al CREATE. Identita'' byte-identica, nessun overload.';
+IS 'Push preventivo ACCETTATO -> ordine DRAFT (testata + righe + BoM). Aggancio pratica opzionale (ROOT preventivo + COLLEGATO ordine con flusso_id, D-B). Sezione 8: gate EVASO bi-ramo atomico (finding #10 analisi-fix-transazioni): niente piu'' ordine creato + preventivo bloccato in ACCETTATO. p_flusso_id DEFAULT NULL retro-compatibile. rev 2026-08-17: p_fatturazione_trigger NON viene piu'' portato a ''CONFERMATO'' con un COALESCE locale — passa in testata cosi'' com''e'', NULL compreso, e la risoluzione (testata -> billing_account -> CONFERMATO) sta in un posto solo, vendite.trgfn_ordini_normalize. Prima questa funzione raccoglieva il parametro e quel trigger lo sovrascriveva un istante dopo: il parametro era inerte (segnalazione BE 2026-08-16; brief-be-fan-out-isolato-e-esito-parziale.md §13.2, brief-design-fatturazione-due-lenti.md §6-quater DL-19). ⭐ rev 2026-08-24: il rifiuto porta il BERSAGLIO sul preventivo, e lo cita per ID — primo uso reale di config.tipi_entita.key_selector: il progetto indirizza preventivi e offerte con l''uid (come dichiara config.sorgenti), e mandare l''id numerico avrebbe prodotto un pulsante che non apre niente. ⛔ Solo se il preventivo ESISTE: questo errore copre due casi — «non c''e''» e «c''e'' ma non e'' ACCETTATO» — e solo il secondo ha un posto dove mandare qualcuno; se non esiste, il messaggio si mostra lo stesso e il pulsante non compare. ⚠️ La lettura dell''uid e'' senza filtro di stato: quello di sopra ha appena fallito proprio per lo stato. Brief: brief-db-bersaglio-errore.md §6 L6. ⚠️ rev 2026-08-24 (correzione): il bersaglio cita l''ID e non piu'' l''uid. Rilievo del backend, misurato: le rotte del preventivo sono <int:preventivo_id> e gli endpoint che accettano un uid sono zero — un bersaglio a uid avrebbe prodotto un pulsante che non apre niente, cioe'' esattamente il difetto che config.tipi_entita.key_selector esiste per evitare. ⭐ La lezione: quella colonna dice con quale chiave si RAGGIUNGE l''entita'', e il valore si misura sulle ROTTE; config.sorgenti.key_selector dice un''altra cosa (con quale chiave il lineage collega il documento) e non si eredita. ⭐ rev 2026-09-13 (P-5, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 2.4): porta avanti data_consegna_richiesta_cliente dalla riga di preventivo alla riga d''ordine, leggendola dalla vista-predicato vw_preventivi_righe_smistabili_ordine (20260913-16) e non con un JOIN suo, che sarebbe una seconda sede della stessa lista di righe. Senza, la data si perdeva nel punto in cui il documento cambia natura, cioe'' dove gli utenti smetterebbero di fidarsene. data_consegna_confermata resta NULL: e'' la promessa nostra e si decide alla conferma dell''ordine. Tolto il nome morto trgfn_ordini_gen_codice dal commento del passo 4 (era dichiarato «alla prossima occasione» nel brief prefisso-sul-registro 6.3): il numero lo assegna trgfn_ordini_gen_numero dal motore dei registri. ⚠️ rev 2026-09-14: nessun cambio di comportamento — la FIRMA torna ANCORATA (%TYPE su preventivi.id, pratiche.pratiche.id, ordini.fatturazione_trigger, pratiche.flussi.id, RETURNS ordini.id) com''era in 20260824-02: 20260824-10 e 20260913-20 l''avevano ricopiata sciolta dal corpo vivo di pg_get_functiondef, che scioglie i %TYPE al CREATE. Identita'' byte-identica, nessun overload. ⭐ rev 2026-10-12 (20261012-13, brief-db-annullo-a-valle-riapre-a-monte D-10): la sezione 8 non scrive piu'' la regola EVASO: chiama il BB vendite.fn_preventivo_proietta_stato_smistamento, la sede unica di ACCETTATO <-> EVASO, che leggono anche l''annullo dell''ordine (vendite.fn_documento_ritira_legami) e l''invio in commessa (trigger sulle righe di commessa). Comportamento invariato su questo percorso; firma invariata. ⭐ rev 2026-10-13 (20261013-11, brief-db-articoli-ammessi-per-documento A-4): la riga d''ordine porta la natura della riga di preventivo (natura_vendita_id da vw_preventivi_righe_smistabili_ordine), che script.trgfn_righe_natura_vendita in modo CHIAMANTE accetta: la natura venduta e'' quella del preventivo, non quella che l''articolo ha oggi. Firma invariata. ⭐ rev 2026-10-13 (20261013-67, collaudo date di consegna, decisione di Tid): una data_consegna_richiesta_cliente ANTERIORE alla data dell''ordine arriva NULL sulla riga d''ordine (script.fn_data_consegna_ammessa, la regola del guard di riga script.trgfn_doc_righe_guard_data_consegna). Non si rifiuta il push — il preventivo e'' fuori bozza e la data li'' non si correggerebbe piu'' — e non si porta alla data dell''ordine, che sarebbe una richiesta mai fatta dal cliente: quella vera resta sulla riga di preventivo (preventivo_riga_id), l''ordine nasce DRAFT e l''operatore la riscrive. Firma invariata. Rev 2026-10-20 (20261020-58, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi ORDINI diventa ORDINE_VENDITA, il codice della sorgente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

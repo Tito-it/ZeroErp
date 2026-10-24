@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_contratti_da_pushare
 -- ------------------------------------------------------------
@@ -8,7 +9,7 @@
 -- 2) Riferimenti minimi disponibili
 -- 3) Contratto ATTIVO in validita restituito
 -- 4) Segment key include competenza_mese (CONTR:<uid>:R:<id>:M:<YYYY-MM>)
--- 5) tipo_consumo = l'erogazione della riga (UNA_TANTUM), senza ripiego
+-- 5) meta.tipo_erogazione = l'erogazione della riga (UNA_TANTUM), senza ripiego
 -- 6) prezzo_bloccato = TRUE quando prezzo_unitario presente
 -- 7) Contratto non ATTIVO escluso
 -- 8) Filtro p_billing_account_id rispettato
@@ -186,7 +187,7 @@ SELECT ok(
     SELECT 1
     FROM tmp_result_contr rc
     WHERE rc.contratto_id = (SELECT id FROM tmp_contratto)
-      AND rc.segment_key = 'CONTR:' || (SELECT uid FROM tmp_contratto)::text
+      AND rc.segment_key = 'CONTRATTO:' || (SELECT uid FROM tmp_contratto)::text
                             || ':R:' || (SELECT id FROM tmp_contratto_riga)::text
                             || ':M:' || to_char(
                                 date_trunc('month',
@@ -202,8 +203,11 @@ SELECT ok(
 );
 
 -- ============================================================
--- 3) tipo_consumo = l'erogazione della riga
+-- 3) meta.tipo_erogazione = l'erogazione della riga
 -- ============================================================
+-- 🔴 Riscritto il 2026-10-13 (20261013-19): la colonna tipo_consumo, dove
+--   finiva l'erogazione, e' ritirata (la madre la rifiutava). L'erogazione
+--   viaggia in meta.tipo_erogazione, ed e' li' che si guarda.
 -- 🔴 Riscritto il 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate R4).
 --   Pinnava il ripiego COALESCE(tipo_erogazione, 'CANONE'): una riga senza
 --   erogazione andava in fattura come canone senza che nessuno l'avesse scelto.
@@ -213,9 +217,9 @@ SELECT ok(
     SELECT 1
     FROM tmp_result_contr rc
     WHERE rc.contratto_id = (SELECT id FROM tmp_contratto)
-      AND rc.tipo_consumo = 'UNA_TANTUM'
+      AND rc.meta ->> 'tipo_erogazione' = 'UNA_TANTUM'
   ),
-  'tipo_consumo = l''erogazione della riga (UNA_TANTUM), senza ripiego'
+  'meta.tipo_erogazione = l''erogazione della riga (UNA_TANTUM), senza ripiego'
 );
 
 -- ============================================================

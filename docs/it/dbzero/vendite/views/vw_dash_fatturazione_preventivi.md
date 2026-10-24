@@ -3,9 +3,11 @@
 
 > 📝 **Descrizione**
 >
-> Dashboard fatturazione: resolver area PREVENTIVI. Valore imponibile totale vs transitato (vw_preventivi_smistamento_righe, ramo commessa EMESSA). Competenza COALESCE(competenza_mese, mese validita_dal, mese data). is_abortito=esito NEGATIVO (null-safe). cliente_display=ragione sociale intestatario istanza (path vw_preventivi_lista). Consumata da vw_dash_fatturazione_documenti.
+> Dashboard fatturazione: resolver area PREVENTIVI. Valore imponibile totale vs transitato (vw_preventivi_smistamento_righe, ramo commessa EMESSA). Competenza COALESCE(competenza_mese, mese validita_dal, mese data). is_abortito=esito NEGATIVO (null-safe). cliente_display=ragione sociale intestatario istanza (path vw_preventivi_lista). Consumata da vw_dash_fatturazione_documenti. Rev 2026-10-20 (20261020-70, brief-db-grammatica-unica-documenti 2d, G-6): l'area PREVENTIVI diventa PREVENTIVO, il codice della sorgente (il plurale e' ritirato).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
+<div data-search-exclude markdown>
 
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_preventivi
@@ -18,7 +20,7 @@ WITH righe AS (
            FROM (vendite.vw_preventivi_smistamento_righe sr
              JOIN vendite.preventivi_righe pr ON ((pr.id = sr.riga_id)))
         )
- SELECT 'PREVENTIVI'::character varying AS area,
+ SELECT 'PREVENTIVO'::character varying AS area,
     COALESCE(p.competenza_mese, (date_trunc('month'::text, (p.validita_dal)::timestamp with time zone))::date, (date_trunc('month'::text, (p.data)::timestamp with time zone))::date) AS competenza_mese,
     p.id AS documento_id,
     (p.uid)::text AS documento_uid,
@@ -52,6 +54,8 @@ WITH righe AS (
   WHERE p.is_attiva
   GROUP BY p.id, p.uid, p.numero, p.competenza_mese, p.validita_dal, p.data, p.emittente_fiscale_id, sdp.codice_interno, sdp.codice, sdp.fase, sdp.esito, s.ragione_sociale_completa;
 ```
+
+</div>
 
 
 ---

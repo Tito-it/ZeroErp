@@ -35,6 +35,7 @@ View: `ApiRunLottoPipelineUntilDone` (`apps.vendite.api.views`).
 - Path canonico: `/api/v1/vendite/pipeline/run-until-done/`
 - Header richiesto: `Idempotency-Key`
 - Header sicurezza: `Authorization: Bearer <access_token>`
+- Permesso: `post_permission = "genera_fatture_lotti"` (area `vendite`)
 - Body JSON (identico a `pipeline/run/`, tutti i campi opzionali):
   - `lotto_id` (int) — `0`/`null` = crea/risolvi lotto
   - `competenza_mese` (date `YYYY-MM-DD`)
@@ -45,7 +46,7 @@ View: `ApiRunLottoPipelineUntilDone` (`apps.vendite.api.views`).
   - `lock_batch_id` (uuid) — correlatore lotto
   - `meta` (object) — metadati liberi; la chiave `fatturazione_immediata` (bool)
     porta la **corsia** (filtro propagato al pull); vedi `run_fatturazione_batch`
-  - `dry_run` (bool)
+  - `dry_run` (bool JSON stretto: una stringa o un numero → `400 E_VALIDATION_INPUT`)
   - `tipo_lotto` (string) — `MASSIVO` (default) o `GIORNALIERO`
 
 ⚠️ **`data_documento` NON è esposta qui, ed è deliberato** (2026-08-25). Il

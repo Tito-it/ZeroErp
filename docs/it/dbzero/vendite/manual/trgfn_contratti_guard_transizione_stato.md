@@ -197,6 +197,28 @@ bozza*. Per il contratto vuol dire: non si attiva.
 
 ---
 
+### Rev 2026-10-20 — sopra un contratto vincolante non si attiva, e lo dice
+
+Un contratto non si attiva se il suo periodo si sovrappone a un altro contratto
+**vincolante** (attivo o cessato, cioè né bozza né annullato) dello stesso cliente,
+punto di fornitura, utility e ambito.
+
+* Prima lo fermava solo il vincolo di esclusione `ex_contratti_no_overlap`, con un
+  errore generico che non nominava il contratto in conflitto. Il vincolo resta come
+  difesa dura: lo prende chi scrive un contratto già vincolante senza passare da una
+  transizione (un INSERT diretto in ATTIVO).
+* Il controllo lo fa
+  [`script.fn_check_contratto_sovrapposto`](/dbzero/script/funzioni/fn_check_contratto_sovrapposto);
+  qui si solleva il primo motivo, dopo prezzi e indirizzi:
+  `E_CONTRATTO_OVERLAP_ESISTENTE`, col numero del contratto in conflitto.
+* Si giudicano le date **nuove**: chi attiva e sposta le date nella stessa
+  scrittura viene giudicato sul periodo che sta scrivendo.
+* Il pulsante «Attiva» si spegne con lo stesso motivo.
+
+(changeSet `20261020-21`, richiesta del backend del 2026-10-19.)
+
+---
+
 {% include-markdown "signature-core.md" %}
 
 ---

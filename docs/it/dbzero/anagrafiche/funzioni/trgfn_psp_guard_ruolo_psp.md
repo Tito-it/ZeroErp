@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_psp_guard_ruolo_psp()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_psp_guard_ruolo_psp()
  RETURNS trigger
@@ -32,6 +34,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_psp_guard_ruolo_psp()
 IS 'Valida che soggetto_ruolo_id sia coerente con il ruolo PSP.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

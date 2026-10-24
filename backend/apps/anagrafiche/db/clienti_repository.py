@@ -15,7 +15,6 @@ from typing import Any
 from django.db import connection
 
 from apps.core.api.constants import DEFAULT_LIMIT
-from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
@@ -24,7 +23,6 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
 )
-from apps.core.db.sql_write_helpers import execute_dynamic_insert
 
 
 # Whitelist colonne ammesse per ORDER BY: chiave = `campo_sorgente` del catalogo
@@ -58,28 +56,6 @@ _RICERCA_CLIENTI = RicercaFull(
     ("ragione_sociale_completa", "ba_codice", "soggetto_codice", "id_fiscale_univoco_cf_piva"),
 )
 
-
-# Colonne scrivibili in creazione del cliente. Whitelist RIGIDA del BB
-# `execute_dynamic_insert` (2026-09-26).
-# ⚠️ `stato_cliente_id` e `data_attivazione` ci sono perche' il BB fa passare
-#    la whitelist anche alle colonne delle `espressioni`: le scrivono le
-#    espressioni di `create_cliente` (AT, `fn_data_operativa()`), e se arrivassero
-#    ANCHE fra i valori il BB rifiuterebbe (due risposte alla stessa domanda)
-#    — non puo' sceglierle il chiamante.
-# ⛔ Sei chiavi tolte il 2026-08-29 (I0/I8 del brief
-#    brief-be-fe-iva-risolutore-e-regime-cliente): `iva_id`, `cliente_pa`,
-#    `split_payment`, `codice_cig`, `codice_cup`, `codice_commessa` non sono
-#    piu' colonne di `anagrafiche.clienti`. Le loro sedi: i due flag su
-#    `anagrafiche.soggetti` (D8 — la PA e' una proprieta' dell'ENTE, non della
-#    fornitura), i tre codici su `vendite.contratti` (D9 — nominano un
-#    contratto, non un cliente), l'IVA in nessuna colonna di default (D7-bis).
-_CLIENTE_CREATE_ALLOWED: frozenset[str] = frozenset({
-    "istanza_utility_id", "billing_account_id", "soggetto_ruolo_id",
-    "stato_cliente_id", "data_attivazione",
-    "termine_pagamento_id", "modalita_pagamento_id",
-    "servizio_da_fatturare",
-    "garanzia_tipo", "garanzia_importo",
-})
 
 # Campi editabili sul cliente (pagamento, garanzia, servizio).
 # ATTENZIONE: questo set DEVE restare allineato alla whitelist interna della
@@ -128,30 +104,6 @@ class ClientiRepository:
             cursor.execute(sql, [utility_id])
             return row_to_dict(cursor)
 
-    # Scopo: Ottiene o crea il ruolo CLIENTE per un soggetto.
-    #        Delega alla funzione DB script.fn_get_or_create_soggetto_ruolo.
-    def get_or_create_ruolo_cliente(self, soggetto_id: str) -> int:
-        return get_or_create_soggetto_ruolo(soggetto_id, 'CL')
-
-    # Scopo: Crea istanza utility fittizia (senza PDP).
-    #        Nota: istanze_utilities non ha utility_id; l'utility viene propagata
-    #        dal billing_account al cliente tramite trigger trgfn_clienti_sync_utility_from_ba.
-    def create_istanza_fittizia(
-        self, *, soggetto_id: str,
-        indirizzo_dettaglio_id: int | None = None,
-    ) -> int:
-        sql = """
-            INSERT INTO anagrafiche.istanze_utilities
-                   (soggetto_id, fittizia, indirizzo_dettaglio_id)
-            VALUES (%s, true, %s)
-            RETURNING id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_id, indirizzo_dettaglio_id])
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
-
     # Scopo: Wrapper script.fn_check_user_can_create_ba. Vedi WIP refactor
     #        operatore-emittenti Q6 (la motivazione di dominio sta nel service).
     def check_user_can_create_ba(self, auth_user_id: int) -> bool:
@@ -163,68 +115,57 @@ class ClientiRepository:
             row = cursor.fetchone()
         return bool(row[0]) if row else False
 
-    # Scopo: Crea billing account per un'istanza e un ruolo soggetto.
-    #        Il codice viene generato dal trigger trgfn_billing_account_gen_codice.
-    #        Il default di fatturazione_ordini e' gestito dal DB (CONFERMATO).
-    #        L'auto-link BA -> emittente fiscale viene gestito dal trigger
-    #        z90 trgfn_billing_account_link_ef leggendo la GUC
-    #        app.current_user_id (settata da JwtAuditMiddleware).
-    def create_billing_account(
-        self, *, istanza_utility_id: int, soggetto_ruolo_id: int,
-        utility_id: int, fatturazione_ordini: str | None = None,
-        parent_account_id: int | None = None,
-        categoria_cliente_id: int,
-    ) -> int:
-        # categoria_cliente_id e' obbligatorio: il service deve averlo gia'
-        # risolto (dal payload `ba_categoria_cliente_id`). La colonna DB e'
-        # NOT NULL post-backfill F1-DB-03; la FK e' validata dal trigger
-        # `fk_billing_account_categoria_cliente`.
-        # ⭐ BB core `execute_dynamic_insert` (2026-09-26). `allowed=None`:
-        #    le chiavi sono i kwargs LETTERALI di questo metodo. `skip_none`:
-        #    un `fatturazione_ordini` None si omette e decide il DEFAULT del DB
-        #    (CONFERMATO), come prima; un `parent_account_id` None prima si
-        #    scriveva NULL e ora si omette — la colonna e' nullable SENZA
-        #    default, quindi e' NULL comunque.
-        riga = execute_dynamic_insert(
-            "anagrafiche.billing_account",
-            {
-                "istanza_utility_id": istanza_utility_id,
-                "soggetto_ruolo_id": soggetto_ruolo_id,
-                "utility_id": utility_id,
-                "parent_account_id": parent_account_id,
-                "categoria_cliente_id": categoria_cliente_id,
-                "fatturazione_ordini": fatturazione_ordini,
-            },
-            allowed=None,
-            skip_none=True,
-        )
-        return riga["id"]
-
-    # Scopo: Crea record cliente con stato ATTIVO.
-    #        I trigger DB gestiscono: sync_utility, set_periodo, sync_pdp, guard.
-    #        Le colonne opzionali sono incluse solo se valorizzate; il DB ha un
-    #        default o un trigger per i campi NOT NULL rimanenti.
-    #        ⭐ BB core `execute_dynamic_insert` (2026-09-26): stato AT e data
-    #        di attivazione sono `espressioni` letterali (sottoquery su un
-    #        codice fisso, `fn_data_operativa()`), le altre colonne passano la
-    #        whitelist RIGIDA `_CLIENTE_CREATE_ALLOWED` — fuori lista e'
-    #        `RuntimeError`, prima era uno scarto silenzioso. Le chiavi le
-    #        sceglie il service per NOME (`crea_cliente`), non il client.
-    #        `skip_none=True`: un opzionale None si omette (DEFAULT del DB).
-    def create_cliente(self, **kwargs: Any) -> int:
-        riga = execute_dynamic_insert(
-            "anagrafiche.clienti",
-            kwargs,
-            allowed=_CLIENTE_CREATE_ALLOWED,
-            skip_none=True,
-            espressioni={
-                "stato_cliente_id": (
-                    "(SELECT id FROM config.stati_cliente WHERE codice_interno = 'AT')"
-                ),
-                "data_attivazione": "(SELECT script.fn_data_operativa())",
-            },
-        )
-        return riga["id"]
+    # Scopo: Crea il cliente con la madre del DB `anagrafiche.fn_crea_cliente`:
+    #        ruolo CL (get_or_create), la fornitura — un billing account NUOVO
+    #        dal BB `fn_crea_billing_account` (istanza fittizia compresa, se non
+    #        se ne indica una) oppure quello indicato —, la riga di clienti
+    #        (senza stato: AT dalla data operativa), il contatto del ruolo se
+    #        c'e' e gli indirizzi del ruolo. `billing_account` e `istanza` sono
+    #        i campi del BA e dell'istanza NUOVI (`{}` con un BA esistente).
+    #        Ritorna `(cliente_id, billing_account_id, istanza_utility_id,
+    #        soggetto_ruolo_id)`.
+    # ⭐ Dal 2026-10-18 (2b-2, lotto 5): fino ad allora i sei passi stavano nel
+    #    service, ognuno con la sua INSERT.
+    def crea_cliente(
+        self, *,
+        soggetto_id: str,
+        utility_id: int,
+        campi: dict[str, Any],
+        billing_account: dict[str, Any],
+        contatto: dict[str, Any] | None,
+        indirizzi: list[dict[str, Any]],
+        billing_account_id: int | None,
+        istanza_utility_id: int | None,
+        istanza: dict[str, Any],
+    ) -> tuple[int, int, int, int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT cliente_id, billing_account_id, istanza_utility_id, soggetto_ruolo_id
+                  FROM anagrafiche.fn_crea_cliente(
+                           p_soggetto_id        := %s::uuid,
+                           p_utility_id         := %s::integer,
+                           p_campi              := %s::jsonb,
+                           p_billing_account    := %s::jsonb,
+                           p_contatto           := %s::jsonb,
+                           p_indirizzi          := %s::jsonb,
+                           p_billing_account_id := %s::bigint,
+                           p_istanza_utility_id := %s::bigint,
+                           p_istanza            := %s::jsonb)
+                """,
+                [
+                    soggetto_id, utility_id,
+                    json.dumps(campi, default=str),
+                    json.dumps(billing_account, default=str),
+                    json.dumps(contatto) if contatto is not None else None,
+                    json.dumps(indirizzi, default=str),
+                    billing_account_id, istanza_utility_id,
+                    json.dumps(istanza, default=str),
+                ],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0]), int(row[1]), int(row[2]), int(row[3])
 
     # =================================================================
     # Validazione entita' esistenti
@@ -467,8 +408,8 @@ class ClientiRepository:
     #        piu' stato parziale con la categoria BA committata e l'UPDATE
     #        cliente fallito (fix analisi-fix-transazioni Classe A, finding #1;
     #        prima erano due UPDATE separati in autocommit).
-    #        Risultato: dict {categoria_aggiornata, campi_aggiornati}; il service
-    #        decide se sollevare "nessun campo modificato" quando entrambi False.
+    #        Risultato: dict {categoria_aggiornata, campi_aggiornati}. Il payload
+    #        vuoto lo rifiuta il service PRIMA di chiamare qui (400).
     #        La fn e' SECURITY INVOKER: RLS e scope emittente su billing_account
     #        restano valutati come dal Python (vincolo invariante §2-bis).
     #

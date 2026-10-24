@@ -46,16 +46,9 @@
 #        con `E_PROCESSO_AVVIO_TROPPO_LUNGO`: non e' un guasto, e' un limite
 #        dichiarato dell'attrezzo — il rimedio e' `avvio_manuale: false` nel
 #        dichiarato, non riparare qualcosa.
-#        ⛔ SI UCCIDE IL GRUPPO, NON IL SOLO FIGLIO. Il sottoprocesso parte in
-#        una sessione sua (`start_new_session`) e sul tetto si manda `SIGKILL`
-#        al suo gruppo: `subprocess.run(timeout=…)` ucciderebbe solo il figlio
-#        diretto, e un management command che avesse avviato a sua volta un
-#        processo lo lascerebbe orfano e vivo — con «e' stato interrotto»
-#        scritto nel lavoro. Il modello lo ammette (un command puo' lanciare
-#        cio' che vuole), quindi il tetto si costruisce su quello. Lo stesso
-#        colpo parte se e' il DRENATORE a essere interrotto mentre aspetta
-#        (`KeyboardInterrupt`, segnale): un figlio in sessione propria non lo
-#        riceve da solo.
+#        ⛔ SI UCCIDE IL GRUPPO, NON IL SOLO FIGLIO: sessione propria e
+#        `SIGKILL` al gruppo sul tetto o sull'interruzione del drenatore. Il
+#        perche' sta nel BB `apps.core.services.sottoprocesso`, che lo fa.
 #
 #        ⛔ TUTTI GLI ESITI NEGATIVI SONO TERMINALI (`contesto_terminale`). Il
 #        tipo ha `max_tentativi = 1` a catalogo (brief §2: un processo caduto a
@@ -80,11 +73,11 @@ from __future__ import annotations
 
 import logging
 import os
-import signal
 import subprocess
 import time
 from typing import Any
 
+from apps.core.db.processi_repository import ProcessiRepository
 from apps.core.services.avvio_manuale import (
     E_AVVIO_FALLITO,
     E_AVVIO_TROPPO_LUNGO,
@@ -93,22 +86,24 @@ from apps.core.services.avvio_manuale import (
     motivi_esegui_ora,
 )
 from apps.core.services.coda_lavori.context import E_SCOPE_OPERATORE
+from apps.core.services.sottoprocesso import lancia_con_tetto
 from apps.core.services.coda_lavori.drain_engine import contesto_terminale
 from apps.core.services.job_run import (
     ENV_JOB_AUTH_USER_ID,
     ENV_JOB_ORIGINE,
     ORIGINE_COMMAND,
 )
-from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
+from apps.core.services.processi_service import E_NOT_FOUND
+from apps.core.services.service_errors import E_CONFIG_MANCANTE, E_VALIDATION_INPUT, ServiceError
 from apps.core.services.sveglie import RUN_COMMAND, Sveglia, sveglia_di_processo
 
 logger = logging.getLogger(__name__)
 
 # Codici RIUSATI, perche' la condizione e' la stessa di dove sono nati
 # (brief §9.1): payload che non risolve nel dichiarato, wrapper assente, scope
-# senza l'attore.
+# senza l'attore. `E_CONFIG_MANCANTE` (wrapper assente) viene da
+# `service_errors`, come `E_VALIDATION_INPUT`.
 E_PAYLOAD = E_VALIDATION_INPUT
-E_CONFIG_MANCANTE = "E_CONFIG_MANCANTE"
 
 # Quanto output del comando si tiene nel lavoro: le ULTIME righe, cappate. La
 # diagnosi intera sta nel run del comando e nel journal; qui basta la coda per
@@ -169,46 +164,35 @@ def _ambiente_del_figlio(auth_user_id: int) -> dict[str, str]:
     }
 
 
-# Scopo: manda `SIGKILL` al GRUPPO del sottoprocesso (e' il capo della sua
-#        sessione: il gruppo e' lui piu' tutto cio' che ha avviato). Gia'
-#        morto = niente da fare.
-def _uccidi_gruppo(proc: subprocess.Popen[str]) -> None:
-    try:
-        os.killpg(proc.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-
-
-# Scopo: lancia `argv` (LISTA, mai shell) con l'ambiente dato e aspetta al
-#        piu' il tetto, catturando stdout e stderr. Torna il processo
-#        completato; sul tetto uccide il gruppo, raccoglie l'output arrivato
-#        fino a li' e rilancia `TimeoutExpired` con quell'output dentro. Su
-#        QUALUNQUE altra interruzione dell'attesa (il drenatore fermato)
-#        uccide lo stesso il gruppo prima di propagare: un figlio in sessione
-#        propria non muore col padre.
+# ⭐ Il lancio col tetto (sessione propria, colpo al GRUPPO sul tetto o
+#    sull'interruzione) sta nel BB `apps.core.services.sottoprocesso`
+#    (`lancia_con_tetto`), dal 2026-10-13: lo usa anche il giro notturno degli
+#    smoke. Qui resta solo il tetto di QUESTO attrezzo.
 def _lancia(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.Popen(  # noqa: S603 — argv dal dichiarato di deploy, validato token per token
-        argv,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        errors="replace",
-        start_new_session=True,
-    )
+    return lancia_con_tetto(argv, TETTO_SOTTOPROCESSO_SECONDI, env=env)
+
+
+# Scopo: lo stato effettivo del processo su questa installazione, letto dal
+#        DB al momento di lanciare (P-2: spento si rifiuta anche qui, non solo
+#        all'accodamento — fra i due c'e' fino a un minuto, e una persona puo'
+#        averlo spento nel frattempo). Una funzione a se' perche' i test la
+#        sostituiscano senza un database.
+# ⛔ Il processo che non c'e' piu' nel registro (la sveglia del dichiarato
+#    nomina un codice ritirato dal catalogo) e' il SUO rifiuto, terminale:
+#    non «ambiente non dichiarato», che manderebbe a cercare altrove.
+def _acceso(processo_codice: str, unit: str) -> bool | None:
     try:
-        stdout, stderr = proc.communicate(timeout=TETTO_SOTTOPROCESSO_SECONDI)
-    except BaseException as exc:
-        _uccidi_gruppo(proc)
-        if isinstance(exc, subprocess.TimeoutExpired):
-            # Ripresa dopo l'uccisione: `communicate` non perde l'output gia'
-            # letto, chiude i pipe e raccoglie il figlio.
-            # Lo stub tipizza i campi come `bytes`; con `text=True` sono `str`.
-            exc.stdout, exc.stderr = proc.communicate()  # type: ignore[assignment]
-        else:
-            proc.wait()
-        raise
-    return subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
+        return ProcessiRepository().acceso_processo(processo_codice)
+    except LookupError as exc:
+        raise ServiceError(
+            code=E_NOT_FOUND,
+            message=(
+                f"Il processo {processo_codice} della sveglia {unit} non esiste "
+                f"nel registro: il lavoro non si esegue."
+            ),
+            detail=str(exc),
+            context=contesto_terminale(processo_codice=processo_codice, unit=unit),
+        ) from exc
 
 
 # Scopo: Esegue il lavoro, nelle cinque mosse del piano §2.3: risolve la
@@ -229,7 +213,9 @@ def esegui_processo_handler(
 
     # 2. Il predicato, ricontrollato dove si esegue. `lavoro_vivo=None`: il
     #    lavoro vivo con questa chiave siamo NOI.
-    motivi = motivi_esegui_ora(sveglia, lavoro_vivo=None)
+    motivi = motivi_esegui_ora(
+        sveglia, acceso=_acceso(processo_codice, unit), lavoro_vivo=None,
+    )
     if motivi:
         raise motivi[0].come_errore(**contesto_terminale(unit=unit))
 

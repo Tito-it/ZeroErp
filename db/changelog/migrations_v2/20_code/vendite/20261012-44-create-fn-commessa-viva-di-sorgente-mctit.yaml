@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA COMMESSA APERTA DI UN DOCUMENTO
+#   vendite.fn_commessa_viva_di_sorgente(p_sorgente_tipo_id, p_sorgente_chiave)
+#     -> commessa_id, o NULL
+#   Brief: brief-db-annullo-a-valle-riapre-a-monte (§10.6, D-12 e D-14 di Tid)
+#
+# ── LA DOMANDA, UNA ─────────────────────────────────────────────────
+#   «In quale commessa APERTA sta questo documento?». Aperta = lo stato della
+#   commessa non la chiude (vendite.stati_commessa.chiude_commessa = false): lo
+#   stesso predicato con cui vendite.fn_get_or_create_commessa decide se una
+#   commessa si riusa. Una commessa che il push non riusa non trattiene il
+#   documento.
+#
+# ── PERCHE' UN BUILDING BLOCK ───────────────────────────────────────
+#   Dal 20261012-43 un documento puo' avere piu' link (la storia), e la domanda
+#   «quale conta» ha tre lettori:
+#     - vendite.fn_link_commessa_sorgente (20261012-45): rifiuta un secondo
+#       invio se il documento sta gia' in un'altra commessa aperta (D-12);
+#     - vendite.trgfn_guard_fatturazione_immediata_immutabile (20261012-47):
+#       il flag si blocca solo con una commessa aperta (D-14);
+#     - il backend (CommesseRepository.get_commessa_id_by_sorgente), che oggi
+#       legge la tabella con un LIMIT 1 senza stato (richiesta nel brief).
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   LANGUAGE sql, STABLE, SECURITY INVOKER: una lettura, incorporabile.
+#   La chiave e' quella CANONICA di commesse_sorgenti (key_selector: id::text
+#   o uuid testuale), cioe' quella che la porta normalizza in scrittura; chi
+#   ha l'uid di un documento a chiave id la traduce prima (come fanno la porta
+#   e il guard).
+#   ⭐ Sotto RLS non nasconde niente che serva: le policy di commesse e
+#   commesse_sorgenti filtrano per emittente, e il guard
+#   vendite.trgfn_commesse_sorgenti_guard_emittente vuole che una commessa
+#   abbia l'emittente del documento. Chi vede il documento vede tutte le sue
+#   commesse.
+#   ORDER BY + LIMIT 1: la porta garantisce al piu' una commessa aperta; l'ordine
+#   rende la risposta deterministica anche se un giorno non fosse cosi'.
+#   ⚠️ CHIUSA e ANNULLATA sono terminali (nessun arco uscente nella matrice):
+#   una commessa chiusa non torna aperta, quindi il link di storia non diventa
+#   mai un secondo link aperto. Se la matrice un giorno ammettesse di uscire
+#   da uno stato che chiude, la riapertura andrebbe controllata qui.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-44-create-fn-commessa-viva-di-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261012-44-create-fn-commessa-viva-di-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        BB vendite.fn_commessa_viva_di_sorgente: la commessa APERTA (stato che non chiude)
+        di un documento sorgente, sulla chiave canonica di commesse_sorgenti. Lettori: la
+        porta del link (D-12), il guard di fatturazione immediata (D-14), il backend.
+        Brief: brief-db-annullo-a-valle-riapre-a-monte (§10.6).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_commessa_viva_di_sorgente';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_commessa_viva_di_sorgente(
+                  p_sorgente_tipo_id vendite.commesse_sorgenti.sorgente_tipo_id%TYPE,
+                  p_sorgente_chiave  vendite.commesse_sorgenti.sorgente_uid%TYPE)
+              RETURNS vendite.commesse_sorgenti.commessa_id%TYPE
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                  -- Aperta = lo stato non chiude la commessa: lo stesso predicato
+                  -- del riuso in vendite.fn_get_or_create_commessa.
+                  SELECT cs.commessa_id
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN vendite.commesse c        ON c.id  = cs.commessa_id
+                    JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id
+                   WHERE cs.sorgente_tipo_id = p_sorgente_tipo_id
+                     AND cs.sorgente_uid     = p_sorgente_chiave
+                     AND sc.chiude_commessa  = false
+                   ORDER BY cs.commessa_id DESC
+                   LIMIT 1
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_commessa_viva_di_sorgente(vendite.commesse_sorgenti.sorgente_tipo_id%TYPE, vendite.commesse_sorgenti.sorgente_uid%TYPE) IS
+                  'Building block (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte §10.6, D-12/D-14 di Tid): la commessa APERTA in cui sta un documento sorgente, o NULL. Aperta = vendite.stati_commessa.chiude_commessa = false, lo stesso predicato con cui vendite.fn_get_or_create_commessa riusa una commessa: una commessa che il push non riusa non trattiene il documento. Dal 20261012-43 il link documento -> commessa resta come storia dopo la chiusura e l''annullo, quindi un documento puo'' avere piu'' link: questa funzione dice quale conta. p_sorgente_chiave e'' la chiave CANONICA di vendite.commesse_sorgenti (config.sorgenti.key_selector: id::text o uuid testuale), quella che vendite.fn_link_commessa_sorgente normalizza in scrittura. Lettori: vendite.fn_link_commessa_sorgente (un secondo invio e'' rifiutato solo se il documento sta in un''altra commessa aperta), vendite.trgfn_guard_fatturazione_immediata_immutabile (il flag si blocca solo con una commessa aperta), il backend. SECURITY INVOKER: le policy di commesse e commesse_sorgenti filtrano per emittente e una commessa ha l''emittente del documento (vendite.trgfn_commesse_sorgenti_guard_emittente), quindi chi vede il documento vede tutte le sue commesse. ORDER BY + LIMIT 1: la porta ne garantisce al piu'' una aperta; l''ordine rende la risposta deterministica. CHIUSA e ANNULLATA sono terminali nella matrice: se un giorno non lo fossero, la riapertura andrebbe controllata.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_commessa_viva_di_sorgente(bigint, text);

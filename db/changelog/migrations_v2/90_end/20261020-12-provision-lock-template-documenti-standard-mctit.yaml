@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PROVISIONA SUBITO IL LOCK DI documenti.template_documenti.standard
+#   Brief: brief-db-modelli-documento-standard §4.1 Q-1. La riga e' in
+#   80_data/sql/dbops/automation_lock_columns.csv, col codice generico
+#   E_COLONNA_NON_MODIFICABILE: lo incontra solo il proprietario (seed,
+#   changeSet), perche' dall'applicazione su una riga standard parla prima il
+#   guard a05 di 20261020-07.
+#
+# -- PERCHE' SUBITO -----------------------------------------------------------------
+#   Insieme al CHECK di -04 il lock chiude la trasformazione di un modello in
+#   standard (o il contrario) con un UPDATE. Su dbdev il ci_apply non rigira
+#   le automazioni (il job dei lock e' serale): senza questo passo la regola
+#   resterebbe aperta fino alla sera, e il pgTAP del giro rosso. Da zero il
+#   ci_apply lo monterebbe comunque; qui il runner lo trova gia' fatto, o lo
+#   fa prima. Il runner converge (crea, rigenera, toglie): rigirarlo non fa
+#   danni. Su template_documenti il trigger esiste gia' (codice_interno): il
+#   runner lo RIGENERA con la colonna in piu'.
+#
+# -- LA FORMA -------------------------------------------------------------------------
+#   ⭐ Si chiama il RUNNER, non si scrive un CREATE TRIGGER a mano (stessa
+#   scelta di 20260901-21 e 20261019-86). Solo lo schema documenti: il
+#   2026-10-19 dbops.fn_lock_columns_divergenze('AUTO', ARRAY['documenti'])
+#   non dava nessuna divergenza su dbdev e sullo scratch, quindi il runner
+#   tocca solo template_documenti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261020-12-provision-lock-template-documenti-standard-mctit.yaml
+
+  - changeSet:
+      id: 20261020-12-provision-lock-template-documenti-standard
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Provisiona subito il lock di colonna su documenti.template_documenti.standard
+        (E_COLONNA_NON_MODIFICABILE) chiamando il runner dei lock sullo schema documenti.
+        Brief: brief-db-modelli-documento-standard §4.1 Q-1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # La riga del registro deve esserci e essere accesa: senza, il
+            # runner non crea niente e il changeSet sarebbe un verde a vuoto.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM dbops.automation_lock_columns
+                   WHERE enabled IS TRUE
+                     AND upper(btrim(exec_mode)) = 'AUTO'
+                     AND (target_schema, target_table, column_name)
+                         = ('documenti', 'template_documenti', 'standard')
+                     AND error_code = 'E_COLONNA_NON_MODIFICABILE';
+            # Il codice deve essere vivo, o il lock risponderebbe con un
+            # segnaposto irrisolto invece che con la sua frase.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM config.codici_errore
+                   WHERE codice = 'E_COLONNA_NON_MODIFICABILE'
+                     AND (obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['documenti'], false);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il trigger lo governa il registro: per toglierlo si spegne la
+              -- riga di automation_lock_columns e si rigira il runner, che
+              -- converge. Qui non si tocca niente.
+              SELECT 1;

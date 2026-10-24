@@ -45,6 +45,7 @@ const ARCHI_AMMESSI = {
   'vendite -> catalogo': 'le righe dei documenti puntano all\'articolo',
   'magazzino -> catalogo': 'lotti e movimenti puntano all\'articolo',
   'magazzino -> anagrafiche': 'magazzini.emittente_fiscale_id',
+  'vendite -> magazzino': 'ddt.magazzino_id / magazzino_arrivo_id e resi.magazzino_id puntano al magazzino',
   'pagamenti -> anagrafiche': 'mandati, canali e movimenti puntano a soggetto e conto bancario',
   'pagamenti -> vendite': 'vendite_movimenti / vendite_contabili_righe puntano al documento',
   'anagrafiche -> catalogo': 'soggetti_titoli_iva_ambiti.articolo_id',

@@ -211,7 +211,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_guard_refs),
   p_sorgente_uid => ('EXT-A-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'ACCONTO',
   p_meta => jsonb_build_object('case', 'GUARD_A')
 ) r;
 
@@ -351,7 +350,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_guard_refs),
   p_sorgente_uid => ('EXT-B-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'ACCONTO',
   p_meta => jsonb_build_object('case', 'GUARD_B')
 ) r;
 

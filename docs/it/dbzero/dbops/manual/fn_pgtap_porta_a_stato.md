@@ -11,11 +11,11 @@ Guide: [pgTAP — come si scrive un test](/guide/pgtap-come-si-scrive-un-test) �
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-10-08)
+(rev 2026-10-24)
 
-**Portare un ordine o un preventivo di fixture nello stato voluto, per le strade
-vere.** Il test crea la testata in bozza, le scrive le righe, poi chiede lo
-stato: la funzione cerca nella matrice delle transizioni il percorso più corto
+**Portare una testata di fixture nello stato voluto, per le strade vere.** Il
+test crea la testata in bozza (dal 2026-10-24 un documento nasce solo nel suo
+stato iniziale), le scrive le righe, poi chiede lo stato: la funzione cerca nella matrice delle transizioni il percorso più corto
 dallo stato corrente a quello voluto e lo percorre, un cambio di stato per passo.
 
 ```sql
@@ -29,6 +29,17 @@ END $x$;
 ```
 
 Ritorna il `codice_interno` dello stato raggiunto.
+
+**Le testate che conosce**: preventivo, offerta, contratto, ordine, DDT, reso,
+commessa, fattura e il **lotto di fatturazione** (rev `20261024-22` e `-30`).
+
+* **La fattura** usa la matrice `config.stati_doc_fiscale_transizioni` con i soli
+  passaggi della fattura singola (`solo_lotto = false`).
+* **Il lotto** usa la stessa matrice con i soli passaggi del lotto
+  (`solo_fattura = false`), e solo quando è **vuoto**: un lotto con fatture si muove
+  col verbo del dominio `vendite.fn_sync_lotto_fatture_stato`, perché il controllo
+  di coerenza lotto/fatture lo fermerebbe al primo passo. Il filtro per tipo di
+  lotto lo applica il controllo del lotto, al passo.
 
 ---
 ### 🧭 Perché esiste
@@ -44,9 +55,8 @@ regola in cinquanta copie: ha una sede.
 ---
 ### 🔗 Cosa decide la funzione e cosa decide il dominio
 
-* **Il percorso** lo decide la matrice (`config.transizioni_stati_ordini`,
-  `config.transizioni_stati_preventivi`), solo le transizioni e gli stati
-  attivi. A parità di lunghezza vince il percorso con gli id di stato minori:
+* **Il percorso** lo decide la matrice della testata, solo le transizioni e gli
+  stati attivi. A parità di lunghezza vince il percorso con gli id di stato minori:
   una scelta fissa, non quella del piano.
 * **Ogni passo** passa dai guard di transizione veri: righe presenti, aliquote,
   prezzi autorizzati, emettibilità. Un documento che non si potrebbe confermare,
@@ -65,7 +75,7 @@ regola in cinquanta copie: ha una sede.
 ---
 ### ⛔ Niente ritorni muti
 
-Un documento che non conosce (oggi: `vendite.ordini`, `vendite.preventivi`), uno
+Una testata che non conosce, uno
 stato che il catalogo non ha, nessun percorso nella matrice, una testata che non
 c'è o non si vede, un cambio di stato che non tocca una riga: in tutti questi
 casi solleva un'eccezione. Una fixture che non arriva dove deve non può passare
@@ -76,5 +86,7 @@ per buona.
 
 Esce con i vincoli **richiusi** (`IMMEDIATE`), come ogni helper di fixture.
 
-> 📎 changeSet `20261008-94`. Presidio:
-> `db/pgtap/vendite/test-righe-e-componenti-debiti-residui-v1.sql` (test 1-3, 9).
+> 📎 changeSet `20261008-94`, `20261024-22` (tutte le testate), `20261024-30` (il
+> lotto). Presidi: `db/pgtap/vendite/test-righe-e-componenti-debiti-residui-v1.sql`
+> (test 1-3, 9), i presidi dei builder `db/pgtap/dbops/test-fn-pgtap-crea-*-v1.sql`
+> (il lotto: `test-fn-pgtap-crea-lotto-v1.sql`, test 7).

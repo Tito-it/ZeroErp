@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ORDINE SI CERCA PER IL DOCUMENTO DA CUI NASCE, DI QUALUNQUE TIPO
+#   vendite.ordini (documento_origine_tipo, documento_origine_id)
+#   Brief: brief-db-lineage-seminata-per-chiave §3, D-3 (decisione di Tid);
+#   giro 1, §8.2.
+#
+# ── IL DIFETTO, SUL MODELLO ─────────────────────────────────────────
+#   Un ordine nasce da un'offerta o da un preventivo, e la coppia
+#   (documento_origine_tipo, documento_origine_id) lo dice per entrambi.
+#   L'unico indice sulla coppia era uq_ordini_v_documento_origine_offerta,
+#   PARZIALE sulle offerte: «gli ordini nati da QUESTO preventivo» si
+#   leggeva scandendo gli ordini. La lineage seminata
+#   (fn_documento_lineage_archi, 20261011-64) parte dal preventivo e cerca
+#   l'ordine (ramo A): un ordine che nasce da un preventivo si cerca
+#   esattamente come uno che nasce da un'offerta.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   Non unico: dire se un preventivo puo' generare piu' ordini e' una
+#   domanda di modello, non di questo giro. L'unicita' per l'offerta resta
+#   in uq_ordini_v_documento_origine_offerta, che non si tocca.
+#   Parziale su documento_origine_id IS NOT NULL: l'ordine senza origine
+#   non si cerca mai per origine. Fuori dalla policy FK
+#   (documento_origine_id e' polimorfo: non ha una FK dietro).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261011-62-create-ix-ordini-documento-origine-mctit.yaml
+
+  - changeSet:
+      id: 20261011-62-create-ix-ordini-documento-origine
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Indice vendite.ordini (documento_origine_tipo, documento_origine_id) per TUTTI i tipi
+        d'origine: l'unico era parziale sulle offerte, e l'ordine nato da un preventivo si
+        cercava scandendo. Non unico, parziale sull'origine valorizzata, fuori dalla policy FK.
+        D-3 di brief-db-lineage-seminata-per-chiave.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: vendite, tableName: ordini }
+            - columnExists: { schemaName: vendite, tableName: ordini, columnName: documento_origine_tipo }
+            - columnExists: { schemaName: vendite, tableName: ordini, columnName: documento_origine_id }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_ordini_documento_origine
+                  ON vendite.ordini (documento_origine_tipo, documento_origine_id)
+                  WHERE documento_origine_id IS NOT NULL;
+
+              COMMENT ON INDEX vendite.ix_ordini_documento_origine IS
+                  'Gli ordini nati da un documento, per QUALUNQUE tipo d''origine (preventivo, offerta): lo legge la lineage seminata, ramo A, partendo dal preventivo (vendite.fn_documento_lineage_archi). Non unico: l''unicita'' per l''offerta resta in uq_ordini_v_documento_origine_offerta; quella per il preventivo e'' una domanda di modello aperta. D-3 di brief-db-lineage-seminata-per-chiave (2026-10-11).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_ordini_documento_origine;

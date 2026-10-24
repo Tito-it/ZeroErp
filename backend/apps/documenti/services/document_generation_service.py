@@ -5,9 +5,11 @@
 # Scopo: Orchestratore della generazione persistita di un documento
 #        (Tranche I). Pipeline:
 #         1. valida user + scope emittente (PermissionResolver);
-#         2. risolve template applicabile (override esplicito via id, oppure
-#            `is_default=true` per (sorgente_tipo, emittente, output));
-#         3. carica versione PUBBLICATA attiva (`validita @> oggi`, giorno dell'azienda);
+#         2. chiede al DB, in una domanda sola, il modello e la versione con
+#            cui si stampa (`fn_risolvi_template_applicabile`, la porta unica):
+#            senza modello indicato i due livelli (predefinito dell'emittente,
+#            se no lo standard), con il modello indicato la sua verifica;
+#         3. rilegge la versione detta dal DB (corpo HTML/CSS per il render);
 #         4. risolve context_builder via registry (`get_builder_del_template`,
 #            whitelist Decisione 18+74)
 #            e chiede al DB se la versione legge la forma dei dati del
@@ -36,7 +38,6 @@
 
 from __future__ import annotations
 
-import datetime as _dt
 import hashlib
 import json
 import logging
@@ -46,7 +47,6 @@ from typing import Any
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError, transaction
 
-from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
@@ -81,6 +81,7 @@ E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
 E_RENDER_FAILED = "E_DOCUMENTI_RENDER_FAILED"
 E_STORAGE_FAILED = "E_DOCUMENTI_STORAGE_FAILED"
 E_VERSIONE_CONTESTO_NON_VERIFICABILE = "E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE"
+E_TEMPLATE_NON_RISOLTO = "E_DOCUMENTI_TEMPLATE_NON_RISOLTO"
 
 # Codice del tipo file usato in v1 (seed `tipi_file_documento` Fase A).
 # Memoria feedback_no_hardcoded_ids: lookup per codice, non ID numerici.
@@ -179,8 +180,9 @@ class DocumentGenerationService:
     # Scopo: Genera e persiste un documento PDF a partire da una sorgente.
     #        Il caller fornisce gli identificativi della sorgente
     #        (`sorgente_tipo_id`, `sorgente_uid`, opzionale `sorgente_riga`)
-    #        e l'`emittente_fiscale_id`. Il template si risolve per
-    #        default (`is_default=true`) oppure tramite override esplicito
+    #        e l'`emittente_fiscale_id`. Modello e versione li dice il DB
+    #        (`_resolve_template`): coi due livelli (predefinito dell'emittente,
+    #        se no lo standard), o verificando l'override esplicito
     #        `template_documento_id`. Ritorna un dict con id+uid+nome_file
     #        del documento generato + storage_uri del file persistito.
     #        C-0: `emittente_scope` separa CHI AUTORIZZA da COSA GENERA —
@@ -223,8 +225,11 @@ class DocumentGenerationService:
         scope = self._resolve_scope_chiamante(user, emittente_scope)
         guard_emittente_in_scope(scope, emittente_fiscale_id)
 
-        # 2) risolve template applicabile (override esplicito o default)
-        template = self._resolve_template(
+        # 2-3) il modello e la versione con cui si stampa, dal DB in una
+        #      domanda sola, anche quando il chiamante indica il modello: e' il
+        #      DB a dire se va bene per questo documento (emittente, sorgente,
+        #      tipo) e se oggi puo' stampare.
+        template, versione = self._resolve_template(
             user,
             scope=scope,
             emittente_fiscale_id=emittente_fiscale_id,
@@ -232,32 +237,6 @@ class DocumentGenerationService:
             tipo_documento_output_id=tipo_documento_output_id,
             template_documento_id=template_documento_id,
         )
-        # Defense-in-depth: anche se il template e' fuori scope il
-        # _resolve_template ha gia' applicato lo scope; questo controllo
-        # blocca eventuali incongruenze di input (es. caller passa
-        # emittente=11 ma template_documento_id punta a un template di
-        # emittente=22 dentro lo scope dell'admin).
-        if template["emittente_fiscale_id"] != emittente_fiscale_id:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message="Template non coerente con l'emittente richiesto.",
-                detail=(
-                    f"emittente_richiesto={emittente_fiscale_id} "
-                    f"emittente_template={template['emittente_fiscale_id']}"
-                ),
-            )
-        if template["sorgente_tipo_id"] != sorgente_tipo_id:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message="Template non coerente con il tipo sorgente richiesto.",
-                detail=(
-                    f"sorgente_tipo_richiesto={sorgente_tipo_id} "
-                    f"sorgente_tipo_template={template['sorgente_tipo_id']}"
-                ),
-            )
-
-        # 3) carica versione PUBBLICATA attiva
-        versione = self._resolve_versione_pubblicata(template["id"])
 
         # 4) risolve il builder e chiede al DB se la versione legge la forma
         #    dei dati che il builder produce: PRIMA di costruire il contesto e
@@ -480,7 +459,7 @@ class DocumentGenerationService:
         scope = resolve_emittente_scope(user)
         guard_emittente_in_scope(scope, emittente_fiscale_id)
 
-        template = self._resolve_template(
+        template, versione = self._resolve_template(
             user,
             scope=scope,
             emittente_fiscale_id=emittente_fiscale_id,
@@ -488,18 +467,6 @@ class DocumentGenerationService:
             tipo_documento_output_id=tipo_documento_output_id,
             template_documento_id=template_documento_id,
         )
-        if template["emittente_fiscale_id"] != emittente_fiscale_id:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message="Template non coerente con l'emittente richiesto.",
-            )
-        if template["sorgente_tipo_id"] != sorgente_tipo_id:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message="Template non coerente con il tipo sorgente richiesto.",
-            )
-
-        versione = self._resolve_versione_pubblicata(template["id"])
         # Anche l'anteprima: una versione che legge un'altra forma darebbe a
         # video un documento incompleto, senza nessun errore.
         builder = get_builder_del_template(template)
@@ -1077,14 +1044,36 @@ class DocumentGenerationService:
         )
         return emittente_scope
 
-    # Scopo: Risolve il template da generare. Tre casi:
-    #         a) caller passa `template_documento_id` -> get_template via
-    #            reader (404 unificato + scope automatico);
-    #         b) caller passa `tipo_documento_output_id` (e/o
-    #            sorgente_tipo+emittente) -> repo.find_template_applicabile
-    #            con `is_default=true`;
-    #         c) caller passa solo sorgente_tipo+emittente -> idem (b).
-    #        Se nessun template matcha -> E_DOCUMENTI_NOT_FOUND.
+    # Scopo: Il modello e la versione con cui si stampa questo documento,
+    #        chiesti alla porta unica del DB (`repo.risolvi_template_applicabile`
+    #        -> `documenti.fn_risolvi_template_applicabile`,
+    #        brief-db-modelli-documento-standard §10.3 K-2). Ritorna
+    #        `(template, versione)`. Una chiamata, due ingressi:
+    #         a) nessun modello indicato -> il DB lo SCEGLIE coi due livelli:
+    #            il predefinito dell'emittente se ha modelli suoi che possono
+    #            stampare, se no lo standard. `tipo_documento_output_id` si
+    #            passa quando il chiamante lo ha; senza, il DB lo deduce se il
+    #            candidato e' uno;
+    #         b) modello indicato (`template_documento_id`: l'override della
+    #            coda di stampa, il parametro delle viste) -> il DB lo
+    #            VERIFICA: adatto al documento (E_DOCUMENTI_TEMPLATE_NON_COERENTE,
+    #            motivo SORGENTE / TIPO / EMITTENTE) e stampabile oggi
+    #            (E_DOCUMENTI_TEMPLATE_NON_STAMPABILE, motivo MODELLO_SPENTO /
+    #            NESSUNA_VERSIONE_VALIDA).
+    #        I rifiuti escono come ServiceError col codice del DB, anche per il
+    #        worker della coda di stampa, che scrive il motivo sulla riga.
+    # ⚠️ Il perimetro resta del BE, ed e' l'unica cosa che si controlla qui: il
+    #    modello indicato si legge PRIMA dentro lo scope (404, come ogni
+    #    lettura). Senza, il rifiuto del DB nominerebbe il codice di un modello
+    #    di un'azienda che l'operatore non vede; e un id che non e' un modello
+    #    arriverebbe al DB come argomento rotto (500) invece che come «non
+    #    trovato».
+    # ⛔ Ritirati il 2026-10-21 (§11.2 B-2): `_guard_template_coerente`, la
+    #    copia BE della regola 4 di `trgfn_documenti_generati_check_coerenza`
+    #    (non guardava il tipo del modello indicato), e
+    #    `_resolve_versione_pubblicata` con `_today`, la seconda copia di «puo'
+    #    stampare», gia' divergente: non guardava se il modello era attivo, e
+    #    usava il giorno del BE invece di `script.fn_data_operativa()`.
     def _resolve_template(
         self,
         user: AbstractBaseUser | AnonymousUser | None,
@@ -1094,86 +1083,51 @@ class DocumentGenerationService:
         sorgente_tipo_id: int,
         tipo_documento_output_id: int | None,
         template_documento_id: int | None,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        indicato: dict[str, Any] | None = None
         if template_documento_id is not None:
-            if user is not None:
-                # Path web: scope + 404 gia' applicati dal reader.
-                return self._reader.get_template(user, template_documento_id)
-            # Path sistema (C-0, user=None): il reader pretende l'auth —
-            # qui lo scope e' gia' risolto dal chiamante, si va di repo.
-            row = self._repo.get_template(
+            self._v.guard_positive_int(template_documento_id, field="template_documento_id")
+            indicato = self._repo.get_template(
                 template_documento_id, emittente_ids_scope=scope,
             )
             ErrorManager.require(
-                row is not None,
+                indicato is not None,
                 code=E_NOT_FOUND,
                 message="Template documento non trovato.",
                 detail=f"template_id={template_documento_id}",
             )
-            assert row is not None
-            return row
 
-        row = self._repo.find_template_applicabile(
-            sorgente_tipo_id=sorgente_tipo_id,
-            emittente_fiscale_id=emittente_fiscale_id,
-            tipo_documento_output_id=tipo_documento_output_id,
-            emittente_ids_scope=scope,
-        )
-        if row is None:
-            # Discrimina due casi diversi (UX: il fix richiesto e' diverso).
-            # 1) esistono template per la coppia ma nessuno e' marcato default
-            #    -> messaggio "manca predefinito", admin attiva il flag
-            # 2) non esiste alcun template -> messaggio "carica template",
-            #    admin deve creare il record da capo
-            templates_no_default = self._repo.count_templates_attivi_no_default(
+        with translate_db_errors(
+            context={
+                "sorgente_tipo_id": sorgente_tipo_id,
+                "emittente_fiscale_id": emittente_fiscale_id,
+                "tipo_documento_output_id": tipo_documento_output_id,
+                "template_documento_id": template_documento_id,
+            },
+            fallback_code=E_TEMPLATE_NON_RISOLTO,
+            fallback_message=USER_MESSAGE_FALLBACK[E_TEMPLATE_NON_RISOLTO],
+        ):
+            risolto = self._repo.risolvi_template_applicabile(
                 sorgente_tipo_id=sorgente_tipo_id,
                 emittente_fiscale_id=emittente_fiscale_id,
                 tipo_documento_output_id=tipo_documento_output_id,
-                emittente_ids_scope=scope,
+                template_documento_id=template_documento_id,
             )
-            if templates_no_default > 0:
-                message = (
-                    "Esistono template per questa sorgente/emittente, "
-                    "ma nessuno e' impostato come predefinito. "
-                    "Marcare un template come 'predefinito' per renderlo applicabile."
-                )
-            else:
-                message = "Nessun template applicabile per la sorgente."
-            ErrorManager.require(
-                False,
-                code=E_NOT_FOUND,
-                message=message,
-                detail=(
-                    f"sorgente_tipo_id={sorgente_tipo_id} "
-                    f"emittente_fiscale_id={emittente_fiscale_id} "
-                    f"tipo_documento_output_id={tipo_documento_output_id!r} "
-                    f"templates_attivi_senza_default={templates_no_default}"
-                ),
-            )
-        assert row is not None
-        return row
-
-    # Scopo: Carica la versione PUBBLICATA attiva OGGI, nel giorno
-    #        dell'azienda (`_today` = `oggi_aziendale()`, passata come
-    #        parametro per testabilita': il service mocka `today`).
-    def _resolve_versione_pubblicata(
-        self, template_documento_id: int,
-    ) -> dict[str, Any]:
-        today = self._today()
-        row = self._repo.get_versione_pubblicata_attiva(
-            template_documento_id, today=today,
+        template_id = int(risolto["template_documento_id"])
+        template = indicato if indicato is not None else self._repo.get_template(
+            template_id, emittente_ids_scope=scope,
         )
-        ErrorManager.require(
-            row is not None,
-            code=E_NOT_FOUND,
-            message="Nessuna versione PUBBLICATA attiva per il template.",
-            detail=(
-                f"template_documento_id={template_documento_id} "
-                f"today={today.isoformat()}"
-            ),
-        )
-        assert row is not None
-        return row
+        # Il modello risolto e' dell'emittente del documento (gia' in scope) o
+        # standard (sempre in scope); la versione l'ha appena scelta il DB per
+        # quel modello. Non trovarli e' il patto del DB rotto, non un 404
+        # dell'operatore. RuntimeError e non `assert`: dipende da cosa risponde
+        # il DB, e il controllo resta acceso anche con `python -O`.
+        if template is None:
+            raise RuntimeError(f"template risolto {risolto!r} non leggibile")
+        versione = self._repo.get_versione(template_id, int(risolto["template_versione_id"]))
+        if versione is None:
+            raise RuntimeError(f"versione risolta {risolto!r} non leggibile")
+        return template, versione
 
     # Scopo: Il patto versione/forma dei dati, chiesto al DB prima del render
     #        (R-3 di brief-db-documenti-versione-contesto-template): la
@@ -1503,9 +1457,3 @@ class DocumentGenerationService:
         base = os.path.basename((file_name or "").strip().replace("\\", "/"))
         base = base.strip() or "allegato"
         return base[:_MAX_ALLEGATO_FILE_NAME_LEN]
-
-    # Scopo: Hook per testabilita' della data corrente. Default = oggi
-    #        nel fuso dell'azienda (BB `fuso_aziendale`); il filtro DB usa
-    #        `validita @> %s::date` con questo valore.
-    def _today(self) -> _dt.date:
-        return oggi_aziendale()

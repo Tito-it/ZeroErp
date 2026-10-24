@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_email_account(p_unita_organizzativa_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_resolve_email_account(p_unita_organizzativa_id integer DEFAULT NULL::integer)
  RETURNS jsonb
@@ -87,6 +89,8 @@ $function$
 COMMENT ON FUNCTION config.fn_resolve_email_account(p_unita_organizzativa_id integer)
 IS 'Risolve account SMTP per invio email. Fallback: reparto -> SISTEMA (per codice_interno). Ritorna JSONB con dati account (inclusa password crittografata). rev 2026-06-29: SISTEMA per codice_interno (§4b).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

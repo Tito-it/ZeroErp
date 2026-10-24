@@ -7,6 +7,8 @@ CREATE FUNCTION fn_popola_fatture_rettifiche(p_fattura_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_popola_fatture_rettifiche(p_fattura_id bigint)
  RETURNS integer
@@ -49,6 +51,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_popola_fatture_rettifiche(p_fattura_id bigint)
 IS 'Proietta sul legame documento-a-documento (vendite.fatture_rettifiche, una tabella che esisteva dal primo giorno con ZERO righe) cio'' che le righe gia'' dicono tramite fatture_righe.riga_rettificata_id. ⭐ Le righe sono il FATTO, la tabella-ponte e'' l''INDICE: non ci sono due verita'', c''e'' una verita'' e una sua proiezione ricostruibile in qualunque momento. Serve al blocco DatiFattureCollegate di una TD04, che vuole numero e data del documento rettificato: senza, il builder XML dovrebbe risalire riga per riga e de-duplicare da solo, cioe'' rifare questo lavoro in un posto dove un errore diventa un file trasmesso. Funzione e NON trigger: dentro la transazione che genera le righe girerebbe una volta per riga sul punto piu'' caldo del giro di fatturazione, e la proiezione non ha bisogno di essere immediata — serve a chi LEGGE il documento, non a chi lo scrive. La consuma un task di pipeline (richiesta BE-8). Idempotente (ON CONFLICT DO NOTHING); non cancella mai, perche'' una proiezione che cancella diventa un secondo scrittore. brief-design-note-credito-resi N10. rev 2026-08-18.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

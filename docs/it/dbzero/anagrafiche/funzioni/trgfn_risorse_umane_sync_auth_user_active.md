@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_risorse_umane_sync_auth_user_active()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active()
  RETURNS trigger
@@ -33,6 +35,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active()
 IS 'Trigger function: sincronizza auth_user.is_active al cambio stato/finestra di risorse_umane. Risolve l''auth_user da identita_digitali con script.fn_get_auth_user_id_for_risorsa_umana (dal 12-09-2026: la vista risorse_umane_auth_user e'' stata ritirata) e delega a fn_sync_auth_user_is_active.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

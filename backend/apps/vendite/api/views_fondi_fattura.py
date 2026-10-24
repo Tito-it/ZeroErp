@@ -33,7 +33,7 @@ from rest_framework.request import Request
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
-from apps.core.api.payload_validators import qp_int_strict, qp_str, qp_str_upper
+from apps.core.api.payload_validators import parse_list_params, qp_str, qp_str_upper
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
@@ -96,18 +96,18 @@ class ApiFondiFatturaDaDecidere(DomainAPIView):
                 ),
             ),
             OpenApiParameter(
-                name="page",
+                name="limit",
                 type=int,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Numero pagina (default 1).",
+                description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
             ),
             OpenApiParameter(
-                name="page_size",
+                name="offset",
                 type=int,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
+                description="Offset paginazione (default 0). `page`/`page_size` sono un 400 (dal 2026-10-20).",
             ),
         ],
         responses={
@@ -136,8 +136,9 @@ class ApiFondiFatturaDaDecidere(DomainAPIView):
         motivo = qp_str_upper(qp.get("motivo"))
         order_by = qp_str(qp.get("order_by"))
         order_dir = qp_str(qp.get("order_dir"))
-        page = qp_int_strict(qp.get("page"), "page", 1)
-        page_size = qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT)
+        # ⛔ `limit`/`offset` dal bundle, come ogni lista (Tid, 2026-10-20, §A4):
+        #    `page`/`page_size` sono un 400 (`richiedi_limit_offset`).
+        p = parse_list_params(qp, default_order="")
 
         data = fn_fondi_fattura_da_decidere(
             motivo=motivo,
@@ -146,8 +147,8 @@ class ApiFondiFatturaDaDecidere(DomainAPIView):
             auth_user_id=get_scope_user_id(request),
             order_by=order_by,
             order_dir=order_dir,
-            page=page,
-            page_size=page_size,
+            limit=p["limit"],
+            offset=p["offset"],
         )
         return success_response(data)
 

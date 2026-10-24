@@ -1,13 +1,13 @@
 ## Row Level Security (RLS) in PostgreSQL
 
 >
-> (latest review 2026-04-18)
+> **Ultimo aggiornamento**: 24 ottobre 2026
 >
 > **Vedi anche**
 >
 > * [Linee guida SQL — sezione 10 Row Level Security](/linee-guida-sql#10-row-level-security-rls) — convenzioni ZeroErp (naming, funzioni `fn_scope_*`, bypass ruoli, checklist migrazione)
-> * [Parametri personalizzati (GUC)](/postgresql/parametri-personalizzati-(GUC))
-> * [GUC reference](/postgresql/guc_reference)
+> * [Parametri personalizzati (GUC)](/postgresql/parametri-personalizzati-(GUC)) — le famiglie di GUC e l'[elenco](/postgresql/parametri-personalizzati-(GUC)#elenco-dei-guc)
+> * [Contratto GUC `app.*`](/guide/contratto-guc-app) — i GUC d'identità che le policy leggono
 
 Questa scheda descrive **sintassi e comportamento** di Row Level Security in PostgreSQL 18.
 Le scelte architetturali di ZeroErp (quando abilitarla, come nominare le policy, come
@@ -42,17 +42,16 @@ ALTER TABLE vendite.fatture FORCE ROW LEVEL SECURITY;
 **Attenzione**: senza `FORCE`, il ruolo proprietario della tabella ignora le policy.
 
 In ZeroErp il backend si connette come `zeroerp_app`, che e' **non-owner** e
-**`NOBYPASSRLS`** (le tabelle sono owned da `postgres`/`titodb`, ruoli di
-migrazione/manutenzione). Per un ruolo non-owner il solo `ENABLE` e' gia'
+**`NOBYPASSRLS`** (le tabelle sono di `zeroerp_owner`, il proprietario, che fa
+migrazioni e manutenzione). Per un ruolo non-owner il solo `ENABLE` e' gia'
 sufficiente: la RLS si applica senza bisogno di `FORCE`. Di conseguenza, sulle
-tabelle del ciclo attivo ZeroErp **non** usa `FORCE` in produzione: l'unico
-percorso DML applicativo passa da `zeroerp_app` (gia' soggetto), mentre l'owner
-(superuser/batch) **deve** bypassare per migrazioni e job pgAgent.
+tabelle del ciclo attivo ZeroErp **non** usa `FORCE`: l'unico percorso DML
+applicativo passa da `zeroerp_app` (gia' soggetto), mentre il proprietario **deve**
+restarne fuori per le migrazioni e i lavori di manutenzione.
 
 `FORCE` serve solo quando e' l'**owner** stesso a fare DML applicativo: non e' il
 caso qui. (Nota: nei test pgTAP `FORCE` viene usato *localmente alla transazione*
-per assoggettare l'owner non-superuser `titodb` senza `SET ROLE` — vedi
-`db/pgtap/rls/`.)
+per assoggettare il proprietario senza cambiare utente — vedi `db/pgtap/rls/`.)
 
 #### Creare una policy
 
@@ -178,9 +177,9 @@ Tre regole di visibilita' concorrenti:
 Configurazione ZeroErp:
 
 ```sql
--- Ruoli tecnici/owner che devono bypassare le policy (migrazioni, batch pgAgent,
--- analisi, manutenzione). Le tabelle sono owned da postgres/titodb.
-ALTER ROLE zeroerp_migration  BYPASSRLS;
+-- Il proprietario delle tabelle (migrazioni, lavori di manutenzione) e' fuori
+-- dalla RLS perche' e' il proprietario, non per un attributo: NOBYPASSRLS.
+-- Ruoli e regole: provisioning-db-roles.
 
 -- Ruolo applicativo del backend (DB_USER): NON owner, NON bypassa.
 -- E' il ruolo con cui Django si connette -> soggetto a RLS col solo ENABLE.
@@ -191,24 +190,14 @@ ALTER TABLE vendite.fatture   ENABLE ROW LEVEL SECURITY;
 -- FORCE NON necessario: nessun owner fa DML applicativo a runtime.
 ```
 
-**Processi headless applicativi → ruoli batch `BYPASSRLS` per-job.** Oltre agli owner
-e ai ruoli di migrazione (che bypassano per natura), i processi headless del backend
-(management command, cron) che devono operare su **tutti** gli emittenti — senza
-un'identita' operatore via GUC — usano un ruolo `BYPASSRLS` **dedicato per singolo job**,
-non `zeroerp_app` ne' `postgres`/`titodb`:
-
-```sql
--- Canale di sistema headless, uno per job (oggi: batch di fatturazione)
-ALTER ROLE zeroerp_batch_fatturazione BYPASSRLS;   -- salta SOLO l'isolamento per-emittente
--- ...ma DML concesso SOLO sul perimetro del job: il least-privilege si fa coi GRANT,
---    non con la RLS (vendite.ordini, fuori perimetro, resta non scrivibile -> fail-loud).
-```
-
-`BYPASSRLS` salta l'isolamento per-emittente, **non** i trigger/constraint di business
-(che restano attivi). Lo scoping del danno (scrittura cross-tenant) si ottiene coi
-**GRANT DML** limitati al perimetro. Regola: un nuovo job → un nuovo ruolo scoped, mai
-allargare l'esistente. Modello, provisioning, verifica e pgTAP:
-[provisioning-db-roles › Ruoli batch per-job](/dev/backend/provisioning-db-roles).
+**Processi automatici: nessun ruolo `BYPASSRLS`.** I processi senza utente
+umano (management command, cron, lavori di coda) che toccano i dati di un'azienda
+girano come `zeroerp_app`, con l'**utente tecnico** di quell'azienda nelle GUC: la
+RLS li filtra come un operatore. Un processo che deve lavorare su più aziende ne
+tratta una alla volta, ognuna con il suo utente. Il controllo
+`dbops.vw_processi_che_bypassano` deve restare vuoto. Modello:
+[I lavori automatici](/guide/processi-automatici-classe-e-identita); ruoli:
+[Provisioning ruoli DB](/dev/backend/provisioning-db-roles).
 
 Il parametro di sessione `row_security` (default `on`) permette a superuser o owner
 di forzare il comportamento: `SET row_security = off` causa errore se una query
@@ -315,16 +304,13 @@ funzionale corrispondente. Per colonne scope tipiche (`billing_account_id`,
 `emittente_soggetto_ruolo_id`) basta un indice B-tree standard, gia' coperto dalla policy
 FK automatica ZeroErp (`dbops.fk_index_policy`).
 
-#### `EXPLAIN` pre/post attivazione
+#### Misurare l'effetto di una policy
 
-Prima di abilitare RLS in produzione, eseguire `EXPLAIN (ANALYZE, BUFFERS)` sulle query
-piu' frequenti con e senza policy. Tollerare degradazioni < 10%. Degradazioni maggiori
-richiedono indici dedicati o refactor della funzione di scope.
-
-#### `pg_stat_statements` e monitoring
-
-Dopo l'attivazione, monitorare la regressione delle query tramite `pg_stat_statements`
-confrontando `mean_exec_time` e `calls` sui query hash coinvolti.
+Una policy si paga a ogni riga letta, e cambia le strade che il planner può usare:
+sotto RLS entrano nell'indice solo le condizioni leakproof. Si misura **come
+applicazione**, mai da owner, e la cura si scrive sulla forma della query, non su
+una soglia di tempo. Regole: [linee-guida-sql §8.5-bis e §13](/linee-guida-sql#13-prestazioni-la-forma-di-funzioni-e-query);
+metodo: [Un database che resta veloce](/guide/database-che-resta-veloce).
 
 ---
 
@@ -402,7 +388,7 @@ SELECT rolname, rolbypassrls
 4. Funzioni `STABLE` in `LANGUAGE sql` per favorire inlining.
 5. Parametri dai GUC `app.*`, letti dalla policy e passati alla funzione.
 6. Per il ruolo applicativo (`zeroerp_app`, non-owner `NOBYPASSRLS`) basta `ENABLE`; `FORCE` solo se e' l'owner a fare DML (non e' il caso ZeroErp a runtime).
-7. `BYPASSRLS` sui ruoli owner/manutenzione (`zeroerp_migration`, batch pgAgent).
+7. Nessun `BYPASSRLS`: fuori dalla RLS resta solo il proprietario delle tabelle (`zeroerp_owner`: migrazioni e manutenzione), perché ne è il proprietario. I processi automatici sono filtrati come l'applicazione.
 8. `WITH CHECK` **esplicito**: una policy che copre la scrittura va `FOR ALL` (o `FOR INSERT`/`FOR UPDATE`) con `WITH CHECK`. Una sola `FOR SELECT` su tabella `ENABLE`d **blocca ogni INSERT/UPDATE** ("new row violates row-level security policy").
 9. Viste con `security_invoker = true`.
 10. Test pgTAP obbligatori: visibile / non visibile / senza GUC / bypass / check bloccante.

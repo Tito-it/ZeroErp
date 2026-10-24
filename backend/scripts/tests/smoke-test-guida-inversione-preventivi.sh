@@ -57,8 +57,13 @@ def _guc(c):
                  JOIN auth_user au ON au.id=idg.auth_user_id
                  WHERE au.username=%s AND idg.ruolo_applicativo='OPERATORE' AND idg.attivo IS TRUE LIMIT 1""", [utente])
     idid, srid, uid = c.fetchone()
+    # ⛔ Anche l'emittente ATTIVO, lo stesso che il BE prende dal token: il seed
+    # sceglie il preventivo-modello dentro il perimetro che vedra' l'API. Senza,
+    # «l'ultimo preventivo» puo' essere di un altro emittente e la ricerca del
+    # ROOT torna vuota (E_VENDITA_PREVENTIVO_NON_COLLEGATO, 2026-10-14).
     for k, v in [("app.current_user_id",str(uid)),("app.current_identita_id",str(idid)),
-                 ("app.soggetto_ruolo_id",str(srid)),("app.ruolo_applicativo","OPERATORE"),("app.jwt_user",utente)]:
+                 ("app.soggetto_ruolo_id",str(srid)),("app.ruolo_applicativo","OPERATORE"),("app.jwt_user",utente),
+                 ("app.current_emittente_id",os.environ["SMOKE_GUC_EMITTENTE"])]:
         c.execute("SELECT set_config(%s,%s,false)", [k, v])
 PY
 
@@ -66,6 +71,27 @@ PY
 echo ""; echo "-- 0. Autenticazione --"
 smoke_login
 if [[ "$SMOKE_LOGIN_FONTE" == "SMOKE_TOKEN" ]]; then log_ok "Token da SMOKE_TOKEN"; else log_ok "Login JWT"; fi
+# L'emittente attivo dell'operatore (BB `_smoke_cliente.sh`), per la GUC dei heredoc.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
+smoke_emittente_attivo
+if [[ -z "$EMITTENTE_ATTIVO_ID" ]]; then log_fail "Emittente attivo dell'operatore non risolto"; exit 1; fi
+export SMOKE_GUC_EMITTENTE="$EMITTENTE_ATTIVO_ID"
+log_ok "Emittente attivo: $EMITTENTE_ATTIVO_ID"
+# Il cliente dei preventivi del seed: dal lookup (BB _smoke_cliente.sh), che
+# restituisce solo i clienti dell'emittente attivo; la valuta dai default del
+# form del preventivo per quel cliente. ⛔ Fino al 2026-10-18 la terna si
+# copiava dall'«ultimo preventivo visibile»: su un emittente senza preventivi
+# (l'emittente di prova di `dev.smoke`) il seed non partiva.
+smoke_cliente_dal_lookup   # -> BA_ID, UTILITY_ID, ISTANZA_ID
+SMOKE_SEED_VALUTA=$(curl -s -H "Authorization: Bearer $TOKEN" \
+    "${BASE_URL}/api/v1/vendite/preventivi/form-defaults/?billing_account_id=${BA_ID:-0}" 2>/dev/null \
+    | python3 -c "import sys, json; print((json.load(sys.stdin).get('data') or {}).get('valuta_id') or '')" 2>/dev/null)
+if [[ -z "${BA_ID:-}" || -z "$SMOKE_SEED_VALUTA" ]]; then
+    echo -e "${RED}Setup fallito: nessun cliente con utility e istanza (o senza valuta) per l'emittente attivo (motivo sopra). Stop.${NC}"
+    exit 1
+fi
+export SMOKE_SEED_BA="$BA_ID" SMOKE_SEED_UTILITY="$UTILITY_ID" SMOKE_SEED_ISTANZA="$ISTANZA_ID" SMOKE_SEED_VALUTA
+log_info "cliente del seed: BA=$BA_ID utility=$UTILITY_ID istanza=$ISTANZA_ID valuta=$SMOKE_SEED_VALUTA"
 
 # --- Cleanup (inizio + trap) ---
 cleanup() {
@@ -93,27 +119,48 @@ $GUC_PY
 import uuid
 with connection.cursor() as c:
     _guc(c)
-    c.execute("SELECT id FROM config.stati_doc_preventivi WHERE codice_interno='EMESSO'"); emesso=c.fetchone()[0]
     c.execute("SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno='DA_ESEGUIRE'"); da_eseg=c.fetchone()[0]
     c.execute("SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno='IN_CORSO'"); in_corso=c.fetchone()[0]
     c.execute("SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno='COMPLETATO'"); completato=c.fetchone()[0]
     c.execute("SELECT id FROM config.stati_pratiche WHERE codice_interno='APERTA'"); aperta=c.fetchone()[0]
     c.execute("SELECT id FROM config.sorgenti WHERE codice_interno='PREVENTIVO' AND attivo LIMIT 1"); src=c.fetchone()[0]
-    c.execute("""SELECT priorita_id, emittente_fiscale_id, soggetto_id, definizione_id FROM pratiche.pratiche
-                 WHERE tipo_prestazione_id=9004 AND soggetto_id IS NOT NULL AND definizione_id=7 ORDER BY id DESC LIMIT 1""")
-    priorita, emitt, sogg, defin = c.fetchone()
-    c.execute("""SELECT istanza_utility_id, utility_id, valuta_id, emittente_fiscale_id FROM vendite.preventivi
-                 WHERE utility_id IS NOT NULL AND istanza_utility_id IS NOT NULL ORDER BY id DESC LIMIT 1""")
-    istanza, utility, valuta, pemitt = c.fetchone()
-    c.execute("""INSERT INTO vendite.preventivi (numero, rev, istanza_utility_id, utility_id, validita_dal, validita_al,
-                   valuta_id, stato_doc_preventivo_id, data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-                 VALUES (%s,0,%s,%s,DATE '2026-07-01',DATE '2026-07-31',%s,%s,DATE '2026-07-01',false,false,
+    # Priorita' per codice, come il default di `pratiche.fn_crea_pratica`. Prima
+    # veniva da una pratica-modello 9004: con l'emittente attivo nelle GUC la
+    # pratica-modello di un altro emittente e' invisibile, e il seed cadeva.
+    c.execute("SELECT id FROM config.priorita_pratiche WHERE codice_interno='NORMALE'"); priorita=c.fetchone()[0]
+    # Definizione e tipo prestazione dallo step 9011, l'ancora dello scenario:
+    # la pratica deve stare nel percorso che contiene lo step (FK composta
+    # `fk_template_flussi_definizione`). Niente id di definizione cablato.
+    c.execute("SELECT definizione_id, tipo_prestazione_id FROM pratiche.template_flussi WHERE id=9011"); defin, tipo=c.fetchone()
+    # Il preventivo nasce SEMPRE col suo cliente (billing_account_id NOT NULL,
+    # brief-db-istanza-nasce-col-ba): la terna dal cliente del lookup, che e'
+    # dell'emittente attivo (bash, sopra); l'emittente e' quello attivo.
+    ba, istanza, utility, valuta = (int(os.environ[k]) for k in
+        ("SMOKE_SEED_BA", "SMOKE_SEED_ISTANZA", "SMOKE_SEED_UTILITY", "SMOKE_SEED_VALUTA"))
+    pemitt = int(os.environ["SMOKE_GUC_EMITTENTE"])
+    # ⛔ La pratica e' COERENTE col preventivo: stesso emittente, e il suo
+    # soggetto e' il cliente del preventivo. Fino al 2026-10-12 emittente e
+    # soggetto venivano dalla pratica-modello, indipendente dal preventivo:
+    # andavano d'accordo solo finche' il preventivo piu' recente era dello stesso
+    # emittente (verde per sottrazione), e l'API rispondeva
+    # E_VENDITA_PREVENTIVO_NON_COLLEGATO appena non lo era.
+    c.execute("""SELECT sr.soggetto_id FROM anagrafiche.billing_account b
+                 JOIN anagrafiche.soggetti_ruoli sr ON sr.id = b.soggetto_ruolo_id WHERE b.id = %s""", [ba])
+    sogg = c.fetchone()[0]
+    emitt = pemitt
+    # Il preventivo NASCE in bozza (lo stato lo mette il DB, BB
+    # `script.trgfn_doc_stato_iniziale`) e va a EMESSO per la matrice, sotto i
+    # guard veri: brief-modello-documento-vendita N-1.
+    c.execute("""INSERT INTO vendite.preventivi (numero, rev, billing_account_id, istanza_utility_id, utility_id, validita_dal, validita_al,
+                   valuta_id, data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
+                 VALUES (%s,0,%s,%s,%s,DATE '2026-07-01',DATE '2026-07-31',%s,DATE '2026-07-01',false,false,
                    '{"test_scope":"smoke_guida"}'::jsonb,%s) RETURNING id,(uid)::text""",
-              [f"SMOKE_GUIDA-{uuid.uuid4().hex[:10]}", istanza, utility, valuta, emesso, pemitt])
+              [f"SMOKE_GUIDA-{uuid.uuid4().hex[:10]}", ba, istanza, utility, valuta, pemitt])
     prev_id, prev_uid = c.fetchone()
+    c.execute("SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', %s, 'EMESSO')", [prev_id])
     c.execute("""INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id,
-                   priorita_id, definizione_id, descrizione) VALUES (%s,9004,%s,%s,%s,%s,'SMOKE_GUIDA E2E') RETURNING id""",
-              [emitt, sogg, aperta, priorita, defin])
+                   priorita_id, definizione_id, descrizione) VALUES (%s,%s,%s,%s,%s,%s,'SMOKE_GUIDA E2E') RETURNING id""",
+              [emitt, tipo, sogg, aperta, priorita, defin])
     prat_id = c.fetchone()[0]
     for step in (9009, 9010):  # catena prereq: instanzia+completa (due-salti) prima di 9011
         c.execute("INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id) VALUES (%s,%s,%s) RETURNING id", [prat_id, step, da_eseg])

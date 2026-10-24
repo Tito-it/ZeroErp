@@ -93,6 +93,12 @@ databaseChangeLog:
               - column: { name: key_selector,               type: STRING }
               - column: { name: obsoleto_dal,               type: DATE }
               - column: { name: note,                       type: STRING }
+              # ⭐ Aggiunta il 2026-10-19 (20261019-15, brief-db-grammatica-unica-documenti
+              #   G-1): l'entita' e' anche una sorgente, e allora il suo codice e' quello
+              #   di config.sorgenti (FK sulla colonna generata sorgente_codice_interno,
+              #   che qui NON si elenca: non si scrive). Questo mirror gira dopo quello
+              #   delle sorgenti (20251002-21), quindi la riga puntata c'e' gia'.
+              - column: { name: is_sorgente,                type: BOOLEAN }
 
         - loadUpdateData:
             relativeToChangelogFile: true

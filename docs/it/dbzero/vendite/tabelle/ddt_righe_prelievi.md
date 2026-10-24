@@ -47,9 +47,9 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_riga_id', 'DRAFT', 'RIGA', 'ubicazione_arrivo_id', 'EMESSO,SPEDITO')` |
-| trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_riga_id', 'DRAFT', 'RIGA', 'ubicazione_arrivo_id', 'EMESSO,SPEDITO')` |
-| trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_riga_id', 'DRAFT', 'RIGA', 'ubicazione_arrivo_id', 'EMESSO,SPEDITO')` |
+| trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'ddt_riga_id', 'DRAFT', 'RIGA', 'ubicazione_arrivo_id', 'EMESSO,SPEDITO')` |
+| trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'ddt_riga_id', 'DRAFT', 'RIGA', 'ubicazione_arrivo_id', 'EMESSO,SPEDITO')` |
+| trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'ddt_riga_id', 'DRAFT', 'RIGA', 'ubicazione_arrivo_id', 'EMESSO,SPEDITO')` |
 | trg_ddt_righe_prelievi_a05_guard_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ddt_righe_prelievi_guard()` |
 | trg_ddt_righe_prelievi_a05_guard_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_ddt_righe_prelievi_guard()` |
 | trg_ddt_righe_prelievi_a05_guard_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ddt_righe_prelievi_guard()` |

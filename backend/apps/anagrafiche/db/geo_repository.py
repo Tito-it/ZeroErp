@@ -10,13 +10,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Mapping
 from typing import Any
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
-    dynamic_update,
     fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
@@ -24,6 +24,7 @@ from apps.core.db._helpers import (
     sql_order_clause,
 )
 
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 from django.db import connection
 
 
@@ -168,6 +169,14 @@ def _lista_geo(
     )
 
 
+# Chi chiede lo stato proposto per la tendina degli stati (`p_chi` di
+# `script.fn_stato_proposto_id`). ⚠️ Oggi il lettore lo passa anche come nome
+# di FUNZIONE al lettore dei parametri (R-BE-13), quindi un override per
+# funzione dipende da questo valore: chi rilegge lo stato proposto per
+# confrontarlo con la tendina usa questa costante.
+CHI_STATI_LOOKUP = "anagrafiche.stati_lookup"
+
+
 class GeoRepository:
     """Accesso DB per toponomastica, comuni, province, regioni, stati."""
 
@@ -205,10 +214,12 @@ class GeoRepository:
         )
 
     # Scopo: Aggiorna tipo strada.
-    def update_toponomastica(self, toponomastica_id: int, *, descrizione: str | None = None,
-                             attivo: bool | None = None) -> bool:
-        return dynamic_update("config.toponomastica", toponomastica_id,
-                                    descrizione=descrizione, attivo=attivo)
+    # ⚠️ `campi` li legge il service per PRESENZA (`campi_per_presenza`): un
+    #    `None` qui e' un campo da svuotare, non «non toccare».
+    def update_toponomastica(self, toponomastica_id: int, campi: Mapping[str, Any]) -> bool:
+        return execute_dynamic_update(
+            "config.toponomastica", toponomastica_id, campi, allowed=("descrizione", "attivo"),
+        )
 
     # =================================================================
     # Comuni
@@ -306,10 +317,12 @@ class GeoRepository:
         )
 
     # Scopo: Aggiorna codice postale.
-    def update_codice_postale(self, pk: int, *, codice: str | None = None,
-                              comune_id: int | None = None) -> bool:
-        return dynamic_update("config.codici_postali", pk,
-                                    codice=codice, comune_id=comune_id)
+    # ⚠️ `campi` li legge il service per PRESENZA (`campi_per_presenza`): un
+    #    `None` qui e' un campo da svuotare, non «non toccare».
+    def update_codice_postale(self, pk: int, campi: Mapping[str, Any]) -> bool:
+        return execute_dynamic_update(
+            "config.codici_postali", pk, campi, allowed=("codice", "comune_id"),
+        )
 
     # =================================================================
     # Province
@@ -365,12 +378,12 @@ class GeoRepository:
         )
 
     # Scopo: Aggiorna provincia.
-    def update_provincia(self, provincia_id: int, *, descrizione: str | None = None,
-                         sigla: str | None = None, regione_id: int | None = None) -> bool:
-        return dynamic_update("config.province", provincia_id,
-                              descrizione=descrizione,
-                              sigla=sigla.strip().upper() if sigla else sigla,
-                              regione_id=regione_id)
+    # ⚠️ `campi` li legge il service per PRESENZA (`campi_per_presenza`): un
+    #    `None` qui e' un campo da svuotare, non «non toccare».
+    def update_provincia(self, provincia_id: int, campi: Mapping[str, Any]) -> bool:
+        return execute_dynamic_update(
+            "config.province", provincia_id, campi, allowed=("descrizione", "sigla", "regione_id"),
+        )
 
     # =================================================================
     # Regioni
@@ -423,10 +436,12 @@ class GeoRepository:
         )
 
     # Scopo: Aggiorna regione.
-    def update_regione(self, regione_id: int, *, descrizione: str | None = None,
-                       stato_id: int | None = None) -> bool:
-        return dynamic_update("config.regioni", regione_id,
-                                    descrizione=descrizione, stato_id=stato_id)
+    # ⚠️ `campi` li legge il service per PRESENZA (`campi_per_presenza`): un
+    #    `None` qui e' un campo da svuotare, non «non toccare».
+    def update_regione(self, regione_id: int, campi: Mapping[str, Any]) -> bool:
+        return execute_dynamic_update(
+            "config.regioni", regione_id, campi, allowed=("descrizione", "stato_id"),
+        )
 
     # =================================================================
     # Stati
@@ -449,11 +464,25 @@ class GeoRepository:
             ordinamento=ordinamento, limit=limit, offset=offset,
         )
 
-    # Scopo: Lista stati per dropdown.
+    # Scopo: Lista stati per dropdown. Due colonne in piu' (2026-10-18, D-1 e
+    #        D-2 di Tid, brief-db-processi-accensione-per-ambiente §6.11):
+    #        - `catalogo_comuni_completo`: la FORMA dell'indirizzo libero in
+    #          quello stato (acceso: comune e CAP dall'elenco; spento: la
+    #          localita'). Il form la legge da qui, non la ricalcola;
+    #        - `proposto`: lo stato da preselezionare, da
+    #          `script.fn_stato_proposto_id` (parametro STATO_PROPOSTO_ISO2), lo
+    #          stesso lettore dei trigger che lo scrivono quando manca. Valida e
+    #          non ripiega: un parametro sbagliato e' un errore, non un 'IT'.
     def list_stati_lookup(self) -> list[dict[str, Any]]:
-        sql = "SELECT id, descrizione, codice_iso2 FROM config.stati ORDER BY descrizione"
+        sql = """
+            SELECT s.id, s.descrizione, s.codice_iso2, s.catalogo_comuni_completo,
+                   (s.id = p.stato_id) AS proposto
+              FROM config.stati s
+             CROSS JOIN (SELECT script.fn_stato_proposto_id(%s) AS stato_id) p
+             ORDER BY s.descrizione
+        """
         with connection.cursor() as cursor:
-            cursor.execute(sql)
+            cursor.execute(sql, [CHI_STATI_LOOKUP])
             return rows_to_list(cursor)
 
     # Scopo: Crea stato.
@@ -476,15 +505,12 @@ class GeoRepository:
         ])
 
     # Scopo: Aggiorna stato.
-    def update_stato(self, stato_id: int, *, descrizione: str | None = None,
-                     codice_iso2: str | None = None, codice_iso3: str | None = None,
-                     sigla_stato: str | None = None, codice_telefonico: str | None = None,
-                     continente: str | None = None) -> bool:
-        return dynamic_update("config.stati", stato_id,
-                              descrizione=descrizione,
-                              codice_iso2=codice_iso2.strip().upper() if codice_iso2 else codice_iso2,
-                              codice_iso3=codice_iso3.strip().upper() if codice_iso3 else codice_iso3,
-                              sigla_stato=sigla_stato.strip().upper() if sigla_stato else sigla_stato,
-                              codice_telefonico=codice_telefonico,
-                              continente=continente)
+    # ⚠️ `campi` li legge il service per PRESENZA (`campi_per_presenza`): un
+    #    `None` qui e' un campo da svuotare, non «non toccare».
+    def update_stato(self, stato_id: int, campi: Mapping[str, Any]) -> bool:
+        return execute_dynamic_update(
+            "config.stati", stato_id, campi,
+            allowed=("descrizione", "codice_iso2", "codice_iso3", "sigla_stato",
+                     "codice_telefonico", "continente"),
+        )
 

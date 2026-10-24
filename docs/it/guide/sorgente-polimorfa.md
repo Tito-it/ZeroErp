@@ -111,6 +111,26 @@ completa + spiegazione dei **due meccanismi** (polimorfo vs colonne tipizzate di
 come `ddt.sorgente_uid`/`resi.sorgente_uid` che sono `uuid` a sé):
 [config.sorgenti — §Convenzione chiave sorgente](/dbzero/config/tabelle/sorgenti).
 
+⛔ **Decisione definitiva: la chiave non si unifica.** Portare tutto su `id` (o su
+`uid`) è un'idea già tornata più volte, e la risposta è sempre no. Non si propone, né
+come raccomandazione né come opzione. I motivi:
+
+* **l'`uid` non vive solo qui.** `vendite.commesse_attivita` porta sempre l'`uid` del
+  documento (§4a), le chiavi di idempotenza del push lo contengono, `vendite.ddt` e
+  `vendite.resi` hanno un `sorgente_uid` di tipo `uuid`, e la proiezione dello stato
+  delle pratiche si aggancia al preventivo per `uid`. Cambiarla vuol dire rifare guard,
+  resolver, `vw_stato_sorgente_*`, lineage e push, e convertire i dati salvati (§6);
+* **far viaggiare l'`id` dai lister è già stato scartato**: rompe il contratto fra
+  database e backend, e non porta niente che la normalizzazione nel punto unico di
+  scrittura (`fn_link_commessa_sorgente`) non dia già;
+* **le due chiavi rispondono a due domande.** `config.sorgenti.key_selector` dice con
+  che chiave un documento si **collega**; `config.tipi_entita.key_selector` dice con
+  che chiave lo si **apre** a video, e per preventivo e offerta è `id`. Non è una
+  divergenza da sanare.
+
+Unificare il **nome del tipo** di documento (un codice solo, quello di
+`config.sorgenti`) è un'altra cosa, e si fa.
+
 ### 4a. ⚠️ La trappola vera: colonne che *sembrano* polimorfe ma non lo sono
 
 Il punto che fa sbagliare più spesso **non è** `key_selector` in sé — quello è

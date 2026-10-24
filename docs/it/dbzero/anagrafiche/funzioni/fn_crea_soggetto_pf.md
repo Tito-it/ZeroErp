@@ -2,19 +2,22 @@
 # ⚙️ Funzione `fn_crea_soggetto_pf`
 
 ```sql
-CREATE FUNCTION fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email character varying, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer, p_tipo_contatto_id integer, p_tipo_soggetto_dettaglio_id bigint, p_partita_iva text)
+CREATE FUNCTION fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email character varying, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer, p_tipo_contatto_id integer, p_tipo_soggetto_dettaglio_id bigint, p_partita_iva text, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character varying, p_pec_fatturazione character varying, p_codice_sdi character varying, p_data_costituzione date)
 ```
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text DEFAULT NULL::text, p_nome text DEFAULT NULL::text, p_codice_fiscale text DEFAULT NULL::text, p_email character varying DEFAULT NULL::character varying, p_data_nascita date DEFAULT NULL::date, p_sesso character DEFAULT NULL::bpchar, p_stato_iso2 character DEFAULT NULL::bpchar, p_comune_nascita_id integer DEFAULT NULL::integer, p_tipo_contatto_id integer DEFAULT NULL::integer, p_tipo_soggetto_dettaglio_id bigint DEFAULT NULL::bigint, p_partita_iva text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text DEFAULT NULL::text, p_nome text DEFAULT NULL::text, p_codice_fiscale text DEFAULT NULL::text, p_email character varying DEFAULT NULL::character varying, p_data_nascita date DEFAULT NULL::date, p_sesso character DEFAULT NULL::bpchar, p_stato_iso2 character DEFAULT NULL::bpchar, p_comune_nascita_id integer DEFAULT NULL::integer, p_tipo_contatto_id integer DEFAULT NULL::integer, p_tipo_soggetto_dettaglio_id bigint DEFAULT NULL::bigint, p_partita_iva text DEFAULT NULL::text, p_forma_giuridica_id bigint DEFAULT NULL::bigint, p_id_prov_iscri_rea integer DEFAULT NULL::integer, p_iscrizione_rea character varying DEFAULT NULL::character varying, p_capitale_sociale numeric DEFAULT NULL::numeric, p_socio_unico anagrafiche.socio_unico_enum DEFAULT NULL::anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum DEFAULT NULL::anagrafiche.liquidazione_enum, p_destinatario_fe character varying DEFAULT NULL::character varying, p_pec_fatturazione character varying DEFAULT NULL::character varying, p_codice_sdi character varying DEFAULT NULL::character varying, p_data_costituzione date DEFAULT NULL::date)
  RETURNS uuid
  LANGUAGE plpgsql
 AS $function$
 -- =========================================================
 -- Scopo: crea un soggetto PERSONA FISICA (natura base PF: privato PR o
---   ditta individuale DI) + il contatto di default. NON crea indirizzi.
+--   ditta individuale DI) + il contatto di default + i dati societari, se
+--   la natura li ammette e sono passati. NON crea indirizzi.
 -- ⭐ Rev 20261009-26 (brief-db-sesso-senza-default):
 --   - la natura di dettaglio la sceglie il chiamante
 --     (p_tipo_soggetto_dettaglio_id, obbligatorio): prima era PR cablato, e
@@ -24,6 +27,12 @@ AS $function$
 --   - il sesso passa cosi' com'e': via il COALESCE(p_sesso, 'M'). Se serve
 --     lo decide la natura (sesso_policy), nel guard
 --     trgfn_soggetti_guard_sesso_policy: una sede sola per la regola.
+-- ⭐ Rev 20261020-03 (brief-db-dati-societari-in-creazione, E-1 (a)):
+--   i dati societari (la DI li ammette, policy OPTIONAL) nascono qui, nella
+--   stessa chiamata: prima il backend li riceveva dal form e li perdeva.
+--   Quando scriverli lo decide il BB della nascita, lo stesso di
+--   fn_crea_soggetto_pg; un privato (NONE) con la sezione lo rifiuta il
+--   guard della natura.
 -- =========================================================
 DECLARE
     v_tipo_soggetto_id            config.tipi_soggetto_dettaglio.tipo_soggetto_id%TYPE;
@@ -126,17 +135,18 @@ BEGIN
         );
     END IF;
 
-    -- Stato (nazionalita) — default da config.parameters
-    v_stato_iso2_resolved := COALESCE(
-        p_stato_iso2,
-        (SELECT default_value FROM config.parameters
-          WHERE code = 'soggetto_default_stato_iso2'),
-        'IT'
-    );
-
-    SELECT id INTO v_stato_id
-    FROM config.stati
-    WHERE codice_iso2 = v_stato_iso2_resolved;
+    -- Stato (nazionalita). Rev 2026-10-18 (D-1 di Tid): quello detto dal
+    -- chiamante, cercato dal BB che rifiuta un codice con piu' stati
+    -- (E_STATO_ISO2_AMBIGUO; prima un SELECT INTO ne prendeva uno a caso);
+    -- altrimenti quello proposto, che valida e non ripiega. ⛔ Il ripiego
+    -- silenzioso a 'IT' e il parametro soggetto_default_stato_iso2 sono
+    -- ritirati.
+    IF NULLIF(btrim(p_stato_iso2), '') IS NOT NULL THEN
+        v_stato_iso2_resolved := upper(btrim(p_stato_iso2));
+        v_stato_id := script.fn_stato_id_da_iso2(v_stato_iso2_resolved, 'anagrafiche.fn_crea_soggetto_pf');
+    ELSE
+        v_stato_id := script.fn_stato_proposto_id('anagrafiche.fn_crea_soggetto_pf');
+    END IF;
 
     IF v_stato_id IS NULL THEN
         -- Fix: E_GENERICO → E_CODICE
@@ -181,24 +191,40 @@ BEGIN
     RETURNING id INTO v_soggetto_id;
 
     -- Step 2: Creazione contatto default con tipo_contatto_id
-    INSERT INTO anagrafiche.contatti (
-        soggetto_id, tipo_contatto_id, nominativo, email, is_default
-    )
-    VALUES (
-        v_soggetto_id,
-        v_tipo_contatto_id,
-        TRIM(p_cognome) || ' ' || TRIM(p_nome),
-        TRIM(p_email),
-        true
+    --         (BB anagrafiche.fn_crea_contatto, rev 2026-10-17)
+    PERFORM anagrafiche.fn_crea_contatto(
+        v_soggetto_id, NULL,
+        jsonb_build_object('tipo_contatto_id', v_tipo_contatto_id,
+                           'nominativo',       TRIM(p_cognome) || ' ' || TRIM(p_nome),
+                           'email',            TRIM(p_email),
+                           'is_default',       true));
+
+    -- Step 3: i dati societari (rev 20261020-03). Quando scriverli lo decide
+    --   il BB della nascita, condiviso con fn_crea_soggetto_pg (regola del 2);
+    --   scrive il verbo, le regole restano nei trigger della tabella.
+    PERFORM anagrafiche.fn_scrivi_dati_societari_alla_nascita(
+        p_soggetto_id        := v_soggetto_id,
+        p_forma_giuridica_id := p_forma_giuridica_id,
+        p_id_prov_iscri_rea  := p_id_prov_iscri_rea,
+        p_iscrizione_rea     := p_iscrizione_rea,
+        p_capitale_sociale   := p_capitale_sociale,
+        p_socio_unico        := p_socio_unico,
+        p_liquidazione       := p_liquidazione,
+        p_destinatario_fe    := p_destinatario_fe,
+        p_pec_fatturazione   := p_pec_fatturazione,
+        p_codice_sdi         := p_codice_sdi,
+        p_data_costituzione  := p_data_costituzione
     );
 
     RETURN v_soggetto_id;
 END;
 $function$
 
-COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email character varying, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer, p_tipo_contatto_id integer, p_tipo_soggetto_dettaglio_id bigint, p_partita_iva text)
-IS 'Crea un soggetto PERSONA FISICA (natura base PF: privato PR o ditta individuale DI, scelta dal chiamante con p_tipo_soggetto_dettaglio_id, obbligatorio) + contatto default con tipo_contatto_id. Una natura che non e'' PF si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA (porta giusta: fn_crea_soggetto_pg). p_partita_iva per la DI (la pretende il guard su CF e P.IVA). Il sesso passa com''e'', senza default: quando serve lo decide config.tipi_soggetto_dettaglio.sesso_policy nel guard trgfn_soggetti_guard_sesso_policy (PR obbligatorio, DI facoltativo). Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2 da config.parameters. Guard CF univoco. NON crea indirizzo. Rev 20261009-26, brief-db-sesso-senza-default.';
+COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email character varying, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer, p_tipo_contatto_id integer, p_tipo_soggetto_dettaglio_id bigint, p_partita_iva text, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character varying, p_pec_fatturazione character varying, p_codice_sdi character varying, p_data_costituzione date)
+IS 'Crea un soggetto PERSONA FISICA (natura base PF: privato PR o ditta individuale DI, scelta dal chiamante con p_tipo_soggetto_dettaglio_id, obbligatorio) + contatto default con tipo_contatto_id. Una natura che non e'' PF si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA (porta giusta: fn_crea_soggetto_pg). p_partita_iva per la DI (la pretende il guard su CF e P.IVA). Il sesso passa com''e'', senza default: quando serve lo decide config.tipi_soggetto_dettaglio.sesso_policy nel guard trgfn_soggetti_guard_sesso_policy (PR obbligatorio, DI facoltativo). Fallback tipo contatto: primo da config.tipi_contatti. Stato: p_stato_iso2 se detto (script.fn_stato_id_da_iso2, E_STATO_ISO2_AMBIGUO se indica piu'' stati, E_CODICE se nessuno), altrimenti lo stato proposto (script.fn_stato_proposto_id, rev 2026-10-18: via il ripiego a ''IT'' e il parametro soggetto_default_stato_iso2). Guard CF univoco. Dati societari dal BB anagrafiche.fn_scrivi_dati_societari_alla_nascita (rev 20261020-03). NON crea indirizzo. Rev 20261009-26, brief-db-sesso-senza-default. Rev 2026-10-17: il contatto lo scrive il BB anagrafiche.fn_crea_contatto (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 3); comportamento invariato. Rev 20261020-03 (brief-db-dati-societari-in-creazione, E-1 (a)): i dati societari in coda (stessi nomi di fn_crea_soggetto_pg) e scritti nella stessa chiamata; quando scriverli lo decide anagrafiche.fn_scrivi_dati_societari_alla_nascita (policy REQUIRED o almeno un campo con un valore): la ditta individuale (OPTIONAL) li porta se passati, un privato (NONE) con la sezione lo rifiuta il guard della natura.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

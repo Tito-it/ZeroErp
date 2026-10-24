@@ -485,7 +485,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 485,38,articolo_descrizione,Descrizione,,articolo_descrizione,informazione,string,,240,16,left,,,f,t,t,f,f,t,2026-08-20 00:00:00,mctit,vendite.commesse.col_articolo_descrizione,50
 486,38,movimento,Movimento,"Natura della riga: Normale, Rettifica (quantita' negativa, alimenta la nota di credito) oppure Onere",tipo_movimento,informazione,string,,110,25,center,,,t,t,t,f,f,t,2026-08-20 00:00:00,mctit,vendite.commesse.col_movimento,88
 487,38,origine,Origine,"Numero del documento da cui la riga discende. Vuoto sulle righe di rettifica e sugli oneri, che per progetto non hanno un documento a monte",sorgente_documento_numero,informazione,string,,140,35,left,,,f,t,t,f,f,t,2026-08-20 00:00:00,mctit,vendite.commesse.col_origine,78
-488,38,origine_tipo,Tipo origine,,sorgente_codice,informazione,string,,140,36,left,,,f,t,t,f,f,t,2026-08-20 00:00:00,mctit,vendite.commesse.col_origine_tipo,35
+488,38,origine_tipo,Tipo origine,,sorgente_etichetta,informazione,string,,140,36,left,,,f,t,t,f,f,t,2026-08-20 00:00:00,mctit,vendite.commesse.col_origine_tipo,35
 489,38,gruppo_fatturabile,Gruppo fatturabile,"Unita' con cui nasce la fattura: il documento sorgente, oppure la commessa stessa per rettifiche e oneri",gruppo_key,informazione,string,,220,37,left,,,f,t,t,f,f,t,2026-08-20 00:00:00,mctit,vendite.commesse.col_gruppo_fatturabile,30
 490,45,numero,Numero,Numero del documento: vuoto finche' non e' stato numerato,numero,identificatore,numeric,,110,10,left,,,f,t,t,f,f,t,2026-08-22 00:00:00,mctit,vendite.lotto_fatture.col_numero,100
 491,45,serie,Serie,,serie,informazione,string,,80,20,left,,,f,t,t,f,f,t,2026-08-22 00:00:00,mctit,vendite.lotto_fatture.col_serie,40
@@ -1108,3 +1108,5 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 1108,106,origine,Origine,,origine,informazione,string,,110,90,center,,,f,t,t,f,f,t,2026-10-05 00:00:00,mctit,vendite.offerte.col_origine,30
 1109,106,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-10-05 00:00:00,mctit,common.col_azioni,100
 1110,28,override_count,Override,"Override dei permessi scritti per l operatore (aree, azioni e oggetti)",override_count,informazione,numeric,number,110,35,right,,,f,t,t,f,f,t,2026-10-06 00:00:00,mctit,amministrazione.col_override,70
+1111,24,standard,Standard,"Modello standard di sistema: in sola lettura, vale per gli emittenti che non hanno un modello loro",standard,informazione,boolean,,,80,center,,,t,t,t,f,f,t,2026-10-21 00:00:00,mctit,config.modelli_documenti.col_standard,50
+1112,24,stato_scarto,Allineamento allo standard,Quanto la copia e rimasta indietro rispetto al modello standard da cui deriva,stato_scarto,informazione,string,,,90,left,,,f,f,t,f,f,t,2026-10-21 00:00:00,mctit,config.modelli_documenti.col_stato_scarto,50

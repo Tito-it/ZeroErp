@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DI LISTINO PORTA LA SUA VERSIONE
+#   vendite.commesse_attivita: CHECK chk_commesse_attivita_listino_riga_con_versione
+#   Brief: brief-db-coerenza-listino-della-riga-di-commessa (§6 D-2, Tid 2026-10-16)
+#
+# -- LA REGOLA ----------------------------------------------------
+#   Una riga di commessa che cita la riga di listino del prezzo
+#   (listino_riga_id) cita anche la versione sotto cui e' registrata
+#   (listino_versione_id). Discende da D-1 (la provenienza del prezzo non
+#   contraddice la riga): incompleta, non direbbe sotto quale listino la riga
+#   e' registrata. La versione da sola resta lecita (il push la scrive senza
+#   la riga: decisione B del 2026-10-09).
+#   Chi scrive le due colonne: il risolutore le restituisce insieme; il
+#   riallineamento del backend le scrive insieme dal risolutore; il prezzo
+#   manuale le azzera entrambe; il builder pgTAP ricava la versione dalla
+#   riga (20261015-23). vendite.attivita_fatturabili non porta la versione:
+#   il vincolo non la riguarda.
+#   Che la versione sia QUELLA della riga lo dice il guard
+#   vendite.trgfn_attivita_guard_listino_riga (AFTER): qui c'e' solo
+#   «c'e' anche la versione», che e' struttura della riga.
+#
+# -- PRECONDITION -------------------------------------------------
+#   HALT se c'e' gia' una riga che il vincolo rifiuterebbe. Su un DB da zero
+#   la tabella e' vuota; su dbdev il 2026-10-16 nessuna riga porta la riga di
+#   listino (fatto datato, non motivo).
+#   ⚠️ preCondition su dati di esercizio, non su un seed di 80_data: non e' il
+#   divieto di linee-guida-sql 11.4 (precedente: 20261012-27).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261016-01-alter-commesse-attivita-chk-listino-riga-con-versione-mctit.yaml
+
+  - changeSet:
+      id: 20261016-01-alter-commesse-attivita-chk-listino-riga-con-versione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.commesse_attivita: CHECK che vuole la versione di listino su ogni riga che cita una
+        riga di listino. Brief: brief-db-coerenza-listino-della-riga-di-commessa (§6 D-2).
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            Ci sono righe di commessa con la riga di listino e senza la versione: vanno corrette a
+            mano prima del CHECK chk_commesse_attivita_listino_riga_con_versione
+            (SELECT id, commessa_id, listino_riga_id FROM vendite.commesse_attivita
+            WHERE listino_riga_id IS NOT NULL AND listino_versione_id IS NULL).
+        - and:
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                   WHERE c.conrelid = 'vendite.commesse_attivita'::regclass
+                     AND c.conname = 'chk_commesse_attivita_listino_riga_con_versione'
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM vendite.commesse_attivita ca
+                   WHERE ca.listino_riga_id IS NOT NULL
+                     AND ca.listino_versione_id IS NULL
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_listino_riga_con_versione
+                CHECK (listino_riga_id IS NULL OR listino_versione_id IS NOT NULL);
+
+              COMMENT ON CONSTRAINT chk_commesse_attivita_listino_riga_con_versione
+                ON vendite.commesse_attivita IS
+                'Una riga che cita la riga di listino del prezzo (listino_riga_id) cita anche la versione sotto cui e'' registrata (listino_versione_id): la provenienza del prezzo non e'' incompleta. La versione da sola resta lecita (il push la scrive senza la riga). Che la versione sia quella della riga lo dice il guard vendite.trgfn_attivita_guard_listino_riga. brief-db-coerenza-listino-della-riga-di-commessa §6 D-2 (Tid, 2026-10-16).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita
+                DROP CONSTRAINT IF EXISTS chk_commesse_attivita_listino_riga_con_versione;

@@ -1,0 +1,170 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CANONICA RISPONDE SUBITO SULL'EMITTENTE ATTIVO
+#   script.fn_check_user_emittente_scope(integer,bigint)
+#   Brief: brief-db-plancache-funzioni-con-query-incorporate §5quinquies, D-3b-2 (ondata 1a, correzione).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   La canonica di 20261018-18 calcola sempre il perimetro intero. Quella di
+#   prima, con un emittente attivo di sessione, rispondeva false SUBITO per
+#   un emittente diverso: le righe degli altri emittenti non costavano
+#   niente. Fatto datato (2026-10-18, dbdev come app, copie pg_temp): con
+#   emittente attivo 0,024 -> 0,109 ms a chiamata, per riga.
+#
+# ── LA CURA ─────────────────────────────────────────────────────────
+#   L'uscita anticipata torna: con un emittente attivo il perimetro di
+#   fn_get_emittenti_scope_pk_ids e' al piu' {attivo}, quindi per un
+#   emittente diverso la risposta e' false senza calcolarlo. E' la
+#   conseguenza della regola, non una seconda copia: la parita' la tiene
+#   script/test-fn-get-emittenti-scope-pk-ids-and-parity.
+#   Con -22: 0,021-0,077 ms a chiamata, come prima di -18.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261018-23-update-fn-check-user-emittente-scope-uscita-emittente-attivo-mctit.yaml
+
+  - changeSet:
+      id: 20261018-23-update-fn-check-user-emittente-scope-uscita-emittente-attivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_check_user_emittente_scope: con un emittente attivo, per un emittente diverso risponde false senza calcolare il perimetro (come prima di -18). D-3b-2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid = to_regprocedure('script.fn_check_user_emittente_scope(integer,bigint)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_user_emittente_scope(
+                  p_auth_user_id         config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               STABLE COST 5000
+              AS $function$
+              DECLARE
+                  -- ⚠️ `bigint[]` esplicito: `colonna%TYPE[]` non esiste in PostgreSQL.
+                  v_perimetro bigint[];
+                  v_attivo    anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Verifica se un utente ha accesso a uno specifico
+                  --   emittente fiscale. Sede unica read+write: la usano gli
+                  --   adapter RLS, i verbi DEFINER e i trigger di guardia.
+                  --
+                  -- ⭐ Rev 2026-10-18 (D-3b-2, brief-db-plancache-funzioni-
+                  --   con-query-incorporate §5quinquies): le regole stanno in
+                  --   script.fn_get_emittenti_scope_pk_ids, che le scrive come
+                  --   INSIEME (gli emittenti visibili) ed e' gia' la sede del
+                  --   perimetro per il backend. Fino a oggi la stessa regola era
+                  --   scritta DUE volte, qui e li': ora una. Qui resta la domanda
+                  --   su UN emittente, fatta con la stessa funzione di scope delle
+                  --   policy (script.fn_scope_ef_perimetro), e le policy dirette
+                  --   calcolano il perimetro una volta per istruzione invece che
+                  --   una volta per riga.
+                  --
+                  -- Regole (ora in fn_get_emittenti_scope_pk_ids):
+                  --   1. p_auth_user_id NULL -> FALSE  (2026-10-04, Q-1)
+                  --   2. Emittente attivo diverso da quello richiesto -> false
+                  --      (restringe CHIUNQUE, anche il super admin)
+                  --   3. fn_is_super_admin -> true (vede tutto)
+                  --   4. Assenza identita OPERATORE utilizzabile -> false
+                  --   5. Whitelist vuota -> FALSE  (P-2a, 2026-08-18)
+                  --   6. Whitelist popolata -> l'emittente ci sta dentro
+                  --   ⚠️ La 4 la _pk_ids la guarda PRIMA della 3: l'esito non
+                  --   cambia, perche' il super admin richiede gia' una veste
+                  --   OPERATORE utilizzabile (fn_is_super_admin_account).
+                  --   Il perche' di 1 (Q-1) e di 5 (P-2a) e' nel COMMENT di
+                  --   questa funzione.
+                  -- =========================================================
+                  -- ⭐ Rev 2026-10-18 (20261018-23): con un emittente attivo di
+                  --    sessione il perimetro di fn_get_emittenti_scope_pk_ids e'
+                  --    al piu' {attivo}. Per un emittente diverso la risposta e'
+                  --    gia' false, e la si da' SENZA calcolare il perimetro: non
+                  --    e' una seconda regola, e' la conseguenza della prima, e
+                  --    script/test-fn-get-emittenti-scope-pk-ids-and-parity tiene
+                  --    allineate le due. Senza, ogni chiamata per riga (adattatori
+                  --    via_*, guard) pagava il perimetro intero anche per le righe
+                  --    che l'emittente attivo esclude: misura nel brief.
+                  --    IS DISTINCT FROM: emittente NULL -> false (fail-closed).
+                  v_attivo := NULLIF(current_setting('app.current_emittente_id', true), '')::bigint;
+                  IF v_attivo IS NOT NULL AND p_emittente_fiscale_id IS DISTINCT FROM v_attivo THEN
+                      RETURN false;
+                  END IF;
+
+                  v_perimetro := script.fn_get_emittenti_scope_pk_ids(p_auth_user_id);
+
+                  -- NULL = tutti. Emittente NULL (riferimento non risolto dagli
+                  -- adapter) -> false se il perimetro non e' «tutti».
+                  RETURN script.fn_scope_ef_perimetro(v_perimetro IS NULL, v_perimetro,
+                                                      p_emittente_fiscale_id);
+              END
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il corpo vivo di prima (20261018-18), per intero.
+              CREATE OR REPLACE FUNCTION script.fn_check_user_emittente_scope(p_auth_user_id integer, p_emittente_fiscale_id bigint)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               STABLE COST 5000
+              AS $function$
+              DECLARE
+                  -- ⚠️ `bigint[]` esplicito: `colonna%TYPE[]` non esiste in PostgreSQL.
+                  v_perimetro bigint[];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Verifica se un utente ha accesso a uno specifico
+                  --   emittente fiscale. Sede unica read+write: la usano gli
+                  --   adapter RLS, i verbi DEFINER e i trigger di guardia.
+                  --
+                  -- ⭐ Rev 2026-10-18 (D-3b-2, brief-db-plancache-funzioni-
+                  --   con-query-incorporate §5quinquies): le regole stanno in
+                  --   script.fn_get_emittenti_scope_pk_ids, che le scrive come
+                  --   INSIEME (gli emittenti visibili) ed e' gia' la sede del
+                  --   perimetro per il backend. Fino a oggi la stessa regola era
+                  --   scritta DUE volte, qui e li': ora una. Qui resta la domanda
+                  --   su UN emittente, fatta con la stessa funzione di scope delle
+                  --   policy (script.fn_scope_ef_perimetro), e le policy dirette
+                  --   calcolano il perimetro una volta per istruzione invece che
+                  --   una volta per riga.
+                  --
+                  -- Regole (ora in fn_get_emittenti_scope_pk_ids):
+                  --   1. p_auth_user_id NULL -> FALSE  (2026-10-04, Q-1)
+                  --   2. Emittente attivo diverso da quello richiesto -> false
+                  --      (restringe CHIUNQUE, anche il super admin)
+                  --   3. fn_is_super_admin -> true (vede tutto)
+                  --   4. Assenza identita OPERATORE utilizzabile -> false
+                  --   5. Whitelist vuota -> FALSE  (P-2a, 2026-08-18)
+                  --   6. Whitelist popolata -> l'emittente ci sta dentro
+                  --   ⚠️ La 4 la _pk_ids la guarda PRIMA della 3: l'esito non
+                  --   cambia, perche' il super admin richiede gia' una veste
+                  --   OPERATORE utilizzabile (fn_is_super_admin_account).
+                  --   Il perche' di 1 (Q-1) e di 5 (P-2a) e' nel COMMENT di
+                  --   questa funzione.
+                  -- =========================================================
+                  v_perimetro := script.fn_get_emittenti_scope_pk_ids(p_auth_user_id);
+
+                  -- NULL = tutti. Emittente NULL (riferimento non risolto dagli
+                  -- adapter) -> false se il perimetro non e' «tutti».
+                  RETURN script.fn_scope_ef_perimetro(v_perimetro IS NULL, v_perimetro,
+                                                      p_emittente_fiscale_id);
+              END
+              $function$;

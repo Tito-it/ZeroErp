@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2d (G-6): i sette montaggi del guard dei tipi d'indirizzo col codice del documento
+#   Brief: brief-db-grammatica-unica-documenti §7.9 G-6, §10.4.
+#
+#   Gli argomenti di un trigger si cambiano solo smontando e rimontando (§7.5). Sette montaggi,
+#   uno per tabella degli indirizzi, con il codice della sorgente al posto del plurale:
+#   CONTRATTI -> CONTRATTO, ACQUISTI_DDT -> DDT_ACQUISTO, DDT -> DDT_VENDITA, FATTURE ->
+#   FATTURA, OFFERTE -> OFFERTA_COMMERCIALE, ORDINI -> ORDINE_VENDITA, PREVENTIVI -> PREVENTIVO.
+#   Montati a mano (20251009-03 ... -05, 20251010-25, 20260711-22/-23), non da ci_apply: stessi
+#   nomi, stessi eventi. Nessun COMMENT sui montaggi di oggi.
+#
+#   Corpo e COMMENT dal catalogo vivo di dbdev (2026-10-20), non da uno YAML; sostituzioni
+#   contate. %TYPE in firma, DECLARE e RETURNS TABLE dove c'e' una colonna; nudi, col
+#   motivo accanto, i valori che una colonna non ha (conteggi, jsonb di lavoro, array).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261020-53-recreate-trigger-tipi-indirizzi-only-allowed-codice-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261020-53-recreate-trigger-tipi-indirizzi-only-allowed-codice-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rimonta i sette trigger di vendite.trgfn_tipi_indirizzi_only_allowed col codice della
+        sorgente come argomento. Grammatica unica, 2d (G-6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_contratti_indirizzi_a10_ins_upd_only_allowed_tipi ON vendite.contratti_indirizzi;
+              CREATE TRIGGER trg_contratti_indirizzi_a10_ins_upd_only_allowed_tipi BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON vendite.contratti_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('CONTRATTO');
+
+              DROP TRIGGER trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd ON acquisti.ddt_indirizzi;
+              CREATE TRIGGER trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON acquisti.ddt_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('DDT_ACQUISTO');
+
+              DROP TRIGGER trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd ON vendite.ddt_indirizzi;
+              CREATE TRIGGER trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON vendite.ddt_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('DDT_VENDITA');
+
+              DROP TRIGGER trg_fatture_indirizzi_a10_only_allowed_tipi_ins_upd ON vendite.fatture_indirizzi;
+              CREATE TRIGGER trg_fatture_indirizzi_a10_only_allowed_tipi_ins_upd BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON vendite.fatture_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('FATTURA');
+
+              DROP TRIGGER trg_offerte_commerciali_indirizzi_a10_ins_upd_only_allowed_tipi ON vendite.offerte_commerciali_indirizzi;
+              CREATE TRIGGER trg_offerte_commerciali_indirizzi_a10_ins_upd_only_allowed_tipi BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON vendite.offerte_commerciali_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('OFFERTA_COMMERCIALE');
+
+              DROP TRIGGER trg_ordini_indirizzi_a10_only_allowed_tipi_ins_upd ON vendite.ordini_indirizzi;
+              CREATE TRIGGER trg_ordini_indirizzi_a10_only_allowed_tipi_ins_upd BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON vendite.ordini_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('ORDINE_VENDITA');
+
+              DROP TRIGGER trg_preventivi_indirizzi_a10_only_allowed_tipi_ins_upd ON vendite.preventivi_indirizzi;
+              CREATE TRIGGER trg_preventivi_indirizzi_a10_only_allowed_tipi_ins_upd BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON vendite.preventivi_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('PREVENTIVO');
+
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER trg_contratti_indirizzi_a10_ins_upd_only_allowed_tipi ON vendite.contratti_indirizzi;
+              CREATE TRIGGER trg_contratti_indirizzi_a10_ins_upd_only_allowed_tipi BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON vendite.contratti_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('CONTRATTI');
+
+              DROP TRIGGER trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd ON acquisti.ddt_indirizzi;
+              CREATE TRIGGER trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON acquisti.ddt_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('ACQUISTI_DDT');
+
+              DROP TRIGGER trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd ON vendite.ddt_indirizzi;
+              CREATE TRIGGER trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON vendite.ddt_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('DDT');
+
+              DROP TRIGGER trg_fatture_indirizzi_a10_only_allowed_tipi_ins_upd ON vendite.fatture_indirizzi;
+              CREATE TRIGGER trg_fatture_indirizzi_a10_only_allowed_tipi_ins_upd BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON vendite.fatture_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('FATTURE');
+
+              DROP TRIGGER trg_offerte_commerciali_indirizzi_a10_ins_upd_only_allowed_tipi ON vendite.offerte_commerciali_indirizzi;
+              CREATE TRIGGER trg_offerte_commerciali_indirizzi_a10_ins_upd_only_allowed_tipi BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON vendite.offerte_commerciali_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('OFFERTE');
+
+              DROP TRIGGER trg_ordini_indirizzi_a10_only_allowed_tipi_ins_upd ON vendite.ordini_indirizzi;
+              CREATE TRIGGER trg_ordini_indirizzi_a10_only_allowed_tipi_ins_upd BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON vendite.ordini_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('ORDINI');
+
+              DROP TRIGGER trg_preventivi_indirizzi_a10_only_allowed_tipi_ins_upd ON vendite.preventivi_indirizzi;
+              CREATE TRIGGER trg_preventivi_indirizzi_a10_only_allowed_tipi_ins_upd BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON vendite.preventivi_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('PREVENTIVI');
+

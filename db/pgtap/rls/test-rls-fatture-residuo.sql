@@ -133,10 +133,7 @@ BEGIN
                 '!', true, false, false, '', '', '', now())
         RETURNING id INTO v_u;
 
-        INSERT INTO anagrafiche.identita_digitali
-            (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-        VALUES (c.soggetto_ruolo_id, v_u, 'CLIENTE_PORTALE', true)
-        RETURNING id INTO v_id;
+        v_id := anagrafiche.fn_crea_veste_portale(v_u, c.soggetto_ruolo_id, 'CLIENTE_PORTALE', true);
 
         INSERT INTO _portale VALUES (c.lato, v_id);
     END LOOP;

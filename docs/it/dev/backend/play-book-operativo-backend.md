@@ -22,7 +22,9 @@ export APP_DIR=/home/$APP_USER/apps/ZeroErp        # clone del repository
 export DB_NAME=zeroerp
 export DB_USER=zeroerp_app                          # ruolo runtime, MAI owner né BYPASSRLS
 export DB_PASS=⚠️StrongPassword
-export DB_MIGRATOR=⚠️titodb                          # owner degli oggetti: Liquibase e manage.py migrate
+export DB_MIGRATOR=zeroerp_owner                    # owner degli oggetti: Liquibase e manage.py migrate
+                                                     # (ruolo di sistema; sullo sviluppo un utente personale che ne
+                                                     #  è membro e lavora come lui)
 export DB_HOST=⚠️dbdev
 export DB_PORT=5432
 ```
@@ -152,26 +154,27 @@ host  zeroerp  zeroerp_log  100.x.y.z/32  scram-sha-256
 da utente amministrativo. Procedura completa, verifiche e motivazioni:
 [provisioning-db-roles.md](provisioning-db-roles.md).
 
+⭐ **Su un database nuovo** i ruoli li crea `scripts/sql/provision_zeroerp.sql`
+(ruoli di sistema `zeroerp_owner`, `zeroerp_job`, `zeroerp_app`), in tre fasi
+attorno alle migrazioni, e il migratore è `zeroerp_owner`: l'ordine dei passi è
+nella pagina qui sopra e, passo per passo, in [Installazione](/installazione).
+
 L'ordine conta: lo script concede **sugli schemi e sulle tabelle che esistono**,
 quindi si lancia **dopo** Liquibase **e dopo** `manage.py migrate` (§11), e si
 rilancia quando nasce uno schema applicativo nuovo.
 
 ```bash
 psql "host=${DB_HOST} port=5432 dbname=${DB_NAME} user=<ADMIN_DB_USER>" \
-  -v app_role=${DB_USER} \
-  -v app_password='${DB_PASS}' \
-  -v migrator_role=${DB_MIGRATOR} \
-  -f scripts/sql/provision_db_roles.sql
+  -v fase=post -f scripts/sql/provision_zeroerp.sql
 
 psql "host=${DB_HOST} port=5432 dbname=${DB_NAME} user=<ADMIN_DB_USER>" \
-  -v log_password='⚠️PasswordLog' \
   -f scripts/sql/provision_dblink_log_channel.sql
 ```
 
 ⛔ **Nessun ruolo `BYPASSRLS`** su un host nuovo: i processi automatici girano
 come `zeroerp_app` con un utente tecnico per azienda
-([Processi automatici](/guide/processi-automatici-classe-e-identita)). Il
-ruolo `zeroerp_batch_fatturazione` è in ritiro e non va creato.
+([Processi automatici](/guide/processi-automatici-classe-e-identita)), e la
+RLS li filtra come un operatore.
 
 > ✅ **Come so che è andata bene**: la sezione «Verifiche» di
 > [provisioning-db-roles.md](provisioning-db-roles.md).
@@ -321,14 +324,21 @@ sudo ${APP_DIR}/backend/bin/install-timers.sh
 Lo script renderizza i template (placeholder `__APP_DIR__`, `__APP_USER__`,
 `__ONCALENDAR__`, `__COMANDO__`), li copia in `/etc/systemd/system`,
 **spegne e toglie** le sveglie installate che `sveglie.json` non dichiara più
-(§16.3-bis), fa `daemon-reload` e **accende solo le sveglie con
-`abilita: true`**. Ogni unit
+(§16.3-bis), fa `daemon-reload` e **accende ogni sveglia dichiarata**. Se un
+processo lavora **non lo decide l'installer**: dal 2026-10-16 ogni `.service`
+porta `ExecCondition=… e_dovuto <unit>`, che a ogni sveglia chiede al database
+se il processo è acceso su questa installazione (`maintenance.fn_sveglia_accesa`:
+la scelta a mano dal drawer dei processi, altrimenti il default del processo
+per l'ambiente dell'installazione). Spento: systemd salta senza errore. Ambiente
+non dichiarato: l'unit fallisce, visibile. Ogni unit
 lancia `bin/run-command.sh <comando>`, che legge `env.sh` come
 `start-gunicorn.sh`; systemd aggiunge `EnvironmentFile=.env.systemd`.
 
-⚠️ **I due giri di fatturazione li scrive ma NON li accende**: un drenatore a
-coda vuota non fa nulla, il batch **emette documenti**. Accenderlo di riflesso
-vorrebbe dire iniziare a fatturare su un host che nessuno ha dichiarato pronto.
+⚠️ **I due giri di fatturazione sono SPENTI di default** (a catalogo, in tutti e
+due gli ambienti): un drenatore a coda vuota non fa nulla, il batch **emette
+documenti**. Accenderlo di riflesso vorrebbe dire iniziare a fatturare su un host
+che nessuno ha dichiarato pronto. Si accende dal drawer dei processi, col motivo,
+quando l'installazione è pronta per SDI.
 
 ⚠️ **Le modifiche agli unit si fanno sui template**, mai in
 `/etc/systemd/system`: l'installer riscrive tutto a ogni run.
@@ -373,7 +383,7 @@ unica del dichiarato di deploy. Lo leggono in due:
 
 | Chi | Cosa ne prende |
 | --- | --- |
-| `backend/bin/install-timers.sh` | `oncalendar` e `comando` da sostituire nei template, la lista di cosa accendere (`abilita`), e per differenza cosa ritirare dall'host (§16.3-bis) |
+| `backend/bin/install-timers.sh` | `oncalendar` e `comando` da sostituire nei template, e per differenza cosa ritirare dall'host (§16.3-bis) |
 | `apps.core.services.sveglie` (backend) | le unit di ogni processo (per la mail del guardiano del digest), la cadenza da confrontare col contratto (`test_contratto_liveness_vs_deploy`), il `comando` che «Esegui ora» lancia (§16.4) e `avvio_manuale` (§16.5) |
 
 ⛔ La **tolleranza di liveness** non sta qui: è un contratto del processo e vive
@@ -382,16 +392,32 @@ in due posti prima o poi dissente.
 
 ### 16.1) Le sveglie
 
-| Unit | Comando | Forma | Cadenza default | Acceso dall'installer |
+| Unit | Comando | Forma | Cadenza default | Default del processo (sviluppo / produzione) |
 | --- | --- | --- | --- | --- |
-| `zeroerp-coda-lavori` | `draina_coda_lavori` | timer | `*:0/1` | ✅ |
-| `zeroerp-coda-stampa` | `draina_coda_stampa` | timer | `*:0/2` | ✅ |
-| `zeroerp-fatturazione-immediata` | `run_fatturazione_batch --modalita immediata` | timer | `*:0/2` | ⛔ emette documenti |
-| `zeroerp-fatturazione-differita` | `run_fatturazione_batch --modalita differita` | timer | `*:00` + dovuto: il 1° dalle 00:00 aziendali | ⛔ idem |
-| `zeroerp-send-pending-emails` | `send_pending_emails` | timer | `*:0/5` | ✅ |
-| `zeroerp-digest-presidi-giornaliero` | `digest_presidi --cadenza giornaliera` | timer | `*:00` + dovuto: ogni giorno dalle 07:00 aziendali | ✅ |
-| `zeroerp-digest-presidi-settimanale` | `digest_presidi --cadenza settimanale` | timer | `*:00` + dovuto: il lunedi' dalle 07:30 aziendali | ✅ |
-| `zeroerp-listen-permessi` | `listen_permessi` | **servizio** | — | ✅ |
+| `zeroerp-coda-lavori` | `draina_coda_lavori` | timer | `*:0/1` | acceso / acceso — non si spegne |
+| `zeroerp-coda-stampa` | `draina_coda_stampa` | timer | `*:0/2` | acceso / acceso |
+| `zeroerp-fatturazione-immediata` | `run_fatturazione_batch --modalita immediata` | timer | `*:0/2` | spento / spento — emette documenti |
+| `zeroerp-fatturazione-differita` | `run_fatturazione_batch --modalita differita` | timer | `*:00` + dovuto: il 1° dalle 00:00 aziendali | spento / spento — idem |
+| `zeroerp-send-pending-emails` | `send_pending_emails` | timer | `*:0/5` | acceso / acceso — non si spegne |
+| `zeroerp-digest-presidi-giornaliero` | `digest_presidi --cadenza giornaliera` | timer | `*:00` + dovuto: ogni giorno dalle 07:00 aziendali | acceso / acceso — non si spegne |
+| `zeroerp-digest-presidi-settimanale` | `digest_presidi --cadenza settimanale` | timer | `*:00` + dovuto: il lunedi' dalle 07:30 aziendali | acceso / acceso — non si spegne |
+| `zeroerp-listen-permessi` | `listen_permessi` | **servizio** | — | acceso / acceso — non si spegne |
+| `zeroerp-smoke-notturno` | `smoke_notturno` | timer | `*:00` + dovuto: ogni giorno dalle 02:30 aziendali | acceso / **spento** — scrive dati di prova |
+
+⭐ La colonna dei default è il catalogo (`dbops.processi`: `acceso_in_sviluppo`,
+`acceso_in_produzione`, `spegnibile`), letto qui come fatto del 2026-10-16: la sede è il seed
+`80_data/sql/dbops/processi.csv`. Una macchina può scavalcare il default dal drawer dei processi
+(«Spegni» / «Accendi» / «Torna al default», col motivo), salvo i processi che non si spengono.
+
+⭐ **Il giro notturno degli smoke** (`smoke_notturno`, dal 2026-10-13) è acceso in **sviluppo** e
+spento in **produzione** (default del processo, dal 2026-10-16). In più vuole
+`SMOKE_NOTTURNO_CONSENTITO=1` in `.env.systemd`. Senza il comando rifiuta di partire, prima di aprire la corsa: è la
+difesa che tiene il giro fuori dalla produzione anche se qualcuno accende il timer. Con
+regressioni la corsa chiude `ok=false` (`SMOKE_REGRESSIONI`) e il digest delle 07:00 la riporta
+per 7 giorni; nel `meta` della corsa c'è la cartella con l'output dei rossi,
+`backend/var/smoke-notturno/<data-ora>` (fuori da git). Non sta in `/tmp`, che è un tmpfs svuotato
+a ogni riavvio: il comando la conserva quanto il digest mostra la corsa, 7 giorni, e a ogni giro
+toglie le più vecchie. Il giro lanciato a mano con `scripts/smoke-baseline.sh` resta su `/tmp`.
 
 La fonte è il JSON: questa tabella lo descrive, non lo sostituisce.
 
@@ -433,12 +459,17 @@ riparte col nome nuovo, il panorama dei processi segna `listen_permessi`
 
 ### 16.3) Aggiungere una sveglia
 
-1. una voce in `deploy/sveglie.json`, **con il suo `comando`** (§16.4),
-   `abilita` e `avvio_manuale`;
+1. una voce in `deploy/sveglie.json`, **con il suo `comando`** (§16.4) e
+   `avvio_manuale` (⛔ niente `abilita`: dal 2026-10-16 è rifiutato, l'accensione
+   è del processo a catalogo, con `acceso_in_sviluppo`, `acceso_in_produzione` e
+   `spegnibile` — al team DB);
 2. la coppia `deploy/systemd/<unit>.{service,timer}` (solo il `.service` se è un
    servizio sempre acceso), con
    `ExecStart=__APP_DIR__/bin/run-command.sh __COMANDO__`, **mai** la riga
-   scritta a mano;
+   scritta a mano, l'`ExecCondition=__APP_DIR__/bin/run-command.sh e_dovuto <unit>`
+   e, se `oneshot`, un `TimeoutStartSec=<N>min` sotto la tolleranza del processo
+   e sotto l'ora (dal 2026-10-17: senza, una corsa appesa ferma il timer per
+   sempre — lo pretende `test_sveglie` 22);
 3. `sudo backend/bin/install-timers.sh`.
 
 ### 16.3-bis) Togliere o rinominare una sveglia
@@ -496,16 +527,19 @@ Il tetto del sottoprocesso di «Esegui ora» è **unico** e sta nell'handler
 (`TETTO_SOTTOPROCESSO_SECONDI = 300`, `avvio_manuale.py`), non per sveglia:
 `timeout_minuti` non è un campo, per decisione.
 
-### 16.5) `avvio_manuale` accanto ad `abilita` — «Esegui ora»
+### 16.5) `avvio_manuale` accanto all'accensione — «Esegui ora»
 
-**Due campi, due domande.** `abilita` dice se il **timer** è acceso su questa
-installazione; `avvio_manuale` dice se il **pulsante** «Esegui ora» ha senso su
-questa sveglia. Sono indipendenti: i giri di fatturazione restano
+**Due fatti, due domande.** L'accensione (database, dal 2026-10-16) dice se il
+**processo** è acceso su questa installazione; `avvio_manuale` dice se il
+**pulsante** «Esegui ora» ha senso su questa sveglia. Sono indipendenti, e il
+pulsante li vuole tutti e due: su un processo spento «Esegui ora» è rifiutato
+(P-2 del brief-db-processi-accensione-per-ambiente), prima lo si riaccende.
+Indipendenti vuol dire: i giri di fatturazione restano
 `avvio_manuale: false` anche il giorno in cui si accendono, perché un giro è
 lungo per natura e terrebbe fermo il drenatore che aspetta il sottoprocesso.
 Il drenatore della coda lavori è `false` («Esegui ora» lo esegue lui), il
 listener è `false` per natura (un `true` è rifiutato). **Obbligatorio** su ogni
-voce, come `abilita`. L'installer non lo legge.
+voce. L'installer non lo legge.
 
 **Chi lo legge**: `avvio_manuale.motivi_esegui_ora`, che risponde alla
 capability `can_esegui_ora` nel dettaglio del processo, al rifiuto di

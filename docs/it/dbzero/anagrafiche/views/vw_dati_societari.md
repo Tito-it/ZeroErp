@@ -5,6 +5,8 @@
 >
 > Vista dati societari con decodifiche forma giuridica e provincia, include identificativi tecnici. destinatario_fe e' il canale FE (P = PEC, C = codice SDI), codice_sdi il codice (rev 20261010-38).
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_dati_societari AS
 SELECT ds.id AS dati_societari_id,
@@ -36,6 +38,8 @@ SELECT ds.id AS dati_societari_id,
      LEFT JOIN config.forme_giuridiche fg ON ((fg.id = ds.forma_giuridica_id)))
      LEFT JOIN config.province pr ON ((pr.id = ds.id_prov_iscri_rea)));
 ```
+
+</div>
 
 
 ---

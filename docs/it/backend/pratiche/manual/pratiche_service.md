@@ -89,7 +89,8 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 - `cerca_pratiche`: lente di contesto canonica D1 — parametri
   `soggetto_ruolo_id` / `istanza_utility_id` / `solo_interne` mutuamente
   alternativi; due o piu' lenti → `ServiceError`
-  `PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI` (catalogo DB id 484,
+  `E_PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI` (lo stesso del guard DB;
+  fino al 2026-10-21 qui usciva la forma ritirata senza `E_`,
   fail-fast in Python; la fn `fn_lista_pratiche_per_contesto` resta la
   difesa in profondita'). Nuovi filtri `priorita_id` / `risorsa_umana_id`
   (fix: prima inviati dalla dashboard ma ignorati).

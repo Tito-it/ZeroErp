@@ -7,6 +7,8 @@ CREATE FUNCTION fn_log_error_only(p_area text, p_function_name text, p_error_cod
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_log_error_only(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
  RETURNS void
@@ -167,6 +169,8 @@ $function$
 COMMENT ON FUNCTION script.fn_log_error_only(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
 IS 'Logga su dbops.error_log via connessione dblink separata (out-of-transaction), senza sollevare eccezioni. Post 2026-08-03: cascata lingua con ripiego su ''it'' (come fn_get_messaggio e fn_log_and_raise_error) e, se il codice non e'' a catalogo, conservazione del codice originale in context->>''codice_errore_originale''.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

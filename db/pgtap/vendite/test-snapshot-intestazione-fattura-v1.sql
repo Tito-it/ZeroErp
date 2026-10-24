@@ -11,9 +11,22 @@
 -- Piano: piano-db-satelliti-fattura.md, cantiere INTESTAZIONE passo I.6
 -- Brief: brief-db-snapshot-intestazione-fattura.md §3.1-§3.4, §10.3
 -- ------------------------------------------------------------
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le fatture nascono in
+--   bozza e la «congelata» si porta avanti con dbops.fn_pgtap_porta_a_stato
+--   (prima nasceva gia' DEFINITIVA). Per uscire dalla bozza le si scrivono a
+--   mano indirizzo FATT e intestazione — NON con la funzione sotto test — e in
+--   EMESSA (sotto soglia) si tolgono di nuovo: arriva in DEFINITIVA con
+--   l'intestazione a NULL come prima, e l'11 prova ancora la prima scrittura.
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): azienda, cliente e
+--   le due fatture li costruiscono i builder (fn_pgtap_crea_emittente_operatore,
+--   fn_pgtap_crea_fattura): non si pesca piu' «il primo BA con la sede sul
+--   soggetto», che su un database ricostruito non c'e'. La «congelata» arriva
+--   in DEFINITIVA gia' spogliata dal builder; il commento sulla fixture dice
+--   perche' l'uso di fn_snapshot_intestazione_fattura lungo la strada non
+--   tocca cio' che il file prova. Il 2 conta righe vere.
 -- Indice test (1..12):
 --   1) Cablaggio: guard di congelamento BEFORE UPDATE OF le due colonne
---   2) Fixture: riferimenti presenti + due fatture (DRAFT e DEFINITIVA)
+--   2) Fixture: emittente con sede sul SOGGETTO + due fatture (DRAFT e DEFINITIVA nuda)
 --   3) Prima esecuzione: scritta = true
 --   4) Shape emittente: le chiavi identitarie ci sono
 --   5) Shape cliente: identita' + BA di TESTATA (D-P), non il conto del figlio
@@ -40,8 +53,8 @@
 -- 2026-08-01: 42 emittenti su 42 hanno la sede sul soggetto, ZERO sul ruolo —
 -- il che conferma il rilievo §10.3 del brief su tutta la popolazione, non su un
 -- campione. E' anche la ragione per cui questo test non e' condizionale: la
--- proprieta' e' strutturale, quindi la fixture SELEZIONA su di essa e il test 2
--- fallisce rumorosamente se un giorno non ci fossero candidati.
+-- proprieta' e' strutturale, e dal 2026-10-24 l'azienda la COSTRUISCE il
+-- builder; il test 2 fallisce rumorosamente se un giorno smettesse di averla.
 --
 -- PERCHE' IL 7 CONTROLLA GLI SPAZI. `province.sigla`, `stati.codice_iso2` e
 -- `dati_societari.destinatario_fe` sono `character(n)`: PostgreSQL li riempie a
@@ -74,7 +87,15 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ L'AZIENDA SI COSTRUISCE (rev 2026-10-24, Q-4), e il contesto e' quello del
+--   SUO operatore: prima si apriva sul primo operatore del database e si
+--   pescava il primo BA con un emittente risolvibile, che su un database
+--   ricostruito (lo scratch, la CI) non c'e'.
+CREATE TEMP TABLE tmp_mondo_int AS
+SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM tmp_mondo_int)); END $ctx$;
 
 SELECT plan(12);
 
@@ -108,69 +129,56 @@ SELECT is(
 
 -- ============================================================
 -- Riferimenti e fixture.
--- ⚠️ Il BA si sceglie per una PROPRIETA', non per comodita': serve un
---    emittente la cui sede legale stia sul layer SOGGETTO, che e' il caso
---    reale (§10.3) e l'unico che esercita la catena.
+-- ⚠️ Serve un emittente la cui sede legale stia sul layer SOGGETTO, che e' il
+--    caso reale (§10.3) e l'unico che esercita la catena. Prima lo si
+--    SELEZIONAVA fra i BA del database; ora l'azienda e' costruita, e il 2
+--    verifica che la proprieta' ce l'abbia (e l'8 che il layer RUOLO e' vuoto).
 -- ============================================================
-CREATE TEMP TABLE tmp_refs_int AS
-SELECT
-  ba.id                                          AS billing_account_id,
-  anagrafiche.fn_get_emittente_fiscale_id(ba.id) AS emittente_soggetto_ruolo_id,
-  ba.soggetto_ruolo_id                           AS cliente_soggetto_ruolo_id,
-  (SELECT m.registro_id
-     FROM vendite.tipi_doc_fiscale_registri m
-     JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
-    WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS registro_id,
-  (SELECT m.tipo_doc_fiscale_id
-     FROM vendite.tipi_doc_fiscale_registri m
-     JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
-    WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS tipo_doc_fiscale_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT s.id FROM config.stati_doc_fiscale s
-    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE)      AS stato_draft_id,
-  (SELECT s.id FROM config.stati_doc_fiscale s
-    WHERE s.codice_interno = 'DEFINITIVA' AND s.attivo IS TRUE) AS stato_def_id
-FROM anagrafiche.billing_account ba
-WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-  -- La sede dell'emittente esiste, e sta sul layer SOGGETTO.
-  AND EXISTS (
-        SELECT 1
-          FROM anagrafiche.soggetti_ruoli sr
-          JOIN anagrafiche.indirizzi_soggetti isg ON isg.soggetto_id = sr.soggetto_id
-          JOIN config.tipi_indirizzi ti           ON ti.id = isg.tipo_indirizzo_id
-         WHERE sr.id = anagrafiche.fn_get_emittente_fiscale_id(ba.id)
-           AND ti.codice_interno = 'SEDELEG')
-ORDER BY ba.id
-LIMIT 1;
+-- Le due fatture dal builder, sullo stesso cliente. La «congelata» arriva in
+-- DEFINITIVA SENZA indirizzi ne' intestazione (p_spoglia_*): l'11 trova
+-- l'intestazione a NULL, come quando la fattura nasceva congelata.
+-- ⚠️ fn_snapshot_intestazione_fattura e' la funzione sotto test, e il builder
+--    la chiama per la «congelata»: e' solo la strada d'uscita dalla bozza
+--    (trgfn_fatture_guard_uscita_draft vuole l'intestazione), poi in EMESSA la
+--    spoglia. Lo stato finale non dipende dal suo risultato, e l'11-12
+--    guardano il guard di congelamento, non lo snapshot. La funzione sotto
+--    test si esercita solo sulla «draft», che il builder lascia vergine.
+CREATE TEMP TABLE tmp_f_draft_int AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('snapshot intestazione draft');
 
+CREATE TEMP TABLE tmp_f_cong_int AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+    'snapshot intestazione congelata', 'DEFINITIVA',
+    (SELECT billing_account_id FROM tmp_f_draft_int), true, true);
 
--- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva.
---   La riga sopra sceglieva «un registro qualunque» accanto a un emittente che
---   viene da un'altra parte: che i due coincidessero era un CASO, e dal
---   2026-08-30 vendite.trgfn_fatture_guard_registro_emittente non lo ammette
---   piu'. L'helper risponde con il registro di QUESTO emittente, creandolo se
---   non ce n'e' uno — la riga vive nella transazione del test.
-UPDATE tmp_refs_int SET registro_id = script.fn_pgtap_registro_fattura(emittente_soggetto_ruolo_id);
 CREATE TEMP TABLE tmp_fatture_int AS
-WITH ins AS (
-  INSERT INTO vendite.fatture (
-    registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-    tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, meta
-  )
-  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id,
-         r.billing_account_id, r.tipo_doc_fiscale_id, v.stato_id, r.valuta_id,
-         jsonb_build_object('test', 'pgtap_snapshot_intestazione', 'caso', v.caso)
-    FROM tmp_refs_int r
-   CROSS JOIN LATERAL (VALUES ('draft',      r.stato_draft_id),
-                              ('congelata',  r.stato_def_id)) AS v(caso, stato_id)
-  RETURNING id, meta ->> 'caso' AS caso
-)
-SELECT id, caso FROM ins;
+SELECT fattura_id AS id, 'draft'::text AS caso FROM tmp_f_draft_int
+UNION ALL SELECT fattura_id, 'congelata' FROM tmp_f_cong_int;
 
+CREATE TEMP TABLE tmp_refs_int AS
+SELECT d.billing_account_id,
+       d.emittente_soggetto_ruolo_id,
+       d.cliente_soggetto_ruolo_id
+  FROM tmp_f_draft_int d;
+
+-- ⚠️ Il 2 conta righe VERE: la sede dell'emittente costruito sul layer
+--   SOGGETTO, la «draft» vergine in DRAFT, la «congelata» in DEFINITIVA con
+--   l'intestazione a NULL.
 SELECT ok(
-  (SELECT count(*) FROM tmp_refs_int WHERE emittente_soggetto_ruolo_id IS NOT NULL) = 1
-  AND (SELECT count(*)::int FROM tmp_fatture_int) = 2,
-  '2) fixture: emittente con sede sul layer SOGGETTO trovato, due fatture create'
+  (SELECT count(*)
+     FROM tmp_refs_int r
+     JOIN anagrafiche.soggetti_ruoli sr        ON sr.id = r.emittente_soggetto_ruolo_id
+     JOIN anagrafiche.indirizzi_soggetti isg   ON isg.soggetto_id = sr.soggetto_id
+     JOIN config.tipi_indirizzi ti             ON ti.id = isg.tipo_indirizzo_id
+    WHERE ti.codice_interno = 'SEDELEG') >= 1
+  AND (SELECT count(*)::int
+         FROM tmp_fatture_int t
+         JOIN vendite.fatture f          ON f.id = t.id
+         JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
+        WHERE s.codice_interno = CASE t.caso WHEN 'draft' THEN 'DRAFT' ELSE 'DEFINITIVA' END
+          AND f.emittente_snapshot IS NULL
+          AND f.cliente_snapshot IS NULL) = 2,
+  '2) fixture: emittente con sede sul layer SOGGETTO costruito, due fatture create'
 );
 
 -- ============================================================

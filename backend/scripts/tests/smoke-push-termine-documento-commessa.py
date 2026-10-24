@@ -81,6 +81,13 @@ from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services.commesse_service import pr_run_commesse_push_one
 from apps.vendite.services.fatture_righe_service import FattureRigheService
+from scripts.tests._smoke_commessa import crea_riga_commessa
+from scripts.tests._smoke_contesto import apri_contesto_smoke
+from scripts.tests._smoke_fatturazione import (
+    costruisci_base_fatturazione,
+    crea_articolo_di_prova,
+    crea_lotto_di_prova,
+)
 
 FAIL: list[str] = []
 SKIP: list[str] = []
@@ -100,35 +107,34 @@ def skip(label, motivo):
     SKIP.append(label)
 
 
-# Scopo: Clona un ordine reale (testata) in BOZZA con le condizioni di
-#        pagamento volute. E' il punto d'ingresso della catena: da qui in poi il
-#        termine viaggia SOLO per mano del codice di produzione.
+# Scopo: Un ordine in BOZZA del cliente di prova (la base `t`) con le
+#        condizioni di pagamento volute. E' il punto d'ingresso della catena:
+#        da qui in poi il termine viaggia SOLO per mano del codice di produzione.
+#        La testata la scrive il builder del DB sul BA della base
+#        (`dbops.fn_pgtap_crea_ordine`, R-3 del 2026-10-22: due ordini dello
+#        STESSO cliente, che il test 2 vuole); data, termine e modalita' li
+#        scrive lo smoke in bozza, come li sceglierebbe l'operatore.
+#        Prima clonava «l'ultimo ordine visibile» con un INSERT, e poi lo
+#        scriveva a mano (brief-be-utenti-di-sviluppo T-7b, §9.11).
 # ⛔ In BOZZA, non gia' CONFERMATO: le righe si aggiungono solo finche' il
 #    documento e' in bozza (`trgfn_doc_righe_lock_fuori_bozza`,
-#    `E_RIGA_DOC_NON_BOZZA`). Fino al 2026-10-09 la testata nasceva confermata e
-#    la riga arrivava dopo: il guard lo rifiuta, ed e' giusto. La conferma la
-#    fa `conferma_ordine`, DOPO le righe — l'ordine in cui accade davvero.
-def clona_ordine(cur, template_id, *, data_doc, termine_id, modalita_id, marker):
+#    `E_RIGA_DOC_NON_BOZZA`). La conferma la fa `conferma_ordine`, DOPO le
+#    righe — l'ordine in cui accade davvero.
+def crea_ordine(cur, t, *, data_doc, termine_id, modalita_id, marker):
+    cur.execute(
+        "SELECT ordine_id FROM dbops.fn_pgtap_crea_ordine(%s, 'DRAFT', %s)",
+        [f"smoke push termine {marker}", t["billing_account_id"]],
+    )
+    ordine_id = cur.fetchone()[0]
     cur.execute(
         """
-        INSERT INTO vendite.ordini (
-            soggetto_ruolo_id, billing_account_id, data, stato_doc_ordine_id,
-            valuta_id, tasso_cambio, modalita_pagamento_id, termine_pagamento_id,
-            fatturazione_trigger, canale_origine, utility_id,
-            emittente_fiscale_id, fatturazione_immediata, meta
-        )
-        SELECT o.soggetto_ruolo_id, o.billing_account_id, %s,
-               (SELECT id FROM config.stati_doc_ordini
-                 WHERE codice_interno = 'DRAFT'),
-               o.valuta_id, o.tasso_cambio, %s, %s,
-               'CONFERMATO', o.canale_origine, o.utility_id,
-               o.emittente_fiscale_id, false, jsonb_build_object('smoke', %s)
-          FROM vendite.ordini o WHERE o.id = %s
-        RETURNING id
+        UPDATE vendite.ordini
+           SET data = %s, termine_pagamento_id = %s, modalita_pagamento_id = %s
+         WHERE id = %s
         """,
-        [data_doc, modalita_id, termine_id, marker, template_id],
+        [data_doc, termine_id, modalita_id, ordine_id],
     )
-    return cur.fetchone()[0]
+    return ordine_id
 
 
 # Scopo: Porta a CONFERMATO l'ordine clonato, dopo le sue righe. La coppia di
@@ -148,7 +154,7 @@ def conferma_ordine(cur, ordine_id):
 # Scopo: Una riga d'ordine minimale (articolo NON composito: il fan-out BoM e'
 #        presidiato altrove e qui sporcherebbe i conteggi). `quantita` la
 #        deriva il trigger `trgfn_qta_from_operativa` dalla coppia operativa.
-def clona_riga(cur, ordine_id, riga_tpl, *, prezzo):
+def crea_riga(cur, ordine_id, riga_tpl, *, prezzo):
     cur.execute(
         """
         INSERT INTO vendite.ordini_righe (
@@ -189,11 +195,7 @@ with transaction.atomic():
         # GUC operatore le SELECT tornano 0 righe e le INSERT falliscono il
         # WITH CHECK (trappola gia' pagata: un conteggio fail-closed somiglia
         # a un dato).
-        cur.execute(
-            "SELECT set_config('app.ruolo_applicativo','OPERATORE',false),"
-            "       set_config('app.current_user_id', (SELECT auth_user_id::text"
-            "         FROM config.user_emittenti_fiscali LIMIT 1), false)"
-        )
+        apri_contesto_smoke(cur)
 
         # --- catalogo: il termine multi-rata (il caso ORD0004786) + un termine
         #     DIVERSO per il secondo ordine. Presi dal catalogo reale.
@@ -220,51 +222,39 @@ with transaction.atomic():
         r = cur.fetchone()
         modalita_id = r[0] if r else None
 
-        # --- template: un ordine vero visibile nello scope RLS dell'operatore
-        #     GUC (stessa coerenza emittente/BA, il guard di scope passa) e una
-        #     riga con articolo NON composito.
-        cur.execute(
-            """
-            SELECT o.id, o.billing_account_id
-              FROM vendite.ordini o
-             WHERE o.billing_account_id IS NOT NULL
-             ORDER BY o.id DESC LIMIT 1
-            """
-        )
-        row = cur.fetchone()
-        if not row:
-            raise SystemExit("Nessun ordine template nello scope RLS dell'operatore GUC.")
-        template_id, ba_id = row
-
-        cur.execute(
-            """
-            SELECT r.articolo_id, r.descrizione, r.iva_id, a.uom_id
-              FROM vendite.ordini_righe r
-              JOIN catalogo.articoli a
-                ON a.id = r.articolo_id AND a.is_composito IS FALSE
-             WHERE r.attivo AND r.quantita > 0
-             ORDER BY r.id DESC LIMIT 1
-            """
-        )
-        row = cur.fetchone()
-        if not row:
-            raise SystemExit("Nessuna riga template con articolo non composito.")
-        riga_tpl = {"articolo_id": row[0], "descrizione": row[1],
-                    "iva_id": row[2], "uom_id": row[3]}
-
         # Competenza ISOLATA: ~14 mesi nel futuro, meta' mese. La selezione
         # del lotto non incrocia nulla di vivo.
         data_doc = (oggi_aziendale() + timedelta(days=425)).replace(day=15)
         competenza = data_doc.replace(day=1)
 
+        # --- la base: cliente di prova sull'emittente di prova
+        #     (brief-be-utenti-di-sviluppo T-7b), al posto dell'ordine template.
         marker = uuid.uuid4().hex[:8]
-        ord_a = clona_ordine(cur, template_id, data_doc=data_doc, termine_id=term_doc,
+        t = costruisci_base_fatturazione(cur, marker=marker, competenza_mese=competenza)
+        ba_id = t["billing_account_id"]
+
+        # L'articolo deve essere una MERCE: in un ordine (e in una bolla) vanno
+        # solo articoli la cui natura di vendita ha destinazione ORDINE_VENDITA
+        # (script.fn_check_articolo_riga, E_RIGA_NATURA_NON_AMMESSA). Si
+        # COSTRUISCE, non composito (il fan-out BoM e' presidiato altrove).
+        cur.execute(
+            "SELECT nv.id FROM config.nature_vendita nv"
+            " WHERE nv.attivo AND nv.destinazione_tipo = 'ORDINE_VENDITA' ORDER BY nv.id LIMIT 1"
+        )
+        r = cur.fetchone()
+        if not r:
+            raise SystemExit("Nessuna natura di vendita con destinazione ORDINE_VENDITA a catalogo.")
+        art_merce, uom_merce = crea_articolo_di_prova(cur, prefisso="SMOKE-ORD", natura_vendita_id=r[0])
+        cur.execute("SELECT iva_id FROM catalogo.articoli WHERE id = %s", [art_merce])
+        riga_tpl = {"articolo_id": art_merce, "descrizione": f"Smoke ordine {marker}",
+                    "iva_id": cur.fetchone()[0], "uom_id": uom_merce}
+        ord_a = crea_ordine(cur, t, data_doc=data_doc, termine_id=term_doc,
                              modalita_id=modalita_id, marker=f"{marker}-A")
-        clona_riga(cur, ord_a, riga_tpl, prezzo=Decimal("100.00"))
+        crea_riga(cur, ord_a, riga_tpl, prezzo=Decimal("100.00"))
         conferma_ordine(cur, ord_a)
-        ord_b = clona_ordine(cur, template_id, data_doc=data_doc, termine_id=term_alt,
+        ord_b = crea_ordine(cur, t, data_doc=data_doc, termine_id=term_alt,
                              modalita_id=modalita_id, marker=f"{marker}-B")
-        clona_riga(cur, ord_b, riga_tpl, prezzo=Decimal("200.00"))
+        crea_riga(cur, ord_b, riga_tpl, prezzo=Decimal("200.00"))
         conferma_ordine(cur, ord_b)
         # uid dei due ordini: e' con questi che si costruisce il perimetro
         # dei gruppi, cosi' la selezione prende SOLO cio' che il fixture ha
@@ -276,7 +266,7 @@ with transaction.atomic():
         uid_per_id = dict(cur.fetchall())
         uid_a, uid_b = uid_per_id[ord_a], uid_per_id[ord_b]
 
-        print(f"ordini clonati: A={ord_a} ({term_doc_cod}, {n_rate} rate) · "
+        print(f"ordini: A={ord_a} ({term_doc_cod}, {n_rate} rate) · "
               f"B={ord_b} ({term_alt_cod}) · BA {ba_id} · competenza {competenza}\n")
 
     # 0) BINDING. La fn espone le colonne (T.1) e il PushableRow le porta
@@ -405,30 +395,15 @@ with transaction.atomic():
             " WHERE id = %s", [af_a[0]],
         )
         istanza_ctrl, uom_ctrl = cur.fetchone()
-        cur.execute(
-            """
-            SELECT attivita_id FROM vendite.fn_upsert_commessa_attivita(
-                p_commessa_id => %s, p_segment_key => %s, p_articolo_id => %s,
-                p_istanza_utility_id => %s,
-                p_data_attivita => %s, p_uom_id => %s, p_quantita => 1,
-                p_competenza_mese => %s, p_competenza_dal => %s,
-                p_competenza_al => %s, p_prezzo_snapshot => 10,
-                p_prezzo_base_snapshot => NULL, p_origine_prezzo => NULL,
-                p_tipo_variazione_applicata => NULL,
-                p_valore_variazione_applicata => NULL, p_promo_id => NULL,
-                p_contratto_id => NULL, p_categoria_cliente_id_snapshot => NULL,
-                p_classe_utenza_id_snapshot => NULL,
-                p_tipo_doc_fiscale_id => %s,
-                p_valuta_id => %s, p_prezzo_bloccato => true,
-                p_meta => '{}'::jsonb)
-            """,
-            [com_ctrl, f"SMOKE:{marker}:CTRL", riga_tpl["articolo_id"],
-             istanza_ctrl, competenza - timedelta(days=1),
-             uom_ctrl, (competenza - timedelta(days=1)).replace(day=1),
-             competenza - timedelta(days=1), competenza - timedelta(days=1),
-             tipo_doc_id, valuta_id],
+        giorno_ctrl = competenza - timedelta(days=1)
+        ca_ctrl = crea_riga_commessa(
+            cur, commessa_id=com_ctrl, segment_key=f"SMOKE:{marker}:CTRL",
+            articolo_id=riga_tpl["articolo_id"], istanza_utility_id=istanza_ctrl,
+            uom_id=uom_ctrl, data_attivita=giorno_ctrl,
+            competenza_mese=giorno_ctrl.replace(day=1),
+            competenza_dal=giorno_ctrl, competenza_al=giorno_ctrl, prezzo=10,
+            tipo_doc_fiscale_id=tipo_doc_id, valuta_id=valuta_id,
         )
-        ca_ctrl = cur.fetchone()[0]
         cur.execute(
             """
             INSERT INTO vendite.attivita_fatturabili (
@@ -472,29 +447,15 @@ with transaction.atomic():
 
     # --- lotto + selezione REALE + generazione REALE ------------------------
     with connection.cursor() as cur:
-        cur.execute(
-            "SELECT utility_id FROM anagrafiche.billing_account WHERE id = %s",
-            [ba_id],
-        )
-        utility_id = cur.fetchone()[0]
+        utility_id = t["utility_id"]
         # `lock_batch_id` e' gia' quello con cui il pull ha marchiato le righe.
-        cur.execute(
-            """
-            INSERT INTO vendite.fatturazione_lotti (
-                codice, competenza_mese, utility_id, tipo_doc_fiscale_id,
-                stato_doc_fiscale_id, emittente_soggetto_ruolo_id, tipo_lotto,
-                stato_lotto, stato_operativo, lock_batch_id, meta
-            )
-            SELECT %s, %s, %s, %s,
-                   (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno='DRAFT'),
-                   %s, 'MASSIVO', 'IN_ESECUZIONE', 'APERTO', %s,
-                   '{"smoke": true}'::jsonb
-            RETURNING id
-            """,
-            [f"SMOKE-TDOC-{marker}", competenza, utility_id, tipo_doc_id,
-             emittente_sr_id, lock_batch_id],
+        # Tipo documento ed emittente vengono dalle attivita' e dalla commessa
+        # del pull, non dalla base: il lotto e' il loro.
+        lotto_id = crea_lotto_di_prova(
+            cur, {**t, "competenza_mese": competenza, "tipo_doc_fiscale_id": tipo_doc_id,
+                  "emittente_sr_id": emittente_sr_id},
+            codice=f"SMOKE-TDOC-{marker}", lock_batch_id=lock_batch_id,
         )
-        lotto_id = cur.fetchone()[0]
 
         # Selezione REALE: stessa funzione del task `select_attivita`, con
         # lock. Il perimetro e' ristretto ai GRUPPI dei due ordini clonati.

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_user_emittenti_scope(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_user_emittenti_scope(p_auth_user_id integer)
  RETURNS TABLE(auth_user_id integer, scope_mode text, emittente_id bigint, emittente_descrizione text, allowed_scope_modes text[], can_change_scope boolean, change_scope_reason text)
@@ -80,6 +82,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_user_emittenti_scope(p_auth_user_id integer)
 IS 'Vista dichiarativa dello scope emittenti per un auth_user (drawer Operatore Fase 2 P1 2026-04-29). Ritorna sempre 1 riga (GLOBAL se l''utente non ha associazioni). MULTI e'' impossibile per UNIQUE(auth_user_id) di Fase 1; allowed_scope_modes resta TEXT[] per non vincolare il futuro. Capability can_change_scope derivata da fn_check_ultimo_super_admin_attivo (regola unica: lockout-guard). emittente_descrizione = anagrafiche.soggetti.ragione_sociale_completa del soggetto associato (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione). LANGUAGE sql STABLE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

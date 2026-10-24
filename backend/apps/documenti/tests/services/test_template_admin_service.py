@@ -25,6 +25,14 @@
 #  10. update_empty_payload_raises
 #  11. update_propagates_404_from_reader
 #  12. update_unique_violation_mapped
+#  13. personalizza_chiama_la_madre_del_db
+#  14. personalizza_is_default_false_passato
+#  15. personalizza_modello_non_standard_codice_del_db
+#  16. personalizza_emittente_fuori_scope_raises
+#  17. personalizza_standard_non_stampabile_codice_del_db
+#  18. personalizza_payload_extra_keys_raises
+#  19. personalizza_codice_proprio_e_is_default_nullo
+#  20. personalizza_codice_duplicato_mappato
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -36,6 +44,7 @@ from django.db import IntegrityError
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests.db_error_fakes import make_db_error
 from apps.documenti.services.template_admin_service import TemplateAdminService
 
 
@@ -264,3 +273,151 @@ class TemplateAdminServiceUpdateTests(SimpleTestCase):
             svc.update_template(_make_user(), 42, {"codice_interno": "DUP"})
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         self.assertIn("interno", ctx.exception.message.lower())
+
+
+_SCOPE = "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids"
+
+# La testata dello standard come la rilegge il reader.
+_STANDARD: dict[str, Any] = {
+    "id": 2728,
+    "standard": True,
+    "emittente_fiscale_id": None,
+    "tipo_documento_output_id": 1,
+    "sorgente_tipo_id": 10,
+    "codice": "PREVENTIVO",
+    "codice_interno": "preventivo",
+    "descrizione": "Preventivo",
+    "context_builder_code": "PREVENTIVO",
+    "file_name_pattern": "preventivo-{numero}.pdf",
+}
+
+
+# Scopo: il service con la madre del DB mockata (ritorna l'id 900) e il reader
+#        che rilegge lo standard e poi il modello nuovo.
+def _personalizza_mocks(
+    *, standard: dict[str, Any] | None = None,
+) -> tuple[TemplateAdminService, MagicMock, MagicMock]:
+    svc, repo, reader = _service_with_mocks(
+        repo_methods={"personalizza_template_standard": 900},
+    )
+    nuovo = {"id": 900, "standard": False, "emittente_fiscale_id": 11}
+    reader.get_template.side_effect = (
+        lambda _user, tid: dict(standard or _STANDARD) if tid != 900 else nuovo
+    )
+    return svc, repo, reader
+
+
+class TemplateAdminServicePersonalizzaTests(SimpleTestCase):
+    # 13. La copia la fa la madre del DB (§10.3 K-6), tutto o niente: il BE le
+    #     passa lo standard e l'emittente, e i facoltativi assenti come None
+    #     (decide il DB: nomi dello standard, predefinita secondo D-6). Fino al
+    #     2026-10-21 il service scriveva testata e versione da se'.
+    @patch(_SCOPE, return_value=[11])
+    def test_personalizza_chiama_la_madre_del_db(self, _s) -> None:
+        svc, repo, reader = _personalizza_mocks()
+        result = svc.personalizza_template(
+            _make_user(), 2728, {"emittente_fiscale_id": 11},
+        )
+        self.assertEqual(result["id"], 900)
+        repo.personalizza_template_standard.assert_called_once_with(
+            2728, emittente_fiscale_id=11, codice=None, codice_interno=None,
+            descrizione=None, is_default=None,
+        )
+        repo.create_template.assert_not_called()
+        repo.create_versione.assert_not_called()
+        # Lo standard si legge prima (perimetro, 404), il nuovo dopo.
+        self.assertEqual([c.args[1] for c in reader.get_template.call_args_list], [2728, 900])
+
+    # 14. `is_default=false` dato dall'operatore arriva al DB com'e'.
+    @patch(_SCOPE, return_value=None)
+    def test_personalizza_is_default_false_passato(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks()
+        svc.personalizza_template(
+            _make_user(), 2728, {"emittente_fiscale_id": 11, "is_default": False},
+        )
+        self.assertIs(
+            repo.personalizza_template_standard.call_args.kwargs["is_default"], False,
+        )
+
+    # 15. Un modello d'emittente non si personalizza: lo rifiuta il DB col suo
+    #     codice (prima era un controllo del service).
+    @patch(_SCOPE, return_value=None)
+    def test_personalizza_modello_non_standard_codice_del_db(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks(
+            standard={**_STANDARD, "standard": False, "emittente_fiscale_id": 11},
+        )
+        repo.personalizza_template_standard.side_effect = make_db_error(
+            "Si personalizza solo un modello standard",
+            codice="E_DOCUMENTI_PERSONALIZZA_NON_STANDARD",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            svc.personalizza_template(_make_user(), 2728, {"emittente_fiscale_id": 11})
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_PERSONALIZZA_NON_STANDARD")
+
+    # 16. L'emittente deve essere nel perimetro di chi personalizza: la madre
+    #     non parte.
+    @patch(_SCOPE, return_value=[1, 2])
+    def test_personalizza_emittente_fuori_scope_raises(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks()
+        with self.assertRaises(ServiceError) as ctx:
+            svc.personalizza_template(_make_user(), 2728, {"emittente_fiscale_id": 11})
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.personalizza_template_standard.assert_not_called()
+
+    # 17. Uno standard che oggi non stampa non si personalizza (D-9): il
+    #     codice della porta unica, attraverso la madre.
+    @patch(_SCOPE, return_value=None)
+    def test_personalizza_standard_non_stampabile_codice_del_db(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks()
+        repo.personalizza_template_standard.side_effect = make_db_error(
+            "oggi non può stampare: è disattivato",
+            codice="E_DOCUMENTI_TEMPLATE_NON_STAMPABILE",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            svc.personalizza_template(_make_user(), 2728, {"emittente_fiscale_id": 11})
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_TEMPLATE_NON_STAMPABILE")
+
+    # 18. Il resto della testata e' dello standard: altre chiavi -> 400.
+    @patch(_SCOPE, return_value=None)
+    def test_personalizza_payload_extra_keys_raises(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks()
+        with self.assertRaises(ServiceError) as ctx:
+            svc.personalizza_template(
+                _make_user(), 2728,
+                {"emittente_fiscale_id": 11, "context_builder_code": "X"},
+            )
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.personalizza_template_standard.assert_not_called()
+
+    # 19. Codice, codice interno e descrizione dati dal chiamante arrivano al
+    #     DB; `is_default` nullo vale assente (None: decide il DB).
+    @patch(_SCOPE, return_value=None)
+    def test_personalizza_codice_proprio_e_is_default_nullo(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks()
+        svc.personalizza_template(
+            _make_user(), 2728,
+            {
+                "emittente_fiscale_id": 11, "is_default": None,
+                "codice": " PREV-ACME ", "codice_interno": "prev_acme",
+                "descrizione": "Preventivo ACME",
+            },
+        )
+        repo.personalizza_template_standard.assert_called_once_with(
+            2728, emittente_fiscale_id=11, codice="PREV-ACME",
+            codice_interno="prev_acme", descrizione="Preventivo ACME",
+            is_default=None,
+        )
+
+    # 20. Il codice gia' usato dall'emittente: lo stesso messaggio parlante
+    #     della create.
+    @patch(_SCOPE, return_value=None)
+    def test_personalizza_codice_duplicato_mappato(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks()
+        repo.personalizza_template_standard.side_effect = IntegrityError(
+            'duplicate key value violates unique constraint '
+            '"uq_template_documenti_emittente_sorgente_codice"'
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            svc.personalizza_template(_make_user(), 2728, {"emittente_fiscale_id": 11})
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        self.assertIn("codice", ctx.exception.message.lower())

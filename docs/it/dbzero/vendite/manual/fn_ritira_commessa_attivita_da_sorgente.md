@@ -10,7 +10,7 @@
 **Approfondimento funzioni:**
 >
 • [script.fn_check_sorgente_chiudibile](/dbzero/script/funzioni/fn_check_sorgente_chiudibile)  
-> • [vendite.trgfn_doc_ritira_commessa_attivita](/dbzero/vendite/funzioni/trgfn_doc_ritira_commessa_attivita)  
+> • [vendite.fn_documento_ritira_legami](/dbzero/vendite/funzioni/fn_documento_ritira_legami) — chi la chiama, dopo la conferma dell'annullo  
 > • [vendite.fn_annulla_commessa_attivita](/dbzero/vendite/funzioni/fn_annulla_commessa_attivita)  
 
 ---
@@ -132,6 +132,20 @@ SELECT vendite.fn_ritira_commessa_attivita_da_sorgente(6, '41', 'prova');
 
 ---
 
+### ⭐ Una sorgente, una commessa: `p_commessa_id` (dal 2026-10-12)
+
+Quarto parametro, in coda e `DEFAULT NULL` (brief-db-annullo-a-valle-riapre-a-monte, D-1):
+
+| `p_commessa_id` | Chi lo usa | Cosa ritira |
+| --- | --- | --- |
+| `NULL` | l'annullo di un **documento** | le righe della sorgente in tutte le commesse: il documento riprende tutto ciò che ha spinto |
+| valorizzato | l'annullo di una **commessa** | le sole righe di quella commessa: la stessa sorgente può avere righe vive in un'altra commessa, che non c'entra |
+
+Il filtro è residuo: l'accesso resta dalla coppia sorgente. La firma è cambiata
+(`DROP` + `CREATE`, `20261012-18`); le chiamate a tre argomenti restano valide.
+
+---
+
 ### Note operative
 
 * **`SECURITY INVOKER`**: `commesse_attivita` ha la RLS, e lo scope resta quello
@@ -140,9 +154,14 @@ SELECT vendite.fn_ritira_commessa_attivita_da_sorgente(6, '41', 'prova');
 * `stato_approvazione` resta com'è: sono due assi distinti, e una riga ritirata
   conserva la memoria di essere stata approvata.
 * `data_update` / `user_update` / `tx_id` / storico: li mettono i trigger.
-* Non è raggiungibile dall'interfaccia: la chiama il trigger
-  [`trgfn_doc_ritira_commessa_attivita`](/dbzero/vendite/funzioni/trgfn_doc_ritira_commessa_attivita)
-  quando un documento entra in uno stato abortito.
+* Non è raggiungibile dall'interfaccia: la chiama il BB
+  [`fn_documento_ritira_legami`](/dbzero/vendite/funzioni/fn_documento_ritira_legami)
+  dentro i verbi di annullo (`fn_annulla_ddt`, `fn_annulla_ordine`,
+  `fn_annulla_preventivo`, `fn_annulla_contratto`), **dopo la conferma** di chi
+  annulla. Fino al 2026-10-11 la chiamava in silenzio un trigger `_z90_`
+  all'ingresso in uno stato abortito (brief-db-annullo-documento-con-legami, D-5).
+  Il motivo registrato è ora «Ritiro all'annullo confermato del documento di
+  origine (…)».
 * Test: `db/pgtap/vendite/test-ritiro-commessa-attivita-da-sorgente-v1.sql`
   (10 test). ⭐ Il **7** è quello che vale: con la chiave sbagliata ritira zero e
   non solleva.

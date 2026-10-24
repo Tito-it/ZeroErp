@@ -14,7 +14,7 @@ import { useFetchVersion } from './useFetchVersion'
 import { USO_MISURA, misuraDefault } from '../misurePagina'
 
 // Scopo: crea lo stato e le action di una sezione paginata.
-// - fetchPage: (paging: {page, page_size}, ...args) => Promise (axios) verso
+// - fetchPage: (paging: {limit, offset}, ...args) => Promise (axios) verso
 //   un endpoint con envelope paginato standard {data: {results, count, ...}}.
 //   Gli ...args extra di fetch() vengono inoltrati (es. competenza_mese).
 // - misura: l'USO della sezione (`USO_MISURA.PAGINA` di default,
@@ -52,7 +52,9 @@ export function usePagedDashFetch(
     loading.value = true
     try {
       const res = await fetchPage(
-        { page: page.value, page_size: pageSize.value },
+        // ⭐ La finestra, non la pagina (2026-10-21, un dialetto solo): la
+        //    pagina e' lo stato del paginatore, il backend legge limit/offset.
+        { limit: pageSize.value, offset: (page.value - 1) * pageSize.value },
         ...args
       )
       if (!fv.isCurrent(t)) return

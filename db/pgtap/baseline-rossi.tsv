@@ -3,9 +3,5 @@ db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-indirizzi-fallback.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-istanze-dati-precontrattuali.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-sync-auth-user-is-active-multi-role.sql	ASSERZIONE
-db/pgtap/documenti/test-documenti-template-documenti.sql	ERRORE_FIXTURE
 db/pgtap/pratiche/test-workflow-definizioni-fase2b.sql	ERRORE_FIXTURE
-db/pgtap/script/test-seed-stati-doc-ordini-evaso-v1.sql	ASSERZIONE
-db/pgtap/vendite/test-fn-list-preventivi-da-pushare-v1.sql	ASSERZIONE
-db/pgtap/vendite/test-fn-list-preventivi-da-pushare-v2.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-resolve-prezzo-composito-v1.sql	ERRORE_FIXTURE

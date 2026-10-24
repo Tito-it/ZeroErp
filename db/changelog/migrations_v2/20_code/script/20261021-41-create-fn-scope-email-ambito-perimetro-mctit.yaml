@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA REGOLA DELL'AMBITO DELLE EMAIL, COL PERIMETRO GIA' CALCOLATO
+#   script.fn_scope_email_ambito_perimetro(...)
+#   Brief: brief-db-perimetro-una-volta-famiglie-residue §9 (giro 5).
+#
+# script.fn_scope_email_ambito decide chi vede una mail secondo il suo
+# AMBITO, e per farlo chiedeva a ogni riga quattro cose di chi guarda, che
+# dalla riga non dipendono: e' super admin, in che reparto sta, e' l'identita'
+# del processo, quali emittenti ha nel perimetro. Qui quelle quattro cose
+# arrivano GIA' CALCOLATE: la policy (-43) le passa in quattro sottoquery non
+# correlate, valutate una volta per istruzione. Sono quattro domande diverse,
+# non la stessa due volte (linee-guida-sql §10.3). Per riga resta la regola:
+#   SISTEMA   -> super admin | processo
+#   REPARTO   -> (super admin | stesso reparto | processo) AND emittente nel perimetro
+#   OPERATORE -> (super admin | autore | processo)         AND emittente nel perimetro
+#   altro     -> false
+# Pura (IMMUTABLE): non legge tabelle. I parametri compaiono in piu' rami,
+# quindi non si incorpora: resta una chiamata per riga senza letture.
+# Firme %TYPE dove c'e' una colonna; i calcolati e l'utente (django) espliciti
+# col perche'.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261021-41-create-fn-scope-email-ambito-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261021-41-create-fn-scope-email-ambito-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_scope_email_ambito_perimetro: la regola dell'ambito delle email, con super admin, reparto, processo e perimetro emittenti di chi guarda gia' calcolati dalla policy. Pura. Giro 5 di brief-db-perimetro-una-volta-famiglie-residue.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE pronamespace = 'script'::regnamespace AND proname = 'fn_scope_email_ambito_perimetro'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_email_ambito_perimetro(
+                  -- Chi guarda, gia' calcolato dalla policy (una volta per istruzione):
+                  p_super_admin            boolean,   -- calcolato: script.fn_is_super_admin
+                  p_uo_id                  config.unita_organizzative.id%TYPE,
+                  p_processo               boolean,   -- calcolato: script.fn_scope_identita_processo
+                  -- ⚠️ `bigint[]` esplicito: elementi = anagrafiche.emittenti_fiscali.id.
+                  p_perimetro              bigint[],
+                  -- ⚠️ `integer` esplicito: django.auth_user.id, a cui il DB non si lega.
+                  p_auth_user_id           integer,
+                  -- La riga:
+                  p_ambito                 config.email_outbox.ambito%TYPE,
+                  p_emittente_fiscale_id   config.email_outbox.emittente_fiscale_id%TYPE,
+                  p_unita_organizzativa_id config.email_outbox.unita_organizzativa_id%TYPE,
+                  p_creato_da_user_id      config.email_outbox.creato_da_user_id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               IMMUTABLE
+               -- ⚠️ Nessun COST: non legge tabelle. Elencata fra le economiche di
+               --    script/test-policy-funzioni-cost-v1.
+              AS $function$
+                  -- Scopo: chi guarda puo' vedere una mail con questo ambito, questa
+                  --   azienda, questo reparto e questo autore? La regola di
+                  --   script.fn_scope_email_ambito, con le quattro risposte su chi guarda
+                  --   gia' calcolate dalla policy:
+                  --     p_super_admin  script.fn_is_super_admin(utente)
+                  --     p_uo_id        script.fn_get_uo_id_for_user(utente)
+                  --     p_processo     script.fn_scope_identita_processo(utente, codice),
+                  --                    false se nessun processo e' ammesso (l'outbox)
+                  --     p_perimetro    script.fn_get_emittenti_scope_pk_ids(utente)
+                  -- ⚠️ Utente senza reparto: p_uo_id NULL, il confronto non e' vero, la
+                  --   riga non si vede. Fail-closed, voluto.
+                  -- ⚠️ L'emittente resta in AND anche per l'autore e per il processo.
+                  SELECT COALESCE(
+                      CASE p_ambito
+                          WHEN 'SISTEMA' THEN
+                              p_super_admin OR p_processo
+                          WHEN 'REPARTO' THEN
+                              (p_super_admin
+                               OR p_unita_organizzativa_id = p_uo_id
+                               OR p_processo)
+                              AND script.fn_scope_ef_perimetro(p_perimetro, p_emittente_fiscale_id)
+                          WHEN 'OPERATORE' THEN
+                              (p_super_admin
+                               OR p_creato_da_user_id = p_auth_user_id
+                               OR p_processo)
+                              AND script.fn_scope_ef_perimetro(p_perimetro, p_emittente_fiscale_id)
+                          ELSE false
+                      END,
+                      false)
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_email_ambito_perimetro(
+                  boolean,
+                  config.unita_organizzative.id%TYPE,
+                  boolean,
+                  bigint[],
+                  integer,
+                  config.email_outbox.ambito%TYPE,
+                  config.email_outbox.emittente_fiscale_id%TYPE,
+                  config.email_outbox.unita_organizzativa_id%TYPE,
+                  config.email_outbox.creato_da_user_id%TYPE) IS
+              'La regola dell''ambito delle email (sede unica: la compone anche script.fn_scope_email_ambito), con le quattro risposte su chi guarda gia'' calcolate dalla policy una volta per istruzione: super admin (script.fn_is_super_admin), reparto (script.fn_get_uo_id_for_user), identita'' del processo (script.fn_scope_identita_processo; false dove nessun processo e'' ammesso) e perimetro emittenti (script.fn_get_emittenti_scope_pk_ids). SISTEMA: super admin o processo. REPARTO: super admin, stesso reparto o processo, E l''emittente nel perimetro. OPERATORE: super admin, autore o processo, E l''emittente nel perimetro. Altro ambito: false. Pura, non legge tabelle (linee-guida-sql §10.3). Rev 2026-10-21 (20261021-41, giro 5 di brief-db-perimetro-una-volta-famiglie-residue).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION script.fn_scope_email_ambito_perimetro(
+                  boolean,
+                  config.unita_organizzative.id%TYPE,
+                  boolean,
+                  bigint[],
+                  integer,
+                  config.email_outbox.ambito%TYPE,
+                  config.email_outbox.emittente_fiscale_id%TYPE,
+                  config.email_outbox.unita_organizzativa_id%TYPE,
+                  config.email_outbox.creato_da_user_id%TYPE);

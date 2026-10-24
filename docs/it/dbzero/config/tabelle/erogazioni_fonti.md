@@ -2,7 +2,7 @@
 
 > 📝 **Descrizione**
 >
-> Le combinazioni coerenti di tipo_erogazione (come si fattura una riga: CANONE, UNA_TANTUM, ORARIO, CONSUMO) e fonte_quantita_attesa (da dove viene la quantità: FISSA, MANUALE, TIMESHEET, LETTURE, DERIVATA_COMPONENTI). Una riga per combinazione ammessa; e_default marca la fonte che una riga prende quando nessuno la indica (al più una per erogazione). Le righe di vendite.contratti_righe e vendite.offerte_commerciali_eccezioni vi si legano con una FK composta, che ha preso il posto dei CHECK chk_*_tipo_erog, chk_*_fonte_qta e chk_*_coerenza_fonte_erogazione (20261007-54). La legge script.trgfn_righe_default_fonte_qta. Niente attivo: è ciò che il modello ammette, non una configurazione. Seed: 80_data/sql/config/erogazioni_fonti.csv. Brief: brief-db-offerta-emissione-ed-erogazione §C.7 (B1).
+> Le combinazioni coerenti di tipo_erogazione (come si fattura una riga: CANONE, UNA_TANTUM, ORARIO, CONSUMO) e fonte_quantita_attesa (da dove viene la quantità: FISSA, MANUALE, TIMESHEET, LETTURE). Una riga per combinazione ammessa; e_default marca la fonte che una riga prende quando nessuno la indica (al più una per erogazione). Le righe di vendite.contratti_righe e vendite.offerte_commerciali_eccezioni vi si legano con una FK composta, che ha preso il posto dei CHECK chk_*_tipo_erog, chk_*_fonte_qta e chk_*_coerenza_fonte_erogazione (20261007-54). La legge script.trgfn_righe_default_fonte_qta. Niente attivo: è ciò che il modello ammette, non una configurazione. Seed: 80_data/sql/config/erogazioni_fonti.csv. Brief: brief-db-offerta-emissione-ed-erogazione §C.7 (B1). Rev 2026-10-21 (§I.1, 20261021-51): DERIVATA_COMPONENTI ritirata.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

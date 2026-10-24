@@ -588,8 +588,13 @@ const annullaForm = () => inline.chiudiConConferma(closeForm)
           v-model="form.articolo_obj"
           @update:modelValue="onArticoloSelected"
           :disabled="formMode === 'edit'"
-          :filtri="{ soloComponenti: 'escludi', compositi: 'qualsiasi' }"
+          documento="LISTINO_VERSIONE"
+          :documento-id="versione.id"
+          :motivi-selezionabili="['COMPOSITO_COME_BUNDLE']"
         />
+        <!-- Il composito il DB lo da' col motivo COMPOSITO_COME_BUNDLE: come riga
+             semplice non entra, ma si sceglie lo stesso perche' qui ha la sua
+             strada, il dialog dei prezzi bundle (`onArticoloSelected`). -->
       </div>
 
       <div class="form-grid-2col">

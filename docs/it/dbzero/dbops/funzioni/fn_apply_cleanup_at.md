@@ -7,6 +7,8 @@ CREATE FUNCTION fn_apply_cleanup_at(p_schema text, p_table text, p_cleanup_colum
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_apply_cleanup_at(p_schema text, p_table text, p_cleanup_column text, p_base_ts_column text, p_ttl_days integer, p_apply_on_update boolean DEFAULT false, p_dry_run boolean DEFAULT false)
  RETURNS integer
@@ -108,6 +110,8 @@ Parametri:
 - p_dry_run: se true non aggiorna e ritorna il numero righe potenziali.
 ';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

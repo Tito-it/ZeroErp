@@ -6,7 +6,7 @@
 >
 > [config.sorgenti](/dbzero/config/tabelle/sorgenti)
 > [vendite.vw_documento_lineage_archi](/dbzero/vendite/views/vw_documento_lineage_archi)
-> [vendite.vw_documento_lineage](/dbzero/vendite/views/vw_documento_lineage)
+> [vendite.fn_documento_lineage_sintesi](/dbzero/vendite/funzioni/fn_documento_lineage_sintesi) (era `vw_documento_lineage`, ritirata nel giro B)
 > [config/manual/sorgenti.md — Convenzione chiave sorgente](/dbzero/config/manual/sorgenti)
 
 ---
@@ -99,5 +99,12 @@ fattura storica può non averla. Con il `JOIN` quel documento **sparirebbe dal
 grafo**, che è molto peggio di una natura vuota.
 
 ---
+
+### 🔄 rev 2026-10-11 — la vista è la proiezione di [`fn_documento_lineage_nodi`](fn_documento_lineage_nodi.md)
+
+Changeset `20261011-65`. Il corpo sta nella funzione, che
+si può chiamare **per i soli documenti che servono**; la vista ne è la lettura
+«senza seme», con le stesse colonne e gli stessi tipi. Brief:
+`brief-db-lineage-seminata-per-chiave` §8.3.
 
 {% include-markdown "signature-core.md" %}

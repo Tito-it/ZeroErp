@@ -6,6 +6,9 @@
 --   building block solo, e le copie di vendite ritirate.
 --   Brief: brief-db-emittente-di-default-un-bb-solo (P-6; D1..D5 confermate da
 --   Tid il 2026-09-15). ChangeSet 20260915-36 .. 20260915-46.
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
+--   portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano gia' CONFERMATO
+--   l'ordine del test 13, con una riga ora scritta dal test, ed EMESSO il preventivo del 18).
 --
 -- Elenco test (plan 18):
 --   LA FORMA
@@ -161,14 +164,16 @@ INSERT INTO _m SELECT 'Z', m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
 -- il SA: l'operatore di S con binding al profilo SUPER_ADMIN (definizione di fn_is_super_admin).
 -- ⚠️ E un SECONDO SA (l'operatore di Z, mai attore): senza, sul database da zero S
 --   sarebbe l'ultimo SA e fn_change_user_emittenti_scope lo rifiuterebbe (vedi testa).
-INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, identita_digitale_id, attivo)
-SELECT (SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), m.identita_id, true
-  FROM _m m WHERE m.lato IN ('S', 'Z');
+DO $lega$
+BEGIN
+    PERFORM config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), m.identita_id) FROM _m m WHERE m.lato IN ('S', 'Z');
+END
+$lega$;
 
 CREATE TEMP TABLE _fix (
     ind bigint, ba bigint, ba_istanza bigint, ba_utility integer, ba_sr bigint,
-    valuta bigint, stato_prev_emesso bigint, stato_ord bigint, stato_ddt_draft bigint,
-    causale bigint, sorg_ordine bigint
+    valuta bigint, stato_ddt_draft bigint,
+    causale bigint, sorg_ordine bigint, articolo uuid, iva bigint
 ) ON COMMIT DROP;
 
 -- il BA lo crea l'operatore di A (un admin globale non puo' creare BA)
@@ -182,11 +187,12 @@ BEGIN
         dbops.fn_pgtap_crea_indirizzo_dettaglio('default-emittente'),
         r.billing_account_id, r.istanza_utility_id, r.utility_id, r.soggetto_ruolo_id,
         (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),
-        (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'EMESSO' AND s.attivo ORDER BY s.id LIMIT 1),
-        (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO' AND s.attivo ORDER BY s.id LIMIT 1),
         (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'DRAFT' AND s.attivo ORDER BY s.id LIMIT 1),
         (SELECT c.id FROM config.causali_trasporto c WHERE c.codice = 'VENDITA' ORDER BY c.id LIMIT 1),
-        (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA' AND s.attivo ORDER BY s.id LIMIT 1));
+        (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA' AND s.attivo ORDER BY s.id LIMIT 1),
+        -- la riga dell'ordine del test 13 (rev 2026-10-24): merce costruita, aliquota attiva
+        dbops.fn_pgtap_crea_articolo('PGT-DE-ART', false),
+        (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1));
 END $fix$;
 SET LOCAL zeroerp.allow_lock_columns_override = 'on';
 
@@ -238,10 +244,17 @@ SELECT set_config('app.current_emittente_id', '', true);
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m WHERE lato = 'A')); END $ctx$;
 CREATE TEMP TABLE _ord ON COMMIT DROP AS
 WITH ins AS (
-    INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-    SELECT f.ba_sr, f.ba, f.stato_ord, f.valuta, script.fn_data_operativa(), false, '{}'::jsonb FROM _fix f
+    INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, valuta_id, data, storicizza, meta)
+    SELECT f.ba_sr, f.ba, f.valuta, script.fn_data_operativa(), false, '{}'::jsonb FROM _fix f
     RETURNING id, uid, emittente_fiscale_id)
 SELECT * FROM ins;
+-- rev 2026-10-24: l'ordine nasce DRAFT; prende una riga (DRAFT->CONFERMATO la
+--   pretende) e passa a CONFERMATO per la matrice, sotto i guard veri.
+INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+SELECT o.id, 1, f.articolo, 'riga 13', 1.0, 1.0, 10.0, f.iva, true, false, '{}'::jsonb
+  FROM _ord o, _fix f;
+DO $x$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM _ord), 'CONFERMATO'); END $x$;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m WHERE lato = 'S')); END $ctx$;
 CREATE TEMP TABLE _r13 ON COMMIT DROP AS
 WITH ins AS (
@@ -309,14 +322,16 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_
 CREATE TEMP TABLE _prev ON COMMIT DROP AS
 WITH ins AS (
     INSERT INTO vendite.preventivi (numero, rev, billing_account_id, istanza_utility_id, utility_id,
-                                    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+                                    validita_dal, validita_al, valuta_id, data,
                                     emittente_fiscale_id, storicizza, meta)
     SELECT 'PGT-DE-' || substr(md5(clock_timestamp()::text), 1, 8), 0, f.ba, f.ba_istanza, f.ba_utility,
-           script.fn_data_operativa(), script.fn_data_operativa() + 30, f.valuta, f.stato_prev_emesso, script.fn_data_operativa(),
+           script.fn_data_operativa(), script.fn_data_operativa() + 30, f.valuta, script.fn_data_operativa(),
            (SELECT emittente_fiscale_id FROM _m WHERE lato = 'A'), false, '{}'::jsonb
       FROM _fix f
     RETURNING id)
 SELECT id FROM ins;
+-- rev 2026-10-24: il preventivo nasce DRAFT e passa a EMESSO per la matrice.
+DO $x$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM _prev), 'EMESSO'); END $x$;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m WHERE lato = 'S')); END $ctx$;
 -- ⚠️ il verbo in un'istruzione SEPARATA dalla lettura: nella stessa istruzione la
 --   riga appena scritta non e' nella snapshot e la lettura torna NULL.

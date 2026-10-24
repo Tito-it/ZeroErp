@@ -20,6 +20,7 @@ import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPrese
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
 import { useTestataDocumento } from '../../core/composables/useTestataDocumento'
 import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO, STATUS_ICONS, DATE_FORMAT } from '../../core/constants'
@@ -36,10 +37,14 @@ import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDr
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import ListinoDocumentoSelect from './ListinoDocumentoSelect.vue'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
+import { ripristinaBillingAccount } from '../../core/utils/ripristinaLookup'
+import { CLIENTE_BA } from '../_shared/cliente/clienteCambiato'
+import { useCambioClienteDocumento } from '../_shared/cliente/useCambioClienteDocumento'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import ContrattoNoteDrawer from './ContrattoNoteDrawer.vue'
 import ContrattoEmissioneDialog from './dialogs/ContrattoEmissioneDialog.vue'
+import DocumentoAnnulloLegamiDialog from '../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
 import EntityPdfButton from '../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../documenti/constants'
@@ -53,6 +58,9 @@ import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useFooterDocumento } from '../../core/composables/useFooterDocumento'
 import { getContrattoFormDefaults } from '../api/formDefaults'
 import { useBaFormDefaults } from '../_shared/baDefaults/useBaFormDefaults'
+import {
+  applicaFornituraDaDefaults, schedaDaForm, schedaDaFornitura, schedaVuota,
+} from '../_shared/fornitura/schedaFornitura'
 import AppDialog from '../../core/components/AppDialog.vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -96,15 +104,16 @@ const { preserva, fissa, modificato, chiudiConConferma } = useDrawerFormPreserve
 // Il drawer NON ricalcola lo stato: tutto deriva dai metadata API.
 // Composable centralizzato (Fase 4.F2): isLocked(field) = !canEdit OR Set lookup.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const isLocked = caps.isLocked
 const righeCount = computed(() => detail.value?.righe_count ?? detail.value?.righe?.length ?? 0)
 
 // isContractLocked = stato post-DRAFT. La regola di dominio e' "modifiche
-// libere via form solo in DRAFT". In ATTIVO la modifica di `valido_al/meta`
-// (whitelist BE) avviene comunque via dialog dedicato "Cessa contratto",
-// non via form drawer. CESSATO/ANNULLATO interamente immutabili.
+// libere via form solo in DRAFT". In ATTIVO quali colonne si cambiano lo dice
+// il lock di testata del DB (`valido_al` passa dal dialog «Cessa contratto»),
+// non il form drawer. CESSATO/ANNULLATO interamente immutabili.
 // Prima usava `!canEditTestata` (true in ATTIVO/ANNULLATO perche' la fn DB
 // considera ATTIVO parzialmente editabile) -> sub-drawer righe restava
 // erroneamente editabile in stati terminali. Allineato al footer
@@ -121,6 +130,12 @@ const isReadonly = computed(
   () => props.readonly || parentReadonly.value || isContractLocked.value,
 )
 provide(READONLY_KEY, isReadonly)
+
+// La scheda di fornitura si cambia finche' il DB lo dice (`can_edit_utility`,
+// il lock dei satelliti); in creazione e' aperta.
+const schedaBloccata = computed(
+  () => isReadonly.value || (isEdit.value && !caps.flag('can_edit_utility')),
+)
 
 // I tre riferimenti dell'atto (CIG/CUP/commessa, I8/D9) sono l'ECCEZIONE al
 // lock post-DRAFT, per decisione Q1 di Tid (2026-08-29): non toccano prezzo,
@@ -243,9 +258,8 @@ function defaultForm() {
     // BA→EF-BA→EF-utente→gestore via BB resolve_valuta_default).
     // Immutabile in EDIT.
     valuta_id: null,
-    // Utility 1:1 (create inline)
-    utility_tipo_utenza_id: null,
-    utility_classe_utenza_id: null,
+    // Scheda di fornitura inline (BB `schedaFornitura`, come l'offerta)
+    ...schedaVuota(),
   }
 }
 
@@ -255,17 +269,17 @@ function resetForm() {
 }
 
 function populateFromDetail(d) {
+  const stessoCliente = form.value.billing_account_id === d.billing_account_id
+    && form.value.billing_account_obj != null
   form.value = {
     emittente_fiscale_id: d.emittente_fiscale_id,
     billing_account_id: d.billing_account_id,
-    billing_account_obj: d.ba_ragione_sociale ? {
-      id: d.billing_account_id,
-      codice: d.ba_codice,
-      ragione_sociale: d.ba_ragione_sociale,
-      utility_codice: d.utility_codice,
-      utility_descrizione: d.utility_descrizione,
-      pdp: d.pdp || null,
-    } : null,
+    // Il cliente per il lookup: lo stesso oggetto se il cliente non e' cambiato
+    // (niente lampeggio alla ricarica), altrimenti lo rilegge
+    // `ripristinaBillingAccount` qui sotto. ⛔ Fino al 2026-10-19 si costruiva a
+    // mano dai campi del dettaglio, con la chiave sbagliata della ragione
+    // sociale: riaperto, il campo mostrava il solo codice (collaudo di Tid).
+    billing_account_obj: stessoCliente ? form.value.billing_account_obj : null,
     istanza_utility_id: d.istanza_utility_id,
     utility_id: d.utility_id,
     ambito: d.ambito || 'COMMODITY',
@@ -282,9 +296,9 @@ function populateFromDetail(d) {
     tipo_variazione_globale: d.tipo_variazione_globale,
     valore_variazione_globale: d.valore_variazione_globale,
     valuta_id: d.valuta_id,
-    utility_tipo_utenza_id: d.utility?.tipo_utenza_id || null,
-    utility_classe_utenza_id: d.utility?.classe_utenza_id || null,
+    ...schedaDaFornitura(d.utility),
   }
+  if (!stessoCliente) ripristinaBillingAccount(form.value, d.billing_account_id)
 }
 
 // Forma derivata (refactor modalita 2026-05-15): "con_listino" se l'operatore
@@ -305,7 +319,8 @@ function onListinoChange(nuovoListinoId) {
   }
   // Selezione listino non-null: nessun pre-fill di tipo. Il pre-fill produceva
   // coppia incoerente (tipo=PERCENTUALE, valore=null) che in edit mascherava
-  // E_VENDITE_CONTRATTO_OVERLAP con un generico "Payload contratto non valido"
+  // il rifiuto della sovrapposizione (oggi E_CONTRATTO_OVERLAP_ESISTENTE) con un
+  // generico "Payload contratto non valido"
   // perche' il BE rifiutava la coppia prima del DB check. Il pre-fill del tipo
   // avviene gia' in `onValoreVariazioneChange` quando l'operatore inizia a
   // valorizzare il delta — coerente con la regola BE "entrambi presenti o
@@ -389,6 +404,11 @@ const baBadgeLabel = computed(() => {
 })
 
 function onBaSelected(item) {
+  // ⛔ In modifica la utility del contratto e' immutabile (B-4 di Tid): il
+  //    cliente si cambia DENTRO la stessa utility, e `utility_id` filtra il
+  //    lookup. Riscriverla qui (col default dell'operatore alla pulizia, o con
+  //    quella del BA) lascerebbe scegliere un cliente di un'altra utility, che
+  //    il backend rifiuta al salvataggio.
   if (!item) {
     form.value.billing_account_id = null
     form.value.billing_account_obj = null
@@ -396,14 +416,14 @@ function onBaSelected(item) {
     // Ripristina il default utility quando si pulisce il BA: l'operatore
     // mantiene il filtro lookup BA sull'utility tipica del proprio EF
     // invece di tornare a "vedo tutti i BA". Allinea OffertaDrawer.
-    form.value.utility_id = utilityDefaultId.value
+    if (!isEdit.value) form.value.utility_id = utilityDefaultId.value
     form.value.categoria_cliente_id_snapshot = null
     return
   }
   form.value.billing_account_id = item.id
   form.value.billing_account_obj = item
   form.value.istanza_utility_id = item.istanza_utility_id || null
-  form.value.utility_id = item.utility_id || null
+  if (!isEdit.value) form.value.utility_id = item.utility_id || null
   // Pre-compila la categoria dal BA; l'operatore puo' cambiarla.
   form.value.categoria_cliente_id_snapshot = item.categoria_cliente_id || null
 }
@@ -411,7 +431,13 @@ function onBaSelected(item) {
 // Auto-fill valuta dal form-defaults BE (BB resolve_valuta_default), al cambio
 // BA in CREATE: la valuta del BA vince (regola di coerenza dominio). Watcher
 // condiviso `useBaFormDefaults` con guard latest-wins inclusa.
-useBaFormDefaults({ form, isEdit, fetchDefaults: getContrattoFormDefaults })
+// ⭐ In creazione la scheda di fornitura segue il cliente scelto: quella che
+//    l'anagrafica gli da', che l'operatore vede e corregge prima di salvare
+//    (R-FE-3 di brief-db-indirizzi-documento-seguono-il-cliente, D-7 di Tid:
+//    alla nascita il DB parte dall'anagrafica e applica la scheda del form).
+const { inCorso: defaultsClienteInCorso } = useBaFormDefaults({
+  form, isEdit, fetchDefaults: getContrattoFormDefaults, apply: applicaFornituraDaDefaults,
+})
 
 // Validazione FE (refactor modalita 2026-05-15: niente piu' check su modalita).
 // Vincolo strutturale unico sulla coppia variazione globale: tipo e valore
@@ -424,6 +450,10 @@ const canSave = computed(() => {
   // I tre riferimenti dell'atto restano salvabili anche a contratto ATTIVO
   // (Q1): il lock post-DRAFT non li riguarda.
   if (isReadonly.value && !testata.modificabile.value) return false
+  // Finche' arrivano i dati del cliente (BB `useBaFormDefaults`) il Salva
+  // aspetta: la scheda di fornitura partirebbe vuota sopra quella
+  // dell'anagrafica (D-7: il DB applica la scheda del form).
+  if (defaultsClienteInCorso.value) return false
   const f = form.value
   // Coppia variazione coerente: tipo presente <=> valore presente. Applicabile
   // sia in create che in edit — il BE rifiuta la coppia incoerente con
@@ -434,7 +464,8 @@ const canSave = computed(() => {
   const hasTipo = !!f.tipo_variazione_globale
   const hasValore = f.valore_variazione_globale != null && f.valore_variazione_globale !== ''
   if (hasTipo !== hasValore) return false
-  if (isEdit.value) return true
+  // In bozza il cliente si cambia ma non si toglie (B-1 di Tid).
+  if (isEdit.value) return !isContractLocked.value ? !!f.billing_account_id : true
   // Per operatore non-admin il `defaultEmittenteId` arriva dal profilo
   // (`useAuthStore`) e il check non blocca; per admin globale multi-EF
   // serve scelta esplicita prima di abilitare Salva.
@@ -447,10 +478,9 @@ const canSave = computed(() => {
 
 function buildPayload() {
   const f = form.value
-  // Profilo A whitelist FE: il payload PATCH va limitato ai campi che il
-  // BE accetta nello stato corrente. Il BE applica una guard speculare
-  // (E_CONTRATTO_NON_MODIFICABILE) — rispettiamo la stessa whitelist qui
-  // per evitare round-trip e fornire UX coerente.
+  // Il payload PATCH va limitato ai campi che il form lascia toccare nello
+  // stato corrente: fuori bozza la testata la ferma il lock del DB colonna per
+  // colonna (`E_DOC_*`), e mandare campi spenti farebbe rifiutare l'intera PATCH.
   // - DRAFT:    tutti i campi
   // - ATTIVO:   valido_al + meta (via dialog "Cessa contratto") e i TRE
   //             RIFERIMENTI DELL'ATTO (I8/D9, decisione Q1 del 2026-08-29),
@@ -524,11 +554,28 @@ function buildCodiciAttoPayload(f) {
 
 async function handleSave() {
   if (isEdit.value) {
+    const payload = buildPayload()
+    // Il cliente NON viaggia: il cambio si e' gia' salvato alla scelta, con la
+    // conferma (BB `useCambioClienteDocumento`, 2026-10-19), e la scheda del
+    // form e' gia' quella del cliente nuovo. Fino ad allora qui si mandava la
+    // coppia BA/istanza e si tratteneva la scheda del cliente vecchio.
+    // La scheda di fornitura viaggia se si cambia ancora (`can_edit_utility`:
+    // il lock dei satelliti del DB).
+    if (caps.flag('can_edit_utility')) {
+      payload.utility = schedaDaForm(form.value)
+    }
     const result = await execute(
-      () => store.update(props.contrattoId, buildPayload()),
+      () => store.update(props.contrattoId, payload),
       { successMessage: t('vendite.contratti.contratto_salvato') }
     )
-    if (result !== null) { fissa(); emit('saved', result) }
+    if (result !== null) {
+      // La fotografia e' il form com'e' ora, PRIMA della ricarica (come
+      // l'offerta): la rilettura porta il cliente, la scheda e gli indirizzi
+      // che il DB ha rifatto, e la sezione indirizzi segue il `detail` (R-FE-2).
+      fissa()
+      await refreshDetail()
+      emit('saved', result)
+    }
   } else {
     const f = form.value
     const payload = {
@@ -542,13 +589,10 @@ async function handleSave() {
       valuta_id: f.valuta_id || null,
       ...buildPayload(),
     }
-    // Utility 1:1 inline: tipo/classe utenza (opzionali)
-    if (f.utility_tipo_utenza_id || f.utility_classe_utenza_id) {
-      payload.utility = {
-        tipo_utenza_id: f.utility_tipo_utenza_id || null,
-        classe_utenza_id: f.utility_classe_utenza_id || null,
-      }
-    }
+    // La scheda di fornitura com'e' a video: precompilata dall'anagrafica del
+    // cliente e corretta dall'operatore. Il DB parte dall'anagrafica e ci
+    // applica questa (D-7): quello che si vede e' quello che si scrive.
+    payload.utility = schedaDaForm(f)
     const result = await execute(
       () => store.create(payload),
       { successMessage: t('vendite.contratti.contratto_creato') }
@@ -569,6 +613,28 @@ async function refreshDetail() {
   populateFromDetail(d)
   applica()
 }
+
+// ⭐ Il cambio di cliente in modifica si salva subito, con conferma (BB
+//    `useCambioClienteDocumento`, decisione di Tid 2026-10-19): il DB rifa'
+//    indirizzi e scheda, e pannello e «Indirizzi» mostrano subito quelli del
+//    cliente nuovo. La scheda non salvata del cliente vecchio si scarta.
+useCambioClienteDocumento({
+  form,
+  detail,
+  // La categoria la pre-compila la scelta del BA (`onBaSelected`): un Annulla
+  // la riporta al salvato con BA e istanza, o resterebbe quella del cliente
+  // scartato. A conferma resta nel form, correggibile, e si salva col Salva.
+  colonne: [...CLIENTE_BA, 'istanza_utility_id', 'categoria_cliente_id_snapshot'],
+  // La stessa condizione che spegne il lookup del cliente nel form.
+  attivo: () => isEdit.value && detail.value != null && !isLocked('billing_account_id'),
+  salva: (corpo) => execute(
+    () => store.update(props.contrattoId, corpo),
+    { successMessage: t('vendite.contratti.contratto_salvato') },
+  ),
+  ricarica: refreshDetail,
+  scartaDipendenti: () => Object.assign(form.value, schedaDaFornitura(detail.value?.utility)),
+  messaggio: 'vendite.cliente.cambio_messaggio_con_fornitura',
+})
 
 // Stato dialog cessazione: una azione con `requires_date=true` apre il dialog
 // con `default_date` e `min_date` arrivati dal BE
@@ -681,11 +747,30 @@ function onCambiaStato(action) {
   eseguiCambioStato(action.target_state)
 }
 
+// ⭐ L'annullo e' un gesto CONFERMABILE (brief-db-annullo-documento-con-
+//    legami): con legami (offerta d'origine, righe di commessa da emettere) il
+//    DB lo rifiuta (`confirm_and_retry`) finche' chi conferma non dichiara
+//    quanti legami ha visto; la domanda la porta a video
+//    `DocumentoAnnulloLegamiDialog`. Le altre transizioni restano su `execute`.
+const cambioStato = useForzaturaConfermata()
+const { richiestaConferma: domandaAnnullo } = cambioStato
+
 async function eseguiCambioStato(targetState) {
-  const result = await execute(
-    () => store.cambiaStato(props.contrattoId, targetState),
-    { successMessage: t('vendite.contratti.stato_cambiato') },
-  )
+  const opts = { successMessage: t('vendite.contratti.stato_cambiato') }
+  // L'annullo: primo tentativo SEMPRE senza dichiarazione.
+  const result = targetState === STATO_CONTRATTO.ANNULLATO
+    ? await cambioStato.esegui(
+      (dichiarazione) => store.cambiaStato(props.contrattoId, targetState, { dichiarazione }),
+      opts,
+    )
+    : await execute(() => store.cambiaStato(props.contrattoId, targetState), opts)
+  if (result !== null) await refreshDetail()
+}
+
+// Scopo: l'operatore ha visto i legami e conferma l'annullo: si ripete la
+//        chiamata DICHIARANDO quanti erano.
+async function onConfermaAnnullo(dichiarazione) {
+  const result = await cambioStato.conferma(dichiarazione)
   if (result !== null) await refreshDetail()
 }
 
@@ -847,7 +932,9 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
     <DocumentoCollegamentiBar
       v-if="isEdit && contrattoId"
       base-path="/vendite/contratti"
+      :versione="detail"
       :doc-id="contrattoId"
+      @documento-chiuso="refreshDetail"
       :readonly="readonly || parentReadonly" />
 
     <!-- Banner contratto bloccato: in stati post-DRAFT ammessa solo
@@ -888,26 +975,25 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
   </h4>
   <div class="form-grid-2col">
     <div class="form-field">
-      <label>{{ t('vendite.contratti.field_billing_account') }} <span v-if="!isEdit">*</span></label>
+      <label>{{ t('vendite.contratti.field_billing_account') }} <span v-if="!isContractLocked">*</span></label>
       <!-- `utility-id` pre-filtra il lookup BA sull'utility selezionata
            (default = utility dell'operatore via `utilityDefaultId`).
            `onBaSelected` sovrascrive `utility_id` con quella canonical
            del BA scelto, mantenendo coerenza FK. Allinea OffertaDrawer. -->
+      <!-- In bozza il cliente si cambia (B-1 di Tid): dentro la stessa utility,
+           che il lookup filtra; fuori bozza lo ferma il lock di testata. -->
       <BillingAccountLookup
-        v-if="!isEdit"
         :model-value="form.billing_account_obj"
         :utility-id="form.utility_id"
         @update:model-value="onBaSelected"
         :placeholder="t('vendite.contratti.select_billing_account')"
+        :disabled="isEdit && isLocked('billing_account_id')"
       />
-      <InputText v-else :model-value="detail?.ba_ragione_sociale" disabled />
     </div>
     <div class="form-field">
       <label>{{ t('vendite.contratti.field_utility') }} <span v-if="!isEdit">*</span></label>
-      <!-- Building block standard utility-per-ruolo-EF: filtra le utility
-           configurate per l'EF dell'operatore + ammesse al ruolo CLIENTE
-           (intersezione `emittenti_fiscali_utilities` x
-           `utilities_tipi_ruolo`). Pre-popolato da `defaultForm()` via
+      <!-- Building block standard utility-per-ruolo-EF: le utility ammesse
+           per il ruolo EF e per il ruolo CLIENTE (`utilities_tipi_ruolo`). Pre-popolato da `defaultForm()` via
            `utilityDefaultId`; quando l'operatore sceglie il BA,
            `onBaSelected` sovrascrive con la utility canonical del BA. -->
       <UtilityPerRuoloSelect
@@ -1048,6 +1134,18 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
     </div>
   </div>
 
+  <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default,
+       contatore "+N altri", pulsante "Indirizzi" che apre il drawer
+       di gestione. Solo in EDIT (documento persistito). -->
+  <DocumentoIndirizziSection
+    v-if="isEdit && detail"
+    dominio="contratti"
+    :doc-id="contrattoId"
+    :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
+    :istanza-utility-id="detail?.istanza_utility_id ?? null"
+    :readonly="readonly || parentReadonly"
+    :capabilities="capabilities" />
+
   <!-- === Pricing (refactor modalita 2026-05-15) === -->
   <!-- Niente piu' SelectButton A/B/C: l'operatore compila campi opzionali
        (listino + variazione globale). La "forma" derivata e' un badge
@@ -1126,26 +1224,29 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
       <label>{{ t('vendite.contratti.field_tipo_utenza') }}</label>
       <LookupSelect v-model="form.utility_tipo_utenza_id" rel="config.tipi_utenze"
         :placeholder="t('vendite.contratti.select_tipo_utenza')" show-clear
-        :disabled="isContractLocked" />
+        :disabled="schedaBloccata" />
     </div>
     <div class="form-field">
       <label>{{ t('vendite.contratti.field_classe_utenza') }}</label>
       <LookupSelect v-model="form.utility_classe_utenza_id" rel="config.classi_utenze"
         :placeholder="t('vendite.contratti.select_classe_utenza')" show-clear
-        :disabled="isContractLocked" />
+        :disabled="schedaBloccata" />
     </div>
   </div>
-
-  <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default,
-       contatore "+N altri", pulsante "Indirizzi" che apre il drawer
-       di gestione. Solo in EDIT (documento persistito). -->
-  <DocumentoIndirizziSection
-    v-if="isEdit && detail"
-    dominio="contratti"
-    :doc-id="contrattoId"
-    :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
-    :istanza-utility-id="detail?.istanza_utility_id ?? null"
-    :readonly="isReadonly" />
+  <!-- I due parametri della scheda, come sull'offerta: l'operatore vede quello
+       che l'anagrafica scrive e lo corregge (D-7 di Tid). -->
+  <div class="form-grid-2col">
+    <div class="form-field">
+      <label>{{ t('vendite.contratti.field_param_1_num') }}</label>
+      <InputNumber v-model="form.utility_param_1_num"
+        :min-fraction-digits="0" :max-fraction-digits="6"
+        :disabled="schedaBloccata" />
+    </div>
+    <div class="form-field">
+      <label>{{ t('vendite.contratti.field_param_2_txt') }}</label>
+      <InputText v-model="form.utility_param_2_txt" :disabled="schedaBloccata" />
+    </div>
+  </div>
 
   <!-- L'area inline "Documenti generati" e' stata rimossa 2026-07-16
        (doppione): l'archivio PDF si consulta dal pulsante PDF in testata
@@ -1179,6 +1280,21 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
       v-model:visible="noteDrawerVisible"
       :contratto-id="props.contrattoId"
       :righe="detail.righe || []"
+    />
+
+    <!-- La conferma dell'annullo di un contratto con legami: aperta dalla
+         domanda del DB, chiusa dalla conferma o dalla rinuncia. -->
+    <DocumentoAnnulloLegamiDialog
+      v-if="contrattoId"
+      :visible="domandaAnnullo !== null"
+      base-path="/vendite/contratti"
+      :doc-id="contrattoId"
+      :header="t('vendite.contratti.azione_annulla')"
+      :domanda="domandaAnnullo"
+      :loading="cambioStato.loading.value"
+      :readonly="readonly || parentReadonly"
+      @conferma="onConfermaAnnullo"
+      @cancel="cambioStato.annulla()"
     />
 
     <!-- Dialog attivazione contratto (transizione DRAFT → ATTIVO). Wrapper sul

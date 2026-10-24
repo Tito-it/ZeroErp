@@ -20,7 +20,8 @@
 
 from unittest.mock import Mock, patch
 
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
@@ -30,7 +31,7 @@ _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 # DocumentGenerationService sono importati nel modulo della view; la
 # DocumentiRepository vive nel helper condiviso `contesto_helpers`.
 _DOC_GEN_SVC = "apps.vendite.api.fatture_documenti_views.DocumentGenerationService"
-_DOC_REPO = "apps.documenti.api.contesto_helpers.DocumentiRepository"
+_SORGENTI_REPO = "apps.documenti.api.contesto_helpers.SorgentiRepository"
 _VEN_REPO = "apps.vendite.api.fatture_documenti_views.VenditeRepository"
 
 _BASE = "/api/v1/vendite/fatture/"
@@ -41,7 +42,7 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     # 0. Senza JWT: 401.
     def test_genera_richiede_jwt(self) -> None:
@@ -52,18 +53,18 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
     #    parametri estratti dalla fattura a genera_documento.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_VEN_REPO)
     def test_genera_ok_passa_parametri(
-        self, repo_cls, doc_repo_cls, doc_svc_cls, _auth,
+        self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ) -> None:
         repo_cls.return_value.get_fattura_for_documento_generation.return_value = {
             "id": 42,
             "uid": "0190b000-0000-0000-0000-000000000042",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 10, "codice": "FATTURA", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 10, "codice": "FATTURA",
         }
         doc_svc_cls.return_value.genera_documento.return_value = {
             "id": 100, "uid": "doc-uid-100", "nome_file": "fattura.pdf",
@@ -90,18 +91,18 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
     # 2. Lista documenti generati per la sorgente: 200 envelope paginato.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_VEN_REPO)
     def test_lista_ok_envelope(
-        self, repo_cls, doc_repo_cls, doc_svc_cls, _auth,
+        self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ) -> None:
         repo_cls.return_value.get_fattura_for_documento_generation.return_value = {
             "id": 42,
             "uid": "0190b000-0000-0000-0000-000000000042",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 10, "codice": "FATTURA", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 10, "codice": "FATTURA",
         }
         doc_svc_cls.return_value.list_documenti_per_sorgente.return_value = {
             "results": [], "total_count": 0,
@@ -137,18 +138,18 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
     #    e riemetterlo non è un'opzione.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_VEN_REPO)
     def test_ristampa_ok_stream_pdf_inline(
-        self, repo_cls, doc_repo_cls, doc_svc_cls, _auth,
+        self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ) -> None:
         repo_cls.return_value.get_fattura_for_documento_generation.return_value = {
             "id": 42,
             "uid": "0190b000-0000-0000-0000-000000000042",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 10, "codice": "FATTURA", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 10, "codice": "FATTURA",
         }
         doc_svc_cls.return_value.ristampa_fedele.return_value = {
             "pdf_bytes": b"%PDF-1.4 storico",
@@ -177,18 +178,18 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
     #    esce 200 e l'header lo DICHIARA, così la UI può avvisare.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_VEN_REPO)
     def test_ristampa_pdf_hash_diverso_header_a_zero(
-        self, repo_cls, doc_repo_cls, doc_svc_cls, _auth,
+        self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ) -> None:
         repo_cls.return_value.get_fattura_for_documento_generation.return_value = {
             "id": 42,
             "uid": "0190b000-0000-0000-0000-000000000042",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 10, "codice": "FATTURA", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 10, "codice": "FATTURA",
         }
         doc_svc_cls.return_value.ristampa_fedele.return_value = {
             "pdf_bytes": b"%PDF-1.4 storico",

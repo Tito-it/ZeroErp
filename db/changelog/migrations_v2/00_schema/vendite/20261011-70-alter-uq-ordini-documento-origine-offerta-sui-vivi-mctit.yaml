@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN'OFFERTA GENERA AL PIU' UN ORDINE VIVO
+#   vendite.ordini: uq_ordini_v_documento_origine_offerta ristretto agli
+#   ordini non abortiti.
+#   Brief: brief-db-annullo-documento-con-legami (§7.1, D-3 e D-6 di Tid)
+#
+# ── IL DIFETTO, SUL MODELLO ─────────────────────────────────────────
+#   Gemello di 20261011-68 sul contratto. L'indice (20260607-07) diceva
+#   «un'offerta genera al piu' un ordine» senza guardare lo stato: un
+#   ordine annullato teneva l'offerta consumata per sempre.
+#
+# ── LA FORMA (D-6) ──────────────────────────────────────────────────
+#   La coppia documento_origine_tipo/_id e' PROVENIENZA: resta
+#   sull'ordine annullato. L'unicita' vale sui soli ordini vivi, letti da
+#   is_abortito_snapshot (20261011-69). Stesso nome: chi lo cita (backend,
+#   messaggi_errore, il commento di ix_ordini_documento_origine) resta
+#   vero. Fuori dalla policy FK: documento_origine_id e' polimorfo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261011-70-alter-uq-ordini-documento-origine-offerta-sui-vivi-mctit.yaml
+
+  - changeSet:
+      id: 20261011-70-alter-uq-ordini-documento-origine-offerta-sui-vivi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        uq_ordini_v_documento_origine_offerta diventa unico sui soli ordini vivi
+        (NOT is_abortito_snapshot): un ordine annullato non consuma piu' l'offerta, e ne
+        conserva la provenienza. D-3/D-6 di brief-db-annullo-documento-con-legami.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists: { schemaName: vendite, tableName: ordini, columnName: is_abortito_snapshot }
+            - indexExists: { schemaName: vendite, tableName: ordini, indexName: uq_ordini_v_documento_origine_offerta }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP INDEX vendite.uq_ordini_v_documento_origine_offerta;
+
+              CREATE UNIQUE INDEX uq_ordini_v_documento_origine_offerta
+                  ON vendite.ordini (documento_origine_tipo, documento_origine_id)
+                  WHERE documento_origine_tipo = 'OFFERTA'
+                    AND NOT is_abortito_snapshot;
+
+              COMMENT ON INDEX vendite.uq_ordini_v_documento_origine_offerta IS
+                  'Un''offerta genera al piu'' UN ordine VIVO (2026-10-11, brief-db-annullo-documento-con-legami D-3/D-6): unico sugli ordini da offerta non abortiti. La coppia documento_origine_tipo/_id e'' provenienza: l''ordine annullato la conserva, e l''offerta torna trasformabile. Era unico senza stato (20260607-07). is_abortito_snapshot lo scrive il BB vendite.trgfn_doc_snapshot_da_stato. Lettore: vendite.fn_offerta_documenti_vivi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_ordini_v_documento_origine_offerta;
+              CREATE UNIQUE INDEX uq_ordini_v_documento_origine_offerta
+                  ON vendite.ordini (documento_origine_tipo, documento_origine_id)
+               WHERE documento_origine_tipo = 'OFFERTA';

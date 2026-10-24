@@ -33,7 +33,7 @@
 >    arrivata in `dev/backend-tid` col merge di `Tito-dev`.
 >
 > **Contesto:** [Sicurezza e qualità statica](../sicurezza-e-qualita-statica.md), sezione
-> «Aperto». Registro del debito: [migliorie generali](../work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md),
+> «Aperto». Registro del debito: [migliorie generali](migliorie-generali-BE-FE-da-test-valutazione.md),
 > voce D3-c per §1.
 
 ---

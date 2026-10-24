@@ -16,16 +16,27 @@ from decimal import Decimal
 from typing import Any
 
 
+from apps.config.db.sorgenti_repository import SorgentiRepository
+from apps.config.sorgenti import (
+    SORGENTE_COMMESSA,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_FATTURA,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+    SORGENTE_RESO_VENDITA,
+)
+from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
-from apps.core.api.payload_validators import paginated_envelope
+from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.services.payload_helpers import translate_db_errors
 from apps.core.services.capability_blob import capabilities_o_vuoto
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import (
     validate_enum_param,
     validate_order_params,
-    validate_pagination,
 )
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.partitioned_note_service import PartitionedNoteService
@@ -40,14 +51,18 @@ from apps.vendite.db.vendite_repository import (
     MOTIVO_NON_FATTURATA_RESIDUO,
     DASH_APERTO_AREE,
     DASH_APERTO_FASI,
+    FASI_DOCUMENTO,
     DASH_BACKLOG_CLASSI,
     DASH_COMPETENZA_STADI,
     DASH_FATTURAZIONE_AREE,
     DASH_FATTURAZIONE_AREE_EURO,
     FONDI_DA_DECIDERE_MOTIVI,
     STATI_ESECUZIONE_DOCUMENTO,
+    STATI_ESECUZIONE_LOTTO,
+    STATI_LOTTO,
     VenditeRepository,
 )
+from apps.vendite.services._lotto_perimetro import lotto_visibile
 from apps.vendite.types import (
     DashApertoDocumentoRow,
     DashApertoRiepilogoRow,
@@ -75,14 +90,6 @@ logger = logging.getLogger(__name__)
 _SORT_BY_VALIDI: tuple[str, ...] = tuple(LOTTO_FATTURE_SORT_COLUMNS)
 
 
-# Scopo: Valida page/page_size con E_VENDITE_VALIDATION e restituisce l'offset calcolato.
-# Riutilizzabile da tutte le funzioni di lista dello schema vendite.
-def _validate_pagination(page: int, page_size: int, function_name: str) -> int:
-    return validate_pagination(
-        page, page_size, error_code="E_VENDITE_VALIDATION", function_name=function_name,
-    )
-
-
 # Scopo: Risolve (limit, offset) per le liste dei cruscotti, distinguendo il
 #        giro PAGINATO da quello di EXPORT.
 #
@@ -94,9 +101,12 @@ def _validate_pagination(page: int, page_size: int, function_name: str) -> int:
 #        tutte le liste del progetto. Il tetto dell'export e' un altro
 #        (`EXPORT_MAX_ROWS`) e lo presidia il building block di export.
 #
-#        Senza `max_rows` il comportamento e' identico a prima.
+#        Senza `max_rows` la finestra e' quella chiesta: dal 2026-10-21 le
+#        liste parlano `limit`/`offset` (la view li legge con `pagina_da_query`,
+#        che li riporta nei limiti), e la traduzione da `page`/`page_size` che
+#        stava qui non c'e' piu'.
 def _paging_o_export(
-    *, page: int, page_size: int, max_rows: int | None, function_name: str,
+    *, limit: int, offset: int, max_rows: int | None, function_name: str,
 ) -> tuple[int, int]:
     if max_rows is not None:
         ErrorManager.require(
@@ -108,7 +118,7 @@ def _paging_o_export(
             function_name=function_name,
         )
         return max_rows, 0
-    return page_size, _validate_pagination(page, page_size, function_name)
+    return limit, offset
 
 
 # Scopo: wrapper di dominio su `validate_order_params` — riempie l'`error_code`
@@ -216,33 +226,50 @@ def _valida_ritardo_giorni(
     )
 
 
-# Scopo: Costruisce l'envelope di risposta paginata standard.
-# Riutilizzabile da tutte le funzioni di lista dello schema vendite.
-def _build_list_response(
-    results: list,
-    total_count: int,
-    page: int,
-    page_size: int,
+# Scopo: L'envelope di una lista dei cruscotti, con la pagina EFFETTIVAMENTE
+#        servita: il repository (`_query_paged_view`) riporta un offset oltre
+#        la fine all'ultima pagina (rientro da pagina stantia, in una sola
+#        valutazione della union), e l'envelope deve dichiarare quella — il FE
+#        la adotta (`usePagedDashFetch` sincronizza la pagina dalla risposta).
+# ⚠️ Solo per le liste il cui repository riporta l'offset; le altre usano
+#    `envelope_da_offset` diretto.
+def _envelope_pagina_effettiva(
+    results: list, total_count: int, *, limit: int, offset: int,
 ) -> dict[str, Any]:
-    total_pages = math.ceil(total_count / page_size) if page_size > 0 else 0
-    return {
-        "count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "results": results,
-    }
+    envelope = envelope_da_offset(results, total_count, limit=limit, offset=offset)
+    if total_count > 0 and limit > 0:
+        envelope["page"] = min(envelope["page"], math.ceil(total_count / limit))
+    else:
+        envelope["page"] = 1
+    return envelope
 
 
-# Scopo: Pagina effettivamente servita dopo il clamp SQL dell'offset
-#        all'ultima pagina (_query_paged_view, rientro da pagina stantia in
-#        una sola valutazione della union): l'envelope deve dichiarare la
-#        pagina reale, che il FE adotta (usePagedDashFetch sincronizza
-#        page dalla risposta).
-def _pagina_effettiva(page: int, page_size: int, total_count: int) -> int:
-    if total_count <= 0 or page_size <= 0:
-        return 1
-    return min(page, math.ceil(total_count / page_size))
+# Scopo: I filtri della lista lotti che la query non sa rifiutare, validati in
+#        un posto solo per la lista e per il suo export (gemelli: un filtro
+#        sbagliato e' un 400 in entrambi, mai una lista o un file vuoti).
+#        - `stato_lotto` nel suo vocabolario (specchio del CHECK);
+#        - ⛔ «Recuperi del mese» ha senso solo RISPETTO A UN MESE: senza,
+#          il predicato diventa `competenza_mese < NULL`, cioe' zero righe.
+def _valida_filtri_lotti(
+    *,
+    stato_lotto: str | None,
+    competenza_mese: date | None,
+    solo_recuperi_mese: bool,
+    function_name: str,
+) -> None:
+    _validate_enum(
+        stato_lotto, allowed=STATI_LOTTO, param_name="stato_lotto",
+        function_name=function_name,
+    )
+    ErrorManager.require(
+        not solo_recuperi_mese or competenza_mese is not None,
+        code="E_VENDITE_VALIDATION",
+        message="Parametri non validi.",
+        detail="competenza_mese obbligatoria per i recuperi del mese",
+        context={"parametro": "competenza_mese"},
+        function_name=function_name,
+        log_to_db=False,
+    )
 
 
 # Scopo: Restituisce elenco lotti paginato con decodifica e filtri opzionali.
@@ -260,23 +287,16 @@ def fn_list_lotti(
     auth_user_id: int | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     solo_recuperi_mese: bool = False,
     includi_annullati: bool = False,
 ) -> dict[str, Any]:
-    offset = _validate_pagination(page, page_size, "vendite.vendite_service.fn_list_lotti")
-    # ⛔ La scheda «Recuperi del mese» ha senso solo RISPETTO A UN MESE: senza,
-    #    «competenza precedente» non ha un termine di paragone. Si rifiuta
-    #    invece di rispondere un elenco plausibile e senza significato.
-    ErrorManager.require(
-        not solo_recuperi_mese or competenza_mese is not None,
-        code="E_VENDITE_VALIDATION",
-        message="Parametri non validi.",
-        detail="competenza_mese obbligatoria per l'elenco dei recuperi del mese",
-        context={"field": "competenza_mese"},
+    _valida_filtri_lotti(
+        stato_lotto=stato_lotto,
+        competenza_mese=competenza_mese,
+        solo_recuperi_mese=solo_recuperi_mese,
         function_name="vendite.vendite_service.fn_list_lotti",
-        log_to_db=False,
     )
     repository = VenditeRepository()
     results: list[LottoListRow]
@@ -290,12 +310,12 @@ def fn_list_lotti(
         auth_user_id=auth_user_id,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
         solo_recuperi_mese=solo_recuperi_mese,
         includi_annullati=includi_annullati,
     )
-    risposta = _build_list_response(results, total_count, page, page_size)
+    risposta = envelope_da_offset(results, total_count, limit=limit, offset=offset)
     # ⭐ La ripartizione per stato viaggia NELLA STESSA risposta della lista, e
     #    non su un endpoint suo: cosi' i pulsanti-filtro e le righe sotto
     #    vengono dalla stessa valutazione del perimetro e non possono
@@ -342,8 +362,8 @@ def fn_list_lotti(
 #        stesso ordinamento della lista a video — così il file rispecchia ciò
 #        che l'operatore stava guardando.
 #
-#        Perché non passa da `fn_list_lotti`: quella valida `page_size` con
-#        `validate_pagination`, che impone il tetto di 200 righe della lista.
+#        Perché non passa da `fn_list_lotti`: quella riceve la finestra della
+#        lista, che la view riporta al tetto di 200 righe (`pagina_da_query`).
 #        L'export ne ha bisogno di più, e chiede `EXPORT_MAX_ROWS + 1` di
 #        proposito: la riga in eccesso serve a **rilevare** il superamento del
 #        limite (`build_export_response` solleva `E_UI_EXPORT_LIMIT_EXCEEDED`)
@@ -365,18 +385,14 @@ def fn_export_lotti(
     solo_recuperi_mese: bool = False,
     includi_annullati: bool = False,
 ) -> tuple[list[LottoListRow], int]:
-    # ⛔ Stesso guard della lista, e per la stessa ragione: «competenza
-    #    precedente» senza un mese non ha un termine di paragone. Senza, il
-    #    predicato diventa `competenza_mese < NULL` — che non e' un errore, e'
-    #    zero righe: un file VUOTO consegnato come se fosse la risposta.
-    ErrorManager.require(
-        not solo_recuperi_mese or competenza_mese is not None,
-        code="E_VENDITE_VALIDATION",
-        message="Parametri non validi.",
-        detail="competenza_mese obbligatoria per l'export dei recuperi del mese",
-        context={"field": "competenza_mese"},
+    # ⛔ Stessi filtri della lista, validati dallo stesso helper: un filtro
+    #    sbagliato e' un 400 anche qui, mai un file VUOTO consegnato come se
+    #    fosse la risposta.
+    _valida_filtri_lotti(
+        stato_lotto=stato_lotto,
+        competenza_mese=competenza_mese,
+        solo_recuperi_mese=solo_recuperi_mese,
         function_name="vendite.vendite_service.fn_export_lotti",
-        log_to_db=False,
     )
     repository = VenditeRepository()
     return repository.list_lotti(
@@ -472,17 +488,10 @@ def fn_get_lotto(*, lotto_id: int, auth_user_id: int | None = None) -> dict[str,
         log_to_db=True,
     )
     repository = VenditeRepository()
-    lotto = repository.get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
-    if lotto is None:
-        ErrorManager.raise_error(
-            code="E_LOTTO_NON_TROVATO",
-            message="Lotto non trovato.",
-            detail=f"Nessun lotto accessibile con id={lotto_id}",
-            context={"lotto_id": lotto_id},
-            function_name="vendite.vendite_service.fn_get_lotto",
-            log_to_db=True,
-        )
-    assert lotto is not None
+    lotto = lotto_visibile(
+        lotto_id=lotto_id, auth_user_id=auth_user_id,
+        function_name="vendite.vendite_service.fn_get_lotto", repository=repository,
+    )
     result = dict(lotto)
     result["capabilities"] = capabilities_o_vuoto(
         lambda: repository.get_available_actions_lotto(lotto_id),
@@ -500,46 +509,60 @@ def fn_list_lotto_fatture(
     lotto_id: int,
     stato_esecuzione: str | None = None,
     auth_user_id: int | None = None,
-    sort_by: str = "fattura_id",
-    sort_dir: str = "asc",
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     max_rows: int | None = None,
 ) -> dict[str, Any]:
     # ⭐ L'helper condiviso, non un `if` scritto qui: l'export SALTA la
     # paginazione invece di violarne il tetto, ed e' la stessa regola di tutte
     # le altre liste esportabili del modulo.
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_list_lotto_fatture",
     )
     # ⛔ Colonna e direzione col BB `validate_order_params` (2026-09-26), non
     #    con due `_validate_enum`: la direzione aveva qui un suo insieme
     #    `("asc", "desc")` case-sensitive, cioe' `DESC` era un 400 su questa
     #    lista e passava sulle altre. Il BB giudica con `order_dir_ammessa`.
-    sort_by, direzione = validate_order_params(
-        sort_by,
-        sort_dir,
+    # `nullable`: una direzione assente resta None, e il verso lo decide il BB
+    # del repository (`sql_order_clause`: date DESC). Fino al 2026-10-20 il
+    # default era `"asc"` e la regola non arrivava mai alla query (§6.1).
+    order_by, order_dir = validate_order_params(
+        order_by,
+        order_dir,
         allowed_columns=_SORT_BY_VALIDI,
         error_code="E_VENDITE_VALIDATION",
         function_name="vendite.vendite_service.fn_list_lotto_fatture",
+        nullable=True,
     )
-    # Senza `nullable` il BB rifiuta la direzione assente: qui non e' None.
-    assert direzione is not None
-    sort_dir = direzione
+    # ⛔ Il vocabolario della FATTURA (non quello del documento, che ha in piu'
+    #    ESCLUSO): prima un valore sbagliato — anche `OK`, che la doc stessa
+    #    proponeva — rispondeva lista vuota (2026-10-20).
+    _validate_enum(
+        stato_esecuzione, allowed=STATI_ESECUZIONE_LOTTO, param_name="stato_esecuzione",
+        function_name="vendite.vendite_service.fn_list_lotto_fatture",
+    )
+    # ⛔ Il cancello di perimetro PRIMA dell'elenco (vedi `_lotto_perimetro`):
+    #    lo scope nella query da solo dava `200 []` su un lotto fuori perimetro.
     repository = VenditeRepository()
+    lotto_visibile(
+        lotto_id=lotto_id, auth_user_id=auth_user_id,
+        function_name="vendite.vendite_service.fn_list_lotto_fatture", repository=repository,
+    )
     results: list[LottoFattureRow]
     results, total_count = repository.list_lotto_fatture(
         lotto_id=lotto_id,
         stato_esecuzione=stato_esecuzione,
         auth_user_id=auth_user_id,
-        sort_by=sort_by,
-        sort_dir=sort_dir,
+        order_by=order_by,
+        order_dir=order_dir,
         limit=limit,
         offset=offset,
         max_rows=max_rows,
     )
-    return _build_list_response(results, total_count, page, page_size)
+    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
 
 
 # Scopo: I DOCUMENTI CHE UN LOTTO HA PRESO IN CARICO, con l'esito di ciascuno.
@@ -558,8 +581,8 @@ def fn_list_lotto_gruppi(
     stato_esecuzione: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     max_rows: int | None = None,
 ) -> dict[str, Any]:
     # ⚠️ Il vocabolario del DOCUMENTO, non quello comune: questa lista legge
@@ -579,17 +602,24 @@ def fn_list_lotto_gruppi(
         function_name="vendite.vendite_service.fn_list_lotto_gruppi",
     )
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_list_lotto_gruppi",
     )
+    # ⛔ Il cancello di perimetro PRIMA dell'elenco (vedi `_lotto_perimetro`).
     repository = VenditeRepository()
+    lotto_visibile(
+        lotto_id=lotto_id, auth_user_id=auth_user_id,
+        function_name="vendite.vendite_service.fn_list_lotto_gruppi", repository=repository,
+    )
     results: list[LottoGruppoRow]
     results, total_count = repository.list_lotto_gruppi(
         lotto_id=lotto_id,
         auth_user_id=auth_user_id,
         stato_esecuzione=stato_esecuzione,
         sort_by=order_by,
-        sort_dir=order_dir or "asc",
+        # La direzione assente resta assente: la decide il BB della lista
+        # (date DESC), non un `"asc"` scritto qui (2026-10-20, §6.1).
+        sort_dir=order_dir,
         limit=limit,
         offset=offset,
         max_rows=max_rows,
@@ -604,7 +634,7 @@ def fn_list_lotto_gruppi(
     # ⚠️ Tolto e non lasciato «per compatibilita'»: un campo che non discrimina
     #    piu' niente e' peggio di un campo assente, perche' chi lo legge crede
     #    che discrimini.
-    return _build_list_response(results, total_count, page, page_size)
+    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
 
 
 # Range anni ammesso per i cruscotti fatturazione (Lente 1: anno libero
@@ -715,12 +745,31 @@ def fn_dash_aperto_documenti(
     ritardo_giorni: int | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
 ) -> dict[str, Any]:
+    # ⛔ `area` e `fase` nel loro vocabolario, o un 400 sul campo: un valore
+    #    sbagliato finiva nel WHERE e la lista rispondeva vuota con un 200
+    #    (2026-10-20) — e col passaggio delle aree ai codici sorgente un client
+    #    rimasto a `ORDINI` non avrebbe avuto nessun segnale.
+    # ⚠️ Il vocabolario e' quello del MODELLO, non la whitelist del pivot: una
+    #    sorgente vera fuori da `DASH_APERTO_AREE` (o una fase fuori da
+    #    `DASH_APERTO_FASI`) e' la riga «extra» che il riepilogo accoda apposta
+    #    (fail-visible), e il suo drill-down deve continuare a mostrarla.
+    #    `COMMESSA` e `CHIUSO` sono codici veri che la vista non contiene: lista
+    #    vuota legittima, non un errore.
+    richiedi_codice_a_vocabolario(
+        "config.sorgenti", "codice_interno", area,
+        codice_errore="E_VENDITE_VALIDATION", parametro="area",
+        function_name="vendite.vendite_service.fn_dash_aperto_documenti",
+    )
+    _validate_enum(
+        fase, allowed=FASI_DOCUMENTO, param_name="fase",
+        function_name="vendite.vendite_service.fn_dash_aperto_documenti",
+    )
     _valida_ritardo_giorni(
         ritardo_giorni,
         function_name="vendite.vendite_service.fn_dash_aperto_documenti",
@@ -735,7 +784,7 @@ def fn_dash_aperto_documenti(
         function_name="vendite.vendite_service.fn_dash_aperto_documenti",
     )
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_dash_aperto_documenti",
     )
     repository = VenditeRepository()
@@ -749,8 +798,8 @@ def fn_dash_aperto_documenti(
         limit=limit,
         offset=offset,
     )
-    return _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    return _envelope_pagina_effettiva(
+        results, total_count, limit=limit, offset=offset,
     )
 
 
@@ -1125,8 +1174,8 @@ def fn_dash_competenza_attivita(
     solo_ritardo: bool = False,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     _validate_enum(
         stadio,
@@ -1142,9 +1191,6 @@ def fn_dash_competenza_attivita(
         whitelist=VenditeRepository.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS,
         function_name="vendite.vendite_service.fn_dash_competenza_attivita",
     )
-    offset = _validate_pagination(
-        page, page_size, "vendite.vendite_service.fn_dash_competenza_attivita"
-    )
     repository = VenditeRepository()
     results: list[DashCompetenzaAttivitaRow]
     results, total_count = repository.list_dash_competenza_attivita(
@@ -1153,15 +1199,15 @@ def fn_dash_competenza_attivita(
         solo_ritardo=solo_ritardo,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
     # Pagina EFFETTIVA, non quella richiesta: il repository clampa l'offset
     # all'ultima pagina reale, quindi l'envelope deve dichiarare la pagina che
     # le righe rappresentano davvero. Era l'ultimo dei sei endpoint dei
     # cruscotti a non farlo.
-    return _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    return _envelope_pagina_effettiva(
+        results, total_count, limit=limit, offset=offset,
     )
 
 
@@ -1179,8 +1225,8 @@ def fn_dash_competenza_commesse(
     solo_ritardo: bool = False,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
@@ -1197,7 +1243,7 @@ def fn_dash_competenza_commesse(
         function_name="vendite.vendite_service.fn_dash_competenza_commesse",
     )
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_dash_competenza_commesse",
     )
     repository = VenditeRepository()
@@ -1211,8 +1257,8 @@ def fn_dash_competenza_commesse(
         limit=limit,
         offset=offset,
     )
-    return _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    return _envelope_pagina_effettiva(
+        results, total_count, limit=limit, offset=offset,
     )
 
 
@@ -1329,8 +1375,8 @@ def fn_dash_competenza_residui(
     competenza_mese: date,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     # Export (BB `build_dash_export_response`), come le liste sorelle.
     max_rows: int | None = None,
 ) -> dict[str, Any]:
@@ -1343,7 +1389,7 @@ def fn_dash_competenza_residui(
         function_name="vendite.vendite_service.fn_dash_competenza_residui",
     )
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_dash_competenza_residui",
     )
     repository = VenditeRepository()
@@ -1355,8 +1401,8 @@ def fn_dash_competenza_residui(
         limit=limit,
         offset=offset,
     )
-    return _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    return _envelope_pagina_effettiva(
+        results, total_count, limit=limit, offset=offset,
     )
 
 
@@ -1435,8 +1481,8 @@ def fn_dash_competenza_gruppi(
     search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
@@ -1462,7 +1508,7 @@ def fn_dash_competenza_gruppi(
     #    Il gate che stava qui era una seconda sede dello stesso 3
     #    (`SEARCH_MIN_LEN`, ritirato col passaggio al BB).
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_dash_competenza_gruppi",
     )
     repository = VenditeRepository()
@@ -1483,8 +1529,8 @@ def fn_dash_competenza_gruppi(
         offset=offset,
     )
     _marca_gruppi_multi_registro(results)
-    payload = _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    payload = _envelope_pagina_effettiva(
+        results, total_count, limit=limit, offset=offset,
     )
     # ⭐ EXPORT: si fermano qui. Riepilogo e facet servono all'INTERFACCIA — i
     #    totali sopra la lista e le tre tendine — e `build_dash_export_response`
@@ -1624,8 +1670,8 @@ def fn_dash_backlog_documenti(
     ritardo_giorni: int | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
@@ -1652,7 +1698,7 @@ def fn_dash_backlog_documenti(
         function_name="vendite.vendite_service.fn_dash_backlog_documenti",
     )
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_dash_backlog_documenti",
     )
     repository = VenditeRepository()
@@ -1666,8 +1712,8 @@ def fn_dash_backlog_documenti(
         limit=limit,
         offset=offset,
     )
-    return _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    return _envelope_pagina_effettiva(
+        results, total_count, limit=limit, offset=offset,
     )
 
 
@@ -1682,8 +1728,8 @@ def fn_dash_competenza_errori(
     competenza_mese: date | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
@@ -1697,7 +1743,7 @@ def fn_dash_competenza_errori(
         function_name="vendite.vendite_service.fn_dash_competenza_errori",
     )
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_dash_competenza_errori",
     )
     repository = VenditeRepository()
@@ -1711,8 +1757,8 @@ def fn_dash_competenza_errori(
         limit=limit,
         offset=offset,
     )
-    return _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    return _envelope_pagina_effettiva(
+        results, total_count, limit=limit, offset=offset,
     )
 
 
@@ -1735,14 +1781,14 @@ def fn_dash_competenza_errori(
 # indica sempre sé stessa. Misurato sulla fattura 835: 7 archi indietro (tre
 # commesse, tre ordini, un preventivo), 1 avanti (la nota di credito).
 LINEAGE_TIPI_DOCUMENTO: tuple[str, ...] = (
-    "PREVENTIVO",
-    "OFFERTA_COMMERCIALE",
-    "ORDINE_VENDITA",
-    "CONTRATTO",
-    "DDT_VENDITA",
-    "RESO_VENDITA",
-    "COMMESSA",
-    "FATTURA",
+    SORGENTE_PREVENTIVO,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_RESO_VENDITA,
+    SORGENTE_COMMESSA,
+    SORGENTE_FATTURA,
 )
 
 
@@ -1776,7 +1822,7 @@ def get_documento_passaggi(
 
     # Sorgente dal vocabolario (id + key_selector + target_table): assenza =
     # seed config incoerente, non input utente.
-    sorgente = repo.get_lineage_sorgente(tipo_codice)
+    sorgente = SorgentiRepository().get_sorgente_attiva(tipo_codice)
     ErrorManager.require(
         sorgente is not None,
         code="E_VENDITE_VALIDATION",
@@ -1948,10 +1994,18 @@ def _testata_fattura_o_404(
 #    fuori scope non e' leggibile e qui diventa 404.
 #
 #    Aggiornamento 2026-07-29: dal changeset RLS satelliti anche `fatture_righe`
-#    e `fatture_riepiloghi_iva` hanno le proprie policy (operatore `FOR ALL` via
-#    `fn_scope_ef_whitelist_via_fattura`, portale `FOR SELECT` via
-#    `fn_scope_ba_ownership_via_fattura`). Verificato: 8 righe reali, **0**
-#    visibili senza GUC — prima erano 8 su 8.
+#    e `fatture_riepiloghi_iva` hanno le proprie policy. Verificato: 8 righe
+#    reali, **0** visibili senza GUC — prima erano 8 su 8.
+#    Forma delle policy dal 2026-10-21 (perimetro una volta per istruzione,
+#    risolutore per riga, sempre sulla fattura della riga):
+#      - operatore `FOR ALL`: `script.fn_scope_ef_perimetro` sull'emittente
+#        della fattura (`script.fn_resolve_emittente_fiscale_id`, modo `fattura`);
+#      - portale `FOR SELECT`: `script.fn_scope_sr_perimetro` sul cliente della
+#        fattura (`script.fn_resolve_controparte_sr_id`, modo `fattura`). Il
+#        perimetro pretende l'identita' nella veste del gate: un contesto GUC
+#        incoerente da' zero righe, cioe' 404 qui sotto.
+#    Gli adattatori `fn_scope_*_via_fattura` non stanno piu' nelle policy
+#    (`fn_scope_ba_ownership_via_fattura` ritirata con 20261021-40).
 #    L'ordine resta vincolante, ma per due ragioni diverse da prima:
 #      1. e' il 404 unificato — senza il cancello si restituirebbe un documento
 #         a meta' (testata assente, satelliti vuoti) invece di un errore netto;
@@ -2070,8 +2124,9 @@ def _envelope_giornale(
     offset: int,
     ritirate_nascoste: int,
 ) -> dict[str, Any]:
-    page = int(offset) // int(limit) + 1
-    envelope = paginated_envelope(righe, max(0, int(total_count)), page, int(limit))
+    envelope = envelope_da_offset(
+        righe, max(0, int(total_count)), limit=int(limit), offset=int(offset),
+    )
     envelope["ritirate_count"] = ritirate_nascoste
     return envelope
 
@@ -2231,16 +2286,10 @@ def get_lotto_giornale(
     #    che si legge come «lotto senza storia», non come «non lo puoi vedere».
     #    Inesistente e fuori scope danno la STESSA risposta, per non confermare
     #    l'esistenza del lotto di un altro emittente.
-    lotto = repository.get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
-    if lotto is None:
-        ErrorManager.raise_error(
-            code="E_LOTTO_NON_TROVATO",
-            message="Lotto non trovato.",
-            detail=f"Nessun lotto accessibile con id={lotto_id}",
-            context={"lotto_id": lotto_id},
-            function_name=_FN_LOTTO_GIORNALE,
-            log_to_db=True,
-        )
+    lotto_visibile(
+        lotto_id=lotto_id, auth_user_id=auth_user_id,
+        function_name=_FN_LOTTO_GIORNALE, repository=repository,
+    )
 
     # 2. Solo ORA il giornale: il lotto e' gia' stato autorizzato.
     righe, vive, ritirate, info_vive = repository.list_giornale_lotto(
@@ -2311,7 +2360,7 @@ def get_giornale_trasversale(
         code="E_VENDITE_VALIDATION",
         message="Parametro gravita non valido.",
         detail=f"gravita={gravita_richiesta}, ammessi={list(GIORNALE_GRAVITA)}",
-        context={"field": "gravita"},
+        context={"parametro": "gravita"},
         function_name=_FN_GIORNALE,
     )
     registri_richiesti = [r.upper() for r in (registri or []) if r] or None
@@ -2326,17 +2375,24 @@ def get_giornale_trasversale(
             code="E_VENDITE_VALIDATION",
             message="Parametro registro non valido.",
             detail=f"registro={registri_richiesti}, ammessi={sorted(registri_ammessi)}",
-            context={"field": "registro"},
+            context={"parametro": "registro"},
             function_name=_FN_GIORNALE,
         )
     _valida_lettura_giornale(
         limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
         function_name=_FN_GIORNALE,
     )
+    # ⛔ Il tipo di entita' nel suo vocabolario, o un 400 sul campo: fino al
+    #    2026-10-20 un codice ignoto rispondeva zero righe, cioe' «niente di
+    #    andato storto». Tipi ritirati (`obsoleto_dal`) ammessi: il diario li porta.
+    tipo_entita = richiedi_codice_a_vocabolario(
+        "config.tipi_entita", "codice", entity_type.upper() if entity_type else None,
+        codice_errore="E_VENDITE_VALIDATION", parametro="entity_type",
+    )
     righe, vive, ritirate, _info_vive = repository.list_giornale_trasversale(
         gravita=gravita_richiesta,
         registri=registri_richiesti,
-        entity_type=entity_type.upper() if entity_type else None,
+        entity_type=tipo_entita,
         data_da=data_da,
         data_a=data_a,
         filo=filo,
@@ -2376,8 +2432,11 @@ def fn_fondi_fattura_da_decidere(
     auth_user_id: int | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    # ⛔ `limit`/`offset` come ogni lista (decisione Tid 2026-10-20,
+    #    brief-be-verifica-documentazione-api §A4): fino a quel giorno questa
+    #    paginava con `page`/`page_size`. Il clamp lo fa `parse_list_params`.
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     # Export: valorizzato = perimetro intero in una volta, paginazione saltata
     # (BB `_paging_o_export`). Assente = la lista paginata di sempre.
     max_rows: int | None = None,
@@ -2401,10 +2460,11 @@ def fn_fondi_fattura_da_decidere(
         error_code="E_VENDITE_VALIDATION",
         function_name=_FN_FONDI_DA_DECIDERE,
     )
-    limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
-        function_name=_FN_FONDI_DA_DECIDERE,
-    )
+    if max_rows is not None:
+        limit, offset = _paging_o_export(
+            limit=limit, offset=offset, max_rows=max_rows,
+            function_name=_FN_FONDI_DA_DECIDERE,
+        )
 
     repository = VenditeRepository()
     results: list[FondoFatturaDaDecidereRow]
@@ -2416,9 +2476,7 @@ def fn_fondi_fattura_da_decidere(
         limit=limit,
         offset=offset,
     )
-    return _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
-    )
+    return _envelope_pagina_effettiva(results, total_count, limit=limit, offset=offset)
 
 
 _FN_CANCELLA_FONDO = "vendite.vendite_service.fn_cancella_fondo_fattura"
@@ -2549,7 +2607,7 @@ def get_situazione_merce(
     # insieme — «la riga d'ordine nel complesso sta cosi', questa spedizione
     # cosi'». Prima erano assenti sul DDT e le due schermate raccontavano due
     # storie diverse dello stesso fatto.
-    # ⚠️ Una riga di DDT senza origine ordine (`origine <> 'ORDINE'`) non ha
+    # ⚠️ Una riga di DDT senza origine ordine (`origine <> 'ORDINE_VENDITA'`) non ha
     # riga d'ordine: la sezione resta piu' corta delle partite, ed e' corretto.
     # Lista vuota e non `None`: il frontend itera sempre.
     righe_ordine = repository.list_situazione_merce_ordine(
@@ -2563,7 +2621,11 @@ def get_situazione_merce(
         # significa contare, sul DDT, il saldo dell'INTERA riga d'ordine
         # (tutte le sue spedizioni) al posto di questa. Il consumatore riceve la
         # risposta, non l'indovinello.
-        "contesto": "ORDINE" if ordine_id is not None else "DDT",
+        # Il valore e' il codice di `config.sorgenti` del documento (dal
+        # 2026-10-19, brief-db-grammatica-unica-documenti lotto 2a).
+        "contesto": (
+            SORGENTE_ORDINE_VENDITA if ordine_id is not None else SORGENTE_DDT_VENDITA
+        ),
         "righe_ordine": righe_ordine,
         "partite": repository.list_partite_merce(
             ordine_id=ordine_id, ddt_id=ddt_id
@@ -2601,6 +2663,17 @@ def list_fatture_rows(
     order_dir: str = "desc",
     max_limit: int = MAX_LIMIT,
 ) -> tuple[list[dict[str, Any]], int]:
+    # ⛔ Il filtro di stato esiste nel vocabolario, o e' un 400 sul campo: un
+    #    valore sbagliato finiva nel WHERE e la lista rispondeva vuota con un
+    #    200 (2026-10-20). Codici dismessi ammessi: i documenti vecchi li portano.
+    richiedi_codice_a_vocabolario(
+        "config.stati_doc_fiscale", "codice_interno", stato_codice,
+        codice_errore="E_VENDITE_VALIDATION", parametro="stato_codice_interno",
+    )
+    richiedi_codice_a_vocabolario(
+        "config.nature_doc_fiscale", "codice_interno", natura_doc_codice,
+        codice_errore="E_VENDITE_VALIDATION", parametro="natura_doc_codice",
+    )
     return FattureRepository().list_fatture(
         stato_codice=stato_codice,
         billing_account_id=billing_account_id,

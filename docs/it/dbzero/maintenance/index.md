@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Schema `maintenance`
 
 ## 📚 Tabelle
@@ -5,9 +10,12 @@
 - [test_pgagent_log](tabelle/test_pgagent_log.md)
 
 ## ⚙️ Funzioni
+- [fn_analyze_statistiche](funzioni/fn_analyze_statistiche.md) — (latest review 14-10-2026)
 - [fn_job_run_log_failure](funzioni/fn_job_run_log_failure.md) — (latest review 05-09-2026)
 - [fn_run_and_log](funzioni/fn_run_and_log.md) — (latest review 07-01-26) `maintenance.fn_run_and_log` esegue in modo sicuro uno *statement* SQL arbitrario e ne registra l’esecuzione su `maintenance.job_run_log`, gestendo in modo opzionale un **lock consulente** (advisory lock) per prevenire esecuzioni sovrapposte dello stesso job/step.
+- [fn_sveglia_accesa](funzioni/fn_sveglia_accesa.md)
 - [proc_accoda_chiusura_scadenze_job](funzioni/proc_accoda_chiusura_scadenze_job.md)
+- [proc_analyze_statistiche_job](funzioni/proc_analyze_statistiche_job.md) — (latest review 14-10-2026)
 - [proc_apply_fk_index_policy_job](funzioni/proc_apply_fk_index_policy_job.md) — (latest review 16-01-26) * **Eseguire in modo schedulato** l’applicazione della **policy indici FK** incapsulando la chiamata a `dbops.apply_fk_index_policy()` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 - [proc_apply_storicizza_defaults](funzioni/proc_apply_storicizza_defaults.md) — (latest review 05-09-2026)
 - [proc_apply_storicizza_defaults_job](funzioni/proc_apply_storicizza_defaults_job.md) — (latest review 07-01-26) * **Eseguire in modo schedulato** l’applicazione delle **impostazioni di storicizzazione di default** sull’intero database, incapsulando la chiamata a `maintenance.proc_apply_storicizza_defaults()` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
@@ -28,4 +36,9 @@
 - [proc_sync_storico_set_storicizza_job](funzioni/proc_sync_storico_set_storicizza_job.md) — (last review 07-01-26) Wrapper di job che **esegue e traccia** la sincronizzazione della tabella `config.storico_set_storicizza`, delegando l’esecuzione alla procedura core `maintenance.proc_sync_storico_set_storicizza()` e centralizzando **logging** e **advisory lock** tramite `maintenance.fn_run_and_log`.
 
 ## 🔍 Views
-- [vw_job_run_da_guardare](views/vw_job_run_da_guardare.md) — (latest review 05-09-2026)
+- [vw_job_run_da_guardare](views/vw_job_run_da_guardare.md) — (latest review 18-10-2026)
+- [vw_job_run_da_superuser](views/vw_job_run_da_superuser.md)
+- [vw_statistiche_mancanti](views/vw_statistiche_mancanti.md) — (latest review 14-10-2026)
+
+## ⏰ Job pgAgent
+- [I job pgAgent](job_pgagent.md) — quali lavori a orario esistono, quando partono e che cosa chiamano

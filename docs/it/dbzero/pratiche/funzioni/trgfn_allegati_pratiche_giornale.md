@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_allegati_pratiche_giornale()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_allegati_pratiche_giornale()
  RETURNS trigger
@@ -44,6 +46,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_allegati_pratiche_giornale()
 IS 'AFTER INSERT su allegati_pratiche: logga ALLEGATO_AGGIUNTO nel giornale.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

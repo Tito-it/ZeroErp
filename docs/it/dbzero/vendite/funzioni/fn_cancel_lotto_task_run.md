@@ -7,6 +7,8 @@ CREATE FUNCTION fn_cancel_lotto_task_run(p_task_run_id bigint, p_meta jsonb)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_cancel_lotto_task_run(p_task_run_id bigint, p_meta jsonb DEFAULT '{}'::jsonb)
  RETURNS void
@@ -30,6 +32,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_cancel_lotto_task_run(p_task_run_id bigint, p_meta jsonb)
 IS 'Chiude un task run lotto con esito ANNULLATO (via helper condiviso). Chiamata da vendite.fn_riporta_lotto_a_draft (RD-6) per riportare i task_run del lotto riaperto a RUN. rev 2026-08-04: l''helper non ha piu'' p_scope.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

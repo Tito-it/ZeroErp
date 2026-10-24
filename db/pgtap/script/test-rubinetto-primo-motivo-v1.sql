@@ -184,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    35,
+    42,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -275,7 +275,62 @@ SELECT is(
     --   di script.fn_check_listino_documento (20261008-13). La lettura per il
     --   form, vendite.fn_listini_selezionabili, chiama la stessa check ma non
     --   solleva (brief-db-offerta-emissione-ed-erogazione §F.2).
-    'le trentacinque funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-10-11: da 35 a 36. Un sito NUOVO nato sull'helper:
+    --   vendite.fn_ddt_riga_correggi_qta_evasa (20261011-18) solleva il primo
+    --   motivo di script.fn_check_ddt_riga_correggi_qta_evasa (20261011-17), la
+    --   stessa funzione da cui vendite.vw_ddt_righe_dettaglio spegne «Correggi
+    --   quantita' evasa» (brief-db-ddt-righe-evase-dall-ordine, D-2).
+    -- ⭐ 2026-10-11: da 36 a 37. Un sito NUOVO nato sull'helper:
+    --   script.trgfn_doc_guard_listino_con_righe (20261011-28) solleva il primo
+    --   motivo di script.fn_check_listino_cambiabile (20261011-27): il listino di
+    --   contratto e offerta non cambia sotto righe gia' caricate
+    --   (brief-db-testata-dopo-emissione §11, R-DB-4).
+    -- ⭐ 2026-10-11: da 37 a 38. Un sito NUOVO nato sull'helper:
+    --   vendite.trgfn_ordini_righe_guard_data_consegna_spedita (20261012-06)
+    --   solleva il primo motivo di script.fn_check_ordine_riga_data_consegna_confermata
+    --   (20261012-05), la stessa funzione da cui vendite.vw_ordini_righe_dettaglio
+    --   spegne il cambio della data confermata su una riga gia' spedita
+    --   (brief-db-date-consegna-righe-in-blocco, D-7).
+    -- ⭐ 2026-10-12: da 38 a 39. Un sito NUOVO nato sull'helper:
+    --   vendite.fn_documento_ritira_legami (20261012-22) solleva, PRIMA della
+    --   conferma dell'annullo con legami, il primo motivo della check che il
+    --   guard della testata solleverebbe (fn_check_preventivo_annullabile,
+    --   fn_check_ordine_annullabile, fn_check_commessa_annullabile,
+    --   fn_check_sorgente_chiudibile): prima cio' che vieta, poi la conferma
+    --   (brief-db-annullo-a-valle-riapre-a-monte, D-3).
+    -- ⭐ 2026-10-13: da 39 a 40. Un sito NUOVO nato sull'helper:
+    --   script.trgfn_righe_guard_articolo_ammesso (20261013-41), il guard di
+    --   tabella delle righe di preventivo, ordine e bolla, solleva il primo
+    --   motivo di script.fn_check_articolo_riga (20261013-40), la stessa check
+    --   da cui leggera' il picker degli articoli ammessi
+    --   (brief-db-articoli-ammessi-per-documento, A-2). Il guard che ritira
+    --   (vendite.trgfn_preventivi_righe_set_natura_vendita) sollevava un codice
+    --   letterale e non era nel conto.
+    -- ⭐ 2026-10-13 (sera): da 40 a 39. Un sito RITIRATO per estrazione:
+    --   script.trgfn_righe_guard_esclusione_figlio_bundle (20261013-57) se ne va,
+    --   e il suo predicato (script.fn_check_esclusione_articolo_documento) lo
+    --   compone ora script.fn_check_articolo_riga, che il guard di tabella
+    --   script.trgfn_righe_guard_articolo_ammesso — gia' nel conto — solleva anche
+    --   sulle righe di offerta e contratto (Lotto 3b del
+    --   brief-db-articoli-ammessi-per-documento).
+    -- ⭐ 2026-10-13 (sera, Lotto 3c): da 39 a 40. Un sito NUOVO nato sull'helper:
+    --   catalogo.trgfn_articoli_componenti_guard_componente (20261013-60), il guard
+    --   della distinta, solleva il primo motivo di script.fn_check_articolo_riga
+    --   (documento ARTICOLO). I guard per regola che sostituisce (un livello, IVA)
+    --   sollevavano codici letterali e non erano nel conto.
+    -- ⭐ 2026-10-21: da 40 a 41. Un sito NUOVO nato sull'helper:
+    --   vendite.fn_genera_ordine_da_offerta (20261021-61, brief-db-offerta-
+    --   emissione-ed-erogazione §I.2, I-D2), che solleva il primo motivo di
+    --   script.fn_check_righe_offerta_in_ordine. I due guard di transizione che
+    --   chiamano ora anche script.fn_check_righe_documento e
+    --   script.fn_check_offerta_annullabile (-57, -59) erano gia' nel conto: si
+    --   conta la FUNZIONE, non le chiamate.
+    -- ⭐ 2026-10-22: da 41 a 42. Un sito NUOVO nato sull'helper:
+    --   vendite.trgfn_fatture_guard_stato (20261022-07) solleva, entrando in
+    --   EMESSA, il primo motivo di script.fn_check_fattura_emettibile
+    --   (20261022-06): il cancello IVA della fattura (D-3 di Tid, §9.9 di
+    --   brief-be-utenti-di-sviluppo).
+    'le quarantadue funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_promo_articoli_guard_data_driven()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_promo_articoli_guard_data_driven()
  RETURNS trigger
@@ -181,6 +183,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_promo_articoli_guard_data_driven()
 IS 'Guard data-driven promo_articoli: no retroattivita'' su INSERT, whitelist ristretta su UPDATE INIZIATA, immutabilita'' su SCADUTA. Raise E_PROMO_RETROATTIVA / E_PROMO_INIZIATA_CAMPI_RISTRETTI / E_PROMO_SCADUTA_IMMUTABILE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
+--   l'ordine collegato all'offerta porta documento_origine_tipo = OFFERTA_COMMERCIALE, il
+--   codice della sorgente (era OFFERTA: ora la FK verso config.sorgenti lo rifiuta).
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le offerte dei test 8 e 9
+--   nascono in bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima
+--   nascevano gia' RIFIUTATA e ACCETTATA).
 -- pgTAP test per Zero ERP
 --
 -- Test: vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id) (Step 8).
@@ -54,6 +60,11 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
 CREATE TEMP TABLE tmp_push_listino AS
 SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_push_cli), 'push offerta a contratto');
 
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b, A-5):
+--   l'OVERRIDE modifica una riga del listino, quindi l'articolo ci sta.
+SELECT dbops.fn_pgtap_listino_aggiungi_articoli(
+    (SELECT listino_versione_id FROM tmp_push_listino), ARRAY[(SELECT a1 FROM tmp_push_art)]);
+
 CREATE TEMP TABLE tmp_push_ctx AS
 SELECT
     (SELECT billing_account_id FROM tmp_push_cli) AS billing_account_id,
@@ -95,12 +106,27 @@ SELECT id, uid FROM ins;
 INSERT INTO vendite.offerte_commerciali_eccezioni (
     offerta_id, articolo_id, tipo_eccezione,
     tipo_erogazione, fonte_quantita_attesa,
-    prezzo_unitario, attivo
+    prezzo_unitario, attivo, qta_operativa
 )
+-- ⛔ rev 2026-10-13 (Lotto 3b): l'articolo prende la tipologia del listino, che
+--   dipende dalla utility: erogazione e fonte le eredita il DB (NULL), la
+--   quantita' c'e' solo se la fonte ereditata e' FISSA.
 SELECT acc.id, ctx.articolo_id, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto",
-       'UNA_TANTUM', 'MANUALE', 200.00, TRUE
+       NULL, NULL, 200.00, TRUE,
+       (SELECT 1.00 FROM vendite.fn_articolo_erogazioni(ctx.articolo_id) e
+         WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA' LIMIT 1)
   FROM tmp_push_offerta_acc acc, tmp_push_ctx ctx
  WHERE ctx.articolo_id IS NOT NULL;
+
+-- ⚠️ rev 2026-10-11 (brief-db-testata-dopo-emissione §11, R-DB-3): anche la
+--   fornitura si scrive solo in BOZZA (trg_offerte_commerciali_utilities_a05_
+--   doc_bozza_ins_upd_dlt). Nasce quindi prima delle transizioni, come l'eccezione.
+-- Utility dell'offerta (per verifica copia 1:1)
+INSERT INTO vendite.offerte_commerciali_utilities (
+    offerta_id, istanza_utility_id, utility_id
+)
+SELECT acc.id, ctx.istanza_utility_id, ctx.utility_id
+  FROM tmp_push_offerta_acc acc, tmp_push_ctx ctx;
 
 -- BOZZA -> EMESSA -> ACCETTATA
 UPDATE vendite.offerte_commerciali
@@ -110,13 +136,6 @@ UPDATE vendite.offerte_commerciali
 UPDATE vendite.offerte_commerciali
    SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_push_ctx)
  WHERE id = (SELECT id FROM tmp_push_offerta_acc);
-
--- Utility dell'offerta (per verifica copia 1:1)
-INSERT INTO vendite.offerte_commerciali_utilities (
-    offerta_id, istanza_utility_id, utility_id
-)
-SELECT acc.id, ctx.istanza_utility_id, ctx.utility_id
-  FROM tmp_push_offerta_acc acc, tmp_push_ctx ctx;
 
 -- Offerta in BOZZA (per test 6)
 CREATE TEMP TABLE tmp_push_offerta_bozza AS
@@ -151,7 +170,8 @@ UPDATE vendite.offerte_commerciali
    SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_push_ctx)
  WHERE id = (SELECT id FROM tmp_push_offerta_emessa);
 
--- Offerta in RIFIUTATA (per test 8): bypassata via INSERT diretto
+-- Offerta in RIFIUTATA (per test 8): nasce in BOZZA e arriva a RIFIUTATA per
+-- la matrice (BOZZA -> EMESSA -> RIFIUTATA), rev 2026-10-24.
 CREATE TEMP TABLE tmp_push_offerta_rif AS
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
@@ -160,14 +180,18 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva,
-           DATE '2101-01-01', ctx.stato_rifiutata_id
+           DATE '2101-01-01', ctx.stato_bozza_id
       FROM tmp_push_ctx ctx
     RETURNING id
 )
 SELECT id FROM ins;
 
--- Offerta in ACCETTATA con ORDINE gia' generato (per test 9): INSERT diretto in
--- ACCETTATA + ordine collegato via documento_origine ('OFFERTA', id).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', r.id, 'RIFIUTATA')
+  FROM tmp_push_offerta_rif r;
+
+-- Offerta in ACCETTATA con ORDINE gia' generato (per test 9): nasce in BOZZA,
+-- arriva ad ACCETTATA per la matrice (rev 2026-10-24) + ordine collegato via
+-- documento_origine ('OFFERTA_COMMERCIALE', id).
 CREATE TEMP TABLE tmp_push_offerta_ord AS
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
@@ -176,11 +200,14 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva,
-           DATE '2102-01-01', ctx.stato_accettata_id
+           DATE '2102-01-01', ctx.stato_bozza_id
       FROM tmp_push_ctx ctx
     RETURNING id
 )
 SELECT id FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', o.id, 'ACCETTATA')
+  FROM tmp_push_offerta_ord o;
 
 -- GUC vuota: l'INSERT su vendite.ordini supera i guard emittente/scope senza
 -- restrizione (stesso approccio del test fn_available_actions_offerta).
@@ -213,7 +240,7 @@ SELECT
     (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT' AND attivo IS TRUE LIMIT 1),
     (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),
     DATE '2102-01-02', false,
-    'OFFERTA', (SELECT id FROM tmp_push_offerta_ord)
+    'OFFERTA_COMMERCIALE', (SELECT id FROM tmp_push_offerta_ord)
   FROM tmp_push_ctx ctx;
 
 -- ============================================================
@@ -325,7 +352,7 @@ SELECT throws_ok(
 -- ============================================================
 -- 9) Push da ACCETTATA con ordine gia' generato (mutua esclusivita') ->
 --    throws E_OFFERTA_ORDINE_GIA_GENERATO. Contratto e ordine sono alternativi:
---    l'offerta ha gia' un ordine ('OFFERTA', id) -> il push a contratto fallisce.
+--    l'offerta ha gia' un ordine ('OFFERTA_COMMERCIALE', id) -> il push a contratto fallisce.
 -- ============================================================
 SELECT throws_ok(
     format(

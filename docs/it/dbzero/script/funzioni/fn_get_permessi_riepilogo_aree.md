@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_permessi_riepilogo_aree(p_auth_user_ids integer[])
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_permessi_riepilogo_aree(p_auth_user_ids integer[])
  RETURNS TABLE(auth_user_id integer, area_id integer, livello config.livello_accesso, override_count integer, voci_limitate integer)
@@ -75,6 +77,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_permessi_riepilogo_aree(p_auth_user_ids integer[])
 IS 'Il riepilogo permessi per area di un insieme di operatori (gli id della pagina della lista operatori): una riga per (operatore, area attiva), anche a zero override. livello = script.fn_resolve_livello_area; override_count = override scritti (script.vw_override_operatore_area, D-2); voci_limitate = azioni con limitata_da_area (script.fn_get_permessi_effettivi_azioni; un''azione spenta non puo'' esserlo: override e profili ne bloccano la disattivazione) + oggetti con limitato_da_area (script.fn_get_permessi_effettivi_oggetti). Non ricalcola il tetto e non aggiunge rami: super admin, veste spenta e gate di contesto rispondono come le funzioni lette. Duplicati e NULL nell''array si ignorano; array vuoto o NULL -> zero righe. Ordine: operatore, area per ordinamento e codice. plpgsql, STABLE, INVOKER. Brief: brief-db-riepilogo-permessi-lista-operatori §3.2 (2026-10-06).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

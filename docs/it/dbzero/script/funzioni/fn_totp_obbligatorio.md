@@ -7,6 +7,8 @@ CREATE FUNCTION fn_totp_obbligatorio(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_totp_obbligatorio(p_auth_user_id integer)
  RETURNS TABLE(obbligatorio boolean, motivo text)
@@ -59,6 +61,8 @@ $function$
 COMMENT ON FUNCTION script.fn_totp_obbligatorio(p_auth_user_id integer)
 IS 'La risposta unica sull''obbligo del secondo fattore (TOTP) di una CREDENZIALE (brief-db-secondo-fattore-totp §2.3): obbligatorio = flag sulla credenziale OPPURE profilo privilegiato. motivo: CREDENZIALE (config.credenziali.totp_obbligatorio), PROFILO (un profilo applicabile in qualunque veste con richiede_secondo_fattore, o la credenziale e'' SUPER_ADMIN per script.fn_is_super_admin_account — il SUPER_ADMIN non e'' fra i profili di fn_get_profili_accesso_applicabili, e fn_is_super_admin si spegne fuori dalla veste OPERATORE), NULL = nessun obbligo. La credenziale e'' una e vale per tutte le porte. La chiama il backend al login e nel middleware che porta al setup; il motivo serve al frontend per spiegare perche''. Credenziale inesistente: (false, NULL), e'' una lettura; id NULL o <= 0 -> E_AUTH_CHIAMATA_NON_VALIDA. SECURITY DEFINER (la risposta non dipende da cosa vede chi chiede: senza contesto una RLS futura darebbe fail-open), STABLE, search_path bloccato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -28,7 +28,7 @@ Endpoint di scrittura con ownership check. Delega a `generazione_service.genera_
 }
 ```
 
-- `400`: ownership mismatch (`E_FLUSSO_OWNERSHIP`), `flusso_id` o `regola_id` non validi (`E_INVALID_ID`)
+- `400`: ownership mismatch (`E_FLUSSO_OWNERSHIP`), `flusso_id` non valido o `regola_id` assente dal corpo o <= 0 (`E_INVALID_ID`, campo `regola_id`)
 - `401`: JWT mancante o non valido
 - `404`: flusso non trovato (`E_FLUSSO_NOT_FOUND`)
 

@@ -66,7 +66,6 @@
 | FOREIGN KEY | fk_v_contratti_stato_ddt | stato_doc_contratto_id |
 | PRIMARY KEY | pk_contratti | id |
 | UNIQUE | uq_contratti_numero | numero |
-| UNIQUE | uq_contratti_offerta_id | offerta_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -79,28 +78,30 @@
 | ix_contratti_listino_versione | `CREATE INDEX ix_contratti_listino_versione ON vendite.contratti USING btree (listino_versione_id)` |
 | pk_contratti | `CREATE UNIQUE INDEX pk_contratti ON vendite.contratti USING btree (id)` |
 | uq_contratti_numero | `CREATE UNIQUE INDEX uq_contratti_numero ON vendite.contratti USING btree (numero)` |
-| uq_contratti_offerta_id | `CREATE UNIQUE INDEX uq_contratti_offerta_id ON vendite.contratti USING btree (offerta_id)` |
+| uq_contratti_offerta_id | `CREATE UNIQUE INDEX uq_contratti_offerta_id ON vendite.contratti USING btree (offerta_id) WHERE ((offerta_id IS NOT NULL) AND (NOT is_abortito_snapshot))` |
 | uq_contratti_uid | `CREATE UNIQUE INDEX uq_contratti_uid ON vendite.contratti USING btree (uid)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_contratti_a05_lock_fuori_bozza_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('CONTRATTO', 'DRAFT', 'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'billing_account_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'istanza_utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '', 'listino_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'listino_versione_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'tipo_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'valore_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'ambito', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'valido_dal', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'parent_contratto_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'categoria_cliente_id_snapshot', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'offerta_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'valido_al', 'E_DOC_CHIUSO', 'ATTIVO', 'codice_cig', 'E_DOC_CHIUSO', 'ATTIVO', 'codice_cup', 'E_DOC_CHIUSO', 'ATTIVO', 'codice_commessa', 'E_DOC_CHIUSO', 'ATTIVO', 'meta', 'E_DOC_CHIUSO', 'ATTIVO')` |
+| trg_contratti_a05_lock_fuori_bozza_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('CONTRATTO', 'DRAFT', 'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'billing_account_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'istanza_utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'utility_id', 'E_DOC_UTILITY_IMMUTABILE', '-', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_IMMUTABILE', '-', 'listino_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'listino_versione_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'tipo_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'valore_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'ambito', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'valido_dal', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'parent_contratto_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'categoria_cliente_id_snapshot', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'offerta_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'valido_al', 'E_DOC_CHIUSO', 'ATTIVO', 'codice_cig', 'E_DOC_CHIUSO', 'ATTIVO', 'codice_cup', 'E_DOC_CHIUSO', 'ATTIVO', 'codice_commessa', 'E_DOC_CHIUSO', 'ATTIVO', 'meta', 'E_DOC_CHIUSO', 'ATTIVO')` |
+| trg_contratti_a05_stato_iniziale_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_doc_stato_iniziale('stato_doc_contratto_id', 'config.stati_doc_contratti')` |
 | trg_contratti_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_contratti_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_contratti_a10_default_emittente_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA')` |
 | trg_contratti_a10_default_valuta_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_default_valuta()` |
-| trg_contratti_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_contratti_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
+| trg_contratti_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_contratti_a10_freeze_listino_versione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_freeze_listino_versione()` |
 | trg_contratti_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_gen_codice()` |
 | trg_contratti_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_gen_codice()` |
 | trg_contratti_a10_guard_chiusura_sorgente_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_guard_chiusura_sorgente('CONTRATTO', 'stato_doc_contratto_id', 'config.stati_doc_contratti')` |
-| trg_contratti_a10_guard_emittente_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba('Contratto', 'numero', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_BA_INCOERENTE')` |
 | trg_contratti_a10_guard_emittente_ba_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba('Contratto', 'numero', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_BA_INCOERENTE')` |
-| trg_contratti_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
+| trg_contratti_a10_guard_emittente_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba('Contratto', 'numero', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_BA_INCOERENTE')` |
 | trg_contratti_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
+| trg_contratti_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_contratti_a10_guard_fatt_immediata_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_guard_fatturazione_immediata_immutabile('CONTRATTO')` |
+| trg_contratti_a10_guard_listino_con_righe_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_guard_listino_con_righe('CONTRATTO')` |
 | trg_contratti_a10_guard_listino_documento_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_doc_guard_listino_documento('CONTRATTO')` |
 | trg_contratti_a10_guard_listino_documento_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_guard_listino_documento('CONTRATTO')` |
 | trg_contratti_a10_guard_transizione_stato_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_guard_transizione_stato()` |
@@ -109,23 +110,25 @@
 | trg_contratti_a10_listini_versioni_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
 | trg_contratti_a10_listini_versioni_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
 | trg_contratti_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('numero', 'E_CODICE_NON_MODIFICABILE')` |
-| trg_contratti_a10_set_categoria_cliente_snapshot_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_set_categoria_cliente_snapshot()` |
 | trg_contratti_a10_set_categoria_cliente_snapshot_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_set_categoria_cliente_snapshot()` |
+| trg_contratti_a10_set_categoria_cliente_snapshot_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_set_categoria_cliente_snapshot()` |
 | trg_contratti_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_contratti_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
-| trg_contratti_a10_stati_doc_contratti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_contratti', 'attivo', 'stato_doc_contratto_id', 'id')` |
 | trg_contratti_a10_stati_doc_contratti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_contratti', 'attivo', 'stato_doc_contratto_id', 'id')` |
-| trg_contratti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_contratti_a10_stati_doc_contratti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_contratti', 'attivo', 'stato_doc_contratto_id', 'id')` |
 | trg_contratti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_contratti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_contratti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_contratti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_contratti_m10_guard_annullo_con_legami_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_guard_annullo_con_legami('CONTRATTO', 'stato_doc_contratto_id', 'config.stati_doc_contratti')` |
+| trg_contratti_m50_fornitura_segue_cliente_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_fornitura_segue_cliente('CONTRATTO')` |
+| trg_contratti_m50_indirizzi_seguono_cliente_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_seguono_cliente('CONTRATTO')` |
 | trg_contratti_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_normalize()` |
 | trg_contratti_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_normalize()` |
-| trg_contratti_z90_ritira_commessa_attivita_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_ritira_commessa_attivita('CONTRATTO', 'stato_doc_contratto_id', 'config.stati_doc_contratti')` |
+| trg_contratti_z90_snapshot_da_stato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_snapshot_da_stato('stato_doc_contratto_id', 'config.stati_doc_contratti', 'is_abortito_snapshot', 'is_abortito', 'is_draft_snapshot', 'is_bozza')` |
+| trg_contratti_z90_snapshot_da_stato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_snapshot_da_stato('stato_doc_contratto_id', 'config.stati_doc_contratti', 'is_abortito_snapshot', 'is_abortito', 'is_draft_snapshot', 'is_bozza')` |
 | trg_contratti_z90_snapshot_precontrattuali_ins | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_snapshot_precontrattuali()` |
 | trg_contratti_z90_sync_canali_ins | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_documenti_sync_canali()` |
-| trg_contratti_z90_sync_is_abortito_snapshot_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_sync_is_abortito_snapshot()` |
-| trg_contratti_z90_sync_is_abortito_snapshot_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_sync_is_abortito_snapshot()` |
 
 ---
 {% include-markdown "signature-core.md" %}

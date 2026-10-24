@@ -36,36 +36,38 @@ export const useEmittentiFiscaliBAStore = storePerIstanza('amm-emittenti-fiscali
     const hasDefaultMapping = ref(false)
     const countSpecifici = ref(0)
 
-    // Scopo: Carica il summary BA per l'emittente corrente. Best-effort:
-    //        in caso di errore lascia i valori precedenti senza notificare
-    //        (l'interceptor mostra l'errore HTTP, lo stato UX e' coerente).
+    // Scopo: Carica il summary BA per l'emittente corrente.
+    // ⛔ L'errore RISALE a chi chiama, che lo dice (`execute` nel tab). Fino al
+    //    2026-10-23 lo inghiottiva qui, «l'interceptor mostra l'errore HTTP»: ma
+    //    l'interceptor di `core/api.js` non mostra toast, e un summary che non
+    //    arrivava lasciava `hasDefault` vecchio senza un motivo.
+    // ⚠️ Per lo stesso motivo le scritture qui sotto NON lo rileggono: un
+    //    summary che fallisce dopo un POST riuscito farebbe sembrare fallita la
+    //    scrittura. Lo rilegge il tab, dopo l'esito.
     async function fetchSummary() {
       if (!emittenteId.value) {
         hasDefaultMapping.value = false
         countSpecifici.value = 0
         return
       }
-      try {
-        const res = await getEmittenteBillingAccountSummary(emittenteId.value)
-        const data = res.data.data
-        hasDefaultMapping.value = !!data.has_default
-        countSpecifici.value = data.count_specifici || 0
-      } catch {
-        // Errore gia' notificato dall'interceptor axios globale.
-      }
+      const res = await getEmittenteBillingAccountSummary(emittenteId.value)
+      const data = res.data.data
+      hasDefaultMapping.value = !!data.has_default
+      countSpecifici.value = data.count_specifici || 0
     }
 
-    // Scopo: Aggiunge mapping e ricarica la lista + summary.
+    // Scopo: Aggiunge mapping e ricarica la lista (il summary lo rilegge il
+    //        chiamante: vedi `fetchSummary`).
     async function addMapping(payload) {
       const res = await createEmittenteBillingAccount(emittenteId.value, payload)
-      await Promise.all([fetchList(), fetchSummary()])
+      await fetchList()
       return res.data.data
     }
 
-    // Scopo: Elimina mapping e ricarica la lista + summary.
+    // Scopo: Elimina mapping e ricarica la lista (il summary: vedi sopra).
     async function removeMapping(mappingId) {
       await deleteEmittenteBillingAccount(emittenteId.value, mappingId)
-      await Promise.all([fetchList(), fetchSummary()])
+      await fetchList()
     }
 
     // Scopo: il reset del core (lista, padre, filtri) piu' il summary, che il

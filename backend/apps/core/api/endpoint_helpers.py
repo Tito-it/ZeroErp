@@ -1,10 +1,12 @@
 from collections.abc import Callable, Mapping
+from enum import StrEnum
 import json
 import logging
 from typing import Any, cast
 
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.db import transaction
 from django.http import HttpRequest, JsonResponse
 from rest_framework.exceptions import NotAuthenticated
 from rest_framework.request import Request
@@ -14,6 +16,8 @@ from apps.core.api.payload_validators import errore_corpo
 from apps.core.api.request_parsers import parse_json_body
 from apps.core.api.success_responses import success_response
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
+from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.idempotency_store import IdempotencyStore
 from apps.core.services.request_context import get_request_id
 from apps.core.services.service_errors import ServiceError
@@ -121,12 +125,49 @@ def get_risorsa_umana_id(request: HttpRequest | Request) -> int | None:
     return result
 
 
+# Scopo: COME e' fatta l'operazione di un endpoint in modalita' forte, cioe'
+#        se una key rimasta `in_progress` si puo' riprendere (decisione di Tid
+#        del 2026-10-23, brief-be-verifica-documentazione-api §I.7.2).
+# ⭐ ATOMICA: l'handler e l'esito `completed` stanno nella STESSA transazione,
+#    e l'operazione finisce dentro la richiesta (niente lavoro che continua in
+#    un thread o in un job tenendo la key). Una key orfana vuol dire «nessun
+#    commit», e oltre la soglia si riprende.
+# ⭐ A_PASSI: l'operazione committa un passo alla volta (la pipeline del lotto,
+#    la numerazione del lotto, il push delle commesse). Una key orfana puo'
+#    coprire lavoro gia' salvato: non si riprende, resta IN_CORSO finche' scade
+#    o il frontend ne genera una nuova. Niente `atomic` esterno: ne
+#    cambierebbe il comportamento.
+# ⚠️ ATOMICA e' il default. Un endpoint a passi che non lo dichiara non
+#    rischia il doppione — il suo lavoro finisce in un `atomic` solo, e la
+#    ripresa resta sicura — ma perde i commit intermedi, e se ne accorge al
+#    primo errore. I quattro di oggi li presidia
+#    `apps/core/tests/test_unita_di_lavoro.py`.
+class UnitaDiLavoro(StrEnum):
+    ATOMICA = "ATOMICA"
+    A_PASSI = "A_PASSI"
+
+
+# Scopo: L'endpoint a cui la key resta legata (D7): metodo e percorso, senza
+#        query string. E' la stessa richiesta se e solo se e' lo stesso verbo
+#        sulla stessa risorsa.
+def _endpoint_della_richiesta(request: HttpRequest | Request) -> str:
+    return f"{request.method} {request.path}"
+
+
 # Scopo: Gestisce endpoint POST JSON con parsing, validazione, idempotency opzionale e envelope uniforme.
+# ⭐ `unita_di_lavoro` conta solo in modalita' forte (`require_idempotency_key`
+#    e `API_STRONG_IDEMPOTENCY_ENABLED`, vedi `UnitaDiLavoro`): l'`atomic`
+#    esterno esiste per tenere insieme operazione ed esito `completed`, e senza
+#    registro delle key non c'e' un esito da tenere insieme.
+#    ⚠️ Per questo la suite Django, che spegne la modalita' forte, non lo
+#    esercita: lo prova `apps/core/tests/db/test_idempotency_prenota_db.py`
+#    sul DB vero.
 def handle_post_json(
     request: HttpRequest | Request,
     *,
     handler: Callable[[dict[str, Any]], Mapping[str, Any] | list[Any]],
     require_idempotency_key: bool = False,
+    unita_di_lavoro: UnitaDiLavoro = UnitaDiLavoro.ATOMICA,
 ) -> JsonResponse:
     # ⭐ Corpo illeggibile o non oggetto: 400 `E_VALIDATION_INPUT` nell'envelope,
     #    come le view DRF (`corpo_oggetto`) — una regola, una forma (E-6).
@@ -135,14 +176,14 @@ def handle_post_json(
     except ValueError as exc:
         return exception_to_error_response(errore_corpo(exc))
 
+    idempotency_key = get_idempotency_key()
+    request_id = get_request_id()
+    idempotency_claimed = False
     try:
-        idempotency_key = get_idempotency_key()
-        request_id = get_request_id()
-        idempotency_claimed = False
         if require_idempotency_key and not idempotency_key:
             raise ServiceError(
                 code="E_IDEMPOTENCY_KEY_REQUIRED",
-                message="Idempotency-Key obbligatoria per questa operazione.",
+                message=USER_MESSAGE_FALLBACK["E_IDEMPOTENCY_KEY_REQUIRED"],
                 detail="Header Idempotency-Key mancante.",
             )
 
@@ -156,6 +197,9 @@ def handle_post_json(
             decision = IdempotencyStore.claim_or_replay(
                 idempotency_key=idempotency_key,
                 request_id=request_id,
+                auth_user_id=get_actor_user_id(request),
+                endpoint=_endpoint_della_richiesta(request),
+                ripresa_ammessa=unita_di_lavoro is UnitaDiLavoro.ATOMICA,
             )
             if decision.replay_payload is not None:
                 logger.info(
@@ -174,7 +218,9 @@ def handle_post_json(
                 )
                 raise ServiceError(
                     code="E_IDEMPOTENCY_IN_PROGRESS",
-                    message="Operazione gia` in elaborazione.",
+                    # ⭐ La frase sta nel ripiego, non qui: era ricopiata a mano
+                    #    e divergeva dal catalogo a ogni revisione (D4).
+                    message=USER_MESSAGE_FALLBACK["E_IDEMPOTENCY_IN_PROGRESS"],
                     detail="La stessa Idempotency-Key e` gia` in corso.",
                     retryable=True,
                 )
@@ -185,15 +231,27 @@ def handle_post_json(
                 request_id,
             )
 
-        response_payload = handler(payload)
-        response = success_response(response_payload)
-        if strong_idempotency_enabled and idempotency_claimed:
-            assert idempotency_key is not None
-            IdempotencyStore.mark_completed(
-                idempotency_key=idempotency_key,
-                response_payload=_extract_json_payload(response),
-                request_id=request_id,
-            )
+        def _esegui() -> JsonResponse:
+            response = success_response(handler(payload))
+            if idempotency_claimed:
+                assert idempotency_key is not None
+                IdempotencyStore.mark_completed(
+                    idempotency_key=idempotency_key,
+                    response_payload=_extract_json_payload(response),
+                    request_id=request_id,
+                )
+            return response
+
+        if idempotency_claimed and unita_di_lavoro is UnitaDiLavoro.ATOMICA:
+            # ⭐ BE-2: operazione ed esito `completed` nella stessa transazione.
+            # ⚠️ Il diario aspetta la fine dell'`atomic` (l'ordine dei due
+            #    `with` e' quello): dopo un errore DB catturato la transazione
+            #    e' abortita, e una riga scritta li' sparirebbe in silenzio.
+            with ErrorManager.diario_dopo_la_transazione(), transaction.atomic():
+                response = _esegui()
+        else:
+            response = _esegui()
+        if idempotency_claimed:
             logger.info(
                 "idempotency_completed key=%s request_id=%s",
                 idempotency_key,
@@ -204,12 +262,11 @@ def handle_post_json(
     #    translator lo porta a 400 `E_VALIDATION_INPUT` col suo messaggio. Fino
     #    al 2026-10-07 aveva un ramo suo che rispondeva `{"error":
     #    "invalid_payload"}` e buttava codice e messaggio (E-6).
+    # ⭐ `mark_failed` sta FUORI dall'`atomic`, dopo il rollback: dentro, sparirebbe
+    #    con l'operazione e la key resterebbe `in_progress`.
     except Exception as exc:
-        if idempotency_claimed and idempotency_key and getattr(
-            settings,
-            "API_STRONG_IDEMPOTENCY_ENABLED",
-            False,
-        ):
+        if idempotency_claimed:
+            assert idempotency_key is not None
             IdempotencyStore.mark_failed(idempotency_key=idempotency_key, request_id=request_id)
             logger.warning(
                 "idempotency_failed_exception key=%s request_id=%s error=%s",

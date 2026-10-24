@@ -7,6 +7,10 @@
 -- Riferimento: brief-db-riga-listino-propagata-dalla-commessa (R-1, R-2, R-5;
 --   decisione D-1: «propagata» = citata ADESSO).
 --
+-- rev 2026-10-15: la riga di commessa la scrive il builder
+--   dbops.fn_pgtap_crea_commessa_attivita (che chiama la madre), non piu' una
+--   copia della chiamata alla madre (regola del 2, richiesta del team BE).
+--
 -- Semantica attesa (il contratto, non l'implementazione):
 --   - la madre del push scrive la riga di listino che le si passa, anche dal
 --     batch e anche nel ramo ON CONFLICT;
@@ -67,16 +71,13 @@ SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_c), 'riga pr
 
 -- Un articolo, due righe di listino (UoM diverse: la chiave attiva e'
 -- versione + articolo + UoM). INSERT su versione ATTIVA e' ammesso: e' la
--- rettifica controllata.
+-- rettifica controllata. Un listino TIPIZZATO accetta solo articoli della sua
+-- tipologia: l'articolo nasce con quella.
 CREATE TEMP TABLE t_art AS
 SELECT dbops.fn_pgtap_crea_articolo(
            ('PGT-RLP-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
-           false) AS articolo_id;
-
--- Un listino TIPIZZATO accetta solo articoli della sua tipologia.
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM t_l)
- WHERE id = (SELECT articolo_id FROM t_art);
+           false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM t_l)) AS articolo_id;
 
 CREATE TEMP TABLE t_uom AS
 SELECT a.uom_id AS u1,
@@ -97,42 +98,25 @@ WITH ins AS (
 SELECT (SELECT id FROM ins WHERE uom_id = (SELECT u1 FROM t_uom)) AS r1,
        (SELECT id FROM ins WHERE uom_id = (SELECT u2 FROM t_uom)) AS r2;
 
--- Il segmento di commessa, scritto dalla madre con la riga R1.
-CREATE TEMP TABLE t_seg AS
-SELECT ('PGT-RLP-' || substr(md5(clock_timestamp()::text || 'seg'), 1, 12))::varchar AS segment_key;
-
+-- La riga di commessa con la riga R1, dal builder: e' lui a chiamare la madre
+-- (dal 2026-10-15, 20261015-23, accetta articolo, versione e riga di listino).
+-- Fino a quel giorno questo file chiamava la madre con ~40 argomenti
+-- ricopiati: il builder costruiva l'articolo da se', senza la tipologia del
+-- listino, e da usato non gliela si poteva piu' dare (guard A-10).
 CREATE TEMP TABLE t_a AS
-SELECT r.attivita_id
-  FROM t_c c, t_l l, t_art a, t_uom u, t_r rr, t_seg s,
-       vendite.fn_upsert_commessa_attivita(
-           p_commessa_id                   => c.commessa_id,
-           p_segment_key                   => s.segment_key,
-           p_articolo_id                   => a.articolo_id,
-           p_istanza_utility_id            => c.istanza_utility_id,
-           p_data_attivita                 => script.fn_data_operativa(),
-           p_uom_id                        => u.u1,
-           p_quantita                      => 1.000000,
-           p_competenza_mese               => date_trunc('month', script.fn_data_operativa())::date,
-           p_competenza_dal                => date_trunc('month', script.fn_data_operativa())::date,
-           p_competenza_al                 => (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date,
-           p_prezzo_snapshot               => 10.00,
-           p_prezzo_base_snapshot          => 10.00,
-           p_origine_prezzo                => NULL,
-           p_tipo_variazione_applicata     => NULL,
-           p_valore_variazione_applicata   => NULL,
-           p_promo_id                      => NULL,
-           p_contratto_id                  => NULL,
-           p_categoria_cliente_id_snapshot => NULL,
-           p_classe_utenza_id_snapshot     => NULL,
-           p_listino_versione_id           => l.listino_versione_id,
-           p_listino_riga_id               => rr.r1,
-           p_stato_approvazione            => 'APPROVATA',
-           p_stato_emissione               => 'NON_EMESSA',
-           p_sorgente_tipo_id              => (SELECT so.id FROM config.sorgenti so
-                                                WHERE so.codice_interno = 'COMMESSA' AND so.attivo),
-           p_sorgente_uid                  => c.commessa_id::text,
-           p_tipo_movimento                => 'NORMALE',
-           p_meta                          => jsonb_build_object('test_scope', 'pgtap_riga_listino_propagata')) r;
+SELECT a.attivita_id
+  FROM t_c c, t_l l, t_r rr,
+       dbops.fn_pgtap_crea_commessa_attivita(
+           p_commessa_id         => c.commessa_id,
+           p_prezzo_snapshot     => 10.00,
+           p_listino_versione_id => l.listino_versione_id,
+           p_listino_riga_id     => rr.r1) a;
+
+-- Il segmento della riga: il re-push dal batch (test 6) lo riusa.
+CREATE TEMP TABLE t_seg AS
+SELECT ca.segment_key
+  FROM vendite.commesse_attivita ca
+ WHERE ca.id = (SELECT attivita_id FROM t_a);
 
 -- ============================================================
 -- 1) Una sola madre, con il parametro nuovo (nessun overload)

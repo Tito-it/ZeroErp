@@ -196,7 +196,9 @@ class BaseViewPerimetroEmittenteTests(TestCase):
         """Non solo letture: un endpoint di lista che espone un'azione massiva
         la eseguirebbe sullo STESSO perimetro ambiguo che si rifiuta di
         mostrare."""
-        _esegui_initial(_ViewConLista, metodo="POST")
+        # La POST porta la key, come ogni POST che scrive (§A5).
+        with patch("apps.core.api.base_views.get_idempotency_key", return_value="k"):
+            _esegui_initial(_ViewConLista, metodo="POST")
         mock_guard.assert_called_once()
 
     # 7-10. L'emittente esplicito: la meta' che rende il cancello utilizzabile

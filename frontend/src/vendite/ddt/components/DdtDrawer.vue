@@ -16,6 +16,7 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useNotify } from '../../../core/composables/useNotify'
 import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
+import { useForzaturaConfermata } from '../../../core/composables/useForzaturaConfermata'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
@@ -36,7 +37,9 @@ import { createDdt } from '../api/ddtApi'
 import { getDdtFormDefaults } from '../../api/formDefaults'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
 import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
-import { getBillingAccountLookupById } from '../../../core/apiCore'
+import { ripristinaBillingAccount } from '../../../core/utils/ripristinaLookup'
+import { CLIENTE_BA } from '../../_shared/cliente/clienteCambiato'
+import { useCambioClienteDocumento } from '../../_shared/cliente/useCambioClienteDocumento'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import AppDrawer from '../../../core/components/AppDrawer.vue'
@@ -48,9 +51,11 @@ import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegament
 import SituazioneMerceBar from '../../_shared/situazioneMerce/SituazioneMerceBar.vue'
 import DdtForm from './DdtForm.vue'
 import DdtRigheTable from './DdtRigheTable.vue'
+import DdtPrelieviSection from './DdtPrelieviSection.vue'
 import DdtNoteDrawer from './DdtNoteDrawer.vue'
 import DdtResoDialog from './DdtResoDialog.vue'
 import DdtEmissioneDialog from './dialogs/DdtEmissioneDialog.vue'
+import DocumentoAnnulloLegamiDialog from '../../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 
@@ -97,6 +102,9 @@ const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumen
 })
 const modificatoDocumento = documento.modificato
 const detail = ref(null)
+// Il cliente del DDT: il billing account, o il destinatario senza BA (D-1 di
+// brief-db-indirizzi-documento-seguono-il-cliente).
+const CAMPI_CLIENTE_DDT = Object.freeze([...CLIENTE_BA, 'destinatario_soggetto_ruolo_id'])
 
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_ddt_riepilogo_iva_dettaglio`).
 // Auto-popolato a ogni loadDetail e ogni `@changed` delle righe: la vista DB
@@ -110,23 +118,54 @@ const showRiepilogoIva = computed(
 )
 const noteDrawerVisible = ref(false)
 const resoDialogVisible = ref(false)
-// Ref alla barra collegamenti: la creazione di un reso aggiunge un arco
-// DDT->Reso, quindi i chip vanno ricaricati insieme al detail (senza questo,
-// il chip «Reso» comparirebbe solo alla riapertura del drawer).
-const collegamentiRef = ref(null)
-// Ref alla barra situazione merce: un reso cambia i CONTI (tenuti scende,
-// puo' comparire un accredito dovuto), non solo il grafo dei collegamenti.
-// Sono due letture diverse della stessa azione e vanno ricaricate entrambe.
-const merceRef = ref(null)
+// Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
+//        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
+//        ordine riapre il residuo e riaccende «Genera DDT» — quindi si
+//        rileggono testata (stato, capability) e righe. Chip e situazione
+//        merce li rileggono le barre su quel dettaglio nuovo (`:versione`).
+//        Le liste in ascolto le ha gia' avvisate lo store del
+//        verbo, nel drawer impilato.
+async function onDocumentoCollegatoChiuso() {
+  await loadDetail()
+  righeTableRef.value?.loadRighe()
+}
+
+// ⭐ Il cambio di stato e' un gesto CONFERMABILE (D-8 di
+//    brief-db-ddt-righe-evase-dall-ordine): l'annullo di una bolla con righe
+//    legate a ordini o resi il DB lo rifiuta (`confirm_and_retry`) finche' chi
+//    conferma non dichiara quante righe legate ha visto. La domanda la porta a
+//    video `DocumentoAnnulloLegamiDialog`; una bolla senza legami passa al primo colpo.
+const cambioStato = useForzaturaConfermata()
+const { richiestaConferma: domandaAnnullo } = cambioStato
 
 // Scopo: dopo la creazione di un reso, ricarica il detail (residui rendibili,
 //        stato), i chip dei collegamenti e il conto della merce.
 function onResoCreato() {
   loadDetail()
-  collegamentiRef.value?.reload()
-  merceRef.value?.reload()
   // ⭐ La lista DDT dietro: il reso cambia il conto della merce e i transiti.
   // `changed`, non `saved`: dal DDT si continua a lavorare.
+  emit('changed')
+}
+// Scopo: dopo una modifica alle righe (cancellazione, correzione della
+//        quantita' evasa), ricarica il detail e le due barre in testata.
+// ⚠️ Su un DDT nato da ordine o da reso la riga porta un LEGAME: cancellarla
+//    lo ritira (D-3) e correggerla lo sposta (D-2), cioe' cambia cosa resta da
+//    spedire e chi e' collegato. Ricaricare solo il detail lasciava la barra
+//    merce a mostrare il residuo di prima (rilievo in-app di Tid, 2026-10-11).
+//    Stesse due letture di `onResoCreato` e `dopoCambioStato`.
+// Prelievi: la sezione e' montata col dettaglio, e alla prima apertura legge da
+// se'; dopo, la rilegge `loadDetail` se era gia' montata (righe, causale e
+// magazzino cambiano le voci).
+const prelieviRef = ref(null)
+// Un prelievo cambiato: la testata si rilegge (la capability «Emetti» e il suo
+// motivo dipendono dai prelievi), e con lei la sezione.
+function onPrelieviChanged() {
+  loadDetail()
+  emit('changed')
+}
+
+function onRigheChanged() {
+  loadDetail()
   emit('changed')
 }
 // Avviso emissione: true quando manca l'indirizzo obbligatorio (CON) —
@@ -177,6 +216,7 @@ const showResoAction = computed(
 // availableActions + can_edit_testata + non_editable_fields. Composable
 // centralizzato, uniforme a Ordini/Preventivi/Contratti.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
@@ -204,24 +244,6 @@ const testata = useTestataDocumento({
   // la capability ancora vuota tiene il form fermo (fail-closed).
   presente: () => isEdit.value || hasDetail.value,
   corpoProtetto: () => isReadonly.value,
-})
-// ⚠️ ECCEZIONE DICHIARATA, da togliere col changeSet DB che la corregge:
-//    `fn_available_actions_ddt` mette `billing_account_id` fra i campi fermi
-//    ANCHE IN BOZZA (`c_non_edit_draft`), mentre il lock di testata lo ferma
-//    solo fuori bozza e D-2 (brief-db-esecutivi-ba-coppia) vuole che la bolla
-//    nata senza cliente lo riceva in bozza. Vale il lock: in bozza il cliente
-//    resta sceglibile. Segnalato al team DB (brief-db-testata-dopo-emissione
-//    §10.1, R-DB-1).
-// ⛔ L'eccezione vale SOLO per la bolla senza documento d'origine: un DDT da
-//    ordine o da reso ha il cliente della sua sorgente (D-6, guard
-//    `trgfn_ddt_guard_cliente_sorgente`), quindi li' la capability ha ragione
-//    anche in bozza (collaudo di Tid, 2026-10-10: il cliente di un DDT da
-//    ordine si poteva cambiare a video, e il DB lo rifiutava solo al salvataggio).
-const nonEditableFields = computed(() => {
-  const fermi = testata.campiBloccati.value
-  const inBozza = detail.value?.stato_codice_interno === STATO_DDT.DRAFT
-  const conSorgente = detail.value?.sorgente_codice_interno != null
-  return inBozza && !conSorgente ? fermi.filter((c) => c !== 'billing_account_id') : fermi
 })
 
 // Default emittente fiscale: operatore → id profilo; admin globale → null
@@ -266,6 +288,10 @@ function defaultForm() {
     targa: null,
     autista: null,
     tracking_code: null,
+    // Magazzino (Lotto 3 D-L3-a): vuoto = lo propone il DB alla creazione (il
+    // predefinito dell'emittente); l'arrivo solo per la bolla di trasferimento.
+    magazzino_id: null,
+    magazzino_arrivo_id: null,
   }
 }
 
@@ -285,6 +311,9 @@ async function loadDetail(id = null) {
   const targetId = id ?? effectiveDdtId.value
   if (!targetId) return
   const applicaModifiche = preservaForm()
+  // La sezione prelievi si rilegge solo se c'era GIA': montata adesso (prima
+  // apertura) legge da se', e rileggerla qui sarebbe una seconda richiesta.
+  const prelieviGiaMontati = prelieviRef.value != null
   const data = await loadDetailOrClose(() => store.fetchDetail(targetId))
   if (!data) return
   detail.value = data
@@ -295,13 +324,11 @@ async function loadDetail(id = null) {
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
     utility_id: data.utility_id ?? null,
     billing_account_id: data.billing_account_id ?? null,
-    billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
+    billing_account_obj: null,  // popolato sotto da ripristinaBillingAccount
     // Restore ricco dalla denominazione denormalizzata della vista, come
     // mittente e vettore.
     destinatario_soggetto_ruolo_id: data.destinatario_soggetto_ruolo_id ?? null,
-    destinatario_obj: data.destinatario_soggetto_ruolo_id
-      ? { soggetto_ruolo_id: data.destinatario_soggetto_ruolo_id, ragione_sociale_completa: data.destinatario_denominazione }
-      : null,
+    destinatario_obj: destinatarioObj(data),
     valuta_id: data.valuta_id ?? null,
     fatturazione_immediata: data.fatturazione_immediata ?? false,
     data: parseIsoDate(data.data),
@@ -326,24 +353,64 @@ async function loadDetail(id = null) {
     targa: data.targa ?? null,
     autista: data.autista ?? null,
     tracking_code: data.tracking_code ?? null,
+    magazzino_id: data.magazzino_id ?? null,
+    magazzino_arrivo_id: data.magazzino_arrivo_id ?? null,
   }
   // Fissa la baseline e ripristina il non-salvato che la sostituzione
   // avrebbe cancellato.
   applicaModifiche()
   await nextTick()
-  // Restore BillingAccountLookup _obj per visualizzazione ricca. Best-effort.
-  if (data.billing_account_id) {
-    try {
-      const res = await getBillingAccountLookupById(data.billing_account_id)
-      const ba = res?.data?.data
-      if (ba) form.value.billing_account_obj = ba
-    } catch {
-      // Resto: l'autocomplete parte vuoto, l'operatore puo' ri-selezionare.
-    }
-  }
+  // Il cliente per l'etichetta del lookup (BB `ripristinaBillingAccount`).
+  await ripristinaBillingAccount(form.value, data.billing_account_id)
   // Riepilogo IVA: la vista DB ricalcola dalle righe attive valorizzate a ogni
   // mutazione; qui leggiamo lo stato corrente (best-effort).
   await loadRiepilogoIva(targetId)
+  if (prelieviGiaMontati) prelieviRef.value?.carica()
+}
+
+// ⭐ Il cambio di cliente in modifica si salva subito, con conferma (BB
+//    `useCambioClienteDocumento`, decisione di Tid 2026-10-19): il DB rifa' gli
+//    indirizzi, e pannello e «Indirizzi» mostrano subito quelli del cliente
+//    nuovo. Il cliente e' il BA o, senza BA, il destinatario; senza BA si scrive
+//    il destinatario, come nel salvataggio (`buildTestataPayload`).
+useCambioClienteDocumento({
+  form,
+  detail,
+  campi: CAMPI_CLIENTE_DDT,
+  // La utility la scrive nel form la scelta del BA (`DdtForm`): un Annulla la
+  // riporta al salvato insieme al cliente.
+  colonne: [...CAMPI_CLIENTE_DDT, 'utility_id'],
+  attivo: () => detail.value != null && testata.modificabile.value
+    && !testata.bloccato('billing_account_id'),
+  payload: () => (form.value.billing_account_id != null
+    ? { billing_account_id: form.value.billing_account_id }
+    : { billing_account_id: null, destinatario_soggetto_ruolo_id: form.value.destinatario_soggetto_ruolo_id }),
+  salva: (corpo) => execute(
+    () => store.update(effectiveDdtId.value, corpo),
+    { successMessage: t('vendite.ddt.ddt_salvato') },
+  ),
+  ricarica: () => loadDetail(),
+  ripristina: () => ripristinaDestinatario(detail.value),
+  // Utility e, col BA, destinatario sono copie che scrive il DB (non viaggiano
+  // nel payload): quelle che la scelta del BA ha messo nel form vanno scartate
+  // prima della ricarica, o `preserva` le rimetterebbe sopra quelle del server.
+  scartaDipendenti: () => {
+    form.value.utility_id = detail.value?.utility_id ?? null
+    if (form.value.billing_account_id == null) return
+    form.value.destinatario_soggetto_ruolo_id = detail.value?.destinatario_soggetto_ruolo_id ?? null
+    ripristinaDestinatario(detail.value)
+  },
+})
+
+// Scopo: l'oggetto del lookup destinatario dal dettaglio (la denominazione
+//        denormalizzata della vista), come in `loadDetail`.
+function destinatarioObj(d) {
+  return d?.destinatario_soggetto_ruolo_id
+    ? { soggetto_ruolo_id: d.destinatario_soggetto_ruolo_id, ragione_sociale_completa: d.destinatario_denominazione }
+    : null
+}
+function ripristinaDestinatario(d) {
+  form.value.destinatario_obj = destinatarioObj(d)
 }
 
 // Scopo: Carica il riepilogo IVA aggregato (best-effort: in caso di errore il
@@ -385,7 +452,7 @@ watch(() => props.visible, async (v) => {
 // offerte). Il DDT non ha termini/modalita di pagamento in testata: nessun
 // `apply` extra. Se la risposta arriva dopo l'auto-save bozza, il trigger DB
 // ha comunque gia' risolto la valuta sul record (fn_get_valuta_id).
-useBaFormDefaults({ form, isEdit, fetchDefaults: getDdtFormDefaults })
+const { inCorso: defaultsClienteInCorso } = useBaFormDefaults({ form, isEdit, fetchDefaults: getDdtFormDefaults })
 
 // Costruisce il payload testata (create/update). Numeri e stringhe vuote → null:
 // il BE normalizza empty→NULL (empty_to_none). emittente_fiscale_id solo in
@@ -411,6 +478,11 @@ function buildTestataPayload({ includeEmittente = false } = {}) {
     targa: f.targa || null,
     autista: f.autista || null,
     tracking_code: f.tracking_code || null,
+    // Vuoto in creazione = il default del DB (il magazzino predefinito
+    // dell'emittente); le regole (stesso emittente, arrivo solo per il
+    // trasferimento) le applica il DB.
+    magazzino_id: f.magazzino_id || null,
+    magazzino_arrivo_id: f.magazzino_arrivo_id || null,
   }
   if (payload.billing_account_id == null) {
     payload.destinatario_soggetto_ruolo_id = f.destinatario_soggetto_ruolo_id || null
@@ -457,8 +529,11 @@ const { close } = useDrawerAutosaveBozza({
   },
 })
 
+// Finche' arrivano i dati del cliente (BB `useBaFormDefaults`) il Salva
+// aspetta: partirebbe un form senza quei dati, presi per scelte dell'operatore.
 const canSave = computed(() => {
   if (!testata.modificabile.value) return false
+  if (defaultsClienteInCorso.value) return false
   return form.value.billing_account_id != null || form.value.destinatario_soggetto_ruolo_id != null
 })
 
@@ -514,11 +589,10 @@ async function handleEmissioneConferma({ files }) {
   emissioneLoading.value = false
   if (result !== null) {
     emissioneDialogVisible.value = false
-    await loadDetail()
     // L'emissione e' il momento in cui le partite di merce NASCONO (soglia
-    // EMESSO, decisione D1): senza il reload la barra resterebbe nascosta
-    // («nessuna merce») fino alla riapertura del drawer.
-    merceRef.value?.reload()
+    // EMESSO, decisione D1): la barra merce le rilegge su questo dettaglio
+    // nuovo (`:versione`), o resterebbe «nessuna merce» fino alla riapertura.
+    await loadDetail()
     emit('saved', result)
   }
 }
@@ -590,18 +664,30 @@ function onAction(action) {
 }
 
 // Transizione di stato generica (target_state dell'azione). Il trigger DB valida
-// l'ammissibilita'; qui orchestriamo chiamata + refresh detail.
+// l'ammissibilita'; qui orchestriamo chiamata + refresh detail. Il primo
+// tentativo va SEMPRE senza dichiarazione (`useForzaturaConfermata`).
 async function eseguiCambioStato(action) {
-  const result = await execute(
-    () => store.cambiaStato(effectiveDdtId.value, action.target_state),
+  const result = await cambioStato.esegui(
+    (dichiarazione) => store.cambiaStato(effectiveDdtId.value, action.target_state, dichiarazione),
     { successMessage: t('vendite.ddt.stato_cambiato') },
   )
+  await dopoCambioStato(result)
+}
+
+// Scopo: l'operatore ha visto le righe legate e conferma l'annullo: si ripete
+//        la chiamata DICHIARANDO quante erano. Se nel frattempo sono cambiate,
+//        il DB chiede di nuovo e la finestra si rilegge (domanda nuova).
+async function onConfermaAnnullo(dichiarazione) {
+  await dopoCambioStato(await cambioStato.conferma(dichiarazione))
+}
+
+async function dopoCambioStato(result) {
   if (result !== null) {
+    // Il cambio stato sposta i conti della merce (l'ANNULLO rende il documento
+    // abortito e le sue partite ESCONO dalla vista) e ritira i legami delle
+    // righe con ordini e resi (D-8). Entrambe le barre li rileggono su questo
+    // dettaglio nuovo (`:versione`), senza una chiamata qui.
     await loadDetail()
-    // Il cambio stato puo' spostare i conti della merce: l'ANNULLO rende il
-    // documento abortito e le sue partite ESCONO dalla vista. Ricaricare solo
-    // il detail lascerebbe la barra a raccontare partite che non esistono piu'.
-    merceRef.value?.reload()
     emit('saved', result)
   }
 }
@@ -696,7 +782,7 @@ const drawerActions = computed(() => {
           <!-- Stampa DDT accompagnatorio: anteprima in bozza, gestione
                documenti generati post-emissione. BB EntityPdfButton 1:1. -->
           <EntityPdfButton
-            :sorgente-code="SORGENTE_CODES.DDT"
+            :sorgente-code="SORGENTE_CODES.DDT_VENDITA"
             :entity-id="effectiveDdtId"
             :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
             :pdf="capabilities.pdf"
@@ -713,9 +799,10 @@ const drawerActions = computed(() => {
            Il dettaglio (grafo completo) si apre dai chip stessi in dialog.
            `ref` per ricaricare i chip dopo un'azione che li cambia (reso). -->
       <DocumentoCollegamentiBar
-        ref="collegamentiRef"
         base-path="/vendite/ddt"
+        :versione="detail"
         :doc-id="effectiveDdtId"
+        @documento-chiuso="onDocumentoCollegatoChiuso"
         :readonly="readonly || parentReadonly" />
 
       <!-- Situazione merce di QUESTA spedizione: quanto e' uscito, tornato,
@@ -723,8 +810,8 @@ const drawerActions = computed(() => {
            collegato, questa COM'E' ANDATA. Sparisce se non c'e' nulla da
            raccontare (un DDT in bozza non ha ancora partite). -->
       <SituazioneMerceBar
-        ref="merceRef"
         base-path="/vendite/ddt"
+        :versione="detail"
         :doc-id="effectiveDdtId"
         :readonly="readonly || parentReadonly" />
     </template>
@@ -738,7 +825,7 @@ const drawerActions = computed(() => {
       <DdtForm
         :campi-errati="campiErrati"
         :form="form" :is-modificabile="testata.modificabile.value"
-        :non-editable-fields="nonEditableFields"
+        :non-editable-fields="testata.campiBloccati.value"
         :record="detail"
         :is-edit="isEdit || createdId !== null" />
     </div>
@@ -748,15 +835,13 @@ const drawerActions = computed(() => {
       <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default CON,
            avviso se mancante (obbligatorio all'emissione, guard DB),
            pulsante "Indirizzi" che apre il drawer di gestione. -->
-      <!-- Indirizzi: seguono lo stato (in bozza), non la capability della
-           testata, che dal 2026-10-10 e' vera anche fuori bozza per le
-           colonne ancora aperte (brief-db-testata-dopo-emissione). -->
       <DocumentoIndirizziSection
         dominio="ddt"
         :doc-id="effectiveDdtId"
         :soggetto-ruolo-id="detail?.destinatario_soggetto_ruolo_id ?? null"
         :istanza-utility-id="detail?.istanza_utility_id ?? null"
-        :readonly="isReadonly"
+        :readonly="isReadonlyPuro"
+        :capabilities="capabilities"
         @state="(s) => { indirizzoObbligatorioMancante = s.obbligatorioMancante }"
         :bordo="false" />
 
@@ -767,8 +852,18 @@ const drawerActions = computed(() => {
         :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
         :is-modificabile="canEditRighe && !isReadonly"
         :causale-fatturabile="causaleFatturabile"
-        @changed="loadDetail()"
+        @changed="onRigheChanged"
         @form-aperto="onFormAperto" />
+
+      <!-- Prelievi (Lotto 3 R-2b): da dove esce la merce. Compare solo se la
+           bolla muove merce. Aggiungere e togliere solo in bozza; l'ubicazione
+           di arrivo anche dopo l'emissione, fino alla consegna (decide il DB). -->
+      <DdtPrelieviSection
+        ref="prelieviRef"
+        :ddt-id="effectiveDdtId"
+        :modificabile="canEditRighe && !isReadonly"
+        :arrivo-modificabile="!isReadonlyPuro"
+        @changed="onPrelieviChanged" />
 
       <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
            Visibile con almeno una riga valorizzata (righe prezzo NULL escluse
@@ -801,6 +896,22 @@ const drawerActions = computed(() => {
     :ddt-id="effectiveDdtId"
     :readonly="props.readonly || parentReadonly"
     @reso-creato="onResoCreato"
+  />
+
+  <!-- La conferma dell'annullo di una bolla con legami (ordini, resi, righe di
+       commessa): aperta dalla domanda del DB, chiusa dalla conferma o dalla
+       rinuncia. Finestra comune ai documenti che si annullano con conferma. -->
+  <DocumentoAnnulloLegamiDialog
+    v-if="effectiveDdtId"
+    :visible="domandaAnnullo !== null"
+    base-path="/vendite/ddt"
+    :doc-id="effectiveDdtId"
+    :header="t('vendite.ddt.azione_annulla')"
+    :domanda="domandaAnnullo"
+    :loading="cambioStato.loading.value"
+    :readonly="isReadonlyPuro"
+    @conferma="onConfermaAnnullo"
+    @cancel="cambioStato.annulla()"
   />
 
   <!-- Dialog emissione DDT (transizione DRAFT → EMESSO, assegna numero). -->

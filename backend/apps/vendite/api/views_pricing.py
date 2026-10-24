@@ -24,6 +24,7 @@ from apps.core.api.endpoint_helpers import get_actor_user_id, handle_post_json
 from apps.core.api.request_parsers import parse_iso_date
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.vendite.api._serialize_helpers import serialize_value
@@ -97,6 +98,11 @@ _RESOLVE_RESPONSE = inline_serializer(
 )
 
 
+# ⛔ I tre id obbligatori del resolver (pagina `api_pricing.md`) dal BB: fino al
+#    2026-10-20 `int(payload.get(x) or 0)` faceva di un campo assente uno 0, che
+#    arrivava al DB e tornava come un errore generico invece che sul campo.
+_V = PayloadValidator(validation_code="E_VENDITE_VALIDATION")
+
 
 # Scopo: Risolve l'emittente_soggetto_ruolo_id dal JWT operatore.
 #        Se il payload lo specifica esplicitamente, ha priorita' (debug).
@@ -151,6 +157,9 @@ class PricingResolveView(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=_RESOLVE_REQUEST,
@@ -179,16 +188,12 @@ class PricingResolveView(DomainAPIView):
             padre_raw = payload.get("articolo_padre_contesto")
             result = PricingService().resolve_prezzo(
                 articolo_id=str(articolo_id),
-                uom_id=int(payload.get("uom_id") or 0),
+                uom_id=_V.require_positive_int(payload, "uom_id"),
                 data_riferimento=data_riferimento,
-                ba_id=int(payload.get("ba_id") or 0),
-                utility_id=int(payload.get("utility_id") or 0),
+                ba_id=_V.require_positive_int(payload, "ba_id"),
+                utility_id=_V.require_positive_int(payload, "utility_id"),
                 emittente_soggetto_ruolo_id=emittente_sr,
-                classe_utenza_id=(
-                    int(payload["classe_utenza_id"])
-                    if payload.get("classe_utenza_id")
-                    else None
-                ),
+                classe_utenza_id=_V.optional_positive_int(payload, "classe_utenza_id"),
                 articolo_padre_contesto=str(padre_raw) if padre_raw else None,
             )
             return {k: serialize_value(v) for k, v in result.items()}
@@ -256,6 +261,9 @@ class PricingDiagnoseView(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=_DIAGNOSE_REQUEST,
@@ -282,16 +290,12 @@ class PricingDiagnoseView(DomainAPIView):
 
             result = PricingDiagnoseService().diagnose(
                 articolo_id=str(articolo_id),
-                uom_id=int(payload.get("uom_id") or 0),
+                uom_id=_V.require_positive_int(payload, "uom_id"),
                 data_riferimento=data_riferimento,
-                ba_id=int(payload.get("ba_id") or 0),
-                utility_id=int(payload.get("utility_id") or 0),
+                ba_id=_V.require_positive_int(payload, "ba_id"),
+                utility_id=_V.require_positive_int(payload, "utility_id"),
                 emittente_soggetto_ruolo_id=emittente_sr,
-                classe_utenza_id=(
-                    int(payload["classe_utenza_id"])
-                    if payload.get("classe_utenza_id")
-                    else None
-                ),
+                classe_utenza_id=_V.optional_positive_int(payload, "classe_utenza_id"),
             )
             return result
 

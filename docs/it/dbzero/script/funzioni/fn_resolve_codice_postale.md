@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_codice_postale(p_stradario_id integer, p_comune_id in
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_resolve_codice_postale(p_stradario_id integer DEFAULT NULL::integer, p_comune_id integer DEFAULT NULL::integer)
  RETURNS integer
@@ -74,6 +76,8 @@ $function$
 COMMENT ON FUNCTION script.fn_resolve_codice_postale(p_stradario_id integer, p_comune_id integer)
 IS 'Risolve codice_postale_id: fallback stradario -> comune singolo CAP -> NULL. STABLE, PARALLEL SAFE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

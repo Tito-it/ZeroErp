@@ -47,13 +47,12 @@ export function getListaCatalogo(codice) {
   return api.get(`${BASE}/liste/${encodeURIComponent(codice)}/catalogo/`)
 }
 
-// Scopo: UPSERT preferenza utente. Idempotency-Key obbligatoria — il
-// composable la genera lato client per request.
-export function putListaPreferenza(codice, configurazione, idempotencyKey) {
+// Scopo: UPSERT preferenza utente. Idempotency-Key obbligatoria (modalita'
+// forte di `handle_post_json` lato BE): la mette l'interceptor di `core/api.js`.
+export function putListaPreferenza(codice, configurazione) {
   return api.put(
     `${BASE}/liste/${encodeURIComponent(codice)}/preferenza/`,
     configurazione,
-    { headers: { 'Idempotency-Key': idempotencyKey } },
   )
 }
 
@@ -69,12 +68,11 @@ export function deleteListaPreferenza(codice) {
 // non ha ancora una preferenza salvata (caso patologico).
 //
 // Idempotency-Key obbligatoria (handle_post_json strong mode lato BE):
-// il composable la genera per request via `generateIdempotencyKey`.
-export function ignorePresetUpdate(codice, idempotencyKey) {
+// l'`Idempotency-Key` la mette l'interceptor di `core/api.js` (§A5, 2026-10-20).
+export function ignorePresetUpdate(codice) {
   return api.post(
     `${BASE}/liste/${encodeURIComponent(codice)}/preferenza/ignore-preset-update/`,
     null,
-    { headers: { 'Idempotency-Key': idempotencyKey } },
   )
 }
 
@@ -102,11 +100,10 @@ export function getDashboardContatori(codice) {
 
 // Scopo: UPSERT preferenza dashboard. Idempotency-Key obbligatoria.
 // Payload: {widget: [{codice, ordine, visibile}], dimensione_max}.
-export function putDashboardPreferenza(codice, configurazione, idempotencyKey) {
+export function putDashboardPreferenza(codice, configurazione) {
   return api.put(
     `${BASE}/dashboard/${encodeURIComponent(codice)}/preferenza/`,
     configurazione,
-    { headers: { 'Idempotency-Key': idempotencyKey } },
   )
 }
 
@@ -116,10 +113,9 @@ export function deleteDashboardPreferenza(codice) {
 }
 
 // Scopo: Tombstone "ignora banner preset aggiornato" per la dashboard.
-export function ignoreDashboardPresetUpdate(codice, idempotencyKey) {
+export function ignoreDashboardPresetUpdate(codice) {
   return api.post(
     `${BASE}/dashboard/${encodeURIComponent(codice)}/preferenza/ignore-preset-update/`,
     null,
-    { headers: { 'Idempotency-Key': idempotencyKey } },
   )
 }

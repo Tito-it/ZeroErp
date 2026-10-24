@@ -167,6 +167,19 @@ _RICERCA_FLUSSI = RicercaFull("pratiche.flussi", {
 })
 
 
+
+# Scopo: i campi di una PATCH di pratica e il loro frammento di SET. La legge
+#        anche il service (`aggiorna_pratica`), che rifiuta con un 400 una
+#        chiave che non sta qui (brief-be-verifica-documentazione-api §B2).
+PRATICA_UPDATE_SET: dict[str, str] = {
+    "descrizione": "descrizione = %s",
+    "data_scadenza": "data_scadenza = %s",
+    "soggetto_id": "soggetto_id = %s",
+    "risorsa_umana_id": "risorsa_umana_id = %s",
+    "unita_organizzativa_id": "unita_organizzativa_id = %s",
+    "meta": "meta = %s::jsonb",
+}
+
 class PraticheRepository:
 
     # -- SQL comuni pratiche (JOIN display fields) --
@@ -265,6 +278,9 @@ class PraticheRepository:
             colonne=PRATICHE_ORDER_COLS,
             default=PRATICHE_ORDER_COLS["data_insert"],
             tiebreak="p.id",
+            # Il default e' una DATA: parte dalla piu' recente (regola di Tid
+            # 2026-09-02). Fino al 2026-10-20 mancava, e la lista partiva ASC.
+            default_desc=True,
         )
 
         conditions: list[str] = ["p.emittente_fiscale_id = %s"]
@@ -395,18 +411,9 @@ class PraticheRepository:
     # Scopo: Aggiorna i campi modificabili di una pratica esistente.
     def update_pratica(self, pratica_id: int, data: dict[str, Any]) -> None:
         # Costruzione SET dinamica con whitelist campi aggiornabili.
-        allowed_fields: dict[str, str] = {
-            "descrizione": "descrizione = %s",
-            "data_scadenza": "data_scadenza = %s",
-            "soggetto_id": "soggetto_id = %s",
-            "risorsa_umana_id": "risorsa_umana_id = %s",
-            "unita_organizzativa_id": "unita_organizzativa_id = %s",
-            "meta": "meta = %s::jsonb",
-        }
-
         set_parts: list[str] = []
         params: list[Any] = []
-        for field_name, sql_fragment in allowed_fields.items():
+        for field_name, sql_fragment in PRATICA_UPDATE_SET.items():
             if field_name in data:
                 set_parts.append(sql_fragment)
                 if field_name == "meta":
@@ -428,8 +435,14 @@ class PraticheRepository:
 
     # Scopo: Aggiorna lo stato di una pratica tramite codice_interno dello stato.
     # Risolve lo stato prima dell'UPDATE per evitare SET NULL su colonna NOT NULL.
-    def update_stato_pratica(self, pratica_id: int, stato_codice_interno: str) -> None:
-        stato_id = self.resolve_stato_pratica(stato_codice_interno)
+    # `codice_errore`/`campo`: quando lo stato l'ha scelto il client (vedi il BB).
+    def update_stato_pratica(
+        self, pratica_id: int, stato_codice_interno: str,
+        *, codice_errore: str = "E_CONFIG_MANCANTE", campo: str | None = None,
+    ) -> None:
+        stato_id = self.resolve_stato_pratica(
+            stato_codice_interno, codice_errore=codice_errore, campo=campo,
+        )
         sql = """
             UPDATE pratiche.pratiche
             SET stato_id = %s
@@ -832,8 +845,11 @@ class PraticheRepository:
     def update_stato_flusso(
         self, flusso_id: int, stato_codice_interno: str,
         esito: str | None = None, note_esito: str | None = None,
+        *, codice_errore: str = "E_CONFIG_MANCANTE", campo: str | None = None,
     ) -> None:
-        stato_id = self.resolve_stato_flusso(stato_codice_interno)
+        stato_id = self.resolve_stato_flusso(
+            stato_codice_interno, codice_errore=codice_errore, campo=campo,
+        )
         sql = """
             UPDATE pratiche.flussi
             SET stato_id = %s,
@@ -1192,6 +1208,8 @@ class PraticheRepository:
             not_found_message=(
                 f"Tipo nota '{tipo_nota_codice}' non trovato o non attivo"
             ),
+            # Il codice l'ha scelto il client: e' un valore sbagliato, 400.
+            codice_errore="E_PRATICA_VALIDATION", campo="tipo_nota_codice",
         )
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1274,6 +1292,8 @@ class PraticheRepository:
             not_found_message=(
                 f"Tipo allegato '{tipo_allegato_codice}' non trovato o non attivo"
             ),
+            # Il codice l'ha scelto il client: e' un valore sbagliato, 400.
+            codice_errore="E_PRATICA_VALIDATION", campo="tipo_allegato_codice",
         )
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1348,7 +1368,11 @@ class PraticheRepository:
 
     # Scopo: Risolve l'ID di uno stato da codice_interno su una tabella config.
     # Metodo generico usato dai wrapper resolve_stato_pratica / resolve_stato_flusso.
-    def _resolve_stato(self, tabella: str, codice_interno: str, etichetta: str) -> int:
+    # `codice_errore`/`campo`: per un codice scelto dal CLIENT (vedi il BB).
+    def _resolve_stato(
+        self, tabella: str, codice_interno: str, etichetta: str,
+        *, codice_errore: str = "E_CONFIG_MANCANTE", campo: str | None = None,
+    ) -> int:
         return resolve_config_id_by_codice_interno(
             tabella,
             codice_interno,
@@ -1356,15 +1380,29 @@ class PraticheRepository:
             not_found_message=(
                 f"Stato {etichetta} '{codice_interno}' non trovato in {tabella}"
             ),
+            codice_errore=codice_errore,
+            campo=campo,
         )
 
     # Scopo: Risolve l'ID di uno stato pratica da codice_interno.
-    def resolve_stato_pratica(self, codice_interno: str) -> int:
-        return self._resolve_stato("config.stati_pratiche", codice_interno, "pratica")
+    def resolve_stato_pratica(
+        self, codice_interno: str,
+        *, codice_errore: str = "E_CONFIG_MANCANTE", campo: str | None = None,
+    ) -> int:
+        return self._resolve_stato(
+            "config.stati_pratiche", codice_interno, "pratica",
+            codice_errore=codice_errore, campo=campo,
+        )
 
     # Scopo: Risolve l'ID di uno stato flusso da codice_interno.
-    def resolve_stato_flusso(self, codice_interno: str) -> int:
-        return self._resolve_stato("config.stati_flussi_pratiche", codice_interno, "flusso")
+    def resolve_stato_flusso(
+        self, codice_interno: str,
+        *, codice_errore: str = "E_CONFIG_MANCANTE", campo: str | None = None,
+    ) -> int:
+        return self._resolve_stato(
+            "config.stati_flussi_pratiche", codice_interno, "flusso",
+            codice_errore=codice_errore, campo=campo,
+        )
 
     # Scopo: Risolve l'ID di una priorita' pratica da codice_interno
     #        (default NORMALE in crea_pratica — mai id hardcodato).
@@ -1561,9 +1599,17 @@ class PraticheRepository:
     # -- VERIFICA STATO BA SOGGETTO (cross-schema) ----------------------
 
     # Scopo: Verifica se il soggetto ha un billing_account attivo per l'emittente.
-    # Ritorna True se esiste un BA con data_attivazione NOT NULL e data_chiusura IS NULL.
+    # Ritorna True se esiste un cliente il cui periodo contiene il giorno operativo.
     # Usato dal guard pre/post-attivazione in crea_pratica.
     # La query attraversa: clienti → billing_account → istanze_utilities.
+    # ⭐ «Attivo» e' il PERIODO (C-8 di brief-db-cliente-manuale-uno-per-soggetto-
+    #    e-utility, 2026-10-14), la misura del modello: la stessa di
+    #    `ex_clienti_no_overlap_stesso_pdp`, `anagrafiche.fn_check_pdp_occupato`
+    #    e `fn_clienti_stessa_chiave`. Il periodo lo deriva il DB
+    #    (`trgfn_clienti_set_periodo`): AN e PR non ne hanno, un sospeso occupa.
+    #    ⛔ Fino al 2026-10-15 si leggeva «`data_attivazione NOT NULL AND
+    #    data_chiusura IS NULL`»: una chiusura con data futura valeva «non
+    #    attivo» gia' oggi, e un'attivazione con data futura valeva «attivo».
     def ha_ba_attivo(self, soggetto_id: str, emittente_fiscale_id: int) -> bool:
         # Scope emittente via fn ufficiale sul BA: l'istanza NON ha un
         # emittente (la relazione vive su billing_account -> efba, fallback
@@ -1577,8 +1623,7 @@ class PraticheRepository:
                 JOIN anagrafiche.istanze_utilities iu ON iu.id = cl.istanza_utility_id
                 WHERE iu.soggetto_id = %s::uuid
                   AND anagrafiche.fn_get_emittente_fiscale_pk(ba.id) = %s
-                  AND cl.data_attivazione IS NOT NULL
-                  AND cl.data_chiusura IS NULL
+                  AND cl.periodo @> script.fn_data_operativa()
             )
         """
         with connection.cursor() as cursor:

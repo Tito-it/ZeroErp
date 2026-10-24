@@ -5,6 +5,22 @@
 --       (chiave, persistenza del criterio, filtri su pull e select)
 -- Brief: brief-db-emissione-fattura-per-documento-sorgente PARTE A (step A10)
 -- Changeset coperti: 20260727-10..15
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
+--   preventivo nasceva gia' ACCETTATO).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): il mondo si
+--   COSTRUISCE (azienda col suo operatore, contesto su di lui, cliente, articolo
+--   servizio) invece di pescare «il primo BA / articolo / emittente per id»; il
+--   contratto del gruppo C nasce DRAFT da dbops.fn_pgtap_crea_contratto.
+--   L'articolo-onere resta del catalogo seminato (uno per causale, UNIQUE): si
+--   legge per la causale SPESE_TRASFERTA, non «il primo per id».
+-- rev 2026-10-24 (brief-modello-documento-vendita R-2/R-9): azienda,
+--   operatore, contesto e cliente nascono da dbops.fn_pgtap_crea_mondo_cliente;
+--   il contratto del gruppo C nasce DRAFT col periodo 2080 dal builder.
+-- rev 2026-10-24 (brief-modello-documento-vendita §4-octies): le 4 righe
+--   documentali le scrive dbops.fn_pgtap_crea_commessa_attivita con la
+--   sorgente (chiave dal dominio, script.fn_segment_key) invece della madre
+--   chiamata a mano con la chiave inventata SEG-GR-*.
 -- ------------------------------------------------------------
 -- Indice test (1..17):
 --  1) fn_build_gruppo_fatturabile_key: forma documento '<codice_interno>:<uid>'
@@ -39,10 +55,14 @@
 --      gruppo M  = onere         (1 riga)       -> 'MAN:<commessa_id>'
 --    Il preventivo e' un documento vero perche' serve come ROOT source
 --    (fn_emit la pretende) e il guard polimorfo ne verifica l'esistenza.
---    Il gruppo C non ha bisogno di un contratto reale: commesse_attivita non
---    ha guard polimorfo, e sorgente_tipo_id/sorgente_uid sono colonne libere.
+--    ⛔ rev 2026-10-13: anche il gruppo C e' un contratto VERO (testata in
+--    bozza, stesso billing account). Prima bastava un uuid inventato, perche'
+--    commesse_attivita non aveva guard polimorfo; dal 20261012-46 la madre
+--    fn_upsert_commessa_attivita aggancia il documento alla commessa con
+--    fn_link_commessa_sorgente, che ne pretende l'esistenza (E_SORG_*).
 --    ⚠️ sorgente_uid porta l'UID anche per CONTRATTO (key_selector='id'): e'
---    la convenzione del push, decisione D-9. Vedi guida sorgente-polimorfa §4a.
+--    la convenzione del push, decisione D-9 (il link lo traduce in id).
+--    Vedi guida sorgente-polimorfa §4a.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -60,60 +80,84 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⭐ rev 2026-10-24 (Q-4): l'azienda e il suo operatore si costruiscono PRIMA
+--   del contesto, e il contesto si apre su di lui: il cliente che nasce dopo
+--   il trigger z90 lo lega a lei.
+-- rev 2026-10-24 (R-9): il mondo del builder fa i tre passi nell'ordine giusto.
+CREATE TEMP TABLE tmp_gr_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('gruppi fatturabili');
+
+-- Il contesto l'ha gia' aperto il mondo sul suo operatore: la riga lo rende
+-- esplicito (ed e' cio' che legge scripts/guardrail_pgtap_preambolo.py).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_gr_mondo)); END $ctx$;
 
 SELECT plan(17);
 
+CREATE TEMP TABLE tmp_gr_cli AS
+SELECT billing_account_id, istanza_utility_id, utility_id FROM tmp_gr_mondo;
+
 -- ============================================================
--- Riferimenti minimi (dati esistenti)
+-- Riferimenti minimi (il mondo costruito sopra, e il catalogo di sistema)
 -- ============================================================
 CREATE TEMP TABLE tmp_gr_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                         AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                         AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                         AS istanza_utility_id,
+  (SELECT billing_account_id FROM tmp_gr_cli)       AS billing_account_id,
+  (SELECT utility_id FROM tmp_gr_cli)               AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_gr_cli)       AS istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo('PGT-GR-SERV', false,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'SERVIZIO_UNA_TANTUM')) AS articolo_id,
   (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-      AND a.causale_onere_id IS NULL
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1) AS articolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.causale_onere_id IS NOT NULL
-    ORDER BY a.id LIMIT 1)                          AS articolo_onere_id,
-  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
+     JOIN config.causali_onere co ON co.id = a.causale_onere_id
+    WHERE co.codice_interno = 'SPESE_TRASFERTA' AND a.attivo IS TRUE) AS articolo_onere_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  (SELECT emittente_fiscale_id FROM tmp_gr_mondo) AS emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_prev_accettato_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t
-    WHERE t.attivo IS TRUE
-      AND EXISTS (SELECT 1 FROM vendite.tipi_doc_fiscale_registri m WHERE m.tipo_doc_fiscale_id = t.id)
-    ORDER BY t.id LIMIT 1)                          AS tipo_doc_fiscale_id,
+  -- rev 2026-10-24 (§4-octies): il tipo del perimetro e' quello che la
+  --   madre da' alle righe del preventivo; si legge dalle righe scritte,
+  --   sotto (prima «il primo tipo con un registro», passato a mano).
+  NULL::bigint                                      AS tipo_doc_fiscale_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO' LIMIT 1)  AS src_preventivo_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'CONTRATTO' LIMIT 1)   AS src_contratto_id;
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'CONTRATTO' LIMIT 1)   AS src_contratto_id,
+  (SELECT s.id FROM config.stati_doc_contratti s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1)                AS stato_contr_draft_id;
 
 -- Preventivo REALE: serve come ROOT source della commessa.
+-- ⚠️ rev 2026-10-24: nasce in bozza (lo stato non si scrive: lo mette il
+--   trigger della nascita) e va ad ACCETTATO con dbops.fn_pgtap_porta_a_stato,
+--   sotto i guard veri: senza righe non hanno motivi da sollevare.
 CREATE TEMP TABLE tmp_gr_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-GRUPPI', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_prev_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope', 'pgtap_gruppi'), r.emittente_fiscale_id
   FROM tmp_gr_refs r
   RETURNING id, uid)
 SELECT * FROM ins;
+
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_gr_prev), 'ACCETTATO');
+END $porta$;
+
+-- Contratto VERO per il gruppo C (rev 2026-10-13): basta la testata in bozza.
+--   La madre lo aggancia alla commessa (20261012-46) e il link ne verifica
+--   l'esistenza: un uuid inventato non passa piu'.
+-- rev 2026-10-24 (Q-2): nasce dal builder, dalla madre di produzione, sul
+--   cliente del test.
+-- rev 2026-10-24 (R-2): il periodo e la data 2080 li prende dal builder.
+CREATE TEMP TABLE tmp_gr_k AS
+SELECT * FROM dbops.fn_pgtap_crea_contratto(
+                 'gruppi fatturabili', 'DRAFT', (SELECT billing_account_id FROM tmp_gr_refs), NULL,
+                 DATE '2080-01-01', DATE '2080-12-31', DATE '2080-01-01');
+
+CREATE TEMP TABLE tmp_gr_contr AS
+SELECT k.id, k.uid FROM vendite.contratti k WHERE k.id = (SELECT contratto_id FROM tmp_gr_k);
 
 -- Commessa dedicata (force_new: non riusare commesse di altri test).
 CREATE TEMP TABLE tmp_gr_comm AS
@@ -149,7 +193,7 @@ SELECT
     (SELECT commessa_id FROM tmp_gr_comm))                       AS k_prev,
   vendite.fn_build_gruppo_fatturabile_key(
     (SELECT src_contratto_id FROM tmp_gr_refs),
-    'c0000000-0000-4000-8000-000000000001',
+    (SELECT uid::text FROM tmp_gr_contr),
     (SELECT commessa_id FROM tmp_gr_comm))                       AS k_contr,
   vendite.fn_build_gruppo_fatturabile_key(
     NULL, NULL, (SELECT commessa_id FROM tmp_gr_comm))           AS k_man;
@@ -157,50 +201,50 @@ SELECT
 -- ------------------------------------------------------------
 -- Helper fixture: 4 righe documentali (2 preventivo + 2 contratto)
 -- ------------------------------------------------------------
+-- rev 2026-10-24 (§4-octies): le scrive il builder, la chiave la compone il
+--   dominio (<sorgente>:<uid>:R:<n>). Il numero di riga e' un ordinale del
+--   test (le testate non hanno righe): basta a tenere distinte le chiavi.
+--   Tipo documento fiscale e valuta non si passano: li deriva la madre
+--   (il tipo dalla sorgente, come prima con il NULL del catalogo).
 CREATE TEMP TABLE tmp_gr_righe AS
 SELECT r.attivita_id, x.g AS gruppo
 FROM (
   VALUES ('P', 1), ('P', 2), ('C', 1), ('C', 2)
 ) AS x(g, n)
-CROSS JOIN LATERAL (
-  SELECT * FROM vendite.fn_upsert_commessa_attivita(
-    p_commessa_id => (SELECT commessa_id FROM tmp_gr_comm),
-    p_segment_key => ('SEG-GR-' || x.g || '-' || x.n)::varchar,
-    p_articolo_id => (SELECT articolo_id FROM tmp_gr_refs),
-    p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_gr_refs),
-    p_data_attivita => DATE '2080-01-15',
-    p_uom_id => (SELECT uom_id FROM tmp_gr_refs),
-    p_quantita => 1.000000,
-    p_competenza_mese => DATE '2080-01-01',
-    p_competenza_dal => DATE '2080-01-01',
-    p_competenza_al => DATE '2080-01-31',
-    p_prezzo_snapshot => 100.0000000000,
-    p_prezzo_base_snapshot => NULL,
-    p_origine_prezzo => NULL,
-    p_tipo_variazione_applicata => NULL,
-    p_valore_variazione_applicata => NULL,
-    p_promo_id => NULL,
-    p_contratto_id => NULL,
-    p_categoria_cliente_id_snapshot => NULL,
-    p_classe_utenza_id_snapshot => NULL,
-    p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_gr_refs),
-    p_valuta_id => (SELECT valuta_id FROM tmp_gr_refs),
-    p_stato_approvazione => 'APPROVATA',
-    p_stato_emissione => 'NON_EMESSA',
-    p_sorgente_tipo_id => CASE WHEN x.g = 'P'
-                               THEN (SELECT src_preventivo_id FROM tmp_gr_refs)
-                               ELSE (SELECT src_contratto_id FROM tmp_gr_refs) END,
+CROSS JOIN LATERAL dbops.fn_pgtap_crea_commessa_attivita(
+    p_commessa_id      => (SELECT commessa_id FROM tmp_gr_comm),
+    p_prezzo_snapshot  => 100.0000000000,
+    p_articolo_id      => (SELECT articolo_id FROM tmp_gr_refs),
+    p_sorgente_codice  => CASE WHEN x.g = 'P' THEN 'PREVENTIVO' ELSE 'CONTRATTO' END,
     -- ⚠️ UID anche per CONTRATTO (key_selector='id'): e' la convenzione del
     -- push, cioe' cio' che commesse_attivita contiene davvero (D-9).
-    p_sorgente_uid => CASE WHEN x.g = 'P'
-                           THEN (SELECT uid::text FROM tmp_gr_prev)
-                           ELSE 'c0000000-0000-4000-8000-000000000001' END,
-    p_tipo_movimento => 'NORMALE',
-    p_tipo_consumo => 'CONGUAGLIO',
-    p_meta => jsonb_build_object('test_scope', 'pgtap_gruppi', 'gruppo', x.g)
-  )
-) r;
+    p_sorgente_uid     => CASE WHEN x.g = 'P'
+                               THEN (SELECT uid::text FROM tmp_gr_prev)
+                               ELSE (SELECT uid::text FROM tmp_gr_contr) END,
+    p_sorgente_riga_id => x.n,
+    p_quantita         => 1.000000,
+    p_competenza_dal   => DATE '2080-01-01',
+    p_competenza_al    => DATE '2080-01-31') r;
 
+-- Le righe scritte davvero (niente verde per sottrazione): un controllo,
+-- non un test, per non cambiare il piano.
+DO $chk$ BEGIN
+  IF (SELECT count(*) FROM vendite.commesse_attivita ca
+        JOIN tmp_gr_righe t ON t.attivita_id = ca.id
+       WHERE ca.stato_approvazione = 'APPROVATA' AND ca.stato_emissione = 'NON_EMESSA'
+         AND ca.segment_key LIKE CASE t.gruppo WHEN 'P' THEN 'PREVENTIVO:%:R:_'
+                                               ELSE 'CONTRATTO:%:R:_' END) <> 4 THEN
+    RAISE EXCEPTION 'fixture: attese 4 righe documentali dal builder';
+  END IF;
+END $chk$;
+
+-- Il tipo documento fiscale del perimetro: quello delle righe del preventivo
+-- (lo deriva la madre dalla sorgente). L'onere e le letture 11, 12 e 16 lo
+-- usano: il test prova il filtro per gruppo dentro un perimetro solo.
+UPDATE tmp_gr_refs SET tipo_doc_fiscale_id = (
+  SELECT DISTINCT ca.tipo_doc_fiscale_id FROM vendite.commesse_attivita ca
+    JOIN tmp_gr_righe t ON t.attivita_id = ca.id
+   WHERE t.gruppo = 'P');
 -- Riga ONERE dalla porta manuale: sourceless per costruzione.
 CREATE TEMP TABLE tmp_gr_onere AS
 SELECT vendite.fn_aggiungi_onere_commessa(

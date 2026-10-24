@@ -41,6 +41,11 @@ const form = ref({})
 // chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 const detail = ref(null)
+// ⭐ Il flag non si spegne da qui se il listino ha storia (`ha_storia` lo dice
+//    il DB, vendite.fn_listino_ha_storia): si spegne con la fine validita' della
+//    versione. Il guard rifiuta solo lo spegnimento (true -> false): un listino
+//    con storia gia' spento si riaccende ancora dal toggle.
+const attivoBloccato = computed(() => !!(detail.value?.ha_storia && detail.value?.attivo))
 
 // Flag di soppressione reset tipologia durante il caricamento iniziale in edit.
 // Evita che il watch su form.value.utility_id azzeri la tipologia che loadDetail
@@ -135,8 +140,9 @@ async function handleSave() {
       descrizione: f.descrizione?.trim() || '',
       utility_id: f.utility_id,
       tipologia_id: f.tipologia_id,
-      attivo: f.attivo,
     }
+    // Col flag bloccato non lo si manda: non lo si puo' cambiare da qui.
+    if (!attivoBloccato.value) payload.attivo = f.attivo
     const result = await execute(
       () => store.update(props.listinoId, payload),
       { successMessage: t('vendite.listini.listino_salvato') }
@@ -225,12 +231,15 @@ function chiudiDopoSalvataggio() {
       </div>
     </div>
 
+    <!-- ⭐ Un listino con storia si spegne con la fine validità della versione,
+         non col flag (`attivoBloccato`). -->
     <div v-if="isEdit" class="form-grid">
       <div class="form-field">
         <label>{{ t('indirizzi.campo_attivo') }}</label>
-        <ToggleSwitch v-model="form.attivo"
+        <ToggleSwitch v-if="!attivoBloccato" v-model="form.attivo"
           :invalid="campiErrati.includes('attivo')"
         />
+        <small v-else class="app-field-hint">{{ t('vendite.listini.attivo_con_storia') }}</small>
       </div>
     </div>
   </AppDrawer>

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_albero_ba_gestore_globale()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_albero_ba_gestore_globale()
  RETURNS void
@@ -95,6 +97,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_guard_albero_ba_gestore_globale()
 IS 'Guard fail-fast per lo spostamento del gestore globale (is_default), l''unica operazione del cantiere con raggio N: cambia in blocco l''emittente di tutti i BA senza mapping specifico. Cerca la prima coppia (figlio, padre), con almeno uno dei due senza mapping, le cui aziende PER L''INSTALLAZIONE (script.fn_get_ba_emittente_sr_id_installazione: mapping, altrimenti la predefinita) sono diverse, e solleva E_ALBERO_EMITTENTE_MISTO con gli stessi valori di fn_guard_albero_ba_emittente — se entrambi i lati sono non mappati si spostano insieme e l''albero resta omogeneo (decisione Q3: la condizione e'' la COPPIA MISTA). SECURITY DEFINER: legge billing_account, che ha la RLS. Brief P-1 §11.3. ⚠️ rev 2026-08-26: dal 20260826-48 quello stesso movimento ha un SECONDO cancello, anagrafiche.fn_guard_ba_gestore_globale_storia, che lo vieta se anche UN SOLO billing account non mappato ha gia'' fatture o commesse — cioe'', su un''installazione che ha gia'' fatturato, quasi sempre. Spostare il gestore globale li'' non e'' una configurazione da rivedere: e'' una riscrittura retroattiva della storia. ⭐ I due guard restano entrambi: questo chiede «l''albero puo'' diventare misto?», l''altro «c''e'' storia da proteggere?». Brief: brief-db-billing-account-cambio-emittente. rev 2026-10-10 (20261010-59, D-5): fino a quel giorno delegava al guard per BA, che risolve PER CHI AGISCE; spostata da un utente con un''azienda, la predefinita passava sopra un albero misto. search_path con pg_temp (D6-bis). Brief: brief-db-istanza-nasce-col-ba-residui (D-5).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

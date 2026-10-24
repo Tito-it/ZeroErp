@@ -15,7 +15,7 @@ Vista di lavoro correlata:
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21 — funzione rev 2026-08-04)
+(rev 2026-10-24 — funzione rev 2026-10-24, R-1)
 
 **Contiene la regola** dell'invariante «lo stato fiscale delle fatture coincide con quello del
 lotto che le contiene». Il dispatcher `trgfn_lotto_fatture_guard_stato_coerente` risolve quali
@@ -26,11 +26,26 @@ Riceve un `lotto_id`, e o passa in silenzio o solleva.
 
 ---
 
-### Le fatture `critical` sono escluse
+### La sede della regola è la vista
+
+Dal 2026-10-24 la funzione **legge** le fatture incoerenti da
+[vendite.vw_lotti_fatture_incoerenti](/dbzero/vendite/manual/vw_lotti_fatture_incoerenti) invece
+di riscrivere il filtro: prima la vista e la funzione ripetevano lo stesso predicato, e
+cambiandone uno solo avrebbero detto cose diverse.
+
+### Le fatture `critical` restano indietro, non vanno avanti
 
 Una fattura marcata critica è un'anomalia **già nota e già segnalata**: il suo stato può
-legittimamente divergere da quello del lotto, perché è stata messa da parte. È l'unica
-eccezione, ed è viva.
+legittimamente restare **indietro** rispetto al lotto, perché è stata messa da parte. È
+l'unica eccezione, ed è viva.
+
+⛔ Ma non vale per una fattura critica **già congelata** (definitiva o oltre, non annullata)
+dentro un lotto che non è congelato: un documento definitivo non convive con uno in errore
+nello stesso lotto (R-1 di Tid, 2026-10-24). Anche questo si legge dal vocabolario degli
+stati (`congela_fiscale`, `is_abortito`), non dall'ordine degli stati, che non è un asse del
+ciclo di vita. L'altra metà della regola, il lotto fermo che non diventa definitivo, sta nel
+controllo di transizione del lotto
+([vendite.trgfn_fatturazione_lotti_guard_stato](/dbzero/vendite/manual/trgfn_fatturazione_lotti_guard_stato)).
 
 ⚠️ `COALESCE(f.critical, FALSE)`: una `critical` nulla vale «non critica» e la fattura
 **entra** nel controllo. Nel dubbio si presidia.

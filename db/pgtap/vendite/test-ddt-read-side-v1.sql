@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (in bozza); resta scritta a mano l'emissione del test 11, che e' l'asserzione.
 -- pgTAP test per Zero ERP
 -- Test: read-side DDT (brief §13)
 --   vendite.vw_ddt_lista + script.fn_available_actions_ddt + seed lista ui
@@ -72,32 +73,29 @@ SELECT cmp_ok(
 -- ============================================================
 -- Riferimenti + fixture ordine (per generare un DDT reale)
 -- ============================================================
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti). Prima BA, ruolo, emittente e articolo si pescavano col
+--   LIMIT 1: su zeroerp_ci erano NULL e l'ordine moriva sul NOT NULL di
+--   soggetto_ruolo_id. Ora un'azienda nuova col suo operatore (contesto aperto
+--   su di lui), il cliente legato a lei (dbops.fn_pgtap_crea_mondo_cliente) e un
+--   articolo merce non gestito (il test non misura il magazzino). Dal DB si
+--   legge solo il catalogo di seed. Modello: test-ddt-magazzino-testata-v1.
+CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _az)); END $ctx$;
+CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP ddt read-side');
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                       AS billing_account_id,
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito,FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1) AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
+  m.billing_account_id,
+  m.cliente_soggetto_ruolo_id AS soggetto_ruolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-DDT-READSIDE', false) AS articolo_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  m.emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno='CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS stato_ord_conf_id,
-  (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE LIMIT 1) AS stato_ord_draft_id,
+    WHERE s.codice_interno='CONFERMATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ddt s
-    WHERE s.codice_interno='EMESSO' AND s.attivo IS TRUE LIMIT 1) AS stato_ddt_emesso_id,
-  (SELECT ct.id FROM config.causali_trasporto ct
-    WHERE ct.codice='VENDITA' LIMIT 1) AS causale_vendita_id;
+    WHERE s.codice_interno='EMESSO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_ddt_emesso_id
+FROM _m m;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND soggetto_ruolo_id IS NOT NULL
@@ -107,35 +105,21 @@ SELECT ok(
   '5) riferimenti minimi disponibili'
 );
 
-CREATE TEMP TABLE tmp_ord AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
-         r.valuta_id, DATE '2026-07-01', 'SPEDITO', r.emittente_fiscale_id, false,
-         jsonb_build_object('test_scope','pgtap_ddt_readside')
-  FROM tmp_refs r
-  RETURNING id, uid, numero)
-SELECT * FROM ins;
-
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'Riga read-side',
-       10.000000, 10.000000, 25.000000, r.iva_id, true, false,
-       jsonb_build_object('test_scope','pgtap_ddt_readside')
-FROM tmp_ord o, tmp_refs r;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
--- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
--- righe non si scrivono piu' (20261008-90).
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord), 'CONFERMATO');
-END $x$;
-
+-- La bolla in bozza dal builder: ordine del cliente del file (trigger
+-- SPEDITO, una riga di 10 a 25), evaso tutto. Causale VENDITA e CON li scrive
+-- gia' il builder: in bozza la lista non li guarda, e sono cio' che
+-- l'emissione del test 11 pretende (il prezzo 25 lo eredita via fulfillment).
 CREATE TEMP TABLE tmp_ddt AS
-SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord)) AS ddt_id;
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgtap_ddt_readside', 'DRAFT',
+         p_billing_account_id   => (SELECT billing_account_id FROM tmp_refs),
+         p_articolo_id          => (SELECT articolo_id FROM tmp_refs),
+         p_fatturazione_trigger => 'SPEDITO');
+
+-- Il numero dell'ordine, per il test 8: letto in un'istruzione a parte.
+CREATE TEMP TABLE tmp_ord AS
+SELECT o.numero
+  FROM vendite.ordini o
+ WHERE o.id = (SELECT ordine_id FROM tmp_ddt);
 
 -- ============================================================
 -- 6-8) vw_ddt_lista
@@ -178,22 +162,8 @@ SELECT ok(
 -- ============================================================
 -- 11) Emissione DRAFT->EMESSO
 -- ============================================================
--- Setup guard indirizzi obbligatori (DDT): il CON e' obbligatorio
--- all'emissione (trg_ddt_a10_guard_indirizzi_obbligatori_upd).
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-SELECT (SELECT ddt_id FROM tmp_ddt),
-       (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON'),
-       '{"display":"CON test"}'::jsonb
-ON CONFLICT DO NOTHING;
-
--- Setup guard causale emissione (dal 2026-07-18, step 5b / DL-28):
--- la causale di trasporto e' obbligatoria all'emissione e, se fatturabile
--- (VENDITA), ogni riga attiva deve avere un prezzo risolvibile
--- (trg_ddt_a10_guard_causale_emissione_upd). Qui la riga d'ordine ha
--- prezzo 25, quindi il DDT lo eredita via fulfillment.
-UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs)
- WHERE id=(SELECT ddt_id FROM tmp_ddt);
-
+-- La transizione e' il caso: resta scritta qui, sotto i guard veri
+-- (causale e CON dal builder).
 SELECT lives_ok(
   format($q$UPDATE vendite.ddt SET stato_doc_ddt_id=
              (SELECT stato_ddt_emesso_id FROM tmp_refs) WHERE id=%s$q$,

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_notify_cambio_reparto(p_risorsa_umana_id bigint, p_old_uo_id 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_notify_cambio_reparto(p_risorsa_umana_id bigint, p_old_uo_id integer, p_new_uo_id integer)
  RETURNS void
@@ -75,6 +77,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_notify_cambio_reparto(p_risorsa_umana_id bigint, p_old_uo_id integer, p_new_uo_id integer)
 IS 'Emette NOTIFY cambio_reparto con payload JSON (risorsa_umana_id, old_uo_id, new_uo_id, auth_user_id). Usata dal trigger z90 su risorse_umane per invalidazione cache permessi via LISTEN/NOTIFY. L''auth_user si risolve da identita_digitali con script.fn_get_auth_user_id_for_risorsa_umana (dal 12-09-2026: la vista risorse_umane_auth_user e'' stata ritirata).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

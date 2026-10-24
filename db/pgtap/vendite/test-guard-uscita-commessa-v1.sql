@@ -57,7 +57,7 @@
 --  13   [C] ->ANNULLATA con righe emesse rifiutata
 --  14a  [C] da IN_ESECUZIONE: annulla e chiudi spente, rendi_pronta accesa
 --  14   [C] SKIP dichiarato: lo scenario «tutte spente» e' uscito dal modello (D-5)
---  15   [D] ->ANNULLATA senza righe emesse ammessa
+--  15   [D] ->ANNULLATA senza righe emesse ammessa (dal verbo con conferma, rev 2026-10-12)
 --  16   fn_get_commessa_stato espone commessa_codice e cliente_display
 -- ------------------------------------------------------------
 
@@ -164,6 +164,9 @@ RETURNS vendite.commesse_attivita.id%TYPE LANGUAGE sql AS $fx$
   SELECT r.attivita_id
     FROM vendite.fn_upsert_commessa_attivita(
       p_commessa_id                   => p_commessa_id,
+      -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+      p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+      p_sorgente_uid => (p_commessa_id)::text,
       p_segment_key                   => p_seg,
       p_articolo_id                   => (SELECT articolo_id FROM tmp_refs_guc),
       p_istanza_utility_id            => (SELECT istanza_utility_id FROM tmp_refs_guc),
@@ -186,7 +189,6 @@ RETURNS vendite.commesse_attivita.id%TYPE LANGUAGE sql AS $fx$
       p_stato_approvazione            => p_appr,
       p_stato_emissione               => p_emis,
       p_tipo_movimento                => 'NORMALE',
-      p_tipo_consumo                  => 'CONGUAGLIO',
       p_meta                          => jsonb_build_object('case', 'GUC')
     ) r;
 $fx$;
@@ -411,10 +413,14 @@ BEGIN
 END
 $setup$;
 
+-- ⭐ rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte, D-1/D-2): la riga
+--   NON_EMESSA e' un legame della commessa, e l'annullo passa dal verbo con la
+--   conferma (dal verbo di stato l'avviso E_DOC_ANNULLO_CON_LEGAMI lo
+--   rifiuterebbe). Il guard di uscita qui deve lasciar passare: nessuna riga e'
+--   emessa. Si dichiara il legame visto, 1.
 SELECT lives_ok(
-  $$ SELECT * FROM vendite.fn_cambia_stato_commessa(
-       (SELECT commessa_id FROM tmp_d), 'ANNULLATA') $$,
-  '15) ->ANNULLATA senza righe emesse ammessa');
+  $$ SELECT vendite.fn_annulla_commessa((SELECT commessa_id FROM tmp_d), 1) $$,
+  '15) ->ANNULLATA senza righe emesse ammessa (dal verbo, confermando la riga non emessa)');
 
 -- ============================================================
 -- [16] Testata identificabile (D6)

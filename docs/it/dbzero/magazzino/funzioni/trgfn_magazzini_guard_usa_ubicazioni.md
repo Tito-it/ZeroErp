@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_magazzini_guard_usa_ubicazioni()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION magazzino.trgfn_magazzini_guard_usa_ubicazioni()
  RETURNS trigger
@@ -54,6 +56,8 @@ $function$
 COMMENT ON FUNCTION magazzino.trgfn_magazzini_guard_usa_ubicazioni()
 IS 'Guard di D-L2-m: magazzini.usa_ubicazioni si cambia SOLO a registro vuoto. Se esiste un movimento del magazzino rifiuta con E_MAG_MAGAZZINO_CON_GIACENZA (CONFLITTO_STATO, campo usa_ubicazioni, il codice del magazzino nella frase): la grana del registro — ogni movimento con un''ubicazione, o nessuno — si decide prima del primo carico; con merce dentro la strada e'' un magazzino nuovo e un trasferimento. Contano i movimenti (anche a saldo zero le righe hanno la grana vecchia), non gli attesi. Riscrivere lo stesso valore non e'' un cambio. INVOKER: legge movimenti sotto la RLS del magazzino, che e'' lo stesso perimetro della riga scritta. Montata BEFORE UPDATE OF usa_ubicazioni. Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-m).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

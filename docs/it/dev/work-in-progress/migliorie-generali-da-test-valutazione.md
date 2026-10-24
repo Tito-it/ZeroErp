@@ -1,5 +1,23 @@
 # Migliorie generali da test valutazione
 
+## ⏭️ Chi riparte — aggiornato al 2026-10-23
+
+**Riparte: Tid**, con le decisioni che tengono ferme le voci aperte di §3. Nessuna voce è in
+lavorazione: tutte aspettano una decisione o un via.
+
+| # | Chi | Che cosa | Dove | Aspetta |
+| --- | --- | --- | --- | --- |
+| 1 | Tid | D18: le cinque decisioni della catena delle istanze | `brief-db-catena-istanze-pdp.md` §6 | — |
+| 2 | Tid | D31: G-1…G-4 (canone, orario, consumo del contratto in commessa) | `brief-db-contratto-righe-periodiche-in-commessa.md` §4 | — |
+| 3 | Tid | D32: N-1…N-3 (un documento nasce nel suo stato iniziale), confluito il 2026-10-24 nel modello del documento di vendita | `brief-modello-documento-vendita.md` §4-bis | — |
+| 4 | Tid | D17 Q-2: riprendere o no le GUC di bypass (rimandata il 2026-10-04) | §3 D17 | — |
+| 5 | Tid | D7: i test legati a dati di macchina; il ramo «ultimo SUPER_ADMIN» | §3 D7 | — |
+| 6 | team DB | D24 (la vista del presidio C2 e i `tgargs`), D6-bis, D11-bis, D16: lavori senza decisioni aperte | §3 | il via di Tid |
+| 7 | Tid | una corsa CI su `Tito-dev` con `pgtap-baseline-ci-rientrati.sh` lo stesso giorno: il registro della CI è fermo | §3 D7 | — |
+
+Decisioni aperte di Tid: righe 1-5. Lavoro da committare: il riallineamento del 2026-10-23 di questo
+documento.
+
 > Due valutazioni dello **strato DB**, a sette mesi di distanza.
 >
 > * **febbraio 2026** — voto sintetico 8.9/10, «design production-ready». Rimane
@@ -15,7 +33,7 @@
 > check-list, e le voci chiuse stanno in fondo, in **§7 «Attività svolte»**, con
 > la data e il rimando al brief. Quando una voce ha ancora una parte aperta il
 > numero compare **due volte**: in alto ciò che resta, in fondo ciò che è fatto
-> (`D6`, `D7`, `D11`, `D12`). Il dettaglio di come si è arrivati a chiudere sta
+> (`D6`, `D7`, `D11`). Il dettaglio di come si è arrivati a chiudere sta
 > nei brief e nella storia git di questo file (sfoltito il 12-09, riordinato il
 > 20-09, il 22-09 e il 26-09).
 >
@@ -28,17 +46,38 @@
 > `storico.parameters` trovato nel lotto 1 è chiuso il 25-09. In D8 `magazzino`
 > non è più «modellato e non scritto»: ha i lotti 1 e 2.
 >
-> ✅ **Numeri rimisurati il 2026-09-26** — i registri che stanno nel repo si
-> rimisurano, non si citano: suite pgTAP a **714** file (conteggio della CI);
-> `SOGLIA_THROWS_SENZA_DISCRIMINANTE` a **117** (123 al 20-09, 131 quando questa
-> valutazione è stata scritta); `baseline-rossi.tsv` di sviluppo a **12** file
-> (16 al 12-09). ✅ **La CI ha misurato il 26-09: 227 rossi su 714**, contro
+> 📏 **Dal 2026-10-23 gli indicatori hanno una sede viva**:
+> [qualita-db-indicatori.md](../qualita-db-indicatori.md), con le lezioni, gli indicatori stampati
+> da `scripts/indicatori-qualita-db.sh` e la scorecard pesata. Questo documento resta la **lettura
+> zero** e il registro delle voci D: alla sua chiusura, i numeri non si ricopiano più qui.
+>
+> ✅ **Riallineato il 2026-10-23** (repo al commit `f9e542136`, catalogo di dbdev letto lo stesso
+> giorno). Il §7 era già in pari (chiusure fino a D34, 22-10); erano indietro la testata di §3,
+> le voci aperte, i numeri e la scorecard. Numeri del giorno: suite pgTAP a **887** file;
+> `baseline-rossi.tsv` a **6** (5 `ERRORE_FIXTURE`, 1 `ASSERZIONE`); `baseline-rossi-ci.tsv` a
+> **360** (un test ritirato il 20-10, nessun rientrato certificato); `baseline-rossi-scratch.tsv`
+> a **147** (120 `ERRORE_FIXTURE`, 26 `ASSERZIONE`, 1 `SORGENTE_POLIMORFA`; ultimo aggiornamento il
+> 20-10, sullo scratch `zeroerp_ruoli`); `SOGLIA_THROWS_SENZA_DISCRIMINANTE` ferma a **115**;
+> `baseline-smoke.tsv` a **2** su 52 script; `rls_perimetro_debito` a **6**; codici da dichiarare
+> **702** su 1.126; `vw_processi_che_bypassano` a **zero**. ⚠️ Ancora nessuna misura nuova della
+> CI dopo quella del 26-09.
+>
+> ✅ **Numeri rimisurati il 2026-10-13** (repo al commit `2bda3ee3b`) — i registri
+> che stanno nel repo si rimisurano, non si citano: suite pgTAP a **830** file
+> nella corsa di Tid su dev del 2026-10-14, con **7** rossi noti e tutti in
+> baseline, nessuno nuovo (714 al 26-09);
+> `SOGLIA_THROWS_SENZA_DISCRIMINANTE` a **115** (117 al 26-09, 123 al 20-09, 131
+> quando questa valutazione è stata scritta); `baseline-rossi.tsv` di sviluppo a
+> **7** file (12 al 26-09, 16 al 12-09); `baseline-rossi-ci.tsv` ancora a **361**,
+> fermo dal 22-09; `baseline-smoke.tsv` a **7** su 52 script (il perimetro
+> comprende i bash dal 12-10). ⚠️ Dopo il 26-09 il repo non registra nessuna
+> misura nuova della CI. ✅ **La CI ha misurato il 26-09: 227 rossi su 714**, contro
 > **361** noti in `baseline-rossi-ci.tsv` (la baseline sullo scratch
 > `zeroerp_ci` del 24-09 dava 229 su 687): il registro scende a 227 solo con
 > `pgtap-baseline-ci-rientrati.sh` lanciato sul log di **questa** corsa, il
-> giorno stesso. I numeri che stanno solo nel catalogo del database
-> (`vw_codici_errore_da_dichiarare` 545, `rls_perimetro_debito` 7) sono del
-> 20-09: la data è accanto.
+> giorno stesso. `rls_perimetro_debito` ha **6** righe nel suo seed CSV (13-10;
+> 7 al 20-09). Il numero che sta solo nel catalogo del database
+> (`vw_codici_errore_da_dichiarare` 545) è del 20-09: la data è accanto.
 >
 > ⭐ **Aggiunto il 2026-10-04 — §2-bis, la valutazione qualitativa del
 > design**: modello dati, logica nelle funzioni, trigger/RLS, governo. Fino a
@@ -184,7 +223,8 @@ progetto e vanno considerate un asset, non uno strumento.
 codice di allargare il proprio significato.
 
 ⚠️ **Il registro non cala: cresce.** 545 codici su 897 risultano non dichiarati
-lato applicativo — erano 508 su 852 l'08-09. Vedi §3 D11.
+lato applicativo — erano 508 su 852 l'08-09. Vedi §3 D11. *(2026-10-23: **702** su
+1.126. La quota resta intorno al 60%: il registro cresce col catalogo, non ha un verso.)*
 
 ⛔ **Sei codici vivi non hanno nessun messaggio.** Tutti `AVVISO`, tutti nominati
 da esattamente una funzione: `W_FONDO_ESEGUITO_NON_RESETTABILE`,
@@ -195,7 +235,7 @@ sviluppatore; **all'operatore non arriva nessuna frase**. Il verso opposto è
 pulito: zero messaggi orfani.
 
 ⚠️ **E il «multi-lingua» è una capacità, non un fatto**: 846 messaggi in `it`,
-**uno** in `en`. La colonna `lingua` c'è e il modello regge; il catalogo è
+**uno** in `en` (2026-10-23: 1.120 e **due**). La colonna `lingua` c'è e il modello regge; il catalogo è
 monolingue. Febbraio lo elencava fra i punti di forza a 9,5/10 — è il modo tipico
 in cui una valutazione diventa ottimista: si dà per fatto ciò che è **possibile**.
 
@@ -209,6 +249,11 @@ onesta la RLS — senza, un batch la aggirerebbe e nessuno lo saprebbe.
 
 ⚠️ Resta un solo bypass, e **dichiarato**: `zeroerp_batch_fatturazione`
 (`vw_processi_che_bypassano`, ritiro previsto alla fase 6-bis).
+
+✅ **Ritirato il 2026-10-15** (`work-done/brief-db-ruoli-di-sistema.md`, D-4): il ruolo è tolto dal
+cluster e la vista è a **zero**. Lo stesso cantiere ha dato ai processi un ruolo di lavoro proprio
+(`zeroerp_job`), il giornale dei job registra `ruolo_sessione`, e un presidio dice «nessun
+superuser al lavoro». Nessun processo, oggi, ha più un ruolo dichiarato che bypassi la RLS.
 
 ### 2.5 Domini nuovi
 
@@ -448,6 +493,15 @@ errore.
    scala monetaria): non un refactor generale, ma una **regola scritta** che il
    prossimo cantiere (`acquisti`) applica dal primo changeSet.
 
+⭐ **Aggiornamento 2026-10-23 — il punto 5 ha un primo cantiere.**
+[brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md) (aperto il 18-10)
+dà a tutti i tipi di documento **un vocabolario solo** (`config.sorgenti`, G-1): catalogo,
+eccezioni, testate, origine e destinazione delle righe sono passati (lotti 0, 1, 2a-2e e §13.6,
+applicati su dbdev fra il 19 e il 21-10); restano il lotto 3 (note) e il 4. È la parte «come si
+chiama un documento» della forma comune, non quella «com'è fatta la testata»: totali, tipi del
+`numero`, ancoraggio della controparte e macchine a stati (2-bis.4) restano dove sono. Q-1…Q-6:
+invariato rispetto al 2026-10-04 (§2-bis.8), con Q-2 ancora rimandata.
+
 ### 2-bis.7 Doc da allineare — non contano come difetti del modello
 
 * `script/manual/trgfn_storico_generic.md`: l'esempio dice `AFTER`, le altre
@@ -501,8 +555,9 @@ errore.
 
 > ✅ **Le voci chiuse non stanno qui**: sono in **§7 «Attività svolte»**, con la
 > data e il rimando al brief — chiuse **per intero** D1, D2, D3, D4, D5, D10,
-> D13, D14, D19; **in parte** D6 (i pin), D7 (il perimetro e il giro 2), D11 (i
-> registri calati), D12 (la quantità), D17 (tutto tranne Q-2).
+> D13, D14, D15, D19, D20, D21, D22, D23, D25, D26, D26-2, D27, D28, D29, D30, D33, D34, D35, D36; **in parte** D6 (i pin), D7 (il perimetro e il giro 2), D11 (i
+> registri calati), D17 (tutto tranne Q-2). **D12** è chiusa per intero il 2026-10-23: era
+> un'osservazione senza lavoro (§7 D12).
 >
 > ⭐ **D15 è nata dalla chiusura di D14** (2026-09-22) e **D16** da un test
 > diventato rosso da solo (2026-09-23).
@@ -517,7 +572,7 @@ errore.
 > di D22 (2026-10-10), che è chiusa. **D25** dai residui di `brief-db-istanza-nasce-col-ba`
 > alla sua chiusura (2026-10-10), chiusa lo stesso giorno. **D26** (la testata dopo l'emissione) e
 > **D27** (gli indirizzi del documento seguono il cliente) da `brief-db-esecutivi-ba-coppia`
-> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10).
+> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10). **D29** (l'annullo di un documento con legami) dal giro di D28 (2026-10-11), chiusa lo stesso giorno. **D30** (tornare indietro: annullare a valle riapre a monte) dal collaudo di D29 (2026-10-11), chiusa il 2026-10-13. **D31** (canone, orario e consumo del contratto in commessa) dalla segnalazione BE sul push dei contratti (2026-10-13). **D32** (un documento nasce nel suo stato iniziale) dal giro del `20261013-53` (2026-10-13). **D33** (un cliente manuale per soggetto e utility) dallo smoke clienti del giro notturno (2026-10-13), chiusa il 2026-10-15. **D34** (la creazione non scrive tutta la sezione dei dati societari) dalla chiusura di `brief-db-dati-fiscali-e-societari-del-soggetto` (2026-10-14). **D35** (`zeroerp_log` nasce con gli altri ruoli di sistema) dalla chiusura di `brief-db-ruoli-di-sistema` (2026-10-15), chiusa lo stesso giorno. **D36** (il perimetro una volta per istruzione, le famiglie che restano) dalla chiusura di D26-2 (2026-10-18), chiusa il 2026-10-21. D27 è chiusa il 2026-10-19, D34 il 2026-10-22.
 >
 > ⚠️ **Rinumerazione del 2026-10-10:** D23 e D25 erano stati dati due volte, a voci diverse. Il
 > numero è rimasto alla voce che l'aveva preso per prima (D23 alla ricerca universale, D25 ai
@@ -526,7 +581,11 @@ errore.
 > Lo stesso giorno D26 è stato dato una seconda volta (le funzioni che ripianificano): per decisione di
 > Tid quella voce è diventata **D26-2**, e D26 è rimasto alla testata dopo l'emissione, che l'aveva prima.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D26-2, D27, D28.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D16, D24, D31, D32.
+> ⚠️ Al 2026-10-23 **nessuna** di queste è in lavorazione: dal 13-10 il lavoro DB è andato a
+> cantieri nati fuori da questo registro (grammatica unica, modelli di documento standard,
+> ruoli di sistema, accensione per ambiente), e le voci di qui aspettano una decisione di Tid o
+> un via (tabella «Chi riparte» in testa).
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -544,6 +603,11 @@ da riscrivere perché usano quelle GUC come scorciatoia di fixture.
 
 ✅ **R-1 del brief chiusa dal BE il 2026-10-04**: i due codici nuovi di Q-4 in
 `error_policies_generated.py`, con i ripieghi (`63deeb194`).
+
+⏸️ **Al 2026-10-23: invariata.** Nessun brief aperto, la decisione resta rimandata. Il bisogno non
+è cambiato, e nel frattempo è nato il modello dei ruoli di sistema (un proprietario solo,
+`zeroerp_owner`, dal 15-10): il «proprietario delle tabelle» su cui legare il bypass oggi è uno
+solo, e la forma proposta si scrive più semplice di quanto sarebbe stata il 04-10.
 
 ### 🔴 D18 — La catena delle istanze su un PDP si rompe quando un anello esce o entra
 
@@ -565,6 +629,11 @@ Proposta nel brief
 [brief-db-catena-istanze-pdp.md](brief-db-catena-istanze-pdp.md): un ricalcolo
 DEFINER della catena intera del PDP, da un trigger `AFTER` senza `OF`. Cinque
 decisioni aperte per Tid.
+
+⏸️ **Al 2026-10-23: ferma dal 05-10**, ancora proposta da analizzare. ⚠️ Nel frattempo
+`trgfn_clienti_set_parent_istanza` è stata riscritta (`20261014-17`, la catena delle istanze
+fittizie di D33): i tre difetti valgono anche per quel ramo, e la riscrittura parte dal corpo
+della doc auto-generata (lo dice il brief). 🔴 resta: è un difetto vero, che non dà errore.
 
 ### 🟠 D6 — Resta solo D6-bis: i pin e il registro degli owner sono chiusi (§7)
 
@@ -589,6 +658,13 @@ Le `SECURITY DEFINER` proprie sono **38**, e il `search_path` ha sei forme
 In **18 su 38** `pg_temp` non è elencato — e quando non è elencato PostgreSQL lo
 cerca **per primo** per le relazioni. In altre 5 `public` viene **prima** di
 `pg_catalog`, che è l'ordine opposto a quello prudente.
+
+✅ **Al 2026-10-23 i due rubinetti sono scesi**, per sanatorie fatte di passaggio da altri
+cantieri: senza `pg_temp` **16** (era 18: `script.fn_get_stato_testata_documento` il 05-10,
+`anagrafiche.fn_guard_albero_ba_gestore_globale` il 10-10), `public` prima di `pg_catalog` **4**
+(era 5: `maintenance.fn_job_run_log_failure`, `20261015-03` di `brief-db-ruoli-di-sistema`). Le soglie stanno in
+`db/pgtap/dbops/test-security-definer-search-path-v1.sql` (test 4 e 5) e possono solo calare. È
+il verso giusto — si sana quando un cantiere ci passa — ma senza un giro suo la voce resta aperta.
 
 ⛔ **Una forma canonica uguale per tutte non esiste** (lezione del 12-09, §7 D6).
 `pg_catalog, pg_temp` **accieca** chi chiama un'estensione non qualificata —
@@ -621,6 +697,11 @@ Per schema, i file di test: `vendite` 253, `script` 69, `anagrafiche` 66,
 `ui` 13, `documenti` 11, `maintenance` 5, **`magazzino` 1**, **`shop` 1**,
 **`acquisti` 0**, **`storico` 0**.
 
+*(2026-10-23, 887 file: `vendite` 352, `anagrafiche` 95, `script` 94, `dbops` 79, `config` 61,
+`rls` 43, `pratiche` 43, `magazzino` 25, `pagamenti` 23, `catalogo` 22, `documenti` 18, `ui` 17,
+`maintenance` 13, `storico` 1, `shop` 1, **`acquisti` 0**. La forma della distribuzione non è
+cambiata: `vendite` da sola è il 40%.)*
+
 ⚠️ E la copertura dichiarata è più alta di quella reale per due motivi già
 scritti nella guida sui presidi: **110 file** contengono uno `skip()`
 condizionato (2026-09-08: su un DB ricostruito da zero si saltano, e un test
@@ -635,13 +716,25 @@ sbagliato** (§7 D11, §7 D7).
 Su un database **ricostruito da zero** — quello che serve il giorno in cui si
 prepara un'installazione nuova — la prima misura della CI (2026-09-09) ha dato
 **407 rossi su 601**. La misura più recente della CI, **227 rossi su 714**
-(2026-09-26; lo scratch `zeroerp_ci` dava 229 su 687 il 24-09), dice che oggi
-fuori dalla macchina di sviluppo la suite è **verde su due terzi dei file**. Il calo è
+(2026-09-26; lo scratch `zeroerp_ci` dava 229 su 687 il 24-09), dice che
+fuori dalla macchina di sviluppo la suite era **verde su due terzi dei file**.
+⚠️ È ancora l'ultima misura CI registrata: al 14-10 la suite è a **830** file (corsa di Tid su dev), e il
+corsa di Tid sullo scratch `zeroerp_ci` del 14-10 dà **164** rossi su 830, tutti
+noti nel suo registro (`baseline-rossi-scratch.tsv`: 133 `ERRORE_FIXTURE`, 30
+`ASSERZIONE`, 1 `SORGENTE_POLIMORFA`). Sullo scratch, ricostruito da zero, la suite è
+quindi verde su circa **l'80%** dei file.
+
+✅ **Al 2026-10-23** lo scratch non è più `zeroerp_ci` (ritirato il 15-10) ma `zeroerp_ruoli`,
+costruito col modello dei ruoli di sistema; il suo registro è a **147** su 887 (120
+`ERRORE_FIXTURE`, 26 `ASSERZIONE`, 1 `SORGENTE_POLIMORFA`; ultimo aggiornamento il 20-10):
+verde su circa l'**83%**. Anche la CI di GitHub gira ora col modello (owner `zeroerp_owner`), ma
+**dopo il 26-09 il repo non registra nessuna sua misura**: il numero che vale è ancora il vecchio. ⛔ *Lo scratch non è
+la CI*: il numero che vale resta quello del registro della CI. Il calo è
 lavoro vero, non igiene: la fixture che **costruisce** il mondo invece di
 cercarlo (§7 D7).
 
 ⚠️ **Il registro però non lo sa ancora.** `db/pgtap/baseline-rossi-ci.tsv` è
-**fermo a 361 righe** dal 22-09, mentre la CI del 26-09 ne vede rossi 227: le righe rientrate le toglie
+**fermo a 361 righe** dal 22-09 (**360** dal 20-10, per un test ritirato, non rientrato), mentre la CI del 26-09 ne vede rossi 227: le righe rientrate le toglie
 `scripts/pgtap-baseline-ci-rientrati.sh` leggendo il **log della corsa CI**, e
 il log scade — va lanciato **il giorno stesso** della push su `Tito-dev` che
 tocca `db/`. Finché non succede, il cancello tollera come «noti» circa 134 file
@@ -679,13 +772,15 @@ lasciato
   `_commessa`, `_commessa_attivita`): si migrano con il lotto 4, per famiglia
   ([brief-db-fixture-rls-documenti-costruiti.md](../work-done/brief-db-fixture-rls-documenti-costruiti.md)
   §6);
-* ⏳ i file che fissano `SET LOCAL app.current_user_id = '1'` (28 al 22-09:
-  l'utente 1 non esiste in CI) — una ricetta a sé, l'utente di sessione è
-  quello del mondo costruito;
-* ⏳ la **baseline di sviluppo** (`baseline-rossi.tsv`): 12 file, di cui **6**
-  muoiono nella fixture;
-* ⏳ i 109 file con `pgtap-runner: owner` (22-09): quanti di quei motivi siano
-  ancora veri dopo la rev `20260912-38` non è misurato;
+* ⏳ i file che fissano `SET LOCAL app.current_user_id = '1'` (**4** al 23-10, 7 al 13-10,
+  28 al 22-09: l'utente 1 non esiste in CI) — una ricetta a sé, l'utente di sessione è
+  quello del mondo costruito. Restano due della porta oneri, `test-vw-af-merce-per-riga-v1` e
+  `test-numera-nota-credito-riferimento-v1`;
+* ⏳ la **baseline di sviluppo** (`baseline-rossi.tsv`): **6** file al 23-10
+  (7 al 13-10, 12 al 26-09), di cui **5** muoiono nella fixture;
+* ⏳ i file con `pgtap-runner: owner` (**145** al 23-10, 130 al 13-10, 109 al 22-09): crescono coi
+  file nuovi, e quanti di quei motivi siano ancora veri dopo la rev `20260912-38` non è misurato;
+* ⏳ i file con uno `skip()` condizionato: **122** al 23-10 (110 all'08-09);
 * 🔵 **decisione (Tid)**: i file legati a dati di **questa** macchina (gestore,
   CF, PIVA, PDP GAS) — si riscrivono o si dichiarano test di macchina;
 * 🔵 **decisione (Tid)**: il ramo «ultimo SUPER_ADMIN» sull'identità è
@@ -737,6 +832,15 @@ motore (`work-done/brief-db-magazzino-lotto-2-motore.md`, lato DB chiuso il
 pgTAP; resta aperto come cantiere (collaudo a video). ⛔ `acquisti` è ancora
 dove lo descrive la tabella: **zero** test, comportamento da scrivere. La
 tabella qui sotto è la fotografia dell'8-09 e per `acquisti` resta vera.
+
+✅ **Al 2026-10-23** `magazzino` ha anche il lotto 3 (scarico da DDT) e il 3-bis (carico da reso),
+chiusi il 14-10 (`work-done/brief-db-magazzino-lotto-3-*.md`), e **25** file pgTAP; restano aperti
+`brief-db-magazzino-tutte-le-scritture-dal-verbo.md` e i collaudi a video. ⛔ `acquisti` non si è
+mosso: zero test, nessun changeSet di comportamento (gli ultimi del 09-10 sono adeguamenti di
+regole generali), e `analisi-simmetria-ordini-acquisto.md` è ferma al 14-09. Intanto `vendite`
+ha preso altre decisioni — grammatica unica dei documenti, modelli di documento standard,
+emissione dell'offerta — che **valgono anche qui** e qui non sono scritte: il debito di
+`acquisti` cresce senza che nessuno lo tocchi, come la voce prevedeva.
 
 | Schema                | Tabelle | FK  | CHECK | Funzioni | Viste | Test  |
 | --------------------- | ------- | --- | ----- | -------- | ----- | ----- |
@@ -802,6 +906,11 @@ sistema dove due guard `BEFORE ROW` parlano in ordine alfabetico, non è cosmesi
 (91,2%). Il 94% dichiarato a febbraio regge — **tranne la fase**, che era la voce
 con più conseguenze e non era misurata.
 
+⏸️ **Al 2026-10-23 (catalogo di dbdev)**: `catalogo.articoli` ha **50** trigger; le due funzioni
+per-figlia ne montano **816** su 2.358; la fase nel nome (`_aNN_`/`_zNN_`) è su **1.603**, il
+**68%**. Nessun lavoro sulla voce: il pattern cresce con le figlie, come diceva la diagnosi. I
+trigger nuovi nascono con la fase, i vecchi senza restano senza.
+
 ---
 
 ### 🟡 D11 — I registri di debito non calano
@@ -809,29 +918,29 @@ con più conseguenze e non era misurata.
 Un registro di debito è una buona invenzione **a condizione che scenda**. Stato
 al 2026-09-08, salvo dove è scritta un'altra data:
 
-| Registro                                   | Oggi                                                                                       |
+| Registro                                   | Oggi (2026-10-23, dove non è scritto altrimenti)                                           |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `dbops.vw_codici_errore_da_dichiarare`     | **545** su 897 codici (2026-09-20)                                                         |
-| `db/pgtap/baseline-rossi-ci.tsv`           | **361** file, fermo dal 2026-09-22 — nato il 09-09 con 407; la CI del 26-09 misura **227 rossi su 714**: il registro scende con `pgtap-baseline-ci-rientrati.sh` (D7) |
-| `SOGLIA_THROWS_SENZA_DISCRIMINANTE`        | **117** (2026-09-26; 129 all'08-09)                                                        |
-| `dbops.vw_fk_con_indice_missing_policy`    | **57**                                                                                     |
-| `db/pgtap/baseline-rossi.tsv`              | **12** file al 2026-09-24 (6 `ERRORE_FIXTURE`, 6 `ASSERZIONE`) — erano 19, poi 16 al 12-09 |
-| `dbops.rls_perimetro_debito`               | **7** righe (2026-09-20 — era 10, → D2)                                                    |
-| `backend/scripts/tests/baseline-smoke.tsv` | 2 su 16 script (2026-09-12)                                                                |
-| Header di licenza mancanti                 | 2.042 file (misura 2026-08-26)                                                             |
+| `dbops.vw_codici_errore_da_dichiarare`     | **702** su 1.126 codici (545 su 897 al 20-09, 508 su 852 all'08-09)                        |
+| `db/pgtap/baseline-rossi-ci.tsv`           | **360** file (292 `ERRORE_FIXTURE`, 68 `ASSERZIONE`), fermo dal 2026-09-22 salvo un test ritirato il 20-10 — nato il 09-09 con 407; la CI del 26-09 misura **227 rossi su 714**: il registro scende con `pgtap-baseline-ci-rientrati.sh` (D7) |
+| `SOGLIA_THROWS_SENZA_DISCRIMINANTE`        | **115**, ferma dal 13-10 (117 al 26-09, 129 all'08-09)                                     |
+| `dbops.vw_fk_con_indice_missing_policy`    | **57**, fermo dall'08-09                                                                   |
+| `db/pgtap/baseline-rossi.tsv`              | **6** file (5 `ERRORE_FIXTURE`, 1 `ASSERZIONE`) — 7 al 13-10, 12 al 24-09, 16 al 12-09, erano 19 |
+| `dbops.rls_perimetro_debito`               | **6** righe nel seed (7 al 20-09, era 10 → D2)                                             |
+| `backend/scripts/tests/baseline-smoke.tsv` | **2** su 52 script (7 al 13-10; 2 su 16 al 12-09, prima che il perimetro comprendesse i bash) |
+| Header di licenza mancanti                 | 2.042 file (misura 2026-08-26, non rifatta)                                                |
 | `dbops.vw_indici_ridondanti_prefisso`      | 1                                                                                          |
-| Codici vivi senza messaggio                | 6 (tutti `W_`, §2.3)                                                                       |
-| `dbops.vw_processi_che_bypassano`          | 1 (dichiarato, con data di ritiro)                                                         |
+| Codici vivi senza messaggio                | 6 (tutti `W_`, §2.3) — gli stessi sei                                                      |
+| `dbops.vw_processi_che_bypassano`          | ✅ **0** dal 2026-10-15 (era 1, dichiarato con la data di ritiro: ritirato nei tempi)      |
 
 ⭐ L'ultima riga è l'unica fatta bene: **una** voce, con il motivo e il momento in
-cui sparisce. Le prime quattro sono liste lunghe, e la guida sui presidi dice
+cui sparisce — ✅ ed è sparita quando diceva. Le prime quattro sono liste lunghe, e la guida sui presidi dice
 esattamente perché è un problema: *«il registro nasce piccolo. Se parte con
 trenta righe, nessuno lo leggerà»*. `rls_perimetro_debito` è nato nella forma
 giusta — ogni riga con la sua ragione — ed è calato di due terzi nel cantiere
 che l'ha aperto.
 
 ⚠️ **E uno di questi registri cresce: i codici.** 508 → **545** su 897 (08-09 →
-20-09) mentre `rls_perimetro_debito` scendeva. Il motivo è strutturale e sta
+20-09) → **702** su 1.126 (23-10) mentre `rls_perimetro_debito` scendeva. Il motivo è strutturale e sta
 nella forma: gli altri hanno una **causa** e un **rimedio** (riscrivere la
 fixture, discriminare l'asserzione, armare la RLS), il registro dei codici
 misura il *terzo lato* — le dichiarazioni dell'applicativo — che si allarga a
@@ -839,53 +948,11 @@ ogni dominio nuovo. Non è un presidio che mente: è un presidio **senza un
 verso**, ed è esattamente ciò che D11 chiede di dargli.
 
 ⚠️ Le due baseline pgTAP meritano una riga a parte: i file `ERRORE_FIXTURE`
-(293 in CI al 20-09, 6 in sviluppo al 24-09) non eseguono **nessuna**
+(292 in CI e 6 in sviluppo al 13-10) non eseguono **nessuna**
 asserzione. La loro copertura vale zero, non «parziale» — e sono aree che
 *sembrano* coperte.
 
 ---
-
-### 🟡 D12 — Documentazione: il problema non è più la quantità
-
-1.410 pagine manuali contro 1.500 auto-generate: copertura sostanzialmente piena,
-il gap di febbraio è chiuso. Restano due cose:
-
-* `storico`: 111 pagine, media 15 righe, **98 sotto le 12 righe**. Sono specchi
-  auto-generati, e va bene — ma gonfiano il conteggio di copertura del 7%;
-* `magazzino` (35 righe/pagina) e `acquisti` (36) hanno pagine **presenti e
-  sottili**. Coerente con D8: si documenta poco ciò che fa poco.
-
----
-
-### 🔴 D15 — Nessuno analizza le tabelle: ogni piano nasce da stime di default
-
-> Emerso il 2026-09-22 chiudendo D14 (brief §15.2 e §16.6). ⛔ Non è un residuo
-> di quel cantiere: è la **condizione** in cui sono state prese tutte le misure
-> di piano di questo progetto, compresa ogni riga di D14.
-
-In `vendite` **82 tabelle su 87 non hanno mai avuto un `ANALYZE`** — né a mano né
-dall'autovacuum. Con le soglie di default (50 righe più il 10%) una tabella
-piccola non ci arriva mai da sé, e nello scheduler non c'è nessun job che le
-analizzi.
-
-⛔ **La conseguenza non è «dbdev è lento»**: è che il planner sceglie su stime di
-default, e il piano **si ribalta da solo**. Fatto datato del 22-09: lo stesso
-corpo, senza nessuna modifica in mezzo, misurava 63 ms alle 16:12 e **95–104 ms
-alle 17:19**, con lo stesso piano storto. ⇒ Una misura di piano, in qualunque
-cantiere, è **rumore** finché le statistiche non ci sono — e un cantiere che
-promette un guadagno in millisecondi dichiara un numero che non può difendere.
-
-⭐ Ciò che regge, ed è il modo in cui D14 è stata portata a casa, sono le **forme**
-del piano — `loops=1`, `Index Cond`, una lettura invece di N — non i millisecondi
-confrontati fra due momenti.
-
-⚠️ **Il perimetro non è `vendite`**: la domanda sul modello è se esista **un**
-posto che tiene aggiornate le statistiche del database, e oggi non esiste. Sede
-`dbops`/`maintenance`, non un dominio: soglie di autovacuum per le tabelle
-piccole, un job nello scheduler, o entrambi — con il presidio che dice quando
-l'ultimo `ANALYZE` è più vecchio di quanto si è dichiarato. ⭐ È un
-**prerequisito**, non una miglioria: chiunque riapra una famiglia di funzioni per
-prestazioni lo trova davanti.
 
 ### 🟡 D16 — Test con una data scritta a mano: diventano rossi da soli
 
@@ -928,28 +995,7 @@ dalla stessa data), con un commento sul perché.
   valutare dopo il censimento: senza sapere quali regole sono temporali, il
   presidio sarebbe una ricerca testuale, cioè il criterio sbagliato.
 
-### 🟡 D26 — La testata dopo l'emissione: la regola completa sta solo nel backend
-
-Trovato il 2026-10-09 (§8 e §10.3 di `brief-db-esecutivi-ba-coppia`): quali colonne di testata si
-cambiano dopo l'emissione lo dice per intero solo il backend («testata modificabile solo in DRAFT» su
-ordine, DDT, reso, preventivo, offerta; una tabella per stato sul contratto). Il database ne blocca dei
-pezzi: chi scrive senza passare dai service cambia, per esempio, la valuta di un ordine confermato.
-
-Dettaglio e decisioni nel brief
-[brief-db-testata-dopo-emissione.md](brief-db-testata-dopo-emissione.md). 📝 Aperto, decisioni chiuse il 2026-10-10.
-Dal 2026-10-10 il brief comprende, come fase 1 (§5-bis), la capability della data di consegna confermata
-(assorbito `brief-db-ordine-data-consegna-confermata-capability`): il lettore del montaggio nasce lì.
-
-### 🟡 D23 — Ricerca universale: oltre 10.000 risultati il totale e le pagine non dicono il vero
-
-Trovato il 2026-10-10 scrivendo R-6 di `brief-db-codici-non-trovato-email-e-permessi` (§14.5): la
-lista della ricerca universale tiene al massimo 10.000 corrispondenze con un `LIMIT` senza
-`ORDER BY`, poi conta, ordina e pagina su quelle. Oltre il tetto il totale è falso, la prima pagina
-non è la prima vera e le pagine possono ripetere o saltare soggetti.
-
-Dettaglio, due strade e decisioni attese nel brief
-[brief-db-ricerca-universale-tetto-10000.md](../work-done/brief-db-ricerca-universale-tetto-10000.md). ✅ Chiuso
-e archiviato il 2026-10-10 (strada B, via l'ordinamento per utility; DB `20261010-16`, BE/FE §7.4).
+⏸️ Al 2026-10-23: nessun avanzamento, il censimento non è partito.
 
 ### 🟡 D24 — Il presidio C2 non vede i building block trigger che ricevono il codice negli argomenti
 
@@ -984,60 +1030,32 @@ per conto suo: per la vista quel sito non esiste.
 * **Come si chiude:** quando la vista vede il sito, la riga di `_ESENZIONI` va rossa da sola (verso
   di ritiro del presidio) e il BE la toglie.
 
-### 🟡 D25 — I residui di «l'istanza nasce col billing account»
+⏸️ Al 2026-10-23: aperta. La vista non legge ancora `tgargs` (doc auto-generata) e l'esenzione è
+ancora in `test_ui_action_e_canale_campi.py`. Ogni BB trigger nuovo col codice negli argomenti
+allarga la cecità senza fare rumore.
 
-Ereditati il 2026-10-10 dalla chiusura di `work-done/brief-db-istanza-nasce-col-ba`: il resolver
-`script.fn_get_billing_account_by_istanza`, che il backend non chiama più, e il motivo
-`PREVENTIVO_SENZA_BILLING_ACCOUNT` delle capability del preventivo, irraggiungibile perché BA e
-utility del preventivo sono `NOT NULL`. La stessa «testata incompleta» era scritta anche come filtro
-nel residuo commessa e nella lista del push.
+### 🟠 D31 — Le righe di contratto CANONE, ORARIO e CONSUMO non hanno la loro generazione
 
-Dettaglio nel brief
-[brief-db-istanza-nasce-col-ba-residui.md](brief-db-istanza-nasce-col-ba-residui.md). 🔧 DB scritto e
-✅ lato DB chiuso il 2026-10-10 (`20261010-50…-59` applicati da Tid, pgTAP verdi); restano la chiave
-nei locales (FE) e una riga di doc (BE). Del §5 del brief sono fatte tutte: D-1 (via il filtro tautologico sul BA da ordini e contratti), D-2 (lo stato
-assente dal catalogo ferma le liste del push invece di aprirle), D-3 (ritirato
-`uq_gestori_singleton`), D-4 (il pgTAP dello spostamento dell'azienda predefinita) e D-5 (quello
-spostamento non dipende più da chi lo fa: i guard chiedono l'azienda dei BA per l'installazione).
+Trovato il 2026-10-13 dalla segnalazione BE del push batch CONTRATTO (un contratto senza scadenza
+cadeva sul NOT NULL di `competenza_al`). Il lister dei contratti mandava ogni riga una volta sola, con
+la competenza di tutto il contratto: un canone diventava un addebito unico. D-2 (a) di Tid: dal
+`20261013-24` il push manda solo le UNA_TANTUM; la generazione per periodo del canone e le quantità di
+orario e consumo dalle loro fonti si progettano nel brief
+[brief-db-contratto-righe-periodiche-in-commessa.md](brief-db-contratto-righe-periodiche-in-commessa.md).
+📝 Aperto, non iniziato: decisioni G-1…G-4 di Tid (invariato al 2026-10-23).
 
-### 🟡 D26-2 — Le funzioni che ripianificano a ogni chiamata
+### 🟠 D32 — Un documento può nascere già fuori dalla bozza
 
-Ereditato il 2026-10-10 dalla chiusura di `work-done/brief-db-segment-base-commesse-attivita`: una
-funzione plpgsql che chiama con un parametro una funzione SQL grande che si incorpora fa
-ripianificare la query a ogni chiamata (in modo `auto` la plancache preferisce i piani
-personalizzati). Curate e presidiate la capability del DDT e il lister dei DDT da spingere; il
-censimento delle altre e il lister senza filtri restano aperti.
-
-Dettaglio nel brief
-[brief-db-plancache-funzioni-con-query-incorporate.md](brief-db-plancache-funzioni-con-query-incorporate.md):
-aperto, non iniziato, due decisioni attese (§3).
-
-### 🟠 D27 — Gli indirizzi del documento non seguono il cliente
-
-Trovato il 2026-10-10 chiudendo il lato BE/FE di D21 (§12.3 di `brief-db-esecutivi-ba-coppia`). Sul
-DDT, sul preventivo e sull'offerta il cliente si cambia in bozza, ma gli indirizzi gia' scritti
-dall'anagrafica del cliente di prima restano. La regola «l'indirizzo e' del cliente del documento» la
-tiene solo il backend, e solo quando l'indirizzo viene scritto. Il gate d'emissione guarda che
-l'indirizzo ci sia, non di chi e': una bolla si emette con la Consegna del cliente di prima.
-
-Dettaglio e decisioni di Tid (chiuse il 2026-10-10: la regola e l'auto-assegnazione dello slot di
-default vanno nel DB) nel brief
-[brief-db-indirizzi-documento-seguono-il-cliente.md](brief-db-indirizzi-documento-seguono-il-cliente.md).
-📝 Aperto, nessun codice. ⚠️ La sezione era andata persa nella rinumerazione del 2026-10-10 (restava
-solo la riga della checklist): ripristinata lo stesso giorno.
-
-### 🟠 D28 — Le righe evase di un DDT da ordine si modificano senza il loro legame
-
-Trovato il 2026-10-10 nel collaudo a video di Tid. Su un DDT da ordine in bozza la riga evasa cambia
-quantita', articolo e unita' di misura con un `UPDATE`, e il fulfillment non lo vede: il guard del
-legame scatta solo quando il legame si scrive. Ordine 10, bolla corretta a 6: il magazzino scarica 6,
-l'ordine resta evaso per 10 e il residuo non si riapre. L'invariante «`qta_evasa` immutabile» del
-brief dell'evasione non ha un lock a DB.
-
-Dettaglio e decisioni di Tid (chiuse il 2026-10-10: riga evasa ferma; un verbo per correggere la
-quantita' in bozza, solo sui DDT da ordine; riga evasa cancellabile in bozza; righe a mano ammesse)
-nel brief [brief-db-ddt-righe-evase-dall-ordine.md](brief-db-ddt-righe-evase-dall-ordine.md).
-📝 Aperto, nessun codice.
+Trovato il 2026-10-13 nel giro del `20261013-53` (i trigger della bolla che leggono l'emittente
+girano dopo il normalize). Le regole dell'uscita dalla bozza stanno tutte sul passaggio di stato
+(`BEFORE UPDATE`), su ogni famiglia: un `INSERT` con lo stato già avanti le salta. Provato sulla
+bolla: nasce EMESSA e numerata con zero righe, e dopo le righe non si aggiungono più. Brief
+[brief-db-documento-nasce-nello-stato-iniziale.md](brief-db-documento-nasce-nello-stato-iniziale.md).
+📝 Aperto, non iniziato: decisioni N-1…N-3 di Tid. Al 2026-10-23 il vincolo verso la grammatica
+unica è sciolto (il lotto 0 è chiuso il 19-10, e dal 2a le testate parlano i codici di
+`config.sorgenti`): il cantiere aspetta solo le decisioni.
+➡️ **2026-10-24: confluito** in [brief-modello-documento-vendita.md](brief-modello-documento-vendita.md)
+§4-bis (M-6 di Tid): le decisioni N-1…N-3 si prendono là, nel cantiere del modello.
 
 ---
 
@@ -1069,39 +1087,46 @@ nel brief [brief-db-ddt-righe-evase-dall-ordine.md](brief-db-ddt-righe-evase-dal
 
 ---
 
-## 5. Scorecard — pesata, non mediata (2026-09-08, aggiornata al 2026-09-26)
+## 5. Scorecard — pesata, non mediata (2026-09-08; voti rivisti il 2026-10-23)
 
-Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione.
+Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione. La colonna
+«prima» è il voto del 2026-09-26 (la «Simmetria del dominio» non è votata dal 04-10).
 
-| Area                                   | Peso    | Voto       | Perché                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| -------------------------------------- | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Catena di verifica (CI)**            | 🔴 alto  | **7,5/10** | Dal 2026-09-09 la suite pgTAP è un cancello vero: baseline misurata dalla CI, niente `continue-on-error`, bootstrap che fallisce invece di passare. Resta il registro fermo a 361 mentre la CI misura 227 rossi (26-09): finché non si tolgono i rientrati, file già verdi sono tollerati come rossi (D7)                                                                                                                                                                                                                              |
-| **Perimetro dei dati (RLS)**           | 🔴 alto  | **8/10**   | D2 e D3 chiusi l'11-09-2026: dominio documento protetto fino ai satelliti, versioni di storico con scope congelato, e due presidi a criterio (`vw_rls_perimetro_scoperto`, `vw_storico_scope_da_dichiarare`) che vedono le tabelle nuove. Restano le due policy inerti di `acquisti` (D4 → D8), a registro con la ragione; `shop.ricevute` armata il 12-09. D13 (il `RETURNING` del BA per gli operatori non di default) chiuso il 13-09 |
-| **Copertura test**                     | 🔴 alto  | **4/10**   | 714 file (26-09), ma su un DB ricostruito da zero la suite è rossa su **227 file su 714** (corsa CI del 26-09; il registro è ancora a 361 finché non si tolgono i rientrati). Il 38% delle funzioni non è mai nominato (D7)                                                                                                                                                                                                                                                                                          |
-| **Postura di sicurezza degli oggetti** | 🟠 medio | **7,5/10** | I tre invarianti di D5 presidiati per criterio (`search_path` dal 12-09, pin applicati). Non di più per i due rubinetti di D6-bis (il registro `sec_functions_owner` e la sync sono riservati al migratore dal 26-09)                                                                                                                                                                                                     |
-| **Simmetria del dominio**              | 🟠 medio | **non votata** (04-10) | Che lo strato di comportamento di `acquisti` e `magazzino` arrivi a lotti, dopo il modello, è l'**ordine di costruzione** scelto, non un difetto (§4). Il voto 4/10 dato fino al 04-10 misurava il calendario. Resta vero, ed è in D8, il punto **sul modello**: le decisioni prese su `vendite` valgono anche per `acquisti` |
-| **Osservabilità dei presidi**          | 🟠 medio | **7/10**   | D10 chiuso l'11-09-2026: le 30 viste hanno un destinatario che ha già riferito, e la classificazione è **dato** (`dbops.presidi`). Non 8+ per il debutto col rumore (processi ritirati in `vw_job_run_da_guardare`)                                                                                                                                                                                                                      |
-| **Gestione del debito**                | 🟠 medio | **6/10**   | Registri ben progettati; le liste lunghe restano lunghe, e ne è nata una nuova da 362 (D11)                                                                                                                                                                                                                                                                                                                                              |
-| **Pattern trigger e automazioni**      | 🟡 basso | **7,5/10** | Riuso raro (758 trigger da due funzioni), framework `ci_apply` eccellente; la forma per-figlia non scala e la fase è al 66% (D9)                                                                                                                                                                                                                                                                                                         |
-| **Error handling / codici errore**     | 🟡 basso | **8,5/10** | Contratto a tre lati esplicito e presidiato; il registro **sale**                                                                                                                                                                                                                                                                                                                                                                        |
-| **Disciplina Liquibase**               | 🟡 basso | **9/10**   | 3.354 changeSet, cinque cancelli dedicati, tutti nati da un incidente reale                                                                                                                                                                                                                                                                                                                                                              |
-| **Documentazione**                     | 🟡 basso | **8,5/10** | Copertura piena; sottile dove il dominio è sottile                                                                                                                                                                                                                                                                                                                                                                                       |
-| **Naming**                             | 🟡 basso | **8/10**   | 94-99% sui vincoli; 66% sulla fase dei trigger, che è la voce con conseguenze                                                                                                                                                                                                                                                                                                                                                            |
+| Area                                   | Peso    | Prima  | Voto al 23-10 | Perché |
+| -------------------------------------- | ------- | ------ | ------------- | ------ |
+| **Catena di verifica (CI)**            | 🔴 alto  | 7,5    | **7,5/10**    | Il cancello tiene dal 09-09, e dal 15-10 la CI ricostruisce il database col modello dei ruoli di sistema (owner `zeroerp_owner`), cioè come lo si installerà. Non sale perché il registro è ancora a 360 mentre l'ultima misura della CI (26-09) ne vede rossi 227: da un mese circa 130 file già verdi sono tollerati come rossi, e una loro regressione non ferma il merge (D7) |
+| **Perimetro dei dati (RLS)**           | 🔴 alto  | 8      | **8/10**      | D2, D3, D13 e Q-1 chiusi; l'ultimo processo che aggirava la RLS (`zeroerp_batch_fatturazione`) è ritirato il 15-10, e il perimetro dell'operatore si calcola una volta per istruzione (D26-2, D36). Non sale per due cose aperte e di sostanza: la catena delle istanze legge sotto RLS (D18) e i blocchi si spengono con una GUC (Q-2). Le due policy inerti di `acquisti` restano a registro (D8) |
+| **Copertura test**                     | 🔴 alto  | 4      | **4,5/10**    | 887 file; sullo scratch ricostruito col modello nuovo **147** rossi (83% verdi, 20-10), la baseline di sviluppo a 6, i file con l'utente `'1'` da 7 a 4. Il mezzo punto è il lavoro sulla fixture. Non di più perché il numero che vale, quello della CI, non è stato rimisurato dal 26-09 (227 su 714), `acquisti` è a zero, e 122 file hanno uno `skip()` che su un DB vuoto conta verde (D7) |
+| **Postura di sicurezza degli oggetti** | 🟠 medio | 7,5    | **8/10**      | I ruoli di sistema (15-10): un solo proprietario, `zeroerp_job` per i processi, presidio «nessun superuser al lavoro», `zeroerp_log` nella fase dei ruoli (D35). I rubinetti di D6-bis scesi a 16 e 4. Non di più finché Q-2 e D6-bis restano aperti |
+| **Simmetria del dominio**              | 🟠 medio | —      | **non votata** | Che lo strato di comportamento di `acquisti` arrivi dopo è l'ordine di costruzione (§4). Resta vero, ed è in D8, il punto **sul modello**: le decisioni prese su `vendite` (dal 13-10 anche grammatica unica, modelli di documento standard, emissione dell'offerta) valgono anche per `acquisti`, e lì non sono scritte |
+| **Osservabilità dei presidi**          | 🟠 medio | 7      | **7,5/10**    | Ogni riga del presidio dei job dice la sua causa (`brief-db-presidio-job-run-a-chi-tocca`), una spia si spegne solo con un verdetto completo (`brief-db-intermittente-e-verdetto-completo`), il giornale registra il ruolo della corsa, le statistiche hanno un job con autoverifica (D15). Non 8 per il residuo di D10: i processi ritirati nella vista dei job |
+| **Gestione del debito**                | 🟠 medio | 6      | **5,5/10**    | Il registro col verso giusto ha funzionato (il bypass, ritirato nei tempi) e quelli piccoli calano (smoke 7 → 2, baseline di sviluppo 7 → 6). Scende di mezzo punto perché i due grandi stanno peggio: il registro della CI è fermo da un mese, i codici da dichiarare sono saliti a 702, e dal 13-10 nessuna voce aperta di questo registro è stata lavorata (§3) |
+| **Pattern trigger e automazioni**      | 🟡 basso | 7,5    | **7,5/10**    | Framework `ci_apply` eccellente; la forma per-figlia continua a crescere (816 trigger da due funzioni, 50 su `catalogo.articoli`), la fase sale al 68% solo perché i trigger nuovi nascono con lei (D9) |
+| **Error handling / codici errore**     | 🟡 basso | 8,5    | **8,5/10**    | Contratto a tre lati esplicito e presidiato, e la grammatica unica dà un nome solo al tipo di documento anche nelle eccezioni (lotto 1). Il registro sale e i sei `W_` sono ancora senza messaggio (D11-bis) |
+| **Disciplina Liquibase**               | 🟡 basso | 9      | **9/10**      | Oltre 5.700 changeSet in `migrations_v2` (23-10; 3.354 all'08-09), cancelli dedicati nati da incidenti reali |
+| **Documentazione**                     | 🟡 basso | 8,5    | **8,5/10**    | Copertura piena; sottile dove il dominio è sottile |
+| **Naming**                             | 🟡 basso | 8      | **8/10**      | 94-99% sui vincoli; 68% sulla fase dei trigger, che è la voce con conseguenze; un vocabolario solo per i tipi di documento (grammatica unica) |
 
 ### Il giudizio, in una frase
 
 ⭐ **Il metodo di ingegneria di questo progetto è sopra la media del settore** —
 la guida sui presidi, il contratto a tre lati dei codici errore, il framework
 delle automazioni per pattern e il passaggio dei pgTAP al ruolo applicativo sono
-cose che in un ERP non si vedono quasi mai.
+cose che in un ERP non si vedono quasi mai. Dal 13-10 vi si è aggiunto il modello dei
+ruoli di sistema: il database si installa e si fa girare con i ruoli che avrà in produzione.
 
 ✅ **E la catena che deve rendere vero tutto questo, dal 2026-09-09, tiene**:
 la suite pgTAP ferma un merge su un rosso nuovo (D1). ⚠️ Con una cosa scomoda,
-adesso misurata: fuori dalla macchina di sviluppo la suite era rossa per due
-terzi (09-09), ed è ancora rossa per un terzo (227 file su 714, CI del 26-09). Non è
-una regressione — è sempre stato così — e la differenza fra «i test
-passano» e «le migrazioni sanno ricostruire un sistema che passa i test» è
-tutta lì dentro (D7).
+misurata: fuori dalla macchina di sviluppo la suite era rossa per due
+terzi (09-09) e per un terzo alla misura della CI del 26-09 (227 file su 714); lo scratch
+ricostruito col modello nuovo la dà rossa per circa un sesto (147 su 887, 20-10), ma lo scratch non
+è la CI. La differenza fra «i test passano» e «le migrazioni sanno ricostruire un sistema che
+passa i test» è tutta lì dentro (D7).
+
+⚠️ **Il rischio di oggi non è tecnico, è di attenzione.** Dal 13-10 il lavoro è andato a cantieri
+nuovi e ben chiusi, mentre le voci aperte qui sono rimaste ferme: D18 (un difetto vero, che non
+dà errore) dal 05-10, Q-2 dal 04-10, il registro della CI dal 26-09. Nessuna peggiora da sola, ma
+nessuna si chiude passandoci accanto.
 
 ⚠️ **«Production-ready»**: all'8 settembre non era la parola giusta, e non per
 la qualità del design — per D1, D2 e D3: righe di cinque famiglie di documento
@@ -1109,8 +1134,8 @@ su sei e tutto lo storico leggibili da chiunque. Chiusi tutti e tre fra il 9 e
 l'11 settembre, la frase torna difendibile sul perimetro dei dati — e il 13
 settembre è caduto anche D13, che su un'installazione a due emittenti avrebbe
 impedito al secondo di aprire clienti. Quello che resta sono le due policy
-inerti di `acquisti` (D4 → D8, a registro con la ragione), il pezzo nuovo di
-D6 e il registro dei rossi in CI.
+inerti di `acquisti` (D4 → D8, a registro con la ragione), D18, Q-2, D6-bis e il registro dei
+rossi in CI.
 
 ---
 
@@ -1151,8 +1176,9 @@ D6 e il registro dei rossi in CI.
       sola, con `session_user`.
 * [ ] **D6-bis** — scegliere **una** forma canonica di `search_path` per le
       `SECURITY DEFINER` (`pg_catalog, <schemi necessari>, pg_temp`, con
-      `pg_temp` sempre ultimo ed esplicito) e allineare le 18 che oggi non
-      elencano `pg_temp` e le 5 che mettono `public` prima di `pg_catalog`.
+      `pg_temp` sempre ultimo ed esplicito) e allineare le 16 che oggi non
+      elencano `pg_temp` e le 4 che mettono `public` prima di `pg_catalog`
+      (2026-10-23; erano 18 e 5).
       ⛔ **Non applicabile a vista**: `pg_catalog, pg_temp` è la scelta sbagliata
       per chi tocca un'estensione (`dblink`, `unaccent`, `postgis`,
       `plpgsql_check` stanno tutte in `public`). Si decide **per funzione**,
@@ -1163,8 +1189,8 @@ D6 e il registro dei rossi in CI.
 
 * [x] **D8** — ✅ deciso l'11-09-2026 (Tid): prossimo cantiere, scritto in
       `.codex/PROJECT_CONTEXT.md`. ✅ `magazzino` ha il comportamento dei lotti
-      1 e 2 (17-09, 18-09, verbi con permesso il 25-09). ⛔ `acquisti` è ancora
-      a zero. ⚠️ `storico` resta senza decisione come dominio; sul lato RLS
+      1 e 2 (17-09, 18-09, verbi con permesso il 25-09), 3 e 3-bis (14-10). ⛔ `acquisti` è ancora
+      a zero (23-10). ⚠️ `storico` resta senza decisione come dominio; sul lato RLS
       l'ha chiuso D3.
 * [x] **D10** — ✅ chiuso l'11-09-2026: digest su catalogo `dbops.presidi`, due
       timer. Residuo: i processi ritirati in `vw_job_run_da_guardare` (decisione
@@ -1173,10 +1199,10 @@ D6 e il registro dei rossi in CI.
       di sviluppo nella *fixture*. ✅ Fatto (§7 D7): il perimetro (12-09), il
       triage delle cause e la riga di contesto che costruisce (20/21-09), il BB
       di composizione e i lotti 1 e 2 (22-24/09) — **227 rossi su 714** in
-      CI il 26-09, contro 407 su 601 il 09-09. ⏳ Resta (§3 D7): la corsa CI
-      che certifica i rientrati (registro **fermo a 361**), i 18 rossi del
-      lotto 2, i lotti 3 (`pratiche`) e 4 (`vendite`), i file con l'utente
-      `'1'`, i 6 `ERRORE_FIXTURE` della baseline di sviluppo, due decisioni
+      CI il 26-09, contro 407 su 601 il 09-09; sullo scratch `zeroerp_ruoli` 147 su 887 (20-10).
+      ⏳ Resta (§3 D7): la corsa CI che certifica i rientrati (registro **fermo a 360**), i 18
+      rossi del lotto 2, i lotti 3 (`pratiche`) e 4 (`vendite`), i file con l'utente
+      `'1'` (4 al 23-10), i 5 `ERRORE_FIXTURE` della baseline di sviluppo (6 file al 23-10), due decisioni
       per Tid e due cancelli da disegnare.
 * [x] **D13** — ✅ chiuso il 2026-09-13: changeSet `20260913-01/02/03`
       applicati, baseline di sviluppo senza regressioni, brief
@@ -1185,14 +1211,17 @@ D6 e il registro dei rossi in CI.
       brief §6.2). Restano due decisioni di modello in coda (§3.4).
 * [~] **D11** — dare a ciascun registro lungo un **verso** (chi lo abbassa, di
       quanto, entro quando), o dichiararlo congelato con il motivo.
-      ✅ La soglia `throws_ok` è scesa **129 → 117** fra il 20 e il 24-09 —
+      ✅ La soglia `throws_ok` è scesa **129 → 117** fra il 20 e il 24-09, e a
+      **115** al 13-10 —
       due volte con un test verde per l'errore sbagliato (§7 D11, §7 D7).
       ⛔ Restano i due registri grossi, e sono quelli che non hanno un verso:
-      i rossi della CI (361 a registro, 227 misurati il 26-09) e i codici da
-      dichiarare, che sono **saliti** (508 → 545 al 20-09).
+      i rossi della CI (360 a registro, 227 misurati il 26-09) e i codici da
+      dichiarare, che sono **saliti** (508 → 545 al 20-09 → 702 al 23-10).
+      ✅ Il bypass dichiarato è sparito alla data promessa (0 dal 15-10).
 * [ ] **D11-bis** — scrivere il messaggio dei sei `W_` che non ce l'hanno
       (append al CSV dei messaggi, mai un loader nuovo), oppure dichiarare che
       quei codici non raggiungono mai un operatore — e scriverlo nel `note`.
+      Al 2026-10-23 sono ancora gli stessi sei.
 * [x] **D14** — ✅ chiusa il 2026-09-22, brief archiviato in
       `work-done/brief-db-partita-merce-per-documento.md`: otto giri fra il 17 e
       il 22-09, **sette applicati** e l'ottavo provato e **ritirato** lo stesso
@@ -1206,18 +1235,20 @@ D6 e il registro dei rossi in CI.
       dell'approvazione prezzo) e tre voci BE (due commenti che nominano oggetti
       ritirati, la decisione sui pre-check `_STATI_RIGHE_MODIFICABILI`).
       ⛔ La statistica assente **non** è un residuo di questo cantiere: è **D15**.
-* [ ] **D15** — dare al database **un** posto che tiene aggiornate le
+* [x] **D15** — dare al database **un** posto che tiene aggiornate le
       statistiche (`dbops`/`maintenance`): in `vendite` 82 tabelle su 87 non
       hanno mai avuto un `ANALYZE`, quindi ogni piano nasce da stime di default
       e si ribalta da solo. ⛔ È un **prerequisito** di qualunque cantiere che
       misuri un piano, non una miglioria — e finché non c'è, un guadagno
       dichiarato in millisecondi non è difendibile.
+      ✅ Chiusa il 2026-10-15: `work-done/brief-db-statistiche-tabelle-job-notturno.md`.
 * [ ] **D17** — Q-2, rimandata da Tid: legare le GUC di bypass al proprietario
       delle tabelle (proposta in `work-done/brief-db-esclusioni-implicite.md`
       §4). Il resto di D17 è chiuso (§7), R-1 del BE compresa.
 * [ ] **D18** — la catena delle istanze su un PDP: ricalcolo DEFINER della
       catena intera da un trigger `AFTER` senza `OF`; brief
-      `work-in-progress/brief-db-catena-istanze-pdp.md`, da analizzare con Tid.
+      `work-in-progress/brief-db-catena-istanze-pdp.md`, da analizzare con Tid
+      (fermo dal 05-10; il ramo delle istanze fittizie del 14-10 eredita i difetti).
 
 ### 🟡 Struttura
 
@@ -1226,7 +1257,8 @@ D6 e il registro dei rossi in CI.
       update).
 * [ ] **D9-bis** — portare la fase (`_a10_`/`_z90_`) sul 34% di trigger che non
       ce l'ha, o dichiarare che per quelli l'ordine è indifferente.
-* [ ] **D12** — nessuna azione: la documentazione seguirà il dominio.
+* [x] **D12** — ✅ chiusa il 2026-10-23 (Tid): era un'osservazione, non un lavoro; le pagine
+      sottili di `acquisti` crescono con D8 (§7).
 * [ ] **D16** — censire le regole del DB che leggono `current_date` e i pgTAP
       che le attraversano con una data scritta a mano; poi decidere se serve un
       guardrail statico.
@@ -1234,9 +1266,9 @@ D6 e il registro dei rossi in CI.
       contratto e offerta: chiusa il 2026-10-08 (§7).
 * [x] **D20** — i tre debiti rimasti da D19: brief `brief-db-righe-e-componenti-debiti-residui`,
       chiuso e archiviato il 2026-10-09.
-* [ ] **D26** — la testata dopo l'emissione, colonna per colonna: brief
-      `brief-db-testata-dopo-emissione` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere;
-      fase 1 = la capability della data di consegna confermata, brief assorbito lo stesso giorno).
+* [x] **D26** — la testata dopo l'emissione, colonna per colonna: brief
+      `work-done/brief-db-testata-dopo-emissione` — chiuso e archiviato il 2026-10-11 (fasi 1-2 e giro R-DB a DB,
+      BE/FE, collaudo a video di Tid).
 * [x] **D22** — il guard emittente <-> BA scritto sette volte: brief
       `work-done/brief-db-guard-emittente-ba-unico` — chiuso e archiviato il 2026-10-10 (DB `20261010-17…-19`, BE §9).
 * [ ] **D24** — la vista del presidio C2 (`dbops.vw_punti_canale_campo`) non vede i BB trigger col
@@ -1249,26 +1281,64 @@ D6 e il registro dei rossi in CI.
       `20261010-02…-07`, BE/FE §12).
 * [x] **D25** — i residui di «l'istanza nasce col billing account»: brief
       `work-done/brief-db-istanza-nasce-col-ba-residui` — chiuso e archiviato il 2026-10-10 (DB `20261010-50…-59`, FE/BE §4).
-* [ ] **D27** — gli indirizzi del documento seguono il cliente: brief
-      `brief-db-indirizzi-documento-seguono-il-cliente` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
-* [ ] **D26-2** — le funzioni che ripianificano a ogni chiamata: brief
-      `brief-db-plancache-funzioni-con-query-incorporate` (aperto il 2026-10-10, non iniziato, due decisioni attese).
-* [ ] **D28** — le righe evase di un DDT da ordine: brief `brief-db-ddt-righe-evase-dall-ordine` (aperto il
-      2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
-
+* [x] **D27** — gli indirizzi del documento seguono il cliente: brief
+      `work-done/brief-db-indirizzi-documento-seguono-il-cliente` — chiuso e archiviato il 2026-10-19 (DB, BE/FE, collaudo di Tid).
+* [x] **D26-2** — le funzioni che ripianificano a ogni chiamata: brief
+      `work-done/brief-db-plancache-funzioni-con-query-incorporate` — chiuso e archiviato il 2026-10-18
+      (DB `20261010-44`, `20261011-42`, `20261012-03`, `20261018-15 … -33`, `-48 … -52`; verbo dell'accredito
+      ~115 → 50,6 ms; residuo in D36).
+* [x] **D28** — le righe evase di un DDT da ordine: brief `work-done/brief-db-ddt-righe-evase-dall-ordine` —
+      chiuso e archiviato il 2026-10-11 (DB `20261011-05 … -20`, `-34`, `-35`; BE/FE §10; collaudo di Tid superato).
+* [x] **D29** — annullare un documento con legami: brief `work-done/brief-db-annullo-documento-con-legami` —
+      chiuso e archiviato il 2026-10-11 (DB `20261011-68 … -91` e il caso 1 del giro D28; BE/FE §9; collaudo di Tid).
+* [x] **D30** — tornare indietro, annullare la commessa: brief `work-done/brief-db-annullo-a-valle-riapre-a-monte` —
+      chiuso e archiviato il 2026-10-13 (DB `20261012-08 … -24`, `-27 … -29`, `-43 … -47`, `20261013-69 … -72`;
+      BE/FE §9, §10.8, §11.6; collaudo di Tid).
+* [ ] **D31** — canone, orario e consumo del contratto in commessa: brief
+      `brief-db-contratto-righe-periodiche-in-commessa` (aperto il 2026-10-13, non iniziato; decisioni G-1…G-4).
+* [ ] **D32** — un documento nasce nel suo stato iniziale: brief
+      `brief-db-documento-nasce-nello-stato-iniziale` (aperto il 2026-10-13, non iniziato), confluito il 2026-10-24
+      in `brief-modello-documento-vendita` §4-bis (decisioni N-1…N-3).
+* [x] **D33** — un cliente manuale per soggetto e utility: brief
+      `work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility` — chiuso e archiviato il 2026-10-15
+      (DB `20261014-08 … -20`; BE §6-bis; smoke clienti verde).
+* [x] **D34** — dati societari in creazione: brief
+      `work-done/brief-db-dati-societari-in-creazione` — chiuso e archiviato il 2026-10-22
+      (DB `20261020-01…03`; BE/FE §6.1; collaudo di Tid riuscito).
+* [x] **D35** — `zeroerp_log` nella fase `ruoli`: brief
+      `work-done/brief-db-zeroerp-log-nella-fase-ruoli` — aperto e chiuso il 2026-10-15.
+* [x] **D36** — il perimetro una volta per istruzione, le famiglie che restano: brief
+      `work-done/brief-db-perimetro-una-volta-famiglie-residue` — aperto il 2026-10-18, chiuso il 2026-10-21.
 ---
 
 ## 7. Attività svolte — cosa è stato chiuso, e con che cosa
 
 > Questa sezione è il **rovescio di §3**: qui sta ciò che era un difetto e non lo
 > è più. Un numero che compare in **tutti e due** i posti (D6, D7, D11,
-> D12, D17) non è una ripetizione: in §3 c'è **il lavoro che resta**, qui **quello
+> D17) non è una ripetizione: in §3 c'è **il lavoro che resta**, qui **quello
 > fatto**. ⭐ **D14 non è più in §3**: è chiusa, e ciò che la sua chiusura ha
 > scoperto è una voce nuova: **D15**, le statistiche che non esistono.
 >
 > Le date sono quelle dichiarate nei brief, e i brief restano la sede del
 > dettaglio: qui si dice **che cosa è cambiato nel sistema**, non come ci si è
 > arrivati.
+
+### ✅ D26-2 — Le funzioni che ripianificano a ogni chiamata — chiuso il 2026-10-18
+
+Il brief `work-done/brief-db-plancache-funzioni-con-query-incorporate.md`, aperto il 2026-10-10. Censite
+le funzioni con query incorporate (D-1); il lister dei DDT senza filtri (D-2, `20261012-03`: la CTE
+`src` si ricalcolava per ogni riga); i resi col piano generico (D-3a, `20261011-42`); pannello
+«Passaggi» e liste nel brief figlio della lineage seminata (D-4…D-6). Poi il verbo dell'accredito
+(D-3b), riga 15922, da ~115-120 ms a **50,6 ms** di mediana (dbdev come app, fatti datati):
+D-3b-1 (`20261018-15`) i tre filtri `LIKE`/`split_part` su `segment_key` che sotto RLS non arrivavano
+all'indice, ora da `segment_base`; D-3b-2 (`20261018-16…-33`, `-48…-51`) il perimetro dell'operatore
+calcolato una volta per istruzione in tutte le policy ef_whitelist — `fn_scope_ef_perimetro` col
+perimetro di `fn_get_emittenti_scope_pk_ids` in una sottoquery, l'emittente della riga da
+`fn_resolve_emittente_fiscale_id` (DEFINER, decisione di Tid), gli adattatori riscritti sul
+risolutore, presidio `script/test-scope-ef-perimetro-una-volta-per-istruzione-v1` sul testo e sul
+piano; D-3b-3 (`20261018-52`) il `tx_id` generato sulla connessione di log persistente invece di
+aprirne una a ogni transazione (12-13 → 1,3-2,2 ms). Debito residuo: **D36** (le famiglie che
+restano per riga).
 
 ### ✅ D1 — Il cancello pgTAP in CI — chiuso il 2026-09-09
 
@@ -1506,13 +1576,22 @@ e il test 1 di `vendite/test-preventivi-approvazione-prezzo.sql`, un
 `throws_ok(…, NULL, NULL)` che passava con qualunque errore, anche uno della
 fixture (`brief-db-preventivi-congelamento-pricing`).
 
-### ✅ D12 — La quantità di documentazione — chiusa (era il gap di febbraio)
+### ✅ D12 — La documentazione — chiusa il 2026-10-23
 
 1.410 pagine **manuali** contro 1.500 autogenerate: il gap di febbraio («509
 pagine, tre schemi scoperti») non c'è più — `magazzino` 32 pagine, `acquisti` 11,
-viste coperte. Restano i due residui di **forma** (§3 D12): le pagine-specchio
+viste coperte. Restavano due residui di **forma**: le pagine-specchio
 dello `storico` che gonfiano il conteggio, e le pagine presenti ma sottili dei due
 domini non ancora scritti (D8).
+
+✅ **Chiusa per intero il 2026-10-23 (decisione di Tid).** I due residui non chiedevano
+lavoro: le pagine dello `storico` sono specchi auto-generati, ed è giusto che siano corte (sulla
+percentuale di copertura pesano per circa il 7%: si sa, e basta saperlo); le pagine di
+`magazzino` e `acquisti` sono sottili perché i domini fanno poco, e diventano spesse quando se ne
+scrive il comportamento. Scriverle prima vorrebbe dire descrivere funzioni che non esistono. La
+voce restava fra le aperte con una casella che nessuno poteva spuntare: ⇒ chiusa, e il residuo
+vero è **D8**. Lo spessore delle pagine si rilegge con gli indicatori
+([qualita-db-indicatori.md](../qualita-db-indicatori.md) §2, «Documentazione»).
 
 ### ✅ D13 — Il `RETURNING` del billing account sotto RLS — chiuso il 2026-09-13
 
@@ -1672,6 +1751,21 @@ Dettaglio nel brief
 [brief-db-guard-emittente-ba-unico.md](../work-done/brief-db-guard-emittente-ba-unico.md) (archiviato
 il 2026-10-10). Ciò che la chiusura ha trovato è **D24**.
 
+### ✅ D23 — Ricerca universale: oltre 10.000 risultati il totale e le pagine non dicevano il vero — chiusa il 2026-10-10
+
+Trovato il 2026-10-10 scrivendo R-6 di `brief-db-codici-non-trovato-email-e-permessi` (§14.5): la
+lista della ricerca universale teneva al massimo 10.000 corrispondenze con un `LIMIT` senza
+`ORDER BY`, poi contava, ordinava e paginava su quelle. Oltre il tetto il totale era falso, la prima
+pagina non era la prima vera e le pagine potevano ripetere o saltare soggetti. Che cosa è cambiato
+nel sistema:
+* `script.fn_search_soggetti_universale` conta, ordina e pagina **prima** degli aggregati, sull'intero
+  insieme: il totale è vero (strada B, `20261010-16`);
+* l'ordinamento per utility è ritirato, dal DB (`E_PARAMETRO_INVALIDO`), dalla whitelist BE e dal FE.
+
+Dettaglio nel brief
+[brief-db-ricerca-universale-tetto-10000.md](../work-done/brief-db-ricerca-universale-tetto-10000.md)
+(archiviato il 2026-10-10; BE/FE §7.4).
+
 ### ✅ D25 — I residui di «l'istanza nasce col billing account» — chiusa il 2026-10-10
 
 Ereditati il 2026-10-10 dalla chiusura di `work-done/brief-db-istanza-nasce-col-ba`. Che cosa è
@@ -1722,6 +1816,132 @@ applicati da Tid il 2026-10-08 (pgTAP verdi, nessuna regressione). Che cosa è c
 * i CHECK della quantità dei componenti si chiamano `_nz`, come dice la regola.
 Ciò che la chiusura ha trovato è **D20**.
 
+### ✅ D26 — La testata dopo l'emissione: la regola sta nel DB — chiusa il 2026-10-11
+
+Trovato il 2026-10-09 (§8 e §10.3 di `brief-db-esecutivi-ba-coppia`): quali colonne di testata si
+cambiano dopo l'emissione lo diceva per intero solo il backend («testata modificabile solo in DRAFT»
+su ordine, DDT, reso, preventivo, offerta; una tabella per stato sul contratto), e il database ne
+bloccava solo dei pezzi. Che cosa è cambiato nel sistema:
+* la regola «fuori bozza, che cosa si cambia» sta nel DB **per famiglie di colonne** (identità
+  bloccata; ciò che arriva dopo e le note modificabili; stampato e condizioni decise per documento),
+  nei BB `vendite.trgfn_doc_testata_lock_fuori_bozza` e `vendite.trgfn_doc_righe_lock_fuori_bozza`;
+* un lettore del montaggio (`script.fn_doc_lock_montaggi`, `script.fn_doc_colonna_modificabile`) e,
+  come fase 1, la capability della data di consegna confermata (assorbito
+  `brief-db-ordine-data-consegna-confermata-capability`);
+* lato BE via i «solo in DRAFT»; `E_CONTRATTO_NON_MODIFICABILE` ritirato.
+
+Dettaglio nel brief
+[brief-db-testata-dopo-emissione.md](../work-done/brief-db-testata-dopo-emissione.md) (archiviato il
+2026-10-11; DB, BE/FE, collaudo a video di Tid).
+
+### ✅ D27 — Gli indirizzi del documento seguono il cliente — chiuso il 2026-10-19
+
+Sul DDT, sul preventivo e sull'offerta il cliente si cambiava in bozza, ma gli indirizzi presi dall'anagrafica
+del cliente di prima restavano, e il gate d'emissione guardava che ci fossero, non di chi fossero. Ora la regola
+«l'indirizzo e' del cliente del documento» sta nel DB: slot di default come dato, guard d'origine, cambio di
+cliente a trigger (indirizzi, e scheda di fornitura su offerta e contratto), emittente e utility ferme anche in
+bozza. Nel FE il cambio di cliente in modifica si salva subito, con conferma, cosi' gli indirizzi nuovi si vedono e
+si correggono senza salvare prima. Brief
+[brief-db-indirizzi-documento-seguono-il-cliente.md](../work-done/brief-db-indirizzi-documento-seguono-il-cliente.md)
+(archiviato il 2026-10-19; DB, BE/FE, collaudo di Tid).
+
+### ✅ D28 — Le righe evase di un DDT da ordine — chiuso il 2026-10-11
+
+Sulla bozza di un DDT da ordine la riga evasa cambiava quantita' e articolo senza che il legame con
+l'ordine lo vedesse (ordine evaso per 10, bolla a 6). Ora la riga evasa — da un ordine o da un reso da
+ri-consegnare — e' **ferma** (`trgfn_ddt_righe_guard_riga_evasa`), la quantita' si corregge solo dal verbo
+`vendite.fn_ddt_riga_correggi_qta_evasa` (riga, legami e stato dell'ordine insieme), la riga evasa si
+cancella in bozza ritirando i suoi legami, i legami non si scrivono a mano ne' nascono su una bolla emessa,
+e l'annullo di una bolla con legami li ritira **con conferma** (`vendite.fn_annulla_ddt`, D-8). La proiezione
+dello stato dell'ordine ha una sede sola (`vendite.fn_ordine_proietta_stato_evasione`, sei copie ritirate).
+BE/FE: endpoint `qta-evasa/` e `legami/`, finestra di conferma dell'annullo. Brief
+`work-done/brief-db-ddt-righe-evase-dall-ordine.md`; il principio dell'annullo per gli altri documenti
+continua in D29.
+
+### ✅ D29 — Annullare un documento con legami — chiuso il 2026-10-11
+
+Un documento nato da un altro, annullato, lasciava l'origine consumata per sempre (l'ordine evaso per
+merce mai partita, il preventivo occupato da un ordine morto, l'offerta non piu' trasformabile) o la
+ritirava in silenzio (le righe di commessa). Ora bolla, ordine, preventivo e contratto si annullano dal
+loro verbo (`vendite.fn_annulla_<documento>`): con legami il DB avvisa (`E_DOC_ANNULLO_CON_LEGAMI`), la
+finestra di conferma comune mostra che cosa si riapre (lettore unico `vendite.fn_documento_legami`) e
+l'operatore dichiara quanti legami ha visto; poi i consumi si ritirano (BB
+`vendite.fn_documento_ritira_legami`) e i documenti a monte si riaprono. L'unicita' offerta → contratto /
+ordine vale sui soli documenti vivi. Brief `work-done/brief-db-annullo-documento-con-legami.md`; il verso
+dalla commessa continua in D30.
+
+### ✅ D30 — Tornare indietro: annullare la commessa riapre il documento a monte — chiuso il 2026-10-13
+
+Annullare una commessa non mostrava niente e non restituiva niente: il preventivo restava EVASO, la sua
+riga NON_EMESSA dentro una commessa ANNULLATA, e il documento non si rimandava in commessa. Ora la commessa
+si annulla dal verbo (`vendite.fn_annulla_commessa`) con la finestra comune di D29: i documenti che l'hanno
+alimentata si riaprono (preventivo di nuovo ACCETTATO, ordine di nuovo da mandare senza cambiare stato,
+reso da accreditare, consumi da mandare), gli oneri si annullano. Una riga ANNULLATA non occupa piu' il
+documento (`script.fn_get_stato_push_segment`); «Evaso» dell'ordine lo dicono solo le bolle; il verso in
+avanti verso la commessa sta tutto nel DB; il link documento → commessa resta come storia, con una sola
+commessa aperta per documento, e il lineage dice quando il legame e' ritirato (`is_legame_ritirato`).
+Brief `work-done/brief-db-annullo-a-valle-riapre-a-monte.md`; il residuo (la commessa vuota del push
+batch) e' in PROJECT_CONTEXT § «Aperto — Media priorità».
+
+### ✅ D36 — Il perimetro una volta per istruzione: le famiglie che restano — chiuso il 2026-10-21
+
+Ereditato il 2026-10-18 dalla chiusura di D26-2: dopo la cura delle policy ef_whitelist dell'operatore
+restavano per riga le famiglie del cliente portale, cliente, shop, fornitore, email e note, più tre
+policy dell'operatore. Chiuso in cinque giri (`20261021-24…-43`), tutti applicati e verdi: nessuna policy
+calcola più per riga ciò che dipende solo da chi guarda. Per l'operatore la forma già pronta (smistatori
+delle note col perimetro, il BA di una coppia da `fn_get_ba_id_da_coppia`); per le vesti di controparte
+tre building block nuovi (`fn_get_identita_sr_perimetro`, `fn_resolve_controparte_sr_id` coi suoi modi,
+`fn_scope_sr_perimetro`); per le email la regola dell'ambito resa pura, con chi guarda in quattro
+sottoquery. Ritirate tredici funzioni per riga. Il presidio
+`script/test-scope-ef-perimetro-una-volta-per-istruzione-v1` non ammette più eccezioni; regola in
+linee-guida-sql §10.3. Brief `work-done/brief-db-perimetro-una-volta-famiglie-residue.md`.
+
+### ✅ D34 — La creazione scrive tutta la sezione dei dati societari — chiuso il 2026-10-22
+
+Trovato il 2026-10-14 chiudendo `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`: in
+creazione la sezione non arrivava intera al verbo `fn_scrivi_dati_societari`. Una società perdeva la data
+di costituzione, una ditta individuale **tutta** la sezione, senza errore. Ora le due porte
+(`fn_crea_soggetto_pg`, `fn_crea_soggetto_pf`) ricevono gli stessi dieci campi e lasciano decidere al BB
+`anagrafiche.fn_scrivi_dati_societari_alla_nascita` se scriverli; una sezione passata a un privato si
+rifiuta invece di sparire (`20261020-01…03`, E-1 (a) di Tid). BE: il binding della sezione in un punto
+solo del repository, lo stesso contratto della PATCH anche in creazione; FE: la data di costituzione
+anche in creazione. Collaudo di Tid riuscito il 2026-10-22. Brief
+`work-done/brief-db-dati-societari-in-creazione.md`.
+
+### ✅ D35 — `zeroerp_log` nasce con gli altri ruoli di sistema — chiuso il 2026-10-15
+
+Il ruolo del canale dei registri lo creavano a mano i workflow e la guida d'installazione, e doveva
+esistere prima del migrate perche' il `20260905-38` gli desse il giornale dei job. Ora lo crea la fase
+`ruoli` di `provision_zeroerp.sql`, con gli altri ruoli di sistema; lo script del canale non lo crea piu'.
+Con lui le due code della chiusura dei ruoli di sistema: i vecchi privilegi di default di `titodb` e una
+corsa di `ci-local.sh`. Brief `work-done/brief-db-zeroerp-log-nella-fase-ruoli.md`.
+
+### ✅ D15 — Le statistiche delle tabelle: un job notturno — chiuso il 2026-10-15
+
+Il database non aveva un posto che tenesse aggiornate le statistiche del planner: l'autovacuum non
+arriva alle tabelle piccole né alle madri partizionate, e nessun job lanciava `ANALYZE` (fatto datato
+14-10 su dbdev: mai analizzate 69 tabelle su 89 in `vendite`, tutte quelle di `magazzino` e `acquisti`).
+Ora c'è il job `analyze_statistiche`, ogni notte alle 02:30: `maintenance.fn_analyze_statistiche` fa
+`ANALYZE` e poi un'**autoverifica**, perché `ANALYZE` salta senza errore le tabelle che il ruolo non può
+analizzare; se una tabella resta senza statistiche il job fallisce con `E_STATISTICHE_MANCANTI` e la
+nomina nel giornale. In CI gira nella convergenza di `ci_apply`, quindi i pgTAP partono da statistiche
+reali. Insieme, il panorama dei processi distingue il job nuovo in attesa dal job in ritardo
+(`IN_ATTESA`, `JOB_IN_RITARDO`). Provato su dbdev il 15-10, anche con pgAgent come `zeroerp_job`. Brief
+`work-done/brief-db-statistiche-tabelle-job-notturno.md`; guida `guide/statistiche-del-planner.md`.
+
+
+### ✅ D33 — Un cliente manuale per soggetto, utility e azienda — chiuso il 2026-10-15
+
+La creazione manuale del cliente creava ogni volta un'istanza fittizia nuova, e con lo stesso soggetto e
+la stessa utility nasceva un secondo cliente. Ora, fra le istanze fittizie, due clienti con lo stesso
+soggetto, utility e azienda emittente non si sovrappongono nel periodo: il controllo scatta al COMMIT
+(`E_CLIENTE_STESSA_CHIAVE`, col codice del BA esistente), anche quando cambia l'azienda del BA o
+un'istanza diventa fittizia, e legge un predicato solo (`anagrafiche.fn_clienti_stessa_chiave`). Con lei
+gli stati del cliente hanno un grafo (`config.transizioni_stati_cliente`): un chiuso non si riapre, si
+torna con istanza, BA e cliente nuovi; ogni stato pretende la sua data; la data di chiusura di un chiuso
+è ferma. «Attivo» si legge dal periodo anche per il PDP, la disdetta e il BE (`ha_ba_attivo`). Brief
+`work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility.md`; i residui (§7 del brief) passano allo
+sviluppo delle utility (Tid, 2026-10-15).
 
 *Valutazione 2026-09-08 — perimetro DB. Le misure sono letture di struttura sul
 database di sviluppo `zeroerp` (PostgreSQL 18.6) e sul repo al commit `89d36ad1b`,

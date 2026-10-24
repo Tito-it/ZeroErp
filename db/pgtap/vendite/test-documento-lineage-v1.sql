@@ -15,14 +15,14 @@
 -- Indice test (1..47):
 --    1) vw_documento_lineage_nodi esiste
 --    2) vw_documento_lineage_archi esiste
---    3) vw_documento_lineage esiste
+--    3) vw_documento_lineage ritirata, la sintesi e' fn_documento_lineage_sintesi (rev 2026-10-11)
 --    4) fn_documento_lineage(bigint,text,text) esiste
 --    5) colonne di vw_documento_lineage_nodi
 --    6) colonne di vw_documento_lineage_archi
---    7) colonne di vw_documento_lineage
+--    7) colonne della sintesi (fn_documento_lineage_sintesi), nell'ordine (rev 2026-10-11)
 --    8) nodi: security_invoker attivo
 --    9) archi: security_invoker attivo
---   10) summary: security_invoker attivo
+--   10) sintesi: SECURITY INVOKER e STABLE (rev 2026-10-11; era la vista)
 --   11) fn: STABLE
 --   12) fn: SECURITY INVOKER (NON definer)
 --   13) archi: arco solo in A..H,R,N,S,T,U (vocabolario CHIUSO: e' un cricchetto)
@@ -156,7 +156,17 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ============================================================
 CREATE TEMP TABLE _lin_nodi    AS SELECT * FROM vendite.vw_documento_lineage_nodi;
 CREATE TEMP TABLE _lin_archi   AS SELECT * FROM vendite.vw_documento_lineage_archi;
-CREATE TEMP TABLE _lin_summary AS SELECT * FROM vendite.vw_documento_lineage;
+-- ⭐ rev 2026-10-11 (giro B di brief-db-lineage-seminata-per-chiave): la sintesi
+--   per nodo non e' piu' una vista (vw_documento_lineage, ritirata in
+--   20261011-98) ma vendite.fn_documento_lineage_sintesi, chiesta qui per TUTTI
+--   i nodi visibili: stesse 28 colonne, stessa regola. Gli invarianti sotto
+--   («summary: …») la misurano come misuravano la vista.
+CREATE TEMP TABLE _lin_summary AS
+SELECT * FROM vendite.fn_documento_lineage_sintesi(
+    -- ⚠️ coalesce: su un database da zero non ci sono nodi, e un seme NULL la
+    --    sintesi lo rifiuta (E_ERRORE_PARAMETRI); vuoto vuol dire zero righe.
+    coalesce((SELECT array_agg(tipo_id) FROM _lin_nodi), '{}'::bigint[]),
+    coalesce((SELECT array_agg(uid)     FROM _lin_nodi), '{}'::text[]));
 
 -- Gli indici servono agli EXISTS correlati, che sono il grosso del costo.
 CREATE INDEX ON _lin_nodi  (tipo_id, uid);
@@ -171,7 +181,9 @@ SELECT plan(47);
 -- ---- 1..4: esistenza oggetti ---------------------------------------------
 SELECT has_view('vendite', 'vw_documento_lineage_nodi',  'vw_documento_lineage_nodi esiste');
 SELECT has_view('vendite', 'vw_documento_lineage_archi', 'vw_documento_lineage_archi esiste');
-SELECT has_view('vendite', 'vw_documento_lineage',       'vw_documento_lineage esiste');
+SELECT ok(to_regclass('vendite.vw_documento_lineage') IS NULL
+          AND to_regprocedure('vendite.fn_documento_lineage_sintesi(bigint[], text[])') IS NOT NULL,
+    'vw_documento_lineage ritirata (20261011-98): la sintesi e'' fn_documento_lineage_sintesi');
 SELECT has_function('vendite', 'fn_documento_lineage',
                     ARRAY['bigint','text','text'],
                     'fn_documento_lineage(bigint,text,text) esiste');
@@ -203,7 +215,11 @@ SELECT columns_are('vendite', 'vw_documento_lineage_archi',
           'rango_origine'],
     'colonne di vw_documento_lineage_archi');
 
-SELECT columns_are('vendite', 'vw_documento_lineage',
+-- ⭐ rev 2026-10-11: le colonne della SINTESI, nell'ordine, dal catalogo
+--   (vendite.vw_documento_lineage_sintesi_colonne): e' il contratto che liste e
+--   drawer uniscono alle righe.
+SELECT is(
+    (SELECT array_agg(colonna ORDER BY posizione) FROM vendite.vw_documento_lineage_sintesi_colonne),
     ARRAY['tipo_id','uid','codice','stato_codice_interno','stato_codice','stato_descrizione',
           'fase','is_abortito','pratica_id','pratica_numero','n_pratiche',
           'frontiera_tipo_id','frontiera_uid','frontiera_codice',
@@ -236,8 +252,8 @@ SELECT columns_are('vendite', 'vw_documento_lineage',
           -- questo elenco non ci veda un disordine da sistemare.
           'frontiera_natura_doc_codice_interno',
           -- ⭐ rev 2026-08-29: il codice del tipo, del nodo e della frontiera.
-          'tipo_codice_interno','frontiera_tipo_codice_interno'],
-    'colonne di vw_documento_lineage');
+          'tipo_codice_interno','frontiera_tipo_codice_interno']::text[],
+    'colonne della sintesi (fn_documento_lineage_sintesi), nell''ordine');
 
 -- ---- 8..10: security_invoker=on sulle 3 viste ----------------------------
 SELECT ok(
@@ -251,10 +267,9 @@ SELECT ok(
                AND opt IN ('security_invoker=on','security_invoker=true')),
     'archi: security_invoker attivo');
 SELECT ok(
-    EXISTS (SELECT 1 FROM pg_class c, unnest(c.reloptions) opt
-             WHERE c.oid = 'vendite.vw_documento_lineage'::regclass
-               AND opt IN ('security_invoker=on','security_invoker=true')),
-    'summary: security_invoker attivo');
+    (SELECT NOT p.prosecdef AND p.provolatile = 's' FROM pg_proc p
+      WHERE p.oid = 'vendite.fn_documento_lineage_sintesi(bigint[], text[])'::regprocedure),
+    'sintesi: SECURITY INVOKER e STABLE (la RLS resta di chi legge)');
 
 -- ---- 11..12: proprieta' della funzione -----------------------------------
 SELECT is(

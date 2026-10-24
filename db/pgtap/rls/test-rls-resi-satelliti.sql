@@ -79,6 +79,13 @@ SELECT m.lato, m.emittente_fiscale_id, c.*
 
 -- ⚠️ `causale_trasporto_id` va data alla nascita: senza, l'emissione si ferma
 --   su `trgfn_ddt_guard_causale_emissione`, e la causale e' immutabile dopo.
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3a): l'articolo
+--   si COSTRUISCE. Ordine e bolla ammettono solo merce non solo-componente, e
+--   su un database ricostruito il catalogo ha solo i cinque ONERE_* (servizi):
+--   cercarlo dava NULL e la riga moriva su E_UOM_MISSING.
+CREATE TEMP TABLE _art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGTAP-RLS-RESI-SAT', false) AS id;
+
 CREATE TEMP TABLE _ddt AS
 WITH d AS (
     -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il BA del cliente, non la sola
@@ -105,7 +112,7 @@ WITH r AS (
         (ddt_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa,
          prezzo_unitario, iva_id)
     SELECT d.ddt_id, 1,
-           (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1),
+           (SELECT id FROM _art),
            'Riga DDT da rendere', 10, 10, 25.00,
            (SELECT i.id FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1)
       FROM _ddt d
@@ -160,7 +167,7 @@ WITH r AS (
         (reso_id, riga_nr, ddt_riga_id, articolo_id, descrizione,
          quantita, qta_operativa, tipo_reso_id)
     SELECT s.reso_id, 1, dr.ddt_riga_id,
-           (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1),
+           (SELECT id FROM _art),
            'Riga reso pgTAP', 1, 1,
            -- ⚠️ `RESO_PER_RICONSEGNA` e non `RESO_A_CREDITO`: la rinuncia si
            --   appende SOLO a una riga di tipo ri-consegna
@@ -262,7 +269,7 @@ BEGIN
              quantita, qta_operativa, tipo_reso_id)
         VALUES (v_b.reso_id, 99,
                 (SELECT ddt_riga_id FROM _ddt_righe WHERE lato = 'B'),
-                (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1),
+                (SELECT id FROM _art),
                 'intrusione', 1, 1,
                 -- ⚠️ `RESO_PER_RICONSEGNA` e non `RESO_A_CREDITO`: la rinuncia si
            --   appende SOLO a una riga di tipo ri-consegna

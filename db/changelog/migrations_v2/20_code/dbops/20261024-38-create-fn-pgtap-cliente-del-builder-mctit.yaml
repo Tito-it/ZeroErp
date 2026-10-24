@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_pgtap_cliente_del_builder: IL CLIENTE DI UN BUILDER, SENZA CLIENTI IN PIU'
+#   Brief: brief-modello-documento-vendita §4-octies (Tid, 2026-10-24).
+#
+# -- IL DIFETTO -----------------------------------------------------------
+#   Cinque builder (commessa, contratto, fattura, ordine, lotto) avevano lo
+#   stesso blocco, ricopiato: chiamare dbops.fn_pgtap_crea_mondo_cliente e poi,
+#   se il test passava il billing account di un'altra fixture, verificarlo con
+#   dbops.fn_pgtap_cliente_ba_del_mondo. Il mondo pero' costruisce SEMPRE un
+#   cliente: col BA del test, ogni chiamata lasciava un cliente e un BA che
+#   nessuno usava (sei in test_fn_successione_contratti, tre per lotto in
+#   vw-commesse-attivita-emittibilita). Innocuo per i test, ma sporca il mondo e
+#   le viste che contano i clienti dell'azienda.
+#
+# -- IL BUILDING BLOCK -----------------------------------------------------
+#   * senza p_billing_account_id: il mondo, come prima (azienda, operatore,
+#     contesto e un cliente nuovo);
+#   * con p_billing_account_id: l'azienda di chi agisce
+#     (dbops.fn_pgtap_azienda_di_chi_agisce, 20261024-37) e il BA verificato
+#     dell'azienda (dbops.fn_pgtap_cliente_ba_del_mondo). Nessun cliente nuovo.
+#   ⚠️ Col BA serve un contesto aperto. Prima, senza contesto, il mondo
+#   costruiva un'azienda NUOVA e la verifica del BA falliva comunque (il BA era
+#   di un'altra): stesso esito, ora con un messaggio che lo dice.
+#   I cinque builder ritirano il loro blocco nello stesso giro (20261024-40).
+#   Permessi: funzione di chi migra, SECURITY INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261024-38-create-fn-pgtap-cliente-del-builder-mctit.yaml
+
+  - changeSet:
+      id: 20261024-38-create-fn-pgtap-cliente-del-builder
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_cliente_del_builder: il cliente di un builder pgTAP — col billing account del
+        test l'azienda di chi agisce e il BA verificato, senza un cliente in piu'; senza, il mondo.
+        Sostituisce il blocco ricopiato nei cinque builder. Brief: brief-modello-documento-vendita
+        (§4-octies).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_pgtap_cliente_del_builder(
+                   -- l'etichetta e' un frammento di testo della fixture: tipo nudo.
+                   p_etichetta          text,
+                   p_billing_account_id anagrafiche.billing_account.id%TYPE,
+                   -- il nome del builder che chiede, per i messaggi: tipo nudo.
+                   p_chiamante          text)
+               RETURNS TABLE(
+                   emittente_fiscale_id        anagrafiche.emittenti_fiscali.id%TYPE,
+                   emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                   auth_user_id                anagrafiche.identita_digitali.auth_user_id%TYPE,
+                   billing_account_id          anagrafiche.billing_account.id%TYPE,
+                   istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE,
+                   cliente_soggetto_ruolo_id   anagrafiche.billing_account.soggetto_ruolo_id%TYPE,
+                   utility_id                  anagrafiche.billing_account.utility_id%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: il cliente su cui un builder pgTAP scrive. Col billing
+              --   account di un'altra fixture: l'azienda di chi agisce e quel
+              --   BA, verificato. Senza: il mondo (un cliente nuovo).
+              DECLARE
+                  v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_sr_id  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
+              BEGIN
+                  IF p_billing_account_id IS NULL THEN
+                      RETURN QUERY
+                      SELECT m.emittente_fiscale_id, m.emittente_soggetto_ruolo_id,
+                             m.auth_user_id, m.billing_account_id, m.istanza_utility_id,
+                             m.cliente_soggetto_ruolo_id, m.utility_id
+                        FROM dbops.fn_pgtap_crea_mondo_cliente(p_etichetta) m;
+                      RETURN;
+                  END IF;
+
+                  -- L'azienda di chi agisce, senza costruire un cliente.
+                  SELECT a.emittente_fiscale_id, a.emittente_soggetto_ruolo_id, a.auth_user_id
+                    INTO v_ef_id, v_ef_sr_id, v_user_id
+                    FROM dbops.fn_pgtap_azienda_di_chi_agisce(p_chiamante) a;
+
+                  -- ⚠️ Il BA chiesto si VERIFICA prima di usarlo: uno di
+                  --   un'altra azienda solleva qui, nominando il builder.
+                  RETURN QUERY
+                  SELECT v_ef_id, v_ef_sr_id, v_user_id,
+                         c.billing_account_id, c.istanza_utility_id,
+                         c.cliente_soggetto_ruolo_id, c.utility_id
+                    FROM dbops.fn_pgtap_cliente_ba_del_mondo(
+                             p_billing_account_id, v_ef_sr_id, p_chiamante) c;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_cliente_del_builder(text, anagrafiche.billing_account.id%TYPE, text)
+              IS 'Fixture pgTAP (building block dei builder di commessa, contratto, fattura, ordine e lotto): il cliente su cui il builder scrive. Senza billing account: il mondo (dbops.fn_pgtap_crea_mondo_cliente: azienda, operatore, contesto e un cliente nuovo). Col billing account di un''altra fixture: l''azienda di chi agisce (dbops.fn_pgtap_azienda_di_chi_agisce, serve un contesto aperto) e quel BA verificato (dbops.fn_pgtap_cliente_ba_del_mondo: uno di un''altra azienda solleva, nominando p_chiamante), SENZA costruire un cliente in piu''. Sostituisce il blocco che i cinque builder ricopiavano. Brief: brief-modello-documento-vendita (§4-octies), 2026-10-24.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_cliente_del_builder(text, anagrafiche.billing_account.id%TYPE, text);

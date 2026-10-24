@@ -2,19 +2,33 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Management command — l'`ExecCondition=` delle sveglie CALENDARIALI
-#        (`dovuto` in `backend/deploy/sveglie.json`): dice a systemd se il
-#        lavoro della sveglia e' dovuto ADESSO, nel fuso dell'AZIENDA.
+# Scopo: Management command — l'`ExecCondition=` di OGNI sveglia di
+#        `backend/deploy/sveglie.json`: dice a systemd se il lavoro della
+#        sveglia e' dovuto ADESSO. Due domande, in quest'ordine:
+#          1. il processo e' ACCESO su questa installazione? Lo dice il DB
+#             (`maintenance.fn_sveglia_accesa`: la scelta a mano, poi il
+#             default per ambiente), per ogni sveglia — dal 2026-10-16,
+#             brief-db-processi-accensione-per-ambiente §6.0 punto 2;
+#          2. solo per le sveglie CALENDARIALI (`dovuto`): il periodo
+#             aziendale e' cominciato, nel fuso dell'AZIENDA, e il suo lavoro
+#             non e' ancora fatto?
 #
 #          run-command.sh e_dovuto zeroerp-digest-presidi-giornaliero
 #
-#        Il timer si sveglia ogni ora; questo comando risponde:
+#        Risponde:
 #          exit 0   -> dovuto: systemd esegue l'`ExecStart` (il `comando`);
-#          exit 1   -> non ancora (il periodo aziendale non e' cominciato) o
-#                      gia' fatto (una corsa riuscita della corsia dall'inizio
-#                      del periodo): systemd salta, SENZA segnare un errore;
-#          exit 255 -> guasto (DB irraggiungibile, fuso illeggibile, sveglia
-#                      sconosciuta): systemd segna l'unit FALLITA.
+#          exit 1   -> processo spento, oppure non ancora (il periodo aziendale
+#                      non e' cominciato) o gia' fatto (una corsa riuscita
+#                      della corsia dall'inizio del periodo): systemd salta,
+#                      SENZA segnare un errore;
+#          exit 255 -> guasto (DB irraggiungibile, ambiente dell'installazione
+#                      non dichiarato, fuso illeggibile, sveglia sconosciuta):
+#                      systemd segna l'unit FALLITA.
+#        ⭐ PERCHE' UN COMANDO SOLO per le due domande: «dovuto adesso?»
+#        comprende «acceso?» (un processo spento non deve niente), e il
+#        recinto delle uscite qui sotto — il 255 che un'eccezione non deve
+#        perdere — resta scritto una volta. Un secondo comando accanto ne
+#        sarebbe la copia.
 #        ⛔ Il 255 non e' un dettaglio: systemd tratta 1-254 come «salta» e
 #           basta, quindi un guasto che uscisse 1 — l'uscita di default di
 #           un'eccezione Python — farebbe sparire il lavoro in silenzio.
@@ -49,8 +63,9 @@ USCITA_GUASTO = 255
 
 class Command(ComandoAziendale):
     help = (
-        "ExecCondition delle sveglie calendariali: exit 0 se il lavoro e' dovuto "
-        "adesso (fuso dell'azienda), 1 se non ancora o gia' fatto, 255 se guasto."
+        "ExecCondition di ogni sveglia: exit 0 se il processo e' acceso e il lavoro "
+        "e' dovuto adesso (fuso dell'azienda), 1 se spento, non ancora o gia' fatto, "
+        "255 se guasto."
     )
 
     # Scopo: un solo argomento, la unit della sveglia (come in sveglie.json).
@@ -91,6 +106,13 @@ class Command(ComandoAziendale):
         sveglia = next((s for s in carica_sveglie() if s.unit == unit), None)
         if sveglia is None:
             raise LookupError(f"sveglia sconosciuta: {unit!r} (non e' in sveglie.json)")
+        repo = MaintenanceRepository()
+        # 1. Acceso? Prima del periodo: un processo spento non e' dovuto,
+        #    qualunque ora sia. Un errore del DB qui (ambiente non dichiarato)
+        #    e' un guasto, e `run_from_argv` lo rende 255.
+        if not repo.sveglia_accesa(sveglia.processo_codice):
+            self.stdout.write(f"{unit}: processo {sveglia.processo_codice} spento su questa installazione")
+            self._esci(USCITA_NON_DOVUTO)
         if sveglia.dovuto is None:
             # Una sveglia non calendariale lavora a ogni sveglia.
             self._esci(USCITA_DOVUTO)
@@ -98,7 +120,12 @@ class Command(ComandoAziendale):
         if inizio is None:
             self.stdout.write(f"{unit}: non ancora dovuto (fuso dell'azienda)")
             self._esci(USCITA_NON_DOVUTO)
-        if MaintenanceRepository().corsa_riuscita_dal(sveglia.dovuto.jobname, inizio):
+        # `basta_una_corsa`: una corsa chiusa, anche fallita, fa il periodo
+        # (l'esito negativo e' il risultato, non un lavoro da ritentare).
+        gia_fatto = (
+            repo.corsa_chiusa_dal if sveglia.dovuto.basta_una_corsa else repo.corsa_riuscita_dal
+        )
+        if gia_fatto(sveglia.dovuto.jobname, inizio):
             self.stdout.write(f"{unit}: gia' fatto dal {inizio.isoformat()}")
             self._esci(USCITA_NON_DOVUTO)
         self.stdout.write(f"{unit}: dovuto dal {inizio.isoformat()}")

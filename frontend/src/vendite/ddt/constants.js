@@ -45,4 +45,6 @@ export const CAMPI_FORM_TESTATA_DDT = Object.freeze([
   'volume',
   'targa',
   'autista',
+  'magazzino_id',
+  'magazzino_arrivo_id',
 ])

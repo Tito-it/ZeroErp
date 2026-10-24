@@ -13,6 +13,13 @@ from typing import Any, cast
 
 from django.db import connection, transaction
 
+from apps.config.sorgenti import (
+    SORGENTE_ATTIVITA_CONSUMI,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+)
 from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, limiti_pagina
 from apps.core.db.sql_write_helpers import execute_dynamic_update
@@ -57,11 +64,11 @@ COLONNE_PROVENIENZA_PREZZO: tuple[str, ...] = (
 
 # --- Mapping codice sorgente → fn SQL da chiamare ---
 _SORGENTE_FN_MAP: dict[str, str] = {
-    "PREVENTIVO": "vendite.fn_list_preventivi_da_pushare",
-    "ORDINE_VENDITA": "vendite.fn_list_ordini_da_pushare",
-    "ATTIVITA_CONSUMI": "vendite.fn_list_consumi_da_pushare",
-    "CONTRATTO": "vendite.fn_list_contratti_da_pushare",
-    "DDT_VENDITA": "vendite.fn_list_ddt_da_pushare",
+    SORGENTE_PREVENTIVO: "vendite.fn_list_preventivi_da_pushare",
+    SORGENTE_ORDINE_VENDITA: "vendite.fn_list_ordini_da_pushare",
+    SORGENTE_ATTIVITA_CONSUMI: "vendite.fn_list_consumi_da_pushare",
+    SORGENTE_CONTRATTO: "vendite.fn_list_contratti_da_pushare",
+    SORGENTE_DDT_VENDITA: "vendite.fn_list_ddt_da_pushare",
 }
 
 # Sorgenti la cui fn_list_*_da_pushare espone il 5o parametro `p_righe_ids`
@@ -69,7 +76,7 @@ _SORGENTE_FN_MAP: dict[str, str] = {
 # (brief-db-smistamento-preventivi.md C); aggiungere qui quando le altre fn
 # acquisiranno il parametro (sviluppo concentrico: la whitelist e' il punto
 # unico di espansione).
-_SORGENTE_SUPPORTA_RIGHE_IDS: frozenset[str] = frozenset({"PREVENTIVO"})
+_SORGENTE_SUPPORTA_RIGHE_IDS: frozenset[str] = frozenset({SORGENTE_PREVENTIVO})
 
 # Colonne ordinabili della lista attivita' commessa: specchio della whitelist
 # CHIUSA dentro vendite.fn_list_commessa_attivita (changeset 20260802-26), dove
@@ -106,7 +113,10 @@ ATTIVITA_SORT_COLUMNS: frozenset[str] = frozenset({
     "tipo_movimento",
     "articolo_codice",
     "articolo_descrizione",
-    "sorgente_codice",
+    # ⭐ Dal 2026-10-21 (20261021-20, brief-db-grammatica-unica-documenti §13.6)
+    # si ordina per ETICHETTA, quella che la colonna «Tipo origine» mostra: era
+    # `sorgente_codice` (`config.sorgenti.codice`, il nome modificabile), uscito.
+    "sorgente_etichetta",
     "sorgente_documento_numero",
     "gruppo_key",
 })
@@ -139,7 +149,11 @@ _PUSHABLE_SHARED_COLS = (
     "prezzo_bloccato",
     "pricing_mode",
     "tipo_movimento",
-    "tipo_consumo",
+    # ⛔ `tipo_consumo` ritirato dal DB il 2026-10-13 (20261013-60…-67,
+    #    decisione A di Tid): due significati nella stessa colonna — il
+    #    contratto ci metteva l'EROGAZIONE (UNA_TANTUM…), la madre accettava solo
+    #    ACCONTO/CONGUAGLIO/STORNO, e nessuna riga di contratto entrava in
+    #    commessa. L'erogazione del contratto viaggia in `meta.tipo_erogazione`.
     "valuta_id",
     "meta",
     "tipo_doc_fiscale_id",
@@ -187,7 +201,6 @@ TIPO_MOVIMENTO_NORMALE = "NORMALE"
 # NORMALE | RETTIFICA | ONERE. La rettifica e' la riga della nota di credito —
 # quantita' NEGATIVA, prezzo copiato dalla riga di fattura rettificata.
 TIPO_MOVIMENTO_RETTIFICA = "RETTIFICA"
-TIPO_CONSUMO_CONGUAGLIO = "CONGUAGLIO"
 
 # Il vocabolario intero, per il filtro della lista attivita' (changeSet
 # 20260820-09). ⚠️ E' uno SPECCHIO, non l'autorita': a enforcare e' il CHECK, e
@@ -197,6 +210,15 @@ TIPO_CONSUMO_CONGUAGLIO = "CONGUAGLIO"
 TIPO_MOVIMENTO_VALUES: frozenset[str] = frozenset(
     {"NORMALE", TIPO_MOVIMENTO_RETTIFICA, "ONERE"}
 )
+
+# I vocabolari di emissione e approvazione di una riga di commessa, per i
+# filtri della lista attivita': SPECCHI dei CHECK
+# `chk_commesse_attivita_stato_emissione` / `_stato_approvazione`, che il
+# guardrail `test_specchi_dei_check_db` confronta col database (2026-10-20:
+# prima il filtro andava nel WHERE senza controllo, e un valore sbagliato
+# rispondeva lista vuota).
+STATI_EMISSIONE_ATTIVITA: tuple[str, ...] = (STATO_EMISSIONE_NON_EMESSA, "EMESSA", "ANNULLATA")
+STATI_APPROVAZIONE_ATTIVITA: tuple[str, ...] = (STATO_APPROVAZIONE_BOZZA, "APPROVATA", "RIFIUTATA")
 
 # Il tetto della lista attivita': quello che la fn DB applica da se' su
 # `p_limit`. Il tetto di PAGINA (`MAX_LIMIT`) NON sta qui — vive nel service, dove e'
@@ -238,7 +260,6 @@ class CommessaAttivitaInput:
     stato_approvazione: str = STATO_APPROVAZIONE_BOZZA
     stato_emissione: str = STATO_EMISSIONE_NON_EMESSA
     tipo_movimento: str = TIPO_MOVIMENTO_NORMALE
-    tipo_consumo: str = TIPO_CONSUMO_CONGUAGLIO
 
     # === Campi opzionali ===
     istanza_utility_id: int | None = None
@@ -298,7 +319,6 @@ class PushableRow:
     prezzo_bloccato: bool
     pricing_mode: str
     tipo_movimento: str
-    tipo_consumo: str
     valuta_id: int | None
     meta: dict[str, Any]
     tipo_doc_fiscale_id: int | None
@@ -399,7 +419,6 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         prezzo_bloccato=bool(_col("prezzo_bloccato")),
         pricing_mode=str(_col("pricing_mode")),
         tipo_movimento=str(_col("tipo_movimento")),
-        tipo_consumo=str(_col("tipo_consumo")),
         valuta_id=_col("valuta_id"),
         meta=meta_raw,
         tipo_doc_fiscale_id=_col("tipo_doc_fiscale_id"),
@@ -606,40 +625,6 @@ class CommesseRepository(EventLogRepositoryMixin):
         assert row is not None
         return int(row[0])
 
-    def link_sorgente(
-        self,
-        *,
-        commessa_id: int,
-        sorgente_tipo_id: int,
-        sorgente_uid: str,
-        sorgente_riga: int | None = None,
-        meta: dict | None = None,
-    ) -> int:
-        """Collega la sorgente ROOT alla commessa. Idempotente su stesso sorgente_uid.
-        Restituisce il link_id."""
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT vendite.fn_link_commessa_sorgente(
-                    p_commessa_id => %s,
-                    p_sorgente_tipo_id => %s,
-                    p_sorgente_uid => %s,
-                    p_sorgente_riga => %s,
-                    p_meta => %s::jsonb
-                )
-                """,
-                [
-                    commessa_id,
-                    sorgente_tipo_id,
-                    sorgente_uid,
-                    sorgente_riga,
-                    self._to_jsonb_param(meta or {}),
-                ],
-            )
-            row = cursor.fetchone()
-        assert row is not None
-        return int(row[0])
-
     def approva_commessa_attivita(
         self,
         *,
@@ -803,32 +788,88 @@ class CommesseRepository(EventLogRepositoryMixin):
         assert row is not None
         return {"commessa_id": int(row[0]), "stato_da": row[1], "stato_a": row[2]}
 
-    def get_commessa_id_by_sorgente(
-        self, *, sorgente_codice: str, sorgente_uid: str,
-        ruolo_link: str | None = None,
-    ) -> int | None:
-        """commessa_id collegata a una sorgente via vendite.commesse_sorgenti,
-        o None. Risolve sorgente_tipo_id da config.sorgenti per codice_interno.
-        Usato per l'idempotenza del push preventivo→commessa.
+    # Scopo: Annulla la commessa via il verbo DB `vendite.fn_annulla_commessa`
+    #        (brief-db-annullo-a-valle-riapre-a-monte D-1/D-2): prima cio' che
+    #        vieta (righe EMESSA: E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE), poi la
+    #        conferma — con righe NON_EMESSA `legami_confermati` dichiara quanti
+    #        legami l'operatore ha visto; se non corrisponde,
+    #        E_DOC_ANNULLO_CON_LEGAMI — poi il ritiro (il documento o il consumo
+    #        tornano da mandare, il reso da accreditare, gli oneri si annullano)
+    #        e lo stato ANNULLATA. Una transazione, a DB.
+    # Ritorna: i legami confermati (0 se non ce n'erano).
+    def annulla(self, commessa_id: int, legami_confermati: int | None) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_annulla_commessa(%s, %s)",
+                [int(commessa_id), legami_confermati],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
 
-        ruolo_link=None (default) = QUALUNQUE ruolo: col modello commessa
-        multi-sorgente (auto-ruolo DB) la prima sorgente e' ROOT ma le
-        successive che confluiscono nella stessa commessa sono COLLEGATO —
-        filtrare per ROOT nasconderebbe il link di un preventivo confluito
-        (bug trovato dallo smoke pratica CONFERMA, 2026-06-11)."""
+    # Scopo: Dopo un invio in commessa, approva le righe dell'invio e porta la
+    #        commessa a PRONTA_FATTURAZIONE: madre DB
+    #        `vendite.fn_rendi_commessa_emittibile` (D-10, R-9 di
+    #        brief-db-annullo-a-valle-riapre-a-monte). `righe_ids`: None =
+    #        nessun filtro; [] = nessuna riga di questo invio, niente
+    #        approvazione ma la testata va comunque pronta; pieno = le sole
+    #        righe dell'invio. Gia' pronta: la madre non ritenta; CHIUSA o
+    #        ANNULLATA: la matrice rifiuta forte.
+    # Ritorna: le righe approvate.
+    def rendi_commessa_emittibile(
+        self,
+        *,
+        commessa_id: int,
+        righe_ids: list[int] | None = None,
+        user: str | None = None,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT vendite.fn_rendi_commessa_emittibile(
+                    p_commessa_id => %s,
+                    p_righe_ids => %s::bigint[],
+                    p_user => %s
+                )
+                """,
+                [commessa_id, righe_ids, user],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0] or 0)
+
+    def get_commessa_viva_by_sorgente(
+        self, *, sorgente_codice: str, sorgente_chiave: str,
+    ) -> int | None:
+        """La commessa APERTA in cui sta un documento sorgente, o None.
+
+        Wrapper di `vendite.fn_commessa_viva_di_sorgente`: un documento puo'
+        avere piu' link (quelli verso commesse chiuse o annullate restano
+        come storia, D-12 di brief-db-annullo-a-valle-riapre-a-monte), e
+        quale conta lo dice il DB. `sorgente_chiave` e' la chiave CANONICA
+        del link (`config.sorgenti.key_selector`): l'uid per il preventivo,
+        `id::text` per ordine, contratto, bolla e consumi.
+
+        ⛔ Niente `SELECT` propria su `commesse_sorgenti`: quella di prima
+        (`LIMIT 1` senza stato) con due link poteva dare la commessa morta.
+
+        Codice sorgente sconosciuto → `E_COMMESSA_SORGENTE_SCONOSCIUTA`, non
+        None: «nessuna commessa aperta» e «sorgente sbagliata» non si
+        confondono (un codice errato farebbe saltare l'aggancio in silenzio)."""
         sql = """
-            SELECT cs.commessa_id
-            FROM vendite.commesse_sorgenti cs
-            JOIN config.sorgenti s ON s.id = cs.sorgente_tipo_id
+            SELECT vendite.fn_commessa_viva_di_sorgente(s.id, %s)
+            FROM config.sorgenti s
             WHERE s.codice_interno = %s
-              AND cs.sorgente_uid = %s
-              AND (%s::text IS NULL OR cs.ruolo_link = %s)
-            LIMIT 1
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [sorgente_codice, sorgente_uid, ruolo_link, ruolo_link])
+            cursor.execute(sql, [sorgente_chiave, sorgente_codice])
             row = cursor.fetchone()
-        return int(row[0]) if row else None
+        ErrorManager.require(
+            row is not None,
+            code="E_COMMESSA_SORGENTE_SCONOSCIUTA",
+            message=f"Sorgente '{sorgente_codice}' non presente in config.sorgenti",
+        )
+        assert row is not None
+        return int(row[0]) if row[0] is not None else None
 
     def get_commessa_stato(self, commessa_id: int) -> CommessaStatoResult | None:
         """Stato testata + flag di governance + contatori della commessa in un
@@ -999,7 +1040,6 @@ class CommesseRepository(EventLogRepositoryMixin):
                     p_sorgente_tipo_id => %s,
                     p_sorgente_uid => %s,
                     p_tipo_movimento => %s,
-                    p_tipo_consumo => %s,
                     p_meta => %s::jsonb,
                     p_listino_riga_id => %s
                 )
@@ -1040,7 +1080,6 @@ class CommesseRepository(EventLogRepositoryMixin):
                     inp.sorgente_tipo_id,
                     inp.sorgente_uid,
                     inp.tipo_movimento,
-                    inp.tipo_consumo,
                     self._to_jsonb_param(inp.meta),
                     inp.listino_riga_id,
                 ],
@@ -1089,7 +1128,6 @@ class CommesseRepository(EventLogRepositoryMixin):
             "sorgente_tipo_id": inp.sorgente_tipo_id,
             "sorgente_uid": inp.sorgente_uid,
             "tipo_movimento": inp.tipo_movimento,
-            "tipo_consumo": inp.tipo_consumo,
             "meta": inp.meta or {},
             # Snapshot pricing v5 (F2-BE-11). Il wrapper batch DB deve
             # estrarre queste chiavi e passarle a fn_upsert_commessa_attivita
@@ -1603,7 +1641,12 @@ class CommesseRepository(EventLogRepositoryMixin):
         "competenza_mese", "competenza_dal", "competenza_al",
         "prezzo_snapshot", "prezzo_bloccato", "prezzo_da_riallineare",
         "stato_approvazione", "stato_emissione", "sorgente_tipo_id",
-        "sorgente_codice", "meta", "data_update",
+        # ⭐ `sorgente_codice_interno` dal 2026-10-21 (20261021-20, brief-db-
+        # grammatica-unica-documenti §13.6), al posto di `sorgente_codice`, che
+        # era `config.sorgenti.codice`, il nome MODIFICABILE: il tipo del
+        # documento d'origine e' quello immutabile (G-1), ed e' da qui che il
+        # frontend apre il documento.
+        "sorgente_codice_interno", "meta", "data_update",
         # In coda alla RETURNS TABLE (changeset 20260724-07): EXISTS di un'AF
         # con fattura_riga_id valorizzato = specchio esatto del guard BE
         # `_assert_non_fatturata`. Il FE lo usa per nascondere le azioni prezzo
@@ -1628,7 +1671,10 @@ class CommesseRepository(EventLogRepositoryMixin):
         # si presenterebbe come da fatturare.
         "fatturata_il",
         "fattura_id", "fattura_numero", "fattura_stato",
-        "sorgente_uid", "sorgente_area", "sorgente_documento_id",
+        # `sorgente_apribile` (dal 2026-10-20, brief-db-grammatica-unica-documenti
+        # 2d / L2d-1) al posto di `sorgente_area`, il plurale ritirato: dice se
+        # il documento d'origine ha una pagina; quale sia, lo dice la sorgente.
+        "sorgente_uid", "sorgente_apribile", "sorgente_documento_id",
         # Cinque colonne additive (changeSet 20260820-05): la riga dice
         # finalmente COSA e' e DA DOVE VIENE. Prima l'unica traccia della
         # provenienza era `segment_key`, una chiave tecnica — rilievo in-app di
@@ -1650,6 +1696,9 @@ class CommesseRepository(EventLogRepositoryMixin):
         "tipo_movimento",
         "articolo_codice", "articolo_descrizione",
         "sorgente_documento_numero", "gruppo_key",
+        # In coda alla RETURNS TABLE (20261021-20): il nome del tipo a video
+        # («Ordine», non `ORDINE_VENDITA`), che la lista mostra e ordina.
+        "sorgente_etichetta",
     )
     # Type mapping per serializzazione colonne attivita.
     _ATTIVITA_DATE_COLS = frozenset({

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_flussi_giornale_stato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_giornale_stato()
  RETURNS trigger
@@ -34,6 +36,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_flussi_giornale_stato()
 IS 'AFTER UPDATE su flussi: logga FLUSSO_STATO_CAMBIATO quando stato_id cambia.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

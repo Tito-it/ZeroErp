@@ -38,17 +38,42 @@ GET restituisce la pratica dal repository. PATCH delega a `pratiche_service.aggi
     "id": 1,
     "emittente_fiscale_id": 10,
     "tipo_prestazione_id": 5,
+    "soggetto_id": "…uuid…",
+    "soggetto_ruolo_id": 100,
+    "istanza_utility_id": 42,
+    "billing_account_id": 7,
     "stato_id": 1,
     "priorita_id": 2,
-    "codice": "P-001",
+    "risorsa_umana_id": null,
+    "unita_organizzativa_id": null,
+    "pratica_padre_id": null,
+    "flusso_origine_id": null,
+    "canale_origine_id": null,
+    "codice": "PRA-0000001",
     "descrizione": "Pratica di esempio",
-    "solo_interna": false,
+    "data_apertura": "2026-03-04",
+    "data_scadenza": null,
     "meta": {},
     "data_insert": "2026-03-04T10:00:00+00:00",
-    "user_insert": "zeroerp"
+    "user_insert": "zeroerp",
+    "tipo_prestazione_codice": "…",
+    "tipo_prestazione_descrizione": "…",
+    "stato_codice_interno": "APERTA",
+    "stato_descrizione": "Aperta",
+    "priorita_codice_interno": "NORMALE",
+    "priorita_descrizione": "Normale",
+    "soggetto_display": "Rossi Mario",
+    "soggetto_id_fiscale": "…",
+    "risorsa_umana_display": null,
+    "unita_organizzativa_descrizione": null,
+    "doc_risolto": null, "…": "gli altri campi doc_* (sotto)"
   }
 }
 ```
+
+Stessa proiezione della riga di lista (`_PRATICA_SELECT`). ⛔ Non esiste un campo `solo_interna`.
+`billing_account_id` è la colonna della pratica (vedi
+[api_pratiche_list.md](api_pratiche_list.md)).
 
 ### PATCH 200:
 ```json
@@ -103,7 +128,7 @@ il `404` nasce da `pratiche.pratiche`, che ha la RLS; la vista, che
 ## Regole
 
 - GET: se la pratica non esiste → `E_PRATICA_NOT_FOUND` (404).
-- PATCH: solo i campi nella whitelist sono aggiornabili; campi non riconosciuti vengono ignorati.
+- PATCH: solo i campi nella whitelist sono aggiornabili (`descrizione`, `data_scadenza`, `soggetto_id`, `risorsa_umana_id`, `unita_organizzativa_id`, `meta`). Dal 2026-10-20 una chiave fuori whitelist e un corpo vuoto sono un 400 `E_PRATICA_VALIDATION`: prima la chiave si ignorava e il corpo vuoto rispondeva 200 senza scrivere.
 - PATCH: `pratica_id` deve essere > 0, altrimenti → `E_INVALID_ID` (400).
 - PATCH: verifica esistenza pratica prima dell'update.
 - PATCH: wrappato in `@transaction.atomic()`.

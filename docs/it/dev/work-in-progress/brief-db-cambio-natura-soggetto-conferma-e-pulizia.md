@@ -3,7 +3,7 @@
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-11.
 > **A chi:** team DB (`dev/db-tid`); richieste a BE/FE in §6.
 > **Origine:** revisione del lato BE/FE di
-> [brief-db-dati-fiscali-e-societari-del-soggetto](brief-db-dati-fiscali-e-societari-del-soggetto.md)
+> [brief-db-dati-fiscali-e-societari-del-soggetto](../work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md)
 > (§9), e la decisione di Tid del 2026-10-11: «andrebbe richiesta la conferma di perdita dati e
 > poi si puliscono quelli non congrui».
 > **Stato:** 🔵 da fare. Decisioni di Tid prese (§3); tre domande aperte (§7).

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_ripetibilita_flusso(p_pratica_id bigint, p_template_flu
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_check_ripetibilita_flusso(p_pratica_id bigint, p_template_flusso_id integer)
  RETURNS boolean
@@ -78,6 +80,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_check_ripetibilita_flusso(p_pratica_id bigint, p_template_flusso_id integer)
 IS 'Pure check: true se una nuova istanza del template e'' ammessa nella pratica secondo template_flussi.ripetibilita (MAI/SE_NON_POSITIVO/SEMPRE). Ultima istanza = MAX(id), escluse ANNULLATO; SE_NON_POSITIVO blocca anche istanza ancora aperta.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

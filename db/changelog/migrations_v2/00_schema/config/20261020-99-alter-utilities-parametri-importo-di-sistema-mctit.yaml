@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I PARAMETRI D'IMPORTO HANNO UN VALORE DI SISTEMA
+#   config.utilities: arrotondamento_importi_dec, metodo_arrotondamento_importi
+#   Brief: brief-db-modelli-documento-standard §10.3 K-7, D-7 di Tid (2026-10-20)
+#
+# -- IL DIFETTO -------------------------------------------------------------------
+#   Decimali e metodo con cui si arrotondano gli importi di una fattura vivevano
+#   solo su anagrafiche.emittenti_fiscali_utilities, una riga per (emittente,
+#   utility) che nessun meccanismo crea. fn_ricalcola_totali_fattura la trattava
+#   come obbligatoria (E_CONFIG_MANCANTE senza la riga), fn_lookup_utilities_per_ba
+#   come un override facoltativo (LEFT JOIN, NULL senza la riga). Un valore di
+#   sistema da cui partire non esisteva da nessuna parte: un emittente nuovo non
+#   chiudeva una fattura.
+#
+# -- LA REGOLA (D-7) -----------------------------------------------------------------
+#   Il valore di sistema sta sull'utility; la riga dell'emittente resta un
+#   override facoltativo. I parametri effettivi li dice un BB solo,
+#   anagrafiche.fn_parametri_importo_utility (20261021-01), letto da tutti.
+#
+# -- LA FORMA ------------------------------------------------------------------------
+#   NOT NULL con DEFAULT: 2 decimali, HALF_UP, uguale per tutte le utility. Il
+#   loader del catalogo (80_data 20250716-05) non nomina le colonne nuove, quindi
+#   le righe del seed prendono il default e il mirror non le tocca. Un valore
+#   diverso per una utility, se servira', entra dal CSV insieme alla colonna nel
+#   loader.
+#   I due CHECK ripetono quelli di emittenti_fiscali_utilities: stesso intervallo
+#   dei decimali (0-2) e stesso vocabolario dei metodi, quello di
+#   script.fn_arrotonda_importo (20260728-07).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261020-99-alter-utilities-parametri-importo-di-sistema-mctit.yaml
+
+  - changeSet:
+      id: 20261020-99-alter-utilities-parametri-importo-di-sistema
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.utilities: arrotondamento_importi_dec (default 2) e metodo_arrotondamento_importi
+        (default HALF_UP), il valore di sistema dei parametri d'importo; la riga di
+        anagrafiche.emittenti_fiscali_utilities resta un override. Brief:
+        brief-db-modelli-documento-standard §10.3 K-7.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: utilities
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.utilities
+                ADD COLUMN arrotondamento_importi_dec smallint NOT NULL DEFAULT 2,
+                ADD COLUMN metodo_arrotondamento_importi character varying NOT NULL DEFAULT 'HALF_UP';
+
+              ALTER TABLE config.utilities
+                ADD CONSTRAINT chk_utilities_arrotondamento_importi_dec
+                CHECK (arrotondamento_importi_dec BETWEEN 0 AND 2);
+
+              ALTER TABLE config.utilities
+                ADD CONSTRAINT chk_utilities_metodo_arrotondamento_importi
+                CHECK (metodo_arrotondamento_importi IN ('UP', 'DOWN', 'HALF_UP', 'HALF_DOWN'));
+
+              COMMENT ON COLUMN config.utilities.arrotondamento_importi_dec IS
+                'Decimali con cui si arrotondano gli importi delle fatture di questa utility: il valore di sistema. Un emittente lo cambia per se'' con una riga di anagrafiche.emittenti_fiscali_utilities. I parametri effettivi li dice anagrafiche.fn_parametri_importo_utility. Brief: brief-db-modelli-documento-standard §10.3 K-7 (2026-10-20).';
+
+              COMMENT ON COLUMN config.utilities.metodo_arrotondamento_importi IS
+                'Metodo di arrotondamento degli importi delle fatture di questa utility (vocabolario di script.fn_arrotonda_importo: UP, DOWN, HALF_UP, HALF_DOWN): il valore di sistema. Un emittente lo cambia per se'' con una riga di anagrafiche.emittenti_fiscali_utilities. I parametri effettivi li dice anagrafiche.fn_parametri_importo_utility. Brief: brief-db-modelli-documento-standard §10.3 K-7 (2026-10-20).';

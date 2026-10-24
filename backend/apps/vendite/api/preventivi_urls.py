@@ -7,6 +7,7 @@
 
 from django.urls import path
 
+from apps.vendite.api.legami_views import ApiPreventivoLegami
 from apps.vendite.api.lineage_views import ApiPreventivoPassaggi
 from apps.vendite.api.note_views import (
     ApiPreventivoNoteDetail,
@@ -44,6 +45,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoRigaDetail,
     ApiPreventivoRigaPreviewComponenti,
     ApiPreventivoRigaSuggerisciPrezzo,
+    ApiPreventivoRigheDateConsegna,
     ApiPreventivoRigheList,
     ApiPreventivoRigheListaExportView,
     ApiPreventivoRigheListaView,
@@ -95,6 +97,12 @@ urlpatterns = [
         "<int:preventivo_id>/passaggi/",
         ApiPreventivoPassaggi.as_view(),
         name="vendite-preventivi-passaggi",
+    ),
+    # I legami del preventivo, per la conferma dell'annullo (legami_views).
+    path(
+        "<int:preventivo_id>/legami/",
+        ApiPreventivoLegami.as_view(),
+        name="vendite-preventivi-legami",
     ),
     # Cambio stato
     path(
@@ -164,6 +172,12 @@ urlpatterns = [
         "<int:preventivo_id>/righe/<int:riga_id>/",
         ApiPreventivoRigaDetail.as_view(),
         name="vendite-preventivi-righe-detail",
+    ),
+    # Righe: le date di consegna in blocco (brief-db-date-consegna-righe-in-blocco)
+    path(
+        "<int:preventivo_id>/righe/date-consegna/",
+        ApiPreventivoRigheDateConsegna.as_view(),
+        name="vendite-preventivi-righe-date-consegna",
     ),
     # Righe: suggerimento prezzo via pricing resolver v5
     path(

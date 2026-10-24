@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c): le famiglie di prova nascono come sorgenti (dbops.fn_pgtap_crea_sorgente); niente schema_tabella/nome_tabella; la madre ha la firma nuova.
+-- rev 2026-10-21 (brief-db-grammatica-unica-documenti, G-3, 20261021-18/-19): test 15-17, il codice e' largo quanto il codice_interno che il trigger ci copia.
 -- pgTAP test per Zero ERP
 -- Test: la famiglia di documento ha un `codice` MODIFICABILE accanto al
 --       codice_interno, e la lista delle famiglie cerca su quello.
@@ -10,7 +12,7 @@
 --       seed ui.lista_colonna (lista vendite.famiglie_documento)
 --       Brief: brief-db-ricerca-full-colonne-da-accendere.md §3.5
 -- ------------------------------------------------------------
--- Elenco test (plan 14):
+-- Elenco test (plan 17):
 --  1) La colonna c'e' ed e' NOT NULL
 --  2) ⛔ UNIQUE sul codice (uq_famiglie_documento_codice)
 --  3) ⛔ CHECK non vuoto (chk_famiglie_documento_codice_nonvuoto)
@@ -26,6 +28,10 @@
 -- 12) ⭐ La vista della lista porta il codice, uguale alla tabella
 -- 13) ⛔ ...ed e' ancora security_invoker (si azzera a ogni REPLACE)
 -- 14) ⭐⭐ Il catalogo della lista cerca sul `codice` e NON sul codice_interno
+-- 15) ⛔ Il codice non e' piu' stretto del codice_interno (G-3)
+-- 16) ⭐⭐ La madre su una sorgente col codice di 50 caratteri: la famiglia
+--     nasce, col codice uguale al codice_interno (prima: 22001)
+-- 17) La colonna `codice` della vista ha il tipo della tabella
 --
 -- Scopo:
 --   ⭐ Il 7 e' quello che conta: il vincolo NOT NULL e' nato insieme a un
@@ -38,6 +44,11 @@
 --   ⭐ Il 14 legge il SEED del catalogo liste (ui.lista_colonna viene da
 --   80_data e in CI c'e' identico): e' leggere il progetto, non misurare una
 --   popolazione (AGENTS.md, regola zero).
+--   ⭐ Il 15 e' la regola, il 16 il caso: alla nascita il trigger copia il
+--   codice_interno nel codice, quindi un codice piu' stretto rende
+--   impossibile la famiglia di una sorgente che il modello ammette. Il 15 lo
+--   dice sulla struttura (typmod), senza aspettare che qualcuno costruisca
+--   la sorgente lunga.
 --
 -- ⚠️ Le famiglie della fixture nascono SPENTE e puntano a una tabella che
 --   non esiste: una famiglia spenta puo' nominare riferimenti morti (guard
@@ -52,7 +63,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(14);
+SELECT plan(17);
 
 -- ============================================================
 -- 1/2/3) La forma della colonna
@@ -79,9 +90,17 @@ SELECT is(
 -- ============================================================
 -- 4/5/6) Il default alla nascita
 -- ============================================================
+-- ⭐ rev 2026-10-20 (2c, G-5): una famiglia E' una sorgente (FK
+--   fk_famiglie_documento_sorgenti). Le famiglie di prova nascono prima come
+--   sorgenti, senza tabella (il caso che prima era «una tabella che non esiste»).
+DO $sorgenti$ BEGIN
+    PERFORM dbops.fn_pgtap_crea_sorgente(c)
+       FROM unnest(ARRAY['PGTAP-COD-A', 'PGTAP-COD-B', 'PGTAP-COD-C', 'PGTAP-COD-M']) c;
+END $sorgenti$;
+
 INSERT INTO vendite.famiglie_documento
-    (codice_interno, descrizione, schema_tabella, nome_tabella, colonna_numero, attivo, user_insert)
-VALUES ('PGTAP-COD-A', 'Famiglia pgTAP A', 'vendite', 'tabella_pgtap_a', 'numero', FALSE, 'pgtap');
+    (codice_interno, descrizione, colonna_numero, attivo, user_insert)
+VALUES ('PGTAP-COD-A', 'Famiglia pgTAP A', 'numero', FALSE, 'pgtap');
 
 SELECT is(
     (SELECT codice FROM vendite.famiglie_documento WHERE codice_interno = 'PGTAP-COD-A'),
@@ -89,8 +108,8 @@ SELECT is(
     '4) Senza codice all''INSERT, il codice vale il codice_interno');
 
 INSERT INTO vendite.famiglie_documento
-    (codice_interno, codice, descrizione, schema_tabella, nome_tabella, colonna_numero, attivo, user_insert)
-VALUES ('PGTAP-COD-B', '  ', 'Famiglia pgTAP B', 'vendite', 'tabella_pgtap_b', 'numero', FALSE, 'pgtap');
+    (codice_interno, codice, descrizione, colonna_numero, attivo, user_insert)
+VALUES ('PGTAP-COD-B', '  ', 'Famiglia pgTAP B', 'numero', FALSE, 'pgtap');
 
 SELECT is(
     (SELECT codice FROM vendite.famiglie_documento WHERE codice_interno = 'PGTAP-COD-B'),
@@ -98,8 +117,8 @@ SELECT is(
     '5) ...anche con un codice vuoto: il campo vuoto non sceglie un codice');
 
 INSERT INTO vendite.famiglie_documento
-    (codice_interno, codice, descrizione, schema_tabella, nome_tabella, colonna_numero, attivo, user_insert)
-VALUES ('PGTAP-COD-C', 'PGT-SCELTO', 'Famiglia pgTAP C', 'vendite', 'tabella_pgtap_c', 'numero', FALSE, 'pgtap');
+    (codice_interno, codice, descrizione, colonna_numero, attivo, user_insert)
+VALUES ('PGTAP-COD-C', 'PGT-SCELTO', 'Famiglia pgTAP C', 'numero', FALSE, 'pgtap');
 
 SELECT is(
     (SELECT codice FROM vendite.famiglie_documento WHERE codice_interno = 'PGTAP-COD-C'),
@@ -118,8 +137,7 @@ SELECT is(
 CREATE TEMP TABLE tmp_madre AS
 SELECT m.famiglia_id
   FROM vendite.fn_crea_famiglia_documento(
-           'PGTAP-COD-M', 'Famiglia pgTAP dalla madre', 'vendite',
-           'tabella_pgtap_m', 'numero',
+           'PGTAP-COD-M', 'Famiglia pgTAP dalla madre', 'numero',
            p_attivo => FALSE) m;
 
 SELECT is(
@@ -197,6 +215,52 @@ SELECT is(
         AND c.campo_sorgente IN ('codice', 'codice_interno')),
     'codice',
     '14) La lista delle famiglie cerca sul codice, non sul codice_interno');
+
+-- ============================================================
+-- 15/16/17) ⛔ Il codice e' largo quanto il codice_interno (G-3)
+-- ============================================================
+-- ⚠️ atttypmod di un varchar e' la lunghezza + 4: si confrontano fra loro,
+--   senza scrivere il 50 (il vincolo si adegua al nome, non a un numero).
+SELECT ok(
+    (SELECT c.atttypmod >= i.atttypmod
+       FROM pg_attribute c, pg_attribute i
+      WHERE c.attrelid = 'vendite.famiglie_documento'::regclass AND c.attname = 'codice'
+        AND i.attrelid = 'vendite.famiglie_documento'::regclass AND i.attname = 'codice_interno'),
+    '15) Il codice non e'' piu'' stretto del codice_interno che il trigger ci copia');
+
+-- La sorgente lunga quanto il modello ammette: la larghezza di
+-- config.sorgenti.codice_interno, letta dal catalogo.
+CREATE TEMP TABLE tmp_lunga AS
+SELECT rpad('PGTAP-COD-LUNGO-', a.atttypmod - 4, 'X')::varchar AS codice_interno
+  FROM pg_attribute a
+ WHERE a.attrelid = 'config.sorgenti'::regclass AND a.attname = 'codice_interno';
+
+DO $lunga$ BEGIN
+    PERFORM dbops.fn_pgtap_crea_sorgente((SELECT codice_interno FROM tmp_lunga));
+END $lunga$;
+
+-- ⛔ La madre in un'istruzione sua, come al 7.
+CREATE TEMP TABLE tmp_madre_lunga AS
+SELECT m.famiglia_id
+  FROM vendite.fn_crea_famiglia_documento(
+           (SELECT codice_interno FROM tmp_lunga), 'Famiglia pgTAP dal codice lungo', 'numero',
+           p_attivo => FALSE) m;
+
+SELECT is(
+    (SELECT f.codice
+       FROM vendite.famiglie_documento f
+       JOIN tmp_madre_lunga m ON m.famiglia_id = f.id),
+    (SELECT codice_interno FROM tmp_lunga),
+    '16) Una sorgente col codice lungo quanto il modello ammette ha la sua famiglia, col codice uguale');
+
+SELECT is(
+    (SELECT format_type(v.atttypid, v.atttypmod)
+       FROM pg_attribute v
+      WHERE v.attrelid = 'vendite.vw_famiglie_documento_lista'::regclass AND v.attname = 'codice'),
+    (SELECT format_type(t.atttypid, t.atttypmod)
+       FROM pg_attribute t
+      WHERE t.attrelid = 'vendite.famiglie_documento'::regclass AND t.attname = 'codice'),
+    '17) La colonna codice della vista ha il tipo della tabella');
 
 SELECT * FROM finish();
 

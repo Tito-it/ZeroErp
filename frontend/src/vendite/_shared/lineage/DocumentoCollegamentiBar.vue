@@ -12,7 +12,7 @@
 // su un DDT avvisa che le quantita' non significano piu' quello che leggi).
 //
 // REGOLA DI SVUOTAMENTO: la riga sparisce quando non c'e' NE' pratica NE'
-// archi. Il test include la pratica di proposito: un documento nato in una
+// archi — nemmeno spenti (vedi sotto). Il test include la pratica di proposito: un documento nato in una
 // pratica e non ancora sceso a valle non ha archi, e senza il chip pratica
 // perderebbe l'unico accesso a quel link (che il pannello mostrava sempre).
 //
@@ -20,10 +20,23 @@
 // «Reso» — il reso e' collegato al DDT, non all'ordine. La catena completa
 // resta mestiere della dialog.
 //
-// Gli ANNULLATI non contano fra le destinazioni (`to_is_abortito`): «2 DDT»
-// che ne include uno annullato e' un numero che non torna con quello che si
-// vede aprendo i passaggi. A monte il filtro non si applica — un'origine
-// annullata resta l'origine, ed e' giusto mostrarla.
+// ⭐ CHIP VIVI E CHIP SPENTI. Un legame SPENTO non conta nel chip dei vivi, ma
+// non sparisce: fa un chip SUO, che apre la stessa dialog. Lo distinguono
+// l'icona (ESCLUSO) e l'etichetta del motivo — ⛔ non un'`opacity`: si
+// sommerebbe al velo `.app-readonly` dei drawer post-DRAFT (frontend-standards
+// §«`opacity` non e' un segnale semantico»).
+//  · ANNULLATO: destinazione annullata (`to_is_abortito`) — «2 DDT» che ne
+//    include uno annullato e' un numero che non torna. A monte no: un'origine
+//    annullata resta l'origine, e il payload non porta il gemello.
+//  · RITIRATO: `is_legame_ritirato === true`, nei DUE versi (D-15, Tid,
+//    2026-10-13) — e' dell'arco, non di un nodo. Un chip «Commessa» su un
+//    preventivo annullato diceva che stava in una commessa da fatturare.
+// 🔴 Perche' il chip spento esiste: con i soli vivi, un documento il cui unico
+// arco e' spento (il preventivo annullato, l'ordine col solo DDT annullato)
+// perdeva la barra — e con lei l'unico accesso alla dialog, cioe' alla storia
+// che D-15 voleva tenere visibile (rilievo di Tid, 2026-10-13).
+// Se un arco e' entrambe le cose (commessa annullata: nodo abortito E legame
+// ritirato) vince ANNULLATO: e' quello che si vede aprendo il documento.
 import { computed, provide, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
@@ -35,17 +48,26 @@ import { useDocumentoDrawer } from '../../../core/composables/useDocumentoDrawer
 import LineagePassaggiDialog from './LineagePassaggiDialog.vue'
 import { lineageDocumentoLabel } from './lineageLabels'
 import { useDocumentoPassaggi } from './useDocumentoPassaggi'
-import { MANAGE_ICONS } from '../../../core/constants'
+import { MANAGE_ICONS, STATUS_ICONS } from '../../../core/constants'
 
 const props = defineProps({
   // Path lista API del dominio (es. '/vendite/ordini').
   basePath: { type: String, required: true },
   // Pk di dominio del documento (null in CREATE: nessuna fetch, nessuna riga).
   docId: { type: Number, default: null },
+  // ⭐ Il dettaglio che il drawer ospite ha appena letto (l'oggetto intero):
+  // ogni sua rilettura rilegge anche qui (useLetturaDocumento). OBBLIGATORIA
+  // di proposito — dimenticarla e' il difetto che l'ha fatta nascere (barra
+  // stantia dopo l'annullo di una commessa, 2026-10-13): senza, Vue avvisa.
+  // `null` finche' il dettaglio non e' arrivato e' ammesso (niente `type`).
+  versione: { required: true },
   // Readonly PURO del contesto che apre (permessi area / split / forzato) —
   // NON il lock-di-stato del documento padre. Vedi provide sotto.
   readonly: { type: Boolean, default: false },
 })
+// `documento-chiuso`: si e' chiuso un documento aperto da qui (vedi l'host
+// sotto) — il drawer ospite rilegge i suoi dati.
+const emit = defineEmits(['documento-chiuso'])
 
 // I drawer aperti da qui (documento della tappa, pratica) sono documenti
 // DIVERSI dal drawer padre: il suo lock-di-stato (post-DRAFT → provide
@@ -59,27 +81,42 @@ provide(READONLY_KEY, computed(() => props.readonly))
 const { t, te } = useI18n()
 
 // Fetch unica condivisa con la dialog (che non fetcha: si apre istantanea).
+// Si rilegge da se' a ogni rilettura del drawer ospite (`versione`): nessun
+// drawer chiama piu' `reload` dopo un'azione (era la riga dimenticata in tre
+// drawer su otto, 2026-10-13).
 const { data, loaded, loading, reload } = useDocumentoPassaggi(
   () => props.basePath,
   () => props.docId,
+  () => props.versione,
 )
-// I drawer ricaricano i collegamenti dopo un'azione che li cambia (evasione,
-// push, creazione reso): `reload` e' il loro aggancio.
-defineExpose({ reload })
 
 const pratica = computed(() => data.value?.pratica ?? null)
 
+// Perche' un legame e' spento (null = vivo). Precedenza: vedi sopra.
+const SPENTO = Object.freeze({ ANNULLATO: 'annullato', RITIRATO: 'ritirato' })
+// Chiavi i18n SCRITTE PER INTERO (non costruite dal motivo): cosi' il guard
+// delle chiavi le vede, invece di finire fra i punti ciechi.
+const TESTI_SPENTO = Object.freeze({
+  [SPENTO.ANNULLATO]: { etichetta: 'vendite.lineage.chip_annullato', tooltip: 'vendite.lineage.chip_annullato_tooltip' },
+  [SPENTO.RITIRATO]: { etichetta: 'vendite.lineage.chip_ritirato', tooltip: 'vendite.lineage.chip_ritirato_tooltip' },
+})
+
+function motivoSpento(p, avanti) {
+  if (avanti && p.to_is_abortito) return SPENTO.ANNULLATO
+  if (p.is_legame_ritirato === true) return SPENTO.RITIRATO
+  return null
+}
+
 // Scopo: raggruppa gli archi di LIVELLO 1 di una direzione in chip per tipo
-//        documento, contando le occorrenze. `lato` decide quale estremo
-//        dell'arco e' la controparte (in avanti il TO, indietro il FROM).
-//        `escludiAbortiti` vale solo in avanti — il payload porta
-//        `to_is_abortito`, non il gemello a monte.
-function chipsDaArchi(archi, lato, { escludiAbortiti = false } = {}) {
+//        documento E per motivo di spegnimento, contando le occorrenze. `lato`
+//        decide quale estremo dell'arco e' la controparte (in avanti il TO,
+//        indietro il FROM).
+function chipsDaArchi(archi, lato) {
   const avanti = lato === 'to'
   const perTipo = new Map()
   for (const p of archi ?? []) {
     if (p.livello !== 1) continue
-    if (escludiAbortiti && p.to_is_abortito) continue
+    const spento = motivoSpento(p, avanti)
     const tipoCodice = avanti ? p.to_tipo_codice_interno : p.from_tipo_codice_interno
     if (!tipoCodice) continue
     // ⭐ SI RAGGRUPPA PER TIPO **E NATURA**, non per tipo soltanto. Fattura e
@@ -88,7 +125,7 @@ function chipsDaArchi(archi, lato, { escludiAbortiti = false } = {}) {
     // una nota di credito a valle — cioe' il chip nasconderebbe proprio la
     // cosa che segnala (2026-08-21, arco N).
     const naturaCodice = avanti ? p.to_natura_doc_codice_interno : p.from_natura_doc_codice_interno
-    const chiave = `${tipoCodice}|${naturaCodice ?? ''}`
+    const chiave = `${tipoCodice}|${naturaCodice ?? ''}|${spento ?? ''}`
     const corrente = perTipo.get(chiave)
     if (corrente) {
       corrente.n += 1
@@ -102,18 +139,21 @@ function chipsDaArchi(archi, lato, { escludiAbortiti = false } = {}) {
         naturaCodice,
         n: 1,
         avanti,
+        spento,
         ramoInverso: Boolean(p.is_ramo_inverso),
       })
     }
   }
-  return [...perTipo.values()]
+  // I vivi prima, gli spenti dopo: l'occhio legge prima cio' che conta.
+  const tutti = [...perTipo.values()]
+  return [...tutti.filter((c) => !c.spento), ...tutti.filter((c) => c.spento)]
 }
 
 // Origine (indietro) prima, destinazioni (avanti) poi: stesso ordine di
 // lettura della timeline nella dialog.
 const chips = computed(() => [
   ...chipsDaArchi(data.value?.indietro, 'from'),
-  ...chipsDaArchi(data.value?.avanti, 'to', { escludiAbortiti: true }),
+  ...chipsDaArchi(data.value?.avanti, 'to'),
 ])
 
 // Niente pratica e niente archi = documento isolato: nessuna riga, nessun
@@ -128,12 +168,23 @@ const hasCollegamenti = computed(
 //        «2 DDT»): a 1 il numero e' rumore, il chip stesso dice che c'e'.
 function chipLabel(chip) {
   const tipo = lineageDocumentoLabel(t, te, chip.tipoCodice, chip.naturaCodice)
-  return chip.n > 1 ? `${chip.n} ${tipo}` : tipo
+  const base = chip.n > 1 ? `${chip.n} ${tipo}` : tipo
+  return chip.spento
+    ? `${base} · ${t(TESTI_SPENTO[chip.spento].etichetta, chip.n)}`
+    : base
+}
+
+function chipTooltip(chip) {
+  return chip.spento
+    ? t(TESTI_SPENTO[chip.spento].tooltip)
+    : t('vendite.lineage.collegamenti_apri')
 }
 
 // Glifo di direzione, coerente con la timeline della dialog: ← origine,
 // → destinazione, ↩ ramo di ritorno (DDT->Reso, fattura->nota di credito).
 function chipIcon(chip) {
+  // Spento: «uscito dal gioco», prima della direzione — e' la cosa da leggere.
+  if (chip.spento) return STATUS_ICONS.ESCLUSO
   if (chip.ramoInverso) return MANAGE_ICONS.CORREZIONE
   return chip.avanti ? MANAGE_ICONS.DOC_DESTINAZIONE : MANAGE_ICONS.DOC_ORIGINE
 }
@@ -141,17 +192,36 @@ function chipIcon(chip) {
 const passaggiDialogVisible = ref(false)
 const praticaDrawerVisible = ref(false)
 
+// Scopo: apre la dialog dei passaggi RILEGGENDO il grafo. La dialog mostra gli
+//        STATI dei documenti della catena, e quegli stati li cambiano anche
+//        azioni fatte altrove: annullare una commessa riporta il preventivo da
+//        EVASO ad ACCETTATO, ma la barra aveva letto all'apertura del drawer e
+//        la dialog mostrava ancora EVASO (collaudo di Tid, 2026-10-13). Il
+//        dato gia' in mano resta a video sotto la ProgressBar finche' arriva
+//        quello fresco: nessuno sfarfallio, e una fetch solo quando la si chiede.
+function apriPassaggi() {
+  passaggiDialogVisible.value = true
+  reload()
+}
+
 // Host cross-dominio: apre il drawer di dettaglio del documento della tappa
 // cliccata nella dialog (impilato, come il link pratica). Una sola istanza
 // per il contenitore, condivisa fra chip e dialog.
 // La guardia "tappa apribile" vive nel composable (`apri` e' no-op su chiave
 // sconosciuta o id nullo): qui basta inoltrare.
+// ⭐ Alla CHIUSURA del documento aperto da qui si avvisa il drawer ospite
+// (`onClose`): nel drawer impilato l'operatore puo' aver AGITO, non solo letto
+// — annullare il DDT di un ordine riapre il residuo e riaccende «Genera DDT».
+// Senza, il drawer sotto restava col dato di prima (rilievo in-app di Tid,
+// 2026-10-11). Il drawer riceve `documento-chiuso` e rilegge il suo dettaglio;
+// i chip li rilegge quella stessa rilettura (`versione`), non una chiamata qui.
 const {
   visible: docDrawerVisible,
   tipo: docDrawerTipo,
   id: docDrawerId,
   apri: apriDocumentoDrawer,
-} = useDocumentoDrawer()
+  onVisibleChange: onDocDrawerVisibleChange,
+} = useDocumentoDrawer(() => emit('documento-chiuso'))
 
 function apriDocumento(row) {
   apriDocumentoDrawer(row?.tipoCodice, row?.docId)
@@ -183,8 +253,9 @@ function apriDocumento(row) {
       :key="chip.key"
       type="button"
       class="app-collegamento-chip"
-      v-tooltip.bottom="t('vendite.lineage.collegamenti_apri')"
-      @click="passaggiDialogVisible = true"
+      :data-spento="chip.spento || undefined"
+      v-tooltip.bottom="chipTooltip(chip)"
+      @click="apriPassaggi"
     >
       <Tag severity="secondary" :icon="chipIcon(chip)" :value="chipLabel(chip)" />
     </button>
@@ -207,7 +278,8 @@ function apriDocumento(row) {
     :pratica-id="pratica.pratica_id" />
 
   <DocumentoDrawerHost
-    v-model:visible="docDrawerVisible"
+    :visible="docDrawerVisible"
+    @update:visible="onDocDrawerVisibleChange"
     :tipo-codice="docDrawerTipo"
     :doc-id="docDrawerId" />
 </template>

@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DA QUALE VERSIONE STANDARD DERIVA UNA COPIA: template_documenti_versioni.derivata_da_versione_id
+#   Brief: brief-db-modelli-documento-standard, §4.1 Q-5 (con l'aggiunta di Tid del 2026-10-19)
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   Una copia personalizzata smette di ricevere le evoluzioni dello standard.
+#   Chi l'ha fatta deve poter VEDERE che lo standard e' andato avanti, e che la
+#   sua copia e' rimasta a una forma dei dati superata (il caso del 2026-08-16,
+#   che si rompe al render). Per vederlo serve sapere da dove la copia e' partita.
+#
+# -- LA FORMA -------------------------------------------------------------------
+#   * Nullable: una versione scritta da zero non deriva da niente, e le copie di
+#     oggi non hanno un'origine dichiarata (la vista dello scarto le chiama
+#     ORIGINE_NON_DICHIARATA).
+#   * La scrive l'azione «personalizza» sulla versione che riprende lo standard;
+#     le versioni successive della copia la EREDITANO senza ricopiarla: la vista
+#     legge la piu' recente che la dichiara. Riallinearsi a uno standard nuovo =
+#     una versione nuova che dichiara la versione standard nuova.
+#   * Che punti a una versione STANDARD dello stesso tipo e della stessa
+#     sorgente, e che non cambi fuori dalla bozza, lo dice il guard di -10
+#     (legge altre righe: non e' un CHECK).
+#   * FK senza azioni: le versioni non si cancellano
+#     (trgfn_template_documenti_versioni_block_delete).
+#
+# Verifica: db/pgtap/documenti/test-documenti-template-standard-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20261020-05-add-template-documenti-versioni-derivata-da-mctit.yaml
+
+  - changeSet:
+      id: 20261020-05-add-template-documenti-versioni-derivata-da
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.template_documenti_versioni: colonna derivata_da_versione_id (FK sulla stessa tabella,
+        nullable), la versione standard da cui una copia personalizzata e' partita.
+        Brief: brief-db-modelli-documento-standard §4.1 Q-5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: documenti
+                tableName: template_documenti_versioni
+            - not:
+                - columnExists:
+                    schemaName: documenti
+                    tableName: template_documenti_versioni
+                    columnName: derivata_da_versione_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE documenti.template_documenti_versioni
+                  ADD COLUMN derivata_da_versione_id bigint;
+
+              ALTER TABLE documenti.template_documenti_versioni
+                  ADD CONSTRAINT fk_template_documenti_versioni_derivata_da
+                  FOREIGN KEY (derivata_da_versione_id)
+                  REFERENCES documenti.template_documenti_versioni (id);
+
+              COMMENT ON COLUMN documenti.template_documenti_versioni.derivata_da_versione_id IS
+                  'La versione del modello standard da cui questa versione di una copia personalizzata e'' partita (azione «personalizza»). NULL: versione scritta da zero, oppure versione successiva della stessa copia, che eredita l''origine dalla piu'' recente che la dichiara. Punta solo a una versione standard dello stesso tipo e della stessa sorgente, e cambia solo in bozza (trg_template_documenti_versioni_a10_guard_derivata_da_ins_upd). Serve a documenti.vw_template_personalizzati_scarto. Brief: brief-db-modelli-documento-standard §4.1 Q-5.';
+
+              COMMENT ON CONSTRAINT fk_template_documenti_versioni_derivata_da
+                  ON documenti.template_documenti_versioni IS
+                  'La versione standard di origine di una copia personalizzata.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE documenti.template_documenti_versioni
+                  DROP COLUMN IF EXISTS derivata_da_versione_id;

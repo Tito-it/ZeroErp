@@ -7,12 +7,18 @@ CREATE FUNCTION fn_check_ddt_emittibile(p_ddt vendite.ddt)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_ddt_emittibile(p_ddt vendite.ddt)
  RETURNS jsonb
  LANGUAGE plpgsql
  STABLE
 AS $function$
+-- rev 2026-10-20 (20261020-54, brief-db-grammatica-unica-documenti, 2d G-6):
+--   l'ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della
+--   sorgente.
+
 
 -- Scopo: elencare i motivi che impediscono l'emissione (EMESSO) di
 --   un DDT. Funzione PURA (fn_check_*): non solleva, non scrive.
@@ -179,7 +185,7 @@ BEGIN
       FROM vendite.ddt_indirizzi di
      WHERE di.ddt_id = p_ddt.id;
 
-    v_mancanti := script.fn_indirizzi_obbligatori_mancanti('DDT', v_presenti);
+    v_mancanti := script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', v_presenti);
 
     IF array_length(v_mancanti, 1) IS NOT NULL THEN
         v_motivi := v_motivi || jsonb_build_object(
@@ -188,6 +194,19 @@ BEGIN
             'reason_key', 'common.azione_reason.indirizzi_mancanti',
             'dettaglio',  jsonb_build_object('mancanti', to_jsonb(v_mancanti)));
     END IF;
+
+    -- 4-bis. TESTATA — gli indirizzi d'anagrafica sono del cliente della
+    --   bolla (rev 2026-10-11, brief-db-indirizzi-documento-seguono-il-
+    --   cliente, D-3 di Tid). Il cliente si cambia in bozza: il trigger
+    --   del cambio toglie le righe del cliente di prima e il guard di
+    --   scrittura rifiuta quelle d'altri, ma l'emissione lo ricontrolla
+    --   per chi ha scritto prima del guard o a guard spento, e per
+    --   l'indirizzo che in anagrafica e' passato a un'altra fornitura.
+    -- ⭐ Il predicato non sta qui: script.fn_check_indirizzi_documento_cliente
+    --   (lo stesso del guard). Dopo gli indirizzi mancanti: prima si
+    --   chiede che ci siano, poi che siano giusti.
+    v_motivi := v_motivi
+             || script.fn_check_indirizzi_documento_cliente('DDT_VENDITA', p_ddt.id);
 
     -- 5. COMPONENTI BoM CASO A — ma solo se il documento VENDE.
     --
@@ -250,12 +269,13 @@ BEGIN
 
     RETURN v_motivi;
 END;
-
 $function$
 
 COMMENT ON FUNCTION script.fn_check_ddt_emittibile(p_ddt vendite.ddt)
-IS 'Single source dei motivi che impediscono l''emissione (EMESSO) di un DDT: righe attive (543), causale (544), prezzo risolvibile se causale fatturabile (545), aliquota sulle righe che portano un prezzo, indirizzi obbligatori, componenti BoM CASO A pendenti/non valorizzati. Ritorna [] se emittibile, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio}. PURA: non solleva. rev 2026-08-19: i due motivi sui COMPONENTI si valutano solo se la causale e'' fatturabile, come gia'' faceva il motivo sulle righe. ⭐ rev 2026-08-28 (brief-db-ddt-riconsegna-eredita-testata, Fase C / R4-ter, decisione di Tid): sesto motivo E_DDT_RIGA_IVA_MANCANTE — una riga attiva CON PREZZO e senza iva_id non si emette. Chiudeva un difetto silenzioso: vw_ddt_righe_iva_base filtra prezzo_unitario e NON iva_id, quindi quella riga entrava nel riepilogo con imponibile pieno, codice IVA vuoto e imposta zero, su un documento stampato. ⭐ Il discrimine e'' il PREZZO e non la causale, e per questo il controllo sta FUORI dal ramo fatturabile: la vista del riepilogo la causale non la guarda, e il vincolo deve avere lo stesso perimetro del consumatore che protegge. ⚠️ Si guarda dr.prezzo_unitario e NON il COALESCE col fulfillment del punto 3: una riga dal prezzo solo derivato non entra nella vista, quindi non ha il difetto. ⛔ Non e'' un NOT NULL di colonna, e non poteva esserlo: ordini_righe.iva_id e'' nullable e fn_genera_ddt_da_ordine la copia, quindi il vincolo avrebbe fatto fallire l''evasione ordine con un 23502 muto. ⚠️ Il punto nuovo sta fra il prezzo e gli indirizzi: fn_available_actions_ddt legge il PRIMO motivo, quindi l''ordine e'' il contratto. rev 2026-09-24: il punto 5 dei componenti BoM (prezzo in attesa) passa al building block script.fn_check_prezzi_autorizzati — PENDING E REJECTED, solo componenti attivi di righe attive, codici E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO (prima E_COMPONENTE_PREZZO_PENDENTE, reason COMPONENTI_PREZZO_PENDENTE). La politica resta qui: si chiede solo se la causale vende. Il guard trgfn_ddt_guard_transizione_approvazione solleva i due codici nuovi. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-5, D-6). rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, P-6): settimo punto, i motivi FISICI di una bolla che muove merce, accodati da script.fn_check_ddt_merce (magazzino di partenza/arrivo, prelievi incompleti, posizione che la primitiva rifiuterebbe, merce non disponibile). In coda, perche'' la capability legge il primo motivo; in una check a se'' perche'' portano i valori della frase (li solleva il verbo vendite.fn_cambia_stato_ddt). rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-2/D-2-bis): motivo 2-bis E_DDT_CLIENTE_OBBLIGATORIO (reason CLIENTE_MANCANTE, reason_key vendite.ddt.azione_reason.cliente_mancante, dettaglio {causale}): la causale vuole un cliente (config.causali_trasporto.richiede_cliente) e la bolla non ha il billing account. Fra la causale e il prezzo: la capability legge il primo motivo. La causale si legge una volta per il 2-bis e il 3.';
+IS 'Single source dei motivi che impediscono l''emissione (EMESSO) di un DDT: righe attive (543), causale (544), prezzo risolvibile se causale fatturabile (545), aliquota sulle righe che portano un prezzo, indirizzi obbligatori, componenti BoM CASO A pendenti/non valorizzati. Ritorna [] se emittibile, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio}. PURA: non solleva. rev 2026-08-19: i due motivi sui COMPONENTI si valutano solo se la causale e'' fatturabile, come gia'' faceva il motivo sulle righe. ⭐ rev 2026-08-28 (brief-db-ddt-riconsegna-eredita-testata, Fase C / R4-ter, decisione di Tid): sesto motivo E_DDT_RIGA_IVA_MANCANTE — una riga attiva CON PREZZO e senza iva_id non si emette. Chiudeva un difetto silenzioso: vw_ddt_righe_iva_base filtra prezzo_unitario e NON iva_id, quindi quella riga entrava nel riepilogo con imponibile pieno, codice IVA vuoto e imposta zero, su un documento stampato. ⭐ Il discrimine e'' il PREZZO e non la causale, e per questo il controllo sta FUORI dal ramo fatturabile: la vista del riepilogo la causale non la guarda, e il vincolo deve avere lo stesso perimetro del consumatore che protegge. ⚠️ Si guarda dr.prezzo_unitario e NON il COALESCE col fulfillment del punto 3: una riga dal prezzo solo derivato non entra nella vista, quindi non ha il difetto. ⛔ Non e'' un NOT NULL di colonna, e non poteva esserlo: ordini_righe.iva_id e'' nullable e fn_genera_ddt_da_ordine la copia, quindi il vincolo avrebbe fatto fallire l''evasione ordine con un 23502 muto. ⚠️ Il punto nuovo sta fra il prezzo e gli indirizzi: fn_available_actions_ddt legge il PRIMO motivo, quindi l''ordine e'' il contratto. rev 2026-09-24: il punto 5 dei componenti BoM (prezzo in attesa) passa al building block script.fn_check_prezzi_autorizzati — PENDING E REJECTED, solo componenti attivi di righe attive, codici E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO (prima E_COMPONENTE_PREZZO_PENDENTE, reason COMPONENTI_PREZZO_PENDENTE). La politica resta qui: si chiede solo se la causale vende. Il guard trgfn_ddt_guard_transizione_approvazione solleva i due codici nuovi. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-5, D-6). rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, P-6): settimo punto, i motivi FISICI di una bolla che muove merce, accodati da script.fn_check_ddt_merce (magazzino di partenza/arrivo, prelievi incompleti, posizione che la primitiva rifiuterebbe, merce non disponibile). In coda, perche'' la capability legge il primo motivo; in una check a se'' perche'' portano i valori della frase (li solleva il verbo vendite.fn_cambia_stato_ddt). rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-2/D-2-bis): motivo 2-bis E_DDT_CLIENTE_OBBLIGATORIO (reason CLIENTE_MANCANTE, reason_key vendite.ddt.azione_reason.cliente_mancante, dettaglio {causale}): la causale vuole un cliente (config.causali_trasporto.richiede_cliente) e la bolla non ha il billing account. Fra la causale e il prezzo: la capability legge il primo motivo. La causale si legge una volta per il 2-bis e il 3. rev 2026-10-11 (brief-db-indirizzi-documento-seguono-il-cliente, D-3 di Tid): punto 4-bis E_INDIRIZZO_DOC_NON_DEL_CLIENTE (reason INDIRIZZO_NON_DEL_CLIENTE, reason_key common.azione_reason.indirizzo_non_del_cliente) da script.fn_check_indirizzi_documento_cliente(''DDT'', id): un indirizzo d''anagrafica che non e'' del cliente della bolla (altro ruolo, o fornitura diversa) ferma l''emissione. Dopo gli indirizzi mancanti; lo solleva vendite.trgfn_ddt_guard_indirizzi_obbligatori. ⭐ rev 2026-10-19 (20261019-55, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. Rev 2026-10-20 (20261020-54, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della sorgente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

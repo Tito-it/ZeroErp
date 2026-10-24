@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DOCUMENTI VIVI NATI DA UN'OFFERTA
+#   vendite.fn_offerta_documenti_vivi(p_offerta_id) -> (tipo, documento_id)
+#   Brief: brief-db-annullo-documento-con-legami (§7.2, D-3 e D-6 di Tid)
+#
+# ── LA DOMANDA ──────────────────────────────────────────────────────
+#   «Questa offerta e' gia' trasformata?» = esiste un contratto o un
+#   ordine VIVO nato da lei (D-3). Un documento annullato conserva la
+#   provenienza (D-6) ma non consuma l'offerta.
+#
+# ── REGOLA DEL 2 ────────────────────────────────────────────────────
+#   La domanda era scritta due volte, e tutte e due senza lo stato: nel
+#   push (vendite.fn_push_offerta_a_contratto, i due guard di
+#   idempotenza e mutua esclusivita') e nella capability
+#   (script.fn_available_actions_offerta, can_push_contratto e
+#   can_genera_ordine). Piu' lo specchio del backend
+#   (ordini_service.crea_ordine_da_offerta). Una sede: questa. Push e
+#   capability la leggono da 20261011-74 e -75; il backend e' una
+#   richiesta del brief.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   tipo = codice di config.tipi_entita (CONTRATTO, ORDINE_VENDITA): e'
+#   lo stesso che il push mette nel bersaglio dell'errore. Vivi letti da
+#   is_abortito_snapshot, la stessa colonna dei due indici unici parziali
+#   (uq_contratti_offerta_id, uq_ordini_v_documento_origine_offerta):
+#   indice e lettore non possono dissentire. LANGUAGE sql, STABLE,
+#   SECURITY INVOKER: legge sotto la RLS di chi chiede, come facevano le
+#   due copie.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-73-create-fn-offerta-documenti-vivi-mctit.yaml
+
+  - changeSet:
+      id: 20261011-73-create-fn-offerta-documenti-vivi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_offerta_documenti_vivi: i contratti e gli ordini vivi nati da un'offerta. Sede
+        unica di «l'offerta e' gia' trasformata?» per push, capability e backend.
+        D-3/D-6 di brief-db-annullo-documento-con-legami.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists: { schemaName: vendite, tableName: ordini, columnName: is_abortito_snapshot }
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_offerta_documenti_vivi';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_offerta_documenti_vivi(
+                  p_offerta_id vendite.offerte_commerciali.id%TYPE)
+              RETURNS TABLE(
+                  tipo         text,
+                  documento_id bigint)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                  SELECT 'CONTRATTO'::text, c.id
+                    FROM vendite.contratti c
+                   WHERE c.offerta_id = p_offerta_id
+                     AND NOT c.is_abortito_snapshot
+                  UNION ALL
+                  SELECT 'ORDINE_VENDITA'::text, o.id
+                    FROM vendite.ordini o
+                   WHERE o.documento_origine_tipo = 'OFFERTA'
+                     AND o.documento_origine_id   = p_offerta_id
+                     AND NOT o.is_abortito_snapshot
+                   ORDER BY 1, 2;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_offerta_documenti_vivi(vendite.offerte_commerciali.id%TYPE) IS
+                  'I contratti e gli ordini VIVI (non abortiti) nati da un''offerta (2026-10-11, brief-db-annullo-documento-con-legami D-3/D-6): risponde a «l''offerta e'' gia'' trasformata?». Un documento annullato conserva la provenienza ma non consuma l''offerta. tipo = codice di config.tipi_entita (CONTRATTO, ORDINE_VENDITA), lo stesso del bersaglio dell''errore. Vivi da is_abortito_snapshot, la colonna dei due indici unici parziali (uq_contratti_offerta_id, uq_ordini_v_documento_origine_offerta). Sede unica per vendite.fn_push_offerta_a_contratto, script.fn_available_actions_offerta e il backend (crea ordine da offerta). documento_id polimorfo: tipo nudo dichiarato. SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_offerta_documenti_vivi(bigint);

@@ -4,7 +4,7 @@
 --
 -- Test: ordine, DDT e reso parlano del cliente come preventivo, offerta e
 --   contratto — il billing account, e le copie in testata legate a lui.
---   Brief: docs/it/dev/work-in-progress/brief-db-esecutivi-ba-coppia.md
+--   Brief: docs/it/dev/work-done/brief-db-esecutivi-ba-coppia.md
 --   ChangeSet 20261009-62 ... -92, 20261010-02 ... -07 (giro 2: BB delle copie
 --   dal BA, sorgente non trovata = errore).
 --
@@ -109,7 +109,12 @@ SELECT (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT')  
        (SELECT id FROM config.sorgenti WHERE codice_interno = 'ORDINE_VENDITA')  AS src_ordine,
        (SELECT id FROM config.sorgenti WHERE codice_interno = 'DDT_VENDITA')     AS src_ddt,
        (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON')       AS ind_con,
-       (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1)              AS articolo,
+-- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-1/D-2): l'articolo si
+--   COSTRUISCE. Prima si pescava dal catalogo (il primo per id, o il piu' recente):
+--   il primo per id e' l'onere del seed ONERE_SENZA_CONTRATTO (natura servizio), e
+--   da 20261013-42 ordine e bolla portano solo merce. Un articolo costruito ha solo
+--   le proprieta' che il test gli da' (merce, non gestito a magazzino).
+       dbops.fn_pgtap_crea_articolo('PGT-EBC-ART', false)              AS articolo,
        (SELECT i.id FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1)      AS iva,
        (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                  AS valuta,
        (SELECT emittente_fiscale_id FROM _m)                                     AS ef;

@@ -31,15 +31,15 @@ dominio va in `core`» — il prossimo (pratiche) lo sposta.
 
 | Query param | Tipo | Note |
 | --- | --- | --- |
-| `gravita` | csv di `ERROR` \| `WARN` \| `INFO` | default `ERROR`. ⚠️ Con `ERROR` si **include** la gravità `NULL` — la riga che dichiara un difetto («un vincolo si è allargato e la mappa è rimasta indietro»), come nel pannello lotto. Fuori vocabolario → `400 E_VENDITE_VALIDATION` (`fields: ["gravita"]`) |
-| `registro` | csv di `codice_interno` di **`config.registri_giornale`** (al 2026-09-19: `EVENT_LOG`, `LOTTO_LOG`, `TASK_RUN`, `FATTURA_LOG`) | default tutti; fuori **catalogo** → `400`. ⭐ Il vocabolario si **legge dal catalogo** a ogni richiesta che porta il filtro (`VenditeRepository.registri_giornale_ammessi()`, tutte le righe, ritirate comprese): non c'è una costante nel backend — il quinto registro entra con un `UNION ALL` nella vista e una riga di CSV, e qui non cambia niente. La tendina del frontend legge lo stesso catalogo dal lookup generico (`rel=config.registri_giornale`, specializzato con `etichetta_key`). Brief: `work-done/brief-db-registri-giornale-catalogo.md` |
-| `entity_type` | codice di `config.tipi_entita` | esatto; un codice ignoto risponde zero righe |
+| `gravita` | csv di `ERROR` \| `WARN` \| `INFO` | default `ERROR`. ⚠️ Con `ERROR` si **include** la gravità `NULL` — la riga che dichiara un difetto («un vincolo si è allargato e la mappa è rimasta indietro»), come nel pannello lotto. Fuori vocabolario → `400 E_VENDITE_VALIDATION` (`context.field = "gravita"`) |
+| `registro` | csv di `codice_interno` di **`config.registri_giornale`** (al 2026-09-19: `EVENT_LOG`, `LOTTO_LOG`, `TASK_RUN`, `FATTURA_LOG`) | default tutti; fuori **catalogo** → `400 E_VENDITE_VALIDATION` (`context.field = "registro"`). ⭐ Il vocabolario si **legge dal catalogo** a ogni richiesta che porta il filtro (`VenditeRepository.registri_giornale_ammessi()`, tutte le righe, ritirate comprese): non c'è una costante nel backend — il quinto registro entra con un `UNION ALL` nella vista e una riga di CSV, e qui non cambia niente. La tendina del frontend legge lo stesso catalogo dal lookup generico (`rel=config.registri_giornale`, specializzato con `etichetta_key`). Brief: `work-done/brief-db-registri-giornale-catalogo.md` |
+| `entity_type` | codice di `config.tipi_entita` | esatto (portato in maiuscolo). Fuori vocabolario → `400 E_VENDITE_VALIDATION` (`context.field = "entity_type"`); i tipi ritirati (`obsoleto_dal`) sono ammessi, il diario li porta. ⚠️ 2026-10-20: prima un codice ignoto rispondeva zero righe |
 | `data_da` / `data_a` | date ISO | su `quando`, giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09), `data_a` incluso; malformate → `400`. Il floor standard lo mette il frontend |
 | `filo` | uuid | `tx_id` **oppure** `correlation_id` (R-2: filtrare per filo tiene `EVENT_LOG` + `TASK_RUN` e butta le righe scritte per una persona — il default non filtra per filo). Non uuid → `400` |
 | `solo_vive` | bool, default `true` | esclude le segnalazioni **ritirate**; `ritirate_count` dice quante. Strict (`qp_bool_optional`): un token non riconosciuto è un 400 |
 | `order_by` | `quando` (default, DESC) \| `gravita` | `gravita` ordina il rango e, dentro, il tempo dal più recente (`_giornale_order_clause`, come sulla Storia). Fuori whitelist → **400** `E_VENDITE_VALIDATION` (un ripiego muto sulla gravità ordinerebbe la lista diversamente da come è stata chiesta) |
 | `order_dir` | `asc` \| `desc` | assente ⇒ `desc` |
-| `limit` / `offset` | int | paginazione offset-based |
+| `limit` / `offset` | int | paginazione offset-based, default `25` / `0`. Fuori limiti è un `400 E_VALIDATION_INPUT` (`limit` fuori da 1..200, `offset` negativo; `parse_list_params` → `pagina_da_query`, dal 2026-10-21: prima si riportava nei limiti) |
 
 ### `GET /api/v1/vendite/giornale/export/?formato=csv|xlsx`
 

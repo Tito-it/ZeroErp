@@ -6,11 +6,16 @@ CREATE FUNCTION fn_pgtap_crea_ddt(p_billing_account_id bigint, p_destinatario_sr
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ddt(p_billing_account_id bigint, p_destinatario_sr_id bigint, p_causale_codice character varying, p_magazzino_id bigint DEFAULT NULL::bigint, p_magazzino_arrivo_id bigint DEFAULT NULL::bigint)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-20 (20261020-62, brief-db-grammatica-unica-documenti, 2d G-6):
+--   l'ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della
+--   sorgente; firma e RETURNS ancorati.
 -- Scopo: una bolla in bozza per un pgTAP, costruita e non pescata.
 -- Uso: v_ddt := dbops.fn_pgtap_crea_ddt(<ba>, <sr cliente>, 'VENDITA', <mag>);
 DECLARE
@@ -47,7 +52,7 @@ BEGIN
     INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
     SELECT v_id, ti.id, '{"display":"pgtap"}'::jsonb
       FROM config.tipi_indirizzi ti
-     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT', NULL))
+     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', NULL))
     ON CONFLICT DO NOTHING;
 
     SET CONSTRAINTS ALL IMMEDIATE;
@@ -56,8 +61,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_ddt(p_billing_account_id bigint, p_destinatario_sr_id bigint, p_causale_codice character varying, p_magazzino_id bigint, p_magazzino_arrivo_id bigint)
-IS 'Fixture pgTAP: una bolla in DRAFT dell''emittente dell''operatore in sessione (script.fn_pgtap_emittente_operatore), per il cliente passato dal test (dal suo fn_pgtap_crea_mondo_cliente: costruito, non pescato), con la causale di trasporto per CODICE, i magazzini scelti (NULL = il default del predefinito, D-L3-h) e gli indirizzi obbligatori dell''ambito DDT. Le righe restano al test. Esce con i vincoli IMMEDIATE. Solo per i pgTAP (brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 5).';
+IS 'Fixture pgTAP: una bolla in DRAFT dell''emittente dell''operatore in sessione (script.fn_pgtap_emittente_operatore), per il cliente passato dal test (dal suo fn_pgtap_crea_mondo_cliente: costruito, non pescato), con la causale di trasporto per CODICE, i magazzini scelti (NULL = il default del predefinito, D-L3-h) e gli indirizzi obbligatori dell''ambito DDT. Le righe restano al test. Esce con i vincoli IMMEDIATE. Solo per i pgTAP (brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 5). Rev 2026-10-20 (20261020-62, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della sorgente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

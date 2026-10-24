@@ -18,10 +18,15 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| auth_user_id | integer | YES |  |
+| endpoint | text | NO |  |
+| prenotata_at | timestamp with time zone | NO | now() |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_idempotency_keys_endpoint_non_vuoto |  |
+| CHECK | chk_idempotency_keys_risposta_solo_completed |  |
 | CHECK | chk_idempotency_keys_status |  |
 | CHECK | chk_idempotency_keys_txid_completed |  |
 | PRIMARY KEY | pk_idempotency_keys | idempotency_key |
@@ -39,6 +44,7 @@
 | trg_idempotency_keys_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_idempotency_keys_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_idempotency_keys_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_idempotency_keys_m50_cleanup_at_ins | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_cleanup_at_alla_nascita()` |
 
 ---
 {% include-markdown "signature-core.md" %}

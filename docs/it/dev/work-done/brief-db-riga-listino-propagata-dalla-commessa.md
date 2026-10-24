@@ -13,7 +13,7 @@
 > **Stato:** ✅ **chiuso il 2026-10-09.** R-1, R-2, R-5 applicati a DB, pgTAP
 > verdi; R-3 e R-4 decisi (§6); BE fatto lo stesso giorno (§7). Debito aperto in
 > un brief a parte:
-> [brief-db-coerenza-listino-della-riga-di-commessa](../work-in-progress/brief-db-coerenza-listino-della-riga-di-commessa.md).
+> [brief-db-coerenza-listino-della-riga-di-commessa](brief-db-coerenza-listino-della-riga-di-commessa.md).
 
 ## 1. La regola
 

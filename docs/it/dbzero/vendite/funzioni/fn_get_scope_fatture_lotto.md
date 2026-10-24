@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_scope_fatture_lotto(p_lotto_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_scope_fatture_lotto(p_lotto_id bigint)
  RETURNS TABLE(fattura_id bigint, billing_account_id bigint, utility_id integer, tipo_doc_fiscale_id bigint, emittente_soggetto_ruolo_id bigint, valuta_id integer)
@@ -87,6 +89,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_scope_fatture_lotto(p_lotto_id bigint)
 IS 'Le fatture di un lotto con i cinque elementi di scope che i giri usano come chiave: billing account, utility, tipo doc fiscale, emittente, valuta. Una riga per fattura, ordinata per id. ⭐ E'' la DEFINIZIONE UNICA dello scope del lotto: prima viveva in Python (_SCOPE_FATTURE_LOTTO_SQL) e serviva a validazione, generazione e applicazione; con le due madri per lotto i lettori diventano quattro, e una regola di dominio con quattro lettori non sta fuori dal database. 🔴 Legge `f.utility_id` e NON COALESCE(lotto, billing account) come faceva la versione Python: la colonna della fattura e'' quella su cui fn_genera_fondi_fattura_source filtra, e passarne un''altra non produce un errore ma un NO-OP MUTO — nessun fondo, nessun log. ⚠️ Solleva invece di restituire zero righe in due casi: lotto inesistente (E_LOTTO_NON_TROVATO, che «lotto vuoto» non deve poter mascherare) e scope incompleto (E_PIPELINE_SCOPE_INCOMPLETE, con gli id delle fatture nel contesto). Il secondo e'' un cambio di comportamento voluto: con una utility mancante prima il giro proseguiva senza fare niente, e una fattura emessa senza il fondo che le spettava non se ne accorge nessuno — un task rosso si''. ℹ️ SECURITY INVOKER: il perimetro RLS resta quello del chiamante. R-3 di brief-db-fondo-fattura-ricalcolo-e-governo §8.3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

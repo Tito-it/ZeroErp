@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO STATO INIZIALE SI DICHIARA NEL VOCABOLARIO
+#   Brief: brief-modello-documento-vendita §4-bis e §4-ter (N-1, P-1 di Tid,
+#   2026-10-24). Primo giro del cantiere.
+#
+# ── IL CASO ─────────────────────────────────────────────────────────
+#   Un documento nasce solo nel suo stato iniziale (N-1). Fino a oggi quale
+#   fosse quello stato non lo diceva nessun vocabolario: lo scrivevano a mano
+#   sedici copie ('DRAFT' / 'BOZZA' nelle funzioni che creano documenti, i
+#   service del backend, il DEFAULT 1 di vendite.commesse), e diversi pgTAP lo
+#   trovavano come «il primo per id».
+#
+# ── PERCHE' UNA COLONNA NUOVA (P-1, opzione a) ──────────────────────
+#   - `fase = 'APERTO'` cade oggi su una riga sola per vocabolario, ma nessun
+#     vincolo lo garantisce e la colonna risponde a un'altra domanda (la
+#     frontiera della genealogia);
+#   - «lo stato senza passaggi in ingresso» si rompe appena una matrice
+#     ammette il ritorno alla bozza (la fattura ha gia' EMESSA -> DRAFT);
+#   - `is_bozza` (solo contratti) dice «e' la bozza», non «si nasce qui»:
+#     due domande diverse, come congela_fiscale e chiude_lotto (20260829-03).
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   iniziale BOOLEAN NOT NULL DEFAULT false, su ognuno degli otto vocabolari
+#   delle testate. Al massimo uno stato iniziale per vocabolario: lo presidia
+#   l'indice unico parziale uq_<vocabolario>_iniziale. «Almeno uno» non e' un
+#   vincolo esprimibile: se manca, il BB della nascita
+#   (script.trgfn_doc_stato_iniziale, 20261024-10) solleva un errore TECNICO
+#   che nomina il vocabolario.
+#   CHECK chk_<vocabolario>_iniziale_attivo: lo stato iniziale non si spegne,
+#   o nessun documento potrebbe piu' nascere. Non lega la colonna a una riga
+#   di seed (con iniziale = false passa sempre), quindi sta qui e non in
+#   90_end.
+#
+# ── IL VALORE ───────────────────────────────────────────────────────
+#   La sede e' il CSV di ogni vocabolario in 80_data/sql (colonna in coda),
+#   dichiarata nei suoi mirror nello stesso commit. L'UPDATE qui sotto e' il
+#   backfill per i database gia' popolati, keyed su codice_interno; su un
+#   database ricostruito da zero e' un no-op, e il valore arriva dal CSV.
+#   Tutti gli ALTER e gli indici prima degli UPDATE: config.stati_doc_fiscale
+#   ha un trigger AFTER, e un ALTER dopo eventi accodati verrebbe rifiutato
+#   (stesso motivo di 20260829-03).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261024-07-alter-stati-doc-add-iniziale-mctit.yaml
+
+  - changeSet:
+      id: 20261024-07-alter-stati-doc-add-iniziale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Colonna iniziale (NOT NULL DEFAULT false) sugli otto vocabolari degli stati delle testate,
+        con un indice unico parziale (al massimo uno stato iniziale per vocabolario) e il CHECK
+        «lo stato iniziale e' attivo». Backfill su DRAFT / BOZZA per i database gia' popolati.
+        P-1 di brief-modello-documento-vendita (Tid, 2026-10-24).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: stati_doc_preventivi }
+            - tableExists: { schemaName: config, tableName: stati_doc_offerte }
+            - tableExists: { schemaName: config, tableName: stati_doc_contratti }
+            - tableExists: { schemaName: config, tableName: stati_doc_ordini }
+            - tableExists: { schemaName: config, tableName: stati_doc_ddt }
+            - tableExists: { schemaName: config, tableName: stati_doc_reso }
+            - tableExists: { schemaName: config, tableName: stati_doc_fiscale }
+            - tableExists: { schemaName: vendite, tableName: stati_commessa }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_preventivi
+                  ADD COLUMN IF NOT EXISTS iniziale BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_preventivi_iniziale_attivo CHECK (NOT iniziale OR attivo);
+              ALTER TABLE config.stati_doc_offerte
+                  ADD COLUMN IF NOT EXISTS iniziale BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_offerte_iniziale_attivo CHECK (NOT iniziale OR attivo);
+              ALTER TABLE config.stati_doc_contratti
+                  ADD COLUMN IF NOT EXISTS iniziale BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_contratti_iniziale_attivo CHECK (NOT iniziale OR attivo);
+              ALTER TABLE config.stati_doc_ordini
+                  ADD COLUMN IF NOT EXISTS iniziale BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_ordini_iniziale_attivo CHECK (NOT iniziale OR attivo);
+              ALTER TABLE config.stati_doc_ddt
+                  ADD COLUMN IF NOT EXISTS iniziale BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_ddt_iniziale_attivo CHECK (NOT iniziale OR attivo);
+              ALTER TABLE config.stati_doc_reso
+                  ADD COLUMN IF NOT EXISTS iniziale BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_reso_iniziale_attivo CHECK (NOT iniziale OR attivo);
+              ALTER TABLE config.stati_doc_fiscale
+                  ADD COLUMN IF NOT EXISTS iniziale BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_fiscale_iniziale_attivo CHECK (NOT iniziale OR attivo);
+              ALTER TABLE vendite.stati_commessa
+                  ADD COLUMN IF NOT EXISTS iniziale BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_commessa_iniziale_attivo CHECK (NOT iniziale OR attivo);
+
+              CREATE UNIQUE INDEX uq_stati_doc_preventivi_iniziale ON config.stati_doc_preventivi (iniziale) WHERE iniziale;
+              CREATE UNIQUE INDEX uq_stati_doc_offerte_iniziale ON config.stati_doc_offerte (iniziale) WHERE iniziale;
+              CREATE UNIQUE INDEX uq_stati_doc_contratti_iniziale ON config.stati_doc_contratti (iniziale) WHERE iniziale;
+              CREATE UNIQUE INDEX uq_stati_doc_ordini_iniziale ON config.stati_doc_ordini (iniziale) WHERE iniziale;
+              CREATE UNIQUE INDEX uq_stati_doc_ddt_iniziale ON config.stati_doc_ddt (iniziale) WHERE iniziale;
+              CREATE UNIQUE INDEX uq_stati_doc_reso_iniziale ON config.stati_doc_reso (iniziale) WHERE iniziale;
+              CREATE UNIQUE INDEX uq_stati_doc_fiscale_iniziale ON config.stati_doc_fiscale (iniziale) WHERE iniziale;
+              CREATE UNIQUE INDEX uq_stati_commessa_iniziale ON vendite.stati_commessa (iniziale) WHERE iniziale;
+
+              COMMENT ON COLUMN config.stati_doc_preventivi.iniziale IS
+                  'true = lo stato in cui un documento NASCE: un documento nuovo nasce solo qui, gli altri stati si raggiungono dai passaggi della matrice. Al massimo uno per vocabolario (uq_stati_doc_preventivi_iniziale) ed e'' attivo (chk_stati_doc_preventivi_iniziale_attivo). Lo legge script.fn_stato_iniziale_id; lo applica il trigger BEFORE INSERT script.trgfn_doc_stato_iniziale (mette questo stato quando l''INSERT non ne dice uno, rifiuta ogni altro). Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita (N-1, P-1 di Tid, 2026-10-24).';
+              COMMENT ON COLUMN config.stati_doc_offerte.iniziale IS
+                  'true = lo stato in cui un documento NASCE: un documento nuovo nasce solo qui, gli altri stati si raggiungono dai passaggi della matrice. Al massimo uno per vocabolario (uq_stati_doc_offerte_iniziale) ed e'' attivo (chk_stati_doc_offerte_iniziale_attivo). Lo legge script.fn_stato_iniziale_id; lo applica il trigger BEFORE INSERT script.trgfn_doc_stato_iniziale (mette questo stato quando l''INSERT non ne dice uno, rifiuta ogni altro). Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita (N-1, P-1 di Tid, 2026-10-24).';
+              COMMENT ON COLUMN config.stati_doc_contratti.iniziale IS
+                  'true = lo stato in cui un documento NASCE: un documento nuovo nasce solo qui, gli altri stati si raggiungono dai passaggi della matrice. Al massimo uno per vocabolario (uq_stati_doc_contratti_iniziale) ed e'' attivo (chk_stati_doc_contratti_iniziale_attivo). Lo legge script.fn_stato_iniziale_id; lo applica il trigger BEFORE INSERT script.trgfn_doc_stato_iniziale (mette questo stato quando l''INSERT non ne dice uno, rifiuta ogni altro). Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita (N-1, P-1 di Tid, 2026-10-24).';
+              COMMENT ON COLUMN config.stati_doc_ordini.iniziale IS
+                  'true = lo stato in cui un documento NASCE: un documento nuovo nasce solo qui, gli altri stati si raggiungono dai passaggi della matrice. Al massimo uno per vocabolario (uq_stati_doc_ordini_iniziale) ed e'' attivo (chk_stati_doc_ordini_iniziale_attivo). Lo legge script.fn_stato_iniziale_id; lo applica il trigger BEFORE INSERT script.trgfn_doc_stato_iniziale (mette questo stato quando l''INSERT non ne dice uno, rifiuta ogni altro). Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita (N-1, P-1 di Tid, 2026-10-24).';
+              COMMENT ON COLUMN config.stati_doc_ddt.iniziale IS
+                  'true = lo stato in cui un documento NASCE: un documento nuovo nasce solo qui, gli altri stati si raggiungono dai passaggi della matrice. Al massimo uno per vocabolario (uq_stati_doc_ddt_iniziale) ed e'' attivo (chk_stati_doc_ddt_iniziale_attivo). Lo legge script.fn_stato_iniziale_id; lo applica il trigger BEFORE INSERT script.trgfn_doc_stato_iniziale (mette questo stato quando l''INSERT non ne dice uno, rifiuta ogni altro). Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita (N-1, P-1 di Tid, 2026-10-24).';
+              COMMENT ON COLUMN config.stati_doc_reso.iniziale IS
+                  'true = lo stato in cui un documento NASCE: un documento nuovo nasce solo qui, gli altri stati si raggiungono dai passaggi della matrice. Al massimo uno per vocabolario (uq_stati_doc_reso_iniziale) ed e'' attivo (chk_stati_doc_reso_iniziale_attivo). Lo legge script.fn_stato_iniziale_id; lo applica il trigger BEFORE INSERT script.trgfn_doc_stato_iniziale (mette questo stato quando l''INSERT non ne dice uno, rifiuta ogni altro). Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita (N-1, P-1 di Tid, 2026-10-24).';
+              COMMENT ON COLUMN config.stati_doc_fiscale.iniziale IS
+                  'true = lo stato in cui un documento NASCE: un documento nuovo nasce solo qui, gli altri stati si raggiungono dai passaggi della matrice. Al massimo uno per vocabolario (uq_stati_doc_fiscale_iniziale) ed e'' attivo (chk_stati_doc_fiscale_iniziale_attivo). Lo legge script.fn_stato_iniziale_id; lo applica il trigger BEFORE INSERT script.trgfn_doc_stato_iniziale (mette questo stato quando l''INSERT non ne dice uno, rifiuta ogni altro). Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita (N-1, P-1 di Tid, 2026-10-24).';
+              COMMENT ON COLUMN vendite.stati_commessa.iniziale IS
+                  'true = lo stato in cui un documento NASCE: un documento nuovo nasce solo qui, gli altri stati si raggiungono dai passaggi della matrice. Al massimo uno per vocabolario (uq_stati_commessa_iniziale) ed e'' attivo (chk_stati_commessa_iniziale_attivo). Lo legge script.fn_stato_iniziale_id; lo applica il trigger BEFORE INSERT script.trgfn_doc_stato_iniziale (mette questo stato quando l''INSERT non ne dice uno, rifiuta ogni altro). Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita (N-1, P-1 di Tid, 2026-10-24).';
+
+              -- Backfill sui database gia' popolati, per codice_interno (chiave
+              -- naturale stabile). No-op su un database ricostruito da zero.
+              UPDATE config.stati_doc_preventivi SET iniziale = true WHERE codice_interno = 'DRAFT' AND NOT iniziale;
+              UPDATE config.stati_doc_offerte    SET iniziale = true WHERE codice_interno = 'BOZZA' AND NOT iniziale;
+              UPDATE config.stati_doc_contratti  SET iniziale = true WHERE codice_interno = 'DRAFT' AND NOT iniziale;
+              UPDATE config.stati_doc_ordini     SET iniziale = true WHERE codice_interno = 'DRAFT' AND NOT iniziale;
+              UPDATE config.stati_doc_ddt        SET iniziale = true WHERE codice_interno = 'DRAFT' AND NOT iniziale;
+              UPDATE config.stati_doc_reso       SET iniziale = true WHERE codice_interno = 'DRAFT' AND NOT iniziale;
+              UPDATE config.stati_doc_fiscale    SET iniziale = true WHERE codice_interno = 'DRAFT' AND NOT iniziale;
+              UPDATE vendite.stati_commessa      SET iniziale = true WHERE codice_interno = 'BOZZA' AND NOT iniziale;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_preventivi DROP COLUMN IF EXISTS iniziale;
+              ALTER TABLE config.stati_doc_offerte    DROP COLUMN IF EXISTS iniziale;
+              ALTER TABLE config.stati_doc_contratti  DROP COLUMN IF EXISTS iniziale;
+              ALTER TABLE config.stati_doc_ordini     DROP COLUMN IF EXISTS iniziale;
+              ALTER TABLE config.stati_doc_ddt        DROP COLUMN IF EXISTS iniziale;
+              ALTER TABLE config.stati_doc_reso       DROP COLUMN IF EXISTS iniziale;
+              ALTER TABLE config.stati_doc_fiscale    DROP COLUMN IF EXISTS iniziale;
+              ALTER TABLE vendite.stati_commessa      DROP COLUMN IF EXISTS iniziale;

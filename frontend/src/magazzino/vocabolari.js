@@ -148,6 +148,13 @@ export const TAB_DISPONIBILITA = Object.freeze({
 // dedicato, filtrato sul padre: una chiave per magazzino, o il primo montato
 // vincerebbe in silenzio sugli altri).
 export const LOOKUP_REL_MAGAZZINI = 'magazzino.magazzini'
+
+// La causale di magazzino (`magazzino.causali.codice_interno`) che fa di una
+// bolla un TRASFERIMENTO fra depositi: la bolla vuole anche il magazzino di
+// arrivo. E' la stessa regola del DB (`vendite.trgfn_ddt_guard_magazzino`,
+// `script.fn_check_ddt_merce`); la causale di trasporto la porta nel lookup
+// (`causale_magazzino`, Lotto 3 D-L3-g).
+export const CAUSALE_MAGAZZINO_TRASFERIMENTO = 'TRASF_OUT'
 export function chiaveLookupUbicazioni(magazzinoId) {
   return `magazzino.ubicazioni.${magazzinoId}`
 }
@@ -159,3 +166,8 @@ export function chiaveLookupUbicazioni(magazzinoId) {
 //    vero e' il backend (`post_permission` su `.../registra/`), e resta
 //    fail-closed finche' un profilo non porta l'azione.
 export const AZIONE_REGISTRA_MAGAZZINO = 'registra_magazzino'
+
+// L'azione dei BLOCCHI manuali (Lotto 3 D-L3-j): aprire e liberare. Come sopra,
+// qui serve a NASCONDERE il gesto a chi non ce l'ha; il cancello vero e' il
+// backend (`post_permission`) e, dietro, il verbo DB.
+export const AZIONE_BLOCCA_MERCE = 'blocca_merce'

@@ -16,11 +16,15 @@
 --       fra righe): senza un default, una riga che non indica la fonte resterebbe
 --       senza, e la eredita' del giro B3 non avrebbe niente da dare.
 --
+-- ⚠️ rev 2026-10-21 (brief-db-offerta-emissione-ed-erogazione §I.1, I-D1 di Tid;
+--   20261021-51): DERIVATA_COMPONENTI ritirata, il vocabolario scende da 13 a 9
+--   combinazioni (test 1). I componenti seguono la quantita' del padre.
+--
 -- ⚠️ Legge il SEED, non una popolazione: le tre tabelle sono catalogo
 --   (80_data/sql/config/*.csv), identiche su ogni macchina.
 --
 -- Indice test (1..12):
---   1)  config.erogazioni_fonti = le 13 combinazioni che i CHECK ammettevano
+--   1)  config.erogazioni_fonti = le 9 combinazioni (le 13 dei CHECK ritirati, meno DERIVATA_COMPONENTI)
 --   2)  ogni erogazione ha esattamente una fonte di default
 --   3)  i default sono quelli del CASE ritirato (CANONE/UNA_TANTUM FISSA, ORARIO MANUALE, CONSUMO LETTURE)
 --   4)  ogni tipologia di listino attiva ha esattamente un default
@@ -43,12 +47,11 @@ SELECT plan(12);
 -- 1) Il vocabolario = le combinazioni dei CHECK ritirati (20261007-54)
 SELECT set_eq(
     $$ SELECT tipo_erogazione::text, fonte_quantita_attesa::text FROM config.erogazioni_fonti $$,
-    $$ VALUES ('CANONE', 'FISSA'), ('CANONE', 'MANUALE'), ('CANONE', 'DERIVATA_COMPONENTI'),
-              ('UNA_TANTUM', 'FISSA'), ('UNA_TANTUM', 'MANUALE'), ('UNA_TANTUM', 'DERIVATA_COMPONENTI'),
+    $$ VALUES ('CANONE', 'FISSA'), ('CANONE', 'MANUALE'),
+              ('UNA_TANTUM', 'FISSA'), ('UNA_TANTUM', 'MANUALE'),
               ('ORARIO', 'FISSA'), ('ORARIO', 'MANUALE'), ('ORARIO', 'TIMESHEET'),
-              ('ORARIO', 'DERIVATA_COMPONENTI'),
-              ('CONSUMO', 'MANUALE'), ('CONSUMO', 'LETTURE'), ('CONSUMO', 'DERIVATA_COMPONENTI') $$,
-    '1) config.erogazioni_fonti = le 13 combinazioni che i CHECK ammettevano');
+              ('CONSUMO', 'MANUALE'), ('CONSUMO', 'LETTURE') $$,
+    '1) config.erogazioni_fonti = le 9 combinazioni (senza DERIVATA_COMPONENTI, ritirata il 2026-10-21)');
 
 -- 2) Completezza del default per erogazione
 SELECT is(

@@ -45,6 +45,8 @@ per caso. Questo confronto lo avrebbe trovato in un giorno.
 | `OK` | lo scheduler lo sveglia e il giornale lo registra |
 | `GIRA_E_NON_REGISTRA` | ⛔ girato secondo lo scheduler, mai arrivato al giornale |
 | `MAI_PARTITO` | programmato, acceso, e non è mai partito |
+| `IN_ATTESA` | job pgAgent acceso, mai partito, ma la sua prima corsa è ancora da venire: non è un guasto (dal 2026-10-14) |
+| `IN_RITARDO` | job pgAgent che ha già girato, ma la corsa dovuta è passata da più di un'ora: il programmatore si è fermato (dal 2026-10-14) |
 | `JOB_SPENTO` | il lavoro esiste ma qualcuno l'ha disattivato |
 | `JOB_ASSENTE` | il catalogo dichiara un lavoro che lo scheduler non ha |
 | `NON_PROGRAMMATO` | nessuno ha dichiarato chi lo sveglia |
@@ -150,7 +152,8 @@ stati, da soli, non bastano a dire che cosa fare:
 | `MUTO` | `TIMER_FERMO` | il timer del lavoro ha smesso di girare | chi gestisce il server |
 | `MUTO` | `SERVIZIO_GIU` | un servizio sempre acceso è spento, o ha perso la connessione al database | chi gestisce il server |
 | `MAI_PARTITO` | `TIMER_NON_INSTALLATO` | il timer è previsto ma non è mai stato installato | chi gestisce il server |
-| `MAI_PARTITO` | `JOB_MAI_PARTITO` | il lavoro programmato nel database è acceso e non è mai partito | chi gestisce il database |
+| `MAI_PARTITO` | `JOB_MAI_PARTITO` | il lavoro programmato nel database è acceso, non è mai partito e la sua corsa era dovuta da più di un'ora | chi gestisce il database |
+| `IN_RITARDO` | `JOB_IN_RITARDO` | il lavoro ha già girato, ma la corsa dovuta è passata da più di un'ora: il programmatore si è fermato | chi gestisce il database |
 | `NON_PROGRAMMATO` | `NON_PROGRAMMATO` | il catalogo non dice quale lavoro lo fa partire | lo sviluppo |
 | `JOB_ASSENTE` | `JOB_ASSENTE` | il lavoro programmato nominato dal catalogo non esiste | chi gestisce il database |
 | `JOB_SPENTO` | `JOB_SPENTO` | il lavoro programmato è stato spento | chi gestisce il database |
@@ -300,3 +303,34 @@ c'è) e pretende per ciascuna lo stato e la causa giusti; e pretende che **ogni*
 causa che la vista può produrre abbia il suo testo. L'elenco delle cause si legge
 dalla definizione della vista, non dalle righe di oggi: vale anche su un database
 appena creato, dove nessun lavoro è guasto.
+
+---
+
+### ⭐ pgAgent: il segnale è la corsa dovuta (rev 2026-10-14)
+
+Il presidio vuole dire *«il programmatore dei lavori del database non gira»*.
+Fino al 2026-10-14 lo deduceva da *«il job non ha mai girato»*, e sbagliava due
+volte:
+
+* **falso allarme** su ogni job nuovo fino alla sua prima corsa: quel giorno
+  `analyze_statistiche`, creato nel pomeriggio e programmato alle 02:30, era
+  `MAI_PARTITO` con pgAgent vivo e gli altri quattordici job `OK`;
+* **silenzio** sul demone fermo: un job che aveva già girato una volta restava
+  `OK` per sempre.
+
+Ora il segnale è **la corsa dovuta e non fatta**: la prossima esecuzione che
+pgAgent dichiara (`prossima_corsa`, cioè `jobnextrun`) è passata da più di
+un'ora, lo stesso margine di `GIRA_E_NON_REGISTRA`. Col demone fermo pgAgent non
+aggiorna più quella data, che resta nel passato.
+
+| Il job | La corsa dovuta | Stato |
+| --- | --- | --- |
+| non ha mai girato | passata da più di un'ora, o nessuna | `MAI_PARTITO` / `JOB_MAI_PARTITO` |
+| non ha mai girato | ancora da venire | `IN_ATTESA`, senza causa |
+| ha già girato | passata da più di un'ora | `IN_RITARDO` / `JOB_IN_RITARDO` |
+| ha già girato | ancora da venire | `OK` |
+
+⚠️ La regola resta nel `CASE` della vista, nella forma `ARRAY['stato', 'causa']`:
+è da lì che `dbops/test-presidio-processi-testo-per-causa-v1` fa il censimento
+delle cause. ChangeSet `20261014-54`; brief
+`brief-db-statistiche-tabelle-job-notturno` §8.

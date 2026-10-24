@@ -7,6 +7,8 @@ CREATE FUNCTION fn_sync_contabili_fondo_fattura(p_fattura_figlia_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_sync_contabili_fondo_fattura(p_fattura_figlia_id bigint)
  RETURNS TABLE(inserted_righe integer, updated_righe integer, annullati_source integer)
@@ -181,6 +183,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_sync_contabili_fondo_fattura(p_fattura_figlia_id bigint)
 IS 'Sync righe contabili dei fondi fattura assegnati. Annulla le source a saldo effettivo zero e ne SCRIVE LA RAGIONE nella colonna `motivo`. Il saldo effettivo si legge da vendite.fn_saldo_sorgente_fondo: la stessa formula serve al guard di capienza di fn_applica_fondi_fattura, e due copie della regola che decide se un fondo e'' ancora dovuto darebbero prima o poi due risposte diverse. ⭐ rev 2026-08-21 (cantiere incassi, lotto 3), tre modifiche. (1) S1-14: il legame con l''atto si legge e si scrive sulla COLONNA pagamenti.vendite_contabili_righe.fondo_source_id, non piu'' su meta->>''fondo_source_id'', che nell''UPDATE viene tolta dal meta — `meta->>''origine''` resta perche'' risponde a un''altra domanda. (2) S1-8, la RETE: se un fondo ASSEGNATO ha una riga contabile dalla quale la matrice non ammette il ritorno ad ABBINATA, la riga NON si aggiorna — si salta e si logga W_FONDO_RIGA_CONTABILE_NON_AGGIORNABILE su vendite.fatture_log. ⛔ Si logga e non si solleva: questa funzione e'' chiamata incondizionatamente da fn_ricalcola_totali_fattura, cioe'' sta sul percorso vivo della pipeline, e un W_ sollevato sarebbe un HTTP 500. ⭐ La domanda si fa alla matrice e non a un elenco scritto dentro il guard, quindi copre anche una riga SCARTATA, da cui non esiste passaggio verso ABBINATA. ⚠️ Non e'' piu'' il rimedio di C-2/C-3: quelli li chiude il quarto stato del fondo (ESEGUITO), che porta l''atto fuori dal filtro ASSEGNATO di questo ciclo. Questa e'' la rete sull''invariante. (3) tipi ancorati con %TYPE anche in FIRMA e nei due DECLARE che ancora non lo usavano (le tre colonne del RETURNS TABLE restano integer: sono contatori, non il riflesso di una colonna). (4) C-6: spento il fallback fail-open sul lookup dello stato ABBINATA — ripiegare su «uno stato qualunque» dopo il lotto 2 significava atterrare su IMPORTATA, che ha richiede_abbinamento = false e quindi sfugge anche al guard nuovo. ⚠️ Le righe contabili che crea sono ABBINATA, cioe'' POSTABILI: il giorno del posting diventeranno movimenti veri, ed e'' corretto (la sorgente e'' saldata per TRASFERIMENTO), ma ogni misura di «incassato» deve escludere i centri non-cassa. Coda del D-3 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

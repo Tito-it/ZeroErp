@@ -1,7 +1,7 @@
 # Piano — type checker del backend (D2-b)
 
 > Nato il **2026-10-08** dalla decisione di Tid su **D2-b** di
-> [migliorie-generali-BE-FE-da-test-valutazione.md](../work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md):
+> [migliorie-generali-BE-FE-da-test-valutazione.md](migliorie-generali-BE-FE-da-test-valutazione.md):
 > il progetto **vuole** un type checker, acceso **a cricchetto**.
 > Stato: ✅ **Piano chiuso il 2026-10-09.** L0-L3 chiusi e committati (`0ffe7b7c3` L0-L2,
 > `ebc54fc56` L3). S2 e le tre dipendenze approvate il 2026-10-08. ✅ Il caso NaN è chiuso:

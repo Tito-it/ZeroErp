@@ -25,6 +25,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.openapi_params import risposta_lookup
 from apps.core.api.payload_validators import qp_int_optional
 from apps.core.api.success_responses import success_response
 from apps.core.services.payload_helpers import INTEGER_MAX, INTEGER_MIN
@@ -114,21 +115,16 @@ class ApiListiniSelezionabiliLookup(DomainAPIView):
                 ),
             ),
         ],
-        responses={200: inline_serializer(
-            name="VenditeListiniSelezionabiliLookupResponse",
-            fields={"data": inline_serializer(
-                name="VenditeListiniSelezionabiliLookupData",
-                fields={"results": serializers.ListField(
-                    child=inline_serializer(
-                        name="VenditeListinoSelezionabile",
-                        fields={
-                            "id": serializers.IntegerField(),
-                            "codice": serializers.CharField(),
-                            "descrizione": serializers.CharField(),
-                        },
-                    ),
-                )},
-            )},
+        responses={200: risposta_lookup(
+            "VenditeListiniSelezionabiliLookupResponse",
+            riga=inline_serializer(
+                name="VenditeListinoSelezionabile",
+                fields={
+                    "id": serializers.IntegerField(),
+                    "codice": serializers.CharField(),
+                    "descrizione": serializers.CharField(),
+                },
+            ),
         )},
     )
     # Scopo: i listini sceglibili per (utility, emittente) del form, 400 su un

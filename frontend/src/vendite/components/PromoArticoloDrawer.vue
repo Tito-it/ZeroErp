@@ -375,7 +375,7 @@ async function handleSave() {
       <ArticoloLookup
         v-model="form.articolo_obj"
         :disabled="isReadOnlyEffective || isLocked('articolo_id')"
-        :filtri="{ soloComponenti: 'escludi' }"
+        documento="PROMO_ARTICOLO"
         :placeholder="t('vendite.promo_articoli.field_articolo_placeholder')"
       />
     </div>

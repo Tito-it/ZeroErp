@@ -18,8 +18,18 @@ garantisce idempotenza sorgente a livello commessa.
 * una sola ROOT per commessa (unique parziale `uq_commesse_sorgenti_commessa_root`);
   dal 2026-06-09 la commessa è **multi-sorgente**: 1 ROOT + N COLLEGATO
   (`vendite.fn_link_commessa_sorgente` decide il ruolo);
-* una sorgente (`sorgente_tipo_id + sorgente_uid`) appartiene a **una sola
-  commessa** (`uq_commesse_sorgenti_src_uid`);
+* ⭐ un documento sorgente compare **una volta per commessa**
+  (`uq_commesse_sorgenti_src_uid_commessa`, dal 2026-10-12), e sta in **una sola
+  commessa APERTA** alla volta: la regola la fa valere la porta,
+  [vendite.fn_link_commessa_sorgente](/dbzero/vendite/funzioni/fn_link_commessa_sorgente),
+  perche' un indice non legge lo stato della commessa. Il link verso una commessa
+  **chiusa o annullata resta come storia**: il documento si rimanda in una
+  commessa nuova, e ha piu' link. Quale conta lo dice
+  [vendite.fn_commessa_viva_di_sorgente](/dbzero/vendite/funzioni/fn_commessa_viva_di_sorgente).
+  Fino al 2026-10-12 l'unicita' era globale (`uq_commesse_sorgenti_src_uid`):
+  «una commessa per sempre» (brief-db-annullo-a-valle-riapre-a-monte §10);
+* il link lo scrive la madre delle righe, `vendite.fn_upsert_commessa_attivita`,
+  insieme alla riga (D-13);
 * **formato della chiave** (`sorgente_uid` TEXT): segue
   `config.sorgenti.key_selector` — uuid testuale per i tipi a chiave `uid`
   (preventivo, offerta), **`id::text`** per i tipi a chiave `id` (ordine,
@@ -36,7 +46,8 @@ garantisce idempotenza sorgente a livello commessa.
 ### Utilizzo previsto
 
 * tracciabilita` della root source commessa;
-* protezione anti-doppio aggancio documento->commessa;
+* protezione anti-doppio aggancio documento->commessa (aperta);
+* storia delle commesse in cui il documento e' passato;
 * base per recovery/audit lato orchestratore push.
 
 ---

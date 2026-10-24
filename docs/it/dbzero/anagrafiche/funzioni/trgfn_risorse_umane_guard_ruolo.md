@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_risorse_umane_guard_ruolo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ruolo()
  RETURNS trigger
@@ -56,6 +58,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_guard_ruolo()
 IS 'Verifica che soggetto_ruolo_id sia di tipo RIS_UMANA.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -205,7 +205,22 @@ def gen_table_md(schema, table, cur):
 # Assicurati che OUT_DIR sia definito (come nel tuo script)
 # OUT_DIR = os.path.join(BASE_DIR, "docs", "it", "dbzero")
 # Genera Markdown funzione
+# Avvolge un blocco di codice in un riquadro escluso dalla ricerca. Zensical
+# indicizza ogni sezione come un solo campo e rifiuta quelli oltre 16 KB
+# (zensical 0.0.71): il corpo intero di una funzione o di una vista lo supera e
+# ferma la build. Il testo della pagina resta cercabile, il codice no.
+# ⚠️ Serve l'estensione `md_in_html` in mkdocs.yml: senza, il riquadro e' HTML
+#   grezzo e il blocco di codice dentro non viene interpretato.
+def _fuori_dalla_ricerca(lines):
+    return ["<div data-search-exclude markdown>", ""] + lines + ["", "</div>"]
+
 def gen_function_md(schema, func, cur):
+    # ⚠️ UNA PAGINA PER NOME, UN BLOCCO PER FIRMA (2026-10-14). Prima la query
+    #   chiudeva con `LIMIT 1` e senza `ORDER BY`: di due firme dello stesso
+    #   nome ne usciva una sola, e nemmeno sempre la stessa. Il caso che l'ha
+    #   mostrato: `maintenance.proc_apply_fk_index_policy_job` ha `()` e
+    #   `(p_populate boolean)`, il job pgAgent chiama la seconda e la pagina
+    #   mostrava la prima. Con una firma sola l'output e' identico a prima.
     if DOCS_MINIMAL:
         return ""
     cur.execute("""
@@ -217,33 +232,47 @@ def gen_function_md(schema, func, cur):
         FROM pg_proc p
         JOIN pg_namespace n ON p.pronamespace = n.oid
         WHERE n.nspname = %s AND p.proname = %s
-        LIMIT 1
+        ORDER BY pg_get_function_identity_arguments(p.oid)
     """, (schema, func))
-    row = cur.fetchone()
-    if not row:
+    rows = cur.fetchall()
+    if not rows:
         return ""
-    kind = row["prokind"]
-    kind_label = "Procedura" if kind == "p" else "Funzione"
-    kind_verb  = "PROCEDURE" if kind == "p" else "FUNCTION"
 
-    lines = [
-        f"# ⚙️ {kind_label} `{row['proname']}`\n",
-        "```sql",
-        f"CREATE {kind_verb} {row['proname']}({row['args']})",
-        "```",
-        "\n**Definizione completa:**\n",
-        "```sql",
-        (row.get("defn") or "").strip(),
-    ]
-    obj_comment = row.get("obj_comment")
-    if obj_comment:
-        lines += [
-            "",
-            f"COMMENT ON {kind_verb} {schema}.{row['proname']}({row['args']})",
-            f"IS {sql_literal(obj_comment)};"
+    def _blocco(row):
+        kind_verb = "PROCEDURE" if row["prokind"] == "p" else "FUNCTION"
+        lines = [
+            "```sql",
+            f"CREATE {kind_verb} {row['proname']}({row['args']})",
+            "```",
+            "\n**Definizione completa:**\n",
         ]
-    lines += ["```"]
-    return "\n".join(lines)
+        corpo = [
+            "```sql",
+            (row.get("defn") or "").strip(),
+        ]
+        obj_comment = row.get("obj_comment")
+        if obj_comment:
+            corpo += [
+                "",
+                f"COMMENT ON {kind_verb} {schema}.{row['proname']}({row['args']})",
+                f"IS {sql_literal(obj_comment)};"
+            ]
+        corpo += ["```"]
+        return lines + _fuori_dalla_ricerca(corpo)
+
+    kind_label = "Procedura" if rows[0]["prokind"] == "p" else "Funzione"
+    lines = [f"# ⚙️ {kind_label} `{rows[0]['proname']}`\n"]
+    if len(rows) == 1:
+        lines += _blocco(rows[0])
+    else:
+        lines += [
+            f"> ⚠️ **{len(rows)} firme** con lo stesso nome: ognuna ha il suo "
+            "blocco qui sotto, in ordine di argomenti.",
+            "",
+        ]
+        for row in rows:
+            lines += [f"## Firma `({row['args']})`\n"] + _blocco(row) + [""]
+    return "\n".join(lines).rstrip("\n")
 
 def gen_function_md_V1(schema, func, cur):
     cur.execute(
@@ -407,13 +436,15 @@ def gen_view_md(schema, view, cur):
                 "`REFRESH MATERIALIZED VIEW`.\n"
             )
 
-    lines.append("```sql")
+    corpo = ["```sql"]
     if is_matview:
-        lines.append(f"CREATE MATERIALIZED VIEW {schema}.{view} AS")
+        corpo.append(f"CREATE MATERIALIZED VIEW {schema}.{view} AS")
     else:
-        lines.append(f"CREATE OR REPLACE VIEW {schema}.{view}{with_clause} AS")
-    lines.append(definition.strip())
-    lines.append("```\n")
+        corpo.append(f"CREATE OR REPLACE VIEW {schema}.{view}{with_clause} AS")
+    corpo.append(definition.strip())
+    corpo.append("```")
+    lines.extend(_fuori_dalla_ricerca(corpo))
+    lines.append("")
 
     if is_matview:
         lines.extend(_matview_indexes_md(schema, view, cur))
@@ -484,7 +515,7 @@ def write_docs_for_schema(schema, cur):
     # Funzioni (SOLO function, niente procedure qui)
     cur.execute(
         """
-        SELECT routine_name
+        SELECT DISTINCT routine_name
         FROM information_schema.routines
         WHERE specific_schema = %s
         AND routine_type = 'FUNCTION'
@@ -647,6 +678,23 @@ def add_entries_from_dir(dir_path, title, link_prefix, manual_dir, lines, schema
         lines.append(entry)
     lines.append('')
 
+# La pagina dei job pgAgent (generata in locale, vedi gen_job_pgagent_md) si
+# linka da ENTRAMBI gli indici: in CI la pagina non si rigenera (pgAgent non
+# c'e'), ma quella committata resta ed e' autosufficiente.
+def _link_job_pgagent(schema_dir, lines):
+    if os.path.isfile(os.path.join(schema_dir, JOB_PGAGENT_FILE)):
+        lines += ["## ⏰ Job pgAgent",
+                  f"- [I job pgAgent]({JOB_PGAGENT_FILE}) — quali lavori a orario "
+                  "esistono, quando partono e che cosa chiamano", ""]
+
+
+# Front matter degli indici di schema: fuori dalla ricerca. Zensical indicizza
+# ogni sezione `##` come un solo campo e rifiuta quelli oltre 16 KB (zensical
+# 0.0.71): l'elenco «Funzioni» di uno schema grande lo supera e ferma la build.
+# Il contenuto dell'indice e' solo navigazione: lo scopo di ogni oggetto e' gia'
+# cercabile nella sua pagina.
+_INDEX_FRONT_MATTER = "---\nsearch:\n  exclude: true\n---\n"
+
 # Scrive index.md per schema
 def write_index(schema_dir, schema):
     index_path  = os.path.join(schema_dir, 'index.md')
@@ -655,7 +703,7 @@ def write_index(schema_dir, schema):
     manual_dir  = os.path.join(schema_dir, 'manual')
     views_dir   = os.path.join(schema_dir, 'views')
 
-    lines = [f"# Schema `{schema}`\n"]
+    lines = [_INDEX_FRONT_MATTER, f"# Schema `{schema}`\n"]
 
     # 1. Tabelle con Scopo Principale
     if os.path.isdir(tables_dir):
@@ -731,7 +779,7 @@ def write_index(schema_dir, schema):
             lines.append(entry)
         lines.append('')
 
-
+    _link_job_pgagent(schema_dir, lines)
 
     with open(index_path, 'w', encoding='utf-8') as f:
         f.write("\n".join(lines))
@@ -743,7 +791,7 @@ def write_index_ci(schema_dir, schema):
     views_dir = os.path.join(schema_dir, 'views')
     manual_dir = os.path.join(schema_dir, 'manual')
 
-    lines = [f"# Schema `{schema}`\n"]
+    lines = [_INDEX_FRONT_MATTER, f"# Schema `{schema}`\n"]
 
     if not os.path.isdir(manual_dir):
         with open(index_path, 'w', encoding='utf-8') as f:
@@ -789,12 +837,183 @@ def write_index_ci(schema_dir, schema):
         "## 📘 Altri contenuti manuali",
         [n for n in manual_files if n not in all_known],
     )
+    _link_job_pgagent(schema_dir, lines)
 
     with open(index_path, 'w', encoding='utf-8') as f:
         f.write("\n".join(lines))
 
 
-    
+
+# ── I job pgAgent ────────────────────────────────────────────────────────────
+# ⭐ PERCHE' ESISTE (2026-10-14, brief-db-ruoli-di-sistema). Lo schema `pgagent`
+#   e' dell'estensione, e documentarne la STRUTTURA non dice niente: le sue
+#   tabelle sono sempre le stesse. Cio' che serve e' il CONTENUTO — quali job
+#   esistono, se sono accesi, quando partono, che cosa chiama ogni step — che
+#   finora si leggeva solo da `postgres` o dai changeSet di 85_pgagent, dove
+#   stanno anche le versioni storiche dei job.
+# ⚠️ NIENTE ULTIMA/PROSSIMA CORSA. Cambiano a ogni giro: ogni rigenerazione
+#   farebbe un diff falso. Lo stato vivo sta in dbops.vw_processi_programmazione.
+# ⚠️ L'ORARIO e' quello di pgAgent, cioe' del server del database.
+JOB_PGAGENT_SCHEMA = "maintenance"
+JOB_PGAGENT_FILE = "job_pgagent.md"
+
+_GIORNI = ["domenica", "lunedi'", "martedi'", "mercoledi'", "giovedi'", "venerdi'", "sabato"]
+_MESI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"]
+
+
+def _accesi(flags):
+    """Gli indici a TRUE. ⚠️ Per pgAgent un array tutto FALSE vuol dire
+    «nessun vincolo», come uno tutto TRUE: si rendono entrambi con None."""
+    idx = [i for i, v in enumerate(flags or []) if v]
+    if not idx or len(idx) == len(flags):
+        return None
+    return idx
+
+
+def _quando(sch):
+    minuti, ore = _accesi(sch["jscminutes"]), _accesi(sch["jschours"])
+    giorni, mesi = _accesi(sch["jscweekdays"]), _accesi(sch["jscmonths"])
+    giorni_mese = _accesi(sch["jscmonthdays"])
+
+    if minuti is None and ore is None:
+        orario = "ogni minuto"
+    elif ore is None:
+        orario = "ogni ora, al minuto " + ", ".join(f"{m:02d}" for m in minuti)
+    elif minuti is None:
+        orario = "ogni minuto delle ore " + ", ".join(f"{h:02d}" for h in ore)
+    else:
+        orario = "alle " + ", ".join(f"{h:02d}:{m:02d}" for h in ore for m in minuti)
+
+    parti = [orario]
+    if giorni is not None:
+        parti.append("di " + ", ".join(_GIORNI[g] for g in giorni))
+    if giorni_mese is not None:
+        # l'indice 31 e' «l'ultimo giorno del mese»
+        parti.append("il giorno " + ", ".join(
+            "ultimo" if d == 31 else str(d + 1) for d in giorni_mese))
+    if mesi is not None:
+        parti.append("in " + ", ".join(_MESI[m] for m in mesi))
+    if giorni is None and giorni_mese is None and mesi is None and ore is not None:
+        parti.append("ogni giorno")
+    return ", ".join(parti)
+
+
+_CALL_PROC_RE = re.compile(r"^\s*CALL\s+([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)\s*\(", re.I)
+
+
+def gen_job_pgagent_md(cur):
+    """La pagina dei job pgAgent, o None se l'estensione non c'e'.
+
+    ⛔ Se l'estensione c'e' ma l'utente non la puo' leggere, la generazione si
+    FERMA: una pagina vuota sarebbe identica a «nessun job», cioe' la
+    sottrazione silenziosa che `verifica_visibilita` rifiuta per i vincoli."""
+    cur.execute("SELECT to_regclass('pgagent.pga_job') IS NOT NULL AS presente")
+    if not cur.fetchone()["presente"]:
+        return None
+    cur.execute("SELECT has_schema_privilege('pgagent', 'USAGE') "
+                "AND has_table_privilege('pgagent.pga_job', 'SELECT') "
+                "AND has_table_privilege('pgagent.pga_schedule', 'SELECT') "
+                "AND has_table_privilege('pgagent.pga_jobstep', 'SELECT') AS ok, "
+                "current_user AS utente")
+    r = cur.fetchone()
+    if not r["ok"]:
+        raise SystemExit(
+            f"\n⛔ Documentazione NON generata: l'utente «{r['utente']}» non legge "
+            f"lo schema pgagent, e la pagina dei job nascerebbe vuota — identica a "
+            f"un database senza job. Rigenerare con l'utente proprietario del "
+            f"database.\n")
+
+    cur.execute("""
+        SELECT j.jobid, j.jobname, j.jobdesc, j.jobenabled,
+               (SELECT string_agg(p.codice, ', ' ORDER BY p.codice)
+                  FROM dbops.processi p
+                 WHERE p.jobname_pgagent = j.jobname) AS processi
+          FROM pgagent.pga_job j
+         ORDER BY j.jobname
+    """)
+    jobs = cur.fetchall()
+    cur.execute("""
+        SELECT jscjobid, jscname, jscenabled, jscminutes, jschours,
+               jscweekdays, jscmonthdays, jscmonths
+          FROM pgagent.pga_schedule
+         ORDER BY jscjobid, jscname
+    """)
+    schedules = cur.fetchall()
+    cur.execute("""
+        SELECT jstjobid, jstname, jstenabled, jstkind, jstcode, jstdbname
+          FROM pgagent.pga_jobstep
+         ORDER BY jstjobid, jstname
+    """)
+    steps = cur.fetchall()
+
+    def _codice(code):
+        code = (code or "").strip()
+        m = _CALL_PROC_RE.match(code)
+        if m and m.group(1) == JOB_PGAGENT_SCHEMA and "\n" not in code:
+            return f"[`{code}`](funzioni/{m.group(2)}.md)"
+        if "\n" in code or "|" in code:
+            return "vedi sotto"
+        return f"`{code}`"
+
+    lines = [
+        "# ⏰ Job pgAgent\n",
+        "> 📝 **Descrizione**",
+        ">",
+        "> I lavori a orario che pgAgent esegue in questo database: se sono accesi, "
+        "quando partono (ora del server del database), che cosa chiama ogni step e "
+        "quale processo di `dbops.processi` registrano. Pagina generata dalle tabelle "
+        "di `pgagent`; l'ultima e la prossima corsa non ci sono apposta (cambiano a "
+        "ogni giro): lo stato vivo e' in `dbops.vw_processi_programmazione`.",
+        "",
+        "| Job | Acceso | Quando | Processo |",
+        "| --- | --- | --- | --- |",
+    ]
+    for j in jobs:
+        quando = "; ".join(
+            _quando(s) + ("" if s["jscenabled"] else " (spento)")
+            for s in schedules if s["jscjobid"] == j["jobid"]) or "nessun orario"
+        lines.append(
+            f"| `{j['jobname']}` | {'si' if j['jobenabled'] else '**no**'} | {quando} | "
+            f"{('`' + j['processi'] + '`') if j['processi'] else '**nessuno**'} |")
+    lines.append("")
+
+    for j in jobs:
+        lines.append(f"## `{j['jobname']}`\n")
+        if j["jobdesc"]:
+            lines.append(str(j["jobdesc"]).replace("<", "&lt;").replace(">", "&gt;") + "\n")
+        lines += ["| Step | Acceso | Tipo | Database | Chiama |",
+                  "| --- | --- | --- | --- | --- |"]
+        propri = [s for s in steps if s["jstjobid"] == j["jobid"]]
+        for s in propri:
+            tipo = "SQL" if s["jstkind"] == "s" else "batch"
+            lines.append(
+                f"| `{s['jstname']}` | {'si' if s['jstenabled'] else '**no**'} | {tipo} | "
+                f"{s['jstdbname'] or '—'} | {_codice(s['jstcode'])} |")
+        lines.append("")
+        for s in propri:
+            if _codice(s["jstcode"]) == "vedi sotto":
+                lines += [f"Step `{s['jstname']}`:\n", "```sql",
+                          (s["jstcode"] or "").strip(), "```", ""]
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def write_job_pgagent(cur):
+    """Scrive (o pota) la pagina dei job sotto lo schema dei job."""
+    if DOCS_MINIMAL or JOB_PGAGENT_SCHEMA not in schemas:
+        return
+    path = os.path.join(OUT_DIR, JOB_PGAGENT_SCHEMA, JOB_PGAGENT_FILE)
+    contenuto = gen_job_pgagent_md(cur)
+    if contenuto is None:
+        # Senza l'estensione la pagina non descrive piu' niente di questo
+        # database: si toglie, come gli orfani.
+        if os.path.isfile(path):
+            os.remove(path)
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(contenuto + "\n---\n{% include-markdown \"signature-core.md\" %}\n")
+
+
 def verifica_visibilita(cur):
     """Fallisce se l'utente collegato non vede tutto quello che deve scrivere.
 
@@ -886,6 +1105,8 @@ def main():
     #   perche' e' la forma con cui la doc committata e' stata scritta.
     cur.execute("SET search_path = public")
     verifica_visibilita(cur)
+    # Prima degli schemi: l'indice di `maintenance` la linka se esiste.
+    write_job_pgagent(cur)
     for schema in schemas:
         write_docs_for_schema(schema, cur)
     cur.close()

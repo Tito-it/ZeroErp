@@ -232,7 +232,8 @@ BEGIN
              (SELECT competenza_mese FROM tmp_cost_mnf),
              ((SELECT competenza_mese FROM tmp_cost_mnf) + INTERVAL '1 month - 1 day')::date,
              r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
-             'APPROVATA', 'EMESSA', NULL, NULL
+             'APPROVATA', 'EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+         ((SELECT id FROM tmp_commessa_mnf))::text
         FROM tmp_refs_mnf r
       RETURNING id)
     INSERT INTO tmp_ca_mnf(slot, attivita_id) SELECT s, ins.id FROM ins;

@@ -52,7 +52,7 @@ Il blocco `data` contiene il JSONB dalla funzione DB con le sezioni:
 | `permessi_area` | object | Mappa livello accesso per area funzionale: `{schema_db: "TUTTO"\|"LETTURA"\|"BLOCCATO"}`. Prodotta da `fn_get_user_permissions_map` |
 | `azioni_abilitate` | object | Mappa azioni abilitate, da `fn_get_user_actions_map` |
 | `permessi_oggetto` | object | Mappa permessi per oggetto, da `fn_get_user_object_permissions_map` |
-| `deve_cambiare_password` | boolean | Flag dell'identita digitale (default false) |
+| `deve_cambiare_password` | boolean | Flag della **credenziale** (default false): la password e' una sola, l'obbligo vale per tutte le vesti (D-7) |
 | `fuso_aziendale` | string | Nome IANA del fuso dell'azienda (es. `Europe/Rome`): parametro `SYSTEM_FUSO_ORARIO` letto da `script.fn_fuso_operativo()` tramite il BB `apps/core/services/fuso_aziendale` (cache di processo). Il frontend lo usa per l'«oggi» e per le ore a video: un solo fuso in tutta l'applicazione, non quello del browser (dal 2026-10-09, brief un-solo-fuso-aziendale B-1/T-1). Un cambio del parametro vale dal riavvio del backend |
 | `obblighi_pendenti` | array | Gli obblighi della credenziale che il cancello fa rispettare, nell'ordine in cui si chiudono: `CAMBIO_PASSWORD`, `SECONDO_FATTORE` (dal 2026-10-02, `cancello_obblighi.obblighi_in_vigore`). Il frontend porta alla pagina del primo. Il profilo risponde anche con un obbligo pendente (`obblighi_ammessi`) |
 

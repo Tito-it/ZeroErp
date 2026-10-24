@@ -7,6 +7,8 @@ CREATE FUNCTION fn_riapri_riconsegna_reso(p_reso_id bigint, p_righe jsonb)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_riapri_riconsegna_reso(p_reso_id bigint, p_righe jsonb DEFAULT NULL::jsonb)
  RETURNS integer
@@ -32,7 +34,6 @@ DECLARE
     v_riga           RECORD;
     v_rin            RECORD;
     v_ord            RECORD;
-    v_stato_target_id config.stati_doc_ordini.id%TYPE;
     v_motivi         jsonb;
     v_da_riaprire    numeric;
     v_scala          numeric;
@@ -165,17 +166,9 @@ BEGIN
          WHERE rr.reso_id = p_reso_id
            AND rr.ordine_riga_id IS NOT NULL
     LOOP
-        IF vendite.fn_ordine_ha_residuo_evasione(v_ord.ordine_id) THEN
-            SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
-             WHERE codice_interno = 'PARZIALMENTE_EVASO' AND attivo IS TRUE;
-        ELSE
-            SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
-             WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
-        END IF;
-        UPDATE vendite.ordini
-           SET stato_doc_ordine_id = v_stato_target_id
-         WHERE id = v_ord.ordine_id
-           AND stato_doc_ordine_id IS DISTINCT FROM v_stato_target_id;
+        -- ⭐ rev 2026-10-11: la proiezione e' il building block
+        --    vendite.fn_ordine_proietta_stato_evasione (brief-db-ddt-righe-evase-dall-ordine).
+        PERFORM vendite.fn_ordine_proietta_stato_evasione(v_ord.ordine_id);
     END LOOP;
 
     RETURN v_n;
@@ -183,8 +176,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_riapri_riconsegna_reso(p_reso_id bigint, p_righe jsonb)
-IS 'Madre RIAPERTURA rinuncia (brief-db-chiusura-riconsegna-reso-definitivo S5.1): annulla una chiusura di ri-consegna cancellando le rinunce e ri-proiettando lo stato ordine (torna PARZIALMENTE_EVASO). La quota torna ri-spedibile e l''accredito torna FACOLTATIVA: round-trip chiudi->riapri = stato iniziale. p_righe NULL = tutte le rinunce del reso; [{resi_riga_id, qta}] scala dalle rinunce piu'' RECENTI (LIFO, si annulla l''ultimo errore) e riduce la qta invece di cancellare quando l''annullo e'' parziale. Ritorna il numero di RIGHE RESO riaperte. GATE NC: consuma script.fn_check_rinuncia_reversibile, oggi senza motivi ostativi - quando la slice NC arrivera'', il divieto si aggiunge LA'' e questa madre lo solleva da se''. rev 2026-07-26.';
+IS 'Madre RIAPERTURA rinuncia (brief-db-chiusura-riconsegna-reso-definitivo S5.1): annulla una chiusura di ri-consegna cancellando le rinunce e ri-proiettando lo stato ordine (torna PARZIALMENTE_EVASO). La quota torna ri-spedibile e l''accredito torna FACOLTATIVA: round-trip chiudi->riapri = stato iniziale. p_righe NULL = tutte le rinunce del reso; [{resi_riga_id, qta}] scala dalle rinunce piu'' RECENTI (LIFO, si annulla l''ultimo errore) e riduce la qta invece di cancellare quando l''annullo e'' parziale. Ritorna il numero di RIGHE RESO riaperte. GATE NC: consuma script.fn_check_rinuncia_reversibile, oggi senza motivi ostativi - quando la slice NC arrivera'', il divieto si aggiunge LA'' e questa madre lo solleva da se''. rev 2026-07-26. ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine §5.2): la proiezione dello stato dell''ordine e'' il building block vendite.fn_ordine_proietta_stato_evasione; la copia scritta a mano qui si ritira (regola del 2). Comportamento invariato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

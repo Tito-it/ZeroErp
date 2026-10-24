@@ -12,6 +12,7 @@ import math
 from datetime import date
 from typing import Any
 
+from apps.core.api.payload_validators import pagina_di
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import fetch_paged_with_total, predicato_giorno_operativo
 
@@ -93,8 +94,8 @@ class PermissionsAuditRepository:
         data_da: date | None = None,
         data_a: date | None = None,
         tabella: str | None = None,
-        page: int = 1,
-        page_size: int = DEFAULT_LIMIT,
+        limit: int = DEFAULT_LIMIT,
+        offset: int = 0,
     ) -> dict[str, Any]:
         unions: list[str] = []
         params: list[Any] = []
@@ -132,7 +133,7 @@ class PermissionsAuditRepository:
                 params.append(uo_id)
 
         if not unions:
-            return self._empty_result(page, page_size)
+            return self._empty_result(limit, offset)
 
         # Wrapper con filtri data e paginazione
         sql = f"WITH events AS ({' UNION ALL '.join(unions)}) "
@@ -149,9 +150,8 @@ class PermissionsAuditRepository:
 
         sql += "ORDER BY valid_from DESC, tx_id DESC "
 
-        offset = (page - 1) * page_size
         sql += "LIMIT %s OFFSET %s"
-        params.extend([page_size, offset])
+        params.extend([limit, offset])
 
         # ⚠️ Pagina oltre l'ultima: il totale vero arriva comunque (BB), e
         #    l'envelope lo dice invece di dichiarare «nessun evento».
@@ -170,18 +170,18 @@ class PermissionsAuditRepository:
 
         return {
             "count": total_count,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": math.ceil(total_count / page_size),
+            "page": pagina_di(offset, limit),
+            "page_size": limit,
+            "total_pages": math.ceil(total_count / limit),
             "events": events,
         }
 
     @staticmethod
-    def _empty_result(page: int, page_size: int) -> dict[str, Any]:
+    def _empty_result(limit: int, offset: int) -> dict[str, Any]:
         return {
             "count": 0,
-            "page": page,
-            "page_size": page_size,
+            "page": pagina_di(offset, limit),
+            "page_size": limit,
             "total_pages": 0,
             "events": [],
         }

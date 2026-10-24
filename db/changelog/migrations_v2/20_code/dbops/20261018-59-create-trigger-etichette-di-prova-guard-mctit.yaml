@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I TRIGGER DEL GUARD DELLE ETICHETTE DI PROVA
+#   dbops.trgfn_etichette_di_prova_guard (20261018-58) sulle due tabelle: di
+#   riga su INSERT, UPDATE e DELETE; di istruzione su TRUNCATE (che non
+#   attraversa i trigger di riga).
+#   Brief: brief-db-processi-accensione-per-ambiente, R-4.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261018-59-create-trigger-etichette-di-prova-guard-mctit.yaml
+
+  - changeSet:
+      id: 20261018-59-create-trigger-etichette-di-prova-guard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta dbops.trgfn_etichette_di_prova_guard sulle due tabelle delle etichette di prova (riga e
+        TRUNCATE). Brief: brief-db-processi-accensione-per-ambiente (R-4).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_credenziali_di_prova_a05_guard_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON dbops.credenziali_di_prova
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_etichette_di_prova_guard();
+
+              CREATE TRIGGER trg_credenziali_di_prova_a05_guard_trn
+                  BEFORE TRUNCATE ON dbops.credenziali_di_prova
+                  FOR EACH STATEMENT
+                  EXECUTE FUNCTION dbops.trgfn_etichette_di_prova_guard();
+
+              CREATE TRIGGER trg_soggetti_di_prova_a05_guard_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON dbops.soggetti_di_prova
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_etichette_di_prova_guard();
+
+              CREATE TRIGGER trg_soggetti_di_prova_a05_guard_trn
+                  BEFORE TRUNCATE ON dbops.soggetti_di_prova
+                  FOR EACH STATEMENT
+                  EXECUTE FUNCTION dbops.trgfn_etichette_di_prova_guard();
+
+              COMMENT ON TRIGGER trg_credenziali_di_prova_a05_guard_ins_upd_dlt ON dbops.credenziali_di_prova IS
+                  'L''etichetta di una credenziale di prova: nasce solo in SVILUPPO (E_DATI_DI_SVILUPPO_IN_PRODUZIONE), non cambia e non si toglie (E_ETICHETTA_DI_PROVA_IMMUTABILE). Gemello di istruzione: trg_credenziali_di_prova_a05_guard_trn. Brief: brief-db-processi-accensione-per-ambiente (R-4).';
+              COMMENT ON TRIGGER trg_credenziali_di_prova_a05_guard_trn ON dbops.credenziali_di_prova IS
+                  'Il TRUNCATE non attraversa i trigger di riga: lo rifiuta questo (E_ETICHETTA_DI_PROVA_IMMUTABILE). Brief: brief-db-processi-accensione-per-ambiente (R-4).';
+              COMMENT ON TRIGGER trg_soggetti_di_prova_a05_guard_ins_upd_dlt ON dbops.soggetti_di_prova IS
+                  'L''etichetta di un soggetto di prova: nasce solo in SVILUPPO (E_DATI_DI_SVILUPPO_IN_PRODUZIONE), non cambia e non si toglie (E_ETICHETTA_DI_PROVA_IMMUTABILE). Gemello di istruzione: trg_soggetti_di_prova_a05_guard_trn. Brief: brief-db-processi-accensione-per-ambiente (R-4).';
+              COMMENT ON TRIGGER trg_soggetti_di_prova_a05_guard_trn ON dbops.soggetti_di_prova IS
+                  'Il TRUNCATE non attraversa i trigger di riga: lo rifiuta questo (E_ETICHETTA_DI_PROVA_IMMUTABILE). Brief: brief-db-processi-accensione-per-ambiente (R-4).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP TRIGGER IF EXISTS trg_soggetti_di_prova_a05_guard_trn ON dbops.soggetti_di_prova;
+              DROP TRIGGER IF EXISTS trg_soggetti_di_prova_a05_guard_ins_upd_dlt ON dbops.soggetti_di_prova;
+              DROP TRIGGER IF EXISTS trg_credenziali_di_prova_a05_guard_trn ON dbops.credenziali_di_prova;
+              DROP TRIGGER IF EXISTS trg_credenziali_di_prova_a05_guard_ins_upd_dlt ON dbops.credenziali_di_prova;

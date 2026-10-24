@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA REGOLA DELL'ACCENSIONE, SUI VALORI
+#   dbops.fn_processo_acceso_su_valori(...): la sveglia di un processo e'
+#   accesa? Funzione pura, IMMUTABLE, sui valori del catalogo, della scelta a
+#   mano e dell'ambiente. L'unico posto dove la regola e' scritta.
+#   Brief: brief-db-processi-accensione-per-ambiente (A-2, A-5, R-1, §5.3, §5.5)
+#
+# -- PERCHE' SUI VALORI ------------------------------------------------
+#   L'ambiente e' immutabile, e la CI e' SVILUPPO: un pgTAP non puo' provare il
+#   ramo PRODUZIONE cambiando l'ambiente. La decisione si scrive quindi come
+#   funzione pura, che i pgTAP chiamano con tutti e due i valori; i lettori
+#   (dbops.fn_processo_acceso_dichiarato, e da li' maintenance.fn_sveglia_accesa
+#   e il panorama) le passano quelli veri. LANGUAGE sql: il pianificatore la
+#   inlinea.
+#
+# -- LA REGOLA, IN ORDINE -----------------------------------------------
+#   1. senza sveglia (CODA, ritirato)          -> NULL: non c'e' niente da accendere;
+#   2. non spegnibile                          -> true, sempre: non legge ne' la
+#                                                 scelta a mano ne' l'ambiente (R-1:
+#                                                 un'installazione non dichiarata non
+#                                                 ferma i processi che non si fermano);
+#   3. scelta a mano presente                  -> la scelta;
+#   4. ambiente SVILUPPO / PRODUZIONE          -> il default di quell'ambiente;
+#   5. ambiente non dichiarato                 -> NULL: non decidibile. Chi decide
+#                                                 lo trasforma in E_CONFIG_MANCANTE.
+#
+#   ⛔ Niente STRICT: i NULL sono casi normali della regola (la scelta a mano
+#   assente e' il caso piu' comune), e STRICT spegnerebbe la funzione al primo.
+#
+#   RETURNS boolean nudo: e' la risposta a una domanda, non il riflesso di una
+#   colonna (acceso_in_sviluppo e acceso_in_produzione sono due fonti fra cui
+#   sceglie).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261016-24-create-fn-processo-acceso-su-valori-mctit.yaml
+
+  - changeSet:
+      id: 20261016-24-create-fn-processo-acceso-su-valori
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea dbops.fn_processo_acceso_su_valori: la regola dell'accensione di una sveglia, pura sui
+        valori (catalogo, scelta a mano, ambiente). Brief: brief-db-processi-accensione-per-ambiente.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_processo_acceso_su_valori(
+                  p_canale               dbops.processi.canale%TYPE,
+                  p_obsoleto_dal         dbops.processi.obsoleto_dal%TYPE,
+                  p_spegnibile           dbops.processi.spegnibile%TYPE,
+                  p_acceso_in_sviluppo   dbops.processi.acceso_in_sviluppo%TYPE,
+                  p_acceso_in_produzione dbops.processi.acceso_in_produzione%TYPE,
+                  p_acceso_a_mano        dbops.processi_accensione.acceso%TYPE,
+                  p_ambiente             dbops.installazione.ambiente%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              IMMUTABLE
+              AS $function$
+                  -- Scopo: la sveglia del processo e' accesa? NULL = senza
+                  --   sveglia, oppure non decidibile (ambiente non dichiarato).
+                  --   L'ordine dei rami e' la regola (vedi intestazione).
+                  SELECT CASE
+                           WHEN p_canale = 'CODA' OR p_obsoleto_dal IS NOT NULL THEN NULL
+                           WHEN p_spegnibile IS FALSE                          THEN true
+                           WHEN p_acceso_a_mano IS NOT NULL                    THEN p_acceso_a_mano
+                           WHEN p_ambiente = 'SVILUPPO'                        THEN p_acceso_in_sviluppo
+                           WHEN p_ambiente = 'PRODUZIONE'                      THEN p_acceso_in_produzione
+                           ELSE NULL
+                         END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_processo_acceso_su_valori(
+                  dbops.processi.canale%TYPE,
+                  dbops.processi.obsoleto_dal%TYPE,
+                  dbops.processi.spegnibile%TYPE,
+                  dbops.processi.acceso_in_sviluppo%TYPE,
+                  dbops.processi.acceso_in_produzione%TYPE,
+                  dbops.processi_accensione.acceso%TYPE,
+                  dbops.installazione.ambiente%TYPE)
+              IS 'La regola dell''accensione della sveglia di un processo, pura sui valori: l''unico posto dove e'' scritta. In ordine: senza sveglia (CODA o ritirato) -> NULL; non spegnibile -> true sempre, senza leggere scelta a mano ne'' ambiente; scelta a mano presente -> la scelta; ambiente SVILUPPO o PRODUZIONE -> il default di quell''ambiente dal catalogo; ambiente non dichiarato -> NULL (non decidibile: chi decide lo rende E_CONFIG_MANCANTE). IMMUTABLE e LANGUAGE sql (si inlinea), senza STRICT (i NULL sono casi normali). Sui valori perche'' l''ambiente e'' immutabile e la CI e'' SVILUPPO: i pgTAP provano il ramo PRODUZIONE passando il valore. La leggono dbops.fn_processo_acceso_dichiarato e, attraverso di lei, maintenance.fn_sveglia_accesa e il panorama dbops.vw_processi_programmazione. Brief: brief-db-processi-accensione-per-ambiente (A-2, A-5, R-1).';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_processo_acceso_su_valori(text, date, boolean, boolean, boolean, boolean, text);

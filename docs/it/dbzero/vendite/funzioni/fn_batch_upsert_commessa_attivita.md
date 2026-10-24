@@ -7,6 +7,8 @@ CREATE FUNCTION fn_batch_upsert_commessa_attivita(p_rows jsonb)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_batch_upsert_commessa_attivita(p_rows jsonb)
  RETURNS TABLE(total_rows integer, inserted integer, updated integer, errors jsonb)
@@ -95,7 +97,6 @@ BEGIN
         p_sorgente_tipo_id              => (v_row ->> 'sorgente_tipo_id')::bigint,
         p_sorgente_uid                  => (v_row ->> 'sorgente_uid')::text,
         p_tipo_movimento                => (v_row ->> 'tipo_movimento')::varchar,
-        p_tipo_consumo                  => (v_row ->> 'tipo_consumo')::varchar,
         p_meta                          => CASE WHEN v_row ? 'meta' THEN (v_row -> 'meta') ELSE '{}'::jsonb END
       ) r;
 
@@ -121,8 +122,10 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_batch_upsert_commessa_attivita(p_rows jsonb)
-IS 'Batch wrapper su fn_upsert_commessa_attivita: array jsonb in input, contatori inserted/updated + errors collect-all. Pricing v5: il payload deve includere le 8 chiavi snapshot (prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata, valore_variazione_applicata, promo_id, contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot). rev 2026-10-09 (brief-db-riga-listino-propagata-dalla-commessa R-1): chiave facoltativa listino_riga_id, la riga di listino che ha dato il prezzo; e'' il legame che rende la riga di listino «propagata» per vendite.trgfn_listini_righe_guard_stato.';
+IS 'Batch wrapper su fn_upsert_commessa_attivita: array jsonb in input, contatori inserted/updated + errors collect-all. Pricing v5: il payload deve includere le 8 chiavi snapshot (prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata, valore_variazione_applicata, promo_id, contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot). rev 2026-10-09 (brief-db-riga-listino-propagata-dalla-commessa R-1): chiave facoltativa listino_riga_id, la riga di listino che ha dato il prezzo; e'' il legame che rende la riga di listino «propagata» per vendite.trgfn_listini_righe_guard_stato. rev 2026-10-13 (20261013-17): tipo_consumo RITIRATO in tutta la catena del push (madre, batch, cinque lister, builder pgTAP). Non aveva un lettore, e il vocabolario della madre (ACCONTO/CONGUAGLIO/STORNO) non lo produceva nessuna sorgente con un significato: preventivi, ordini e DDT scrivevano la costante CONGUAGLIO, contratti (l''erogazione della riga) e consumi (CONSUMO) un valore che la madre rifiutava, quindi il loro push falliva sempre (E_PARAMETRO_INVALIDO). L''erogazione resta dove gia'' stava, in meta.tipo_erogazione. Decisione A di Tid, 2026-10-13. La chiave tipo_consumo del payload non si legge piu'': se arriva, si ignora.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

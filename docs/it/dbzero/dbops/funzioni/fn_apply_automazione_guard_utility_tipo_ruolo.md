@@ -7,6 +7,8 @@ CREATE FUNCTION fn_apply_automazione_guard_utility_tipo_ruolo(p_exec_mode text, 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_apply_automazione_guard_utility_tipo_ruolo(p_exec_mode text DEFAULT 'AUTO'::text, p_dry_run boolean DEFAULT false)
  RETURNS void
@@ -73,6 +75,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_apply_automazione_guard_utility_tipo_ruolo(p_exec_mode text, p_dry_run boolean)
 IS 'Applica trigger guard utility->tipo_ruolo sulle tabelle configurate in dbops.automazione_guard_utility_tipo_ruolo.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

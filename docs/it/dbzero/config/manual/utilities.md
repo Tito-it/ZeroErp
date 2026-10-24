@@ -82,6 +82,23 @@ Setup atteso:
 
 ---
 
+### Parametri d'importo di sistema
+
+(21-10-2026 — brief-db-modelli-documento-standard §10.3 K-7, D-7 di Tid)
+
+* `arrotondamento_importi_dec` (default 2) e `metodo_arrotondamento_importi` (default
+  `HALF_UP`) sono il **valore di sistema** con cui si arrotondano gli importi delle fatture
+  dell'utility.
+* Un emittente li cambia per sé con una riga di
+  [anagrafiche.emittenti_fiscali_utilities](/dbzero/anagrafiche/tabelle/emittenti_fiscali_utilities);
+  per il metodo vale anche la sua policy generale (`emittenti_fiscali.rounding_policy`).
+* I parametri effettivi li dice
+  [anagrafiche.fn_parametri_importo_utility](/dbzero/anagrafiche/funzioni/fn_parametri_importo_utility).
+* Il seed non li nomina: tutte le utility prendono il default. Un valore diverso per una utility
+  entra dal CSV, insieme alla colonna nel loader.
+
+---
+
 ### Registro di fatturazione (fallback)
 
 * Il tipo documento fiscale è di sistema e non è definito a livello di utility.

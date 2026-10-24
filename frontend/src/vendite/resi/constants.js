@@ -75,4 +75,5 @@ export const ROUTE_RESI = 'vendite-resi'
 // coi `isLocked('…')` del componente.
 export const CAMPI_FORM_TESTATA_RESO = Object.freeze([
   'data',
+  'magazzino_id',
 ])

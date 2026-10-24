@@ -15,7 +15,9 @@ Sulla risorsa `stato` di una commessa:
   `CommesseRepository.get_capabilities()` (`script.fn_available_actions_commessa`).
 - POST → servizio `cambia_stato_commessa`: difesa applicativa (azione ammessa solo se in
   `capabilities.available_actions`) + `CommesseRepository.cambia_stato_commessa()`
-  (`vendite.fn_cambia_stato_commessa`, guard di matrice a DB).
+  (`vendite.fn_cambia_stato_commessa`, guard di matrice a DB). ⭐ Verso `ANNULLATA` passa
+  **sempre** dal verbo `vendite.fn_annulla_commessa` (`CommesseRepository.annulla()`): vedi
+  §«L'annullo, con la conferma dei legami» sotto.
 
 View: `ApiCommessaStato` (`apps.vendite.api.views`) — `def get` + `def post` sulla stessa URL.
 
@@ -170,9 +172,12 @@ Regole:
 - Metodo: `POST`
 - Path: `/api/v1/vendite/commesse/<commessa_id>/stato/`
 - Header: `Authorization: Bearer <token>` + **`Idempotency-Key` obbligatoria**
+- Permesso: area `vendite` + `post_permission = "cambia_stato_commessa"` (un solo codename per chiudi/riapri/annulla; senza → `403 E_PERMISSION_DENIED`). Si somma alle capability DB: il permesso dice se l'operatore può, la capability se l'azione è eseguibile ora. Il `GET` resta libero nell'area.
 - Body JSON:
   - `nuovo_stato` (string) — **codice stato di destinazione** (`target_state` preso da una
     delle `capabilities.available_actions`, es. `CHIUSA` / `IN_ESECUZIONE` / `ANNULLATA`).
+  - `legami_confermati` (int, facoltativo) — solo verso `ANNULLATA`, alla **conferma**:
+    quanti legami l'operatore ha visto (`GET …/legami/`). Assente al primo tentativo.
 
 Output `200`:
 
@@ -188,8 +193,85 @@ Errori:
 - `409` `E_COMMESSA_AZIONE_NON_AMMESSA` — `nuovo_stato` non è tra le azioni utente ammesse
   (difesa applicativa: respinge anche le transizioni **automatiche** — ponte
   push/emittibilità — che il guard DB accetterebbe);
-- `472` `E_COMMESSA_STATO_TRANSIZIONE_INVALIDA` / `473` `E_COMMESSA_NESSUNA_RIGA_APPROVATA`
+- `409` `E_DOC_ANNULLO_CON_LEGAMI` (`ui_action = confirm_and_retry`) — annullo di una commessa
+  con righe non ancora emesse, senza la conferma o con un numero di legami che non
+  corrisponde: è una **domanda**, non un rifiuto (§sotto);
+- `409` `E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE` — righe già emesse: l'annullo è vietato, e il
+  verbo lo dice **prima** della conferma. Nella capability l'azione è spenta col motivo,
+  quindi dal frontend arriva come `E_COMMESSA_AZIONE_NON_AMMESSA`;
+- `409` `E_COMMESSA_STATO_TRANSIZIONE_INVALIDA` / `409` `E_COMMESSA_NESSUNA_RIGA_APPROVATA`
   — sollevati dal guard DB se la coppia non è in matrice / precondizione non soddisfatta.
+
+## L'annullo, con la conferma dei legami
+
+> brief-db-annullo-a-valle-riapre-a-monte (D-1, D-2, D-6, D-7, D-8 di Tid, 2026-10-11/12).
+> Stessa forma di bolla, ordine, preventivo e contratto
+> (brief-db-annullo-documento-con-legami): un meccanismo solo.
+
+Annullare una commessa **riapre a monte** ciò che l'ha riempita, e non in silenzio. Un
+**legame** per ogni riga **non ancora emessa** (`vendite.fn_documento_legami('COMMESSA', id)`).
+`origine` è il codice di `config.sorgenti` (dal 2026-10-19, brief-db-grammatica-unica-documenti
+lotto 2b), tranne `ONERE`, che non è una sorgente:
+
+| `origine` | `natura` | Che cosa succede annullando |
+| --- | --- | --- |
+| `PREVENTIVO`, `ORDINE_VENDITA`, `CONTRATTO`, `DDT_VENDITA` | `CONSUMO` | la riga esce dalla commessa (`ANNULLATA`, col registro) e il documento torna **da mandare in commessa**. Il preventivo EVASO torna ACCETTATO (dal DB); l'**ordine non cambia stato** (D-6: «Evaso» lo dicono solo le bolle) |
+| `ATTIVITA_CONSUMI` | `CONSUMO` | il consumo torna da mandare |
+| `RESO_VENDITA` | `CONSUMO` | la rettifica del reso esce, l'accredito si annulla: il reso torna **da accreditare** |
+| `ONERE` | `ANNULLO` | niente a monte: l'onere **si annulla** con la commessa |
+
+Il giro (`useForzaturaConfermata` + `DocumentoAnnulloLegamiDialog` a video):
+
+1. `POST …/stato/` `{"nuovo_stato": "ANNULLATA"}` → con legami `409 E_DOC_ANNULLO_CON_LEGAMI`
+   (`confirm_and_retry`), la frase del DB nomina la commessa e il numero; senza legami la
+   commessa si annulla al primo colpo;
+2. `GET /api/v1/vendite/commesse/<id>/legami/` → `{documento: "COMMESSA", id, legami, righe[]}`
+   (factory `build_legami_view`, BB `legami_del_documento`): `legami` è il numero da
+   dichiarare; ogni riga porta `riga_id` (la riga di commessa), `origine`, `natura`,
+   `origine_id`, `origine_riga_id` (la riga di reso dell'accredito), `qta` e, dal lineage
+   della commessa, `origine_tipo_codice_interno` e `origine_codice` (nulli per consumi e
+   oneri, che non sono nodi del lineage). Prima la testata: commessa inesistente o fuori
+   perimetro → `404 E_COMMESSA_NOT_FOUND` (il lettore del DB è `SECURITY DEFINER`);
+3. `POST …/stato/` `{"nuovo_stato": "ANNULLATA", "legami_confermati": N}` → il verbo
+   `vendite.fn_annulla_commessa` ritira i legami e porta la commessa ad `ANNULLATA`, in una
+   transazione. Se nel frattempo i legami sono cambiati, il DB chiede di nuovo.
+
+Output `200` del verbo: la stessa forma del cambio di stato
+(`{commessa_id, stato_da, stato_a: "ANNULLATA"}`).
+
+⚠️ **Prima ciò che vieta, poi ciò che chiede conferma** (D-3): con righe già **emesse**
+l'annullo è vietato (`E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE`, `script.fn_check_commessa_annullabile`)
+e la conferma non viene chiesta.
+
+## GET `/api/v1/vendite/commesse/<id>/registro/` — Il registro delle righe
+
+Gli eventi che il DB scrive su `vendite.commesse_attivita_log` (oneri aggiunti,
+righe annullate a mano, ritirate alla chiusura del documento di origine,
+riportate da emettere, accrediti): chi, quando, con quale motivo. View
+`ApiCommessaRegistro` → `fn_commessa_registro` →
+`CommesseRepository.list_registro_attivita`. Area `vendite`, sola lettura.
+
+Query:
+
+- `commessa_attivita_id` (int, facoltativo) — restringe a una riga; assente = tutta la commessa;
+- `limit` (int, default 100 `DEFAULT_LIMIT_EVENTI`, 1..`MAX_LIMIT`), `offset` (int ≥ 0, default 0);
+  fuori intervallo o non interi → `400 E_VALIDATION_INPUT` (`pagina_da_query`, nella view;
+  fino al 2026-10-21 `E_COMMESSA_VALIDATION` dal service).
+
+Ordine fisso: `data_insert DESC, id DESC`. Il vocabolario degli eventi è del DB
+e aperto: nessun filtro per evento.
+
+```json
+{ "data": { "commessa_id": 1, "count": 3, "rows": [
+  { "id": 90, "commessa_attivita_id": 412, "evento": "RIGA_MANUALE_ANNULLATA",
+    "dettaglio": { "motivo": "doppio carico" }, "motivo": "doppio carico",
+    "data_insert": "2026-10-01T09:12:00+02:00", "user_insert": "mrossi",
+    "segment_key": "...", "stato_emissione": "ANNULLATA", "tipo_movimento": "ONERE",
+    "articolo_codice": "ONR-TRASP", "articolo_descrizione": "Trasporto" } ] } }
+```
+
+Lo scope passa dal `JOIN` su `vendite.commesse_attivita` (che ha la RLS; il log
+no): commessa inesistente o fuori perimetro → `count: 0`, `rows: []`, non 404.
 
 ## Regole
 
@@ -209,5 +291,7 @@ Errori:
 - `vendite.fn_get_commessa_stato` (stato + contatori)
 - `script.fn_available_actions_commessa` (capability / azioni di stato)
 - `vendite.fn_cambia_stato_commessa` (transizione sanzionata, guard di matrice)
+- `vendite.fn_annulla_commessa` (verbo dell'annullo: conferma, ritiro dei legami, stato)
+- `vendite.fn_documento_legami` (lettore unico dei legami: avviso, verbo, finestra)
 - `vendite.commesse`, `vendite.commesse_attivita`, `vendite.transizioni_stati_commessa`,
   `vendite.stati_commessa`

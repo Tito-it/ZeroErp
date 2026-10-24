@@ -54,8 +54,8 @@ ResiAzioniTests
 20) test_conferma_not_found_da_fn         — E_RESO_NOT_FOUND estratto dal RAISE della fn
 21) test_conferma_no_atomic_extra         — atomicita' nella fn madre DB
 22) test_annulla_delega_fn_madre_light    — fn_annulla_reso + stato riletto
-23) test_riconsegna_delega_e_ritorna      — fn_genera_ddt_riconsegna + ddt_id
-24) test_riconsegna_no_atomic_extra       — nessun transaction.atomic extra
+23) test_riconsegna_delega_e_ritorna      — fn_genera_ddt_riconsegna + ddt_id + slot di default
+24) test_riconsegna_errore_del_default_sale — verbo e default in una transazione
 24b) test_riconsegna_righe_vuote          — E_RESO_VALIDAZIONE (no degrado a "tutto")
 24c) test_riconsegna_righe_non_lista      — E_RESO_VALIDAZIONE (no degrado a "tutto")
 24d) test_riconsegna_riga_senza_qta       — E_RESO_VALIDAZIONE
@@ -109,6 +109,9 @@ ResiAnnulloAccreditoTests (B2-bis / D-NC-11)
 ResiSatellitiTestataTests (2026-09-21, «leggi prima la testata»)
 51) test_list_righe_reso_non_trovato_e_404       — E_RESO_NOT_FOUND, repo righe non chiamato
 52) test_list_righe_con_testata_delega_al_repo    — caso felice: delega invariata
+53) test_get_rientri_raggruppa_per_voce            — origini e rientri sotto riga o componente giusti (B2)
+54) test_crea_rientro_vuole_il_prelievo            — E_RESO_VALIDAZIONE senza prelievo, niente scrittura
+55) test_rientro_di_altra_riga_e_404               — E_RESO_NOT_FOUND, niente scrittura
 """
 
 from contextlib import nullcontext
@@ -123,8 +126,10 @@ from apps.vendite.services import resi_service
 from apps.vendite.services.resi_service import _db_errors
 
 _REPO = "apps.vendite.services.resi_service.ResiRepository"
+_SORGENTI_REPO = "apps.vendite.services.resi_service.SorgentiRepository"
 _SVC = "apps.vendite.services.resi_service"
 _ATOMIC = "apps.vendite.services.resi_service.transaction.atomic"
+_DDT_REPO = "apps.vendite.services.resi_service.DdtRepository"
 
 
 # Scopo: il BB `run_fan_out` VERO, con l'isolamento per elemento spento. Il
@@ -233,15 +238,15 @@ class ResiCreaTests(SimpleTestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+    @patch(_SORGENTI_REPO)
     @patch(_REPO)
-    def test_crea_reso_ok(self, repo_cls) -> None:
+    def test_crea_reso_ok(self, repo_cls, sorgenti_cls) -> None:
         repo = repo_cls.return_value
         repo.get_ddt_sorgente.return_value = {
             "id": 30, "uid": "u-ddt-30", "numero": "DDT01",
             "stato_codice_interno": "CONSEGNATO",
         }
-        repo.get_sorgente_tipo_id_by_codice.return_value = 8
-        repo.get_stato_id_by_codice.return_value = 1
+        sorgenti_cls.return_value.get_sorgente_attiva.return_value = {"id": 8}
         repo.create_reso.return_value = {"id": 7, "uid": "u-reso", "numero": None}
 
         out = resi_service.crea_reso({"ddt_id": 30})
@@ -249,12 +254,13 @@ class ResiCreaTests(SimpleTestCase):
         self.assertEqual(out["id"], 7)
         self.assertEqual(out["righe_ids"], [])
         # Sorgente risolta per codice (mai id hardcoded) e uid del DDT.
-        repo.get_sorgente_tipo_id_by_codice.assert_called_once_with("DDT_VENDITA")
-        repo.get_stato_id_by_codice.assert_called_once_with("DRAFT")
+        sorgenti_cls.return_value.get_sorgente_attiva.assert_called_once_with("DDT_VENDITA")
         kwargs = repo.create_reso.call_args.kwargs
         self.assertEqual(kwargs["sorgente_tipo_id"], 8)
         self.assertEqual(kwargs["sorgente_uid"], "u-ddt-30")
-        self.assertEqual(kwargs["stato_doc_reso_id"], 1)
+        # Lo stato non si passa: lo mette il DB, lo stato iniziale del
+        # vocabolario (brief-modello-documento-vendita P-2).
+        self.assertNotIn("stato_doc_reso_id", kwargs)
 
     @patch(_REPO)
     def test_crea_reso_ddt_mancante(self, repo_cls) -> None:
@@ -296,8 +302,9 @@ class ResiCreaTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_DDT_NON_CONSEGNATO")
         repo.create_reso.assert_not_called()
 
+    @patch(_SORGENTI_REPO)
     @patch(_REPO)
-    def test_crea_reso_con_righe_atomic(self, repo_cls) -> None:
+    def test_crea_reso_con_righe_atomic(self, repo_cls, sorgenti_cls) -> None:
         # Pannello FE: testata + N righe in un'unica chiamata; le righe
         # ricevono lo snapshot dalla riga DDT e finiscono in righe_ids.
         # riga_nr assegnato in batch (testata nuova): NIENTE next_riga_nr.
@@ -305,8 +312,7 @@ class ResiCreaTests(SimpleTestCase):
         repo.get_ddt_sorgente.return_value = {
             "id": 30, "uid": "u-ddt-30", "stato_codice_interno": "CONSEGNATO",
         }
-        repo.get_sorgente_tipo_id_by_codice.return_value = 8
-        repo.get_stato_id_by_codice.return_value = 1
+        sorgenti_cls.return_value.get_sorgente_attiva.return_value = {"id": 8}
         repo.create_reso.return_value = {"id": 7, "uid": "u", "numero": None}
         repo.get_ddt_riga_snapshot.return_value = dict(_SNAPSHOT_RIGA)
         repo.create_riga.return_value = {"id": 71}
@@ -327,16 +333,16 @@ class ResiCreaTests(SimpleTestCase):
         self.assertEqual(kwargs["qta_operativa"], "3")
         self.assertEqual(kwargs["motivo"], "danneggiato")
 
+    @patch(_SORGENTI_REPO)
     @patch(_REPO)
-    def test_crea_reso_data_non_iso(self, repo_cls) -> None:
+    def test_crea_reso_data_non_iso(self, repo_cls, sorgenti_cls) -> None:
         # `data` non ISO -> 4xx parlante, non errore DB grezzo (o peggio
         # interpretazione DateStyle-dipendente).
         repo = repo_cls.return_value
         repo.get_ddt_sorgente.return_value = {
             "id": 30, "uid": "u-ddt-30", "stato_codice_interno": "CONSEGNATO",
         }
-        repo.get_sorgente_tipo_id_by_codice.return_value = 8
-        repo.get_stato_id_by_codice.return_value = 1
+        sorgenti_cls.return_value.get_sorgente_attiva.return_value = {"id": 8}
         with self.assertRaises(ServiceError) as cm:
             resi_service.crea_reso({"ddt_id": 30, "data": "13/07/2026"})
         self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
@@ -436,13 +442,19 @@ class ResiRigheTests(SimpleTestCase):
         repo.get_stato_e_ddt_origine.return_value = dict(_RESO_DRAFT)
         repo.get_riga.return_value = {"id": 3, "reso_id": 7}
         out = resi_service.aggiorna_riga(
-            7, 3, {"qta_operativa": "2", "articolo_id": "hack"},
+            7, 3, {"qta_operativa": "2"},
         )
         self.assertTrue(out["updated"])
         kwargs = repo.update_riga.call_args.kwargs
         self.assertEqual(kwargs["qta_operativa"], "2")
-        # Lo snapshot articolo e' immutabile: fuori whitelist, scartato.
         self.assertNotIn("articolo_id", kwargs)
+        # ⛔ Lo snapshot articolo e' immutabile: fuori whitelist, e dal
+        #    2026-10-20 e' un 400 invece di uno scarto silenzioso.
+        repo.update_riga.reset_mock()
+        with self.assertRaises(ServiceError) as ctx:
+            resi_service.aggiorna_riga(7, 3, {"qta_operativa": "2", "articolo_id": "hack"})
+        self.assertEqual(ctx.exception.code, "E_RESO_VALIDAZIONE")
+        repo.update_riga.assert_not_called()
 
     @patch(_REPO)
     def test_aggiorna_riga_estranea(self, repo_cls) -> None:
@@ -661,8 +673,10 @@ class ResiAzioniTests(SimpleTestCase):
         repo.annulla.assert_called_once_with(7)
         self.assertEqual(out, {"reso_id": 7, "stato": "ANNULLATO"})
 
+    @patch(_DDT_REPO)
+    @patch(_ATOMIC, return_value=nullcontext())
     @patch(_REPO)
-    def test_riconsegna_delega_e_ritorna(self, repo_cls) -> None:
+    def test_riconsegna_delega_e_ritorna(self, repo_cls, _atomic, ddt_cls) -> None:
         repo = repo_cls.return_value
         repo.genera_ddt_riconsegna.return_value = 42
 
@@ -676,14 +690,21 @@ class ResiAzioniTests(SimpleTestCase):
         # Il DDT di ri-spedizione nasce in DRAFT: numero deterministicamente
         # None (nessun re-read).
         self.assertEqual(out, {"reso_id": 7, "ddt_id": 42, "numero": None})
+        # Dopo la cascata dal DDT d'origine, lo slot di default sul DDT nato
+        # (il DB lo riempie solo se e' rimasto vuoto): come il DDT da ordine.
+        ddt_cls.return_value.riempi_indirizzo_default.assert_called_once_with(42)
 
-    @patch(f"{_SVC}.transaction")
+    @patch(_DDT_REPO)
+    @patch(_ATOMIC, return_value=nullcontext())
     @patch(_REPO)
-    def test_riconsegna_no_atomic_extra(self, repo_cls, mock_tx) -> None:
-        repo = repo_cls.return_value
-        repo.genera_ddt_riconsegna.return_value = 42
-        resi_service.genera_ddt_riconsegna(7)
-        mock_tx.atomic.assert_not_called()
+    def test_riconsegna_errore_del_default_sale(self, repo_cls, atomic, ddt_cls) -> None:
+        # Verbo e default nella stessa transazione: non e' best-effort, un
+        # errore sale e annulla anche il DDT di ri-spedizione.
+        repo_cls.return_value.genera_ddt_riconsegna.return_value = 42
+        ddt_cls.return_value.riempi_indirizzo_default.side_effect = RuntimeError("DB")
+        with self.assertRaises(RuntimeError):
+            resi_service.genera_ddt_riconsegna(7)
+        atomic.assert_called_once_with()
 
     @patch(_REPO)
     def test_riconsegna_righe_vuote(self, repo_cls) -> None:
@@ -1133,3 +1154,50 @@ class ResiSatellitiTestataTests(SimpleTestCase):
         repo.list_righe.return_value = [{"id": 31}]
         self.assertEqual(resi_service.list_righe(7), [{"id": 31}])
         repo.list_righe.assert_called_once_with(7)
+
+
+# B2 (3-bis R-1b, piano-be-fe-magazzino-lotto-3): il trasporto dei rientri.
+# ⚠️ Le regole (bozza, prelievo della riga di bolla, quadratura alla conferma)
+# sono del DB: lo prova `tests/db/test_ddt_cambia_stato_db` (test 7).
+class ResiRientriTests(SimpleTestCase):
+    @patch(_REPO)
+    def test_get_rientri_raggruppa_per_voce(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_testata_rientri.return_value = {"reso_id": 4, "muove_merce": True}
+        repo.list_merce_da_rientrare.return_value = [
+            {"resi_riga_id": 1, "ddt_riga_componente_id": 10},
+            {"resi_riga_id": 1, "ddt_riga_componente_id": 11},
+        ]
+        repo.list_prelievi_origine.return_value = [
+            {"resi_riga_id": 1, "id": 500, "ddt_riga_componente_id": 11},
+            {"resi_riga_id": 1, "id": 501, "ddt_riga_componente_id": 10},
+        ]
+        repo.list_rientri.return_value = [
+            {"resi_riga_id": 1, "id": 900, "ddt_riga_componente_id": 11},
+        ]
+        out = resi_service.get_rientri(4)
+        self.assertEqual(
+            [([p["id"] for p in v["prelievi_origine"]], [r["id"] for r in v["rientri"]]) for v in out["voci"]],
+            [([501], []), ([500], [900])],
+        )
+
+    @patch(_REPO)
+    def test_crea_rientro_vuole_il_prelievo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_riga.return_value = {"id": 7, "reso_id": 4}
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.crea_rientro(4, 7, {"qta": "1"})
+        self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
+        repo.create_rientro.assert_not_called()
+
+    @patch(_REPO)
+    def test_rientro_di_altra_riga_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_riga.return_value = {"id": 7, "reso_id": 4}
+        repo.get_rientro.return_value = {"id": 9, "resi_riga_id": 8}
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.elimina_rientro(4, 7, 9)
+        self.assertEqual(cm.exception.code, "E_RESO_NOT_FOUND")
+        repo.delete_rientro.assert_not_called()

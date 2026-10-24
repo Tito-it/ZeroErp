@@ -141,10 +141,12 @@ SELECT is(
 --   vede tutti i suoi work-item, chi non la vede non ne vede nessuno. Un
 --   criterio proprio renderebbe possibili gli insiemi PARZIALI, e una coda
 --   parziale non da' errore: fa sparire un work-item dal monitoraggio.
+-- ⭐ Rev 2026-10-18 (D-3b-2 giro 1b, 20261018-33): la rotta si legge nel modo di
+--   script.fn_resolve_emittente_fiscale_id, non piu' nel nome dell'adattatore.
 SELECT matches(
     (SELECT p.qual FROM pg_policies p
       WHERE p.policyname = 'rls_fatture_stampa_coda_ef_whitelist'),
-    'fn_scope_ef_whitelist_via_fattura',
+    'fn_resolve_emittente_fiscale_id\(''fattura''',
     '3) lo scope e'' delegato alla testata, non a un criterio proprio');
 
 SELECT is(

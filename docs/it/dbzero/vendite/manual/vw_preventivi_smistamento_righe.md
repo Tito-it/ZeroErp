@@ -42,7 +42,7 @@ Valutazione in cascata (vince il primo vero):
 
 1. `FATTURATA` — esiste `attivita_fatturabili` con `fattura_riga_id` valorizzato;
 2. `EMESSA_AF` — esiste `attivita_fatturabili` per la riga;
-3. `IN_COMMESSA` — esiste `commesse_attivita` con `segment_key 'PREV:<uid>:R:<riga_id>'` e **`stato_emissione = 'EMESSA'`** (una attivita' `NON_EMESSA`/`ANNULLATA` **non** conta: predicato allineato a capability e list-fn — fix della divergenza preesistente);
+3. `IN_COMMESSA` — il segmento `'PREV:<uid>:R:<riga_id>'` non e' `LIBERA` per `script.fn_get_stato_push_segment`, cioe' la riga e' gia' mandata in commessa (anche non ancora emessa). ⭐ rev 2026-10-12 (`20261012-11`, brief-db-annullo-a-valle-riapre-a-monte D-5): prima contava solo `stato_emissione = 'EMESSA'`, allineato al predicato che la vista smistabili aveva fino al 2026-06-28 e che poi era cambiato; una riga mandata e non emessa risultava `RESIDUA` mentre il push la dava gia' inviata. Una riga `ANNULLATA` (commessa annullata) torna `RESIDUA`;
 4. `A_ORDINE` — esiste `ordini_righe.preventivo_riga_id` per la riga;
 5. `RESIDUA` — non smistata su alcun ramo.
 

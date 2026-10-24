@@ -28,7 +28,15 @@ di numerazione e **non** tiene il lock del registro fiscale.
 * **Lavorazione**: `stato` (`PENDING` → `IN_CORSO` → `FATTO`/`ERRORE`), `tentativi`,
   `ultimo_errore` (dettaglio JSONB dell'ultimo fallimento).
 * **Esito**: `documento_id` (documento prodotto a `FATTO`).
-* **Override**: `template_documento_id` (opzionale; `NULL` = default per sorgente/emittente/output).
+* **Che cosa stampare**: `tipo_documento_output_id` (dal 2026-10-20), il tipo di documento da
+  produrre per la fattura, scritto da chi accoda. `NULL` = decide il database alla stampa, se fra i
+  modelli che possono stampare ce n'è uno solo; con più tipi la stampa si ferma con
+  `E_DOCUMENTI_TEMPLATE_AMBIGUO`.
+* **Override**: `template_documento_id` (opzionale; `NULL` = il modello che il database risolve).
+  Chi indica il modello esatto indica anche il tipo (`chk_fatture_stampa_coda_modello_con_tipo`),
+  e la FK composta `fk_fatture_stampa_coda_template_documento` pretende che il modello sia di quel
+  tipo e della sorgente della riga. L'emittente del modello lo controlla la generazione del
+  documento (regola 4 di `trgfn_documenti_generati_check_coerenza`).
 * **Visibilità nell'elenco**: `archiviato`, `archiviato_il`, `archiviato_da` (dal 2026-09-04)
   — la riga è **messa via dall'elenco**, non spenta. Vedi «Archiviare una riga» più sotto.
 * **Governance**: audit standard + `tx_id`.
@@ -37,10 +45,17 @@ di numerazione e **non** tiene il lock del registro fiscale.
 
 ### Regole principali
 
-* **Un solo work-item "vivo" per fattura**: indice unico **parziale**
-  `uq_fatture_stampa_coda_vivo` su `(sorgente_tipo_id, sorgente_id)` limitato a
-  `PENDING`/`IN_CORSO`. Rende l'accodamento (`vendite.fn_accoda_stampe_lotto`) **idempotente**
+* **Un work-item "vivo" per fattura e tipo** (dal 2026-10-20): vincolo di **esclusione
+  parziale** `ex_fatture_stampa_coda_vivo`, limitato a `PENDING`/`IN_CORSO`. Per una fattura le
+  righe vive sono **o** una col tipo `NULL`, **o** più righe con tipi diversi. Il tipo `NULL` vuol
+  dire «qualunque tipo il database risolva», quindi esclude le altre righe vive della stessa
+  fattura, e viceversa: accanto a una riga tipata sarebbe la stessa stampa due volte (o un
+  `AMBIGUO`). È un vincolo e non un controllo in un trigger, così regge anche a due accodamenti
+  concorrenti. Rende l'accodamento (`vendite.fn_accoda_stampe_lotto`) **idempotente**
   (`ON CONFLICT DO NOTHING`) e consente il ri-accodamento dopo `FATTO`/`ERRORE` (ristampa).
+  ⚠️ Fino al 2026-10-20 era l'indice unico `uq_fatture_stampa_coda_vivo` su
+  `(sorgente_tipo_id, sorgente_id)`: una sola riga viva per fattura, quindi una fattura non poteva
+  produrre due documenti. Brief: `brief-db-modelli-documento-standard` §9.
 * **Stati ammessi** (CHECK `chk_fatture_stampa_coda_stato`): `PENDING`, `IN_CORSO`, `FATTO`,
   `ERRORE`. **Tentativi** `>= 0` (CHECK `chk_fatture_stampa_coda_tentativi`).
 * **Satellite della fattura**: `sorgente_id` FK a `vendite.fatture` (`ON DELETE CASCADE`). La
@@ -72,10 +87,10 @@ funzione trigger (`dbops.trgfn_coda_archiviazione`) e stesso codice errore
 torna viva riabbassa la bandiera da sola.
 
 ⭐ **Qui la ragione del limite è più concreta che altrove, e non dipende dal badge**: una riga
-**viva** archiviata occuperebbe lo slot di `uq_fatture_stampa_coda_vivo` e
+**viva** archiviata occuperebbe il posto di riga viva della fattura in `ex_fatture_stampa_coda_vivo` e
 **bloccherebbe la ristampa** di quella fattura restando invisibile — l'operatore chiede la
 ristampa, non succede niente, e non c'è nessun posto dove guardare. Sulle righe **terminali**
-il problema non esiste per costruzione: l'indice parziale non le vede, quindi
+il problema non esiste per costruzione: il vincolo parziale non le vede, quindi
 `vendite.fn_accoda_stampe_lotto` fa nascere una **riga nuova** e non tocca quella archiviata.
 
 ⛔ **Il flag lo legge solo la lista.** In particolare **non** lo legge

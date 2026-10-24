@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_flussi_giornale_assegnazione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_giornale_assegnazione()
  RETURNS trigger
@@ -39,6 +41,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_flussi_giornale_assegnazione()
 IS 'AFTER UPDATE OF risorsa_umana_id/unita_organizzativa_id su pratiche.flussi: registra FLUSSO_ASSEGNAZIONE_CAMBIATA (origine UTENTE) nel giornale con dettaglio OLD/NEW.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

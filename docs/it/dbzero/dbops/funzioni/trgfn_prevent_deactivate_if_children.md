@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_prevent_deactivate_if_children()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.trgfn_prevent_deactivate_if_children()
  RETURNS trigger
@@ -294,6 +296,8 @@ $function$
 COMMENT ON FUNCTION dbops.trgfn_prevent_deactivate_if_children()
 IS 'Trigger function (ATTIVO/BLOCK): impedisce la disattivazione del padre se esistono figli collegati. TG_ARGV: child_schema, child_table, fk_col [, ref_col, parent_attivo_col]. Il 4° arg e'' la colonna del padre referenziata dalla FK (puo'' essere UNIQUE non-PK). Il 5° arg e'' la colonna attivo del padre (rispetta override via dbops.automation_overrides_cols). ⭐ rev 2026-08-20 — DUE REVISIONI NELLO STESSO GIORNO, entrambe SOLO sul messaggio: il blocco, le condizioni e il momento sono identici da mesi. (1) la FRASE e'' uscita dagli argomenti e sta a catalogo, cosi'' i valori identificativi che questa funzione passa — padre, colonna referenziata, suo valore, figlia, colonna FK — smettono di essere scartati da un `%s` nudo e la tabella che blocca viene finalmente NOMINATA. (2) il codice non e'' piu'' uno solo: si sceglie fra E_ATTIVO_BLOCK_CHILDREN_ACTIVE (id 934) e E_ATTIVO_BLOCK_CHILDREN_EXIST (id 125) leggendo v_child_has_attivo. ⚠️ Perche'' i due rami hanno RIMEDI DIVERSI: se la figlia ha la colonna attivo bloccano solo le righe attive e si DISATTIVANO (figli prima, padre poi); se non ce l''ha blocca qualunque riga e si TOLGONO, perche'' spegnerle non si puo''. Misurato il 2026-08-20: 168 trigger su 349 nel primo ramo, 181 nel secondo — meta'' e meta''. Il messaggio unico diceva «attive» ed era falso per 181, poi (per un mattino) non lo diceva piu'' ed era impreciso per 168. ⛔ I due messaggi condividono UNA sola lista di valori: devono avere gli stessi segnaposti nello stesso ordine, e cambiare l''ordine qui senza cambiare il CSV scambierebbe due nomi di tabella in una frase che resta grammaticalmente perfetta. Presidio: test 13 di db/pgtap/dbops/test-trgfn-prevent-deactivate-if-children-pdp.sql.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

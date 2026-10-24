@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_listini_righe_comp_guard_coerenza_bom()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_listini_righe_comp_guard_coerenza_bom()
  RETURNS trigger
@@ -140,6 +142,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_listini_righe_comp_guard_coerenza_bom()
 IS 'Trigger BEFORE INS/UPD su listini_righe_componenti: guards 1-4 + 7 coerenza BoM. Unica query con JOIN articoli padre + LEFT JOIN listini_versioni (no round-trip extra). (1) ac esiste+attivo, (2) padre_id coerente, (3) figlio_id coerente, (4) padre composito, (5) RIMOSSO: IVA padre=figlio ora a punto unico alla sorgente articoli_componenti, (6) RIMOSSO: temporal FK fk_listrighe_comp_articoli_comp_temporal, (7) daterange(COALESCE(valido_dal,''-infinity''),COALESCE(valido_al,''infinity'')) ⊆ versione listino. Fix COALESCE simmetrico vs STORED listini_versioni.validita: evita mismatch upper_inf=true [d,) vs upper=infinity [d,infinity] in @> (rev 2026-05-15). Raise E_LISTINO_COMPONENTE_COERENZA_BOM (447). rev 2026-06-03.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

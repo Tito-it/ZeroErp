@@ -1,6 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 --
 -- Test: righe e componenti di preventivo, ordine e DDT allineati a contratto
 --   e offerta. ChangeSet 20261008-30 … -35.
@@ -58,6 +63,7 @@
 --    non la regola. La controprova senza 20261008-34 (2026-10-08) ha dato
 --    verdi i test 13 e 15 per questa strada. Il rifiuto giusto e' quello che
 --    non passa dal ricalcolo della madre.
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): l'ambito degli indirizzi della bolla e' DDT_VENDITA (le etichette ORDINE/DDT della tabella _doc sono del test e restano).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -93,7 +99,7 @@ $f$;
 -- Il mondo e due kit.
 --   KIT A: un componente OBBLIGATORIO e uno FACOLTATIVO (che si spegne);
 --   KIT B: un componente obbligatorio.
--- Il flag composito si accende PRIMA della distinta:
+-- I due kit nascono compositi dal builder:
 -- catalogo.trgfn_articoli_componenti_guard_is_composito rifiuta la distinta
 -- di un articolo semplice.
 -- =========================================================
@@ -101,14 +107,11 @@ CREATE TEMP TABLE _m AS
 SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP righe altre famiglie');
 
 CREATE TEMP TABLE _a AS
-SELECT dbops.fn_pgtap_crea_articolo('PGT-RAF-KA',   false) AS kit_a,
+SELECT dbops.fn_pgtap_crea_articolo('PGT-RAF-KA',   false, p_is_composito => true) AS kit_a,
        dbops.fn_pgtap_crea_articolo('PGT-RAF-KA-O', false) AS cmp_a_obb,
        dbops.fn_pgtap_crea_articolo('PGT-RAF-KA-F', false) AS cmp_a_fac,
-       dbops.fn_pgtap_crea_articolo('PGT-RAF-KB',   false) AS kit_b,
+       dbops.fn_pgtap_crea_articolo('PGT-RAF-KB',   false, p_is_composito => true) AS kit_b,
        dbops.fn_pgtap_crea_articolo('PGT-RAF-KB-O', false) AS cmp_b_obb;
-
-UPDATE catalogo.articoli SET is_composito = true
- WHERE id IN (SELECT kit_a FROM _a UNION ALL SELECT kit_b FROM _a);
 
 INSERT INTO catalogo.articoli_componenti
     (prodotto_id, componente_id, coeff_qta, valido_dal, esposizione_in_fattura, obbligatorio)
@@ -252,7 +255,7 @@ BEGIN
     INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
     SELECT v_id, ti.id, '{"pgtap": true}'::jsonb
       FROM config.tipi_indirizzi ti
-     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT', ARRAY[]::integer[]));
+     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', ARRAY[]::integer[]));
 
     INSERT INTO _doc
     SELECT 'DDT', v_id, v_riga,
@@ -269,9 +272,9 @@ SELECT is(
     concat_ws(',',
         script.fn_get_testata_id_di_riga('PREVENTIVO', (SELECT riga_id FROM _doc WHERE famiglia = 'PREVENTIVO'))
             = (SELECT testata_id FROM _doc WHERE famiglia = 'PREVENTIVO'),
-        script.fn_get_testata_id_di_riga('ORDINE', (SELECT riga_id FROM _doc WHERE famiglia = 'ORDINE'))
+        script.fn_get_testata_id_di_riga('ORDINE_VENDITA', (SELECT riga_id FROM _doc WHERE famiglia = 'ORDINE'))
             = (SELECT testata_id FROM _doc WHERE famiglia = 'ORDINE'),
-        script.fn_get_testata_id_di_riga('DDT', (SELECT riga_id FROM _doc WHERE famiglia = 'DDT'))
+        script.fn_get_testata_id_di_riga('DDT_VENDITA', (SELECT riga_id FROM _doc WHERE famiglia = 'DDT'))
             = (SELECT testata_id FROM _doc WHERE famiglia = 'DDT')),
     't,t,t',
     '1) fn_get_testata_id_di_riga: PREVENTIVO, ORDINE e DDT danno la testata della riga'
@@ -280,8 +283,8 @@ SELECT is(
 SELECT is(
     concat_ws(',',
         script.fn_get_testata_id_di_riga('PREVENTIVO', 9223372036854775806) IS NULL,
-        script.fn_get_testata_id_di_riga('ORDINE', 9223372036854775806) IS NULL,
-        script.fn_get_testata_id_di_riga('DDT', 9223372036854775806) IS NULL),
+        script.fn_get_testata_id_di_riga('ORDINE_VENDITA', 9223372036854775806) IS NULL,
+        script.fn_get_testata_id_di_riga('DDT_VENDITA', 9223372036854775806) IS NULL),
     't,t,t',
     '2) fn_get_testata_id_di_riga: NULL per una riga che non c''e'' (il lock la legge come cascade)'
 );

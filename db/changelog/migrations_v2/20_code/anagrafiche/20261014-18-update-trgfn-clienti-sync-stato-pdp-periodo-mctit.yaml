@@ -1,0 +1,217 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PDP E' OCCUPATO SE UN CLIENTE LO OCCUPA NEL PERIODO
+#   NASCE   anagrafiche.fn_check_pdp_occupato(pdp, data)
+#   UPDATE  anagrafiche.trgfn_clienti_sync_stato_pdp (corpo dalla doc auto-gen)
+#   + trigger trg_clienti_a20_sync_stato_pdp_aft_ins_upd con le date fra gli eventi.
+#   Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility (§3-bis, C-8)
+#
+# -- PERCHE' --------------------------------------------------------
+#   C-8 (Tid, 2026-10-14): le definizioni di «cliente attivo» si riallineano
+#   sul periodo, la misura che il modello usa gia' per il PDP
+#   (ex_clienti_no_overlap_stesso_pdp). Il sync leggeva lo STATO, e solo
+#   AT/CH: un CW non liberava il PDP, una chiusura con data futura lo
+#   liberava subito, un sospeso non contava. E «altri clienti attivi sullo
+#   stesso PDP» lo leggeva sotto RLS: un cliente di un'altra azienda era
+#   invisibile.
+#
+# -- LA REGOLA NUOVA -------------------------------------------------
+#   Occupato = esiste un cliente del PDP il cui periodo contiene il giorno
+#   operativo (script.fn_data_operativa). AN e PR non hanno periodo; un
+#   sospeso occupa (C-2: e' ancora la fornitura).
+#     occupato  e PDP in DISP -> ATT
+#     libero    e PDP in ATT  -> DISP
+#   DTEC e DISM non si toccano: li governano processi loro (lo diceva gia'
+#   il commento della versione precedente, e il corpo non lo rispettava).
+#   Se il cliente cambia PDP si ricalcolano tutti e due.
+#
+# -- EVENTI ----------------------------------------------------------
+#   UPDATE OF stato_cliente_id, pdp_id, data_attivazione, data_chiusura: il
+#   periodo deriva dalle due date, che scrive il chiamante (nessun altro
+#   BEFORE le scrive, tranne AN che arriva con lo stato nel SET).
+#
+# -- IL LIMITE, DICHIARATO -------------------------------------------
+#   Il trigger ricalcola quando si scrive il cliente. Una chiusura con data
+#   futura lascia il PDP in ATT fino alla prossima scrittura: il passaggio
+#   «per data» vuole un giro notturno (§7 del brief, residuo).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261014-18-update-trgfn-clienti-sync-stato-pdp-periodo-mctit.yaml
+
+  - changeSet:
+      id: 20261014-18-update-trgfn-clienti-sync-stato-pdp-periodo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Lo stato del PDP segue il periodo dei clienti, non lo stato (C-8). Nasce
+        anagrafiche.fn_check_pdp_occupato. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_check_pdp_occupato(
+                  p_pdp_id anagrafiche.clienti.pdp_id%TYPE,
+                  p_data   anagrafiche.clienti.data_attivazione%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+                  -- Scopo: un cliente occupa il PDP nel giorno dato? La
+                  --   misura e' il periodo (C-8), la stessa di
+                  --   ex_clienti_no_overlap_stesso_pdp.
+                  -- ⚠️ SECURITY DEFINER: clienti e' in RLS, e il cliente di
+                  --   un'altra azienda sullo stesso PDP sarebbe invisibile.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.clienti c
+                       WHERE c.pdp_id = p_pdp_id
+                         AND c.periodo @> p_data);
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_check_pdp_occupato(
+                  anagrafiche.clienti.pdp_id%TYPE,
+                  anagrafiche.clienti.data_attivazione%TYPE)
+              IS 'Check: un cliente occupa il PDP nel giorno dato, cioe'' il suo periodo lo contiene (C-8: la misura di «attivo» e'' il periodo, la stessa di ex_clienti_no_overlap_stesso_pdp). AN e PR non hanno periodo; un sospeso occupa. SECURITY DEFINER: clienti in RLS. Lo legge anagrafiche.trgfn_clienti_sync_stato_pdp. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_oggi          anagrafiche.clienti.data_attivazione%TYPE;
+                  v_stato_att_id  config.stati_pdp.id%TYPE;
+                  v_stato_disp_id config.stati_pdp.id%TYPE;
+                  v_pdp_id        anagrafiche.clienti.pdp_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: lo stato tecnico del PDP segue l'occupazione:
+                  --   occupato (un cliente col periodo che contiene oggi)
+                  --   -> DISP diventa ATT; libero -> ATT diventa DISP.
+                  --   DTEC e DISM non si toccano.
+                  -- rev 2026-10-14 (C-8 di brief-db-cliente-manuale-uno-per-
+                  --   soggetto-e-utility): prima leggeva lo stato del cliente,
+                  --   e solo AT/CH.
+                  -- =========================================================
+                  IF NEW.pdp_id IS NULL
+                     AND (TG_OP = 'INSERT' OR OLD.pdp_id IS NULL) THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT id INTO v_stato_att_id
+                    FROM config.stati_pdp
+                   WHERE codice_interno = 'ATT';
+
+                  SELECT id INTO v_stato_disp_id
+                    FROM config.stati_pdp
+                   WHERE codice_interno = 'DISP';
+
+                  IF v_stato_att_id IS NULL OR v_stato_disp_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'anagrafiche.trgfn_clienti_sync_stato_pdp',
+                          'E_CODICE',
+                          jsonb_build_object('stati_pdp', 'ATT/DISP'),
+                          NEW.tx_id,
+                          'ATT/DISP',
+                          'config.stati_pdp'
+                      );
+                  END IF;
+
+                  v_oggi := script.fn_data_operativa();
+
+                  -- Il PDP del cliente e, se il cliente l'ha lasciato,
+                  -- quello di prima.
+                  FOR v_pdp_id IN
+                      SELECT DISTINCT p.id
+                        FROM unnest(ARRAY[
+                                 NEW.pdp_id,
+                                 CASE WHEN TG_OP = 'UPDATE' THEN OLD.pdp_id END]) AS p(id)
+                       WHERE p.id IS NOT NULL
+                  LOOP
+                      IF anagrafiche.fn_check_pdp_occupato(v_pdp_id, v_oggi) THEN
+                          UPDATE anagrafiche.pdp p
+                             SET stato_pdp_id = v_stato_att_id
+                           WHERE p.id = v_pdp_id
+                             AND p.stato_pdp_id = v_stato_disp_id;
+                      ELSE
+                          UPDATE anagrafiche.pdp p
+                             SET stato_pdp_id = v_stato_disp_id
+                           WHERE p.id = v_pdp_id
+                             AND p.stato_pdp_id = v_stato_att_id;
+                      END IF;
+                  END LOOP;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp()
+              IS 'Trigger AFTER su anagrafiche.clienti: lo stato tecnico del PDP segue l''occupazione (anagrafiche.fn_check_pdp_occupato, il periodo che contiene il giorno operativo): occupato e DISP -> ATT; libero e ATT -> DISP; DTEC e DISM non si toccano. Se il cliente cambia PDP si ricalcolano entrambi. rev 2026-10-14 (C-8): prima leggeva lo stato del cliente, solo AT/CH, sotto RLS. Limite: una chiusura con data futura libera il PDP alla prossima scrittura, non alla data. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
+
+              DROP TRIGGER IF EXISTS trg_clienti_a20_sync_stato_pdp_aft_ins_upd ON anagrafiche.clienti;
+
+              CREATE TRIGGER trg_clienti_a20_sync_stato_pdp_aft_ins_upd
+                AFTER INSERT OR UPDATE OF stato_cliente_id, pdp_id, data_attivazione, data_chiusura
+                ON anagrafiche.clienti
+                FOR EACH ROW
+                EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp();
+
+              COMMENT ON TRIGGER trg_clienti_a20_sync_stato_pdp_aft_ins_upd ON anagrafiche.clienti
+              IS 'Lo stato tecnico del PDP segue l''occupazione del periodo (anagrafiche.trgfn_clienti_sync_stato_pdp). Eventi: stato, PDP e le due date da cui deriva il periodo. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_clienti_a20_sync_stato_pdp_aft_ins_upd ON anagrafiche.clienti;
+              CREATE TRIGGER trg_clienti_a20_sync_stato_pdp_aft_ins_upd
+                AFTER INSERT OR UPDATE OF stato_cliente_id, pdp_id ON anagrafiche.clienti
+                FOR EACH ROW
+                EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp();
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_cd_stato_cliente text;
+                  v_stato_att_id     bigint;
+                  v_stato_disp_id    bigint;
+              BEGIN
+                  IF NEW.pdp_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+                  SELECT sc.codice_interno INTO v_cd_stato_cliente
+                    FROM config.stati_cliente sc WHERE sc.id = NEW.stato_cliente_id;
+                  IF v_cd_stato_cliente IS NULL OR v_cd_stato_cliente NOT IN ('AT', 'CH') THEN
+                      RETURN NEW;
+                  END IF;
+                  SELECT id INTO v_stato_att_id FROM config.stati_pdp WHERE codice_interno = 'ATT';
+                  SELECT id INTO v_stato_disp_id FROM config.stati_pdp WHERE codice_interno = 'DISP';
+                  IF v_stato_att_id IS NULL OR v_stato_disp_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.trgfn_clienti_sync_stato_pdp', 'E_CODICE',
+                          jsonb_build_object('stati_pdp', 'ATT/DISP'), new.tx_id, 'ATT/DISP', 'config.stati_pdp');
+                  END IF;
+                  IF v_cd_stato_cliente = 'AT' THEN
+                      UPDATE anagrafiche.pdp p SET stato_pdp_id = v_stato_att_id
+                       WHERE p.id = NEW.pdp_id AND p.stato_pdp_id IS DISTINCT FROM v_stato_att_id;
+                      RETURN NEW;
+                  END IF;
+                  UPDATE anagrafiche.pdp p SET stato_pdp_id = v_stato_disp_id
+                   WHERE p.id = NEW.pdp_id AND p.stato_pdp_id IS DISTINCT FROM v_stato_disp_id;
+                  RETURN NEW;
+              END;
+              $function$;
+              DROP FUNCTION IF EXISTS anagrafiche.fn_check_pdp_occupato(bigint, date);

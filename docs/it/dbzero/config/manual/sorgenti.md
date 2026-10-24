@@ -142,6 +142,30 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
   > 9, 11 esistono solo nel DB. `loadUpdateData` non tocca chi non trova, quindi
   > restano a `NULL`, che per loro è il valore giusto. È una divergenza
   > preesistente, non una dimenticanza di questa colonna.
+  >
+  > ✅ **Superata.** Al 20-10-2026 il CSV porta **tutte** le righe del database
+  > (29), confrontate colonna per colonna: la divergenza non c'è più, e il
+  > `NOT NULL` di `etichetta` (sotto) la presuppone.
+
+* **Etichetta** (`etichetta`) — *aggiunta 20-10-2026*, brief
+  `brief-db-grammatica-unica-documenti` §12.9:
+
+  * il **nome del tipo di documento come lo legge una persona**, sulla carta:
+    «Preventivo», «Offerta», «Ordine», «DDT», «Reso». Diversa da `descrizione`,
+    che resta la **nota tecnica** della sorgente («Offerta commerciale
+    (testata)»);
+  * la legge la stampa: la provenienza di un ordine è `ordine.origine.etichetta`
+    nel modello standard «Ordine di vendita» (versione 2, forma dei dati 3);
+  * **`NOT NULL` per ogni riga**, anche le `*_RIGA`: una sorgente nuova entra
+    col suo nome. Il valore sta nel CSV, e il vincolo si accende in `90_end`
+    (`20261020-23`), dopo il mirror; `chk_sorgenti_etichetta_non_vuota`
+    rifiuta la stringa vuota;
+  * una sola lingua, l'italiano, come le altre parole di stampa del catalogo.
+
+  > ⭐ **Perché nel DB e non nelle traduzioni.** Le etichette c'erano già, ma
+  > solo nel frontend: il backend di stampa non le legge, e una mappa in Python
+  > sarebbe stata la seconda copia delle stesse parole. La stampa prende le
+  > parole dal catalogo, come la fattura fa con `tipo_doc_fiscale.descrizione`.
 
 * **Audit**:
 

@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL DEFAULT DELL'EMITTENTE SALTA IL MODELLO STANDARD
+#   trg_template_documenti_a10_default_emittente_ins -> WHEN (NEW.standard IS NOT TRUE)
+#   Brief: brief-db-modelli-documento-standard, §4.1 Q-1
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   Il trigger (montato a mano da 20260915-45, non da ci_apply) riempie
+#   l'emittente dalla sessione e, in modo SOLLEVA, si ferma con
+#   E_EMITTENTE_NON_RISOLTO se non c'e' nessuno da cui dedurlo. Il seed dello
+#   standard gira SENZA sessione e SENZA emittente per costruzione: senza il
+#   WHEN si fermerebbe proprio li'.
+#
+# -- LA FORMA -------------------------------------------------------------------
+#   Il BB script.trgfn_default_emittente_fiscale resta com'e': e' la regola
+#   «una riga d'operatore senza emittente lo prende dalla sessione», e lo
+#   standard non e' una riga d'operatore. Lo dice il montaggio, con un WHEN che
+#   legge il flag. Una riga d'operatore senza emittente (standard = false per
+#   default) continua a riceverlo dalla sessione: dalla UI non nasce uno
+#   standard per sbaglio, e il CHECK di -04 resta soddisfatto.
+#   Stesso nome di prima: l'ordine fra i BEFORE ROW non cambia.
+#
+# Dipendenze: 20261020-04 (colonna standard). Verifica:
+#   db/pgtap/documenti/test-documenti-template-standard-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261020-06-recreate-trigger-default-emittente-template-salta-standard-mctit.yaml
+
+  - changeSet:
+      id: 20261020-06-recreate-trigger-default-emittente-template-salta-standard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.template_documenti: trg_template_documenti_a10_default_emittente_ins rimontato con
+        WHEN (NEW.standard IS NOT TRUE), cosi' il seed del modello standard (senza sessione e senza
+        emittente) non solleva E_EMITTENTE_NON_RISOLTO. Brief: brief-db-modelli-documento-standard §4.1 Q-1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: documenti
+                tableName: template_documenti
+                columnName: standard
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'documenti.template_documenti'::regclass
+                     AND tgname = 'trg_template_documenti_a10_default_emittente_ins';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_template_documenti_a10_default_emittente_ins ON documenti.template_documenti;
+
+              CREATE TRIGGER trg_template_documenti_a10_default_emittente_ins
+                  BEFORE INSERT
+                  ON documenti.template_documenti
+                  FOR EACH ROW
+                  WHEN (NEW.standard IS NOT TRUE)
+                  EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA');
+
+              COMMENT ON TRIGGER trg_template_documenti_a10_default_emittente_ins ON documenti.template_documenti IS
+                  'Emittente di default dalla sessione per un modello d''operatore (script.trgfn_default_emittente_fiscale, SOLLEVA). Il modello standard lo salta: non ha emittente e nasce dal seed, senza sessione. Brief: brief-db-modelli-documento-standard §4.1 Q-1.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_template_documenti_a10_default_emittente_ins ON documenti.template_documenti;
+              CREATE TRIGGER trg_template_documenti_a10_default_emittente_ins
+                  BEFORE INSERT
+                  ON documenti.template_documenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA');

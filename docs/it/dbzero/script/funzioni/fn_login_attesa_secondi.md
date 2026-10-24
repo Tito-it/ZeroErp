@@ -7,6 +7,8 @@ CREATE FUNCTION fn_login_attesa_secondi(p_fallimenti integer, p_tetto integer, p
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_login_attesa_secondi(p_fallimenti integer, p_tetto integer, p_attesa_base_secondi integer, p_attesa_max_secondi integer)
  RETURNS integer
@@ -31,6 +33,8 @@ $function$
 COMMENT ON FUNCTION script.fn_login_attesa_secondi(p_fallimenti integer, p_tetto integer, p_attesa_base_secondi integer, p_attesa_max_secondi integer)
 IS 'Attesa crescente sulla credenziale (D-1 riletta, D-B2): zero sotto il tetto, poi LEAST(max, base * 2^(fallimenti - tetto)) — al tetto esatto la base, raddoppia a ogni fallimento, si ferma al massimo. Rallenta senza chiudere: il titolare aspetta al piu'' il massimo, e ha il reset. Pura sui valori (i parametri li legge script.fn_login_parametri), IMMUTABLE; regola del 2: la usano fn_check_blocco_login e fn_registra_tentativo_login. Brief: brief-db-blocco-login-per-credenziale §2.4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

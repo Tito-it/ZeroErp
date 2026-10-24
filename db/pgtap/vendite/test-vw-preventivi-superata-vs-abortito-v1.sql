@@ -16,23 +16,24 @@
 --       cerca fra i dati esistenti. Su un DB ricostruito da zero verifica le
 --       stesse cose.
 --
---       Fixture (numeri multi-rev inseriti diretti, stato scelto):
---         A) PGTAP-SUPABO-A: rev0 EMESSO + rev1 ANNULLATO
+--       Fixture (rev 2026-10-24, R-6: preventivi del builder, numero dal
+--       dominio, rev 1 da vendite.fn_crea_revisione_preventivo):
+--         A) numero A: rev0 EMESSO + rev1 ANNULLATO
 --            -> rev1 e' l'ULTIMA revisione e non e' superata da nessuno, ma e'
 --               abortita: is_superata=F, is_abortito=T, is_attiva=F.
 --               rev0 e' la viva: is_superata=F (l'abortita non rimpiazza),
 --               is_abortito=F, has_next_revisione=T, is_attiva=T.
---         B) PGTAP-SUPABO-B: rev0 ANNULLATO, revisione unica
+--         B) numero B: rev0 ANNULLATO, revisione unica
 --            -> e' il caso del collaudo (PRV0000133): is_superata=F —
 --               «e' l'ultima revisione» e' VERO — ma is_attiva=F. Con il solo
 --               is_attiva il documento non era raggiungibile da nessun filtro.
---         C) PGTAP-SUPABO-C: rev0 EMESSO + rev1 EMESSO
+--         C) numero C: rev0 EMESSO + rev1 EMESSO
 --            -> superamento vero: rev0 is_superata=T, rev1 is_superata=F.
 --
 -- Indice test (0..11):
 --   0)  Precondizioni: refs minimi (BA, emittente, valuta, stati)
 --   1)  Struttura: vw_preventivi espone is_superata, is_abortito, has_next_revisione
---   2)  Setup scope operatore (le viste sono security_invoker: serve la GUC)
+--   2)  Scope operatore: quello del contesto vede l'emittente dei fixture
 --   3)  A rev0: viva e non superata, ma con una revisione successiva abortita
 --   4)  A rev1: ultima revisione (non superata) E abortita -> is_attiva=F
 --   5)  B rev0: annullato a revisione unica -> is_superata=F, is_attiva=F
@@ -44,6 +45,23 @@
 --       righe, is_attiva ne rende 2 — e le 2 che mancano sono gli annullati
 --   11) Propagazione: vw_preventivi_lista espone le tre colonne, riga per riga
 --       uguali a vw_preventivi
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima le
+--   revisioni nascevano gia' EMESSO/ANNULLATO).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-4): cliente ed emittente
+--   dal mondo costruito (dbops.fn_pgtap_crea_mondo_cliente), l'operatore e'
+--   quello del contesto: prima si pescavano dal database il primo billing
+--   account, il primo emittente e il primo operatore, che su un database
+--   ricostruito non ci sono.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-6/Q-4): le revisioni
+--   nascono per la strada del dominio. Ogni numero e' un preventivo di
+--   dbops.fn_pgtap_crea_preventivo (numero assegnato dal dominio), portato
+--   allo stato dal builder; la rev 1 nasce da vendite.fn_crea_revisione_preventivo
+--   sulla rev 0 EMESSO e poi si porta allo stato del caso. Prima erano INSERT
+--   diretti in vendite.preventivi con numero e rev fissati (PGTAP-SUPABO-*).
+--   Le asserzioni sul numero letterale (3..11) leggono ora il numero
+--   COSTRUITO (tmp_sa_numeri, da vendite.preventivi): provano le stesse cose
+--   (superata vs abortita), con le stesse attese.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -63,24 +81,33 @@ SELECT plan(12);
 -- ============================================================
 -- 0) Riferimenti minimi
 -- ============================================================
+-- ⭐ rev 2026-10-24 (Q-4): il cliente e l'emittente si COSTRUISCONO. Prima
+--   erano «il primo billing account» e «il primo emittente attivo» del
+--   database: su uno ricostruito da zero non c'erano e il file moriva al primo
+--   INSERT. dbops.fn_pgtap_crea_mondo_cliente, col contesto gia' aperto, riusa
+--   l'azienda di chi agisce e le lega un cliente nuovo: emittente e BA vanno
+--   d'accordo per costruzione. ⛔ Cio' che il builder scrive si legge in
+--   un'istruzione SEPARATA.
+-- ⭐ rev 2026-10-24 (R-6): ogni numero e' un preventivo del builder, con
+--   la rev 0 gia' nello stato del caso (per la matrice; l'emissione oggi non
+--   pretende righe, e il test non ne ha bisogno).
+CREATE TEMP TABLE tmp_sa_a AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('superata vs abortito A', 'EMESSO');
+CREATE TEMP TABLE tmp_sa_b AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('superata vs abortito B', 'ANNULLATO');
+CREATE TEMP TABLE tmp_sa_c AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('superata vs abortito C', 'EMESSO');
+
 CREATE TEMP TABLE tmp_sa_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  a.billing_account_id,
+  a.valuta_id,
+  a.emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE LIMIT 1) AS st_emesso_id,
+    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE) AS st_emesso_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice_interno = 'ANNULLATO' AND s.attivo IS TRUE LIMIT 1) AS st_annullato_id;
+    WHERE s.codice_interno = 'ANNULLATO' AND s.attivo IS TRUE) AS st_annullato_id
+FROM tmp_sa_a a;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND emittente_fiscale_id IS NOT NULL
@@ -110,59 +137,58 @@ SELECT is(
 -- 2) Setup scope operatore: le viste sono security_invoker, l'emittente dei
 --    fixture deve essere nello scope o la RLS le rende invisibili (e un
 --    conteggio a zero passerebbe per «non c'e'» invece che per «non lo vedo»).
+-- ⭐ rev 2026-10-24 (Q-4): l'operatore e' quello del CONTESTO, la cui azienda
+--   e' l'emittente del mondo costruito: e' gia' nel suo scope. Prima si
+--   pescava «il primo OPERATORE non super admin» delle identita' e gli si
+--   riscriveva config.user_emittenti_fiscali sul primo emittente del
+--   database: su un database ricostruito non c'era nessuno dei due.
 -- ============================================================
 CREATE TEMP TABLE tmp_sa_op AS
-SELECT id.auth_user_id AS user_id
-  FROM anagrafiche.identita_digitali id
- WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-   AND id.attivo = true
-   AND NOT EXISTS (
-       SELECT 1 FROM config.profili_accesso_bindings pab
-       JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
-       WHERE pab.identita_digitale_id = id.id
-         AND pab.attivo = true
-         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso)
- ORDER BY id.id LIMIT 1;
+SELECT nullif(current_setting('app.current_user_id', true), '')::integer AS user_id;
 
 SELECT ok(
-  (SELECT user_id IS NOT NULL FROM tmp_sa_op),
-  '2. Trovato un operatore OPERATORE non-super per lo scope'
+  (SELECT o.user_id IS NOT NULL
+      AND script.fn_has_identita_attiva(o.user_id, 'OPERATORE'::config.ruolo_applicativo)
+      AND NOT script.fn_is_super_admin(o.user_id)
+      AND (SELECT bool_and(x.emittente_fiscale_id = script.fn_pgtap_emittente_operatore())
+             FROM (SELECT emittente_fiscale_id FROM tmp_sa_a
+                   UNION ALL SELECT emittente_fiscale_id FROM tmp_sa_b
+                   UNION ALL SELECT emittente_fiscale_id FROM tmp_sa_c) x)
+     FROM tmp_sa_op o),
+  '2. L''operatore del contesto e'' un OPERATORE non-super con l''emittente dei fixture nello scope'
 );
-
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_sa_op);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
-
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id, meta)
-SELECT o.user_id, r.emittente_fiscale_id,
-       '{"test_scope":"pgtap_superata_vs_abortito"}'::jsonb
-  FROM tmp_sa_op o, tmp_sa_refs r
- WHERE o.user_id IS NOT NULL;
-
-SELECT set_config('app.current_user_id',
-    (SELECT user_id::text FROM tmp_sa_op), true);
 
 -- ============================================================
 -- Fixture: tre numeri, cinque revisioni
+-- ⚠️ rev 2026-10-24 (R-6, la strada del dominio): le rev 0 sono i preventivi
+--   del builder, gia' nello stato del caso. La rev 1 di A e di C nasce da
+--   vendite.fn_crea_revisione_preventivo sulla rev 0 EMESSO (stesso numero,
+--   rev 1, in bozza) e si porta allo stato del caso per la matrice, sotto i
+--   guard veri. ANNULLATO esce direttamente dalla bozza (DRAFT -> ANNULLATO).
+--   A) rev0 EMESSO + rev1 ANNULLATO
+--   B) rev0 ANNULLATO, revisione unica
+--   C) rev0 EMESSO + rev1 EMESSO
 -- ============================================================
-INSERT INTO vendite.preventivi (
-  numero, rev, billing_account_id, istanza_utility_id, utility_id,
-  validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
-  fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-SELECT f.numero, f.rev, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-       DATE '2081-01-01', DATE '2081-12-31', r.valuta_id,
-       CASE f.stato WHEN 'EMESSO' THEN r.st_emesso_id ELSE r.st_annullato_id END,
-       DATE '2081-01-01', false, false,
-       jsonb_build_object('test_scope','pgtap_superata_vs_abortito'), r.emittente_fiscale_id
-  FROM tmp_sa_refs r,
-       (VALUES
-          ('PGTAP-SUPABO-A', 0, 'EMESSO'),
-          ('PGTAP-SUPABO-A', 1, 'ANNULLATO'),
-          ('PGTAP-SUPABO-B', 0, 'ANNULLATO'),
-          ('PGTAP-SUPABO-C', 0, 'EMESSO'),
-          ('PGTAP-SUPABO-C', 1, 'EMESSO')
-       ) AS f(numero, rev, stato);
+CREATE TEMP TABLE tmp_sa_a_rev1 AS
+SELECT nuovo_preventivo_id AS id
+  FROM vendite.fn_crea_revisione_preventivo((SELECT preventivo_id FROM tmp_sa_a), 'pgtap');
+CREATE TEMP TABLE tmp_sa_c_rev1 AS
+SELECT nuovo_preventivo_id AS id
+  FROM vendite.fn_crea_revisione_preventivo((SELECT preventivo_id FROM tmp_sa_c), 'pgtap');
+
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_sa_a_rev1), 'ANNULLATO');
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_sa_c_rev1), 'EMESSO');
+END $porta$;
+
+-- Il numero di ogni caso, COSTRUITO dal dominio e letto da vendite.preventivi.
+--   Prima era il letterale PGTAP-SUPABO-<caso>.
+CREATE TEMP TABLE tmp_sa_numeri AS
+SELECT 'A'::text AS caso, p.numero FROM vendite.preventivi p WHERE p.id = (SELECT preventivo_id FROM tmp_sa_a)
+UNION ALL
+SELECT 'B', p.numero FROM vendite.preventivi p WHERE p.id = (SELECT preventivo_id FROM tmp_sa_b)
+UNION ALL
+SELECT 'C', p.numero FROM vendite.preventivi p WHERE p.id = (SELECT preventivo_id FROM tmp_sa_c);
 
 -- ============================================================
 -- 3) A rev0 — la viva. Ha una revisione successiva, ma abortita: non la
@@ -172,7 +198,7 @@ SELECT f.numero, f.rev, r.billing_account_id, r.istanza_utility_id, r.utility_id
 SELECT is(
   (SELECT ROW(v.is_attiva, v.is_superata, v.is_abortito, v.has_next_revisione)::text
      FROM vendite.vw_preventivi v
-    WHERE v.numero = 'PGTAP-SUPABO-A' AND v.rev = 0),
+    WHERE v.numero = (SELECT numero FROM tmp_sa_numeri WHERE caso = 'A') AND v.rev = 0),
   ROW(true, false, false, true)::text,
   '3. A rev0 (EMESSO, con rev1 ANNULLATO sopra): attiva=T, superata=F, abortito=F, has_next=T'
 );
@@ -184,7 +210,7 @@ SELECT is(
 SELECT is(
   (SELECT ROW(v.is_attiva, v.is_superata, v.is_abortito, v.has_next_revisione)::text
      FROM vendite.vw_preventivi v
-    WHERE v.numero = 'PGTAP-SUPABO-A' AND v.rev = 1),
+    WHERE v.numero = (SELECT numero FROM tmp_sa_numeri WHERE caso = 'A') AND v.rev = 1),
   ROW(false, false, true, false)::text,
   '4. A rev1 (ANNULLATO in cima): attiva=F ma superata=F — non-attiva per annullamento, non per superamento'
 );
@@ -196,7 +222,7 @@ SELECT is(
 SELECT is(
   (SELECT ROW(v.is_attiva, v.is_superata, v.is_abortito, v.has_next_revisione)::text
      FROM vendite.vw_preventivi v
-    WHERE v.numero = 'PGTAP-SUPABO-B' AND v.rev = 0),
+    WHERE v.numero = (SELECT numero FROM tmp_sa_numeri WHERE caso = 'B') AND v.rev = 0),
   ROW(false, false, true, false)::text,
   '5. B rev0 (ANNULLATO, revisione unica): superata=F (e'' l''ultima revisione) e attiva=F (annullato)'
 );
@@ -207,7 +233,7 @@ SELECT is(
 SELECT is(
   (SELECT ROW(v.is_attiva, v.is_superata, v.is_abortito, v.has_next_revisione)::text
      FROM vendite.vw_preventivi v
-    WHERE v.numero = 'PGTAP-SUPABO-C' AND v.rev = 0),
+    WHERE v.numero = (SELECT numero FROM tmp_sa_numeri WHERE caso = 'C') AND v.rev = 0),
   ROW(false, true, false, true)::text,
   '6. C rev0 (EMESSO, rimpiazzato da rev1 EMESSO): superata=T, abortito=F, attiva=F'
 );
@@ -218,7 +244,7 @@ SELECT is(
 SELECT is(
   (SELECT ROW(v.is_attiva, v.is_superata, v.is_abortito, v.has_next_revisione)::text
      FROM vendite.vw_preventivi v
-    WHERE v.numero = 'PGTAP-SUPABO-C' AND v.rev = 1),
+    WHERE v.numero = (SELECT numero FROM tmp_sa_numeri WHERE caso = 'C') AND v.rev = 1),
   ROW(true, false, false, false)::text,
   '7. C rev1 (EMESSO in cima): attiva=T, superata=F, abortito=F, has_next=F'
 );
@@ -230,7 +256,7 @@ SELECT is(
 SELECT is(
   (SELECT count(*)::int
      FROM vendite.vw_preventivi v
-    WHERE v.numero LIKE 'PGTAP-SUPABO-%'
+    WHERE v.numero IN (SELECT numero FROM tmp_sa_numeri)
       AND v.is_attiva IS DISTINCT FROM (NOT v.is_abortito AND NOT v.is_superata)),
   0,
   '8. Invariante: is_attiva = NOT is_abortito AND NOT is_superata su tutte le revisioni fixture'
@@ -244,7 +270,7 @@ SELECT is(
   (SELECT count(*)::int
      FROM (SELECT v.numero
              FROM vendite.vw_preventivi v
-            WHERE v.numero LIKE 'PGTAP-SUPABO-%' AND v.is_attiva
+            WHERE v.numero IN (SELECT numero FROM tmp_sa_numeri) AND v.is_attiva
             GROUP BY v.numero
            HAVING count(*) > 1) x),
   0,
@@ -265,7 +291,7 @@ SELECT is(
             count(*) FILTER (WHERE NOT v.is_superata AND v.is_abortito)
           )::text
      FROM vendite.vw_preventivi v
-    WHERE v.numero LIKE 'PGTAP-SUPABO-%'),
+    WHERE v.numero IN (SELECT numero FROM tmp_sa_numeri)),
   ROW(4::bigint, 2::bigint, 2::bigint)::text,
   '10. «Solo ultima revisione» = 4 righe, is_attiva = 2: le 2 di scarto sono gli annullati non superati'
 );
@@ -283,7 +309,7 @@ SELECT is(
               (v.is_attiva, v.is_superata, v.is_abortito, v.has_next_revisione)))::text
      FROM vendite.vw_preventivi_lista l
      JOIN vendite.vw_preventivi v ON v.id = l.id
-    WHERE l.numero LIKE 'PGTAP-SUPABO-%'),
+    WHERE l.numero IN (SELECT numero FROM tmp_sa_numeri)),
   ROW(5::bigint, 0::bigint)::text,
   '11. vw_preventivi_lista: 5 righe fixture confrontate, zero scarti sulle quattro colonne'
 );

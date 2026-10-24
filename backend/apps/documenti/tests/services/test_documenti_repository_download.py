@@ -3,12 +3,13 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Test unit `DocumentiRepository` per i metodi della Tranche K
-#        (lookup sorgente per codice, lista documenti generati per
-#        sorgente, dettaglio documento, file principale per download).
+#        (lista documenti generati per sorgente, dettaglio documento, file
+#        principale per download). Il lookup della sorgente per codice sta in
+#        `apps.config.db.sorgenti_repository` (test in config/tests/db, dal
+#        2026-10-11).
 #        Mocka `connection.cursor` (regola CI: niente DB reale).
 #
 # Indice test (0..N):
-#   0. get_sorgente_tipo_id_by_codice_returns_dict_or_none
 #   1. list_documenti_per_sorgente_filtra_sorgente_riga_null
 #   2. list_documenti_per_sorgente_filtra_sorgente_riga_valorizzata
 #   3. list_documenti_per_sorgente_applica_scope_anyarray
@@ -69,32 +70,6 @@ def _columns(*names: str) -> list[Any]:
         m.name = n
         cols.append(m)
     return cols
-
-
-class GetSorgenteTipoIdByCodiceTests(TestCase):
-    """Lookup config.sorgenti per codice (es. PREVENTIVO)."""
-
-    # 0. row presente -> dict; row assente -> None.
-    @patch("apps.documenti.db.documenti_repository.connection.cursor")
-    def test_get_sorgente_tipo_id_by_codice_returns_dict_or_none(
-        self, mocked_factory
-    ) -> None:
-        cursor_ok = _mk_cursor(fetchone_results=[(10, "PREVENTIVO", True)])
-        mocked_factory.return_value = cursor_ok
-        row = DocumentiRepository().get_sorgente_tipo_id_by_codice("PREVENTIVO")
-        self.assertEqual(
-            row, {"id": 10, "codice": "PREVENTIVO", "attivo": True},
-        )
-        sql, params = cursor_ok.execute.call_args_list[0].args
-        self.assertIn("FROM config.sorgenti", sql)
-        self.assertIn("WHERE codice_interno = %s", sql)
-        self.assertEqual(params, ["PREVENTIVO"])
-
-        cursor_none = _mk_cursor(fetchone_results=[None])
-        mocked_factory.return_value = cursor_none
-        self.assertIsNone(
-            DocumentiRepository().get_sorgente_tipo_id_by_codice("INESIST"),
-        )
 
 
 class ListDocumentiPerSorgenteTests(TestCase):
@@ -188,8 +163,10 @@ class ListDocumentiPerSorgenteTests(TestCase):
         self.assertEqual(totale, 7)
 
     # 4-bis. `order_by` dalla whitelist (chiave = campo_sorgente del catalogo);
-    #        una colonna DATA senza verso ripiega DESC; fuori whitelist ->
-    #        ordinamento di partenza.
+    #        una colonna DATA senza verso ripiega DESC; fuori whitelist -> 400
+    #        (`ValueError("order_by_invalid")`, decisione Tid 2026-10-20,
+    #        brief-be-verifica-documentazione-api §A1: nessuna lista ripiega in
+    #        silenzio sul default).
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
     def test_list_documenti_per_sorgente_ordina_dalla_whitelist(
         self, mocked_factory
@@ -198,7 +175,6 @@ class ListDocumentiPerSorgenteTests(TestCase):
             (("titolo", "asc"), "ORDER BY d.titolo ASC NULLS FIRST, d.id ASC"),
             (("progressivo_sorgente", "desc"), "ORDER BY d.progressivo_sorgente DESC NULLS LAST, d.id DESC"),
             (("generato_at", None), "ORDER BY d.generato_at DESC NULLS LAST, d.id DESC"),
-            (("has_file_principale", "asc"), "ORDER BY d.generato_at ASC NULLS FIRST, d.id ASC"),
         ]
         for (order_by, order_dir), atteso in casi:
             with self.subTest(order_by=order_by, order_dir=order_dir):
@@ -209,6 +185,12 @@ class ListDocumentiPerSorgenteTests(TestCase):
                 )
                 sql, _ = cursor.execute.call_args_list[0].args
                 self.assertIn(atteso, sql)
+        # «Originale» non ordina a catalogo: chiederlo e' un 400, non un ripiego.
+        mocked_factory.return_value = _mk_cursor()
+        with self.assertRaisesRegex(ValueError, "order_by_invalid"):
+            DocumentiRepository().list_documenti_per_sorgente(
+                **self._default_args(order_by="has_file_principale", order_dir="asc"),
+            )
 
     # 4-ter. ricerca: la condizione del BB (`add_ricerca_full_condition`) sulle
     #        colonne accese dal catalogo, dentro lo stesso WHERE della pagina.

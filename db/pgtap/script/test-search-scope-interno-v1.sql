@@ -90,10 +90,7 @@ SELECT 'B'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
 SELECT 'SA' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
 
-INSERT INTO config.profili_accesso_bindings
-    (profilo_accesso_id, identita_digitale_id, attivo)
-VALUES ((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'),
-        (SELECT identita_id FROM _mondi WHERE lato = 'SA'), true);
+DO $lega$ BEGIN PERFORM config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), (SELECT identita_id FROM _mondi WHERE lato = 'SA')); END $lega$;
 
 -- Il cliente di prova, legato ad A. Il termine di ricerca e' una parola che
 -- esiste solo qui.

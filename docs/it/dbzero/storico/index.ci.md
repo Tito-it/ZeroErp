@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Schema `storico`
 
 ## 📚 Tabelle (manuale)

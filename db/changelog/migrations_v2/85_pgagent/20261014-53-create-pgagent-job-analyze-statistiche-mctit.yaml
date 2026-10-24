@@ -1,0 +1,150 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL JOB `analyze_statistiche` — le statistiche del planner, ogni notte.
+#   Brief: brief-db-statistiche-tabelle-job-notturno (D15)
+#   Decisioni di Tid, 2026-10-14: un job notturno, niente soglie di autovacuum
+#   per tabella (§6); alle 02:30 (D-2).
+#
+# Ogni notte alle 02:30: `CALL maintenance.proc_analyze_statistiche_job()`, che
+# esegue maintenance.fn_analyze_statistiche() passando dal giornale: ANALYZE del
+# database e l'autoverifica sulle tabelle rimaste senza statistiche.
+#
+# ── ⭐ PERCHE' UN JOB, E NON L'AUTOVACUUM ───────────────────────────
+#   L'autovacuum rianalizza una tabella quando ne cambiano 50 righe piu' il 10%:
+#   una tabella piccola o ferma non ci arriva mai, e le madri partizionate non
+#   le analizza affatto. Questo job e' il posto che il database non aveva.
+#
+# ── ⚠️ ALLE 02:30, lontano dagli altri ──────────────────────────────
+#   ANALYZE gira in una transazione sola e tiene SHARE UPDATE EXCLUSIVE su ogni
+#   tabella fino alla fine: blocca DDL e autovacuum (non letture e scritture).
+#   Lontano dalle automazioni delle 21, dal job delle 00:05 e da quello delle
+#   06:00.
+#
+# ── ⚠️ IL DIRITTO NON STA QUI ───────────────────────────────────────
+#   Il ruolo con cui si collega pgAgent deve poter analizzare le tabelle
+#   (proprietario, superuser o pg_maintain): e' provisioning, non un changeSet
+#   (linee-guida-sql §11.6). Se manca, l'autoverifica lo dice la prima notte,
+#   nominando le tabelle (riga rossa nel giornale).
+#
+# ── ⚠️ IL DEBITO DI SEMPRE: `85_pgagent` in CI e' `MARK_RAN` ────────
+#   In CI il job non esiste; il lavoro gira lo stesso, perche' il processo
+#   dichiara ci_ordine + ci_procedura e lo chiama la convergenza di
+#   90_end/ci_apply/20260926-10.
+#
+# ⚠️ `jobname` DEVE essere identico a `dbops.processi.codice` (e a
+#   `jobname_pgagent`): e' cosi' che fn_run_and_log risale all'attore e che il
+#   panorama lega il job al processo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/85_pgagent/20261014-53-create-pgagent-job-analyze-statistiche-mctit.yaml
+
+  - changeSet:
+      id: 20261014-53-create-pgagent-job-analyze-statistiche
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Job pgAgent analyze_statistiche: ogni notte alle 02:30 chiama
+        maintenance.proc_analyze_statistiche_job(), che passa dal giornale ed esegue
+        maintenance.fn_analyze_statistiche(): ANALYZE del database e l'autoverifica sulle
+        tabelle rimaste senza statistiche. MARK_RAN in CI come i fratelli; li' il lavoro lo
+        fa la convergenza di ci_apply.
+      preConditions:
+        - onFail: MARK_RAN
+          onError: CONTINUE
+          and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_extension WHERE extname = 'pgagent'
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'maintenance'
+                     AND p.proname = 'proc_analyze_statistiche_job'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+                 DECLARE
+                   v_classid INTEGER;
+                   v_jobid   INTEGER;
+                 BEGIN
+                   -- 1) Classe 'Routine Maintenance', come tutta la famiglia
+                   SELECT jclid INTO v_classid
+                     FROM pgagent.pga_jobclass
+                    WHERE jclname = 'Routine Maintenance'
+                    LIMIT 1;
+
+                   IF v_classid IS NULL THEN
+                     INSERT INTO pgagent.pga_jobclass (jclname, jcldesc)
+                     VALUES ('Routine Maintenance', 'Default job class')
+                     RETURNING jclid INTO v_classid;
+                   END IF;
+
+                   -- 2) Idempotenza: si rifa' da zero, come le sorelle.
+                   DELETE FROM pgagent.pga_job WHERE jobname = 'analyze_statistiche';
+
+                   INSERT INTO pgagent.pga_job(jobjclid, jobname, jobdesc, jobenabled)
+                   VALUES (v_classid,
+                           'analyze_statistiche',
+                           'Statistiche del planner: ogni notte ANALYZE del database e '
+                           'autoverifica (maintenance.fn_analyze_statistiche). Una '
+                           'tabella rimasta senza statistiche fa fallire il job, '
+                           'nominata nel giornale.',
+                           true)
+                   RETURNING jobid INTO v_jobid;
+
+                   -- 3) Ogni notte alle 02:30.
+                   INSERT INTO pgagent.pga_schedule(
+                     jscjobid, jscname, jscenabled,
+                     jscminutes, jschours, jscweekdays,
+                     jscmonthdays, jscmonths, jscstart
+                   ) VALUES (
+                     v_jobid,
+                     'daily_0230',
+                     true,
+                     (SELECT array_agg((i = 30)::boolean) FROM generate_series(0,59) AS g(i)),
+                     (SELECT array_agg((i = 2)::boolean)  FROM generate_series(0,23) AS g(i)),
+                     array_fill(TRUE, ARRAY[7])::boolean[],
+                     array_fill(TRUE, ARRAY[32])::boolean[],
+                     array_fill(TRUE, ARRAY[12])::boolean[],
+                     now()
+                   );
+
+                   -- 4) Lo step passa dal giornale.
+                   INSERT INTO pgagent.pga_jobstep(
+                     jstjobid, jstname, jstkind, jstcode, jstdbname
+                   ) VALUES (
+                     v_jobid,
+                     'analyze',
+                     's',
+                     'CALL maintenance.proc_analyze_statistiche_job();',
+                     current_database()
+                   );
+                 END;
+                 $$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM pgagent.pga_job WHERE jobname = 'analyze_statistiche';
+
+  - changeSet:
+      id: 20261014-53-tag-pgagent-job-analyze-statistiche
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20261014-53-create-pgagent-job-analyze-statistiche

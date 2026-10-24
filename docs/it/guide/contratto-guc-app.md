@@ -120,13 +120,11 @@ state azzerate al passo 1. Quindi il DB legge valori vuoti: la tripla è `NULL`,
 `fn_current_identita_context()` non restituisce niente e le policy RLS fail-closed. Il valore
 che rende vera questa frase non è il `COMMIT` — è il reset.
 
-**Processi di sistema headless (canale batch).** I management command e i cron che operano via
-un ruolo `zeroerp_batch_<job>` (`BYPASSRLS` — vedi
-[provisioning-db-roles](/dev/backend/provisioning-db-roles)) **non settano i GUC d'identità**:
-non hanno una veste applicativa, e la RLS è bypassata **a livello di ruolo**, non via GUC.
-Possono settare il solo `app.jwt_user` (es. `BATCH_FATTURAZIONE`) per dare un attore
-riconoscibile ai trigger audit. Questo canale è riservato ai processi headless: **mai** usarlo
-per servire richieste web.
+**Processi di sistema headless.** I management command e i cron non hanno un canale a parte:
+si collegano come l'applicazione e, se toccano i dati di un'azienda, impostano gli stessi GUC
+d'identità di una richiesta web, con l'**utente tecnico** di quell'azienda
+([I lavori automatici](/guide/processi-automatici-classe-e-identita)). Nessun utente del
+database scavalca la RLS al posto loro ([provisioning-db-roles](/dev/backend/provisioning-db-roles)).
 
 **Canale della coda.** Il worker della coda di lavoro
 (`apps/core/services/coda_lavori/context.py`) usa **lo stesso** `JWT_GUC_RESET_SQL` del
@@ -179,7 +177,7 @@ accesso. Restano fuori dalle policy RLS.
 **Effetto:**
 
 * `fn_scope_ba_ownership(NULL, ...)` → `false` (short-circuit su identita inesistente)
-* `fn_scope_cliente_ownership(NULL, ...)` → `false`
+* `fn_get_identita_sr_perimetro(NULL, ...)` → `NULL`, e il confronto `fn_scope_sr_perimetro` → `false`
 * `fn_scope_ef_whitelist(NULL, ...)` → `false`
 * Policy RLS: `USING` clause falsa → **nessuna riga visibile**
 * Tabelle sotto RLS FORCE: `SELECT` ritorna 0 righe, `INSERT/UPDATE/DELETE` falliscono
@@ -252,7 +250,7 @@ Attenzione al **primo parametro**, perché le due famiglie non concordano:
 
 | Famiglia                           | Firma                                                                                                                                                                                                 | Cosa le si passa                                                                                                         |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| ownership (cliente, fornitore, BA) | `fn_scope_ba_ownership(p_identita_id, …)` · `fn_scope_cliente_ownership(p_identita_id, …)` · `fn_scope_fornitore_ownership(p_identita_id, …)` · `fn_scope_ba_ownership_via_fattura(p_identita_id, …)` | `app.current_identita_id`                                                                                                |
+| ownership (cliente, fornitore, BA) | `fn_get_identita_sr_perimetro(p_identita_id, …)` (il perimetro delle policy) · `fn_scope_ba_ownership(p_identita_id, …)` · `fn_scope_fornitore_ownership(p_identita_id, …)` | `app.current_identita_id`                                                                                                |
 | whitelist emittente                | `fn_scope_ef_whitelist(p_auth_user_id, p_emittente_fiscale_id)` · `_via_sr(p_auth_user_id, …)` · `_via_fattura(p_auth_user_id, …)`                                                                    | `app.current_user_id`; delegano a [fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope) |
 
 ⚠️ **Il primo parametro non è lo stesso nelle due famiglie** — `identità` per l'ownership,

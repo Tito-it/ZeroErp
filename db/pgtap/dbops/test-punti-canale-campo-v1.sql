@@ -376,9 +376,13 @@ SELECT is(
             ('script.trgfn_qta_from_operativa',                                   'E_QTA_OPERATIVA_NON_INTERA'),
             ('script.trgfn_qta_from_operativa',                                   'E_QTA_OPER_STEP_INVALIDO'),
             ('script.trgfn_qta_from_operativa',                                   'E_UOM_MISSING'),
-            ('vendite.trgfn_listini_righe_guard_tipologia',                       'E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE'),
+            -- rev 2026-10-13 (sera, Lotto 3c): vendite.trgfn_listini_righe_guard_tipologia
+            --   ritirato (20261013-61); E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE e' un motivo di
+            --   script.fn_check_articolo_riga, col campo nel dettaglio.
             ('vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile',         'E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO'),
-            ('script.trgfn_righe_guard_aggiunta_fuori_listino',                   'E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO'),  -- rev 2026-10-04: generica (contratto e offerta)
+            -- rev 2026-10-13 (sera): script.trgfn_righe_guard_aggiunta_fuori_listino
+            --   ritirato (20261013-57); E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO e' ora un
+            --   motivo di script.fn_check_articolo_riga, col campo nel dettaglio.
             ('vendite.trgfn_contratti_utilities_guard_tipo_classe',               'E_CONTRATTO_CLASSE_TIPO_INCOERENTE'),
             ('vendite.trgfn_contratti_utilities_guard_tipo_classe',               'E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI'),
             ('vendite.trgfn_contratti_utilities_guard_tipo_classe',               'E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI'),

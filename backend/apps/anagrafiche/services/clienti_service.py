@@ -13,20 +13,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.db import transaction
-
 from apps.anagrafiche.db.clienti_repository import (
     CLIENTE_UPDATE_ALLOWED,
     ClientiRepository,
 )
-from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.anagrafiche.error_codes import (
     E_ANAG_NOT_FOUND,
     E_ANAG_VALIDAZIONE,
     E_BA_ADMIN_GLOBALE_VIETATO,
 )
 from apps.anagrafiche.services._validators import create_with_constraint_mapping, optional_str, require_found
-from apps.anagrafiche.services.contatti_service import crea_contatto_inline_se_valido
+from apps.anagrafiche.services.contatti_service import VINCOLI_CONTATTO, contatto_inline_per_madre
+from apps.anagrafiche.services.soggetti_service import indirizzi_per_madre
 from apps.core.services.service_errors import ServiceError
 from apps.core.api.payload_validators import optional_int, optional_uuid
 from apps.core.services.error_manager import ErrorManager
@@ -45,6 +43,15 @@ _UPDATE_CLIENTE_KEYS: frozenset[str] = CLIENTE_UPDATE_ALLOWED | {"ba_categoria_c
 # Validator stateless del dominio (solo il codice errore): condivisibile.
 _V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
+# Il contratto della CREAZIONE di un cliente: le chiavi che `crea_cliente` legge.
+_CREATE_KEYS_CLIENTE: frozenset[str] = frozenset({
+    "soggetto_id", "utility_id", "istanza_utility_id", "billing_account_id",
+    "indirizzo_dettaglio_id", "ba_fatturazione_ordini", "ba_parent_account_id",
+    "ba_categoria_cliente_id", "termine_pagamento_id", "modalita_pagamento_id",
+    "garanzia_tipo", "servizio_da_fatturare", "garanzia_importo",
+    "contatto", "indirizzi",
+})
+
 
 class ClientiService:
     """Service per gestione clienti completa.
@@ -58,7 +65,6 @@ class ClientiService:
 
     def __init__(self) -> None:
         self._repo = ClientiRepository()
-        self._sogg_repo = SoggettiRepository()
 
     # =================================================================
     # Lista e dettaglio
@@ -146,21 +152,21 @@ class ClientiService:
             if isinstance(payload, dict)
             else {}
         )
+        # Il flag con la stessa lettura della creazione: un booleano JSON, o 400
+        # (prima passava crudo, e `"abc"` era un errore di cast del DB).
+        if "servizio_da_fatturare" in cliente_fields:
+            cliente_fields["servizio_da_fatturare"] = _V.require_bool(payload, "servizio_da_fatturare")
 
+        # Niente campi del cliente ne' categoria: 400, PRIMA della scrittura (il
+        # cliente esiste, l'ha verificato `get_cliente`: non e' un 404). La
+        # categoria `None` non e' un reset: vuol dire «non toccarla».
+        categoria = {} if ba_categoria is None else {"ba_categoria_cliente_id": ba_categoria}
+        _V.require_campi_da_aggiornare({**cliente_fields, **categoria})
         # Una sola SELECT fn_madre(): categoria BA + campi cliente in atomica.
-        result = self._repo.update_cliente_atomico(
+        self._repo.update_cliente_atomico(
             cliente_id,
             ba_categoria_cliente_id=ba_categoria,
             cliente_fields=cliente_fields,
-        )
-        # L'esistenza e' gia' garantita dal guard get_cliente sopra: se entrambi
-        # i flag sono False il cliente c'e' ma il payload non conteneva nessun
-        # campo editabile ne' la categoria (niente da aggiornare) -> validazione
-        # (400), non "non trovato" (404): il cliente esiste (review 2026-07-08).
-        ErrorManager.require(
-            result["categoria_aggiornata"] or result["campi_aggiornati"],
-            code=E_ANAG_VALIDAZIONE,
-            message="Nessun campo da aggiornare.",
         )
         return {"updated": True}
 
@@ -205,6 +211,11 @@ class ClientiService:
     def crea_cliente(
         self, payload: dict[str, Any], *, auth_user_id: int | None = None
     ) -> dict[str, Any]:
+        # ⛔ Una chiave fuori contratto e' un 400, come in modifica (2026-10-20):
+        #    prima la creazione SCARTAVA in silenzio anche i campi ritirati
+        #    (`tipo_gg_scadenza_ft`, `nr_giorni_scadenza`, ...) che la PATCH
+        #    gia' rifiutava.
+        _V.validate_allowed_keys(payload, allowed=_CREATE_KEYS_CLIENTE)
         soggetto_id = optional_uuid(payload, "soggetto_id")
         ErrorManager.require(soggetto_id is not None, code=E_ANAG_VALIDAZIONE,
                              message="soggetto_id obbligatorio.")
@@ -264,7 +275,7 @@ class ClientiService:
         if garanzia_tipo is not None:
             cliente_data["garanzia_tipo"] = garanzia_tipo
         if "servizio_da_fatturare" in payload:
-            cliente_data["servizio_da_fatturare"] = bool(payload["servizio_da_fatturare"])
+            cliente_data["servizio_da_fatturare"] = _V.require_bool(payload, "servizio_da_fatturare")
         if "garanzia_importo" in payload and payload["garanzia_importo"] is not None:
             cliente_data["garanzia_importo"] = payload["garanzia_importo"]
 
@@ -274,117 +285,77 @@ class ClientiService:
                              message="Utility non trovata o non attiva.")
         assert utility is not None
 
-        # Se creazione manuale (no istanza pre-esistente), l'utility non deve richiedere PDP
-        if istanza_utility_id is None:
+        # Se creazione manuale (nasce un'istanza fittizia: ne' istanza ne' BA
+        # indicati), l'utility non deve richiedere PDP. Con un BA indicato
+        # l'istanza e' la sua, e il PDP lo verifica `trgfn_clienti_sync_pdp`.
+        if istanza_utility_id is None and billing_account_id is None:
             ErrorManager.require(
                 not utility["richiede_pdp"], code=E_ANAG_VALIDAZIONE,
                 message="Utility con PDP richiesto: la creazione manuale non e' ammessa. "
                         "Utilizzare il motore pratiche.")
 
-        # Contatto e indirizzi inline (opzionali, per creazione da drawer)
-        contatto_data = payload.get("contatto")
-        indirizzi_data = payload.get("indirizzi", [])
+        # Contatto e indirizzi inline (opzionali, per creazione da drawer):
+        # pre-check per l'operatore, la scrittura e' della madre.
+        contatto = contatto_inline_per_madre(payload.get("contatto"))
+        indirizzi = indirizzi_per_madre(payload.get("indirizzi"))
 
-        with transaction.atomic():
-            return self._execute_creazione(
-                soggetto_id=soggetto_id,
-                utility_id=utility_id,
-                istanza_utility_id=istanza_utility_id,
-                billing_account_id=billing_account_id,
-                indirizzo_dettaglio_id=indirizzo_dettaglio_id,
-                ba_fatturazione_ordini=ba_fatturazione_ordini,
-                ba_parent_account_id=ba_parent_account_id,
-                ba_categoria_cliente_id=ba_categoria_cliente_id,
-                cliente_data=cliente_data,
-                contatto_data=contatto_data,
-                indirizzi_data=indirizzi_data,
+        # Le entita' indicate (da pratiche): si validano qui per il messaggio;
+        # il rifiuto vero lo danno FK composte e guard.
+        if istanza_utility_id is not None:
+            self._validate_istanza(istanza_utility_id, soggetto_id)
+        if billing_account_id is not None:
+            self._validate_billing_account(billing_account_id, istanza_utility_id, utility_id)
+            ba_nuovo: dict[str, Any] = {}
+            istanza_nuova: dict[str, Any] = {}
+        else:
+            ba_nuovo = {
+                k: v for k, v in {
+                    "categoria_cliente_id": ba_categoria_cliente_id,
+                    "fatturazione_ordini": ba_fatturazione_ordini,
+                    "parent_account_id": ba_parent_account_id,
+                }.items() if v is not None
+            }
+            istanza_nuova = (
+                {"indirizzo_dettaglio_id": indirizzo_dettaglio_id}
+                if istanza_utility_id is None and indirizzo_dettaglio_id is not None else {}
             )
 
-    # Scopo: Esegue la catena di creazione dentro la transazione atomica.
-    #        Step: ruolo CLIENTE → istanza → BA → cliente → contatto → indirizzi ruolo.
-    def _execute_creazione(
-        self, *,
-        soggetto_id: str,
-        utility_id: int,
-        istanza_utility_id: int | None,
-        billing_account_id: int | None,
-        indirizzo_dettaglio_id: int | None,
-        ba_fatturazione_ordini: str | None,
-        ba_parent_account_id: int | None,
-        ba_categoria_cliente_id: int | None = None,
-        cliente_data: dict[str, Any],
-        contatto_data: dict[str, Any] | None = None,
-        indirizzi_data: list[dict[str, Any]] | None = None,
-    ) -> dict[str, Any]:
-        # Step 1: Ruolo CLIENTE (get or create)
-        soggetto_ruolo_id = self._repo.get_or_create_ruolo_cliente(soggetto_id)
-
-        # Step 2: Istanza utility
-        if istanza_utility_id is not None:
-            istanza_utility_id = self._validate_istanza(istanza_utility_id, soggetto_id)
-        else:
-            istanza_utility_id = self._repo.create_istanza_fittizia(
-                soggetto_id=soggetto_id,
-                indirizzo_dettaglio_id=indirizzo_dettaglio_id)
-
-        # Step 3: Billing account
-        if billing_account_id is not None:
-            billing_account_id = self._validate_billing_account(
-                billing_account_id, istanza_utility_id, utility_id)
-        else:
-            # Pricing v5 STADIO 2: categoria_cliente_id e' obbligatoria; la
-            # validazione e' gia' stata effettuata in crea_cliente (no default
-            # implicito). La FK e' validata dal DB.
-            assert ba_categoria_cliente_id is not None
-            # Su un'istanza esistente la utility puo' avere gia' il suo BA (la
-            # coppia ne ha uno, `uq_billing_instance_utility`): allora il
-            # cliente si aggancia a quello, che il chiamante deve indicare.
-            billing_account_id = create_with_constraint_mapping(
-                lambda: self._repo.create_billing_account(
-                    istanza_utility_id=istanza_utility_id,
-                    soggetto_ruolo_id=soggetto_ruolo_id,
+        # ⭐ Una madre sola (2026-10-18, 2b-2, lotto 5): ruolo CL, istanza
+        #    fittizia, billing account, cliente, contatto e indirizzi del ruolo
+        #    in un'istruzione (`fn_crea_cliente`). Restano qui i pre-check e la
+        #    traduzione dei vincoli per nome.
+        cliente_id, billing_account_id, istanza_utility_id, soggetto_ruolo_id = (
+            create_with_constraint_mapping(
+                lambda: self._repo.crea_cliente(
+                    soggetto_id=soggetto_id,
                     utility_id=utility_id,
-                    fatturazione_ordini=ba_fatturazione_ordini,
-                    parent_account_id=ba_parent_account_id,
-                    categoria_cliente_id=ba_categoria_cliente_id),
+                    campi=cliente_data,
+                    billing_account=ba_nuovo,
+                    contatto=contatto,
+                    indirizzi=indirizzi,
+                    billing_account_id=billing_account_id,
+                    istanza_utility_id=istanza_utility_id,
+                    istanza=istanza_nuova,
+                ),
                 {
+                    # Su un'istanza esistente la utility puo' avere gia' il suo
+                    # BA (la coppia ne ha uno): allora il cliente si aggancia a
+                    # quello, che il chiamante deve indicare.
                     "uq_billing_instance_utility": (
                         "L'istanza ha gia' il billing account di questa utility: "
                         "indicarlo invece di crearne uno nuovo."
                     ),
+                    # Un cliente per billing account (R-8 di
+                    # brief-db-istanza-nasce-col-ba): il campo e' il BA scelto
+                    # dall'operatore; quando il BA nasce qui non puo' scattare.
+                    "uq_clienti_billing_account": (
+                        "Esiste gia' un cliente per questo billing account.",
+                        "billing_account_id",
+                    ),
+                    **VINCOLI_CONTATTO,
                 },
             )
-
-        # Step 4: Cliente — passa dati obbligatori + opzionali dal payload
-        cliente_id = create_with_constraint_mapping(
-            lambda: self._repo.create_cliente(
-                istanza_utility_id=istanza_utility_id,
-                billing_account_id=billing_account_id,
-                soggetto_ruolo_id=soggetto_ruolo_id,
-                **cliente_data,
-            ),
-            # Un cliente per billing account (R-8 di brief-db-istanza-nasce-col-ba,
-            # 2026-10-08): un'istanza ha tanti clienti quanti BA. Il campo e' il
-            # BA scelto dall'operatore (chiave del payload); quando il BA nasce
-            # qui il vincolo non puo' scattare.
-            {
-                "uq_clienti_billing_account": (
-                    "Esiste gia' un cliente per questo billing account.",
-                    "billing_account_id",
-                ),
-            },
         )
-
-        # Step 5: Contatto ruolo inline opzionale (EMPTY→skip, PARTIAL→errore, VALID→crea).
-        crea_contatto_inline_se_valido(
-            self._sogg_repo, soggetto_id, soggetto_ruolo_id, contatto_data)
-
-        # Step 6: Indirizzi ruolo (se forniti dal drawer inline — auto-clone incluso)
-        if indirizzi_data:
-            from apps.anagrafiche.services.soggetti_service import SoggettiService
-            SoggettiService().create_indirizzi_ruolo(
-                soggetto_ruolo_id, indirizzi_data, tipo_ruolo_codice="CL")
-
         return {
             "id": cliente_id,
             "istanza_utility_id": istanza_utility_id,
@@ -414,14 +385,17 @@ class ClientiService:
     # Scopo: Valida billing account pre-esistente: deve esistere e appartenere
     #        alla coppia indicata, cioe' all'istanza e alla utility.
     def _validate_billing_account(
-        self, billing_account_id: int, istanza_utility_id: int, utility_id: int,
+        self, billing_account_id: int, istanza_utility_id: int | None, utility_id: int,
     ) -> int:
         ba = self._repo.get_billing_account(billing_account_id)
         ErrorManager.require(ba is not None, code=E_ANAG_NOT_FOUND,
                              message="Billing account non trovato.")
         assert ba is not None
+        # Istanza non indicata: e' quella del BA (la legge la madre
+        # `fn_crea_cliente`), non c'e' una coppia da confrontare.
         ErrorManager.require(
-            ba["istanza_utility_id"] == istanza_utility_id, code=E_ANAG_VALIDAZIONE,
+            istanza_utility_id is None or ba["istanza_utility_id"] == istanza_utility_id,
+            code=E_ANAG_VALIDAZIONE,
             message="Il billing account non appartiene all'istanza indicata.")
         ErrorManager.require(
             ba["utility_id"] == utility_id, code=E_ANAG_VALIDAZIONE,

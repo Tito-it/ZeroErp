@@ -15,8 +15,8 @@ Indice test eseguiti:
  2) create_normalizza_la_colonna_serie_vuota_a_null
  2-bis) create_senza_billing_account_passa_e_arriva_null (P-9, 2026-09-14)
  3) create_passa_dalla_madre_e_riporta_i_registri_creati
- 4) duplicato_tabella_nomina_la_famiglia_che_la_occupa
- 5) duplicato_tabella_senza_occupante_dice_comunque_la_cosa_vera
+ 4) sorgente_inesistente_accende_codice_interno (FK verso le sorgenti, 2026-10-20)
+ 5) (ritirato il 2026-10-20: la tabella gia' numerata e' del guard, vedi il 7)
  6) duplicato_codice_interno_passa_dalla_mappa_generica
  7) i_codici_dei_guard_non_si_traducono_qui
  8) get_famiglia_inesistente_e_404
@@ -28,6 +28,7 @@ Indice test eseguiti:
 14) duplicato_codice_in_creazione_accende_codice_interno
 15) codice_in_creazione_rifiutato
 15-bis) attivo_in_modifica_rifiutato
+15-ter) schema_e_tabella_in_creazione_rifiutati (2026-10-20)
 """
 
 from unittest import TestCase
@@ -48,7 +49,7 @@ _REPO = FamiglieDocumentoRepository
 def _integrity(nome_vincolo: str) -> IntegrityError:
     return IntegrityError(
         f'duplicate key value violates unique constraint "{nome_vincolo}"\n'
-        f"DETAIL:  Key (schema_tabella, nome_tabella)=(vendite, fatture) already exists.",
+        f"DETAIL:  Key (codice_interno)=(PARCELLA) already exists.",
     )
 
 
@@ -69,19 +70,21 @@ def _famiglia(**over):
     return base
 
 
+# ⭐ Dal 2026-10-20 (brief-db-grammatica-unica-documenti 2c, G-5) la famiglia e'
+#    quella di una SORGENTE: `codice_interno` e' il suo codice, e schema e
+#    tabella non si passano piu' (la tabella e' la `target_table`).
 _CREATE_MINIMO = {
     "codice_interno": "PARCELLA",
     "descrizione": "Parcelle",
-    "schema_tabella": "vendite",
-    "nome_tabella": "parcelle",
     "colonna_numero": "numero",
 }
 
 
 class FamiglieValidazioneTests(TestCase):
     # 1. Il campo mancante si NOMINA: senza, l'operatore legge «obbligatorio» e
-    #    deve indovinare quale dei cinque (erano sei fino al 2026-09-14: il
-    #    billing account e' uscito dagli obbligatori con la P-9).
+    #    deve indovinare quale dei tre (erano sei fino al 2026-09-14, quando il
+    #    billing account e' uscito con la P-9; cinque fino al 2026-10-20, quando
+    #    schema e tabella sono passati alla sorgente).
     def test_create_senza_campi_obbligatori_e_400_col_campo(self):
         for campo in _CREATE_MINIMO:
             payload = {k: v for k, v in _CREATE_MINIMO.items() if k != campo}
@@ -143,37 +146,23 @@ class FamiglieValidazioneTests(TestCase):
 
 
 class FamiglieVincoliTests(TestCase):
-    # 4. ⭐ IL DUPLICATO DELLA TABELLA SI NOMINA. L'indice e' PARZIALE
-    #    (`WHERE attivo`), quindi la riga che blocca esiste ed e' attiva: un
-    #    «duplicato» nudo manderebbe a cercarla senza dire come si chiama.
-    @patch.object(
-        _REPO, "get_famiglia_attiva_per_tabella",
-        return_value={"codice_interno": "FATTURA", "descrizione": "Fatture"},
-    )
-    @patch.object(_REPO, "crea_famiglia",
-                  side_effect=_integrity("uq_famiglie_documento_tabella_attiva"))
-    def test_duplicato_tabella_nomina_la_famiglia_che_la_occupa(self, _crea, _occ):
+    # 4. ⭐ La famiglia e' quella di una SORGENTE: un codice che in
+    #    `config.sorgenti` non c'e' viola `fk_famiglie_documento_sorgenti`, e si
+    #    dice che cosa manca accendendo `codice_interno`. Il ramo e' vivo sulle
+    #    famiglie create spente, dove il guard dei riferimenti non guarda
+    #    (provato su dbdev il 2026-10-20).
+    @patch.object(_REPO, "crea_famiglia", side_effect=IntegrityError(
+        'insert or update on table "famiglie_documento" violates foreign key '
+        'constraint "fk_famiglie_documento_sorgenti"',
+    ))
+    def test_sorgente_inesistente_accende_codice_interno(self, _crea):
         with self.assertRaises(ServiceError) as ctx:
             FamiglieDocumentoService().crea_famiglia(
-                {**_CREATE_MINIMO, "nome_tabella": "fatture"},
+                {**_CREATE_MINIMO, "attivo": False},
             )
-        self.assertEqual(ctx.exception.code, "E_VENDITE_DUPLICATO")
-        self.assertIn("Fatture", ctx.exception.message)
-        self.assertIn("FATTURA", ctx.exception.message)
-        self.assertIn("vendite.fatture", ctx.exception.message)
-        self.assertEqual(ctx.exception.context.get("field"), "nome_tabella")
-
-    # 5. ⚠️ E se l'occupante non si trova — la riga concorrente e' stata spenta
-    #    fra il rifiuto e la lettura — si dice comunque la cosa vera, senza
-    #    inventare un nome.
-    @patch.object(_REPO, "get_famiglia_attiva_per_tabella", return_value=None)
-    @patch.object(_REPO, "crea_famiglia",
-                  side_effect=_integrity("uq_famiglie_documento_tabella_attiva"))
-    def test_duplicato_tabella_senza_occupante_dice_comunque_la_cosa_vera(self, *_):
-        with self.assertRaises(ServiceError) as ctx:
-            FamiglieDocumentoService().crea_famiglia(dict(_CREATE_MINIMO))
-        self.assertEqual(ctx.exception.code, "E_VENDITE_DUPLICATO")
-        self.assertIn("un'altra famiglia attiva", ctx.exception.message)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "codice_interno")
+        self.assertIn("sorgente", ctx.exception.message)
 
     # 6. L'altro UNIQUE passa dalla mappa generica e accende `codice_interno`.
     @patch.object(_REPO, "crea_famiglia",
@@ -184,18 +173,25 @@ class FamiglieVincoliTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_DUPLICATO")
         self.assertEqual(ctx.exception.context.get("field"), "codice_interno")
 
-    # 7. ⛔ I TRE CODICI DEI GUARD NON SI TRADUCONO QUI, ed e' la voce BE-F3.
+    # 7. ⛔ I QUATTRO CODICI DEI GUARD NON SI TRADUCONO QUI, ed e' la voce BE-F3
+    #    (il quarto, `..._TABELLA_GIA_NUMERATA`, dal 2026-10-20: era l'indice
+    #    `uq_famiglie_documento_tabella_attiva`, tradotto qui).
     #    Arrivano come **P0001** — li solleva `fn_log_and_raise_error` dentro un
     #    trigger — quindi non sono `IntegrityError` e devono risalire intatti al
     #    middleware, che legge il codice strutturato dall'eccezione. Tradurli qui
     #    vorrebbe dire riscrivere il messaggio del database accanto al suo.
-    @patch.object(_REPO, "crea_famiglia", side_effect=ProgrammingError(
-        "La famiglia di documento PARCELLA dichiara un riferimento che non "
-        "esiste: vendite.parcelle. E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE",
-    ))
-    def test_i_codici_dei_guard_non_si_traducono_qui(self, _crea):
-        with self.assertRaises(ProgrammingError):
-            FamiglieDocumentoService().crea_famiglia(dict(_CREATE_MINIMO))
+    def test_i_codici_dei_guard_non_si_traducono_qui(self):
+        for testo in (
+            "La famiglia di documento PARCELLA dichiara un riferimento che non "
+            "esiste: vendite.parcelle. E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE",
+            "La famiglia PARCELLA numererebbe la tabella vendite.fatture, che e' "
+            "gia' numerata dalla famiglia attiva FATTURA. "
+            "E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA",
+        ):
+            with self.subTest(testo=testo[-45:]), patch.object(
+                _REPO, "crea_famiglia", side_effect=ProgrammingError(testo),
+            ), self.assertRaises(ProgrammingError):
+                FamiglieDocumentoService().crea_famiglia(dict(_CREATE_MINIMO))
 
 
 class FamiglieLetturaEVerbiTests(TestCase):
@@ -287,3 +283,19 @@ class FamiglieCodiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         self.assertEqual(ctx.exception.context.get("unknown_keys"), ["attivo"])
         update.assert_not_called()
+
+    # 15-ter. ⛔ Il contratto di prima (schema e tabella) e' un 400 parlante, non
+    #     una madre chiamata con parametri che non ha piu': dal 2026-10-20 la
+    #     tabella la dice la sorgente (brief-db-grammatica-unica-documenti 2c).
+    @patch.object(_REPO, "crea_famiglia")
+    def test_schema_e_tabella_in_creazione_rifiutati(self, crea):
+        with self.assertRaises(ServiceError) as ctx:
+            FamiglieDocumentoService().crea_famiglia(
+                {**_CREATE_MINIMO, "schema_tabella": "vendite", "nome_tabella": "parcelle"},
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(
+            sorted(ctx.exception.context.get("unknown_keys")),
+            ["nome_tabella", "schema_tabella"],
+        )
+        crea.assert_not_called()

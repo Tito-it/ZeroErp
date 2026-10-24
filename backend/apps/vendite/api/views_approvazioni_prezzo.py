@@ -26,15 +26,16 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.api.endpoint_helpers import get_actor_user_id, handle_post_json
-from apps.core.api.payload_validators import qp_int, qp_str
+from apps.core.api.payload_validators import (
+    pagina_da_query,
+    qp_str,
+)
 from apps.core.api.success_responses import success_response
-from apps.core.db._helpers import limiti_pagina
 from apps.vendite.services import approvazioni_prezzo_service
 from apps.vendite.services._approvazioni_prezzo_constants import (
-    SORGENTE_CONTRATTO,
-    SORGENTE_OFFERTA,
+    META_SORGENTE_CONTRATTO,
+    META_SORGENTE_OFFERTA,
 )
 
 
@@ -158,7 +159,7 @@ class ApprovaPrezzoContrattoView(DomainAPIView):
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
                 nota=payload.get("nota") if isinstance(payload.get("nota"), str) else None,
-                sorgente=SORGENTE_CONTRATTO,
+                sorgente=META_SORGENTE_CONTRATTO,
             )
 
         return handle_post_json(request, handler=_handler)
@@ -189,7 +190,7 @@ class RifiutaPrezzoContrattoView(DomainAPIView):
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
                 motivazione=motivazione if isinstance(motivazione, str) else None,
-                sorgente=SORGENTE_CONTRATTO,
+                sorgente=META_SORGENTE_CONTRATTO,
             )
 
         return handle_post_json(request, handler=_handler)
@@ -221,7 +222,7 @@ class ApprovaPrezzoOffertaView(DomainAPIView):
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
                 nota=payload.get("nota") if isinstance(payload.get("nota"), str) else None,
-                sorgente=SORGENTE_OFFERTA,
+                sorgente=META_SORGENTE_OFFERTA,
             )
 
         return handle_post_json(request, handler=_handler)
@@ -252,7 +253,7 @@ class RifiutaPrezzoOffertaView(DomainAPIView):
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
                 motivazione=motivazione if isinstance(motivazione, str) else None,
-                sorgente=SORGENTE_OFFERTA,
+                sorgente=META_SORGENTE_OFFERTA,
             )
 
         return handle_post_json(request, handler=_handler)
@@ -289,11 +290,7 @@ class ApprovazioniPrezzoCodaView(DomainAPIView):
     )
     def get(self, request: Request):
         auth_user_id = get_actor_user_id(request)
-        # Clamp dal BB `limiti_pagina` (tetto `MAX_LIMIT` di core).
-        limit, offset = limiti_pagina(
-            qp_int(request.query_params.get("limit"), default=DEFAULT_LIMIT),
-            qp_int(request.query_params.get("offset"), default=0),
-        )
+        limit, offset = pagina_da_query(request.query_params)
         # `order_by`/`order_dir` passano al service, che li valida contro la
         # whitelist delle pratiche. Prima del 2026-08-02 la view non li leggeva
         # e il service inchiodava `data_insert desc`: la lista non ordinava.

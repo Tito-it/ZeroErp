@@ -14,9 +14,8 @@
 //    (stato/utility/date/listino/...). `data_da` col default standard di solito conta,
 //    così la lista si popola al mount.
 //  - `buildParams(f, searchTerm, ricerca)` → object: la mappatura
-//    filtri→query params, che differisce per dominio (es. preventivi usa
-//    page/page_size, offerte e ordini usano limit/offset; nomi filtri
-//    diversi). Riceve `searchTerm` già trimmato e `ricerca` =
+//    filtri→query params, che differisce per dominio (nomi filtri diversi;
+//    la finestra e' `limit`/`offset` per tutti dal 2026-10-21). Riceve `searchTerm` già trimmato e `ricerca` =
 //    `{ minCaratteri }`, la soglia DELLA LISTA: il caller la passa a
 //    `paramsRicerca(f, ricerca)`, che manda il termine solo da lì in su.
 //  - `fetchPage(params)` → Promise di una response axios con envelope standard
@@ -198,9 +197,9 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
   // ⚠️ Totale 0 con offset > 0: si rilegge da capo, che e' comunque la
   //    risposta giusta (la lista e' davvero vuota, o l'endpoint non sa contare
   //    oltre la fine).
-  // ⚠️ Legge `limit`/`offset` dei FILTRI: e' il contratto di chi usa questo BB
-  //    — anche gli endpoint a `page`/`page_size` li tengono cosi' e li
-  //    convertono in `buildParams`. Una lista senza `offset` non arretra.
+  // ⚠️ Legge `limit`/`offset` dei FILTRI: e' il contratto di chi usa questo BB,
+  //    ed e' la stessa lingua del backend (un dialetto solo dal 2026-10-21).
+  //    Una lista senza `offset` non arretra.
   // ⛔ Una rilettura sola, mai un ciclo: la seconda risposta si scrive com'e'.
   function offsetDiRientro() {
     const { offset, limit } = filters.value

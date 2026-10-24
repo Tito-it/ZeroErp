@@ -15,7 +15,6 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
-import { generateIdempotencyKey } from '../../core/utils/idempotency'
 import {
   createAdminDefinizione,
   deleteAdminDefinizione,
@@ -60,11 +59,10 @@ export const useUiDefinizioneAdminStore = defineStore('ui-definizione-admin', ()
     return res.data.data
   }
 
-  // Scopo: Crea una nuova definizione. Idempotency-Key generata qui
+  // Scopo: Crea una nuova definizione (Idempotency-Key dall'interceptor di `core/api.js`)
   //        (UNIQUE codice mappato lato BE).
   async function create(payload) {
-    const idempotencyKey = generateIdempotencyKey()
-    const res = await createAdminDefinizione(payload, idempotencyKey)
+    const res = await createAdminDefinizione(payload)
     emitDataChanged(TAB_ENTITIES.UI_DEFINIZIONE, res.data.data.id)
     return res.data.data
   }

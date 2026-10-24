@@ -14,8 +14,9 @@
 #    E leggeva `prezzo`, che il resolver chiama `prezzo_finale`. Solo una
 #    chiamata vera vede la giuntura fra il service e la funzione DB.
 #
-# ⭐ IL MONDO SI COSTRUISCE (regola zero), con i builder dei pgTAP: commessa con
-#    una riga, cliente con una categoria mappata su un listino, il listino con
+# ⭐ IL MONDO SI COSTRUISCE (regola zero), con i builder dei pgTAP (la riga la
+#    scrive `dbops.fn_pgtap_crea_commessa_attivita`, che passa dalla madre
+#    `vendite.fn_upsert_commessa_attivita`): commessa con una riga, cliente con una categoria mappata su un listino, il listino con
 #    due versioni — V1 (2020, chiusa) e V2 (dal 2021, aperta: e' quella in
 #    vigore alla data della riga). La riga nasce «registrata sotto V1»: e' la
 #    riga di un push fatto quando V1 era in vigore. Tutto in transazione
@@ -52,14 +53,14 @@ from apps.vendite.services.commesse_service import (
 )
 from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
 
+# Il prezzo con cui la riga arriva dal push, prima di ogni riallineamento.
+_PREZZO_PUSH = Decimal("10")
 _PREZZO_V2 = Decimal("46.00")
 _PREZZO_KIT = Decimal("75.00")
 
 _FIXTURE = (
     "CREATE TEMP TABLE _c ON COMMIT DROP AS"
     " SELECT * FROM dbops.fn_pgtap_crea_commessa('L0 prezzo riga')",
-    "CREATE TEMP TABLE _a ON COMMIT DROP AS"
-    " SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM _c), 10)",
     # Il cliente ha una categoria, e la categoria porta al listino.
     "CREATE TEMP TABLE _cat ON COMMIT DROP AS WITH ins AS ("
     " INSERT INTO anagrafiche.categorie_clienti (codice, codice_interno, descrizione, partecipa_promo)"
@@ -75,16 +76,37 @@ _FIXTURE = (
     " INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)"
     " SELECT listino_id, 'L0_V2', '2021-01-01'::date, 'BOZZA' FROM _l RETURNING id"
     ") SELECT id FROM ins",
-    "UPDATE catalogo.articoli SET listino_tipologia_id = (SELECT tipologia_id FROM _l)"
-    " WHERE id = (SELECT articolo_id FROM _a)",
+    # ⛔ L'articolo nasce GIA' della tipologia del listino, e solo dopo va sulla
+    #    riga di commessa: un articolo usato non cambia la tipologia (guard
+    #    `catalogo.trgfn_articoli_guard_struttura_se_usato`, A-10 del
+    #    2026-10-13). Per questo la tipologia la sceglie il builder alla
+    #    nascita, e il builder della riga riceve l'articolo dal chiamante.
+    "CREATE TEMP TABLE _art ON COMMIT DROP AS SELECT dbops.fn_pgtap_crea_articolo("
+    " ('PGT-L0P-' || substr(md5(clock_timestamp()::text || random()::text), 1, 12))::varchar,"
+    " false, p_listino_tipologia_id => (SELECT tipologia_id FROM _l)) AS articolo_id",
+    # La riga «registrata sotto V1»: e' la riga di un push fatto quando V1 era
+    # in vigore. La scrive il builder `dbops.fn_pgtap_crea_commessa_attivita`
+    # (contesto dalla commessa), che passa dalla madre
+    # `vendite.fn_upsert_commessa_attivita`: il chiamante sceglie l'articolo,
+    # la versione e il prezzo (brief-db-coerenza-listino-della-riga-di-
+    # commessa §5.3). ⛔ Il prezzo si passa anche se e' quello di default del
+    # builder: il test 1 lo rilegge, e non deve dipendere da un default altrui. Fino al 2026-10-16 qui c'era una copia della chiamata
+    # alla madre, con tutti i suoi parametri.
+    "CREATE TEMP TABLE _a ON COMMIT DROP AS"
+    " SELECT b.attivita_id, b.articolo_id, b.uom_id"
+    " FROM _l l, _art a, _c c,"
+    " dbops.fn_pgtap_crea_commessa_attivita("
+    "   c.commessa_id,"
+    f"   p_prezzo_snapshot     => {_PREZZO_PUSH},"
+    "   p_articolo_id         => a.articolo_id,"
+    "   p_listino_versione_id => l.listino_versione_id) b",
     "INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)"
     f" SELECT (SELECT id FROM _v2), a.articolo_id, a.uom_id, {_PREZZO_V2} FROM _a a",
     # Il kit P di cui l'articolo della riga e' componente: nel listino, il
     # componente dentro P costa diverso dal componente sciolto.
     "CREATE TEMP TABLE _p ON COMMIT DROP AS"
-    " SELECT dbops.fn_pgtap_crea_articolo('L0-KIT-' || substr(md5(random()::text), 1, 10), false) AS id",
-    "UPDATE catalogo.articoli SET listino_tipologia_id = (SELECT tipologia_id FROM _l),"
-    " is_composito = TRUE WHERE id = (SELECT id FROM _p)",
+    " SELECT dbops.fn_pgtap_crea_articolo('L0-KIT-' || substr(md5(random()::text), 1, 10), false,"
+    " p_listino_tipologia_id => (SELECT tipologia_id FROM _l), p_is_composito => TRUE) AS id",
     "INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)"
     " SELECT (SELECT id FROM _p), (SELECT articolo_id FROM _a), 1, '2020-01-01'",
     "INSERT INTO vendite.listini_righe_componenti (listino_versione_id, articolo_componente_id,"
@@ -96,9 +118,6 @@ _FIXTURE = (
     " emittente_soggetto_ruolo_id, classe_utenza_id, listino_id, valido_dal)"
     " SELECT (SELECT id FROM _cat), c.utility_id, c.emittente_soggetto_ruolo_id, NULL,"
     " (SELECT listino_id FROM _l), '2021-01-01' FROM _c c",
-    # La riga e' stata registrata quando era in vigore V1.
-    "UPDATE vendite.commesse_attivita SET listino_versione_id = (SELECT listino_versione_id FROM _l)"
-    " WHERE id = (SELECT attivita_id FROM _a)",
 )
 
 _RIGA = (
@@ -111,7 +130,7 @@ class PrezzoRigaCommessaDbTests(TestCase):
     """Riallinea, sblocca e varia: prezzo e provenienza dal resolver vero."""
 
     def setUp(self) -> None:
-        richiedi_db_provvisto("dbops.fn_pgtap_crea_commessa(text)")
+        richiedi_db_provvisto("dbops.fn_pgtap_crea_commessa(text,character varying,bigint,boolean,boolean)")
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
             for sql in _FIXTURE:
@@ -158,7 +177,7 @@ class PrezzoRigaCommessaDbTests(TestCase):
             (self.v1, self.v2),
         )
         self.assertEqual(Decimal(domanda["prezzo_ricalcolato"]), _PREZZO_V2)
-        self.assertEqual(self._riga()[0], Decimal("10"), "senza conferma non si scrive")
+        self.assertEqual(self._riga()[0], _PREZZO_PUSH, "senza conferma non si scrive")
 
         fatto = fn_riallinea_prezzo(
             self.commessa, self.attivita, {"conferma_versione_diversa": True},
@@ -254,17 +273,21 @@ class PrezzoRigaCommessaDbTests(TestCase):
             cur.execute(
                 "SELECT segment_key, quantita, competenza_mese, articolo_id, prezzo_snapshot,"
                 " uom_id, istanza_utility_id, data_attivita, competenza_dal, competenza_al,"
-                " tipo_doc_fiscale_id, valuta_id"
+                " tipo_doc_fiscale_id, valuta_id, sorgente_tipo_id, sorgente_uid"
                 " FROM vendite.commesse_attivita WHERE id = %s",
                 [self.attivita],
             )
             (
                 segment_key, quantita, competenza_mese, articolo_id, prezzo, uom_id,
                 istanza_utility_id, data_attivita, competenza_dal, competenza_al,
-                tipo_doc_fiscale_id, valuta_id,
+                tipo_doc_fiscale_id, valuta_id, sorgente_tipo_id, sorgente_uid,
             ) = cur.fetchone()
 
         # Il re-push della stessa riga (stesso segmento: ramo ON CONFLICT).
+        # ⛔ Con la SUA sorgente, come il push vero: dal 2026-10-12 una riga
+        #   NORMALE senza sorgente non entra
+        #   (`chk_commesse_attivita_senza_sorgente_onere_rettifica`,
+        #   brief-db-annullo-a-valle-riapre-a-monte §8.5).
         esito = CommesseRepository().batch_upsert_attivita([CommessaAttivitaInput(
             commessa_id=self.commessa,
             segment_key=segment_key,
@@ -281,6 +304,8 @@ class PrezzoRigaCommessaDbTests(TestCase):
             valuta_id=valuta_id,
             listino_versione_id=self.v2,
             listino_riga_id=self.riga_v2,
+            sorgente_tipo_id=sorgente_tipo_id,
+            sorgente_uid=sorgente_uid,
         )])
         self.assertEqual(esito.errors, [])
         self.assertEqual(self._listino_riga_della_commessa(), self.riga_v2)

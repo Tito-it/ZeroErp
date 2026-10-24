@@ -10,7 +10,8 @@
 **Approfondimento funzioni:**
 >
 • [script.fn_check_sorgente_chiudibile](/dbzero/script/funzioni/fn_check_sorgente_chiudibile)  
-> • [vendite.trgfn_doc_ritira_commessa_attivita](/dbzero/vendite/funzioni/trgfn_doc_ritira_commessa_attivita) — il motore  
+> • [vendite.trgfn_doc_guard_annullo_con_legami](/dbzero/vendite/funzioni/trgfn_doc_guard_annullo_con_legami) — l'avviso dell'annullo con legami  
+> • [vendite.fn_documento_ritira_legami](/dbzero/vendite/funzioni/fn_documento_ritira_legami) — il ritiro, dopo la conferma  
 
 ---
 
@@ -22,7 +23,10 @@ righe già `EMESSA`. Trigger **generico**, fase `_a10_`, `BEFORE UPDATE OF` sull
 colonna di stato della testata.
 
 > È **metà** della regola. L'altra metà — le righe `NON_EMESSA`, che il documento
-> **ritira** — è il motore in fase `_z90_`.
+> **ritira** — dal 2026-10-11 non è più un motore silenzioso in fase `_z90_`: le
+> righe `NON_EMESSA` sono **legami**, l'annullo che le ha davanti chiede conferma
+> (l'avviso [vendite.trgfn_doc_guard_annullo_con_legami](/dbzero/vendite/funzioni/trgfn_doc_guard_annullo_con_legami), fascia `_m10_`, che parla **dopo** questo freno) e le
+> ritira il verbo di annullo del documento (brief-db-annullo-documento-con-legami, D-5).
 > ⛔ **Non si fondono**: la cosa che *blocca* e la cosa che *agisce* sono due
 > decisioni diverse, e tenerle separate è ciò che permette di cambiarne una senza
 > toccare l'altra.
@@ -108,8 +112,10 @@ motivi** — cioè un freno che lascia passare tutto.
 
 Il conteggio gira sotto **ROW SECURITY** (`commesse_attivita` ha la RLS per
 emittente). Chi chiude un documento **senza vedere** le righe di commessa che ne
-sono nate **non viene fermato**, e il motore non le ritira: il documento si
-chiude e le righe restano dove sono.
+sono nate **non viene fermato** da questo freno. Le righe `NON_EMESSA` invece le
+conta l'avviso dell'annullo con un lettore `SECURITY DEFINER`
+([`vendite.fn_documento_legami`](/dbzero/vendite/funzioni/fn_documento_legami)),
+che la RLS non acceca (rev 2026-10-11).
 
 ⛔ È il comportamento di **oggi**, non un peggioramento — ma qui **non c'è
 nessuna chiave esterna a fare da rete**, quindi va scritto invece che dedotto.

@@ -61,7 +61,7 @@ export const NAV_ICONS = Object.freeze({
   CODE_LAVORO: 'pi pi-inbox',
   // Il gruppo Diagnostica di Strumenti (2026-10-06): il battito del sistema —
   // processi, audit, errori, email. Glifo non usato da altre chiavi.
-  // ⛔ Non `PROCESSI_AUTOMATICI` (`pi-cog`) ne' `ERROR_LOG`: sono due delle
+  // ⛔ Non `PROCESSI_AUTOMATICI` ne' `ERROR_LOG`: sono due delle
   //    voci DENTRO il gruppo, e il gruppo non e' nessuna di loro.
   DIAGNOSTICA: 'pi pi-wave-pulse',
   // Dominio INCASSI. ⚠️ Nessuna e' l'icona del dominio (`pi-credit-card`): una
@@ -92,7 +92,9 @@ export const NAV_ICONS = Object.freeze({
   // giornale ripete `pi-book` dei movimenti di magazzino: sono entrambi un
   // REGISTRO che si legge in ordine di tempo, e la voce sta in un altro
   // dominio.
-  ERROR_LOG: 'pi pi-exclamation-triangle',
+  // ⭐ Famiglia dei diari di Diagnostica (Tid 2026-10-24): base righe di
+  //    testo + simbolo di che cosa registrano (main.css, `app-nav-icon-log-*`).
+  ERROR_LOG: 'app-nav-icon app-nav-icon-log-errori',
   GIORNALE: 'pi pi-book',
   HOME: 'pi pi-home',
   BACK: 'pi pi-arrow-left',
@@ -115,12 +117,20 @@ export const NAV_ICONS = Object.freeze({
   // Le categorie clienti (T10, Tid 2026-09-27: tengono le etichette;
   // `MANAGE_ICONS.LOTTO_MAGAZZINO` e' passato al codice a barre).
   CATEGORIE_CLIENTI: 'pi pi-tags',
-  // Il registro delle modifiche: chi ha cambiato cosa. ⛔ Non `pi-history`,
-  // che e' `MANAGE_ICONS.VERSIONI` (le versioni di un listino).
-  AUDIT_LOG: 'pi pi-user-edit',
-  // Processi automatici: ingranaggi = «gira da solo». Distinta da
-  // CODE_LAVORO (la coda di ciò che sta girando adesso).
-  PROCESSI_AUTOMATICI: 'pi pi-cog',
+  // Il registro delle modifiche: chi ha cambiato cosa. Famiglia dei diari
+  // (vedi `ERROR_LOG`), simbolo la matita. ⛔ Non `pi-history`, che e'
+  // `MANAGE_ICONS.VERSIONI` (le versioni di un listino); ⛔ non piu'
+  // `pi-user-edit`, che diceva «modifica un utente», non «registro».
+  AUDIT_LOG: 'app-nav-icon app-nav-icon-log-audit',
+  // Tutte le email inviate. ⛔ Non `EMAIL`: e' la voce accanto (le email
+  // dell'operatore), e due voci dello stesso menu col segno solo non si
+  // distinguono.
+  EMAIL_LOG: 'app-nav-icon app-nav-icon-log-email',
+  // Processi automatici: il server che lavora da solo, a ciclo (server +
+  // frecce circolari, main.css `app-nav-icon-processi`, Tid 2026-10-24).
+  // Distinta da CODE_LAVORO (la coda di ciò che sta girando adesso).
+  // ⛔ Non piu' `pi-cog`: e' `CONFIG` e `MANAGE_ICONS.PERSONALIZZA`.
+  PROCESSI_AUTOMATICI: 'app-nav-icon app-nav-icon-processi',
   // Gli account email di invio. ⚠️ C20: stessa chiocciola di
   // `RECAPITO_ICONS.PEC` (icona di campo).
   ACCOUNT_EMAIL: 'pi pi-at',
@@ -408,7 +418,7 @@ export const DOMAIN_MENUS = {
         { key: 'error-log', icon: NAV_ICONS.ERROR_LOG, to: '/strumenti/diagnostica/error-log' },
         // Tutte le email inviate. ⚠️ Non e' la voce `email` qui sopra (le
         // email dell'operatore, con la RLS): stessa lista, un'altra porta.
-        { key: 'email-log', icon: NAV_ICONS.EMAIL, to: '/strumenti/diagnostica/email-log' }
+        { key: 'email-log', icon: NAV_ICONS.EMAIL_LOG, to: '/strumenti/diagnostica/email-log' }
       ]
     }
   ],

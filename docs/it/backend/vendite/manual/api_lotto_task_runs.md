@@ -9,10 +9,8 @@ Esporre via HTTP i task run runtime di un lotto per monitoraggio operativo e dia
 Endpoint di consultazione che invoca `fn_get_lotto_task_runs` in `apps/vendite/services/pipeline_service.py`,
 il quale legge dalla tabella `vendite.fatturazione_lotti_task_runs` tramite `VenditePipelineRepository`.
 
-View in `apps/vendite/api/views.py`:
-
-- `ApiLottoTaskRuns`
-- `ApiLottoTaskRuns`
+View in `apps/vendite/api/views.py`: `ApiLottoTaskRuns` (lista),
+`ApiLottoTaskRunsExport` (export).
 
 ## Input
 
@@ -20,8 +18,21 @@ View in `apps/vendite/api/views.py`:
 - Path canonico: `/api/v1/vendite/lotti/{lotto_id}/task-runs/`
 - Header sicurezza: `Authorization: Bearer <access_token>`
 - Path params: `lotto_id` (int)
-- Query params:
-  - `limit` (int, opzionale): numero massimo di task run restituiti (default 100, max 500)
+- Query params (tutti opzionali):
+  - `limit` (int): righe per pagina, default `100`, max `500`; fuori da 1..500
+    → 400 `E_VALIDATION_INPUT` (`limit_fuori_limiti_1_500`)
+  - `offset` (int): default `0`; negativo → 400 (`offset_negativo`)
+  - ⛔ `page`/`page_size` sono un **400** (dal 2026-10-21: fino a quel giorno si
+    leggeva `page_size`, con `limit` come sinonimo)
+  - `order_by` (string): passato intatto alla funzione DB
+    `vendite.fn_list_lotto_task_runs`, che possiede la whitelist
+  - `order_dir` (`asc` | `desc`, default `desc`; maiuscole e spazi ammessi)
+  - `task_stato` (string, multi-valore: ripetuto o separato da virgole):
+    `COMPLETATO` · `ERRORE` · `ANNULLATO`. Il vocabolario lo possiede la funzione
+    DB: uno stato che non conosce non aggiunge e non toglie nulla
+  - `solo_giro_corrente` (bool): solo l'ultima **passata** della pipeline
+    (ancora: l'ultimo `PIPELINE_STARTED`). ⚠️ Passata, non click: un
+    `run-until-done` ne incatena più d'una — leggere sempre `esclusi_count`
 
 ## Output
 
@@ -31,8 +42,12 @@ View in `apps/vendite/api/views.py`:
 {
   "data": {
     "lotto_id": 42,
-    "count": 3,
-    "task_runs": [
+    "count": 90,
+    "page": 1,
+    "page_size": 100,
+    "total_pages": 1,
+    "esclusi_count": 0,
+    "results": [
       {
         "id": 1,
         "lotto_id": 42,
@@ -41,34 +56,49 @@ View in `apps/vendite/api/views.py`:
         "task_code": "GENERA_FATTURE",
         "fase": "MAIN",
         "tentativo": 1,
-        "task_stato": "OK",
-        "started_at": "2026-02-20T10:00:00",
-        "ended_at": "2026-02-20T10:00:05",
+        "task_stato": "COMPLETATO",
+        "started_at": "2026-02-20T10:00:00+01:00",
+        "ended_at": "2026-02-20T10:00:05+01:00",
         "error_code": null,
         "error_message": null,
-        "meta": {}
+        "meta": {},
+        "giro_corrente": true
       }
-    ]
+    ],
+    "task_runs": [ "...stesse righe di results..." ]
   },
   "meta": { ... }
 }
 ```
 
-- `400`: `lotto_id` non valido, o `limit` fuori intervallo 1-500
-- `500`: errore applicativo gestito dal middleware
+- `count` è il **totale** del perimetro filtrato, non le righe della pagina;
+  `esclusi_count` = quante righe i filtri (`task_stato`, `solo_giro_corrente`)
+  lasciano fuori. `task_runs` è un alias di `results` tenuto per il consumatore
+  storico del drawer.
+- `400 E_PIPELINE_VALIDATION`: `lotto_id` ≤ 0, `order_dir` non ammessa
+- `400 E_VALIDATION_INPUT`: `limit`/`offset` non interi o fuori limiti,
+  `page`/`page_size` presenti (dal 2026-10-21 il service non ripete il
+  controllo della finestra con `E_PIPELINE_VALIDATION`)
+- `404 E_LOTTO_NON_TROVATO`: lotto inesistente o fuori perimetro — la testata si
+  legge prima dell'elenco. ⚠️ 2026-10-20: prima `200` con zero righe
 
 ## Regole
 
-- `lotto_id` obbligatorio e > 0 (validato dal servizio con `ErrorManager.require`).
-- `limit` deve essere compreso tra 1 e 500 (default 100); il repository applica `max(1, min(limit, 500))` come guard aggiuntivo.
-- I task run sono filtrati per `attivo = true` e ordinati per `started_at DESC, id DESC`.
 - `started_at` e `ended_at` sono restituiti in formato ISO 8601 (o `null`).
 - Endpoint di sola lettura: nessun `Idempotency-Key` richiesto.
 - Endpoint v1 richiede JWT.
 
+## Export
+
+- `GET /api/v1/vendite/lotti/{lotto_id}/task-runs/export/?formato=csv|xlsx`
+- Stessi filtri e ordinamento (`order_by`, `order_dir`, `task_stato`,
+  `solo_giro_corrente`), senza paginazione; stesso `404`.
+- Colonne dal catalogo `vendite.lotto_task_runs`; oltre `EXPORT_MAX_ROWS` →
+  `422 E_UI_EXPORT_LIMIT_EXCEEDED`.
+
 ## Dipendenze DB
 
-- `vendite.fatturazione_lotti_task_runs` (tabella sorgente)
+- `vendite.fatturazione_lotti_task_runs` (tabella sorgente), letta da `vendite.fn_list_lotto_task_runs`
 - `apps.vendite.db.pipeline_repository.VenditePipelineRepository.list_lotto_task_runs`
 
 ## Note di migrazione

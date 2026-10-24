@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_articoli_componenti_guard_is_composito()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_guard_is_composito()
  RETURNS trigger
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_guard_is_composito()
 IS 'Blocca articoli non compositi come prodotto in distinta base.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

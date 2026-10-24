@@ -51,7 +51,7 @@ Risponde alle domande:
 * **Insert-only**: la tabella non prevede UPDATE. Non ha colonne `data_update` / `user_update`.
 * **No storicizzazione**: essendo gia` un log, non necessita di snapshot temporali.
 * **Volume alto**: una riga per ogni request `/api/*`. Valutare partizionamento per mese se il volume lo richiede.
-* **Retention**: gestita da `cleanup_at` + job schedulato (pattern `dbops.fn_purge_cleanup_expired`).
+* **Retention**: 90 giorni (regola CLEANUP_AT id=14). La scadenza la scrive all'INSERT il trigger `trg_request_log_m50_cleanup_at_ins` e il job settimanale cancella le righe scadute; la tabella è nello scope delle automazioni dal 2026-10-23 (prima la regola non agiva). Dettaglio nella guida [Audit e tracciabilità](/guide/audit-e-tracciabilita).
 * **Grant**: automatici via CI grant dinamico su schema `dbops`.
 * **Sicurezza**: il middleware NON logga body request/response (dati sensibili + volume). Solo header-level.
 

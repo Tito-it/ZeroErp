@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LINK DOCUMENTO -> COMMESSA RESTA COME STORIA
+#   vendite.commesse_sorgenti: uq_commesse_sorgenti_src_uid (sorgente_tipo_id,
+#   sorgente_uid) -> uq_commesse_sorgenti_src_uid_commessa (sorgente_tipo_id,
+#   sorgente_uid, commessa_id).
+#   Brief: brief-db-annullo-a-valle-riapre-a-monte (§10, D-12 di Tid, R-13)
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Il 20260609-10 ha scritto «una sorgente in una sola commessa» come UNIQUE
+#   globale: un documento stava in una commessa PER SEMPRE, a qualunque stato.
+#   Era scritta per impedire un documento in due commesse VIVE; l'annullo della
+#   commessa (questo brief) e la sua chiusura non c'erano ancora nel disegno.
+#   Effetto: una commessa annullata, o chiusa dopo un invio parziale, teneva il
+#   documento agganciato, e il secondo invio (in una commessa nuova, perche'
+#   fn_get_or_create_commessa non riusa una commessa che chiude) moriva su
+#   E_COMMESSA_SORGENTE_ALTRA_COMMESSA (§10.1, controesempio del collaudo).
+#
+# ── LA FORMA (D-12) ─────────────────────────────────────────────────
+#   * il link RESTA dopo la chiusura e l'annullo: e' la storia che lineage e
+#     passaggi leggono (fn_documento_lineage_archi);
+#   * la tabella vieta solo il doppione sulla STESSA commessa;
+#   * «una sola commessa APERTA per documento» e' la regola della porta,
+#     vendite.fn_link_commessa_sorgente (20261012-45), sotto lock: un indice non
+#     puo' leggere lo stato della commessa, che sta in un'altra tabella.
+#   L'indice nuovo ha in testa (sorgente_tipo_id, sorgente_uid): i lettori che
+#   cercano per sorgente (la porta, il guard di fatturazione immediata, il
+#   lineage) continuano a entrare nell'indice.
+#
+# ── DATI ────────────────────────────────────────────────────────────
+#   Nessuno da migrare: chi rispetta il vincolo globale rispetta anche quello
+#   per commessa. Il rollback rimette il globale e FALLISCE se nel frattempo un
+#   documento e' stato rimandato in una seconda commessa: e' giusto, quella
+#   storia il vincolo vecchio non la sa tenere.
+#
+# ── CHI NOMINA IL VINCOLO VECCHIO ───────────────────────────────────
+#   Censito il 2026-10-12: nessun ON CONFLICT ON CONSTRAINT, nessun changeSet di
+#   80_data / 90_end. Lo nominano i COMMENT di fn_link_commessa_sorgente
+#   (riscritto in 20261012-45) e il manual di commesse_sorgenti (aggiornato).
+#   pgTAP: test-drop-uq-commesse-attivita-src-uid-partial-v1 test 4 (doppione
+#   sulla STESSA commessa, resta 23505) e
+#   test-fn-link-commessa-sorgente-multi-sorgente-v1 (riceve i casi nuovi).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261012-43-alter-commesse-sorgenti-unicita-per-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20261012-43-alter-commesse-sorgenti-unicita-per-commessa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.commesse_sorgenti: l'unicita' passa da (sorgente_tipo_id, sorgente_uid) a
+        (sorgente_tipo_id, sorgente_uid, commessa_id). Il link resta come storia dopo la
+        chiusura o l'annullo della commessa; «una sola commessa aperta» la fa valere la porta.
+        Brief: brief-db-annullo-a-valle-riapre-a-monte (D-12, R-13).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'vendite.commesse_sorgenti'::regclass
+                 AND conname = 'uq_commesse_sorgenti_src_uid';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.commesse_sorgenti
+                  DROP CONSTRAINT uq_commesse_sorgenti_src_uid;
+
+              ALTER TABLE vendite.commesse_sorgenti
+                  ADD CONSTRAINT uq_commesse_sorgenti_src_uid_commessa
+                  UNIQUE (sorgente_tipo_id, sorgente_uid, commessa_id);
+
+              COMMENT ON CONSTRAINT uq_commesse_sorgenti_src_uid_commessa ON vendite.commesse_sorgenti IS
+                  'Un documento sorgente compare una volta sola per commessa. Non dice «una sola commessa per documento»: il link resta come storia dopo la chiusura o l''annullo della commessa, e «una sola commessa APERTA» la fa valere vendite.fn_link_commessa_sorgente, sotto lock (un indice non legge lo stato della commessa). Sostituisce uq_commesse_sorgenti_src_uid (20260609-10). 2026-10-12, brief-db-annullo-a-valle-riapre-a-monte D-12.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.commesse_sorgenti
+                  DROP CONSTRAINT IF EXISTS uq_commesse_sorgenti_src_uid_commessa;
+              -- ⚠️ Fallisce se un documento e' gia' in due commesse: il vincolo
+              --    vecchio non sa tenere quella storia.
+              ALTER TABLE vendite.commesse_sorgenti
+                  ADD CONSTRAINT uq_commesse_sorgenti_src_uid
+                  UNIQUE (sorgente_tipo_id, sorgente_uid);

@@ -22,6 +22,7 @@ from typing import Any
 
 from rest_framework.request import Request
 
+from apps.config.sorgenti import SORGENTE_CONTRATTO
 from apps.documenti.api.sorgente_documenti_views import (
     build_documenti_sorgente_views,
 )
@@ -31,8 +32,6 @@ from apps.documenti.services.document_generation_service import (
 from apps.vendite.db.contratti_repository import ContrattiRepository
 from apps.vendite.services.contratti_service import ContrattiService
 
-# Codice sorgente CONTRATTO -> id risolto runtime via repo.
-_CODICE_SORGENTE_CONTRATTO = "CONTRATTO"
 
 
 # Scopo: Closure di dominio per il factory: contesto minimo (id, uid,
@@ -57,7 +56,7 @@ def _emetti_call(request: Request, contratto_id: int) -> dict[str, Any]:
 
 _views = build_documenti_sorgente_views(
     schema_prefix="Contratto",
-    sorgente_codice=_CODICE_SORGENTE_CONTRATTO,
+    sorgente_codice=SORGENTE_CONTRATTO,
     not_found_message="Contratto non trovato.",
     emittente_message="Emittente fiscale non risolto per il contratto.",
     get_entity=_get_entity,

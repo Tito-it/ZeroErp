@@ -1,0 +1,257 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PROFILO SUPER_ADMIN DELLA RISORSA UMANA: DAL LETTORE
+#   anagrafiche.fn_crea_risorsa_umana_v2: il profilo da legare a un operatore
+#   super admin lo risolve config.fn_profilo_super_admin_id (20261019-16)
+#   invece di una ricerca sua. Comportamento invariato (stessa regola, stesso
+#   codice, stesso momento: prima di ogni scrittura).
+#   R-BE-11 del BE (regola del 2, ok Tid 2026-10-18),
+#   brief-db-processi-accensione-per-ambiente §6.10 (richiesta) e §6.15
+#   (risposta).
+#
+# -- LA FIRMA SI ANCORA ----------------------------------------------------------
+#   Era a tipi nudi; ora %TYPE sulle colonne di cui i parametri sono il
+#   riflesso. Ogni ancora risolve al tipo di prima (verificato), quindi e' la
+#   STESSA funzione, non un overload. p_auth_user_id si ancora alla veste
+#   (identita_digitali.auth_user_id), mai a django.*; p_is_super_admin resta
+#   boolean (un interruttore del chiamante).
+#
+# -- NESSUNA preCondition SUL LETTORE ---------------------------------------------
+#   20_code/anagrafiche gira PRIMA di 20_code/config: su un database nuovo il
+#   lettore non c'e' ancora quando questo changeSet gira. Il corpo plpgsql lo
+#   risolve alla prima esecuzione.
+#
+#   Corpo di partenza: 20261018-45 (= doc auto-generata = corpo vivo, md5
+#   verificato il 2026-10-18).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261019-17-update-fn-crea-risorsa-umana-v2-profilo-dal-lettore-mctit.yaml
+
+  - changeSet:
+      id: 20261019-17-update-fn-crea-risorsa-umana-v2-profilo-dal-lettore
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        anagrafiche.fn_crea_risorsa_umana_v2: il profilo SUPER_ADMIN lo risolve
+        config.fn_profilo_super_admin_id (regola del 2); la firma si ancora con %TYPE.
+        Comportamento invariato. R-BE-11 (ok Tid 2026-10-18),
+        brief-db-processi-accensione-per-ambiente §6.15.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(
+                  p_soggetto_id            anagrafiche.soggetti_ruoli.soggetto_id%TYPE DEFAULT NULL,
+                  p_qualifica_id           anagrafiche.risorse_umane.qualifica_id%TYPE DEFAULT NULL,
+                  p_unita_organizzativa_id anagrafiche.risorse_umane.unita_organizzativa_id%TYPE DEFAULT NULL,
+                  p_valido_dal             anagrafiche.risorse_umane.valido_dal%TYPE DEFAULT script.fn_data_operativa(),
+                  p_valido_al              anagrafiche.risorse_umane.valido_al%TYPE DEFAULT NULL,
+                  -- l'auth_user di Django: ancorato alla colonna della veste, mai a
+                  -- django.* (%TYPE su django si risolve al CREATE, prima di manage.py migrate)
+                  p_auth_user_id           anagrafiche.identita_digitali.auth_user_id%TYPE DEFAULT NULL,
+                  -- un interruttore del chiamante: nessuna colonna di cui sia il riflesso
+                  p_is_super_admin         boolean DEFAULT false,
+                  p_attivo                 anagrafiche.risorse_umane.attivo%TYPE DEFAULT true)
+               RETURNS anagrafiche.risorse_umane.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_sr_id        anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_ru_id        anagrafiche.risorse_umane.id%TYPE;
+                  v_identita_id  anagrafiche.identita_digitali.id%TYPE;
+                  v_profilo_sa   config.profili_accesso_bindings.profilo_accesso_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo (v2 multi-face native, Chunk A Fase 7 2026-04-29):
+                  --   Crea risorsa_umana + identita_digitali OPERATORE
+                  --   (+ binding SUPER_ADMIN se p_is_super_admin=true).
+                  --   Niente piu' enum legacy ruolo_sistema; il chiamante
+                  --   esprime direttamente "is super admin?" + "attiva?".
+                  --
+                  -- Body identico a v1 salvo:
+                  --   Step 3: identita_digitali.attivo = p_attivo
+                  --           (era hardcoded true in v1).
+                  --   Step 4: IF p_is_super_admin invece di
+                  --           IF p_ruolo_sistema='ADMIN'.
+                  -- =========================================================
+
+                  -- Validazione parametri obbligatori
+                  IF p_soggetto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_soggetto_id'),
+                          NULL::uuid, 'Soggetto obbligatorio.'
+                      );
+                  END IF;
+
+                  IF p_qualifica_id IS NULL OR p_qualifica_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_qualifica_id'),
+                          NULL::uuid, 'Qualifica obbligatoria.'
+                      );
+                  END IF;
+
+                  -- Guard prerequisiti
+                  IF NOT EXISTS (
+                      SELECT 1 FROM config.qualifiche
+                       WHERE id = p_qualifica_id AND attivo = true
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('qualifica_id', p_qualifica_id),
+                          NULL::uuid, 'Qualifica non trovata o non attiva.'
+                      );
+                  END IF;
+
+                  IF p_unita_organizzativa_id IS NOT NULL THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM config.unita_organizzative
+                           WHERE id = p_unita_organizzativa_id AND attivo = true
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                              'E_ADMIN_UO_NON_TROVATA',
+                              jsonb_build_object('campo', 'unita_organizzativa_id', 'unita_organizzativa_id', p_unita_organizzativa_id),
+                              NULL::uuid,
+                              'Unita'' organizzativa non trovata o non attiva.'
+                          );
+                      END IF;
+                  END IF;
+
+                  IF p_auth_user_id IS NOT NULL THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM django.auth_user WHERE id = p_auth_user_id
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                              'E_ADMIN_VALIDAZIONE',
+                              jsonb_build_object('auth_user_id', p_auth_user_id),
+                              NULL::uuid, 'auth_user non trovato.'
+                          );
+                      END IF;
+                  END IF;
+
+                  -- ⛔ Il profilo SUPER_ADMIN si RISOLVE, non si scrive (rev 20260923-10):
+                  --   per tipo, fra i profili attivi, esattamente uno, PRIMA di ogni
+                  --   scrittura. ⭐ Dal 20261019-17 la regola sta nel lettore
+                  --   config.fn_profilo_super_admin_id (R-BE-11, regola del 2): era scritta
+                  --   qui e nel backend.
+                  IF p_is_super_admin AND p_auth_user_id IS NOT NULL THEN
+                      v_profilo_sa := config.fn_profilo_super_admin_id();
+                  END IF;
+
+                  -- Step 1: soggetto_ruolo RIS_UMANA
+                  SELECT script.fn_get_or_create_soggetto_ruolo(
+                      p_soggetto_id, 'RIS_UMANA'
+                  ) INTO v_sr_id;
+
+                  -- ⛔ Una persona e' una risorsa umana sola (uq_risorse_umane_soggetto_ruolo,
+                  --   non parziale: vale anche per una risorsa spenta). Senza questo guard il
+                  --   secondo operatore sullo stesso soggetto arrivava al client come 23505,
+                  --   E_DATABASE. Il rimedio e' sulla risorsa che c'e' (reinvito, riattivazione),
+                  --   non una seconda. (rev 20261002-01)
+                  -- ⚠️ Il controllo e' sulla CHIAVE del vincolo (soggetto_ruolo_id), non su
+                  --   attivo: una risorsa disattivata occupa lo slot come una attiva.
+                  -- ⚠️ Il segnaposto e' la frase dell'operatore: ragione_sociale_completa e'
+                  --   nullable, quindi si ripiega su nome e cognome, poi su «Il soggetto» —
+                  --   mai una frase con un buco al posto del nome.
+                  IF EXISTS (
+                      SELECT 1 FROM anagrafiche.risorse_umane ru
+                       WHERE ru.soggetto_ruolo_id = v_sr_id
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_RISORSA_UMANA_GIA_PRESENTE',
+                          jsonb_build_object('campo',             'soggetto_id',
+                                             'soggetto_id',       p_soggetto_id,
+                                             'soggetto_ruolo_id', v_sr_id),
+                          NULL::uuid,
+                          COALESCE(
+                              (SELECT COALESCE(NULLIF(btrim(s.ragione_sociale_completa), ''),
+                                               NULLIF(btrim(concat_ws(' ', s.nome, s.cognome)), ''),
+                                               NULLIF(btrim(s.ragione_sociale), ''))
+                                 FROM anagrafiche.soggetti s
+                                WHERE s.id = p_soggetto_id),
+                              'Il soggetto'));
+                  END IF;
+
+                  -- Step 2: risorsa umana
+                  INSERT INTO anagrafiche.risorse_umane (
+                      soggetto_ruolo_id, soggetto_id, qualifica_id,
+                      unita_organizzativa_id, valido_dal, valido_al, attivo
+                  )
+                  VALUES (
+                      v_sr_id, p_soggetto_id, p_qualifica_id,
+                      p_unita_organizzativa_id, p_valido_dal, p_valido_al, true
+                  )
+                  RETURNING id INTO v_ru_id;
+
+                  -- Step 3: identita_digitali OPERATORE.
+                  -- Differenza vs v1: attivo = p_attivo (default true).
+                  IF p_auth_user_id IS NOT NULL THEN
+                      INSERT INTO anagrafiche.identita_digitali (
+                          soggetto_ruolo_id,
+                          auth_user_id,
+                          ruolo_applicativo,
+                          attivo,
+                          valido_dal,
+                          valido_al
+                      )
+                      VALUES (
+                          v_sr_id,
+                          p_auth_user_id,
+                          'OPERATORE'::config.ruolo_applicativo,
+                          p_attivo,
+                          COALESCE(p_valido_dal, (SELECT script.fn_data_operativa())),
+                          p_valido_al
+                      )
+                      RETURNING id INTO v_identita_id;
+
+                      -- Step 4: binding SUPER_ADMIN se richiesto, sul profilo
+                      -- risolto nei guard (rev 20260923-10: era l'id 9100 cablato).
+                      -- Differenza vs v1: predicato boolean diretto invece
+                      -- di confronto con enum legacy.
+                      IF p_is_super_admin THEN
+                          -- rev 2026-10-18: il BB del binding (regola del 2);
+                          -- attivo = true e' il DEFAULT della colonna.
+                          PERFORM config.fn_lega_profilo_identita(v_profilo_sa, v_identita_id);
+                      END IF;
+                  END IF;
+
+                  RETURN v_ru_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(
+                      anagrafiche.soggetti_ruoli.soggetto_id%TYPE,
+                      anagrafiche.risorse_umane.qualifica_id%TYPE,
+                      anagrafiche.risorse_umane.unita_organizzativa_id%TYPE,
+                      anagrafiche.risorse_umane.valido_dal%TYPE,
+                      anagrafiche.risorse_umane.valido_al%TYPE,
+                      anagrafiche.identita_digitali.auth_user_id%TYPE,
+                      boolean,
+                      anagrafiche.risorse_umane.attivo%TYPE) IS
+                  'Building block multi-face native (v2 Chunk A Fase 7 2026-04-29). Sostituisce v1 (firma con p_ruolo_sistema config.ruolo_sistema) con p_is_super_admin/p_attivo. Body invariato salvo: identita_digitali.attivo=p_attivo (era hardcoded true) e binding SUPER_ADMIN gated su p_is_super_admin invece di p_ruolo_sistema=ADMIN. v1 droppata in Chunk B post BE migrato. ⛔ Rev 20260923-10: il profilo del binding SUPER_ADMIN si RISOLVE per config.profili_accesso.tipo = SUPER_ADMIN fra i profili attivi (chiave stabile, linee-guida-sql §6d), non piu'' con l''id cablato 9100; se i profili attivi di quel tipo non sono esattamente uno solleva E_CONFIG_MANCANTE prima di ogni scrittura. ⛔ Rev 20261002-01: una persona e'' una risorsa umana sola (uq_risorse_umane_soggetto_ruolo, anche spenta): se il soggetto lo e'' gia'' solleva E_RISORSA_UMANA_GIA_PRESENTE (campo soggetto_id) invece di lasciar arrivare il 23505; vale per ogni chiamante, non solo per fn_crea_operatore_v2. Rev 2026-10-18: il binding SUPER_ADMIN lo scrive il BB config.fn_lega_profilo_identita (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 8); comportamento invariato. ⭐ Rev 2026-10-18 (20261019-17, R-BE-11, regola del 2): il profilo SUPER_ADMIN lo risolve config.fn_profilo_super_admin_id, sede unica della regola che era scritta qui e nel backend; la firma si ancora con %TYPE. Comportamento invariato.';
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback: il corpo di 20261018-45 riporterebbe la seconda copia
+              -- della regola (R-BE-11). Se serve davvero, ri-applicare 20261018-45.
+              SELECT 1;

@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LE STATISTICHE PASSANO DAL GIORNALE — il wrapper del job pgAgent.
+#   Brief: brief-db-statistiche-tabelle-job-notturno §4.1 (D15)
+#
+# Lo step del job `analyze_statistiche` e la convergenza in CI
+# (90_end/ci_apply/20260926-10, da dbops.processi.ci_procedura) non chiamano il
+# verbo direttamente: chiamano questa procedura, che lo esegue DENTRO
+# maintenance.fn_run_and_log. Senza il giornale il job sarebbe invisibile al
+# panorama, e un'autoverifica rossa non lascerebbe traccia.
+#
+# ⚠️ `p_jobname` e' il CODICE DEL PROCESSO (`analyze_statistiche`), che e' anche
+#   il jobname pgAgent: e' cosi' che fn_run_and_log risale all'attore, e che la
+#   convergenza in CI riconosce la riga di questo giro.
+# ⚠️ Nessun COMMIT: la CI la chiama dentro la transazione del changeSet.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261014-52-create-proc-analyze-statistiche-job-mctit.yaml
+
+  - changeSet:
+      id: 20261014-52-create-proc-analyze-statistiche-job
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.proc_analyze_statistiche_job(): il wrapper che esegue
+        maintenance.fn_analyze_statistiche() PASSANDO dal giornale (fn_run_and_log), sotto il
+        codice del processo analyze_statistiche. Lo chiamano il job pgAgent e la convergenza
+        in CI. Brief: brief-db-statistiche-tabelle-job-notturno.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'maintenance' AND p.proname = 'fn_analyze_statistiche'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'maintenance' AND p.proname = 'fn_run_and_log'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_analyze_statistiche_job()
+               LANGUAGE plpgsql
+              AS $procedure$
+              BEGIN
+                  -- ⚠️ `p_jobname` e' il CODICE DEL PROCESSO: e' cosi' che
+                  --   fn_run_and_log risale all'attore (cerca in
+                  --   dbops.processi.codice). Qui coincide col jobname pgAgent.
+                  PERFORM maintenance.fn_run_and_log(
+                      p_jobname  := 'analyze_statistiche',
+                      p_stepname := 'analyze',
+                      p_sql      := 'SELECT maintenance.fn_analyze_statistiche();');
+              END
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_analyze_statistiche_job()
+              IS 'Wrapper del job analyze_statistiche: esegue maintenance.fn_analyze_statistiche() PASSANDO dal giornale, sotto il codice del processo. Lo chiamano il job pgAgent notturno e, in CI, la convergenza di 90_end/ci_apply/20260926-10 (dbops.processi.ci_procedura). ⭐ Il giornale e'' cio'' che rende visibile un''autoverifica rossa: fn_run_and_log scrive la riga del fallimento fuori transazione. Nessun COMMIT: in CI gira dentro la transazione del changeSet. Brief: brief-db-statistiche-tabelle-job-notturno (D15).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP PROCEDURE IF EXISTS maintenance.proc_analyze_statistiche_job();

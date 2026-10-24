@@ -90,27 +90,23 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   dal 20261007-54 e' una FK, che scatta DOPO: vinceva l'unique (23505) e la FK
 --   non veniva mai esercitata.
 
-CREATE TEMP TABLE tmp_fonte_arts AS
-SELECT g AS n, dbops.fn_pgtap_crea_articolo('PGTAP-FONTE-EROG-' || g) AS articolo_id
-  FROM generate_series(0, 6) g;
-
 -- ⚠️ Rev 2026-10-07 (sera, brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): la
 --   riga sta nel PERIMETRO dell'articolo (vendite.fn_articolo_erogazioni). L'articolo del
---   builder e' MERCE senza tipologia, che ammette solo UNA_TANTUM: a ogni ruolo si da' la
---   classificazione che ammette la combinazione del suo caso. Il cliente e' ENE (prima
---   utility), che ammette la tipologia CONSUMO.
+--   builder e' MERCE senza tipologia, che ammette solo UNA_TANTUM: a ogni ruolo si da',
+--   alla nascita, la classificazione che ammette la combinazione del suo caso. Il cliente
+--   e' ENE (prima utility), che ammette la tipologia CONSUMO.
 --     n = 0     MERCE: le sette combinazioni fuori vocabolario sono anche fuori perimetro
 --     n = 1, 4, 6  natura SERVIZIO_RICORRENTE: CANONE/FISSA (e CONSUMO/MANUALE)
 --     n = 2, 5  tipologia CONSUMO: CONSUMO/LETTURE
 --     n = 3     MERCE: ORARIO non lo ammette nessuno (non esposto, brief §B.4)
-UPDATE catalogo.articoli
-   SET natura_vendita_id = (SELECT id FROM config.nature_vendita
-                             WHERE codice_interno = 'SERVIZIO_RICORRENTE')
- WHERE id IN (SELECT articolo_id FROM tmp_fonte_arts WHERE n IN (1, 4, 6));
-
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT id FROM config.listini_tipologie WHERE codice = 'CONSUMO')
- WHERE id IN (SELECT articolo_id FROM tmp_fonte_arts WHERE n IN (2, 5));
+CREATE TEMP TABLE tmp_fonte_arts AS
+SELECT g AS n, dbops.fn_pgtap_crea_articolo('PGTAP-FONTE-EROG-' || g,
+           p_listino_tipologia_id => CASE WHEN g IN (2, 5) THEN
+               (SELECT id FROM config.listini_tipologie WHERE codice = 'CONSUMO') END,
+           p_natura_vendita_id    => CASE WHEN g IN (1, 4, 6) THEN
+               (SELECT id FROM config.nature_vendita
+                 WHERE codice_interno = 'SERVIZIO_RICORRENTE') END) AS articolo_id
+  FROM generate_series(0, 6) g;
 
 CREATE TEMP TABLE tmp_fonte_ctx AS
 SELECT

@@ -1,0 +1,196 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ fn_run_and_log SCRIVE IL RUOLO DELLA CORSA.
+#   Brief: brief-db-ruoli-di-sistema §7 D-5
+#
+# Le due INSERT (la corsa e la riga saltata) scrivono
+# ruolo_sessione = session_user. ⚠️ session_user e non current_user: le
+# procedure dei job sono SECURITY DEFINER del proprietario (20261014-55), e
+# dentro di loro current_user e' sempre il proprietario.
+# La riga di un FALLIMENTO non passa di qui: la scrive
+# maintenance.fn_job_run_log_failure (20261015-03), che legge session_user da
+# se'. Firma invariata, quindi nessun chiamante cambia.
+#
+# ⚠️ Corpo dal doc auto-generato (allineato al database: 20261010-22), cambiano
+#   solo le due INSERT. COMMENT vivo con la revisione in coda.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261015-02-update-fn-run-and-log-ruolo-sessione-mctit.yaml
+
+  - changeSet:
+      id: 20261015-02-update-fn-run-and-log-ruolo-sessione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.fn_run_and_log: le due INSERT nel giornale scrivono ruolo_sessione =
+        session_user. Firma invariata. Brief: brief-db-ruoli-di-sistema D-5.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: maintenance
+            tableName: job_run_log
+            columnName: ruolo_sessione
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION maintenance.fn_run_and_log(p_jobname text, p_stepname text, p_sql text, p_lock_key bigint DEFAULT NULL::bigint, p_processo_codice text DEFAULT NULL::text, p_auth_user_id integer DEFAULT NULL::integer)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+                DECLARE
+                  v_id         maintenance.job_run_log.id%TYPE;
+                  v_rows       maintenance.job_run_log.rows_affected%TYPE := 0;
+                  v_locked     boolean := false;
+                  -- Attore risolto: passato dal chiamante, oppure derivato dal
+                  -- jobname (vedi intestazione: qui la derivazione e' completa).
+                  v_processo   maintenance.job_run_log.processo_codice%TYPE;
+
+                  -- ⭐ Le coordinate della corsa, per poterla riscrivere FUORI
+                  --   dalla transazione quando questa verra' annullata.
+                  v_run_uuid   maintenance.job_run_log.run_uuid%TYPE;
+                  v_started_at maintenance.job_run_log.started_at%TYPE;
+                  v_origine    maintenance.job_run_log.origine%TYPE;
+
+                  -- diagnosi errori
+                  v_errmsg     maintenance.job_run_log.message%TYPE;
+                  v_errdetail  text;
+                  v_errhint    text;
+                  v_errcontext text;
+                  v_sqlstate   maintenance.job_run_log.error_code%TYPE;
+                BEGIN
+                  -- Sotto-select scalare, non SELECT INTO: senza righe ritorna
+                  -- NULL senza azzerare nulla di gia' calcolato.
+                  v_processo := COALESCE(
+                      p_processo_codice,
+                      (SELECT pr.codice
+                         FROM dbops.processi pr
+                        WHERE pr.codice = p_jobname)
+                  );
+
+                  -- lock opzionale per evitare overlap
+                  -- ⚠️ Forma a UN argomento, invariata di proposito: e' uno
+                  --   spazio di lock distinto da quello di
+                  --   script.fn_job_run_start, e i due canali restano
+                  --   indipendenti (vedi intestazione).
+                  IF p_lock_key IS NOT NULL THEN
+                    v_locked := pg_try_advisory_lock(p_lock_key);
+                    IF NOT v_locked THEN
+                      -- L'attore va scritto anche sulla riga di skip: senza,
+                      -- ogni sovrapposizione lascerebbe un run senza attore.
+                      -- ⭐ Rev 2026-10-10: la riga si dichiara SALTATA, chiusa e
+                      --   senza esito (ok NULL). Prima nasceva ok = TRUE e
+                      --   APERTA: «riuscita e mai chiusa», contata come corsa
+                      --   vera da ogni lettore. brief-db-corsa-saltata-non-e-una-corsa.
+                      INSERT INTO maintenance.job_run_log
+                          (jobname, stepname, saltata, ended_at, message,
+                           processo_codice, auth_user_id, ruolo_sessione)
+                      VALUES (p_jobname, p_stepname, TRUE, clock_timestamp(),
+                              'skip: another run in progress',
+                              v_processo, p_auth_user_id, session_user);
+                      RETURN;
+                    END IF;
+                  END IF;
+
+                  -- ⭐ Rev 2026-10-15 (D-5 di brief-db-ruoli-di-sistema): ruolo_sessione =
+                  --   chi si e' COLLEGATO. Dentro una procedura SECURITY DEFINER
+                  --   current_user e' il proprietario; session_user resta il ruolo della
+                  --   connessione (zeroerp_job per pgAgent).
+                  INSERT INTO maintenance.job_run_log
+                      (jobname, stepname, processo_codice, auth_user_id, ruolo_sessione)
+                  VALUES (p_jobname, p_stepname, v_processo, p_auth_user_id, session_user)
+                  RETURNING id, run_uuid, started_at, origine
+                       INTO v_id, v_run_uuid, v_started_at, v_origine;
+
+                  BEGIN
+                    EXECUTE p_sql;
+                    GET DIAGNOSTICS v_rows = ROW_COUNT;
+
+                    UPDATE maintenance.job_run_log
+                      SET ended_at      = clock_timestamp(),
+                          ok            = TRUE,
+                          rows_affected = v_rows,
+                          message       = 'done'
+                    WHERE id = v_id;
+
+                    IF v_locked THEN
+                      PERFORM pg_advisory_unlock(p_lock_key);
+                    END IF;
+
+                  EXCEPTION WHEN OTHERS THEN
+                    -- cattura dettagli dal frame eccezione
+                    GET STACKED DIAGNOSTICS
+                      v_errmsg     = MESSAGE_TEXT,
+                      v_errdetail  = PG_EXCEPTION_DETAIL,
+                      v_errhint    = PG_EXCEPTION_HINT,
+                      v_errcontext = PG_EXCEPTION_CONTEXT,
+                      v_sqlstate   = RETURNED_SQLSTATE;
+
+                    -- ⚠️ Questa UPDATE muore col RAISE qui sotto, e resta
+                    --   comunque: copre il caso in cui qualcuno chiami
+                    --   fn_run_and_log dentro un blocco che cattura l'eccezione
+                    --   senza propagarla. La' la transazione sopravvive, e
+                    --   questa e' la riga giusta.
+                    UPDATE maintenance.job_run_log
+                      SET ended_at     = clock_timestamp(),
+                          ok           = FALSE,
+                          message      = v_errmsg,
+                          error_code   = v_sqlstate,
+                          error_detail = coalesce(v_errdetail,'') ||
+                                          CASE WHEN v_errhint IS NOT NULL THEN E'\nHINT: '||v_errhint ELSE '' END ||
+                                          CASE WHEN v_errcontext IS NOT NULL THEN E'\nCONTEXT: '||v_errcontext ELSE '' END
+                    WHERE id = v_id;
+
+                    -- ⭐ E QUESTA E' LA RIGA CHE SOPRAVVIVE. Va su una
+                    --   connessione separata, dove il rollback del RAISE non
+                    --   arriva. ⛔ Senza, il verbale del fallimento veniva
+                    --   scritto e distrutto nello stesso istante — ed e' il
+                    --   motivo per cui in questo giornale non e' mai esistita
+                    --   una riga rossa.
+                    -- ⚠️ Non solleva mai: se il canale non c'e' emette un
+                    --   WARNING e si torna al comportamento di prima. Non si fa
+                    --   fallire due volte un lavoro gia' fallito.
+                    PERFORM maintenance.fn_job_run_log_failure(
+                        p_jobname         => p_jobname,
+                        p_stepname        => p_stepname,
+                        p_started_at      => v_started_at,
+                        p_run_uuid        => v_run_uuid,
+                        p_origine         => v_origine,
+                        p_processo_codice => v_processo,
+                        p_auth_user_id    => p_auth_user_id,
+                        p_message         => v_errmsg,
+                        p_error_code      => v_sqlstate,
+                        p_error_detail    => coalesce(v_errdetail,'') ||
+                                          CASE WHEN v_errhint IS NOT NULL THEN E'\nHINT: '||v_errhint ELSE '' END ||
+                                          CASE WHEN v_errcontext IS NOT NULL THEN E'\nCONTEXT: '||v_errcontext ELSE '' END);
+
+                    IF v_locked THEN
+                      PERFORM pg_advisory_unlock(p_lock_key);
+                    END IF;
+
+                    -- ⚠️ Si continua a propagare, ed e' voluto: smettere
+                    --   farebbe risultare RIUSCITO a chi l'ha chiesto un lavoro
+                    --   che non lo e'. Il lavoro si annulla, il verbale no.
+                    RAISE;
+                  END;
+                END;
+              $function$;
+
+              COMMENT ON FUNCTION maintenance.fn_run_and_log(p_jobname text, p_stepname text, p_sql text, p_lock_key bigint, p_processo_codice text, p_auth_user_id integer)
+              IS 'Registra una corsa di job in maintenance.job_run_log ed esegue il lavoro. ⭐ Rev 2026-09-05 (R-12): il verbale di un FALLIMENTO viene scritto anche FUORI transazione, con maintenance.fn_job_run_log_failure, prima del RAISE. ⛔ Prima il gestore d''eccezione scriveva la riga ok=false e poi rilanciava: il RAISE annulla la transazione, quindi anche quella riga — il verbale veniva redatto e distrutto nello stesso istante, e NESSUNO dei dodici job che passano di qui poteva lasciare una riga rossa. Cosi'' apply_storicizza_weekly e'' morto ogni settimana per sei mesi con l''ultimo verdetto agli atti a «done». ⚠️ L''UPDATE in transazione resta e non e'' un doppione: copre il caso in cui il chiamante catturi l''eccezione senza propagarla, dove la transazione sopravvive. Nel caso normale muore e resta solo la riga fuori transazione — o l''una o l''altra, mai due. ⚠️ Il RAISE non si toglie: smettere di propagare farebbe risultare riuscito un lavoro che non lo e''. Il lavoro si annulla, il verbale no. ⚠️ fn_job_run_log_failure non solleva mai: se il canale dblink non c''e'' emette un WARNING e si torna al comportamento precedente. ⭐ Rev 2026-10-10: col lock occupato la riga nasce SALTATA (saltata = TRUE), chiusa e con ok NULL. Prima nasceva ok = TRUE e aperta — «riuscita e mai chiusa» — e ogni lettore la contava come una corsa vera. Brief: brief-db-corsa-saltata-non-e-una-corsa §8. ⭐ Rev 2026-10-15: le due INSERT scrivono ruolo_sessione = session_user, il ruolo che si e'' collegato (dentro una procedura DEFINER current_user sarebbe il proprietario). La riga di un fallimento la valorizza maintenance.fn_job_run_log_failure. Brief: brief-db-ruoli-di-sistema D-5.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (corpo del 20261010-22).
+              SELECT 1;

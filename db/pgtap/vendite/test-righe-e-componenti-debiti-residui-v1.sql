@@ -1,6 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 --
 -- Test: righe e componenti di documento, i debiti rimasti (D-1, D-3).
 --   ChangeSet 20261008-87 … -94.
@@ -79,7 +84,7 @@ $f$;
 --   S: articolo semplice.
 --   P: kit. F obbligatorio, G e R opzionali (G si spegne in attesa, R si
 --      spegne rifiutato).
--- Il flag composito si accende PRIMA della distinta:
+-- P nasce composito dal builder:
 -- catalogo.trgfn_articoli_componenti_guard_is_composito rifiuta la distinta
 -- di un articolo semplice.
 -- =========================================================
@@ -94,13 +99,12 @@ CREATE TEMP TABLE _l AS
 SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _m), 'pgTAP debiti residui');
 
 CREATE TEMP TABLE _art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGT-DR-' || v.sigla) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGT-DR-' || v.sigla,
+                                             p_is_composito => v.sigla = 'P') AS id
   FROM (VALUES ('S'), ('P'), ('F'), ('G'), ('R')) AS v(sigla);
 
 CREATE FUNCTION pg_temp.art(p_sigla text) RETURNS uuid
 LANGUAGE sql STABLE AS $f$ SELECT id FROM _art WHERE sigla = p_sigla $f$;
-
-UPDATE catalogo.articoli SET is_composito = true WHERE id = pg_temp.art('P');
 
 INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, obbligatorio, valido_dal)
 VALUES (pg_temp.art('P'), pg_temp.art('F'), 1, true,  script.fn_data_operativa() - 30),
@@ -385,8 +389,8 @@ SELECT is(
         AND NOT t.tgisinternal
         -- tre porte: INSERT (4), DELETE (8), UPDATE (16), BEFORE ROW (2|1)
         AND t.tgtype & (4 | 8 | 16 | 2 | 1) = (4 | 8 | 16 | 2 | 1)),
-    'ddt_righe_prelievi:trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt:DDT|ddt_riga_id|DRAFT|RIGA|ubicazione_arrivo_id|EMESSO,SPEDITO'
-    || ' ; ordini_righe:trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:ORDINE|ordine_id|DRAFT|TESTATA|data_consegna_confermata|CONFERMATO,PARZIALMENTE_EVASO'
+    'ddt_righe_prelievi:trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt:DDT_VENDITA|ddt_riga_id|DRAFT|RIGA|ubicazione_arrivo_id|EMESSO,SPEDITO'
+    || ' ; ordini_righe:trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:ORDINE_VENDITA|ordine_id|DRAFT|TESTATA|data_consegna_confermata|CONFERMATO,PARZIALMENTE_EVASO'
     || ' ; preventivi_righe:trg_preventivi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:PREVENTIVO|preventivo_id',
     '15) i tre montaggi BEFORE ROW sulle tre porte, con gli argomenti decisi (D-1 e la copia dei prelievi)'
 );
@@ -400,7 +404,7 @@ INSERT INTO _tmp_lock VALUES (1, pg_temp.riga('ORDINE'), 0, 0);
 
 CREATE TRIGGER trg_tmp_lock_a05_monco
     BEFORE UPDATE ON _tmp_lock FOR EACH ROW
-    EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'riga_ordine_id', 'DRAFT', 'RIGA', 'a');
+    EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE_VENDITA', 'riga_ordine_id', 'DRAFT', 'RIGA', 'a');
 
 SELECT is(
     pg_temp.esito('UPDATE _tmp_lock SET a = 1 WHERE id = 1'),
@@ -411,7 +415,7 @@ SELECT is(
 DROP TRIGGER trg_tmp_lock_a05_monco ON _tmp_lock;
 CREATE TRIGGER trg_tmp_lock_a05_refuso
     BEFORE UPDATE ON _tmp_lock FOR EACH ROW
-    EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'riga_ordine_id', 'DRAFT', 'RIGA', 'a,non_esiste', 'CONFERMATO');
+    EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE_VENDITA', 'riga_ordine_id', 'DRAFT', 'RIGA', 'a,non_esiste', 'CONFERMATO');
 
 SELECT is(
     pg_temp.esito('UPDATE _tmp_lock SET a = 1 WHERE id = 1'),
@@ -422,7 +426,7 @@ SELECT is(
 DROP TRIGGER trg_tmp_lock_a05_refuso ON _tmp_lock;
 CREATE TRIGGER trg_tmp_lock_a05_riga
     BEFORE UPDATE ON _tmp_lock FOR EACH ROW
-    EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'riga_ordine_id', 'DRAFT', 'RIGA', 'a', 'CONFERMATO');
+    EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE_VENDITA', 'riga_ordine_id', 'DRAFT', 'RIGA', 'a', 'CONFERMATO');
 
 SELECT is(
     pg_temp.esito('UPDATE _tmp_lock SET a = 2 WHERE id = 1'),

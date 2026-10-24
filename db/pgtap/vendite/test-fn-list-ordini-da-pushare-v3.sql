@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): le bolle da ordine (A, B, C) dal builder dbops.fn_pgtap_crea_ddt_da_ordine, col trigger e lo stato finale del caso; restano a mano gli ordini D (DRAFT) e E (ANNULLATO), che non hanno bolla.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_ordini_da_pushare — fix «orfano da push»
 --       (decoupling fatturazione <-> spedizione, rev 20260710-01)
@@ -23,10 +24,9 @@
 -- 10) ANNULLATO escluso (predicato stato)
 -- ------------------------------------------------------------
 -- Nota fixture: trgfn_ordini_normalize eredita fatturazione_trigger dal
---   billing_account su INSERT (sovrascrive il valore passato): per il
---   trigger CONFERMATO si usa un BA con fatturazione_ordini='CONFERMATO';
---   per il caso SPEDITO si aggiorna la colonna DOPO l'INSERT (non locked,
---   normalize e' INSERT-only).
+--   billing_account su INSERT: il BA costruito ha fatturazione_ordini =
+--   'CONFERMATO'; le bolle A, B, C dichiarano comunque al builder il trigger
+--   del caso (lo scrive sull'ordine in bozza).
 -- Nota skip-tolerance: se il DB di test non ha un BA pushabile, i test
 --   degradano a pass con fallback OR (pattern test-fn-available-actions-v1).
 
@@ -49,41 +49,42 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(10);
 
 -- ============================================================
--- Riferimenti minimi (dati esistenti, no creazione da zero)
+-- Riferimenti minimi: il mondo COSTRUITO, dal DB solo il catalogo di seed
 -- ============================================================
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti). Prima il BA pushabile, il ruolo e l'articolo si
+--   pescavano col LIMIT 1: su zeroerp_ci erano NULL, la fixture restava vuota e
+--   la riga di ddt_indirizzi (ddt_id NULL) moriva sulla RLS. Ora un'azienda
+--   nuova col suo operatore (contesto aperto su di lui), il cliente legato a
+--   lei (dbops.fn_pgtap_crea_mondo_cliente) e un articolo merce non gestito.
+--   Il BA pushabile e' quello costruito, con fatturazione_ordini = 'CONFERMATO'
+--   dichiarato con un UPDATE (oggi e' anche il default della colonna).
+--   Modello: test-ddt-magazzino-testata-v1.
+CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _az)); END $ctx$;
+CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP list ordini v3');
+UPDATE anagrafiche.billing_account SET fatturazione_ordini = 'CONFERMATO'
+ WHERE id = (SELECT billing_account_id FROM _m);
+
 CREATE TEMP TABLE tmp_refs_v3 AS
 SELECT
-  -- BA pushabile: utility/istanza valorizzate, fatturazione CONFERMATO,
-  -- emittente risolvibile (mirror fixture test-fn-available-actions-ordine-v1)
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND ba.fatturazione_ordini = 'CONFERMATO'
-      AND anagrafiche.fn_get_emittente_fiscale_pk(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                          AS push_ba_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr
-    ORDER BY sr.id LIMIT 1)                          AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-      AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)  AS articolo_id,
+  m.billing_account_id                               AS push_ba_id,
+  m.cliente_soggetto_ruolo_id                        AS soggetto_ruolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-LIST-ORD-V3', false) AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT i.id FROM config.iva i
     WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)    AS iva_id,
   (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS stato_ord_conf_id,
+    WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1)      AS stato_ord_draft_id,
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)      AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'ANNULLATO' AND s.attivo IS TRUE LIMIT 1)  AS stato_ord_annullato_id,
+    WHERE s.codice_interno = 'ANNULLATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)  AS stato_ord_annullato_id,
   (SELECT s.id FROM config.stati_doc_ddt s
-    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE LIMIT 1)     AS stato_ddt_emesso_id,
+    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)     AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt s
-    WHERE s.codice_interno = 'SPEDITO' AND s.attivo IS TRUE LIMIT 1)    AS stato_ddt_spedito_id,
-  -- Dal 2026-07-18 (step 5b / DL-28) la causale di trasporto e' obbligatoria
-  -- all'emissione del DDT: VENDITA e' l'unica causale fatturabile, quindi
-  -- l'unica che tiene il DDT eleggibile al push.
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id;
+    WHERE s.codice_interno = 'SPEDITO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)    AS stato_ddt_spedito_id
+FROM _m m;
 
 SELECT ok(
   (SELECT push_ba_id IS NOT NULL
@@ -99,48 +100,15 @@ SELECT ok(
 -- ============================================================
 -- FIXTURE A: ordine trigger CONFERMATO, evasione FULL (orfano)
 -- ============================================================
-CREATE TEMP TABLE tmp_ord_a3 AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-    stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA
-  --   (fk_ordini_ba_cliente), non il ruolo scelto a parte dai riferimenti.
-  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
-         r.push_ba_id,
-         anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_ord_draft_id, r.valuta_id, DATE '2026-07-05', false,
-         jsonb_build_object('test_scope','pgtap_list_ordini_v3','fix','orfano_a')
-  FROM tmp_refs_v3 r
-  WHERE r.push_ba_id IS NOT NULL
-  RETURNING id, uid)
-SELECT * FROM ins;
-
-CREATE TEMP TABLE tmp_ord_a3_riga AS
-WITH ins AS (
-  INSERT INTO vendite.ordini_righe (
-    ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id,
-    attivo, storicizza, meta)
-  SELECT o.id, 1, r.articolo_id, 'Riga orfano A (v3)',
-         10.000000, 10.000000, 30.000000, r.iva_id,
-         true, false, jsonb_build_object('test_scope','pgtap_list_ordini_v3')
-  FROM tmp_ord_a3 o, tmp_refs_v3 r
-  RETURNING id)
-SELECT * FROM ins;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
--- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
--- righe non si scrivono piu' (20261008-90). PERFORM ... FROM: tabella vuota se il BA manca.
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_a3 o;
-END $x$;
-
--- Evasione FULL: e' il gesto che PRIMA del fix chiudeva la finestra di push
--- (WHERE EXISTS: skip-tolerance se il BA pushabile manca -> fixture vuota)
-CREATE TEMP TABLE tmp_ddt_a3 AS
-SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_a3)) AS ddt_id
- WHERE EXISTS (SELECT 1 FROM tmp_ord_a3);
+-- Il builder: ordine 10 @30 trigger CONFERMATO, evasione FULL (e' il gesto che
+-- PRIMA del fix chiudeva la finestra di push), bolla portata a SPEDITO per il
+-- caso 8 (il trigger e' CONFERMATO: la bolla non diventa una seconda sorgente).
+CREATE TEMP TABLE tmp_a3 AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('list ordini v3 A', 'SPEDITO',
+    (SELECT push_ba_id FROM tmp_refs_v3), p_quantita => 10, p_prezzo => 30,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs_v3), p_fatturazione_trigger => 'CONFERMATO');
+CREATE TEMP TABLE tmp_ord_a3 AS SELECT ordine_id AS id FROM tmp_a3;
+CREATE TEMP TABLE tmp_ddt_a3 AS SELECT ddt_id FROM tmp_a3;
 
 -- 2) sanity: proiezione stato C5 invariata (full -> EVASO)
 SELECT ok(
@@ -164,20 +132,6 @@ SELECT ok(
 
 -- 4) caso 8 — XOR preservato: il DDT ordine-sourced (src_trigger=CONFERMATO)
 --    portato a SPEDITO NON diventa una seconda sorgente di push
--- Setup guard indirizzi obbligatori (DDT): CON obbligatorio all'emissione.
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-SELECT (SELECT ddt_id FROM tmp_ddt_a3),
-       (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON'),
-       '{"display":"CON test"}'::jsonb
-ON CONFLICT DO NOTHING;
--- Causale obbligatoria all'emissione (guard causale_emissione, 2026-07-18).
-UPDATE vendite.ddt SET causale_trasporto_id = (SELECT causale_vendita_id FROM tmp_refs_v3)
- WHERE id = (SELECT ddt_id FROM tmp_ddt_a3);
-UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_refs_v3)
- WHERE id = (SELECT ddt_id FROM tmp_ddt_a3);
-UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_spedito_id FROM tmp_refs_v3)
- WHERE id = (SELECT ddt_id FROM tmp_ddt_a3);
-
 SELECT ok(
   (SELECT count(*) = 0
      FROM vendite.fn_list_ddt_da_pushare(
@@ -248,50 +202,14 @@ SELECT ok(
 -- ============================================================
 -- FIXTURE B: ordine trigger CONFERMATO, evasione PARZIALE
 -- ============================================================
-CREATE TEMP TABLE tmp_ord_b3 AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-    stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA
-  --   (fk_ordini_ba_cliente), non il ruolo scelto a parte dai riferimenti.
-  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
-         r.push_ba_id,
-         anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_ord_draft_id, r.valuta_id, DATE '2026-07-06', false,
-         jsonb_build_object('test_scope','pgtap_list_ordini_v3','fix','orfano_b')
-  FROM tmp_refs_v3 r
-  WHERE r.push_ba_id IS NOT NULL
-  RETURNING id)
-SELECT * FROM ins;
-
-CREATE TEMP TABLE tmp_ord_b3_riga AS
-WITH ins AS (
-  INSERT INTO vendite.ordini_righe (
-    ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id,
-    attivo, storicizza, meta)
-  SELECT o.id, 1, r.articolo_id, 'Riga orfano B (v3)',
-         10.000000, 10.000000, 20.000000, r.iva_id,
-         true, false, jsonb_build_object('test_scope','pgtap_list_ordini_v3')
-  FROM tmp_ord_b3 o, tmp_refs_v3 r
-  RETURNING id)
-SELECT * FROM ins;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
--- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
--- righe non si scrivono piu' (20261008-90). PERFORM ... FROM: tabella vuota se il BA manca.
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_b3 o;
-END $x$;
-
--- Evasione parziale 4/10 -> PARZIALMENTE_EVASO
-SELECT vendite.fn_genera_ddt_da_ordine(
-         (SELECT id FROM tmp_ord_b3),
-         jsonb_build_array(jsonb_build_object(
-             'ordine_riga_id', (SELECT id FROM tmp_ord_b3_riga),
-             'qta_da_evadere', 4)))
- WHERE EXISTS (SELECT 1 FROM tmp_ord_b3);
+-- Il builder: ordine 10 @20 trigger CONFERMATO, evasione parziale 4/10 ->
+-- PARZIALMENTE_EVASO; la bolla resta in bozza (il caso misura l'ordine).
+CREATE TEMP TABLE tmp_b3 AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('list ordini v3 B', 'DRAFT',
+    (SELECT push_ba_id FROM tmp_refs_v3), p_quantita => 10, p_prezzo => 20,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs_v3), p_fatturazione_trigger => 'CONFERMATO',
+    p_qta_da_evadere => 4);
+CREATE TEMP TABLE tmp_ord_b3 AS SELECT ordine_id AS id FROM tmp_b3;
 
 -- 6) caso 7b — anche il PARZIALMENTE_EVASO resta eleggibile
 SELECT ok(
@@ -310,46 +228,13 @@ SELECT ok(
 -- FIXTURE C: ordine trigger SPEDITO (non-regressione XOR lato DDT)
 -- trgfn_ordini_normalize e' INSERT-only: il trigger si aggiorna DOPO
 -- ============================================================
-CREATE TEMP TABLE tmp_ord_c3 AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-    stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA
-  --   (fk_ordini_ba_cliente), non il ruolo scelto a parte dai riferimenti.
-  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
-         r.push_ba_id,
-         anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_ord_draft_id, r.valuta_id, DATE '2026-07-07', false,
-         jsonb_build_object('test_scope','pgtap_list_ordini_v3','fix','spedito_c')
-  FROM tmp_refs_v3 r
-  WHERE r.push_ba_id IS NOT NULL
-  RETURNING id)
-SELECT * FROM ins;
-
-UPDATE vendite.ordini
-   SET fatturazione_trigger = 'SPEDITO'
- WHERE id = (SELECT id FROM tmp_ord_c3);
-
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, iva_id,
-  attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'Riga spedito C (v3)',
-       5.000000, 5.000000, 15.000000, r.iva_id,
-       true, false, jsonb_build_object('test_scope','pgtap_list_ordini_v3')
-FROM tmp_ord_c3 o, tmp_refs_v3 r;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
--- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
--- righe non si scrivono piu' (20261008-90). PERFORM ... FROM: tabella vuota se il BA manca.
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_c3 o;
-END $x$;
-
-CREATE TEMP TABLE tmp_ddt_c3 AS
-SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_c3)) AS ddt_id
- WHERE EXISTS (SELECT 1 FROM tmp_ord_c3);
+-- Il builder: ordine 5 @15 trigger SPEDITO, evaso, bolla a SPEDITO (caso 9b).
+CREATE TEMP TABLE tmp_c3 AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('list ordini v3 C', 'SPEDITO',
+    (SELECT push_ba_id FROM tmp_refs_v3), p_quantita => 5, p_prezzo => 15,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs_v3), p_fatturazione_trigger => 'SPEDITO');
+CREATE TEMP TABLE tmp_ord_c3 AS SELECT ordine_id AS id FROM tmp_c3;
+CREATE TEMP TABLE tmp_ddt_c3 AS SELECT ddt_id FROM tmp_c3;
 
 -- 7) caso 9 — l'ordine trigger SPEDITO evaso NON pusha (filtro trigger)
 SELECT ok(
@@ -361,20 +246,6 @@ SELECT ok(
 );
 
 -- 8) caso 9b — per il trigger SPEDITO pusha il DDT (invariato)
--- Setup guard indirizzi obbligatori (DDT): CON obbligatorio all'emissione.
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-SELECT (SELECT ddt_id FROM tmp_ddt_c3),
-       (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON'),
-       '{"display":"CON test"}'::jsonb
-ON CONFLICT DO NOTHING;
--- Causale obbligatoria all'emissione (guard causale_emissione, 2026-07-18).
-UPDATE vendite.ddt SET causale_trasporto_id = (SELECT causale_vendita_id FROM tmp_refs_v3)
- WHERE id = (SELECT ddt_id FROM tmp_ddt_c3);
-UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_refs_v3)
- WHERE id = (SELECT ddt_id FROM tmp_ddt_c3);
-UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_spedito_id FROM tmp_refs_v3)
- WHERE id = (SELECT ddt_id FROM tmp_ddt_c3);
-
 SELECT ok(
   (SELECT count(*) >= 1
      FROM vendite.fn_list_ddt_da_pushare(

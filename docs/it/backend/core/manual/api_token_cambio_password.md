@@ -15,8 +15,9 @@ Il `TokenService` e' un BB generico (Anello 0) riutilizzato da:
 - Reset password (Fase 2): token tipo `RESET_PASSWORD`
 - Conferme generiche: qualsiasi tipo custom
 
-Il cambio password obbligatorio intercetta tutte le richieste API tramite
-middleware e blocca la navigazione finche' l'operatore non cambia password.
+Il cambio password obbligatorio lo fa rispettare il **cancello degli obblighi**
+(`apps/core/api/cancello_obblighi.py`, dentro l'autenticazione DRF, non un
+middleware): blocca la navigazione finche' l'operatore non cambia password (§2).
 
 ---
 
@@ -144,7 +145,7 @@ I tre campi **non** vengono ripuliti dagli spazi: si verifica e si salva la pass
 > ⚠️ Fino al 2026-09-24 la coppia si emetteva con `RefreshToken.for_user(user)`, senza i
 > claim della veste: il frontend la installava e la richiesta successiva usciva 401
 > `E_JWT_SENZA_IDENTITA` — proprio nel cambio obbligatorio al primo accesso — e l'audit
-> registrava il `jti` al posto del `sid` (M-2 della [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+> registrava il `jti` al posto del `sid` (M-2 della [analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 #### Output (successo)
 
@@ -264,6 +265,7 @@ SecurityMiddleware
 SessionMiddleware
 CommonMiddleware
 RequestContextMiddleware
+FusoAziendaleMiddleware         ← fuso dell'azienda attivo per la richiesta
 ApiExceptionMiddleware
 UserLanguageMiddleware
 CsrfViewMiddleware
@@ -272,4 +274,7 @@ JwtAuditMiddleware              ← reset GUC, guard BYPASSRLS (non autentica)
 RequestLogMiddleware
 MessageMiddleware
 XFrameOptionsMiddleware
+SolaLetturaMiddleware           ← ULTIMO: sola lettura attorno alla view delle GET/HEAD API
 ```
+
+Nessun middleware del cambio password: il blocco e' nel cancello degli obblighi (§2).

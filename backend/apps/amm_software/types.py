@@ -28,6 +28,10 @@ class OperatoreRow(TypedDict):
     # Solo nella lista (2026-10-06): gli override dei permessi scritti, da
     # `script.vw_override_operatore_area` (brief riepilogo-permessi).
     override_count: NotRequired[int]
+    # Solo nella lista (2026-10-18): la credenziale porta l'etichetta di prova
+    # (`dbops.credenziali_di_prova`, la mette solo il provisioning di sviluppo).
+    # Non cambia la categoria: un utente di prova resta un operatore.
+    di_prova: NotRequired[bool]
     is_super_admin: bool
     ruolo_applicativo: str | None
     is_active: bool

@@ -26,9 +26,16 @@ regola fail-visible (motivo non mappato ⇒ ANOMALIA) vivono nelle viste.
 Livello area `LETTURA` sufficiente; nessuna azione di processo.
 
 ```text
-GET /api/v1/vendite/dashboard-backlog/            (ApiDashboardBacklog)
-GET /api/v1/vendite/dashboard-backlog/documenti/  (ApiDashboardBacklogDocumenti)
+GET /api/v1/vendite/dashboard-backlog/                    (ApiDashboardBacklog)
+GET /api/v1/vendite/dashboard-backlog/documenti/          (ApiDashboardBacklogDocumenti)
+GET /api/v1/vendite/dashboard-backlog/documenti/export/   (ApiDashboardBacklogDocumentiExport)
 ```
+
+L'export (`?formato=csv|xlsx`, default csv) prende gli stessi filtri
+(`classe`, `area`, `ritardo_giorni`) e lo stesso ordinamento del drill-down;
+colonne dal catalogo `vendite.dash_backlog_documenti`. Drill-down ed export
+dichiarano `lista_codice = "vendite.dash_backlog_documenti"`: il cancello di
+perimetro emittente può rispondere `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`.
 
 Catena: view (`views_dashboard_backlog.py`) →
 `vendite_service.fn_dash_backlog_{riepilogo,documenti}` →
@@ -48,16 +55,25 @@ Nessun parametro.
   riepilogo, che accoda le classi fuori whitelist): una classe futura resta
   drillabile senza toccare il BE; una classe sconosciuta (o `FISIOLOGICO`,
   escluso a monte dalla vista) dà lista vuota, mai 400.
-- `area` (opzionale): `PREVENTIVI | ORDINI | DDT | OFFERTE | CONTRATTI |
-  COMMESSE | RESI`
+- `area` (opzionale): `PREVENTIVO | ORDINE_VENDITA | DDT_VENDITA |
+  OFFERTA_COMMERCIALE | CONTRATTO | COMMESSA | RESO_VENDITA`
+> ⭐ **Dal 2026-10-20 l'`area` è il codice della sorgente** (`config.sorgenti.codice_interno`): `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`, `CONTRATTO`, `COMMESSA`, `RESO_VENDITA`. Il plurale (`ORDINI`, `RESI`…) è ritirato col sotto-giro 2d di [brief-db-grammatica-unica-documenti](../../../dev/work-in-progress/brief-db-grammatica-unica-documenti.md) (G-6).
+
   (case-insensitive; fuori whitelist → `E_VENDITE_VALIDATION`; assente = tutte).
+- `ritardo_giorni` (opzionale, intero > 0; assente = nessuna soglia): «fermi da
+  oltre N giorni» su `data_riferimento <= oggi − N`, solo drill-down ed export.
+  Non numerico o `<= 0` → 400; `N` che porti `oggi − N` prima del parametro
+  `VENDITE_DASHBOARD_RITARDO_DATA_MINIMA` → 400 `E_VENDITE_VALIDATION` (il
+  `detail` dice il massimo di oggi).
 - `order_by` / `order_dir` (opzionali): **ordinamento colonne server-side**
   (convenzione delle liste standard). `order_by` in whitelist —
   `anzianita_giorni` (default, "fermo da") | `area` | `classe` | `codice` |
-  `cliente_display` | `valore_fermo` | `stato_codice` (`classe` aggiunta il
-  2026-08-03: è colonna a video e vocabolario chiuso a 3 valori, ordinarla
-  raggruppa il lavoro per tipo di intervento); `order_dir` = `asc` |
-  `desc` (default `desc` su `anzianita_giorni`: i più vecchi prima). Server-side
+  `cliente_display` | `valore_fermo` | `stato_codice` | `emittente_ragione_sociale`
+  (`classe` aggiunta il 2026-08-03: è colonna a video e vocabolario chiuso a 3
+  valori, ordinarla raggruppa il lavoro per tipo di intervento); `order_dir` =
+  `asc` | `desc`. Con `order_by` e senza `order_dir`: le colonne data (per nome)
+  partono DESC, le altre ASC — in questa whitelist nessuna è una data, quindi
+  ASC (anche `anzianita_giorni`). Server-side
   perché la lista è paginata: ordine corretto su **tutte** le pagine, non solo
   su quella visibile. Colonna fuori whitelist o direzione ≠ asc/desc → 400
   (`E_VENDITE_VALIDATION`). Tiebreak stabile `area ASC, documento_id <stessa
@@ -65,7 +81,11 @@ Nessun parametro.
   (a parità di valore, in DESC viene prima il documento più recente), mentre
   `area` resta ASC perché raggruppa. L'univocità — e quindi la paginazione
   deterministica — non cambia.
-- `page` / `page_size` (opzionali): paginazione standard (default 1/50, max 200).
+- `limit` / `offset` (opzionali): paginazione standard (`pagina_da_query`:
+  `limit` default 25, max 200; `offset` default 0; non interi, `limit` fuori
+  da 1..200 o `offset` negativo → 400 `E_VALIDATION_INPUT`). ⛔ `page`/`page_size` sono
+  un 400 `E_VALIDATION_INPUT` dal 2026-10-21 (prima erano il contratto di
+  questa lista).
 
 ## Output
 
@@ -79,7 +99,7 @@ Nessun parametro.
         "valore_fermo_tot": "2000.50", "unita_ferme_tot": 7,
         "anzianita_max_giorni": 90,
         "aree": [
-          { "area": "PREVENTIVI", "n_documenti": 3, "valore_fermo_tot": "1500.00",
+          { "area": "PREVENTIVO", "n_documenti": 3, "valore_fermo_tot": "1500.00",
             "unita_ferme_tot": 5, "anzianita_max_giorni": 40 }
         ] }
     ]
@@ -104,13 +124,15 @@ riga: `area`, `competenza_mese` (proxy, può essere NULL), chiavi documento
 (NULL per aree a conteggi), `unita_ferme`, `motivo_fermo` (vocabolario
 `config.motivi_fermo`, decodifica i18n lato FE), `classe`, `azione` (hint
 operativo dalla lookup), `data_riferimento` ("fermo da…", v1 proxy data
-documento), `anzianita_giorni`, `stato_codice_interno`, `stato_codice`, `fase`.
+documento), `anzianita_giorni`, `stato_codice_interno`, `stato_codice`, `fase`,
+`emittente_ragione_sociale`.
 **Ordinamento BE-side** (le viste non garantiscono ORDER): default
 `data_riferimento ASC NULLS LAST` (colonna base, ordine identico ad
 anzianità DESC ma più amichevole per il planner), poi `valore_fermo DESC
 NULLS LAST, area, documento_id`; con `order_by`/`order_dir` (vedi Input)
-l'ORDER BY diventa `<colonna whitelist> <asc|desc> NULLS LAST` + tiebreak
-`area, documento_id` — colonna e direzione **whitelistate** (mai input grezzo).
+l'ORDER BY diventa `<colonna whitelist> ASC NULLS FIRST` oppure `DESC NULLS
+LAST` (il vuoto vale come minimo) + tiebreak `area ASC, documento_id <stessa
+direzione>` — colonna e direzione **whitelistate** (mai input grezzo).
 `anzianita_giorni` è clampata a `>= 0`
 (`GREATEST`): una `data_riferimento` futura non produce "fermo da -N gg".
 Nel riepilogo `anzianita_max_giorni` è `null` quando nessuna riga della
@@ -160,6 +182,9 @@ classe ha una data nota (età sconosciuta ≠ 0 giorni).
 
 ## Note di migrazione
 
+- 2026-10-21: la lista documenti legge la finestra come `limit`/`offset`
+  (`pagina_da_query`); `page`/`page_size` in query diventano un 400. Envelope
+  invariato.
 - Substrato DB applicato con migrations `20260706-01..15` (pgTAP
   `test-vw-dash-backlog-v1.sql` plan 14 verde).
 - Test: `apps/vendite/tests/api/test_dashboard_backlog_api.py` (8 casi) +

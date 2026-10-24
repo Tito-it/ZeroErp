@@ -454,7 +454,7 @@ def _get_riga_or_raise(
 #        UNIQUE → E_VENDITE_DUPLICATO (409), FK → E_VENDITE_FK (400),
 #        CHECK → E_VENDITE_VALIDATION (400), overlap versioni →
 #        E_VENDITE_LISTINO_VERSIONE_OVERLAP (409, pattern simmetrico a
-#        E_VENDITE_PROMO_OVERLAP / E_VENDITE_CONTRATTO_OVERLAP), temporal FK
+#        E_VENDITE_PROMO_OVERLAP / E_CONTRATTO_OVERLAP_ESISTENTE), temporal FK
 #        coerenza BoM (PG18) → E_LISTINO_RIGA_COMP_BOM_INCOERENTE (400,
 #        sostituisce guard 6 trigger rimosso con migration 20260514-13).
 def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entity: str) -> NoReturn:
@@ -1086,14 +1086,12 @@ def fn_create_listino(payload: dict[str, Any]) -> dict[str, Any]:
 def fn_update_listino(listino_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_update_listino"
     data = _extract_listino_payload(payload, for_update=True, function_name=function_name)
-    ErrorManager.require(
-        bool(data),
-        code="E_VENDITE_VALIDATION",
+    _V.require_campi_da_aggiornare(
+        data,
         message="Payload listino non valido.",
         detail="Nessun campo aggiornabile presente nel payload.",
         context={"allowed_nullable_fields": sorted(_LISTINO_NULLABLE_FIELDS)},
         function_name=function_name,
-        log_to_db=True,
     )
     repository = ListiniRepository()
     try:
@@ -1185,14 +1183,12 @@ def fn_update_versione(listino_id: int, versione_id: int, payload: dict[str, Any
     function_name = "vendite.listini_service.fn_update_versione"
     versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     data = _extract_versione_payload(payload, for_update=True, function_name=function_name)
-    ErrorManager.require(
-        bool(data),
-        code="E_VENDITE_VALIDATION",
+    _V.require_campi_da_aggiornare(
+        data,
         message="Payload versione listino non valido.",
         detail="Nessun campo aggiornabile presente nel payload.",
         context={"allowed_nullable_fields": sorted(_VERSIONE_NULLABLE_FIELDS)},
         function_name=function_name,
-        log_to_db=True,
     )
     _assert_versione_patch_allowed(versione, data, function_name=function_name)
     repository = ListiniRepository()
@@ -1398,8 +1394,11 @@ def fn_change_versione_state(listino_id: int, versione_id: int, payload: dict[st
         log_to_db=True,
     )
     assert isinstance(nuovo_stato, str)
-    # dry_run strict: accetta solo bool True esplicito (no stringhe truthy)
-    dry_run = payload.get("dry_run", False) is True
+    # ⛔ Un flag del corpo e' un booleano JSON (api.md, tre regole del corpo):
+    #    `"true"` e' un 400 sul campo, non un `false` muto che eseguiva davvero
+    #    il cambio stato a chi chiedeva l'anteprima (brief-be-verifica-
+    #    documentazione-api §B4, 2026-10-21). Gemello di `applica_variazione`.
+    dry_run = _V.optional_bool(payload, "dry_run") is True
     _validate_versione_state_transition(versione, nuovo_stato, function_name=function_name)
 
     repository = ListiniRepository()
@@ -1472,8 +1471,6 @@ def fn_list_righe(
     versione_id: int,
     *,
     search: str | None = None,
-    billing_account_id: int | None = None,
-    utility_id: int | None = None,
     attivo: bool | None = True,
     order_by: str = "articolo_descrizione",
     order_dir: str | None = "asc",
@@ -1488,8 +1485,6 @@ def fn_list_righe(
         listino_id,
         versione_id,
         search=search,
-        billing_account_id=billing_account_id,
-        utility_id=utility_id,
         attivo=attivo,
         order_by=order_by,
         order_dir=order_dir,
@@ -1525,14 +1520,12 @@ def fn_update_riga(listino_id: int, versione_id: int, riga_id: int, payload: dic
     _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
     current = _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
     data = _extract_riga_payload(payload, for_update=True, function_name=function_name)
-    ErrorManager.require(
-        bool(data),
-        code="E_VENDITE_VALIDATION",
+    _V.require_campi_da_aggiornare(
+        data,
         message="Payload riga listino non valido.",
         detail="Nessun campo aggiornabile presente nel payload.",
         context={"allowed_nullable_fields": sorted(_RIGA_NULLABLE_FIELDS)},
         function_name=function_name,
-        log_to_db=True,
     )
     articolo_id = str(current["articolo_id"])
     uom_id = int(current["uom_id"])
@@ -1865,7 +1858,8 @@ def fn_applica_variazione_percentuale(
                 log_to_db=True,
             )
 
-    dry_run = bool(payload.get("dry_run", False))
+    # Dal BB: con `bool(...)` la stringa "false" valeva True.
+    dry_run = _V.optional_bool(payload, "dry_run") is True
 
     # --- Esecuzione ---
     repository = ListiniRepository()
@@ -2021,7 +2015,7 @@ def fn_save_bundle(
     listino_id: int,
     versione_id: int,
     articolo_padre_id: str,
-    rows: list[dict[str, Any]],
+    rows: Any,  # grezzo dal corpo: la forma la giudica il BB `voci` qui sotto
 ) -> dict[str, int]:
     function_name = "vendite.listini_service.fn_save_bundle"
     _get_listino_or_raise(listino_id, function_name=function_name)
@@ -2035,12 +2029,9 @@ def fn_save_bundle(
         message="articolo_padre_id obbligatorio.",
         function_name=function_name,
     )
-    ErrorManager.require(
-        isinstance(rows, list),
-        code="E_VENDITE_VALIDATION",
-        message="rows deve essere una lista.",
-        function_name=function_name,
-    )
+    # Una lista di voci, ogni voce un oggetto (BB): una voce che non e' un
+    # oggetto era un `AttributeError` nel repository (`r.get`), cioe' un 500.
+    rows = _V.voci(rows, lambda voce, _indice: dict(voce), campo="rows", function_name=function_name)
 
     # Validita default = validita versione listino (semplifica UX; la
     # temporal FK PG18 `fk_listrighe_comp_articoli_comp_temporal` blocca

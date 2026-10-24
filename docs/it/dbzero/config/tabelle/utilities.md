@@ -13,10 +13,14 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | richiede_pdp | boolean | NO | false |
+| arrotondamento_importi_dec | smallint | NO | 2 |
+| metodo_arrotondamento_importi | character varying | NO | 'HALF_UP'::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_utilities_arrotondamento_importi_dec |  |
+| CHECK | chk_utilities_metodo_arrotondamento_importi |  |
 | PRIMARY KEY | pk_utilities | id |
 | UNIQUE | uq_utilities_codice | codice |
 | UNIQUE | uq_utilities_codice_interno | codice_interno |

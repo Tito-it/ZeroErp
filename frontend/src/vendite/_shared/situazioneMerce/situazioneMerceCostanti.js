@@ -9,6 +9,8 @@
 // ri-derivare il verso del saldo (richiesta BE-2): se il DB aggiunge un valore,
 // qui si aggiunge una riga — non una regola.
 
+import { SORGENTE_CODES } from '../../../documenti/constants'
+
 export const STATO_MERCE = Object.freeze({
   PAREGGIATA: 'PAREGGIATA',
   DA_FATTURARE: 'DA_FATTURARE',
@@ -38,7 +40,10 @@ export const ETICHETTA_ACCREDITO_MERCE = Object.freeze({
 // contesto NON si puo' piu' dedurre dal fatto che una lista sia vuota. Se lo si
 // deducesse male, sul DDT si conterebbe il saldo dell'INTERA riga d'ordine —
 // tutte le sue spedizioni — al posto di questa: un numero plausibile e sbagliato.
+// ⭐ I valori sono i codici di `config.sorgenti` (dal 2026-10-19,
+// brief-db-grammatica-unica-documenti lotto 2a: una grammatica sola per i tipi
+// di documento), quindi si leggono da `SORGENTE_CODES` e non si riscrivono.
 export const CONTESTO_MERCE = Object.freeze({
-  ORDINE: 'ORDINE',
-  DDT: 'DDT',
+  ORDINE: SORGENTE_CODES.ORDINE_VENDITA,
+  DDT: SORGENTE_CODES.DDT_VENDITA,
 })

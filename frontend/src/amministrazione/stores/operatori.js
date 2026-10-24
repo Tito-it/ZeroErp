@@ -43,6 +43,9 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   // Lista (filtri sincronizzati con la toolbar). Multi-face auth (Fase 7):
   // solo is_super_admin + is_active + unita_organizzativa_id. Il legacy
   // ruolo_sistema e' rimosso. Parte piena: e' l'anagrafica degli operatori.
+  // `includi_di_prova`: gli utenti del provisioning di sviluppo restano fuori
+  // finche' non li si chiede (il backend li nasconde quando il parametro
+  // manca: R-4 del brief-db-processi-accensione-per-ambiente).
   const lista = useListaStoreCore({
     fetchPage: listOperatori,
     startsEmpty: false,
@@ -50,6 +53,7 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
       is_super_admin: null,
       unita_organizzativa_id: null,
       is_active: null,
+      includi_di_prova: null,
     },
     orderBy: 'soggetto_cognome',
   })
@@ -112,6 +116,12 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     return res.data.data
   }
 
+  // ⛔ I tre `saveOverride*` NON rileggono effettivi e riepilogo: li rilegge il
+  //    tab, una volta sola dopo il giro (`aggiornaDerivati` in
+  //    OperatorePermessiTab). Fino al 2026-10-23 la rilettura stava qui dentro:
+  //    se falliva, un PUT riuscito sembrava fallito e le sezioni dopo non
+  //    partivano (stessa regola del summary BA, `emittentiFiscaliBA.js`).
+
   // --- Override aree ---
   async function fetchOverrideAree(authUserId) {
     const res = await getOverrideAree(authUserId)
@@ -121,7 +131,6 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function saveOverrideAree(authUserId, items) {
     const res = await putOverrideAree(authUserId, items)
     overrideAree.value = res.data.data.results
-    await Promise.all([fetchPermessiEffettivi(authUserId), fetchRiepilogoAree(authUserId)])
     emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 
@@ -134,7 +143,6 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function saveOverrideAzioni(authUserId, items) {
     const res = await putOverrideAzioni(authUserId, items)
     overrideAzioni.value = res.data.data.results
-    await Promise.all([fetchPermessiEffettivi(authUserId), fetchRiepilogoAree(authUserId)])
     emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 
@@ -147,7 +155,6 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function saveOverrideOggetti(authUserId, items) {
     const res = await putOverrideOggetti(authUserId, items)
     overrideOggetti.value = res.data.data.results
-    await Promise.all([fetchPermessiEffettivi(authUserId), fetchRiepilogoAree(authUserId)])
     emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 

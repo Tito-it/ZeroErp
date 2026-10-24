@@ -7,16 +7,22 @@ CREATE FUNCTION fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb, p_dat
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb DEFAULT NULL::jsonb, p_data date DEFAULT script.fn_data_operativa())
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-24 (20261024-15, brief-modello-documento-vendita N-1/P-2):
+--   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+--   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
+-- rev 2026-10-20 (20261020-55, brief-db-grammatica-unica-documenti, 2d G-6):
+--   l'ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della
+--   sorgente; firma e RETURNS ancorati.
 DECLARE
     v_sorg_ord_id     config.sorgenti.id%TYPE;
-    v_stato_draft_id  config.stati_doc_ddt.id%TYPE;
     v_stato_ord       config.stati_doc_ordini.codice_interno%TYPE;
-    v_stato_target_id config.stati_doc_ordini.id%TYPE;
     v_ordine_uid      vendite.ordini.uid%TYPE;
     v_dest_ruolo_id   vendite.ordini.soggetto_ruolo_id%TYPE;
     v_ddt_id          vendite.ddt.id%TYPE;
@@ -77,18 +83,17 @@ BEGIN
             NULL::uuid, p_ordine_id::text, v_stato_ord);
     END IF;
 
-    -- 3) Sorgente ORDINE_VENDITA (C1) + stato DRAFT DDT (per codice_interno).
+    -- 3) Sorgente ORDINE_VENDITA (C1).
     SELECT id INTO v_sorg_ord_id FROM config.sorgenti
      WHERE codice_interno = 'ORDINE_VENDITA' AND attivo IS TRUE;
-    SELECT id INTO v_stato_draft_id FROM config.stati_doc_ddt
-     WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
 
     -- 4) Testata DDT DRAFT. Billing/utility/valuta via trgfn_ddt_normalize.
+    --    Lo stato non si scrive: DRAFT lo mette trg_ddt_a05_stato_iniziale_ins.
     INSERT INTO vendite.ddt (
-        data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
+        data, destinatario_soggetto_ruolo_id,
         sorgente_tipo_id, sorgente_uid)
     VALUES (
-        COALESCE(p_data, (SELECT script.fn_data_operativa())), v_stato_draft_id, v_dest_ruolo_id,
+        COALESCE(p_data, (SELECT script.fn_data_operativa())), v_dest_ruolo_id,
         v_sorg_ord_id, v_ordine_uid)
     RETURNING id INTO v_ddt_id;
 
@@ -103,7 +108,7 @@ BEGIN
       FROM vendite.ordini_indirizzi oi
       JOIN config.tipi_indirizzi_allowed a
         ON a.tipo_indirizzo_id = oi.tipo_indirizzo_id
-       AND a.ambito = 'DDT'
+       AND a.ambito = 'DDT_VENDITA'
        AND a.attivo IS TRUE
      WHERE oi.ordine_id = p_ordine_id
     ON CONFLICT (ddt_id, tipo_indirizzo_id) DO NOTHING;
@@ -113,6 +118,7 @@ BEGIN
         SELECT orr.id AS ordine_riga_id, orr.articolo_id, orr.descrizione,
                orr.prezzo_unitario, orr.sconto_percentuale, orr.iva_id,
                orr.uom_operativa_id, orr.factor_to_base,
+               orr.natura_vendita_id,
                orr.quantita AS qta_ord_base,
                COALESCE(orr.factor_to_base, 1) AS factor,
                COALESCE((
@@ -161,12 +167,15 @@ BEGIN
         INSERT INTO vendite.ddt_righe (
             ddt_id, riga_nr, articolo_id, descrizione,
             prezzo_unitario, sconto_percentuale, iva_id,
-            qta_operativa, uom_operativa_id, factor_to_base)
+            qta_operativa, uom_operativa_id, factor_to_base,
+            natura_vendita_id)
         VALUES (
             v_ddt_id, v_riga_nr, v_riga.articolo_id, v_riga.descrizione,
             CASE WHEN v_riga.is_composito THEN 0 ELSE v_riga.prezzo_unitario END,
             v_riga.sconto_percentuale, v_riga.iva_id,
-            v_qta_op, v_riga.uom_operativa_id, v_riga.factor_to_base)
+            v_qta_op, v_riga.uom_operativa_id, v_riga.factor_to_base,
+            -- La natura con cui l'ordine ha venduto la riga (A-4).
+            v_riga.natura_vendita_id)
         RETURNING id, quantita INTO v_new_riga_id, v_qta_base;
 
         -- Componenti CASO A (A-2): copia 1:1 (no resolver). La qta
@@ -218,26 +227,22 @@ BEGIN
     -- 7) Proiezione stato ordine (C5), atomica. residuo 0 -> EVASO,
     --    altrimenti PARZIALMENTE_EVASO. La transizione passa per
     --    trgfn_ordini_guard_transizione (matrice).
-    IF NOT vendite.fn_ordine_ha_residuo_evasione(p_ordine_id) THEN
-        SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
-         WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
-    ELSE
-        SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
-         WHERE codice_interno = 'PARZIALMENTE_EVASO' AND attivo IS TRUE;
-    END IF;
-
-    UPDATE vendite.ordini
-       SET stato_doc_ordine_id = v_stato_target_id
-     WHERE id = p_ordine_id
-       AND stato_doc_ordine_id IS DISTINCT FROM v_stato_target_id;
+    -- ⭐ rev 2026-10-11: la proiezione e' il building block
+    --    vendite.fn_ordine_proietta_stato_evasione (brief-db-ddt-righe-evase-
+    --    dall-ordine §5.2), condiviso con i verbi del reso, la correzione della
+    --    quantita' evasa e il ritiro del legame in bozza. Qui il fulfillment
+    --    c'e' sempre (step 6), quindi gli esiti restano i due di prima.
+    PERFORM vendite.fn_ordine_proietta_stato_evasione(p_ordine_id);
 
     RETURN v_ddt_id;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb, p_data date)
-IS 'Madre evasione ordine->DDT (DRAFT): multi-DDT (A-1), copia snapshot prezzi/componenti (A-2), fulfillment riga-riga (over-shipping via guard, C2), proiezione stato ordine CONFERMATO/PARZIALMENTE_EVASO/EVASO (C5). sorgente=ORDINE_VENDITA (C1). p_righe [{ordine_riga_id, qta_da_evadere(operativa)}] NULL=tutto il residuo. Pattern fn_push_preventivo_a_ordine. rev 2026-07-09. ⭐ rev 2026-08-24: i due rifiuti di evasione (E_DDT_ORDINE_STATO_NON_EVADIBILE, E_DDT_NIENTE_DA_EVADERE) portano il BERSAGLIO sull''ordine, nel canale DATATYPE dell''eccezione: l''evasione si lancia anche in massa, e li'' la frase dice QUALE ordine ha rifiutato ma non ci porta. Il bersaglio si compone una volta sola dopo la lettura dell''ordine — a quel punto esiste ED e'' visibile — e non costa nessuna query in piu''. ⛔ E_DDT_ORDINE_NOT_FOUND resta SENZA bersaglio, di proposito: l''ordine non c''e'' o la RLS lo nasconde, e un pulsante che apre il vuoto e'' peggio di nessun pulsante. Brief: brief-db-bersaglio-errore.md §6 L6.';
+IS 'Madre evasione ordine->DDT (DRAFT): multi-DDT (A-1), copia snapshot prezzi/componenti (A-2), fulfillment riga-riga (over-shipping via guard, C2), proiezione stato ordine CONFERMATO/PARZIALMENTE_EVASO/EVASO (C5). sorgente=ORDINE_VENDITA (C1). p_righe [{ordine_riga_id, qta_da_evadere(operativa)}] NULL=tutto il residuo. Pattern fn_push_preventivo_a_ordine. rev 2026-07-09. ⭐ rev 2026-08-24: i due rifiuti di evasione (E_DDT_ORDINE_STATO_NON_EVADIBILE, E_DDT_NIENTE_DA_EVADERE) portano il BERSAGLIO sull''ordine, nel canale DATATYPE dell''eccezione: l''evasione si lancia anche in massa, e li'' la frase dice QUALE ordine ha rifiutato ma non ci porta. Il bersaglio si compone una volta sola dopo la lettura dell''ordine — a quel punto esiste ED e'' visibile — e non costa nessuna query in piu''. ⛔ E_DDT_ORDINE_NOT_FOUND resta SENZA bersaglio, di proposito: l''ordine non c''e'' o la RLS lo nasconde, e un pulsante che apre il vuoto e'' peggio di nessun pulsante. Brief: brief-db-bersaglio-errore.md §6 L6. ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine §5.2): la proiezione dello stato dell''ordine (step 7) e'' il building block vendite.fn_ordine_proietta_stato_evasione, condiviso coi cinque verbi del reso, con vendite.fn_ddt_riga_correggi_qta_evasa e col ritiro del legame in bozza; la copia scritta a mano qui si ritira (regola del 2). Comportamento invariato. ⭐ rev 2026-10-13 (20261013-12, brief-db-articoli-ammessi-per-documento A-4): la riga di bolla porta la natura della riga d''ordine che evade, che script.trgfn_righe_natura_vendita in modo CHIAMANTE accetta: si spedisce cio'' che l''ordine ha venduto, anche se l''articolo nel frattempo ha cambiato natura. Firma invariata. Rev 2026-10-20 (20261020-55, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della sorgente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

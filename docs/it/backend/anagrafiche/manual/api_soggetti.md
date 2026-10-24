@@ -10,7 +10,10 @@ e utility di validazione/generazione codice fiscale.
 
 Tutti gli endpoint risiedono sotto `/api/v1/anagrafiche/soggetti/`.
 L'autenticazione avviene tramite token JWT (`Authorization: Bearer <token>`).
-Le risposte seguono l'envelope standard `{"data": ...}`.
+Le risposte seguono l'envelope standard `{"data": ..., "meta": {...}}`.
+Permesso: `model_permission = ("anagrafiche", "soggetto")` sugli endpoint
+`soggetti/...` (lista, dettaglio, export, contatti, indirizzi, ruoli); i lookup
+`soggetti-ruoli/...` e `istanze-utility/...` hanno `skip_area_check` con scope emittente.
 La logica di business e i default (stato IT, socio unico, liquidazione) sono gestiti
 dal DB tramite funzioni e trigger; il backend orchestra e valida.
 
@@ -37,16 +40,20 @@ Restituisce l'elenco paginato dei soggetti con ricerca full-text e filtro per ti
 |---|---|---|---|
 | `search` | string | No | Ricerca libera sulle colonne che il catalogo della lista `anagrafiche.soggetti` accende per l'operatore (le decide il catalogo, non il codice: `ricerca_full` nella configurazione della lista). Sotto 3 caratteri non filtra (nessun 400). Vale anche per l'export |
 | `tipo_soggetto_dettaglio_id` | int | No | Filtra per tipo soggetto (PF, SRL, SPA, ecc.) |
-| `limit` | int | No | Numero massimo di risultati per pagina (default: 25) |
+| `limit` | int | No | Righe per pagina (default 25, max 200) |
 | `offset` | int | No | Offset per paginazione |
-| `order_by` | string | No | Campo di ordinamento (default: `ragione_sociale_completa`) |
-| `order_dir` | string | No | Direzione ordinamento: `asc` o `desc` |
+| `order_by` | string | No | `codice`, `ragione_sociale_completa` (default), `id_fiscale_univoco_cf_piva`, `tipo_descrizione`, `data_insert`; fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
+| `order_dir` | string | No | `asc` o `desc`. Se omessa: `asc`, salvo `data_insert` che parte `desc` |
 
 ### Risposta (200)
 
 ```json
 {
   "data": {
+    "count": 42,
+    "page": 1,
+    "page_size": 25,
+    "total_pages": 2,
     "results": [
       {
         "id": "a1b2c3d4-...",
@@ -54,14 +61,20 @@ Restituisce l'elenco paginato dei soggetti con ricerca full-text e filtro per ti
         "ragione_sociale_completa": "Rossi Mario",
         "codice_fiscale": "RSSMRA80A01H501Z",
         "partita_iva": null,
-        "tipo_soggetto_dettaglio": "Persona Fisica",
-        "stato_iso2": "IT"
+        "id_fiscale_univoco_cf_piva": "RSSMRA80A01H501Z",
+        "cognome": "Rossi",
+        "nome": "Mario",
+        "ragione_sociale": null,
+        "tipo_descrizione": "Privato",
+        "tipo_soggetto_dettaglio_id": 1,
+        "natura_soggetto": "PF",
+        "ruoli": [
+          { "soggetto_ruolo_id": 1, "codice": "CL", "descrizione": "Cliente" }
+        ]
       }
-    ],
-    "total": 42,
-    "page": 1,
-    "limit": 25
-  }
+    ]
+  },
+  "meta": { "request_id": "..." }
 }
 ```
 
@@ -176,6 +189,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
     "sesso": "M",
     "contatto": {
       "nominativo": "Rossi Mario",
+      "tipo_contatto_id": 1,
       "email": "mario.rossi@example.com",
       "telefono": "0212345678"
     },
@@ -203,6 +217,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
     "partita_iva": "01234567890",
     "contatto": {
       "nominativo": "Ufficio Amministrazione",
+      "tipo_contatto_id": 1,
       "email": "admin@acme.it",
       "pec": "acme@pec.it"
     },
@@ -228,7 +243,9 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 
 ## 3. Dettaglio soggetto
 
-Restituisce il soggetto completo con contatti, indirizzi, ruoli e dati societari.
+Restituisce il soggetto completo con contatti, indirizzi, ruoli, dati societari,
+conti bancari e titoli IVA (tutti, senza paginazione). I ruoli CL sono filtrati per
+scope emittente dell'operatore.
 
 | | |
 |---|---|
@@ -247,40 +264,63 @@ Restituisce il soggetto completo con contatti, indirizzi, ruoli e dati societari
 {
   "data": {
     "id": "a1b2c3d4-...",
-    "codice": "S000001",
     "ragione_sociale_completa": "Rossi Mario",
     "codice_fiscale": "RSSMRA80A01H501Z",
     "partita_iva": null,
+    "cognome": "Rossi",
+    "nome": "Mario",
+    "ragione_sociale": null,
+    "split_payment": "N",
+    "cliente_pa": "N",
+    "sesso": "M",
+    "data_nascita": "1980-01-01",
+    "comune_nascita_id": 1234,
+    "comune_nascita_descrizione": "Roma",
+    "comune_nascita_provincia_sigla": "RM",
     "tipo_soggetto_dettaglio_id": 1,
-    "stato_iso2": "IT",
+    "tipo_descrizione": "Privato",
+    "natura_soggetto": "PF",
     "tipi_modificabili_ids": [1, 2],
-    "non_editable_fields": ["codice_fiscale"],
     "contatti": [
       {
         "id": 1,
         "nominativo": "Rossi Mario",
         "email": "mario.rossi@example.com",
-        "telefono": "0212345678"
+        "telefono": "0212345678",
+        "cellulare": null,
+        "pec": null,
+        "note": null,
+        "tipo_contatto_id": 1,
+        "tipo_contatto_descrizione": "Principale",
+        "unita_organizzativa_id": null
       }
     ],
     "indirizzi": [
-      {
-        "id": 1,
-        "tipo_indirizzo_codice": "SEDE",
-        "indirizzo_normalizzato": "Via Garibaldi 10, 20100 Milano MI"
-      }
+      { "...": "stessa forma della lista indirizzi (§7.1)" }
     ],
     "ruoli": [
       {
-        "soggetto_ruolo_id": 1,
-        "codice": "CL",
-        "descrizione": "Cliente"
+        "id": 1,
+        "tipo_ruolo_id": 3,
+        "ruolo_codice": "CL",
+        "ruolo_descrizione": "Cliente"
       }
     ],
-    "dati_societari": null
-  }
+    "dati_societari": null,
+    "conti_bancari": [],
+    "titoli_iva": [],
+    "non_editable_fields": ["codice_fiscale"]
+  },
+  "meta": { "request_id": "..." }
 }
 ```
+
+Il dettaglio non porta `codice` ne' `stato_iso2`. `conti_bancari` ha la forma
+dei legami soggetto-conto (`id`, `conto_bancario_id`, `uso`, `predefinito`,
+`valido_dal`, `valido_al`, `intestazione_dichiarata`, `verificato`, `bloccato` e i
+dati del conto); `titoli_iva` la forma della lista titoli IVA
+([api_titoli_iva_soggetto.md](api_titoli_iva_soggetto.md)). Soggetto inesistente → 404
+`E_ANAG_NOT_FOUND`.
 
 ### Campi meta-info edit (refactor 28-04-2026)
 
@@ -332,7 +372,9 @@ Aggiorna uno o piu' campi del soggetto. Invia solo i campi da modificare.
 | `tipo_soggetto_dettaglio_id` | int | La natura di dettaglio (fra i `tipi_modificabili_ids`). Cosa la natura nuova ammette — flag, forma giuridica, titoli IVA in vigore — lo giudicano i guard del DB |
 | `dati_societari` | object | La sezione dati societari, **stato intero**: crea o aggiorna la riga col verbo `anagrafiche.fn_scrivi_dati_societari`. Chiavi: `forma_giuridica_id`, `id_prov_iscri_rea`, `iscrizione_rea`, `capitale_sociale`, `socio_unico`, `liquidazione`, `destinatario_fe`, `pec_fatturazione`, `codice_sdi`, `data_costituzione`. Una chiave assente vale `null` |
 
-Inviare solo i campi che si intende modificare. ⚠️ Fa eccezione `dati_societari`:
+Inviare solo i campi che si intende modificare. Una chiave fuori dall'elenco
+sopra → 400 `E_ANAG_VALIDAZIONE`; un corpo vuoto (o con `dati_societari: {}`) →
+400 `E_ANAG_VALIDAZIONE` (dal 2026-10-20: prima 404, come un soggetto inesistente). ⚠️ Fa eccezione `dati_societari`:
 se c'e', porta la sezione **intera** (il verbo non distingue «non toccare» da
 «svuota»).
 
@@ -459,6 +501,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   "https://host/api/v1/anagrafiche/soggetti/a1b2c3d4-.../contatti/" \
   -d '{
     "nominativo": "Ufficio Acquisti",
+    "tipo_contatto_id": 2,
     "email": "acquisti@acme.it",
     "telefono": "0298765432"
   }'
@@ -484,7 +527,8 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 
 ### Body (JSON)
 
-Inviare solo i campi da modificare (stessi campi della creazione).
+Inviare solo i campi da modificare (stessi campi della creazione). Una chiave
+fuori da quell'elenco → 400 `E_ANAG_VALIDAZIONE`.
 
 ### Risposta (200)
 
@@ -548,15 +592,34 @@ curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
     "results": [
       {
         "id": 1,
-        "tipo_indirizzo_codice": "SEDE",
+        "tipo_indirizzo_id": 2,
+        "tipo_indirizzo_descrizione": "Sede legale",
+        "tipo_indirizzo_codice": "SEDELEG",
         "indirizzo_dettaglio_id": 100,
-        "indirizzo_normalizzato": "Via Garibaldi 10, 20100 Milano MI",
-        "indirizzo_libero": null
+        "indirizzo_libero": null,
+        "stato_id": null,
+        "comune_id": null,
+        "indirizzo_display": "VIA GARIBALDI 10",
+        "stradario_id": 7,
+        "civico": 10,
+        "estensione_civico": null,
+        "palazzina": null,
+        "scala": null,
+        "piano": null,
+        "interno": null,
+        "stradario_display": "VIA GARIBALDI",
+        "det_comune_id": 1234,
+        "descrizione_comune": "Milano"
       }
     ]
-  }
+  },
+  "meta": { "request_id": "..." }
 }
 ```
+
+`indirizzo_display` e' l'indirizzo libero se c'e', altrimenti l'indirizzo
+normalizzato del dettaglio; `det_comune_id`/`descrizione_comune` sono il comune
+dello stradario. Ordinati per tipo indirizzo.
 
 ### Esempio
 
@@ -734,13 +797,19 @@ Restituisce i ruoli assegnati al soggetto (es. Cliente, Fornitore, Vettore).
     "results": [
       {
         "id": 1,
-        "codice_ruolo": "CLI",
-        "descrizione": "Cliente"
+        "tipo_ruolo_id": 3,
+        "ruolo_codice": "CL",
+        "ruolo_descrizione": "Cliente"
       }
     ]
-  }
+  },
+  "meta": { "request_id": "..." }
 }
 ```
+
+`id` e' il `soggetto_ruolo_id`; `ruolo_codice` e' il codice interno del tipo ruolo
+(o il codice, se manca). Ordinati per descrizione; il ruolo CL e' filtrato per
+scope emittente.
 
 ### Esempio
 
@@ -928,6 +997,58 @@ non lo stesso insieme di righe.
 Un id fuori scope risponde come un id inesistente: non rivela di esistere. ⛔ Fino al 2026-10-08 il restore non
 applicava nessuno scope (la view ha `skip_area_check`).
 
+### 9.5 Restore by-id del lookup forniture (istanze utility)
+
+Ricostruisce la riga del lookup forniture (`/anagrafiche/istanze-utility/lookup/`,
+citato in 9.3) quando un form che conosce solo l'id dell'istanza riapre in edit
+(es. preventivo aperto da una pratica senza BA).
+
+| | |
+|---|---|
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/anagrafiche/istanze-utility/{istanza_utility_id}/lookup/` |
+| **View** | `IstanzaUtilityLookupByIdView` — `skip_area_check`, JWT |
+
+Nessun parametro query, nessun corpo.
+
+### Risposta (200)
+
+```json
+{
+  "data": {
+    "id": 100,
+    "codice": "IU-0000100",
+    "fittizia": false,
+    "soggetto_id": "a1b2c3d4-...",
+    "ragione_sociale_completa": "Azienda ConTutto",
+    "id_fiscale": "01234567890",
+    "indirizzo_dettaglio_id": 42,
+    "indirizzo_display": "VIA ROMA 10",
+    "pdp_id": 7,
+    "pdp_codice": "IT001E00000000",
+    "billing_account_id": 412,
+    "billing_account_codice": "BA-0000412",
+    "utility_id": 1,
+    "utility_codice": "EE",
+    "utility_descrizione": "Energia elettrica"
+  },
+  "meta": { "request_id": "..." }
+}
+```
+
+I campi del billing account (`billing_account_*`, `utility_*`) sono valorizzati
+solo se l'istanza ha **un solo** BA; con piu' BA (piu' utility) restano `null`.
+
+**Perimetro**: lo stesso scope emittente della ricerca; un id fuori scope
+risponde come un id inesistente.
+
+### Errori
+
+| Codice | HTTP | Causa |
+|---|---|---|
+| `E_ANAG_VALIDAZIONE` | 400 | `istanza_utility_id` non positivo |
+| `E_ANAG_NOT_FOUND` | 404 | Istanza inesistente o fuori scope emittente |
+
 ---
 
 ## 10. Validazione CF e P.IVA
@@ -1094,7 +1215,7 @@ Usato per adattare ricerca soggetti e form di creazione al ruolo target
 
 | Codice | HTTP | Causa |
 | --- | --- | --- |
-| `E_ANAG_NOT_FOUND` | 404 | `tipo_ruolo_codice` non corrisponde a nessun `config.tipi_ruoli` attivo |
+| `E_ANAG_NOT_FOUND` | 404 | `tipo_ruolo_codice` non corrisponde a nessun `config.tipi_ruoli` (confronto sul codice interno, o sul codice se manca; non filtra su `attivo`) |
 
 ### Esempio config-resolver
 
@@ -1108,7 +1229,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ## Regole trasversali
 
 - **Autenticazione**: tutti gli endpoint richiedono `Authorization: Bearer <token>`.
-- **Envelope**: tutte le risposte sono racchiuse in `{"data": ...}`.
+- **Envelope**: tutte le risposte sono racchiuse in `{"data": ..., "meta": {...}}`.
 - **Errori**: in caso di errore viene restituito `{"error": {"code": "...", "message": "..."}}` con HTTP status appropriato (400, 404, 409, 500).
 - **UUID**: l'identificativo `soggetto_id` e' di tipo UUID (stringa).
 - **Ownership**: le operazioni su contatti e indirizzi verificano che la risorsa appartenga al soggetto indicato nel path.

@@ -28,9 +28,10 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_pratiche.sh"    # smoke_tipo_prestazione
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"   # smoke_emetti
 
-EMITTENTE_FISCALE_ID="${EMITTENTE_ID:-32}"
-TIPO_PRESTAZIONE_ID="${TIPO_PRESTAZIONE_ID:-9004}"   # PREVENTIVI (bivio)
 PRIORITA_ID="${PRIORITA_ID:-1}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -128,11 +129,33 @@ pratica_stato() {
 echo "== Smoke pratica PREVENTIVI 9004 — BIVIO-PER-ESITO =="
 smoke_login --senza-prompt --uscita 2
 log_ok "Autenticazione JWT"
+# L'emittente della pratica: quello ATTIVO dell'operatore (BB _smoke_cliente.sh),
+# mai un id scritto a mano (era 32: E_SCOPE_EMITTENTE se l'operatore lavora su
+# un altro). Override: EMITTENTE_ID.
+smoke_emittente_attivo
+EMITTENTE_FISCALE_ID="$EMITTENTE_ATTIVO_ID"
+if [[ -z "$EMITTENTE_FISCALE_ID" ]]; then
+    echo -e "${RED}Setup fallito: l'operatore non ha un emittente attivo. Stop.${NC}"; exit 1
+fi
+log_info "emittente attivo = $EMITTENTE_FISCALE_ID"
+# Il tipo di prestazione per CODICE (BB _smoke_pratiche.sh): PREVENTIVI e' il
+# tipo con un percorso attivo. Fino al 2026-10-12 qui c'era un id cablato.
+smoke_tipo_prestazione PREVENTIVI
+if [[ -z "$TIPO_PRESTAZIONE_ID" ]]; then
+    echo -e "${RED}Setup fallito: tipo di prestazione PREVENTIVI non trovato. Stop.${NC}"; exit 1
+fi
+log_info "tipo prestazione = $TIPO_PRESTAZIONE_ID"
 
 # --- 1. Setup: tripla BA+utility + articoli ---
-echo ""; echo "-- 1. Setup: tripla BA da preventivo esistente + articolo merce + servizio --"
-PREV_PAYLOAD=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/vendite/preventivi/?page_size=1" 2>/dev/null | python3 -c "
+echo ""; echo "-- 1. Setup: tripla BA (lookup, o preventivo esistente) + articolo merce + servizio --"
+# Il cliente dal BB (_smoke_cliente.sh); il preventivo esistente e' il ripiego.
+# Nessun emittente nel payload del preventivo: vale quello attivo, lo stesso del
+# cliente del lookup.
+smoke_cliente_dal_lookup
+PREV_PAYLOAD=""
+[[ -n "$BA_ID" ]] && PREV_PAYLOAD="{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID}, \"istanza_utility_id\": ${ISTANZA_ID}}"
+[[ -z "$PREV_PAYLOAD" ]] && PREV_PAYLOAD=$(curl -s -H "Authorization: Bearer $TOKEN" \
+    "${BASE_URL}/api/v1/vendite/preventivi/?limit=1" 2>/dev/null | python3 -c "
 import sys, json
 try:
     r = json.load(sys.stdin).get('data',{}).get('results',[])
@@ -141,27 +164,16 @@ try:
     print(json.dumps(p) if p else '')
 except Exception: print('')
 " 2>/dev/null)
-[[ -z "$PREV_PAYLOAD" ]] && { echo -e "${RED}Setup fallito: nessun preventivo da cui derivare la tripla BA.${NC}"; exit 1; }
-PREV_PAYLOAD=$(echo "$PREV_PAYLOAD" | python3 -c "
-import sys, json
-p = json.load(sys.stdin); p['emittente_fiscale_id'] = $EMITTENTE_FISCALE_ID
-print(json.dumps(p))
-")
+[[ -z "$PREV_PAYLOAD" ]] && { echo -e "${RED}Setup fallito: nessun cliente (lookup) e nessun preventivo da cui derivare la tripla BA.${NC}"; exit 1; }
 log_info "payload preventivo base = $PREV_PAYLOAD"
 
-ARTICOLO_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/catalogo/articoli/?page_size=1" 2>/dev/null | python3 -c "
-import sys, json
-try:
-    r = json.load(sys.stdin).get('data',{}).get('results',[]); print(r[0]['id'] if r else '')
-except Exception: print('')
-" 2>/dev/null)
+smoke_articolo_merce   # BB _smoke_documenti.sh: una MERCE (va in un ordine/bolla)
 [[ -z "$ARTICOLO_ID" ]] && { echo -e "${RED}Setup fallito: catalogo vuoto.${NC}"; exit 1; }
 log_info "articolo merce = $ARTICOLO_ID"
 
 SERV_CODICE="SMOKE-SERV-UT"
 SERV_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/catalogo/articoli/?search=${SERV_CODICE}&page_size=5" 2>/dev/null | python3 -c "
+    "${BASE_URL}/api/v1/catalogo/articoli/?search=${SERV_CODICE}&limit=5" 2>/dev/null | python3 -c "
 import sys, json
 try:
     r = json.load(sys.stdin).get('data',{}).get('results',[])
@@ -216,18 +228,16 @@ run_scenario() {
     check "POST collega-pratica (ROOT)" 200 || true
     if [[ "$CON_MERCE" == "1" ]]; then
         do_curl POST "/api/v1/vendite/preventivi/${PREV_ID}/righe/" \
-            "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"2\", \"prezzo_unitario\": \"100.00\", \"iva_id\": 16}"
+            "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"2\", \"prezzo_unitario\": \"100.00\"}"
         check "POST riga merce" 200 || true
     fi
     if [[ "$CON_SERV" == "1" ]]; then
         do_curl POST "/api/v1/vendite/preventivi/${PREV_ID}/righe/" \
-            "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"50.00\", \"iva_id\": 16}"
+            "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"50.00\"}"
         check "POST riga servizio" 200 || true
     fi
     # EMESSO via multipart (prereq documentale template/emittente)
-    curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" \
-        -F "x=" "${BASE_URL}/api/v1/vendite/preventivi/${PREV_ID}/emetti/" > "$TMPFILE" 2>/dev/null
-    LAST_STATUS=$(tail -1 "$TMPFILE"); LAST_BODY=$(sed '$d' "$TMPFILE")
+    smoke_emetti preventivi "${PREV_ID}"   # BB _smoke_documenti.sh
     if [[ "$LAST_STATUS" != "200" ]]; then
         log_skip "EMESSO HTTP $LAST_STATUS — prereq documentale assente, salto lo scenario"
         log_info "Body: $(echo "$LAST_BODY" | head -c 200)"; return 0
@@ -235,12 +245,26 @@ run_scenario() {
     log_ok "POST /emetti/ -> EMESSO"
     completa_flusso_generico "$F_PREV" "PREVENTIVAZIONE" "POSITIVO" || true
 
-    # 6. APPROVAZIONE_CLIENTE -> handler accetta_preventivo -> ACCETTATO
+    # 6. APPROVAZIONE_CLIENTE: il DOCUMENTO e' sovrano (GUIDA D4, inversione
+    #    handler -> proiezione). Si accetta il preventivo dalla pratica, e il
+    #    passo della pratica avanza da solo (trigger pratiche.fn_reconcile_sorgente).
+    #    Fino al 2026-10-13 lo smoke completava il flusso e aspettava che
+    #    l'handler `vendita.accetta_preventivo` accettasse il preventivo: la
+    #    direzione vecchia, con un handler che il backend ha ritirato.
     crea_e_avvia_flusso "$T_APPR" "APPROVAZIONE_CLIENTE" || return 1
-    completa_flusso_generico "$FLUSSO_ID" "APPROVAZIONE_CLIENTE" "POSITIVO" || true
+    F_APPR="$FLUSSO_ID"
+    do_curl POST "/api/v1/vendite/preventivi/da-pratica/${PRATICA_ID}/stato/" \
+        '{"nuovo_stato": "ACCETTATO", "fatturazione_immediata": true}'
+    check "POST accetta preventivo da-pratica" 200 || return 1
     do_curl GET "/api/v1/vendite/preventivi/${PREV_ID}/"
     [[ "$(json_get "$LAST_BODY" "data.stato_codice_interno")" == "ACCETTATO" ]] \
-        && log_ok "preventivo ACCETTATO (handler event-driven)" || { log_fail "preventivo non ACCETTATO"; return 1; }
+        && log_ok "preventivo ACCETTATO (documento sovrano)" || { log_fail "preventivo non ACCETTATO"; return 1; }
+    do_curl GET "/api/v1/pratiche/${PRATICA_ID}/flussi/${F_APPR}/"
+    local sf se
+    sf=$(json_get "$LAST_BODY" "data.stato_codice_interno"); se=$(json_get "$LAST_BODY" "data.esito")
+    [[ "$sf" == "COMPLETATO" && "$se" == "POSITIVO" ]] \
+        && log_ok "APPROVAZIONE_CLIENTE auto-avanzato COMPLETATO/POSITIVO (proiezione)" \
+        || log_fail "APPROVAZIONE_CLIENTE atteso COMPLETATO/POSITIVO, e' ${sf:-?}/${se:-?}"
 
     # 7. SMISTAMENTO: crea flusso, split (genera-ordine / push-commessa), completa-smistamento
     crea_e_avvia_flusso "$T_SMIST" "SMISTAMENTO" || return 1

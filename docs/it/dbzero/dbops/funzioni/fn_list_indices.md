@@ -7,6 +7,8 @@ CREATE FUNCTION fn_list_indices(p_schema text, p_table text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_list_indices(p_schema text, p_table text DEFAULT NULL::text)
  RETURNS TABLE(schema_name text, table_name text, index_name text, is_unique boolean, is_primary boolean, index_def text)
@@ -28,6 +30,8 @@ AS $function$
     ORDER BY tbl.relname, idx.relname;
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

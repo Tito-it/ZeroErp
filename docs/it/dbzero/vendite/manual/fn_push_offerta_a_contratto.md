@@ -67,7 +67,10 @@ il push aggiunge solo *lock*, *routing* e *rete di sicurezza*.
   un'offerta ne genera al massimo uno. È lo specchio write-path del guard di
   capability [`fn_available_actions_offerta`](/dbzero/script/funzioni/fn_available_actions_offerta);
   il guard speculare lato ordine (impedire l'ordine se esiste un contratto) vive
-  nel BE `crea_ordine_da_offerta`. Non esiste un vincolo strutturale incrociato
+  dal 2026-10-21 nel verbo gemello
+  [`vendite.fn_genera_ordine_da_offerta`](/dbzero/vendite/funzioni/fn_genera_ordine_da_offerta)
+  (prima nel BE `crea_ordine_da_offerta`), che blocca l'offerta `FOR UPDATE`.
+  Non esiste un vincolo strutturale incrociato
   contratti↔ordini: la race cross-tab non è coperta (scelta esplicita,
   [brief §10](/dev/work-done/brief-db-univocita-offerta-ordine)).
 - **Contratto creato in DRAFT**: l'auto-attivazione non è prevista in v1

@@ -18,6 +18,7 @@ from apps.vendite.api.ddt_documenti_views import (
     ApiDdtDocumentoGenera,
     ApiDdtEmetti,
 )
+from apps.vendite.api.legami_views import ApiDdtLegami
 from apps.vendite.api.lineage_views import ApiDdtPassaggi
 from apps.vendite.api.note_views import ApiDdtNoteDetail, ApiDdtNoteList
 from apps.vendite.api.situazione_merce_views import ApiDdtSituazioneMerce
@@ -28,12 +29,16 @@ from apps.vendite.api.views_ddt import (
     ApiDdtIndirizzi,
     ApiDdtIndirizzoDetail,
     ApiDdtList,
+    ApiDdtPrelievi,
     ApiDdtPush,
     ApiDdtRiepilogoIva,
     ApiDdtRigaComponenteDetail,
     ApiDdtRigaComponentiList,
     ApiDdtRigaDetail,
+    ApiDdtRigaPrelievi,
+    ApiDdtRigaPrelievoDetail,
     ApiDdtRigaPreviewComponenti,
+    ApiDdtRigaQtaEvasa,
     ApiDdtRighe,
     ApiDdtRigheListaExportView,
     ApiDdtRigheListaView,
@@ -76,6 +81,9 @@ urlpatterns = [
          name="vendite-ddt-cambia-stato"),
     path("<int:ddt_id>/push/", ApiDdtPush.as_view(),
          name="vendite-ddt-push"),
+    # I legami della bolla, per la conferma dell'annullo (legami_views).
+    path("<int:ddt_id>/legami/", ApiDdtLegami.as_view(),
+         name="vendite-ddt-legami"),
 
     # Documenti generati (stampa PDF) — motore `documenti`, sorgente
     # DDT_VENDITA (quinto dominio della famiglia, view dal factory condiviso:
@@ -117,6 +125,9 @@ urlpatterns = [
          name="vendite-ddt-righe-preview-componenti"),
     path("<int:ddt_id>/righe/<int:riga_id>/", ApiDdtRigaDetail.as_view(),
          name="vendite-ddt-riga-detail"),
+    # La quantita' evasa di una riga legata a un ordine o a un reso (D-2).
+    path("<int:ddt_id>/righe/<int:riga_id>/qta-evasa/", ApiDdtRigaQtaEvasa.as_view(),
+         name="vendite-ddt-riga-qta-evasa"),
 
     # Componenti BoM
     path("<int:ddt_id>/righe/<int:riga_id>/componenti/",
@@ -125,6 +136,16 @@ urlpatterns = [
     path("<int:ddt_id>/righe/<int:riga_id>/componenti/<int:componente_id>/",
          ApiDdtRigaComponenteDetail.as_view(),
          name="vendite-ddt-riga-componente-detail"),
+
+    # Prelievi (Lotto 3 R-2b): la situazione della bolla, e il CRUD sotto la riga.
+    path("<int:ddt_id>/prelievi/", ApiDdtPrelievi.as_view(),
+         name="vendite-ddt-prelievi"),
+    path("<int:ddt_id>/righe/<int:riga_id>/prelievi/",
+         ApiDdtRigaPrelievi.as_view(),
+         name="vendite-ddt-riga-prelievi"),
+    path("<int:ddt_id>/righe/<int:riga_id>/prelievi/<int:prelievo_id>/",
+         ApiDdtRigaPrelievoDetail.as_view(),
+         name="vendite-ddt-riga-prelievo-detail"),
 
     # Note partizionate (target_tipo='DDT'). Building block
     # PartitionedNoteRepository: 3 righe di cablaggio + view generata.

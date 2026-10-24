@@ -10,13 +10,18 @@ Indice test eseguiti:
 1) CatalogoApiTests.test_list_articoli_ok
 2) CatalogoApiTests.test_list_articoli_requires_jwt
 3) CatalogoApiTests.test_list_articoli_parametri
-4) CatalogoApiTests.test_list_articoli_invalid_limit_fallback
+4) CatalogoApiTests.test_list_articoli_invalid_limit_e_400
 5) CatalogoApiTests.test_list_articoli_search_corta_non_e_un_errore
 6) CatalogoApiTests.test_list_articoli_invalid_tipo_voce_id
 7) CatalogoApiTests.test_get_articolo_ok
 8) CatalogoApiTests.test_get_articolo_not_found
 9) CatalogoApiTests.test_lookup_articoli_ok
 10) CatalogoApiTests.test_lookup_articoli_invalid_limit
+10a) CatalogoApiTests.test_lookup_articoli_documento_va_alla_sede_unica
+10b) CatalogoApiTests.test_lookup_articoli_documento_rifiuta_i_filtri_liberi
+10c) CatalogoApiTests.test_lookup_articoli_padre_non_uuid
+10c-bis) CatalogoApiTests.test_lookup_articoli_filtri_ritirati
+10d) CatalogoApiTests.test_patch_articolo_porta_la_correzione_di_struttura
 11) CatalogoApiTests.test_create_articolo_ok
 14) CatalogoApiTests.test_create_articolo_validation_error
 15) CatalogoApiTests.test_patch_articolo_ok
@@ -39,7 +44,8 @@ import json
 from unittest.mock import Mock, patch
 
 from django.core.cache import cache
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
@@ -69,7 +75,7 @@ class CatalogoApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()
         cache.clear()
-        self.client = Client()
+        self.client = ClientApi()
 
     # Scopo: Lista articoli base -> 200 con envelope paginato.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -108,13 +114,18 @@ class CatalogoApiTests(JwtMockedApiTest):
         self.assertEqual(kwargs["order_by"], "codice")
         self.assertEqual(kwargs["order_dir"], "desc")
 
-    # Scopo: limit/offset non numerici → fallback default (parse_list_params usa qp_int).
+    # Scopo: ⛔ limit/offset non numerici → 400, non il ripiego muto sul
+    #        default (decisione Tid 2026-10-21, BB `pagina_da_query`): il
+    #        ripiego dava la prima pagina a chi ne aveva chiesta un'altra.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.catalogo.api.views.fn_list_articoli")
-    def test_list_articoli_invalid_limit_fallback(self, mocked_list, _mock_auth):
+    def test_list_articoli_invalid_limit_e_400(self, mocked_list, _mock_auth):
         mocked_list.return_value = (_LIST_RESULTS, _LIST_TOTAL)
-        response = self.client.get("/api/v1/catalogo/articoli/?limit=abc")
-        self.assertEqual(response.status_code, 200)
+        for qs in ("limit=abc", "offset=xyz"):
+            with self.subTest(qs=qs):
+                response = self.client.get(f"/api/v1/catalogo/articoli/?{qs}")
+                self.assertEqual(response.status_code, 400)
+        mocked_list.assert_not_called()
 
     # Scopo: search corta -> 200, il termine arriva al repository (sotto la
     #        soglia del catalogo lo ignora il BB). ⛔ Nessun 400 sotto soglia
@@ -177,32 +188,98 @@ class CatalogoApiTests(JwtMockedApiTest):
         self.assertEqual(kwargs["limit"], 15)
         self.assertTrue(kwargs["attivo"])
 
-    # Scopo: il CSV `escludi_destinazione` viene normalizzato (uppercase, no
-    # vuoti) e passato al service come lista di destinazioni natura da escludere
-    # (difesa in profondità split per natura: niente CONTRATTO sul preventivo).
+    # Scopo: con `documento` il lookup va alla sede unica del picker
+    # (`fn_lookup_articoli_ammessi`) col contesto normalizzato, e la ricerca
+    # libera non viene chiamata (brief-db-articoli-ammessi-per-documento §9.6).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.catalogo.api.views.fn_lookup_articoli")
-    def test_lookup_articoli_escludi_destinazione(self, mocked_lookup, _mock_auth):
-        mocked_lookup.return_value = _LOOKUP_RESPONSE
+    @patch("apps.catalogo.api.views.fn_lookup_articoli_ammessi")
+    def test_lookup_articoli_documento_va_alla_sede_unica(self, mocked_ammessi, mocked_lookup, _mock_auth):
+        mocked_ammessi.return_value = _LOOKUP_RESPONSE
 
         response = self.client.get(
-            "/api/v1/catalogo/articoli/lookup/?search=art&escludi_destinazione=contratto,%20ordine"
+            "/api/v1/catalogo/articoli/lookup/?search=art&documento=contratto"
+            "&documento_id=5&tipo_eccezione=aggiunta"
         )
 
         self.assertEqual(response.status_code, 200)
-        kwargs = mocked_lookup.call_args.kwargs
-        self.assertEqual(kwargs["escludi_destinazione_tipi"], ["CONTRATTO", "ORDINE"])
+        mocked_lookup.assert_not_called()
+        kwargs = mocked_ammessi.call_args.kwargs
+        self.assertEqual(kwargs["documento"], "CONTRATTO")
+        self.assertEqual(kwargs["documento_id"], 5)
+        self.assertEqual(kwargs["tipo_eccezione"], "AGGIUNTA")
+        self.assertIsNone(kwargs["articolo_padre_id"])
+        self.assertEqual(kwargs["search"], "art")
 
-    # Scopo: senza il parametro la lista esclusioni è None (nessun filtro natura).
+    # Scopo: ⛔ accanto a `documento` nessun filtro libero: la regola della riga
+    # la dice il DB, e un filtro in piu' nasconderebbe un articolo ammesso.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.catalogo.api.views.fn_lookup_articoli_ammessi")
+    def test_lookup_articoli_documento_rifiuta_i_filtri_liberi(self, mocked_ammessi, _mock_auth):
+        for filtro in ("attivo=true", "is_composito=false", "gestito_a_magazzino=true", "solo_oneri=true"):
+            with self.subTest(filtro=filtro):
+                response = self.client.get(
+                    f"/api/v1/catalogo/articoli/lookup/?documento=PREVENTIVO&documento_id=1&{filtro}"
+                )
+                self.assertEqual(response.status_code, 400)
+        mocked_ammessi.assert_not_called()
+
+    # Scopo: i filtri ritirati (`is_solo_componente`, `escludi_destinazione`)
+    # sono un 400 che li nomina, con o senza `documento`: ignorati, il
+    # chiamante crederebbe di filtrare e riceverebbe tutto.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.catalogo.api.views.fn_lookup_articoli")
-    def test_lookup_articoli_senza_escludi_destinazione(self, mocked_lookup, _mock_auth):
-        mocked_lookup.return_value = _LOOKUP_RESPONSE
+    @patch("apps.catalogo.api.views.fn_lookup_articoli_ammessi")
+    def test_lookup_articoli_filtri_ritirati(self, mocked_ammessi, mocked_lookup, _mock_auth):
+        for query in (
+            "search=art&is_solo_componente=false",
+            "search=art&escludi_destinazione=CONTRATTO",
+            "documento=PREVENTIVO&documento_id=1&escludi_destinazione=CONTRATTO",
+        ):
+            with self.subTest(query=query):
+                response = self.client.get(f"/api/v1/catalogo/articoli/lookup/?{query}")
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("_ritirato", response.json()["error"]["message"])
+        mocked_lookup.assert_not_called()
+        mocked_ammessi.assert_not_called()
 
-        response = self.client.get("/api/v1/catalogo/articoli/lookup/?search=art")
+    # Scopo: un padre di distinta che non e' un UUID e' un 400, non il cast a
+    # `uuid` del DB (che sarebbe un 500).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.catalogo.api.views.fn_lookup_articoli_ammessi")
+    def test_lookup_articoli_padre_non_uuid(self, mocked_ammessi, _mock_auth):
+        response = self.client.get(
+            "/api/v1/catalogo/articoli/lookup/?documento=ARTICOLO&articolo_padre_id=abc"
+        )
+
+        self.assertEqual(response.status_code, 400)
+        mocked_ammessi.assert_not_called()
+
+    # Scopo: la correzione di struttura viaggia nel PATCH dell'articolo (R-BE-1,
+    # 2026-10-18): il corpo arriva intero al service, `correzione_struttura`
+    # compreso; l'endpoint dedicato `…/struttura/` non c'e' piu'. Il permesso
+    # (SUPER_ADMIN) lo giudica il verbo del DB (`E_PERMESSO_NEGATO`, provato su
+    # DB vero in tests/db/test_articoli_ammessi_db.py).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.catalogo.api.views.fn_update_articolo")
+    def test_patch_articolo_porta_la_correzione_di_struttura(self, mocked_update, _mock_auth):
+        mocked_update.return_value = _DETAIL_RESPONSE
+        corpo = {"descrizione": "Nuova", "correzione_struttura": {"requires_lotto": True}}
+
+        response = self.client.patch(
+            f"/api/v1/catalogo/articoli/{_COMPONENTE_UUID}/",
+            data=corpo, content_type="application/json",
+        )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIsNone(mocked_lookup.call_args.kwargs["escludi_destinazione_tipi"])
+        articolo_id, payload = mocked_update.call_args.args
+        self.assertEqual(str(articolo_id), _COMPONENTE_UUID)
+        self.assertEqual(payload, corpo)
+        response = self.client.post(
+            f"/api/v1/catalogo/articoli/{_COMPONENTE_UUID}/struttura/",
+            data={"campi": {"requires_lotto": True}}, content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
 
     # Scopo: limit lookup articoli fuori range -> 400 dal service.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

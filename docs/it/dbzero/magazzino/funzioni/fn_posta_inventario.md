@@ -7,6 +7,8 @@ CREATE FUNCTION fn_posta_inventario(p_inventario_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION magazzino.fn_posta_inventario(p_inventario_id bigint)
  RETURNS TABLE(movimento_id bigint, riga_id bigint, qta numeric)
@@ -149,6 +151,8 @@ $function$
 COMMENT ON FUNCTION magazzino.fn_posta_inventario(p_inventario_id bigint)
 IS 'VERBO (rev 2026-09-24, brief-db-magazzino-verbi-con-permesso): registra un inventario CONFIRM (D-L2-f, D-L2-n). Prima riga: script.fn_guard_azione(utente, ''registra_magazzino''), lo stesso permesso dell''endpoint (E_PERMESSO_NEGATO, anche senza utente). SECURITY DEFINER del proprietario con search_path bloccato: e'' la sola strada verso la primitiva. La RLS qui non vale: la testata si prende FOR UPDATE con il predicato della policy (script.fn_scope_ef_whitelist_via_magazzino) nella WHERE — fuori perimetro E_MAG_DOCUMENTO_NON_TROVATO (404 no-leak) e nessun lock. Poi come prima: legge il piano (fn_inventario_piano), scrive qta_sistema su ogni riga, posta le righe con delta <> 0 attraverso la primitiva (causale del piano; sorgente INVENTARIO_RIGA; costo della riga solo su un''entrata; data_mov = data dell''inventario), porta la testata a POSTED con la GUC transazionale zeroerp.magazzino_posting_inventario. Non CONFIRM: E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA; senza righe: E_MAG_DOCUMENTO_SENZA_RIGHE; una NON_POSTABILE rifiuta tutto. UNA transazione: se una riga fallisce non resta niente. Ritorna (movimento_id, riga_id, qta) per riga postata.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

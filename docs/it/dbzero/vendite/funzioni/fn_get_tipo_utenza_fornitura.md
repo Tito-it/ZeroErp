@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_tipo_utenza_fornitura(p_billing_account_id bigint, p_util
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_tipo_utenza_fornitura(p_billing_account_id bigint, p_utility_id integer, p_data_riferimento date)
  RETURNS integer
@@ -55,6 +57,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_tipo_utenza_fornitura(p_billing_account_id bigint, p_utility_id integer, p_data_riferimento date)
 IS 'Dato (billing account, utility, data) ritorna il TIPO D''USO della fornitura — domestico, altri usi, condominio, pubblico. E'' il livello di ripiego dello stadio A del risolutore IVA (D11): il gas di casa non paga come il gas di uno stabilimento, e quell''informazione sta in config.tipi_utenze, che si raggiunge solo via vendite.contratti_utilities.contratto_id. ⭐ NON contiene il predicato «contratto attivo»: lo CHIAMA da vendite.fn_get_contratto_attivo, la stessa funzione che usa il nucleo del pricing. La prima stesura lo ricopiava dichiarando il debito; Tid ha scelto di estrarlo, e cosi'' non c''e'' piu'' niente da tenere allineato — prezzo e aliquota della stessa riga vengono dalla stessa fornitura per COSTRUZIONE, non per disciplina. ℹ️ Nessun LIMIT sulla lettura di contratti_utilities: uq_contratti_utilities_contratto_id garantisce una riga per contratto, e un LIMIT senza ORDER BY sarebbe una scommessa che nasconde un vincolo. ⚠️ Ritorna NULL e non solleva: nessun contratto attivo, un contratto senza riga utility o un tipo d''uso non dichiarato sono tutti casi legittimi — un preventivo a un cliente nuovo non ha ancora nessuna fornitura, e nel risolutore «non lo so» significa che il ripiego non si applica e vale quel che dice l''articolo. STABLE, sola lettura.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

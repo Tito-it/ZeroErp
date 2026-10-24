@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_commesse_attivita_guard_tipo_doc_emittibile()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile()
  RETURNS trigger
@@ -44,6 +46,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile()
 IS 'Trigger function: invariante di riga commesse_attivita. (APPROVATA + NON_EMESSA) => tipo_doc_fiscale_id NOT NULL (E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO). Evita righe emittibili invisibili alla discovery delle corsie. rev 2026-06-19.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

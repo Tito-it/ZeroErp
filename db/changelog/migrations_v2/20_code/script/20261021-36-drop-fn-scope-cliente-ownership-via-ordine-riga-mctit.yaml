@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SI RITIRA script.fn_scope_cliente_ownership_via_ordine_riga
+#   Brief: brief-db-perimetro-una-volta-famiglie-residue §7 (giro 3).
+#
+# Dopo -35 nessuna policy la chiama. Il censimento (dbdev, 2026-10-21):
+# nessun'altra funzione (pg_get_functiondef), vista, pgTAP o backend.
+# fn_scope_shop_via_ordine_riga non passa di qui (chiama fn_scope_shop_via_ordine).
+# Al suo posto il modo 'ordine_riga' di script.fn_resolve_controparte_sr_id (-33).
+# Rollback: la funzione com'e' sul vivo, firma %TYPE.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261021-36-drop-fn-scope-cliente-ownership-via-ordine-riga-mctit.yaml
+
+  - changeSet:
+      id: 20261021-36-drop-fn-scope-cliente-ownership-via-ordine-riga
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritirata script.fn_scope_cliente_ownership_via_ordine_riga: dopo -35 nessuno la chiama; al suo posto il modo ordine_riga del risolutore di controparte. Giro 3 di brief-db-perimetro-una-volta-famiglie-residue.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid = to_regprocedure('script.fn_scope_cliente_ownership_via_ordine_riga(bigint,bigint)')
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE coalesce(qual, '') || coalesce(with_check, '') ~ 'fn_scope_cliente_ownership_via_ordine_riga\('
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION script.fn_scope_cliente_ownership_via_ordine_riga(
+                  anagrafiche.identita_digitali.id%TYPE, vendite.ordini_righe.id%TYPE);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_cliente_ownership_via_ordine_riga(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE,
+                  p_riga_id     vendite.ordini_righe.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  SELECT script.fn_scope_cliente_ownership_via_ordine(
+                      p_identita_id,
+                      (SELECT r.ordine_id
+                         FROM vendite.ordini_righe r WHERE r.id = p_riga_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_cliente_ownership_via_ordine_riga(anagrafiche.identita_digitali.id%TYPE, vendite.ordini_righe.id%TYPE) IS
+              'Come fn_scope_cliente_ownership_via_ordine ma a partire da una riga d''ordine.';

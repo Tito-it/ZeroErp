@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_ddt_emessi_senza_scarico LEGGE IL BB «MERCE PARTITA»
+#   Brief: brief-db-date-consegna-righe-in-blocco (§4.1, regola del 2, scelta (a))
+#
+#   Il 20260928-82 scriveva «uno stato che presuppone lo scarico» come ELENCO
+#   di codici: EMESSO, SPEDITO, CONSEGNATO, RESO. E' la stessa regola di
+#   vendite.fn_partite_merce (uscito dalla bozza e non abortito) in un'altra
+#   forma: oggi coincide, e uno stato nuovo fra EMESSO e CONSEGNATO l'avrebbe
+#   fatta divergere in silenzio — il presidio avrebbe smesso di guardare le
+#   bolle in quello stato. Ora legge script.vw_stati_doc_ddt_merce_partita
+#   (20261012-30).
+#   Stesse colonne, stessi tipi, stesso ordine (CREATE OR REPLACE VIEW lo
+#   pretende); security_invoker ripetuto (un REPLACE senza la clausola lo
+#   azzera). La riga di dbops.presidi non cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261012-33-update-vw-ddt-emessi-senza-scarico-dal-bb-merce-partita-mctit.yaml
+
+  - changeSet:
+      id: 20261012-33-update-vw-ddt-emessi-senza-scarico-dal-bb-merce-partita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_ddt_emessi_senza_scarico: lo stato «merce partita» dal BB
+        script.vw_stati_doc_ddt_merce_partita invece dell'elenco EMESSO, SPEDITO, CONSEGNATO, RESO.
+        Stesse colonne. Brief: brief-db-date-consegna-righe-in-blocco (§4.1, scelta (a)).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_class c
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'dbops' AND c.relname = 'vw_ddt_emessi_senza_scarico';
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_class c
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'script' AND c.relname = 'vw_stati_doc_ddt_merce_partita';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_ddt_emessi_senza_scarico
+              WITH (security_invoker = true) AS
+              SELECT d.id                 AS ddt_id,
+                     d.numero,
+                     d.data,
+                     d.emittente_fiscale_id,
+                     d.magazzino_id,
+                     s.codice_interno     AS stato_codice_interno
+                FROM vendite.ddt d
+                JOIN script.vw_stati_doc_ddt_merce_partita s ON s.id = d.stato_doc_ddt_id
+               WHERE s.merce_partita
+                 AND d.magazzino_id IS NOT NULL
+                 AND vendite.fn_ddt_muove_merce(d)
+                 AND NOT EXISTS (
+                         SELECT 1
+                           FROM vendite.ddt_righe dr
+                           JOIN vendite.ddt_righe_prelievi p ON p.ddt_riga_id = dr.id
+                           JOIN magazzino.movimenti m        ON m.sorgente_riga = p.id
+                           JOIN config.sorgenti so           ON so.id = m.sorgente_tipo_id
+                                                            AND so.codice_interno = 'DDT_VENDITA_PRELIEVO'
+                          WHERE dr.ddt_id = d.id
+                            AND m.qta < 0
+                            AND m.storno_di_movimento_id IS NULL);
+
+              COMMENT ON VIEW dbops.vw_ddt_emessi_senza_scarico IS
+                  'Presidio, DEVE restare vuota. Una riga e'' una bolla in uno stato che presuppone '
+                  'lo scarico (merce partita: il BB script.vw_stati_doc_ddt_merce_partita, uscito '
+                  'dalla bozza e non abortito), con un magazzino, che muove merce '
+                  '(vendite.fn_ddt_muove_merce), senza nessuna uscita a registro da uno dei suoi '
+                  'prelievi (sorgente DDT_VENDITA_PRELIEVO, quantita'' negativa, non uno storno). E'' '
+                  'la porta del registro che non ha tenuto: una bolla uscita senza la sua merce, '
+                  'cioe'' una giacenza che mente. Il rimedio non e'' scrivere il movimento a mano: '
+                  'e'' capire da dove e'' passata l''emissione. Le bolle senza magazzino sono nate '
+                  'prima del Lotto 3 e non sono questo difetto. security_invoker; il digest conta da '
+                  'proprietario (fn_conta_presidio, perimetro DEFINER). Brief: '
+                  'brief-db-magazzino-lotto-3-scarico-da-ddt (P-13). rev 2026-10-12 (20261012-33, '
+                  'brief-db-date-consegna-righe-in-blocco §4.1): lo stato dal BB, non piu'' '
+                  'dall''elenco EMESSO, SPEDITO, CONSEGNATO, RESO, che divergeva al primo stato nuovo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La forma del 20260928-82: l'elenco dei codici.
+              CREATE OR REPLACE VIEW dbops.vw_ddt_emessi_senza_scarico
+              WITH (security_invoker = true) AS
+              SELECT d.id                 AS ddt_id,
+                     d.numero,
+                     d.data,
+                     d.emittente_fiscale_id,
+                     d.magazzino_id,
+                     s.codice_interno     AS stato_codice_interno
+                FROM vendite.ddt d
+                JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
+               WHERE s.codice_interno IN ('EMESSO', 'SPEDITO', 'CONSEGNATO', 'RESO')
+                 AND d.magazzino_id IS NOT NULL
+                 AND vendite.fn_ddt_muove_merce(d)
+                 AND NOT EXISTS (
+                         SELECT 1
+                           FROM vendite.ddt_righe dr
+                           JOIN vendite.ddt_righe_prelievi p ON p.ddt_riga_id = dr.id
+                           JOIN magazzino.movimenti m        ON m.sorgente_riga = p.id
+                           JOIN config.sorgenti so           ON so.id = m.sorgente_tipo_id
+                                                            AND so.codice_interno = 'DDT_VENDITA_PRELIEVO'
+                          WHERE dr.ddt_id = d.id
+                            AND m.qta < 0
+                            AND m.storno_di_movimento_id IS NULL);

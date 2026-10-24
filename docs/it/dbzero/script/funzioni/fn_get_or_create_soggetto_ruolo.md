@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_or_create_soggetto_ruolo(p_soggetto_id uuid, p_cd_int_ruo
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_or_create_soggetto_ruolo(p_soggetto_id uuid, p_cd_int_ruolo character varying)
  RETURNS integer
@@ -131,6 +133,8 @@ IS 'Restituisce l''id in anagrafiche.soggetti_ruoli per la coppia (soggetto_id, 
 Se il legame esiste già, lo riutilizza; altrimenti lo crea (meta = {}::jsonb).
 Non deve essere chiamata dai trigger delle tabelle ruolo, ma da factory/wizard applicativi.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

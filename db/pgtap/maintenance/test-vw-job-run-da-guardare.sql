@@ -32,6 +32,13 @@
 --   ⚠️ Misurato il 2026-09-05, prima che il ramo esistesse:
 --   `sync_auth_user_active` aveva 29 fallimenti in un giorno e l'ultima corsa
 --   VERDE. La vista, cosi' com'era, non lo nominava.
+--
+-- ⚠️ Rev 2026-10-18 (brief-db-intermittente-e-verdetto-completo): la fixture
+--   usava un processo VERO, apply_storicizza_weekly, che dal 20261018-01 e' un
+--   verdetto completo — e per lui un rosso rientrato una volta non e' piu'
+--   intermittente. Il test descriveva il processo a verdetto PARZIALE senza
+--   dirlo: ora usa un processo suo, dichiarato a false. Il verdetto completo e'
+--   provato in test-vw-job-run-da-guardare-verdetto-completo-v1.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -45,11 +52,18 @@ SELECT plan(6);
 -- ============================================================
 -- Fixture: i casi, costruiti
 -- ============================================================
--- ⚠️ `processo_codice` e' obbligatorio e ha una FK: si usa un processo VERO a
---   catalogo, e i jobname portano un prefisso che li rende inconfondibili.
+-- ⚠️ `processo_codice` e' obbligatorio e ha una FK: si usa un processo di prova,
+--   a verdetto parziale (rev 2026-10-18: la natura del processo decide il ramo
+--   dell'intermittenza, e un processo vero la puo' cambiare). CODA: niente
+--   sveglia, quindi niente colonne di accensione. I jobname portano un prefisso
+--   che li rende inconfondibili.
+INSERT INTO dbops.processi
+    (id, codice, descrizione, classe, canale, causa_fallimento, corsa_verdetto_completo)
+VALUES (9981, 'PGTAP-DA-GUARDARE', 'prova presidio dei job', 'MANUTENZIONE', 'CODA', 'PROGRAMMA', false);
+
 DO $fixture$
 DECLARE
-    v_proc dbops.processi.codice%TYPE := 'apply_storicizza_weekly';
+    v_proc dbops.processi.codice%TYPE := 'PGTAP-DA-GUARDARE';
 BEGIN
     -- 1) ultima corsa fallita
     INSERT INTO maintenance.job_run_log

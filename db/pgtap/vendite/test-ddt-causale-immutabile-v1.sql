@@ -25,6 +25,7 @@
 --   3) su DDT EMESSO il cambio e' BLOCCATO (P0001)
 --   4) ⚠️ l'UPDATE che cambia stato e causale INSIEME (DRAFT->EMESSO) passa
 --   5) riscrivere la STESSA causale su un DDT emesso non e' un cambio: passa
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): l'ambito degli indirizzi della bolla e' DDT_VENDITA.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -88,9 +89,12 @@ BEGIN
   SELECT id INTO v_emesso FROM config.stati_doc_ddt WHERE codice_interno='EMESSO' AND attivo LIMIT 1;
   SELECT id INTO v_cv FROM config.causali_trasporto WHERE codice='VENDITA' LIMIT 1;
   SELECT id INTO v_cc FROM config.causali_trasporto WHERE codice='CONTO_VISIONE' LIMIT 1;
-  SELECT a.id INTO v_art FROM catalogo.articoli a
-   WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-   ORDER BY a.id LIMIT 1;
+  -- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-1/D-2): l'articolo si
+  --   COSTRUISCE. Prima si pescava dal catalogo (il primo per id, o il piu' recente):
+  --   il primo per id e' l'onere del seed ONERE_SENZA_CONTRATTO (natura servizio), e
+  --   da 20261013-42 ordine e bolla portano solo merce. Un articolo costruito ha solo
+  --   le proprieta' che il test gli da' (merce, non gestito a magazzino).
+  v_art := dbops.fn_pgtap_crea_articolo('PGT-DCI-ART', false);
 
   IF v_ef IS NULL OR v_ba IS NULL OR v_art IS NULL OR v_cv IS NULL OR v_cc IS NULL THEN
     RETURN;
@@ -113,7 +117,7 @@ BEGIN
     INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
     SELECT v_uno, ti.id, '{"display":"pgtap"}'::jsonb
       FROM config.tipi_indirizzi ti
-     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT', NULL))
+     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', NULL))
     ON CONFLICT DO NOTHING;
 
     UPDATE vendite.ddt SET stato_doc_ddt_id = v_emesso WHERE id = v_uno;
@@ -134,7 +138,7 @@ BEGIN
     INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
     SELECT v_due, ti.id, '{"display":"pgtap"}'::jsonb
       FROM config.tipi_indirizzi ti
-     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT', NULL))
+     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', NULL))
     ON CONFLICT DO NOTHING;
 
     INSERT INTO tmp_b VALUES (v_uno, v_due, v_cv, v_cc);

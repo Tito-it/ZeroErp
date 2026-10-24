@@ -7,6 +7,8 @@ CREATE FUNCTION fn_libera_attivita_fatturabili(p_attivita_fatturabili_ids bigint
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_libera_attivita_fatturabili(p_attivita_fatturabili_ids bigint[])
  RETURNS TABLE(updated_attivita integer, riemesse_attivita integer)
@@ -120,6 +122,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_libera_attivita_fatturabili(p_attivita_fatturabili_ids bigint[])
 IS 'Rimette in coda di fatturazione un insieme di attivita_fatturabili: le libera (lock_in_fatturazione, lock_batch_id, fattura_riga_id, stato_esecuzione) e riporta a NON_EMESSA le commesse_attivita che erano passate a EMESSA per causa loro. Torna i due contatori separati. ⭐ E'' UNA PRIMITIVA e non due UPDATE copiate perche'' le due scritture compongono UN SOLO fatto — «questo lavoro torna disponibile» — su due livelli diversi: se divergono, un livello torna in coda e l''altro no, in silenzio. Consumata da vendite.fn_cleanup_fatture_by_ids e dal verbo vendite.fn_riporta_attivita_da_emettere. ⛔ Dal 20260826-33 NON scrive piu'' `fatturato`: quella colonna e'' GENERATA su `fattura_riga_id IS NOT NULL`, e nominarla in un SET sarebbe un errore, non un no-op. ⭐ Il ripristino non ci perde niente — azzerando il puntatore il timbro cade DA SOLO: e'' il punto della strada B, le due colonne non possono piu'' dire cose diverse perche'' una sola esiste davvero, e lo stato «timbrata senza fattura» smette di essere rappresentabile. ⚠️ Il LUCCHETTO invece resta scritto a mano, e deve: non e'' un doppione e non si puo'' generare, perche'' e'' vero legittimamente DURANTE il giro, quando la riga di fattura non esiste ancora. E'' il motivo per cui togliere il timbro NON basta e il riordino di fn_cleanup_fatture_by_ids resta necessario: senza, cancellare una riga di fattura toglierebbe il timbro da solo e lascerebbe il lavoro fuori dal giro per un''ALTRA colonna. ⛔ NON imposta la GUC zeroerp.maintenance_reset_lotto_draft: trgfn_attivita_fatturabili_guard_fatturato rifiuta l''UPDATE quando OLD.fattura_riga_id e'' valorizzato, quindi una primitiva che si aprisse la strada da se'' diventerebbe il modo di SCOLLEGARE UNA FATTURA VIVA. Impostarla resta una decisione del chiamante, e ne ha diritto solo chi la fattura la sta cancellando. ⛔ Array NULL o vuoto: nessuna scrittura e contatori a zero — e'' l''insieme vuoto, non un errore; il guard sull''array vuoto e'' un dovere del VERBO. ℹ️ Le commesse_attivita si raccolgono PRIMA della UPDATE; solo le EMESSA tornano a NON_EMESSA. ℹ️ SECURITY INVOKER. Piano: brief-db-lavoro-che-non-torna-indietro, L1 / Q-6, rivisto in L3b / Q-7.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

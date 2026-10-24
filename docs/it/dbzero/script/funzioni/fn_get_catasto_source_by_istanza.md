@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_catasto_source_by_istanza(p_istanza_utilities_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id bigint)
  RETURNS anagrafiche.catasto_unita_immobiliari
@@ -84,6 +86,8 @@ IS 'Recupera il record catastale "sorgente" da clonare per una istanza_utilities
   La sorgente è determinata ESCLUSIVAMENTE da:
   istanze_utilities.parent_istanza_id';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

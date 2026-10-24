@@ -46,12 +46,17 @@ Ogni dominio espone **due** rotte:
 |---|---|---|
 | `target_riga_id` | — | filtra le note **di una riga**; vuoto = tutte |
 | `include_invisible` | `true` | `false` esclude le note con `visibile = false` |
-| `page` | 1 | |
-| `page_size` | 50 | il service lo riporta in silenzio fra 1 e 200 |
+| `limit` | 25 | max 200; fuori da 1..200 → 400 `E_VALIDATION_INPUT` (`limit_fuori_limiti_1_200`) |
+| `offset` | 0 | negativo → 400 (`offset_negativo`) |
 
-Risposta: `data: {count, page, page_size, results}`. `page` e `page_size`
-sono quelli **richiesti**, non quelli effettivamente applicati dopo il
-contenimento.
+`limit`/`offset` li legge `pagina_da_query`: un valore non intero è un 400
+`E_VALIDATION_INPUT` (`limit_invalid`/`offset_invalid`). ⛔ `page`/`page_size`
+in query sono un 400 `E_VALIDATION_INPUT` dal 2026-10-21 (prima erano il
+contratto di questa lista).
+
+Risposta: envelope paginato standard `data: {count, page, page_size,
+total_pages, results}` (`envelope_da_offset`). `page_size` è il `limit`
+chiesto, `page` la pagina ricavata dall'offset.
 
 ⭐ **`include_invisible` sta a `true` di default, ed e' la scelta giusta**:
 l'endpoint serve il drawer dell'operatore, che le note nascoste **deve** vederle
@@ -106,11 +111,11 @@ solo in stampa, tardi.
 
 | codice | HTTP | quando |
 |---|---|---|
-| `E_NOTA_VALIDATION` | 400 | payload fuori whitelist o non valido; ripiego per i vincoli non mappati |
+| `E_NOTA_VALIDATION` | 400 | payload fuori whitelist o non valido — compresa, in creazione, l'incoerenza `anchor_tipo` / `target_riga_id`, che il service intercetta prima del DB; ripiego per i vincoli non mappati |
 | `E_NOTA_PARENT_NOT_FOUND` | 404 | il documento padre non esiste (lista, creazione) |
 | `E_NOTA_NOT_FOUND` | 404 | nota inesistente, o appartenente a un altro documento (dettaglio, PATCH, DELETE) |
 | `E_NOTA_RIGA_INCOERENTE` | 400 | `target_riga_id` di una riga che non appartiene al documento |
-| `E_NOTA_CHECK_VIOLATION` | 400 | vincolo `chk_note_*` violato — tipicamente coerenza `anchor_tipo` / `target_riga_id` |
+| `E_NOTA_CHECK_VIOLATION` | 400 | vincolo `chk_note_*` o di partizione violato a DB: ripiego per ciò che la validazione del service non ha già fermato |
 | `E_NOTA_FK` | 400 | riferimento inesistente (stile, lingua, riga) |
 
 `E_NOTA_CHECK_VIOLATION` ed `E_NOTA_FK` nascono dalla traduzione degli

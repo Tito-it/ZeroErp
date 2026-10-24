@@ -77,6 +77,17 @@ Senza `istanza_utility_id`, la cascata parte dal livello 2.
         "stato_iso2": null,
         "codice_postale_id": 10,
         "cap_codice": "20100",
+        "det_comune_id": 5,
+        "descrizione_comune": "Milano",
+        "stradario_id": 7,
+        "stradario_display": "VIA ROMA",
+        "civico": 1,
+        "estensione_civico": null,
+        "palazzina": null,
+        "scala": null,
+        "piano": null,
+        "interno": null,
+        "utility_codice": "GAS",
         "fonte": "istanza"
       }
     ],
@@ -89,6 +100,13 @@ Senza `istanza_utility_id`, la cascata parte dal livello 2.
 }
 ```
 
+`det_comune_id` e `descrizione_comune` sono alias di `comune_id` e
+`comune_descrizione`; `stradario_display` e' la via normalizzata (`via_norm`).
+`utility_codice` e' la utility dell'istanza (da `istanze_dati_precontrattuali` o,
+in mancanza, dal billing account dell'istanza), `null` senza istanza.
+
+`istanza_utility_id` non intero → 400.
+
 ### Dipendenze DB
 
 - Vista `anagrafiche.vw_indirizzi_resolved_ruolo` (con `istanza_utility_id`)
@@ -98,8 +116,9 @@ Senza `istanza_utility_id`, la cascata parte dal livello 2.
 
 ## 2. Crea indirizzo ruolo
 
-Crea un indirizzo associato al ruolo. Supporta modalita` normalizzata
-(`indirizzo_dettaglio_id`) o libera (`indirizzo_libero` + `stato_id`).
+Crea un indirizzo associato al ruolo (anche di un'istanza) con la madre del DB
+`anagrafiche.fn_crea_indirizzo_ruolo`. Il tipo si indica per codice; l'indirizzo
+in una di tre forme: libera, dettaglio gia' risolto, via da risolvere.
 
 | | |
 |---|---|
@@ -110,15 +129,25 @@ Crea un indirizzo associato al ruolo. Supporta modalita` normalizzata
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `tipo_indirizzo_id` | int | Si` | Tipo indirizzo (validato dal trigger guard vs matrice ammessi) |
+| `tipo_indirizzo_codice` | string | Si` | Codice interno del tipo indirizzo (es. `RES`, `FATT`); validato dal trigger guard vs matrice ammessi |
 | `istanza_utility_id` | int | No | Se presente, indirizzo specifico per istanza |
-| `indirizzo_dettaglio_id` | int | No* | ID dettaglio per indirizzo normalizzato |
-| `indirizzo_libero` | string | No* | Testo libero per indirizzo non normalizzato |
-| `stato_id` | int | No | Stato (per indirizzi esteri) |
-| `comune_id` | int | No | Comune override |
-| `codice_postale_id` | int | No | CAP override |
+| **Forma libera** | | | |
+| `indirizzo_libero` | string | * | Testo libero dell'indirizzo |
+| `stato_id` | int | No | Stato |
+| `comune_id`, `codice_postale_id` | int | No | Comune e CAP da catalogo (stato con catalogo comuni completo) |
+| `administrative_area`, `locality`, `sublocality`, `postal_code` | string | No | Forma estera: per uno stato senza catalogo dei comuni |
+| **Dettaglio gia' risolto** | | | |
+| `indirizzo_dettaglio_id` | int | * | ID dettaglio per indirizzo normalizzato |
+| **Via da risolvere** | | | |
+| `stradario_id` | int | * | Via esistente dello stradario |
+| `toponomastica_id`, `descrizione_via`, `comune_id`, `codice_postale_id` | | * | Via nuova (tutti obbligatori se manca `stradario_id`) |
+| `civico`, `estensione_civico`, `palazzina`, `scala`, `piano`, `interno` | | No | Dati civico |
 
-*Almeno uno tra `indirizzo_dettaglio_id` e `indirizzo_libero` deve essere fornito.
+*Senza `indirizzo_libero` ne' `indirizzo_dettaglio_id` vale la forma «via da
+risolvere»: serve `stradario_id` oppure i quattro campi della via nuova. La
+forma dell'indirizzo libero la giudica il trigger della tabella. Stringhe vuote e
+`null` valgono assenti; una chiave estranea la rifiuta il DB
+(`E_CAMPO_NON_AMMESSO`).
 
 ### Risposta (200)
 
@@ -127,23 +156,35 @@ Crea un indirizzo associato al ruolo. Supporta modalita` normalizzata
   "data": {
     "id": 50,
     "soggetto_ruolo_id": 64,
-    "tipo_indirizzo_id": 1,
-    "istanza_utility_id": 100,
+    "administrative_area": null,
+    "codice_postale_id": null,
+    "comune_id": null,
     "indirizzo_dettaglio_id": 100,
     "indirizzo_libero": null,
+    "istanza_utility_id": 100,
+    "locality": null,
+    "postal_code": null,
     "stato_id": null,
-    "comune_id": null,
-    "codice_postale_id": null
-  }
+    "sublocality": null,
+    "tipo_indirizzo_id": 1
+  },
+  "meta": { "request_id": "..." }
 }
 ```
+
+### Errori
+
+| Codice | HTTP | Causa |
+|---|---|---|
+| `E_ANAG_VALIDAZIONE` | 400 | `tipo_indirizzo_codice` mancante; via da risolvere incompleta |
+| `E_ANAG_DUPLICATO` | 409 | Indirizzo con questo tipo gia' presente per il ruolo/istanza |
 
 ### Regole
 
 - Il trigger `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` valida il
-  `tipo_indirizzo_id` contro la matrice `config.tipi_ruolo_tipi_indirizzo`
+  tipo contro la matrice `config.tipi_ruolo_tipi_indirizzo`
 - Vincolo UNIQUE parziale: un solo indirizzo per `(soggetto_ruolo_id, istanza_utility_id, tipo_indirizzo_id)`
-- `istanza_utility_id = NULL` crea un indirizzo generico del ruolo
+- `istanza_utility_id` assente crea un indirizzo generico del ruolo
 
 ---
 
@@ -165,6 +206,10 @@ Crea un indirizzo associato al ruolo. Supporta modalita` normalizzata
 | `stato_id` | int | Cambia stato |
 | `comune_id` | int | Cambia comune |
 | `codice_postale_id` | int | Cambia CAP |
+| `administrative_area` | string | Forma estera |
+| `locality` | string | Forma estera |
+| `sublocality` | string | Forma estera |
+| `postal_code` | string | Forma estera |
 
 ### Risposta (200)
 
@@ -172,10 +217,17 @@ Crea un indirizzo associato al ruolo. Supporta modalita` normalizzata
 { "data": { "updated": true } }
 ```
 
+### Errori
+
+| Codice | HTTP | Causa |
+|---|---|---|
+| `E_ANAG_VALIDAZIONE` | 400 | Chiave fuori dall'elenco sopra; corpo vuoto (dal 2026-10-20: prima 404) |
+| `E_ANAG_NOT_FOUND` | 404 | Indirizzo inesistente o di un altro ruolo |
+
 ### Regole
 
 - Ownership check: `soggetto_ruolo_id` deve corrispondere
-- Solo i campi inviati vengono aggiornati (delta update)
+- Solo i campi inviati vengono aggiornati (delta update); le stringhe vuote dei campi nullable valgono `NULL`
 
 ---
 
@@ -193,6 +245,8 @@ Crea un indirizzo associato al ruolo. Supporta modalita` normalizzata
 ```
 
 ### Regole
+
+- Indirizzo inesistente o di un altro ruolo → 404 `E_ANAG_NOT_FOUND`
 
 - Ownership check: `soggetto_ruolo_id` deve corrispondere
 - Solo indirizzi livello ruolo sono eliminabili (fonte `istanza` o `ruolo`)
@@ -215,4 +269,4 @@ Crea un indirizzo associato al ruolo. Supporta modalita` normalizzata
 
 - Changeset DB: `20260325-02-replace-utility-with-istanza-indirizzi-mctit.yaml` (schema)
 - Changeset DB: `20260325-04-recreate-indirizzi-chain-istanza-mctit.yaml` (viste + funzioni)
-- Le viste non espongono piu` `utility_codice` — il frontend lo ha dal payload cliente
+- Le viste non espongono `utility_codice`: la GET lo risolve per riga dall'istanza (vedi §1)

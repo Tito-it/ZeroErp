@@ -45,6 +45,8 @@ from typing import Any, cast
 from django.db import connection
 
 from apps.core.db._helpers import (
+    colonna_ordinamento,
+    sql_order_direction_lista,
     predicato_giorno_operativo,
     pattern_contiene,
     RicercaFull,
@@ -54,7 +56,6 @@ from apps.core.db._helpers import (
     jsonb_out,
     rows_to_list,
     sql_order_clause,
-    sql_order_direction,
     sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
@@ -569,8 +570,8 @@ class MagazzinoRepository:
         params: list[Any] = [int(inventario_id)]
         add_ricerca_full_condition(conditions, params, search, _RICERCA_PIANO)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        colonna = PIANO_SORT_COLUMNS.get(order_by or "", "articolo_codice")
-        direzione = sql_order_direction(order_dir)
+        colonna = colonna_ordinamento(order_by, PIANO_SORT_COLUMNS) or "articolo_codice"
+        direzione = sql_order_direction_lista(order_by, order_dir, colonne=PIANO_SORT_COLUMNS)
         rows, total = lista_paginata(
             select_sql=f"{_PIANO_SELECT} {where}",
             params=params,
@@ -650,6 +651,36 @@ class MagazzinoRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(doc_id)])
             return rows_to_list(cursor)  # type: ignore[return-value]
+
+    # ══════════════════════════════════════════════════════════════
+    #  Blocchi manuali (Lotto 3 D-L3-j, R-5): due verbi DEFINER con
+    #  `fn_guard_azione(…, 'blocca_merce')` nella prima riga; l'app non
+    #  scrive `movimenti_attesi`.
+    # ══════════════════════════════════════════════════════════════
+
+    # Scopo: Apre un blocco (una promessa: pezzi riservati a qualcuno, che
+    #        fermano gli scarichi degli altri). Ritorna l'id del blocco.
+    def apri_blocco(
+        self, *, magazzino_id: int, articolo_id: str, qta: Any,
+        soggetto_ruolo_id: int | None, nota: str | None,
+        lotto_id: int | None, asset_id: int | None, ubicazione_id: int | None,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT magazzino.fn_apri_blocco(%s, %s::uuid, %s, %s, %s, %s, %s, %s)",
+                [magazzino_id, articolo_id, qta, soggetto_ruolo_id, nota,
+                 lotto_id, asset_id, ubicazione_id],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
+
+    # Scopo: Libera un blocco con un atto (autore, momento e nota: M-3).
+    def libera_blocco(self, blocco_id: int, nota: str | None) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT magazzino.fn_libera_blocco(%s, %s)", [int(blocco_id), nota],
+            )
 
     # ══════════════════════════════════════════════════════════════
     #  Righe
@@ -856,8 +887,8 @@ class MagazzinoRepository:
         add_ricerca_full_condition(conditions, params, search, _RICERCA_DISPONIBILITA)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        colonna = DISPONIBILITA_SORT_COLUMNS.get(order_by or "", "articolo_codice")
-        direzione = sql_order_direction(order_dir)
+        colonna = colonna_ordinamento(order_by, DISPONIBILITA_SORT_COLUMNS) or "articolo_codice"
+        direzione = sql_order_direction_lista(order_by, order_dir, colonne=DISPONIBILITA_SORT_COLUMNS)
         spareggio = sql_tiebreak_direction(direzione)
         rows, total = lista_paginata(
             select_sql=f"{_DISPONIBILITA_SELECT} {where}",

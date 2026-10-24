@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ricalcola_prezzo_padre_da_componenti(p_schema text, p_tab_pad
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_ricalcola_prezzo_padre_da_componenti(p_schema text, p_tab_padre text, p_tab_figli text, p_col_fk_padre text, p_riga_padre_id bigint)
  RETURNS void
@@ -67,6 +69,8 @@ $function$
 COMMENT ON FUNCTION script.fn_ricalcola_prezzo_padre_da_componenti(p_schema text, p_tab_padre text, p_tab_figli text, p_col_fk_padre text, p_riga_padre_id bigint)
 IS 'Helper generica BoM CASO A: aggiorna prezzo_unitario della riga padre dai figli attivi. rev 2026-08-19: TRE casi invece di due — nessun figlio 0, almeno un figlio senza prezzo NULL, altrimenti SUM(prezzo * coeff_qta_snapshot). ⚠️ Il ramo NULL esiste perche'' su vendite.ddt_righe_componenti il prezzo puo'' mancare (kit che viaggia senza vendersi): con la SUM semplice il figlio scoperto veniva IGNORATO e il padre riceveva la somma parziale — un prezzo sbagliato, che passa il gate all''emissione, invece di un prezzo assente, che il gate ferma. Su preventivi e ordini i figli restano NOT NULL: per loro il ramo e'' irraggiungibile e il comportamento identico a prima. Parametrizzata su schema/tabella/FK, 4 sorgenti. Brief: brief-ddt-righe-senza-prezzo §9 slice C (C2).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

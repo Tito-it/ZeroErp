@@ -56,12 +56,14 @@ SELECT plan(11);
 --   (chk_job_run_log_processo_dichiarato) e ha una FK: i processi si
 --   costruiscono qui, separati, perche' le viste ragionano per processo e una
 --   corsa scritta per un test non deve diventare «l'ultima» di un altro.
+-- 20261016-20: un processo con una sveglia dichiara l'accensione.
 INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                            jobname_pgagent, tolleranza_minuti, segno_di_vita)
+                            jobname_pgagent, tolleranza_minuti, segno_di_vita,
+                            acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
 VALUES
-    (9921, 'PGTAP-SALTATA-ATTORE', 'prova corsa saltata', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE'),
-    (9922, 'PGTAP-SALTATA-ESITO',  'prova corsa saltata', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE'),
-    (9923, 'PGTAP-SALTATA-TIMER',  'prova corsa saltata', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE');
+    (9921, 'PGTAP-SALTATA-ATTORE', 'prova corsa saltata', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE', true, true, true, 'PROGRAMMA', true),
+    (9922, 'PGTAP-SALTATA-ESITO',  'prova corsa saltata', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE', true, true, true, 'PROGRAMMA', true),
+    (9923, 'PGTAP-SALTATA-TIMER',  'prova corsa saltata', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE', true, true, true, 'PROGRAMMA', true);
 
 -- ============================================================
 -- 1. La colonna

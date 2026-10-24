@@ -63,7 +63,7 @@ ZeroErp/
 │   │   ├── ui/               # Liste configurabili: la configurazione è DATO, non DDL
 │   │   ├── vendite/          # App più attiva — pipeline fatturazione
 │   │   ├── acquisti/         # 🔵 PROSSIMO CANTIERE (Tid, 2026-09-11) — modello a DB, comportamento da scrivere
-│   │   ├── magazzino/        # 🔵 CANTIERE APERTO (idem) — Lotti 1-2 chiusi; Lotti 3 e 3-bis applicati a DB, BE/FE da fare
+│   │   ├── magazzino/        # 🔵 CANTIERE APERTO (idem) — Lotti 1-2 chiusi; Lotti 3 e 3-bis fatti, da collaudare a video
 │   │   ├── storico/          # ⚠️ scheletro (13 file, 23 righe, 0 test) — nessuna decisione presa
 │   │   └── contabilita/      # ⛔ scheletro vuoto — schema DB vuoto, fuori perimetro per decisione
 │   ├── requirements.in       # Dipendenze dirette (editare qui)
@@ -107,7 +107,7 @@ ZeroErp/
 | `script` | Viste e funzioni applicative riusabili (building block, risoluzione permessi) |
 | `maintenance` | Job schedulati (pgAgent) |
 | `django` | Tabelle di Django (auth, sessioni) |
-| `public` | Estensioni (`dblink`, `unaccent`, `postgis`, `plpgsql_check`), **nessuna tabella**. Per la versione applicata: `DATABASECHANGELOG` |
+| `public` | Estensioni (`dblink`, `unaccent`, `postgis`, `plpgsql_check`, `btree_gist`), **nessuna tabella**. Per la versione applicata: `DATABASECHANGELOG` |
 
 Schemi non applicativi presenti su dbdev: `topology` (PostGIS), `pgagent` (scheduler),
 `data_conversion`, `internal`, `test`.
@@ -173,10 +173,19 @@ def nome_metodo(self, ...):
 > Lo stato reale sta nei documenti di `docs/it/dev/work-in-progress/` e nel repo; qui solo
 > le decisioni di rotta e una riga per cantiere aperto.
 
+### ⛔ Fermo dei temi trasversali sui documenti di vendita (Tid, 2026-10-21)
+
+Finché il modello del documento di vendita non è scritto
+(`work-in-progress/brief-modello-documento-vendita.md`), **nessun tema nuovo che tocca tutti i
+documenti di vendita** (preventivo, offerta, contratto, ordine, DDT, reso, commessa, fattura,
+listino). Si correggono i difetti; i brief già in esecuzione arrivano in fondo; i temi trasversali
+in coda aspettano il modello. Il perché, con i fatti datati, sta nel §1 di quel brief. La regola
+generale «un tema, un brief» è in `.codex/AGENTS.md`.
+
 ### 🔵 Il cantiere principale — `acquisti` e `magazzino` (decisione di Tid, 2026-09-11)
 
 Le due app sono il cantiere in corso (voce D11 di
-[migliorie-generali-BE-FE-da-test-valutazione.md](../docs/it/dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md)).
+[migliorie-generali-BE-FE-da-test-valutazione.md](../docs/it/dev/work-done/migliorie-generali-BE-FE-da-test-valutazione.md)).
 `magazzino` ha il comportamento dei Lotti 1-2; `acquisti` ha il solo modello DB.
 
 ⭐ **Ogni decisione presa su `vendite` è presa anche per `acquisti`** — envelope,
@@ -191,17 +200,18 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   `work-done/brief-db-magazzino-lotto-2-motore.md`, `work-done/piano-be-fe-magazzino-lotto-2-motore.md`;
   API in `docs/it/backend/magazzino/manual/api_magazzino.md`). ⏳ Collaudo a video di Tid:
   `work-in-progress/collaudo-in-app-magazzino-inventario-e-rettifica.md`.
-- ⏳ **Magazzino, Lotto 3 — la merce esce con la bolla**
-  (`work-in-progress/brief-db-magazzino-lotto-3-scarico-da-ddt.md`): DB applicato; restano le
-  richieste a BE/FE (§6 — senza R-1 il backend non emette una bolla che muove merce: il BE non
-  chiama ancora `vendite.fn_cambia_stato_ddt`) e la CI da zero.
-- ⏳ **Magazzino, Lotto 3-bis — carico da reso cliente**
-  (`work-in-progress/brief-db-magazzino-lotto-3-bis-carico-da-reso.md`): DB applicato; restano
-  R-1…R-5 a BE/FE.
+- ⏳ **Magazzino, Lotti 3 e 3-bis — la merce esce con la bolla e rientra col reso**: DB applicato
+  (28/29-09), BE/FE fatto il 2026-10-13; i due brief DB **chiusi il 2026-10-14**
+  (`work-done/brief-db-magazzino-lotto-3-scarico-da-ddt.md`, `work-done/brief-db-magazzino-lotto-3-bis-carico-da-reso.md`).
+  Aperto in un solo documento, `work-in-progress/piano-be-fe-magazzino-lotto-3.md` (§5 i residui: CI da zero,
+  vista della merce in viaggio, pgTAP kit/seriali col runner); ⏳ collaudo a video di Tid:
+  `work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md`. Il difetto DB dei motivi della «Conferma» del reso
+  è chiuso il 2026-10-14 (`work-done/brief-db-reso-motivi-conferma-con-valori.md`), a video al §5.3/§5.7 del collaudo.
 - 📝 **Magazzino: tutte le scritture dal verbo**
   (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): bozza, cinque decisioni di Tid (§3).
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
-  repository di righe, nessuna chiave i18n).
+  repository di righe, nessuna chiave i18n). Alla ripartenza: quali articoli ammettono le righe
+  d'acquisto è rinviato a `work-done/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5).
 
 ⭐ **I domini nuovi nascono con il permesso applicato dal DB**
 (`work-done/brief-db-permesso-nel-verbo-di-scrittura.md`, D-1 → D-5 di Tid). Il modello è
@@ -217,6 +227,17 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
+- **Il reso costruito nei pgTAP** (aperto il 2026-10-25, `work-in-progress/brief-db-pgtap-reso-costruito.md`):
+  il builder di fixture del reso confermato, con la bolla di ri-consegna, e il ritiro delle ~20 copie scritte a
+  mano. È il seguito di `work-done/brief-db-pgtap-bolla-e-reso-costruiti` (chiuso il 2026-10-25: la bolla da
+  ordine ha il suo builder, `dbops.fn_pgtap_crea_ddt_da_ordine`, e 36 pgTAP non ricopiano più la sua strada).
+- **Una sola grammatica per i tipi di documento** (aperto il 2026-10-18,
+  `work-in-progress/brief-db-grammatica-unica-documenti.md`): lo stesso tipo di documento ha più nomi
+  (`config.tipi_entita`, `config.sorgenti`, la grammatica delle testate, le partizioni delle note) e chi passa
+  dall'uno all'altro traduce. Direzione decisa da Tid (strada 3 dell'A-8-ter): un vocabolario solo, nessun ponte.
+  Lotti 0, 1 e 2a (le testate: `DDT_VENDITA`, `ORDINE_VENDITA`, `OFFERTA_COMMERCIALE`…) chiusi su DB, BE e FE
+  il 2026-10-19; restano i sotto-giri 2b … 2e, il lotto 3 (note) e il 4 (chiusura). Lo stato è nel blocco
+  «Chi riparte» del brief.
 - **Type checker del backend (D2-b): chiuso il 2026-10-09** (`work-done/piano-be-type-checker.md`;
   `0ffe7b7c3`, `ebc54fc56`): mypy col plugin Django in CI, a cricchetto (`backend/mypy.ini`,
   `backend/mypy.baseline.json`, `scripts/check_mypy_baseline.py`; sede `docs/it/dev/sicurezza-e-qualita-statica.md`
@@ -224,8 +245,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `utente_autenticato`/`utente_autenticato_id`. Trovati e corretti difetti veri (fra cui i 500 di riallinea/sblocca
   prezzo e l'alert scadenze listini sempre in 400). Chiuso il 2026-10-09
   `work-done/brief-db-riga-listino-propagata-dalla-commessa` (la riga di listino che ha dato il prezzo a una
-  commessa è «propagata», e la regola ha una sede sola, il guard DB; il seguito D-3 in
-  `brief-db-coerenza-listino-della-riga-di-commessa`, il ritiro di `E_VENDITE_RIGA_GIA_PROPAGATA`, chiuso, in
+  commessa è «propagata», e la regola ha una sede sola, il guard DB; il seguito D-3, chiuso il 2026-10-17, in
+  `work-done/brief-db-coerenza-listino-della-riga-di-commessa`, il ritiro di `E_VENDITE_RIGA_GIA_PROPAGATA`, chiuso, in
   `work-done/brief-db-ritiro-codice-riga-gia-propagata`; e — decisione B di Tid, 2026-10-09 — la riga di listino si cita solo
   se il prezzo viene davvero da lì: il push non la scrive più, la provenienza dovrà viaggiare col prezzo dal
   documento, `brief-db-provenienza-prezzo-segue-il-prezzo`, BE in attesa). Chiuso il 2026-10-09
@@ -251,6 +272,18 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   causa ha sede in `dbops.fn_conta_presidio_per_variante` (`fn_conta_presidio` ne è la somma). Il pannello
   mostra ogni causa col suo conteggio e il suo rimedio; il digest manda ogni causa a chi deve agire.
   Collaudo a video di Tid superato. Il residuo è in § «Aperto — Media priorità».
+- **Il presidio dei job falliti dice a chi tocca: chiuso** (`work-done/brief-db-presidio-job-run-a-chi-tocca.md`,
+  archiviato il 2026-10-18): ogni riga di `maintenance.vw_job_run_da_guardare` porta una causa (corsa appesa o
+  SQLSTATE dell'ambiente → `AMBIENTE`, poi la causa del codice d'errore, poi quella del processo), e il digest la
+  manda a chi deve agire. Lato BE: `registered_job` scrive SQLSTATE e codice `E_` dei `P0001` (§4.2), e una corsa
+  che lascia indietro elementi senza registro chiude rossa con `E_JOB_ELEMENTI_NON_COMPLETATI` (D9, BB
+  `chiudi_se_elementi_non_completati`). Collaudo DB e BE di Tid superati. I residui sono in § «Aperto — Media priorità».
+- **Il verde di un verdetto completo spegne la spia: chiuso** (`work-done/brief-db-intermittente-e-verdetto-completo.md`,
+  archiviato il 2026-10-18): `dbops.processi.corsa_verdetto_completo` dichiara i processi il cui ogni giro ricontrolla
+  tutto il perimetro (lo smoke notturno, le automazioni, il digest). Per loro `maintenance.vw_job_run_da_guardare` dà
+  «intermittente» solo se il lavoro è ricaduto (due tratti rossi nei sette giorni, D4 = B): un solo tratto rosso esce
+  al primo verde, e una corsa in corso da meno di un'ora non è un verdetto. Per gli altri processi niente cambia.
+  Lato BE solo i commenti di `smoke_notturno.py`. Nessun residuo.
 - **Una credenziale senza veste si elimina dall'applicazione: chiuso** (`work-done/brief-db-elimina-credenziale-senza-veste.md`,
   archiviato il 2026-10-07): verbo `script.fn_elimina_credenziale` + check derivata da `pg_constraint` e fail-closed senza
   il ponte django, traccia in `config.credenziali_eliminate`, all'app tolto il `DELETE` su `django.auth_user`; BE/FE
@@ -306,16 +339,73 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `commesse_attivita.segment_base` (uguaglianza indicizzabile sotto RLS anche nel piano generico) e
   `plan_cache_mode = force_generic_plan` sulla capability e sul lister dei DDT. Capability su tutti i DDT
   ~2,1 → ~0,6 s. Nello stesso giorno: `COST 5000` sulle funzioni di policy (`20261010-77`, `-79`,
-  linee-guida-sql §10.3). Debito residuo: ⬜ **D26-2**, `work-in-progress/brief-db-plancache-funzioni-con-query-incorporate.md`
-  (le altre funzioni che ripianificano a ogni chiamata; il lister senza filtri), aperto, non iniziato.
-- ⬜ **La lineage dei documenti si costruisce per il documento** (`work-in-progress/brief-db-lineage-seminata-per-chiave.md`,
-  2026-10-10): il grafo è costruito sempre intero, e ogni pagina di sette liste ne paga la chiusura (~0,42 s,
-  dbdev come app). Quattro decisioni attese (§6), fra cui la strada per le liste (A solo DB, B col backend, C dato
-  persistito). Aperto, non iniziato.
-- ⏳ **Offerta: emissione ed erogazione** (`work-in-progress/brief-db-offerta-emissione-ed-erogazione.md`, dal
-  collaudo del drawer del 2026-10-07): DB giri 1-3 applicati e verdi (§F: quantità calcolata, listino del documento),
-  BE/FE fatti il 2026-10-08 (§G, non committati). Restano i tre trovati del §F.4.3 da decidere (la quantità DERIVATA),
-  il collaudo a video (§D.5 + §G.4) e l'archivio.
+  linee-guida-sql §10.3). Debito residuo: ✅ **D26-2, chiuso il 2026-10-18**
+  (`work-done/brief-db-plancache-funzioni-con-query-incorporate.md`): resi col piano generico
+  (`20261011-42`), lister dei DDT senza filtri (`20261012-03`, 1135 → 154 ms), pannello e liste nel brief
+  della lineage; il verbo dell'accredito ~115 → 50,6 ms con `segment_base` (`20261018-15`), il perimetro
+  dell'operatore calcolato **una volta per istruzione** in tutte le policy ef_whitelist
+  (`fn_scope_ef_perimetro` + `fn_get_emittenti_scope_pk_ids` in una sottoquery, emittente della riga da
+  `fn_resolve_emittente_fiscale_id` DEFINER; `20261018-16…-33`, `-48…-51`; regola in linee-guida-sql
+  §10.3) e il `tx_id` sulla connessione di log persistente (`20261018-52`, 12 → 1,3 ms a transazione).
+  Residuo D36 chiuso il 2026-10-21 (sotto).
+- ✅ **I ruoli di sistema: chiuso il 2026-10-15** (`work-done/brief-db-ruoli-di-sistema.md`): nomi fissi
+  (`zeroerp_owner` proprietario di tutto, `zeroerp_job` per pgAgent, `zeroerp_app`, `zeroerp_log`),
+  password senza default, un provisioning solo (`scripts/sql/provision_zeroerp.sql`, fasi `ruoli`/`pre`/`post`)
+  per CI, scratch e installazione. dbdev convertito (`converti_db_al_modello_ruoli.sql`: `titodb` lavora
+  come `zeroerp_owner` con `SET role`), pgAgent come `zeroerp_job` sulle procedure dei job `DEFINER`, il
+  giornale registra il ruolo di ogni corsa (presidio `vw_job_run_da_superuser`). Ritirati `zeroerp_batch_fatturazione`,
+  `pgagent`, `zeroerp` e `zeroerp_ci` (`scripts/ritira_ruoli_dismessi.sh`). Guida: `installazione.md`, «Il database».
+  Il debito residuo (D35: `zeroerp_log` nella fase `ruoli`) è chiuso lo stesso giorno
+  (`work-done/brief-db-zeroerp-log-nella-fase-ruoli.md`).
+- ✅ **Le statistiche delle tabelle: un job notturno (D15) — chiuso il 2026-10-15**
+  (`work-done/brief-db-statistiche-tabelle-job-notturno.md`): verbo `maintenance.fn_analyze_statistiche` con
+  autoverifica (`reltuples < 0`, `MAINTAIN`, errore `E_STATISTICHE_MANCANTI`), procedura dal giornale, riga in
+  `dbops.processi` con `ci_ordine` ultimo (in CI gira nella convergenza di `ci_apply`), job pgAgent alle 02:30
+  (`20261014-50…-54`). Provato su dbdev il 15-10: corsa notturna riuscita e corsa di pgAgent come `zeroerp_job`
+  riuscita. Guida: `guide/statistiche-del-planner.md`.
+- ✅ **Un cliente manuale per soggetto, utility e azienda (D33) — chiuso il 2026-10-15**
+  (`work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility.md`): fra le istanze fittizie un cliente solo
+  per soggetto + utility + azienda emittente nello stesso periodo, controllato al COMMIT (`E_CLIENTE_STESSA_CHIAVE`,
+  predicato unico `anagrafiche.fn_clienti_stessa_chiave`); grafo degli stati in `config.transizioni_stati_cliente`
+  (un chiuso non si riapre, ogni stato pretende la sua data, `data_chiusura` di un chiuso ferma); «attivo» = il
+  periodo anche per il PDP, la disdetta e `ha_ba_attivo` (`20261014-08…-20`). BE: rifiuto al COMMIT, smoke clienti
+  verde il 15-10. I residui (§7 del brief: avviso del pre-contrattuale, PDP libero il giorno della chiusura, pgTAP
+  del PDP sul periodo, data di attivazione di un chiuso) fanno parte dello sviluppo delle utility (Tid, 15-10).
+- ✅ **La lineage dei documenti si costruisce per il documento: chiuso il 2026-10-11**
+  (`work-done/brief-db-lineage-seminata-per-chiave.md`): grafo seminato per chiave (`fn_documento_lineage_nodi`,
+  `_archi`, `_sintesi`), le sette viste di lista senza il grafo e `vw_documento_lineage` ritirata
+  (`20261011-62…-67`, `-92…-99`, pgTAP verdi). BE (B1): liste, export e drawer leggono le colonne del grafo
+  dalla sintesi dopo la paginazione (BB `unisci_sintesi_lineage`). Chiusa con lui anche la D-5 del brief
+  plancache (lista offerte letta per id). Nello stesso giro i codici di `config.sorgenti` in un posto solo
+  (`apps/config/sorgenti.py`) e un solo lookup per codice (`SorgentiRepository`).
+- ✅ **Offerta: emissione ed erogazione: chiuso il 2026-10-22**
+  (`work-done/brief-db-offerta-emissione-ed-erogazione.md`, dal collaudo del drawer del 2026-10-07): la versione
+  di listino la congela il DB all'emissione; erogazione e fonte le eredita la riga dall'articolo, dentro il
+  perimetro della utility; la quantità segue la fonte (DERIVATA_COMPONENTI ritirata, il kit si vende solo FISSA);
+  le righe già scritte le intercetta il primo passo che le usa (emissione, push, genera ordine, attivazione:
+  `E_DOC_RIGA_NON_AMMESSA`); «Genera ordine» è il verbo DB `fn_genera_ordine_da_offerta`; un'offerta ACCETTATA
+  si annulla se non ha documenti vivi a valle. DB `20261021-44…-61`, BE/FE §J, collaudo di Tid ok. Proposta
+  aperta, non bloccante: il «perché» nel tooltip di `RIGA_NON_AMMESSA` (§J.4).
+- ✅ **Quali articoli ammette un documento: chiuso il 2026-10-23**
+  (`work-done/brief-db-articoli-ammessi-per-documento.md`): una regola sola per il picker e per il guard. La sede
+  unica del picker è `catalogo.fn_articoli_ammessi`, che giudica con la stessa check dei guard di riga
+  (`script.fn_check_articolo_riga_su_contesto`); a video l'escluso resta in elenco, spento, col motivo
+  (`ArticoloLookup` con `documento`). L'articolo usato non cambia struttura se non con la correzione del
+  SUPER_ADMIN, nel PATCH e in una transazione (R-BE-1), con le colonne lette dalla sede
+  (`fn_articolo_colonne_struttura`) e il rifiuto se rende non valide righe aperte (A-11). DB Lotti 1-5 e
+  `20261018-70…-74`, BE/FE §9.7 e §9.8.7, collaudo di Tid ok. Restano fuori: il ponte di
+  `fn_articolo_riga_contesto` (brief della grammatica unica), D-5 (righe d'acquisto, col cantiere `acquisti`).
+- 📝 **Canone, orario e consumo del contratto in commessa**
+  (`work-in-progress/brief-db-contratto-righe-periodiche-in-commessa.md`, D31, 2026-10-13): il push dei
+  contratti manda solo le righe UNA_TANTUM, col giorno di attivazione (`20261013-24`, D-1/D-2 di Tid); la
+  generazione per periodo del canone e le quantità di orario e consumo dalle loro fonti: aperto, non
+  iniziato (G-1…G-4). Nello stesso giorno `tipo_consumo` ritirato dalla catena del push (`20261013-16…-23`).
+- 📝 **Un documento nasce nel suo stato iniziale** (`work-in-progress/brief-db-documento-nasce-nello-stato-iniziale.md`,
+  D32, 2026-10-13): le regole dell'uscita dalla bozza sono solo sull'UPDATE, e una bolla inserita già EMESSA
+  nasce numerata e vuota. Trovato nel giro del `20261013-53` (i lettori dell'emittente della bolla dopo il
+  normalize). Aperto, non iniziato: decisioni N-1…N-3.
+- 📝 **Dove si addebita il trasporto di un ordine fatturato alla conferma**
+  (`work-in-progress/brief-db-addebito-trasporto-ordine.md`, da A-9 del brief sopra): aperto, non iniziato.
 - ✅ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca: chiuso il 2026-10-10**
   (`work-done/brief-db-codici-non-trovato-email-e-permessi.md`, voci E-4/E-5/E-10 dell'analisi della doc API core):
   R-1…R-4 e R-5…R-9 applicati, pgTAP verdi (`20261010-08…-15`: regola unica di chi si vede nella ricerca su
@@ -343,40 +433,115 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   se la causale manda merce a un cliente, il reso ha quello del suo DDT; utility e ruolo legati al BA, un solo
   BA lungo la catena, BA/destinatario/emittente fermi dopo la bozza. DB `20261009-62…-92` e `20261010-02…-07`,
   BE/FE §12. Collaudo a video dei form di DDT e ordine da fare (Tid). Ciò che la chiusura ha trovato è D27 (sotto).
-- 📝 **Gli indirizzi del documento seguono il cliente**
-  (`work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md`, D27, 2026-10-10): su DDT, preventivo
-  e offerta il cliente si cambia in bozza ma gli indirizzi presi dall'anagrafica del cliente di prima restano,
-  e l'emissione non lo vede. Decisioni chiuse il 2026-10-10: regola e auto-assegnazione dello slot di default
-  nel DB, motivo d'emissione nuovo; il BE ritira i suoi helper. Al team DB, codice da scrivere.
-- 📝 **Le righe di un DDT nato da un ordine** (`work-in-progress/brief-db-ddt-righe-evase-dall-ordine.md`, D28,
-  2026-10-10): in bozza la riga evasa cambia quantità e articolo senza che il fulfillment lo veda (ordine evaso
-  per 10, bolla a 6). Decisioni chiuse il 2026-10-10: riga evasa ferma; verbo DB per correggere la quantità in
-  bozza, solo sui DDT da ordine; riga evasa cancellabile in bozza; `qta_evasa` bloccata fuori bozza; righe a mano
-  ammesse. Il magazzino (Lotto 3) è invariato. Al team DB, codice da scrivere.
+- ✅ **Gli indirizzi del documento seguono il cliente: chiuso il 2026-10-19**
+  (`work-done/brief-db-indirizzi-documento-seguono-il-cliente.md`, D27): un indirizzo preso dall'anagrafica e'
+  del cliente del documento. Nel DB: slot di default come dato, guard d'origine sulle `*_indirizzi`, al cambio di
+  cliente in bozza il DB toglie gli indirizzi del cliente di prima e riempie lo slot dal nuovo, scheda di
+  fornitura che segue il cliente (offerta, contratto), emittente e utility ferme anche in bozza su preventivo,
+  offerta e contratto (lock di testata «ferma sempre»). BE/FE: helper ritirati, rifiuto delle colonne ferme sul
+  campo (`rifiuta_colonne_ferme`), chiavi ignote rifiutate sui PATCH di preventivo e DDT, il cambio di cliente
+  in modifica si salva subito con conferma (`useCambioClienteDocumento`), lookup del cliente ricostruito
+  (`ripristinaBillingAccount`). Collaudo di Tid superato (2026-10-19). Nato nel collaudo e fatto lo stesso giorno,
+  fuori dal brief: «Attiva» del contratto spento sopra un contratto vincolante sovrapposto (DB `161ac98af`, BE/FE
+  `d54d67041`), collaudato da Tid il 2026-10-19.
+- ✅ **Le righe di un DDT nato da un ordine: chiuso il 2026-10-11**
+  (`work-done/brief-db-ddt-righe-evase-dall-ordine.md`, D28): la riga evasa (da ordine o da reso da
+  ri-consegnare) e' ferma, la quantita' si corregge solo dal verbo `vendite.fn_ddt_riga_correggi_qta_evasa`,
+  si cancella in bozza ritirando i legami, e l'annullo di una bolla con legami li ritira con conferma
+  (`vendite.fn_annulla_ddt`). DB `20261011-05 … -20`, `-34`, `-35`; BE/FE §10; collaudo di Tid superato.
+  Nessun residuo: il cambio di stato del DDT dal verbo resta nel Lotto 3 (sopra).
+- ✅ **Annullare un documento con legami: chiuso il 2026-10-11**
+  (`work-done/brief-db-annullo-documento-con-legami.md`, D29): bolla, ordine, preventivo e contratto si
+  annullano dal loro verbo (`vendite.fn_annulla_<documento>`) con l'avviso `E_DOC_ANNULLO_CON_LEGAMI`, la
+  finestra di conferma comune (lettore unico `vendite.fn_documento_legami`) e la dichiarazione dei legami
+  visti; l'origine si riapre (ordine da evadere, reso da ri-consegnare, preventivo di nuovo ACCETTATO,
+  offerta di nuovo trasformabile: unicita' sui soli vivi). DB `20261011-68 … -91` + caso 1 del giro D28;
+  BE/FE §9; collaudo di Tid superato. Il verso dalla commessa e' D30 (sotto).
+- ✅ **Tornare indietro: annullare a valle riapre a monte — chiuso il 2026-10-13**
+  (`work-done/brief-db-annullo-a-valle-riapre-a-monte.md`, D30): la commessa si annulla dal verbo
+  (`vendite.fn_annulla_commessa`) con la finestra comune di D29; preventivo, ordine, contratto, bolla, reso e
+  consumi si riaprono, gli oneri si annullano. Una riga di commessa ANNULLATA non occupa piu' il documento
+  (D-5); «Evaso» dell'ordine = solo bolle (D-6); il documento con righe in una commessa viva non emesse si
+  annulla con conferma (D-8); il verso in avanti verso la commessa sta tutto nel DB (D-10). Il link
+  documento → commessa resta come storia, una sola commessa aperta per documento, lo scrive la madre
+  `fn_upsert_commessa_attivita` (D-12, D-13); il lineage dice quando il legame e' ritirato
+  (`is_legame_ritirato`, a tre stati, D-15). DB `20261012-08 … -24`, `-27 … -29`, `-43 … -47`,
+  `20261013-69 … -72`; BE/FE §9, §10.8, §11.6; collaudo di Tid superato. ⚠️ `dev/db-tid` (`-69 … -72`) va
+  mergiato prima del BE/FE del §11.6. Il residuo (la commessa vuota del push batch) e' in § «Aperto — Media
+  priorità».
 - ✅ **L'emittente del documento e' quello del cliente: chiuso il 2026-10-10**
   (`work-done/brief-db-guard-emittente-ba-unico.md`, D22): il guard emittente <-> BA estratto in un BB
   (`script.trgfn_doc_guard_emittente_ba`), un codice e una frase leggibile; DB `20261010-17…-19`, BE §9. Il seguito
   e' **D24** del registro DB (`migliorie-generali-da-test-valutazione.md`): la vista del presidio C2 non vede i BB
   trigger col codice in `TG_ARGV`, e il BE tiene un'esenzione su `E_DOC_EMITTENTE_BA_INCOERENTE` finche' non la vede.
-- 📝 **Il documento dopo la bozza: che cosa si cambia ancora** (`work-in-progress/brief-db-testata-dopo-emissione.md`,
+- ✅ **Il documento dopo la bozza: che cosa si cambia ancora — chiuso il 2026-10-11** (`work-done/brief-db-testata-dopo-emissione.md`,
   D26, 2026-10-10): oggi la regola completa sta solo nel backend («solo in DRAFT»); il DB ne blocca dei pezzi.
   Colonne divise in famiglie (identità, stampato, arriva dopo, note, condizioni commerciali). Decisioni chiuse
   il 2026-10-10: decide il DB, il BE toglie i suoi «solo in DRAFT»; documento chiuso = tutto fermo (D-8).
-  **Fase 1 (§5-bis), da fare per prima e consegnabile da sola:** il lettore del montaggio e la capability della
-  data di consegna confermata (assorbito il brief `brief-db-ordine-data-consegna-confermata-capability`); il BE
-  la attende per il suo verbo. Poi la fase 2, la testata. Codice da scrivere.
+  Fasi 1 e 2 applicate (2026-10-10), BE/FE fatti. Giro R-DB (§11, 2026-10-11, D-11/D-12/D-13 di Tid) applicato:
+  lock «solo in bozza» su indirizzi e fornitura dei documenti, cliente della bolla dal guard, regole del listino
+  sotto le righe a DB per contratto e offerta, congelamento del listino provato. BE/FE fatti (§12) e collaudo a
+  video di Tid superato il 2026-10-11; `E_CONTRATTO_NON_MODIFICABILE` ritirato. Archiviato il 2026-10-11.
 - ✅ **Un testo non si riempie di spazi: chiuso il 2026-10-10** (`work-done/brief-db-character-n-spazi-di-riempimento.md`):
   colonne `character(n)` a lunghezza variabile portate a `varchar` (`20261010-26…-40`), sigla di provincia con la
   sua regola, `destinatario_fe` diventato il canale FE (P/C) che pretende il suo recapito; BE/FE e collaudo a video
   superati. Regola nuova: §7e di `linee-guida-sql.md`, presidio `test-character-n-v1`. BB FE `InputMaiuscolo`.
-- 📝 **Dati fiscali e societari del soggetto** (`work-in-progress/brief-db-dati-fiscali-e-societari-del-soggetto.md`,
+- ✅ **Il perimetro una volta per istruzione: chiuso il 2026-10-21** (`work-done/brief-db-perimetro-una-volta-famiglie-residue.md`,
+  D36): nessuna policy calcola più per riga ciò che dipende solo da chi guarda. Vesti di controparte
+  (cliente portale, shop, fornitore) con `fn_get_identita_sr_perimetro` + `fn_resolve_controparte_sr_id` +
+  `fn_scope_sr_perimetro`; email con `fn_scope_email_ambito_perimetro`; note e coppia dell'operatore nella
+  forma già pronta. `20261021-24…-43`; regola in linee-guida-sql §10.3; presidio senza eccezioni.
+- ✅ **Dati societari in creazione: chiuso il 2026-10-22** (`work-done/brief-db-dati-societari-in-creazione.md`,
+  D34): le due porte di creazione ricevono la sezione intera, data di costituzione compresa, e la ditta
+  individuale non la perde più; quando scriverla lo decide il BB `fn_scrivi_dati_societari_alla_nascita`,
+  e una sezione passata a un privato si rifiuta (`20261020-01…03`). BE: binding della sezione in un BB del
+  repository (catalogo BB «Anagrafiche — Soggetti»), contratto della PATCH anche in creazione; FE: data di
+  costituzione anche in creazione. Collaudo di Tid riuscito il 22-10.
+- ✅ **Dati fiscali e societari del soggetto: chiuso il 2026-10-14** (`work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`,
   2026-10-10): (A) «Cliente PA» e «Split payment» ammessi per ogni natura, anche per un privato; (B) in modifica i
   dati societari non si salvano, serve il verbo di scrittura (decisione di Tid); (C) la forma giuridica non è legata
   alla natura, e il drawer la mostra vuota; (D) un titolo IVA si registra su qualunque soggetto (assorbito
-  `brief-db-regime-fiscale-per-natura-soggetto`, ora solo rimando). ✅ Lato DB applicato e verde il 2026-10-10 (§8):
+  `brief-db-regime-fiscale-per-natura-soggetto`, rimando cancellato il 2026-10-12). ✅ Lato DB applicato e verde il 2026-10-10 (§8):
   verbo `fn_scrivi_dati_societari` unica porta, regole per natura su flag, titoli e forma. ✅ BE/FE scritti e verdi
   il 2026-10-10 (§9) e collaudati in-app il 2026-10-11, con due difetti trovati e corretti: il lookup delle forme
-  falliva sempre (colonna inesistente) e il cambio di natura in modifica non arrivava al DB. Resta aperta D-4.
+  falliva sempre (colonna inesistente) e il cambio di natura in modifica non arrivava al DB. Archiviato il
+  2026-10-14: la data di costituzione in creazione è nel brief qui sopra, gli altri residui in § «Aperto — Media priorità».
+- **Quali processi sono accesi: per ambiente, a mano, i non spegnibili: chiuso**
+  (`work-done/brief-db-processi-accensione-per-ambiente.md`, archiviato il 2026-10-19): l'ambiente
+  dell'installazione è un dato del DB (`dbops.installazione`, scelto al provisioning, immutabile, lettori
+  `script.fn_ambiente_installazione()` / `fn_ambiente_dichiarato()`); default per ambiente e «spegnibile» in
+  `dbops.processi` (sette mai spegnibili), scelta a mano in `dbops.processi_accensione`, cancello
+  `maintenance.fn_sveglia_accesa` su pgAgent e systemd, stato `SPENTO` nel panorama. Dati di sviluppo dal verbo
+  `fn_provisiona_dati_di_sviluppo` con le etichette (rifiutati in `PRODUZIONE`), `smoke` → `dev.smoke`. Strada (b):
+  prima i building block, poi le copie del backend ritirate (emittente, cliente, fornitore, veste portale,
+  magazzino, profilo e legami, override, emittente attivo, indirizzi singolari e plurali). Ultimi giri: registro
+  delle fatture che nasce con l'emittente (R-BE-14), profilo SUPER_ADMIN da un lettore (R-BE-11), l'istanza di
+  indirizzi, contatti e conti del ruolo è del soggetto del ruolo e il soggetto di un ruolo non cambia (R-BE-15).
+  Fuori da qui: i template di default dell'emittente, in `brief-db-modelli-documento-standard`.
+- ✅ **I modelli di documento standard: un emittente nuovo emette dal primo giorno — chiuso il 2026-10-21**
+  (`work-done/brief-db-modelli-documento-standard.md`): un modello standard per tipo di documento, di
+  sistema (emittente NULL, flag `standard`, scritto solo dai changeSet), usato come ripiego quando
+  l'azienda non ha modelli suoi che stampano (strada B). Una porta sola per «con che modello e che
+  versione si stampa», anche col modello indicato (`documenti.fn_risolvi_template_applicabile`), «può
+  stampare» in una vista sola (`vw_template_versioni_stampabili`), «personalizza» e la copia di una
+  versione come funzioni del DB, lo scarto delle copie dallo standard da cui derivano. Nello stesso
+  brief: i parametri d'importo per utility con un valore di sistema (`config.utilities`) e una
+  catena sola per riga e totale (`fn_parametri_importo_riga`), la sede legale del cedente pretesa
+  all'uscita dalla bozza. BE/FE in `7385889b9`: la lista Modelli documento dice con che cosa stampa
+  ogni azienda, lo standard si apre in sola lettura e si personalizza. Collaudo di Tid superato. I
+  residui sono in § «Aperto — Media priorità».
+- ✅ **Gli utenti di sviluppo: forniti da un verbo, etichettati, mai in produzione — chiuso il 2026-10-22**
+  (`work-done/brief-be-utenti-di-sviluppo.md`): gli utenti `dev.*` (smoke, lettura, bloccato, emittente, portali,
+  fornitore, multiveste) e i soggetti di prova (emittenti DEVA/DEVB, clienti, fornitore) li crea
+  `fn_provisiona_dati_di_sviluppo` (command `provision_utenti_sviluppo`), riconosciuti dall'etichetta; la lista
+  Operatori li nasconde di default. Gli smoke Python si **costruiscono** la materia dalle radici di prova
+  (BB `scripts/tests/_smoke_fatturazione.py`) e dai builder `dbops.fn_pgtap_crea_*`, che accettano `dev.smoke`
+  sull'emittente scelto: niente più «l'ultima riga che c'è». Giro degli smoke da 20 a 2 non-verdi (2026-10-18 → 10-22), tutti e due
+  dei resi. Trovati e chiusi col DB lungo la strada: il listino che non si spegneva (guard orfani; un listino con
+  storia si spegne solo con la fine validità, `E_LISTINO_CON_STORIA_NON_SPEGNIBILE`, toggle dal DB
+  `fn_listino_ha_storia`), il rilancio del lotto che prendeva l'emittente predefinito, la riga di fattura senza
+  IVA (`E_FATTURA_RIGA_IVA_MANCANTE` entrando in EMESSA), il contratto dell'attività coerente col BA
+  (`E_ATTIVITA_CONTRATTO_INCOERENTE`). Collaudo di Tid superato. Nessun residuo.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato
@@ -389,6 +554,62 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 
 ### Aperto — Media priorità
+- **Residui di `work-done/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`** (ereditati il
+  2026-10-24 dal collaudo passato, §3):
+  - **il reset del rifiuto sta solo nel BE del preventivo** (`preventivi_service.py` `aggiorna_riga`,
+    «Auto-reset stato approvazione»), nessun trigger a DB: una correzione del prezzo che non passa da lì
+    lascia la riga `REJECTED` e il documento bloccato. Su contratto e offerta un reset equivalente non
+    risulta: asimmetria del modello. Da decidere, di Tid, se la regola vada a DB, simmetrica su tutti i
+    documenti; brief DB nuovo;
+  - **la riga `test-preventivi-approvazione-prezzo.sql`** è ancora in `db/pgtap/baseline-rossi-ci.tsv`
+    (`ERRORE_FIXTURE`): si toglie dopo la corsa CI su `Tito-dev` (`scripts/pgtap-baseline-ci-rientrati.sh`).
+    Team DB.
+- **Residui di `work-done/brief-db-modelli-documento-standard.md`** (ereditati il 2026-10-21 dalla
+  chiusura, §11.5.4 e riga 10):
+  - **il giro degli smoke su `dev.smoke`** (§7, B-11): DEVA emette con lo standard e chiude una
+    fattura. Non fatto: il brief si è chiuso col collaudo a video. BE;
+  - **B-8, la matrice utility dell'emittente**: mostra solo l'override grezzo. Mettere nei suoi campi
+    i parametri di sistema li farebbe leggere come override; la forma proposta sono due campi
+    «effettivo» da `anagrafiche.fn_parametri_importo_utility` e una colonna FE accanto. Da decidere,
+    di Tid;
+  - **la numerazione della versione nuova** di un template: la versione scritta da zero la numera il
+    BE (`next_versione_num`, MAX+1), la copia la numera il DB (`fn_crea_bozza_da_versione`). Due sedi
+    dello stesso numero; si chiude con un verbo DB per la versione nuova. Brief nuovo se Tid vuole;
+  - **`vendite.fatture.utility_id NOT NULL`** (§10.9, facoltativa): l'unico creatore applicativo la
+    pretende già, molte fixture pgTAP inseriscono fatture senza. Di Tid.
+- **Residui di `work-done/brief-db-presidio-job-run-a-chi-tocca.md`** (ereditati il 2026-10-18 dalla chiusura),
+  nessuno bloccante:
+  - **errori lato client senza SQLSTATE** (§12): una connessione che cade dentro un command arriva come
+    `OperationalError` senza SQLSTATE e va a `PROGRAMMA`. Se servirà, la strada è riconoscere la classe Python
+    (`OSError`, `ConnectionError`), che è la tassonomia lasciata al BE dal §4.2. BE;
+  - **`SMOKE_GIRO_FALLITO`** copre sia il tetto di tempo sia lo script uscito con 2 (§12): si separa quando lo
+    smoke avrà un caso reale da instradare diversamente. BE;
+  - **`error_detail` con la riga `CONTEXT:`** (§5, visto nel collaudo del 2026-10-18): per un errore PL/pgSQL
+    `registered_job` scrive `str(exc)`, che porta il `CONTEXT` del driver su una riga nuova, e il digest stampa la
+    voce spezzata. BE;
+  - **il `%TYPE` mancato del giro 1** (§10.1-bis): debito noto, deciso di non riscrivere (Tid, 2026-10-16). DB.
+- **Residui di `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`** (ereditati il 2026-10-14 dalla
+  chiusura):
+  - **D-4, che cosa registra il titolo IVA `COOPERATIVA`** (§4): l'aliquota agevolata delle cooperative sociali
+    riguarda di solito le prestazioni rese **dalla** cooperativa, ma il titolo sta sul cliente. Finché non è
+    chiarito, `COOPERATIVA` non ha righe nella matrice `config.tipi_titolo_iva_tipi_soggetto_dettaglio`, e quindi
+    non è ammesso su nessun soggetto. Se la risposta è «titolare il cliente», basta una riga nel CSV. Altrimenti il
+    titolo è nella tabella sbagliata. Da decidere, di Tid;
+  - **censimento dei titoli IVA fuori regola** (§8.2, query pronta): la deve lanciare Tid **come owner**, perché
+    come app la RLS non mostra nessun titolo. I titoli fuori regola non bloccano niente, ma alla prossima
+    modifica il guard li rifiuta;
+  - **`SGT-0000121` con `cliente_pa = 'S'`** (§8.1): un privato, il caso della segnalazione. Il guard lo rifiuterà
+    alla prossima modifica dei flag o della natura. Da riportare a `N` a mano (Tid);
+  - **`anagrafiche.fornitori.split_payment`** (§7): nullable, senza regola sulla natura, senza lettori oltre
+    `vw_fornitori_dettaglio`. Sul passivo la scissione dipende dall'emittente, non dal fornitore: forse è nella
+    sede sbagliata. Da verificare; se confermato, brief suo.
+- **La commessa vuota lasciata dal push batch** (DB + BE, ereditata il 2026-10-13 dalla chiusura di
+  `work-done/brief-db-annullo-a-valle-riapre-a-monte.md` §10.8): nel push batch (`pr_run_commesse_push`,
+  best-effort per riga) la commessa nasce prima che il batch delle righe le accetti; se una riga e'
+  rifiutata, per qualunque causa, la commessa resta vuota e aperta e il ponte di emittibilita' scrive un
+  errore nel report. Strade di modello: (a) il fan-out chiede al DB la commessa aperta del documento prima di
+  crearne una; (b) le righe di un documento si scrivono dentro il suo savepoint; (c) il DB non crea la
+  commessa vuota. Da decidere, di Tid con il team DB.
 - **Residui di `work-done/brief-db-istanza-nasce-col-ba.md`** (ereditati il 2026-10-10 dalla chiusura):
   - ⏭️ **collaudo a video delle pratiche** (§7.4): la tendina della fornitura (una riga per fornitura, con la
     utility), nessun campo fornitura su chi non è cliente, offerta e contratto col cliente ereditato dalla
@@ -549,8 +770,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `tx_id = uuid_nil`** (DB+CI, ereditata il 2026-09-19 dalla chiusura di
   `work-done/brief-db-privilegio-app-job-run-log.md`, §5). La sede del
   privilegio esiste — `scripts/sql/provision_dblink_log_channel.sql` — ma la CI
-  non la esegue: il changeSet che la incarna (`90_end/20260205-42`) è
-  `context: disabled`, il bootstrap di `ci-validate.yaml` crea il ruolo e il
+  non la esegue (il vecchio changeSet `90_end/20260205-42`, `context:
+  disabled`, è stato ritirato il 2026-10-15), il bootstrap di `ci-validate.yaml` crea il ruolo e il
   DSN senza concedergli niente su `dbops`, e `90_end/20260905-38` gli dà
   `maintenance`, non `dbops`. Su dev il grant c'è, a mano (§11.9, stessa
   forma). Effetto: `fn_get_or_create_session_tx_id` ripiega su `uuid_nil`
@@ -662,8 +883,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare
 - **La promessa di consegna dopo la conferma** (BE, decisione di Tid del 14-09): dal
   `20261008-90` il DB lascia aperta la sola `data_consegna_confermata` in `CONFERMATO`/`PARZIALMENTE_EVASO`;
-  il verbo che la cambia è nella fase 1 (§5-bis) di `work-in-progress/brief-db-testata-dopo-emissione.md`
-  (prima la capability a DB, decisione di Tid del 2026-10-09)
+  il verbo che la cambia è nella fase 1 (§5-bis) di `work-done/brief-db-testata-dopo-emissione.md`
+  (prima la capability a DB, decisione di Tid del 2026-10-09). ✅ Fatto e collaudato il 2026-10-11
 - **Pratica di approvazione prezzo su revisione superata** (BE,
   `work-done/refactor-prezzi.md` §4.7, residuo differito dal 2026-06-01): dal
   2026-09-14 (`20260914-14`) riguarda anche i **preventivi** — la rev N+1
@@ -674,8 +895,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   vendita), non più la sola accettazione — la revisione con quella riga non si
   emette, e resta solo l'annullamento. ✅ **Deciso da Tid lo stesso giorno**
   (§10 di `work-done/brief-db-preventivi-congelamento-pricing.md`,
-  `20260924-33…-37`, applicati il 24-09 con test verdi; collaudo a video da
-  eseguire in `work-in-progress/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`):
+  `20260924-33…-37`, applicati il 24-09 con test verdi; collaudo a video
+  passato il 2026-10-24, `work-done/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`):
   una revisione **non si crea** finché un
   prezzo è in attesa, quindi la riga in attesa ricopiata non può più nascere;
   approvato e rifiutato si ricopiano come prima. Resta del BE il ciclo di vita

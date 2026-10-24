@@ -139,8 +139,9 @@ async function loadRecords() {
   loading.value = true
   try {
     const params = {
-      page: page.value,
-      page_size: pageSize.value,
+      // La finestra, non la pagina (2026-10-21, un dialetto solo).
+      limit: pageSize.value,
+      offset: (page.value - 1) * pageSize.value,
       attivo_only: false,
     }
     if (searchRecords.value) params.search = searchRecords.value

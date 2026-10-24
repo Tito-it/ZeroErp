@@ -121,6 +121,9 @@ RETURNS vendite.commesse_attivita.id%TYPE LANGUAGE sql AS $fx$
   SELECT r.attivita_id
     FROM vendite.fn_upsert_commessa_attivita(
       p_commessa_id                   => (SELECT commessa_id FROM tmp_commessa_lcf),
+      -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+      p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+      p_sorgente_uid => ((SELECT commessa_id FROM tmp_commessa_lcf))::text,
       p_segment_key                   => p_seg,
       p_articolo_id                   => (SELECT articolo_id FROM tmp_refs_lcf),
       p_istanza_utility_id            => (SELECT istanza_utility_id FROM tmp_refs_lcf),
@@ -143,7 +146,6 @@ RETURNS vendite.commesse_attivita.id%TYPE LANGUAGE sql AS $fx$
       p_stato_approvazione            => p_appr,
       p_stato_emissione               => p_emis,
       p_tipo_movimento                => 'NORMALE',
-      p_tipo_consumo                  => 'CONGUAGLIO',
       p_meta                          => jsonb_build_object('case', 'LCF')
     ) r;
 $fx$;
@@ -193,7 +195,7 @@ SELECT r.articolo_id, r.istanza_utility_id, DATE '2026-10-15', 1,
 CREATE TEMP TABLE tmp_fattura_lcf AS
 WITH f AS (
   INSERT INTO vendite.fatture (registro_id, data, emittente_soggetto_ruolo_id,
-                               billing_account_id, meta)
+                               billing_account_id, utility_id, meta)
   -- ⛔ Il registro dev'essere quello dell'emittente della riga sotto, non
   --   «il primo che c'e'»: dal 2026-08-30 il guard non ammette piu' la
   --   coincidenza (vendite.trgfn_fatture_guard_registro_emittente).
@@ -202,6 +204,9 @@ WITH f AS (
          script.fn_data_operativa(),
          anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM tmp_refs_lcf)),
          (SELECT billing_account_id FROM tmp_refs_lcf),
+         -- utility dal BA, come la testata vera (R-3, 20261021-15)
+         (SELECT ba.utility_id FROM anagrafiche.billing_account ba
+           WHERE ba.id = (SELECT billing_account_id FROM tmp_refs_lcf)),
          jsonb_build_object('test_scope', 'pgtap_lista_commessa_attivita_fatturata')
   RETURNING id
 )

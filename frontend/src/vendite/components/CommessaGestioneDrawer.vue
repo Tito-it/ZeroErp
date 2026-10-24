@@ -30,9 +30,11 @@ import { useListaAzioni } from '../../core/composables/useListaAzioni'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import CommessaRegistroDialog from './CommessaRegistroDialog.vue'
 import DocumentoCollegamentiBar from '../_shared/lineage/DocumentoCollegamentiBar.vue'
+import DocumentoAnnulloLegamiDialog from '../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useActionPermission } from '../../core/composables/useActionPermission'
@@ -50,9 +52,11 @@ import { useDocumentoDrawer } from '../../core/composables/useDocumentoDrawer'
 import { buildApriDocumentoAction } from '../dashboardAree'
 import {
   STATO_APPROVAZIONE_ATTIVITA,
+  STATO_COMMESSA,
   STATO_EMISSIONE_ATTIVITA,
   TIPO_MOVIMENTO_ATTIVITA,
 } from '../constants'
+import { useCommesseStore } from '../stores/commesse'
 import { displayDate, toDateString } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { extractApiError } from '../../core/utils/apiError'
@@ -65,7 +69,6 @@ import {
   aggiungiOnereCommessa,
   annullaRigaCommessa,
   approvaCommessaAttivita,
-  cambiaStatoCommessa,
   exportCommessaAttivita,
   getCommessaStato,
   listCommessaAttivita,
@@ -148,10 +151,10 @@ const filtroTipoMovimento = ref(null)
 // ⚠️ Il totale e' il `count` FILTRATO della risposta, non
 //    `stato.total_attivita` (contatore di testata, sempre su TUTTE le righe):
 //    con un filtro attivo il paginatore direbbe 4 righe mostrandone 1.
-const lista = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
+const lista = useListaDrawerPaginata(({ limit, offset, sortBy, sortDir }) =>
   listCommessaAttivita(props.commessaId, {
-    limit: pageSize,
-    offset: (page - 1) * pageSize,
+    limit,
+    offset,
     ...(sortBy ? { order_by: sortBy, order_dir: sortDir } : {}),
     ...(filtroStatoEmissione.value ? { stato_emissione: filtroStatoEmissione.value } : {}),
     ...(filtroTipoMovimento.value ? { tipo_movimento: filtroTipoMovimento.value } : {}),
@@ -505,16 +508,45 @@ const stateActions = computed(() => mapAvailableActionsToDrawerActions({
     confirmAction({
       header: t('vendite.commesse.stato_header'),
       message: t('vendite.commesse.stato_conferma', { stato: statoDestinazione(action) }),
-      onAccept: async () => {
-        const res = await execute(() => cambiaStatoCommessa(props.commessaId, action.target_state))
-        if (res !== null) {
-          await reloadAll()
-          emit('saved')
-        }
-      },
+      onAccept: () => eseguiCambioStato(action.target_state),
     })
   },
 }))
+
+// ⭐ L'annullo e' un gesto CONFERMABILE (brief-db-annullo-a-valle-riapre-a-
+//    monte D-2): con righe non ancora emesse il DB lo rifiuta
+//    (`confirm_and_retry`) finche' chi conferma non dichiara quanti legami ha
+//    visto — che cosa si riapre a monte (documenti, reso, consumi) e che cosa
+//    si annulla (oneri) lo porta a video `DocumentoAnnulloLegamiDialog`, la
+//    stessa finestra di bolla, ordine, preventivo e contratto. Le righe gia'
+//    emesse lo vietano prima della domanda (azione spenta col motivo, e il
+//    verbo rifiuta comunque). Le altre transizioni restano su `execute`.
+const cambioStato = useForzaturaConfermata()
+const { richiestaConferma: domandaAnnullo } = cambioStato
+const commesseStore = useCommesseStore()
+
+// Scopo: esegue l'azione di stato; l'annullo SEMPRE senza dichiarazione al
+//        primo tentativo.
+async function eseguiCambioStato(targetState) {
+  const res = targetState === STATO_COMMESSA.ANNULLATA
+    ? await cambioStato.esegui(
+      (dichiarazione) => commesseStore.cambiaStato(props.commessaId, targetState, dichiarazione),
+    )
+    : await execute(() => commesseStore.cambiaStato(props.commessaId, targetState))
+  if (res !== null) await dopoCambioStato()
+}
+
+// Scopo: l'operatore ha visto i legami e conferma l'annullo: si ripete la
+//        chiamata DICHIARANDO quanti erano.
+async function onConfermaAnnullo(dichiarazione) {
+  const res = await cambioStato.conferma(dichiarazione)
+  if (res !== null) await dopoCambioStato()
+}
+
+async function dopoCambioStato() {
+  await reloadAll()
+  emit('saved')
+}
 
 // ------------------------------------------------------------------ prezzi (N5/N7)
 const variazioneDialog = ref(false)
@@ -545,7 +577,8 @@ const sbloccaMotivo = ref('')
 //        in sola lettura e su riga già fatturata, dove tutte le azioni prezzo
 //        sono legittimamente spente. Guardare un documento non è un'azione di
 //        governo.
-//        Le tre colonne che le alimentano (`sorgente_area`,
+//        Le tre colonne che le alimentano (dal 2026-10-21 `sorgente_apribile`
+//        + `sorgente_codice_interno`, prima `sorgente_area`,
 //        `sorgente_documento_id`, `fattura_id`) arrivano dalla lista dal
 //        2026-08-16 (changeSet 20260816-04): prima si fermavano al database.
 // ─────────────────────────────────────────────────────────────────────────
@@ -579,8 +612,12 @@ function buildRowNavActions(row) {
     // nullo, che copre due casi diversi e ugualmente corretti: la voce
     // manuale (nessun documento a monte) e il documento non visibile a chi
     // guarda (RLS) — in entrambi non c'è nulla da aprire.
+    // ⭐ Il tipo è il codice IMMUTABILE della sorgente, e vale solo se il DB
+    //    dice che il documento ha una pagina (`sorgente_apribile`, fattura e
+    //    reso compresi): brief-db-grammatica-unica-documenti §13.6, 2026-10-21.
+    //    Fino al 2026-10-20 era il plurale `sorgente_area`, ritirato.
     buildApriDocumentoAction({
-      area: row.sorgente_area,
+      area: row.sorgente_apribile ? row.sorgente_codice_interno : null,
       documentoId: row.sorgente_documento_id,
       label: t('vendite.commesse.azione_apri_sorgente'),
       onApri: apriDocumentoDrawer,
@@ -864,7 +901,9 @@ const fotoOnere = useFotografiaDialog(() => ({ ...onereForm.value }), { visibile
     <DocumentoCollegamentiBar
       v-if="commessaId"
       base-path="/vendite/commesse"
+      :versione="stato"
       :doc-id="commessaId"
+      @documento-chiuso="reloadAll"
       :readonly="isReadonly" />
 
     <!-- La TESTATA LEGGIBILE (Blocco C): descrizione e responsabile si
@@ -1207,13 +1246,28 @@ const fotoOnere = useFotografiaDialog(() => ({ ...onereForm.value }), { visibile
     </AppDialog>
 
     <!-- Host del drawer documento aperto dal kebab di riga: documento di
-         ORIGINE (tipo dal registry via `sorgente_area`) o FATTURA in cui la
+         ORIGINE (tipo dal registry via `sorgente_codice_interno`) o FATTURA in cui la
          riga è finita. Stesso BB dei drill-down dei cruscotti. -->
     <DocumentoDrawerHost
       :visible="docDrawerVisible"
       :tipo-codice="docDrawerTipo"
       :doc-id="docDrawerId"
       @update:visible="onDocDrawerVisible" />
+
+    <!-- La conferma dell'annullo di una commessa con righe non ancora emesse:
+         aperta dalla domanda del DB, chiusa dalla conferma o dalla rinuncia. -->
+    <DocumentoAnnulloLegamiDialog
+      v-if="commessaId"
+      :visible="domandaAnnullo !== null"
+      base-path="/vendite/commesse"
+      :doc-id="commessaId"
+      :header="t('vendite.commesse.azione_annulla')"
+      :domanda="domandaAnnullo"
+      :loading="cambioStato.loading.value"
+      :readonly="isReadonly"
+      @conferma="onConfermaAnnullo"
+      @cancel="cambioStato.annulla()"
+    />
 
     <!-- Il REGISTRO della riga: sola lettura, quindi FUORI dai dialog di azione e
          senza `app-escape`. Si apre dal kebab, anche a commessa in readonly.

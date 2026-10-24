@@ -34,6 +34,7 @@ import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegament
 import { CAMPI_FORM_TESTATA_RESO, STATO_RESO } from '../constants'
 import ResoForm from './ResoForm.vue'
 import ResoRigheTable from './ResoRigheTable.vue'
+import ResoRientriSection from './ResoRientriSection.vue'
 import ResoRiconsegnaDialog from './dialogs/ResoRiconsegnaDialog.vue'
 
 const { t, te } = useI18n()
@@ -84,9 +85,8 @@ const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // La testata dopo la bozza: quali campi del form si cambiano, dalla capability
-// (brief-db-testata-dopo-emissione, R-FE-3). Il form del reso mostra la sola
-// data, che fuori bozza e' ferma: oggi il form si apre solo in bozza, e lo
-// dice la capability, non lo stato.
+// (brief-db-testata-dopo-emissione, R-FE-3). Il form del reso mostra data e
+// magazzino di rientro, fermi fuori bozza: lo dice la capability, non lo stato.
 const testata = useTestataDocumento({
   caps,
   campi: CAMPI_FORM_TESTATA_RESO,
@@ -107,15 +107,27 @@ const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumen
   presente: () => hasDetail.value,
 })
 const modificatoDocumento = documento.modificato
-// Ref alla barra collegamenti (chip pratica/origine/destinazioni).
-const collegamentiRef = ref(null)
+// Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
+//        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
+//        ordine riapre il residuo e riaccende «Genera DDT» — quindi si
+//        rileggono testata (stato, capability), righe. I chip li rilegge la
+//        barra da se'. Le liste in ascolto le ha gia' avvisate lo store del
+//        verbo, nel drawer impilato.
+async function onDocumentoCollegatoChiuso() {
+  await loadDetail()
+  righeTableRef.value?.loadRighe()
+}
 // Dialog "DDT ri-spedizione": aperta dal pulsante in barra azioni (2026-07-25).
 // Era un pannello in coda al contenuto del drawer — le azioni di processo
 // stanno in alto, come «Genera reso» del DDT e «Genera DDT» dell'ordine.
 const riconsegnaDialogVisible = ref(false)
 
+// Rientri: la sezione e' montata col dettaglio e alla prima apertura legge da
+// se'; dopo, la rilegge `loadDetail` (righe e magazzino cambiano le voci).
+const rientriRef = ref(null)
+
 function resetForm() {
-  form.value = { emittente_fiscale_id: null, data: null }
+  form.value = { emittente_fiscale_id: null, data: null, magazzino_id: null }
   detail.value = null
 }
 
@@ -125,14 +137,19 @@ async function loadDetail() {
   // la modifica di testata non ancora salvata tornava com'era, in silenzio
   // (stesso difetto gia' corretto su ordini/DDT/preventivi, 2026-09-26).
   const applica = preserva()
+  // Come i prelievi della bolla: la sezione rientri si rilegge solo se c'era
+  // gia' (alla prima apertura legge da se').
+  const rientriGiaMontati = rientriRef.value != null
   const data = await loadDetailOrClose(() => store.fetchDetail(props.resoId))
   if (!data) return
   detail.value = data
   form.value = {
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
     data: parseIsoDate(data.data),
+    magazzino_id: data.magazzino_id ?? null,
   }
   applica()
+  if (rientriGiaMontati) rientriRef.value?.carica()
 }
 
 watch(() => props.visible, (v) => {
@@ -145,10 +162,14 @@ const canSave = computed(
   () => testata.modificabile.value && form.value.data != null,
 )
 
-// Scopo: salva la testata (solo `data`: il resto e' ereditato/immutabile).
+// Scopo: salva la testata (data e magazzino di rientro: il resto e'
+//        ereditato/immutabile; le regole del magazzino le applica il DB).
 async function handleSave() {
   const result = await execute(
-    () => store.update(props.resoId, { data: toDateString(form.value.data) }),
+    () => store.update(props.resoId, {
+      data: toDateString(form.value.data),
+      magazzino_id: form.value.magazzino_id || null,
+    }),
     { successMessage: t('vendite.resi.reso_salvato') },
   )
   if (result !== null) {
@@ -249,7 +270,6 @@ const drawerActions = computed(() => {
 async function onCoperturaRiconsegnaCambiata() {
   await loadDetail()
   righeTableRef.value?.loadRighe()
-  collegamentiRef.value?.reload()
   // ⭐ Era `emit('saved', {})`, e la lista si aggiornava — ma il drawer si
   // CHIUDEVA: una ri-spedizione parziale lascia il resto in coda, quindi
   // l'operatore era ancora dentro a lavorare. `changed` ricarica e lascia
@@ -304,10 +324,11 @@ async function onCoperturaRiconsegnaCambiata() {
            l'ORIGINE (reso <- DDT <- ordine), qui riassunta nei chip; il
            grafo completo si apre dai chip in dialog. -->
       <DocumentoCollegamentiBar
-        ref="collegamentiRef"
         v-if="props.resoId"
         base-path="/vendite/resi"
+        :versione="detail"
         :doc-id="props.resoId"
+        @documento-chiuso="onDocumentoCollegatoChiuso"
         :readonly="readonly || parentReadonly" />
     </template>
 
@@ -319,6 +340,7 @@ async function onCoperturaRiconsegnaCambiata() {
         :campi-errati="campiErrati"
         :form="form"
         :is-modificabile="testata.modificabile.value"
+        :non-editable-fields="testata.campiBloccati.value"
         :record="detail" />
     </div>
 
@@ -333,6 +355,14 @@ async function onCoperturaRiconsegnaCambiata() {
         :readonly="isReadonlyPuro"
         @changed="loadDetail()"
         @form-aperto="onFormAperto" />
+
+      <!-- Rientri (3-bis R-1b): dove rientra la merce. Compare solo se il reso
+           fa rientrare merce; si scrivono solo in bozza (decide il DB). -->
+      <ResoRientriSection
+        ref="rientriRef"
+        :reso-id="props.resoId"
+        :modificabile="canEditRighe && !isReadonly"
+        @changed="loadDetail()" />
 
     </template>
   </AppDrawer>

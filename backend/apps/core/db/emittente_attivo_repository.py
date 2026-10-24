@@ -76,15 +76,11 @@ class EmittenteAttivoRepository:
     #        voluto — la storicizzazione registra così ogni conferma esplicita
     #        della scelta, non solo i cambi di valore.
     def set_preferenza(self, auth_user_id: int, emittente_fiscale_id: int) -> None:
+        # Dal 2026-10-18 (2b-2, lotto 9) la madre del DB
+        # `config.fn_imposta_emittente_attivo`: lo stesso UPSERT, una sede.
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                INSERT INTO config.user_emittente_attivo
-                       (auth_user_id, emittente_fiscale_id)
-                VALUES (%s, %s)
-                ON CONFLICT (auth_user_id) DO UPDATE
-                   SET emittente_fiscale_id = EXCLUDED.emittente_fiscale_id
-                """,
+                "SELECT config.fn_imposta_emittente_attivo(%s::integer, %s::bigint)",
                 [auth_user_id, emittente_fiscale_id],
             )
 

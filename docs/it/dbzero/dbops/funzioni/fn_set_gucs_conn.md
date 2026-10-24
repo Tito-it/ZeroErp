@@ -7,6 +7,8 @@ CREATE FUNCTION fn_set_gucs_conn(p_user_id integer, p_session_key text, p_group_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_set_gucs_conn(p_user_id integer DEFAULT NULL::integer, p_session_key text DEFAULT NULL::text, p_group_ids integer[] DEFAULT NULL::integer[])
  RETURNS void
@@ -22,6 +24,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_set_gucs_conn(p_user_id integer, p_session_key text, p_group_ids integer[])
 IS 'Imposta le GUC app.* per audit, RLS e override parametri (user_id, session_key, group_ids).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

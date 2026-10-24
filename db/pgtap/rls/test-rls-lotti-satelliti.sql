@@ -12,7 +12,8 @@
 -- Elenco test (plan 12):
 --   1) struttura: tutti e cinque hanno la loro policy
 --   2) struttura: e la RLS e' ACCESA su tutti e cinque
---   3) ⛔ ogni policy passa da `_via_lotto` e dalla chiave `lotto_id`
+--   3) ⛔ ogni policy passa dal modo 'lotto' del risolutore (era `_via_lotto`,
+--      rev 2026-10-18) e dalla chiave `lotto_id`
 --   4) ⭐ LA DECISIONE: il legame lotto-fattura risale dal LOTTO, non dalla
 --      fattura — la policy non nomina `fattura_id`
 --   5) l'operatore A vede gli esiti del PROPRIO lotto
@@ -172,10 +173,10 @@ SELECT is_empty(
          AND p.tablename IN ('fatturazione_lotti_esiti','fatturazione_lotti_fatture',
                              'fatturazione_lotti_gruppi','fatturazione_lotti_log',
                              'fatturazione_lotti_task_runs')
-         AND (   position('fn_scope_ef_whitelist_via_lotto' IN p.qual)       = 0
-              OR position('fn_scope_ef_whitelist_via_lotto' IN p.with_check) = 0
+         AND (   position('fn_resolve_emittente_fiscale_id(''lotto''::text' IN p.qual)       = 0
+              OR position('fn_resolve_emittente_fiscale_id(''lotto''::text' IN p.with_check) = 0
               OR position('lotto_id' IN p.qual)                              = 0)$$,
-    '3. ogni policy passa dall''adattatore _via_lotto e dalla chiave lotto_id'
+    '3. ogni policy passa dal modo lotto del risolutore e dalla chiave lotto_id'
 );
 
 -- ⭐ La decisione del 2026-09-10, pinnata dove vive: nella policy.

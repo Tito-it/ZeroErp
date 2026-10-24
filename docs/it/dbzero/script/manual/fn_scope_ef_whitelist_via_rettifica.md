@@ -9,7 +9,7 @@
 [script.fn_scope_ef_whitelist](/dbzero/script/funzioni/fn_scope_ef_whitelist) (la canonica, a cui tutte delegano)
 > [script.fn_scope_ef_whitelist_via_magazzino](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_magazzino) (l'ancora del dominio)
 > [script.fn_scope_ef_whitelist_via_asset](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_asset) (la seconda ancora)
-> [script.fn_scope_note_magazzino_ef_whitelist](/dbzero/script/funzioni/fn_scope_note_magazzino_ef_whitelist) (lo smistatore delle note)
+> [script.fn_scope_note_magazzino_ef_perimetro](/dbzero/script/manual/fn_scope_note_magazzino_ef_perimetro) (lo smistatore delle note)
 >
 **Tabelle correlate:**
 >
@@ -54,5 +54,13 @@ Output: `boolean`, l'esito della canonica.
 Presidio: `db/pgtap/rls/test-rls-magazzino-perimetro-v1.sql`.
 
 ---
+
+### ⭐ rev 2026-10-18 — non sta più nelle policy
+
+ChangeSet `20261018-49`: l'emittente dal risolutore (modo `rettifica`). Le policy non la chiamano più (`20261018-50`):
+calcolano il perimetro una volta per istruzione con
+[`fn_scope_ef_perimetro`](fn_scope_ef_perimetro.md). Resta per la domanda su **un**
+emittente. Brief `brief-db-plancache-funzioni-con-query-incorporate` §5quinquies
+(ondata 2).
 
 {% include-markdown "signature-core.md" %}

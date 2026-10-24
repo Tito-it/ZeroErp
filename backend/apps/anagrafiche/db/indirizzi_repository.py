@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from apps.core.api.constants import DEFAULT_LIMIT
@@ -15,14 +16,14 @@ from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
     colonne_identita,
-    dynamic_update,
     sql_order_clause,
     fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
 )
 
-from django.db import connection, transaction
+from apps.core.db.sql_write_helpers import execute_dynamic_update
+from django.db import connection
 
 
 # ⚠️ Dizionario e non insieme, e le due meta' sono UGUALI apposta: su questa
@@ -147,91 +148,20 @@ class IndirizziRepository:
             ])
             return row_to_dict(cursor)
 
-    # Scopo: Crea indirizzo dettaglio tramite building block DB.
-    def create_indirizzo_dettaglio(
-        self,
-        *,
-        stradario_id: int,
-        civico: int | None = None,
-        estensione_civico: str | None = None,
-        palazzina: str | None = None,
-        scala: str | None = None,
-        piano: str | None = None,
-        interno: str | None = None,
-    ) -> int:
-        sql = """
-            SELECT anagrafiche.fn_get_or_create_indirizzo_dettaglio(
-                %s, %s, %s, %s, %s, %s, %s
-            )
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                stradario_id, civico, estensione_civico,
-                palazzina, scala, piano, interno,
-            ])
-            row = cursor.fetchone()
-            if not row:
-                raise RuntimeError("fn_get_or_create_indirizzo_dettaglio returned NULL")
-            assert row is not None
-        return int(row[0])
-
     # Scopo: Aggiorna dettagli civico (stradario_id non modificabile).
-    def update_indirizzo_dettaglio(
-        self,
-        indirizzo_dettaglio_id: int,
-        *,
-        civico: int | None = None,
-        estensione_civico: str | None = None,
-        palazzina: str | None = None,
-        scala: str | None = None,
-        piano: str | None = None,
-        interno: str | None = None,
-        attivo: bool | None = None,
-    ) -> bool:
-        return dynamic_update("anagrafiche.indirizzi_dettaglio", indirizzo_dettaglio_id,
-                              civico=civico, estensione_civico=estensione_civico,
-                              palazzina=palazzina, scala=scala, piano=piano,
-                              interno=interno, attivo=attivo)
+    # ⚠️ `campi` li legge il service per PRESENZA (`campi_per_presenza`): un
+    #    `None` qui svuota il campo. Fino al 2026-10-20 None voleva dire «non
+    #    toccare», e svuotare la palazzina dal drawer non scriveva niente.
+    def update_indirizzo_dettaglio(self, indirizzo_dettaglio_id: int, campi: Mapping[str, Any]) -> bool:
+        return execute_dynamic_update(
+            "anagrafiche.indirizzi_dettaglio", indirizzo_dettaglio_id, campi,
+            allowed=("civico", "estensione_civico", "palazzina", "scala", "piano",
+                     "interno", "attivo"),
+        )
 
     # =================================================================
     # Stradario — supporto creazione via nuova
     # =================================================================
-
-    # Scopo: Cerca o crea stradario locale (toponomastica + via + comune + CAP).
-    def get_or_create_stradario(
-        self,
-        *,
-        toponomastica_id: int,
-        descrizione_via: str,
-        comune_id: int,
-        codice_postale_id: int,
-    ) -> int:
-        descrizione_via = descrizione_via.strip()
-
-        # Guardrail atomicità (review 2026-07-08): 2 upsert sequenziali (stradario_generale
-        # + stradario) resi self-atomici. Prima protetti solo dal caller; nested=savepoint.
-        with transaction.atomic(), connection.cursor() as cursor:
-            cursor.execute("""
-                INSERT INTO config.stradario_generale (toponomastica_id, descrizione, descrizione_breve)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (toponomastica_id, descrizione) DO UPDATE
-                   SET descrizione = EXCLUDED.descrizione
-                RETURNING id
-            """, [toponomastica_id, descrizione_via, descrizione_via])
-            row = cursor.fetchone()
-            assert row is not None
-            stradario_generale_id = row[0]
-
-            cursor.execute("""
-                INSERT INTO config.stradario (stradario_generale_id, comune_id, codice_postale_id)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (comune_id, stradario_generale_id, codice_postale_id) DO UPDATE
-                   SET comune_id = EXCLUDED.comune_id
-                RETURNING id
-            """, [stradario_generale_id, comune_id, codice_postale_id])
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
 
     # Scopo: Creazione atomica dell'indirizzo via funzione madre DB.
     #        Obiettivo: fondere in UNA sola statement (anagrafiche.fn_create_indirizzo)

@@ -64,41 +64,39 @@ SELECT ok(
 );
 
 -- ============================================================
--- Riferimenti minimi (dati esistenti, no creazione da zero)
+-- Riferimenti minimi: il mondo COSTRUITO, dal DB solo il catalogo di seed
 -- ============================================================
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti). Prima BA, ruolo, emittente e articolo si pescavano col
+--   LIMIT 1: su zeroerp_ci erano NULL e l'ordine moriva sul NOT NULL di
+--   soggetto_ruolo_id. Ora un'azienda nuova col suo operatore (contesto aperto
+--   su di lui), il cliente legato a lei (dbops.fn_pgtap_crea_mondo_cliente) e un
+--   articolo merce non gestito (il test non misura il magazzino).
+--   Modello: test-ddt-magazzino-testata-v1.
+CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _az)); END $ctx$;
+CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP genera ddt');
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                       AS billing_account_id,
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-      AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1) AS articolo_id,
+  m.billing_account_id,
+  m.cliente_soggetto_ruolo_id AS soggetto_ruolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-GENERA-DDT', false) AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT i.id FROM config.iva i
     WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-    ORDER BY ef.id LIMIT 1)                       AS emittente_fiscale_id,
+  m.emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS stato_ord_conf_id,
+    WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1)      AS stato_ord_draft_id,
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)      AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt s
-    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE LIMIT 1)     AS stato_ddt_emesso_id,
+    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)     AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt s
-    WHERE s.codice_interno = 'CONSEGNATO' AND s.attivo IS TRUE LIMIT 1) AS stato_ddt_consegnato_id,
+    WHERE s.codice_interno = 'CONSEGNATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_ddt_consegnato_id,
   (SELECT ct.id FROM config.causali_trasporto ct
-    WHERE ct.codice = 'VENDITA' LIMIT 1)                                AS causale_vendita_id;
+    WHERE ct.codice = 'VENDITA' ORDER BY ct.id LIMIT 1)                               AS causale_vendita_id
+FROM _m m;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL

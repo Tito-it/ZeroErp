@@ -85,4 +85,16 @@ CREATE POLICY rls_commesse_attivita_ef_whitelist ON vendite.commesse_attivita
 
 ---
 
+### ⭐ rev 2026-10-18 — chiede l'emittente al risolutore, e non sta più nelle policy
+
+ChangeSet `20261018-32`: l'emittente lo chiede a
+[`fn_resolve_emittente_fiscale_id`](fn_resolve_emittente_fiscale_id.md) (modo
+`commessa`, `SECURITY DEFINER`) invece di leggere il padre sotto la sua RLS: la
+strada documento → emittente è scritta una volta, e una chiamata non riesegue la
+policy del padre. Stesse risposte. Resta per la domanda su **un** emittente
+(verbi, guard, backend); le policy non la chiamano più (`20261018-33`): calcolano
+il perimetro una volta per istruzione con
+[`fn_scope_ef_perimetro`](fn_scope_ef_perimetro.md). Brief
+`brief-db-plancache-funzioni-con-query-incorporate` §5quinquies (giro 1b).
+
 {% include-markdown "signature-core.md" %}

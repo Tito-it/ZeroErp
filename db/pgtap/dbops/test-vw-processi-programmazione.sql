@@ -115,12 +115,15 @@ SELECT col_is_null('dbops', 'processi', 'jobname_pgagent',
 --   convergenza_ci (23514) scatterebbe PRIMA dell'UNIQUE e il test misurerebbe
 --   il vincolo sbagliato (brief-db-job-notturni-in-ci).
 SELECT throws_ok(
+    -- ⚠️ 20261016-20: la riga dichiara l'accensione, altrimenti il CHECK
+    --   chk_processi_accensione parlerebbe prima dell'indice unico.
     $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, jobname_pgagent,
-                                  ci_esclusione)
+                                  ci_esclusione,
+                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
       VALUES (9701, 'PGTAP-JOB-DOPPIO', 'prova', 'MANUTENZIONE', 'PGAGENT',
               (SELECT jobname_pgagent FROM dbops.processi
                 WHERE jobname_pgagent IS NOT NULL ORDER BY codice LIMIT 1),
-              'pgTAP: processo di prova')$$,
+              'pgTAP: processo di prova', true, true, true, 'PROGRAMMA', true)$$,
     '23505',
     NULL,
     '2. due processi non possono dichiarare lo stesso job pgAgent'
@@ -131,10 +134,13 @@ SELECT throws_ok(
 --   per chk_processi_convergenza_ci — VERDE PER COINCIDENZA. Ora la riga
 --   dichiara ci_esclusione e il test nomina il vincolo che misura.
 SELECT throws_like(
+    -- ⚠️ 20261016-20: la riga dichiara l'accensione, altrimenti parlerebbe
+    --   chk_processi_accensione e non il vincolo che il test nomina.
     $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, jobname_pgagent,
-                                  ci_esclusione)
+                                  ci_esclusione,
+                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
       VALUES (9702, 'PGTAP-JOB-VUOTO', 'prova', 'MANUTENZIONE', 'PGAGENT', '   ',
-              'pgTAP: processo di prova')$$,
+              'pgTAP: processo di prova', true, true, true, 'PROGRAMMA', true)$$,
     '%chk_processi_jobname_pgagent_non_vuoto%',
     '3. un nome vuoto non e'' «nessun job»: si rifiuta'
 );
@@ -242,11 +248,15 @@ END;
 -- ⭐ Dal 20260911-13 un COMMAND puo' dichiarare un CONTRATTO (tolleranza o
 --   sessione): da quel momento il database SA, e FUORI_PORTATA sarebbe una
 --   bugia nell'altro verso — «non posso sapere» detto da chi sa.
+-- ⚠️ Rev 2026-10-16 (brief-db-processi-accensione-per-ambiente): un COMMAND
+--   SPENTO su questa installazione non e' fuori portata, e' spento — lo stato
+--   lo dice prima di ogni verdetto (run_fatturazione_batch, spento ovunque).
+--   Resta la regola che conta: nessun COMMAND senza contratto e' OK.
 SELECT is_empty(
     $$SELECT processo_codice FROM dbops.vw_processi_programmazione
        WHERE canale = 'COMMAND'
          AND tolleranza_minuti IS NULL AND segno_di_vita = 'GIORNALE'
-         AND stato <> 'FUORI_PORTATA'$$,
+         AND stato NOT IN ('FUORI_PORTATA', 'SPENTO')$$,
     '7. i COMMAND SENZA contratto sono FUORI_PORTATA — mai OK'
 );
 
@@ -326,10 +336,16 @@ BEGIN
         END IF;
 
         v_id := v_id + 1;
+        -- 20261016-20: chi ha una sveglia dichiara l'accensione; un CODA no.
         INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                    jobname_pgagent)
+                                    jobname_pgagent,
+                                    acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
         VALUES (v_id, 'PGTAP-CANALE-' || v_canale, 'prova vocabolario chiuso',
-                'MANUTENZIONE', v_canale, NULL);
+                'MANUTENZIONE', v_canale, NULL,
+                CASE WHEN v_canale <> 'CODA' THEN true END,
+                CASE WHEN v_canale <> 'CODA' THEN true END,
+                CASE WHEN v_canale <> 'CODA' THEN true END, 'PROGRAMMA',
+                CASE WHEN v_canale <> 'CODA' THEN true END);
 
         SELECT da_guardare INTO v_ottenuto
           FROM dbops.vw_processi_programmazione
@@ -510,15 +526,17 @@ END;
 --   le corse a mano, indietro nel tempo — la regola e' sul dato.
 DO $contratto$
 BEGIN
+    -- 20261016-20: chi ha una sveglia dichiara l'accensione (accesi ovunque).
     INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                jobname_pgagent, tolleranza_minuti, segno_di_vita)
+                                jobname_pgagent, tolleranza_minuti, segno_di_vita,
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
     VALUES
-        (9901, 'PGTAP-CONTRATTO-OK',      'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE'),
-        (9902, 'PGTAP-CONTRATTO-MUTO',    'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE'),
-        (9903, 'PGTAP-CONTRATTO-MAI',     'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE'),
-        (9904, 'PGTAP-SESSIONE-VIVA',     'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE'),
-        (9905, 'PGTAP-SESSIONE-ASSENTE',  'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE'),
-        (9906, 'PGTAP-SESSIONE-ALTRUI',   'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE');
+        (9901, 'PGTAP-CONTRATTO-OK',      'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE', true, true, true, 'PROGRAMMA', true),
+        (9902, 'PGTAP-CONTRATTO-MUTO',    'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE', true, true, true, 'PROGRAMMA', true),
+        (9903, 'PGTAP-CONTRATTO-MAI',     'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE', true, true, true, 'PROGRAMMA', true),
+        (9904, 'PGTAP-SESSIONE-VIVA',     'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE', true, true, true, 'PROGRAMMA', true),
+        (9905, 'PGTAP-SESSIONE-ASSENTE',  'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE', true, true, true, 'PROGRAMMA', true),
+        (9906, 'PGTAP-SESSIONE-ALTRUI',   'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE', true, true, true, 'PROGRAMMA', true);
 
     -- corsa di dieci minuti fa: dentro la tolleranza di trenta
     INSERT INTO maintenance.job_run_log (jobname, processo_codice, origine, started_at, ended_at, ok, message)

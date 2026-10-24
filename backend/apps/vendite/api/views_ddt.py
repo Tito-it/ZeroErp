@@ -28,7 +28,7 @@ from apps.core.api.payload_validators import (
     corpo_oggetto,
     paginated_envelope,
     parse_list_params,
-    qp_bool,
+    qp_bool_optional,
 )
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
@@ -50,7 +50,10 @@ from apps.vendite.api._componenti_schema import (
     PREVIEW_COMPONENTI_RESPONSE,
     componenti_overrides_field,
 )
-from apps.vendite.api._schema_da_contratto import CAMBIA_STATO_REQUEST, schema_da_contratto
+from apps.vendite.api._schema_da_contratto import (
+    CAMBIA_STATO_CON_CONFERMA_REQUEST,
+    schema_da_contratto,
+)
 
 # Codice lista (ui.lista_definizione) usato dall'export per risolvere
 # colonne visibili/ordine/permessi dell'utente.
@@ -72,6 +75,17 @@ _DDT_RIGA_CREATE_REQUEST = schema_da_contratto(
 )
 _DDT_RIGA_UPDATE_REQUEST = schema_da_contratto(
     "VenditeDdtRigaUpdateReq", ddt_service.UPDATE_KEYS_RIGA,
+)
+_DDT_RIGA_QTA_EVASA_REQUEST = schema_da_contratto(
+    "VenditeDdtRigaQtaEvasaReq", ("qta_operativa",),
+    obbligatorie=("qta_operativa",),
+)
+_DDT_PRELIEVO_CREATE_REQUEST = schema_da_contratto(
+    "VenditeDdtPrelievoCreateReq", ddt_service.CREATE_KEYS_PRELIEVO,
+    obbligatorie=("qta",),
+)
+_DDT_PRELIEVO_UPDATE_REQUEST = schema_da_contratto(
+    "VenditeDdtPrelievoUpdateReq", ddt_service.UPDATE_KEYS_PRELIEVO,
 )
 _DDT_RESPONSE = inline_serializer(
     name="VenditeDdtResp", fields={"data": serializers.DictField()},
@@ -220,8 +234,10 @@ class ApiDdtDetail(DomainAPIView):
         request=_DDT_UPDATE_REQUEST,
         responses={200: _DDT_RESPONSE},
     )
-    # Scopo: Aggiorna testata DDT (solo DRAFT). PATCH usa request.data (DRF ha
-    #        gia' parsato il body; handle_post_json rileggerebbe il raw consumato).
+    # Scopo: Aggiorna testata DDT. Quali campi si cambiano in quale stato lo
+    #        decide il lock di testata del DB (`trg_ddt_a05_lock_fuori_bozza_upd`).
+    #        PATCH usa request.data (DRF ha gia' parsato il body;
+    #        handle_post_json rileggerebbe il raw consumato).
     def patch(self, request: Request, ddt_id: int) -> JsonResponse:
         return success_response(
             ddt_service.aggiorna_ddt(int(ddt_id), dict(corpo_oggetto(request))),
@@ -239,13 +255,15 @@ class ApiDdtCambiaStato(DomainAPIView):
     """POST /api/v1/vendite/ddt/<ddt_id>/cambia-stato/ — transizione di stato
     data-driven (SPEDITO / CONSEGNATO / RESO / ANNULLATO). Body: `stato_codice`
     (= `target_state` dell'azione). L'ammissibilita' e' validata dal trigger
-    guard DB."""
+    guard DB. Verso ANNULLATO, una bolla con legami risponde
+    E_DOC_ANNULLO_CON_LEGAMI (`confirm_and_retry`) finche' il corpo non
+    dichiara `legami_confermati` (letto da `…/legami/`)."""
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "ddt")
 
     @extend_schema(
-        request=CAMBIA_STATO_REQUEST,
+        request=CAMBIA_STATO_CON_CONFERMA_REQUEST,
         responses={200: _DDT_RESPONSE},
     )
     # Scopo: Esegue la transizione di stato richiesta (validata dal trigger DB).
@@ -254,6 +272,7 @@ class ApiDdtCambiaStato(DomainAPIView):
             request,
             handler=lambda payload: ddt_service.cambia_stato(
                 int(ddt_id), payload.get("stato_codice"),
+                legami_confermati=payload.get("legami_confermati"),
             ),
         )
 
@@ -394,6 +413,91 @@ class ApiDdtRigaDetail(DomainAPIView):
         )
 
 
+class ApiDdtRigaQtaEvasa(DomainAPIView):
+    """POST /api/v1/vendite/ddt/<ddt_id>/righe/<riga_id>/qta-evasa/ — corregge
+    la quantita' evasa di una riga legata a un ordine o a un reso (verbo DB
+    `vendite.fn_ddt_riga_correggi_qta_evasa`, D-2 di
+    brief-db-ddt-righe-evase-dall-ordine). Body: `qta_operativa`. Il pulsante
+    segue `correggi_qta_evasa_blocco` della riga (NULL = acceso)."""
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
+
+    @extend_schema(
+        request=_DDT_RIGA_QTA_EVASA_REQUEST,
+        responses={200: _DDT_RESPONSE},
+    )
+    # Scopo: Nuova quantita' evasa della riga (riga, legami e ordine insieme).
+    def post(self, request: Request, ddt_id: int, riga_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: ddt_service.correggi_qta_evasa(
+                int(ddt_id), int(riga_id), payload,
+            ),
+        )
+
+
+class ApiDdtPrelievi(DomainAPIView):
+    """GET /api/v1/vendite/ddt/<ddt_id>/prelievi/ — i prelievi della bolla per
+    la griglia (Lotto 3 R-2b): se la bolla muove merce, i magazzini con
+    `usa_ubicazioni`, e le voci da movimentare (riga o componente del kit)
+    ognuna coi suoi prelievi. Sola lettura."""
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
+
+    @extend_schema(responses={200: dict})
+    # Scopo: La situazione dei prelievi della bolla.
+    def get(self, request: Request, ddt_id: int) -> JsonResponse:
+        return success_response(ddt_service.get_prelievi(int(ddt_id)))
+
+
+class ApiDdtRigaPrelievi(DomainAPIView):
+    """POST /api/v1/vendite/ddt/<ddt_id>/righe/<riga_id>/prelievi/ — un prelievo
+    sotto la riga (o un suo componente: `ddt_riga_componente_id`). Le regole
+    sono dei trigger DB (bozza, kit, ubicazioni, lotto/seriale)."""
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
+
+    @extend_schema(request=_DDT_PRELIEVO_CREATE_REQUEST, responses={200: _DDT_RESPONSE})
+    # Scopo: Crea il prelievo.
+    def post(self, request: Request, ddt_id: int, riga_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: ddt_service.crea_prelievo(
+                int(ddt_id), int(riga_id), payload,
+            ),
+        )
+
+
+class ApiDdtRigaPrelievoDetail(DomainAPIView):
+    """PATCH/DELETE /.../righe/<riga_id>/prelievi/<prelievo_id>/."""
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
+
+    @extend_schema(request=_DDT_PRELIEVO_UPDATE_REQUEST, responses={200: _DDT_RESPONSE})
+    # Scopo: Cambia quantita', lotto, seriale o ubicazioni del prelievo.
+    def patch(
+        self, request: Request, ddt_id: int, riga_id: int, prelievo_id: int,
+    ) -> JsonResponse:
+        return success_response(
+            ddt_service.aggiorna_prelievo(
+                int(ddt_id), int(riga_id), int(prelievo_id), dict(corpo_oggetto(request)),
+            ),
+        )
+
+    @extend_schema(responses={200: _DDT_RESPONSE})
+    # Scopo: Toglie il prelievo.
+    def delete(
+        self, request: Request, ddt_id: int, riga_id: int, prelievo_id: int,
+    ) -> JsonResponse:
+        return success_response(
+            ddt_service.elimina_prelievo(int(ddt_id), int(riga_id), int(prelievo_id)),
+        )
+
+
 class ApiDdtRigaPreviewComponenti(DomainAPIView):
     """POST /api/v1/vendite/ddt/<ddt_id>/righe/preview-componenti/.
 
@@ -402,6 +506,9 @@ class ApiDdtRigaPreviewComponenti(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "ddt")
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -437,7 +544,7 @@ class ApiDdtRigaComponentiList(DomainAPIView):
     )
     # Scopo: Lista componenti BoM persistiti della riga.
     def get(self, request: Request, ddt_id: int, riga_id: int) -> JsonResponse:
-        solo_attivi = qp_bool(request.query_params.get("solo_attivi"), default=True)
+        solo_attivi = qp_bool_optional(request.query_params.get("solo_attivi"), "solo_attivi", default=True)
         return success_response(
             ddt_service.list_componenti_riga(
                 int(ddt_id), int(riga_id), solo_attivi=solo_attivi,
@@ -459,6 +566,7 @@ class ApiDdtRigaComponenteDetail(DomainAPIView):
         return success_response(
             ddt_service.update_componente(
                 int(ddt_id), int(riga_id), int(componente_id), dict(corpo_oggetto(request)),
+                auth_user_id=get_actor_user_id(request),
             ),
         )
 

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_cambia_stato_commessa(p_commessa_id bigint, p_nuovo_stato cha
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_cambia_stato_commessa(p_commessa_id bigint, p_nuovo_stato character varying, p_user text DEFAULT NULL::text)
  RETURNS TABLE(commessa_id bigint, stato_da character varying, stato_a character varying)
@@ -93,6 +95,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_cambia_stato_commessa(p_commessa_id bigint, p_nuovo_stato character varying, p_user text)
 IS 'Entrypoint DB-first cambio stato commessa. Risolve codice->id e UPDATE; matrice + guard dominio (->PRONTA_FATTURAZIONE richiede righe approvate) enforced dal trigger trgfn_commesse_guard_transizione. rev 2026-06-07. rev 2026-08-06: la destinazione non risolta solleva E_STATO_WORKFLOW_NON_TROVATO (892) invece di E_STATO_SCONOSCIUTO (9), ritirato. Il vecchio codice era sollevato anche da config.trgfn_toponomastica_normalize, dove «stato» significava NAZIONE dell''indirizzo: due verita'' diverse sotto un nome solo, e nessun http_status poteva essere giusto per entrambe (404 la destinazione che non esiste, 400 il campo da correggere). Brief brief-db-be-terzo-lato-presidio-codici §11.2, decisione di Tid del 2026-08-06.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

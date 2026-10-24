@@ -7,6 +7,8 @@ CREATE FUNCTION fn_offerta_eccezione_componenti_init(p_eccezione_id bigint, p_em
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_offerta_eccezione_componenti_init(p_eccezione_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb DEFAULT NULL::jsonb)
  RETURNS integer
@@ -297,6 +299,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_offerta_eccezione_componenti_init(p_eccezione_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb)
 IS 'Inizializza componenti BoM CASO A per un''eccezione offerta composita. rev 2026-08-07, due correzioni dal quarto lato (brief §19.4): eccezione inesistente -> E_OFFERTA_ECCEZIONE_NON_TROVATA (898) invece di E_PARAMETRO_INVALIDO (400 su un 404); componente obbligatorio con prezzo override zero -> E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO, codice che esisteva gia'' e che nessuno aveva collegato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

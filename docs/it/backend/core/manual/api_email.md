@@ -30,7 +30,7 @@ personalizzati. Fallback automatico all'account/template di sistema (codice `SIS
 ## Architettura a tre layer
 
 ```text
-email_views.py (API)       — parsing, validazione input, ownership check, envelope
+email_views.py (API)       — parsing, validazione input, envelope (il perimetro lo tiene la RLS)
   |
 email_service.py           — risoluzione account/template, rendering, invio SMTP/console
 email_outbox_service.py    — gestione bozze, allegati, conferma invio
@@ -62,7 +62,7 @@ PostgreSQL                 — email_account, email_template, email_log, email_o
 ## Endpoint Admin — Account SMTP
 
 Base path: `/api/v1/amm-software/`
-Autenticazione: JWT + ruolo ADMIN (`AdminAPIView`)
+Autenticazione: JWT + ruolo `SUPER_ADMIN` (`AdminAPIView`)
 
 ### Lista account
 
@@ -73,7 +73,7 @@ GET /api/v1/amm-software/email-accounts/
 | Parametro | Tipo | Obbligatorio | Default | Note |
 | --- | --- | :---: | --- | --- |
 | `search` | string | No | — | Ricerca libera: le colonne le decide il catalogo della lista `config.email_account`. Da un carattere (tabella di configurazione) |
-| `limit` | int | No | 50 | Max 200 |
+| `limit` | int | No | 25 | Max 200 |
 | `offset` | int | No | 0 | — |
 | `order_by` | string | No | `codice` | Colonna di ordinamento |
 | `order_dir` | string | No | `asc` | `asc` / `desc` |
@@ -85,7 +85,7 @@ Risposta:
   "data": {
     "count": 2,
     "page": 1,
-    "page_size": 50,
+    "page_size": 25,
     "total_pages": 1,
     "results": [
       {
@@ -123,14 +123,14 @@ POST /api/v1/amm-software/email-accounts/
 | `descrizione` | string | Si | — |
 | `smtp_host` | string | No | Vuoto o `smtp.example.com` = l'account **non puo' spedire**: console mode in `DEBUG`, altrimenti invio rifiutato (vedi sotto) |
 | `smtp_port` | int | No | Default 587 |
-| `smtp_use_tls` | bool | No | Default true |
-| `smtp_use_ssl` | bool | No | Default false (mutuamente esclusivo con TLS) |
+| `smtp_use_tls` | bool | No | Default true. Booleano JSON: `"false"`, `0` → 400 `E_VALIDATION_INPUT` col campo |
+| `smtp_use_ssl` | bool | No | Default false (mutuamente esclusivo con TLS). Booleano JSON, come sopra |
 | `smtp_username` | string | No | — |
 | `smtp_password` | string | No | Accettata in chiaro, salvata crittografata |
 | `email_from` | string | Si | Es. `"Ufficio Acquisti <acq@azienda.it>"` |
 | `email_reply_to` | string | No | — |
 | `unita_organizzativa_id` | int | No | NULL = account di sistema |
-| `attivo` | bool | No | Default true |
+| `attivo` | bool | No | Default true. Booleano JSON, come sopra |
 
 > **`codice_interno` (chiave logica immutabile)**: NON è un campo del payload. Alla
 > create il backend lo valorizza automaticamente `= codice` e da lì resta **stabile
@@ -244,7 +244,7 @@ GET /api/v1/amm-software/email-templates/
 | --- | --- | :---: | --- | --- |
 | `search` | string | No | — | Ricerca libera: le colonne le decide il catalogo della lista `config.email_template`. Da un carattere (tabella di configurazione) |
 | `codice` | string | No | — | Filtro esatto per codice |
-| `limit` | int | No | 50 | Max 200 |
+| `limit` | int | No | 25 | Max 200 |
 | `offset` | int | No | 0 | — |
 | `order_by` | string | No | codice + lingua | Colonna di ordinamento |
 | `order_dir` | string | No | `asc` | `asc` / `desc` |
@@ -267,7 +267,7 @@ POST /api/v1/amm-software/email-templates/
 | `unita_organizzativa_id` | int | No | NULL = template di sistema |
 | `tipo_prestazione_id` | int | No | NULL = generico |
 | `variabili_disponibili` | array | No | Es. `["nome", "link", "azienda"]` |
-| `attivo` | bool | No | Default true |
+| `attivo` | bool | No | Default true. Booleano JSON, come sopra |
 
 ### Dettaglio / Modifica / Elimina
 
@@ -337,8 +337,10 @@ come inviato, anche se la bozza e' stata modificata prima dell'invio).
 
 Base path: `/api/v1/core/`
 Autenticazione: JWT (`DomainAPIView`), area funzionale **`config`**: livello `LETTURA`
-per le letture, `TUTTO` per preparare, modificare, spedire e gestire allegati. Nessuna
-view dichiara `skip_area_check`: non e' un'API aperta a ogni operatore.
+per le letture, `TUTTO` per preparare, modificare, spedire e gestire allegati. Le view
+di bozze e allegati non dichiarano `skip_area_check`: non e' un'API aperta a ogni
+operatore. Fanno eccezione solo le due letture del log (lista e lookup stati, §Endpoint
+Operatore — Log Email), che dichiarano `skip_area_check`.
 
 ### Prepara bozza
 
@@ -450,7 +452,7 @@ account si risolve la chiamata fallisce con `E_EMAIL_ACCOUNT_NON_CONFIGURATO`
 (500: manca la configurazione, chi invia non puo' rimediare) e la bozza **resta `DRAFT`**,
 quindi si puo' riprovare o annullare. Fino al 2026-09-28 l'ordine era inverso e la
 bozza restava `READY`, ne' rinviabile ne' annullabile (F-1 dell'
-[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 ### Annulla bozza
 
@@ -529,8 +531,9 @@ Il perimetro **non** e' un filtro della view: lo applica la RLS su
 `config.email_log` per **ambito** ed **emittente** (§Ambito e visibilita'); in piu'
 il processo `send_pending_emails` vede le mail del suo perimetro, per poterle
 ritentare.
-Filtri: `search`, `stato`, `pratica_id`, `data_da`/`data_a` (`YYYY-MM-DD`, giorni dell'azienda come sopra), `limit`,
-`offset`. `search` e' la ricerca della lista `config.email_log` (stessa query): le
+Filtri: `search`, `stato`, `pratica_id`, `data_da`/`data_a` (`YYYY-MM-DD`, giorni dell'azienda come sopra), `limit`
+(default 25, max 200), `offset`, `order_by` (default `data_insert`), `order_dir` (assente: `desc`
+sulle colonne data, `asc` sulle altre). Risposta `{"count", "results"}`. `search` e' la ricerca della lista `config.email_log` (stessa query): le
 colonne le decide il suo catalogo, e sotto 3 caratteri il termine non filtra.
 
 **Chi entra** (dal 2026-09-26, decisione di Tid): **ogni operatore** —

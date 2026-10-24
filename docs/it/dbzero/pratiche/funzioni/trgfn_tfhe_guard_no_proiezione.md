@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_tfhe_guard_no_proiezione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_tfhe_guard_no_proiezione()
  RETURNS trigger
@@ -42,6 +44,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_tfhe_guard_no_proiezione()
 IS 'BEFORE INSERT OR UPDATE su pratiche.template_flussi_handler_eventi (GUIDA D4/G2, D-B10 lato simmetrico): vieta un handler_eventi COMPLETATO su uno step che ha gia'' un binding di avanzamento su proiezione (TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER 518).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

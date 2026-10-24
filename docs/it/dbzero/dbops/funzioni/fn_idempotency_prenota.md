@@ -1,0 +1,178 @@
+# ⚙️ Funzione `fn_idempotency_prenota`
+
+```sql
+CREATE FUNCTION fn_idempotency_prenota(p_idempotency_key text, p_auth_user_id integer, p_endpoint text, p_request_id uuid, p_ripresa_ammessa boolean)
+```
+
+**Definizione completa:**
+
+<div data-search-exclude markdown>
+
+```sql
+CREATE OR REPLACE FUNCTION dbops.fn_idempotency_prenota(p_idempotency_key text, p_auth_user_id integer, p_endpoint text, p_request_id uuid DEFAULT NULL::uuid, p_ripresa_ammessa boolean DEFAULT NULL::boolean)
+ RETURNS TABLE(esito text, response_payload jsonb)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_riga           dbops.idempotency_keys%ROWTYPE;
+BEGIN
+    -- =========================================================
+    -- Scopo:
+    --   Prenotare una Idempotency-Key per una richiesta, e dire al
+    --   backend che cosa fare:
+    --     ESEGUI   — la key e' sua: esegua l'operazione;
+    --     REPLAY   — l'operazione e' gia' stata fatta: rimandi
+    --                response_payload;
+    --     IN_CORSO — la sta eseguendo un'altra richiesta: 409
+    --                E_IDEMPOTENCY_IN_PROGRESS (lo solleva il backend).
+    --
+    -- Regole:
+    --   - key nuova                         → ESEGUI
+    --   - key di un altro utente o endpoint → E_IDEMPOTENCY_KEY_RIUSATA
+    --   - completed                         → REPLAY
+    --   - failed                            → ripresa, ESEGUI
+    --   - in_progress entro la soglia       → IN_CORSO
+    --   - in_progress oltre la soglia:
+    --       ripresa ammessa                 → ripresa, ESEGUI (D6)
+    --       ripresa non ammessa             → IN_CORSO
+    --
+    -- ⛔ La ripresa di una in_progress e' sicura solo se il backend
+    --   scrive completed nella stessa transazione dell'operazione:
+    --   e' cio' che dichiara p_ripresa_ammessa (changeSet 20261023-06).
+    -- =========================================================
+
+    -- Guard di parametro: forme che nessuna richiesta produce.
+    IF NULLIF(btrim(p_idempotency_key), '') IS NULL
+       OR NULLIF(btrim(p_endpoint), '') IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'dbops', 'dbops.fn_idempotency_prenota', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+            jsonb_build_object('detail', 'key ed endpoint obbligatori',
+                               'p_endpoint', p_endpoint),
+            NULL::uuid,
+            'dbops.fn_idempotency_prenota',
+            'la key e l''endpoint della richiesta sono obbligatori');
+    END IF;
+
+    -- La ripresa si dichiara sempre: ne' true ne' false sono un
+    -- default del modello (intestazione di 20261023-06).
+    IF p_ripresa_ammessa IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'dbops', 'dbops.fn_idempotency_prenota', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+            jsonb_build_object('detail', 'p_ripresa_ammessa obbligatorio',
+                               'p_endpoint', p_endpoint),
+            NULL::uuid,
+            'dbops.fn_idempotency_prenota',
+            'il chiamante deve dichiarare se la ripresa di una key in corso e'' ammessa');
+    END IF;
+
+    -- 1. Key nuova: la prenotazione e' di chi la scrive.
+    INSERT INTO dbops.idempotency_keys (
+        idempotency_key, request_id, status, auth_user_id, endpoint)
+    VALUES (p_idempotency_key, p_request_id, 'in_progress', p_auth_user_id, p_endpoint)
+    ON CONFLICT (idempotency_key) DO NOTHING
+    RETURNING * INTO v_riga;
+
+    IF FOUND THEN
+        RETURN QUERY SELECT 'ESEGUI'::text, NULL::jsonb;
+        RETURN;
+    END IF;
+
+    -- 2. La key c'e'. FOR UPDATE: due riprese concorrenti non
+    --    eseguono entrambe, e un'operazione che sta scrivendo
+    --    completed si aspetta per l'istante del suo commit.
+    SELECT * INTO v_riga
+      FROM dbops.idempotency_keys k
+     WHERE k.idempotency_key = p_idempotency_key
+       FOR UPDATE;
+
+    IF NOT FOUND THEN
+        -- Purgata fra i due passi (la regola 24 la fa scadere dopo
+        -- un giorno): e' di nuovo una key nuova. Se un'altra
+        -- richiesta l'ha appena riscritta, e' sua e sta lavorando.
+        INSERT INTO dbops.idempotency_keys (
+            idempotency_key, request_id, status, auth_user_id, endpoint)
+        VALUES (p_idempotency_key, p_request_id, 'in_progress', p_auth_user_id, p_endpoint)
+        ON CONFLICT (idempotency_key) DO NOTHING;
+        RETURN QUERY SELECT (CASE WHEN FOUND THEN 'ESEGUI' ELSE 'IN_CORSO' END)::text,
+                            NULL::jsonb;
+        RETURN;
+    END IF;
+
+    -- 3. D7: la key e' di chi l'ha prenotata, su quell'endpoint
+    --    (endpoint NOT NULL da 20261024-01: ogni key ha il legame).
+    --    auth_user_id NULL = richiesta anonima: un utente diverso
+    --    da ogni altro, non un jolly (IS DISTINCT FROM).
+    --    ⛔ Nel contesto non entrano utente ed endpoint dell'ALTRO:
+    --    sono proprio cio' che non va rivelato a chi rimanda la key.
+    IF v_riga.endpoint        IS DISTINCT FROM p_endpoint
+       OR v_riga.auth_user_id IS DISTINCT FROM p_auth_user_id THEN
+        PERFORM script.fn_log_and_raise_error(
+            'dbops', 'dbops.fn_idempotency_prenota', 'E_IDEMPOTENCY_KEY_RIUSATA',
+            jsonb_build_object('detail', 'key prenotata da un altro utente o su un altro endpoint',
+                               'endpoint', p_endpoint),
+            NULL::uuid,
+            VARIADIC ARRAY[]::text[]);
+    END IF;
+
+    -- 4. Fatta: si rimanda la risposta salvata.
+    --    ⭐ Si decide dalla RISPOSTA e non dall'esito: per
+    --    chk_idempotency_keys_risposta_solo_completed (20261023-03)
+    --    c'e' se e solo se la key e' completed. Cosi' la funzione non
+    --    nomina gli esiti che scrive il backend: il presidio C1
+    --    (dbops.vw_stati_check_scrittori) e' testuale, e conterebbe
+    --    questa funzione fra i loro scrittori.
+    IF v_riga.response_payload IS NOT NULL THEN
+        RETURN QUERY SELECT 'REPLAY'::text, v_riga.response_payload;
+        RETURN;
+    END IF;
+
+    -- 5. In corso: entro la soglia lavora qualcun altro; oltre, chi
+    --    lavorava e' morto (D6) e si riprende, se il chiamante
+    --    dichiara che la morte vuol dire «nessun commit».
+    --    prenotata_at e' l'ora della prenotazione o della ripresa
+    --    (20261023-03); non data_update, che il trigger di audit
+    --    riscrive a ogni UPDATE.
+    IF v_riga.status = 'in_progress' THEN
+        -- Ripresa non ammessa: l'operazione lavora a passi, e una
+        -- key orfana puo' coprire un lavoro gia' in parte
+        -- committato. Resta in corso; la soglia non decide niente.
+        IF NOT p_ripresa_ammessa THEN
+            RETURN QUERY SELECT 'IN_CORSO'::text, NULL::jsonb;
+            RETURN;
+        END IF;
+
+        -- La soglia dalla sua sede (20261024-04): la stessa
+        -- lettura del presidio di BE-5 all'avvio del backend.
+        -- Fail-loud la' (E_CONFIG_MANCANTE), mai un ripiego.
+        IF v_riga.prenotata_at > now() - make_interval(secs => dbops.fn_idempotency_soglia_secondi()) THEN
+            RETURN QUERY SELECT 'IN_CORSO'::text, NULL::jsonb;
+            RETURN;
+        END IF;
+    END IF;
+
+    -- 6. Ripresa: failed (l'esito l'ha scritto il backend: lo stato
+    --    e' noto, con o senza ripresa ammessa), o in_progress
+    --    abbandonata con ripresa ammessa. Utente ed endpoint non si
+    --    riscrivono: il passo 3 ha gia' detto che sono gli stessi.
+    UPDATE dbops.idempotency_keys k
+       SET status           = 'in_progress',
+           request_id       = p_request_id,
+           tx_id            = NULL,
+           response_payload = NULL,
+           prenotata_at     = now(),
+           data_update      = now(),
+           user_update      = CURRENT_USER
+     WHERE k.idempotency_key = p_idempotency_key;
+
+    RETURN QUERY SELECT 'ESEGUI'::text, NULL::jsonb;
+END;
+$function$
+
+COMMENT ON FUNCTION dbops.fn_idempotency_prenota(p_idempotency_key text, p_auth_user_id integer, p_endpoint text, p_request_id uuid, p_ripresa_ammessa boolean)
+IS 'Prenota una Idempotency-Key per una richiesta e risponde al backend: ESEGUI (la key e'' sua), REPLAY (operazione gia'' fatta: response_payload), IN_CORSO (la sta eseguendo un''altra richiesta: il backend solleva E_IDEMPOTENCY_IN_PROGRESS). Una key failed si riprende sempre. Una key in_progress da oltre la soglia (dbops.fn_idempotency_soglia_secondi, sopra il timeout di gunicorn) si riprende solo con p_ripresa_ammessa = true (D6), che il chiamante dichiara quando completed sta nella STESSA transazione dell''operazione: allora una in_progress orfana vuol dire «nessun commit». Con false (operazione a passi) resta IN_CORSO. p_ripresa_ammessa e'' obbligatorio: NULL e'' E_SCRIPT_CHIAMATA_NON_VALIDA. Una key prenotata da un altro utente o su un altro endpoint solleva E_IDEMPOTENCY_KEY_RIUSATA (D7): ogni key e'' legata alla richiesta che l''ha prenotata (endpoint NOT NULL). La prenotazione committa da sola: le altre richieste la vedono subito e non aspettano. SECURITY INVOKER. Brief: brief-be-verifica-documentazione-api D6, D7, §I.7.3, §I.5, §I.11.';
+```
+
+</div>
+
+---
+{% include-markdown "signature-core.md" %}

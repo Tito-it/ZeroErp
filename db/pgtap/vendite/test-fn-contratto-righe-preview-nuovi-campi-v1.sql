@@ -193,6 +193,8 @@ SELECT c.id, a.articolo_id, 'AGGIUNTA', 50.00,
 --   e seq=4 non lo e'. Il test prova che fonte e quantita' della riga arrivano alla preview:
 --   UNA_TANTUM/MANUALE con quantita' 5 lo prova ugualmente. La fonte derivata sul composito
 --   la prova vendite/offerte_commerciali/test_offerte_eccezioni_componenti.
+-- ⚠️ Rev 2026-10-21 (brief-db-offerta-emissione-ed-erogazione §I.1, I-D1): DERIVATA_COMPONENTI
+--   e' ritirata; il composito si eroga solo con la FISSA (I-D6). Solo commento.
 -- ⚠️ Rev 2026-10-07 (§D.4 punto 2): MANUALE e' a valle, la riga nasce senza
 --   quantita' (prima: quantita 5, qta_operativa 1). Il test 8 legge la fonte.
 INSERT INTO vendite.contratti_righe (

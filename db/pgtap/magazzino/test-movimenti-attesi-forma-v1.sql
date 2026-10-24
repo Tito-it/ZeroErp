@@ -125,8 +125,7 @@ BEGIN
     IF v_art IS NULL THEN
         RAISE EXCEPTION 'fixture: serve almeno un articolo attivo (seed di catalogo)';
     END IF;
-    INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id, emittente_fiscale_id)
-    VALUES ('PGT-MA1', 'pgTAP attesi', v_ind, v_ef) RETURNING id INTO v_mag;
+    v_mag := magazzino.fn_crea_magazzino('PGT-MA1', 'pgTAP attesi', v_ind, '{}'::jsonb, v_ef);
     INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_mag) RETURNING id INTO v_inv;
     INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata)
     VALUES (v_inv, v_art, 5) RETURNING id INTO v_ir;

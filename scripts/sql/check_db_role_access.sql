@@ -1,10 +1,12 @@
 \echo [ZeroErp] Checking runtime role access
-\echo [ZeroErp] Required var: app_role
+\echo [ZeroErp] Optional var: app_role (default: zeroerp_app)
 
+-- Il ruolo applicativo e' di SISTEMA, zeroerp_app (brief-db-ruoli-di-sistema):
+-- la variabile resta per guardare un altro ruolo, per esempio un utente
+-- personale che ne sia membro.
 \if :{?app_role}
 \else
-\echo ERROR: missing -v app_role=...
-\quit 1
+\set app_role zeroerp_app
 \endif
 
 SELECT :'app_role' AS app_role, current_database() AS db_name;
@@ -16,7 +18,7 @@ SELECT :'app_role' AS app_role, current_database() AS db_name;
 --    search_path del ruolo applicativo e sedici funzioni INVOKER attraversano
 --    `django.auth_user`. Escluderlo qui e nel provisioning e' il modo in cui
 --    quel privilegio e' rimasto per mesi un GRANT dato a mano su dev
---    (vedi scripts/sql/provision_db_roles.sql, blocco della whitelist).
+--    (vedi scripts/sql/provision_zeroerp.sql, fase post, la whitelist _app_schemas).
 SELECT n.nspname                                                  AS schema_name,
        has_schema_privilege(:'app_role', n.nspname, 'USAGE')     AS can_use_schema
 FROM pg_namespace n

@@ -89,20 +89,24 @@ class ApiRunLottoPipeline(DomainAPIView):  # JwtAuditAuthentication + ZeroERPPer
 
 ## Messaggi di errore specifici
 
-La permission class imposta `self.message` con messaggi differenziati.
+Il diniego porta un **codice**, e il messaggio a video è quello del catalogo per
+quel codice. `drf_exception_handler` (`apps/core/api/error_responses.py`) legge
+prima il codice dell'**istanza** (`exc.detail.code`, che DRF riempie dal `code`
+della permission), poi quello della classe; il messaggio è il `user_message`
+della policy di quel codice.
 
-⚠️ Difetto noto ([E-5](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): questi messaggi **non arrivano al client**.
-`drf_exception_handler` (`apps/core/api/error_responses.py`) sostituisce il messaggio del
-`PermissionDenied` con quello della policy di `E_PERMISSION_DENIED` («Permesso negato.»).
-I messaggi restano solo nel codice:
+| Causa                                                      | Codice                        |
+|------------------------------------------------------------|-------------------------------|
+| Azione processo negata                                     | `E_PERMISSION_DENIED`         |
+| Azione sconosciuta (fail-closed)                           | `E_PERMISSION_DENIED`         |
+| Area non definita (fail-closed)                            | `E_PERMISSION_DENIED`         |
+| Livello insufficiente, con profilo                         | `E_PERMISSION_DENIED`         |
+| Livello insufficiente, OPERATORE senza profilo per l'area  | `E_REPARTO_SENZA_PROFILO`     |
+| Permission «riservate» (admin, portale, shop)              | `E_ACCESSO_RISERVATO_ADMIN` / `_PORTALE` / `_SHOP` |
 
-| Causa                              | Messaggio                                                       |
-|-------------------------------------|-----------------------------------------------------------------|
-| Azione processo negata              | "Non hai i permessi per questa operazione."                     |
-| Azione sconosciuta (fail-closed)    | "Non hai i permessi per questa operazione."                     |
-| Area non definita (fail-closed)     | "Non hai i permessi per questa operazione."                     |
-| Livello insufficiente, con profilo  | "Non hai i permessi per questa operazione."                     |
-| Livello insufficiente, OPERATORE senza profilo per l'area | "Il reparto non ha ancora un profilo permessi configurato." |
+`ZeroERPPermission` mette `self.code = "E_REPARTO_SENZA_PROFILO"` solo su quel
+diniego e lo azzera su ogni altro. Fino al 2026-10-08 il codice dell'istanza non
+veniva letto e ogni diniego usciva `E_PERMISSION_DENIED` («Permesso negato.»).
 
 La distinzione "senza profilo" vale solo per il ruolo applicativo OPERATORE (utenti portale e
 shop hanno profili legati al ruolo applicativo, non al reparto) e usa
@@ -133,7 +137,7 @@ Se non esiste ancora, `ZeroERPPermission._get_cache()` la crea caricandola da Re
 se disponibile e solo col contesto di sessione segnato da `set_jwt_gucs`, e le chiamate
 successive nella stessa request la riusano senza query aggiuntive. È l'unico punto che la
 carica: nessun middleware la pre-popola (il tentativo in `JwtAuditMiddleware.process_view`
-è ritirato con M-1 e S-2 dell'[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+è ritirato con M-1 e S-2 dell'[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 Alla fine di ogni `has_permission` (blocco `finally`, anche in caso di diniego) la cache, se
 non vuota, viene salvata su Redis per le request successive.
 

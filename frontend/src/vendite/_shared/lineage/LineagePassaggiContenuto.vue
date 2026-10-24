@@ -57,6 +57,10 @@ function passaggioToRow(p, lato) {
     stato: from ? p.from_stato_codice_interno : p.to_stato_codice_interno,
     fase: from ? p.from_fase : p.to_fase,
     ramoInverso: p.is_ramo_inverso,
+    // Il LEGAME, non il documento (brief-db-annullo-a-valle-riapre-a-monte §11):
+    // la commessa puo' essere viva e il contributo di questo documento ritirato.
+    // `=== true`: NULL e' «arco non censito», e non si dice niente.
+    legameRitirato: p.is_legame_ritirato === true,
     ruolo: p.ruolo,
   }
 }
@@ -181,6 +185,15 @@ const isApribile = isTappaApribile
             v-if="row.stato || row.fase"
             :value="row.stato ?? row.fase"
             :severity="faseDocumentoSeverity(row.fase)" />
+          <!-- Lo stato accanto e' quello del DOCUMENTO (la commessa e' viva);
+               questo dice che il legame non porta piu' niente: senza, da un
+               preventivo annullato si leggeva «sta in una commessa pronta da
+               fatturare» (collaudo di Tid, 2026-10-13). -->
+          <Tag
+            v-if="row.legameRitirato"
+            :value="t('vendite.lineage.legame_ritirato')"
+            severity="warn"
+            v-tooltip.top="t('vendite.lineage.legame_ritirato_tooltip')" />
           <span v-if="row.ruolo" class="lineage-muted">{{ row.ruolo }}</span>
           <span v-if="row.ramoInverso" class="lineage-muted">
             {{ t('vendite.lineage.ramo_inverso') }}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_conta_presidio_per_variante(p_vista text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_conta_presidio_per_variante(p_vista text)
  RETURNS TABLE(variante text, conteggio bigint)
@@ -107,6 +109,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_conta_presidio_per_variante(p_vista text)
 IS 'Conta le righe che CHIEDONO UN INTERVENTO su una vista di presidio dichiarata in dbops.presidi, raggruppate per il valore della colonna nominata da dbops.presidi.colonna_variante (la causa della riga): una riga per valore presente, il NULL come gruppo a se''. Presidio senza colonna_variante: una riga sola, variante NULL, il conteggio intero anche a zero. ⭐ E'' la SEDE UNICA del conteggio dei presidi: perimetro (catalogo, altrimenti E_PRESIDIO_NON_A_CATALOGO) e filtro di stato (colonna_stato IS DISTINCT FROM stato_atteso) stanno qui; dbops.fn_conta_presidio ne e'' la somma, cosi'' le due risposte non possono divergere. ⭐ SECURITY DEFINER del PROPRIETARIO, non di un superuser, per la stessa ragione di fn_conta_presidio: le viste security_invoker su tabelle in row level security, da un percorso senza GUC di sessione, tornerebbero ZERO per cecita''. ⛔ Torna NUMERI per gruppo e MAI le righe; il valore del gruppo e'' un codice di catalogo (dbops.presidi_cause), non un dato di dominio. Lettori: il digest (raggruppa per chi agisce della causa) e il pannello (conteggio accanto a ogni causa). Brief: brief-db-presidio-processi-testo-per-causa §6.2 (R-2).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

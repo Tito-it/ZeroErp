@@ -17,6 +17,7 @@ from django.db import DatabaseError, IntegrityError
 from django.test import SimpleTestCase
 
 from apps.core.services.error_manager import ServiceError
+from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.vendite.services import ordini_service
 from apps.vendite.services.ordini_service import _db_errors
 
@@ -88,22 +89,28 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         # (BB `fn_cliente_dal_billing_account`), il service non li deriva ne'
         # li inoltra (brief-db-esecutivi-ba-coppia §10.2 domanda 2).
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ordine.return_value = {"id": 7, "uid": "u", "numero": "ORD0007"}
-        out = ordini_service.crea_ordine(
-            {"billing_account_id": 3, "utility_id": 1, "soggetto_ruolo_id": 555},
-        )
+        out = ordini_service.crea_ordine({"billing_account_id": 3})
         self.assertEqual(out["numero"], "ORD0007")
         kwargs = repo.create_ordine.call_args.kwargs
         self.assertEqual(kwargs["billing_account_id"], 3)
         self.assertNotIn("soggetto_ruolo_id", kwargs)
         self.assertNotIn("utility_id", kwargs)
+        # Lo stato non si passa: lo mette il DB, lo stato iniziale del
+        # vocabolario (brief-modello-documento-vendita P-2).
+        self.assertNotIn("stato_doc_ordine_id", kwargs)
+        repo.get_stato_id_by_codice.assert_not_called()
+        # ⛔ E chi le manda riceve un 400, non uno scarto silenzioso (2026-10-20).
+        for copia in ({"utility_id": 1}, {"soggetto_ruolo_id": 555}):
+            with self.subTest(copia=copia), self.assertRaises(ServiceError) as cm:
+                ordini_service.crea_ordine({"billing_account_id": 3, **copia})
+            self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
 
     @patch(_REPO)
     def test_crea_ordine_senza_cliente_errore(self, repo_cls) -> None:
         # D-1: l'ordine ha sempre il BA. Validazione del payload col campo.
         with self.assertRaises(ServiceError) as cm:
-            ordini_service.crea_ordine({"utility_id": 1})
+            ordini_service.crea_ordine({})
         self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
         self.assertEqual(cm.exception.context.get("field"), "billing_account_id")
         repo_cls.return_value.create_ordine.assert_not_called()
@@ -120,11 +127,13 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
     @patch(_REPO)
     def test_aggiorna_ordine_utility_scartata(self, repo_cls) -> None:
         # La utility e' una copia del BA, che sull'ordine non cambia: fuori
-        # whitelist.
+        # whitelist. ⛔ Dal 2026-10-20 e' un 400, non uno scarto silenzioso.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        ordini_service.aggiorna_ordine(7, {"billing_account_id": 3, "utility_id": 9})
-        self.assertEqual(repo.update_ordine.call_args.kwargs, {"billing_account_id": 3})
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.aggiorna_ordine(7, {"billing_account_id": 3, "utility_id": 9})
+        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        repo.update_ordine.assert_not_called()
 
     @patch(_REPO)
     def test_aggiorna_ordine_ba_non_numerico_rifiutato(self, repo_cls) -> None:
@@ -164,15 +173,54 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
 
     @patch(_REPO)
     def test_cambia_stato_ok(self, repo_cls) -> None:
-        # Transizione generica (es. annulla): risolve il codice stato e delega
+        # Transizione generica: risolve il codice stato e delega
         # l'enforcement al trigger DB.
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
+        repo.get_stato_id_by_codice.return_value = 8
+        out = ordini_service.cambia_stato(7, "EVASO")
+        self.assertEqual(out["stato"], "EVASO")
+        self.assertEqual(out["stato_precedente"], "CONFERMATO")
+        repo.update_stato.assert_called_once_with(7, 8)
+        repo.annulla.assert_not_called()
+
+    # brief-db-annullo-documento-con-legami: ANNULLATO passa SEMPRE dal verbo,
+    # con la dichiarazione della conferma (assente al primo tentativo).
+    @patch(_REPO)
+    def test_annullo_passa_dal_verbo(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
         repo.get_stato_id_by_codice.return_value = 6
         out = ordini_service.cambia_stato(7, "ANNULLATO")
+        repo.annulla.assert_called_once_with(7, None)
+        repo.update_stato.assert_not_called()
         self.assertEqual(out["stato"], "ANNULLATO")
-        self.assertEqual(out["stato_precedente"], "DRAFT")
-        repo.update_stato.assert_called_once_with(7, 6)
+        ordini_service.cambia_stato(7, "ANNULLATO", legami_confermati="3")
+        repo.annulla.assert_called_with(7, 3)
+
+    @patch(_REPO)
+    def test_annullo_dichiarazione_non_numerica(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.get_stato_id_by_codice.return_value = 6
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.cambia_stato(7, "ANNULLATO", legami_confermati="tre")
+        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("field"), "legami_confermati")
+        repo.annulla.assert_not_called()
+
+    @patch("apps.vendite.services.ordini_service.legami_del_documento", return_value={"legami": 0})
+    @patch(_REPO)
+    def test_get_legami_dopo_la_testata(self, repo_cls, bb) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.get_legami(99)
+        self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
+        bb.assert_not_called()
+        repo.get_stato_codice.return_value = "CONFERMATO"
+        ordini_service.get_legami(7)
+        bb.assert_called_once_with("ORDINE_VENDITA", 7)
 
     @patch(_REPO)
     def test_cambia_stato_codice_inesistente(self, repo_cls) -> None:
@@ -251,7 +299,7 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
         repo.create_riga.return_value = {"id": 50}
 
         payload = {
-            "articolo_id": "ART1", "qta_operativa": 2, "iva_id": 1,
+            "articolo_id": "ART1", "qta_operativa": 2,
             "uom_operativa_id": 3,
             "componenti_overrides": {"10": "5.50"},
         }
@@ -287,7 +335,7 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
         repo.create_riga.return_value = {"id": 51}
 
         ordini_service.gestisci_riga(
-            7, {"articolo_id": "ART1", "qta_operativa": 1, "iva_id": 1,
+            7, {"articolo_id": "ART1", "qta_operativa": 1,
                 "uom_operativa_id": 3},
             auth_user_id=42,
         )
@@ -296,11 +344,8 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
 
 
     # Scopo: ⛔ `I6` — LA CASELLA E' CHIUSA. Un client che manda ancora `iva_id`
-    #        nel payload deve vederlo IGNORATO: a decidere e' il risolutore.
-    # ⚠️ Il valore non viene RESPINTO ma SCARTATO (chiave fuori whitelist), e
-    #        senza questo caso la rimozione della chiave sarebbe invisibile: la
-    #        suite e' restata verde quando e' stata fatta, perche' nessun
-    #        presidio copriva «il payload vince».
+    #        nel payload riceve un 400 (dal 2026-10-20; prima la chiave era
+    #        SCARTATA in silenzio): a decidere e' il risolutore.
     # ⛔ E il risolutore va interrogato con `payload_iva_id=None`: passargli il
     #        valore del client lo farebbe scendere sul ramo di AUDIT, dove gli
     #        errori sono best-effort — cioe' una riga si salverebbe anche
@@ -324,16 +369,23 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
         repo.next_riga_nr.return_value = 1
         repo.create_riga.return_value = {"id": 52}
 
+        # ⛔ Dal 2026-10-20 `iva_id` nel payload e' un 400 (chiave fuori
+        #    contratto), non piu' uno scarto: la riga non nasce.
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.gestisci_riga(
+                7, {"articolo_id": "ART1", "qta_operativa": 1, "uom_operativa_id": 3,
+                    "iva_id": 999},
+                auth_user_id=42,
+            )
+        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        repo.create_riga.assert_not_called()
+
+        # ⭐ Senza la chiave decide il risolutore, interrogato con
+        #    `payload_iva_id=None`.
         ordini_service.gestisci_riga(
-            7, {"articolo_id": "ART1", "qta_operativa": 1, "uom_operativa_id": 3,
-                "iva_id": 999},
+            7, {"articolo_id": "ART1", "qta_operativa": 1, "uom_operativa_id": 3},
             auth_user_id=42,
         )
-
-        # ⭐ E' la WHITELIST il cancello vero: `iva_id` non e' in
-        #    `CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
-        #    asserzione morde ANCHE se qualcuno rimettesse la chiave, perche'
-        #    allora `payload_iva_id` tornerebbe 999.
         self.assertIsNone(iva.call_args.kwargs["payload_iva_id"])
         self.assertNotIn("iva_id", ordini_service.CREATE_KEYS_RIGA)
         self.assertNotIn("iva_id", ordini_service.UPDATE_KEYS_RIGA)
@@ -397,6 +449,13 @@ class OrdiniConversioneUpstreamTests(SimpleTestCase):
     piu' come chiamata BE separata → il gate/atomicita' EVASO e' coperto dal
     pgTAP DB, non piu' mockabile qui."""
 
+    def setUp(self) -> None:
+        # transaction.atomic() a no-op (SimpleTestCase senza DB): il verbo e il
+        # riempimento dello slot di default stanno in una transazione.
+        patcher = patch(_ATOMIC, return_value=nullcontext())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     @patch(_REPO)
     @patch(_PREV_REPO)
     def test_crea_ordine_da_preventivo_ok(self, prev_cls, ord_cls) -> None:
@@ -413,6 +472,9 @@ class OrdiniConversioneUpstreamTests(SimpleTestCase):
         self.assertEqual(out["ordine_id"], 7)
         self.assertEqual(out["numero"], "ORD7")
         self.assertEqual(out["documento_origine"], {"tipo": "PREVENTIVO", "id": 99})
+        # Dopo la cascata dal preventivo, lo slot di default sull'ordine nato
+        # (il DB lo riempie solo se e' rimasto vuoto): R-BE-1.
+        ord_cls.return_value.riempi_indirizzo_default.assert_called_once_with(7)
 
     @patch(_REPO)
     @patch(_PREV_REPO)
@@ -427,6 +489,37 @@ class OrdiniConversioneUpstreamTests(SimpleTestCase):
             99, righe_ids=[11, 12], pratica_id=None,
         )
 
+    # Scopo: i guard della fn DB (stato non ammesso, nessuna riga merce)
+    #        arrivano al client col loro codice, non come 500 grezzo; e la
+    #        catena si ferma prima dello slot di default.
+    @patch(_REPO)
+    @patch(_PREV_REPO)
+    def test_crea_ordine_da_preventivo_errore_db_tradotto(self, prev_cls, ord_cls) -> None:
+        prev_cls.return_value.push_a_ordine.side_effect = DatabaseError(
+            "E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO: preventivo in BOZZA",
+        )
+
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.crea_ordine_da_preventivo(99)
+
+        self.assertEqual(cm.exception.code, "E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO")
+        ord_cls.return_value.riempi_indirizzo_default.assert_not_called()
+
+    # Scopo: un errore del building block dello slot di default sale tradotto
+    #        (non e' best-effort: annulla anche l'ordine, nella transazione).
+    @patch(_REPO)
+    @patch(_PREV_REPO)
+    def test_crea_ordine_da_preventivo_errore_default_tradotto(self, prev_cls, ord_cls) -> None:
+        prev_cls.return_value.push_a_ordine.return_value = 7
+        ord_cls.return_value.riempi_indirizzo_default.side_effect = DatabaseError(
+            "E_INDIRIZZO_DOC_NON_DEL_CLIENTE: indirizzo d'altri",
+        )
+
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.crea_ordine_da_preventivo(99)
+
+        self.assertEqual(cm.exception.code, "E_INDIRIZZO_DOC_NON_DEL_CLIENTE")
+
     # Nota: i test che verificavano la transizione EVASO lato BE
     # (test_..._evade_senza_residui / _non_evade_con_residuo_commessa /
     # _evaso_db_error_non_solleva) sono stati rimossi col fix #10: la transizione
@@ -437,153 +530,75 @@ class OrdiniConversioneUpstreamTests(SimpleTestCase):
 
 
 class OrdiniConversioneOffertaTests(SimpleTestCase):
-    """crea_ordine_da_offerta (§7.4): orchestrazione, override componenti, guard."""
+    """crea_ordine_da_offerta: delega al verbo DB `fn_genera_ordine_da_offerta`.
 
-    @patch(f"{_SVC}._copia_riga_offerta_espansa")
-    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 4))
-    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
-    @patch(f"{_SVC}._get_testata_or_raise",
-           return_value={"id": 7, "emittente_fiscale_id": 3})
-    @patch(f"{_SVC}._crea_testata_ordine_da_origine", return_value=(7, "ORD7"))
-    @patch(_REPO)
-    @patch(_OFF_REPO)
-    def test_crea_ordine_da_offerta_ok(
-        self, off_cls, ord_cls, crea_testata, get_testata, resolve_em,
-        data_rif, copia_riga,
-    ) -> None:
-        off_cls.return_value.get_offerta.return_value = {
-            "stato_codice_interno": "ACCETTATA",
-            "billing_account_id": 10, "utility_id": 5,
-            "emittente_fiscale_id": 3, "valuta_id": 1,
-        }
-        off_cls.return_value.list_righe_espanse.return_value = [
-            {"articolo_id": "A1"}, {"articolo_id": "A2"},
-        ]
-        # Guard idempotenza 1:1: nessun ordine già nato da questa offerta.
-        ord_cls.return_value.get_ordine_by_documento_origine.return_value = None
+    ⛔ Dal 2026-10-21 (brief-db-offerta-emissione-ed-erogazione I-D2) stato,
+    documenti vivi, testata, provenienza e righe sono del verbo: qui non si
+    prova nessuna di quelle regole (le prova il pgTAP
+    `test-righe-ammesse-ai-passi-e-annullo-v1`, e la giuntura
+    `tests/db/test_genera_ordine_da_offerta_db.py`). Si prova che il service
+    deleghi senza leggere l'offerta da se', e che i rifiuti arrivino col loro
+    codice.
+    """
 
-        with patch(_ATOMIC, return_value=nullcontext()):
-            out = ordini_service.crea_ordine_da_offerta(55)
-
-        self.assertEqual(out["ordine_id"], 7)
-        self.assertEqual(out["numero"], "ORD7")
-        self.assertEqual(out["righe_create"], 2)
-        self.assertEqual(out["documento_origine"], {"tipo": "OFFERTA", "id": 55})
-        # testata creata via helper condiviso con tipo/origine corretti
-        header, tipo, origine_id = crea_testata.call_args.args
-        self.assertEqual(tipo, "OFFERTA")
-        self.assertEqual(origine_id, 55)
-        self.assertEqual(header["billing_account_id"], 10)
-        # offerta non ha termine/modalita pagamento → non nel header
-        self.assertNotIn("termine_pagamento_id", header)
-        # una copia riga per riga espansa
-        self.assertEqual(copia_riga.call_count, 2)
-
-    @patch(_OFF_REPO)
-    def test_crea_ordine_da_offerta_stato_non_convertibile(self, off_cls) -> None:
-        off_cls.return_value.get_offerta.return_value = {
-            "stato_codice_interno": "EMESSA",
-        }
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.crea_ordine_da_offerta(55)
-        self.assertEqual(cm.exception.code, "E_ORD_ORIGINE_NON_CONVERTIBILE")
-
-    @patch(_OFF_REPO)
-    def test_crea_ordine_da_offerta_non_trovata(self, off_cls) -> None:
-        off_cls.return_value.get_offerta.return_value = None
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.crea_ordine_da_offerta(55)
-        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+    def setUp(self) -> None:
+        patcher = patch(_ATOMIC, return_value=nullcontext())
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     @patch(_REPO)
     @patch(_OFF_REPO)
-    def test_crea_ordine_da_offerta_gia_convertita(self, off_cls, ord_cls) -> None:
-        # Offerta ACCETTATA ma esiste già un ordine da questa offerta → guard
-        # fail-fast 1:1 (univocità offerta→ordine), prima di espandere le righe.
-        off_cls.return_value.get_offerta.return_value = {
-            "stato_codice_interno": "ACCETTATA",
-            "billing_account_id": 10, "utility_id": 5,
-            "emittente_fiscale_id": 3, "valuta_id": 1,
-        }
-        ord_cls.return_value.get_ordine_by_documento_origine.return_value = {
-            "id": 7, "numero": "ORD7",
-        }
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.crea_ordine_da_offerta(55)
-        self.assertEqual(cm.exception.code, "E_ORD_OFFERTA_GIA_CONVERTITA")
-        # Guard prima del lavoro: nessuna espansione righe.
-        off_cls.return_value.list_righe_espanse.assert_not_called()
+    def test_crea_ordine_da_offerta_delega_al_verbo(self, off_cls, ord_cls) -> None:
+        off_cls.return_value.genera_ordine.return_value = 7
+        ord_cls.return_value.get_ordine.return_value = {"id": 7, "numero": "ORD7"}
+
+        out = ordini_service.crea_ordine_da_offerta(55)
+
+        off_cls.return_value.genera_ordine.assert_called_once_with(55)
+        self.assertEqual(out, {
+            "ordine_id": 7,
+            "numero": "ORD7",
+            "documento_origine": {"tipo": "OFFERTA_COMMERCIALE", "id": 55},
+        })
+        # Nessuno specchio: l'offerta non si legge, l'ordine non si scrive qui.
+        off_cls.return_value.get_offerta.assert_not_called()
+        ord_cls.return_value.create_ordine.assert_not_called()
+        ord_cls.return_value.riempi_indirizzo_default.assert_not_called()
 
     @patch(_REPO)
     @patch(_OFF_REPO)
-    def test_crea_ordine_da_offerta_con_contratto_bloccato(
-        self, off_cls, ord_cls,
-    ) -> None:
-        # Mutua esclusività XOR: offerta ACCETTATA che ha già generato un
-        # contratto non può generare un ordine → E_OFFERTA_CONTRATTO_GIA_GENERATO.
-        off_cls.return_value.get_offerta.return_value = {
-            "stato_codice_interno": "ACCETTATA",
-            "billing_account_id": 10, "utility_id": 5,
-            "emittente_fiscale_id": 3, "valuta_id": 1,
-            "contratto_id": 42,
-        }
-        # Nessun ordine ancora: il blocco arriva dal contratto, non dall'idempotenza.
-        ord_cls.return_value.get_ordine_by_documento_origine.return_value = None
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.crea_ordine_da_offerta(55)
-        self.assertEqual(cm.exception.code, "E_OFFERTA_CONTRATTO_GIA_GENERATO")
-        off_cls.return_value.list_righe_espanse.assert_not_called()
-
-    def test_overrides_da_componenti_coercion(self) -> None:
-        from apps.vendite.services.ordini_service import _overrides_da_componenti
-        # lista di dict (jsonb già parsato da psycopg)
-        self.assertEqual(
-            _overrides_da_componenti(
-                [{"componente_id": "u1", "prezzo": "5"},
-                 {"componente_id": "u2", "prezzo": "3"}],
-            ),
-            {"u1": "5", "u2": "3"},
-        )
-        # stringa jsonb (psycopg non parsato) → coerce
-        self.assertEqual(
-            _overrides_da_componenti('[{"componente_id": "u1", "prezzo": "5"}]'),
-            {"u1": "5"},
-        )
-        # None / json invalido / non-lista → {}
-        self.assertEqual(_overrides_da_componenti(None), {})
-        self.assertEqual(_overrides_da_componenti("non-json-{"), {})
-        # entry senza id o senza prezzo → saltate
-        self.assertEqual(
-            _overrides_da_componenti(
-                [{"componente_id": "u1"}, {"prezzo": "5"}],
-            ),
-            {},
-        )
-        # prezzo 0 escluso (la fn DB rifiuta override 0 → ricade sul resolver);
-        # prezzo non numerico escluso
-        self.assertEqual(
-            _overrides_da_componenti(
-                [{"componente_id": "u1", "prezzo": "0"},
-                 {"componente_id": "u2", "prezzo": "0.00"},
-                 {"componente_id": "u3", "prezzo": "xx"},
-                 {"componente_id": "u4", "prezzo": "7"}],
-            ),
-            {"u4": "7"},
-        )
+    def test_crea_ordine_da_offerta_rifiuto_col_codice_del_verbo(self, off_cls, ord_cls) -> None:
+        for codice in (
+            "E_OFFERTA_NON_TROVATA",
+            "E_ORD_ORIGINE_NON_CONVERTIBILE",
+            "E_ORD_OFFERTA_GIA_CONVERTITA",
+            "E_OFFERTA_CONTRATTO_GIA_GENERATO",
+            "E_DOC_RIGA_NON_AMMESSA",
+        ):
+            with self.subTest(codice):
+                off_cls.return_value.genera_ordine.side_effect = DatabaseError(
+                    f"{codice}: rifiuto del verbo",
+                )
+                with self.assertRaises(ServiceError) as cm:
+                    ordini_service.crea_ordine_da_offerta(55)
+                self.assertEqual(cm.exception.code, codice)
+        ord_cls.return_value.get_ordine.assert_not_called()
 
 
 class OrdiniPushCommessaTests(SimpleTestCase):
-    """push_a_commessa: transizione automatica CONFERMATO→EVASO (invio unico).
-    Fix analisi-fix-transazioni #4: push + EVASO + chiusura step pratica in un
-    transaction.atomic() (EVASO su savepoint dedicato). Qui l'atomic e' mockato
-    a no-op (SimpleTestCase senza DB): un DatabaseError sull'EVASO resta
-    catturato dal try/except attorno al savepoint, esattamente come a runtime."""
+    """push_a_commessa: l'invio in commessa NON cambia lo stato dell'ordine
+    (D-6 di brief-db-annullo-a-valle-riapre-a-monte, 2026-10-12: «Evaso» = la
+    merce e' partita, lo dicono solo le bolle). Fino a quel giorno qui c'era la
+    transizione CONFERMATO→EVASO «best-effort» su un savepoint: un ordine
+    PARZIALMENTE_EVASO mandato in commessa diventava EVASO con meta' merce in
+    magazzino. Push + chiusura step pratica restano in un transaction.atomic()
+    (fix analisi-fix-transazioni #4), qui mockato a no-op."""
 
     _PUSH_ONE = "apps.vendite.services.commesse_service.pr_run_commesse_push_one"
 
     def setUp(self) -> None:
-        # transaction.atomic() (esterno + savepoint EVASO) a no-op per i test
-        # mock-only. Lo stesso nullcontext e' riusabile su piu' `with` (stateless).
+        # transaction.atomic() a no-op per i test mock-only. Lo stesso
+        # nullcontext e' riusabile su piu' `with` (stateless).
         patcher = patch(_ATOMIC, return_value=nullcontext())
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -591,18 +606,32 @@ class OrdiniPushCommessaTests(SimpleTestCase):
     @patch(_COMPLETA_STEP)
     @patch(_PUSH_ONE)
     @patch(_REPO)
-    def test_push_completato_transita_a_evaso(self, ord_cls, mock_push_one, _mock_step) -> None:
+    def test_push_completato_non_cambia_stato(self, ord_cls, mock_push_one, _mock_step) -> None:
         repo = ord_cls.return_value
         repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
         repo.count_righe_pushable.return_value = 2
-        repo.get_stato_id_by_codice.return_value = 8  # id EVASO
         mock_push_one.return_value = {
             "stato": "COMPLETATO", "push_log_id": 7, "durata_ms": 5, "handlers": [],
         }
         out = ordini_service.push_a_commessa(55)
         self.assertEqual(out["stato"], "COMPLETATO")
-        repo.get_stato_id_by_codice.assert_called_once_with("EVASO")
-        repo.update_stato.assert_called_once_with(55, 8)
+        repo.get_stato_id_by_codice.assert_not_called()
+        repo.update_stato.assert_not_called()
+
+    @patch(_COMPLETA_STEP)
+    @patch(_PUSH_ONE)
+    @patch(_REPO)
+    def test_push_da_parzialmente_evaso_resta_tale(self, ord_cls, mock_push_one, _mock_step) -> None:
+        # ⭐ Il difetto che D-6 corregge: meta' merce spedita, l'invio in
+        #    commessa non la fa diventare tutta partita.
+        repo = ord_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "PARZIALMENTE_EVASO"}
+        repo.count_righe_pushable.return_value = 1
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "push_log_id": 8, "durata_ms": 5, "handlers": [],
+        }
+        ordini_service.push_a_commessa(56)
+        repo.update_stato.assert_not_called()
 
     @patch(_COMPLETA_STEP)
     @patch(_PUSH_ONE)
@@ -615,7 +644,6 @@ class OrdiniPushCommessaTests(SimpleTestCase):
         repo = ord_cls.return_value
         repo.get_ordine.return_value = {"stato_codice_interno": "EVASO"}
         repo.count_righe_pushable.return_value = 1
-        repo.get_stato_id_by_codice.return_value = 8
         mock_push_one.return_value = {
             "stato": "COMPLETATO", "push_log_id": 9, "durata_ms": 5, "handlers": [],
         }
@@ -636,7 +664,7 @@ class OrdiniPushCommessaTests(SimpleTestCase):
     @patch(_PUSH_ONE)
     @patch(_REPO)
     def test_push_parziale_non_transita(self, ord_cls, mock_push_one) -> None:
-        # PARZIALE → ordine resta CONFERMATO (ri-push per completare): no EVASO.
+        # PARZIALE → ordine resta com'era (ri-push per completare).
         repo = ord_cls.return_value
         repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
         repo.count_righe_pushable.return_value = 2
@@ -645,38 +673,6 @@ class OrdiniPushCommessaTests(SimpleTestCase):
         }
         ordini_service.push_a_commessa(55)
         repo.update_stato.assert_not_called()
-
-    @patch(_COMPLETA_STEP)
-    @patch(_PUSH_ONE)
-    @patch(_REPO)
-    def test_push_seed_evaso_assente_soft(self, ord_cls, mock_push_one, _mock_step) -> None:
-        # Robustezza deploy parziale: EVASO non seedato → niente raise, niente update.
-        repo = ord_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
-        repo.count_righe_pushable.return_value = 2
-        repo.get_stato_id_by_codice.return_value = None
-        mock_push_one.return_value = {
-            "stato": "COMPLETATO", "push_log_id": 7, "durata_ms": 5, "handlers": [],
-        }
-        out = ordini_service.push_a_commessa(55)  # non solleva
-        self.assertEqual(out["stato"], "COMPLETATO")
-        repo.update_stato.assert_not_called()
-
-    @patch(_COMPLETA_STEP)
-    @patch(_PUSH_ONE)
-    @patch(_REPO)
-    def test_push_transizione_db_error_soft(self, ord_cls, mock_push_one, _mock_step) -> None:
-        # Se il trigger DB rifiuta la transizione → warning, non fa fallire il push.
-        repo = ord_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
-        repo.count_righe_pushable.return_value = 2
-        repo.get_stato_id_by_codice.return_value = 8
-        repo.update_stato.side_effect = DatabaseError("transizione non ammessa")
-        mock_push_one.return_value = {
-            "stato": "COMPLETATO", "push_log_id": 7, "durata_ms": 5, "handlers": [],
-        }
-        out = ordini_service.push_a_commessa(55)  # non solleva
-        self.assertEqual(out["stato"], "COMPLETATO")
 
 
 class OrdiniStepPraticaTests(SimpleTestCase):
@@ -775,17 +771,26 @@ class OrdiniFatturazioneImmediataTests(SimpleTestCase):
     futuro refactor verso un mapper esplicito non lo perde in silenzio.
     """
 
+    def setUp(self) -> None:
+        # transaction.atomic() a no-op (SimpleTestCase senza DB): il verbo e il
+        # riempimento dello slot di default stanno in una transazione.
+        patcher = patch(_ATOMIC, return_value=nullcontext())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     @patch(_REPO)
     def test_crea_ordine_porta_il_flag(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ordine.return_value = {"id": 7, "uid": "u", "numero": "ORD0007"}
         ordini_service.crea_ordine({
-            "billing_account_id": 3, "utility_id": 1, "fatturazione_immediata": True,
+            "billing_account_id": 3, "fatturazione_immediata": True,
         })
         self.assertIs(
             repo.create_ordine.call_args.kwargs["fatturazione_immediata"], True,
         )
+        # Lo slot di default lo riempie il DB, sull'ordine appena nato (R-BE-1).
+        repo.riempi_indirizzo_default.assert_called_once_with(7)
 
     # Senza la chiave si passa None: il repository omette la colonna e resta il
     # DEFAULT false del DB (corsia differita).
@@ -794,7 +799,7 @@ class OrdiniFatturazioneImmediataTests(SimpleTestCase):
         repo = repo_cls.return_value
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ordine.return_value = {"id": 7, "uid": "u", "numero": "ORD0007"}
-        ordini_service.crea_ordine({"billing_account_id": 3, "utility_id": 1})
+        ordini_service.crea_ordine({"billing_account_id": 3})
         self.assertIsNone(
             repo.create_ordine.call_args.kwargs["fatturazione_immediata"],
         )
@@ -940,12 +945,13 @@ class OrdiniRigaDateConsegnaTests(SimpleTestCase):
 #  4. test_data_assente_e_400_col_campo
 #  5. test_riga_di_un_altro_ordine_e_404
 #  6. test_il_rifiuto_del_lock_passa_col_suo_codice
+#  7. test_riga_spedita_passa_col_codice_del_guard
 class OrdiniDataConsegnaConfermataTests(SimpleTestCase):
     def _repo(self, repo_cls, stato: str = "CONFERMATO"):
         repo = repo_cls.return_value
         repo.get_ordine.return_value = {"id": 7, "stato_codice_interno": stato}
         repo.get_riga.return_value = {"id": 60, "ordine_id": 7}
-        repo.update_riga.return_value = True
+        repo.scrivi_data_consegna.return_value = {"aggiornate": 1, "saltate": 0}
         return repo
 
     @patch(_REPO)
@@ -954,8 +960,9 @@ class OrdiniDataConsegnaConfermataTests(SimpleTestCase):
         out = ordini_service.cambia_data_consegna_confermata(
             7, 60, {"data_consegna_confermata": "2026-11-03"},
         )
-        repo.update_riga.assert_called_once_with(
-            60, data_consegna_confermata=date(2026, 11, 3),
+        # La scrittura e' quella dell'utility in blocco, ristretta alla riga.
+        repo.scrivi_data_consegna.assert_called_once_with(
+            7, "data_consegna_confermata", date(2026, 11, 3), riga_id=60,
         )
         self.assertEqual(out["data_consegna_confermata"], date(2026, 11, 3))
         # Nessun guard di stato in Python: lo stato non si chiede.
@@ -967,7 +974,9 @@ class OrdiniDataConsegnaConfermataTests(SimpleTestCase):
         ordini_service.cambia_data_consegna_confermata(
             7, 60, {"data_consegna_confermata": None},
         )
-        repo.update_riga.assert_called_once_with(60, data_consegna_confermata=None)
+        repo.scrivi_data_consegna.assert_called_once_with(
+            7, "data_consegna_confermata", None, riga_id=60,
+        )
 
     @patch(_REPO)
     def test_chiave_estranea_rifiutata_senza_scrivere(self, repo_cls) -> None:
@@ -977,7 +986,7 @@ class OrdiniDataConsegnaConfermataTests(SimpleTestCase):
                 7, 60, {"data_consegna_confermata": "2026-11-03", "qta_operativa": 5},
             )
         self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
-        repo.update_riga.assert_not_called()
+        repo.scrivi_data_consegna.assert_not_called()
 
     @patch(_REPO)
     def test_data_assente_e_400_col_campo(self, repo_cls) -> None:
@@ -986,7 +995,7 @@ class OrdiniDataConsegnaConfermataTests(SimpleTestCase):
             ordini_service.cambia_data_consegna_confermata(7, 60, {})
         self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
         self.assertEqual(cm.exception.context.get("field"), "data_consegna_confermata")
-        repo.update_riga.assert_not_called()
+        repo.scrivi_data_consegna.assert_not_called()
 
     @patch(_REPO)
     def test_riga_di_un_altro_ordine_e_404(self, repo_cls) -> None:
@@ -997,14 +1006,14 @@ class OrdiniDataConsegnaConfermataTests(SimpleTestCase):
                 7, 60, {"data_consegna_confermata": "2026-11-03"},
             )
         self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
-        repo.update_riga.assert_not_called()
+        repo.scrivi_data_consegna.assert_not_called()
 
     @patch(_REPO)
     def test_il_rifiuto_del_lock_passa_col_suo_codice(self, repo_cls) -> None:
         # Ordine EVASO: il lock delle righe rifiuta, e il codice del DB arriva
         # al client com'e' (nessuna traduzione in un codice del dominio).
         repo = self._repo(repo_cls, stato="EVASO")
-        repo.update_riga.side_effect = DatabaseError(
+        repo.scrivi_data_consegna.side_effect = DatabaseError(
             "E_RIGA_DOC_NON_BOZZA: Ordine in stato EVASO, la riga non si modifica",
         )
         with self.assertRaises(ServiceError) as cm:
@@ -1012,6 +1021,23 @@ class OrdiniDataConsegnaConfermataTests(SimpleTestCase):
                 7, 60, {"data_consegna_confermata": "2026-11-03"},
             )
         self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
+
+    @patch(_REPO)
+    def test_riga_spedita_passa_col_codice_del_guard(self, repo_cls) -> None:
+        # D-7 (brief-db-date-consegna-righe-in-blocco): sulla riga singola la
+        # riga spedita NON si salta, la rifiuta il guard di riga col suo 409.
+        repo = self._repo(repo_cls, stato="PARZIALMENTE_EVASO")
+        repo.scrivi_data_consegna.side_effect = DatabaseError(
+            "E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA: Ordine 12, riga 1: la merce e' gia' partita",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.cambia_data_consegna_confermata(
+                7, 60, {"data_consegna_confermata": "2026-11-03"},
+            )
+        self.assertEqual(cm.exception.code, "E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA")
+        self.assertEqual(
+            ErrorPolicyRegistry.resolve("E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA").http_status, 409,
+        )
 
 
 # Scopo: I satelliti «leggono prima la testata» (2026-09-21, allineamento a

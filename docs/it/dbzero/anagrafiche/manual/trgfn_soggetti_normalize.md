@@ -9,7 +9,7 @@ Approfondimento Tabelle:
 >
 Approfondimento funzioni:
 >
-[script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)
+[script.fn_stato_proposto_id](/dbzero/script/funzioni/fn_stato_proposto_id)
 
 ---
 ### 🎯 Scopo Principale
@@ -22,8 +22,8 @@ Approfondimento funzioni:
 ### Collegamenti
 
 * **`anagrafiche.soggetti`** – tabella su cui si applica il trigger `BEFORE INSERT OR UPDATE`.
-* **`config.stati`** – usata come lookup per recuperare il PK di default tramite `codice_iso3`.
-* **`script.fn_get_default_by_param`** – funzione dinamica che esegue il lookup del valore di default da una tabella di configurazione.
+* **`config.stati`** – lo stato proposto si cerca per `codice_iso2`.
+* **`script.fn_stato_proposto_id`** – lo stato proposto (parametro `STATO_PROPOSTO_ISO2`): valida e non ripiega (rev 18-10-2026; prima `fn_get_default_by_param` su `state_code_iso3`, ritirati).
 * **Trigger associato**: `trg_soggetti_normalize_ins_upd` (viene creato dal  `trgfn_soggetti_normalize`).
 
 ---
@@ -31,7 +31,7 @@ Approfondimento funzioni:
 ### Note Operative
 
 * Il trigger viene invocato **BEFORE INSERT OR UPDATE** su `anagrafiche.soggetti` e agisce su **`NEW`**.
-* **Assegnazione default**: utilizza `fn_get_default_by_param('config','stati','codice_iso3','state_code_iso3', TG_NAME)::integer` per ottenere il `stato_id`.
+* **Assegnazione default**: `stato_id` non detto = `script.fn_stato_proposto_id(TG_NAME)`. Se il parametro manca, è vuoto o indica più stati, l'inserimento si ferma con un errore che lo dice (`E_CONFIG_MANCANTE`, `E_DEFAULT_ERRATO`, `E_STATO_ISO2_AMBIGUO`).
 * **`TG_NAME`** passa automaticamente il nome del trigger alla funzione per migliorare il contesto di log in caso di errore.
 * **Estendibilità**: dopo il lookup di default è possibile inserire ulteriori blocchi di cleanup (es. normalizzazione di `nome`, `cognome`).
 * **Robustezza**: la funzione di lookup solleva eccezione se non trova il valore, garantendo coerenza dei dati.

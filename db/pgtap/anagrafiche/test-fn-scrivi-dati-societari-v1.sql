@@ -15,7 +15,7 @@
 --   natura), -99 (verbo), 20261011-01 (fn_crea_soggetto_pg dal verbo), -02
 --   (fixture dal verbo), -03 (forma NOT NULL), -04 (porta).
 --
--- Elenco test (plan 22):
+-- Elenco test (plan 23):
 --   struttura e porta
 --    1) il verbo e' SECURITY DEFINER, con pg_temp in coda al search_path
 --    2) EXECUTE: a zeroerp_app si', a PUBLIC no
@@ -26,6 +26,8 @@
 --    6) li aggiorna: una riga sola, i valori nuovi (stato intero)
 --    7) socio unico NULL -> il default dei parametri, non NULL
 --    8) soggetto inesistente -> E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO
+--    8-bis) soggetto NULL -> E_PARAMETRO_INVALIDO, non «non trovato» (20261012-02:
+--       un chiamante rotto non e' un 404)
 --   la forma (guard 20261010-97)
 --    9) un ente con la forma SRL -> E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO
 --   10) ... col campo 'forma_giuridica_id'
@@ -53,7 +55,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL DEFERRED;
 
-SELECT plan(22);
+SELECT plan(23);
 
 CREATE OR REPLACE FUNCTION pg_temp.colonna_del_rifiuto(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $f$
@@ -177,6 +179,11 @@ SELECT throws_like(
     pg_temp.ds_sql('00000000-0000-0000-0000-000000000000'::uuid, (SELECT srl FROM _ref), 'X', 1),
     '%non trovato%',
     '8. soggetto inesistente -> E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO');
+
+SELECT throws_like(
+    pg_temp.ds_sql(NULL::uuid, (SELECT srl FROM _ref), 'X', 1),
+    'Parametro non valido%',
+    '8-bis. soggetto NULL -> E_PARAMETRO_INVALIDO, non E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO');
 
 -- ============================================================
 -- La forma (guard 20261010-97)

@@ -86,7 +86,7 @@ def _integrity(nome_vincolo: str) -> IntegrityError:
 def _registro(**over):
     base = {
         "id": 7, "codice": "DDT-01", "descrizione": "DDT",
-        "famiglia_documento": "DDT", "emittente_soggetto_ruolo_id": 99,
+        "famiglia_documento": "DDT_VENDITA", "emittente_soggetto_ruolo_id": 99,
         "prefisso": "DDT", "suffisso": None, "lunghezza_numero": 7,
         "serie_default": None, "attivo": True,
         "rimozione_blocco_reason": None, "forma_blocco_reason": None,
@@ -350,7 +350,7 @@ class RegistriPayloadTests(TestCase):
     #    di un campo che l'operatore non ha nemmeno visto.
     def test_limiti_azzerati_su_famiglia_non_fattura(self):
         dati = RegistriService()._normalizza({
-            "famiglia_documento": "DDT",
+            "famiglia_documento": "DDT_VENDITA",
             "limite_emissione_giorni": 15,
             "limite_emissione_giorno_mese": 20,
         })
@@ -418,16 +418,15 @@ class RegistriRepositoryQueryTests(TestCase):
         self.assertNotIn("CROSS JOIN LATERAL", sql)
         self.assertEqual(sql.count("LEFT JOIN LATERAL"), 2)
 
-    # Scopo: `order_by` fuori whitelist non finisce nell'SQL — ci finisce il
-    #        default. La colonna arriva dal client e un ORDER BY non e'
-    #        parametrizzabile.
+    # Scopo: `order_by` fuori whitelist e' un 400 (`order_by_invalid`) e non
+    #        arriva all'SQL: la colonna viene dal client e un ORDER BY non e'
+    #        parametrizzabile. Dal 2026-10-20 non ripiega piu' sul default.
     @patch("apps.vendite.db.registri_repository.connection.cursor")
-    def test_order_by_fuori_whitelist_ripiega_sul_default(self, mock_factory):
+    def test_order_by_fuori_whitelist_e_rifiutato(self, mock_factory):
         mock_factory.return_value = _mock_cursor(fetchall=[], description=[])
-        RegistriRepository().list_registri(None, order_by="; DROP TABLE x")
-        sql = mock_factory.return_value.execute.call_args[0][0]
-        self.assertNotIn("DROP TABLE", sql)
-        self.assertIn("ORDER BY r.codice", sql)
+        with self.assertRaisesRegex(ValueError, "order_by_invalid"):
+            RegistriRepository().list_registri(None, order_by="; DROP TABLE x")
+        mock_factory.return_value.execute.assert_not_called()
 
 
 # Scopo: un `MagicMock` non deve passare per una lista di id — se un domani
@@ -494,7 +493,7 @@ class RegistriRevisioneTests(TestCase):
     @patch.object(FamiglieDocumentoRepository, "ammette_regole_fiscali", return_value=False)
     def test_politica_data_neutralizzata_fuori_fattura(self, _ammette):
         dati = RegistriService()._normalizza({
-            "famiglia_documento": "DDT",
+            "famiglia_documento": "DDT_VENDITA",
             "politica_data_documento": "FINE_MESE_COMPETENZA",
             "limite_emissione_giorni": 15,
         })

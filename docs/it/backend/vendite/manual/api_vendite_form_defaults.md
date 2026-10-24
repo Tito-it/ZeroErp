@@ -31,7 +31,8 @@ Il service combina:
 - `ListiniRepository.get_listino` / `get_versione` / `list_versioni` per le
   3 view contestuali alle versioni listino
 
-Tutti gli endpoint richiedono JWT operatore e area `vendite` LETTURA.
+Tutti gli endpoint richiedono JWT operatore e area `vendite` LETTURA (con
+l'oggetto del documento, `model_permission`, sulle view di documento).
 Eventuali override personali dei parameter sono applicati passando
 l'`auth_user_id` derivato dal JWT.
 
@@ -62,7 +63,15 @@ Risposta `200`:
     "utility_descrizione": "Gas",
     "valuta_id": 1,
     "valuta_codice": "EUR",
-    "valuta_descrizione": "Euro"
+    "valuta_descrizione": "Euro",
+    "fornitura": {
+      "istanza_dati_precontrattuali_id": 55,
+      "classe_utenza_id": 4,
+      "tipo_utenza_id": 2,
+      "param_1_num": "3.500000",
+      "param_2_txt": "B1",
+      "meta": {}
+    }
   }
 }
 ```
@@ -72,6 +81,14 @@ Risposta `200`:
 `billing_account_id`: campi BA-derived = `null`, presenti solo
 `default_valido_dal`, `default_data` e (se EF utente o gestore configurato)
 i campi valuta.
+
+`fornitura` (2026-10-14, R-BE-5 di brief-db-indirizzi-documento-seguono-il-cliente):
+la scheda di fornitura che l'anagrafica dà alla coppia (istanza, utility) del BA,
+letta da `vendite.fn_get_fornitura_da_anagrafica` — la stessa da cui il DB parte
+alla nascita del contratto, prima di applicarci la scheda dell'operatore (D-7).
+`null` senza `billing_account_id` o se la coppia non ha dati precontrattuali.
+Il drawer la precompila in creazione: l'operatore vede quello che verrà scritto
+e lo corregge.
 
 Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 
@@ -102,16 +119,25 @@ Risposta `200`:
     "utility_descrizione": "Gas",
     "valuta_id": 1,
     "valuta_codice": "EUR",
-    "valuta_descrizione": "Euro"
+    "valuta_descrizione": "Euro",
+    "fornitura": {
+      "istanza_dati_precontrattuali_id": 55,
+      "classe_utenza_id": 4,
+      "tipo_utenza_id": 2,
+      "param_1_num": "3.500000",
+      "param_2_txt": "B1",
+      "meta": {}
+    }
   }
 }
 ```
 
 Risoluzione `valuta_id`: vedi sezione preventivi sotto (stesso BB).
+`fornitura`: come per il contratto, dalla stessa lettura.
 
 Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 
-Consumer FE: `OffertaDrawer.vue` (integrazione FE pendente).
+Consumer FE: `OffertaDrawer.vue`.
 
 ### `GET /api/v1/vendite/preventivi/form-defaults/` (Fase 2.B4)
 
@@ -171,6 +197,33 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 
 Consumer FE: `PreventiviDrawer.vue` (watch su `form.billing_account_id`,
 sovrascrittura solo dei campi vuoti per non distruggere scelte utente).
+
+### `GET /api/v1/vendite/ordini/form-defaults/`
+
+Query: `billing_account_id` (opzionale). Senza BA torna la sola valuta (catena
+EF utente → gestore globale); con il BA aggiunge utility/istanza del BA e i
+default di pagamento dell'anagrafica cliente (tripletta istanza + soggetto ruolo
++ utility). Niente IVA né categoria: l'ordine non le ha in testata.
+
+```json
+{"data": {
+  "billing_account_id": 100, "utility_id": 3, "istanza_utility_id": 200,
+  "utility_codice": "GAS", "utility_descrizione": "Gas",
+  "valuta_id": 1, "valuta_codice": "EUR", "valuta_descrizione": "Euro",
+  "termine_pagamento_id": 4, "termine_pagamento_codice": "30GG", "termine_pagamento_descrizione": "...",
+  "modalita_pagamento_id": 2, "modalita_pagamento_codice": "BON", "modalita_pagamento_descrizione": "..."
+}}
+```
+
+La utility di default globale (`DEFAULT_UTILITY`) la risolve il FE. Permesso
+modello `("vendite", "ordine")`.
+
+### `GET /api/v1/vendite/ddt/form-defaults/`
+
+Calco ridotto dell'ordine: `billing_account_id`, `utility_id`,
+`istanza_utility_id`, `utility_codice`, `utility_descrizione` e la valuta. Il DDT
+non ha termini né modalità di pagamento in testata. Permesso modello
+`("vendite", "ddt")`.
 
 ### `GET /api/v1/vendite/listini/<listino_id>/versioni/form-defaults/` (Fase 2.B5a)
 

@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SI RITIRA IL LETTORE DEI LEGAMI DELLA SOLA BOLLA
+#   DROP vendite.fn_ddt_legami(bigint)
+#   Brief: brief-db-annullo-documento-con-legami (§7.2, D-4 di Tid)
+#
+# ── REGOLA DEL 2, NELLO STESSO GIRO ─────────────────────────────────
+#   vendite.fn_documento_legami (20261011-77) e' il lettore unico dei
+#   legami per bolla, ordine, preventivo e contratto; la bolla ne e' il ramo
+#   'DDT', con le stesse righe di fn_ddt_legami piu' la testata d'origine e
+#   le righe di commessa. I due lettori di fn_ddt_legami sono passati al
+#   nuovo: la Regola 4 del guard di transizione si e' ritirata (20261011-83),
+#   il verbo dell'annullo legge dal BB (20261011-85). Il backend non lo
+#   chiamava ancora (§3.4 del brief, da fare): la finestra di conferma
+#   nasce sul lettore unico.
+#   La preCondition verifica che nessun corpo lo nomini piu'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-91-drop-fn-ddt-legami-mctit.yaml
+
+  - changeSet:
+      id: 20261011-91-drop-fn-ddt-legami
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritirato vendite.fn_ddt_legami: il lettore dei legami e' vendite.fn_documento_legami, per ogni
+        documento (regola del 2, D-4 di brief-db-annullo-documento-con-legami).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname IN ('vendite', 'script', 'dbops', 'magazzino')
+                 AND p.proname <> 'fn_ddt_legami'
+                 AND p.prosrc LIKE '%fn_ddt_legami%';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION vendite.fn_ddt_legami(bigint);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ritorno: rieseguire il corpo di 20261011-20.
+              SELECT 'ripristino rieseguendo 20261011-20' AS note;

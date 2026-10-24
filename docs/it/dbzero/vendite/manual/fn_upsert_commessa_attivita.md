@@ -32,7 +32,7 @@ Tre gruppi di validazione applicativa (`E_PARAMETRO_INVALIDO`) + tre guard di co
 | --- | --- |
 | Parametri core | Null/≤0 su ID, segment_key vuota o > 128 char, quantità = 0, prezzo_snapshot NULL |
 | Dominio enum snapshot v5 | `origine_prezzo` ∈ {PROMO, CONTRATTO_OVERRIDE, CONTRATTO_LISTINO, CATEGORIA, MANUALE}; `tipo_variazione_applicata` ∈ {PERCENTUALE, VALORE_FISSO, PREZZO_FISSO, NESSUNA} |
-| Classificazione operativa | `tipo_movimento` ∈ {NORMALE, RETTIFICA}; `tipo_consumo` ∈ {ACCONTO, CONGUAGLIO, STORNO} |
+| Classificazione operativa | `tipo_movimento` ∈ {NORMALE, RETTIFICA, ONERE} |
 
 ---
 
@@ -71,9 +71,9 @@ Tutti obbligatori in firma. Passare `NULL` esplicito quando la dimensione non si
 
 #### Opzionali (con DEFAULT, dopo lo snapshot)
 
-`p_qta_operativa`, `p_uom_operativa_id`, `p_factor_to_base` (default 1), `p_posticipa_al`, `p_tipo_doc_fiscale_id`, `p_valuta_id`, `p_area_geografica_id`, `p_listino_versione_id`, `p_prezzo_bloccato` (default false), `p_pricing_mode` (default `FIXED`), `p_prezzo_da_riallineare` (default false), `p_stato_approvazione` (default `BOZZA`), `p_stato_emissione` (default `NON_EMESSA`), `p_sorgente_tipo_id`, `p_sorgente_uid`, `p_tipo_movimento` (default `NORMALE`), `p_tipo_consumo` (default `CONGUAGLIO`), `p_meta` (default `'{}'::jsonb`).
+`p_qta_operativa`, `p_uom_operativa_id`, `p_factor_to_base` (default 1), `p_posticipa_al`, `p_tipo_doc_fiscale_id`, `p_valuta_id`, `p_area_geografica_id`, `p_listino_versione_id`, `p_prezzo_bloccato` (default false), `p_pricing_mode` (default `FIXED`), `p_prezzo_da_riallineare` (default false), `p_stato_approvazione` (default `BOZZA`), `p_stato_emissione` (default `NON_EMESSA`), `p_sorgente_tipo_id`, `p_sorgente_uid`, `p_tipo_movimento` (default `NORMALE`), `p_meta` (default `'{}'::jsonb`).
 
-> La firma usa `%TYPE` su ogni parametro che riflette una colonna di `commesse_attivita` (più `p_tipo_movimento`/`p_tipo_consumo` `varchar(32)`, salvati in `meta`).
+> La firma usa `%TYPE` su ogni parametro che riflette una colonna di `commesse_attivita`.
 
 ---
 
@@ -106,7 +106,7 @@ RETURNS TABLE (
 ### Regole UPDATE (ON CONFLICT)
 
 * Tutte le colonne **sovrascritte** da EXCLUDED tranne `meta` e `tipo_doc_fiscale_id`:
-  * `meta` esistente **mergeato** con l'input (`COALESCE(meta, '{}') || COALESCE(EXCLUDED.meta, '{}')`). Chi usa `tipo_movimento`/`tipo_consumo` in meta li vede aggiornati.
+  * `meta` esistente **mergeato** con l'input (`COALESCE(meta, '{}') || COALESCE(EXCLUDED.meta, '{}')`). Una chiave `tipo_consumo` scritta prima del 2026-10-13 resta nel meta della riga esistente; quella in arrivo si toglie prima (vedi la rev 2026-10-13).
   * `tipo_doc_fiscale_id` **no-regressione** (rev 2026-06-19): `COALESCE(EXCLUDED.tipo_doc_fiscale_id, commesse_attivita.tipo_doc_fiscale_id)`. Un re-push con valore in arrivo `NULL` **non azzera** un tipo_doc già risolto; un cambio a un valore non-NULL resta consentito.
 * Snapshot pricing v5: **sovrascrive sempre** (rappresenta lo snapshot del calcolo corrente; se il resolver è stato rieseguito, il nuovo risultato vince).
 * Guard: se la riga esistente ha `stato_emissione ≠ NON_EMESSA`, update bloccato con `E_COMMESSA_ATTIVITA_GIA_EMESSA`.
@@ -129,7 +129,7 @@ Via `script.fn_log_and_raise_error` (`SQLSTATE 'P0001'`).
 ### Dipendenze DB
 
 * Tabelle: `vendite.commesse_attivita`, `vendite.commesse`, `vendite.stati_commessa`, `config.sorgenti` (lookup default `tipo_doc_fiscale_id`).
-* Funzioni: `script.fn_log_and_raise_error`.
+* Funzioni: `script.fn_log_and_raise_error`, `vendite.fn_link_commessa_sorgente` (dal 2026-10-12: il link documento → commessa).
 * Trigger/CHECK DB: `chk_commesse_attivita_origine_prezzo`, `chk_commesse_attivita_tipo_variazione_applicata` garantiscono i domini enum anche se il guard applicativo è bypassato; `trg_commesse_attivita_a10_guard_tipo_doc_emittibile` + `chk_commesse_attivita_tipo_doc_emittibile` impongono `tipo_doc_fiscale_id NOT NULL` sullo stato emittibile (APPROVATA+NON_EMESSA).
 
 ---
@@ -241,4 +241,59 @@ protegge `tipo_doc_fiscale_id`: i `segment_key` non si incrociano — un push
 
 ---
 
+### 🔄 rev 2026-10-12 — il link documento → commessa nasce con la riga
+
+(brief-db-annullo-a-valle-riapre-a-monte, D-13 di Tid, `20261012-46`)
+
+Una riga che viene da un **documento spinto in commessa** — sorgente con
+`config.sorgenti.scope = 'PUSH_COMMESSA'`: preventivo, ordine, contratto, bolla,
+consumi — chiama, prima di scriversi,
+[vendite.fn_link_commessa_sorgente](/dbzero/vendite/funzioni/fn_link_commessa_sorgente):
+
+* stesso documento, stessa commessa → il link c'è già, niente si riscrive;
+* il documento sta in un'**altra commessa aperta** →
+  `E_COMMESSA_SORGENTE_ALTRA_COMMESSA`, e la riga non si scrive;
+* la sua commessa di prima è **chiusa o annullata** → link nuovo; quello vecchio
+  resta come storia.
+
+Fuori dal blocco: le righe senza sorgente (`ONERE`, `RETTIFICA`) e la sorgente
+`COMMESSA` (`PIPELINE_MARKER`), che fixture e smoke usano per le righe «della
+commessa».
+
+⭐ **Perché qui e non nel backend.** Prima il link lo scriveva il backend, a parte,
+prima di questa funzione. La regola «un documento in una sola commessa aperta»
+valeva solo se chi scriveva la riga si ricordava del link, e i pgTAP che mandano in
+commessa da questa madre non la attraversavano mai: è così che il difetto del
+secondo invio dopo l'annullo della commessa è arrivato al collaudo con i test
+verdi. D-10: andata e ritorno di uno stesso arco in un posto solo, il DB.
+
+---
+
 {% include-markdown "signature-core.md" %}
+
+### 🔄 rev 2026-10-13 — `tipo_consumo` ritirato
+
+ChangeSet `20261013-16` (con `-17` … `-23` per batch, builder pgTAP e i cinque
+lister). Decisione A di Tid, dalla segnalazione BE sugli smoke del 2026-10-13.
+
+* **Perché.** `tipo_consumo` non era una colonna: la funzione lo scriveva solo
+  in `meta`, e nessuno lo leggeva. Il vocabolario che pretendeva (`ACCONTO`,
+  `CONGUAGLIO`, `STORNO`) non lo produceva nessuna sorgente con un significato:
+  preventivi, ordini e DDT mandavano la costante `CONGUAGLIO`, i contratti
+  l'erogazione della riga e i consumi `CONSUMO`, che qui erano rifiutati
+  (`E_PARAMETRO_INVALIDO`). Il push dei contratti non arrivava in commessa.
+  L'erogazione ha già il suo posto: `meta.tipo_erogazione`, scritta dal lister
+  dei contratti.
+* **Cosa cambia.** Via il parametro `p_tipo_consumo` (era in mezzo alla firma:
+  `DROP` + `CREATE`, come nel 2026-08-18), il suo controllo e la chiave in
+  `meta`. La chiave si **toglie anche dal meta in ingresso**: il reso
+  (`fn_accredita_riga_reso`) ricopia il meta della riga d'origine, e senza la
+  sottrazione la chiave rinascerebbe sulle rettifiche.
+* **Cosa non cambia.** Le righe già scritte tengono la chiave: sono la
+  fotografia di quell'invio, e una bonifica di massa su `commesse_attivita`
+  farebbe scattare i trigger «padre attivo», lo storico e l'audit.
+* **Chiamanti.** Chi passava `p_tipo_consumo` per nome va ritoccato: il batch,
+  il builder `dbops.fn_pgtap_crea_commessa_attivita`, i pgTAP e il backend
+  (`CommesseRepository.upsert_attivita`). Il pgTAP che manda un contratto dalla
+  madre è `vendite/test-push-contratto-dalla-madre-v1`.
+

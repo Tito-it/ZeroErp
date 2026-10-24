@@ -168,21 +168,21 @@ class ListNoteTests(unittest.TestCase):
         svc = _make_service(repo, _make_params_mock())
         rows, total = svc.list_note(
             target_id=42, target_riga_id=5, include_invisible=False,
-            page=2, page_size=10,
+            limit=10, offset=10,
         )
         self.assertEqual(total, 1)
         self.assertEqual(rows, [{"id": 7}])
         repo.list.assert_called_once_with(
-            42, target_riga_id=5, include_invisible=False, page=2, page_size=10,
+            42, target_riga_id=5, include_invisible=False, limit=10, offset=10,
         )
 
     def test_page_size_clamp(self) -> None:
         repo = _make_repo_mock()
         svc = _make_service(repo, _make_params_mock())
-        svc.list_note(target_id=1, page=0, page_size=1000)
+        svc.list_note(target_id=1, limit=1000, offset=-5)
         _args, kwargs = repo.list.call_args
-        self.assertEqual(kwargs["page"], 1)         # clamp min
-        self.assertEqual(kwargs["page_size"], 200)  # clamp max
+        self.assertEqual(kwargs["offset"], 0)     # clamp min
+        self.assertEqual(kwargs["limit"], 200)    # clamp max
 
 
 class GetNotaTests(unittest.TestCase):
@@ -408,13 +408,15 @@ class AggiornaNotaTests(unittest.TestCase):
             svc.aggiorna_nota(note_id=10, target_id=1, patch={"testo_md": "x"})
         self.assertEqual(ctx.exception.code, "E_NOTA_NOT_FOUND")
 
-    def test_patch_vuoto_idempotente(self) -> None:
+    # ⛔ Un PATCH senza campi e' un 400, non la nota restituita com'e' (Tid,
+    #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+    def test_patch_vuoto_e_rifiutato(self) -> None:
         repo = _make_repo_mock()
-        existing = {"id": 10, "target_id": 1, "testo_md": "originale"}
-        repo.get.return_value = existing
+        repo.get.return_value = {"id": 10, "target_id": 1, "testo_md": "originale"}
         svc = _make_service(repo, _make_params_mock())
-        result = svc.aggiorna_nota(note_id=10, target_id=1, patch={})
-        self.assertEqual(result, existing)
+        with self.assertRaises(ServiceError) as ctx:
+            svc.aggiorna_nota(note_id=10, target_id=1, patch={})
+        self.assertEqual(ctx.exception.code, "E_NOTA_VALIDATION")
         repo.update.assert_not_called()
 
     def test_patch_normale(self) -> None:

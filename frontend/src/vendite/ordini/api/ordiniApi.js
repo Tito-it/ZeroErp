@@ -10,6 +10,7 @@
 
 import api from '../../../core/api'
 import { makeRigheListaApi } from '../../_shared/righe/righeListaApi'
+import { makeDateConsegnaApi } from '../../_shared/dateConsegna/dateConsegnaApi'
 import { makeComponentiBomApi } from '../../../core/api/componentiBom'
 
 const BASE = '/vendite/ordini'
@@ -76,8 +77,11 @@ export function emettiOrdine(id, { allegati = [], templateId = null } = {}) {
 // Transizione di stato generica data-driven (es. annulla DRAFT->ANNULLATO).
 // `statoCodice` = `target_state` dell'azione da fn_available_actions_ordine.
 // L'ammissibilita' della transizione e' validata dal trigger guard DB.
-export function cambiaStatoOrdine(id, statoCodice) {
-  return api.post(`${BASE}/${id}/cambia-stato/`, { stato_codice: statoCodice })
+// `dichiarazione`: la conferma dell'annullo di un ordine con legami
+// (`{ legami_confermati }`, brief-db-annullo-documento-con-legami). Al primo
+// tentativo e' vuota (`useForzaturaConfermata`).
+export function cambiaStatoOrdine(id, statoCodice, dichiarazione = {}) {
+  return api.post(`${BASE}/${id}/cambia-stato/`, { stato_codice: statoCodice, ...dichiarazione })
 }
 
 // Push singolo dell'ordine CONFERMATO a commessa (chiusura giro). Ritorna un
@@ -111,6 +115,8 @@ export function getOrdinePerPratica(praticaId) {
 // factory condivisa coi documenti gemelli. `listRighe` qui sotto resta la
 // lettura COMPLETA (dialog, stampe).
 export const { listRigheLista, exportRigheLista } = makeRigheListaApi(BASE)
+// «Aggiorna date di consegna» (brief-db-date-consegna-righe-in-blocco).
+export const { aggiornaDateConsegna } = makeDateConsegnaApi(BASE)
 
 export function listRighe(ordineId) {
   return api.get(`${BASE}/${ordineId}/righe/`)

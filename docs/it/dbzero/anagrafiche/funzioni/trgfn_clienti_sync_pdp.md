@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_clienti_sync_pdp()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_sync_pdp()
  RETURNS trigger
@@ -30,6 +32,8 @@ END$function$
 COMMENT ON FUNCTION anagrafiche.trgfn_clienti_sync_pdp()
 IS 'Allinea la colonna denormalizzata pdp_id in base a anagrafiche.istanze_utilities(istanza_utility_id)';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

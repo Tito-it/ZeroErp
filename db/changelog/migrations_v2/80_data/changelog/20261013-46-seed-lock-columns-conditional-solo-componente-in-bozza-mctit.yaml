@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SEED dbops.lock_columns_conditional: is_solo_componente spento nel form
+#   quando l'articolo sta in una riga autonoma di un documento in bozza.
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-3, §9.3.1)
+#
+#   E' il lato CAPABILITY (dbops.fn_non_editable_fields) di
+#   catalogo.trgfn_articoli_guard_solo_componente_in_bozza (20261013-44): stesso
+#   predicato, cosi' il form non lascia acceso un campo che il guard
+#   rifiuterebbe (linee-guida-sql §12.2, punto 1).
+#   ⭐ «NOT is_solo_componente»: il guard rifiuta solo il passaggio a solo
+#   componente; un articolo gia' solo componente deve poter tornare vendibile.
+#   Una riga nuova accanto a quella di 20260522-04 (figlio di distinta): il
+#   vincolo uq_lock_columns_conditional comprende condition_expr.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261013-46-seed-lock-columns-conditional-solo-componente-in-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20261013-46-seed-lock-columns-conditional-solo-componente-in-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.lock_columns_conditional (catalogo.articoli.is_solo_componente): spento nel form se
+        l'articolo vendibile sta in una riga autonoma di un preventivo, ordine o bolla in bozza,
+        gemello di trgfn_articoli_guard_solo_componente_in_bozza. Brief:
+        brief-db-articoli-ammessi-per-documento (§8.6 A-3).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: lock_columns_conditional
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              INSERT INTO dbops.lock_columns_conditional
+                  (schema_name, table_name, column_name, condition_expr, descrizione)
+              VALUES
+                  (
+                      'catalogo',
+                      'articoli',
+                      'is_solo_componente',
+                      'NOT (SELECT a.is_solo_componente FROM catalogo.articoli a WHERE a.id = $1::uuid) AND (EXISTS (SELECT 1 FROM vendite.preventivi_righe pr JOIN vendite.preventivi p ON p.id = pr.preventivo_id JOIN config.stati_doc_preventivi s ON s.id = p.stato_doc_preventivo_id WHERE pr.articolo_id = $1::uuid AND pr.attivo IS TRUE AND s.codice_interno = ''DRAFT'') OR EXISTS (SELECT 1 FROM vendite.ordini_righe orr JOIN vendite.ordini o ON o.id = orr.ordine_id JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id WHERE orr.articolo_id = $1::uuid AND orr.attivo IS TRUE AND s.codice_interno = ''DRAFT'') OR EXISTS (SELECT 1 FROM vendite.ddt_righe dr JOIN vendite.ddt d ON d.id = dr.ddt_id JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id WHERE dr.articolo_id = $1::uuid AND dr.attivo IS TRUE AND s.codice_interno = ''DRAFT''))',
+                      'is_solo_componente non attivabile se articolo in una riga autonoma di un preventivo, ordine o bolla in bozza (simmetrico a trg_articoli_a10_guard_solo_componente_in_bozza_upd)'
+                  )
+              ON CONFLICT ON CONSTRAINT uq_lock_columns_conditional DO UPDATE
+                  SET descrizione  = EXCLUDED.descrizione,
+                      data_update  = now(),
+                      user_update  = CURRENT_USER;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.lock_columns_conditional
+               WHERE schema_name = 'catalogo'
+                 AND table_name  = 'articoli'
+                 AND column_name = 'is_solo_componente'
+                 AND condition_expr LIKE '%stati_doc_preventivi%';

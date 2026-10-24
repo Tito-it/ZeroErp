@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PER OGNI EMITTENTE E OGNI DOCUMENTO: CON CHE COSA SI STAMPA
+#   documenti.vw_template_risoluzione_emittente (vista nuova)
+#   Brief: brief-db-modelli-documento-standard §10.3 K-5, D-5 di Tid (2026-10-20);
+#   richiesta BE «lo stato di un emittente per ogni coppia (tipo, sorgente)»
+#
+# Una riga per emittente × (tipo di documento, sorgente) che abbia almeno un
+#   modello standard o un modello di quell'emittente, in qualunque stato. La
+#   riga dice l'esito della risoluzione (EMITTENTE, SENZA_PREDEFINITO, STANDARD,
+#   NON_RISOLTO), col modello e la versione: e' la lettura della lista Modelli
+#   documento («si usa lo standard», «senza predefinito»).
+#
+# La regola non e' qui: e' documenti.fn_template_esito_risoluzione (20261021-07),
+#   la stessa che usa la stampa. La vista aggiunge solo le righe: gli emittenti e
+#   le coppie.
+#
+# security_invoker: la lista la legge l'operatore. anagrafiche.emittenti_fiscali
+#   e i modelli oggi non hanno RLS: il perimetro degli emittenti lo applica il BE,
+#   come per la lista dei modelli. Una coppia con modelli che non stampano esce
+#   NON_RISOLTO o STANDARD: e' proprio quello che la lista deve far vedere.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261021-08-create-vw-template-risoluzione-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20261021-08-create-vw-template-risoluzione-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.vw_template_risoluzione_emittente: per ogni emittente e ogni coppia (tipo,
+        sorgente) con almeno un modello standard o suo, l'esito della risoluzione col modello e la
+        versione. Brief: brief-db-modelli-documento-standard §10.3 K-5.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'documenti'
+                 AND p.proname = 'fn_template_esito_risoluzione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW documenti.vw_template_risoluzione_emittente
+                  WITH (security_invoker = true) AS
+              SELECT e.id AS emittente_fiscale_id,
+                     c.tipo_documento_output_id,
+                     c.sorgente_tipo_id,
+                     r.esito,
+                     r.template_documento_id,
+                     r.template_versione_id,
+                     r.modelli_stampabili
+                FROM anagrafiche.emittenti_fiscali e
+               CROSS JOIN LATERAL (
+                     SELECT DISTINCT t.tipo_documento_output_id, t.sorgente_tipo_id
+                       FROM documenti.template_documenti t
+                      WHERE t.standard OR t.emittente_fiscale_id = e.id
+                   ) c
+               CROSS JOIN LATERAL documenti.fn_template_esito_risoluzione(
+                     e.id, c.tipo_documento_output_id, c.sorgente_tipo_id) r;
+
+              COMMENT ON VIEW documenti.vw_template_risoluzione_emittente IS
+                'Per ogni emittente e ogni coppia (tipo di documento, sorgente) con almeno un modello standard o di quell''emittente, in qualunque stato: l''esito della risoluzione (EMITTENTE, SENZA_PREDEFINITO, STANDARD, NON_RISOLTO), il modello, la versione e quanti modelli suoi possono stampare (2026-10-21, brief-db-modelli-documento-standard §10.3 K-5). La regola e'' documenti.fn_template_esito_risoluzione, la stessa della stampa: la vista aggiunge solo le righe. Lettura della lista Modelli documento.';

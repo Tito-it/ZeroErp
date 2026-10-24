@@ -1,7 +1,7 @@
-id,codice,descrizione,attivo,ordine,meta,codice_interno,applica_lotto,applica_fattura,chiude_lotto,fase,is_abortito,congela_fiscale
-1,DRAFT,Bozza,t,10,{},DRAFT,t,t,f,APERTO,f,f
-2,EMESSA,Emessa,t,20,{},EMESSA,t,t,f,IN_CORSO,f,f
-6,REGISTRATA,Registrata,t,60,{},REGISTRATA,t,t,f,CHIUSO,f,t
-8,DEFINITIVA,DEFINITIVA,t,30,{},DEFINITIVA,t,t,t,IN_CORSO,f,t
-3,INVIATA,Inviata,t,40,{},INVIATA,t,t,f,IN_ATTESA,f,t
-7,ANNULLATA,Annullata,t,70,{},ANNULLATA,t,t,f,CHIUSO,t,t
+id,codice,descrizione,attivo,ordine,meta,codice_interno,applica_lotto,applica_fattura,chiude_lotto,fase,is_abortito,congela_fiscale,iniziale
+1,DRAFT,Bozza,t,10,{},DRAFT,t,t,f,APERTO,f,f,t
+2,EMESSA,Emessa,t,20,{},EMESSA,t,t,f,IN_CORSO,f,f,f
+6,REGISTRATA,Registrata,t,60,{},REGISTRATA,t,t,f,CHIUSO,f,t,f
+8,DEFINITIVA,DEFINITIVA,t,30,{},DEFINITIVA,t,t,t,IN_CORSO,f,t,f
+3,INVIATA,Inviata,t,40,{},INVIATA,t,t,f,IN_ATTESA,f,t,f
+7,ANNULLATA,Annullata,t,70,{},ANNULLATA,t,t,f,CHIUSO,t,t,f

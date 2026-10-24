@@ -5,15 +5,16 @@
 // Scopo: le tendine erogazione/fonte del form delle righe mettono in forma le
 //        combinazioni che il DB dichiara per l'articolo, senza aggiungere ne'
 //        togliere niente (brief-db-offerta-emissione-ed-erogazione B-R4).
-// Note: le combinazioni sono quelle di un articolo composito SERVIZI letto da
-//        `vendite.fn_documento_riga_erogazioni` su dbdev il 2026-10-07, nel suo
-//        ordine (default in testa, poi erogazione e fonte): un fatto datato,
-//        usato come forma d'esempio, non come regola.
+// Note: le combinazioni hanno la forma di quelle di un articolo SERVIZI letto da
+//        `vendite.fn_documento_riga_erogazioni`, nel suo ordine (default in
+//        testa, poi erogazione e fonte): una forma d'esempio, non una regola.
+//        Fino al 2026-10-21 l'esempio era un composito con la
+//        DERIVATA_COMPONENTI, ritirata (I-D1).
 //
 // Indice test:
 //  1. erogazioni: quelle dell'articolo, una volta sola, nell'ordine del DB
 //  2. fonti: solo quelle ammesse con l'erogazione scelta
-//  3. il valore gia' scritto sulla riga resta fra le opzioni (B-D6)
+//  3. il valore gia' scritto sulla riga resta fra le opzioni
 //  4. il default e' la combinazione `e_default`; nessuna → null
 //  5. cambio d'erogazione: la fonte resta se ancora ammessa, l'unica se sola,
 //     altrimenti vuota (il form non sceglie fra piu' fonti)
@@ -29,15 +30,13 @@ const c = (tipo, fonte, eDefault = false) => ({
 })
 
 // Nell'ordine del DB (`ordine` di vendite.fn_articolo_erogazioni): il default in
-// testa, poi per erogazione, dentro un'erogazione DERIVATA_COMPONENTI per ultima.
+// testa, poi per erogazione e fonte.
 const COMBINAZIONI = [
   c('UNA_TANTUM', 'FISSA', true),
   c('CANONE', 'FISSA'),
-  c('CANONE', 'DERIVATA_COMPONENTI'),
   c('CONSUMO', 'MANUALE'),
-  c('CONSUMO', 'DERIVATA_COMPONENTI'),
+  c('CONSUMO', 'LETTURE'),
   c('UNA_TANTUM', 'MANUALE'),
-  c('UNA_TANTUM', 'DERIVATA_COMPONENTI'),
 ]
 
 const etichetta = (v) => `label:${v}`
@@ -52,18 +51,18 @@ describe('erogazioniRiga', () => {
 
   it("2. fonti: solo quelle ammesse con l'erogazione scelta", () => {
     expect(valori(opzioniFonte(COMBINAZIONI, 'CONSUMO', null, etichetta)))
-      .toEqual(['MANUALE', 'DERIVATA_COMPONENTI'])
+      .toEqual(['MANUALE', 'LETTURE'])
     expect(valori(opzioniFonte(COMBINAZIONI, null, null, etichetta))).toEqual([])
   })
 
-  it('3. il valore gia\' scritto sulla riga resta fra le opzioni (B-D6)', () => {
+  it('3. il valore gia\' scritto sulla riga resta fra le opzioni', () => {
     expect(valori(opzioniErogazione(COMBINAZIONI, 'ORARIO', etichetta)))
       .toEqual(['UNA_TANTUM', 'CANONE', 'CONSUMO', 'ORARIO'])
-    expect(valori(opzioniFonte(COMBINAZIONI, 'CONSUMO', 'LETTURE', etichetta)))
-      .toEqual(['MANUALE', 'DERIVATA_COMPONENTI', 'LETTURE'])
+    expect(valori(opzioniFonte(COMBINAZIONI, 'CONSUMO', 'TIMESHEET', etichetta)))
+      .toEqual(['MANUALE', 'LETTURE', 'TIMESHEET'])
     // Un valore ammesso non si ripete.
     expect(valori(opzioniFonte(COMBINAZIONI, 'CONSUMO', 'MANUALE', etichetta)))
-      .toEqual(['MANUALE', 'DERIVATA_COMPONENTI'])
+      .toEqual(['MANUALE', 'LETTURE'])
   })
 
   it("4. il default e' la combinazione `e_default`; nessuna → null", () => {

@@ -100,3 +100,17 @@ frontend è già `<ListaConfigurabile>`, quindi le colonne arrivano dal seed
 (`lista_colonna` 549/550/551) — ma i **tre slot** `#cell-pratica`, `#cell-fase`,
 `#cell-transito` vanno scritti nel componente, come sulle cinque sorelle: senza,
 il BB rende il valore grezzo (la fase come testo, la frontiera come numero nudo).
+
+---
+
+### 🔄 rev 2026-10-11 — la lista non calcola più il grafo
+
+Changeset `20261011-97`. La vista non legge più la sintesi della lineage di tutti
+i documenti. Le colonne della frontiera e del transito (`frontiera_*`,
+`n_discendenti_attivi`, `is_transitato`) le chiede il backend a
+[`fn_documento_lineage_sintesi`](fn_documento_lineage_sintesi.md) per i soli
+documenti della pagina. La pratica (`pratica_id`, `pratica_numero`,
+`n_pratiche`) resta qui, filtrabile e ordinabile, e la legge
+`pratiche.fn_pratica_del_documento`. Una pagina da 25 righe costava ~320-390 ms,
+ora ~8-70 ms più la sintesi delle 25 chiavi (~58 ms) — dbdev, 2026-10-11.
+

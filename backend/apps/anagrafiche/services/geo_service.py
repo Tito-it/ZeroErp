@@ -12,17 +12,61 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.core.api.payload_validators import optional_bool, optional_int
+from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.anagrafiche.db.geo_repository import GeoRepository
 from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
 from apps.anagrafiche.services._validators import (
     create_with_dedup as _create_with_dedup,
-    optional_str as _optional_str,
     require_str as _require_str,
     update_with_dedup as _update_with_dedup,
 )
+
+
+# Scopo: Il pre-check della VIA di un indirizzo normalizzato: uno stradario
+#        esistente (id positivo), oppure i quattro campi di una via nuova (tipo
+#        strada, nome, comune, CAP) che `anagrafiche.fn_create_indirizzo` usa
+#        per l'upsert dello stradario. Messaggi per l'operatore, prima di
+#        scrivere: il DB li rifiuterebbe con un errore meno parlante.
+#        Lo chiamano la creazione del dettaglio (qui) e gli indirizzi di ruolo
+#        (`SoggettiService.create_indirizzi_ruolo`), che alla madre passano la
+#        via da risolvere.
+def richiedi_via(payload: dict) -> None:
+    stradario_id = optional_int(payload, "stradario_id")
+    if stradario_id is not None:
+        ErrorManager.require(stradario_id > 0, code=E_ANAG_VALIDAZIONE, message="stradario_id non valido.")
+        return
+    toponomastica_id = optional_int(payload, "toponomastica_id")
+    comune_id = optional_int(payload, "comune_id")
+    codice_postale_id = optional_int(payload, "codice_postale_id")
+    ErrorManager.require(toponomastica_id is not None and toponomastica_id > 0,
+                         code=E_ANAG_VALIDAZIONE, message="Tipo strada obbligatorio per via nuova.")
+    ErrorManager.require(bool((payload.get("descrizione_via") or "").strip()),
+                         code=E_ANAG_VALIDAZIONE, message="Nome via obbligatorio.")
+    ErrorManager.require(comune_id is not None and comune_id > 0,
+                         code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio per via nuova.")
+    ErrorManager.require(codice_postale_id is not None and codice_postale_id > 0,
+                         code=E_ANAG_VALIDAZIONE, message="CAP obbligatorio per via nuova.")
+
+
+_V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
+
+
+# Scopo: i campi delle PATCH di geo si leggono per PRESENZA col BB
+#        `PayloadValidator.campi_per_presenza`: una chiave presente si scrive
+#        (anche `null`, che svuota un campo nullable), una chiave assente non
+#        si tocca; chiavi fuori contratto e PATCH senza campi sono un 400.
+# ⛔ Fino al 2026-10-20 le sei PATCH di geo passavano tutto da `dynamic_update`
+#    (None = «non toccare»): il drawer manda `null` per un campo svuotato, e
+#    svuotare l'ISO2 di uno stato o la palazzina di un indirizzo rispondeva
+#    «salvato» senza scrivere; una chiave ignota si scartava; un PATCH vuoto
+#    rispondeva 404 su un record che esiste; `{"attivo": null}` spegneva
+#    l'indirizzo (brief-be-verifica-documentazione-api §A2, §B2, §B3).
+#    `max_len` dei testi e' la lunghezza della colonna (doc dbzero): oltre, il
+#    DB rispondeva 22001, cioe' un 500.
+_CAMPI_NON_MODIFICABILI = "Campi non modificabili."
 
 
 class GeoService:
@@ -57,10 +101,12 @@ class GeoService:
 
     # Scopo: Aggiorna tipo strada con validazione e dedup.
     def update_toponomastica(self, pk: int, payload: dict) -> dict:
-        descrizione = _optional_str(payload, "descrizione", "Descrizione non puo' essere vuota.")
-        attivo = optional_bool(payload, "attivo", default=True) if "attivo" in payload else None
+        campi = _V.campi_per_presenza(
+            payload, message=_CAMPI_NON_MODIFICABILI,
+            testi={"descrizione": (False, 100)}, flag=frozenset({"attivo"}),
+        )
         return _update_with_dedup(
-            lambda: self._geo.update_toponomastica(pk, descrizione=descrizione, attivo=attivo),
+            lambda: self._geo.update_toponomastica(pk, campi),
             "Tipo strada gia' esistente.",
             "Tipo strada non trovato.",
         )
@@ -109,10 +155,12 @@ class GeoService:
 
     # Scopo: Aggiorna codice postale.
     def update_codice_postale(self, pk: int, payload: dict) -> dict:
-        codice = _optional_str(payload, "codice", "Codice CAP non puo' essere vuoto.")
-        comune_id = optional_int(payload, "comune_id")
+        campi = _V.campi_per_presenza(
+            payload, message=_CAMPI_NON_MODIFICABILI,
+            testi={"codice": (False, 50)}, interi={"comune_id": False},
+        )
         return _update_with_dedup(
-            lambda: self._geo.update_codice_postale(pk, codice=codice, comune_id=comune_id),
+            lambda: self._geo.update_codice_postale(pk, campi),
             "Codice postale gia' esistente.",
             "Codice postale non trovato.",
         )
@@ -147,10 +195,13 @@ class GeoService:
 
     # Scopo: Aggiorna provincia con validazione e dedup.
     def update_provincia(self, pk: int, payload: dict) -> dict:
-        descrizione = _optional_str(payload, "descrizione", "Descrizione non puo' essere vuota.")
-        sigla = _optional_str(payload, "sigla", "Sigla non puo' essere vuota.")
+        campi = _V.campi_per_presenza(
+            payload, message=_CAMPI_NON_MODIFICABILI,
+            testi={"descrizione": (False, 80), "sigla": (False, 10)},
+            maiuscoli=frozenset({"sigla"}), interi={"regione_id": True},
+        )
         return _update_with_dedup(
-            lambda: self._geo.update_provincia(pk, descrizione=descrizione, sigla=sigla, regione_id=optional_int(payload, "regione_id")),
+            lambda: self._geo.update_provincia(pk, campi),
             "Sigla provincia gia' esistente.",
             "Provincia non trovata.",
         )
@@ -184,9 +235,12 @@ class GeoService:
 
     # Scopo: Aggiorna regione con validazione e dedup.
     def update_regione(self, pk: int, payload: dict) -> dict:
-        descrizione = _optional_str(payload, "descrizione", "Descrizione non puo' essere vuota.")
+        campi = _V.campi_per_presenza(
+            payload, message=_CAMPI_NON_MODIFICABILI,
+            testi={"descrizione": (False, None)}, interi={"stato_id": False},
+        )
         return _update_with_dedup(
-            lambda: self._geo.update_regione(pk, descrizione=descrizione, stato_id=optional_int(payload, "stato_id")),
+            lambda: self._geo.update_regione(pk, campi),
             "Regione gia' esistente.",
             "Regione non trovata.",
         )
@@ -227,16 +281,16 @@ class GeoService:
 
     # Scopo: Aggiorna stato con validazione e dedup.
     def update_stato(self, pk: int, payload: dict) -> dict:
-        descrizione = _optional_str(payload, "descrizione", "Descrizione non puo' essere vuota.")
+        campi = _V.campi_per_presenza(
+            payload, message=_CAMPI_NON_MODIFICABILI,
+            testi={
+                "descrizione": (False, 100), "codice_iso2": (True, 2), "codice_iso3": (True, 3),
+                "sigla_stato": (True, 10), "codice_telefonico": (True, 10), "continente": (True, 50),
+            },
+            maiuscoli=frozenset({"codice_iso2", "codice_iso3", "sigla_stato"}),
+        )
         return _update_with_dedup(
-            lambda: self._geo.update_stato(
-                pk, descrizione=descrizione,
-                codice_iso2=payload.get("codice_iso2"),
-                codice_iso3=payload.get("codice_iso3"),
-                sigla_stato=payload.get("sigla_stato"),
-                codice_telefonico=payload.get("codice_telefonico"),
-                continente=payload.get("continente"),
-            ),
+            lambda: self._geo.update_stato(pk, campi),
             "Stato gia' esistente.",
             "Stato non trovato.",
         )
@@ -300,36 +354,30 @@ class GeoService:
     # composizione (upsert stradario ×2 + get_or_create dettaglio) vive in una
     # sola funzione madre atomica anagrafiche.fn_create_indirizzo (fix #13).
     def create_indirizzo(self, payload: dict) -> dict[str, Any]:
-        stradario_id = optional_int(payload, "stradario_id")
-        toponomastica_id = optional_int(payload, "toponomastica_id")
-        descrizione_via = (payload.get("descrizione_via") or "").strip() or None
-        comune_id = optional_int(payload, "comune_id")
-        codice_postale_id = optional_int(payload, "codice_postale_id")
+        indirizzo_id = self.crea_dettaglio_indirizzo(payload)
+        detail = self._ind.get_indirizzo_dettaglio(indirizzo_id)
+        return detail or {"id": indirizzo_id}
 
-        if stradario_id is None:
-            # Via nuova: i campi stradario sono obbligatori (la fn li usa per
-            # l'upsert stradario_generale + stradario).
-            ErrorManager.require(toponomastica_id is not None and toponomastica_id > 0,
-                                 code=E_ANAG_VALIDAZIONE, message="Tipo strada obbligatorio per via nuova.")
-            ErrorManager.require(bool(descrizione_via),
-                                 code=E_ANAG_VALIDAZIONE, message="Nome via obbligatorio.")
-            ErrorManager.require(comune_id is not None and comune_id > 0,
-                                 code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio per via nuova.")
-            ErrorManager.require(codice_postale_id is not None and codice_postale_id > 0,
-                                 code=E_ANAG_VALIDAZIONE, message="CAP obbligatorio per via nuova.")
-        else:
-            ErrorManager.require(stradario_id > 0, code=E_ANAG_VALIDAZIONE, message="stradario_id non valido.")
-
+    # Scopo: Il dettaglio (via + civico) di un indirizzo dal payload: il
+    #        pre-check della via, poi la madre atomica
+    #        `anagrafiche.fn_create_indirizzo` (get_or_create: lo stesso
+    #        payload ritrova lo stesso dettaglio). Ritorna l'id del dettaglio.
+    # ⭐ Sede unica (2026-10-18, 2b-2 del brief-db-processi-accensione-per-
+    #    ambiente): la usa anche `SoggettiService` per gli indirizzi di soggetto
+    #    e di ruolo, che fino ad allora ne tenevano una copia non atomica
+    #    (`_create_stradario_da_generale` + `create_indirizzo_dettaglio`).
+    def crea_dettaglio_indirizzo(self, payload: dict) -> int:
+        richiedi_via(payload)
         # Fix analisi-fix-transazioni #13 (Classe D): upsert stradario (×2, solo
         # via nuova) + get_or_create del dettaglio in UNA sola fn madre atomica.
         # Prima erano get_or_create_stradario + create_indirizzo_dettaglio
         # separati → righe stradario di registro orfane se il dettaglio falliva.
-        indirizzo_id = self._ind.create_indirizzo_atomico(
-            stradario_id=stradario_id,
-            toponomastica_id=toponomastica_id,
-            descrizione_via=descrizione_via,
-            comune_id=comune_id,
-            codice_postale_id=codice_postale_id,
+        return self._ind.create_indirizzo_atomico(
+            stradario_id=optional_int(payload, "stradario_id"),
+            toponomastica_id=optional_int(payload, "toponomastica_id"),
+            descrizione_via=(payload.get("descrizione_via") or "").strip() or None,
+            comune_id=optional_int(payload, "comune_id"),
+            codice_postale_id=optional_int(payload, "codice_postale_id"),
             civico=optional_int(payload, "civico"),
             estensione_civico=(payload.get("estensione_civico") or "").strip() or None,
             palazzina=(payload.get("palazzina") or "").strip() or None,
@@ -337,25 +385,19 @@ class GeoService:
             piano=(payload.get("piano") or "").strip() or None,
             interno=(payload.get("interno") or "").strip() or None,
         )
-        detail = self._ind.get_indirizzo_dettaglio(indirizzo_id)
-        return detail or {"id": indirizzo_id}
 
     # Scopo: Aggiorna dettagli civico indirizzo.
     def update_indirizzo(self, pk: int, payload: dict) -> dict:
-        def _strip_or_none(key: str):
-            v = payload.get(key)
-            return v.strip() if isinstance(v, str) else v
-
-        updated = self._ind.update_indirizzo_dettaglio(
-            pk,
-            civico=optional_int(payload, "civico"),
-            estensione_civico=_strip_or_none("estensione_civico"),
-            palazzina=_strip_or_none("palazzina"),
-            scala=_strip_or_none("scala"),
-            piano=_strip_or_none("piano"),
-            interno=_strip_or_none("interno"),
-            attivo=optional_bool(payload, "attivo") if "attivo" in payload else None,
+        campi = _V.campi_per_presenza(
+            payload, message=_CAMPI_NON_MODIFICABILI,
+            testi={
+                "estensione_civico": (True, 10), "palazzina": (True, 50), "scala": (True, 10),
+                "piano": (True, 10), "interno": (True, 10),
+            },
+            interi={"civico": True},
+            flag=frozenset({"attivo"}),
         )
+        updated = self._ind.update_indirizzo_dettaglio(pk, campi)
         ErrorManager.require(updated, code=E_ANAG_NOT_FOUND, message="Indirizzo non trovato.")
         return {"updated": True}
 

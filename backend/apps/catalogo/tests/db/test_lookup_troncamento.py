@@ -56,8 +56,9 @@ def _articoli_attivi() -> int:
 class LookupArticoliTroncamentoTests(unittest.TestCase):
     """La sonda `+1` sul lookup VIVO — quello che l'applicazione chiama davvero.
 
-    ⚠️ Questa query non e' una `SELECT` su una tabella sola: monta fino a TRE
-       JOIN condizionali. La sonda regge finche' quei JOIN sono 1:1 — uno che
+    ⚠️ Questa query non e' una `SELECT` su una tabella sola: monta fino a DUE
+       JOIN condizionali (tre fino al 2026-10-14, quando e' uscito il filtro
+       natura delle righe di documento). La sonda regge finche' quei JOIN sono 1:1 — uno che
        moltiplicasse le righe le farebbe contare due volte e direbbe «troncato»
        su un elenco intero, buttando per giunta righe vere col taglio. E' il
        ramo che i test col repository mockato non possono nemmeno sfiorare.
@@ -106,19 +107,19 @@ class LookupArticoliTroncamentoTests(unittest.TestCase):
         self.assertFalse(esito["troncato"], "nessun taglio, eppure lo dichiara")
 
     # 3. ⭐ IL RAMO CON I JOIN, che e' la ragione di questa classe. Con
-    #    `escludi_destinazione_tipi` la query monta due LEFT JOIN: se uno di
-    #    quelli moltiplicasse le righe, la sonda conterebbe doppioni.
-    #    Il presidio e' il confronto con la lista SENZA filtro: escludere una
-    #    destinazione puo' solo togliere righe, mai aggiungerne.
+    #    `solo_oneri` la query monta due JOIN (la base `articoli` e la causale):
+    #    se uno di quelli moltiplicasse le righe, la sonda conterebbe doppioni.
+    #    Il presidio e' il confronto con la lista SENZA filtro: restringere agli
+    #    oneri puo' solo togliere righe, mai aggiungerne. (Fino al 2026-10-14 il
+    #    ramo era quello di `escludi_destinazione_tipi`, ritirato col picker
+    #    delle righe di documento sulla sede unica.)
     def test_il_ramo_con_join_non_moltiplica_le_righe(self):
         senza = catalogo_service.fn_lookup_articoli(limit=50)
-        con = catalogo_service.fn_lookup_articoli(
-            escludi_destinazione_tipi=["CONTRATTO"], limit=50,
-        )
+        con = catalogo_service.fn_lookup_articoli(solo_oneri=True, limit=50)
 
         self.assertLessEqual(
             len(con["results"]), len(senza["results"]),
-            "il JOIN di esclusione ha AGGIUNTO righe: sta moltiplicando, e la "
+            "il JOIN degli oneri ha AGGIUNTO righe: sta moltiplicando, e la "
             "sonda +1 su questa query non significa piu' niente",
         )
         ids = [r["id"] for r in con["results"]]

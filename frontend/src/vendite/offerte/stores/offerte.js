@@ -140,7 +140,7 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
     return res.data.data
   }
 
-  // BOZZA -> ANNULLATA. Motivazione obbligatoria.
+  // BOZZA o ACCETTATA -> ANNULLATA. Motivazione obbligatoria.
   async function annulla(id, { motivazione }) {
     const res = await annullaOfferta(id, { motivazione })
     emitDataChanged(TAB_ENTITIES.OFFERTA_COMMERCIALE, id)
@@ -158,10 +158,10 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
     return res.data.data
   }
 
-  // ACCETTATA -> ordine DRAFT (conversione §7.4). Ritorna
-  // { ordine_id, numero, righe_create, documento_origine }. Emette per il
-  // nuovo ordine (apre/refresh tab ordini). Provenienza senza UNIQUE → più
-  // ordini dalla stessa offerta.
+  // ACCETTATA -> ordine DRAFT (conversione §7.4, verbo DB
+  // `fn_genera_ordine_da_offerta`). Ritorna { ordine_id, numero,
+  // documento_origine }. Emette per il nuovo ordine (apre/refresh tab ordini).
+  // Un'offerta genera al massimo un ordine vivo.
   async function generaOrdine(id) {
     const res = await generaOrdineFromOfferta(id)
     if (res.data.data?.ordine_id != null) {

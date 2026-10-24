@@ -7,6 +7,8 @@ CREATE FUNCTION fn_set_fatturazione_lotto_stato(p_lotto_id bigint, p_stato_lotto
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_set_fatturazione_lotto_stato(p_lotto_id bigint, p_stato_lotto text, p_note text DEFAULT NULL::text)
  RETURNS void
@@ -126,6 +128,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_set_fatturazione_lotto_stato(p_lotto_id bigint, p_stato_lotto text, p_note text)
 IS 'Aggiorna stato_lotto tecnico e sincronizza stato_esecuzione fatture tramite helper condiviso. rev 2026-08-04 (D-M): via l''argomento p_esclusa all''helper, il flag e'' dormiente e quel ramo non e'' mai stato preso.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -149,139 +149,162 @@ function cella(valore) {
     </div>
 
     <template v-else>
-      <div v-for="p in daGuardare" :key="p.vista" class="app-presidio">
-        <div class="app-presidio-testa">
-          <span class="app-mono app-presidio-nome">{{ p.vista }}</span>
-          <!-- ⛔ «NON LETTO» NON È «ZERO RIGHE», ed è l'unica differenza che
-               conta su una schermata dove il verde vuol dire «tutto a posto»:
-               un presidio che non si è potuto interrogare arriva col conteggio
-               a `null` e il suo errore, e si mostra rosso. Renderlo come uno
-               zero direbbe «tutto a posto» proprio perché siamo ciechi. -->
+      <!-- ⭐ Le schede da guardare scorrono DA SOLE: la striscia dei presidi a
+           zero sta sotto, fuori dallo scroll. Con uno scroll unico il dettaglio
+           di un errore divideva il tetto della sezione col riepilogo, e non si
+           leggeva per intero (rilievo di Tid, 2026-10-14). -->
+      <div v-if="daGuardare.length" class="app-presidi-schede">
+        <div v-for="p in daGuardare" :key="p.vista" class="app-presidio">
+          <div class="app-presidio-testa">
+            <span class="app-mono app-presidio-nome">{{ p.vista }}</span>
+            <!-- ⛔ «NON LETTO» NON È «ZERO RIGHE», ed è l'unica differenza che
+                 conta su una schermata dove il verde vuol dire «tutto a posto»:
+                 un presidio che non si è potuto interrogare arriva col conteggio
+                 a `null` e il suo errore, e si mostra rosso. Renderlo come uno
+                 zero direbbe «tutto a posto» proprio perché siamo ciechi. -->
+            <Tag
+              v-if="p.errore"
+              :value="t('amministrazione.processi.presidi_non_letto')"
+              severity="danger"
+            />
+            <Tag
+              v-else
+              :value="String(p.conteggio)"
+              :severity="p.conteggio === 0 ? 'success' : 'warn'"
+            />
+            <span v-if="p.troncato" class="app-presidio-troncato">
+              {{ t('amministrazione.processi.presidi_troncato', { n: p.righe.length }) }}
+            </span>
+            <!-- ⭐ «Non elencabile» e «non c'è niente da elencare» si leggono
+                 uguali se non lo si dice: la vista ha un perimetro, il conteggio
+                 arriva dalla funzione che le righe non le restituisce apposta. -->
+            <span
+              v-else-if="!p.elencabili && p.conteggio > 0"
+              class="app-presidio-troncato"
+            >
+              {{ t('amministrazione.processi.presidi_non_elencabili') }}
+            </span>
+          </div>
+
+          <p v-if="p.errore" class="app-presidio-errore">{{ p.errore }}</p>
+
+          <!-- ⭐ Per chi agisce: prima cosa fare, poi cosa vuol dire, poi a chi
+               tocca. -->
+          <p v-if="p.azione" class="app-presidio-azione">{{ p.azione }}</p>
+          <p v-if="p.significato" class="app-presidio-significato">{{ p.significato }}</p>
           <Tag
-            v-if="p.errore"
-            :value="t('amministrazione.processi.presidi_non_letto')"
-            severity="danger"
+            v-if="chiAgisce(p)"
+            class="app-presidio-chi"
+            :value="t(chiAgisce(p).labelKey)"
+            :severity="chiAgisce(p).severity"
           />
-          <Tag
-            v-else
-            :value="String(p.conteggio)"
-            :severity="p.conteggio === 0 ? 'success' : 'warn'"
-          />
-          <span v-if="p.troncato" class="app-presidio-troncato">
-            {{ t('amministrazione.processi.presidi_troncato', { n: p.righe.length }) }}
-          </span>
-          <!-- ⭐ «Non elencabile» e «non c'è niente da elencare» si leggono
-               uguali se non lo si dice: la vista ha un perimetro, il conteggio
-               arriva dalla funzione che le righe non le restituisce apposta. -->
-          <span
-            v-else-if="!p.elencabili && p.conteggio > 0"
-            class="app-presidio-troncato"
+
+          <!-- ⭐ La descrizione è quella che il team DB ha scritto sulla vista,
+               per chi mantiene il presidio. Accanto al testo per chi agisce è il
+               dettaglio tecnico, chiuso; da sola è l'unica spiegazione, aperta.
+               ⚠️ `<details>` nativo: apertura, tastiera e lettore di schermo
+               senza una riga di stato da tenere. -->
+          <details v-if="p.descrizione && haTesto(p)" class="app-presidio-dettaglio">
+            <summary>{{ t('amministrazione.processi.presidi_dettaglio_tecnico') }}</summary>
+            <p class="app-presidio-desc">{{ p.descrizione }}</p>
+          </details>
+          <p v-else-if="p.descrizione" class="app-presidio-desc">{{ p.descrizione }}</p>
+
+          <!-- ⭐ Per causa, quando il presidio le ha: ogni gruppo di righe col
+               SUO rimedio e il SUO «chi agisce» sopra. Senza cause, un gruppo
+               solo senza titolo: la tabella è la stessa, scritta una volta. -->
+          <div
+            v-for="(g, gi) in gruppiRighe(p)"
+            :key="g.causa ?? `gruppo-${gi}`"
+            :class="{ 'app-presidio-causa': perCausa(p) }"
           >
-            {{ t('amministrazione.processi.presidi_non_elencabili') }}
-          </span>
-        </div>
-
-        <p v-if="p.errore" class="app-presidio-errore">{{ p.errore }}</p>
-
-        <!-- ⭐ Per chi agisce: prima cosa fare, poi cosa vuol dire, poi a chi
-             tocca. -->
-        <p v-if="p.azione" class="app-presidio-azione">{{ p.azione }}</p>
-        <p v-if="p.significato" class="app-presidio-significato">{{ p.significato }}</p>
-        <Tag
-          v-if="chiAgisce(p)"
-          class="app-presidio-chi"
-          :value="t(chiAgisce(p).labelKey)"
-          :severity="chiAgisce(p).severity"
-        />
-
-        <!-- ⭐ La descrizione è quella che il team DB ha scritto sulla vista,
-             per chi mantiene il presidio. Accanto al testo per chi agisce è il
-             dettaglio tecnico, chiuso; da sola è l'unica spiegazione, aperta.
-             ⚠️ `<details>` nativo: apertura, tastiera e lettore di schermo
-             senza una riga di stato da tenere. -->
-        <details v-if="p.descrizione && haTesto(p)" class="app-presidio-dettaglio">
-          <summary>{{ t('amministrazione.processi.presidi_dettaglio_tecnico') }}</summary>
-          <p class="app-presidio-desc">{{ p.descrizione }}</p>
-        </details>
-        <p v-else-if="p.descrizione" class="app-presidio-desc">{{ p.descrizione }}</p>
-
-        <!-- ⭐ Per causa, quando il presidio le ha: ogni gruppo di righe col
-             SUO rimedio e il SUO «chi agisce» sopra. Senza cause, un gruppo
-             solo senza titolo: la tabella è la stessa, scritta una volta. -->
-        <div
-          v-for="(g, gi) in gruppiRighe(p)"
-          :key="g.causa ?? `gruppo-${gi}`"
-          :class="{ 'app-presidio-causa': perCausa(p) }"
-        >
-          <template v-if="perCausa(p)">
-            <div class="app-presidio-testa">
-              <span class="app-mono app-presidio-nome">
-                {{ g.causa ?? t('amministrazione.processi.presidi_causa_non_indicata') }}
-              </span>
-              <Tag
-                class="app-presidio-causa-conteggio"
-                :value="String(g.conteggio)"
-                severity="warn"
-              />
-              <Tag
-                v-if="chiAgisce(g)"
-                :value="t(chiAgisce(g).labelKey)"
-                :severity="chiAgisce(g).severity"
-              />
-              <!-- ⚠️ Le righe mostrate sono un campione del presidio: una causa
-                   può averne meno del suo conteggio, anche nessuna. Senza
-                   dirlo, tre righe su sette si leggerebbero «sono tre». Su una
-                   vista non elencabile lo dice già la testa del presidio. -->
-              <span
-                v-if="p.elencabili && g.righe.length < g.conteggio"
-                class="app-presidio-troncato"
-              >
-                {{ t('amministrazione.processi.presidi_causa_mostrate', { n: g.righe.length, tot: g.conteggio }) }}
-              </span>
-            </div>
-            <p v-if="g.azione" class="app-presidio-azione">{{ g.azione }}</p>
-            <p v-if="g.significato" class="app-presidio-significato">{{ g.significato }}</p>
-            <!-- ⛔ Mai il rimedio del presidio al posto di quello della causa:
-                 sarebbe il rimedio di un altro guasto. Si dice che manca. -->
-            <p v-if="!haTesto(g)" class="app-presidio-troncato">
-              {{ t('amministrazione.processi.presidi_causa_senza_testo') }}
-            </p>
-          </template>
-          <table v-if="g.righe.length" class="app-presidio-righe">
-            <thead>
-              <tr><th v-for="c in colonne(g.righe)" :key="c">{{ c }}</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="(r, i) in g.righe" :key="i">
-                <td v-for="c in colonne(g.righe)" :key="c">{{ cella(r[c]) }}</td>
-              </tr>
-            </tbody>
-          </table>
+            <template v-if="perCausa(p)">
+              <div class="app-presidio-testa">
+                <span class="app-mono app-presidio-nome">
+                  {{ g.causa ?? t('amministrazione.processi.presidi_causa_non_indicata') }}
+                </span>
+                <Tag
+                  class="app-presidio-causa-conteggio"
+                  :value="String(g.conteggio)"
+                  severity="warn"
+                />
+                <Tag
+                  v-if="chiAgisce(g)"
+                  :value="t(chiAgisce(g).labelKey)"
+                  :severity="chiAgisce(g).severity"
+                />
+                <!-- ⚠️ Le righe mostrate sono un campione del presidio: una causa
+                     può averne meno del suo conteggio, anche nessuna. Senza
+                     dirlo, tre righe su sette si leggerebbero «sono tre». Su una
+                     vista non elencabile lo dice già la testa del presidio. -->
+                <span
+                  v-if="p.elencabili && g.righe.length < g.conteggio"
+                  class="app-presidio-troncato"
+                >
+                  {{ t('amministrazione.processi.presidi_causa_mostrate', { n: g.righe.length, tot: g.conteggio }) }}
+                </span>
+              </div>
+              <p v-if="g.azione" class="app-presidio-azione">{{ g.azione }}</p>
+              <p v-if="g.significato" class="app-presidio-significato">{{ g.significato }}</p>
+              <!-- ⛔ Mai il rimedio del presidio al posto di quello della causa:
+                   sarebbe il rimedio di un altro guasto. Si dice che manca. -->
+              <p v-if="!haTesto(g)" class="app-presidio-troncato">
+                {{ t('amministrazione.processi.presidi_causa_senza_testo') }}
+              </p>
+            </template>
+            <table v-if="g.righe.length" class="app-presidio-righe">
+              <thead>
+                <tr><th v-for="c in colonne(g.righe)" :key="c">{{ c }}</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="(r, i) in g.righe" :key="i">
+                  <td v-for="c in colonne(g.righe)" :key="c">{{ cella(r[c]) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
       <!-- I presidi a zero, tutti insieme: la striscia dice «questi sono
-           coperti e vuoti», e ognuno apre la propria descrizione a un click. -->
-      <div v-if="aZero.length" class="app-presidi-zero">
-        <span class="app-presidi-zero-label">
+           coperti e vuoti», e ognuno apre la propria descrizione a un click.
+           ⭐ CHIUSA di default (rilievo di Tid, 2026-10-14): e' la parte che non
+           chiede niente, e aperta toglieva altezza alla lista dei processi. Il
+           numero resta nell'intestazione, quindi chiusa dice gia' quanti sono.
+           ⚠️ `<details>` nativo, come il dettaglio tecnico: apertura, tastiera
+           e lettore di schermo senza una riga di stato da tenere. -->
+      <details v-if="aZero.length" class="app-presidi-zero">
+        <summary class="app-presidi-zero-label">
           {{ t('amministrazione.processi.presidi_a_zero', { n: aZero.length }) }}
-        </span>
-        <PresidioChip v-for="p in aZero" :key="p.vista" :presidio="p" />
-      </div>
+        </summary>
+        <div class="app-presidi-zero-chip">
+          <PresidioChip v-for="p in aZero" :key="p.vista" :presidio="p" />
+        </div>
+      </details>
     </template>
   </div>
 </template>
 
 <style scoped>
 /* Layout locale del pannello: non è un pattern di pagina, non va in main.css. */
-.app-presidi { display: flex; flex-direction: column; gap: 1rem; }
+/* Il pannello riempie la scheda «Presidi» della vista: le schede prendono lo
+   spazio e scorrono dentro di se', la striscia a zero non cede. */
+.app-presidi {
+  display: flex; flex-direction: column; gap: 1rem;
+  height: 100%; min-height: 0;
+}
+.app-presidi-schede {
+  display: flex; flex-direction: column; gap: 1rem;
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+}
 .app-presidio {
   border: 1px solid var(--app-border-color);
   border-radius: var(--p-content-border-radius);
   padding: 0.75rem;
 }
-.app-presidio-testa { display: flex; align-items: center; gap: 0.5rem; }
-.app-presidio-nome { font-weight: 600; }
+.app-presidio-testa { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+/* Nomi di vista e di causa sono identificatori lunghi senza spazi. */
+.app-presidio-nome { font-weight: 600; overflow-wrap: anywhere; }
 .app-presidio-troncato { font-size: 0.8rem; opacity: 0.7; }
 .app-presidio-desc { margin: 0.4rem 0 0.6rem; font-size: 0.85rem; opacity: 0.85; }
 /* L'azione è la prima cosa che si legge: piena, non attenuata. */
@@ -306,17 +329,30 @@ function cella(valore) {
   margin: 0.4rem 0 0.2rem;
   font-size: 0.85rem;
   color: var(--app-severity-danger);
+  overflow-wrap: anywhere;
 }
-/* Le tabelle larghe scorrono dentro il proprio contenitore: la pagina non
-   scrolla mai in orizzontale. */
-.app-presidio-righe { width: 100%; display: block; overflow-x: auto; font-size: 0.8rem; }
+/* ⭐ Le celle VANNO A CAPO: le colonne le decide la vista, e un valore lungo
+   (un messaggio, un percorso) con `nowrap` allargava la tabella fino allo
+   scroll orizzontale (rilievo di Tid, 2026-10-14). Restano su una riga le
+   intestazioni, che sono nomi di colonna brevi. `overflow-x` resta la rete
+   per una tabella di molte colonne. */
+.app-presidio-righe {
+  width: 100%; display: block; overflow-x: auto; font-size: 0.8rem;
+  border-collapse: collapse;
+}
 .app-presidio-righe th, .app-presidio-righe td {
-  text-align: left; padding: 0.2rem 0.5rem; white-space: nowrap;
+  text-align: left; vertical-align: top; padding: 0.2rem 0.5rem;
 }
+.app-presidio-righe th { white-space: nowrap; }
+.app-presidio-righe td { overflow-wrap: anywhere; min-width: 6rem; }
 .app-presidio-righe th { opacity: 0.7; font-weight: 500; }
 .app-presidi-vuoto { opacity: 0.7; }
-.app-presidi-zero {
+/* Aperta, la striscia ha un tetto suo: i presidi a zero li conta il catalogo,
+   e non devono rubare lo spazio delle schede da guardare. */
+.app-presidi-zero { flex: 0 0 auto; }
+.app-presidi-zero-label { font-size: 0.85rem; opacity: 0.8; cursor: pointer; }
+.app-presidi-zero-chip {
   display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem;
+  margin-top: 0.4rem; max-height: 8rem; overflow-y: auto;
 }
-.app-presidi-zero-label { font-size: 0.85rem; opacity: 0.8; }
 </style>

@@ -13,9 +13,10 @@
 -- ChangeSet: 20261009-32 / -33 (modello delle varianti) · 20261009-34 / -35
 --            (la causa nelle due viste) · 20261009-36 / -37 (il catalogo delle
 --            cause, §5.5) · 80_data presidi.csv / presidi_cause.csv /
---            presidi_testi.csv
+--            presidi_testi.csv · 20261014-54 (pgAgent: la corsa dovuta,
+--            brief-db-statistiche-tabelle-job-notturno §8)
 --
--- Elenco test (plan 16):
+-- Elenco test (plan 18):
 --  1) il censimento delle cause dalla definizione del panorama non e' vuoto
 --  2) il catalogo dice che il presidio sceglie il testo dalla colonna `causa`
 --  3) ⭐ COMPLETEZZA — ogni causa che il panorama puo' produrre e' nel
@@ -31,6 +32,12 @@
 --     hanno causa e non sono da guardare
 -- 15) ⛔ nel presidio nessuna riga e' senza causa
 -- 16) ⭐ ogni causa che il panorama puo' produrre ha il suo testo italiano
+-- 17) ⭐ rev 2026-10-14: PGAGENT che ha girato e la cui corsa dovuta e'
+--     passata da piu' di un'ora: IN_RITARDO per JOB_IN_RITARDO — il demone
+--     fermo, che prima restava OK per sempre (solo dove pgAgent c'e')
+-- 18) ⛔ rev 2026-10-14: PGAGENT mai girato con la prima corsa ancora futura:
+--     IN_ATTESA, senza causa, non da guardare — il falso allarme del 14-10 su
+--     analyze_statistiche (solo dove pgAgent c'e')
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ IL TEST 3 NON DIPENDE DALLE RIGHE DI OGGI, E NEMMENO DA pgAGENT.
@@ -62,7 +69,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(16);
+SELECT plan(18);
 
 -- ============================================================
 -- Il censimento: le cause che il panorama puo' produrre
@@ -140,6 +147,7 @@ SELECT *
         ('JOB_ASSENTE',          'JOB_ASSENTE',         'PGTAP-CAUSA-JOB-ASSENTE'),
         ('JOB_SPENTO',           'JOB_SPENTO',          'PGTAP-CAUSA-JOB-SPENTO'),
         ('JOB_MAI_PARTITO',      'MAI_PARTITO',         'PGTAP-CAUSA-JOB-MAI'),
+        ('JOB_IN_RITARDO',       'IN_RITARDO',          'PGTAP-CAUSA-JOB-RITARDO'),
         ('GIRA_E_NON_REGISTRA',  'GIRA_E_NON_REGISTRA', 'PGTAP-CAUSA-GIRA-MUTO')
        ) AS r(causa, stato_atteso, processo);
 
@@ -164,19 +172,22 @@ BEGIN
     -- I tre sani: una corsa fresca, un COMMAND senza contratto, un CODA.
     -- rev 2026-09-26: un processo con job pgAgent dichiara se gira in CI
     --   (chk_processi_convergenza_ci): ci_esclusione su quelli che ne nominano uno.
+    -- 20261016-20: chi ha una sveglia dichiara l'accensione (accesi ovunque:
+    --   le cause si costruiscono su processi ACCESI); un CODA no.
     INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
                                 jobname_pgagent, tolleranza_minuti, segno_di_vita,
-                                ci_esclusione)
+                                ci_esclusione,
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
     VALUES
-        (9601, 'PGTAP-CAUSA-TIMER-FERMO',     'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, 30,   'GIORNALE', NULL),
-        (9602, 'PGTAP-CAUSA-TIMER-MAI',       'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, 30,   'GIORNALE', NULL),
-        (9603, 'PGTAP-CAUSA-SERVIZIO-GIU',    'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE', NULL),
-        (9604, 'PGTAP-CAUSA-NON-PROGRAMMATO', 'prova causa', 'MANUTENZIONE', 'PGAGENT', NULL, NULL, 'GIORNALE', NULL),
+        (9601, 'PGTAP-CAUSA-TIMER-FERMO',     'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, 30,   'GIORNALE', NULL, true, true, true, 'PROGRAMMA', true),
+        (9602, 'PGTAP-CAUSA-TIMER-MAI',       'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, 30,   'GIORNALE', NULL, true, true, true, 'PROGRAMMA', true),
+        (9603, 'PGTAP-CAUSA-SERVIZIO-GIU',    'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE', NULL, true, true, true, 'PROGRAMMA', true),
+        (9604, 'PGTAP-CAUSA-NON-PROGRAMMATO', 'prova causa', 'MANUTENZIONE', 'PGAGENT', NULL, NULL, 'GIORNALE', NULL, true, true, true, 'PROGRAMMA', true),
         (9605, 'PGTAP-CAUSA-JOB-ASSENTE',     'prova causa', 'MANUTENZIONE', 'PGAGENT',
-               'PGTAP-JOB-CAUSA-ASSENTE', NULL, 'GIORNALE', 'pgTAP: processo di prova'),
-        (9611, 'PGTAP-CAUSA-SANO-OK',         'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, 30,   'GIORNALE', NULL),
-        (9612, 'PGTAP-CAUSA-SANO-FUORI',      'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'GIORNALE', NULL),
-        (9613, 'PGTAP-CAUSA-SANO-CODA',       'prova causa', 'MANUTENZIONE', 'CODA',    NULL, NULL, 'GIORNALE', NULL);
+               'PGTAP-JOB-CAUSA-ASSENTE', NULL, 'GIORNALE', 'pgTAP: processo di prova', true, true, true, 'PROGRAMMA', true),
+        (9611, 'PGTAP-CAUSA-SANO-OK',         'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, 30,   'GIORNALE', NULL, true, true, true, 'PROGRAMMA', true),
+        (9612, 'PGTAP-CAUSA-SANO-FUORI',      'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'GIORNALE', NULL, true, true, true, 'PROGRAMMA', true),
+        (9613, 'PGTAP-CAUSA-SANO-CODA',       'prova causa', 'MANUTENZIONE', 'CODA',    NULL, NULL, 'GIORNALE', NULL, NULL, NULL, NULL, 'PROGRAMMA', NULL);
 
     INSERT INTO maintenance.job_run_log (jobname, processo_codice, origine, started_at, ended_at, ok, message)
     VALUES ('PGTAP-CAUSA-TIMER-FERMO', 'PGTAP-CAUSA-TIMER-FERMO', 'CRON',
@@ -205,27 +216,47 @@ BEGIN
 
     BEGIN
         EXECUTE 'SELECT jclid FROM pgagent.pga_jobclass ORDER BY jclid LIMIT 1' INTO v_classe;
+        -- ⭐ Rev 2026-10-14: jobnextrun ESPLICITO, perche' ora decide (la corsa
+        --   dovuta). Il trigger di pgAgent (pga_job_trigger) scatta solo su
+        --   UPDATE: all'INSERT il valore scritto resta.
         EXECUTE $sql$
-            INSERT INTO pgagent.pga_job (jobjclid, jobname, jobenabled, joblastrun)
-            VALUES ($1, 'PGTAP-JOB-CAUSA-SPENTO', false, NULL),
-                   ($1, 'PGTAP-JOB-CAUSA-MAI',    true,  NULL),
-                   ($1, 'PGTAP-JOB-CAUSA-GIRA',   true,  now() - interval '3 hours')
+            INSERT INTO pgagent.pga_job (jobjclid, jobname, jobenabled, joblastrun, jobnextrun)
+            VALUES ($1, 'PGTAP-JOB-CAUSA-SPENTO',  false, NULL,                        NULL),
+                   -- mai girato, la corsa dovuta e' passata da due ore
+                   ($1, 'PGTAP-JOB-CAUSA-MAI',     true,  NULL,                        now() - interval '2 hours'),
+                   ($1, 'PGTAP-JOB-CAUSA-GIRA',    true,  now() - interval '3 hours', now() + interval '1 hour'),
+                   -- ha girato (e il giornale lo sa), la corsa dovuta e' passata
+                   ($1, 'PGTAP-JOB-CAUSA-RITARDO', true,  now() - interval '3 hours', now() - interval '2 hours'),
+                   -- mai girato, la prima corsa e' fra tre ore: il job nuovo
+                   ($1, 'PGTAP-JOB-CAUSA-ATTESA',  true,  NULL,                        now() + interval '3 hours')
         $sql$ USING v_classe;
     EXCEPTION WHEN insufficient_privilege OR not_null_violation OR foreign_key_violation THEN
         UPDATE _t_pgagent SET motivo = 'non si puo'' seminare pgagent.pga_job da qui: ' || SQLERRM;
         RETURN;
     END;
 
+    -- 20261016-20: chi ha una sveglia dichiara l'accensione (accesi ovunque).
     INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                jobname_pgagent, ci_esclusione)
+                                jobname_pgagent, ci_esclusione,
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
     VALUES
         (9606, 'PGTAP-CAUSA-JOB-SPENTO', 'prova causa', 'MANUTENZIONE', 'PGAGENT',
-               'PGTAP-JOB-CAUSA-SPENTO', 'pgTAP: processo di prova'),
+               'PGTAP-JOB-CAUSA-SPENTO', 'pgTAP: processo di prova', true, true, true, 'PROGRAMMA', true),
         (9607, 'PGTAP-CAUSA-JOB-MAI',    'prova causa', 'MANUTENZIONE', 'PGAGENT',
-               'PGTAP-JOB-CAUSA-MAI',    'pgTAP: processo di prova'),
+               'PGTAP-JOB-CAUSA-MAI',    'pgTAP: processo di prova', true, true, true, 'PROGRAMMA', true),
         -- ⭐ pgAgent dice che e' girato tre ore fa, il giornale non ha niente.
         (9608, 'PGTAP-CAUSA-GIRA-MUTO',  'prova causa', 'MANUTENZIONE', 'PGAGENT',
-               'PGTAP-JOB-CAUSA-GIRA',   'pgTAP: processo di prova');
+               'PGTAP-JOB-CAUSA-GIRA',   'pgTAP: processo di prova', true, true, true, 'PROGRAMMA', true),
+        (9609, 'PGTAP-CAUSA-JOB-RITARDO', 'prova causa', 'MANUTENZIONE', 'PGAGENT',
+               'PGTAP-JOB-CAUSA-RITARDO', 'pgTAP: processo di prova', true, true, true, 'PROGRAMMA', true),
+        (9610, 'PGTAP-CAUSA-JOB-ATTESA',  'prova causa', 'MANUTENZIONE', 'PGAGENT',
+               'PGTAP-JOB-CAUSA-ATTESA',  'pgTAP: processo di prova', true, true, true, 'PROGRAMMA', true);
+
+    -- ⚠️ Il giornale sa della corsa di RITARDO: senza, il caso uscirebbe
+    --   GIRA_E_NON_REGISTRA, che viene prima nel CASE.
+    INSERT INTO maintenance.job_run_log (jobname, processo_codice, origine, started_at, ended_at, ok, message)
+    VALUES ('PGTAP-CAUSA-JOB-RITARDO', 'PGTAP-CAUSA-JOB-RITARDO', 'PGAGENT',
+            now() - interval '3 hours', now() - interval '3 hours', true, 'pgtap');
 
     UPDATE _t_pgagent SET costruito = true;
 END
@@ -287,7 +318,7 @@ SELECT CASE
         (SELECT stato || '/' || causa FROM dbops.vw_processi_programmazione_da_guardare
           WHERE processo_codice = 'PGTAP-CAUSA-JOB-MAI'),
         'MAI_PARTITO/JOB_MAI_PARTITO',
-        'test 12 — PGAGENT con il job acceso e mai girato: MAI_PARTITO per JOB_MAI_PARTITO, non un timer')
+        'test 12 — PGAGENT con il job acceso, mai girato e la corsa dovuta passata: MAI_PARTITO per JOB_MAI_PARTITO, non un timer')
 END;
 
 SELECT CASE
@@ -346,6 +377,32 @@ SELECT is(
                   AND t.variante = c.causa)), ''),
     '',
     'test 16 — ogni causa che il panorama puo'' produrre ha significato e azione in italiano');
+
+-- ============================================================
+-- 17..18) ⭐ pgAgent: il segnale e' la corsa DOVUTA (rev 2026-10-14)
+-- ============================================================
+SELECT CASE
+    WHEN NOT (SELECT costruito FROM _t_pgagent)
+        THEN skip('test 17 — ' || (SELECT motivo FROM _t_pgagent), 1)
+    ELSE is(
+        (SELECT stato || '/' || causa FROM dbops.vw_processi_programmazione_da_guardare
+          WHERE processo_codice = 'PGTAP-CAUSA-JOB-RITARDO'),
+        'IN_RITARDO/JOB_IN_RITARDO',
+        'test 17 — PGAGENT che ha girato, con la corsa dovuta passata da piu'' di un''ora: IN_RITARDO per JOB_IN_RITARDO (il demone fermo)')
+END;
+
+-- ⛔ Il caso del 14-10: un job nuovo non e' un guasto finche' la sua prima
+--   corsa non e' dovuta. Si guarda il PANORAMA: nel presidio non c'e'.
+SELECT CASE
+    WHEN NOT (SELECT costruito FROM _t_pgagent)
+        THEN skip('test 18 — ' || (SELECT motivo FROM _t_pgagent), 1)
+    ELSE is(
+        (SELECT stato || '/' || coalesce(causa, '-') || '/' || da_guardare::text
+           FROM dbops.vw_processi_programmazione
+          WHERE processo_codice = 'PGTAP-CAUSA-JOB-ATTESA'),
+        'IN_ATTESA/-/false',
+        'test 18 — PGAGENT mai girato con la prima corsa ancora futura: IN_ATTESA, senza causa, non da guardare')
+END;
 
 SELECT * FROM finish();
 

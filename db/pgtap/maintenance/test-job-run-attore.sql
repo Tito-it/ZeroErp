@@ -72,10 +72,12 @@ DO $fixture$
 DECLARE
     v_id dbops.processi.id%TYPE := 9201;
 BEGIN
-    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
+    -- 20261016-20: un processo con una sveglia dichiara l'accensione.
+    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
     VALUES (v_id, 'PGTAP-PROC-DERIVA',
             'processo di prova per la derivazione dell''attore',
-            'MANUTENZIONE', 'PGAGENT');
+            'MANUTENZIONE', 'PGAGENT', true, true, true, 'PROGRAMMA', true);
 END
 $fixture$;
 

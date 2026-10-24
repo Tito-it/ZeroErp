@@ -31,7 +31,7 @@ Indice test eseguiti:
 13) SessionAuditRepositoryTests.test_list_sessioni_attive
 14) SessionAuditRepositoryTests.test_paginata_esclude_la_corrente_nella_sql
 15) SessionAuditRepositoryTests.test_paginata_ordina_sulla_whitelist
-16) SessionAuditRepositoryTests.test_paginata_ordine_fuori_whitelist_ripiega
+16) SessionAuditRepositoryTests.test_paginata_ordine_fuori_whitelist_e_rifiutato
 """
 
 import json
@@ -629,15 +629,15 @@ class SessionAuditRepositoryTests(TestCase):
         repo.list_sessioni_attive_paginata(1, escludi_jti=None, order_by="data_inizio")
         self.assertIn("ORDER BY pl.data_inizio DESC NULLS LAST, r.jti DESC", mock_fetch.call_args.args[0])
 
-    # Scopo: un `order_by` fuori whitelist ripiega sul default, mai SQL grezzo.
+    # Scopo: un `order_by` fuori whitelist e' un 400 (`order_by_invalid`), mai
+    #         SQL grezzo e mai il default in silenzio (dal 2026-10-20).
     @patch("apps.core.db.session_audit_repository.fetch_paged_with_total")
-    def test_paginata_ordine_fuori_whitelist_ripiega(self, mock_fetch):
+    def test_paginata_ordine_fuori_whitelist_e_rifiutato(self, mock_fetch):
         from apps.core.db.session_audit_repository import SessionAuditRepository
 
         mock_fetch.return_value = ([], 0)
-        SessionAuditRepository().list_sessioni_attive_paginata(
-            1, escludi_jti=None, order_by="user_agent; DROP TABLE x", order_dir="asc",
-        )
-        sql = mock_fetch.call_args.args[0]
-        self.assertNotIn("DROP", sql)
-        self.assertIn("ORDER BY r.data_insert ASC NULLS FIRST, r.jti ASC", sql)
+        with self.assertRaisesRegex(ValueError, "order_by_invalid"):
+            SessionAuditRepository().list_sessioni_attive_paginata(
+                1, escludi_jti=None, order_by="user_agent; DROP TABLE x", order_dir="asc",
+            )
+        mock_fetch.assert_not_called()

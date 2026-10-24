@@ -39,13 +39,21 @@ non è una dimenticanza.
   - `search` (string) — attivo da **3 caratteri**; cerca su `numero` (cast a
     testo), `ragione_sociale_completa`, `ba_codice` e
     `id_fiscale_univoco_cf_piva`
-  - `stato_codice_interno` (string) — stato del documento fiscale
-  - `natura_doc_codice` (string) — `FATTURA` | `NOTA_CREDITO` | `NOTA_DEBITO`
+  - `stato_codice_interno` (string) — stato del documento fiscale, un
+    `codice_interno` di `config.stati_doc_fiscale`
+  - `natura_doc_codice` (string) — `codice_interno` di
+    `config.nature_doc_fiscale` (`FATTURA` | `NOTA_CREDITO` | `NOTA_DEBITO`)
+  - ⚠️ Per entrambi, un valore che il catalogo non conosce → `400
+    E_VENDITE_VALIDATION` col campo (`context.field`). Dal 2026-10-20: prima
+    rispondeva lista vuota. Codici dismessi ammessi
   - `billing_account_id` (int) — il cliente
   - `id_fiscale` (string) — codice fiscale / partita IVA, **confronto esatto**
   - `utility_id` (int)
   - `data_da` / `data_a` (date ISO) — **data del DOCUMENTO**
-  - `limit` (int, default `25`, max `200`) · `offset` (int)
+  - `limit` (int, default `25`, max `200`) · `offset` (int, default `0`): fuori
+    limiti (`limit` fuori da 1..200, `offset` negativo) o non interi → 400
+    `E_VALIDATION_INPUT` (il fuori limite dal 2026-10-21; prima si riportava nei
+    limiti)
   - `order_by` (string) — `campo_sorgente` del catalogo `vendite.fatture`,
     whitelist `_ORDER_COLS_FATTURE`; default `data`
   - `order_dir` (string) — `asc` | `desc` (default `desc`)
@@ -61,7 +69,7 @@ verrebbe intercettato prima della view.
 ## Output
 
 Envelope standard `success_response(paginated_envelope(...))`: `results`,
-`count`, `page`, `page_size`.
+`count`, `page`, `page_size`, `total_pages`.
 
 Ogni riga è **la riga della vista** (`SELECT v.*`), e basta: dal changeSet
 `20260829-01/02` la vista porta gia' `frontiera_tipo_codice_interno` e
@@ -72,6 +80,19 @@ repository, e dimenticarla spegneva la cella «Transito» in silenzio.)*
 ⚠️ E `natura_doc_codice` della riga si chiama ora `natura_doc_codice_interno`:
 il **filtro** in query string resta `natura_doc_codice`, perche' e' un nome di
 parametro d'ingresso e non di colonna.
+⭐ Alla riga della vista si aggiungono le **colonne di sintesi lineage**
+(`unisci_sintesi_lineage`, da `vendite.fn_documento_lineage_sintesi`, una
+chiamata per blocco di righe della pagina): una riga senza sintesi le ha
+comunque tutte, a `null`.
+
+Errori:
+- `400 E_VENDITE_VALIDATION` — stato o natura fuori vocabolario
+- `400 E_VALIDATION_INPUT` — filtro malformato (`billing_account_id`/`utility_id`
+  non interi, `data_da`/`data_a` non ISO)
+- `403` — permesso modello `("vendite", "fattura")` mancante
+- `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` — la lista è `multi_emittente = f`:
+  chi ha più emittenti nello scope e non ne ha scelto uno riceve il rifiuto del
+  cancello di perimetro
 
 L'export risponde `text/csv` o XLSX, con **colonne, ordine e visibilità presi
 dalla configurazione lista dell'operatore** (`UiService.get_lista_config` +

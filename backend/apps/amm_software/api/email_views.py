@@ -23,6 +23,7 @@ from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.payload_validators import (
+    optional_bool,
     qp_iso_date_optional,
     corpo_oggetto,
     optional_int,
@@ -45,6 +46,8 @@ from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 
 E_EMAIL_ADMIN = "E_EMAIL_ADMIN"
+# Validator stateless del modulo (solo il codice).
+_V_EMAIL = PayloadValidator(validation_code=E_EMAIL_ADMIN)
 
 # I «non trovato» dell'amministrazione email (brief-db-codici-non-trovato-
 # email-e-permessi §2): `E_EMAIL_ADMIN` resta per i soli dati errati.
@@ -216,7 +219,7 @@ class EmailAccountListView(AdminAPIView):
     # Scopo: Crea un nuovo account email SMTP.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            PayloadValidator(validation_code=E_EMAIL_ADMIN).validate_allowed_keys(
+            _V_EMAIL.validate_allowed_keys(
                 payload, allowed=_ACCOUNT_CREATE_KEYS, message="Campi dell'account non ammessi.",
             )
             codice = (payload.get("codice") or "").strip().upper()
@@ -235,14 +238,14 @@ class EmailAccountListView(AdminAPIView):
                 descrizione=descrizione,
                 smtp_host=smtp_host,
                 smtp_port=optional_int(payload, "smtp_port") or 587,
-                smtp_use_tls=bool(payload.get("smtp_use_tls", True)),
-                smtp_use_ssl=bool(payload.get("smtp_use_ssl", False)),
+                smtp_use_tls=optional_bool(payload, "smtp_use_tls", default=True),
+                smtp_use_ssl=optional_bool(payload, "smtp_use_ssl", default=False),
                 smtp_username=(payload.get("smtp_username") or "").strip(),
                 smtp_password=(payload.get("smtp_password") or ""),
                 email_from=email_from,
                 email_reply_to=(payload.get("email_reply_to") or "").strip() or None,
                 unita_organizzativa_id=optional_int(payload, "unita_organizzativa_id"),
-                attivo=bool(payload.get("attivo", True)),
+                attivo=optional_bool(payload, "attivo", default=True),
             )
             return repo.get_account(account_id) or {}
 
@@ -270,7 +273,7 @@ class EmailAccountDetailView(AdminAPIView):
         data = corpo_oggetto(request)
         repo = EmailRepository()
         _account_o_404(repo, account_id)
-        PayloadValidator(validation_code=E_EMAIL_ADMIN).validate_allowed_keys(
+        _V_EMAIL.validate_allowed_keys(
             data, allowed=_ACCOUNT_PATCH_KEYS, message="Campi dell'account non modificabili.",
         )
 
@@ -281,9 +284,11 @@ class EmailAccountDetailView(AdminAPIView):
                 update_fields[field] = data[field].strip() if isinstance(data[field], str) else data[field]
         if "smtp_port" in data:
             update_fields["smtp_port"] = optional_int(data, "smtp_port")
+        # In PATCH un flag presente vuole un booleano: `null` e' un 400, non
+        # un «spegni» (con `optional_bool` il null valeva il default False).
         for field in ("smtp_use_tls", "smtp_use_ssl", "attivo"):
             if field in data:
-                update_fields[field] = bool(data[field])
+                update_fields[field] = _V_EMAIL.require_bool(data, field)
         if "unita_organizzativa_id" in data:
             update_fields["unita_organizzativa_id"] = optional_int(data, "unita_organizzativa_id")
         if "smtp_password" in data and data["smtp_password"]:
@@ -291,6 +296,9 @@ class EmailAccountDetailView(AdminAPIView):
         if "codice" in update_fields and update_fields["codice"]:
             update_fields["codice"] = update_fields["codice"].upper()
 
+        # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+        #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+        _V_EMAIL.require_campi_da_aggiornare(update_fields)
         repo.update_account(account_id, **update_fields)
         result = repo.get_account(account_id)
         return success_response(_enrich_account_with_capability(result) if result else {})
@@ -389,7 +397,7 @@ class EmailTemplateListView(AdminAPIView):
     # Scopo: Crea un nuovo template email.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            PayloadValidator(validation_code=E_EMAIL_ADMIN).validate_allowed_keys(
+            _V_EMAIL.validate_allowed_keys(
                 payload, allowed=_TEMPLATE_CREATE_KEYS, message="Campi del template non ammessi.",
             )
             codice = (payload.get("codice") or "").strip().upper()
@@ -411,7 +419,7 @@ class EmailTemplateListView(AdminAPIView):
                 unita_organizzativa_id=optional_int(payload, "unita_organizzativa_id"),
                 tipo_prestazione_id=optional_int(payload, "tipo_prestazione_id"),
                 variabili_disponibili=payload.get("variabili_disponibili"),
-                attivo=bool(payload.get("attivo", True)),
+                attivo=optional_bool(payload, "attivo", default=True),
             )
             return repo.get_template(template_id) or {}
 
@@ -436,7 +444,7 @@ class EmailTemplateDetailView(AdminAPIView):
         data = corpo_oggetto(request)
         repo = EmailRepository()
         _template_o_404(repo, template_id)
-        PayloadValidator(validation_code=E_EMAIL_ADMIN).validate_allowed_keys(
+        _V_EMAIL.validate_allowed_keys(
             data, allowed=_TEMPLATE_PATCH_KEYS, message="Campi del template non modificabili.",
         )
 
@@ -445,8 +453,8 @@ class EmailTemplateDetailView(AdminAPIView):
             if field in data:
                 val = (data[field] or "").strip() if data[field] else None
                 update_fields[field] = val
-        if "attivo" in data:
-            update_fields["attivo"] = bool(data["attivo"])
+        if "attivo" in data:  # vedi la PATCH dell'account: null e' un 400
+            update_fields["attivo"] = _V_EMAIL.require_bool(data, "attivo")
         if "unita_organizzativa_id" in data:
             update_fields["unita_organizzativa_id"] = optional_int(data, "unita_organizzativa_id")
         if "tipo_prestazione_id" in data:
@@ -456,6 +464,9 @@ class EmailTemplateDetailView(AdminAPIView):
         if "codice" in update_fields and update_fields["codice"]:
             update_fields["codice"] = update_fields["codice"].upper()
 
+        # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+        #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+        _V_EMAIL.require_campi_da_aggiornare(update_fields)
         repo.update_template(template_id, **update_fields)
         return success_response(repo.get_template(template_id) or {})
 
@@ -477,6 +488,10 @@ class EmailTemplatePreviewView(AdminAPIView):
     quindi rendere il payload come "trusted preview" dentro un iframe
     sandbox (defense-in-depth — Fase 6 amm-software).
     """
+
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(request=_PREVIEW_REQUEST, responses={200: dict})
     # Scopo: Renderizza un template con variabili di esempio e sanifica

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_sync_functions_owner()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_sync_functions_owner()
  RETURNS void
@@ -140,6 +142,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_sync_functions_owner()
 IS 'Allinea il proprietario delle funzioni elencate in dbops.sec_functions_owner al ruolo richiesto (ALTER FUNCTION ... OWNER TO). Eseguita a ogni migrate (90_end/20251123-04) e dalla passata provision-post come postgres (90_end/20251123-12). SECURITY DEFINER di postgres: dal 2026-09-12 (D6) con search_path pinnato a pg_catalog, public, pg_temp — il pin sta nella definizione, un CREATE OR REPLACE che lo dimentica lo azzera. Dal 2026-09-26 RISERVATA AL MIGRATORE con una guardia nel corpo: la esegue solo chi è membro del proprietario dello schema dbops, o un superuser; gli altri ricevono 42501 (RAISE nudo, fuori dal canale di log che la sync protegge). La domanda la fa dbops.fn_sessione_del_migratore (dal 2026-09-29, regola del 2), che legge session_user perché dentro una DEFINER current_user è il proprietario: limite dichiarato, session_user è il ruolo di login e un SET ROLE non lo cambia. EXECUTE a PUBLIC resta per scelta: la difesa non è nell''ACL, che il loop dei grant riscrive e il cambio di proprietario rimappa. Il registro è in sola lettura per l''applicazione (90_end/20260926-12). Brief: brief-db-registro-owner-e-sync-riservati-al-migratore.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -48,6 +48,7 @@ export function riattivaArticolo(id) {
   return api.post(`${BASE}/articoli/${id}/riattiva/`, {})
 }
 
+
 export function lookupArticoli(params = {}) {
   return api.get(`${BASE}/articoli/lookup/`, { params })
 }

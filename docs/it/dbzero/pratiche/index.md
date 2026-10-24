@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Schema `pratiche`
 
 ## 📚 Tabelle
@@ -43,6 +48,7 @@
 - [fn_lista_pratiche_per_contesto](funzioni/fn_lista_pratiche_per_contesto.md) — La funzione **`pratiche.fn_lista_pratiche_per_contesto`** e' la **lente canonica del contesto anagrafico** (decisione D1, analisi-pratiche-workflow-v2): il punto unico di verita' per ogni vista "pratiche di X" dell'applicazione.
 - [fn_log_evento_dominio](funzioni/fn_log_evento_dominio.md) — (rev 2026-08-21)
 - [fn_nuova_versione_definizione](funzioni/fn_nuova_versione_definizione.md) — Crea una **nuova versione BOZZA** nello **stesso scope** (tipo + emittente) di una definizione sorgente — preset incluso. È il modo di **modificare in sicurezza** un'edizione già PUBBLICATA (che è strutturalmente immutabile): si crea una bozza, la si modifica, la si pubblica — e la [fn_pubblica_definizione](funzioni/fn_pubblica_definizione.md) ritira automaticamente la precedente PUBBLICATA. Le pratiche in volo restano sul loro pin (V6).
+- [fn_pratica_del_documento](funzioni/fn_pratica_del_documento.md) — (rev 2026-10-11)
 - [fn_pratica_flussi_aperti](funzioni/fn_pratica_flussi_aperti.md) — `fn_check_*` puro (no raise): elenca i **flussi ISTANZIATI** della pratica che sono in stato **non terminale**, cioe' il **lavoro ancora pendente** (D1 — brief-db-chiusura-pratica-nessun-lavoro-pendente).
 - [fn_prendi_in_carico_flusso](funzioni/fn_prendi_in_carico_flusso.md) — Assegna un flusso DA_ESEGUIRE all'operatore corrente applicando la **policy di eligibilita' reparto-first + competenza opzionale** (vedi sotto). Operazione atomica con lock pessimistico (`FOR UPDATE`) per evitare race condition.
 - [fn_pubblica_definizione](funzioni/fn_pubblica_definizione.md) — Valida una **BOZZA** e la promuove a **PUBBLICATA**, **ritirando in transazione** la precedente PUBBLICATA dello stesso scope (una sola PUBBLICATA per scope, `uq_workflow_definizioni_pubblicata`). Ordine: RITIRA la vecchia **prima** di pubblicare la nuova, per non collidere sull'indice parziale.

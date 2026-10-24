@@ -11,7 +11,7 @@
 
 // ⛔ QUI NON C'E' UNA REGOLA. Quali combinazioni sono ammesse e quale e' quella
 //    di default lo dice il DB, dall'articolo (tipologia, altrimenti natura di
-//    vendita; DERIVATA_COMPONENTI in piu' sul composito). Queste funzioni
+//    vendita; sul kit le sole combinazioni FISSA). Queste funzioni
 //    METTONO IN FORMA cio' che arriva: prendono le combinazioni come sono,
 //    nell'ordine in cui il DB le da'. Prende il posto di
 //    `fontiQuantitaErogazione.js`, che la matrice la ricopiava — e non sapeva
@@ -22,8 +22,10 @@
 
 // Scopo: le opzioni di una tendina dai valori, senza doppioni e nell'ordine
 //        dato. ⭐ Il valore gia' scritto sulla riga resta fra le opzioni anche
-//        se l'articolo oggi non lo ammette (B-D6: le righe gia' scritte restano
-//        come sono), o la tendina lo mostrerebbe vuoto.
+//        se l'articolo oggi non lo ammette, o la tendina lo mostrerebbe vuoto:
+//        una riga scritta quando era ammessa resta leggibile, e la intercetta
+//        il primo passo che la usa (emissione, push, attivazione: motivo
+//        RIGA_NON_AMMESSA, §I.2 di brief-db-offerta-emissione-ed-erogazione).
 function opzioni(valori, corrente, etichetta) {
   const unici = [...new Set(valori)]
   if (corrente && !unici.includes(corrente)) unici.push(corrente)
@@ -57,7 +59,7 @@ export function combinazioneDefault(combinazioni) {
 //        DB elenca per quell'erogazione, null se nessuna. ⭐ E' quella che il DB
 //        scriverebbe (§D.4 punto 1 di brief-db-offerta-emissione-ed-erogazione):
 //        la lista arriva nell'ordine della sede unica (`ordine` di
-//        `vendite.fn_articolo_erogazioni`, DERIVATA_COMPONENTI per ultima), lo
+//        `vendite.fn_articolo_erogazioni`), lo
 //        stesso che legge il trigger d'eredita'. ⛔ Il form non ordina: prende la
 //        prima com'e' arrivata.
 export function fonteDopoCambioErogazione(combinazioni, tipo, fonteCorrente) {

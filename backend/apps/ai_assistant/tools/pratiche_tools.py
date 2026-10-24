@@ -61,7 +61,7 @@ class CercaPraticheTool(AITool):
                         "type": "string",
                         "description": "Data inserimento a (formato YYYY-MM-DD)",
                     },
-                    "page_size": {
+                    "limit": {
                         "type": "integer",
                         "description": "Numero risultati per pagina (default 10, max 50)",
                     },
@@ -97,7 +97,7 @@ class CercaPraticheTool(AITool):
             search=self.termine_ricerca(params),
             data_da=params.get("data_da"),
             data_a=params.get("data_a"),
-            limit=self.safe_page_size(params),
+            limit=self.safe_limit(params),
             offset=0,
             order_by="data_insert",
             order_dir="desc",

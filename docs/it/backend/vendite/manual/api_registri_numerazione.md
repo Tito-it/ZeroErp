@@ -68,7 +68,9 @@ il documento non è in grado di ospitare — è l'asimmetria del
 chiave invece di mandare un `NULL`, che il `NOT NULL` respingerebbe parlando di
 un campo obbligatorio invece che di una scelta che il modello non chiede.
 
-⚠️ **In PATCH è ignorato**, e questa è la parte che conta: cambiare la politica
+⚠️ **In PATCH è rifiutato** — `400 E_VENDITE_VALIDATION` «Campi non ammessi in
+modifica del registro.» (`validate_allowed_keys` su `_CAMPI_UPDATE`, come ogni
+chiave fuori elenco) — e questa è la parte che conta: cambiare la politica
 su un registro che ha già consegnato numeri **sposta il secchio sotto il
 contatore**. Il progressivo riparte da 1 su una chiave nuova e sbatte contro i
 numeri già scritti, con un errore che parla del numero e non nomina la causa.

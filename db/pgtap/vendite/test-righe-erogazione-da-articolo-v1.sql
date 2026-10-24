@@ -8,6 +8,12 @@
 --       B-R2 (la riga eredita), B-R3/B-D4 (il perimetro e' la tipologia dell'articolo,
 --       dentro la utility), B-D1 (senza tipologia decide la natura), B-D5
 --       (DERIVATA_COMPONENTI sul composito), B-D6 (le righe gia' scritte restano).
+--       ⚠️ rev 2026-10-21 (§I, decisioni I-D1 e I-D6 di Tid; changeSet 20261021-48,
+--       -55): DERIVATA_COMPONENTI ritirata (B-D5 superata) e il composito si eroga
+--       solo con la FISSA (test 3, 21). B-D6 e' superata dal §H: la porta SUPER_ADMIN
+--       non porta piu' una riga fuori dal perimetro (test 14-15, che prima la usavano
+--       per COSTRUIRE quella riga). Il test 22 passa da K a C: il kit non ha piu' due
+--       fonti nella stessa erogazione.
 --
 -- ⭐ TUTTO COSTRUITO: cliente ENE (la prima utility: ammette CONSUMO, QUOTA_FISSA,
 --   IMPOSTA, ONERE_SISTEMA), listino, articoli. Gli articoli prendono qui la
@@ -16,7 +22,7 @@
 --     R, R2  SERVIZIO_RICORRENTE            CANONE/FISSA* (INIZIO_PERIODO), CONSUMO/MANUALE
 --     C      tipologia CONSUMO, natura SERVIZIO_RICORRENTE   (vince la tipologia)
 --     P      tipologia PRODOTTI, che ENE non prevede
---     K      composito, SERVIZIO_RICORRENTE  + DERIVATA_COMPONENTI
+--     K      composito, SERVIZIO_RICORRENTE  solo le FISSA: CANONE/FISSA* (I-D6)
 -- ⚠️ I codici si leggono dai canali dell'eccezione (CONSTRAINT = codice, COLUMN = campo),
 --   non dalla frase. Il test 20 legge il catalogo dei codici: rosso nella prova
 --   pre-apply (il CSV si carica in 80_data), verde dopo l'apply.
@@ -28,7 +34,7 @@
 --   La sede unica (vendite.fn_articolo_erogazioni)
 --    1) tipologia: vince sulla natura (C: solo CONSUMO)
 --    2) senza tipologia: la natura (M: MERCE)
---    3) composito: + DERIVATA_COMPONENTI per ogni erogazione, mai di default
+--    3) composito: solo le combinazioni FISSA (I-D6; niente DERIVATA_COMPONENTI)
 --    4) articolo inesistente: nessuna riga
 --   L'eredita' (INSERT)
 --    5) niente erogazione ne' fonte: il default dell'articolo, con la generazione_canone
@@ -38,12 +44,12 @@
 --    8) erogazione fuori perimetro: E_RIGA_EROGAZIONE_FUORI_PERIMETRO / tipo_erogazione
 --    9) erogazione ammessa, fonte no: … / fonte_quantita_attesa
 --   10) tipologia fuori utility: E_RIGA_TIPOLOGIA_FUORI_UTILITY / articolo_id
---   11) l'ESCLUSIONE non si giudica
+--   11) l'ESCLUSIONE non si giudica sul perimetro (parla solo il listino, A-5)
 --   L'UPDATE
 --   12) cambia la sola erogazione: la fonte si riallinea a quella dell'articolo
 --   13) cambiano erogazione E fonte: la scelta non si tocca, la giudica il guard
---   14) B-D6: una riga rimasta fuori perimetro si aggiorna negli altri campi
---   15) …ma non le si cambia la fonte fuori perimetro
+--   14) la porta SUPER_ADMIN non porta una riga fuori perimetro (rev 2026-10-21)
+--   15) …e la riga resta com'era
 --   La lettura per il form (B4)
 --   16) le combinazioni dell'articolo, col default in testa
 --   17) tipologia fuori utility: nessuna combinazione
@@ -52,8 +58,8 @@
 --   19) l'ordine dei trigger sulle due tabelle gemelle
 --   20) i due codici a catalogo, DATO_ERRATO
 --   L'ordine delle combinazioni (§D.4 punto 1, 20261007-66 … -68)
---   21) il form sul composito: dentro un'erogazione DERIVATA_COMPONENTI per ultima
---   22) la prima fonte che il form propone per un'erogazione e' quella che il DB eredita
+--   21) il form sul composito: la sola CANONE/FISSA, di default
+--   22) la prima fonte che il form propone per un'erogazione e' quella che il DB eredita (C)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -95,27 +101,27 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
     (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1));
 
 CREATE TEMP TABLE tmp_eda_art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-EDA-' || v.sigla) AS id
-  FROM (VALUES ('M'), ('M2'), ('R'), ('R2'), ('C'), ('P'), ('K'), ('RP')) AS v(sigla);
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-EDA-' || v.sigla,
+           p_listino_tipologia_id => (SELECT t.id FROM config.listini_tipologie t
+                                       WHERE t.codice = CASE v.sigla WHEN 'C' THEN 'CONSUMO'
+                                                                     WHEN 'P' THEN 'PRODOTTI' END),
+           p_is_composito         => v.sigla = 'K',
+           p_natura_vendita_id    => CASE WHEN v.sigla IN ('R', 'R2', 'C', 'K', 'RP')
+                                          THEN (SELECT n.id FROM config.nature_vendita n
+                                                 WHERE n.codice_interno = 'SERVIZIO_RICORRENTE')
+                                     END) AS id
+  FROM (VALUES ('M'), ('M2'), ('R'), ('R2'), ('C'), ('P'), ('K'), ('RP'), ('KC')) AS v(sigla);
 
 CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
 RETURNS uuid LANGUAGE sql STABLE AS $fx$
     SELECT id FROM tmp_eda_art WHERE sigla = p_sigla;
 $fx$;
 
-UPDATE catalogo.articoli
-   SET natura_vendita_id = (SELECT id FROM config.nature_vendita WHERE codice_interno = 'SERVIZIO_RICORRENTE')
- WHERE id IN (pg_temp.art('R'), pg_temp.art('R2'), pg_temp.art('C'), pg_temp.art('K'), pg_temp.art('RP'));
-
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT id FROM config.listini_tipologie WHERE codice = 'CONSUMO')
- WHERE id = pg_temp.art('C');
-
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT id FROM config.listini_tipologie WHERE codice = 'PRODOTTI')
- WHERE id = pg_temp.art('P');
-
-UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.art('K');
+-- rev 2026-10-14 (D-7, 20261014-06 di brief-db-articoli-ammessi-per-documento): un kit
+--   senza nessun componente attivo non sta piu' in una riga (E_ARTICOLO_KIT_SENZA_COMPONENTI).
+--   K riceve il suo componente KC: la fixture costruiva un kit vuoto.
+INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
+VALUES (pg_temp.art('K'), pg_temp.art('KC'), 1, '2020-01-01');
 
 -- Contratto DRAFT senza listino: ogni AGGIUNTA e' ammessa dal guard del listino.
 CREATE TEMP TABLE tmp_eda_ctr AS
@@ -166,8 +172,8 @@ SELECT is(pg_temp.combo(pg_temp.art('M')), 'UNA_TANTUM/FISSA* UNA_TANTUM/MANUALE
     '2) senza tipologia decide la natura (MERCE)');
 
 SELECT is(pg_temp.combo(pg_temp.art('K')),
-    'CANONE/DERIVATA_COMPONENTI CANONE/FISSA* CONSUMO/DERIVATA_COMPONENTI CONSUMO/MANUALE',
-    '3) composito: + DERIVATA_COMPONENTI per ogni erogazione ammessa, mai di default (B-D5)');
+    'CANONE/FISSA*',
+    '3) composito: solo le combinazioni FISSA della natura (I-D6), niente DERIVATA_COMPONENTI (I-D1)');
 
 SELECT is((SELECT count(*)::int FROM vendite.fn_articolo_erogazioni(gen_random_uuid())), 0,
     '4) articolo inesistente: nessuna combinazione');
@@ -203,8 +209,14 @@ SELECT is(pg_temp.canali(pg_temp.agg('P', NULL, NULL)),
     'E_RIGA_TIPOLOGIA_FUORI_UTILITY / articolo_id',
     '10) tipologia (PRODOTTI) che la utility (ENE) non prevede: rifiutata, campo articolo_id');
 
-SELECT is(pg_temp.canali(pg_temp.agg('P', NULL, NULL, 'ESCLUSIONE')), 'NESSUN ERRORE',
-    '11) l''ESCLUSIONE non si giudica: nasce vuota e non si fattura');
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b, A-5):
+--   l'ESCLUSIONE modifica una riga del listino, e questo contratto un listino
+--   non l'ha: parla E_RIGA_ECCEZIONE_SENZA_LISTINO. Il soggetto del test resta
+--   vero, e si vede dal PRIMO motivo: P ha una tipologia che la utility non
+--   prevede, e non e' quella a parlare — sul perimetro l'esclusione non si giudica.
+SELECT is(pg_temp.canali(pg_temp.agg('P', NULL, NULL, 'ESCLUSIONE')),
+    'E_RIGA_ECCEZIONE_SENZA_LISTINO / articolo_id',
+    '11) l''ESCLUSIONE non si giudica sul perimetro: parla solo il listino (A-5), qui assente');
 
 -- ============================================================
 -- 12-15) L'UPDATE
@@ -224,25 +236,28 @@ SELECT is(pg_temp.canali(format(
     'E_RIGA_EROGAZIONE_FUORI_PERIMETRO / tipo_erogazione',
     '13) cambiano erogazione e fonte: la scelta non si corregge in silenzio, la giudica il guard');
 
--- B-D6: RP e' SERVIZIO_RICORRENTE e la sua riga nasce CANONE/FISSA; poi l'articolo
--- diventa MERCE, e la riga resta fuori dal nuovo perimetro.
+-- RP e' SERVIZIO_RICORRENTE e la sua riga nasce CANONE/FISSA. Fino al 2026-10-21
+-- qui la porta amministratore (catalogo.fn_articolo_correggi_struttura) faceva
+-- diventare MERCE l'articolo gia' usato, e la riga restava fuori dal nuovo
+-- perimetro (B-D6). Da 20261021-55 la porta confronta la riga INTERA
+-- (script.fn_check_riga_documento_su_contesto): la correzione che porterebbe la
+-- riga fuori dal perimetro d'erogazione si ferma, e la riga resta com'e'.
 DO $fx$ BEGIN PERFORM pg_temp.canali(pg_temp.agg('RP', NULL, NULL)); END $fx$;
-UPDATE catalogo.articoli
-   SET natura_vendita_id = (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE')
- WHERE id = pg_temp.art('RP');
+CREATE TEMP TABLE tmp_eda_rp AS SELECT pg_temp.riga('RP') AS prima;
 
 SELECT is(pg_temp.canali(format(
-    $$UPDATE vendite.contratti_righe SET prezzo_unitario = 11
-       WHERE contratto_id = %s AND articolo_id = %L$$,
-    (SELECT id FROM tmp_eda_ctr), pg_temp.art('RP'))), 'NESSUN ERRORE',
-    '14) B-D6: una riga rimasta fuori perimetro si aggiorna negli altri campi');
+    $$SELECT dbops.fn_pgtap_articolo_correggi_struttura(%L, %L::jsonb)$$,
+    pg_temp.art('RP'),
+    jsonb_build_object('natura_vendita_id',
+        (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE')))),
+    'E_ARTICOLO_STRUTTURA_RIGHE_APERTE / -',
+    '14) la porta SUPER_ADMIN non porta una riga fuori dal perimetro d''erogazione: la correzione si ferma');
 
-SELECT is(pg_temp.canali(format(
-    $$UPDATE vendite.contratti_righe SET fonte_quantita_attesa = 'MANUALE'
-       WHERE contratto_id = %s AND articolo_id = %L$$,
-    (SELECT id FROM tmp_eda_ctr), pg_temp.art('RP'))),
-    'E_RIGA_EROGAZIONE_FUORI_PERIMETRO / tipo_erogazione',
-    '15) …ma cambiarle la fonte la rimette sotto il perimetro, e la rifiuta');
+-- ⚠️ La riga deve esistere: due NULL uguali sarebbero un verde per sottrazione.
+SELECT ok((SELECT prima IS NOT NULL AND prima LIKE 'CANONE/FISSA/%'
+                  AND pg_temp.riga('RP') = prima
+             FROM tmp_eda_rp),
+    '15) …e la riga resta com''era (CANONE/FISSA)');
 
 -- ============================================================
 -- 16-17) La lettura per il form (B4)
@@ -336,9 +351,9 @@ SELECT is(
 -- ============================================================
 -- 21-22) L'ordine delle combinazioni (§D.4 punto 1)
 -- ============================================================
--- K composito SERVIZIO_RICORRENTE: CANONE/FISSA*, CONSUMO/MANUALE, + DERIVATA per
--- ciascuna. In ordine alfabetico DERIVATA_COMPONENTI precederebbe MANUALE: era il
--- difetto segnalato dal giro BE/FE.
+-- K composito SERVIZIO_RICORRENTE: della natura (CANONE/FISSA*, CONSUMO/MANUALE)
+-- tiene la sola FISSA (I-D6). Fino al 2026-10-21 c'erano in piu' le DERIVATA, e
+-- l'ordine «DERIVATA per ultima» era il difetto segnalato dal giro BE/FE.
 SELECT is(
     (SELECT string_agg(e.tipo_erogazione || '/' || e.fonte_quantita_attesa
                        || CASE WHEN e.e_default THEN '*' ELSE '' END, ' ' ORDER BY e.n)
@@ -346,23 +361,25 @@ SELECT is(
                                                  pg_temp.art('K'))
             WITH ORDINALITY AS e(tipo_erogazione, fonte_quantita_attesa, e_default,
                                  generazione_canone, origine, n)),
-    'CANONE/FISSA* CANONE/DERIVATA_COMPONENTI CONSUMO/MANUALE CONSUMO/DERIVATA_COMPONENTI',
-    '21) il form sul composito: default in testa, dentro un''erogazione DERIVATA_COMPONENTI per ultima');
+    'CANONE/FISSA*',
+    '21) il form sul composito: la sola CANONE/FISSA, di default (I-D6)');
 
--- L'erogazione CONSUMO senza fonte: la riga eredita la fonte, e prima il form
--- proponeva per prima la DERIVATA. Ora le due coincidono per costruzione.
-DO $fx$ BEGIN PERFORM pg_temp.canali(pg_temp.agg('K', 'CONSUMO', NULL, 'AGGIUNTA', NULL)); END $fx$;
+-- L'erogazione CONSUMO senza fonte: la riga eredita la fonte, e il form propone
+-- per prima la stessa. Fino al 2026-10-21 il caso era K, che aveva in piu' la
+-- DERIVATA; ora e' C (CONSUMO: LETTURE di default, poi MANUALE), che non ha
+-- ancora una riga (il test 9 e' un rifiuto).
+DO $fx$ BEGIN PERFORM pg_temp.canali(pg_temp.agg('C', 'CONSUMO', NULL, 'AGGIUNTA', NULL)); END $fx$;
 SELECT is(
-    split_part(pg_temp.riga('K'), '/', 2),
+    split_part(pg_temp.riga('C'), '/', 2),
     (SELECT e.fonte_quantita_attesa
        FROM vendite.fn_documento_riga_erogazioni('CONTRATTO', (SELECT id FROM tmp_eda_ctr),
-                                                 pg_temp.art('K'))
+                                                 pg_temp.art('C'))
             WITH ORDINALITY AS e(tipo_erogazione, fonte_quantita_attesa, e_default,
                                  generazione_canone, origine, n)
       WHERE e.tipo_erogazione = 'CONSUMO'
       ORDER BY e.n
       LIMIT 1)::text,
-    '22) la prima fonte che il form propone per CONSUMO e'' quella che il DB eredita (MANUALE)');
+    '22) la prima fonte che il form propone per CONSUMO e'' quella che il DB eredita (LETTURE)');
 
 SELECT * FROM finish();
 ROLLBACK;

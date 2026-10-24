@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# COMMENT: vendite.fn_documento_lineage_legami — i consumatori
+#   Il COMMENT di 20261013-69 nomina un consumatore solo
+#   (vendite.fn_documento_lineage). Dal 20261013-71 la legge anche
+#   vendite.fn_documento_lineage_sintesi (D-15 di Tid), che scarta gli archi
+#   col legame ritirato. 20261013-69 era gia' applicato: la correzione sta qui,
+#   non nel suo file. Solo il COMMENT: corpo, firma e GRANT invariati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261013-72-comment-fn-documento-lineage-legami-consumatori-mctit.yaml
+
+  - changeSet:
+      id: 20261013-72-comment-fn-documento-lineage-legami-consumatori
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di vendite.fn_documento_lineage_legami: i consumatori sono due, il pannello
+        (fn_documento_lineage) e la sintesi (fn_documento_lineage_sintesi, 20261013-71).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid = to_regprocedure('vendite.fn_documento_lineage_legami(text[], bigint[], text[], bigint[], text[])');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $c$
+              BEGIN
+                  -- Si sostituisce la sola frase dei consumatori, in coda: il resto
+                  -- del COMMENT resta quello di 20261013-69.
+                  EXECUTE format('COMMENT ON FUNCTION vendite.fn_documento_lineage_legami(text[], bigint[], text[], bigint[], text[]) IS %L',
+                      replace(obj_description('vendite.fn_documento_lineage_legami(text[], bigint[], text[], bigint[], text[])'::regprocedure, 'pg_proc'),
+                              'Consumatore: vendite.fn_documento_lineage (colonna is_legame_ritirato).',
+                              'Consumatori: vendite.fn_documento_lineage (colonna is_legame_ritirato, il pannello «Passaggi»: '
+                              'l''arco resta come storia) e vendite.fn_documento_lineage_sintesi (20261013-71, D-15 di Tid: '
+                              'un arco ritirato non e'' destinazione ne'' sorgente).'));
+              END
+              $c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DO $c$
+              BEGIN
+                  EXECUTE format('COMMENT ON FUNCTION vendite.fn_documento_lineage_legami(text[], bigint[], text[], bigint[], text[]) IS %L',
+                      regexp_replace(obj_description('vendite.fn_documento_lineage_legami(text[], bigint[], text[], bigint[], text[])'::regprocedure, 'pg_proc'),
+                                     'Consumatori: vendite\.fn_documento_lineage \(colonna is_legame_ritirato, .*$',
+                                     'Consumatore: vendite.fn_documento_lineage (colonna is_legame_ritirato).'));
+              END
+              $c$;

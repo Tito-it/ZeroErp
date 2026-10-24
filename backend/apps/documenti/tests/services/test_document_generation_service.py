@@ -10,12 +10,14 @@
 #           ritorno con id/uid/storage_uri/hashes;
 #         - autenticazione: anon/None -> E_DOCUMENTI_VALIDATION pre-DB;
 #         - scope emittente: out-of-scope -> rifiutato;
-#         - resolve template: via override id -> reader.get_template;
-#           via default `is_default=true` -> repo.find_template_applicabile;
-#           nessun match -> E_DOCUMENTI_NOT_FOUND;
-#         - coerenza template-input: emittente o sorgente_tipo del template
-#           diverso da quanto richiesto -> E_DOCUMENTI_VALIDATION;
-#         - resolve versione PUBBLICATA: nessuna match -> NOT_FOUND;
+#         - modello e versione: UNA domanda alla porta del DB
+#           (repo.risolvi_template_applicabile), col modello indicato quando
+#           c'e'; il modello indicato si legge prima dentro lo scope (404
+#           fuori perimetro, la porta non parte); i rifiuti del DB (non
+#           risolto, senza predefinito, non coerente, non stampabile) escono
+#           col loro codice; lo standard stampa per l'emittente del documento;
+#         - la versione e' quella detta dal DB, riletta per id (non leggibile =
+#           invariante rotta);
 #         - context_builder_code vuoto sul template -> VALIDATION;
 #         - render fail (eccezione): propagato senza INSERT (Decisione 32);
 #         - render output vuoto -> E_DOCUMENTI_RENDER_FAILED;
@@ -29,12 +31,16 @@
 #   0. genera_documento_happy_path_pipeline_completa
 #   1. genera_documento_anon_user_raises_validation
 #   2. genera_documento_emittente_fuori_scope_raises_validation
-#   3. genera_documento_template_via_id_esplicito_usa_reader
-#   4. genera_documento_template_default_via_find_applicabile
+#   3. genera_documento_modello_indicato_verificato_dalla_porta
+#   4. genera_documento_template_default_via_risolvi_applicabile
 #   5. genera_documento_no_template_match_raises_not_found
-#   6. genera_documento_template_emittente_incoerente_raises
-#   7. genera_documento_template_sorgente_tipo_incoerente_raises
-#   8. genera_documento_no_versione_pubblicata_raises_not_found
+#   5b. genera_documento_no_default_among_existing_raises_helpful
+#   5c. genera_documento_con_standard_passa_coerenza
+#   5d. genera_documento_risolto_non_rileggibile_invariante
+#   6. genera_documento_modello_indicato_non_coerente_codice_del_db
+#   7. genera_documento_modello_indicato_fuori_perimetro_not_found
+#   8. genera_documento_modello_indicato_non_stampabile_codice_del_db
+#   8b. genera_documento_versione_risolta_non_rileggibile_invariante
 #   9. genera_documento_context_builder_code_vuoto_raises
 #  10. genera_documento_render_pdf_solleva_propaga_no_db
 #  11. genera_documento_render_pdf_empty_raises
@@ -69,8 +75,19 @@ from django.db import IntegrityError
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests.db_error_fakes import make_db_error
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
+)
+from apps.documenti.tests.services.generazione_fakes import (
+    make_user,
+    patch_get_builder,
+    patch_render,
+    patch_scope,
+    risolto,
+    service_with_mocks,
+    template_row,
+    versione_row,
 )
 
 
@@ -100,105 +117,6 @@ class _CommitFailingAtomic:
         return False
 
 
-# Scopo: User mock autenticato.
-def _make_user(*, is_authenticated: bool = True, user_id: int = 5) -> Any:
-    user = MagicMock()
-    user.is_authenticated = is_authenticated
-    user.id = user_id
-    return user
-
-
-def _template_row(
-    *,
-    template_id: int = 7,
-    emittente: int = 11,
-    sorgente_tipo: int = 10,
-    tipo_output: int = 1,
-    builder_code: str = "PREVENTIVO",
-    file_name_pattern: str = "preventivo-{numero}.pdf",
-    descrizione: str = "Preventivo standard",
-) -> dict[str, Any]:
-    return {
-        "id": template_id,
-        "codice": "TPL-PREV",
-        "codice_interno": "TPL_PREV",
-        "descrizione": descrizione,
-        "emittente_fiscale_id": emittente,
-        "sorgente_tipo_id": sorgente_tipo,
-        "tipo_documento_output_id": tipo_output,
-        "context_builder_code": builder_code,
-        "file_name_pattern": file_name_pattern,
-        "is_default": True,
-        "attivo": True,
-    }
-
-
-def _versione_row(*, versione_id: int = 12) -> dict[str, Any]:
-    return {
-        "id": versione_id,
-        "versione": 1,
-        "stato": "PUBBLICATA",
-        "html_template": "<p>{{ numero }}</p>",
-        "css_template": "p { font-size: 10pt; }",
-        "markdown_template": None,
-        "render_engine_codice": "WEASYPRINT",
-    }
-
-
-def _service_with_mocks(
-    *,
-    repo_methods: dict[str, Any] | None = None,
-    reader_methods: dict[str, Any] | None = None,
-    storage_methods: dict[str, Any] | None = None,
-) -> tuple[DocumentGenerationService, MagicMock, MagicMock, MagicMock]:
-    repo = MagicMock()
-    if repo_methods:
-        for name, value in repo_methods.items():
-            getattr(repo, name).return_value = value
-    reader = MagicMock()
-    if reader_methods:
-        for name, value in reader_methods.items():
-            getattr(reader, name).return_value = value
-    storage = MagicMock()
-    if storage_methods:
-        for name, value in storage_methods.items():
-            getattr(storage, name).return_value = value
-    svc = DocumentGenerationService(
-        repo=repo, reader=reader, storage=storage,
-    )
-    # Hook today() deterministico per i test (idempotente).
-    svc._today = lambda: date(2026, 5, 4)  # type: ignore[method-assign]
-    return svc, repo, reader, storage
-
-
-def _patch_render(return_value: bytes = b"%PDF-1.4 fake"):
-    return patch(
-        "apps.documenti.services.document_generation_service.render_pdf",
-        return_value=return_value,
-    )
-
-
-def _patch_get_builder(context: dict[str, Any] | None = None):
-    """Patch get_builder_del_template con un MagicMock ritornante un builder
-    il cui `build_context` ritorna `context`."""
-    builder = MagicMock()
-    builder.CODE = "PREVENTIVO"
-    # La forma dei dati del builder: arriva al guard prima del render.
-    builder.CONTEXT_VERSION = 2
-    builder.build_context.return_value = context if context is not None else {"numero": 1}
-    return patch(
-        "apps.documenti.services.document_generation_service.get_builder_del_template",
-        return_value=builder,
-    )
-
-
-def _patch_scope(value: list[int] | None):
-    return patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
-        return_value=value,
-    )
-
-
 # Argomenti default per `genera_documento`.
 _GENERA_DEFAULT: dict[str, Any] = {
     "emittente_fiscale_id": 11,
@@ -219,12 +137,12 @@ class GeneraDocumentoHappyPathTests(SimpleTestCase):
 
     # 0. happy path: tutti i mock OK, ritorno dict completo.
     def test_genera_documento_happy_path_pipeline_completa(self) -> None:
-        template = _template_row()
-        versione = _versione_row()
-        svc, repo, reader, storage = _service_with_mocks(
+        template = template_row()
+        versione = versione_row()
+        svc, repo, reader, storage = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": versione,
+                **risolto(template),
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "0190a000-0000-0000-0000-000000000001"),
                 "create_documento_generato_file": 123,
@@ -233,12 +151,12 @@ class GeneraDocumentoHappyPathTests(SimpleTestCase):
             },
             storage_methods={"write": "filesystem:documenti/11/abc.pdf"},
         )
-        with _patch_scope(None), _patch_get_builder({"numero": 42}), \
-                _patch_render(b"PDF-bytes") as mock_render, \
+        with patch_scope(None), patch_get_builder({"numero": 42}), \
+                patch_render(b"PDF-bytes") as mock_render, \
                 patch.object(DocumentGenerationService, "_risolutore_asset") as mock_ris:
             with _patch_transaction_atomic_noop():
                 result = svc.genera_documento(
-                    _make_user(),
+                    make_user(),
                     **_GENERA_DEFAULT,
                 )
 
@@ -258,8 +176,10 @@ class GeneraDocumentoHappyPathTests(SimpleTestCase):
         self.assertEqual(len(result["pdf_hash"]), 64)  # sha256 hex
 
         # Verifica chiamate repo nell'ordine atteso.
-        repo.find_template_applicabile.assert_called_once()
-        repo.get_versione_pubblicata_attiva.assert_called_once()
+        repo.risolvi_template_applicabile.assert_called_once()
+        # La versione e' quella scelta dalla risoluzione (P-2), riletta per id:
+        # nessuna seconda ricerca con filtri del BE.
+        repo.get_versione.assert_called_once_with(7, 12)
         # Il patto versione/forma dei dati chiesto al DB: la versione
         # pubblicata (12) e la forma del builder (2).
         repo.guard_versione_contesto.assert_called_once_with(12, 2)
@@ -316,25 +236,25 @@ class GeneraDocumentoHappyPathTests(SimpleTestCase):
 class GeneraDocumentoAuthScopeTests(SimpleTestCase):
     # 1. user anon o None -> E_DOCUMENTI_VALIDATION subito, no DB.
     def test_genera_documento_anon_user_raises_validation(self) -> None:
-        svc, repo, _, storage = _service_with_mocks()
+        svc, repo, _, storage = service_with_mocks()
         with self.assertRaises(ServiceError) as ctx:
-            svc.genera_documento(_make_user(is_authenticated=False), **_GENERA_DEFAULT)
+            svc.genera_documento(make_user(is_authenticated=False), **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        repo.find_template_applicabile.assert_not_called()
+        repo.risolvi_template_applicabile.assert_not_called()
         storage.write.assert_not_called()
 
         with self.assertRaises(ServiceError):
             svc.genera_documento(None, **_GENERA_DEFAULT)
-        repo.find_template_applicabile.assert_not_called()
+        repo.risolvi_template_applicabile.assert_not_called()
 
     # 2. operatore con emittente fuori scope -> rifiutato.
     def test_genera_documento_emittente_fuori_scope_raises_validation(self) -> None:
-        svc, repo, _, storage = _service_with_mocks()
-        with _patch_scope([1, 2]):
+        svc, repo, _, storage = service_with_mocks()
+        with patch_scope([1, 2]):
             with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        repo.find_template_applicabile.assert_not_called()
+        repo.risolvi_template_applicabile.assert_not_called()
         storage.write.assert_not_called()
 
 
@@ -344,123 +264,180 @@ class GeneraDocumentoAuthScopeTests(SimpleTestCase):
 
 
 class GeneraDocumentoResolveTemplateTests(SimpleTestCase):
-    # 3. template via id esplicito -> reader.get_template, NO find_applicabile.
-    def test_genera_documento_template_via_id_esplicito_usa_reader(self) -> None:
-        template = _template_row(template_id=42)
-        versione = _versione_row()
-        svc, repo, reader, _ = _service_with_mocks(
+    # 3. modello indicato: si legge DENTRO lo scope, poi lo verifica la porta
+    #    del DB (stessa funzione dei due livelli, quarto argomento); la
+    #    versione e' quella che la porta restituisce.
+    def test_genera_documento_modello_indicato_verificato_dalla_porta(self) -> None:
+        template = template_row(template_id=42)
+        svc, repo, reader, _ = service_with_mocks(
             repo_methods={
-                "get_versione_pubblicata_attiva": versione,
+                "get_template": template,
+                "risolvi_template_applicabile": {
+                    "template_documento_id": 42, "livello": "INDICATO",
+                    "template_versione_id": 12,
+                },
+                "get_versione": versione_row(),
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "uid-x"),
                 "create_documento_generato_file": 1,
                 "emit_evento_documento": 1,
                 "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "attivo": True},
             },
-            reader_methods={"get_template": template},
             storage_methods={"write": "fs:x"},
         )
-        with _patch_scope(None), _patch_get_builder({"numero": 1}), _patch_render():
+        with patch_scope([11]), patch_get_builder({"numero": 1}), patch_render():
             with _patch_transaction_atomic_noop():
                 svc.genera_documento(
-                    _make_user(),
+                    make_user(),
                     template_documento_id=42,
                     **_GENERA_DEFAULT,
                 )
-        reader.get_template.assert_called_once()
-        repo.find_template_applicabile.assert_not_called()
-
-    # 4. nessun id -> find_template_applicabile via repo.
-    def test_genera_documento_template_default_via_find_applicabile(self) -> None:
-        template = _template_row()
-        versione = _versione_row()
-        svc, repo, reader, _ = _service_with_mocks(
-            repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": versione,
-                "next_progressivo_sorgente": 1,
-                "create_documento_generato": (99, "uid-x"),
-                "create_documento_generato_file": 1,
-                "emit_evento_documento": 1,
-                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "attivo": True},
-            },
-            storage_methods={"write": "fs:x"},
+        repo.get_template.assert_called_once_with(42, emittente_ids_scope=[11])
+        repo.risolvi_template_applicabile.assert_called_once_with(
+            sorgente_tipo_id=10, emittente_fiscale_id=11,
+            tipo_documento_output_id=None, template_documento_id=42,
         )
-        with _patch_scope(None), _patch_get_builder({"numero": 1}), _patch_render():
-            with _patch_transaction_atomic_noop():
-                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
-        repo.find_template_applicabile.assert_called_once()
+        repo.get_versione.assert_called_once_with(42, 12)
         reader.get_template.assert_not_called()
 
-    # 5. nessun template applicabile -> E_DOCUMENTI_NOT_FOUND. count_*_no_default
-    #    a 0 = caso "nessun template per la coppia", messaggio generico.
+    # 4. nessun id -> la risoluzione del DB via repo.
+    def test_genera_documento_template_default_via_risolvi_applicabile(self) -> None:
+        template = template_row()
+        versione = versione_row()
+        svc, repo, reader, _ = service_with_mocks(
+            repo_methods={
+                **risolto(template),
+                "get_versione": versione,
+                "next_progressivo_sorgente": 1,
+                "create_documento_generato": (99, "uid-x"),
+                "create_documento_generato_file": 1,
+                "emit_evento_documento": 1,
+                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "attivo": True},
+            },
+            storage_methods={"write": "fs:x"},
+        )
+        with patch_scope(None), patch_get_builder({"numero": 1}), patch_render():
+            with _patch_transaction_atomic_noop():
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
+        repo.risolvi_template_applicabile.assert_called_once()
+        reader.get_template.assert_not_called()
+
+    # 5. il DB non risolve (ne' modello dell'emittente ne' standard): il suo
+    #    codice arriva com'e' al ServiceError, niente documento.
     def test_genera_documento_no_template_match_raises_not_found(self) -> None:
-        svc, repo, _, storage = _service_with_mocks(
-            repo_methods={
-                "find_template_applicabile": None,
-                "count_templates_attivi_no_default": 0,
-            },
+        svc, repo, _, storage = service_with_mocks()
+        repo.risolvi_template_applicabile.side_effect = make_db_error(
+            "Nessun modello di stampa per questo documento",
+            codice="E_DOCUMENTI_TEMPLATE_NON_RISOLTO",
         )
-        with _patch_scope(None):
+        with patch_scope(None):
             with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
-        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
-        # Caso "nessun template": messaggio generico, non quello "manca default".
-        self.assertIn("Nessun template applicabile", ctx.exception.message)
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_TEMPLATE_NON_RISOLTO")
+        repo.get_template.assert_not_called()
         repo.create_documento_generato.assert_not_called()
         storage.write.assert_not_called()
 
-    # 5b. template attivi presenti per la coppia ma nessuno con is_default=true:
-    #     l'errore deve essere parlante per l'admin (UX: fix con un click).
+    # 5b. modelli suoi attivi ma nessun predefinito (strada B): il codice del
+    #     DB, non lo standard e non un messaggio scritto in Python.
     def test_genera_documento_no_default_among_existing_raises_helpful(self) -> None:
-        svc, repo, _, storage = _service_with_mocks(
+        svc, repo, _, storage = service_with_mocks()
+        repo.risolvi_template_applicabile.side_effect = make_db_error(
+            "nessuno e' segnato come predefinito",
+            codice="E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO",
+        )
+        with patch_scope(None):
+            with self.assertRaises(ServiceError) as ctx:
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO")
+        repo.create_documento_generato.assert_not_called()
+        storage.write.assert_not_called()
+
+    # 5c. risolto lo STANDARD (emittente NULL): passa la coerenza e stampa
+    #     per l'emittente del documento.
+    def test_genera_documento_con_standard_passa_coerenza(self) -> None:
+        template = template_row(emittente=None, standard=True)
+        svc, repo, _, storage = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": None,
-                "count_templates_attivi_no_default": 3,
+                **risolto(template, livello="STANDARD"),
+                "get_versione": versione_row(),
+                "next_progressivo_sorgente": 1,
+                "create_documento_generato": (99, "uid-x"),
+                "create_documento_generato_file": 1,
+                "emit_evento_documento": 1,
+                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "attivo": True},
+            },
+            storage_methods={"write": "fs:x"},
+        )
+        with patch_scope([11]), patch_get_builder({"numero": 1}), patch_render():
+            with _patch_transaction_atomic_noop():
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
+        repo.risolvi_template_applicabile.assert_called_once_with(
+            sorgente_tipo_id=10, emittente_fiscale_id=11, tipo_documento_output_id=None,
+            template_documento_id=None,
+        )
+        # Lo standard si rilegge col perimetro dell'utente: il repository lo ammette.
+        repo.get_template.assert_called_once_with(7, emittente_ids_scope=[11])
+        documento_data = repo.create_documento_generato.call_args.args[0]
+        self.assertEqual(documento_data["emittente_fiscale_id"], 11)
+        self.assertEqual(documento_data["template_documento_id"], 7)
+
+    # 5d. il DB risolve un id che poi non si rilegge: patto rotto ->
+    #     RuntimeError (500 senza codice), non un 404 che lo maschera.
+    def test_genera_documento_risolto_non_rileggibile_invariante(self) -> None:
+        svc, repo, _, storage = service_with_mocks(
+            repo_methods={
+                **risolto(template_row()),
+                "get_template": None,
             },
         )
-        with _patch_scope(None):
+        with patch_scope([11]):
+            with self.assertRaises(RuntimeError):
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
+        repo.create_documento_generato.assert_not_called()
+        storage.write.assert_not_called()
+
+    # 6. modello indicato non adatto al documento (di un'altra azienda, di
+    #    un'altra sorgente, di un altro tipo): lo dice il DB, col suo codice.
+    #    Fino al 2026-10-21 lo diceva una copia BE della regola, che il tipo
+    #    non lo guardava.
+    def test_genera_documento_modello_indicato_non_coerente_codice_del_db(self) -> None:
+        svc, repo, _, storage = service_with_mocks(
+            repo_methods={"get_template": template_row(template_id=42, emittente=22)},
+        )
+        repo.risolvi_template_applicabile.side_effect = make_db_error(
+            "Il modello di stampa «TPL-PREV» non e' adatto a questo documento: e' di un'altra azienda.",
+            codice="E_DOCUMENTI_TEMPLATE_NON_COERENTE",
+        )
+        with patch_scope(None):
             with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                svc.genera_documento(
+                    make_user(),
+                    template_documento_id=42,
+                    **_GENERA_DEFAULT,
+                )
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_TEMPLATE_NON_COERENTE")
+        repo.get_versione.assert_not_called()
+        repo.create_documento_generato.assert_not_called()
+        storage.write.assert_not_called()
+
+    # 7. modello indicato fuori dal perimetro dell'operatore (o inesistente):
+    #    404 come ogni lettura, e la porta non parte — il suo rifiuto
+    #    nominerebbe il modello di un'azienda che l'operatore non vede.
+    def test_genera_documento_modello_indicato_fuori_perimetro_not_found(self) -> None:
+        svc, repo, _, storage = service_with_mocks(
+            repo_methods={"get_template": None},
+        )
+        with patch_scope([11]):
+            with self.assertRaises(ServiceError) as ctx:
+                svc.genera_documento(
+                    make_user(),
+                    template_documento_id=42,
+                    **_GENERA_DEFAULT,
+                )
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
-        self.assertIn("predefinito", ctx.exception.message)
-        repo.create_documento_generato.assert_not_called()
+        repo.risolvi_template_applicabile.assert_not_called()
         storage.write.assert_not_called()
-
-    # 6. template id esplicito ma emittente del template != richiesto -> rifiutato.
-    def test_genera_documento_template_emittente_incoerente_raises(self) -> None:
-        template = _template_row(emittente=22)  # mismatch su request emittente=11
-        svc, repo, _, storage = _service_with_mocks(
-            reader_methods={"get_template": template},
-        )
-        with _patch_scope(None):
-            with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(
-                    _make_user(),
-                    template_documento_id=42,
-                    **_GENERA_DEFAULT,
-                )
-        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        self.assertIn("emittente", ctx.exception.message.lower())
-        repo.create_documento_generato.assert_not_called()
-        storage.write.assert_not_called()
-
-    # 7. template id esplicito ma sorgente_tipo del template != richiesto.
-    def test_genera_documento_template_sorgente_tipo_incoerente_raises(self) -> None:
-        template = _template_row(sorgente_tipo=99)  # mismatch su request 10
-        svc, repo, _, storage = _service_with_mocks(
-            reader_methods={"get_template": template},
-        )
-        with _patch_scope(None):
-            with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(
-                    _make_user(),
-                    template_documento_id=42,
-                    **_GENERA_DEFAULT,
-                )
-        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        self.assertIn("sorgente", ctx.exception.message.lower())
-        repo.create_documento_generato.assert_not_called()
 
 
 # =====================================================================
@@ -469,19 +446,36 @@ class GeneraDocumentoResolveTemplateTests(SimpleTestCase):
 
 
 class GeneraDocumentoResolveVersioneTests(SimpleTestCase):
-    # 8. nessuna versione PUBBLICATA attiva -> E_DOCUMENTI_NOT_FOUND.
-    def test_genera_documento_no_versione_pubblicata_raises_not_found(self) -> None:
-        template = _template_row()
-        svc, repo, _, storage = _service_with_mocks(
-            repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": None,
-            },
+    # 8. modello indicato che oggi non puo' stampare (spento, o senza versione
+    #    pubblicata valida oggi): il codice del DB, con la sede unica di «puo'
+    #    stampare». Fino al 2026-10-21 il BE cercava la versione da se' e un
+    #    modello spento stampava ancora.
+    def test_genera_documento_modello_indicato_non_stampabile_codice_del_db(self) -> None:
+        svc, repo, _, storage = service_with_mocks(
+            repo_methods={"get_template": template_row(template_id=42)},
         )
-        with _patch_scope(None):
+        repo.risolvi_template_applicabile.side_effect = make_db_error(
+            "Il modello di stampa «TPL-PREV» oggi non può stampare: è disattivato.",
+            codice="E_DOCUMENTI_TEMPLATE_NON_STAMPABILE",
+        )
+        with patch_scope(None):
             with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
-        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
+                svc.genera_documento(
+                    make_user(), template_documento_id=42, **_GENERA_DEFAULT,
+                )
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_TEMPLATE_NON_STAMPABILE")
+        repo.create_documento_generato.assert_not_called()
+        storage.write.assert_not_called()
+
+    # 8b. la versione che la porta ha scelto non si rilegge -> il patto del DB
+    #     e' rotto: RuntimeError, non un 404 dell'operatore.
+    def test_genera_documento_versione_risolta_non_rileggibile_invariante(self) -> None:
+        svc, repo, _, storage = service_with_mocks(
+            repo_methods={**risolto(template_row()), "get_versione": None},
+        )
+        with patch_scope(None):
+            with self.assertRaisesRegex(RuntimeError, "versione risolta"):
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
         repo.create_documento_generato.assert_not_called()
         storage.write.assert_not_called()
 
@@ -494,31 +488,31 @@ class GeneraDocumentoResolveVersioneTests(SimpleTestCase):
 class GeneraDocumentoBuilderRenderTests(SimpleTestCase):
     # 9. context_builder_code vuoto sul template -> E_DOCUMENTI_VALIDATION.
     def test_genera_documento_context_builder_code_vuoto_raises(self) -> None:
-        template = _template_row(builder_code="")
-        versione = _versione_row()
-        svc, repo, _, _ = _service_with_mocks(
+        template = template_row(builder_code="")
+        versione = versione_row()
+        svc, repo, _, _ = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": versione,
+                **risolto(template),
+                "get_versione": versione,
             },
         )
-        with _patch_scope(None):
+        with patch_scope(None):
             with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.create_documento_generato.assert_not_called()
 
     # 10. render_pdf solleva -> propagato senza INSERT (Decisione 32).
     def test_genera_documento_render_pdf_solleva_propaga_no_db(self) -> None:
-        template = _template_row()
-        versione = _versione_row()
-        svc, repo, _, storage = _service_with_mocks(
+        template = template_row()
+        versione = versione_row()
+        svc, repo, _, storage = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": versione,
+                **risolto(template),
+                "get_versione": versione,
             },
         )
-        with _patch_scope(None), _patch_get_builder({"numero": 1}):
+        with patch_scope(None), patch_get_builder({"numero": 1}):
             with patch(
                 "apps.documenti.services.document_generation_service.render_pdf",
                 side_effect=ServiceError(
@@ -527,40 +521,40 @@ class GeneraDocumentoBuilderRenderTests(SimpleTestCase):
                 ),
             ):
                 with self.assertRaises(ServiceError) as ctx:
-                    svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                    svc.genera_documento(make_user(), **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_RENDER_FAILED")
         repo.create_documento_generato.assert_not_called()
         storage.write.assert_not_called()
 
     # 11. render_pdf ritorna bytes vuoti -> E_DOCUMENTI_RENDER_FAILED.
     def test_genera_documento_render_pdf_empty_raises(self) -> None:
-        template = _template_row()
-        versione = _versione_row()
-        svc, repo, _, _ = _service_with_mocks(
+        template = template_row()
+        versione = versione_row()
+        svc, repo, _, _ = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": versione,
+                **risolto(template),
+                "get_versione": versione,
             },
         )
-        with _patch_scope(None), _patch_get_builder({"numero": 1}), _patch_render(b""):
+        with patch_scope(None), patch_get_builder({"numero": 1}), patch_render(b""):
             with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_RENDER_FAILED")
         repo.create_documento_generato.assert_not_called()
 
     # 12. file_name_pattern usa una variabile non presente nel context.
     def test_genera_documento_file_name_pattern_var_mancante_raises(self) -> None:
-        template = _template_row(file_name_pattern="preventivo-{numero_inesistente}.pdf")
-        versione = _versione_row()
-        svc, repo, _, _ = _service_with_mocks(
+        template = template_row(file_name_pattern="preventivo-{numero_inesistente}.pdf")
+        versione = versione_row()
+        svc, repo, _, _ = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": versione,
+                **risolto(template),
+                "get_versione": versione,
             },
         )
-        with _patch_scope(None), _patch_get_builder({"numero": 1}), _patch_render():
+        with patch_scope(None), patch_get_builder({"numero": 1}), patch_render():
             with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_RENDER_FAILED")
         self.assertIn("file_name", ctx.exception.message.lower())
         repo.create_documento_generato.assert_not_called()
@@ -574,38 +568,38 @@ class GeneraDocumentoBuilderRenderTests(SimpleTestCase):
 class GeneraDocumentoTipoFileTests(SimpleTestCase):
     # 13. tipo PDF_FINALE assente -> E_DOCUMENTI_VALIDATION pre-INSERT.
     def test_genera_documento_tipo_file_pdf_finale_mancante_raises(self) -> None:
-        template = _template_row()
-        versione = _versione_row()
-        svc, repo, _, storage = _service_with_mocks(
+        template = template_row()
+        versione = versione_row()
+        svc, repo, _, storage = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": versione,
+                **risolto(template),
+                "get_versione": versione,
                 "get_tipo_file_documento_by_codice": None,
             },
         )
-        with _patch_scope(None), _patch_get_builder({"numero": 1}), _patch_render():
+        with patch_scope(None), patch_get_builder({"numero": 1}), patch_render():
             with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.create_documento_generato.assert_not_called()
         storage.write.assert_not_called()
 
     # 14. tipo PDF_FINALE presente ma non attivo -> rifiutato.
     def test_genera_documento_tipo_file_pdf_finale_non_attivo_raises(self) -> None:
-        template = _template_row()
-        versione = _versione_row()
-        svc, repo, _, storage = _service_with_mocks(
+        template = template_row()
+        versione = versione_row()
+        svc, repo, _, storage = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": versione,
+                **risolto(template),
+                "get_versione": versione,
                 "get_tipo_file_documento_by_codice": {
                     "id": 2, "codice": "PDF_FINALE", "attivo": False,
                 },
             },
         )
-        with _patch_scope(None), _patch_get_builder({"numero": 1}), _patch_render():
+        with patch_scope(None), patch_get_builder({"numero": 1}), patch_render():
             with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.create_documento_generato.assert_not_called()
         storage.write.assert_not_called()
@@ -621,12 +615,12 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
 
     # 15. IntegrityError uq_progressivo -> mappato a E_DOCUMENTI_VALIDATION.
     def test_genera_documento_integrity_error_progressivo_mapped(self) -> None:
-        template = _template_row()
-        versione = _versione_row()
-        svc, repo, _, storage = _service_with_mocks(
+        template = template_row()
+        versione = versione_row()
+        svc, repo, _, storage = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": versione,
+                **risolto(template),
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "get_tipo_file_documento_by_codice": {
                     "id": 2, "codice": "PDF_FINALE", "attivo": True,
@@ -637,10 +631,10 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
             'duplicate key value violates unique constraint '
             '"uq_documenti_generati_sorgente_progressivo"'
         )
-        with _patch_scope(None), _patch_get_builder({"numero": 1}), _patch_render():
+        with patch_scope(None), patch_get_builder({"numero": 1}), patch_render():
             with _patch_transaction_atomic_noop():
                 with self.assertRaises(ServiceError) as ctx:
-                    svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                    svc.genera_documento(make_user(), **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         self.assertIn("progressivo", ctx.exception.message.lower())
         # storage.write non chiamato: INSERT prima di write nel try interno.
@@ -648,12 +642,12 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
 
     # 16. storage.write fallisce -> atomic rollback, no cleanup.
     def test_genera_documento_storage_write_fail_no_cleanup(self) -> None:
-        template = _template_row()
-        versione = _versione_row()
-        svc, repo, _, storage = _service_with_mocks(
+        template = template_row()
+        versione = versione_row()
+        svc, repo, _, storage = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": versione,
+                **risolto(template),
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "uid-x"),
                 "create_documento_generato_file": 1,
@@ -664,10 +658,10 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
             },
         )
         storage.write.side_effect = OSError("disk full")
-        with _patch_scope(None), _patch_get_builder({"numero": 1}), _patch_render():
+        with patch_scope(None), patch_get_builder({"numero": 1}), patch_render():
             with _patch_transaction_atomic_noop():
                 with self.assertRaises(OSError):
-                    svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                    svc.genera_documento(make_user(), **_GENERA_DEFAULT)
         repo.create_documento_generato.assert_called_once()
         # Niente cleanup: il file non e' mai stato scritto (storage_uri None).
         storage.delete.assert_not_called()
@@ -676,12 +670,12 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
     #     prima di passare a `create_documento_generato.context_json`. Senza
     #     normalizzazione psycopg solleverebbe TypeError sull'INSERT jsonb.
     def test_genera_documento_context_decimal_date_jsonificato(self) -> None:
-        template = _template_row()
-        versione = _versione_row()
-        svc, repo, _, _ = _service_with_mocks(
+        template = template_row()
+        versione = versione_row()
+        svc, repo, _, _ = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": versione,
+                **risolto(template),
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "uid-x"),
                 "create_documento_generato_file": 1,
@@ -699,9 +693,9 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
             "data_doc": date(2026, 5, 4),
             "righe": [{"importo": Decimal("50.00")}],
         }
-        with _patch_scope(None), _patch_get_builder(decimal_context), _patch_render():
+        with patch_scope(None), patch_get_builder(decimal_context), patch_render():
             with _patch_transaction_atomic_noop():
-                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
 
         documento_data = repo.create_documento_generato.call_args.args[0]
         json_ctx = documento_data["context_json"]
@@ -714,15 +708,15 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
     # 19. context_hash deterministico: due chiamate con stesso input ->
     #     stesso hash. Garantisce dedup logico promesso dalla doc Tranche I.
     def test_genera_documento_context_hash_deterministico(self) -> None:
-        template = _template_row()
-        versione = _versione_row()
+        template = template_row()
+        versione = versione_row()
         same_context = {"numero": 7, "voce": "X"}
 
         def _build_svc():
-            svc, repo, _, _ = _service_with_mocks(
+            svc, repo, _, _ = service_with_mocks(
                 repo_methods={
-                    "find_template_applicabile": template,
-                    "get_versione_pubblicata_attiva": versione,
+                    **risolto(template),
+                    "get_versione": versione,
                     "next_progressivo_sorgente": 1,
                     "create_documento_generato": (99, "uid-x"),
                     "create_documento_generato_file": 1,
@@ -735,12 +729,12 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
             )
             return svc, repo
 
-        with _patch_scope(None), _patch_get_builder(same_context), _patch_render(b"BYTES"):
+        with patch_scope(None), patch_get_builder(same_context), patch_render(b"BYTES"):
             with _patch_transaction_atomic_noop():
                 svc1, repo1 = _build_svc()
-                svc1.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                svc1.genera_documento(make_user(), **_GENERA_DEFAULT)
                 svc2, repo2 = _build_svc()
-                svc2.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                svc2.genera_documento(make_user(), **_GENERA_DEFAULT)
 
         h1 = repo1.create_documento_generato.call_args.args[0]["context_hash"]
         h2 = repo2.create_documento_generato.call_args.args[0]["context_hash"]
@@ -749,7 +743,7 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
 
     # 20. input guard: id non positivi e sorgente_uid vuoto rifiutati pre-DB.
     def test_genera_documento_input_guard_su_input_scalari(self) -> None:
-        svc, repo, _, _ = _service_with_mocks()
+        svc, repo, _, _ = service_with_mocks()
         bad_inputs = [
             {"emittente_fiscale_id": 0},
             {"emittente_fiscale_id": -1},
@@ -762,14 +756,14 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
         for override in bad_inputs:
             with self.subTest(override=override):
                 args = {**_GENERA_DEFAULT, **override}
-                with _patch_scope(None):
+                with patch_scope(None):
                     with self.assertRaises(ServiceError) as ctx:
-                        svc.genera_documento(_make_user(), **args)
+                        svc.genera_documento(make_user(), **args)
                 self.assertEqual(
                     ctx.exception.code, "E_DOCUMENTI_VALIDATION",
                 )
         # Nessuna chiamata DB per nessuno degli input invalid.
-        repo.find_template_applicabile.assert_not_called()
+        repo.risolvi_template_applicabile.assert_not_called()
         repo.create_documento_generato.assert_not_called()
 
     # 17. commit DB fail post-write -> cleanup STORAGE_ORPHAN best-effort.
@@ -780,12 +774,12 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
     def test_genera_documento_commit_fail_storage_orphan_cleanup(
         self, _mock_atomic
     ) -> None:
-        template = _template_row()
-        versione = _versione_row()
-        svc, _, _, storage = _service_with_mocks(
+        template = template_row()
+        versione = versione_row()
+        svc, _, _, storage = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": versione,
+                **risolto(template),
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "uid-x"),
                 "create_documento_generato_file": 1,
@@ -796,9 +790,9 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
             },
             storage_methods={"write": "fs:abc", "delete": True},
         )
-        with _patch_scope(None), _patch_get_builder({"numero": 1}), _patch_render():
+        with patch_scope(None), patch_get_builder({"numero": 1}), patch_render():
             with self.assertRaises(IntegrityError):
-                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
         # Cleanup chiamato sull'uri del file scritto pre-commit.
         storage.write.assert_called_once()
         storage.delete.assert_called_once_with("fs:abc")
@@ -831,12 +825,12 @@ class GeneraDocumentoAllegatiTests(SimpleTestCase):
     # 21. allegato valido -> 2 file persistiti (principale + allegato),
     #     allegato is_principale=False, ordinamento 2, tipo ALLEGATO.
     def test_genera_documento_con_allegati_persiste_file_secondari(self) -> None:
-        template = _template_row()
-        versione = _versione_row()
-        svc, repo, _, storage = _service_with_mocks(
+        template = template_row()
+        versione = versione_row()
+        svc, repo, _, storage = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": versione,
+                **risolto(template),
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "uid-x"),
                 "create_documento_generato_file": 123,
@@ -851,10 +845,10 @@ class GeneraDocumentoAllegatiTests(SimpleTestCase):
             "mime_type": "application/pdf",
             "file_name": "condizioni.pdf",
         }]
-        with _patch_scope(None), _patch_get_builder({"numero": 1}), _patch_render():
+        with patch_scope(None), patch_get_builder({"numero": 1}), patch_render():
             with _patch_transaction_atomic_noop():
                 result = svc.genera_documento(
-                    _make_user(), allegati=allegati, **_GENERA_DEFAULT,
+                    make_user(), allegati=allegati, **_GENERA_DEFAULT,
                 )
 
         self.assertEqual(repo.create_documento_generato_file.call_count, 2)
@@ -878,7 +872,7 @@ class GeneraDocumentoAllegatiTests(SimpleTestCase):
     # 22. allegato con MIME non ammesso -> VALIDATION fail-fast (pre-render,
     #     pre-DB). Nessuna chiamata a template/render/INSERT.
     def test_genera_documento_allegato_mime_non_ammesso_raises(self) -> None:
-        svc, repo, _, storage = _service_with_mocks()
+        svc, repo, _, storage = service_with_mocks()
         _mock_params(svc)
         allegati = [{
             "file_bytes": b"testo",
@@ -886,15 +880,15 @@ class GeneraDocumentoAllegatiTests(SimpleTestCase):
             "file_name": "note.txt",
         }]
         with self.assertRaises(ServiceError) as ctx:
-            svc.genera_documento(_make_user(), allegati=allegati, **_GENERA_DEFAULT)
+            svc.genera_documento(make_user(), allegati=allegati, **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        repo.find_template_applicabile.assert_not_called()
+        repo.risolvi_template_applicabile.assert_not_called()
         repo.create_documento_generato.assert_not_called()
         storage.write.assert_not_called()
 
     # 23. allegato oltre il limite size -> VALIDATION.
     def test_genera_documento_allegato_troppo_grande_raises(self) -> None:
-        svc, repo, _, storage = _service_with_mocks()
+        svc, repo, _, storage = service_with_mocks()
         _mock_params(svc, max_mb=1)
         allegati = [{
             "file_bytes": b"x" * (2 * 1024 * 1024),  # 2 MB > 1 MB
@@ -902,7 +896,7 @@ class GeneraDocumentoAllegatiTests(SimpleTestCase):
             "file_name": "grosso.pdf",
         }]
         with self.assertRaises(ServiceError) as ctx:
-            svc.genera_documento(_make_user(), allegati=allegati, **_GENERA_DEFAULT)
+            svc.genera_documento(make_user(), allegati=allegati, **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.create_documento_generato.assert_not_called()
         storage.write.assert_not_called()
@@ -914,7 +908,7 @@ class AggiungiAllegatiTests(SimpleTestCase):
     # 24. append allegato a documento esistente: scope OK -> persist file
     #     secondario con ordinamento da get_next_file_ordinamento.
     def test_aggiungi_allegati_append_persiste_file(self) -> None:
-        svc, repo, _, storage = _service_with_mocks(
+        svc, repo, _, storage = service_with_mocks(
             repo_methods={
                 "get_documento_generato": {
                     "id": 99, "emittente_fiscale_id": 11, "pdf_hash": "abc",
@@ -931,9 +925,9 @@ class AggiungiAllegatiTests(SimpleTestCase):
             "mime_type": "application/pdf",
             "file_name": "extra.pdf",
         }]
-        with _patch_scope(None):
+        with patch_scope(None):
             with _patch_transaction_atomic_noop():
-                result = svc.aggiungi_allegati(_make_user(), 99, allegati)
+                result = svc.aggiungi_allegati(make_user(), 99, allegati)
 
         self.assertEqual(result["documento_id"], 99)
         self.assertEqual(len(result["allegati"]), 1)
@@ -954,23 +948,23 @@ class AggiungiAllegatiTests(SimpleTestCase):
 
     # 25. documento inesistente / fuori scope -> NOT_FOUND, no persist.
     def test_aggiungi_allegati_documento_inesistente_raises_not_found(self) -> None:
-        svc, repo, _, storage = _service_with_mocks(
+        svc, repo, _, storage = service_with_mocks(
             repo_methods={"get_documento_generato": None},
         )
         _mock_params(svc)
         allegati = [{
             "file_bytes": b"x", "mime_type": "application/pdf", "file_name": "a.pdf",
         }]
-        with _patch_scope(None):
+        with patch_scope(None):
             with self.assertRaises(ServiceError) as ctx:
-                svc.aggiungi_allegati(_make_user(), 999, allegati)
+                svc.aggiungi_allegati(make_user(), 999, allegati)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
         repo.create_documento_generato_file.assert_not_called()
         storage.write.assert_not_called()
 
     # 26. lista allegati vuota -> VALIDATION (niente da aggiungere).
     def test_aggiungi_allegati_lista_vuota_raises_validation(self) -> None:
-        svc, repo, _, storage = _service_with_mocks(
+        svc, repo, _, storage = service_with_mocks(
             repo_methods={
                 "get_documento_generato": {
                     "id": 99, "emittente_fiscale_id": 11, "pdf_hash": "abc",
@@ -978,9 +972,9 @@ class AggiungiAllegatiTests(SimpleTestCase):
             },
         )
         _mock_params(svc)
-        with _patch_scope(None):
+        with patch_scope(None):
             with self.assertRaises(ServiceError) as ctx:
-                svc.aggiungi_allegati(_make_user(), 99, [])
+                svc.aggiungi_allegati(make_user(), 99, [])
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.create_documento_generato_file.assert_not_called()
         storage.write.assert_not_called()
@@ -1019,12 +1013,12 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
 
     # 27. path processo: pipeline completa senza utente, ma CON perimetro.
     def test_genera_documento_path_processo_completo_audit_none(self) -> None:
-        template = _template_row()
-        versione = _versione_row()
-        svc, repo, _, storage = _service_with_mocks(
+        template = template_row()
+        versione = versione_row()
+        svc, repo, _, storage = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": template,
-                "get_versione_pubblicata_attiva": versione,
+                **risolto(template),
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "uid-sys"),
                 "create_documento_generato_file": 1,
@@ -1033,8 +1027,8 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
             },
             storage_methods={"write": "fs:sys"},
         )
-        with _patch_scope([1]) as scope_mock, \
-                _patch_get_builder({"numero": 7}), _patch_render():
+        with patch_scope([1]) as scope_mock, \
+                patch_get_builder({"numero": 7}), patch_render():
             with _patch_transaction_atomic_noop():
                 result = svc.genera_documento(
                     None,
@@ -1056,34 +1050,39 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
     #     era la porta. Adesso non c'e' nessun canale che la apra: o si dice chi
     #     si e', o si dice per quale azienda si genera.
     def test_genera_documento_senza_utente_e_senza_perimetro_raises(self) -> None:
-        svc, repo, _, storage = _service_with_mocks()
+        svc, repo, _, storage = service_with_mocks()
         with self.assertRaises(ServiceError) as ctx:
             svc.genera_documento(None, emittente_scope=None, **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        repo.find_template_applicabile.assert_not_called()
+        repo.risolvi_template_applicabile.assert_not_called()
         storage.write.assert_not_called()
 
     # 29. scope esplicito lista: emittente fuori whitelist -> rifiutato,
     #     senza passare dall'auth guard (user=None ammesso).
     def test_genera_documento_scope_esplicito_guard_emittente(self) -> None:
-        svc, repo, _, storage = _service_with_mocks()
+        svc, repo, _, storage = service_with_mocks()
         with self.assertRaises(ServiceError) as ctx:
             svc.genera_documento(
                 None, emittente_scope=[1, 2], **_GENERA_DEFAULT,
             )
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        repo.find_template_applicabile.assert_not_called()
+        repo.risolvi_template_applicabile.assert_not_called()
         storage.write.assert_not_called()
 
     # 30. override template in path processo: repo.get_template con lo scope
-    #     del chiamante, il reader (che pretende auth) non viene toccato.
+    #     del chiamante, il reader (che pretende auth) non viene toccato, e la
+    #     porta del DB verifica il modello indicato come sul path web.
     def test_genera_documento_path_processo_template_override_usa_repo(self) -> None:
-        template = _template_row(template_id=42)
-        versione = _versione_row()
-        svc, repo, reader, _ = _service_with_mocks(
+        template = template_row(template_id=42)
+        versione = versione_row()
+        svc, repo, reader, _ = service_with_mocks(
             repo_methods={
                 "get_template": template,
-                "get_versione_pubblicata_attiva": versione,
+                "risolvi_template_applicabile": {
+                    "template_documento_id": 42, "livello": "INDICATO",
+                    "template_versione_id": 12,
+                },
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "uid-sys"),
                 "create_documento_generato_file": 1,
@@ -1092,7 +1091,7 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
             },
             storage_methods={"write": "fs:sys"},
         )
-        with _patch_get_builder({"numero": 7}), _patch_render():
+        with patch_get_builder({"numero": 7}), patch_render():
             with _patch_transaction_atomic_noop():
                 svc.genera_documento(
                     None,
@@ -1102,7 +1101,9 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
                 )
         repo.get_template.assert_called_once_with(42, emittente_ids_scope=[11])
         reader.get_template.assert_not_called()
-        repo.find_template_applicabile.assert_not_called()
+        self.assertEqual(
+            repo.risolvi_template_applicabile.call_args.kwargs["template_documento_id"], 42,
+        )
 
 
 # =====================================================================
@@ -1117,20 +1118,20 @@ class GeneraDocumentoVersioneContestoTests(SimpleTestCase):
     #     rifiuto (P0001 -> 409 col codice) e' provata sul DB in
     #     tests/db/test_versione_contesto_db.
     def test_genera_documento_forma_dei_dati_rifiutata_niente_render(self) -> None:
-        svc, repo, _, storage = _service_with_mocks(
+        svc, repo, _, storage = service_with_mocks(
             repo_methods={
-                "find_template_applicabile": _template_row(),
-                "get_versione_pubblicata_attiva": _versione_row(),
+                **risolto(template_row()),
+                "get_versione": versione_row(),
             },
         )
         repo.guard_versione_contesto.side_effect = ServiceError(
             code="E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA",
             message="La versione legge un'altra forma.",
         )
-        with _patch_scope(None), _patch_get_builder() as get_builder, \
-                _patch_render() as render:
+        with patch_scope(None), patch_get_builder() as get_builder, \
+                patch_render() as render:
             with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA")
         get_builder.return_value.build_context.assert_not_called()
         render.assert_not_called()

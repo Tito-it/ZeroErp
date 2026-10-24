@@ -1,0 +1,140 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: script.fn_check_contratto_sovrapposto(quintupla del contratto)
+#   Il motivo d'attivazione «il periodo si sovrappone a un contratto
+#   vincolante dello stesso cliente e punto di fornitura».
+#
+# -- PERCHE' ------------------------------------------------------------
+#   Richiesta del BE (2026-10-19): su una bozza sovrapposta a un contratto
+#   vincolante «Attiva» era acceso. Premuto, si apriva il dialog della stampa,
+#   e solo alla conferma arrivava il rifiuto: l'EXCLUDE ex_contratti_no_overlap
+#   (23P01 generico) e una copia Python in ContrattiService.emetti. La regola
+#   non arrivava ne' alla capability ne' al guard di transizione.
+#   Con questa check entrambi la leggono da qui (20261020-20, -21); l'EXCLUDE
+#   resta la difesa dura.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   Una fn_check_* PURA (linee-guida-sql §12.5): [] oppure UN motivo,
+#     codice     E_CONTRATTO_OVERLAP_ESISTENTE (a catalogo: lo stesso del push
+#                offerta -> contratto, che nomina il contratto in conflitto)
+#     reason     CONTRATTO_SOVRAPPOSTO
+#     reason_key vendite.contratti.azione_reason.contratto_sovrapposto
+#                (debito verso il frontend: locales)
+#     dettaglio  {contratto_sovrapposto_id, contratto_sovrapposto_numero}
+#     valori     [numero del contratto in conflitto] -> il %s del messaggio e
+#                il {0} del tooltip
+#   Il predicato e' vendite.fn_contratto_sovrapposto: la check lo CHIAMA, non
+#   lo riscrive. «Vincolante» = partecipa_overlap_snapshot (non in bozza e non
+#   abortito: ATTIVO e anche CESSATO), lo stesso predicato dell'EXCLUDE.
+#
+# -- LA QUINTUPLA ENTRA COME PARAMETRI ------------------------------------
+#   Il guard di transizione e' BEFORE UPDATE: riletta per id, la riga sarebbe
+#   quella di ieri, e un UPDATE che porta ad ATTIVO cambiando valido_dal o
+#   valido_al nella stessa istruzione verrebbe giudicato sulle date vecchie.
+#   Il guard passa NEW.*, la capability i valori salvati. Nessun DEFAULT:
+#   valido_al NULL (contratto perpetuo) e' un valore legittimo, non «nessun
+#   controllo».
+#   ⚠️ Niente id del contratto da escludere: la check si chiama per un
+#   contratto che non partecipa ancora (verso ATTIVO si arriva solo da DRAFT,
+#   e la riga salvata e' in bozza), quindi fn_contratto_sovrapposto non puo'
+#   restituire lui.
+#
+# -- RLS (D-2 di Tid, 2026-10-19) ---------------------------------------
+#   INVOKER e STABLE, come le check sorelle: legge i contratti sotto la policy
+#   degli emittenti di chi attiva. Un contratto vincolante che l'operatore non
+#   vede (stesso BA, mappatura dell'emittente cambiata nel frattempo) non da'
+#   motivo: resta il 23P01 dell'EXCLUDE. Limite dichiarato e voluto: il
+#   motivo nominerebbe un contratto fuori perimetro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261020-19-create-fn-check-contratto-sovrapposto-mctit.yaml
+
+  - changeSet:
+      id: 20261020-19-create-fn-check-contratto-sovrapposto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova check script.fn_check_contratto_sovrapposto: il motivo d'attivazione
+        E_CONTRATTO_OVERLAP_ESISTENTE (reason CONTRATTO_SOVRAPPOSTO), il contratto vincolante
+        sovrapposto sulla quintupla dell'EXCLUDE ex_contratti_no_overlap.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_contratto_sovrapposto(
+                  p_billing_account_id vendite.contratti.billing_account_id%TYPE,
+                  p_istanza_utility_id vendite.contratti.istanza_utility_id%TYPE,
+                  p_utility_id         vendite.contratti.utility_id%TYPE,
+                  p_ambito             vendite.contratti.ambito%TYPE,
+                  p_valido_dal         vendite.contratti.valido_dal%TYPE,
+                  p_valido_al          vendite.contratti.valido_al%TYPE
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- ⚠️ Il jsonb di ritorno e' l'array dei motivi: nessuna colonna
+              --   di cui sia il riflesso.
+              DECLARE
+                  v_id     vendite.contratti.id%TYPE;
+                  v_numero vendite.contratti.numero%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il periodo del contratto si sovrappone a un contratto
+                  --   VINCOLANTE (non in bozza, non abortito) dello stesso
+                  --   cliente, punto di fornitura, utility e ambito? Funzione
+                  --   PURA: non solleva, non scrive. Sollevare e' mestiere del
+                  --   guard di transizione, che la CHIAMA, come la capability
+                  --   che spegne «Attiva» (linee-guida-sql §12.5.2).
+                  -- Ritorna: [] se il periodo e' libero, altrimenti UN motivo
+                  --   che nomina il contratto in conflitto.
+                  -- =========================================================
+                  v_id := vendite.fn_contratto_sovrapposto(
+                      p_billing_account_id,
+                      p_istanza_utility_id,
+                      p_utility_id,
+                      p_ambito,
+                      p_valido_dal,
+                      p_valido_al);
+
+                  IF v_id IS NULL THEN
+                      RETURN jsonb_build_array();
+                  END IF;
+
+                  SELECT c.numero
+                    INTO v_numero
+                    FROM vendite.contratti c
+                   WHERE c.id = v_id;
+
+                  RETURN jsonb_build_array(jsonb_build_object(
+                      'codice',     'E_CONTRATTO_OVERLAP_ESISTENTE',
+                      'reason',     'CONTRATTO_SOVRAPPOSTO',
+                      'reason_key', 'vendite.contratti.azione_reason.contratto_sovrapposto',
+                      'dettaglio',  jsonb_build_object(
+                                        'contratto_sovrapposto_id',     v_id,
+                                        'contratto_sovrapposto_numero', v_numero),
+                      -- Il %s del messaggio e il {0} del tooltip.
+                      'valori',     jsonb_build_array(v_numero)));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_contratto_sovrapposto(
+                  vendite.contratti.billing_account_id%TYPE,
+                  vendite.contratti.istanza_utility_id%TYPE,
+                  vendite.contratti.utility_id%TYPE,
+                  vendite.contratti.ambito%TYPE,
+                  vendite.contratti.valido_dal%TYPE,
+                  vendite.contratti.valido_al%TYPE)
+              IS 'Motivo d''attivazione del contratto (richiesta BE del 2026-10-19): il periodo si sovrappone a un contratto VINCOLANTE (partecipa_overlap_snapshot: non in bozza e non abortito, quindi ATTIVO o CESSATO) sulla stessa quintupla dell''EXCLUDE ex_contratti_no_overlap (billing_account, istanza_utility, utility, ambito, periodo). PURA: non solleva, non scrive. Ritorna [] o un motivo {codice E_CONTRATTO_OVERLAP_ESISTENTE, reason CONTRATTO_SOVRAPPOSTO, reason_key vendite.contratti.azione_reason.contratto_sovrapposto, dettaglio {contratto_sovrapposto_id, contratto_sovrapposto_numero}, valori [numero]}. Predicato vendite.fn_contratto_sovrapposto. La quintupla entra come PARAMETRI: il guard BEFORE UPDATE passa NEW.*, la capability i valori salvati. Si chiama per un contratto che non partecipa ancora (verso ATTIVO solo da DRAFT): nessun id da escludere. INVOKER sotto la RLS degli emittenti: un vincolante fuori perimetro non da'' motivo e resta il 23P01 dell''EXCLUDE (D-2 di Tid). Lettori: script.fn_available_actions_contratto e vendite.trgfn_contratti_guard_transizione_stato (verso ATTIVO). ⚠️ La reason_key e'' un debito verso il frontend (locales).';

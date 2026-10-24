@@ -11,6 +11,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 
+from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.db._helpers import order_dir_ammessa
 from apps.core.db.dbops_repository import DbopsRepository
@@ -18,11 +19,11 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import FanOutRunLogger, run_fan_out
 from apps.core.services.service_errors import E_VALIDATION_INPUT
 from apps.vendite.db.pipeline_repository import (
-    LOTTO_LISTE_PAGINA_MAX,
     SdiPayloadRow,
     VenditePipelineRepository,
 )
 from apps.vendite.services._fatturazione_job_helpers import JOB_TYPES_FATTURAZIONE_APP
+from apps.vendite.services._lotto_perimetro import lotto_visibile
 from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
@@ -227,27 +228,6 @@ def run_lotto_pipeline_until_done(
     return runner.run_lotto_until_done(params)
 
 
-# Scopo: Carica un lotto NELLO SCOPE dell'operatore, con il 404 unificato dei
-#        verbi per-lotto (fuori scope e inesistente danno la stessa risposta,
-#        come la RLS — api.md §scope).
-# ⭐ Estratto alla 2ª occorrenza (regola del 2): lo usano il guard di stato dei
-#    verbi (`_get_lotto_in_stato`) e la lettura della finestra di numerazione,
-#    che NON vuole un gate di stato — e' una GET, e rifiutare un lotto DRAFT
-#    con un 409 sarebbe una risposta a un'altra domanda.
-def _get_lotto_visibile(
-    *, lotto_id: int, auth_user_id: int | None,
-) -> LottoListRow:
-    from apps.vendite.db.vendite_repository import VenditeRepository
-
-    lotto = VenditeRepository().get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
-    ErrorManager.require(
-        lotto is not None,
-        code="E_LOTTO_NON_TROVATO",
-        message="Lotto non trovato.",
-        detail=f"lotto_id={lotto_id}",
-    )
-    assert lotto is not None
-    return lotto
 
 
 # Scopo: BE-5 — LA FINESTRA DI NUMERAZIONE di un perimetro: con quale data si
@@ -280,7 +260,7 @@ def _get_lotto_visibile(
 #    Chi usasse questa risposta AL POSTO del cancello starebbe sostituendo un
 #    presidio con un suggerimento.
 # Scopo: il repository vendite, importato al bisogno.
-# ⚠️ Import LOCALE come gia' fa `_get_lotto_visibile` in questo modulo: la
+# ⚠️ Import LOCALE come gia' fa `lotto_visibile` (`_lotto_perimetro`): la
 #    catena `vendite_repository` non va caricata al boot di `pipeline_service`.
 def _vendite_repo():
     from apps.vendite.db.vendite_repository import VenditeRepository
@@ -340,7 +320,7 @@ def finestra_numerazione(
         }
 
     if lotto_id is not None:
-        lotto = _get_lotto_visibile(lotto_id=lotto_id, auth_user_id=auth_user_id)
+        lotto = lotto_visibile(lotto_id=lotto_id, auth_user_id=auth_user_id)
         return _risposta(
             minima=repo.get_data_minima_numerabile_lotto(lotto_id),
             corrente=repo.get_data_documento_corrente(lotto_id=lotto_id),
@@ -390,7 +370,7 @@ def _get_lotto_in_stato(
     error_code: str,
     error_message: str,
 ) -> LottoListRow:
-    lotto = _get_lotto_visibile(lotto_id=lotto_id, auth_user_id=auth_user_id)
+    lotto = lotto_visibile(lotto_id=lotto_id, auth_user_id=auth_user_id)
 
     stato_id = VenditePipelineRepository().get_stato_doc_fiscale_id(stato_codice)
     ErrorManager.require(
@@ -495,12 +475,13 @@ def numera_lotto(
 def fn_list_lotto_segnalazioni(
     *,
     lotto_id: int,
+    auth_user_id: int | None,
     livello: str | None = None,
     origine: str | None = None,
     solo_attive: bool = True,
     solo_job_corrente: bool = False,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     order_by: str | None = None,
     order_dir: str = "desc",
     max_rows: int | None = None,
@@ -514,16 +495,9 @@ def fn_list_lotto_segnalazioni(
         function_name="vendite.pipeline_service.fn_list_lotto_segnalazioni",
         log_to_db=False,
     )
-    # ⚠️ L'export non ha una pagina da validare: salta la paginazione.
-    ErrorManager.require(
-        bool(max_rows) or (page >= 1 and 1 <= page_size <= LOTTO_LISTE_PAGINA_MAX),
-        code="E_PIPELINE_VALIDATION",
-        message="Parametri pipeline non validi.",
-        detail=f"page={page} page_size={page_size} fuori dai limiti ammessi",
-        context={"lotto_id": lotto_id, "page": page, "page_size": page_size},
-        function_name="vendite.pipeline_service.fn_list_lotto_segnalazioni",
-        log_to_db=False,
-    )
+    # ⛔ La finestra (`limit` fra 1 e il tetto, `offset` non negativo) la
+    #    valida la view con `pagina_da_query`, che dal 2026-10-21 risponde 400
+    #    sul fuori limite (Tid): qui era una seconda copia, irraggiungibile.
     # ⛔ Il predicato unico `order_dir_ammessa` (2026-09-26), non un secondo
     #    `in ("asc", "desc")`: la fn DB legge `lower(btrim(...))`, quindi
     #    maiuscole, spazi e assenza (= il suo default `desc`) sono gia' suoi.
@@ -536,25 +510,26 @@ def fn_list_lotto_segnalazioni(
         function_name="vendite.pipeline_service.fn_list_lotto_segnalazioni",
         log_to_db=False,
     )
+    # ⛔ Il cancello di perimetro PRIMA dell'elenco (vedi `_lotto_perimetro`).
+    lotto_visibile(
+        lotto_id=lotto_id, auth_user_id=auth_user_id,
+        function_name="vendite.pipeline_service.fn_list_lotto_segnalazioni",
+    )
     righe, total_count, fuori_job = VenditePipelineRepository().list_lotto_segnalazioni(
         lotto_id=lotto_id,
         livello=livello,
         origine=origine,
         solo_attive=solo_attive,
         solo_job_corrente=solo_job_corrente,
-        limit=page_size,
-        offset=0 if max_rows else (page - 1) * page_size,
+        limit=limit,
+        offset=0 if max_rows else offset,
         order_by=order_by,
         order_dir=order_dir,
         max_rows=max_rows,
     )
-    total_pages = (total_count + page_size - 1) // page_size if page_size else 0
     return {
         "lotto_id": lotto_id,
-        "count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
+        **envelope_da_offset(righe, total_count, limit=limit, offset=offset),
         # ⭐ Quante segnalazioni restano FUORI dal job corrente: e' il numero che
         # rende onesto il filtro «solo l'ultima corsa». Senza, un elenco filtrato
         # e uno vuoto si leggono uguali.
@@ -966,7 +941,7 @@ def _parse_gruppo_keys(raw: Any) -> tuple[str, ...]:
 
 
 # Scopo: Restituisce riepilogo segnalazioni del lotto con regola di blocco step successivo.
-def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, Any]:
+def fn_get_lotto_segnalazioni_summary(*, lotto_id: int, auth_user_id: int | None) -> dict[str, Any]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
         code="E_PIPELINE_VALIDATION",
@@ -975,6 +950,12 @@ def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, Any]:
         context={"lotto_id": lotto_id},
         function_name="vendite.pipeline_service.fn_get_lotto_segnalazioni_summary",
         log_to_db=True,
+    )
+    # ⛔ Il cancello di perimetro PRIMA dei conteggi: senza, un lotto fuori
+    #    scope rispondeva zero segnalazioni, cioe' «lotto pulito» (2026-10-20).
+    lotto_visibile(
+        lotto_id=lotto_id, auth_user_id=auth_user_id,
+        function_name="vendite.pipeline_service.fn_get_lotto_segnalazioni_summary",
     )
     service = LottoSegnalazioniService()
     status = service.evaluate_lotto_status(lotto_id)
@@ -993,7 +974,8 @@ def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, Any]:
 def fn_get_lotto_task_runs(
     *,
     lotto_id: int,
-    page_size: int = DEFAULT_LIMIT_EVENTI,
+    auth_user_id: int | None,
+    limit: int = DEFAULT_LIMIT_EVENTI,
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str = "desc",
@@ -1010,24 +992,9 @@ def fn_get_lotto_task_runs(
         function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
         log_to_db=True,
     )
-    ErrorManager.require(
-        bool(max_rows) or 1 <= int(page_size) <= LOTTO_LISTE_PAGINA_MAX,
-        code="E_PIPELINE_VALIDATION",
-        message="Parametri pipeline non validi.",
-        detail=f"page_size deve essere compreso tra 1 e {LOTTO_LISTE_PAGINA_MAX}",
-        context={"lotto_id": lotto_id, "page_size": page_size},
-        function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
-        log_to_db=True,
-    )
-    ErrorManager.require(
-        offset >= 0,
-        code="E_PIPELINE_VALIDATION",
-        message="Parametri pipeline non validi.",
-        detail="offset non puo' essere negativo",
-        context={"lotto_id": lotto_id, "offset": offset},
-        function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
-        log_to_db=True,
-    )
+    # ⛔ La finestra (`limit` fra 1 e il tetto, `offset` non negativo) la
+    #    valida la view con `pagina_da_query`, che dal 2026-10-21 risponde 400
+    #    sul fuori limite (Tid): qui era una seconda copia, irraggiungibile.
     # ⛔ Il predicato unico `order_dir_ammessa` (2026-09-26), non un secondo
     #    `in ("asc", "desc")`: la fn DB legge `lower(btrim(...))`, quindi
     #    maiuscole, spazi e assenza (= il suo default `desc`) sono gia' suoi.
@@ -1040,6 +1007,11 @@ def fn_get_lotto_task_runs(
         function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
         log_to_db=False,
     )
+    # ⛔ Il cancello di perimetro PRIMA dell'elenco (vedi `_lotto_perimetro`).
+    lotto_visibile(
+        lotto_id=lotto_id, auth_user_id=auth_user_id,
+        function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
+    )
     repository = VenditePipelineRepository()
     runs: list[LottoTaskRunRow]
     # ⚠️ Il vocabolario degli stati NON si valida qui: lo possiede la funzione
@@ -1048,7 +1020,7 @@ def fn_get_lotto_task_runs(
     # stesso vocabolario — la stessa ragione per cui `order_by` passa intatto.
     runs, total_count, esclusi_count = repository.list_lotto_task_runs(
         lotto_id,
-        limit=page_size,
+        limit=limit,
         offset=offset,
         order_by=order_by,
         order_dir=order_dir,
@@ -1059,19 +1031,18 @@ def fn_get_lotto_task_runs(
     # ⚠️ ENVELOPE PAGINATO, non piu' `{lotto_id, count, task_runs}`: `count`
     # diceva quante righe erano ARRIVATE, cioe' la dimensione della pagina, e
     # una lista che si paginava da sola l'avrebbe letto come «totale». Le
-    # chiavi sono quelle di tutte le altre liste (`_build_list_response`), cosi'
+    # chiavi sono quelle di tutte le altre liste (`envelope_da_offset`), cosi'
     # il BB di lista non ha bisogno di sapere che questa e' speciale.
     # 📌 `task_runs` resta come alias di `results` per il consumatore attuale
     # del drawer: la conversione a `<ListaConfigurabile>` e' un altro passo
     # (FE-2) e questo endpoint non deve romperlo nel frattempo.
-    pagina = max(1, (offset // page_size) + 1) if page_size else 1
-    total_pages = (total_count + page_size - 1) // page_size if page_size else 0
+    envelope = envelope_da_offset(runs, total_count, limit=limit, offset=offset)
     return {
         "lotto_id": lotto_id,
-        "count": total_count,
-        "page": pagina,
-        "page_size": page_size,
-        "total_pages": total_pages,
+        "count": envelope["count"],
+        "page": envelope["page"],
+        "page_size": envelope["page_size"],
+        "total_pages": envelope["total_pages"],
         # ⭐ Quante righe i filtri lasciano FUORI — il gemello di
         # `fuori_job_count` delle segnalazioni, con un nome piu' largo perche'
         # qui i filtri sono DUE (stato e giro): un nome che parlasse del giro

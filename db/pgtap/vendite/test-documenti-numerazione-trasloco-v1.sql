@@ -9,6 +9,7 @@
 --   vendite.fn_get_or_create_commessa          (20260831-16)
 --   vendite.fn_assegna_numero_documento        (20260831-55 — la lunghezza dal registro)
 --   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §3.6
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): la famiglia della bolla e' DDT_VENDITA.
 -- ------------------------------------------------------------
 -- Elenco test (plan 11):
 -- 0) ⚠️ Precondizioni: la fixture non mente
@@ -78,6 +79,16 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti). Un'azienda nuova col suo operatore — il contesto passa
+--   su di lui, ed e' a lui che si concede l'azione qui sotto — e il cliente
+--   legato a lei (dbops.fn_pgtap_crea_mondo_cliente). L'azienda nasce coi suoi
+--   registri (DDT, ORDINE, COMMESSA, RESO): la numerazione si prova su quelli.
+--   Modello: test-ddt-magazzino-testata-v1.
+CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _az)); END $ctx$;
+CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP num trasloco');
+
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
 -- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
 -- l'operatore di fixture non ha azioni, si concede qui.
@@ -105,9 +116,9 @@ SELECT
     ef.id                                                    AS emittente_fiscale_id,
     ef.soggetto_ruolo_id                                     AS emittente_sr_id,
     ef.codice                                                AS sigla,
-    (SELECT a.id FROM catalogo.articoli a
-      WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-      ORDER BY a.data_insert DESC NULLS LAST, a.id DESC LIMIT 1)          AS articolo_id,
+    -- ⛔ rev 2026-10-13: l'articolo si COSTRUISCE (merce non gestito: il test
+    --   misura la numerazione, non il magazzino).
+    dbops.fn_pgtap_crea_articolo('PGTAP-NUM-TRASLOCO', false)               AS articolo_id,
     (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
     (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
     (SELECT s.id FROM config.stati_doc_ddt s
@@ -139,6 +150,9 @@ SELECT
     (SELECT tr.id FROM config.tipi_reso tr
       WHERE tr.codice_interno = 'RESO_PER_RICONSEGNA' AND tr.attivo ORDER BY tr.id LIMIT 1) AS tipo_reso_id
   FROM anagrafiche.billing_account ba
+  -- ⛔ rev 2026-10-13: il BA e' quello COSTRUITO, non «il primo che soddisfa i
+  --   filtri»; i filtri restano, e la precondizione 0) li verifica.
+  JOIN _m m ON m.billing_account_id = ba.id
   -- ⛔ `ef.soggetto_ruolo_id` e NON `ef.id`: anagrafiche.fn_get_emittente_fiscale_id
   --   restituisce il SOGGETTO_RUOLO dell'emittente, non la chiave di
   --   anagrafiche.emittenti_fiscali — il nome dice «fiscale_id» e trae in
@@ -155,7 +169,7 @@ SELECT
    --   giusto ma nel posto sbagliato.
    AND EXISTS (SELECT 1 FROM vendite.registri_fatturazione r
                 WHERE r.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
-                  AND r.famiglia_documento = 'DDT' AND r.attivo)
+                  AND r.famiglia_documento = 'DDT_VENDITA' AND r.attivo)
  ORDER BY ba.id
  LIMIT 1;
 
@@ -259,7 +273,7 @@ SELECT is(
        FROM vendite.ddt d
        JOIN vendite.registri_fatturazione reg ON reg.id = d.registro_id
       WHERE d.id = (SELECT ddt_id FROM tmp_num_ddt)),
-    'DDT|true',
+    'DDT_VENDITA|true',
     '1) Il DDT emesso sta su un registro di famiglia DDT del PROPRIO emittente');
 
 SELECT is(
@@ -275,8 +289,13 @@ SELECT is(
 --   quando il 20260831-53 ne ha tolto le righe, il CROSS JOIN ha smesso di
 --   trovarne una e l'asserzione e' diventata NULL — cioe' rossa per il motivo
 --   sbagliato, dopo aver taciuto sul motivo giusto.
+-- ⛔ rev 2026-10-13: la forma comprende l'ANNO quando il registro lo vuole
+--   (`anno_nel_numero`, dal 20260908 il default per DDT e RESO): stessa
+--   composizione di vendite.fn_assegna_numero_documento, `<anno>-` dopo il
+--   corpo. Era verde solo sul registro vecchio di dbdev, che l'anno non l'ha.
 SELECT ok(
     (SELECT d.numero ~ ('^' || COALESCE(reg.prefisso, '')
+                             || CASE WHEN reg.anno_nel_numero THEN '[0-9]{4}-' ELSE '' END
                              || '[0-9]{' || reg.lunghezza_numero || '}'
                              || COALESCE(reg.suffisso, '') || '$')
        FROM vendite.ddt d
@@ -332,7 +351,7 @@ SELECT is(
        FROM vendite.ordini o
        JOIN vendite.registri_fatturazione reg ON reg.id = o.registro_id
       WHERE o.id = (SELECT ordine_id FROM tmp_num_ord)),
-    'true|ORDINE|true',
+    'true|ORDINE_VENDITA|true',
     '4) L''ordine nasce gia'' numerato, sul registro ORDINE del proprio emittente');
 
 -- =========================================================
@@ -521,7 +540,7 @@ SELECT is(
        FROM vendite.resi re
        JOIN vendite.registri_fatturazione reg ON reg.id = re.registro_id
       WHERE re.id = (SELECT reso_id FROM tmp_num_reso)),
-    'true|RESO|true|true',
+    'true|RESO_VENDITA|true|true',
     '8) Il reso confermato ha numero, registro RESO del proprio emittente e anno dalla data');
 
 -- ⚠️ Si asserisce la FORMA, non il numero: il progressivo dipende da quanti
@@ -529,8 +548,13 @@ SELECT is(
 --   popolazione invece della regola.
 -- ⛔ L'attesa viene dal REGISTRO che ha numerato questo reso: stessa correzione
 --   del test 3, e stessa ragione.
+-- ⛔ rev 2026-10-13: la forma comprende l'ANNO quando il registro lo vuole
+--   (`anno_nel_numero`, dal 20260908 il default per DDT e RESO): stessa
+--   composizione di vendite.fn_assegna_numero_documento, `<anno>-` dopo il
+--   corpo. Era verde solo sul registro vecchio di dbdev, che l'anno non l'ha.
 SELECT ok(
     (SELECT re.numero ~ ('^' || COALESCE(reg.prefisso, '')
+                              || CASE WHEN reg.anno_nel_numero THEN '[0-9]{4}-' ELSE '' END
                               || '[0-9]{' || reg.lunghezza_numero || '}'
                               || COALESCE(reg.suffisso, '') || '$')
        FROM vendite.resi re

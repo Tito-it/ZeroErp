@@ -75,9 +75,9 @@ SELECT
   script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
   (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1
   ) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST, a.id LIMIT 1
-  ) AS articolo_id,
+  -- ⛔ rev 2026-10-13 (Lotto 3a): l'articolo si COSTRUISCE (merce, non gestito):
+  --   da zero il catalogo ha solo servizi, che l'ordine non ammette.
+  dbops.fn_pgtap_crea_articolo('PGTAP-AAO-V1', false) AS articolo_id,
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'CONFERMATO' AND attivo IS TRUE LIMIT 1
   ) AS stato_confermato_id,
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT' AND attivo IS TRUE LIMIT 1

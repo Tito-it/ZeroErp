@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_permessi_effettivi_azioni(p_auth_user_id integer, p_permi
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_permessi_effettivi_azioni(p_auth_user_id integer, p_permission_codename character varying DEFAULT NULL::character varying)
  RETURNS TABLE(permission_codename character varying, azione_id integer, area_id integer, attivo boolean, abilitata_specifica boolean, livello_area config.livello_accesso, livello_minimo_area config.livello_accesso, abilitata boolean, limitata_da_area boolean)
@@ -103,6 +105,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_permessi_effettivi_azioni(p_auth_user_id integer, p_permission_codename character varying)
 IS 'Le azioni di processo effettive di un operatore, col tetto d''area (brief-db-permessi-tetto-area, D-1…D-4). Per ogni azione: abilitata_specifica (la catena senza tetto: gate di contesto, identita'' OPERATORE attiva, super admin, override valido, ereditato dal profilo con script.fn_get_permessi_ereditati_azioni, default negata), livello_area (script.fn_resolve_livello_area sull''area dell''azione), livello_minimo_area, abilitata (= specifica E script.fn_area_consente_azione; il super admin precede il tetto) e limitata_da_area (specifica si'', area no: l''override o il profilo e'' dormiente, D-3). p_permission_codename NULL -> tutto il catalogo, attive e no; valorizzato -> una riga, anche per un codename fuori catalogo (negata). Sede UNICA della catena delle azioni: la leggono script.fn_check_azione_processo, script.fn_get_user_actions_map e il pannello permessi (backend). plpgsql, STABLE, INVOKER.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

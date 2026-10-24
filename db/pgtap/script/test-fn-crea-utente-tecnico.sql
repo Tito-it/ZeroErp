@@ -49,6 +49,12 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   contatto due righe piu' sotto.
 --   ⇒ Sta dopo il blocco di creazione, prima di ogni asserzione. Il guardrail
 --     del preambolo controlla la presenza, non la posizione.
+-- ⛔ E la finestra si DICHIARA (rev 2026-10-18): su un database vuoto la riga di
+--   contesto qui sopra costruisce il mondo ed esce con i vincoli IMMEDIATE. Senza
+--   questa riga la fabbrica moriva su E_SOGGETTO_NO_CONTATTI: verde su dbdev
+--   (dove il mondo c'e' gia' e il contesto non costruisce niente), rosso sullo
+--   scratch ricostruito da zero.
+SET CONSTRAINTS ALL DEFERRED;
 
 SELECT plan(12);
 
@@ -78,23 +84,23 @@ DO $fixture$
 DECLARE
     v_profilo config.profili_accesso.codice%TYPE;
 BEGIN
-    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
+    -- 20261016-20: chi ha una sveglia dichiara l'accensione; un CODA no.
+    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
     VALUES (9401, 'PGTAP-FABBRICA-OK',
             'processo di dominio headless per il collaudo della fabbrica',
-            'DOMINIO', 'COMMAND'),
+            'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA', true),
            (9402, 'PGTAP-FABBRICA-CODA',
             'processo di dominio accodato da un operatore',
-            'DOMINIO', 'CODA');
+            'DOMINIO', 'CODA', NULL, NULL, NULL, 'PROGRAMMA', NULL);
 
-    -- Un emittente ATTIVO su cui creare l'utente. ORDER BY esplicito, mai un
-    -- LIMIT 1 nudo: quale riga esca dipenderebbe dal piano del planner, e il
-    -- test passerebbe a giorni alterni.
+    -- L'emittente su cui creare l'utente: quello dell'operatore di contesto
+    -- (rev 2026-10-18). L'emittente non si pesca, si deriva: prima era «il
+    -- primo attivo della tabella».
     PERFORM set_config('pgtap.emittente',
         COALESCE((SELECT ef.codice
                     FROM anagrafiche.emittenti_fiscali ef
-                   WHERE ef.attivo
-                   ORDER BY ef.id
-                   LIMIT 1), ''), true);
+                   WHERE ef.id = script.fn_pgtap_emittente_operatore()), ''), true);
 
     -- Un profilo NON-AD_HOC su cui provare il rifiuto.
     SELECT pa.codice INTO v_profilo

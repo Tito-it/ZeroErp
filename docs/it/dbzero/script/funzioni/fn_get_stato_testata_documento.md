@@ -2,18 +2,21 @@
 # ⚙️ Funzione `fn_get_stato_testata_documento`
 
 ```sql
-CREATE FUNCTION fn_get_stato_testata_documento(p_documento text, p_testata_id bigint)
+CREATE FUNCTION fn_get_stato_testata_documento(p_documento character varying, p_testata_id bigint)
 ```
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_get_stato_testata_documento(p_documento text, p_testata_id bigint)
- RETURNS TABLE(stato text, etichetta text)
+CREATE OR REPLACE FUNCTION script.fn_get_stato_testata_documento(p_documento character varying, p_testata_id bigint)
+ RETURNS TABLE(stato text, etichetta text, nata_in_transazione boolean)
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
+
 -- ⚠️ Tipi nudi DICHIARATI (rev 2026-09-28): p_documento e' un selettore senza
 --   colonna-vocabolario; p_testata_id e lo stato in uscita sono POLIMORFI —
 --   l'id di sette testate diverse (sei documenti e una mail), il
@@ -28,7 +31,17 @@ BEGIN
   --   - zero righe  -> la testata NON esiste (cancellata, o mai
   --     esistita). Il chiamante deve trattarlo come CASCADE.
   --   - una riga    -> stato = codice_interno, etichetta = frase
-  --     per l'operatore.
+  --     per l'operatore, nata_in_transazione = la testata e' stata
+  --     creata nella transazione corrente (rev 2026-10-11).
+  --
+  -- ⭐ nata_in_transazione (rev 2026-10-11, brief-db-testata-dopo-
+  --    emissione §11, D-13 di Tid): data_insert = transaction_timestamp().
+  --    data_insert la scrive il default now() all'INSERT e nessun
+  --    UPDATE la tocca, quindi dice «creata adesso», non «toccata
+  --    adesso» (xmin, invece, lo cambia anche l'emissione). La usa il
+  --    lock delle righe per lasciar passare cio' che un trigger scrive
+  --    alla nascita di un documento nato gia' fuori bozza (lo snapshot
+  --    della fornitura di un contratto inserito ATTIVO).
   --
   -- ⚠️ Lo stato e' NOT NULL su tutte le testate e la FK verso
   --    config.stati_doc_* garantisce la riga di stato: se la
@@ -57,10 +70,11 @@ BEGIN
     RETURN;   -- nessuna riga: il chiamante lo legge come «assente»
   END IF;
 
-  IF p_documento = 'DDT' THEN
+  IF p_documento = 'DDT_VENDITA' THEN
     RETURN QUERY
     SELECT s.codice_interno::text,
-           concat('DDT ', COALESCE(d.numero, '#' || d.id::text))
+           concat('DDT ', COALESCE(d.numero, '#' || d.id::text)),
+           d.data_insert = transaction_timestamp()
       FROM vendite.ddt d
       JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
      WHERE d.id = p_testata_id;
@@ -75,15 +89,17 @@ BEGIN
     RETURN QUERY
     SELECT s.codice_interno::text,
            concat('Preventivo ', COALESCE(p.numero, '#' || p.id::text),
-                  ' rev. ', p.rev::text)
+                  ' rev. ', p.rev::text),
+           p.data_insert = transaction_timestamp()
       FROM vendite.preventivi p
       JOIN config.stati_doc_preventivi s ON s.id = p.stato_doc_preventivo_id
      WHERE p.id = p_testata_id;
 
-  ELSIF p_documento = 'ORDINE' THEN
+  ELSIF p_documento = 'ORDINE_VENDITA' THEN
     RETURN QUERY
     SELECT s.codice_interno::text,
-           concat('Ordine ', COALESCE(o.numero, '#' || o.id::text))
+           concat('Ordine ', COALESCE(o.numero, '#' || o.id::text)),
+           o.data_insert = transaction_timestamp()
       FROM vendite.ordini o
       JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
      WHERE o.id = p_testata_id;
@@ -92,12 +108,13 @@ BEGIN
     -- rev 2026-09-22: terzo adottante del guard generico delle righe.
     RETURN QUERY
     SELECT s.codice_interno::text,
-           concat('Contratto ', COALESCE(c.numero, '#' || c.id::text))
+           concat('Contratto ', COALESCE(c.numero, '#' || c.id::text)),
+           c.data_insert = transaction_timestamp()
       FROM vendite.contratti c
       JOIN config.stati_doc_contratti s ON s.id = c.stato_doc_contratto_id
      WHERE c.id = p_testata_id;
 
-  ELSIF p_documento = 'OFFERTA' THEN
+  ELSIF p_documento = 'OFFERTA_COMMERCIALE' THEN
     -- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende,
     -- R5a): l'offerta commerciale, per il guard generico delle
     -- righe. Lo stato di bozza qui si chiama BOZZA (lo dice il
@@ -105,30 +122,48 @@ BEGIN
     -- per simmetria con gli altri rami, non per un caso reale.
     RETURN QUERY
     SELECT s.codice_interno::text,
-           concat('Offerta ', COALESCE(o.codice, '#' || o.id::text))
+           concat('Offerta ', COALESCE(o.codice, '#' || o.id::text)),
+           o.data_insert = transaction_timestamp()
       FROM vendite.offerte_commerciali o
       JOIN config.stati_doc_offerte s ON s.id = o.stato_doc_offerta_id
      WHERE o.id = p_testata_id;
 
-  ELSIF p_documento = 'EMAIL_BOZZA' THEN
+  ELSIF p_documento = 'EMAIL' THEN
     -- rev 2026-09-25: la bozza di una mail. Lo stato e' gia' il
     -- codice; l'etichetta e' l'oggetto, che una persona riconosce.
     RETURN QUERY
     SELECT o.stato::text,
-           concat('La mail «', left(o.oggetto, 80), '»')
+           concat('La mail «', left(o.oggetto, 80), '»'),
+           o.data_insert = transaction_timestamp()
       FROM config.email_outbox o
      WHERE o.id = p_testata_id;
 
-  ELSIF p_documento = 'RESO' THEN
+  ELSIF p_documento = 'RESO_VENDITA' THEN
     -- rev 2026-09-28: il reso di vendita, per il guard dei suoi
     -- rientri (vendite.trgfn_resi_righe_rientri_guard): stesso
     -- rifiuto delle righe di documento, stessa etichetta.
     RETURN QUERY
     SELECT s.codice_interno::text,
-           concat('Reso ', COALESCE(r.numero, '#' || r.id::text))
+           concat('Reso ', COALESCE(r.numero, '#' || r.id::text)),
+           r.data_insert = transaction_timestamp()
       FROM vendite.resi r
       JOIN config.stati_doc_reso s ON s.id = r.stato_doc_reso_id
      WHERE r.id = p_testata_id;
+
+  ELSIF p_documento = 'COMMESSA' THEN
+    -- rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte, D-2):
+    -- la commessa, per l'avviso e la conferma dell'annullo con legami
+    -- (vendite.trgfn_doc_guard_annullo_con_legami,
+    -- vendite.fn_documento_ritira_legami): senza, la frase diceva
+    -- «COMMESSA #id». Lo stato e' quello di vendite.stati_commessa;
+    -- l'etichetta e' il codice, NOT NULL.
+    RETURN QUERY
+    SELECT s.codice_interno::text,
+           concat('Commessa ', COALESCE(c.codice, '#' || c.id::text)),
+           c.data_insert = transaction_timestamp()
+      FROM vendite.commesse c
+      JOIN vendite.stati_commessa s ON s.id = c.stato_commessa_id
+     WHERE c.id = p_testata_id;
 
   ELSE
     -- Errore di CHIAMANTE, non di dato: nessuna persona sceglie
@@ -148,9 +183,11 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_get_stato_testata_documento(p_documento text, p_testata_id bigint)
-IS 'Lettore SECURITY DEFINER dello stato e dell''etichetta di una testata di documento. Nasce il 2026-08-26 per vendite.trgfn_dlt_block_ordrig_ddtrig, che deve distinguere «la testata non c''e'' piu''» (CASCADE partito dalla testata) da «la testata non la vedo» (RLS). ⛔ SECURITY DEFINER perche'' quella distinzione e'' il perno della decisione: le testate hanno RLS — e dal 22-09 anche le righe (ddt_righe, ordini_righe, contratti_righe: letto dal catalogo) — e un guard che leggesse sotto RLS diventerebbe fail-open proprio per chi sta fuori perimetro. ⭐ CONTRATTO: zero righe = testata assente; una riga = stato (codice_interno) piu'' etichetta per l''operatore. Lo stato e'' NOT NULL su tutte le testate e la FK garantisce la riga di stato, quindi l''assenza di riga e'' un segnale non ambiguo. ⚠️ L''etichetta ripiega sull''id quando `numero` e'' NULL, che sui documenti in bozza e'' il caso normale, non un residuo. PERIMETRO: legge due colonne, non scrive, non espone dati riservati. Tipi ammessi: DDT | ORDINE | CONTRATTO | OFFERTA | EMAIL_BOZZA | RESO | PREVENTIVO; qualunque altro valore e'' un errore di chiamante (E_DOC_TIPO_NON_GESTITO, TECNICO). Chiamanti: vendite.trgfn_doc_righe_lock_fuori_bozza, vendite.trgfn_dlt_block_ordrig_ddtrig, config.trgfn_email_allegato_guard_solo_bozza, vendite.trgfn_ddt_righe_prelievi_guard, vendite.trgfn_resi_righe_rientri_guard, script.trgfn_righe_guard_aggiunta_fuori_listino. rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso): + RESO (vendite.resi, stato da config.stati_doc_reso, etichetta «Reso <numero>»). rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): + OFFERTA (vendite.offerte_commerciali, stato da config.stati_doc_offerte, etichetta «Offerta <codice>»), per il lock delle righe dell''offerta fuori bozza. rev 2026-10-08 (brief-db-righe-e-componenti-le-altre-famiglie §2.2): + PREVENTIVO (vendite.preventivi, stato da config.stati_doc_preventivi, etichetta «Preventivo <numero> rev. <rev>»: le revisioni condividono il numero), per il lock dei componenti del preventivo fuori bozza.';
+COMMENT ON FUNCTION script.fn_get_stato_testata_documento(p_documento character varying, p_testata_id bigint)
+IS 'Lettore SECURITY DEFINER dello stato e dell''etichetta di una testata di documento. Nasce il 2026-08-26 per vendite.trgfn_dlt_block_ordrig_ddtrig, che deve distinguere «la testata non c''e'' piu''» (CASCADE partito dalla testata) da «la testata non la vedo» (RLS). ⛔ SECURITY DEFINER perche'' quella distinzione e'' il perno della decisione: le testate hanno RLS — e dal 22-09 anche le righe (ddt_righe, ordini_righe, contratti_righe: letto dal catalogo) — e un guard che leggesse sotto RLS diventerebbe fail-open proprio per chi sta fuori perimetro. ⭐ CONTRATTO: zero righe = testata assente; una riga = stato (codice_interno) piu'' etichetta per l''operatore. Lo stato e'' NOT NULL su tutte le testate e la FK garantisce la riga di stato, quindi l''assenza di riga e'' un segnale non ambiguo. ⚠️ L''etichetta ripiega sull''id quando `numero` e'' NULL, che sui documenti in bozza e'' il caso normale, non un residuo. PERIMETRO: legge due colonne, non scrive, non espone dati riservati. Tipi ammessi: DDT | ORDINE | CONTRATTO | OFFERTA | EMAIL_BOZZA | RESO | PREVENTIVO | COMMESSA; qualunque altro valore e'' un errore di chiamante (E_DOC_TIPO_NON_GESTITO, TECNICO). Chiamanti: vendite.trgfn_doc_righe_lock_fuori_bozza, vendite.trgfn_dlt_block_ordrig_ddtrig, config.trgfn_email_allegato_guard_solo_bozza, vendite.trgfn_ddt_righe_prelievi_guard, vendite.trgfn_resi_righe_rientri_guard, script.trgfn_righe_guard_aggiunta_fuori_listino. rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso): + RESO (vendite.resi, stato da config.stati_doc_reso, etichetta «Reso <numero>»). rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): + OFFERTA (vendite.offerte_commerciali, stato da config.stati_doc_offerte, etichetta «Offerta <codice>»), per il lock delle righe dell''offerta fuori bozza. rev 2026-10-08 (brief-db-righe-e-componenti-le-altre-famiglie §2.2): + PREVENTIVO (vendite.preventivi, stato da config.stati_doc_preventivi, etichetta «Preventivo <numero> rev. <rev>»: le revisioni condividono il numero), per il lock dei componenti del preventivo fuori bozza. rev 2026-10-11 (brief-db-testata-dopo-emissione §11, D-13 di Tid): + nata_in_transazione, vero se la testata e'' stata creata nella transazione corrente (data_insert = transaction_timestamp(): il default la scrive all''INSERT e nessun UPDATE la tocca, mentre xmin lo cambia anche un cambio di stato). La legge vendite.trgfn_doc_righe_lock_fuori_bozza per lasciar passare cio'' che un TRIGGER scrive alla nascita di un documento nato gia'' fuori bozza. rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte, D-2): + COMMESSA (vendite.commesse, stato da vendite.stati_commessa, etichetta «Commessa <codice>»), per l''avviso e la conferma dell''annullo con legami della commessa (vendite.trgfn_doc_guard_annullo_con_legami, vendite.fn_documento_ritira_legami), che senza dicevano «COMMESSA #id». Li leggono gia'', per gli altri documenti, anche vendite.fn_documento_ritira_legami e vendite.trgfn_doc_guard_annullo_con_legami (dal 2026-10-11). ⭐ rev 2026-10-19 (20261019-40, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

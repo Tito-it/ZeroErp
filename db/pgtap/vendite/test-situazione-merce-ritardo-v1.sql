@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla del test 9 dal builder dbops.fn_pgtap_crea_ddt_da_ordine (p_ordine_id); l'ordine resta scritto dal test: data a -40 (una data di consegna non precede l'ordine) e la promessa a -3 scritta a ordine CONFERMATO prima della spedizione.
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture costruisce un'AZIENDA — emittente fiscale,
 --   utente tecnico e identita' digitale (dbops.fn_pgtap_crea_emittente_operatore)
@@ -48,8 +49,8 @@
 --   nasce DRAFT, prende la riga e passa a CONFERMATO con
 --   dbops.fn_pgtap_porta_a_stato (rev 2026-10-08, 20261008-90: fuori bozza le
 --   righe non si scrivono piu') e la spedizione del test 9 e'
---   un DDT VERO: vendite.fn_genera_ddt_da_ordine + causale VENDITA + stati
---   fino a CONSEGNATO, come in test-vw-situazione-merce-ordine-v1.
+--   una bolla VERA, dal builder dbops.fn_pgtap_crea_ddt_da_ordine su
+--   quell'ordine (p_ordine_id), fino a CONSEGNATO.
 --
 -- ⚠️ script.fn_data_operativa() anche qui: la vista conta i giorni dal giorno
 --   dell'azienda (e' un indicatore, non una data documento), e il test calcola
@@ -115,12 +116,6 @@ CREATE TEMP TABLE _refs AS
 SELECT
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO' AND s.attivo) AS stato_ord_confermato_id,
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT'      AND s.attivo) AS stato_ord_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'EMESSO'     AND s.attivo) AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'SPEDITO'    AND s.attivo) AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'CONSEGNATO' AND s.attivo) AS stato_ddt_consegnato_id,
-  (SELECT t.id FROM config.tipi_indirizzi t WHERE t.codice_interno = 'CON') AS tipo_ind_con_id,
-  -- ⚠️ causali_trasporto non ha codice_interno: `codice` e' la sola chiave (fatturabile = true)
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice = 'VENDITA' AND c.attivo) AS causale_vendita_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id;
 
@@ -139,8 +134,13 @@ DECLARE v_ord bigint; v_orr bigint; v_stato text;
 BEGIN
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, utility_id, stato_doc_ordine_id,
                               valuta_id, data, fatturazione_trigger, emittente_fiscale_id, meta)
+  -- ⚠️ rev 2026-10-13 (collaudo date di consegna, 20261013-66): una data di
+  --   consegna non viene prima della data dell'ordine. L'ordine nasce a -40
+  --   (era -10), prima di ogni data di consegna del file (la piu' bassa e' la
+  --   richiesta a -30 del test 8): il ritardo si misura su oggi, non sulla
+  --   data dell'ordine, e nessuna asserzione cambia.
   SELECT c.soggetto_ruolo_id, c.billing_account_id, c.utility_id, r.stato_ord_draft_id,
-         r.valuta_id, script.fn_data_operativa() - 10, 'SPEDITO', m.emittente_fiscale_id,
+         r.valuta_id, script.fn_data_operativa() - 40, 'SPEDITO', m.emittente_fiscale_id,
          jsonb_build_object('test_scope', 'pgtap_situazione_merce_ritardo')
     FROM _cliente c, _mondo m, _refs r
   RETURNING id INTO v_ord;
@@ -153,23 +153,6 @@ BEGIN
   SELECT s.codice_interno INTO v_stato FROM config.stati_doc_ordini s WHERE s.id = p_stato_id;
   PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, v_stato);
   RETURN QUERY SELECT v_ord, v_orr;
-END $$ LANGUAGE plpgsql;
-
--- Helper: spedisce p_qta della riga con un DDT vero, fino a CONSEGNATO.
-CREATE OR REPLACE FUNCTION pg_temp.mk_spedizione(p_ordine bigint, p_orr bigint, p_qta numeric)
-RETURNS bigint AS $$
-DECLARE r RECORD; v_ddt bigint;
-BEGIN
-  SELECT * INTO r FROM _refs;
-  v_ddt := vendite.fn_genera_ddt_da_ordine(p_ordine,
-             jsonb_build_array(jsonb_build_object('ordine_riga_id', p_orr, 'qta_da_evadere', p_qta)));
-  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-  VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id     WHERE id = v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_emesso_id     WHERE id = v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_spedito_id    WHERE id = v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_consegnato_id WHERE id = v_ddt;
-  RETURN v_ddt;
 END $$ LANGUAGE plpgsql;
 
 -- La riga IMPEGNATA (ordine confermato, 10 pezzi, mai spedita): residuo 10.
@@ -244,7 +227,9 @@ SELECT * FROM pg_temp.mk_ordine((SELECT stato_ord_confermato_id FROM _refs), 10)
 UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() - 3
  WHERE id = (SELECT ordine_riga_id FROM _c);
 CREATE TEMP TABLE _c_ddt AS
-SELECT pg_temp.mk_spedizione((SELECT ordine_id FROM _c), (SELECT ordine_riga_id FROM _c), 10) AS ddt_id;
+SELECT b.ddt_id
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('ritardo', p_ordine_id => (SELECT ordine_id FROM _c),
+                                         p_qta_da_evadere => 10) b;
 
 SELECT is(
     (SELECT (s.da_spedire = 0)::text || '|' || COALESCE(s.giorni_ritardo::text, 'NULL')

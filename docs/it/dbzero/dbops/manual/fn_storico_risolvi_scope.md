@@ -41,7 +41,7 @@ Brief: `brief-db-rls-storico-scope-congelato`, §4b.
 | `SR` | legge la colonna e cerca l'emittente fiscale con quel soggetto-ruolo (è 1 a 1) |
 | `BA` | legge il billing account, ne prende l'unico emittente con `script.fn_get_ba_emittente_sr_id` (mapping specifico, altrimenti il gestore globale) e lo converte |
 | `PADRE` | legge la chiave verso il padre, **carica la riga del padre** per `id` e **si richiama** sulla riga di mappa del padre — così una catena a più salti si risolve da sola |
-| `COPPIA` | legge le due colonne dichiarate (istanza, utility), cerca il billing account di quella coppia e ne prende l'emittente come nel modo `BA`; coppia senza BA → `NULL` (dal 2026-10-09, la strada della policy `via_coppia`) |
+| `COPPIA` | legge le due colonne dichiarate (istanza, utility), cerca il billing account di quella coppia e ne prende l'emittente come nel modo `BA`; coppia senza BA → `NULL` (dal 2026-10-09). Dal 2026-10-21 il BA lo dice [`fn_get_ba_id_da_coppia`](/dbzero/script/manual/fn_get_ba_id_da_coppia), la stessa risposta della policy dei dati precontrattuali |
 | `NESSUNO` | risponde `NULL` |
 
 Una tabella **senza riga di mappa** risponde `NULL` come un `NESSUNO`: il

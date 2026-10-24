@@ -7,7 +7,7 @@
 # che gli unit test mockano):
 #  - MERCE→ORDINE: vista vw_preventivi_righe_smistabili_ordine, endpoint
 #    righe-smistabili-ordine + genera-ordine (fn_push_preventivo_a_ordine),
-#    idempotenza di riga, filtro catalogo natura;
+#    idempotenza di riga, picker degli articoli della riga (sede unica);
 #  - SERVIZIO→COMMESSA su preventivo MISTO (2026-06-10): articolo servizio
 #    creato via API (natura_vendita_id amministrabile, opzione A), push-commessa
 #    natura-aware (il servizio non appare tra le righe-smistabili-ordine), gate
@@ -19,8 +19,10 @@
 #    COLLEGATO + skip PRONTA idempotente).
 #
 # NON coperto qui:
-#  - orchestratore CONFERMA_VENDITA → smoke dedicato
-#    smoke-test-pratica-preventivi-conferma.sh (giro pratica end-to-end).
+#  - il giro pratica end-to-end (tipo PREVENTIVI, bivio per esito) → smoke
+#    dedicato smoke-test-pratica-preventivi-bivio.sh. Il vecchio orchestratore
+#    CONFERMA_VENDITA (tipo PREVENTIVI_IMMEDIATA, obsoleto dal 2026-06-30) e il
+#    suo smoke sono ritirati (2026-10-12).
 #
 # Auto-diagnosi: se EMESSO/ACCETTATO falliscono per prerequisiti documentali
 # (template/emittente), i passi split vengono SALTATI con diagnosi, non crashano.
@@ -29,8 +31,11 @@
 # ------------------------------------------------------------
 # Indice:
 #  0) Autenticazione JWT
-#  1) Filtro catalogo natura: lookup ?escludi_destinazione=CONTRATTO (standalone)
+#  1) (ritirato il 2026-10-14: era il filtro libero `escludi_destinazione`; la
+#     prova del picker e' ora il passo 2-bis)
 #  2) Crea preventivo BOZZA + riga merce
+#  2-bis) Picker della riga sulla sede unica (?documento=PREVENTIVO): l'articolo
+#     che il guard ha appena accettato e' fra gli AMMESSI (motivo null)
 #  3) Porta ad ACCETTATO (emetti multipart + accetta con modalita) [prereq-gated]
 #  4) GET righe-smistabili-ordine → la riga merce compare
 #  5) POST genera-ordine {righe_ids} → ordine creato (ordine_id + numero)
@@ -53,6 +58,8 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"   # smoke_emetti
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 PASS=0; FAIL=0; SKIP=0
@@ -126,33 +133,13 @@ echo "== Smoke smistamento merce→ordine =="
 smoke_login --senza-prompt --uscita 2
 log_ok "Autenticazione JWT"
 
-# --- 1. Filtro catalogo natura (standalone, sempre eseguibile) ---
-echo ""; echo "-- 1. Lookup catalogo escludi_destinazione=CONTRATTO --"
-do_curl GET "/api/v1/catalogo/articoli/lookup/?search=art&escludi_destinazione=CONTRATTO"
-# 200 atteso; se nessun articolo ha codice 'art' la lista è vuota ma 200.
-check "GET lookup con filtro natura" 200 || true
-
 # --- 2. Crea preventivo + riga merce ---
 echo ""; echo "-- 2. Crea preventivo BOZZA + riga merce --"
 # Serve una tripla COERENTE (billing_account + utility + istanza). Fonte 1: lookup
 # BA (espone utility_id + istanza_utility_id). Fonte 2 (fallback): un preventivo
 # esistente (tripla già coerente per costruzione). La create deriva l'istanza dal
 # BA e verifica la coerenza con utility.
-BA_RAW=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/anagrafiche/billing-account/lookup/" 2>/dev/null)
-BA_TRIPLE=$(echo "$BA_RAW" | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin).get('data', {})
-    rows = d.get('results', d) if isinstance(d, dict) else d
-    for r in (rows or []):
-        if r.get('utility_id') and r.get('istanza_utility_id'):
-            print(r['id'], r['utility_id']); break
-except Exception:
-    pass
-" 2>/dev/null)
-BA_ID=$(echo "$BA_TRIPLE" | awk '{print $1}')
-UTILITY_ID=$(echo "$BA_TRIPLE" | awk '{print $2}')
+smoke_cliente_dal_lookup   # BB _smoke_cliente.sh: BA_ID, UTILITY_ID, ISTANZA_ID
 
 PREV_PAYLOAD=""
 if [[ -n "$BA_ID" && -n "$UTILITY_ID" ]]; then
@@ -162,7 +149,7 @@ else
     # Fallback: riusa un preventivo esistente (BA+utility+istanza coerenti).
     log_info "lookup BA vuoto/scope; provo a riusare un preventivo esistente"
     PREV_PAYLOAD=$(curl -s -H "Authorization: Bearer $TOKEN" \
-        "${BASE_URL}/api/v1/vendite/preventivi/?page_size=1" 2>/dev/null | python3 -c "
+        "${BASE_URL}/api/v1/vendite/preventivi/?limit=1" 2>/dev/null | python3 -c "
 import sys, json
 try:
     r = json.load(sys.stdin).get('data',{}).get('results',[])
@@ -183,22 +170,23 @@ fi
 if [[ -z "$PREV_PAYLOAD" ]]; then
     echo -e "${RED}Setup fallito: nessuna tripla BA+utility+istanza disponibile.${NC}"
     log_info "Risposta lookup BA (grezza, primi 500 char):"
-    echo "       $(echo "$BA_RAW" | head -c 500)"
+    echo "       $(echo "$BA_LOOKUP_RAW" | head -c 500)"
     log_info "Suggerimento: verifica che l'utente smoke abbia un emittente con almeno un BA valido (utility+istanza)."
     exit 1
 fi
-# L'operatore smoke puo' non avere emittente assegnato (E_EMITTENTE_NON_RISOLTO
-# dal trigger default script.trgfn_default_emittente_fiscale, BB unico dal
-# 2026-09-15 al posto della copia trgfn_preventivi_default_emittente): inietta un
-# emittente esplicito nel payload (default 32, override EMITTENTE_ID), come fa lo
-# smoke 1a.
-EMITTENTE_FISCALE_ID="${EMITTENTE_ID:-32}"
+# ⛔ Nessun emittente nel payload: il trigger script.trgfn_default_emittente_fiscale
+# mette l'emittente attivo dell'operatore, lo stesso del cliente del lookup
+# (_smoke_cliente.sh). Fino al 2026-10-12 qui c'era un id cablato (32), che con un
+# cliente di un'altra azienda risponde E_DOC_EMITTENTE_BA_INCOERENTE.
+# Override solo se serve: EMITTENTE_ID.
+if [[ -n "${EMITTENTE_ID:-}" ]]; then
 PREV_PAYLOAD=$(echo "$PREV_PAYLOAD" | python3 -c "
 import sys, json
 p = json.load(sys.stdin)
-p['emittente_fiscale_id'] = $EMITTENTE_FISCALE_ID
+p['emittente_fiscale_id'] = $EMITTENTE_ID
 print(json.dumps(p))
 " 2>/dev/null)
+fi
 log_info "payload create = $PREV_PAYLOAD"
 do_curl POST "/api/v1/vendite/preventivi/" "$PREV_PAYLOAD"
 if ! check "POST crea preventivo" 200 "data.id"; then
@@ -206,31 +194,55 @@ if ! check "POST crea preventivo" 200 "data.id"; then
 fi
 PREV_ID="$EXTRACTED"; log_info "preventivo_id = $PREV_ID"
 
-ARTICOLO_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/catalogo/articoli/?page_size=1" 2>/dev/null | python3 -c "
-import sys, json
-try:
-    r = json.load(sys.stdin).get('data',{}).get('results',[])
-    print(r[0]['id'] if r else '')
-except Exception: print('')
-" 2>/dev/null)
+smoke_articolo_merce   # BB _smoke_documenti.sh: una MERCE (va in un ordine/bolla)
 if [[ -z "$ARTICOLO_ID" ]]; then
     echo -e "${RED}Setup fallito: nessun articolo nel catalogo. Stop.${NC}"; exit 1
 fi
 log_info "articolo_id (merce) = $ARTICOLO_ID"
 do_curl POST "/api/v1/vendite/preventivi/${PREV_ID}/righe/" \
-    "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"10\", \"prezzo_unitario\": \"100.00\", \"iva_id\": 16}"
+    "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"10\", \"prezzo_unitario\": \"100.00\"}"
 check "POST aggiungi riga merce" 200 "data.id" || true
 RIGA_ID="$EXTRACTED"; log_info "riga_id = $RIGA_ID"
+
+# --- 2-bis. Picker della riga sulla sede unica ---
+# ⭐ Il picker e il guard fanno la STESSA domanda (catalogo.fn_articoli_ammessi,
+#    brief-db-articoli-ammessi-per-documento §9.4): l'articolo che il guard ha
+#    appena accettato sulla riga deve uscire AMMESSO (`motivo` null). Prima qui
+#    c'era il filtro libero `escludi_destinazione`, ritirato: il BE lo ignorava
+#    e il passo restava verde senza provare niente.
+echo ""; echo "-- 2-bis. Picker riga preventivo (?documento=PREVENTIVO) --"
+if [[ -n "$RIGA_ID" ]]; then
+    do_curl GET "/api/v1/catalogo/articoli/${ARTICOLO_ID}/"
+    ART_CODICE=$(json_get "$LAST_BODY" "data.codice")
+    if [[ ${#ART_CODICE} -lt 3 ]]; then
+        log_skip "picker: codice articolo '${ART_CODICE}' sotto i 3 caratteri della ricerca"
+    else
+        do_curl GET "/api/v1/catalogo/articoli/lookup/?documento=PREVENTIVO&documento_id=${PREV_ID}&search=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$ART_CODICE")&limit=50"
+        if check "GET picker riga preventivo" 200; then
+            ESITO=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+rows = json.load(sys.stdin).get('data', {}).get('results') or []
+r = next((x for x in rows if str(x.get('id')) == '$ARTICOLO_ID'), None)
+if r is None: print('ASSENTE')
+elif 'motivo' not in r: print('SENZA_MOTIVO')
+elif r['motivo'] is None: print('AMMESSO')
+else: print('ESCLUSO:' + str(r['motivo'].get('reason')))
+" 2>/dev/null)
+            [[ "$ESITO" == "AMMESSO" ]] \
+                && log_ok "picker: l'articolo della riga e' ammesso (motivo null), come per il guard" \
+                || log_fail "picker: atteso AMMESSO per l'articolo della riga, trovato ${ESITO:-illeggibile}"
+        fi
+    fi
+else
+    log_skip "picker: la riga merce non e' stata creata, niente da confrontare"
+fi
 
 # --- 3. Porta ad ACCETTATO (prereq-gated: emetti + accetta) ---
 echo ""; echo "-- 3. BOZZA → EMESSO (/emetti/) → ACCETTATO --"
 SPLIT_OK=1
 # EMESSO via endpoint multipart /emetti/ (allegati opzionali). Richiede
 # template documento + emittente configurati: se manca, qui si diagnostica.
-curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" \
-    -F "x=" "${BASE_URL}/api/v1/vendite/preventivi/${PREV_ID}/emetti/" > "$TMPFILE" 2>/dev/null
-LAST_STATUS=$(tail -1 "$TMPFILE"); LAST_BODY=$(sed '$d' "$TMPFILE")
+smoke_emetti preventivi "${PREV_ID}"   # BB _smoke_documenti.sh
 if [[ "$LAST_STATUS" != "200" ]]; then
     log_skip "EMESSO (/emetti/) HTTP $LAST_STATUS — prereq documentale assente (template/emittente). Salto i passi split."
     log_info "Body: $(echo "$LAST_BODY" | head -c 200)"
@@ -277,7 +289,7 @@ fi
 echo ""; echo "-- 8. Crea/riusa articolo servizio (natura SERVIZIO_UNA_TANTUM) --"
 SERV_CODICE="SMOKE-SERV-UT"
 SERV_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/catalogo/articoli/?search=${SERV_CODICE}&page_size=5" 2>/dev/null | python3 -c "
+    "${BASE_URL}/api/v1/catalogo/articoli/?search=${SERV_CODICE}&limit=5" 2>/dev/null | python3 -c "
 import sys, json
 try:
     r = json.load(sys.stdin).get('data',{}).get('results',[])
@@ -312,15 +324,13 @@ if [[ -n "$SERV_ID" && "$SPLIT_OK" == "1" ]]; then
     if check "POST crea preventivo misto" 200 "data.id"; then
         PREV2_ID="$EXTRACTED"; log_info "preventivo_id (misto) = $PREV2_ID"
         do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/righe/" \
-            "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"3\", \"prezzo_unitario\": \"100.00\", \"iva_id\": 16}"
+            "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"3\", \"prezzo_unitario\": \"100.00\"}"
         check "POST riga merce" 200 "data.id" || true
         RIGA_MERCE2_ID="$EXTRACTED"
         do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/righe/" \
-            "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"50.00\", \"iva_id\": 16}"
+            "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"50.00\"}"
         check "POST riga servizio" 200 "data.id" || true
-        curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" \
-            -F "x=" "${BASE_URL}/api/v1/vendite/preventivi/${PREV2_ID}/emetti/" > "$TMPFILE" 2>/dev/null
-        LAST_STATUS=$(tail -1 "$TMPFILE"); LAST_BODY=$(sed '$d' "$TMPFILE")
+        smoke_emetti preventivi "${PREV2_ID}"   # BB _smoke_documenti.sh
         if [[ "$LAST_STATUS" == "200" ]]; then
             log_ok "POST /emetti/ → EMESSO"
             do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/stato/" \
@@ -362,8 +372,9 @@ if [[ "$MISTO_OK" == "1" ]]; then
 
     echo ""; echo "-- 13. EVASO a smistamento completo + re-push bloccato (stato terminale) --"
     # Smistati ENTRAMBI i rami (servizio→commessa step 11, merce→ordine step 12),
-    # il gate EVASO scatta: genera-ordine richiama lo stesso
-    # transiziona_a_evaso_se_smistato. Il preventivo e' gia' EVASO qui.
+    # il gate EVASO scatta. Dal 2026-10-12 lo fa il DB in tutti e due gli invii
+    # (`vendite.fn_preventivo_proietta_stato_smistamento`, D-10 di
+    # brief-db-annullo-a-valle-riapre-a-monte): il preventivo e' gia' EVASO qui.
     do_curl GET "/api/v1/vendite/preventivi/${PREV2_ID}/"
     ST2=$(json_get "$LAST_BODY" "data.stato_codice_interno")
     [[ "$ST2" == "EVASO" ]] && log_ok "stato = EVASO (smistamento completo, gate D6 soddisfatto)" \
@@ -391,11 +402,9 @@ if [[ "$MISTO_OK" == "1" && -n "${COMMESSE:-}" ]]; then
     if check "POST crea preventivo servizio-only" 200 "data.id"; then
         PREV3_ID="$EXTRACTED"
         do_curl POST "/api/v1/vendite/preventivi/${PREV3_ID}/righe/" \
-            "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"30.00\", \"iva_id\": 16}"
+            "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"30.00\"}"
         check "POST riga servizio" 200 || true
-        curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" \
-            -F "x=" "${BASE_URL}/api/v1/vendite/preventivi/${PREV3_ID}/emetti/" > "$TMPFILE" 2>/dev/null
-        LAST_STATUS=$(tail -1 "$TMPFILE"); LAST_BODY=$(sed '$d' "$TMPFILE")
+        smoke_emetti preventivi "${PREV3_ID}"   # BB _smoke_documenti.sh
         if [[ "$LAST_STATUS" == "200" ]]; then
             do_curl POST "/api/v1/vendite/preventivi/${PREV3_ID}/stato/" \
                 '{"nuovo_stato": "ACCETTATO", "fatturazione_immediata": true}'
@@ -424,8 +433,8 @@ fi
 
 # --- Nota copertura ---
 echo ""
-log_info "NON coperto qui: orchestratore CONFERMA_VENDITA → vedi smoke dedicato"
-log_info "smoke-test-pratica-preventivi-conferma.sh (giro pratica end-to-end)."
+log_info "NON coperto qui: il giro pratica end-to-end → vedi smoke dedicato"
+log_info "smoke-test-pratica-preventivi-bivio.sh (tipo PREVENTIVI, bivio per esito)."
 
 # --- Summary ---
 echo ""

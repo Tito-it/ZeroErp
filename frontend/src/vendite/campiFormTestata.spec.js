@@ -12,8 +12,9 @@
 // Indice test:
 //   1) ogni lista dice gli stessi campi che il suo form spegne campo per campo
 //      (`isLocked('…')` nei form, `testata.bloccato('…')` nei form inline)
-//   2) il form del reso non spegne per campo: un solo campo, e la lista ne ha uno
-//   3) ogni consumatore di `useTestataDocumento` e' in questo elenco
+//   (il reso e' fra questi dal 2026-10-12: col magazzino di rientro ha due
+//    campi, e spegne per campo come gli altri — piano-be-fe-magazzino-lotto-3 A2)
+//   2) ogni consumatore di `useTestataDocumento` e' in questo elenco
 // ------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest'
@@ -45,26 +46,19 @@ const FORM = [
   { drawer: './preventivi/components/PreventiviDrawer.vue', campi: CAMPI_FORM_TESTATA_PREVENTIVO, form: './preventivi/components/PreventiviForm.vue', spegne: 'isLocked' },
   { drawer: './offerte/components/OffertaDrawer.vue', campi: CAMPI_FORM_TESTATA_OFFERTA, form: './offerte/components/OffertaDrawer.vue', spegne: 'testata\\.bloccato' },
   { drawer: './components/ContrattoDrawer.vue', campi: CAMPI_FORM_TESTATA_CONTRATTO, form: './components/ContrattoDrawer.vue', spegne: 'testata\\.bloccato' },
+  { drawer: './resi/components/ResoDrawer.vue', campi: CAMPI_FORM_TESTATA_RESO, form: './resi/components/ResoForm.vue', spegne: 'isLocked' },
 ]
-const RESO = { drawer: './resi/components/ResoDrawer.vue', form: './resi/components/ResoForm.vue' }
 
 describe('CAMPI_FORM_TESTATA_*', () => {
   it.each(FORM)('1) $drawer: la lista e il form dicono gli stessi campi', ({ campi, form, spegne }) => {
     expect([...campi].sort()).toEqual(campiSpenti(sorgente(form), spegne))
   })
 
-  it('2) il form del reso: un solo campo', () => {
-    const testo = sorgente(RESO.form)
-    expect(campiSpenti(testo, 'isLocked')).toEqual([])
-    expect((testo.match(/:disabled="!isModificabile"/g) || []).length).toBe(1)
-    expect(CAMPI_FORM_TESTATA_RESO).toEqual(['data'])
-  })
-
-  it('3) ogni consumatore di useTestataDocumento e\' qui', () => {
+  it('2) ogni consumatore di useTestataDocumento e\' qui', () => {
     const consumatori = Object.entries(sorgenti)
       .filter(([, testo]) => /\buseTestataDocumento\(/.test(testo))
       .map(([percorso]) => percorso)
       .sort()
-    expect(consumatori).toEqual([...FORM.map((f) => f.drawer), RESO.drawer].sort())
+    expect(consumatori).toEqual(FORM.map((f) => f.drawer).sort())
   })
 })

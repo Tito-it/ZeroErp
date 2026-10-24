@@ -7,6 +7,8 @@ CREATE FUNCTION fn_storico_arma_scope(p_schema_base text, p_table_base text, p_d
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_storico_arma_scope(p_schema_base text, p_table_base text, p_dry_run boolean DEFAULT false)
  RETURNS jsonb
@@ -135,8 +137,12 @@ BEGIN
             IF NOT p_dry_run THEN
                 v_sql := format($p$CREATE POLICY %I ON %s FOR SELECT
                     USING ((current_setting('app.ruolo_applicativo', true) = 'OPERATORE')
-                           AND script.fn_scope_ef_whitelist(
-                                   NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                           -- ⭐ rev 2026-10-18 (D-3b-2c, 20261018-27): il perimetro dell'operatore
+                           --    in UNA sottoquery non correlata, valutata una volta per istruzione;
+                           --    per riga resta fn_scope_ef_perimetro(perimetro, scope).
+                           AND script.fn_scope_ef_perimetro(
+                                   (SELECT script.fn_get_emittenti_scope_pk_ids(
+                                       NULLIF(current_setting('app.current_user_id', true), '')::integer)),
                                    scope_emittente_fiscale_id))$p$,
                     v_pol_sel, v_full_sto);
                 EXECUTE v_sql;
@@ -187,8 +193,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_storico_arma_scope(p_schema_base text, p_table_base text, p_dry_run boolean)
-IS 'Porta la shadow storico.<tabella> di una madre alla forma dello scope congelato: colonne origine_schema e scope_emittente_fiscale_id (con indice) e, se dbops.storico_scope_policy dice che la madre è protetta (modo diverso da NESSUNO), RLS accesa con tre policy — rls_sto_<tab>_ef_whitelist FOR SELECT sull''emittente congelato (veste OPERATORE, adapter script.fn_scope_ef_whitelist), rls_sto_<tab>_trg_ins e rls_sto_<tab>_trg_upd con «true» perché la shadow la scrive il trigger e filtrare la scrittura romperebbe o zittirebbe la storicizzazione. Idempotente e forward-only: aggiunge solo ciò che manca e non disarma mai. ⚠️ Solo se il migratore possiede la shadow: altrimenti WARN nell''audit e si prosegue (le allinea il provisioning da superuser). Torna un jsonb con esito e azioni. La chiamano il generatore fn_ensure_storico_table sulla shadow appena creata e fn_storico_arma_scope_tutte. Brief: brief-db-rls-storico-scope-congelato §4b.';
+IS '⭐ rev 2026-10-18 (20261018-20, D-3b-2): la policy di lettura chiama script.fn_scope_ef_perimetro col perimetro in due sottoquery non correlate (una volta per istruzione), non piu'' script.fn_scope_ef_whitelist per riga. Porta la shadow storico.<tabella> di una madre alla forma dello scope congelato: colonne origine_schema e scope_emittente_fiscale_id (con indice) e, se dbops.storico_scope_policy dice che la madre è protetta (modo diverso da NESSUNO), RLS accesa con tre policy — rls_sto_<tab>_ef_whitelist FOR SELECT sull''emittente congelato (veste OPERATORE, adapter script.fn_scope_ef_whitelist), rls_sto_<tab>_trg_ins e rls_sto_<tab>_trg_upd con «true» perché la shadow la scrive il trigger e filtrare la scrittura romperebbe o zittirebbe la storicizzazione. Idempotente e forward-only: aggiunge solo ciò che manca e non disarma mai. ⚠️ Solo se il migratore possiede la shadow: altrimenti WARN nell''audit e si prosegue (le allinea il provisioning da superuser). Torna un jsonb con esito e azioni. La chiamano il generatore fn_ensure_storico_table sulla shadow appena creata e fn_storico_arma_scope_tutte. Brief: brief-db-rls-storico-scope-congelato §4b.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

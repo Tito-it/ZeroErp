@@ -27,9 +27,14 @@ backend come *pre-check* per mostrare il conflitto all'utente **prima** di
 tentare la creazione del nuovo contratto (anteprima FE), senza rischiare l'errore
 grezzo del database.
 
-È un meccanismo **di dominio contratti**, non legato all'offerta: il push
-offerta→contratto è solo il primo consumatore; ogni futuro percorso di creazione
-contratto (es. creazione manuale) userà la stessa funzione.
+È un meccanismo **di dominio contratti**, non legato all'offerta. I consumatori
+sono due: il push offerta→contratto, e l'attivazione del contratto attraverso
+[`script.fn_check_contratto_sovrapposto`](/dbzero/script/funzioni/fn_check_contratto_sovrapposto),
+che la leggono sia il pulsante «Attiva» sia il guard di transizione.
+
+⚠️ «Attivo» qui sopra vuol dire **vincolante**: conta anche un contratto
+**cessato**, perché il criterio è `partecipa_overlap_snapshot` (né bozza né
+annullato), lo stesso del vincolo di esclusione.
 
 ---
 

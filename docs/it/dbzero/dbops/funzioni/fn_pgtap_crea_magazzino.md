@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_crea_magazzino(p_codice character varying, p_usa_ubicaz
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_magazzino(p_codice character varying, p_usa_ubicazioni boolean DEFAULT false)
  RETURNS bigint
@@ -17,26 +19,29 @@ AS $function$
 --   pretende), con un indirizzo fabbricato e usa_ubicazioni scelto dal test
 --   (D-L2-m). Da chiamare DOPO fn_pgtap_set_contesto_operatore.
 -- Uso: v_mag := dbops.fn_pgtap_crea_magazzino('PGT-MAG-A', true);
+-- ⭐ Rev 20261018-41: la riga la scrive il BB magazzino.fn_crea_magazzino
+--   (regola del 2).
 DECLARE
     v_ef  magazzino.magazzini.emittente_fiscale_id%TYPE;
-    v_ind magazzino.magazzini.indirizzo_dettaglio_id%TYPE;
-    v_id  magazzino.magazzini.id%TYPE;
 BEGIN
     v_ef := script.fn_pgtap_emittente_operatore();
     IF v_ef IS NULL THEN
         RAISE EXCEPTION 'fn_pgtap_crea_magazzino: nessun emittente per l''operatore in sessione — chiamare prima fn_pgtap_set_contesto_operatore';
     END IF;
-    v_ind := dbops.fn_pgtap_crea_indirizzo_dettaglio(p_codice);
-    INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id, emittente_fiscale_id, usa_ubicazioni)
-    VALUES (p_codice, 'Fixture pgTAP: ' || p_codice, v_ind, v_ef, COALESCE(p_usa_ubicazioni, false))
-    RETURNING id INTO v_id;
-    RETURN v_id;
+    RETURN magazzino.fn_crea_magazzino(
+               p_codice,
+               'Fixture pgTAP: ' || p_codice,
+               dbops.fn_pgtap_crea_indirizzo_dettaglio(p_codice),
+               jsonb_build_object('usa_ubicazioni', COALESCE(p_usa_ubicazioni, false)),
+               v_ef);
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_magazzino(p_codice character varying, p_usa_ubicazioni boolean)
-IS 'Fixture pgTAP: un magazzino dell''emittente dell''operatore in sessione (script.fn_pgtap_emittente_operatore), indirizzo fabbricato, usa_ubicazioni scelto dal test (D-L2-m). Da chiamare dopo fn_pgtap_set_contesto_operatore. Solo per i pgTAP (brief magazzino Lotto 2, sezione 5).';
+IS 'Fixture pgTAP: un magazzino dell''emittente dell''operatore in sessione (script.fn_pgtap_emittente_operatore: il guard di scope lo pretende), con un indirizzo fabbricato (dbops.fn_pgtap_crea_indirizzo_dettaglio) e usa_ubicazioni scelto dal test. Da chiamare dopo fn_pgtap_set_contesto_operatore. Rev 20261018-41: la riga la scrive il BB magazzino.fn_crea_magazzino (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 7).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

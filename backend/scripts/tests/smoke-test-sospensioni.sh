@@ -27,10 +27,10 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_pratiche.sh"    # smoke_template_percorso
 
 # --- Riferimenti DB (valori di dev) ---
-EMITTENTE_FISCALE_ID="${EMITTENTE_ID:-32}"
-TIPO_PRESTAZIONE_ID="${TIPO_PRESTAZIONE_ID:-26}"
 PRIORITA_ID="${PRIORITA_ID:-1}"
 
 # --- Colori output ---
@@ -128,6 +128,22 @@ echo "-- 0. Autenticazione --"
 
 smoke_login
 log_ok "JWT ottenuto per '$USERNAME'"
+# L'emittente della pratica: quello ATTIVO dell'operatore (BB _smoke_cliente.sh),
+# mai un id scritto a mano (era 32: E_SCOPE_EMITTENTE se l'operatore lavora su
+# un altro). Override: EMITTENTE_ID.
+smoke_emittente_attivo
+EMITTENTE_FISCALE_ID="$EMITTENTE_ATTIVO_ID"
+if [[ -z "$EMITTENTE_FISCALE_ID" ]]; then
+    echo -e "${RED}Setup fallito: l'operatore non ha un emittente attivo. Stop.${NC}"; exit 1
+fi
+log_info "emittente attivo = $EMITTENTE_FISCALE_ID"
+# Il tipo di prestazione per CODICE (BB _smoke_pratiche.sh): PREVENTIVI e' il
+# tipo con un percorso attivo. Fino al 2026-10-12 qui c'era un id cablato.
+smoke_tipo_prestazione PREVENTIVI
+if [[ -z "$TIPO_PRESTAZIONE_ID" ]]; then
+    echo -e "${RED}Setup fallito: tipo di prestazione PREVENTIVI non trovato. Stop.${NC}"; exit 1
+fi
+log_info "tipo prestazione = $TIPO_PRESTAZIONE_ID"
 
 # --- 1. Crea pratica di test ---
 echo ""
@@ -160,10 +176,18 @@ check "POST stato BOZZA→APERTA" 200
 echo ""
 echo "-- 3. Creazione flusso --"
 
-do_curl POST "/api/v1/pratiche/${PRATICA_ID}/flussi/" '{
-    "sequenza": 1,
-    "meta": {"smoke_sospensioni": true}
-}'
+# Un flusso nasce SEMPRE da un template del percorso della pratica
+# (`template_flusso_id` obbligatorio, E_FLUSSO_VALIDATION): il primo del percorso,
+# dal BB _smoke_pratiche.sh. Fino al 2026-10-12 lo smoke lo creava senza.
+smoke_template_percorso "$PRATICA_ID"
+if [[ -z "$TEMPLATE_FLUSSO_ID" ]]; then
+    echo -e "${RED}ERRORE: il percorso della pratica non ha template — interrompo${NC}"; exit 1
+fi
+log_info "template_flusso_id = $TEMPLATE_FLUSSO_ID"
+do_curl POST "/api/v1/pratiche/${PRATICA_ID}/flussi/" "{
+    \"template_flusso_id\": ${TEMPLATE_FLUSSO_ID},
+    \"meta\": {\"smoke_sospensioni\": true}
+}"
 check "POST crea flusso" 200 ".data.flusso_id" || true
 FLUSSO_ID="$EXTRACTED"
 

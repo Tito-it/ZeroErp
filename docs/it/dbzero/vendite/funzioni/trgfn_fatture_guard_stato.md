@@ -7,16 +7,25 @@ CREATE FUNCTION trgfn_fatture_guard_stato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_guard_stato()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+-- Scopo: le transizioni di stato della fattura (matrice
+--   config.stati_doc_fiscale_transizioni, nessuna retrocessione di un
+--   GIORNALIERO) e, entrando in EMESSA, i motivi di
+--   script.fn_check_fattura_emettibile.
+-- Rev 2026-10-22 (20261022-07, D-3 di Tid; §9.9 di
+--   brief-be-utenti-di-sviluppo): il cancello IVA all'emissione.
 DECLARE
     v_ok BOOLEAN;
     v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
     v_old_ordine config.stati_doc_fiscale.ordine%TYPE;
     v_new_ordine config.stati_doc_fiscale.ordine%TYPE;
+    v_codice_a   config.stati_doc_fiscale.codice_interno%TYPE;
 BEGIN
     IF TG_OP = 'UPDATE'
        AND NEW.stato_doc_fiscale_id IS NOT NULL
@@ -59,13 +68,42 @@ BEGIN
         END IF;
     END IF;
 
+    -- ⭐ IL CANCELLO ALL'EMISSIONE (rev 2026-10-22, 20261022-07).
+    --   Entrando in EMESSA, da qualunque stato (anche da uno stato vuoto:
+    --   vendite.fn_numera_fattura_opz_emessa lo scrive cosi'), la fattura
+    --   non deve avere motivi: oggi una riga senza aliquota IVA
+    --   (E_FATTURA_RIGA_IVA_MANCANTE). Il predicato sta nella check;
+    --   l'helper solleva il codice del primo motivo e tace su [].
+    -- ⚠️ Sulla DESTINAZIONE, non su una coppia DRAFT -> EMESSA: una strada
+    --   nuova verso EMESSA nasce gia' coperta (stessa forma del preventivo).
+    -- ⛔ La bozza resta libera: il vincolo e' all'emissione, non al
+    --   salvataggio della riga (decisione di Tid del 2026-08-29).
+    IF TG_OP = 'UPDATE'
+       AND NEW.stato_doc_fiscale_id IS DISTINCT FROM OLD.stato_doc_fiscale_id THEN
+        SELECT s.codice_interno INTO v_codice_a
+          FROM config.stati_doc_fiscale s
+         WHERE s.id = NEW.stato_doc_fiscale_id;
+
+        IF v_codice_a = 'EMESSA' THEN
+            PERFORM script.fn_raise_primo_motivo_se_presente(
+                'vendite', TG_NAME::text,
+                script.fn_check_fattura_emettibile(NEW.id),
+                NULL,
+                NEW.tx_id,
+                jsonb_build_object('fattura_id', NEW.id,
+                                   'stato_a',    v_codice_a));
+        END IF;
+    END IF;
+
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_fatture_guard_stato()
-IS 'Guard transizioni stato fatture via config.stati_doc_fiscale_transizioni. Blocco retrocessione GIORNALIERO.';
+IS 'Guard transizioni stato fatture via config.stati_doc_fiscale_transizioni. Blocco retrocessione GIORNALIERO. Rev 2026-10-22 (20261022-07, D-3 di Tid; §9.9 di brief-be-utenti-di-sviluppo): entrando in EMESSA, da qualunque stato, solleva il primo motivo di script.fn_check_fattura_emettibile (E_FATTURA_RIGA_IVA_MANCANTE: una riga senza aliquota IVA) con script.fn_raise_primo_motivo_se_presente. La bozza resta libera; la guardia del riepilogo e'' in vendite.fn_ricalcola_riepilogo_iva_fattura.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

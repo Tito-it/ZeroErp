@@ -104,3 +104,13 @@ composta, la presenza dell'istanza il CHECK. Il trigger scatta anche su `billing
 ⚠️ Il commento di testa parlava di «prospect puro»: un'istanza agganciata senza ruolo perche' il
 ruolo CLIENTE arrivava dopo, col BA. Non e' piu' cosi': l'istanza nasce col BA, e il ruolo con
 lui. Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).
+
+### Revisione del 19-10-2026 — regole 3 e 4 dai BB
+
+Le regole 3 (il ruolo è del soggetto) e 4 (l'istanza è del soggetto) passano da
+[`fn_ruolo_di_altro_soggetto`](/dbzero/anagrafiche/manual/fn_ruolo_di_altro_soggetto) e
+[`fn_istanza_di_altro_soggetto`](/dbzero/anagrafiche/manual/fn_istanza_di_altro_soggetto): è la
+stessa regola dei controlli di indirizzi, contatti e conti del ruolo (regola del 2). Codici e frasi
+non cambiano. ⚠️ Un ruolo o un'istanza che **non esistono** non sono più «non coerenti»: li rifiuta
+la chiave esterna della tabella, che dice la causa giusta. Brief:
+`brief-db-processi-accensione-per-ambiente` §6.17 (D-17b).

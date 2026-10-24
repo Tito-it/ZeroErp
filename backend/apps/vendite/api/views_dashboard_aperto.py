@@ -22,11 +22,11 @@ from drf_spectacular.utils import (
 from rest_framework import serializers
 from rest_framework.request import Request
 
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.api.openapi_params import parametri_finestra
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.payload_validators import (
+    pagina_da_query,
     qp_int_optional,
-    qp_int_strict,
     qp_str,
     qp_str_upper,
 )
@@ -87,11 +87,12 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "Filtro area documento: PREVENTIVI | ORDINI | DDT | "
-                    "OFFERTE | CONTRATTI (default: tutte). Non whitellistato: un'area "
-                    "sconosciuta (o COMMESSE, esclusa dalla vista — coperta "
-                    "dalla Lente 1) da' lista vuota (coerenza fail-visible "
-                    "col riepilogo, che accoda le aree fuori whitelist)."
+                    "Filtro area documento, col codice della sorgente: PREVENTIVO | "
+                    "ORDINE_VENDITA | DDT_VENDITA | OFFERTA_COMMERCIALE | CONTRATTO "
+                    "(default: tutte). Un codice che non e' una sorgente "
+                    "(config.sorgenti) e' 400 E_VENDITE_VALIDATION. Una sorgente "
+                    "fuori da queste cinque e' ammessa (il riepilogo la accoda, "
+                    "fail-visible); COMMESSA, esclusa dalla vista, da' lista vuota."
                 ),
             ),
             OpenApiParameter(
@@ -101,9 +102,9 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
                 required=False,
                 description=(
                     "Filtro fase normalizzata (vocabolario config.stati_doc_*: "
-                    "APERTO | IN_ATTESA | IN_CORSO; default: tutte). Non "
-                    "whitellistato: una fase sconosciuta da' lista vuota "
-                    "(coerenza fail-visible col riepilogo)."
+                    "APERTO | IN_ATTESA | IN_CORSO | CHIUSO; default: tutte). "
+                    "Fuori vocabolario e' 400 E_VENDITE_VALIDATION; CHIUSO e' "
+                    "ammessa ma la vista non la contiene (lista vuota)."
                 ),
             ),
             OpenApiParameter(
@@ -142,20 +143,7 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
                     "diverso -> 400 (E_VENDITE_VALIDATION)."
                 ),
             ),
-            OpenApiParameter(
-                name="page",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Numero pagina (default 1).",
-            ),
-            OpenApiParameter(
-                name="page_size",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
+            *parametri_finestra(),
         ],
         responses={
             200: inline_serializer(
@@ -194,8 +182,7 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
         # validate nel service (unica definizione, fail-fast 400).
         order_by = qp_str(qp.get("order_by"))
         order_dir = qp_str(qp.get("order_dir"))
-        page = qp_int_strict(qp.get("page"), "page", 1)
-        page_size = qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT)
+        limit, offset = pagina_da_query(qp)
 
         # Scope emittente interamente DB-side (RLS invoker): la view non
         # passa alcun auth_user_id.
@@ -205,8 +192,8 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
             ritardo_giorni=ritardo_giorni,
             order_by=order_by,
             order_dir=order_dir,
-            page=page,
-            page_size=page_size,
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 

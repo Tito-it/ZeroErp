@@ -27,6 +27,8 @@ from apps.pratiche.db.definizioni_repository import (
 )
 from apps.pratiche.services.pratiche_service import _raise_known_db_error
 
+_V = PayloadValidator(validation_code=E_VALIDATION_INPUT)
+
 _DRIFT_KEYS = ("versioni_indietro", "preset_corrente_id", "versione_preset_corrente")
 
 
@@ -158,7 +160,7 @@ def pubblica_definizione(definizione_id: int) -> dict[str, Any]:
 #    RuntimeError). I form dell'editor (DefinizioneStepForm, Step*Tab, Archi*Tab)
 #    mandano solo chiavi scrivibili — verificato quel giorno.
 def _clean_writable(fields: tuple[str, ...], payload: dict[str, Any]) -> dict[str, Any]:
-    PayloadValidator(validation_code=E_VALIDATION_INPUT).validate_allowed_keys(
+    _V.validate_allowed_keys(
         payload, allowed=frozenset(fields), message="Campi non modificabili nel payload.",
     )
     data: dict[str, Any] = {}
@@ -212,10 +214,8 @@ def update_step(definizione_id: int, step_id: int, payload: dict[str, Any]) -> d
     _require_id(definizione_id, "definizione_id")
     _require_id(step_id, "step_id")
     data = _clean_writable(STEP_CORE_FIELDS, payload)
-    ErrorManager.require(
-        bool(data),
-        code=E_VALIDATION_INPUT,
-        message="nessun campo aggiornabile nel payload",
+    _V.require_campi_da_aggiornare(
+        data,
     )
     with _mapped_db_errors("definizioni_service.update_step"):
         n = DefinizioniRepository().update_step(definizione_id, step_id, data)
@@ -283,10 +283,8 @@ def update_step_figlio(
     _require_id(step_id, "step_id")
     _require_id(row_id, "row_id")
     data = _clean_child_payload(child_kind, payload)
-    ErrorManager.require(
-        bool(data),
-        code=E_VALIDATION_INPUT,
-        message="nessun campo aggiornabile nel payload",
+    _V.require_campi_da_aggiornare(
+        data,
     )
     with _mapped_db_errors(f"definizioni_service.update_step_figlio.{child_kind}"):
         n = DefinizioniRepository().update_child(
@@ -373,10 +371,8 @@ def update_arco(definizione_id: int, edge_kind: str, row_id: int,
     _require_id(definizione_id, "definizione_id")
     _require_id(row_id, "row_id")
     data = _clean_writable(EDGE_SPECS[edge_kind].writable, payload)
-    ErrorManager.require(
-        bool(data),
-        code=E_VALIDATION_INPUT,
-        message="nessun campo aggiornabile nel payload",
+    _V.require_campi_da_aggiornare(
+        data,
     )
     _valida_endpoint_in_def(definizione_id, edge_kind, data)
     with _mapped_db_errors(f"definizioni_service.update_arco.{edge_kind}"):

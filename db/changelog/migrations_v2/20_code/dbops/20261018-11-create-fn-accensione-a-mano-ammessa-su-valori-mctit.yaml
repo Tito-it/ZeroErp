@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SCELTA A MANO E' AMMESSA? SUI VALORI
+#   dbops.fn_accensione_a_mano_ammessa_su_valori(acceso_a_mano,
+#   accendibile_in_produzione, ambiente): il predicato del divieto «in
+#   PRODUZIONE questo processo non si accende a mano», puro, IMMUTABLE.
+#   Brief: brief-db-processi-accensione-per-ambiente (§6.6, R-BE-5)
+#
+# -- TRE LETTORI, UN PREDICATO -----------------------------------------
+#   - il guard di dbops.processi_accensione (20261018-13): rifiuta il gesto;
+#   - la regola dello stato effettivo, dbops.fn_processo_acceso_su_valori
+#     (20261018-12): ignora una riga accesa che il divieto non ammette, cioe'
+#     una scelta scritta prima della regola o prima che l'ambiente fosse
+#     dichiarato;
+#   - il backend, per la capability del drawer (il pulsante «Accendi»
+#     disabilitato col motivo): la chiama con acceso = true.
+#   Scritto una volta: tre copie della stessa condizione divergerebbero.
+#
+# -- PERCHE' SUI VALORI -------------------------------------------------
+#   Come fn_processo_acceso_su_valori (§5.5): l'ambiente e' immutabile e la CI
+#   e' SVILUPPO, quindi il ramo PRODUZIONE si prova passando il valore.
+#
+# -- IL PREDICATO, IN ORDINE --------------------------------------------
+#   1. la scelta non accende (false, NULL = torna al default) -> true: il
+#      divieto riguarda solo l'accensione;
+#   2. accendibile in produzione (o senza sveglia, NULL)      -> true: il
+#      processo senza sveglia lo rifiuta un'altra regola (E_PROCESSO_SENZA_SVEGLIA);
+#   3. ambiente SVILUPPO                                      -> true;
+#   4. ambiente PRODUZIONE                                    -> false;
+#   5. ambiente non dichiarato                                -> NULL: non
+#      decidibile. Il guard lo rende E_CONFIG_MANCANTE, la regola NULL.
+#
+#   ⛔ Niente STRICT: i NULL sono casi normali. RETURNS boolean nudo: e' una
+#   risposta, non il riflesso di una colonna.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261018-11-create-fn-accensione-a-mano-ammessa-su-valori-mctit.yaml
+
+  - changeSet:
+      id: 20261018-11-create-fn-accensione-a-mano-ammessa-su-valori
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea dbops.fn_accensione_a_mano_ammessa_su_valori: il divieto di accendere a mano in
+        PRODUZIONE un processo non accendibile, puro sui valori.
+        Brief: brief-db-processi-accensione-per-ambiente (R-BE-5).
+      preConditions:
+        - onFail: HALT
+        - columnExists: { schemaName: dbops, tableName: processi, columnName: accendibile_in_produzione }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_accensione_a_mano_ammessa_su_valori(
+                  p_acceso_a_mano             dbops.processi_accensione.acceso%TYPE,
+                  p_accendibile_in_produzione dbops.processi.accendibile_in_produzione%TYPE,
+                  p_ambiente                  dbops.installazione.ambiente%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              IMMUTABLE
+              AS $function$
+                  -- Scopo: la scelta a mano e' ammessa dal divieto di
+                  --   accensione in PRODUZIONE? NULL = non decidibile
+                  --   (ambiente non dichiarato). L'ordine dei rami e' la
+                  --   regola (vedi intestazione).
+                  SELECT CASE
+                           WHEN p_acceso_a_mano IS NOT TRUE             THEN true
+                           WHEN p_accendibile_in_produzione IS NOT FALSE THEN true
+                           WHEN p_ambiente = 'SVILUPPO'                 THEN true
+                           WHEN p_ambiente = 'PRODUZIONE'               THEN false
+                           ELSE NULL
+                         END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_accensione_a_mano_ammessa_su_valori(
+                  dbops.processi_accensione.acceso%TYPE,
+                  dbops.processi.accendibile_in_produzione%TYPE,
+                  dbops.installazione.ambiente%TYPE)
+              IS 'Il divieto di accendere a mano in PRODUZIONE un processo non accendibile (dbops.processi.accendibile_in_produzione = false), puro sui valori: l''unico posto dove e'' scritto. In ordine: una scelta che non accende (false, o NULL = torna al default) -> true; processo accendibile, o senza sveglia -> true; ambiente SVILUPPO -> true; PRODUZIONE -> false; ambiente non dichiarato -> NULL (non decidibile). Lo leggono il guard di dbops.processi_accensione (rifiuta con E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE; NULL -> E_CONFIG_MANCANTE), la regola dbops.fn_processo_acceso_su_valori (ignora una riga accesa che il divieto non ammette) e il backend per la capability del drawer, con acceso = true. IMMUTABLE e LANGUAGE sql (si inlinea), senza STRICT. Sui valori perche'' l''ambiente e'' immutabile e la CI e'' SVILUPPO. Brief: brief-db-processi-accensione-per-ambiente (R-BE-5).';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_accensione_a_mano_ammessa_su_valori(boolean, boolean, text);

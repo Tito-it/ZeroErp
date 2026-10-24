@@ -146,6 +146,43 @@ ORDER BY dr.quantita - COALESCE((SELECT SUM(rr.quantita) FROM vendite.resi_righe
          dr.id
 LIMIT 1;
 
+-- ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-6/D-7): il ponte
+--   di ri-consegna punta a una riga di una bolla di RI-CONSEGNA, e un legame
+--   nasce solo con la bolla in bozza (lock delle righe montato sul ponte). Fino
+--   a quel giorno la fixture lo scriveva sulla riga del DDT d'ORIGINE, gia'
+--   consegnato: una forma che nessuna madre produce e che ora il lock rifiuta.
+--   La bolla di destinazione e' una bozza dello stesso cliente, con una riga
+--   dello stesso articolo.
+CREATE TEMP TABLE tmp_ddt_ric AS SELECT NULL::bigint AS ddt_id, NULL::bigint AS ddt_riga_id;
+DO $ric$
+DECLARE r RECORD; v_ddt bigint; v_dr bigint;
+BEGIN
+  SELECT d.destinatario_soggetto_ruolo_id, d.billing_account_id, d.valuta_id, d.emittente_fiscale_id,
+         x.articolo_id, x.uom_operativa_id, x.factor_to_base
+    INTO r
+    FROM tmp_refs_rin x
+    JOIN vendite.ddt_righe dr ON dr.id = x.ddt_riga_id
+    JOIN vendite.ddt d ON d.id = dr.ddt_id;
+  -- Il file pesca la riga d'origine dai dati: se non c'e' (database da zero)
+  -- la fixture si ferma qui, e i test lo dicono al 6-bis come prima.
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+  INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id, billing_account_id,
+                           valuta_id, emittente_fiscale_id, storicizza, meta)
+  VALUES (script.fn_data_operativa(),
+          (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'DRAFT' AND s.attivo LIMIT 1),
+          r.destinatario_soggetto_ruolo_id, r.billing_account_id, r.valuta_id, r.emittente_fiscale_id,
+          false, jsonb_build_object('test_scope', 'pgtap_resi_rinunce'))
+  RETURNING id INTO v_ddt;
+  INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione, qta_operativa,
+                                 uom_operativa_id, factor_to_base, storicizza, meta)
+  VALUES (v_ddt, 1, r.articolo_id, 'ri-consegna pgTAP', 1, r.uom_operativa_id, r.factor_to_base,
+          false, jsonb_build_object('test_scope', 'pgtap_resi_rinunce'))
+  RETURNING id INTO v_dr;
+  UPDATE tmp_ddt_ric SET ddt_id = v_ddt, ddt_riga_id = v_dr;
+END $ric$;
+
 CREATE TEMP TABLE tmp_reso_rin AS
 WITH ins AS (
   INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid,
@@ -201,7 +238,7 @@ SELECT is(
 -- ============================================================
 INSERT INTO vendite.resi_righe_riconsegne (resi_riga_id, ddt_riga_id, qta)
 SELECT (SELECT resi_riga_id FROM tmp_riga_rin),
-       (SELECT ddt_riga_id FROM tmp_refs_rin), 1.000000;
+       (SELECT ddt_riga_id FROM tmp_ddt_ric), 1.000000;
 
 INSERT INTO vendite.resi_righe_rinunce (resi_riga_id, qta, note)
 SELECT (SELECT resi_riga_id FROM tmp_riga_rin), 1.000000, 'pgtap fondamenta';
@@ -222,7 +259,7 @@ SELECT throws_ok(
   format($$ INSERT INTO vendite.resi_righe_riconsegne (resi_riga_id, ddt_riga_id, qta)
             VALUES (%s, %s, 2.000000) $$,
          (SELECT resi_riga_id FROM tmp_riga_rin),
-         (SELECT ddt_riga_id FROM tmp_refs_rin)),
+         (SELECT ddt_riga_id FROM tmp_ddt_ric)),
   'P0001', NULL,
   '8) ri-consegna oltre il residuo AL NETTO delle rinunce -> rifiutata');
 

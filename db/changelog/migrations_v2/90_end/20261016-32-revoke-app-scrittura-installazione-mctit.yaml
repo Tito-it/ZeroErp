@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AMBIENTE LO SCRIVE SOLO IL PROVISIONING
+#   Brief: brief-db-processi-accensione-per-ambiente (R-3, richiesta del BE)
+#
+# ── ⭐ COSA FA ───────────────────────────────────────────────────────
+#   dbops.installazione: all'applicazione SOLO SELECT. La scrive soltanto la
+#   fase post di scripts/sql/provision_zeroerp.sql (da superuser, come
+#   zeroerp_owner), una volta. Il controllo «il provisioning di sviluppo parte
+#   solo in SVILUPPO» regge solo se l'app non puo' cambiare l'ambiente:
+#   altrimenti un amministratore lo mette a SVILUPPO, lancia il command e lo
+#   rimette a posto. Il guard di immutabilita' (20261016-16/-17) ferma anche
+#   quel giro, ma non e' la difesa dei ruoli: la porta chiusa si.
+#
+# ── 🔴 TRE SEDI, COME OGNI POSTURA PIU' STRETTA (linee-guida §11.8) ──
+#   · QUESTO changeSet, che agisce subito su dev;
+#   · l'elenco v_tabelle_sola_lettura_app del loop 90_end/ci_apply/20260205-41;
+#   · il blocco «POSTURA DICHIARATA» della fase post di
+#     scripts/sql/provision_zeroerp.sql.
+#   Le tiene allineate db/pgtap/dbops/test-installazione-ambiente-v1.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261016-32-revoke-app-scrittura-installazione-mctit.yaml
+
+  - changeSet:
+      id: 20261016-32-revoke-app-scrittura-installazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        L'ambiente dell'installazione: a zeroerp_app SELECT soltanto su dbops.installazione. Lo
+        scrive solo il provisioning. Postura resa stabile dal loop 20260205-41 e dal provisioning.
+        Brief: brief-db-processi-accensione-per-ambiente (R-3).
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: dbops, tableName: installazione }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta dell''ambiente.';
+                      RETURN;
+                  END IF;
+
+                  -- L'applicazione legge; scrive il provisioning.
+                  GRANT  SELECT                 ON TABLE dbops.installazione TO   zeroerp_app;
+                  REVOKE INSERT, UPDATE, DELETE ON TABLE dbops.installazione FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              GRANT INSERT, UPDATE, DELETE ON TABLE dbops.installazione TO zeroerp_app;

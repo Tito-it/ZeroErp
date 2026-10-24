@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): chiavi del push e corsia col codice della sorgente (ORDINE_VENDITA, DDT_VENDITA).
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_af_merce_per_riga — la base del contatore merce
 --       (brief-design-partita-merce-generalizzata, slice S1, changeSet 20260817-06).
@@ -142,6 +143,9 @@ BEGIN
   END IF;
   PERFORM vendite.fn_upsert_commessa_attivita(
     p_commessa_id => (SELECT commessa_id FROM tmp_com),
+    -- La riga NORMALE ha la sua sorgente; ONERE e RETTIFICA no (vincolo 20261012-27).
+    p_sorgente_tipo_id => CASE WHEN p_tipo_mov = 'NORMALE' THEN (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA') END,
+    p_sorgente_uid => CASE WHEN p_tipo_mov = 'NORMALE' THEN ((SELECT commessa_id FROM tmp_com))::text END,
     p_segment_key => p_segment,
     p_articolo_id => r.articolo_id,
     p_istanza_utility_id => r.istanza_utility_id,
@@ -155,7 +159,7 @@ BEGIN
     p_categoria_cliente_id_snapshot => NULL, p_classe_utenza_id_snapshot => NULL,
     p_tipo_doc_fiscale_id => r.tipo_doc_fiscale_id,
     p_stato_approvazione => 'APPROVATA', p_stato_emissione => 'NON_EMESSA',
-    p_tipo_movimento => p_tipo_mov, p_tipo_consumo => 'CONGUAGLIO',
+    p_tipo_movimento => p_tipo_mov,
     p_meta => p_meta, p_causale_onere_id => v_causale_id);
 END $$ LANGUAGE plpgsql;
 
@@ -164,12 +168,12 @@ END $$ LANGUAGE plpgsql;
 -- ============================================================
 
 -- Righe semplici, una per corsia.
-SELECT pg_temp.mk_af('DDT:' || (SELECT u_ddt FROM tmp_seg)::text || ':R:900005', 12, 'NORMALE', '{}'::jsonb);
-SELECT pg_temp.mk_af('ORD:' || (SELECT u_ord FROM tmp_seg)::text || ':R:900006',  4, 'NORMALE', '{}'::jsonb);
+SELECT pg_temp.mk_af('DDT_VENDITA:' || (SELECT u_ddt FROM tmp_seg)::text || ':R:900005', 12, 'NORMALE', '{}'::jsonb);
+SELECT pg_temp.mk_af('ORDINE_VENDITA:' || (SELECT u_ord FROM tmp_seg)::text || ':R:900006',  4, 'NORMALE', '{}'::jsonb);
 
 -- ONERE sulla STESSA riga_id 900006, da un documento diverso: stessa riga
 -- sorgente, movimento diverso. Deve uscire come riga a se'.
-SELECT pg_temp.mk_af('ORD:' || (SELECT u_onere FROM tmp_seg)::text || ':R:900006', 9, 'ONERE', '{}'::jsonb);
+SELECT pg_temp.mk_af('ORDINE_VENDITA:' || (SELECT u_onere FROM tmp_seg)::text || ':R:900006', 9, 'ONERE', '{}'::jsonb);
 
 -- ⭐ KIT BEN FORMATO, con tre coefficienti DIVERSI che concordano sul padre 10:
 --     20 / 2   = 10
@@ -177,28 +181,28 @@ SELECT pg_temp.mk_af('ORD:' || (SELECT u_onere FROM tmp_seg)::text || ':R:900006
 --      5 / 0.5 = 10
 -- E' il caso che il DB di sviluppo non contiene (li' i coeff valgono tutti 1)
 -- e che rende la divisione una verifica invece di una formalita'.
-SELECT pg_temp.mk_af('ORD:' || (SELECT u_kit_ok FROM tmp_seg)::text || ':R:900001#CMP:c1', 20, 'NORMALE',
+SELECT pg_temp.mk_af('ORDINE_VENDITA:' || (SELECT u_kit_ok FROM tmp_seg)::text || ':R:900001#CMP:c1', 20, 'NORMALE',
                      jsonb_build_object('coeff_qta','2'));
-SELECT pg_temp.mk_af('ORD:' || (SELECT u_kit_ok FROM tmp_seg)::text || ':R:900001#CMP:c2', 10, 'NORMALE',
+SELECT pg_temp.mk_af('ORDINE_VENDITA:' || (SELECT u_kit_ok FROM tmp_seg)::text || ':R:900001#CMP:c2', 10, 'NORMALE',
                      jsonb_build_object('coeff_qta','1'));
-SELECT pg_temp.mk_af('ORD:' || (SELECT u_kit_ok FROM tmp_seg)::text || ':R:900001#CMP:c3',  5, 'NORMALE',
+SELECT pg_temp.mk_af('ORDINE_VENDITA:' || (SELECT u_kit_ok FROM tmp_seg)::text || ':R:900001#CMP:c3',  5, 'NORMALE',
                      jsonb_build_object('coeff_qta','0.5'));
 
 -- Kit SENZA coefficiente nel meta: la quantita' del padre non e' ricostruibile.
-SELECT pg_temp.mk_af('ORD:' || (SELECT u_kit_senza_coeff FROM tmp_seg)::text || ':R:900002#CMP:c1', 6, 'NORMALE', '{}'::jsonb);
-SELECT pg_temp.mk_af('ORD:' || (SELECT u_kit_senza_coeff FROM tmp_seg)::text || ':R:900002#CMP:c2', 6, 'NORMALE', '{}'::jsonb);
+SELECT pg_temp.mk_af('ORDINE_VENDITA:' || (SELECT u_kit_senza_coeff FROM tmp_seg)::text || ':R:900002#CMP:c1', 6, 'NORMALE', '{}'::jsonb);
+SELECT pg_temp.mk_af('ORDINE_VENDITA:' || (SELECT u_kit_senza_coeff FROM tmp_seg)::text || ':R:900002#CMP:c2', 6, 'NORMALE', '{}'::jsonb);
 
 -- Kit INCOERENTE: i due componenti non concordano sul padre (10/1=10 vs 10/2=5).
 -- Succede se il kit e' stato fatturato solo in parte: il padre e' ambiguo.
-SELECT pg_temp.mk_af('ORD:' || (SELECT u_kit_incoerente FROM tmp_seg)::text || ':R:900003#CMP:c1', 10, 'NORMALE',
+SELECT pg_temp.mk_af('ORDINE_VENDITA:' || (SELECT u_kit_incoerente FROM tmp_seg)::text || ':R:900003#CMP:c1', 10, 'NORMALE',
                      jsonb_build_object('coeff_qta','1'));
-SELECT pg_temp.mk_af('ORD:' || (SELECT u_kit_incoerente FROM tmp_seg)::text || ':R:900003#CMP:c2', 10, 'NORMALE',
+SELECT pg_temp.mk_af('ORDINE_VENDITA:' || (SELECT u_kit_incoerente FROM tmp_seg)::text || ':R:900003#CMP:c2', 10, 'NORMALE',
                      jsonb_build_object('coeff_qta','2'));
 
 -- Stesso NUMERO di riga su due corsie diverse: due righe di documento senza
 -- alcun rapporto fra loro (sequenze diverse).
-SELECT pg_temp.mk_af('ORD:' || (SELECT u_collisione_ord FROM tmp_seg)::text || ':R:900004', 7, 'NORMALE', '{}'::jsonb);
-SELECT pg_temp.mk_af('DDT:' || (SELECT u_collisione_ddt FROM tmp_seg)::text || ':R:900004', 3, 'NORMALE', '{}'::jsonb);
+SELECT pg_temp.mk_af('ORDINE_VENDITA:' || (SELECT u_collisione_ord FROM tmp_seg)::text || ':R:900004', 7, 'NORMALE', '{}'::jsonb);
+SELECT pg_temp.mk_af('DDT_VENDITA:' || (SELECT u_collisione_ddt FROM tmp_seg)::text || ':R:900004', 3, 'NORMALE', '{}'::jsonb);
 
 -- Emissione: PRONTA_FATTURAZIONE + pull -> nascono le attivita' fatturabili.
 -- La vista legge le AF: senza questo passo non vedrebbe nulla.
@@ -210,13 +214,13 @@ SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM
 -- ============================================================
 SELECT is(
   (SELECT quantita FROM vendite.vw_af_merce_per_riga
-    WHERE corsia='DDT' AND riga_id=900005 AND tipo_movimento='NORMALE'),
+    WHERE corsia='DDT_VENDITA' AND riga_id=900005 AND tipo_movimento='NORMALE'),
   12::numeric,
   '4) corsia DDT, riga semplice: quantita = 12 (invariata)');
 
 SELECT is(
   (SELECT quantita FROM vendite.vw_af_merce_per_riga
-    WHERE corsia='ORD' AND riga_id=900006 AND tipo_movimento='NORMALE'),
+    WHERE corsia='ORDINE_VENDITA' AND riga_id=900006 AND tipo_movimento='NORMALE'),
   4::numeric,
   '5) corsia ORD, riga semplice: quantita = 4 (invariata)');
 
@@ -227,7 +231,7 @@ SELECT is(
 -- ============================================================
 SELECT is(
   (SELECT quantita FROM vendite.vw_af_merce_per_riga
-    WHERE corsia='ORD' AND riga_id=900006 AND tipo_movimento='ONERE'),
+    WHERE corsia='ORDINE_VENDITA' AND riga_id=900006 AND tipo_movimento='ONERE'),
   9::numeric,
   '6) ONERE esce come riga a se'' sulla stessa riga_id: la vista non filtra tipo_movimento');
 
@@ -236,13 +240,13 @@ SELECT is(
 -- ============================================================
 SELECT is(
   (SELECT quantita FROM vendite.vw_af_merce_per_riga
-    WHERE corsia='ORD' AND riga_id=900001 AND tipo_movimento='NORMALE'),
+    WHERE corsia='ORDINE_VENDITA' AND riga_id=900001 AND tipo_movimento='NORMALE'),
   10::numeric,
   '7) kit con coeff 2/1/0.5 su qta 20/10/5: quantita = 10 in unita'' del PADRE (non 35)');
 
 SELECT ok(
   (SELECT da_componenti AND misurabile FROM vendite.vw_af_merce_per_riga
-    WHERE corsia='ORD' AND riga_id=900001 AND tipo_movimento='NORMALE'),
+    WHERE corsia='ORDINE_VENDITA' AND riga_id=900001 AND tipo_movimento='NORMALE'),
   '8) quel kit e'' marcato da_componenti e misurabile');
 
 -- ============================================================
@@ -252,12 +256,12 @@ SELECT ok(
 -- ============================================================
 SELECT ok(
   (SELECT NOT misurabile FROM vendite.vw_af_merce_per_riga
-    WHERE corsia='ORD' AND riga_id=900002 AND tipo_movimento='NORMALE'),
+    WHERE corsia='ORDINE_VENDITA' AND riga_id=900002 AND tipo_movimento='NORMALE'),
   '9) kit senza coeff_qta nel meta -> misurabile = false');
 
 SELECT ok(
   (SELECT NOT misurabile FROM vendite.vw_af_merce_per_riga
-    WHERE corsia='ORD' AND riga_id=900003 AND tipo_movimento='NORMALE'),
+    WHERE corsia='ORDINE_VENDITA' AND riga_id=900003 AND tipo_movimento='NORMALE'),
   '10) kit con componenti che non concordano (10/1 vs 10/2) -> misurabile = false');
 
 -- ============================================================
@@ -268,7 +272,7 @@ SELECT ok(
 SELECT results_eq(
   $$SELECT corsia::text, quantita FROM vendite.vw_af_merce_per_riga
      WHERE riga_id = 900004 ORDER BY corsia$$,
-  $$VALUES ('DDT'::text, 3::numeric), ('ORD'::text, 7::numeric)$$,
+  $$VALUES ('DDT_VENDITA'::text, 3::numeric), ('ORDINE_VENDITA'::text, 7::numeric)$$,
   '11) stesso riga_id su corsia ORD e DDT: due righe distinte, 7 e 3');
 
 SELECT * FROM finish();

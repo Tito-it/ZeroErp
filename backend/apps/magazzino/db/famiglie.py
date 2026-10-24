@@ -31,6 +31,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from apps.config.sorgenti import SORGENTE_INVENTARIO_RIGA, SORGENTE_RETTIFICA_RIGA
+
 _IDENT = re.compile(r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$")
 
 
@@ -79,7 +81,7 @@ INVENTARI = FamigliaDocumentoInterno(
     col_stato="stato_mag_inventario",
     fn_posta="magazzino.fn_posta_inventario",
     fn_capability="script.fn_available_actions_inventario",
-    sorgente_codice_interno="INVENTARIO_RIGA",
+    sorgente_codice_interno=SORGENTE_INVENTARIO_RIGA,
     lista_codice="magazzino.inventari",
     lista_righe_codice="magazzino.inventario_righe",
     col_qta="qta_contata",
@@ -98,7 +100,7 @@ RETTIFICHE = FamigliaDocumentoInterno(
     col_stato="stato_mag_rettifiche",
     fn_posta="magazzino.fn_posta_rettifica",
     fn_capability="script.fn_available_actions_rettifica",
-    sorgente_codice_interno="RETTIFICA_RIGA",
+    sorgente_codice_interno=SORGENTE_RETTIFICA_RIGA,
     lista_codice="magazzino.rettifiche",
     lista_righe_codice="magazzino.rettifica_righe",
     col_qta="qta_delta",

@@ -122,11 +122,15 @@ SELECT cmp_ok(
     '4. ⚠️ DEFINER con search_path senza pg_temp: al massimo 16 (rubinetto D6-bis, puo'' solo calare)'
 );
 
+-- ⚠️ Test 5: 5 -> 4 il 2026-10-15 (20261015-03, provision-post): sanata
+--   maintenance.fn_job_run_log_failure, riscritta per D-5 di
+--   brief-db-ruoli-di-sistema. ⚠️ Vale DOPO il provision-post: e' li' che
+--   quel changeSet si applica (la funzione e' di un superuser).
 SELECT cmp_ok(
     (SELECT count(*) FROM _definer
       WHERE search_path LIKE 'public,%'),
-    '<=', 5::bigint,
-    '5. ⚠️ DEFINER con public PRIMA di pg_catalog: al massimo 5 (rubinetto D6-bis, puo'' solo calare)'
+    '<=', 4::bigint,
+    '5. ⚠️ DEFINER con public PRIMA di pg_catalog: al massimo 4 (rubinetto D6-bis, puo'' solo calare)'
 );
 
 SELECT * FROM finish();

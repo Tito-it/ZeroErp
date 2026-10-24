@@ -25,10 +25,10 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.services.fuso_aziendale import oggi_aziendale
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import parametri_finestra, param_ricerca_full
 from apps.core.api.payload_validators import (
+    pagina_da_query,
     qp_bool_optional,
     qp_int_optional,
     qp_int_strict,
@@ -151,20 +151,7 @@ class ApiDashboardCompetenzaAttivita(DomainAPIView):
                     "(E_VENDITE_VALIDATION)."
                 ),
             ),
-            OpenApiParameter(
-                name="page",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Numero pagina (default 1).",
-            ),
-            OpenApiParameter(
-                name="page_size",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
+            *parametri_finestra(),
         ],
         responses={
             200: inline_serializer(
@@ -203,8 +190,7 @@ class ApiDashboardCompetenzaAttivita(DomainAPIView):
         # validate nel service (unica definizione, fail-fast 400).
         order_by = qp_str(qp.get("order_by"))
         order_dir = qp_str(qp.get("order_dir"))
-        page = qp_int_strict(qp.get("page"), "page", 1)
-        page_size = qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT)
+        limit, offset = pagina_da_query(qp)
 
         # Scope emittente interamente DB-side (GUC fail-closed nella vista):
         # la view non passa alcun auth_user_id.
@@ -214,8 +200,8 @@ class ApiDashboardCompetenzaAttivita(DomainAPIView):
             solo_ritardo=bool(solo_ritardo),
             order_by=order_by,
             order_dir=order_dir,
-            page=page,
-            page_size=page_size,
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -272,20 +258,7 @@ class ApiDashboardCompetenzaCommesse(DomainAPIView):
                 required=False,
                 description="Direzione ordinamento: asc | desc. Valore diverso -> 400.",
             ),
-            OpenApiParameter(
-                name="page",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Numero pagina (default 1).",
-            ),
-            OpenApiParameter(
-                name="page_size",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
+            *parametri_finestra(),
         ],
         responses={
             200: inline_serializer(
@@ -323,8 +296,7 @@ class ApiDashboardCompetenzaCommesse(DomainAPIView):
         solo_ritardo = qp_bool_optional(qp.get("solo_ritardo"), "solo_ritardo")
         order_by = qp_str(qp.get("order_by"))
         order_dir = qp_str(qp.get("order_dir"))
-        page = qp_int_strict(qp.get("page"), "page", 1)
-        page_size = qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT)
+        limit, offset = pagina_da_query(qp)
 
         data = fn_dash_competenza_commesse(
             competenza_mese=competenza_mese,
@@ -332,8 +304,8 @@ class ApiDashboardCompetenzaCommesse(DomainAPIView):
             solo_ritardo=bool(solo_ritardo),
             order_by=order_by,
             order_dir=order_dir,
-            page=page,
-            page_size=page_size,
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -431,14 +403,7 @@ class ApiDashboardCompetenzaResidui(DomainAPIView):
                 required=False,
                 description="Direzione ordinamento: asc | desc. Valore diverso -> 400.",
             ),
-            OpenApiParameter(
-                name="page", type=int, location=OpenApiParameter.QUERY, required=False,
-                description="Numero pagina (default 1).",
-            ),
-            OpenApiParameter(
-                name="page_size", type=int, location=OpenApiParameter.QUERY, required=False,
-                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
+            *parametri_finestra(),
         ],
         responses={
             200: inline_serializer(
@@ -472,12 +437,13 @@ class ApiDashboardCompetenzaResidui(DomainAPIView):
             request,
             function_name="vendite.api.views_dashboard_competenza.residui",
         )
+        limit, offset = pagina_da_query(qp)
         data = fn_dash_competenza_residui(
             competenza_mese=competenza_mese,
             order_by=qp_str(qp.get("order_by")),
             order_dir=qp_str(qp.get("order_dir")),
-            page=qp_int_strict(qp.get("page"), "page", 1),
-            page_size=qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT),
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -565,6 +531,9 @@ class ApiAttivitaRiportabili(DomainAPIView):
 
     area_funzionale = "vendite"
     post_permission = "riporta_da_emettere"
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         operation_id="vendite_attivita_riportabili",
@@ -728,20 +697,7 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
                 required=False,
                 description="Direzione ordinamento: asc | desc. Valore diverso -> 400.",
             ),
-            OpenApiParameter(
-                name="page",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Numero pagina (default 1).",
-            ),
-            OpenApiParameter(
-                name="page_size",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
+            *parametri_finestra(),
         ],
         responses={
             200: inline_serializer(
@@ -780,14 +736,13 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
             function_name="vendite.api.views_dashboard_competenza.gruppi",
         )
         assert competenza_mese is not None
-        page = qp_int_strict(qp.get("page"), "page", 1)
-        page_size = qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT)
+        limit, offset = pagina_da_query(qp)
 
         data = fn_dash_competenza_gruppi(
             competenza_mese=competenza_mese,
             **_filtri_gruppi_da_query(qp),
-            page=page,
-            page_size=page_size,
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -830,20 +785,7 @@ class ApiDashboardCompetenzaErrori(DomainAPIView):
                 required=False,
                 description="Direzione ordinamento: asc | desc.",
             ),
-            OpenApiParameter(
-                name="page",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Numero pagina (default 1).",
-            ),
-            OpenApiParameter(
-                name="page_size",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
+            *parametri_finestra(),
         ],
         responses={
             200: inline_serializer(
@@ -874,15 +816,14 @@ class ApiDashboardCompetenzaErrori(DomainAPIView):
         # validate nel service (unica definizione, fail-fast 400).
         order_by = qp_str(qp.get("order_by"))
         order_dir = qp_str(qp.get("order_dir"))
-        page = qp_int_strict(qp.get("page"), "page", 1)
-        page_size = qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT)
+        limit, offset = pagina_da_query(qp)
 
         data = fn_dash_competenza_errori(
             competenza_mese=competenza_mese,
             order_by=order_by,
             order_dir=order_dir,
-            page=page,
-            page_size=page_size,
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 

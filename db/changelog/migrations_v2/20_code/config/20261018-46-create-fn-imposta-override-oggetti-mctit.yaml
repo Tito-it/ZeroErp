@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: IMPOSTARE GLI OVERRIDE DI UN UTENTE SUGLI OGGETTI
+#   config.fn_imposta_override_oggetti(utente, oggetti): gli override di un
+#   utente SOSTITUITI dall'elenco dato (anche vuoto: nessun override).
+#   Ritorna quanti ne scrive.
+#   Brief: brief-db-processi-accensione-per-ambiente, §5-ter.2 (2b-1, lotto 9).
+#
+# -- CHI ERA LA COPIA ---------------------------------------------------
+#   * il backend, AmmSoftwareRepository.put_override_oggetti (DELETE di tutti
+#     gli override dell'utente + un INSERT per elemento, in transaction.atomic).
+#     Passa al BB nella 2b-2;
+#   * il verbo dei dati di sviluppo (2b-3: dev.bloccato, vendite.contratto
+#     BLOCCATO) ne e' la seconda occorrenza.
+#   Gli INSERT degli override nei pgTAP (otto file) NON sono copie: aggiungono
+#   una riga a quelle che ci sono, il BB le sostituisce tutte. Restano.
+#
+# -- LE SCELTE ----------------------------------------------------------
+#   * un elemento: app_label, model_name, livello (obbligatori: NOT NULL),
+#     motivo, valido_dal, valido_al. Una chiave estranea si rifiuta col suo
+#     nome; un elemento che non e' un oggetto, o un elenco che non e' un
+#     elenco: E_SCRIPT_CHIAMATA_NON_VALIDA;
+#   * ⚠️ una chiave ASSENTE prende il DEFAULT (valido_dal = la data operativa),
+#     una chiave a null scrive NULL (valido_dal NULL = senza inizio). Il
+#     backend oggi passa sempre valido_dal, anche NULL: per tenere lo stesso
+#     significato nella 2b-2 deve continuare a passarlo (brief §5-ter.2);
+#   * oggetto fuori catalogo o riservato: lo rifiuta la FK composita
+#     fk_user_override_oggetti_catalogo; date: trgfn_guard_date_validita.
+#
+# -- CHE COSA RESTA FUORI, apposta ---------------------------------------
+#   * il permesso e l'invalidazione della cache dei permessi: backend.
+#     INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261018-46-create-fn-imposta-override-oggetti-mctit.yaml
+
+  - changeSet:
+      id: 20261018-46-create-fn-imposta-override-oggetti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea config.fn_imposta_override_oggetti: gli override di un utente sostituiti dall'elenco
+        dato. Prende il posto di put_override_oggetti del backend ed e' la sede degli override del
+        verbo di sviluppo. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 9).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_scrivi_riga_da_jsonb' AND p.pronargs = 4;
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_imposta_override_oggetti(
+                  p_auth_user_id config.user_override_oggetti.auth_user_id%TYPE,
+                  p_oggetti      jsonb)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_lista    jsonb := COALESCE(p_oggetti, '[]'::jsonb);
+                  v_el       jsonb;
+                  v_estranea text;
+                  v_n        integer := 0;   -- un conteggio: niente da ancorare
+                  c_ammesse  CONSTANT text[] := ARRAY[
+                      'app_label', 'model_name', 'livello', 'motivo', 'valido_dal', 'valido_al'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Sostituire gli override di un utente sugli oggetti con
+                  --   l'elenco dato (vuoto = nessun override). Ritorna
+                  --   quanti ne scrive.
+                  --
+                  -- Regole:
+                  --   - utente NULL, elenco o elemento malformati:
+                  --     E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - chiave estranea in un elemento: E_CAMPO_NON_AMMESSO;
+                  --   - chiave assente = DEFAULT, chiave null = NULL;
+                  --   - catalogo, riservati e date: vincoli e guard.
+                  -- =========================================================
+                  IF p_auth_user_id IS NULL OR jsonb_typeof(v_lista) <> 'array'
+                     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_lista) AS e
+                                 WHERE jsonb_typeof(e) <> 'object') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'config.fn_imposta_override_oggetti', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                             'tipo_oggetti', jsonb_typeof(v_lista)),
+                          NULL::uuid,
+                          'config.fn_imposta_override_oggetti',
+                          'utente mancante, o elenco degli override malformato');
+                  END IF;
+
+                  FOR v_el IN SELECT e FROM jsonb_array_elements(v_lista) AS e LOOP
+                      v_estranea := script.fn_prima_chiave_estranea(v_el, c_ammesse);
+                      IF v_estranea IS NOT NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'config', 'config.fn_imposta_override_oggetti', 'E_CAMPO_NON_AMMESSO',
+                              jsonb_build_object('campo', v_estranea, 'auth_user_id', p_auth_user_id),
+                              NULL::uuid,
+                              v_estranea);
+                      END IF;
+                  END LOOP;
+
+                  DELETE FROM config.user_override_oggetti uoo WHERE uoo.auth_user_id = p_auth_user_id;
+
+                  FOR v_el IN SELECT e FROM jsonb_array_elements(v_lista) AS e LOOP
+                      PERFORM script.fn_scrivi_riga_da_jsonb(
+                          'config.user_override_oggetti'::regclass,
+                          v_el || jsonb_build_object('auth_user_id', p_auth_user_id));
+                      v_n := v_n + 1;
+                  END LOOP;
+
+                  RETURN v_n;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_imposta_override_oggetti(
+                  config.user_override_oggetti.auth_user_id%TYPE, jsonb) IS
+                  'BB (2026-10-18): sostituisce gli override di un utente sugli oggetti (config.user_override_oggetti) con l''elenco p_oggetti, anche vuoto (= nessun override). Un elemento: app_label, model_name, livello (obbligatori), motivo, valido_dal, valido_al; una chiave assente prende il DEFAULT (valido_dal = la data operativa), una chiave a null scrive NULL (valido_dal NULL = senza inizio). Chiave estranea: E_CAMPO_NON_AMMESSO; utente NULL, elenco o elemento malformati: E_SCRIPT_CHIAMATA_NON_VALIDA. Oggetto fuori catalogo o riservato: fk_user_override_oggetti_catalogo; date: trgfn_guard_date_validita. Scrive con script.fn_scrivi_riga_da_jsonb. Non controlla il permesso ne'' invalida la cache dei permessi (backend). INVOKER. Ritorna quanti override scrive. Prende il posto di AmmSoftwareRepository.put_override_oggetti (2b-2) ed e'' la sede degli override del verbo dei dati di sviluppo (2b-3). Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 9).';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS config.fn_imposta_override_oggetti(integer, jsonb);

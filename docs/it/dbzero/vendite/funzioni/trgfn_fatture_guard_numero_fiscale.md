@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_fatture_guard_numero_fiscale()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_guard_numero_fiscale()
  RETURNS trigger
@@ -86,6 +88,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_fatture_guard_numero_fiscale()
 IS 'Guard: una fattura che ha un numero fiscale non si cancella (E_FATTURA_NUMERATA_NON_CANCELLABILE) e non cambia registro_id, anno, serie o numero (E_FATTURA_NUMERO_NON_MODIFICABILE), entrambi CONFLITTO_STATO. La numerazione consuma un progressivo del registro che non torna indietro: una numerata che sparisce, o che cambia numero, lascia un buco nella sequenza fiscale. Il discriminante e'' OLD.numero, non lo stato (la fattura e'' numerata mentre e'' ancora EMESSA), come in trgfn_fatture_guard_data_numerata e trgfn_fatture_numerata_non_annulabile. La numerazione (fn_assign_numero_fattura, da numero NULL) resta fuori per il WHEN del trigger; un UPDATE che non tocca l''identita'' fiscale passa. Nessuna GUC di bypass: e'' un invariante fiscale. E'' la rete sotto le tre check dei percorsi che cancellano (E_LOTTO_FATTURE_NUMERATE, E_FATTURA_GIA_NUMERATA): chiude la corsa fra il loro controllo, che gira prima del lock, e la DELETE di fn_cleanup_fatture_by_ids, e il retro per cui un UPDATE poteva togliere il numero prima della DELETE. Trigger trg_fatture_a05_guard_numero_fiscale_upd_dlt, BEFORE UPDATE OR DELETE, WHEN (OLD.numero IS NOT NULL). Contesto: fattura_id, registro_id, anno, serie, numero, colonne (solo UPDATE), bersaglio. Nasce il 2026-10-04, brief-db-esclusioni-implicite Q-4 (decisione di Tid).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

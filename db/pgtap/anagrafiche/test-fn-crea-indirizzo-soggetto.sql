@@ -13,11 +13,20 @@
 --   4. Verifica record creato in indirizzi_soggetti
 --   5. Errore: duplicato (stesso soggetto + stesso tipo)
 --   6. Creazione secondo tipo (DOMFISC) con successo
---   7. Errore: XOR violation (entrambi specificati)
---   8. Errore: nessun indirizzo (ne' dettaglio ne' libero)
+--   7. Errore: chiave estranea nell'oggetto (E_CAMPO_NON_AMMESSO)
+--   8. Errore: l'indirizzo non e' un oggetto (E_SCRIPT_CHIAMATA_NON_VALIDA)
 --   9. Errore: p_soggetto_id NULL
---  10. Errore: p_tipo_indirizzo_codice vuoto
---  11. Errore: tipo indirizzo inesistente
+--  10. Errore: tipo_indirizzo_codice vuoto (E_TIPO_INDIRIZZO_NON_TROVATO)
+--  11. Errore: tipo indirizzo inesistente (E_TIPO_INDIRIZZO_NON_TROVATO)
+--
+-- ⭐ Rev 2026-10-18 (20261018-96, D-4 di Tid): la madre prende l'indirizzo in
+--   jsonb, con la grammatica della gemella del ruolo (BB
+--   anagrafiche.fn_indirizzo_elemento). I vecchi 7 e 8 provavano due guard
+--   della madre che non ci sono piu': «dettaglio E libero» ora vale il
+--   dettaglio (il normalize svuota i campi liberi, come nella madre del
+--   ruolo), e la completezza la dice il guard della tabella (pgTAP
+--   anagrafiche/test-indirizzo-libero-due-forme-v1). Al loro posto i rifiuti
+--   dell'oggetto.
 -- ------------------------------------------------------------
 BEGIN;
 
@@ -123,13 +132,10 @@ SET soggetto_id = (
 -- =========================================================
 SELECT lives_ok(
     format(
-      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-        p_soggetto_id            := %L::uuid,
-        p_tipo_indirizzo_codice  := 'RES',
-        p_indirizzo_dettaglio_id := %s
-      ) $$,
+      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)$$,
       (SELECT soggetto_id FROM tmp_ind_sogg_ctx),
-      (SELECT indirizzo_dettaglio_id FROM tmp_ind_sogg_ctx)
+      jsonb_build_object('tipo_indirizzo_codice', 'RES',
+                         'indirizzo_dettaglio_id', (SELECT indirizzo_dettaglio_id FROM tmp_ind_sogg_ctx))
     ),
     '3. Creazione indirizzo RESID normalizzato senza errori'
   );
@@ -161,13 +167,10 @@ SELECT ok(
 -- =========================================================
 SELECT throws_matching(
     format(
-      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-        p_soggetto_id            := %L::uuid,
-        p_tipo_indirizzo_codice  := 'RES',
-        p_indirizzo_dettaglio_id := %s
-      ) $$,
+      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)$$,
       (SELECT soggetto_id FROM tmp_ind_sogg_ctx),
-      (SELECT indirizzo_dettaglio_id FROM tmp_ind_sogg_ctx)
+      jsonb_build_object('tipo_indirizzo_codice', 'RES',
+                         'indirizzo_dettaglio_id', (SELECT indirizzo_dettaglio_id FROM tmp_ind_sogg_ctx))
     ),
     'uq_indirizzi_soggetti_soggetto_tipo',
     '5. Errore duplicato soggetto + tipo indirizzo'
@@ -178,48 +181,38 @@ SELECT throws_matching(
 -- =========================================================
 SELECT lives_ok(
     format(
-      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-        p_soggetto_id            := %L::uuid,
-        p_tipo_indirizzo_codice  := 'DOMFISC',
-        p_indirizzo_dettaglio_id := %s
-      ) $$,
+      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)$$,
       (SELECT soggetto_id FROM tmp_ind_sogg_ctx),
-      (SELECT indirizzo_dettaglio_id FROM tmp_ind_sogg_ctx)
+      jsonb_build_object('tipo_indirizzo_codice', 'DOMFISC',
+                         'indirizzo_dettaglio_id', (SELECT indirizzo_dettaglio_id FROM tmp_ind_sogg_ctx))
     ),
     '6. Creazione indirizzo DOMFISC senza errori'
   );
 
 -- =========================================================
--- 7) Errore: XOR violation (entrambi specificati)
+-- 7) Errore: chiave estranea (il nome di un parametro della firma vecchia)
 -- =========================================================
 SELECT throws_matching(
     format(
-      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-        p_soggetto_id            := %L::uuid,
-        p_tipo_indirizzo_codice  := 'SEDEOP',
-        p_indirizzo_dettaglio_id := %s,
-        p_indirizzo_libero       := 'Via Test 1'
-      ) $$,
+      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)$$,
       (SELECT soggetto_id FROM tmp_ind_sogg_ctx),
-      (SELECT indirizzo_dettaglio_id FROM tmp_ind_sogg_ctx)
+      jsonb_build_object('tipo_indirizzo_codice', 'SEDEOP',
+                         'p_indirizzo_libero', 'Via Test 1')
     ),
-    'non entrambi',
-    '7. Errore XOR: dettaglio e libero specificati insieme'
+    'campo p_indirizzo_libero non si pu',
+    '7. Errore chiave estranea: E_CAMPO_NON_AMMESSO'
   );
 
 -- =========================================================
--- 8) Errore: nessun indirizzo (ne' dettaglio ne' libero)
+-- 8) Errore: l'indirizzo non e' un oggetto
 -- =========================================================
 SELECT throws_matching(
     format(
-      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-        p_soggetto_id            := %L::uuid,
-        p_tipo_indirizzo_codice  := 'SEDEOP'
-      ) $$,
+      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, '[]'::jsonb)$$,
       (SELECT soggetto_id FROM tmp_ind_sogg_ctx)
     ),
-    'almeno',
-    '8. Errore nessun indirizzo specificato'
+    'un indirizzo non e'' un oggetto',
+    '8. Errore indirizzo che non e'' un oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA'
   );
 
 -- =========================================================
@@ -227,27 +220,22 @@ SELECT throws_matching(
 -- =========================================================
 SELECT throws_matching(
     $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-      p_soggetto_id            := NULL,
-      p_tipo_indirizzo_codice  := 'RES',
-      p_indirizzo_dettaglio_id := 1
-    ) $$,
-    'p_soggetto_id obbligatorio',
+      NULL::uuid,
+      jsonb_build_object('tipo_indirizzo_codice', 'RES', 'indirizzo_dettaglio_id', 1)) $$,
+    'manca il soggetto',
     '9. Errore p_soggetto_id NULL'
   );
 
 -- =========================================================
--- 10) Errore: p_tipo_indirizzo_codice vuoto
+-- 10) Errore: tipo_indirizzo_codice vuoto
 -- =========================================================
 SELECT throws_matching(
     format(
-      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-        p_soggetto_id            := %L::uuid,
-        p_tipo_indirizzo_codice  := '',
-        p_indirizzo_dettaglio_id := 1
-      ) $$,
-      (SELECT soggetto_id FROM tmp_ind_sogg_ctx)
+      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)$$,
+      (SELECT soggetto_id FROM tmp_ind_sogg_ctx),
+      jsonb_build_object('tipo_indirizzo_codice', '', 'indirizzo_dettaglio_id', 1)
     ),
-    'p_tipo_indirizzo_codice obbligatorio',
+    'tipo di indirizzo - non esiste',
     '10. Errore tipo indirizzo codice vuoto'
   );
 
@@ -256,14 +244,11 @@ SELECT throws_matching(
 -- =========================================================
 SELECT throws_matching(
     format(
-      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-        p_soggetto_id            := %L::uuid,
-        p_tipo_indirizzo_codice  := 'ZZZZINESISTENTE',
-        p_indirizzo_dettaglio_id := 1
-      ) $$,
-      (SELECT soggetto_id FROM tmp_ind_sogg_ctx)
+      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)$$,
+      (SELECT soggetto_id FROM tmp_ind_sogg_ctx),
+      jsonb_build_object('tipo_indirizzo_codice', 'ZZZZINESISTENTE', 'indirizzo_dettaglio_id', 1)
     ),
-    'Tipo indirizzo non trovato',
+    'tipo di indirizzo ZZZZINESISTENTE non esiste',
     '11. Errore tipo indirizzo inesistente'
   );
 

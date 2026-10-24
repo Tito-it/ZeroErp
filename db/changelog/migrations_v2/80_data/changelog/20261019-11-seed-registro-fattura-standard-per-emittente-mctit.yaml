@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GLI EMITTENTI DI OGGI RICEVONO IL REGISTRO DELLE FATTURE STANDARD
+#   Chiama vendite.fn_provision_registri_famiglia('FATTURA'): per ogni
+#   emittente attivo con coppie (tipo documento, natura) scoperte nasce il
+#   registro delle fatture standard e le coppie scoperte si collegano a lui
+#   (20261019-08). R-BE-14 del BE, decisioni D-14a … D-14d di Tid
+#   (2026-10-18), brief-db-processi-accensione-per-ambiente §6.14, punto 3.
+#
+# -- PERCHE' SERVE ------------------------------------------------------------------
+#   Il trigger su anagrafiche.emittenti_fiscali provisiona gli emittenti che
+#   NASCONO; quelli che esistono gia' non passano di li'. Caso del BE:
+#   l'emittente di prova DEVA del verbo di sviluppo, che non sapeva fatturare.
+#   Un emittente configurato a mano riceve lo standard solo per le coppie che
+#   non ha (D-14c).
+#
+# -- SU UN DATABASE NUOVO -----------------------------------------------------------
+#   Nessun emittente: la primitiva non trova niente. E' un backfill del
+#   pregresso, quindi niente context dati_macchina (linee-guida-sql §11.7).
+#   Idempotente: rilanciato, non crea niente di nuovo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261019-11-seed-registro-fattura-standard-per-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20261019-11-seed-registro-fattura-standard-per-emittente
+      author: mctit
+      # ⚠️ Nessun `dbms:` sui change: con `runOnChange` + `validCheckSums: ANY`,
+      #    Liquibase 5.0.4 lascia un change `dbms:` FUORI dal checksum
+      #    (linee-guida-sql §11.1). Stessa forma di 20260915-34.
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il registro delle fatture standard (FAT-<sr>) e i collegamenti delle coppie (tipo
+        documento, natura) scoperte per ogni emittente attivo che ancora non sa fatturare,
+        chiamando la primitiva vendite.fn_provision_registri_famiglia('FATTURA') — idempotente.
+        Non un CSV: dipende da quali emittenti esistono su questa macchina. R-BE-14, D-14a …
+        D-14d di Tid, brief-db-processi-accensione-per-ambiente §6.14.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # ⭐ Lecito in 80_data: la famiglia FATTURA la semina un file che
+            #    precede per nome.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM vendite.famiglie_documento fd
+                   WHERE fd.codice_interno = 'FATTURA'
+                     AND fd.attivo IS TRUE;
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_coppie_fattura_scoperte';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⭐ La primitiva, non un INSERT ricopiato: la regola di come nasce
+              --    un registro, e di quali coppie collegare, vive in
+              --    vendite.fn_provision_registri.
+              SELECT vendite.fn_provision_registri_famiglia('FATTURA');
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- ⛔ Un registro che ha gia' numerato non si toglie: il numero resta
+              --    scritto sul documento e il sezionale ne e' l'identita'.
+              SELECT 1;

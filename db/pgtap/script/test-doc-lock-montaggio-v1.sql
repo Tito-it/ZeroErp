@@ -1,6 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 --
 -- Test: il lettore del montaggio dei lock «si tocca solo in bozza» e la
 --   capability della promessa di consegna (fase 1).
@@ -9,7 +14,7 @@
 --
 -- Elenco test (plan 30):
 --  La grammatica (script.fn_doc_lock_regola, 20261010-60)
---   1) RIGHE: i sei argomenti, contati da 0 come TG_ARGV
+--   1) RIGHE: i sei argomenti, contati da 0 come TG_ARGV, e il codice di default (rev 2026-10-11)
 --   2) RIGHE: con due argomenti, i default (DRAFT, TESTATA, nessuna eccezione)
 --   3) RIGHE: colonne senza stati, un livello che non e' un livello, un argomento solo: tre montaggi sbagliati
 --   4) TESTATA: le terne, nell'ordine, col codice e gli stati aperti (rev 2026-10-10, fase 2)
@@ -99,51 +104,58 @@ LANGUAGE sql IMMUTABLE AS $f$ SELECT script.fn_doc_lock_regola('TESTATA', p) $f$
 -- 1-5) La grammatica
 -- =========================================================
 SELECT is(
-    pg_temp.righe('ORDINE', 'ordine_id', 'DRAFT', 'TESTATA', ' data_consegna_confermata ', 'CONFERMATO, PARZIALMENTE_EVASO')
+    pg_temp.righe('ORDINE_VENDITA', 'ordine_id', 'DRAFT', 'TESTATA', ' data_consegna_confermata ', 'CONFERMATO, PARZIALMENTE_EVASO')
       - 'colonne_tecniche',
     jsonb_build_object(
-        'building_block', 'RIGHE', 'documento', 'ORDINE', 'colonna_fk', 'ordine_id',
+        'building_block', 'RIGHE', 'documento', 'ORDINE_VENDITA', 'colonna_fk', 'ordine_id',
         'stato_bozza', 'DRAFT', 'livello', 'TESTATA',
         'colonne_ammesse', jsonb_build_array('data_consegna_confermata'),
         'stati_ammessi',   jsonb_build_array('CONFERMATO', 'PARZIALMENTE_EVASO'),
+        -- rev 2026-10-11 (20261011-21): il codice da sollevare, settimo
+        -- argomento; senza, quello delle righe.
+        'codice',          'E_RIGA_DOC_NON_BOZZA',
         'errore', NULL),
-    '1) RIGHE: i sei argomenti contati da 0 come TG_ARGV, liste ripulite dagli spazi'
+    '1) RIGHE: i sei argomenti contati da 0 come TG_ARGV, liste ripulite dagli spazi; il codice di default'
 );
 
 SELECT is(
     (SELECT r ->> 'stato_bozza' || '|' || (r ->> 'livello') || '|' || (r -> 'colonne_ammesse')::text
             || '|' || (r -> 'stati_ammessi')::text || '|' || coalesce(r ->> 'errore', 'ok')
-       FROM (SELECT pg_temp.righe('DDT', 'ddt_id') AS r) x),
+       FROM (SELECT pg_temp.righe('DDT_VENDITA', 'ddt_id') AS r) x),
     'DRAFT|TESTATA|[]|[]|ok',
     '2) RIGHE: con due argomenti, bozza DRAFT, livello TESTATA, nessuna eccezione'
 );
 
 SELECT is(
-    ARRAY[(pg_temp.righe('ORDINE', 'ordine_id', 'DRAFT', 'TESTATA', 'a') ->> 'errore') IS NOT NULL,
-          (pg_temp.righe('ORDINE', 'ordine_id', 'DRAFT', 'NIPOTE') ->> 'errore') IS NOT NULL,
-          (pg_temp.righe('ORDINE') ->> 'errore') IS NOT NULL,
-          (pg_temp.righe('ORDINE', 'ordine_id', 'DRAFT', 'TESTATA', ',', 'CONFERMATO') ->> 'errore') IS NOT NULL],
+    ARRAY[(pg_temp.righe('ORDINE_VENDITA', 'ordine_id', 'DRAFT', 'TESTATA', 'a') ->> 'errore') IS NOT NULL,
+          (pg_temp.righe('ORDINE_VENDITA', 'ordine_id', 'DRAFT', 'NIPOTE') ->> 'errore') IS NOT NULL,
+          (pg_temp.righe('ORDINE_VENDITA') ->> 'errore') IS NOT NULL,
+          (pg_temp.righe('ORDINE_VENDITA', 'ordine_id', 'DRAFT', 'TESTATA', ',', 'CONFERMATO') ->> 'errore') IS NOT NULL],
     ARRAY[true, true, true, true],
     '3) RIGHE: colonne senza stati, un livello sconosciuto, un argomento solo, una lista di sole virgole: montaggi sbagliati'
 );
 
 SELECT is(
-    pg_temp.testata('DDT', 'DRAFT', 'causale_trasporto_id', 'E_DDT_CAUSALE_IMMUTABILE', '',
+    pg_temp.testata('DDT_VENDITA', 'DRAFT', 'causale_trasporto_id', 'E_DDT_CAUSALE_IMMUTABILE', '',
                     ' tracking_code ', 'E_DOC_CHIUSO', 'EMESSO, SPEDITO'),
     jsonb_build_object(
-        'building_block', 'TESTATA', 'documento', 'DDT', 'stato_bozza', 'DRAFT',
+        'building_block', 'TESTATA', 'documento', 'DDT_VENDITA', 'stato_bozza', 'DRAFT',
         'colonne', jsonb_build_array(
-            jsonb_build_object('colonna', 'causale_trasporto_id', 'codice', 'E_DDT_CAUSALE_IMMUTABILE', 'stati_ammessi', '[]'::jsonb),
-            jsonb_build_object('colonna', 'tracking_code', 'codice', 'E_DOC_CHIUSO', 'stati_ammessi', jsonb_build_array('EMESSO', 'SPEDITO'))),
+            -- rev 2026-10-18: ogni colonna porta ferma_sempre (la terna con '-',
+            --   test-doc-emittente-utility-fermi-v1)
+            jsonb_build_object('colonna', 'causale_trasporto_id', 'codice', 'E_DDT_CAUSALE_IMMUTABILE',
+                               'ferma_sempre', false, 'stati_ammessi', '[]'::jsonb),
+            jsonb_build_object('colonna', 'tracking_code', 'codice', 'E_DOC_CHIUSO',
+                               'ferma_sempre', false, 'stati_ammessi', jsonb_build_array('EMESSO', 'SPEDITO'))),
         'errore', NULL),
     '4) TESTATA: le terne nell''ordine degli argomenti, col codice e gli stati in cui la colonna resta aperta (vuoti = bloccata)'
 );
 
 SELECT is(
-    ARRAY[(pg_temp.testata('DDT', 'DRAFT', 'causale_trasporto_id') ->> 'errore') IS NOT NULL,
-          (pg_temp.testata('DDT', 'DRAFT', 'a', 'E_X') ->> 'errore') IS NOT NULL,
-          (pg_temp.testata('DDT', 'DRAFT', 'a', '', '') ->> 'errore') IS NOT NULL,
-          (pg_temp.testata('DDT', 'DRAFT', ' ', 'E_X', '') ->> 'errore') IS NOT NULL,
+    ARRAY[(pg_temp.testata('DDT_VENDITA', 'DRAFT', 'causale_trasporto_id') ->> 'errore') IS NOT NULL,
+          (pg_temp.testata('DDT_VENDITA', 'DRAFT', 'a', 'E_X') ->> 'errore') IS NOT NULL,
+          (pg_temp.testata('DDT_VENDITA', 'DRAFT', 'a', '', '') ->> 'errore') IS NOT NULL,
+          (pg_temp.testata('DDT_VENDITA', 'DRAFT', ' ', 'E_X', '') ->> 'errore') IS NOT NULL,
           (script.fn_doc_lock_regola('NON_ESISTE', ARRAY['x']) ->> 'errore') IS NOT NULL],
     ARRAY[true, true, true, true, true],
     '5) TESTATA: argomenti che non fanno terne, una terna senza codice o senza colonna, un building block sconosciuto: montaggi sbagliati'
@@ -153,9 +165,9 @@ SELECT is(
 -- 6-12) La decisione
 -- =========================================================
 CREATE TEMP TABLE _r AS
-SELECT pg_temp.righe('ORDINE', 'ordine_id', 'DRAFT', 'TESTATA', 'data_consegna_confermata', 'CONFERMATO,PARZIALMENTE_EVASO') AS ecc,
-       pg_temp.righe('DDT', 'ddt_id') AS secca,
-       pg_temp.testata('DDT', 'DRAFT', 'magazzino_id', 'E_DDT_MAGAZZINO_IMMUTABILE', '',
+SELECT pg_temp.righe('ORDINE_VENDITA', 'ordine_id', 'DRAFT', 'TESTATA', 'data_consegna_confermata', 'CONFERMATO,PARZIALMENTE_EVASO') AS ecc,
+       pg_temp.righe('DDT_VENDITA', 'ddt_id') AS secca,
+       pg_temp.testata('DDT_VENDITA', 'DRAFT', 'magazzino_id', 'E_DDT_MAGAZZINO_IMMUTABILE', '',
                        'causale_trasporto_id', 'E_DDT_CAUSALE_IMMUTABILE', '',
                        'tracking_code', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO') AS tst;
 
@@ -212,8 +224,8 @@ SELECT is(
 );
 
 SELECT is(
-    ARRAY[script.fn_doc_lock_colonna_bloccata(pg_temp.righe('ORDINE'), 'DRAFT', ARRAY['quantita']),
-          script.fn_doc_lock_colonna_bloccata(pg_temp.testata('DDT', 'DRAFT', 'a'), 'EMESSO', ARRAY['z']),
+    ARRAY[script.fn_doc_lock_colonna_bloccata(pg_temp.righe('ORDINE_VENDITA'), 'DRAFT', ARRAY['quantita']),
+          script.fn_doc_lock_colonna_bloccata(pg_temp.testata('DDT_VENDITA', 'DRAFT', 'a'), 'EMESSO', ARRAY['z']),
           script.fn_doc_lock_colonna_bloccata(NULL, 'DRAFT', NULL)],
     ARRAY['*', '*', '*'],
     '12) un montaggio sbagliato (o assente) non lascia passare niente, nemmeno in bozza'
@@ -245,7 +257,7 @@ SELECT is(
 CREATE TEMP TABLE _tmp_spento (id bigint PRIMARY KEY, ordine_id bigint, a int);
 CREATE TRIGGER trg_tmp_spento_a05_lock
     BEFORE INSERT OR UPDATE OR DELETE ON _tmp_spento FOR EACH ROW
-    EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'ordine_id');
+    EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE_VENDITA', 'ordine_id');
 
 CREATE TEMP TABLE _letti_prima AS
 SELECT count(*)::integer AS n FROM script.fn_doc_lock_montaggi('_tmp_spento'::regclass);
@@ -362,7 +374,7 @@ INSERT INTO _tmp_testata VALUES (pg_temp.ord('CONF'), 0, 0, 0), (pg_temp.ord('AN
 CREATE TRIGGER trg_tmp_testata_a05_lock
     BEFORE UPDATE ON _tmp_testata FOR EACH ROW
     EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza(
-        'ORDINE', 'DRAFT', 'b', 'E_DDT_CAUSALE_IMMUTABILE', '', 'a', 'E_DOC_EMITTENTE_FUORI_BOZZA', '');
+        'ORDINE_VENDITA', 'DRAFT', 'b', 'E_DDT_CAUSALE_IMMUTABILE', '', 'a', 'E_DOC_EMITTENTE_FUORI_BOZZA', '');
 
 DO $ann$ BEGIN
     PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', pg_temp.ord('ANN'), 'ANNULLATO');
@@ -389,7 +401,7 @@ SELECT is(
 CREATE TRIGGER trg_tmp_testata_a05_ins
     BEFORE INSERT ON _tmp_testata FOR EACH ROW
     EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza(
-        'ORDINE', 'DRAFT', 'a', 'E_DOC_EMITTENTE_FUORI_BOZZA', '');
+        'ORDINE_VENDITA', 'DRAFT', 'a', 'E_DOC_EMITTENTE_FUORI_BOZZA', '');
 
 SELECT is(
     pg_temp.esito('INSERT INTO _tmp_testata VALUES (-1, 0, 0, 0)'),
@@ -431,7 +443,7 @@ SELECT is(
       WHERE n = 1),
     'E_RIGA_DOC_NON_BOZZA|STATO_NON_AMMETTE|vendite.ordini.data_consegna_confermata_reason.stato_non_ammette|ANNULLATO|'
     || jsonb_build_array(
-           (SELECT t.etichetta FROM script.fn_get_stato_testata_documento('ORDINE', pg_temp.ord('ANN')) t),
+           (SELECT t.etichetta FROM script.fn_get_stato_testata_documento('ORDINE_VENDITA', pg_temp.ord('ANN')) t),
            'ANNULLATO', 'modificare')::text,
     '25) ANNULLATO: un motivo solo, col codice che il lock solleva e i valori della sua frase'
 );

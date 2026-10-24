@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import date
 from functools import lru_cache
@@ -16,6 +17,8 @@ from typing import Any, ClassVar, cast
 from django.db import DatabaseError, connection, transaction
 
 from apps.core.db._helpers import (
+    colonna_ordinamento,
+    sql_order_direction_lista,
     predicato_giorno_operativo,
     limiti_pagina,
     add_ricerca_full_condition,
@@ -32,7 +35,6 @@ from apps.core.db._helpers import (
 from apps.core.services.auth_constants import (
     CATEGORIA_ACCESSO_OPERATORE,
     RUOLO_APPLICATIVO_OPERATORE,
-    TIPO_PROFILO_SUPER_ADMIN,
 )
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import MISSING, MissingType
@@ -187,19 +189,16 @@ class AmmSoftwareRepository:
         is_super_admin: bool | None = None,
         unita_organizzativa_id: int | None = None,
         is_active: bool | None = None,
+        includi_di_prova: bool = False,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str | None = None,
     ) -> tuple[list[OperatoreRow], int]:
-        # Validazione ordinamento: la COLONNA fuori whitelist ripiega sull'ordine
-        # di default (contratto di questa lista). ⛔ La DIREZIONE no: la giudica
-        # `sql_order_direction` qui sotto. Fino al 2026-09-26 qui c'era una
-        # copia a mano (`order_dir.upper() not in ("ASC", "DESC")` -> None) che
-        # trasformava un valore estraneo nel default PRIMA che il BB lo vedesse:
-        # il rifiuto scritto piu' in basso non scattava mai.
-        if order_by and order_by not in ALLOWED_ORDER_COLUMNS:
-            order_by = None
+        # ⛔ Un `order_by` fuori whitelist e' un 400 (`colonna_ordinamento`, qui
+        #    sotto), non il default: fino al 2026-10-20 la colonna estranea
+        #    ripiegava qui sull'ordine di default, in silenzio
+        #    (brief-be-verifica-documentazione-api §A1).
 
         conditions: list[str] = [_CATEGORIA_OPERATORE.format(au="au.id")]
         params: list[Any] = []
@@ -223,15 +222,22 @@ class AmmSoftwareRepository:
             conditions.append("au.is_active = %s")
             params.append(is_active)
 
+        # Gli utenti di prova (etichetta del provisioning di sviluppo) restano
+        # fuori, salvo chiederli: la lista degli operatori veri resta pulita
+        # (Tid, 2026-10-16, brief-db-processi-accensione-per-ambiente R-4).
+        # Il filtro sta qui, prima della paginazione e del conteggio.
+        if not includi_di_prova:
+            conditions.append("cp.auth_user_id IS NULL")
+
         where_clause = " AND ".join(conditions) if conditions else "TRUE"
 
         # Ordinamento sicuro (whitelist): la mappa traduce il campo inviato dal
         # client nell'espressione SQL, in un passaggio solo.
-        order_column = ALLOWED_ORDER_COLUMNS.get(order_by or "")
+        order_column = colonna_ordinamento(order_by, ALLOWED_ORDER_COLUMNS)
         # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): senza colonna il
         #    ramo di default la ignora, e un `order_dir` estraneo passava muto.
         #    Il BB la rifiuta anche quando poi non la si usa.
-        direction = sql_order_direction(order_dir)
+        direction = sql_order_direction_lista(order_by, order_dir, colonne=ALLOWED_ORDER_COLUMNS)
         if order_column:
             tiebreak_dir = sql_tiebreak_direction(direction)
             order_clause = f"ORDER BY {order_column} {direction}, au.id {tiebreak_dir}"
@@ -278,8 +284,11 @@ class AmmSoftwareRepository:
                    (SELECT count(*)::int
                       FROM script.vw_override_operatore_area vo
                      WHERE vo.auth_user_id = au.id) AS override_count,
+                   (cp.auth_user_id IS NOT NULL) AS di_prova,
                    COUNT(*) OVER() AS total_count
               FROM auth_user au
+              LEFT JOIN dbops.credenziali_di_prova cp
+                ON cp.auth_user_id = au.id
               LEFT JOIN anagrafiche.identita_digitali id
                 ON id.id = {_VESTE_OPERATORE.format(au="au.id")}
               LEFT JOIN anagrafiche.soggetti_ruoli sr
@@ -360,37 +369,44 @@ class AmmSoftwareRepository:
         return int(row[0]) if row and row[0] is not None else None
 
     # Scopo: Aggiunge o rimuove il binding SUPER_ADMIN sull'identita
-    # digitale dell'utente. Singola query atomica (no race SELECT+WRITE,
-    # no-op se l'utente non ha identita). Il guard DB
+    # digitale dell'utente (la veste OPERATORE di `_VESTE_OPERATORE`; no-op se
+    # l'utente non ne ha una). Il guard DB
     # `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` blocca
     # la rimozione dell'ultimo binding attivo (lockout prevention).
+    # ⭐ Dal 2026-10-18 (2b-2, lotto 8) il legame lo scrive la madre del DB
+    #    `config.fn_lega_profilo_identita`: idempotente sullo stesso profilo,
+    #    e un ALTRO profilo gia' legato all'identita' lo rifiuta
+    #    `uq_profili_accesso_bindings_identita`. Fino ad allora la INSERT era
+    #    `ON CONFLICT DO NOTHING`: il SUPER_ADMIN chiesto non arrivava e
+    #    nessuno lo diceva. Il rifiuto lo traduce il service.
+    # ⭐ Dal 2026-10-19 (brief-db-processi-accensione-per-ambiente §6.15,
+    #    §6.16) anche il profilo e lo slegare stanno nel DB: il profilo lo
+    #    risolve il lettore `config.fn_profilo_super_admin_id` (per `tipo`,
+    #    fra gli ATTIVI, esattamente uno, altrimenti `E_CONFIG_MANCANTE`
+    #    «trovati N»: la stessa sede di `fn_crea_risorsa_umana_v2`), lo
+    #    slegare la madre `config.fn_slega_profilo_identita`. Fino ad allora
+    #    la regola del profilo era ricopiata qui e il DELETE toglieva i
+    #    legami verso OGNI profilo di quel tipo, spenti compresi.
     def _set_super_admin_binding(
         self, auth_user_id: int, *, enabled: bool
     ) -> None:
+        madre = (
+            "config.fn_lega_profilo_identita" if enabled
+            else "config.fn_slega_profilo_identita"
+        )
         with connection.cursor() as cursor:
-            if enabled:
-                cursor.execute(
-                    """INSERT INTO config.profili_accesso_bindings
-                          (profilo_accesso_id, identita_digitale_id)
-                       SELECT pa.id, id.id
-                         FROM config.profili_accesso pa
-                        CROSS JOIN anagrafiche.identita_digitali id
-                        WHERE pa.tipo = %s::config.tipo_profilo_accesso
-                          AND id.id = """ + _VESTE_OPERATORE.format(au="%s") + """
-                       ON CONFLICT DO NOTHING""",  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
-                    [TIPO_PROFILO_SUPER_ADMIN, auth_user_id],
-                )
-            else:
-                cursor.execute(
-                    """DELETE FROM config.profili_accesso_bindings pab
-                        USING anagrafiche.identita_digitali id,
-                              config.profili_accesso pa
-                        WHERE pab.identita_digitale_id = id.id
-                          AND pab.profilo_accesso_id  = pa.id
-                          AND pa.tipo = %s::config.tipo_profilo_accesso
-                          AND id.id = """ + _VESTE_OPERATORE.format(au="%s"),  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
-                    [TIPO_PROFILO_SUPER_ADMIN, auth_user_id],
-                )
+            # Il profilo prima della veste: una configurazione rotta si dice
+            # anche a chi non ha una veste OPERATORE (nessuna veste = no-op).
+            cursor.execute("SELECT config.fn_profilo_super_admin_id()")
+            profilo_id = cursor.fetchone()[0]
+            # La veste nella stessa istruzione del legame (niente
+            # SELECT + WRITE).
+            cursor.execute(
+                "SELECT " + madre + """(%s::integer, v.id)
+                     FROM (SELECT """ + _VESTE_OPERATORE.format(au="%s") + """ AS id) v
+                    WHERE v.id IS NOT NULL""",  # noqa: S608 — nome della madre e predicato letterali del modulo, valori come parametri
+                [profilo_id, auth_user_id],
+            )
 
     # Scopo: Aggiorna i campi modificabili di un operatore (auth_user +
     # bindings SUPER_ADMIN + risorse_umane).
@@ -484,26 +500,6 @@ class AmmSoftwareRepository:
                         "SELECT anagrafiche.fn_sync_auth_user_is_active(%s)",
                         [auth_user_id],
                     )
-
-    # Scopo: Conta operatori con binding SUPER_ADMIN attivo.
-    # Usato dal service per impedire la disabilitazione dell'ultimo admin
-    # (guard a livello servizio; il guard DB equivalente e' il trigger
-    # `trgfn_profili_accesso_bindings_guard_ultimo_super_admin`).
-    def count_admin_attivi(self) -> int:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """SELECT COUNT(*)
-                     FROM config.profili_accesso_bindings pab
-                     JOIN config.profili_accesso pa
-                       ON pa.id = pab.profilo_accesso_id
-                     JOIN anagrafiche.identita_digitali id
-                       ON id.id = pab.identita_digitale_id
-                    WHERE pa.tipo = %s::config.tipo_profilo_accesso
-                      AND pa.attivo = true
-                      AND id.attivo = true""",
-                [TIPO_PROFILO_SUPER_ADMIN],
-            )
-            return cursor.fetchone()[0]
 
     # Scopo: Disabilita un operatore: la sede UNICA dello spegnimento, sia
     # da «Disabilita» sia dall'interruttore «Accesso attivo» (2026-10-04).
@@ -766,28 +762,29 @@ class AmmSoftwareRepository:
             cursor.execute(sql, [auth_user_id])
             return rows_to_list(cursor)
 
-    # Scopo: Sostituisce gli override oggetto di un operatore (replace semantics).
+    # Scopo: Sostituisce gli override oggetto di un operatore (replace semantics)
+    #        con la madre del DB `config.fn_imposta_override_oggetti`
+    #        (2026-10-18, 2b-2, lotto 9).
+    # ⚠️ Le sei chiavi viaggiano SEMPRE, anche a null: per la madre una chiave
+    #    assente prende il DEFAULT (`valido_dal` = la data operativa), una a null
+    #    scrive NULL. Il significato di prima e' «null = senza inizio».
     def put_override_oggetti(self, auth_user_id: int, items: list[dict[str, Any]]) -> None:
-        with transaction.atomic(), connection.cursor() as cursor:
+        oggetti = [
+            {
+                "app_label": item["app_label"],
+                "model_name": item["model_name"],
+                "livello": item["livello"],
+                "motivo": item.get("motivo"),
+                "valido_dal": item.get("valido_dal"),
+                "valido_al": item.get("valido_al"),
+            }
+            for item in items
+        ]
+        with connection.cursor() as cursor:
             cursor.execute(
-                "DELETE FROM config.user_override_oggetti WHERE auth_user_id = %s",
-                [auth_user_id],
+                "SELECT config.fn_imposta_override_oggetti(%s::integer, %s::jsonb)",
+                [auth_user_id, json.dumps(oggetti, default=str)],
             )
-            for item in items:
-                cursor.execute(
-                    """INSERT INTO config.user_override_oggetti
-                       (auth_user_id, app_label, model_name, livello, motivo, valido_dal, valido_al)
-                       VALUES (%s, %s, %s, %s::config.livello_accesso, %s, %s::date, %s::date)""",
-                    [
-                        auth_user_id,
-                        item["app_label"],
-                        item["model_name"],
-                        item["livello"],
-                        item.get("motivo"),
-                        item.get("valido_dal"),
-                        item.get("valido_al"),
-                    ],
-                )
 
     # Scopo: Lista model registrati in area_model_overrides (lookup per dropdown admin).
     #        Ogni riga e' arricchita con capability `can_override` (bool) +
@@ -1117,13 +1114,13 @@ class AmmSoftwareRepository:
 
         return {"azioni": azioni, "oggetti": oggetti}
 
-    # Scopo: Sostituisce il profilo completo di un reparto (aree + azioni)
-    #        scrivendo direttamente sul modello generalizzato profili_accesso_*
-    #        (post-cutover PR-B). Operazione atomica:
-    #          1. UPSERT profilo REPARTO (codice = 'REPARTO_' || codice_interno).
-    #          2. UPSERT binding REPARTO -> profilo per uo_id (1:1, partial UQ).
-    #          3. DELETE + INSERT su profili_accesso_aree per profilo_accesso_id.
-    #          4. DELETE + INSERT su profili_accesso_azioni per profilo_accesso_id.
+    # Scopo: Sostituisce il profilo completo di un reparto (aree + azioni).
+    #        Operazione atomica:
+    #          1. il reparto (codice del profilo = 'REPARTO_' || codice_interno);
+    #          2. il profilo REPARTO con aree e azioni sostituite, dalla madre
+    #             `config.fn_scrivi_profilo_accesso`;
+    #          3. il legame REPARTO -> profilo per uo_id, dalla madre
+    #             `config.fn_lega_profilo_reparto`.
     #        Il fail-fast su uo_id inesistente solleva E_AMM_VALIDAZIONE prima
     #        di toccare qualunque tabella. Tutti gli operatori bindati al
     #        reparto ereditano le modifiche; la cache permessi e' invalidata
@@ -1151,67 +1148,39 @@ class AmmSoftwareRepository:
             codice_interno, descrizione_uo, attivo_uo = row
             codice_profilo = f"REPARTO_{codice_interno}"
 
-            # 2. UPSERT profilo accesso (tipo REPARTO). Idempotente sul codice.
+            # 2. Il profilo (tipo REPARTO), creato o aggiornato per codice, con
+            #    aree e azioni sostituite: la madre del DB
+            #    `config.fn_scrivi_profilo_accesso` (2026-10-18, 2b-2, lotto 8).
+            #    `attivo` segue il reparto; `richiede_secondo_fattore` assente =
+            #    invariato (nuovo: false).
+            campi: dict[str, Any] = {"attivo": attivo_uo}
+            if richiede_secondo_fattore is not None:
+                campi["richiede_secondo_fattore"] = richiede_secondo_fattore
             cursor.execute(
-                """INSERT INTO config.profili_accesso (
-                       tipo, codice, descrizione, attivo, richiede_secondo_fattore
-                   )
-                   VALUES ('REPARTO', %s, %s, %s, COALESCE(%s, false))
-                   ON CONFLICT ON CONSTRAINT uq_profili_accesso_codice
-                   DO UPDATE SET descrizione = EXCLUDED.descrizione,
-                                 attivo      = EXCLUDED.attivo,
-                                 richiede_secondo_fattore = COALESCE(
-                                     %s, config.profili_accesso.richiede_secondo_fattore)
-                   RETURNING id""",
+                """SELECT config.fn_scrivi_profilo_accesso(
+                          'REPARTO'::config.tipo_profilo_accesso, %s, %s,
+                          %s::jsonb, %s::jsonb, %s::jsonb)""",
                 [
-                    codice_profilo, f"Profilo reparto {descrizione_uo}", attivo_uo,
-                    richiede_secondo_fattore, richiede_secondo_fattore,
+                    codice_profilo, f"Profilo reparto {descrizione_uo}",
+                    json.dumps([{"area_id": a["area_id"], "livello": a["livello"]} for a in aree]),
+                    json.dumps([{"azione_id": a["azione_id"], "abilitata": a["abilitata"]} for a in azioni]),
+                    json.dumps(campi),
                 ],
             )
             profilo_id = cursor.fetchone()[0]
 
-            # 3. UPSERT binding REPARTO -> profilo. UNIQUE parziale su
-            #    unita_organizzativa_id IS NOT NULL: ON CONFLICT esplicita
-            #    indice + predicato per consentire l'inferenza Postgres.
+            # 3. Il legame REPARTO -> profilo, dalla madre del DB
+            #    `config.fn_lega_profilo_reparto` (2026-10-19, R-DB-16a):
+            #    idempotente sullo stesso profilo. Un ALTRO profilo gia' legato
+            #    al reparto lo rifiuta `uq_profili_accesso_bindings_uo` invece
+            #    di sostituirlo, come faceva l'UPSERT di prima: da qui non
+            #    capita, il codice del profilo deriva dal `codice_interno` del
+            #    reparto (passo 1), che non cambia
+            #    (`trg_unita_organizzative_a10_lock_columns_upd`).
             cursor.execute(
-                """INSERT INTO config.profili_accesso_bindings (
-                       profilo_accesso_id, unita_organizzativa_id,
-                       identita_digitale_id, ruolo_applicativo
-                   )
-                   VALUES (%s, %s, NULL, NULL)
-                   ON CONFLICT (unita_organizzativa_id)
-                       WHERE unita_organizzativa_id IS NOT NULL
-                       DO UPDATE SET profilo_accesso_id = EXCLUDED.profilo_accesso_id""",
+                "SELECT config.fn_lega_profilo_reparto(%s, %s)",
                 [profilo_id, uo_id],
             )
-
-            # 4. Aree: replace (filtrato per profilo_accesso_id).
-            cursor.execute(
-                "DELETE FROM config.profili_accesso_aree "
-                "WHERE profilo_accesso_id = %s",
-                [profilo_id],
-            )
-            for item in aree:
-                cursor.execute(
-                    """INSERT INTO config.profili_accesso_aree
-                       (profilo_accesso_id, area_id, livello)
-                       VALUES (%s, %s, %s::config.livello_accesso)""",
-                    [profilo_id, item["area_id"], item["livello"]],
-                )
-
-            # 5. Azioni: replace.
-            cursor.execute(
-                "DELETE FROM config.profili_accesso_azioni "
-                "WHERE profilo_accesso_id = %s",
-                [profilo_id],
-            )
-            for item in azioni:
-                cursor.execute(
-                    """INSERT INTO config.profili_accesso_azioni
-                       (profilo_accesso_id, azione_id, abilitata)
-                       VALUES (%s, %s, %s)""",
-                    [profilo_id, item["azione_id"], item["abilitata"]],
-                )
 
     # ================================================================== #
     # Audit log globale permessi                                           #
@@ -1412,7 +1381,7 @@ class AmmSoftwareRepository:
 
         # Ordinamento sicuro: la whitelist traduce il nome di risultato nel nome
         # colonna in un passaggio solo (vedi `AUDIT_ORDER_COLUMNS`).
-        order_column = AUDIT_ORDER_COLUMNS.get(order_by or "")
+        order_column = colonna_ordinamento(order_by, AUDIT_ORDER_COLUMNS)
         # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): il ramo di default
         #    la ignora, e un `order_dir` estraneo passava muto.
         direction = sql_order_direction(order_dir, default_desc=True)

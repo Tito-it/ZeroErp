@@ -19,13 +19,13 @@ from apps.anagrafiche.db.conti_bancari_repository import ContiBancariRepository
 from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 from apps.anagrafiche.db.soggetti_repository import (
     CONTATTO_UPDATE_COLS,
+    DATI_SOCIETARI_COLS,
     INDIRIZZO_RUOLO_UPDATE_COLS,
     SOGGETTO_UPDATE_ALIAS,
     SOGGETTO_UPDATE_COLS,
     SoggettiRepository,
 )
 from apps.anagrafiche.db.titoli_iva_repository import TitoliIvaRepository
-from apps.core.db.lookup_repository import LookupRepository
 from apps.anagrafiche.error_codes import (
     E_ANAG_NOT_FOUND,
     E_ANAG_VALIDAZIONE,
@@ -39,6 +39,7 @@ from apps.anagrafiche.services._validators import (
     update_with_dedup,
 )
 from apps.anagrafiche.services.cf_validator_it import genera_cf_it, valida_cf_congruenza_it
+from apps.anagrafiche.services.geo_service import richiedi_via
 from apps.anagrafiche.services.contatti_service import (
     crea_contatto_validato,
     richiedi_contatto_valido,
@@ -81,21 +82,71 @@ _UPDATE_SOGGETTO_KEYS: frozenset[str] = (
     SOGGETTO_UPDATE_COLS | frozenset(SOGGETTO_UPDATE_ALIAS) | {_CHIAVE_DATI_SOCIETARI}
 )
 # Le chiavi della sezione dati societari: i parametri del verbo, senza il
-# soggetto. ⚠️ Stato intero: una chiave ASSENTE vale NULL come una chiave a
-# null — il verbo non distingue «non toccare» da «svuota» (B-2, team DB).
-_DATI_SOCIETARI_KEYS: frozenset[str] = frozenset({
-    "forma_giuridica_id", "id_prov_iscri_rea", "iscrizione_rea", "capitale_sociale",
-    "socio_unico", "liquidazione",
-    "destinatario_fe", "pec_fatturazione", "codice_sdi",
-    "data_costituzione",
-})
+# soggetto, dal binding del repository (le porte di creazione hanno gli stessi).
+# ⚠️ Stato intero: una chiave ASSENTE vale NULL come una chiave a null — il
+# verbo non distingue «non toccare» da «svuota» (B-2, team DB).
+_DATI_SOCIETARI_KEYS: frozenset[str] = DATI_SOCIETARI_COLS
 _MSG_REA_DUPLICATA = "Iscrizione REA gia' presente per un altro soggetto."
 _MSG_PG_CF_PIVA_DUPLICATA = "Soggetto PG con CF/PIVA duplicata."
+_MSG_PF_CF_DUPLICATO = "Soggetto con questo codice fiscale gia' esistente."
+# Il REA duplicato di un ALTRO soggetto (`uq_ds_prov_cea`), col campo da
+# accendere: lo stesso vincolo per le tre strade che scrivono la sezione — la
+# PATCH col verbo e le due porte di creazione.
+_VINCOLO_REA_DUPLICATA: dict[str, str | tuple[str, str]] = {
+    "uq_ds_prov_cea": (_MSG_REA_DUPLICATA, "iscrizione_rea"),
+}
 _UPDATE_CONTATTO_KEYS: frozenset[str] = CONTATTO_UPDATE_COLS
 _UPDATE_INDIRIZZO_RUOLO_KEYS: frozenset[str] = INDIRIZZO_RUOLO_UPDATE_COLS
 
 # Validator stateless del dominio (solo il codice errore): condivisibile.
 _V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
+
+
+# Scopo: UN indirizzo nella forma che le madri del DB ricevono
+#        (`fn_crea_indirizzo_soggetto`, `fn_crea_indirizzi_ruolo`, e attraverso
+#        lei `fn_crea_fornitore` e `fn_crea_cliente`: la stessa grammatica,
+#        `fn_indirizzo_elemento`), coi pre-check per l'operatore: un elemento
+#        che non e' un oggetto, i campi di una via nuova (`richiedi_via`). Le
+#        stringhe vuote e i null valgono assenti (null_vs_empty). La forma
+#        dell'indirizzo LIBERO non si ripete qui: la giudica il guard della
+#        tabella (`trgfn_indirizzi_guard_forma_libera`), col campo.
+def indirizzo_per_madre(ind: Any) -> dict[str, Any]:
+    ErrorManager.require(
+        isinstance(ind, dict),
+        code=E_ANAG_VALIDAZIONE,
+        message="Indirizzo non valido: atteso un oggetto.",
+    )
+    pulito = {
+        k: v for k, v in ind.items()
+        if v is not None and not (isinstance(v, str) and not v.strip())
+    }
+    if not pulito.get("indirizzo_libero") and not pulito.get("indirizzo_dettaglio_id"):
+        richiedi_via(pulito)
+    return pulito
+
+
+# Scopo: UN indirizzo per le madri singolari (`fn_crea_indirizzo_soggetto`,
+#        `fn_crea_indirizzo_ruolo`): il codice del tipo e' obbligatorio (il form
+#        manda sempre quello) e poi `indirizzo_per_madre`. Sede unica del
+#        pre-check delle due singolari (regola del 2, 2026-10-19).
+def indirizzo_singolo_per_madre(payload: Any) -> dict[str, Any]:
+    # Il tipo prima della via: e' il campo che dice che cosa si sta scrivendo.
+    if isinstance(payload, dict):
+        require_str(payload, "tipo_indirizzo_codice", "Codice tipo indirizzo obbligatorio.")
+    return indirizzo_per_madre(payload)
+
+
+# Scopo: Gli indirizzi di un ruolo per la madre: `indirizzo_per_madre` per
+#        elemento. `None` o un elenco vuoto: nessun indirizzo; un elenco che
+#        non e' una lista e' un 400 (era un TypeError, cioe' un 500).
+def indirizzi_per_madre(indirizzi_data: list[Any] | None) -> list[dict[str, Any]]:
+    ErrorManager.require(
+        indirizzi_data is None or isinstance(indirizzi_data, list),
+        code=E_ANAG_VALIDAZIONE,
+        message="Indirizzi non validi: attesa una lista.",
+        context={"field": "indirizzi"},
+    )
+    return [indirizzo_per_madre(ind) for ind in indirizzi_data or []]
 
 
 class SoggettiService:
@@ -106,7 +157,6 @@ class SoggettiService:
         self._ind = IndirizziRepository()
         self._conti = ContiBancariRepository()
         self._titoli_iva = TitoliIvaRepository()
-        self._lookup = LookupRepository()
 
     # =================================================================
     # Lista e dettaglio
@@ -187,7 +237,10 @@ class SoggettiService:
 
     # Scopo: Crea soggetto completo (PF o PG) con contatto e indirizzi.
     #        Determina il path (PF/PG) dal tipo_soggetto_dettaglio_id.
-    #        Se auto_clone=True, clona il primo indirizzo per i tipi obbligatori mancanti.
+    #        Gli indirizzi li scrive la madre plurale del DB
+    #        `anagrafiche.fn_crea_indirizzi_soggetto`: con auto_clone (vero di
+    #        default) i tipi obbligatori del tipo di soggetto che mancano
+    #        ricevono una copia del primo; un tipo gia' presente si salta.
     #        Tutto in una transazione: i trigger DEFERRED verificano al COMMIT.
     #        Risultato: UUID del soggetto creato.
     def create_soggetto(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -203,16 +256,25 @@ class SoggettiService:
                              message="Tipo soggetto non valido.")
         assert natura is not None
 
+        # I pre-check degli indirizzi PRIMA di scrivere, come in `assign_ruolo`.
+        indirizzi = self._collect_indirizzi(payload)
+        # ⚠️ Assente = vero; un valore non booleano e' un 400 (prima
+        #    `bool(...)`: la stringa "false" accendeva la copia).
+        copia_obbligatori = _V.optional_bool(payload, "auto_clone") is not False
+
         with transaction.atomic():
             if natura == "PF":
                 soggetto_id = self._create_pf(payload, tipo_id)
             else:
                 soggetto_id = self._create_pg(payload, tipo_id)
 
-            indirizzi = self._collect_indirizzi(payload)
-            if payload.get("auto_clone", True) and indirizzi:
-                self._apply_auto_clone(indirizzi, tipo_id)
-            self._create_indirizzi_batch(soggetto_id, indirizzi)
+            if indirizzi:
+                create_with_dedup(
+                    lambda: self._repo.crea_indirizzi_soggetto(
+                        soggetto_id, indirizzi, copia_obbligatori=copia_obbligatori,
+                    ),
+                    "Indirizzo duplicato per questo soggetto.",
+                )
 
         return {"id": soggetto_id}
 
@@ -235,9 +297,10 @@ class SoggettiService:
             payload, allowed=_UPDATE_SOGGETTO_KEYS, message="Payload soggetto non valido.",
         )
         dati = self._normalizza_flag_fiscali(payload)
+        ds_raw = dati.pop(_CHIAVE_DATI_SOCIETARI, None)
         dati_societari = (
-            self._valida_dati_societari(dati.pop(_CHIAVE_DATI_SOCIETARI))
-            if _CHIAVE_DATI_SOCIETARI in dati else None
+            self._valida_dati_societari(ds_raw)
+            if _CHIAVE_DATI_SOCIETARI in payload else None
         )
         # La stessa forma della creazione: «x» e' «X», non un rifiuto del CHECK.
         if "sesso" in dati:
@@ -247,6 +310,15 @@ class SoggettiService:
             dati["tipo_soggetto_dettaglio_id"] = _V.require_positive_int(
                 dati, "tipo_soggetto_dettaglio_id",
             )
+        # ⛔ Un PATCH senza campi e' un 400, non il 404 che dava l'UPDATE vuoto
+        #    (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2). I dati
+        #    societari contano come campo: `{"dati_societari": {}}` no.
+        # ⛔ Al BB va la sezione GREZZA: quella validata ha sempre le dieci
+        #    chiavi (a `None`), e il verbo e' a STATO INTERO — `{}` azzerava
+        #    forma giuridica, REA, PEC e SDI rispondendo 200.
+        _V.require_campi_da_aggiornare(
+            dati, sotto_oggetti={_CHIAVE_DATI_SOCIETARI: ds_raw},
+        )
         with transaction.atomic():
             # ⚠️ Con i soli dati societari non c'e' niente da scrivere sul
             #    soggetto: l'UPDATE vuoto risponderebbe «non trovato». Il
@@ -263,14 +335,15 @@ class SoggettiService:
                 # (`uq_ds_prov_cea`; quella per soggetto la assorbe il verbo,
                 # che aggiorna): col campo, l'operatore vede DOVE correggere.
                 create_with_constraint_mapping(
-                    lambda: self._repo.scrivi_dati_societari(soggetto_id, **dati_societari),
-                    {"uq_ds_prov_cea": (_MSG_REA_DUPLICATA, "iscrizione_rea")},
+                    lambda: self._repo.scrivi_dati_societari(soggetto_id, dati_societari),
+                    _VINCOLO_REA_DUPLICATA,
                     default_message=_MSG_REA_DUPLICATA,
                 )
         return {"updated": True}
 
-    # Scopo: Valida la sezione `dati_societari` della PATCH (contratto: un
-    #        oggetto con le sole chiavi del verbo) e ne restituisce i parametri.
+    # Scopo: Valida la sezione `dati_societari` della PATCH e della creazione
+    #        (contratto: un oggetto con le sole chiavi del verbo) e ne
+    #        restituisce i parametri.
     # ⚠️ Solo la FORMA dei valori. Cosa e' ammesso (la forma per la natura, REA e
     #    capitale per la forma, il recapito per il canale FE) lo giudicano i
     #    trigger di `anagrafiche.dati_societari`, che accendono il campo: una
@@ -303,6 +376,20 @@ class SoggettiService:
             "codice_sdi": _V.optional_string(raw, "codice_sdi"),
             "data_costituzione": _V.optional_date(raw, "data_costituzione"),
         }
+
+    # Scopo: La sezione `dati_societari` di un soggetto che NASCE, per le due
+    #        porte di creazione. Chiave assente = nessuna sezione (`None`);
+    #        presente = lo stesso contratto della PATCH.
+    # ⚠️ Dal 2026-10-22 (brief-db-dati-societari-in-creazione §6) anche la PG
+    #    passa di qui: prima leggeva la sezione chiave per chiave, e una chiave
+    #    ignota, un `null` o un valore malformato passavano o sparivano senza
+    #    errore. QUANDO la sezione si scrive (policy, almeno un campo) lo decide
+    #    il DB (`fn_scrivi_dati_societari_alla_nascita`), non questo metodo.
+    @classmethod
+    def _dati_societari_in_creazione(cls, payload: dict[str, Any]) -> dict[str, Any] | None:
+        if _CHIAVE_DATI_SOCIETARI not in payload:
+            return None
+        return cls._valida_dati_societari(payload[_CHIAVE_DATI_SOCIETARI])
 
     # Scopo: Valida e normalizza i due flag di regime fiscale (I0/D8).
     #        Perimetro: `split_payment` e `cliente_pa`, `character(1)` NOT NULL
@@ -379,6 +466,9 @@ class SoggettiService:
         _V.validate_allowed_keys(
             payload, allowed=_UPDATE_CONTATTO_KEYS, message="Payload contatto non valido.",
         )
+        # ⛔ Un PATCH senza campi e' un 400, non il 404 che dava l'UPDATE vuoto
+        #    (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2).
+        _V.require_campi_da_aggiornare(payload)
         updated = self._repo.update_contatto(contatto_id, payload, soggetto_id=soggetto_id)
         ErrorManager.require(updated, code=E_ANAG_NOT_FOUND,
                              message="Contatto non trovato.")
@@ -394,6 +484,9 @@ class SoggettiService:
         _V.validate_allowed_keys(
             payload, allowed=_UPDATE_CONTATTO_KEYS, message="Payload contatto non valido.",
         )
+        # ⛔ Un PATCH senza campi e' un 400, non il 404 che dava l'UPDATE vuoto
+        #    (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2).
+        _V.require_campi_da_aggiornare(payload)
         updated = self._repo.update_contatto(
             contatto_id, payload, soggetto_ruolo_id=soggetto_ruolo_id,
         )
@@ -411,6 +504,9 @@ class SoggettiService:
             payload, allowed=_UPDATE_INDIRIZZO_RUOLO_KEYS,
             message="Payload indirizzo non valido.",
         )
+        # ⛔ Un PATCH senza campi e' un 400, non il 404 che dava l'UPDATE vuoto
+        #    (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2).
+        _V.require_campi_da_aggiornare(payload)
         updated = self._repo.update_indirizzo_ruolo(indirizzo_id, soggetto_ruolo_id, payload)
         ErrorManager.require(
             updated, code=E_ANAG_NOT_FOUND,
@@ -440,7 +536,7 @@ class SoggettiService:
         from django.db import transaction
         self._require_soggetto_exists(soggetto_id)
         with transaction.atomic():
-            sog_id, _ = self._create_indirizzo(soggetto_id, payload)
+            sog_id = self._create_indirizzo(soggetto_id, payload)
         return {"id": sog_id}
 
     # Scopo: Sostituisce un indirizzo soggetto: elimina il vecchio, crea il nuovo.
@@ -454,7 +550,7 @@ class SoggettiService:
         with transaction.atomic():
             deleted = self._repo.delete_indirizzo_soggetto(indirizzo_soggetto_id, soggetto_id)
             ErrorManager.require(deleted, code=E_ANAG_NOT_FOUND, message="Indirizzo soggetto non trovato.")
-            sog_id, _ = self._create_indirizzo(soggetto_id, payload)
+            sog_id = self._create_indirizzo(soggetto_id, payload)
         return {"id": sog_id}
 
     # Scopo: Elimina un indirizzo soggetto.
@@ -638,10 +734,7 @@ class SoggettiService:
                 "Ruolo gia' assegnato.",
             )
             if indirizzi:
-                assert codice_interno is not None  # il ruolo e' appena nato
-                self.create_indirizzi_ruolo(
-                    ruolo_id, indirizzi, tipo_ruolo_codice=codice_interno,
-                )
+                self.create_indirizzi_ruolo(ruolo_id, indirizzi)
         return {"id": ruolo_id}
 
     # =================================================================
@@ -763,6 +856,10 @@ class SoggettiService:
     # ⚠️ Fino al 2026-10-09 la funzione DB cablava `PR` e non riceveva la P.IVA:
     #    chi sceglieva «Ditta individuale» otteneva un privato, e la P.IVA si
     #    perdeva senza errore (brief-db-sesso-senza-default §2).
+    # ⚠️ Fino al 2026-10-22 la stessa sorte toccava ai dati societari della DI:
+    #    il drawer li mandava, qui non si leggevano (brief-db-dati-societari-in-
+    #    creazione §1.1). Ora vanno alla porta, che li scrive nella stessa
+    #    chiamata; il REA duplicato si legge come in modifica.
     def _create_pf(self, payload: dict[str, Any], tipo_id: int) -> str:
         cognome = require_str(payload, "cognome", "Cognome obbligatorio.")
         nome = require_str(payload, "nome", "Nome obbligatorio.")
@@ -777,6 +874,7 @@ class SoggettiService:
 
         # Validazione congruenza CF con dati anagrafici
         self._valida_cf_congruenza(payload, codice_fiscale, sesso)
+        dati_societari = self._dati_societari_in_creazione(payload)
 
         contatto = payload.get("contatto") or {}
         # Regola unificata via classify_contatto_payload (Fase 5): per il
@@ -785,7 +883,7 @@ class SoggettiService:
         richiedi_contatto_valido(contatto)
         email_addr = optional_str(contatto, "email") or ""
 
-        soggetto_id = create_with_dedup(
+        soggetto_id = create_with_constraint_mapping(
             lambda: self._repo.crea_soggetto_pf(
                 cognome=cognome, nome=nome, codice_fiscale=codice_fiscale,
                 email=email_addr,
@@ -796,8 +894,17 @@ class SoggettiService:
                 tipo_contatto_id=optional_int(contatto, "tipo_contatto_id"),
                 tipo_soggetto_dettaglio_id=tipo_id,
                 partita_iva=optional_str(payload, "partita_iva"),
+                dati_societari=dati_societari,
             ),
-            "Soggetto con questo codice fiscale gia' esistente.",
+            # Per una persona fisica l'identificativo fiscale univoco e' il
+            # codice fiscale: il duplicato accende quel campo.
+            {
+                "uq_soggetto_idstato_id_fiscale_univoco": (
+                    _MSG_PF_CF_DUPLICATO, "codice_fiscale",
+                ),
+                **_VINCOLO_REA_DUPLICATA,
+            },
+            default_message=_MSG_PF_CF_DUPLICATO,
         )
 
         self._update_contatto_default(soggetto_id, contatto,
@@ -816,7 +923,7 @@ class SoggettiService:
         richiedi_contatto_valido(contatto)
         email_addr = optional_str(contatto, "email") or ""
 
-        dati_soc = payload.get("dati_societari") or {}
+        dati_societari = self._dati_societari_in_creazione(payload)
 
         soggetto_id = create_with_constraint_mapping(
             lambda: self._repo.crea_soggetto_pg(
@@ -826,15 +933,7 @@ class SoggettiService:
                 codice_fiscale=optional_str(payload, "codice_fiscale"),
                 partita_iva=optional_str(payload, "partita_iva"),
                 stato_iso2=optional_str(payload, "stato_iso2"),
-                forma_giuridica_id=optional_int(dati_soc, "forma_giuridica_id"),
-                id_prov_iscri_rea=optional_int(dati_soc, "id_prov_iscri_rea"),
-                iscrizione_rea=optional_str(dati_soc, "iscrizione_rea"),
-                capitale_sociale=dati_soc.get("capitale_sociale"),
-                socio_unico=optional_str(dati_soc, "socio_unico"),
-                liquidazione=optional_str(dati_soc, "liquidazione"),
-                destinatario_fe=optional_str(dati_soc, "destinatario_fe"),
-                pec_fatturazione=optional_str(dati_soc, "pec_fatturazione"),
-                codice_sdi=optional_str(dati_soc, "codice_sdi"),
+                dati_societari=dati_societari,
                 tipo_contatto_id=optional_int(contatto, "tipo_contatto_id"),
             ),
             # ⚠️ La creazione scrive DUE tabelle con unicita' proprie: il REA
@@ -843,7 +942,7 @@ class SoggettiService:
             #    quale vincolo e' violato: lo si legge, come in modifica.
             {
                 "uq_soggetto_idstato_id_fiscale_univoco": _MSG_PG_CF_PIVA_DUPLICATA,
-                "uq_ds_prov_cea": (_MSG_REA_DUPLICATA, "iscrizione_rea"),
+                **_VINCOLO_REA_DUPLICATA,
             },
             default_message=_MSG_PG_CF_PIVA_DUPLICATA,
         )
@@ -868,193 +967,78 @@ class SoggettiService:
                 "note": optional_str(contatto, "note"),
             })
 
-    # Scopo: Raccoglie indirizzi dal payload (supporta sia "indirizzi" array che "indirizzo" singolo).
+    # Scopo: Raccoglie indirizzi dal payload ("indirizzi" array e/o "indirizzo"
+    #        singolo) nella forma delle madri, coi pre-check di
+    #        `indirizzi_per_madre`.
+    # ⛔ Fino al 2026-10-19 un elenco che non era una lista e gli elementi che
+    #    non erano oggetti si SCARTAVANO in silenzio: il soggetto nasceva senza
+    #    gli indirizzi chiesti e la risposta era ok. Ora sono un 400.
     def _collect_indirizzi(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
-        raw = payload.get("indirizzi")
-        indirizzi = list(raw) if isinstance(raw, list) else []
-        indirizzo_singolo = payload.get("indirizzo")
-        if indirizzo_singolo and isinstance(indirizzo_singolo, dict):
-            indirizzi.append(indirizzo_singolo)
-        return [ind for ind in indirizzi if isinstance(ind, dict)]
+        indirizzi = indirizzi_per_madre(payload.get("indirizzi"))
+        if payload.get("indirizzo") is not None:
+            indirizzi.append(indirizzo_per_madre(payload["indirizzo"]))
+        return indirizzi
 
-    # Scopo: Auto-clona il primo indirizzo per i tipi obbligatori mancanti.
-    #        Policy di dominio: se l'utente compila solo un indirizzo,
-    #        gli obbligatori non compilati ricevono una copia.
-    def _apply_auto_clone(self, indirizzi: list[dict[str, Any]], tipo_id: int) -> None:
-        matrice = self._lookup.list_matrice_indirizzi(tipo_id)
-        tipi_presenti = {ind.get("tipo_indirizzo_codice") for ind in indirizzi}
-        primo = indirizzi[0]
-        for m in matrice:
-            if m["obbligatorio"] and m["codice"] not in tipi_presenti:
-                indirizzi.append({**primo, "tipo_indirizzo_codice": m["codice"]})
-
-    # Scopo: Crea indirizzi in batch con riuso dettaglio per clonati.
-    #        Il primo indirizzo normalizzato risolve il dettaglio, i successivi
-    #        (con stesso stradario+civico) riusano lo stesso indirizzo_dettaglio_id.
-    def _create_indirizzi_batch(self, soggetto_id: str, indirizzi: list[dict[str, Any]]) -> None:
-        resolved_det_id: int | None = None
-        for i, ind in enumerate(indirizzi):
-            if resolved_det_id and not ind.get("indirizzo_libero") and not ind.get("indirizzo_dettaglio_id"):
-                indirizzi[i] = ind = dict(ind, indirizzo_dettaglio_id=resolved_det_id)
-            _, det_id = self._create_indirizzo(soggetto_id, ind)
-            if resolved_det_id is None and det_id is not None:
-                resolved_det_id = det_id
-
-    # Scopo: Dispatch creazione indirizzo soggetto — il payload determina il path.
-    def _create_indirizzo(self, soggetto_id: str, payload: dict[str, Any]) -> tuple[int, int | None]:
-        tipo_codice = require_str(payload, "tipo_indirizzo_codice",
-                                  "Codice tipo indirizzo obbligatorio.")
-
-        if optional_str(payload, "indirizzo_libero"):
-            return self._create_indirizzo_libero(soggetto_id, payload, tipo_codice), None
-
-        det_id = self._resolve_indirizzo_dettaglio(payload)
-        sog_id = create_with_dedup(
-            lambda: self._repo.crea_indirizzo_soggetto(
-                soggetto_id,
-                tipo_indirizzo_codice=tipo_codice,
-                indirizzo_dettaglio_id=det_id,
-            ),
-            "Indirizzo duplicato per questo soggetto.",
-        )
-        return sog_id, det_id
-
-    # Scopo: Crea indirizzo libero (estero / libera forma).
-    def _create_indirizzo_libero(self, soggetto_id: str, payload: dict[str, Any],
-                                 tipo_codice: str) -> int:
+    # Scopo: Crea UN indirizzo del soggetto con la madre del DB
+    #        `anagrafiche.fn_crea_indirizzo_soggetto(soggetto, indirizzo jsonb)`:
+    #        tipo per codice, indirizzo in una di tre forme (libero, dettaglio
+    #        gia' risolto, via da risolvere). La forma dell'indirizzo libero —
+    #        comune e CAP del catalogo, o la localita' per uno stato senza
+    #        catalogo — la giudica il guard della tabella, col campo.
+    # ⭐ Dal 2026-10-18 (D-4 di Tid, brief-db-processi-accensione-per-ambiente
+    #    §6.11): la firma posizionale non aveva la forma estera, e il backend
+    #    risolveva da se' la via. Ora un oggetto, la stessa grammatica della
+    #    gemella del ruolo.
+    def _create_indirizzo(self, soggetto_id: str, payload: dict[str, Any]) -> int:
+        indirizzo = indirizzo_singolo_per_madre(payload)
         return create_with_dedup(
-            lambda: self._repo.crea_indirizzo_soggetto(
-                soggetto_id,
-                tipo_indirizzo_codice=tipo_codice,
-                indirizzo_libero=optional_str(payload, "indirizzo_libero"),
-                stato_id=optional_int(payload, "stato_id"),
-            ),
+            lambda: self._repo.crea_indirizzo_soggetto(soggetto_id, indirizzo),
             "Indirizzo duplicato per questo soggetto.",
         )
 
-    # Scopo: Crea indirizzi a livello ruolo dal payload frontend.
-    #        Risolve tipo_indirizzo_codice → tipo_indirizzo_id; per indirizzi
-    #        normalizzati risolve stradario → indirizzo_dettaglio_id.
-    #        Auto-clone dei tipi obbligatori mancanti (matrice ruolo) e skip dei
-    #        tipi gia' presenti sul ruolo. Operazione di dominio soggetto_ruolo:
-    #        usata da crea_fornitore (tipo 'FO') e crea_cliente (tipo 'CL').
+    # Scopo: Crea gli indirizzi di un ruolo con la madre del DB
+    #        `anagrafiche.fn_crea_indirizzi_ruolo`: tipo per codice o id, forma
+    #        libera, dettaglio gia' risolto o via da risolvere. L'AUTO-CLONE dei
+    #        tipi obbligatori del ruolo (dal primo indirizzo) e il salto dei tipi
+    #        che il ruolo ha gia' sono regole del DB, che legge anche il tipo di
+    #        ruolo. Ritorna quanti indirizzi sono stati scritti.
+    #        Qui restano i pre-check per l'operatore (`indirizzi_per_madre`).
+    #        Una chiave estranea la rifiuta il DB (`E_CAMPO_NON_AMMESSO`).
+    # ⭐ Dal 2026-10-18 (2b-2, lotto 2): la saga Python (matrice, auto-clone,
+    #    skip, risoluzione della via, INSERT riga per riga) era la copia della
+    #    regola; con lei e' sparito anche un difetto — il primo dettaglio
+    #    risolto si riusava per OGNI indirizzo successivo senza dettaglio, non
+    #    solo per i cloni: due vie diverse finivano sullo stesso dettaglio.
+    #    Chiamanti: crea_fornitore, crea_cliente, assign_ruolo.
     def create_indirizzi_ruolo(
         self, soggetto_ruolo_id: int, indirizzi_data: list[dict[str, Any]],
-        tipo_ruolo_codice: str = "FO",
-    ) -> None:
-        if not indirizzi_data:
-            return
-        # Copia locale: l'auto-clone fa append, non mutare la lista del chiamante.
-        indirizzi_data = list(indirizzi_data)
-
-        # Tipi indirizzo gia' presenti sul ruolo (skip duplicati)
-        existing_tipo_ids = self._repo.get_existing_tipo_indirizzo_ids(soggetto_ruolo_id)
-
-        # Auto-clone: clona il primo indirizzo per i tipi obbligatori mancanti
-        matrice = self._lookup.list_matrice_indirizzi_ruolo(tipo_ruolo_codice)
-        tipi_presenti = {ind.get("tipo_indirizzo_codice") for ind in indirizzi_data if isinstance(ind, dict)}
-        primo = indirizzi_data[0]
-        for m in matrice:
-            if m["obbligatorio"] and m["codice"] not in tipi_presenti:
-                indirizzi_data.append({**primo, "tipo_indirizzo_codice": m["codice"]})
-
-        # Risolvi e crea ogni indirizzo
-        resolved_det_id: int | None = None
-        for ind in indirizzi_data:
-            if not isinstance(ind, dict):
-                continue
-
-            # Risolvi tipo: codice → id
-            tipo_indirizzo_id = optional_int(ind, "tipo_indirizzo_id")
-            if tipo_indirizzo_id is None:
-                tipo_codice = optional_str(ind, "tipo_indirizzo_codice")
-                if tipo_codice:
-                    tipo_indirizzo_id = self._repo.resolve_tipo_indirizzo_id(tipo_codice)
-            if tipo_indirizzo_id is None:
-                ErrorManager.raise_error(code=E_ANAG_VALIDAZIONE,
-                                         message="Tipo indirizzo non risolto per indirizzo inline.")
-
-            # Risolvi indirizzo: libero o normalizzato (stradario → dettaglio)
-            indirizzo_libero = optional_str(ind, "indirizzo_libero")
-            indirizzo_dettaglio_id = None
-            if not indirizzo_libero:
-                det_from_payload = optional_int(ind, "indirizzo_dettaglio_id")
-                if det_from_payload:
-                    indirizzo_dettaglio_id = det_from_payload
-                elif resolved_det_id:
-                    # Clone: riusa dettaglio gia risolto (stesso stradario+civico)
-                    indirizzo_dettaglio_id = resolved_det_id
-                else:
-                    indirizzo_dettaglio_id = self._resolve_indirizzo_dettaglio(ind)
-                # Cache il primo dettaglio risolto per i cloni successivi
-                if resolved_det_id is None and indirizzo_dettaglio_id:
-                    resolved_det_id = indirizzo_dettaglio_id
-
-            # Skip se il tipo indirizzo esiste gia' sul ruolo
-            # (es. secondo cliente creato sullo stesso soggetto_ruolo CL)
-            if tipo_indirizzo_id in existing_tipo_ids:
-                continue
-
-            self._repo.crea_indirizzo_ruolo(
-                soggetto_ruolo_id,
-                tipo_indirizzo_id=tipo_indirizzo_id,
-                indirizzo_dettaglio_id=indirizzo_dettaglio_id,
-                indirizzo_libero=indirizzo_libero,
-                stato_id=optional_int(ind, "stato_id"),
-                comune_id=optional_int(ind, "comune_id"),
-                codice_postale_id=optional_int(ind, "codice_postale_id"),
-            )
-            # Aggiorna set per evitare duplicati nell'auto-clone
-            existing_tipo_ids.add(tipo_indirizzo_id)
-
-    # Scopo: Risolve indirizzo_dettaglio_id dal payload.
-    #        Se il payload ha gia' indirizzo_dettaglio_id, lo usa.
-    #        Altrimenti risolve stradario (esistente o nuovo) e crea dettaglio.
-    def _resolve_indirizzo_dettaglio(self, payload: dict[str, Any]) -> int:
-        det_id = optional_int(payload, "indirizzo_dettaglio_id")
-        if det_id is not None:
-            return det_id
-
-        stradario_id = optional_int(payload, "stradario_id")
-        if stradario_id is None:
-            stradario_id = self._create_stradario_da_generale(payload)
-        assert stradario_id is not None
-
-        det_id = self._ind.create_indirizzo_dettaglio(
-            stradario_id=stradario_id,
-            civico=optional_int(payload, "civico"),
-            estensione_civico=(payload.get("estensione_civico") or "").strip() or None,
-            palazzina=(payload.get("palazzina") or "").strip() or None,
-            scala=(payload.get("scala") or "").strip() or None,
-            piano=(payload.get("piano") or "").strip() or None,
-            interno=(payload.get("interno") or "").strip() or None,
+    ) -> int:
+        indirizzi = indirizzi_per_madre(indirizzi_data)
+        if not indirizzi:
+            return 0
+        # Una FK o un CHECK violati dentro la madre sono un 400, come per le
+        # singolari: senza traduzione uscivano `E_DATABASE` (500).
+        return create_with_dedup(
+            lambda: self._repo.crea_indirizzi_ruolo(soggetto_ruolo_id, indirizzi),
+            "Indirizzo con questo tipo gia' presente per il ruolo/istanza.",
         )
-        assert det_id is not None
-        return det_id
 
-    # Scopo: Crea stradario locale da stradario_generale (via nuova).
-    #        Valida toponomastica, descrizione, comune, CAP.
-    def _create_stradario_da_generale(self, payload: dict[str, Any]) -> int:
-        toponomastica_id = optional_int(payload, "toponomastica_id")
-        descrizione_via = (payload.get("descrizione_via") or "").strip()
-        comune_id = optional_int(payload, "comune_id")
-        codice_postale_id = optional_int(payload, "codice_postale_id")
-
-        ErrorManager.require(toponomastica_id is not None and toponomastica_id > 0,
-                             code=E_ANAG_VALIDAZIONE, message="Tipo strada obbligatorio.")
-        assert toponomastica_id is not None
-        ErrorManager.require(bool(descrizione_via),
-                             code=E_ANAG_VALIDAZIONE, message="Nome via obbligatorio.")
-        ErrorManager.require(comune_id is not None and comune_id > 0,
-                             code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio.")
-        assert comune_id is not None
-        ErrorManager.require(codice_postale_id is not None and codice_postale_id > 0,
-                             code=E_ANAG_VALIDAZIONE, message="CAP obbligatorio.")
-        assert codice_postale_id is not None
-
-        return self._ind.get_or_create_stradario(
-            toponomastica_id=toponomastica_id, descrizione_via=descrizione_via,
-            comune_id=comune_id, codice_postale_id=codice_postale_id,
+    # Scopo: Crea UN indirizzo di un ruolo, anche di un'istanza
+    #        (`istanza_utility_id`), con la madre del DB
+    #        `anagrafiche.fn_crea_indirizzo_ruolo`: la stessa grammatica e gli
+    #        stessi pre-check dell'indirizzo di soggetto
+    #        (`indirizzo_singolo_per_madre`).
+    #        Un tipo gia' presente sul ruolo (o sull'istanza) lo rifiuta il
+    #        vincolo. Ritorna la riga scritta.
+    # ⭐ Dal 2026-10-19 (R-DB-16b): fino ad allora la view risolveva tipo e via
+    #    e il repository scriveva la riga con una INSERT sua.
+    def create_indirizzo_ruolo(
+        self, soggetto_ruolo_id: int, payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        indirizzo = indirizzo_singolo_per_madre(payload)
+        return create_with_dedup(
+            lambda: self._repo.crea_indirizzo_ruolo(soggetto_ruolo_id, indirizzo),
+            "Indirizzo con questo tipo gia' presente per il ruolo/istanza.",
         )
 
     # Scopo: Validazione congruenza CF italiano con dati anagrafici (data, sesso, comune).

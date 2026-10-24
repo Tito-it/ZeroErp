@@ -1,6 +1,6 @@
 # Guida — Gestione DDT di vendita
 
-> **Ultimo aggiornamento**: 21 settembre 2026
+> **Ultimo aggiornamento**: 12 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali/logistici,
 > sviluppatori backend/frontend, DBA.
@@ -17,6 +17,8 @@
 > * [script.fn_available_actions_ddt](/dbzero/script/funzioni/fn_available_actions_ddt) — azioni disponibili sullo stato corrente
 > * [vendite.trgfn_ddt_guard_transizione](/dbzero/vendite/funzioni/trgfn_ddt_guard_transizione) — enforcement del grafo stati
 > * [vendite.fn_genera_ddt_da_ordine](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine) — evasione delle righe ordine in un DDT
+> * [vendite.fn_ddt_riga_correggi_qta_evasa](/dbzero/vendite/funzioni/fn_ddt_riga_correggi_qta_evasa) / [vendite.trgfn_ddt_righe_guard_riga_evasa](/dbzero/vendite/funzioni/trgfn_ddt_righe_guard_riga_evasa) — la riga evasa: ferma, corretta solo dal verbo
+> * [vendite.fn_annulla_ddt](/dbzero/vendite/funzioni/fn_annulla_ddt) / [vendite.fn_ddt_legami](/dbzero/vendite/funzioni/fn_ddt_legami) — l'annullo di una bolla con righe legate a ordini o resi
 > * [vendite.fn_list_ddt_da_pushare](/dbzero/vendite/funzioni/fn_list_ddt_da_pushare) — righe eleggibili al push a commessa
 > * [vendite.trgfn_ddt_gen_numero_emesso](/dbzero/vendite/funzioni/trgfn_ddt_gen_numero_emesso) / [vendite.trgfn_v_ddt_protect_num](/dbzero/vendite/funzioni/trgfn_v_ddt_protect_num) — numero assegnato a EMESSO e poi immutabile
 > * [vendite.trgfn_ddt_guard_indirizzi_obbligatori](/dbzero/vendite/funzioni/trgfn_ddt_guard_indirizzi_obbligatori) — indirizzo di consegna obbligatorio all'emissione
@@ -162,6 +164,19 @@ Ogni riga è una voce di merce consegnata:
 * **prezzo** (`prezzo_unitario`) e **IVA** (`iva_id`) — **opzionali**: un DDT può
   essere di **solo trasporto** (righe senza prezzo).
 
+**Quali articoli ammette** (dal 2026-10-13): solo **merce**, e mai un articolo **«solo
+componente»**, che si vende soltanto dentro il kit che lo contiene. Un servizio una tantum va
+in commessa, un servizio ricorrente in contratto (tramite un'offerta). La merce è giudicata
+dalla **natura con cui la riga è stata venduta**: una riga nata da un ordine porta la natura di lì, anche
+se nel frattempo l'articolo è cambiato in anagrafica. Il controllo è uno solo per tutti i
+documenti ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)), e
+il messaggio dice perché e dove va invece l'articolo. Un **kit senza componenti** (dal 2026-10-14) non si mette in nessuna riga: va prima completata la sua distinta.
+
+**Nella ricerca dell'articolo** trovi prima quelli che la riga può usare. Gli altri compaiono dopo, in grigio, col motivo sotto, e non si possono scegliere: chi cerca un codice preciso e non lo trova fra i primi vede perché. La ricerca e il rifiuto al salvataggio usano la stessa regola, quindi un articolo proposto non viene rifiutato dopo.
+
+La **riconsegna** di un reso è esente: restituisce ciò che è uscito, anche se l'articolo nel
+frattempo è diventato «solo componente».
+
 > **Prezzo opzionale = DDT di solo trasporto.** Se le righe non hanno prezzo, il
 > DDT documenta solo il movimento della merce e il *Riepilogo IVA* resta vuoto
 > (le righe senza prezzo sono escluse in vista). Con i prezzi valorizzati, il DDT
@@ -234,7 +249,25 @@ DRAFT ──(emetti)──▶ EMESSO ──(spedisci)──▶ SPEDITO ──(co
   solo per effetto del motore, su reso **totale** (l'annullo del reso lo
   riporta a `CONSEGNATO`). Vedi §11-bis.
 
-### 4.3 La doppia difesa
+### 4.3 Annullare una bolla da ordine o da reso
+
+Una bolla nata da un ordine (o da un reso da ri-consegnare) porta, riga per riga,
+il **legame** con la riga d'origine: è ciò che fa risultare l'ordine evaso, o il
+reso ri-consegnato. Annullare la bolla **ritira quei legami**: le quantità tornano
+da spedire, l'ordine torna da evadere (`CONFERMATO` o `PARZIALMENTE_EVASO`), il
+reso torna da ri-consegnare. Se la bolla ha spinto righe in commessa ancora da
+emettere, anche quelle si annullano. Vale sia in bozza sia da emessa; da emessa
+il magazzino storna anche l'uscita.
+
+Non succede in silenzio. Su una bolla con legami, «Annulla DDT» apre una
+**finestra di conferma** che elenca che cosa si riapre: per ogni legame il
+documento dall'altra parte (apribile con un clic), la riga e la quantità.
+Confermando, l'operatore dichiara quanti legami ha visto: se nel frattempo sono
+cambiati, la finestra si ripresenta aggiornata. Una bolla senza legami si annulla
+come sempre, con la sola conferma del cambio di stato. La stessa finestra vale
+per ordini, preventivi e contratti.
+
+### 4.4 La doppia difesa
 
 1. **In interfaccia**: `fn_available_actions_ddt` legge la matrice e restituisce
    solo le azioni disponibili — i pulsanti senza senso non compaiono.
@@ -304,6 +337,34 @@ Se non resta residuo, l'evasione segnala che non c'è nulla da consegnare.
 > primo cliente o destinatario) per poter aggiungere righe e indirizzi. Se l'operatore esce
 > senza inserire nulla, la bozza vuota può essere eliminata. Un DDT **emesso**
 > non si cancella: si **annulla**.
+
+### 6.3 Le righe di un DDT da ordine
+
+Una bolla generata da un ordine (o da un reso, con la ri-consegna) ha due tipi di
+riga:
+
+| Riga | Come nasce | Che cosa si cambia in bozza |
+| --- | --- | --- |
+| **evasa** | dall'evasione: porta il legame con la riga d'ordine (o di reso) | descrizione, prezzo, sconto. **Articolo, unità di misura e quantità sono fermi**: sono la fotografia di ciò che si spedisce per conto dell'origine |
+| **a mano** | aggiunta dall'operatore | tutto, come su una bolla standalone. Non è legata all'ordine |
+
+* **La quantità della riga evasa** si corregge con **«Correggi quantità
+  evasa»**, nel form della riga: cambiano insieme la riga, la quantità evasa
+  dell'ordine (o ri-consegnata del reso) e lo stato dell'ordine. Il nuovo valore
+  resta entro il residuo dell'ordine. Il pulsante è acceso solo in bozza; spento,
+  il suo tooltip dice perché.
+* **La riga evasa si toglie** in bozza come le altre: il legame si ritira con
+  lei e la quantità torna da evadere.
+* **Fuori bozza** niente di tutto questo: righe e legami sono fermi.
+
+Due esempi, sull'ordine di 10 pezzi dell'articolo *pippo*:
+
+* **Si consegnano 15.** Bolla generata con la riga evasa da 10, più una riga
+  **a mano** di *pippo* da 5. L'ordine risulta evaso per 10, `EVASO`; i 5 in più
+  viaggiano sulla bolla senza toccare l'ordine.
+* **Si consegnano 6.** Bolla generata con 10, poi «Correggi quantità evasa» a 6
+  sulla riga evasa. L'ordine risulta evaso per 6, `PARZIALMENTE_EVASO`, e i 4
+  restano da evadere con una bolla successiva.
 
 ---
 
@@ -479,7 +540,14 @@ Come funziona, dal punto di vista del DDT:
   `qta_resa_per_riconsegna`, §2.1): l'ordine torna evadibile e si genera un nuovo
   DDT di ri-consegna (`fn_genera_ddt_riconsegna`);
 * **reso a credito** → alimenta la coda "da accreditare" (vista
-  `vw_resi_da_accreditare`) per la futura nota di credito.
+  `vw_resi_da_accreditare`) per la futura nota di credito. L'accredito scrive una
+  **rettifica** nella commessa della riga fatturata che corregge;
+* **se si annulla quella commessa** (la rettifica è ancora da emettere, cioè dopo il
+  reset del lotto: finché la riga fatturata è emessa la commessa non si annulla),
+  l'accredito si annulla con lei e la quota **non risulta più accreditata**: la
+  finestra di conferma lo dice («torna da accreditare»), e la coda accrediti la
+  ripropone quando la merce torna in fattura. Dettaglio in
+  [Gestione Commesse](/guide/gestione-commesse) §«Annullare una commessa».
 
 > Il modello completo del reso (entità, guard, ri-consegna, note di credito) è
 > nei brief `work-done/brief-db-resi-vendita.md` e
@@ -547,6 +615,10 @@ Codici sollevati dal dominio DDT (registrati in `error_policies`):
 | `E_DDT_NESSUNA_RIGA`                 | Push senza righe eleggibili                                                                                  |
 | `E_DOC_EMITTENTE_BA_INCOERENTE`      | L'azienda che emette non è quella del cliente (stesso codice per i sei documenti di vendita)                 |
 | `E_STATO_DDT_TRANSIZIONE_NON_VALIDA` | Cambio di stato non previsto/attivo nella matrice (guard DB)                                                 |
+| `E_DDT_RIGA_EVASA_FERMA`             | Articolo, unità di misura o quantità cambiati su una riga evasa da un ordine o da un reso (guard DB): la quantità passa da «Correggi quantità evasa» |
+| `E_DDT_RIGA_NON_EVASA`               | «Correggi quantità evasa» su una riga aggiunta a mano o su una bolla senza origine                            |
+| `E_QTA_SUPERA_RESIDUO`               | La quantità evasa corretta supera il residuo dell'ordine                                                      |
+| `E_DOC_ANNULLO_CON_LEGAMI`           | Annullo di una bolla con legami (ordini, resi, righe di commessa): apre la finestra di conferma (§4.3)        |
 | `E_INDIRIZZO_DOC_OBBLIGATORIO`       | Emissione senza l'indirizzo di consegna obbligatorio (guard DB)                                              |
 | `E_DOCUMENTI_*`                      | Stampa: template/versione non risolti, input invalido o render fallito                                       |
 
@@ -573,6 +645,11 @@ L'evasione non "consuma" la riga d'ordine: **aggiunge** una quantità evasa
 (`ordini_righe_fulfillment`), lasciando lo storico intatto e il residuo
 calcolabile. È l'invariante su cui si innesta anche il motore **resi** (che
 riapre il residuo per la ri-consegna).
+
+La quantità evasa fotografa ciò che è **spedito**: finché la bolla è in bozza
+non è partito niente, e la quantità si corregge (dal solo verbo, insieme alla
+riga) o si ritira (togliendo la riga, o annullando la bolla). Fuori bozza è
+ferma, e l'unico modo di farla tornare da evadere è l'annullo della bolla.
 
 ### 15.4 Emittente legato allo user, etichetta dal soggetto
 

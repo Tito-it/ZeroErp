@@ -1,0 +1,170 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SI RITIRANO LE TRE FUNZIONI DI SCOPE CHE CALCOLAVANO IL PERIMETRO PER RIGA
+#   script.fn_scope_note_ef_whitelist(integer, varchar, bigint)
+#   script.fn_scope_note_magazzino_ef_whitelist(integer, varchar, bigint)
+#   script.fn_scope_ef_whitelist_via_coppia(integer, bigint, integer)
+#   Brief: brief-db-perimetro-una-volta-famiglie-residue §4, P-1 e P-3 (Tid, 2026-10-21).
+#
+# Sostituite da -24 e -25; dopo -26 nessuna policy le chiama.
+# Il censimento (dbdev, 2026-10-21): nessun'altra funzione (pg_get_functiondef),
+# vista, policy, pgTAP o backend le chiama. Restano i changeSet storici e la doc.
+# Le copie si ritirano nello stesso giro (regola del 2).
+# ⚠️ Gli adattatori via_* che gli smistatori chiamavano (via_preventivo,
+#   via_asset, via_efba...) restano: rispondono alla domanda su UN emittente
+#   per verbi, guard e backend (linee-guida-sql §10.3).
+# Rollback: le tre funzioni come sono sul vivo (doc auto-generata del
+# 2026-10-21), firme %TYPE come nei changeSet d'origine (20260909-72,
+# 20260915-15, 20261008-74) e l'utente come nelle sorelle di 20261018-49.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261021-27-drop-fn-scope-note-ef-whitelist-e-via-coppia-mctit.yaml
+
+  - changeSet:
+      id: 20261021-27-drop-fn-scope-note-ef-whitelist-e-via-coppia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritirate script.fn_scope_note_ef_whitelist, fn_scope_note_magazzino_ef_whitelist e fn_scope_ef_whitelist_via_coppia: le policy passano dagli smistatori col perimetro e dal BA della coppia (-24..-26). P-1 e P-3 di brief-db-perimetro-una-volta-famiglie-residue.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('script.fn_scope_note_ef_whitelist(integer,character varying,bigint)'),
+                             to_regprocedure('script.fn_scope_note_magazzino_ef_whitelist(integer,character varying,bigint)'),
+                             to_regprocedure('script.fn_scope_ef_whitelist_via_coppia(integer,bigint,integer)'))
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE coalesce(qual, '') || coalesce(with_check, '') ~ '(fn_scope_note_ef_whitelist|fn_scope_note_magazzino_ef_whitelist|fn_scope_ef_whitelist_via_coppia)\('
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION script.fn_scope_note_ef_whitelist(
+                  config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  vendite.note.target_tipo%TYPE,
+                  vendite.note.target_id%TYPE);
+
+              DROP FUNCTION script.fn_scope_note_magazzino_ef_whitelist(
+                  config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  magazzino.note.target_tipo%TYPE,
+                  magazzino.note.target_id%TYPE);
+
+              DROP FUNCTION script.fn_scope_ef_whitelist_via_coppia(
+                  config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  anagrafiche.billing_account.utility_id%TYPE);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_note_ef_whitelist(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_target_tipo  vendite.note.target_tipo%TYPE,
+                  p_target_id    vendite.note.target_id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: smistare la nota verso l'adattatore della sua
+                  --   famiglia. Serve al PADRE partizionato vendite.note, che
+                  --   non eredita le policy delle partizioni.
+                  -- ⛔ L'ELSE false e' la riga che conta: un target_tipo nuovo e
+                  --   non gestito rende quelle note INVISIBILI dal padre, non
+                  --   visibili a tutti. Presidiato dal pgTAP della slice.
+                  SELECT CASE p_target_tipo
+                      WHEN 'PREVENTIVO' THEN script.fn_scope_ef_whitelist_via_preventivo(p_auth_user_id, p_target_id)
+                      WHEN 'ORDINE'     THEN script.fn_scope_ef_whitelist_via_ordine(p_auth_user_id, p_target_id)
+                      WHEN 'DDT'        THEN script.fn_scope_ef_whitelist_via_ddt(p_auth_user_id, p_target_id)
+                      WHEN 'CONTRATTO'  THEN script.fn_scope_ef_whitelist_via_contratto(p_auth_user_id, p_target_id)
+                      WHEN 'FATTURA'    THEN script.fn_scope_ef_whitelist_via_fattura(p_auth_user_id, p_target_id)
+                      WHEN 'OFFERTA'    THEN script.fn_scope_ef_whitelist_via_offerta(p_auth_user_id, p_target_id)
+                      WHEN 'ATTIVITAFT' THEN script.fn_scope_ef_whitelist_via_attivita_fatturabile(p_auth_user_id, p_target_id)
+                      ELSE false
+                  END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_note_ef_whitelist(
+                  config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  vendite.note.target_tipo%TYPE,
+                  vendite.note.target_id%TYPE)
+              IS 'Smistatore di scope per il PADRE partizionato vendite.note, veste OPERATORE: instrada su target_tipo verso l''adattatore della famiglia. Esiste perche'' le policy delle PARTIZIONI non risalgono al padre — provato il 2026-09-09: col padre armato e senza policy propria, risponde zero. ⛔ ELSE false: un target_tipo non gestito rende quelle note invisibili dal padre, non visibili a tutti; presidiato dal pgTAP della slice, che confronta i rami col CHECK. Brief §6.4.';
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_note_magazzino_ef_whitelist(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_target_tipo  magazzino.note.target_tipo%TYPE,
+                  p_target_id    magazzino.note.target_id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: smistare la nota verso l'adattatore della sua famiglia.
+                  --   Serve al PADRE partizionato magazzino.note, che non eredita le
+                  --   policy delle partizioni. Nelle partizioni _riga target_id e' la
+                  --   TESTATA: lo scope passa da li'.
+                  -- ⛔ L'ELSE false e' la riga che conta: un target_tipo nuovo e non
+                  --   gestito rende quelle note INVISIBILI dal padre, non visibili a
+                  --   tutti. Presidiato dal pgTAP di P-12 contro chk_note_target_tipo.
+                  SELECT CASE p_target_tipo
+                      WHEN 'ASSET'              THEN script.fn_scope_ef_whitelist_via_asset(p_auth_user_id, p_target_id)
+                      WHEN 'EVENTO_ASSET'       THEN script.fn_scope_ef_whitelist_via_evento_asset(p_auth_user_id, p_target_id)
+                      WHEN 'INVENTARIO'         THEN script.fn_scope_ef_whitelist_via_inventario(p_auth_user_id, p_target_id)
+                      WHEN 'INVENTARIO_RIGA'    THEN script.fn_scope_ef_whitelist_via_inventario(p_auth_user_id, p_target_id)
+                      WHEN 'MOVIMENTO'          THEN script.fn_scope_ef_whitelist_via_movimento(p_auth_user_id, p_target_id)
+                      WHEN 'RETTIFICA'          THEN script.fn_scope_ef_whitelist_via_rettifica(p_auth_user_id, p_target_id)
+                      WHEN 'RETTIFICA_RIGA'     THEN script.fn_scope_ef_whitelist_via_rettifica(p_auth_user_id, p_target_id)
+                      WHEN 'TRASFERIMENTO'      THEN script.fn_scope_ef_whitelist_via_trasferimento(p_auth_user_id, p_target_id)
+                      WHEN 'TRASFERIMENTO_RIGA' THEN script.fn_scope_ef_whitelist_via_trasferimento(p_auth_user_id, p_target_id)
+                      ELSE false
+                  END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_note_magazzino_ef_whitelist(
+                  config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  magazzino.note.target_tipo%TYPE,
+                  magazzino.note.target_id%TYPE)
+              IS 'Smistatore di scope per il PADRE partizionato magazzino.note: sceglie l''adattatore dalla famiglia (target_tipo) e passa target_id, che nelle partizioni _riga e'' la testata. ELSE false: un target_tipo nuovo e non gestito rende quelle note invisibili, non pubbliche — e'' la riga che conta, presidiata dal pgTAP di P-12 contro chk_note_target_tipo. Stampo: fn_scope_note_ef_whitelist (vendite). Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10.';
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_coppia(
+                  p_auth_user_id       config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_istanza_utility_id anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  p_utility_id         anagrafiche.billing_account.utility_id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro il BA
+                  --   della coppia (istanza, utility).
+                  -- ⭐ Delega alla scope del BA invece di ripeterla: la regola
+                  --   «quale BA vede l'operatore» resta scritta in un posto solo.
+                  -- ⚠️ BA invisibile (fuori perimetro, RLS) o coppia senza BA ->
+                  --   id NULL -> false: fail-closed.
+                  SELECT script.fn_scope_ef_whitelist_via_efba(
+                      p_auth_user_id,
+                      (SELECT ba.id
+                         FROM anagrafiche.billing_account ba
+                        WHERE ba.istanza_utility_id = p_istanza_utility_id
+                          AND ba.utility_id         = p_utility_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_coppia(
+                  config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  anagrafiche.billing_account.utility_id%TYPE)
+              IS 'Scope RLS per le righe che nominano la coppia (istanza_utility_id, utility_id): true se l''operatore vede il billing account della coppia. Delega a script.fn_scope_ef_whitelist_via_efba (la regola resta una). BA fuori perimetro o assente: false (fail-closed). Usata dalla policy rls_istanze_dati_precontrattuali_ef_whitelist. Brief: brief-db-istanza-nasce-col-ba (§6.13).';

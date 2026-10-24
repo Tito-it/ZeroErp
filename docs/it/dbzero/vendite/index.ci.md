@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Schema `vendite`
 
 ## 📚 Tabelle (manuale)
@@ -75,7 +80,7 @@
 - [preventivi_riepiloghi_iva](manual/preventivi_riepiloghi_iva.md) — (latest review 02-05-2026)
 - [preventivi_righe](manual/preventivi_righe.md) — `vendite.preventivi_righe` contiene il dettaglio economico-tecnico del preventivo: articolo, quantita`, prezzo, sconto, IVA e snapshot UoM operativa.
 - [preventivi_righe_componenti](manual/preventivi_righe_componenti.md) — `vendite.preventivi_righe_componenti` modella il **prezzo negoziabile per singolo componente** di un articolo composito CASO A: una riga per ogni componente attivo e valido della distinta (modello unificato del 2026-05-13). L'esposizione del componente in fattura (`catalogo.articoli_componenti.esposizione_in_fattura`) è una regola di presentazione della fattura, non un filtro su queste righe.
-- [promo_articoli](manual/promo_articoli.md) — (latest review 14-04-26)
+- [promo_articoli](manual/promo_articoli.md) — (latest review 2026-10-14: l'articolo ammesso, D-6)
 - [registri_fatturazione](manual/registri_fatturazione.md) — (latest review 26-01-2026) `vendite.registri_fatturazione` definisce i **sezionali di numerazione**: serie, regole di reset, politica della data e collegamento all'emittente fiscale. Ogni documento numerato si aggancia a un registro, che ne governa numerazione e perimetro.
 - [registri_fatturazione_progressivi](manual/registri_fatturazione_progressivi.md) — (latest review 26-01-2026) `vendite.registri_fatturazione_progressivi` memorizza i **progressivi di numerazione** per ciascun registro, anno e serie. E` la base per l’assegnazione del numero documento in fase di emissione.
 - [resi](manual/resi.md) — (rev 2026-07-13)
@@ -96,6 +101,7 @@
 - [fn_aggiungi_onere_commessa](manual/fn_aggiungi_onere_commessa.md) — (rev 2026-07-23)
 - [fn_annotazioni_fattura](manual/fn_annotazioni_fattura.md)
 - [fn_annulla_accredito_riga_reso](manual/fn_annulla_accredito_riga_reso.md) — (rev 2026-08-21 — funzione del 2026-08-18)
+- [fn_annulla_commessa](manual/fn_annulla_commessa.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-1, D-2, D-3, D-7)
 - [fn_annulla_commessa_attivita](manual/fn_annulla_commessa_attivita.md) — (rev 2026-07-28)
 - [fn_annulla_lotto_da_draft](manual/fn_annulla_lotto_da_draft.md) — (latest review 23-09-2026)   La funzione **`vendite.fn_annulla_lotto_da_draft()`** effettua il **rollback tecnico** di un lotto in stato **DRAFT**, eliminando i documenti generati dal draft, ripristinando le righe di `attivita_fatturabili` e **chiudendo** il lotto portandolo ad **ANNULLATA**.
 - [fn_annulla_reso](manual/fn_annulla_reso.md) — (rev 2026-07-13)
@@ -112,15 +118,18 @@
 - [fn_cambia_stato_preventivo](manual/fn_cambia_stato_preventivo.md) — (latest review 03-04-2026) `vendite.fn_cambia_stato_preventivo(p_preventivo_id, p_nuovo_stato, p_user)` esegue la **transizione di stato** di un preventivo vendita, validando la transizione tramite la matrice configurabile `config.transizioni_stati_preventivi`.
 - [fn_cancel_lotto_task_run](manual/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
 - [fn_cancella_fondo_fattura](manual/fn_cancella_fondo_fattura.md) — (latest review 14-09-2026)
+- [fn_check_contratto_provenienza](manual/fn_check_contratto_provenienza.md) — (rev 2026-10-21, richiesta del backend sullo smoke del raggruppamento per contratto, decisione di Tid D-1)
 - [fn_check_ddt_riga_richiede_prezzo](manual/fn_check_ddt_riga_richiede_prezzo.md) — (creata 2026-08-19 — brief-ddt-righe-senza-prezzo §9 slice C)
 - [fn_check_fondo_cancellabile](manual/fn_check_fondo_cancellabile.md) — (latest review 31-08-2026)
 - [fn_check_fondo_fattura_capiente](manual/fn_check_fondo_fattura_capiente.md) — (latest review 15-08-2026)
+- [fn_check_listino_provenienza](manual/fn_check_listino_provenienza.md) — (rev 2026-10-16, brief `brief-db-coerenza-listino-della-riga-di-commessa`, decisioni di Tid)
 - [fn_chiudi_contratto_per_successione](manual/fn_chiudi_contratto_per_successione.md) — `vendite.fn_chiudi_contratto_per_successione(...)` è la **seconda metà** del meccanismo di successione: dopo che [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) ha individuato un contratto in conflitto, questa funzione lo **accorcia** per fare spazio al nuovo, impostando:
 - [fn_chiudi_riconsegna_reso](manual/fn_chiudi_riconsegna_reso.md) — (rev 2026-07-26)
 - [fn_classe_emittibilita_per_giro](manual/fn_classe_emittibilita_per_giro.md) — (latest review 12-09-2026)
 - [fn_cleanup_fatture_by_ids](manual/fn_cleanup_fatture_by_ids.md) — (latest review 03-08-2026)  
 - [fn_close_commessa_push_run](manual/fn_close_commessa_push_run.md) — `vendite.fn_close_commessa_push_run` **chiude** il giro aperto in testa alla corsa: gli scrive sopra l'esito, il risultato per handler e la durata.
 - [fn_close_giornaliero_lotto](manual/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
+- [fn_commessa_viva_di_sorgente](manual/fn_commessa_viva_di_sorgente.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-12 e D-14)
 - [fn_complete_lotto_task_run](manual/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
 - [fn_componi_numero_documento](manual/fn_componi_numero_documento.md) — (rev 2026-08-31, sera)
 - [fn_conferma_reso](manual/fn_conferma_reso.md) — (rev 2026-07-13)
@@ -128,16 +137,23 @@
 - [fn_contratto_riga_componenti_preview](manual/fn_contratto_riga_componenti_preview.md)
 - [fn_contratto_righe_preview](manual/fn_contratto_righe_preview.md)
 - [fn_contratto_sovrapposto](manual/fn_contratto_sovrapposto.md) — `vendite.fn_contratto_sovrapposto(...)` risponde a una sola domanda, **senza modificare nulla**: *«per questo cliente/utility e in questo periodo esiste già un contratto attivo?»*. È il **rilevamento** del meccanismo generico di successione contratti (il "chiudi il vecchio e apri il nuovo").
+- [fn_coppie_fattura_scoperte](manual/fn_coppie_fattura_scoperte.md) — (18-10-2026 — R-BE-14, decisioni D-14a … D-14d di Tid, `brief-db-processi-accensione-per-ambiente` §6.14)
 - [fn_crea_famiglia_documento](manual/fn_crea_famiglia_documento.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_crea_revisione_offerta](manual/fn_crea_revisione_offerta.md) — (rev 2026-05-25)
 - [fn_crea_revisione_preventivo](manual/fn_crea_revisione_preventivo.md) — (latest review 14-09-2026) `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione** di un preventivo vendita: copia testata, righe attive, componenti BoM e indirizzi. L'attivazione della revisione non e' piu' gestita qui: il flag `is_revision_attiva` e' stato rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendite.vw_preventivi`.
-- [fn_create_contratto](manual/fn_create_contratto.md) — (latest review 08-07-2026)
+- [fn_create_contratto](manual/fn_create_contratto.md) — (latest review 12-10-2026)
 - [fn_create_fatturazione_lotto](manual/fn_create_fatturazione_lotto.md) — (latest review 27-01-2026) La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e inizializza lo stato documento a **DRAFT**.
 - [fn_ddt_push_diagnosi](manual/fn_ddt_push_diagnosi.md) — `vendite.fn_ddt_push_diagnosi(...)` è la **fonte unica dell'eleggibilità al push a commessa**. Per ogni riga attiva di un DDT risponde a *perché questa riga non è inviabile a commessa?* — `motivo = NULL` se è eleggibile, altrimenti **il** motivo di esclusione, per precedenza — ed espone i quattro fatti che servono a chi agisce su quella risposta: il billing account, la riga d'ordine sorgente, lo stato-push del segmento e la **dose** da spingere.
 - [fn_ddt_riga_componenti_init](manual/fn_ddt_riga_componenti_init.md)
 - [fn_ddt_riga_componenti_preview](manual/fn_ddt_riga_componenti_preview.md)
+- [fn_ddt_vincoli_cliente](manual/fn_ddt_vincoli_cliente.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-1)
 - [fn_diagnostica_gruppi_fatturabili](manual/fn_diagnostica_gruppi_fatturabili.md) — (latest review 15-08-2026)
+- [fn_documento_legami](manual/fn_documento_legami.md) — (2026-10-11, brief-db-annullo-documento-con-legami, D-4)
 - [fn_documento_lineage](manual/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
+- [fn_documento_lineage_archi](manual/fn_documento_lineage_archi.md) — (rev 2026-10-11)
+- [fn_documento_lineage_legami](manual/fn_documento_lineage_legami.md) — (nata il 2026-10-13, richiesta R-17/R-18 del backend, dal collaudo)
+- [fn_documento_lineage_nodi](manual/fn_documento_lineage_nodi.md) — (rev 2026-10-11)
+- [fn_documento_lineage_sintesi](manual/fn_documento_lineage_sintesi.md) — (rev 2026-10-11)
 - [fn_documento_listino_operativo](manual/fn_documento_listino_operativo.md) — (funzione nata il 2026-10-04, `20261004-42`)
 - [fn_documento_righe_eccezione](manual/fn_documento_righe_eccezione.md) — (funzione nata il 2026-10-04, `20261004-70`)
 - [fn_documento_righe_preview](manual/fn_documento_righe_preview.md) — (funzione nata il 2026-10-04, `20261004-71`, dal corpo di `fn_contratto_righe_preview`)
@@ -182,7 +198,7 @@
 - [fn_get_totale_fondi_fattura](manual/fn_get_totale_fondi_fattura.md) — La funzione **`vendite.fn_get_totale_fondi_fattura()`** restituisce il totale dei fondi fattura **attivi** associati alla testata.
 - [fn_get_valuta_id](manual/fn_get_valuta_id.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback al **gestore** quando non esistono valori specifici su BA/utility.
 - [fn_get_vendite_note](manual/fn_get_vendite_note.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_vendite_note()`** e` un wrapper su `script.fn_get_note('vendite.note')` per recuperare le note vendite da tabella partizionata in modo uniforme.
-- [fn_guard_lotto_fatture_stato_coerente](manual/fn_guard_lotto_fatture_stato_coerente.md) — (rev 2026-08-21 — funzione rev 2026-08-04)
+- [fn_guard_lotto_fatture_stato_coerente](manual/fn_guard_lotto_fatture_stato_coerente.md) — (rev 2026-10-24 — funzione rev 2026-10-24, R-1)
 - [fn_imposta_data_documento_lotto](manual/fn_imposta_data_documento_lotto.md) — **Dichiara la data documento di un lotto** — l'atto che l'operatore compie davvero: *«questo lotto lo dato al 31 luglio»*.
 - [fn_libera_attivita_fatturabili](manual/fn_libera_attivita_fatturabili.md) — (latest review 26-08-2026)
 - [fn_link_commessa_sorgente](manual/fn_link_commessa_sorgente.md) — (latest review 24-02-2026) Collega la ROOT source a una commessa in modo idempotente e coerente.
@@ -196,6 +212,7 @@
 - [fn_list_lotto_task_runs](manual/fn_list_lotto_task_runs.md) — Elenca i task run di un lotto, con filtri opzionali per step e task.
 - [fn_list_ordini_da_pushare](manual/fn_list_ordini_da_pushare.md) — `vendite.fn_list_ordini_da_pushare(...)` seleziona le righe ordine pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
 - [fn_list_preventivi_da_pushare](manual/fn_list_preventivi_da_pushare.md) — `vendite.fn_list_preventivi_da_pushare(...)` seleziona le righe preventivo pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
+- [fn_listino_ha_storia](manual/fn_listino_ha_storia.md) — (rev 2026-10-22, decisione di Tid del 2026-10-21 e D-1 del 2026-10-22)
 - [fn_listino_versione_in_vigore](manual/fn_listino_versione_in_vigore.md) — (funzione nata il 2026-09-28, `20260928-35`)
 - [fn_log_event](manual/fn_log_event.md) — `vendite.fn_log_event` fornisce un entrypoint unico (DB) per registrare eventi append-only in `vendite.event_log`, sia da servizi Python sia da funzioni SQL.
 - [fn_log_lotto_esito_fatture](manual/fn_log_lotto_esito_fatture.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_log_lotto_esito_fatture()`** registra un log di esito lotto dedotto dai log fatture associate al lotto.
@@ -213,11 +230,13 @@
 - [fn_ordine_riga_componenti_init](manual/fn_ordine_riga_componenti_init.md)
 - [fn_ordine_riga_componenti_preview](manual/fn_ordine_riga_componenti_preview.md)
 - [fn_ordine_riga_qta_riconsegna](manual/fn_ordine_riga_qta_riconsegna.md) — (rev 2026-07-26)
+- [fn_parametri_importo_riga](manual/fn_parametri_importo_riga.md)
 - [fn_partite_merce](manual/fn_partite_merce.md) — (latest review 2026-09-21)
 - [fn_popola_fatture_rettifiche](manual/fn_popola_fatture_rettifiche.md) — (rev 2026-08-18)
 - [fn_prepare_sdi_payload](manual/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:
 - [fn_preventivo_ha_residuo_commessa](manual/fn_preventivo_ha_residuo_commessa.md) — `TRUE` se il **push commessa avrebbe effetto** sul preventivo: esistono righe eleggibili (vista predicato unico). E' la meta' "servizi" della coppia simmetrica di capability del modello split-per-natura.
 - [fn_preventivo_ha_residuo_ordine](manual/fn_preventivo_ha_residuo_ordine.md) — `TRUE` se il preventivo ha righe natura **ORDINE** (merce) non ancora allocate a un ordine: il push ordine avrebbe effetto. E' la meta' "merce" della coppia simmetrica di capability del modello split-per-natura (brief-preventivi-ordini.md D6/D8).
+- [fn_preventivo_proietta_stato_smistamento](manual/fn_preventivo_proietta_stato_smistamento.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-1 e D-10)
 - [fn_preventivo_riga_componenti_init](manual/fn_preventivo_riga_componenti_init.md)
 - [fn_preventivo_riga_componenti_preview](manual/fn_preventivo_riga_componenti_preview.md)
 - [fn_provision_registri](manual/fn_provision_registri.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
@@ -226,6 +245,7 @@
 - [fn_push_offerta_a_contratto](manual/fn_push_offerta_a_contratto.md) — (rev6 2026-06-08 — guard **mutua esclusività** offerta→contratto/ordine; rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 - [fn_push_preventivo_a_ordine](manual/fn_push_preventivo_a_ordine.md) — (latest review 08-07-2026)
 - [fn_regime_fiscale_fattura](manual/fn_regime_fiscale_fattura.md)
+- [fn_rendi_commessa_emittibile](manual/fn_rendi_commessa_emittibile.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-10)
 - [fn_reset_fondi_fattura](manual/fn_reset_fondi_fattura.md) — (latest review 22-08-2026)
 - [fn_resi_da_accreditare](manual/fn_resi_da_accreditare.md) — (latest review 2026-09-21)
 - [fn_resi_riga_accreditato_partita](manual/fn_resi_riga_accreditato_partita.md) — (rev 2026-08-18)
@@ -277,9 +297,12 @@
 - [trgfn_attivita_fatturabili_guard_fatturato](manual/trgfn_attivita_fatturabili_guard_fatturato.md) — (latest review 26-01-2026) La funzione **`vendite.trgfn_attivita_fatturabili_guard_fatturato()`** blocca modifiche o cancellazioni di righe di `vendite.attivita_fatturabili` che risultano gia` agganciate a una riga di fattura.
 - [trgfn_attivita_fatturabili_guard_quantita_immutabile](manual/trgfn_attivita_fatturabili_guard_quantita_immutabile.md) — (rev 2026-08-21)
 - [trgfn_attivita_fatturabili_normalize](manual/trgfn_attivita_fatturabili_normalize.md) — (latest review 21/01/2026) La funzione `vendite.trgfn_attivita_fatturabili_normalize()` applica una **normalizzazione minima** su `vendite.attivita_fatturabili` per garantire coerenza **temporale** e **tecnica** dei dati prima della scrittura.
+- [trgfn_attivita_guard_contratto](manual/trgfn_attivita_guard_contratto.md) — (rev 2026-10-21, decisione di Tid D-1)
+- [trgfn_attivita_guard_listino_riga](manual/trgfn_attivita_guard_listino_riga.md) — (rev 2026-10-15, D-1 di Tid; rev 2026-10-16, §6 del brief)
 - [trgfn_commesse_attivita_guard_prezzo_rettifica](manual/trgfn_commesse_attivita_guard_prezzo_rettifica.md) — (rev 2026-08-21 — decisione di Tid del 2026-08-20, brief nota di credito §42.2)
 - [trgfn_commesse_attivita_guard_quantita_immutabile](manual/trgfn_commesse_attivita_guard_quantita_immutabile.md) — (rev 2026-08-21)
 - [trgfn_commesse_attivita_guard_tipo_doc_emittibile](manual/trgfn_commesse_attivita_guard_tipo_doc_emittibile.md) — (rev 2026-06-19)
+- [trgfn_commesse_attivita_proietta_stato_preventivo](manual/trgfn_commesse_attivita_proietta_stato_preventivo.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-10)
 - [trgfn_commesse_default_emittente](manual/trgfn_commesse_default_emittente.md) — (latest review 26-08-26)
 - [trgfn_commesse_guard_chiave_immutabile](manual/trgfn_commesse_guard_chiave_immutabile.md) — (latest review 02-08-2026)
 - [trgfn_commesse_guard_transizione](manual/trgfn_commesse_guard_transizione.md) — (rev 2026-06-07)
@@ -290,8 +313,7 @@
 - [trgfn_contratti_guard_transizione_stato](manual/trgfn_contratti_guard_transizione_stato.md) — (latest review 24-09-2026 — il prezzo non autorizzato dal building block; 12-05-2026 — aggiunto check PENDING componenti BoM CASO A)
 - [trgfn_contratti_normalize](manual/trgfn_contratti_normalize.md) — La trigger function `vendite.trgfn_contratti_normalize()` completa i dati minimi del contratto in insert quando il numero documento e` presente.
 - [trgfn_contratti_set_categoria_cliente_snapshot](manual/trgfn_contratti_set_categoria_cliente_snapshot.md) — (rev 2026-08-21)
-- [trgfn_contratti_snapshot_precontrattuali](manual/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 20/01/26) La funzione `vendite.trgfn_contratti_snapshot_precontrattuali()` crea lo **snapshot** dei dati precontrattuali **solo alla creazione del contratto**.   La scelta progettuale e` deliberata: il contratto diventa la **fonte stabile** per i dati tecnici/commerciali e le eventuali correzioni richiedono **un nuovo contratto**.
-- [trgfn_contratti_sync_is_abortito_snapshot](manual/trgfn_contratti_sync_is_abortito_snapshot.md) — (rev 2026-08-21 — funzione rev 2026-06-02)
+- [trgfn_contratti_snapshot_precontrattuali](manual/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 12/10/26)
 - [trgfn_contratti_utilities_guard_tipo_classe](manual/trgfn_contratti_utilities_guard_tipo_classe.md) — (rev 2026-08-21 — pricing v5)
 - [trgfn_ddt_gen_numero_emesso](manual/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-08-31, sera)
 - [trgfn_ddt_guard_causale_emissione](manual/trgfn_ddt_guard_causale_emissione.md) — (rev 2026-08-28)
@@ -302,10 +324,11 @@
 - [trgfn_ddt_normalize](manual/trgfn_ddt_normalize.md) — La trigger function `vendite.trgfn_ddt_normalize()` normalizza la testata del DDT su `INSERT`: completa i campi temporali minimi ed **eredita billing/utility/valuta/ emittente dall'ordine sorgente**.
 - [trgfn_ddt_righe_componenti_guard_pending](manual/trgfn_ddt_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente di una riga DDT ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta proposta. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura. Se `ddt_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_dlt_block_ordrig_ddtrig](manual/trgfn_dlt_block_ordrig_ddtrig.md) — **Traduce in una frase il rifiuto di togliere una riga di documento — di un DDT o di un ordine — che ha legami a valle.**
+- [trgfn_doc_guard_annullo_con_legami](manual/trgfn_doc_guard_annullo_con_legami.md) — (2026-10-11, brief-db-annullo-documento-con-legami, D-1/D-4/D-5)
 - [trgfn_doc_guard_chiusura_sorgente](manual/trgfn_doc_guard_chiusura_sorgente.md) — (latest review 26-08-2026)
 - [trgfn_doc_guard_delete_solo_bozza](manual/trgfn_doc_guard_delete_solo_bozza.md) — **Un documento si elimina solo finché è in bozza.**
 - [trgfn_doc_righe_lock_fuori_bozza](manual/trgfn_doc_righe_lock_fuori_bozza.md) — **Le righe di un documento si aggiungono, modificano e tolgono solo finché il documento è in bozza.**
-- [trgfn_doc_ritira_commessa_attivita](manual/trgfn_doc_ritira_commessa_attivita.md) — (latest review 26-08-2026)
+- [trgfn_doc_snapshot_da_stato](manual/trgfn_doc_snapshot_da_stato.md) — (2026-10-11, brief-db-annullo-documento-con-legami, D-6)
 - [trgfn_doc_testata_lock_fuori_bozza](manual/trgfn_doc_testata_lock_fuori_bozza.md) — **Alcune colonne della testata di un documento si scelgono solo finché il documento è in bozza.**
 - [trgfn_documenti_sync_canali](manual/trgfn_documenti_sync_canali.md) — (latest review 24-02-2026)   La funzione trigger `vendite.trgfn_documenti_sync_canali()` mantiene allineato il registro `documenti_fatturazione_canali` sugli eventi principali dei documenti commerciali.
 - [trgfn_event_log_append_only](manual/trgfn_event_log_append_only.md) — (rev 2026-08-21)
@@ -315,7 +338,7 @@
 - [trgfn_fattura_satellite_guard_congelamento](manual/trgfn_fattura_satellite_guard_congelamento.md) — (latest review 02-08-2026)
 - [trgfn_fatturazione_lotti_esiti_uscita](manual/trgfn_fatturazione_lotti_esiti_uscita.md) — (latest review 2026-09-08)
 - [trgfn_fatturazione_lotti_gen_codice](manual/trgfn_fatturazione_lotti_gen_codice.md) — Genera automaticamente `codice` su `vendite.fatturazione_lotti` quando non valorizzato in INSERT/UPDATE.
-- [trgfn_fatturazione_lotti_guard_stato](manual/trgfn_fatturazione_lotti_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le transizioni tra stati documento sui lotti di fatturazione.
+- [trgfn_fatturazione_lotti_guard_stato](manual/trgfn_fatturazione_lotti_guard_stato.md) — (latest review 24-01-2026; rev 2026-10-24: il lotto fermo) La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le transizioni tra stati documento sui lotti di fatturazione.
 - [trgfn_fatture_guard_data_numerata](manual/trgfn_fatture_guard_data_numerata.md) — **Rende immutabile `vendite.fatture.data` da quando la fattura ha un numero.**
 - [trgfn_fatture_guard_registro_emittente](manual/trgfn_fatture_guard_registro_emittente.md) — (latest review 30-08-2026)
 - [trgfn_fatture_guard_stato](manual/trgfn_fatture_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatture_guard_stato()`** controlla le transizioni tra stati documento sulle fatture, bloccando quelle non ammesse.
@@ -328,12 +351,11 @@
 - [trgfn_fatture_righe_importo](manual/trgfn_fatture_righe_importo.md) — Garantire che **l'importo di una riga di fattura esista sempre e sia coerente** con quantità, prezzo e sconto della riga stessa.
 - [trgfn_fondi_source_guard_importo](manual/trgfn_fondi_source_guard_importo.md) — (latest review 15-08-2026)
 - [trgfn_fondi_source_guard_transizione](manual/trgfn_fondi_source_guard_transizione.md) — (latest review 22-08-2026)
-- [trgfn_guard_fatturazione_immediata_immutabile](manual/trgfn_guard_fatturazione_immediata_immutabile.md) — Impedire la modifica di `fatturazione_immediata` su un documento **già inviato in commessa**.
+- [trgfn_guard_fatturazione_immediata_immutabile](manual/trgfn_guard_fatturazione_immediata_immutabile.md) — Impedire la modifica di `fatturazione_immediata` su un documento che sta in una commessa **aperta**.
+- [trgfn_listini_guard_spegnimento_storia](manual/trgfn_listini_guard_spegnimento_storia.md) — (rev 2026-10-22, decisione di Tid del 2026-10-21)
 - [trgfn_listini_guard_tipologia_utility](manual/trgfn_listini_guard_tipologia_utility.md) — Guard defense-in-depth: verifica che la coppia `(utility_id, tipologia_id)` su `vendite.listini` sia ammessa dalla matrice `config.listini_tipologie_utilities` con `attivo = true`.
 - [trgfn_listini_righe_comp_guard_immutabilita_v5](manual/trgfn_listini_righe_comp_guard_immutabilita_v5.md)
-- [trgfn_listini_righe_guard_no_composito](manual/trgfn_listini_righe_guard_no_composito.md)
 - [trgfn_listini_righe_guard_stato](manual/trgfn_listini_righe_guard_stato.md) — Guard N6 — terzo livello di protezione: impedisce la modifica o cancellazione di righe listino quando lo stato della versione padre non lo consente o quando la riga e` gia` stata propagata a valle (commesse, attivita` fatturabili).
-- [trgfn_listini_righe_guard_tipologia](manual/trgfn_listini_righe_guard_tipologia.md) — (rev 2026-08-21 — pricing v5)
 - [trgfn_listini_versioni_guard_date_chiusa](manual/trgfn_listini_versioni_guard_date_chiusa.md) — (funzione nata il 2026-09-28, `20260928-34`)
 - [trgfn_listini_versioni_guard_transizione_stato](manual/trgfn_listini_versioni_guard_transizione_stato.md) — (latest review 26-04-2026)
 - [trgfn_logs_guard_delete](manual/trgfn_logs_guard_delete.md) — (rev 2026-09-18 — Passo D di `analisi-osservabilita-log.md`)   La funzione trigger **`vendite.trgfn_logs_guard_delete()`** protegge i log funzionali (`fatture_log`, `fatturazione_lotti_log`) dalla cancellazione **accidentale**, distinguendo però fra **cancellare la storia** e **ritirare ciò che è scaduto**.
@@ -356,7 +378,6 @@
 - [trgfn_preventivi_normalize](manual/trgfn_preventivi_normalize.md) — La trigger function `vendite.trgfn_preventivi_normalize()` completa i dati minimi di data documento in insert quando il numero preventivo e` gia` presente.
 - [trgfn_preventivi_righe_componenti_guard_pending](manual/trgfn_preventivi_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta che è stata proposta. Cambi a prezzo, quantita' o articolo durante la fase di approvazione renderebbero la decisione ambigua. - **Coerenza con il controllo di testata** — [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati), chiesto dal guard di transizione del preventivo, blocca le transizioni verso EMESSO e ACCETTATO se un componente attivo è PENDING o REJECTED (dal 2026-09-24; prima lo faceva il trigger ritirato `trgfn_preventivi_guard_transizione_approvazione`, solo verso ACCETTATO e solo sul PENDING). Insieme garantiscono che nessuna decisione commerciale avvenga con prezzi incerti sui componenti BoM CASO A. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura: se `preventivi_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_preventivi_righe_ricalcola_totali](manual/trgfn_preventivi_righe_ricalcola_totali.md) — (latest review 03-04-2026) `vendite.trgfn_preventivi_righe_ricalcola_totali()` e' la trigger function **STATEMENT-level** che mantiene i totali testata preventivo sempre coerenti con le righe. Invoca `vendite.fn_ricalcola_totali_preventivo()` **una sola volta per ogni preventivo_id coinvolto**, anche in caso di operazioni bulk (es. copia righe in revisione).
-- [trgfn_preventivi_righe_set_natura_vendita](manual/trgfn_preventivi_righe_set_natura_vendita.md) — (rev 2026-08-21 — MODALITÀ A, brief preventivi-ordini D9)
 - [trgfn_promo_articoli_guard_data_driven](manual/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
 - [trgfn_resi_accrediti_guard](manual/trgfn_resi_accrediti_guard.md) — (rev 2026-08-18)
 - [trgfn_resi_gen_numero](manual/trgfn_resi_gen_numero.md) — (rev 2026-08-31, sera)
@@ -395,16 +416,16 @@
 - [vw_ddt_riepilogo_iva_dettaglio](manual/vw_ddt_riepilogo_iva_dettaglio.md) — (rev 2026-08-21)
 - [vw_ddt_righe_dettaglio](manual/vw_ddt_righe_dettaglio.md) — (vista nata il 2026-09-28, `20260928-19`)
 - [vw_ddt_righe_iva_base](manual/vw_ddt_righe_iva_base.md) — (rev 2026-08-21)
-- [vw_documento_lineage](manual/vw_documento_lineage.md) — `vendite.vw_documento_lineage` è la vista **summary** (una riga per documento) pensata per **arricchire le liste vendite** con un solo JOIN. Risponde a due domande dalle liste:
 - [vw_documento_lineage_archi](manual/vw_documento_lineage_archi.md) — `vendite.vw_documento_lineage_archi` è il **grafo di genealogia/transito** dei documenti vendite in forma **normalizzata**: **una riga per arco** (relazione padre→figlio tra due documenti). È la base da cui derivano sia la summary `vw_documento_lineage` sia il traversal `fn_documento_lineage`.
 - [vw_documento_lineage_nodi](manual/vw_documento_lineage_nodi.md) — `vendite.vw_documento_lineage_nodi` è la **dimensione nodo** del grafo di genealogia dei documenti vendite (brief-db-lineage-documenti-vendite): **una riga per documento** delle 8 testate-nodo (preventivo, offerta, ordine, contratto, DDT, fattura, commessa, reso), con la **chiave nativa polimorfa** e lo **stato/fase normalizzati**.
+- [vw_documento_lineage_sintesi_colonne](manual/vw_documento_lineage_sintesi_colonne.md) — (rev 2026-10-11)
 - [vw_famiglie_documento_lista](manual/vw_famiglie_documento_lista.md) — *(rev 2026-09-01 — vista nata il 2026-09-01)*
 - [vw_fattura_righe_esposte](manual/vw_fattura_righe_esposte.md) — Produce **come il documento va rappresentato**, a partire dalle righe che lo compongono.
 - [vw_fattura_righe_lista](manual/vw_fattura_righe_lista.md) — (vista nata il 2026-09-28, `20260928-28`)
 - [vw_fatture_scadenze_lista](manual/vw_fatture_scadenze_lista.md) — (rev 2026-09-17)
 - [vw_fondi_fattura_da_decidere](manual/vw_fondi_fattura_da_decidere.md) — (latest review 15-08-2026)
 - [vw_lotti_fase](manual/vw_lotti_fase.md) — **In che fase è questo lotto**, e in un posto solo.
-- [vw_lotti_fatture_incoerenti](manual/vw_lotti_fatture_incoerenti.md) — (rev 2026-08-21)
+- [vw_lotti_fatture_incoerenti](manual/vw_lotti_fatture_incoerenti.md) — (rev 2026-10-24, R-1)
 - [vw_lotti_gruppi_serviti](manual/vw_lotti_gruppi_serviti.md) — (latest review 15-08-2026)
 - [vw_lotti_segnalazioni_summary](manual/vw_lotti_segnalazioni_summary.md) — (latest review 19-09-2026)
 - [vw_offerte_commerciali_lista](manual/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)

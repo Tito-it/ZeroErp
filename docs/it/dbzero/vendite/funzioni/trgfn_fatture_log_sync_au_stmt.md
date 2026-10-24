@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_fatture_log_sync_au_stmt()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_log_sync_au_stmt()
  RETURNS trigger
@@ -32,6 +34,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_fatture_log_sync_au_stmt()
 IS 'AFTER UPDATE statement su fatture_log: sincronizza critical/stato_esecuzione per fatture toccate.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

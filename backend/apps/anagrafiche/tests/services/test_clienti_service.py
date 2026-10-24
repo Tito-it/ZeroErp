@@ -14,11 +14,12 @@ Indice test eseguiti:
  3) test_get_cliente_not_found — id inesistente → E_ANAG_NOT_FOUND
  3a) test_get_cliente_propagates_evento_stato_corrente — Fase 4: fn DB risolve sosp/riatt
  3b) test_get_cliente_evento_stato_null_when_no_dates — entrambe NULL → output NULL
- 4) test_crea_cliente_manuale_ok — creazione manuale completa (genera istanza + BA)
+ 4) test_crea_cliente_manuale_ok — creazione manuale dalla madre (fn_crea_cliente: istanza + BA nuovi)
  5) test_crea_cliente_manuale_con_indirizzo — creazione manuale con indirizzo facoltativo
  6) test_crea_cliente_manuale_utility_pdp_bloccata — utility richiede_pdp=true → errore
  7) test_crea_cliente_con_istanza_preesistente — riusa istanza da pratiche
  8) test_crea_cliente_con_istanza_e_ba_preesistenti — riusa istanza + BA da pratiche
+ 8b) test_crea_cliente_con_ba_preesistente_senza_istanza — l'istanza e' quella del BA (2026-10-18)
  9) test_crea_cliente_istanza_soggetto_mismatch — istanza di altro soggetto → errore
 10) test_crea_cliente_ba_istanza_mismatch — BA di altra istanza → errore
 10b) test_crea_cliente_ba_altra_utility — BA di altra utility → errore
@@ -53,7 +54,6 @@ from apps.core.services.service_errors import ServiceError
 
 
 CLI_REPO = "apps.anagrafiche.services.clienti_service.ClientiRepository"
-TX_ATOMIC = "apps.anagrafiche.services.clienti_service.transaction.atomic"
 
 FAKE_UUID = "019bac81-3f96-7ce8-a086-7e0bd0a2fec1"
 
@@ -191,15 +191,11 @@ class TestCreaClienteManuale(TestCase):
     def _setup_repo(self, mock_repo):
         repo = mock_repo.return_value
         repo.get_utility.return_value = _utility_manifatturiero()
-        repo.get_or_create_ruolo_cliente.return_value = 50
-        repo.create_istanza_fittizia.return_value = 100
-        repo.create_billing_account.return_value = 200
-        repo.create_cliente.return_value = 1
+        repo.crea_cliente.return_value = (1, 200, 100, 50)
         return repo
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_manuale_ok(self, mock_repo, _tx):
+    def test_crea_cliente_manuale_ok(self, mock_repo):
         """Creazione manuale: genera istanza fittizia + BA + cliente."""
         repo = self._setup_repo(mock_repo)
         from apps.anagrafiche.services.clienti_service import ClientiService
@@ -207,25 +203,26 @@ class TestCreaClienteManuale(TestCase):
         self.assertEqual(result["id"], 1)
         self.assertEqual(result["istanza_utility_id"], 100)
         self.assertEqual(result["billing_account_id"], 200)
-        repo.create_istanza_fittizia.assert_called_once()
-        repo.create_billing_account.assert_called_once()
-        repo.create_cliente.assert_called_once()
+        # Tutto nuovo: niente BA ne' istanza indicati, i campi del BA nuovo.
+        kwargs = repo.crea_cliente.call_args.kwargs
+        self.assertIsNone(kwargs["billing_account_id"])
+        self.assertIsNone(kwargs["istanza_utility_id"])
+        self.assertEqual(kwargs["billing_account"], {"categoria_cliente_id": 1})
+        self.assertEqual(kwargs["istanza"], {})
+        self.assertIsNone(kwargs["contatto"])
+        self.assertEqual(kwargs["indirizzi"], [])
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_manuale_con_indirizzo(self, mock_repo, _tx):
+    def test_crea_cliente_manuale_con_indirizzo(self, mock_repo):
         """Creazione manuale con indirizzo facoltativo."""
         repo = self._setup_repo(mock_repo)
         from apps.anagrafiche.services.clienti_service import ClientiService
         ClientiService().crea_cliente(_base_payload(indirizzo_dettaglio_id=42))
-        kwargs = repo.create_istanza_fittizia.call_args.kwargs
-        self.assertEqual(kwargs["indirizzo_dettaglio_id"], 42)
-        # utility_id non deve essere passato a create_istanza_fittizia
-        self.assertNotIn("utility_id", kwargs)
+        # L'indirizzo va all'istanza fittizia NUOVA, l'unica che lo porta.
+        self.assertEqual(repo.crea_cliente.call_args.kwargs["istanza"], {"indirizzo_dettaglio_id": 42})
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_senza_iva_id_non_inietta_default(self, mock_repo, _tx):
+    def test_crea_cliente_senza_iva_id_non_inietta_default(self, mock_repo):
         """I0/D7-bis: il payload senza `iva_id` crea il cliente, e nessuno
         inietta piu' il parametro DEFAULT_IVA_ID.
 
@@ -241,8 +238,8 @@ class TestCreaClienteManuale(TestCase):
         payload = _base_payload()
         self.assertNotIn("iva_id", payload)
         ClientiService().crea_cliente(payload)
-        repo.create_cliente.assert_called_once()
-        kwargs = repo.create_cliente.call_args.kwargs
+        repo.crea_cliente.assert_called_once()
+        kwargs = repo.crea_cliente.call_args.kwargs["campi"]
         for chiave in ("iva_id", "cliente_pa", "split_payment",
                        "codice_cig", "codice_cup", "codice_commessa"):
             self.assertNotIn(chiave, kwargs)
@@ -252,10 +249,9 @@ class TestCreaClienteManuale(TestCase):
         #    sempre vero, quindi la clausola sarebbe stata logica morta.
         repo.get_default_iva_id.assert_not_called()
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_scarta_le_sei_chiavi_migrate(self, mock_repo, _tx):
-        """Le sei chiavi di I0/I8 nel payload non arrivano a `create_cliente`.
+    def test_crea_cliente_scarta_le_sei_chiavi_migrate(self, mock_repo):
+        """Le sei chiavi di I0/I8 nel payload sono rifiutate (400), non arrivano alla madre.
 
         ⚠️ Non sono chiavi ignote: sono quelle che il FE ha spedito per mesi.
         Se rientrassero, l'INSERT nominerebbe colonne che non esistono piu' —
@@ -264,14 +260,14 @@ class TestCreaClienteManuale(TestCase):
         """
         repo = self._setup_repo(mock_repo)
         from apps.anagrafiche.services.clienti_service import ClientiService
-        ClientiService().crea_cliente(_base_payload(
-            iva_id=5, cliente_pa="S", split_payment="S",
-            codice_cig="A1", codice_cup="B2", codice_commessa="C3",
-        ))
-        kwargs = repo.create_cliente.call_args.kwargs
-        for chiave in ("iva_id", "cliente_pa", "split_payment",
-                       "codice_cig", "codice_cup", "codice_commessa"):
-            self.assertNotIn(chiave, kwargs)
+        # ⛔ Dal 2026-10-20 non sono piu' scartate: sono un 400, come in
+        #    modifica. La madre non viene chiamata.
+        for chiave, valore in (("iva_id", 5), ("cliente_pa", "S"), ("split_payment", "S"),
+                               ("codice_cig", "A1"), ("codice_cup", "B2"), ("codice_commessa", "C3")):
+            with self.subTest(chiave=chiave), self.assertRaises(ServiceError) as ctx:
+                ClientiService().crea_cliente(_base_payload(**{chiave: valore}))
+            self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        repo.crea_cliente.assert_not_called()
 
     @patch(CLI_REPO)
     def test_crea_cliente_manuale_utility_pdp_bloccata(self, mock_repo):
@@ -290,40 +286,60 @@ class TestCreaClienteManuale(TestCase):
 
 class TestCreaClientePreesistenti(TestCase):
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_con_istanza_preesistente(self, mock_repo, _tx):
+    def test_crea_cliente_con_istanza_preesistente(self, mock_repo):
         """Riusa istanza da pratiche, genera solo BA + cliente."""
         repo = mock_repo.return_value
         repo.get_utility.return_value = _utility_gas()
-        repo.get_or_create_ruolo_cliente.return_value = 50
         repo.get_istanza.return_value = _istanza()
-        repo.create_billing_account.return_value = 200
-        repo.create_cliente.return_value = 1
+        repo.crea_cliente.return_value = (1, 200, 100, 50)
         from apps.anagrafiche.services.clienti_service import ClientiService
         result = ClientiService().crea_cliente(
             _base_payload(utility_id=1, istanza_utility_id=100))
         self.assertEqual(result["istanza_utility_id"], 100)
-        repo.create_istanza_fittizia.assert_not_called()
-        repo.create_billing_account.assert_called_once()
+        # L'istanza indicata e un BA nuovo su di lei.
+        kwargs = repo.crea_cliente.call_args.kwargs
+        self.assertEqual(kwargs["istanza_utility_id"], 100)
+        self.assertEqual(kwargs["istanza"], {})
+        self.assertIsNone(kwargs["billing_account_id"])
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_con_istanza_e_ba_preesistenti(self, mock_repo, _tx):
+    def test_crea_cliente_con_istanza_e_ba_preesistenti(self, mock_repo):
         """Riusa istanza + BA da pratiche, genera solo cliente."""
         repo = mock_repo.return_value
         repo.get_utility.return_value = _utility_gas()
-        repo.get_or_create_ruolo_cliente.return_value = 50
         repo.get_istanza.return_value = _istanza()
         repo.get_billing_account.return_value = _billing_account(utility_id=1)
-        repo.create_cliente.return_value = 1
+        repo.crea_cliente.return_value = (1, 200, 100, 50)
         from apps.anagrafiche.services.clienti_service import ClientiService
         result = ClientiService().crea_cliente(
             _base_payload(utility_id=1, istanza_utility_id=100, billing_account_id=200))
-        repo.create_istanza_fittizia.assert_not_called()
-        repo.create_billing_account.assert_not_called()
-        repo.create_cliente.assert_called_once()
+        # BA e istanza indicati: niente campi di un BA nuovo.
+        kwargs = repo.crea_cliente.call_args.kwargs
+        self.assertEqual((kwargs["billing_account_id"], kwargs["istanza_utility_id"]), (200, 100))
+        self.assertEqual((kwargs["billing_account"], kwargs["istanza"]), ({}, {}))
         self.assertEqual(result["id"], 1)
+
+    @patch(CLI_REPO)
+    def test_crea_cliente_con_ba_preesistente_senza_istanza(self, mock_repo):
+        """BA indicato senza istanza: l'istanza e' quella del BA (la legge la madre).
+
+        Fino al 2026-10-18 il confronto con un'istanza mai indicata (None) lo
+        rifiutava come «BA di un'altra istanza», e la utility col PDP come
+        «creazione manuale»: il contratto di `fn_crea_cliente` lo ammette.
+        """
+        repo = mock_repo.return_value
+        repo.get_utility.return_value = _utility_gas()
+        repo.get_billing_account.return_value = _billing_account(utility_id=1)
+        repo.crea_cliente.return_value = (1, 200, 100, 50)
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        result = ClientiService().crea_cliente(
+            _base_payload(utility_id=1, billing_account_id=200))
+        kwargs = repo.crea_cliente.call_args.kwargs
+        self.assertEqual((kwargs["billing_account_id"], kwargs["istanza_utility_id"]), (200, None))
+        self.assertEqual((kwargs["billing_account"], kwargs["istanza"]), ({}, {}))
+        repo.get_istanza.assert_not_called()
+        self.assertEqual(result["istanza_utility_id"], 100)
 
 
 # =================================================================
@@ -332,13 +348,11 @@ class TestCreaClientePreesistenti(TestCase):
 
 class TestCreaClienteValidazione(TestCase):
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_istanza_soggetto_mismatch(self, mock_repo, _tx):
+    def test_crea_cliente_istanza_soggetto_mismatch(self, mock_repo):
         """Istanza di altro soggetto → errore."""
         repo = mock_repo.return_value
         repo.get_utility.return_value = _utility_gas()
-        repo.get_or_create_ruolo_cliente.return_value = 50
         repo.get_istanza.return_value = _istanza(soggetto_id="altro-uuid")
         from apps.anagrafiche.services.clienti_service import ClientiService
         with self.assertRaises(ServiceError) as ctx:
@@ -347,13 +361,11 @@ class TestCreaClienteValidazione(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         self.assertIn("soggetto", ctx.exception.message)
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_ba_istanza_mismatch(self, mock_repo, _tx):
+    def test_crea_cliente_ba_istanza_mismatch(self, mock_repo):
         """BA di altra istanza → errore."""
         repo = mock_repo.return_value
         repo.get_utility.return_value = _utility_gas()
-        repo.get_or_create_ruolo_cliente.return_value = 50
         repo.get_istanza.return_value = _istanza()
         repo.get_billing_account.return_value = _billing_account(istanza_utility_id=999)
         from apps.anagrafiche.services.clienti_service import ClientiService
@@ -364,14 +376,12 @@ class TestCreaClienteValidazione(TestCase):
         self.assertIn("billing account", ctx.exception.message)
 
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_ba_altra_utility(self, mock_repo, _tx):
+    def test_crea_cliente_ba_altra_utility(self, mock_repo):
         """BA della stessa istanza ma di un'altra utility → errore: la coppia
         (istanza, utility) e' l'identita' del BA."""
         repo = mock_repo.return_value
         repo.get_utility.return_value = _utility_gas()
-        repo.get_or_create_ruolo_cliente.return_value = 50
         repo.get_istanza.return_value = _istanza()
         repo.get_billing_account.return_value = _billing_account(utility_id=7)
         from apps.anagrafiche.services.clienti_service import ClientiService
@@ -380,24 +390,21 @@ class TestCreaClienteValidazione(TestCase):
                 _base_payload(utility_id=1, istanza_utility_id=100, billing_account_id=200))
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         self.assertIn("utility", ctx.exception.message)
-        repo.create_cliente.assert_not_called()
+        repo.crea_cliente.assert_not_called()
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_coppia_con_ba_esistente(self, mock_repo, _tx):
+    def test_crea_cliente_coppia_con_ba_esistente(self, mock_repo):
         """Istanza esistente la cui utility ha gia' il suo BA, senza indicarlo:
         uq_billing_instance_utility → E_ANAG_DUPLICATO, non un 500."""
         repo = mock_repo.return_value
         repo.get_utility.return_value = _utility_gas()
-        repo.get_or_create_ruolo_cliente.return_value = 50
         repo.get_istanza.return_value = _istanza()
-        repo.create_billing_account.side_effect = IntegrityError("uq_billing_instance_utility")
+        repo.crea_cliente.side_effect = IntegrityError("uq_billing_instance_utility")
         from apps.anagrafiche.services.clienti_service import ClientiService
         with self.assertRaises(ServiceError) as ctx:
             ClientiService().crea_cliente(
                 _base_payload(utility_id=1, istanza_utility_id=100))
         self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
-        repo.create_cliente.assert_not_called()
 
 
 # =================================================================
@@ -439,16 +446,12 @@ class TestCreaClienteInputMancanti(TestCase):
 
 class TestCreaClienteDuplicato(TestCase):
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_duplicato_billing_account(self, mock_repo, _tx):
+    def test_crea_cliente_duplicato_billing_account(self, mock_repo):
         """UNIQUE billing account violato (un cliente per BA, R-8) → E_ANAG_DUPLICATO."""
         repo = mock_repo.return_value
         repo.get_utility.return_value = _utility_manifatturiero()
-        repo.get_or_create_ruolo_cliente.return_value = 50
-        repo.create_istanza_fittizia.return_value = 100
-        repo.create_billing_account.return_value = 200
-        repo.create_cliente.side_effect = IntegrityError("uq_clienti_billing_account")
+        repo.crea_cliente.side_effect = IntegrityError("uq_clienti_billing_account")
         from apps.anagrafiche.services.clienti_service import ClientiService
         with self.assertRaises(ServiceError) as ctx:
             ClientiService().crea_cliente(_base_payload())
@@ -538,25 +541,21 @@ class TestBaCategoriaF2BE04(TestCase):
     def _setup_crea(self, mock_repo):
         repo = mock_repo.return_value
         repo.get_utility.return_value = _utility_manifatturiero()
-        repo.get_or_create_ruolo_cliente.return_value = 50
-        repo.create_istanza_fittizia.return_value = 100
-        repo.create_billing_account.return_value = 200
-        repo.create_cliente.return_value = 1
+        repo.crea_cliente.return_value = (1, 200, 100, 50)
         return repo
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_con_ba_categoria(self, mock_repo, _tx):
+    def test_crea_cliente_con_ba_categoria(self, mock_repo):
         """F2-BE-04: ba_categoria_cliente_id del payload passato al repo."""
         repo = self._setup_crea(mock_repo)
         from apps.anagrafiche.services.clienti_service import ClientiService
         ClientiService().crea_cliente(_base_payload(ba_categoria_cliente_id=7))
-        kwargs = repo.create_billing_account.call_args.kwargs
-        self.assertEqual(kwargs["categoria_cliente_id"], 7)
+        self.assertEqual(
+            repo.crea_cliente.call_args.kwargs["billing_account"], {"categoria_cliente_id": 7},
+        )
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_senza_ba_categoria_errore(self, mock_repo, _tx):
+    def test_crea_cliente_senza_ba_categoria_errore(self, mock_repo):
         """F3-FE-04: ba_categoria_cliente_id omesso -> E_ANAG_VALIDAZIONE.
         Nessun default implicito: la categoria cliente e' dimensione
         commerciale e deve essere scelta esplicitamente."""
@@ -635,18 +634,14 @@ class TestCreaClienteGuardEmittente(TestCase):
     def _setup_repo(self, mock_repo, can_create_ba: bool = True):
         repo = mock_repo.return_value
         repo.get_utility.return_value = _utility_manifatturiero()
-        repo.get_or_create_ruolo_cliente.return_value = 50
-        repo.create_istanza_fittizia.return_value = 100
-        repo.create_billing_account.return_value = 200
-        repo.create_cliente.return_value = 1
+        repo.crea_cliente.return_value = (1, 200, 100, 50)
         repo.check_user_can_create_ba.return_value = can_create_ba
         return repo
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_guard_admin_globale_blocca_creazione_ba(self, mock_repo, _tx):
+    def test_guard_admin_globale_blocca_creazione_ba(self, mock_repo):
         """Admin globale + emittenti presenti → E_BA_ADMIN_GLOBALE_VIETATO,
-        nessuna chiamata a create_billing_account."""
+        nessuna chiamata alla madre del DB."""
         repo = self._setup_repo(mock_repo, can_create_ba=False)
         from apps.anagrafiche.services.clienti_service import ClientiService
         with self.assertRaises(ServiceError) as ctx:
@@ -654,13 +649,10 @@ class TestCreaClienteGuardEmittente(TestCase):
         self.assertEqual(ctx.exception.code, "E_BA_ADMIN_GLOBALE_VIETATO")
         repo.check_user_can_create_ba.assert_called_once_with(42)
         # Early reject: nessuna scrittura DB
-        repo.create_billing_account.assert_not_called()
-        repo.create_istanza_fittizia.assert_not_called()
-        repo.create_cliente.assert_not_called()
+        repo.crea_cliente.assert_not_called()
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_guard_skip_quando_auth_user_id_none(self, mock_repo, _tx):
+    def test_guard_skip_quando_auth_user_id_none(self, mock_repo):
         """Contesto di sistema (auth_user_id=None) → guard skippato,
         creazione procede (defense-in-depth via trigger DB)."""
         repo = self._setup_repo(mock_repo, can_create_ba=False)
@@ -668,11 +660,10 @@ class TestCreaClienteGuardEmittente(TestCase):
         result = ClientiService().crea_cliente(_base_payload(), auth_user_id=None)
         self.assertEqual(result["id"], 1)
         repo.check_user_can_create_ba.assert_not_called()
-        repo.create_billing_account.assert_called_once()
+        repo.crea_cliente.assert_called_once()
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_guard_skip_quando_ba_preesistente(self, mock_repo, _tx):
+    def test_guard_skip_quando_ba_preesistente(self, mock_repo):
         """Se billing_account_id e' fornito (riuso da pratiche),
         non si crea un nuovo BA → niente guard."""
         repo = self._setup_repo(mock_repo, can_create_ba=False)
@@ -685,12 +676,11 @@ class TestCreaClienteGuardEmittente(TestCase):
         )
         # Guard NON deve essere chiamato perche' non si crea nuovo BA
         repo.check_user_can_create_ba.assert_not_called()
-        # E nessun create_billing_account perche' si riusa quello fornito
-        repo.create_billing_account.assert_not_called()
+        # E nessun BA nuovo perche' si riusa quello fornito
+        self.assertEqual(repo.crea_cliente.call_args.kwargs["billing_account"], {})
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_guard_passa_per_operatore_di_emittente(self, mock_repo, _tx):
+    def test_guard_passa_per_operatore_di_emittente(self, mock_repo):
         """Operatore con riga in user_emittenti_fiscali → check_user_can_create_ba
         ritorna True → creazione BA procede."""
         repo = self._setup_repo(mock_repo, can_create_ba=True)
@@ -698,11 +688,10 @@ class TestCreaClienteGuardEmittente(TestCase):
         result = ClientiService().crea_cliente(_base_payload(), auth_user_id=99)
         self.assertEqual(result["id"], 1)
         repo.check_user_can_create_ba.assert_called_once_with(99)
-        repo.create_billing_account.assert_called_once()
+        repo.crea_cliente.assert_called_once()
 
-    @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_db_trigger_error_propaga_codice(self, mock_repo, _tx):
+    def test_db_trigger_error_propaga_codice(self, mock_repo):
         """Se il trigger DB solleva un'eccezione (defense-in-depth oltre
         il guard applicativo), la repository la propaga e il service
         lascia salire al middleware (ApiExceptionMiddleware) che la
@@ -710,7 +699,7 @@ class TestCreaClienteGuardEmittente(TestCase):
         viene rilanciato senza essere mascherato."""
         repo = self._setup_repo(mock_repo, can_create_ba=True)
         # Simula il trigger DB che blocca con un'eccezione applicativa
-        repo.create_billing_account.side_effect = RuntimeError(
+        repo.crea_cliente.side_effect = RuntimeError(
             "ERROR: E_BA_ADMIN_GLOBALE_VIETATO ..."
         )
         from apps.anagrafiche.services.clienti_service import ClientiService

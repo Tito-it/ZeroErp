@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2c): le famiglie di numerazione col codice della sorgente (DDT_VENDITA, ORDINE_VENDITA, RESO_VENDITA, DISTINTA_INCASSO).
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture CREA un emittente e i suoi registri per
 --   provare il provisioning, e nessun operatore ne vede piu' di uno
@@ -92,14 +93,14 @@ SELECT r.emittente_soggetto_ruolo_id AS emittente_sr,
        (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1)       AS ut_1,
        (SELECT u.id FROM config.utilities u ORDER BY u.id DESC LIMIT 1)  AS ut_2
   FROM vendite.registri_fatturazione r
- WHERE r.famiglia_documento = 'DDT' AND r.utility_id IS NULL AND r.attivo
+ WHERE r.famiglia_documento = 'DDT_VENDITA' AND r.utility_id IS NULL AND r.attivo
  ORDER BY r.id
  LIMIT 1;
 
 INSERT INTO vendite.registri_fatturazione (
     codice, descrizione, emittente_soggetto_ruolo_id,
     famiglia_documento, reset_policy, attivo, utility_id, prefisso, suffisso)
-SELECT 'PFXA', 'pgTAP prefisso A', p.emittente_sr, 'DDT', 'ANNUALE', true,
+SELECT 'PFXA', 'pgTAP prefisso A', p.emittente_sr, 'DDT_VENDITA', 'ANNUALE', true,
        p.ut_1, 'PFX', 'Z'
   FROM tmp_pfx p;
 
@@ -107,7 +108,7 @@ PREPARE pfx_doppione AS
 INSERT INTO vendite.registri_fatturazione (
     codice, descrizione, emittente_soggetto_ruolo_id,
     famiglia_documento, reset_policy, attivo, utility_id, prefisso, suffisso)
-SELECT 'PFXB', 'pgTAP prefisso B', p.emittente_sr, 'ORDINE', 'ANNUALE', true,
+SELECT 'PFXB', 'pgTAP prefisso B', p.emittente_sr, 'ORDINE_VENDITA', 'ANNUALE', true,
        p.ut_2, 'PFX', 'Z'
   FROM tmp_pfx p;
 
@@ -123,7 +124,7 @@ SELECT lives_ok(
     $q$INSERT INTO vendite.registri_fatturazione (
            codice, descrizione, emittente_soggetto_ruolo_id,
            famiglia_documento, reset_policy, attivo, utility_id)
-       SELECT 'PFXC', 'pgTAP senza nome', p.emittente_sr, 'ORDINE', 'ANNUALE',
+       SELECT 'PFXC', 'pgTAP senza nome', p.emittente_sr, 'ORDINE_VENDITA', 'ANNUALE',
               true, p.ut_2
          FROM tmp_pfx p$q$,
     '3) ...ma due registri SENZA prefisso ne'' suffisso convivono');
@@ -147,38 +148,67 @@ SELECT lives_ok(
 --   indietro, era il test che guardava il secchio sbagliato. Un registro
 --   passato a NESSUNA che non ha ancora numerato non ha il secchio 0, e allora
 --   vale quello dell'anno: per questo e' un massimo su entrambi, non un CASE.
+-- ⚠️ rev 2026-10-18: il progressivo si legge TOGLIENDO dal numero le parti che
+--   il registro dichiara — prefisso, anno con trattino (anno_nel_numero),
+--   suffisso — e solo dopo tenendo le cifre. Prima si tenevano tutte le cifre
+--   del numero: su un registro con l'anno nel numero ORD2026-0000009 diventava
+--   20260000009, e il contatore giusto (9) usciva «sotto il massimo». E' uscito
+--   col primo registro con anno_nel_numero che ha numerato davvero (l'ordine di
+--   DEVA dagli smoke di dev.smoke): difetto del test, non del contatore.
+--   ⭐ Un numero che NON comincia col prefisso (il pregresso nato prima dei
+--   prefissi, tutto cifre) non perde niente: per quelli la lettura e' identica
+--   a prima. La composizione da cui si risale e' quella di
+--   vendite.fn_assegna_numero_documento.
 CREATE TEMP TABLE tmp_all AS
-WITH pregresso AS (
-    SELECT 'ORDINE'::character varying AS fam, ef.soggetto_ruolo_id AS sr,
-           EXTRACT(YEAR FROM o.data)::smallint AS anno,
-           max(NULLIF(regexp_replace(o.numero::text, '\D', '', 'g'), '')::bigint) AS max_n
+WITH documenti AS (
+    SELECT 'ORDINE_VENDITA'::character varying AS fam, ef.soggetto_ruolo_id AS sr,
+           EXTRACT(YEAR FROM o.data)::smallint AS anno, o.numero::text AS numero
       FROM vendite.ordini o
       JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
-     WHERE o.numero IS NOT NULL GROUP BY 1,2,3
+     WHERE o.numero IS NOT NULL
     UNION ALL
-    SELECT 'DDT', ef.soggetto_ruolo_id, EXTRACT(YEAR FROM d.data)::smallint,
-           max(NULLIF(regexp_replace(d.numero::text, '\D', '', 'g'), '')::bigint)
+    SELECT 'DDT_VENDITA', ef.soggetto_ruolo_id, EXTRACT(YEAR FROM d.data)::smallint, d.numero::text
       FROM vendite.ddt d
       JOIN anagrafiche.emittenti_fiscali ef ON ef.id = d.emittente_fiscale_id
-     WHERE d.numero IS NOT NULL GROUP BY 1,2,3
+     WHERE d.numero IS NOT NULL
     UNION ALL
-    SELECT 'RESO', ef.soggetto_ruolo_id, EXTRACT(YEAR FROM r.data)::smallint,
-           max(NULLIF(regexp_replace(r.numero::text, '\D', '', 'g'), '')::bigint)
+    SELECT 'RESO_VENDITA', ef.soggetto_ruolo_id, EXTRACT(YEAR FROM r.data)::smallint, r.numero::text
       FROM vendite.resi r
       JOIN anagrafiche.emittenti_fiscali ef ON ef.id = r.emittente_fiscale_id
-     WHERE r.numero IS NOT NULL GROUP BY 1,2,3
+     WHERE r.numero IS NOT NULL
+), spogliati AS (
+    SELECT d.fam, d.anno, reg.id AS registro_id, reg.codice AS registro, x3.n AS resto
+      FROM documenti d
+      JOIN vendite.registri_fatturazione reg
+        ON reg.emittente_soggetto_ruolo_id = d.sr
+       AND reg.famiglia_documento = d.fam
+       AND reg.utility_id IS NULL
+     CROSS JOIN LATERAL (SELECT CASE WHEN coalesce(reg.prefisso, '') <> ''
+                                          AND starts_with(d.numero, reg.prefisso)
+                                     THEN substr(d.numero, length(reg.prefisso) + 1)
+                                     ELSE d.numero END AS n) x1
+     CROSS JOIN LATERAL (SELECT CASE WHEN reg.anno_nel_numero
+                                          AND starts_with(x1.n, d.anno::text || '-')
+                                     THEN substr(x1.n, length(d.anno::text) + 2)
+                                     ELSE x1.n END AS n) x2
+     CROSS JOIN LATERAL (SELECT CASE WHEN coalesce(reg.suffisso, '') <> ''
+                                          AND right(x2.n, length(reg.suffisso)) = reg.suffisso
+                                     THEN left(x2.n, length(x2.n) - length(reg.suffisso))
+                                     ELSE x2.n END AS n) x3
+     WHERE d.anno IS NOT NULL
+), pregresso AS (
+    SELECT fam, anno, registro_id, registro,
+           max(NULLIF(regexp_replace(resto, '\D', '', 'g'), '')::bigint) AS max_n
+      FROM spogliati
+     GROUP BY 1, 2, 3, 4
 )
-SELECT p.fam, p.anno, p.max_n, reg.codice AS registro,
+SELECT p.fam, p.anno, p.max_n, p.registro,
        COALESCE((SELECT max(pr.last_numero)
                    FROM vendite.registri_fatturazione_progressivi pr
-                  WHERE pr.registro_id = reg.id
+                  WHERE pr.registro_id = p.registro_id
                     AND pr.anno IN (p.anno, 0)), 0) AS contatore
   FROM pregresso p
-  JOIN vendite.registri_fatturazione reg
-    ON reg.emittente_soggetto_ruolo_id = p.sr
-   AND reg.famiglia_documento = p.fam
-   AND reg.utility_id IS NULL
- WHERE p.max_n IS NOT NULL AND p.anno IS NOT NULL;
+ WHERE p.max_n IS NOT NULL;
 
 SELECT is(
     (SELECT COALESCE(string_agg(
@@ -240,7 +270,7 @@ SELECT is(
         AND r.famiglia_documento <> 'FATTURA'),
     -- ⭐ Rev 2026-09-15: la sesta famiglia, DISTINTA (DIS-), e' la prima fuori
     --   da vendite (brief distinta-numerata-sul-registro, L11/L12).
-    'COMMESSA=CMM-, DDT=DDT, DISTINTA=DIS-, ORDINE=ORD, RESO=RESO',
+    'COMMESSA=CMM-, DDT_VENDITA=DDT, DISTINTA_INCASSO=DIS-, ORDINE_VENDITA=ORD, RESO_VENDITA=RESO',
     '6) I registri di un emittente nuovo nascono gia'' col prefisso');
 
 SELECT * FROM finish();

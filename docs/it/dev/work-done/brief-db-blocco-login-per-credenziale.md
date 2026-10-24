@@ -24,7 +24,7 @@
 > di cui il P-1 tiene lo stato: si fanno nello stesso cantiere.
 >
 > **Origine**: difetto M-4 di
-> [analisi-be-difetti-emersi-verifica-doc-api-core.md](../work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md),
+> [analisi-be-difetti-emersi-verifica-doc-api-core.md](../work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md),
 > diventato il cantiere
 > [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md).
 > Decisioni di Tid del 2026-09-24:

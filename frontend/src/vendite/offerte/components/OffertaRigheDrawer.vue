@@ -95,6 +95,7 @@ const apiComponenti = {
     :documento-id="props.offertaId"
     :emittente-fiscale-id="props.emittenteFiscaleId"
     lista-codice="vendite.offerta_righe"
+    documento="OFFERTA_COMMERCIALE"
     :righe-store="righeStore"
     :scritture="scritture"
     :esporta-righe="exportRigheLista"

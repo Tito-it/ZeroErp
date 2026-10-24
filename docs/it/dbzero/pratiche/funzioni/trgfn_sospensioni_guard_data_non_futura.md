@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_sospensioni_guard_data_non_futura()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_guard_data_non_futura()
  RETURNS trigger
@@ -47,6 +49,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_sospensioni_guard_data_non_futura()
 IS 'Guard: vieta data_inizio/data_fine nel futuro su sospensioni (tolleranza clock-skew 2 min). Non tocca data_riattivazione_prevista.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

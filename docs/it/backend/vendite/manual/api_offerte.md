@@ -34,7 +34,8 @@ conversioni semantiche.
   riapprovato. Vedi [API approvazioni prezzo](api_approvazioni_prezzo.md) e
   [refactor-prezzi](../../../dev/work-done/refactor-prezzi.md).
 - **State machine asimmetrica** (decisione operativa): annullamento da noi
-  solo prima dell'emissione; rifiuto cliente solo dopo l'emissione.
+  prima dell'emissione, o dopo l'accettazione se l'offerta non si trasforma
+  (dal 2026-10-21); rifiuto cliente solo dopo l'emissione.
 
 ## Contesto
 
@@ -59,6 +60,14 @@ conversioni semantiche.
     «Emetti» con la stessa check (`reason_key`
     `vendite.offerte.azione_reason.listino_senza_versione_in_vigore` /
     `…listino_versione_non_attiva`): pulsante e guard non possono dissentire
+  - su `BOZZA -> EMESSA`, per ultime, le **righe** che la regola intera non
+    ammette piu' (`script.fn_check_righe_documento`: articolo, erogazione e
+    fonte, giudicati sui dati di oggi) → `E_DOC_RIGA_NON_AMMESSA` col campo
+    `articolo_id`; la capability spegne «Emetti» col motivo `RIGA_NON_AMMESSA`
+    (dal 2026-10-21, H-R1 di brief-db-offerta-emissione-ed-erogazione)
+  - verso `ANNULLATA` da `ACCETTATA`: rifiuta se dall'offerta vive un contratto
+    o un ordine (`script.fn_check_offerta_annullabile` →
+    `E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI`, col bersaglio)
 - I codici errore `E_OFFERTA_*` sollevati dal trigger sono **estratti dal
   MESSAGE** del trigger via regex (`_DB_ERROR_CODE_RE`) e propagati al client
   come `ServiceError.code` originale, non come `E_VENDITE_VALIDATION` generico.
@@ -73,10 +82,15 @@ conversioni semantiche.
 | EMESSA | ACCETTATA | operatore (`/registra-esito/`) | Valorizza `data_accettazione`                                  |
 | EMESSA | RIFIUTATA | operatore (`/registra-esito/`) | Valorizza `data_rifiuto` + `motivazione_rifiuto`               |
 | EMESSA | SUPERATA  | trigger revisione (Step 7 DB) | Stato terminale tecnico; rev.N+1 diventa la nuova offerta corrente |
+| ACCETTATA | ANNULLATA | operatore (`/annulla/`)    | Solo senza contratti o ordini vivi a valle (dal 2026-10-21); valorizza `data_annullamento` + `motivazione_rifiuto` |
+| SUPERATA | EMESSA   | DB (non manuale)              | Rientro del padre quando l'ultima revisione viva si annulla |
 
-Stati terminali immutabili: **ACCETTATA**, **RIFIUTATA**, **SUPERATA**,
-**ANNULLATA**. Transizioni *NON* ammesse (documentate per evitare
-ambiguita'):
+Stati terminali: **RIFIUTATA**, **ANNULLATA**. **ACCETTATA** si chiude
+trasformandola (contratto o ordine) o, quando non si puo' trasformare,
+annullandola (H-R3 di brief-db-offerta-emissione-ed-erogazione: prima del
+2026-10-21 un'offerta accettata che non si trasformava restava bloccata).
+**SUPERATA** non ha uscite manuali. Transizioni *NON* ammesse (documentate per
+evitare ambiguita'):
 
 - `BOZZA -> RIFIUTATA` non esiste: RIFIUTATA e' il "no del cliente" e dal
   cliente non si arriva mai con un'offerta ancora in bozza.
@@ -152,10 +166,20 @@ Risposta `200`:
     "utility_descrizione": "Gas",
     "valuta_id": 1,
     "valuta_codice": "EUR",
-    "valuta_descrizione": "Euro"
+    "valuta_descrizione": "Euro",
+    "fornitura": {
+      "istanza_dati_precontrattuali_id": 88, "classe_utenza_id": 7,
+      "tipo_utenza_id": 2, "param_1_num": "1500", "param_2_txt": "POD-XYZ",
+      "meta": {}
+    }
   }
 }
 ```
+
+`fornitura`: la scheda di fornitura che l'anagrafica dà alla coppia (istanza,
+utility) del BA (`vendite.fn_get_fornitura_da_anagrafica`), con cui il drawer
+precompila il sotto-oggetto `utility`. `null` senza BA o se la coppia non ha dati
+precontrattuali.
 
 Risoluzione `valuta_id` (BB `resolve_valuta_default`, allineato a
 `vendite.fn_get_valuta_id`):
@@ -191,16 +215,16 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 | ---------------------- | -------- | ------------------------------------------------------------------------------------------ |
 | `search`               | string   | ILIKE su `codice` offerta, `ragione_sociale_completa`, `ba_codice` e `id_fiscale_univoco_cf_piva`. Sotto 3 caratteri il termine **non filtra** (nessun errore) |
 | `billing_account_id`   | int      | Filtro cliente                                                                              |
-| `stato_codice_interno` | string   | `BOZZA` \| `EMESSA` \| `ACCETTATA` \| `RIFIUTATA` \| `ANNULLATA` \| `SUPERATA`               |
+| `stato_codice_interno` | string   | `BOZZA` \| `EMESSA` \| `ACCETTATA` \| `RIFIUTATA` \| `ANNULLATA` \| `SUPERATA`. Fuori vocabolario `config.stati_doc_offerte` → 400 `E_VENDITE_VALIDATION` col campo (2026-10-20: prima lista vuota con 200) |
 | `utility_id`           | int      | Filtro utility                                                                              |
 | `listino_id`           | int      | Filtro listino di riferimento                                                               |
 | `validita_dal_min`     | ISO date | Filtro su `validita_dal` (range minimo). Nessun default backend                             |
 | `validita_dal_max`     | ISO date | Filtro su `validita_dal` (range massimo)                                                    |
-| `solo_attiva`          | bool     | Default `true`: solo l'ultima revisione viva per lineage (`vw_offerte_commerciali_lista.is_attiva`). `false` = storico revisioni completo (2026-05-28) |
+| `solo_ultima_revisione` | bool    | Default `true`: solo la revisione non rimpiazzata per lineage (`vw_offerte_commerciali_lista.is_superata IS FALSE`). Filtra sulla posizione nella catena, non sullo stato: le ANNULLATE restano visibili. `false` = storico revisioni completo |
 | `limit`                | int      | Default 25                                                                                  |
 | `offset`               | int      | Default 0                                                                                   |
-| `order_by`             | string   | `campo_sorgente` catalogo `vendite.offerte`: `codice` \| `ragione_sociale_completa` \| `ba_codice` \| `id_fiscale_univoco_cf_piva` \| `utility_codice` \| `utility_descrizione` \| `listino_codice` \| `validita_dal` \| `validita_al` \| `data_emissione` \| `stato_descrizione` \| `stato_codice_interno` \| `data_insert`. `revisione_numero` **non ordinabile** |
-| `order_dir`            | string   | `asc` o `desc` (default)                                                                    |
+| `order_by`             | string   | `campo_sorgente` catalogo `vendite.offerte`: `codice` \| `ragione_sociale_completa` \| `ba_codice` \| `id_fiscale_univoco_cf_piva` \| `utility_codice` \| `utility_descrizione` \| `listino_codice` \| `validita_dal` \| `validita_al` \| `data_emissione` \| `data_accettazione` \| `data_rifiuto` \| `data_annullamento` \| `stato_descrizione` \| `data_insert` \| `pratica_numero` \| `fase` (default `data_insert`). Fuori whitelist → 400. `revisione_numero` **non ordinabile** |
+| `order_dir`            | string   | `asc` \| `desc`. Assente: `desc` sulle colonne data e sul default `data_insert`, `asc` sulle altre |
 
 > **`search` corto o vuoto**: vuoto, whitespace-only o sotto 3 caratteri →
 > nessun filtro, nessun errore (BB `add_ricerca_full_condition`, soglia unica
@@ -226,7 +250,7 @@ con la DataTable a video (config runtime: preferenza + preset + permessi).
 | Parametro | Tipo | Descrizione |
 |---|---|---|
 | `formato` | string | `csv` (default) o `xlsx`. **NB**: `formato` (italiano), NON `format` (magic param DRF) |
-| `search`, `billing_account_id`, `stato_codice_interno`, `utility_id`, `listino_id`, `validita_dal_min`, `validita_dal_max`, `solo_attiva`, `order_by`, `order_dir` | — | stessi della lista |
+| `search`, `billing_account_id`, `stato_codice_interno`, `utility_id`, `listino_id`, `validita_dal_min`, `validita_dal_max`, `solo_ultima_revisione`, `order_by`, `order_dir` | — | stessi della lista |
 
 - Hard cap **10.000 righe**: oltre → `422 E_UI_EXPORT_LIMIT_EXCEEDED`.
 - `formato` non valido → `400 E_UI_EXPORT_FORMAT_INVALID`.
@@ -298,7 +322,7 @@ non ancora compilato).
 ```json
 {
   "data": {
-    "id": 1, "uid": "...", "codice": "OFC-2026-0001",
+    "id": 1, "uid": "...", "codice": "OFC-0000001",
     "emittente_fiscale_id": 10,
     "billing_account_id": 100,
     "ba_codice": "BA-0123", "billing_account_display": "Acme S.p.A.",
@@ -407,15 +431,23 @@ non ancora compilato).
   `OFFERTA_CONTRATTO_GIA_GENERATO` o `OFFERTA_ORDINE_GIA_GENERATO`); analoga coppia
   `can_genera_ordine_reason` + `can_genera_ordine_reason_key` per la
   generazione ordine (`OFFERTA_NON_ACCETTATA`, `OFFERTA_ORDINE_GIA_GENERATO` o
-  `OFFERTA_CONTRATTO_GIA_GENERATO`) — l'azione `genera_ordine` compare in
-  `available_actions` solo se `can_genera_ordine`; `non_editable_fields[]` lista
+  `OFFERTA_CONTRATTO_GIA_GENERATO`). ⭐ Dal 2026-10-21 da `ACCETTATA` senza
+  documenti vivi le azioni `push_contratto` e `genera_ordine` sono **proposte**
+  in `available_actions` anche spente (`enabled:false` + `reasons`), col motivo
+  `RIGA_NON_AMMESSA` se una riga non puo' andare nel documento da generare; il
+  flag e la coppia reason seguono il primo motivo. Fuori da quel caso le due
+  azioni non compaiono e il motivo sta solo nella coppia reason;
+  `non_editable_fields[]` lista
   immutabili (sempre + workflow-dipendenti, lista lunga fuori BOZZA);
   `stato_codice` discriminante macchina (equivalente a
   `stato_codice_interno`, esposto anche dalla fn DB).
 
 ### Update testata `PATCH /api/v1/vendite/offerte/<id>/`
 
-Solo in stato **BOZZA**. Whitelist campi mutabili: `emittente_fiscale_id`,
+Nessun guard di stato nel service: quali colonne si cambiano in quale stato lo
+decide il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, il 409
+`E_DOC_*` passa com'e'; vedi §Regole 3). Offerta inesistente o fuori perimetro →
+404. Whitelist campi mutabili: `emittente_fiscale_id`,
 `billing_account_id`, `istanza_utility_id`, `utility_id`, `listino_id`,
 `listino_versione_id`, `valore_variazione_globale`,
 `tipo_variazione_globale`, `validita_dal`, `validita_al`, `meta`,
@@ -448,7 +480,8 @@ testata) e' ammesso ed esegue solo l'upsert utility.
 
 ### Delete `DELETE /api/v1/vendite/offerte/<id>/`
 
-Solo in stato BOZZA. Hard delete dell'offerta + cascade su
+Solo in stato BOZZA (pre-check del service: altrimenti 400
+`E_VENDITE_VALIDATION`). Hard delete dell'offerta + cascade su
 `offerte_commerciali_eccezioni` e `offerte_commerciali_utilities` via FK.
 
 **Annullamento di processo**: per "ritirare" un'offerta gia' presentata
@@ -551,7 +584,7 @@ oppure
 Routing per esito implementato nel service (`registra_esito`), la view e'
 sottile.
 
-### Cambio stato BOZZA -> ANNULLATA `POST /api/v1/vendite/offerte/<id>/annulla/`
+### Cambio stato -> ANNULLATA `POST /api/v1/vendite/offerte/<id>/annulla/`
 
 ```json
 {"motivazione": "Riscontrato errore nel listino di riferimento."}
@@ -560,9 +593,16 @@ sottile.
 Motivazione obbligatoria. Salvata in `motivazione_rifiuto` (colonna
 condivisa con RIFIUTATA). Il trigger DB valorizza `data_annullamento`.
 
-Annullamento ammesso **solo da BOZZA**. Pattern simmetrico ai contratti
-`DRAFT -> ANNULLATO`. Tentativo da EMESSA → 422 con
-`E_OFFERTA_TRANSIZIONE_NON_AMMESSA` propagato dal trigger DB.
+Annullamento ammesso da **BOZZA** e da **ACCETTATA** (dal 2026-10-21, H-R3):
+da ACCETTATA solo se l'offerta non ha generato un contratto o un ordine ancora
+vivo, altrimenti `E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI` (409, col bersaglio).
+⛔ Il service **non** ha uno stato di partenza suo: da quali stati si annulla lo
+dicono le transizioni del DB, e un tentativo da un altro stato e' il 409
+`E_OFFERTA_TRANSIZIONE_NON_AMMESSA` del guard. Fino al 2026-10-21 c'era un
+pre-check «solo da BOZZA» (400 `E_VENDITE_VALIDATION`), che avrebbe rifiutato
+l'annullo da ACCETTATA. Offerta inesistente o fuori perimetro → 404
+`E_VENDITE_NOT_FOUND`. Il pre-check di stato resta su `/emetti/` (da BOZZA) e
+`/registra-esito/` (da EMESSA).
 
 ### Crea revisione `POST /api/v1/vendite/offerte/<id>/crea-revisione/`
 
@@ -587,10 +627,9 @@ Body vuoto. Crea rev.N+1 in stato `BOZZA` a partire dall'offerta corrente
 
 Guard:
 
-- Stato corrente diverso da `EMESSA` → 422
-  `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`. La fn DB e' guard finale; il
-  service applica anche un pre-check applicativo che ritorna
-  `E_VENDITE_VALIDATION` parlante in caso di stato fuori scope.
+- Stato corrente diverso da `EMESSA` → 400 `E_VENDITE_VALIDATION` dal
+  pre-check del service. La fn DB resta la rete
+  (`E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`, 409).
 - Offerta inesistente → 404.
 
 `user` di audit: il service prende `request.user.username` se autenticato
@@ -599,10 +638,19 @@ Guard:
 ### Push a contratto `POST /api/v1/vendite/offerte/<id>/push-contratto/`
 
 ```json
-{"pratica_id": 7}
+{"pratica_id": 7, "chiudi_esistente": false}
 ```
 
-oppure body vuoto `{}` per push senza collegamento a pratica.
+Entrambi i campi opzionali (body vuoto `{}` = push senza pratica e senza
+successione):
+
+- `pratica_id` (int, anche `"7"` stringa): collega il contratto alla pratica.
+- `chiudi_esistente` (booleano JSON, default `false`): se esiste un contratto
+  attivo sovrapposto, `false` fa fallire il push con
+  `E_CONTRATTO_OVERLAP_ESISTENTE` (409), `true` lo chiude per successione e crea
+  il nuovo. Un valore non booleano (anche `"false"` stringa) → 400
+  `E_VALIDATION_INPUT` col campo (2026-10-20: prima `"false"` valeva `true` e
+  chiudeva il contratto esistente).
 
 Genera un **contratto DRAFT** a partire dall'offerta corrente (che deve
 essere in stato `ACCETTATA`). Effetti:
@@ -641,88 +689,104 @@ Ritorna gli identificativi minimi del nuovo contratto (il FE naviga al
 
 Guard:
 
-- Stato corrente ≠ `ACCETTATA` → 422 `E_OFFERTA_PUSH_STATO_NON_AMMESSO`.
-  Il service applica anche pre-check applicativo che ritorna
-  `E_VENDITE_VALIDATION` parlante in caso di stato fuori scope.
-- Doppia invocazione su stessa offerta → 422
-  `E_OFFERTA_CONTRATTO_GIA_GENERATO` (idempotenza pattern A §6.9.3).
-- `pratica_id` non-positivo o non-int → `E_VENDITE_VALIDATION`.
+- Stato corrente ≠ `ACCETTATA` → 400 `E_VENDITE_VALIDATION` dal pre-check del
+  service; la fn DB resta la rete (`E_OFFERTA_PUSH_STATO_NON_AMMESSO`, 409).
+- Doppia invocazione su stessa offerta → 409
+  `E_OFFERTA_CONTRATTO_GIA_GENERATO` (idempotenza pattern A §6.9.3); offerta
+  che ha già generato un ordine → 409 `E_OFFERTA_ORDINE_GIA_GENERATO`.
+- `pratica_id` non-positivo o non-int → 400 `E_VENDITE_VALIDATION`.
+
+### Contratto sovrapposto `GET /api/v1/vendite/offerte/<id>/contratto-sovrapposto/`
+
+Sola lettura: il contratto attivo la cui validità si sovrappone a quella che il
+push genererebbe (`vendite.fn_contratto_sovrapposto` sulla coppia BA/istanza,
+utility e `validita_dal/al` dell'offerta). Alimenta il dialog di successione dopo
+un `E_CONTRATTO_OVERLAP_ESISTENTE`.
+
+```json
+{"data": {"contratto": {"id": 55, "numero": "CNT0000031",
+  "valido_dal": "2026-01-01", "valido_al": null}}}
+```
+
+`contratto: null` se non c'è sovrapposizione. Offerta inesistente o fuori
+perimetro → 404 `E_VENDITE_NOT_FOUND`.
 
 ### Lista revisioni `GET /api/v1/vendite/offerte/<id>/revisioni/`
 
-Ritorna la **catena di revisioni** che condivide il root (rev.1) con
-l'offerta passata. Output ordinato per `revisione_numero` ASC. Lettura
-libera in ogni stato (utile per il drawer FE che vuole mostrare la
-timeline rev.1 SUPERATA → rev.2 SUPERATA → rev.3 EMESSA → ecc.).
+Ritorna, **paginata**, la catena di revisioni che condivide la radice (rev.1)
+con l'offerta passata (lista configurabile `vendite.offerta_revisioni`, tab del
+drawer). Lettura libera in ogni stato.
+
+| Parametro | Tipo | Descrizione |
+| --- | --- | --- |
+| `limit` / `offset` | int | Default 25 / 0 |
+| `order_by` | string | `revisione_numero` (default) \| `codice` \| `data_emissione` \| `stato_descrizione` |
+| `order_dir` | string | `asc` \| `desc`. Assente: `asc`, `desc` su `data_emissione` (le bozze, senza data, in coda) |
+| `emittente_fiscale_id` | int | Emittente del documento (PK). Lo legge solo il cancello di perimetro, per chi vede più emittenti: non filtra le righe |
 
 ```json
 {
-  "data": [
-    {"id": 1,  "codice": "OFC-0000001", "revisione_numero": 1,
-     "stato_codice_interno": "SUPERATA", "revisione_padre_id": null,
-     "data_emissione": "2026-04-10T09:15:00Z"},
-    {"id": 7,  "codice": "OFC-0000003", "revisione_numero": 2,
-     "stato_codice_interno": "SUPERATA", "revisione_padre_id": 1,
-     "data_emissione": "2026-05-02T16:40:00Z"},
-    {"id": 42, "codice": "OFC-0000019", "revisione_numero": 3,
-     "stato_codice_interno": "EMESSA", "revisione_padre_id": 7,
-     "data_emissione": "2026-05-25T11:00:00Z"}
-  ]
+  "data": {
+    "count": 3, "page": 1, "page_size": 25, "total_pages": 1,
+    "results": [
+      {"id": 1,  "codice": "OFC-0000001", "revisione_numero": 1,
+       "stato_codice_interno": "SUPERATA", "data_emissione": "2026-04-10T09:15:00Z", "...": "..."},
+      {"id": 42, "codice": "OFC-0000019", "revisione_numero": 3,
+       "stato_codice_interno": "EMESSA", "data_emissione": "2026-05-25T11:00:00Z", "...": "..."}
+    ]
+  }
 }
 ```
 
-Implementazione: CTE ricorsiva in due passi (risale via `revisione_padre_id`
-fino al root, poi ridiscende a tutti i discendenti). Una query, indici
-gia' presenti su `revisione_padre_id`.
+Le righe sono quelle della vista lista `vw_offerte_commerciali_lista` filtrate
+su `revisione_radice_id`. Offerta inesistente o fuori perimetro → 404
+`E_VENDITE_NOT_FOUND`.
 
 ### Genera ordine `POST /api/v1/vendite/offerte/<id>/genera-ordine/`
 
 Conversione upstream (§7.4 analisi-ordini-vendita, 2026-06-04): crea un **ordine
-di vendita DRAFT** dall'offerta, copiando testata + righe + componenti BoM e
-valorizzando `documento_origine = ('OFFERTA', offerta_id)` sull'ordine.
+di vendita DRAFT** dall'offerta ACCETTATA. ⭐ Dal 2026-10-21 lo fa il **verbo DB**
+`vendite.fn_genera_ordine_da_offerta` (I-D2 di
+brief-db-offerta-emissione-ed-erogazione), gemello del push al contratto, in una
+transazione: offerta bloccata `FOR UPDATE`, stato, documenti vivi, righe, testata
+con la provenienza `('OFFERTA_COMMERCIALE', offerta_id)`, indirizzo di default,
+righe espanse coi prezzi negoziati e componenti BoM. Ritorna l'id dell'ordine.
+⛔ Fino a quel giorno l'orchestrazione era in Python
+(`ordini_service.crea_ordine_da_offerta`), con gli specchi di stato e documenti
+vivi, e le righe dell'ordine non le giudicava nessuno prima di scriverle.
 
-- View `ApiOffertaGeneraOrdine` (area `vendite`) → delega a
-  `ordini_service.crea_ordine_da_offerta(offerta_id)` (stesso app vendite).
-- **Precondizione**: offerta in stato **`ACCETTATA`**.
-- **Righe**: l'offerta non ha righe materializzate → le righe «effettive» sono
-  prodotte dalla fn DB **`fn_offerta_righe_espanse`** (listino base + variazione
-  globale + eccezioni OVERRIDE/ESCLUSIONE/AGGIUNTA, con BoM, IVA/uom risolte).
-  **Prezzi negoziati preservati** (offerta accettata): non-composito = prezzo
-  congelato; composito = componenti via `componenti_overrides` → il trigger DB
-  ricompone il prezzo padre dai prezzi negoziati.
-- **Testata**: BA, utility, emittente, valuta (l'offerta non ha termine/modalità
-  pagamento).
-- **Univocità 1:1 (rev. 2026-06-07)**: un'offerta genera **al massimo un ordine**
-  (l'offerta è una condizione quadro atomica, non ha righe selezionabili).
-  Guard BE fail-fast `E_ORD_OFFERTA_GIA_CONVERTITA` (409) + rete strutturale
-  UNIQUE parziale `uq_ordini_v_documento_origine_offerta` (mappata via
-  `map_integrity_error` allo stesso codice per la race concorrente). È il
-  **reversal parziale di A1** «senza UNIQUE», solo per `OFFERTA` (`PREVENTIVO`
-  resta 1:N). Specchio della guard data-driven `can_genera_ordine`.
-- **Mutua esclusività `contratto` XOR `ordine` (rev. 2026-06-08)**: un'offerta
-  `ACCETTATA` si materializza in **una sola** forma a valle — o contratto o
-  ordine, mai entrambi, in modo **permanente** (anche se annullato; il recupero è
-  una **nuova offerta**). Lato ordine: guard BE fail-fast
-  `E_OFFERTA_CONTRATTO_GIA_GENERATO` se l'offerta ha già un contratto
-  (`testata.contratto_id` dal LEFT JOIN, nessuna query nuova). Lato contratto: il
-  guard è a DB in `fn_push_offerta_a_contratto` → `E_OFFERTA_ORDINE_GIA_GENERATO`.
-  La capability riflette già l'XOR: `can_push_contratto`/`can_genera_ordine` sono
-  abilitate solo se non esiste né l'una né l'altra materializzazione.
-- Output `200`: `{ "ordine_id": int, "numero": str, "righe_create": int,
-  "documento_origine": {"tipo": "OFFERTA", "id": int} }`.
-- Errori: `E_VENDITE_NOT_FOUND` (404) se inesistente; `E_ORD_ORIGINE_NON_CONVERTIBILE`
-  (409) se non `ACCETTATA`; `E_ORD_OFFERTA_GIA_CONVERTITA` (409) se un ordine è
-  già stato generato da questa offerta; `E_OFFERTA_CONTRATTO_GIA_GENERATO` (409)
-  se l'offerta ha già generato un **contratto** (mutua esclusività XOR).
+- View `ApiOffertaGeneraOrdine` (area `vendite`) → `ordini_service.crea_ordine_da_offerta`
+  → `OfferteRepository.genera_ordine` → il verbo. Il service non legge l'offerta:
+  traduce i rifiuti (`_db_errors`) e legge il numero dell'ordine nato.
+- **Righe**: quelle «effettive» di `vendite.fn_offerta_righe_espanse` (listino
+  base + variazione globale + eccezioni, con BoM, IVA/uom risolte). **Prezzi
+  negoziati preservati**: non-composito = prezzo dell'offerta; composito = prezzo
+  ricalcolato dai componenti, che nascono coi prezzi dell'offerta come override
+  (un componente negoziato a 0 ricade sul resolver). Prima di scrivere il verbo
+  le giudica come righe d'ordine (`script.fn_check_righe_offerta_in_ordine`: solo
+  beni, niente solo-componente, niente kit senza componenti), la stessa check che
+  spegne «Genera ordine» nella capability.
+- **Univocità 1:1** e **mutua esclusività `contratto` XOR `ordine`**: contano i
+  soli documenti **vivi** (`vendite.fn_offerta_documenti_vivi`); annullato il
+  documento a valle, l'offerta torna trasformabile. Rete sulla corsa: UNIQUE
+  parziale `uq_ordini_v_documento_origine_offerta` (mappata allo stesso codice).
+- Output `200`: `{ "ordine_id": int, "numero": str,
+  "documento_origine": {"tipo": "OFFERTA_COMMERCIALE", "id": int} }`. ⚠️
+  `righe_create` non c'e' piu' (dal 2026-10-21): il conteggio era del Python.
+- Errori, tutti dal verbo: `E_OFFERTA_NON_TROVATA` (404); `E_ORD_ORIGINE_NON_CONVERTIBILE`
+  (409) se non `ACCETTATA`; `E_ORD_OFFERTA_GIA_CONVERTITA` (409) se un ordine vivo
+  e' gia' nato dall'offerta; `E_OFFERTA_CONTRATTO_GIA_GENERATO` (409) se ne e' nato
+  un contratto vivo (col bersaglio); `E_DOC_RIGA_NON_AMMESSA` (400, campo
+  `articolo_id`) se una riga non puo' stare in un ordine.
 - FE: azione «Genera ordine» **data-driven** da `available_actions` (key
-  `genera_ordine`, esposta dalla fn solo se `can_genera_ordine`): compare in
-  `ACCETTATA` senza ordine e **sparisce a conversione avvenuta** (come
-  `push_contratto`); confirm prima della generazione (`requires_confirm`).
-- Prerequisiti DB atterrati: brief
+  `genera_ordine`): da `ACCETTATA` senza documenti vivi e' **proposta**, spenta
+  col motivo (tooltip) se una riga non va in un ordine; sparisce a conversione
+  avvenuta. Confirm prima della generazione (`requires_confirm`).
+- Prerequisiti DB: brief
   [db-brief-offerta-righe-espanse.md](../../../dev/work-done/db-brief-offerta-righe-espanse.md)
-  (righe espanse) e
+  (righe espanse),
   [brief-db-univocita-offerta-ordine.md](../../../dev/work-done/brief-db-univocita-offerta-ordine.md)
-  (univocità 1:1 + azione `genera_ordine`).
+  (univocità 1:1) e brief-db-offerta-emissione-ed-erogazione §I (il verbo).
 
 ### Lista righe `GET /api/v1/vendite/offerte/<id>/righe/lista/` (+ `export/`)
 
@@ -756,9 +820,12 @@ per l'eredità e per il guard del perimetro.
 ] } }
 ```
 
-- `origine`: `TIPOLOGIA` (la tipologia di listino dell'articolo), `NATURA` (la
-  natura di vendita, se l'articolo non ha tipologia), `DISTINTA`
-  (`DERIVATA_COMPONENTI` sull'articolo composito, mai di default).
+- `origine`: `TIPOLOGIA` (la tipologia di listino dell'articolo) o `NATURA` (la
+  natura di vendita, se l'articolo non ha tipologia). Sul **kit** (composito) le
+  sole combinazioni con fonte `FISSA` (I-D6, 2026-10-21): un kit si vende a
+  quantità fissa. ⛔ `DERIVATA_COMPONENTI` e l'origine `DISTINTA` non ci sono
+  piu' (I-D1, 2026-10-21): la quantità del kit la porta la fonte, i componenti
+  la seguono.
 - **Lista vuota** = la tipologia dell'articolo non è fra quelle della utility
   dell'offerta: lì l'articolo non si vende (`E_RIGA_TIPOLOGIA_FUORI_UTILITY` in
   scrittura).
@@ -847,11 +914,12 @@ Vincoli (CHECK DB `chk_offerte_eccezioni_*` + UNIQUE):
   i messaggi sono neutri
 - **Quantità**: la sorgente è `qta_operativa` (UoM operativa). La colonna base
   `quantita` è **calcolata** dal trigger `trgfn_qta_from_operativa`
-  (`quantita = qta_operativa × factor_to_base`) e non va inviata. `qta_operativa`
+  (`quantita = qta_operativa × factor_to_base`): nel payload e' una chiave fuori
+  contratto (400, dal 2026-10-21, ritiro della DERIVATA_COMPONENTI). `qta_operativa`
   obbligatoria per `fonte = FISSA` (CHECK `qta_operativa <> 0`: zero vietato,
   negativi ammessi). Con una fonte a valle (MANUALE, LETTURE, TIMESHEET) la
-  quantità arriva downstream: `quantita` la svuota il DB (anche passando da
-  DERIVATA_COMPONENTI), una `qta_operativa` valorizzata è rifiutata con
+  quantità arriva downstream: `quantita` la svuota il DB, una `qta_operativa`
+  valorizzata è rifiutata con
   `E_RIGA_QUANTITA_CON_FONTE_A_VALLE` (400, campo `qta_operativa`). Le stesse
   regole del contratto (dal 2026-10-08, F-1 di
   brief-db-offerta-emissione-ed-erogazione: prima il solo backend del contratto
@@ -885,14 +953,17 @@ il service applica gli stessi tre gate del contratto/preventivo (BB condiviso
   sul listino fissato/operativo dell'offerta) non può eccedere le soglie
   `max_sconto_pct` / `max_maggiorazione_pct` (cascata `user → categoria_cliente →
   group → emittente → default`). Oltre soglia, senza `richiesta_approvazione`
-  → `422 E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA`
-  (`retryable=true`).
+  → `403 E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA`
+  (`retryable=true`). `richiesta_approvazione` è un booleano JSON: un altro tipo
+  → 400 `E_VENDITE_VALIDATION`.
 - **L3 — escalation**: con `richiesta_approvazione: true`, una violazione L2
   **non solleva**: crea una pratica `APPROVAZIONE_PREZZO` (sorgente `offerta`) e
   salva l'eccezione con `stato_approvazione_prezzo = PENDING` +
   `pratica_approvazione_prezzo_id`. L'eccezione PENDING è bloccata in modifica
   dal trigger DB `trgfn_righe_guard_pending` finché l'approver non risolve
-  (vedi [API approvazioni prezzo](api_approvazioni_prezzo.md)).
+  (vedi [API approvazioni prezzo](api_approvazioni_prezzo.md)). Approva/rifiuta
+  chiedono l'azione `approva_prezzo_override`: senza → 403
+  `E_PERMISSION_DENIED` dal cancello della view.
 
 Note:
 - gate **saltato** per `ESCLUSIONE` (prezzo NULL) e per i **compositi** (il
@@ -920,6 +991,30 @@ all'offerta 42).
 #### Delete `DELETE /api/v1/vendite/offerte/<id>/eccezioni/<eid>/`
 
 Solo in BOZZA. Hard delete. Stessa difesa ownership di update.
+
+#### Componenti BoM dell'eccezione composita
+
+Mirror dei componenti di riga del contratto. «Solo in bozza» lo dice il DB
+(`trgfn_doc_righe_lock_fuori_bozza` → `E_RIGA_DOC_NON_BOZZA`, 409).
+
+- `POST /<id>/eccezioni/preview-componenti/` — sola lettura, prima del save di
+  un'eccezione composita: componenti BoM col prezzo suggerito dal resolver
+  bundle-aware. Body `{articolo_id, quantita, uom_operativa_id?}`; risposta
+  `{"data": [ ... ]}`. Offerta inesistente → 404 `E_VENDITE_NOT_FOUND`.
+- `GET /<id>/eccezioni/<eid>/componenti/?solo_attivi=true|false` — componenti
+  persistiti (default solo attivi; `false` include gli opzionali disattivati).
+  Eccezione non dell'offerta dell'URL → 404 `E_VENDITE_NOT_FOUND`.
+- `PATCH /<id>/eccezioni/<eid>/componenti/<cid>/` — whitelist `prezzo_unitario`,
+  `attivo`, `meta` (chiave fuori → 400 `E_VENDITE_VALIDATION`; `{}` → 400).
+  `prezzo_unitario` non nullo richiede `prezzo_override_manuale` (403
+  `E_PRICING_OVERRIDE_NON_AUTORIZZATO`); `origine_prezzo` la calcola il server
+  (`MANUALE`, o `null` se il prezzo si azzera). Risposta
+  `{"status": "ok", "componente_id": <cid>}`.
+- `DELETE /<id>/eccezioni/<eid>/componenti/<cid>/` — soft delete
+  (`attivo = false`); risposta `{"status": "ok", "componente_id", "deleted"}`.
+
+Su PATCH/DELETE `<eid>` deve essere dell'offerta e `<cid>` dell'eccezione,
+altrimenti 404 `E_VENDITE_NOT_FOUND`.
 
 ### Utility 1:1
 
@@ -978,8 +1073,9 @@ Tutte le risposte usano l'envelope `success_response`:
 {"data": { ... }, "meta": {"timestamp": "2026-05-25T10:00:00Z"}}
 ```
 
-Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
-`{data: [...], pagination: {total, page, limit}}`.
+Per il dettaglio vedi §Detail; le liste paginate (offerte, revisioni) hanno
+`{"data": {"count", "page", "page_size", "total_pages", "results": [...]}}`
+(BB `paginated_envelope`).
 
 ## Regole
 
@@ -988,11 +1084,14 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
    `script.fn_generate_codice('offerta_commerciale')`. Rifiutato in
    payload come `unknown_key`.
 2. **Stato iniziale BOZZA**; transizioni via endpoint dedicato.
-3. **Testata**: quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e' (in EMESSA e ACCETTATA le note). **Eccezioni e
-   utility** solo in BOZZA: per la utility il cancello e' la capability
-   `can_edit_utility`, letta dal service, perche' il satellite non ha un lock a DB.
-4. **Annullamento solo da BOZZA, rifiuto solo da EMESSA**: state machine
-   asimmetrica analoga ai contratti DRAFT/ATTIVO.
+3. **Testata**: quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e' (in EMESSA e ACCETTATA le note). **Eccezioni e
+   utility** solo in BOZZA: per la utility lo dice il lock «solo in bozza» dei
+   satelliti a DB (dal 2026-10-11, `E_DOC_DATI_COLLEGATI_NON_BOZZA`, 409, che passa
+   com'e'), specchiato dalla capability `can_edit_utility`. Il listino sotto le
+   righe lo giudica il DB come sul contratto (`E_DOC_LISTINO_CAMBIO_CON_RIGHE`,
+   `E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI`, 422, campo `listino_id`).
+4. **Annullamento da BOZZA o da ACCETTATA (senza documenti vivi a valle),
+   rifiuto solo da EMESSA**: lo stato di partenza dell'annullo lo dice il DB.
 5. **Versione listino congelata all'emissione** (Profilo A); da EMESSA
    in poi `listino_versione_id` immutabile.
 6. **Mirror del contratto**: enum `tipo_eccezione`, VARCHAR
@@ -1027,7 +1126,10 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
 
 | Codice                                              | HTTP                | Origine                                                                                                | Trigger DB                                          |
 | --------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| `E_VENDITE_VALIDATION`                              | 400 / 422           | Service: struttura payload, payload vuoto in PATCH, motivazione obbligatoria, esito non valido          | —                                                   |
+| `E_VENDITE_VALIDATION`                              | 400                 | Service: struttura payload, chiave fuori contratto (anche `quantita` sulle eccezioni, dal 2026-10-21), payload vuoto in PATCH, motivazione obbligatoria, esito non valido, filtro di stato fuori vocabolario, stato errato per delete/emetti/registra-esito/crea-revisione/push (pre-check) | —                                                   |
+| `E_VALIDATION_INPUT`                                | 400                 | `chiudi_esistente` del push non booleano JSON                                                           | —                                                   |
+| `E_PRICING_OVERRIDE_NON_AUTORIZZATO`                | 403                 | Prezzo manuale (eccezione o componente) senza `prezzo_override_manuale`                                  | —                                                   |
+| `E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA` | 403  | Gate L2 oltre soglia senza `richiesta_approvazione` (`retryable=true`)                                  | —                                                   |
 | `E_VENDITE_NOT_FOUND`                               | 404                 | Service: offerta/eccezione/utility non trovata; ownership URL                                          | —                                                   |
 | `E_VENDITE_DUPLICATO`                               | 409                 | UNIQUE `uq_offerte_commerciali_codice` / `uq_offerte_commerciali_uid` / `uq_offerte_commerciali_utilities_offerta_id` / `uq_offerte_eccezioni_one_eccezione_per_articolo` / `uq_offerte_eccezioni_one_aggiunta_per_articolo` | —                                                   |
 | `E_VENDITE_FK`                                      | 400                 | FK su BA/emittente/istanza/utility/listino/articolo/uom/tipo/classe utenza                              | —                                                   |
@@ -1043,7 +1145,12 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
 | `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`                 | 409                 | DB P0001 — transizione non presente in `config.stati_doc_offerte_transizioni` (es. EMESSA -> ANNULLATA, EMESSA -> BOZZA, qualsiasi uscita da stato terminale) | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`             | 409                 | DB P0001 — `crea_revisione` da stato != EMESSA. Il service applica anche pre-check applicativo (`E_VENDITE_VALIDATION`) | `fn_crea_revisione_offerta`                          |
 | `E_OFFERTA_PUSH_STATO_NON_AMMESSO`                  | 409                 | DB P0001 — `push_a_contratto` da stato ≠ ACCETTATA. Il service applica anche pre-check applicativo (`E_VENDITE_VALIDATION`) | `fn_push_offerta_a_contratto`                        |
-| `E_OFFERTA_CONTRATTO_GIA_GENERATO`                  | 409                 | Conflitto "già materializzato" (registrato in `error_policies`): push idempotente (pattern A, UNIQUE `uq_contratti_offerta_id`) **e** mutua esclusività XOR — blocca la generazione ordine se l'offerta ha già un contratto | `fn_push_offerta_a_contratto` / `crea_ordine_da_offerta` (guard BE) |
+| `E_OFFERTA_CONTRATTO_GIA_GENERATO`                  | 409                 | Conflitto "già materializzato" (registrato in `error_policies`): push idempotente (pattern A, UNIQUE `uq_contratti_offerta_id`) **e** mutua esclusività XOR — blocca la generazione ordine se l'offerta ha già un contratto vivo | `fn_push_offerta_a_contratto` / `fn_genera_ordine_da_offerta` |
+| `E_OFFERTA_NON_TROVATA`                             | 404                 | DB P0001 — offerta inesistente o fuori perimetro per il push o la generazione dell'ordine | `fn_push_offerta_a_contratto` / `fn_genera_ordine_da_offerta` |
+| `E_ORD_ORIGINE_NON_CONVERTIBILE`                    | 409                 | DB P0001 — genera ordine da un'offerta non `ACCETTATA` | `fn_genera_ordine_da_offerta` |
+| `E_ORD_OFFERTA_GIA_CONVERTITA`                      | 409                 | DB P0001 — genera ordine quando un ordine vivo è già nato dall'offerta (rete: UNIQUE `uq_ordini_v_documento_origine_offerta`) | `fn_genera_ordine_da_offerta` |
+| `E_DOC_RIGA_NON_AMMESSA`                            | 400                 | DB P0001 (2026-10-21) — una riga che la regola intera non ammette più: all'emissione (articolo, erogazione, fonte) o nella generazione dell'ordine (riga d'ordine). Campo `articolo_id`; valori: documento, articolo; `motivo_riga` nel contesto | `trgfn_offerte_commerciali_guard_transizione` / `fn_genera_ordine_da_offerta` |
+| `E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI`              | 409                 | DB P0001 (2026-10-21) — annullo da `ACCETTATA` con un contratto o un ordine vivo nato dall'offerta; bersaglio nel contesto | `trgfn_offerte_commerciali_guard_transizione` |
 | `E_OFFERTA_ORDINE_GIA_GENERATO`                     | 409                 | Mutua esclusività XOR (registrato in `error_policies`): blocca il push a contratto se l'offerta ha già generato un ordine | `fn_push_offerta_a_contratto` (guard DB)             |
 | `E_CONFIG_MANCANTE`                                 | 500                 | DB P0001 — `OFFERTA_COMMERCIALE` o `CONTRATTO` non trovati in `config.sorgenti`; stato `DRAFT` non in `config.stati_doc_contratti`. Errore di configurazione sistema | `fn_push_offerta_a_contratto`                        |
 | `E_CONTRATTO_OVERLAP_ESISTENTE`                     | 409                 | DB P0001 — push con contratto attivo sovrapposto e `chiudi_esistente=false`. Il FE legge il conflitto via `contratto-sovrapposto/` e richiama con `chiudi_esistente=true` | `fn_push_offerta_a_contratto` / `fn_contratto_sovrapposto` |

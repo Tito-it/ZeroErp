@@ -56,7 +56,7 @@
    `annullati_count` c'e' sempre; a interruttore acceso vale 0 e non si paga.
 
 6. test_la_view_legge_annullati_e_lo_inoltra_a_lista_export_e_mensile
-   `?annullati=1` arriva a `fn_list_lotti`, a `fn_export_lotti` (e finisce
+   `?annullati=true` arriva a `fn_list_lotti`, a `fn_export_lotti` (e finisce
    nell'intestazione del file) e a `fn_lotti_mensile`.
 
 7. test_i_tre_valori_producono_sql_valido_e_i_numeri_quadrano  [DB provvisto]
@@ -198,7 +198,7 @@ class LottiAnnullatiPerimetroTests(SimpleTestCase):
             patch.object(views, "fn_list_lotti", return_value={"results": []}) as lista,
             patch.object(views, "get_scope_user_id", return_value=None),
         ):
-            views.ApiLottiList().get(_drf(rf.get("/x/?annullati=1")))
+            views.ApiLottiList().get(_drf(rf.get("/x/?annullati=true")))
             views.ApiLottiList().get(_drf(rf.get("/x/")))
         self.assertTrue(lista.call_args_list[0].kwargs["includi_annullati"])
         self.assertFalse(lista.call_args_list[1].kwargs["includi_annullati"])
@@ -208,7 +208,7 @@ class LottiAnnullatiPerimetroTests(SimpleTestCase):
             patch.object(views, "build_export_response", return_value=None) as build,
             patch.object(views, "get_scope_user_id", return_value=None),
         ):
-            views.ApiLottiExportView().get(_drf(rf.get("/x/?annullati=1&formato=csv")))
+            views.ApiLottiExportView().get(_drf(rf.get("/x/?annullati=true&formato=csv")))
         self.assertTrue(export.call_args.kwargs["includi_annullati"])
         self.assertEqual(build.call_args.kwargs["filtri_applicati"]["annullati"], "True")
 
@@ -216,7 +216,7 @@ class LottiAnnullatiPerimetroTests(SimpleTestCase):
             patch.object(views, "fn_lotti_mensile", return_value={}) as mensile,
             patch.object(views, "get_scope_user_id", return_value=None),
         ):
-            views.ApiLottiMensile().get(_drf(rf.get("/x/?anno=2026&annullati=1")))
+            views.ApiLottiMensile().get(_drf(rf.get("/x/?anno=2026&annullati=true")))
         self.assertTrue(mensile.call_args.kwargs["includi_annullati"])
 
 

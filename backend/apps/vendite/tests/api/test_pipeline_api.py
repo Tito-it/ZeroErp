@@ -37,7 +37,6 @@ from apps.core.services.idempotency_store import IdempotencyDecision
 from apps.core.services.service_errors import ServiceError
 
 
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class VenditePipelineApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
@@ -374,7 +373,8 @@ class VenditePipelineApiTests(JwtMockedApiTest):
         # Il riepilogo CONTA e basta: le righe hanno un endpoint suo
         # (`/segnalazioni/rows/`), cosi' il drawer non si porta dietro l'elenco
         # a ogni apertura per mostrarne un numero.
-        mocked_summary.assert_called_once_with(lotto_id=80)
+        # L'utente della richiesta arriva al cancello di perimetro (2026-10-20).
+        mocked_summary.assert_called_once_with(lotto_id=80, auth_user_id=None)
 
     # Scopo: ⭐ L'ELENCO delle segnalazioni sta su una rotta SUA, e i filtri
     #        arrivano dal query string. Presidia anche i due default che non
@@ -386,13 +386,13 @@ class VenditePipelineApiTests(JwtMockedApiTest):
     def test_get_lotto_segnalazioni_rows_filtri_dal_query_param(self, mocked_rows, _mock_auth):
         mocked_rows.return_value = {"lotto_id": 80, "results": []}
         response = self.client.get(
-            "/api/v1/vendite/lotti/80/segnalazioni/rows/?livello=W&origine=LOTTO&page=2&page_size=10"
+            "/api/v1/vendite/lotti/80/segnalazioni/rows/?livello=W&origine=LOTTO&limit=10&offset=10"
         )
         self.assertEqual(response.status_code, 200)
         mocked_rows.assert_called_once_with(
-            lotto_id=80, livello="W", origine="LOTTO",
+            lotto_id=80, auth_user_id=None, livello="W", origine="LOTTO",
             solo_attive=True, solo_job_corrente=False,
-            page=2, page_size=10, order_by=None, order_dir="desc",
+            limit=10, offset=10, order_by=None, order_dir="desc",
         )
 
     # Scopo: Verifica il caso `test_get_lotto_segnalazioni_summary_v1_requires_jwt`.
@@ -439,13 +439,12 @@ class VenditePipelineApiTests(JwtMockedApiTest):
         self.assertEqual(data["lotto_id"], 80)
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["task_runs"][0]["task_code"], "numera_fatture")
-        # ⚠️ `limit` resta il nome che il client manda e arriva come `page_size`:
-        # l'endpoint e' diventato paginato (BE-2) senza rompere il chiamante.
+        # ⭐ La finestra arriva come `limit`/`offset`, i nomi di ogni lista.
         # ⭐ E i due filtri del `20260824-11` arrivano SPENTI quando non si
         #    chiedono: nessun default nasconde righe: chi chiama senza vede
         #    quello che vedeva prima.
         mocked_task_runs.assert_called_once_with(
-            lotto_id=80, page_size=50, offset=0, order_by=None, order_dir="desc",
+            lotto_id=80, auth_user_id=None, limit=50, offset=0, order_by=None, order_dir="desc",
             task_stato=None, solo_giro_corrente=False,
         )
 

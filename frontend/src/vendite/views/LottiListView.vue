@@ -37,6 +37,7 @@ import Message from 'primevue/message'
 import { useLottoAzioni } from '../composables/useLottoAzioni'
 import { useSelezioneLotti } from '../composables/useSelezioneLotti'
 import { useJobPolling } from '../../core/composables/useJobPolling'
+import { useChiaveGesto } from '../../core/composables/useChiaveGesto'
 import { useRigheInGiro } from '../../core/composables/useRigheInGiro'
 import { useActionPermission } from '../../core/composables/useActionPermission'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -132,7 +133,7 @@ const {
   getExportParams: (fmt) => ({
     // Il file E' la lista: stesso perimetro (mese, stato, annullati — e
     // l'intestazione del file lo dichiara), stesso ordine.
-    // ⚠️ Ripiego `asc` come la FETCH dello store (`lotti.js`, `paramsPagina`
+    // ⚠️ Ripiego `asc` come la FETCH dello store (`lotti.js`, `paramsFinestra`
     //    con `orderDirDefault: 'asc'`): fino al 2026-09-18 qui era `desc`,
     //    cioe' lista ed export avrebbero letto due versi diversi il giorno in
     //    cui quel ramo si fosse acceso — l'unica delle dodici copie divergente
@@ -204,7 +205,7 @@ const annullatiRecuperi = ref(0)
 //    due chiamate in volo: non c'e' nessuna risposta «scartata» da cui
 //    disallinearsi. E' il motivo per cui la lista principale, che quel guard ce
 //    l'ha, deve invece passare da `onPayload`.
-const listaRecuperi = useListaDrawerPaginata(async ({ page, pageSize, sortBy, sortDir }) => {
+const listaRecuperi = useListaDrawerPaginata(async ({ limit, offset, sortBy, sortDir }) => {
   const res = await listLotti({
     // ⚠️ TUTTO il perimetro della pagina, non solo il mese: la scheda si
     // ricarica al cambio filtro, e senza `stato_lotto` si ricaricherebbe
@@ -213,8 +214,8 @@ const listaRecuperi = useListaDrawerPaginata(async ({ page, pageSize, sortBy, so
     // pagina valgono per entrambe le schede, e stanno in una sede sola.
     ...paramsPerimetro(store.filters),
     recuperi_mese: true,
-    page,
-    page_size: pageSize,
+    limit,
+    offset,
     ...(sortBy ? { order_by: sortBy, order_dir: sortDir } : {}),
   })
   statiRecuperi.value = res.data?.data?.stati ?? []
@@ -551,6 +552,11 @@ const selezioneLotti = useSelezioneLotti({
 })
 
 const { execute: eseguiNumera } = useApiHandler()
+// ⭐ La key del GESTO (`useChiaveGesto`): «Rendi definitive» ripremuto dopo un
+//    timeout con lo stesso perimetro e la stessa data rimanda la stessa key, e
+//    il backend restituisce il giro gia' accodato. Il dialog della data resta
+//    aperto fino all'esito, e aprirlo azzera la key: e' un gesto nuovo.
+const gestoNumera = useChiaveGesto()
 
 // Polling del job: `useJobPolling` è il BB condiviso con la Lente 1.
 // ⛔ Qui NON si riusa `useVerboFatturazione` della dashboard: quella funzione
@@ -617,31 +623,34 @@ const { start: seguiJob, isFollowing, nJobsInCorso: nGiriNumera } = useJobPollin
 const dialogNumeraPerimetro = ref({ visible: false, lotti: null })
 
 function chiediNumeraSelezione() {
+  gestoNumera.azzera()
   dialogNumeraPerimetro.value = { visible: true, lotti: [...selezioneLotti.ids.value] }
 }
 
 function chiediNumeraMese() {
+  gestoNumera.azzera()
   dialogNumeraPerimetro.value = { visible: true, lotti: null }
 }
 
 // ⚠️ La competenza si congela QUI: il giro può concludersi dopo che l'operatore
 //    ha cambiato mese, e i suoi lotti appartengono al mese in cui è partito.
+// Risponde `true` se il giro e' partito: il dialog si chiude solo allora.
 async function confermaNumeraPerimetro(dataDocumento) {
   const lotti = dialogNumeraPerimetro.value.lotti
-  dialogNumeraPerimetro.value = { visible: false, lotti: null }
   const competenza = competenzaParam.value
-  const res = await eseguiNumera(() => runNumerazione(competenza, {
-    dataDocumento: dataDocumento || null,
-    lotti,
-  }))
-  if (res === null) return
+  const opzioni = { dataDocumento: dataDocumento || null, lotti }
+  const res = await eseguiNumera(() => gestoNumera.invia(
+    { competenza, ...opzioni },
+    (config) => runNumerazione(competenza, opzioni, config),
+  ))
+  if (res === null) return false
   // Stesso perimetro ancora vivo → il backend non crea un secondo job: torna
   // l'id di quello in corso (chiave competenza + scope + digest del perimetro).
   // Seguirlo di nuovo lo conterebbe due volte, e all'operatore va detto che non
   // ha avviato niente di nuovo.
   if (isFollowing(res.job_id)) {
     notify.info(t('vendite.lotti.numera_gia_in_corso'))
-    return
+    return true
   }
   notify.info(t('vendite.lotti.numera_accodato'))
   // ⚠️ Si marca SOLO se il polling ha davvero preso in carico il giro. `start`
@@ -653,6 +662,7 @@ async function confermaNumeraPerimetro(dataDocumento) {
   const seguito = seguiJob(res.job_id, { jobId: res.job_id, competenza })
   // Le chiavi del giro sono gli id del perimetro: solo per l'atto su SELEZIONE.
   if (seguito && lotti?.length) lottiInGiro.marca(res.job_id, lotti)
+  return true
 }
 
 // ⭐ I DUE VERBI SU SCHERMO PICCOLO. Sotto i 1024px (o su un dispositivo senza
@@ -774,7 +784,7 @@ const azioniPagina = computed(() =>
             class="app-dash-mese-lotti"
             v-tooltip.right="t('vendite.lotti.mese_lotti', { n: mesi[idx].n_lotti })"
           >
-            <i :class="MANAGE_ICONS.LOTTO" /> {{ mesi[idx].n_lotti }}
+            {{ mesi[idx].n_lotti }} <i :class="MANAGE_ICONS.LOTTO" />
           </span>
         </template>
       </DashMesiSidebar>
@@ -789,7 +799,7 @@ const azioniPagina = computed(() =>
         >
           <template #badge>
             <span v-if="mesi[meseIdx].n_lotti > 0" class="app-dash-mese-lotti">
-              <i :class="MANAGE_ICONS.LOTTO" /> {{ mesi[meseIdx].n_lotti }}
+              {{ mesi[meseIdx].n_lotti }} <i :class="MANAGE_ICONS.LOTTO" />
             </span>
           </template>
         </DashMeseStepper>
@@ -1015,7 +1025,7 @@ const azioniPagina = computed(() =>
     <NumerazioneDataDialog
       v-model:visible="numeraDialog.visible"
       :lotto-id="numeraDialog.lottoId"
-      @conferma="confermaNumera"
+      :azione="confermaNumera"
     />
     <!-- La data dell'atto di PERIMETRO (selezione oppure mese intero). ⚠️ È lo
          stesso componente del verbo per-riga, in modo `numera`: il limite lo
@@ -1024,7 +1034,7 @@ const azioniPagina = computed(() =>
       v-model:visible="dialogNumeraPerimetro.visible"
       :competenza-mese="dialogNumeraPerimetro.lotti ? null : competenzaParam"
       :lotti="dialogNumeraPerimetro.lotti"
-      @conferma="confermaNumeraPerimetro"
+      :azione="confermaNumeraPerimetro"
     />
   </div>
 </template>

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_emittenti_fiscali_default_bootstrap()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()
  RETURNS trigger
@@ -41,6 +43,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()
 IS 'Crea automaticamente il default emittente fiscale al primo inserimento';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

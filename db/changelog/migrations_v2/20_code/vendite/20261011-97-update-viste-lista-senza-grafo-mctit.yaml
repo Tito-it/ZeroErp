@@ -1,0 +1,1138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE SETTE VISTE DI LISTA NON LEGGONO PIU' IL GRAFO
+#   vendite.vw_{preventivi,offerte_commerciali,ordini,contratti,ddt,resi,fatture}_lista
+#   Brief: brief-db-lineage-seminata-per-chiave §8.6-§8.7 (giro B, D-B1…D-B3).
+#
+# ⛔ SI APPLICA DOPO B1 (il backend legge le 8 colonne del grafo dalla
+#    sintesi): prima, le liste perderebbero frontiera e transito.
+#
+# ── IL DIFETTO, SUL MODELLO ─────────────────────────────────────────
+#   Ogni vista agganciava vw_documento_lineage, la chiusura dell'INTERO grafo,
+#   e il backend conta il totale con COUNT(*) OVER () sulla stessa query: ogni
+#   pagina pagava tutti i documenti del sistema (brief §2, §5).
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   * Le 8 colonne del grafo escono: frontiera_tipo_id, frontiera_codice,
+#     frontiera_stato_codice_interno, frontiera_fase, n_discendenti_attivi,
+#     is_transitato, frontiera_natura_doc_codice_interno,
+#     frontiera_tipo_codice_interno. Il backend le chiede a
+#     vendite.fn_documento_lineage_sintesi per le chiavi della pagina (o
+#     dell'export) e le unisce alle righe con gli stessi nomi (D-B2: il catalogo
+#     ui.lista_colonna non cambia; una colonna viene dalla sintesi se il suo
+#     campo_sorgente e' una colonna del risultato della sintesi).
+#   * La pratica resta (filtrabile e ordinabile): pratica_id, pratica_numero,
+#     n_pratiche da pratiche.fn_pratica_del_documento (20261011-95), per chiave.
+#   * Tutto il resto e' la definizione viva, letta con pg_get_viewdef e
+#     search_path = pg_catalog (nomi qualificati).
+#   ⚠️ Togliere colonne a una vista e' DROP + CREATE: i COMMENT si leggono
+#   prima e si rimettono dopo (quello della vista con la revisione davanti); i
+#   privilegi li ridanno i privilegi di default dello schema (stessi di oggi:
+#   zeroerp_app arwd, zeroerp_batch_fatturazione r), e in CI il loop dei grant
+#   di ci_apply. Nessun altro oggetto del database legge queste viste
+#   (pg_depend, 2026-10-11).
+#
+# ── PROVE (2026-10-11, dbdev come app, viste TEMP) ───────────────────
+#   Per ognuna: tipi delle colonne che restano identici; righe identiche alle
+#   viste di oggi sulle stesse colonne (EXCEPT ALL, due versi). Pagina da 25
+#   col totale: 322-391 ms → 8-70 ms (piu' la sintesi delle 25 chiavi, ~58 ms).
+#
+# Presidio: db/pgtap/vendite/test-colonne-lineage-liste-v1.sql,
+#   db/pgtap/ui/test-lista-*-seed.sql (test 7: vista oppure sintesi).
+# Dipendenze: 20261011-95.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-97-update-viste-lista-senza-grafo-mctit.yaml
+
+  - changeSet:
+      id: 20261011-97-update-viste-lista-senza-grafo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Le sette viste di lista non agganciano piu' vw_documento_lineage: escono le 8 colonne del
+        grafo (il backend le legge da fn_documento_lineage_sintesi per le chiavi della pagina), la
+        pratica resta da pratiche.fn_pratica_del_documento. DROP + CREATE con COMMENT conservati.
+        Da applicare dopo B1 (backend).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('pratiche.fn_pratica_del_documento(bigint, text)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- I COMMENT di oggi (vista e colonne), da rimettere dopo il DROP.
+              CREATE TEMP TABLE _commenti_liste ON COMMIT DROP AS
+              SELECT c.relname, d.objsubid, a.attname, d.description
+                FROM pg_description d
+                JOIN pg_class c ON c.oid = d.objoid AND d.classoid = 'pg_class'::regclass
+                LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = d.objsubid AND d.objsubid > 0
+               WHERE c.relnamespace = 'vendite'::regnamespace
+                 AND c.relname IN ('vw_preventivi_lista', 'vw_offerte_commerciali_lista', 'vw_ordini_lista', 'vw_contratti_lista', 'vw_ddt_lista', 'vw_resi_lista', 'vw_fatture_lista');
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW vendite.vw_preventivi_lista;
+              CREATE VIEW vendite.vw_preventivi_lista
+              WITH (security_invoker=on) AS
+               SELECT p.id,
+                  p.uid,
+                  p.numero,
+                  p.rev,
+                  p.is_attiva,
+                  p.data,
+                  p.stato_doc_preventivo_id,
+                  sdp.codice_interno AS stato_codice_interno,
+                  sdp.descrizione AS stato_descrizione,
+                  p.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  p.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  p.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  p.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  p.totale_imponibile,
+                  p.totale_iva,
+                  p.totale_documento,
+                  p.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  p.validita_dal,
+                  p.validita_al,
+                  p.competenza_mese,
+                  p.data_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdp.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  p.is_superata,
+                  p.is_abortito,
+                  p.has_next_revisione
+                 FROM vendite.vw_preventivi p
+                   JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = p.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = p.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = p.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = p.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = p.valuta_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'PREVENTIVO'::text AND so_pr.attivo IS TRUE), p.uid::text) pr ON true;
+
+              DROP VIEW vendite.vw_offerte_commerciali_lista;
+              CREATE VIEW vendite.vw_offerte_commerciali_lista
+              WITH (security_invoker=on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.codice,
+                  o.revisione_numero,
+                  o.revisione_padre_id,
+                  NOT sdo.is_superato AND NOT sdo.is_abortito AS is_attiva,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.offerte_commerciali figlio
+                        WHERE figlio.revisione_padre_id = o.id)) AS has_next_revisione,
+                  o.stato_doc_offerta_id,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.descrizione AS stato_descrizione,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  o.listino_id,
+                  l.codice AS listino_codice,
+                  o.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  o.tipo_variazione_globale,
+                  o.valore_variazione_globale,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.validita_dal,
+                  o.validita_al,
+                  o.validita_al IS NOT NULL AND o.validita_al < (( SELECT script.fn_data_operativa() AS fn_data_operativa)) AS is_scaduta,
+                  o.data_emissione,
+                  o.data_accettazione,
+                  o.data_rifiuto,
+                  o.data_annullamento,
+                  o.data_insert,
+                  o.user_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdo.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  sdo.is_superato AS is_superata,
+                  sdo.is_abortito,
+                  o.revisione_radice_id
+                 FROM vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON sdo.id = o.stato_doc_offerta_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = o.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = o.utility_id
+                   LEFT JOIN vendite.listini l ON l.id = o.listino_id
+                   LEFT JOIN vendite.listini_versioni lv ON lv.id = o.listino_versione_id
+                   LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'OFFERTA_COMMERCIALE'::text AND so_pr.attivo IS TRUE), o.uid::text) pr ON true;
+
+              DROP VIEW vendite.vw_ordini_lista;
+              CREATE VIEW vendite.vw_ordini_lista
+              WITH (security_invoker=on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.numero,
+                  o.serie,
+                  o.anno,
+                  o.data,
+                  o.stato_doc_ordine_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.descrizione AS stato_descrizione,
+                  o.soggetto_ruolo_id,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.imponibile_tot,
+                  o.sconto_tot,
+                  o.iva_tot,
+                  o.totale_doc,
+                  o.modalita_pagamento_id,
+                  mp.codice AS modalita_pagamento_codice,
+                  o.termine_pagamento_id,
+                  tp.codice AS termine_pagamento_codice,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.tasso_cambio,
+                  o.fatturazione_trigger,
+                  o.canale_origine,
+                  o.agente_soggetto_ruolo_id,
+                  s_ag.ragione_sociale_completa AS agente_denominazione,
+                  o.documento_origine_tipo,
+                  o.documento_origine_id,
+                      CASE o.documento_origine_tipo
+                          WHEN 'PREVENTIVO'::text THEN pv.numero
+                          WHEN 'OFFERTA'::text THEN oc.codice::character varying
+                          ELSE NULL::character varying
+                      END AS documento_origine_codice,
+                  o.data_insert,
+                  o.user_insert,
+                  o.data_update,
+                  o.user_update,
+                  sd.pdf_mode,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  dcr.data_consegna_richiesta_cliente_min,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione
+                 FROM vendite.ordini o
+                   JOIN config.stati_doc_ordini sd ON sd.id = o.stato_doc_ordine_id
+                   JOIN anagrafiche.soggetti_ruoli sr ON sr.id = o.soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = o.utility_id
+                   LEFT JOIN config.modalita_pagamento mp ON mp.id = o.modalita_pagamento_id
+                   LEFT JOIN config.termini_pagamento tp ON tp.id = o.termine_pagamento_id
+                   LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ag ON sr_ag.id = o.agente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ag ON s_ag.id = sr_ag.soggetto_id
+                   LEFT JOIN vendite.preventivi pv ON pv.id = o.documento_origine_id AND o.documento_origine_tipo::text = 'PREVENTIVO'::text
+                   LEFT JOIN vendite.offerte_commerciali oc ON oc.id = o.documento_origine_id AND o.documento_origine_tipo::text = 'OFFERTA'::text
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'ORDINE_VENDITA'::text AND so_pr.attivo IS TRUE), o.id::text) pr ON true
+                   LEFT JOIN LATERAL ( SELECT min(orr.data_consegna_richiesta_cliente) AS data_consegna_richiesta_cliente_min
+                         FROM vendite.ordini_righe orr
+                        WHERE orr.ordine_id = o.id AND orr.attivo IS TRUE) dcr ON true
+                   LEFT JOIN vendite.registri_fatturazione reg ON reg.id = o.registro_id;
+
+              DROP VIEW vendite.vw_contratti_lista;
+              CREATE VIEW vendite.vw_contratti_lista
+              WITH (security_invoker=on) AS
+               SELECT c.id,
+                  c.uid,
+                  c.numero,
+                  c.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  c.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  c.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  c.ambito,
+                  c.data,
+                  c.valido_dal,
+                  c.valido_al,
+                  c.stato_doc_contratto_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.codice AS stato_codice,
+                  sd.descrizione AS stato_descrizione,
+                  c.listino_id,
+                  l.codice AS listino_codice,
+                  l.descrizione AS listino_descrizione,
+                  c.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  c.tipo_variazione_globale,
+                  c.valore_variazione_globale,
+                  c.categoria_cliente_id_snapshot,
+                  cc_snap.codice AS categoria_cliente_snapshot_codice,
+                  cc_snap.descrizione AS categoria_cliente_snapshot_descrizione,
+                  c.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  v_val.descrizione AS valuta_descrizione,
+                  c.data_insert,
+                  c.user_insert,
+                  c.data_update,
+                  c.user_update,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche
+                 FROM vendite.contratti c
+                   JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+                   JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   JOIN config.utilities u ON u.id = c.utility_id
+                   JOIN config.stati_doc_contratti sd ON sd.id = c.stato_doc_contratto_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = c.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN vendite.listini l ON l.id = c.listino_id
+                   LEFT JOIN vendite.listini_versioni lv ON lv.id = c.listino_versione_id
+                   LEFT JOIN anagrafiche.categorie_clienti cc_snap ON cc_snap.id = c.categoria_cliente_id_snapshot
+                   LEFT JOIN config.valute v_val ON v_val.id = c.valuta_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'CONTRATTO'::text AND so_pr.attivo IS TRUE), c.id::text) pr ON true;
+
+              DROP VIEW vendite.vw_ddt_lista;
+              CREATE VIEW vendite.vw_ddt_lista
+              WITH (security_invoker=on) AS
+               SELECT d.id,
+                  d.uid,
+                  d.numero,
+                  d.serie,
+                  d.anno,
+                  d.data,
+                  d.stato_doc_ddt_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.descrizione AS stato_descrizione,
+                  d.destinatario_soggetto_ruolo_id,
+                  s_dest.id AS destinatario_soggetto_id,
+                  s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                  s_dest.id_fiscale_univoco_cf_piva,
+                  d.mittente_soggetto_ruolo_id,
+                  s_mitt.ragione_sociale_completa AS mittente_denominazione,
+                  d.vettore_soggetto_ruolo_id,
+                  s_vett.ragione_sociale_completa AS vettore_denominazione,
+                  d.billing_account_id,
+                  ba.codice AS ba_codice,
+                  d.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  d.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  d.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  d.causale_trasporto_id,
+                  ct.codice AS causale_trasporto_codice,
+                  ct.descrizione AS causale_trasporto_descrizione,
+                  d.aspetto_bene_id,
+                  ab.codice AS aspetto_bene_codice,
+                  ab.descrizione AS aspetto_bene_descrizione,
+                  d.modalita_addebito_trasporto_id,
+                  mat.codice AS modalita_addebito_trasporto_codice,
+                  d.num_colli,
+                  d.peso_lordo,
+                  d.peso_netto,
+                  d.volume,
+                  d.targa,
+                  d.autista,
+                  d.data_ora_partenza,
+                  d.data_ora_consegna_prev,
+                  d.tracking_code,
+                  d.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  d.sorgente_uid,
+                  o_src.id AS ordine_origine_id,
+                  o_src.numero AS ordine_origine_numero,
+                  d.data_insert,
+                  d.user_insert,
+                  d.data_update,
+                  d.user_update,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione
+                 FROM vendite.ddt d
+                   JOIN config.stati_doc_ddt sd ON sd.id = d.stato_doc_ddt_id
+                   JOIN anagrafiche.soggetti_ruoli sr_dest ON sr_dest.id = d.destinatario_soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s_dest ON s_dest.id = sr_dest.soggetto_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_mitt ON sr_mitt.id = d.mittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_mitt ON s_mitt.id = sr_mitt.soggetto_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_vett ON sr_vett.id = d.vettore_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_vett ON s_vett.id = sr_vett.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = d.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = d.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = d.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = d.valuta_id
+                   LEFT JOIN config.causali_trasporto ct ON ct.id = d.causale_trasporto_id
+                   LEFT JOIN config.aspetti_beni ab ON ab.id = d.aspetto_bene_id
+                   LEFT JOIN config.modalita_addebito_trasporto mat ON mat.id = d.modalita_addebito_trasporto_id
+                   LEFT JOIN config.sorgenti src ON src.id = d.sorgente_tipo_id
+                   LEFT JOIN vendite.ordini o_src ON o_src.uid = d.sorgente_uid AND src.codice_interno::text = 'ORDINE_VENDITA'::text
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'DDT_VENDITA'::text AND so_pr.attivo IS TRUE), d.id::text) pr ON true
+                   LEFT JOIN vendite.registri_fatturazione reg ON reg.id = d.registro_id;
+
+              DROP VIEW vendite.vw_resi_lista;
+              CREATE VIEW vendite.vw_resi_lista
+              WITH (security_invoker=on) AS
+               SELECT r.id,
+                  r.uid,
+                  r.numero,
+                  r.anno,
+                  r.data,
+                  r.stato_doc_reso_id,
+                  sr.codice_interno AS stato_codice_interno,
+                  sr.descrizione AS stato_descrizione,
+                  r.destinatario_soggetto_ruolo_id,
+                  s_dest.id AS destinatario_soggetto_id,
+                  s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                  s_dest.id_fiscale_univoco_cf_piva,
+                  r.billing_account_id,
+                  ba.codice AS ba_codice,
+                  r.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  r.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  r.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  r.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  r.sorgente_uid,
+                  d_src.id AS ddt_origine_id,
+                  d_src.numero AS ddt_origine_numero,
+                  r.data_insert,
+                  r.user_insert,
+                  r.data_update,
+                  r.user_update,
+                  sr.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione
+                 FROM vendite.resi r
+                   JOIN config.stati_doc_reso sr ON sr.id = r.stato_doc_reso_id
+                   JOIN anagrafiche.soggetti_ruoli sr_dest ON sr_dest.id = r.destinatario_soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s_dest ON s_dest.id = sr_dest.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = r.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = r.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = r.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = r.valuta_id
+                   LEFT JOIN config.sorgenti src ON src.id = r.sorgente_tipo_id
+                   LEFT JOIN vendite.ddt d_src ON d_src.uid = r.sorgente_uid
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'RESO_VENDITA'::text AND so_pr.attivo IS TRUE), r.id::text) pr ON true
+                   LEFT JOIN vendite.registri_fatturazione reg ON reg.id = r.registro_id;
+
+              DROP VIEW vendite.vw_fatture_lista;
+              CREATE VIEW vendite.vw_fatture_lista
+              WITH (security_invoker=on) AS
+               SELECT f.id,
+                  f.uid,
+                  f.numero,
+                  f.serie,
+                  f.anno,
+                  f.data,
+                  f.registro_id,
+                  f.stato_doc_fiscale_id,
+                  sdf.codice_interno AS stato_codice_interno,
+                  sdf.descrizione AS stato_descrizione,
+                  sdf.fase,
+                  f.tipo_doc_fiscale_id,
+                  tdf.codice_interno AS tipo_doc_fiscale_codice_interno,
+                  tdf.descrizione AS tipo_doc_fiscale_descrizione,
+                  f.natura_doc_id,
+                  ndf.codice_interno AS natura_doc_codice_interno,
+                  ndf.descrizione AS natura_doc_descrizione,
+                  f.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s_cli.id AS soggetto_id,
+                  s_cli.ragione_sociale_completa,
+                  s_cli.id_fiscale_univoco_cf_piva,
+                  f.emittente_soggetto_ruolo_id,
+                  ef.id AS emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  f.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  f.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  f.imponibile_tot,
+                  f.imposta_tot,
+                  f.totale_doc,
+                  f.totale_a_pagare,
+                  f.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  f.sorgente_uid,
+                  f.data_insert,
+                  f.user_insert,
+                  f.data_update,
+                  f.user_update,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  vendite.fn_numero_documento_fattura(f.numero, f.serie) AS numero_documento,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione
+                 FROM vendite.fatture f
+                   JOIN config.nature_doc_fiscale ndf ON ndf.id = f.natura_doc_id
+                   LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = f.stato_doc_fiscale_id
+                   LEFT JOIN config.tipi_doc_fiscale tdf ON tdf.id = f.tipo_doc_fiscale_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = f.billing_account_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_cli ON sr_cli.id = ba.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_cli ON s_cli.id = sr_cli.soggetto_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = f.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = f.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = f.valuta_id
+                   LEFT JOIN config.sorgenti src ON src.id = f.sorgente_tipo_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'FATTURA'::text AND so_pr.attivo IS TRUE), f.id::text) pr ON true
+                   LEFT JOIN vendite.registri_fatturazione reg ON reg.id = f.registro_id;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $c$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN SELECT * FROM _commenti_liste ORDER BY relname, objsubid LOOP
+                      IF r.objsubid = 0 THEN
+                          EXECUTE format('COMMENT ON VIEW vendite.%I IS %L', r.relname,
+                              '⭐ rev 2026-10-11 (20261011-97, brief-db-lineage-seminata-per-chiave giro B): '
+                              'la vista non aggancia piu'' vw_documento_lineage. Le 8 colonne del grafo '
+                              '(frontiera_*, n_discendenti_attivi, is_transitato) le legge il backend da '
+                              'vendite.fn_documento_lineage_sintesi per le chiavi della pagina; la pratica '
+                              'resta, da pratiche.fn_pratica_del_documento. ' || r.description);
+                      ELSIF EXISTS (SELECT 1 FROM pg_attribute a
+                                     WHERE a.attrelid = format('vendite.%I', r.relname)::regclass
+                                       AND a.attname = r.attname AND NOT a.attisdropped) THEN
+                          EXECUTE format('COMMENT ON COLUMN vendite.%I.%I IS %L', r.relname, r.attname, r.description);
+                      END IF;
+                  END LOOP;
+              END
+              $c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Le definizioni di prima (pg_get_viewdef, 2026-10-11). ⚠️ Richiedono
+              -- vw_documento_lineage: si torna indietro dopo aver annullato 20261011-98.
+              DROP VIEW IF EXISTS vendite.vw_preventivi_lista;
+              CREATE VIEW vendite.vw_preventivi_lista
+              WITH (security_invoker=on) AS
+               SELECT p.id,
+                  p.uid,
+                  p.numero,
+                  p.rev,
+                  p.is_attiva,
+                  p.data,
+                  p.stato_doc_preventivo_id,
+                  sdp.codice_interno AS stato_codice_interno,
+                  sdp.descrizione AS stato_descrizione,
+                  p.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  p.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  p.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  p.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  p.totale_imponibile,
+                  p.totale_iva,
+                  p.totale_documento,
+                  p.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  p.validita_dal,
+                  p.validita_al,
+                  p.competenza_mese,
+                  p.data_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdp.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  p.is_superata,
+                  p.is_abortito,
+                  p.has_next_revisione,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno
+                 FROM vendite.vw_preventivi p
+                   JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = p.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = p.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = p.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = p.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = p.valuta_id
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE sorgenti.codice_interno::text = 'PREVENTIVO'::text AND sorgenti.attivo IS TRUE)) AND lin.uid = p.uid::text;
+
+              DROP VIEW IF EXISTS vendite.vw_offerte_commerciali_lista;
+              CREATE VIEW vendite.vw_offerte_commerciali_lista
+              WITH (security_invoker=on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.codice,
+                  o.revisione_numero,
+                  o.revisione_padre_id,
+                  NOT sdo.is_superato AND NOT sdo.is_abortito AS is_attiva,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.offerte_commerciali figlio
+                        WHERE figlio.revisione_padre_id = o.id)) AS has_next_revisione,
+                  o.stato_doc_offerta_id,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.descrizione AS stato_descrizione,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  o.listino_id,
+                  l.codice AS listino_codice,
+                  o.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  o.tipo_variazione_globale,
+                  o.valore_variazione_globale,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.validita_dal,
+                  o.validita_al,
+                  o.validita_al IS NOT NULL AND o.validita_al < (( SELECT script.fn_data_operativa() AS fn_data_operativa)) AS is_scaduta,
+                  o.data_emissione,
+                  o.data_accettazione,
+                  o.data_rifiuto,
+                  o.data_annullamento,
+                  o.data_insert,
+                  o.user_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdo.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  sdo.is_superato AS is_superata,
+                  sdo.is_abortito,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno,
+                  o.revisione_radice_id
+                 FROM vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON sdo.id = o.stato_doc_offerta_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = o.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = o.utility_id
+                   LEFT JOIN vendite.listini l ON l.id = o.listino_id
+                   LEFT JOIN vendite.listini_versioni lv ON lv.id = o.listino_versione_id
+                   LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE sorgenti.codice_interno::text = 'OFFERTA_COMMERCIALE'::text AND sorgenti.attivo IS TRUE)) AND lin.uid = o.uid::text;
+
+              DROP VIEW IF EXISTS vendite.vw_ordini_lista;
+              CREATE VIEW vendite.vw_ordini_lista
+              WITH (security_invoker=on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.numero,
+                  o.serie,
+                  o.anno,
+                  o.data,
+                  o.stato_doc_ordine_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.descrizione AS stato_descrizione,
+                  o.soggetto_ruolo_id,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.imponibile_tot,
+                  o.sconto_tot,
+                  o.iva_tot,
+                  o.totale_doc,
+                  o.modalita_pagamento_id,
+                  mp.codice AS modalita_pagamento_codice,
+                  o.termine_pagamento_id,
+                  tp.codice AS termine_pagamento_codice,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.tasso_cambio,
+                  o.fatturazione_trigger,
+                  o.canale_origine,
+                  o.agente_soggetto_ruolo_id,
+                  s_ag.ragione_sociale_completa AS agente_denominazione,
+                  o.documento_origine_tipo,
+                  o.documento_origine_id,
+                      CASE o.documento_origine_tipo
+                          WHEN 'PREVENTIVO'::text THEN pv.numero
+                          WHEN 'OFFERTA'::text THEN oc.codice::character varying
+                          ELSE NULL::character varying
+                      END AS documento_origine_codice,
+                  o.data_insert,
+                  o.user_insert,
+                  o.data_update,
+                  o.user_update,
+                  sd.pdf_mode,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno,
+                  dcr.data_consegna_richiesta_cliente_min,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione
+                 FROM vendite.ordini o
+                   JOIN config.stati_doc_ordini sd ON sd.id = o.stato_doc_ordine_id
+                   JOIN anagrafiche.soggetti_ruoli sr ON sr.id = o.soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = o.utility_id
+                   LEFT JOIN config.modalita_pagamento mp ON mp.id = o.modalita_pagamento_id
+                   LEFT JOIN config.termini_pagamento tp ON tp.id = o.termine_pagamento_id
+                   LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ag ON sr_ag.id = o.agente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ag ON s_ag.id = sr_ag.soggetto_id
+                   LEFT JOIN vendite.preventivi pv ON pv.id = o.documento_origine_id AND o.documento_origine_tipo::text = 'PREVENTIVO'::text
+                   LEFT JOIN vendite.offerte_commerciali oc ON oc.id = o.documento_origine_id AND o.documento_origine_tipo::text = 'OFFERTA'::text
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE sorgenti.codice_interno::text = 'ORDINE_VENDITA'::text AND sorgenti.attivo IS TRUE)) AND lin.uid = o.id::text
+                   LEFT JOIN LATERAL ( SELECT min(orr.data_consegna_richiesta_cliente) AS data_consegna_richiesta_cliente_min
+                         FROM vendite.ordini_righe orr
+                        WHERE orr.ordine_id = o.id AND orr.attivo IS TRUE) dcr ON true
+                   LEFT JOIN vendite.registri_fatturazione reg ON reg.id = o.registro_id;
+
+              DROP VIEW IF EXISTS vendite.vw_contratti_lista;
+              CREATE VIEW vendite.vw_contratti_lista
+              WITH (security_invoker=on) AS
+               SELECT c.id,
+                  c.uid,
+                  c.numero,
+                  c.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  c.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  c.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  c.ambito,
+                  c.data,
+                  c.valido_dal,
+                  c.valido_al,
+                  c.stato_doc_contratto_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.codice AS stato_codice,
+                  sd.descrizione AS stato_descrizione,
+                  c.listino_id,
+                  l.codice AS listino_codice,
+                  l.descrizione AS listino_descrizione,
+                  c.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  c.tipo_variazione_globale,
+                  c.valore_variazione_globale,
+                  c.categoria_cliente_id_snapshot,
+                  cc_snap.codice AS categoria_cliente_snapshot_codice,
+                  cc_snap.descrizione AS categoria_cliente_snapshot_descrizione,
+                  c.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  v_val.descrizione AS valuta_descrizione,
+                  c.data_insert,
+                  c.user_insert,
+                  c.data_update,
+                  c.user_update,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno
+                 FROM vendite.contratti c
+                   JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+                   JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   JOIN config.utilities u ON u.id = c.utility_id
+                   JOIN config.stati_doc_contratti sd ON sd.id = c.stato_doc_contratto_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = c.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN vendite.listini l ON l.id = c.listino_id
+                   LEFT JOIN vendite.listini_versioni lv ON lv.id = c.listino_versione_id
+                   LEFT JOIN anagrafiche.categorie_clienti cc_snap ON cc_snap.id = c.categoria_cliente_id_snapshot
+                   LEFT JOIN config.valute v_val ON v_val.id = c.valuta_id
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE sorgenti.codice_interno::text = 'CONTRATTO'::text AND sorgenti.attivo IS TRUE)) AND lin.uid = c.id::text;
+
+              DROP VIEW IF EXISTS vendite.vw_ddt_lista;
+              CREATE VIEW vendite.vw_ddt_lista
+              WITH (security_invoker=on) AS
+               SELECT d.id,
+                  d.uid,
+                  d.numero,
+                  d.serie,
+                  d.anno,
+                  d.data,
+                  d.stato_doc_ddt_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.descrizione AS stato_descrizione,
+                  d.destinatario_soggetto_ruolo_id,
+                  s_dest.id AS destinatario_soggetto_id,
+                  s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                  s_dest.id_fiscale_univoco_cf_piva,
+                  d.mittente_soggetto_ruolo_id,
+                  s_mitt.ragione_sociale_completa AS mittente_denominazione,
+                  d.vettore_soggetto_ruolo_id,
+                  s_vett.ragione_sociale_completa AS vettore_denominazione,
+                  d.billing_account_id,
+                  ba.codice AS ba_codice,
+                  d.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  d.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  d.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  d.causale_trasporto_id,
+                  ct.codice AS causale_trasporto_codice,
+                  ct.descrizione AS causale_trasporto_descrizione,
+                  d.aspetto_bene_id,
+                  ab.codice AS aspetto_bene_codice,
+                  ab.descrizione AS aspetto_bene_descrizione,
+                  d.modalita_addebito_trasporto_id,
+                  mat.codice AS modalita_addebito_trasporto_codice,
+                  d.num_colli,
+                  d.peso_lordo,
+                  d.peso_netto,
+                  d.volume,
+                  d.targa,
+                  d.autista,
+                  d.data_ora_partenza,
+                  d.data_ora_consegna_prev,
+                  d.tracking_code,
+                  d.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  d.sorgente_uid,
+                  o_src.id AS ordine_origine_id,
+                  o_src.numero AS ordine_origine_numero,
+                  d.data_insert,
+                  d.user_insert,
+                  d.data_update,
+                  d.user_update,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione
+                 FROM vendite.ddt d
+                   JOIN config.stati_doc_ddt sd ON sd.id = d.stato_doc_ddt_id
+                   JOIN anagrafiche.soggetti_ruoli sr_dest ON sr_dest.id = d.destinatario_soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s_dest ON s_dest.id = sr_dest.soggetto_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_mitt ON sr_mitt.id = d.mittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_mitt ON s_mitt.id = sr_mitt.soggetto_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_vett ON sr_vett.id = d.vettore_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_vett ON s_vett.id = sr_vett.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = d.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = d.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = d.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = d.valuta_id
+                   LEFT JOIN config.causali_trasporto ct ON ct.id = d.causale_trasporto_id
+                   LEFT JOIN config.aspetti_beni ab ON ab.id = d.aspetto_bene_id
+                   LEFT JOIN config.modalita_addebito_trasporto mat ON mat.id = d.modalita_addebito_trasporto_id
+                   LEFT JOIN config.sorgenti src ON src.id = d.sorgente_tipo_id
+                   LEFT JOIN vendite.ordini o_src ON o_src.uid = d.sorgente_uid AND src.codice_interno::text = 'ORDINE_VENDITA'::text
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE sorgenti.codice_interno::text = 'DDT_VENDITA'::text AND sorgenti.attivo IS TRUE)) AND lin.uid = d.id::text
+                   LEFT JOIN vendite.registri_fatturazione reg ON reg.id = d.registro_id;
+
+              DROP VIEW IF EXISTS vendite.vw_resi_lista;
+              CREATE VIEW vendite.vw_resi_lista
+              WITH (security_invoker=on) AS
+               SELECT r.id,
+                  r.uid,
+                  r.numero,
+                  r.anno,
+                  r.data,
+                  r.stato_doc_reso_id,
+                  sr.codice_interno AS stato_codice_interno,
+                  sr.descrizione AS stato_descrizione,
+                  r.destinatario_soggetto_ruolo_id,
+                  s_dest.id AS destinatario_soggetto_id,
+                  s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                  s_dest.id_fiscale_univoco_cf_piva,
+                  r.billing_account_id,
+                  ba.codice AS ba_codice,
+                  r.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  r.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  r.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  r.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  r.sorgente_uid,
+                  d_src.id AS ddt_origine_id,
+                  d_src.numero AS ddt_origine_numero,
+                  r.data_insert,
+                  r.user_insert,
+                  r.data_update,
+                  r.user_update,
+                  sr.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione
+                 FROM vendite.resi r
+                   JOIN config.stati_doc_reso sr ON sr.id = r.stato_doc_reso_id
+                   JOIN anagrafiche.soggetti_ruoli sr_dest ON sr_dest.id = r.destinatario_soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s_dest ON s_dest.id = sr_dest.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = r.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = r.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = r.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = r.valuta_id
+                   LEFT JOIN config.sorgenti src ON src.id = r.sorgente_tipo_id
+                   LEFT JOIN vendite.ddt d_src ON d_src.uid = r.sorgente_uid
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT s.id
+                         FROM config.sorgenti s
+                        WHERE s.codice_interno::text = 'RESO_VENDITA'::text AND s.attivo IS TRUE)) AND lin.uid = r.id::text
+                   LEFT JOIN vendite.registri_fatturazione reg ON reg.id = r.registro_id;
+
+              DROP VIEW IF EXISTS vendite.vw_fatture_lista;
+              CREATE VIEW vendite.vw_fatture_lista
+              WITH (security_invoker=on) AS
+               SELECT f.id,
+                  f.uid,
+                  f.numero,
+                  f.serie,
+                  f.anno,
+                  f.data,
+                  f.registro_id,
+                  f.stato_doc_fiscale_id,
+                  sdf.codice_interno AS stato_codice_interno,
+                  sdf.descrizione AS stato_descrizione,
+                  sdf.fase,
+                  f.tipo_doc_fiscale_id,
+                  tdf.codice_interno AS tipo_doc_fiscale_codice_interno,
+                  tdf.descrizione AS tipo_doc_fiscale_descrizione,
+                  f.natura_doc_id,
+                  ndf.codice_interno AS natura_doc_codice_interno,
+                  ndf.descrizione AS natura_doc_descrizione,
+                  f.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s_cli.id AS soggetto_id,
+                  s_cli.ragione_sociale_completa,
+                  s_cli.id_fiscale_univoco_cf_piva,
+                  f.emittente_soggetto_ruolo_id,
+                  ef.id AS emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  f.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  f.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  f.imponibile_tot,
+                  f.imposta_tot,
+                  f.totale_doc,
+                  f.totale_a_pagare,
+                  f.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  f.sorgente_uid,
+                  f.data_insert,
+                  f.user_insert,
+                  f.data_update,
+                  f.user_update,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno,
+                  vendite.fn_numero_documento_fattura(f.numero, f.serie) AS numero_documento,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione
+                 FROM vendite.fatture f
+                   JOIN config.nature_doc_fiscale ndf ON ndf.id = f.natura_doc_id
+                   LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = f.stato_doc_fiscale_id
+                   LEFT JOIN config.tipi_doc_fiscale tdf ON tdf.id = f.tipo_doc_fiscale_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = f.billing_account_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_cli ON sr_cli.id = ba.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_cli ON s_cli.id = sr_cli.soggetto_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = f.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = f.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = f.valuta_id
+                   LEFT JOIN config.sorgenti src ON src.id = f.sorgente_tipo_id
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT s.id
+                         FROM config.sorgenti s
+                        WHERE s.codice_interno::text = 'FATTURA'::text AND s.attivo IS TRUE)) AND lin.uid = f.id::text
+                   LEFT JOIN vendite.registri_fatturazione reg ON reg.id = f.registro_id;

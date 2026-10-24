@@ -17,7 +17,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
-from apps.core.api.payload_validators import corpo_oggetto, parse_list_params
+from apps.core.api.payload_validators import corpo_oggetto, parse_list_params, qp_int_optional
 from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
 
 
@@ -190,8 +190,12 @@ class RuoloContiBancariView(DomainAPIView):
     # Scopo: Lista conti del ruolo con cascata 3 livelli (istanza → ruolo → soggetto).
     #        Query param istanza_utility_id opzionale; se NULL, cascata parte da livello ruolo.
     def get(self, request: Request, soggetto_ruolo_id: int) -> JsonResponse:
-        istanza_str = request.query_params.get("istanza_utility_id")
-        istanza_utility_id = int(istanza_str) if istanza_str and istanza_str.strip() else None
+        # BB `qp_int_optional`, come il gemello dei contatti: vuoto = assente,
+        # un non intero o un numero oltre il bigint e' un 400 (fino al
+        # 2026-10-20 `int()` grezzo: il fuori-range arrivava al DB).
+        istanza_utility_id = qp_int_optional(
+            request.query_params.get("istanza_utility_id"), "istanza_utility_id",
+        )
         svc = ContiBancariService()
         result = svc.list_conti_ruolo(soggetto_ruolo_id, istanza_utility_id=istanza_utility_id)
         return success_response(result)

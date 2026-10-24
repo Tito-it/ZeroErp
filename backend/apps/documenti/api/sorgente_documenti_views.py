@@ -193,7 +193,7 @@ def build_documenti_sorgente_views(
                     "tipo_documento_output_id": serializers.IntegerField(required=False, allow_null=True),
                 },
             ),
-            responses={201: inline_serializer(
+            responses={200: inline_serializer(
                 name=f"{schema_prefix}DocumentoGeneraResponse",
                 fields={"data": serializers.DictField()},
             )},
@@ -201,8 +201,9 @@ def build_documenti_sorgente_views(
         # Scopo: EMETTE un documento NUOVO dalla sorgente: template pubblicato
         #        OGGI + dati CORRENTI, record nuovo in `documenti_generati` +
         #        evento `GENERATO`. `template_documento_id` esplicito
-        #        (override) oppure template `is_default=true` per
-        #        (sorgente, emittente).
+        #        (override) oppure la risoluzione a due livelli del DB per
+        #        (sorgente, emittente): il predefinito dell'emittente, se no
+        #        lo standard.
         #
         #        ⚠️ **NON e' una ristampa**, benche' fino al 2026-08-03 questo
         #        commento la chiamasse cosi': per un documento del 2025
@@ -233,6 +234,14 @@ def build_documenti_sorgente_views(
     DocumentoGenera.__doc__ = f"`POST .../documenti/genera/` — {schema_prefix}."
 
     class DocumentoAnteprima(DomainAPIView):
+        # ⭐ Una POST che LEGGE (decisione A5 di Tid, brief-be-verifica-
+        #    documentazione-api): l'anteprima non scrive niente — nessun
+        #    record, nessun file, nessun evento — ed e' POST solo perche'
+        #    porta un corpo. `post_accesso = "view"` le chiede il permesso di
+        #    lettura e la esenta dall'Idempotency-Key, che vale per le POST
+        #    che scrivono (`_ApiViewBase.initial`).
+        post_accesso = "view"
+
         @extend_schema(
             request=inline_serializer(
                 name=f"{schema_prefix}DocumentoAnteprimaRequest",

@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO STATO DEL PREVENTIVO DICE SE E' STATO SMISTATO: ACCETTATO <-> EVASO
+#   vendite.fn_preventivo_proietta_stato_smistamento(p_preventivo_id) -> void
+#   Brief: brief-db-annullo-a-valle-riapre-a-monte (D-1, D-10 di Tid; R-3, R-8)
+#
+# ── LA REGOLA, UNA ──────────────────────────────────────────────────
+#   Un preventivo ACCETTATO senza residuo su nessuna delle due strade
+#   (merce -> ordine: fn_preventivo_ha_residuo_ordine; servizi -> commessa:
+#   fn_preventivo_ha_residuo_commessa) e' EVASO. Un preventivo EVASO che ha
+#   di nuovo un residuo su una delle due torna ACCETTATO. Negli altri stati
+#   non fa niente. E' lo specchio di vendite.fn_ordine_proietta_stato_evasione
+#   (lo stato dell'ordine lo dicono le bolle): qui lo stato del preventivo lo
+#   dice il suo smistamento.
+#
+# ── PERCHE' UN BUILDING BLOCK ───────────────────────────────────────
+#   La regola aveva tre sedi, su due livelli:
+#     - vendite.fn_push_preventivo_a_ordine §8 (DB, verso EVASO);
+#     - vendite.fn_documento_ritira_legami §4b (DB, verso ACCETTATO,
+#       all'annullo dell'ordine);
+#     - _smistamento_gate_helpers.transiziona_a_evaso_se_smistato (BACKEND,
+#       verso EVASO dopo l'invio in commessa, «best-effort»).
+#   D-10: o tutto DB o tutto BE, e la meta' che c'era e il ritorno stanno nel
+#   DB. Le due copie DB lo chiamano da 20261012-13 e -22; l'invio in
+#   commessa, che nel DB non ha una madre (lo orchestra il backend riga per
+#   riga), lo raggiunge dal trigger sulle righe di commessa (20261012-14,
+#   -15); il backend ritira la sua copia (§6 del brief).
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   SECURITY INVOKER: scrive con la RLS di chi chiama (l'app nell'invio,
+#   il proprietario dentro i verbi DEFINER). Un preventivo che chi chiama
+#   non vede, o che non c'e', non si tocca. Lo stato di destinazione
+#   assente dal catalogo e' E_CONFIG_MANCANTE, come era nel §8 del push.
+#   La transizione passa dalla matrice (trgfn_preventivi_guard_transizione:
+#   ACCETTATO -> EVASO e EVASO -> ACCETTATO, entrambi manuale = false).
+#   Si scrive solo se lo stato cambia. Parametro non valido:
+#   E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO), come la gemella dell'ordine.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-12-create-fn-preventivo-proietta-stato-smistamento-mctit.yaml
+
+  - changeSet:
+      id: 20261012-12-create-fn-preventivo-proietta-stato-smistamento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        BB vendite.fn_preventivo_proietta_stato_smistamento: ACCETTATO <-> EVASO dal residuo
+        sulle due strade (ordine, commessa). Sede unica della regola (D-10).
+        Brief: brief-db-annullo-a-valle-riapre-a-monte (R-3, R-8).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_preventivo_proietta_stato_smistamento';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_preventivo_proietta_stato_smistamento(
+                  p_preventivo_id vendite.preventivi.id%TYPE)
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: portare il preventivo nello stato che il suo
+              --   smistamento dice.
+              --   ACCETTATO, nessun residuo (ordine e commessa) -> EVASO;
+              --   EVASO, residuo su almeno una strada          -> ACCETTATO;
+              --   ogni altro caso                              -> niente.
+              --   La transizione passa dalla matrice
+              --   (trgfn_preventivi_guard_transizione).
+              -- Consumatori: vendite.fn_push_preventivo_a_ordine,
+              --   vendite.fn_documento_ritira_legami (annullo dell'ordine),
+              --   vendite.trgfn_commesse_attivita_proietta_stato_preventivo
+              --   (invio in commessa, ritiro, annullo della commessa).
+              -- Brief: brief-db-annullo-a-valle-riapre-a-monte (D-1, D-10).
+              -- =========================================================
+              DECLARE
+                  v_stato        config.stati_doc_preventivi.codice_interno%TYPE;
+                  v_target       config.stati_doc_preventivi.codice_interno%TYPE;
+                  v_target_id    config.stati_doc_preventivi.id%TYPE;
+                  -- Esito di due predicati: nessuna colonna da ancorare.
+                  v_residuo      boolean;
+              BEGIN
+                  IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_preventivo_proietta_stato_smistamento',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_preventivo_id', p_preventivo_id),
+                          NULL::uuid, 'vendite.fn_preventivo_proietta_stato_smistamento',
+                          'p_preventivo_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- Lo stato di oggi. Preventivo assente o invisibile: niente.
+                  SELECT s.codice_interno
+                    INTO v_stato
+                    FROM vendite.preventivi p
+                    JOIN config.stati_doc_preventivi s ON s.id = p.stato_doc_preventivo_id
+                   WHERE p.id = p_preventivo_id;
+
+                  IF v_stato IS NULL OR v_stato NOT IN ('ACCETTATO', 'EVASO') THEN
+                      RETURN;
+                  END IF;
+
+                  v_residuo := vendite.fn_preventivo_ha_residuo_ordine(p_preventivo_id)
+                            OR vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id);
+
+                  v_target := CASE
+                                WHEN v_stato = 'ACCETTATO' AND NOT v_residuo THEN 'EVASO'
+                                WHEN v_stato = 'EVASO'     AND v_residuo     THEN 'ACCETTATO'
+                              END;
+
+                  IF v_target IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  SELECT s.id
+                    INTO v_target_id
+                    FROM config.stati_doc_preventivi s
+                   WHERE s.codice_interno = v_target
+                     AND s.attivo IS TRUE;
+
+                  IF v_target_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_preventivo_proietta_stato_smistamento',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.stati_doc_preventivi.' || v_target),
+                          NULL::uuid, 'stato ' || v_target || ' (config.stati_doc_preventivi)');
+                  END IF;
+
+                  UPDATE vendite.preventivi
+                     SET stato_doc_preventivo_id = v_target_id
+                   WHERE id = p_preventivo_id
+                     AND stato_doc_preventivo_id IS DISTINCT FROM v_target_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_preventivo_proietta_stato_smistamento(vendite.preventivi.id%TYPE) IS
+                  'Building block (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte D-1/D-10 di Tid): porta il preventivo nello stato che il suo smistamento dice. ACCETTATO senza residuo su nessuna strada (vendite.fn_preventivo_ha_residuo_ordine, vendite.fn_preventivo_ha_residuo_commessa) -> EVASO; EVASO con un residuo su almeno una -> ACCETTATO; ogni altro stato, o preventivo assente o invisibile, -> niente. Specchio di vendite.fn_ordine_proietta_stato_evasione. La transizione passa dalla matrice (vendite.trgfn_preventivi_guard_transizione); si scrive solo se lo stato cambia; destinazione assente dal catalogo: E_CONFIG_MANCANTE. Sede unica della regola, che prima aveva tre copie su due livelli: il §8 di vendite.fn_push_preventivo_a_ordine, il §4b di vendite.fn_documento_ritira_legami e il gate EVASO del backend dopo l''invio in commessa. Consumatori: vendite.fn_push_preventivo_a_ordine, vendite.fn_documento_ritira_legami (annullo dell''ordine), vendite.trgfn_commesse_attivita_proietta_stato_preventivo (invio in commessa, ritiro delle righe, annullo della commessa). SECURITY INVOKER: scrive con la RLS di chi chiama. Parametro non valido: E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_preventivo_proietta_stato_smistamento(bigint);

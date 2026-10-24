@@ -41,6 +41,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.config.sorgenti import CATEGORIA_SORGENTE_DOCUMENTO
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     RicercaFull,
@@ -110,11 +111,15 @@ _COLONNE_JSONB: tuple[str, ...] = (
 #    (§11.10 BE-F4), che scrive la famiglia E provvede i registri mancanti nella
 #    stessa transazione. Un INSERT diretto farebbe nascere una famiglia che non
 #    produce nessun documento finche' qualcuno non se ne accorge.
+# ⭐ Dal 2026-10-20 (brief-db-grammatica-unica-documenti 2c, G-5) la famiglia e'
+#    quella di una SORGENTE: `codice_interno` e' il `codice_interno` di
+#    `config.sorgenti` (FK `fk_famiglie_documento_sorgenti`) e la tabella dei
+#    documenti e' la sua `target_table`. `schema_tabella` e `nome_tabella` non
+#    sono piu' parametri della madre ne' colonne della famiglia: la vista le
+#    calcola ancora, in sola lettura.
 _CAMPI_CREATE: tuple[str, ...] = (
     "codice_interno",
     "descrizione",
-    "schema_tabella",
-    "nome_tabella",
     "colonna_numero",
     "colonna_billing_account",
     "colonna_serie",
@@ -138,7 +143,7 @@ _CAMPI_CREATE: tuple[str, ...] = (
 #    che il resto del modello non le da'. ✅ D5 (Tid, 2026-09-01): il `CHECK`
 #    non si tocca, e il limite si dichiara nella maschera (§11.11).
 #
-# ⭐ LE QUATTRO COLONNE STRUTTURALI CI SONO INVECE, ed e' la stessa logica dei
+# ⭐ LE TRE COLONNE STRUTTURALI CI SONO INVECE, ed e' la stessa logica dei
 #    tre campi di forma dei registri: esiste il guard che le rifiuta quando la
 #    famiglia ha gia' dei registri (`trgfn_famiglie_documento_guard_struttura`,
 #    E_FAMIGLIA_DOCUMENTO_CHIAVE_IMMUTABILE). Tenerle fuori sarebbe un divieto
@@ -158,8 +163,6 @@ _CAMPI_CREATE: tuple[str, ...] = (
 _CAMPI_UPDATE: tuple[str, ...] = (
     "codice",
     "descrizione",
-    "schema_tabella",
-    "nome_tabella",
     "colonna_numero",
     "colonna_billing_account",
     "colonna_serie",
@@ -246,25 +249,6 @@ class FamiglieDocumentoRepository:
             return None
         return _decodifica_jsonb([riga])[0]
 
-    # Scopo: chi occupa oggi una tabella, fra le famiglie ATTIVE — cioe' la riga
-    #        che `uq_famiglie_documento_tabella_attiva` fa vincere.
-    # ⛔ Legge la TABELLA e non la vista, ed e' voluto: serve un nome per un
-    #    messaggio d'errore, non capability ne' conteggi. Passare dalla vista
-    #    farebbe girare due `fn_check_*` in LATERAL per leggere due stringhe.
-    def get_famiglia_attiva_per_tabella(
-        self, schema_tabella: str, nome_tabella: str
-    ) -> dict[str, Any] | None:
-        sql = """
-            SELECT codice_interno, descrizione
-              FROM vendite.famiglie_documento
-             WHERE attivo
-               AND schema_tabella = %s
-               AND nome_tabella = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [schema_tabella, nome_tabella])
-            return row_to_dict(cursor)
-
     # Scopo: «questa famiglia ammette le regole fiscali?» — cioe' i limiti di
     #        emissione e una politica data non neutra sul suo registro.
     #
@@ -321,6 +305,55 @@ class FamiglieDocumentoRepository:
         """  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql)
+            return rows_to_list(cursor)
+
+    # Scopo: le sorgenti fra cui il drawer sceglie la famiglia da creare —
+    #        i tipi di documento di `config.sorgenti` che dichiarano una
+    #        tabella, con la tabella e chi la numera gia'.
+    # ⭐ La famiglia E' una sorgente (G-5, 2026-10-20): la creazione riceve il
+    #    `codice_interno` della sorgente, e la tabella la dice `target_table`
+    #    (`config.fn_sorgente_tabella`, il BB del DB, mai `target_table::text`).
+    # ⛔ `famiglia_esistente` e `tabella_numerata_da` sono INFORMAZIONI per
+    #    spegnere la voce e dire perche', non il rifiuto: a rifiutare restano
+    #    l'indice unico su `codice_interno` e il guard dei riferimenti
+    #    (`E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA`). Una sorgente puo' avere
+    #    una famiglia SPENTA: allora non se ne crea un'altra, si riaccende.
+    # ⚠️ `tabella_numerata_da` e' la famiglia ATTIVA di un'ALTRA sorgente sulla
+    #    stessa tabella: la propria famiglia non conta (e' `famiglia_esistente`),
+    #    altrimenti una famiglia spenta da riaccendere e una tabella gia' presa
+    #    da un'altra non si distinguerebbero — e la seconda la riaccensione la
+    #    rifiuta.
+    # ⚠️ `codice_interno` e non `codice`: il nome del tipo e' quello immutabile.
+    def list_sorgenti_numerabili(self) -> list[dict[str, Any]]:
+        sql = """
+            SELECT s.codice_interno,
+                   s.etichetta,
+                   s.descrizione,
+                   (t.schema_tabella::text || '.' || t.nome_tabella::text)
+                                                  AS tabella_documento,
+                   (f.id IS NOT NULL)             AS famiglia_esistente,
+                   occ.descrizione                AS tabella_numerata_da
+              FROM config.sorgenti s
+              JOIN LATERAL config.fn_sorgente_tabella(s.codice_interno) t ON TRUE
+              LEFT JOIN vendite.famiglie_documento f
+                     ON f.codice_interno = s.codice_interno
+              LEFT JOIN LATERAL (
+                    SELECT fo.descrizione
+                      FROM vendite.famiglie_documento fo
+                      JOIN LATERAL config.fn_sorgente_tabella(fo.codice_interno) tf
+                           ON TRUE
+                     WHERE fo.attivo
+                       AND fo.codice_interno <> s.codice_interno
+                       AND tf.relid = t.relid
+                     ORDER BY fo.id
+                     LIMIT 1
+              ) occ ON TRUE
+             WHERE s.attivo
+               AND s.categoria = %s
+             ORDER BY s.etichetta, s.codice_interno
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [CATEGORIA_SORGENTE_DOCUMENTO])
             return rows_to_list(cursor)
 
     # =================================================================

@@ -104,8 +104,7 @@ VALUES ('AD_HOC', '_PGTAP_TOTP_' || substring(md5(clock_timestamp()::text) from 
 CREATE TEMP TABLE _p AS
 SELECT max(id) AS profilo_id FROM config.profili_accesso WHERE codice LIKE '\_PGTAP\_TOTP\_%';
 
-INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, identita_digitale_id)
-VALUES ((SELECT profilo_id FROM _p), (SELECT identita_id FROM _u));
+DO $lega$ BEGIN PERFORM config.fn_lega_profilo_identita((SELECT profilo_id FROM _p), (SELECT identita_id FROM _u)); END $lega$;
 
 SELECT is(pg_temp.obbligo((SELECT auth_user_id FROM _u)), 'true|PROFILO',
     '7) un profilo col segno legato all''identita'': PROFILO');

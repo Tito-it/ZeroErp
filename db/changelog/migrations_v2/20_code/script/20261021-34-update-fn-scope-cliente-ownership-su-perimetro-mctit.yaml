@@ -1,0 +1,152 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA REGOLA DEL CLIENTE SCRITTA UNA VOLTA
+#   script.fn_scope_cliente_ownership(bigint, bigint)
+#   script.fn_scope_cliente_ownership_via_ordine(bigint, bigint)
+#   Brief: brief-db-perimetro-una-volta-famiglie-residue §7 (giro 3).
+#
+# Come 20261021-31 per BA_OWNERSHIP: le policy passano ai building block
+# (-35); queste due restano per la domanda su UNA riga, perche' le chiamano
+# ancora fn_scope_shop_via_ordine (la prima) e fn_scope_note_cliente (la
+# seconda), curate nei giri successivi. Diventano la COMPOSIZIONE dei
+# building block, cosi' la regola resta scritta una volta (regola del 2).
+# Stesse risposte: stessa identita', stesse vesti (CLIENTE_PORTALE o
+# SHOP_CUSTOMER), stesso fn_veste_utilizzabile; il cliente dell'ordine letto
+# DEFINER invece che sotto la RLS dell'ordine (per le vesti di cliente la
+# policy dell'ordine e' la stessa domanda).
+# _via_ordine_riga non resta: dopo -35 non la chiama nessuno (-36).
+# Firme %TYPE, COST 5000, INVOKER. Rollback: corpi e COMMENT vivi.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261021-34-update-fn-scope-cliente-ownership-su-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261021-34-update-fn-scope-cliente-ownership-su-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_scope_cliente_ownership e _via_ordine diventano la composizione dei building block delle policy di controparte. Giro 3 di brief-db-perimetro-una-volta-famiglie-residue.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('script.fn_get_identita_sr_perimetro(bigint,config.ruolo_applicativo[])'),
+                             to_regprocedure('script.fn_scope_sr_perimetro(bigint,bigint)'),
+                             to_regprocedure('script.fn_resolve_controparte_sr_id(text,bigint)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_cliente_ownership(
+                  p_identita_id   anagrafiche.identita_digitali.id%TYPE,
+                  p_cliente_sr_id anagrafiche.soggetti_ruoli.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- Scopo: l'identita' (veste di cliente, CLIENTE_PORTALE o SHOP_CUSTOMER,
+                  --   utilizzabile oggi) e' il soggetto p_cliente_sr_id? Fail-closed: NULL o
+                  --   identita' inesistente/non utilizzabile -> false.
+                  -- ⭐ Rev 2026-10-21 (20261021-34, giro 3 di brief-db-perimetro-una-volta-
+                  --   famiglie-residue): la regola e' scritta UNA volta, nei building block
+                  --   delle policy di controparte: il perimetro dell'identita'
+                  --   (script.fn_get_identita_sr_perimetro: veste di cliente, utilizzabile
+                  --   oggi), il cliente della riga (script.fn_resolve_controparte_sr_id,
+                  --   DEFINER) e il confronto (script.fn_scope_sr_perimetro). Questa resta
+                  --   per la domanda su UNA riga (la chiama fn_scope_shop_via_ordine); le policy degli ordini e delle
+                  --   ricevute non passano piu' di qui (20261021-35).
+                  SELECT script.fn_scope_sr_perimetro(
+                      script.fn_get_identita_sr_perimetro(
+                          p_identita_id,
+                          ARRAY['CLIENTE_PORTALE', 'SHOP_CUSTOMER']::config.ruolo_applicativo[]),
+                      p_cliente_sr_id)
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_cliente_ownership(anagrafiche.identita_digitali.id%TYPE, anagrafiche.soggetti_ruoli.id%TYPE) IS
+              'Scope policy CLIENTE_OWNERSHIP: ritorna true se il soggetto_ruolo cliente target coincide con il soggetto_ruolo dell''identita e l''identita e'' in veste CLIENTE_PORTALE o SHOP_CUSTOMER attiva. STABLE, inlineable. Rev 2026-10-07 (brief-db-veste-utilizzabile): l''identita'' deve essere utilizzabile oggi (script.fn_veste_utilizzabile), non solo accesa: una veste scaduta non vede piu'' i suoi dati. Rev 2026-10-21 (20261021-34, giro 3 di brief-db-perimetro-una-volta-famiglie-residue): composizione dei building block delle policy di controparte (script.fn_get_identita_sr_perimetro, script.fn_resolve_controparte_sr_id, script.fn_scope_sr_perimetro), per la domanda su una riga; le policy non passano piu'' di qui.';
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_cliente_ownership_via_ordine(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE,
+                  p_ordine_id   vendite.ordini.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- Scopo: l'identita' e' il cliente dell'ordine? Ordine inesistente -> false.
+                  -- ⭐ Rev 2026-10-21 (20261021-34, giro 3 di brief-db-perimetro-una-volta-
+                  --   famiglie-residue): la regola e' scritta UNA volta, nei building block
+                  --   delle policy di controparte: il perimetro dell'identita'
+                  --   (script.fn_get_identita_sr_perimetro: veste di cliente, utilizzabile
+                  --   oggi), il cliente della riga (script.fn_resolve_controparte_sr_id,
+                  --   DEFINER) e il confronto (script.fn_scope_sr_perimetro). Questa resta
+                  --   per la domanda su UNA riga (la chiama fn_scope_note_cliente); le policy degli ordini e delle
+                  --   ricevute non passano piu' di qui (20261021-35).
+                  SELECT script.fn_scope_sr_perimetro(
+                      script.fn_get_identita_sr_perimetro(
+                          p_identita_id,
+                          ARRAY['CLIENTE_PORTALE', 'SHOP_CUSTOMER']::config.ruolo_applicativo[]),
+                      script.fn_resolve_controparte_sr_id('ordine', p_ordine_id))
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_cliente_ownership_via_ordine(anagrafiche.identita_digitali.id%TYPE, vendite.ordini.id%TYPE) IS
+              'Adattatore di scope per i satelliti di vendite.ordini, veste CLIENTE_PORTALE: risale dalla testata a `soggetto_ruolo_id` e delega a script.fn_scope_cliente_ownership. ⚠️ Esiste perche'' i satelliti devono rispecchiare TUTTE le vesti della testata: con la sola veste operatore un cliente del portale smetterebbe di vedere le righe degli ordini che possiede. Rev 2026-10-21 (20261021-34, giro 3 di brief-db-perimetro-una-volta-famiglie-residue): composizione dei building block delle policy di controparte (script.fn_get_identita_sr_perimetro, script.fn_resolve_controparte_sr_id, script.fn_scope_sr_perimetro), per la domanda su una riga; le policy non passano piu'' di qui.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_cliente_ownership(
+                  p_identita_id   anagrafiche.identita_digitali.id%TYPE,
+                  p_cliente_sr_id anagrafiche.soggetti_ruoli.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- Match diretto: il target soggetto_ruolo e' quello
+                  -- dell'identita, e l'identita e' in veste CLIENTE_PORTALE
+                  -- oppure SHOP_CUSTOMER (i due ruoli applicativi che
+                  -- condividono il ruolo anagrafico CL). Evita false positive
+                  -- su altre identita collegate allo stesso SR con veste
+                  -- diversa (es. FORNITORE_PORTALE su SR misto CL/FO).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                       WHERE id.id                = p_identita_id
+                         AND id.soggetto_ruolo_id = p_cliente_sr_id
+                         AND id.ruolo_applicativo IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                         -- Rev 2026-10-07: utilizzabile oggi, non solo accesa.
+                         AND script.fn_veste_utilizzabile(id.id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_cliente_ownership(anagrafiche.identita_digitali.id%TYPE, anagrafiche.soggetti_ruoli.id%TYPE) IS
+              'Scope policy CLIENTE_OWNERSHIP: ritorna true se il soggetto_ruolo cliente target coincide con il soggetto_ruolo dell''identita e l''identita e'' in veste CLIENTE_PORTALE o SHOP_CUSTOMER attiva. STABLE, inlineable. Rev 2026-10-07 (brief-db-veste-utilizzabile): l''identita'' deve essere utilizzabile oggi (script.fn_veste_utilizzabile), non solo accesa: una veste scaduta non vede piu'' i suoi dati.';
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_cliente_ownership_via_ordine(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE,
+                  p_ordine_id   vendite.ordini.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  SELECT script.fn_scope_cliente_ownership(
+                      p_identita_id,
+                      (SELECT o.soggetto_ruolo_id
+                         FROM vendite.ordini o WHERE o.id = p_ordine_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_cliente_ownership_via_ordine(anagrafiche.identita_digitali.id%TYPE, vendite.ordini.id%TYPE) IS
+              'Adattatore di scope per i satelliti di vendite.ordini, veste CLIENTE_PORTALE: risale dalla testata a `soggetto_ruolo_id` e delega a script.fn_scope_cliente_ownership. ⚠️ Esiste perche'' i satelliti devono rispecchiare TUTTE le vesti della testata: con la sola veste operatore un cliente del portale smetterebbe di vedere le righe degli ordini che possiede.';

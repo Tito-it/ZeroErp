@@ -62,6 +62,34 @@ SELECT plan(8);
 -- compositi o senza emittenti liberi il caso non e' costruibile, e allora si
 -- salta invece di fallire.
 -- ============================================================
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti). Prima il kit era «il primo composito del catalogo con
+--   una distinta viva» e l'emittente fuori matrice «il primo soggetto_ruolo
+--   senza mappa»: su zeroerp_ci il kit non c'era e la precondizione era rossa.
+--   Ora un'azienda nuova col suo operatore (contesto aperto su di lui), il
+--   cliente legato a lei (dbops.fn_pgtap_crea_mondo_cliente), e il kit: un
+--   prodotto e due componenti costruiti (dbops.fn_pgtap_crea_articolo, non
+--   gestiti; il kit nasce composito, flag che serve PRIMA della distinta), la distinta coi
+--   default del dominio (obbligatorio, NASCOSTO) viva da trenta giorni.
+--   L'emittente fuori matrice e' l'azienda appena nata: nessuna mappa in
+--   anagrafiche.categorie_clienti_listini, verificato sotto e non sperato.
+--   Modello: test-componenti-propaga-qta-da-operativa-v1.
+CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _az)); END $ctx$;
+CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('kit senza prezzo');
+
+-- Il kit nasce composito: il flag serve PRIMA della distinta
+-- (catalogo.trgfn_articoli_componenti_guard_is_composito).
+CREATE TEMP TABLE _art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-KSP-KIT', false, p_is_composito => true) AS kit_id,
+       dbops.fn_pgtap_crea_articolo('PGT-KSP-CMP1', false) AS cmp1_id,
+       dbops.fn_pgtap_crea_articolo('PGT-KSP-CMP2', false) AS cmp2_id;
+
+INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
+SELECT a.kit_id, c.cmp_id, 1, script.fn_data_operativa() - 30
+  FROM _art a
+ CROSS JOIN LATERAL (VALUES (a.cmp1_id), (a.cmp2_id)) AS c(cmp_id);
+
 CREATE TEMP TABLE tmp_kit (ddt_id bigint, riga_id bigint, n_comp integer);
 
 DO $fix$
@@ -97,30 +125,32 @@ BEGIN
   --   FABBRICA. Prima era il primo BA del database accanto al primo ruolo del
   --   database, scollegati: la FK composta fk_ddt_ba_cliente lo rifiuta. Il
   --   trigger z90 lega il BA all'emittente dell'operatore in sessione.
-  SELECT c.billing_account_id, c.utility_id, c.soggetto_ruolo_id
+  -- ⛔ rev 2026-10-13: il cliente e' quello del mondo costruito in testa.
+  SELECT m.billing_account_id, m.utility_id, m.cliente_soggetto_ruolo_id
     INTO v_ba, v_utility, v_sr
-    FROM dbops.fn_pgtap_crea_cliente_ba('kit senza prezzo') c;
-  SET CONSTRAINTS ALL IMMEDIATE;
+    FROM _m m;
   SELECT id INTO v_val FROM config.valute ORDER BY id LIMIT 1;
   SELECT id INTO v_draft FROM config.stati_doc_ddt
    WHERE codice_interno = 'DRAFT' AND attivo IS TRUE LIMIT 1;
 
-  -- Articolo composito con distinta viva alla data.
+  -- Articolo composito con distinta viva alla data: quello COSTRUITO in testa
+  --   (rev 2026-10-13). La distinta viva si verifica, non si spera.
   SELECT a.id INTO v_art
     FROM catalogo.articoli a
-   WHERE a.is_composito IS TRUE AND a.attivo IS TRUE
+   WHERE a.id = (SELECT kit_id FROM _art)
+     AND a.is_composito IS TRUE AND a.attivo IS TRUE
      AND EXISTS (SELECT 1 FROM catalogo.articoli_componenti ac
                   WHERE ac.prodotto_id = a.id
                     AND COALESCE(ac.attivo, TRUE)
-                    AND ac.validita @> script.fn_data_operativa())
-   ORDER BY a.id LIMIT 1;
+                    AND ac.validita @> script.fn_data_operativa());
 
   -- Emittente FUORI dalla matrice: e' cio' che rende i prezzi non risolvibili.
-  SELECT sr.id INTO v_sr_nomap
-    FROM anagrafiche.soggetti_ruoli sr
+  --   ⛔ rev 2026-10-13: e' l'azienda appena costruita, non «il primo
+  --   soggetto_ruolo senza mappa» del database; la condizione resta.
+  SELECT m.emittente_soggetto_ruolo_id INTO v_sr_nomap
+    FROM _m m
    WHERE NOT EXISTS (SELECT 1 FROM anagrafiche.categorie_clienti_listini ccl
-                      WHERE ccl.emittente_soggetto_ruolo_id = sr.id)
-   ORDER BY sr.id LIMIT 1;
+                      WHERE ccl.emittente_soggetto_ruolo_id = m.emittente_soggetto_ruolo_id);
 
   IF v_art IS NULL OR v_ba IS NULL OR v_ef IS NULL OR v_sr_nomap IS NULL
      OR v_utility IS NULL THEN

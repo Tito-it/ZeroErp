@@ -6,6 +6,8 @@ CREATE FUNCTION fn_posta_trasferimento(p_trasferimento_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION magazzino.fn_posta_trasferimento(p_trasferimento_id bigint)
  RETURNS TABLE(movimento_id bigint, riga_id bigint, qta numeric)
@@ -120,6 +122,8 @@ $function$
 COMMENT ON FUNCTION magazzino.fn_posta_trasferimento(p_trasferimento_id bigint)
 IS 'VERBO del trasferimento interno (D-L2-g). Prima riga: script.fn_guard_azione(utente, ''registra_magazzino''). SECURITY DEFINER con search_path bloccato: la testata si prende FOR UPDATE col predicato della policy sul magazzino di partenza (fuori perimetro E_MAG_DOCUMENTO_NON_TROVATO). La check e'' quella della capability (script.fn_check_documento_interno_registrabile, TRASFERIMENTO): stato CONFIRM, righe, stessa posizione, partenza e arrivo postabili. Per riga, nello stesso momento: TRASF_OUT (-qta) da magazzino_id_from/ubicazione_id_da e TRASF_IN (+qta) in magazzino_id_to/ubicazione_id_a, transfer_uid = uid del trasferimento (l''entrata al costo dell''uscita), sorgente TRASFERIMENTO_RIGA. Poi POSTED con la GUC transazionale zeroerp.magazzino_posting_trasferimento. UNA transazione. Ritorna (movimento_id, riga_id, qta), due per riga. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt (P-10).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

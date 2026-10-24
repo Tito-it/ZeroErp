@@ -3,23 +3,18 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Service layer per gestione fornitori.
-#        Orchestrazione creazione fornitore (ruolo FO + contatto + indirizzo + insert)
-#        in una transazione atomica. CRUD, lista paginata, update.
-#        In creazione, contatto e indirizzo vengono inseriti nella stessa transazione
-#        per soddisfare i trigger DEFERRED (indirizzi obbligatori per ruolo FO).
+#        Creazione (ruolo FO + fornitore + contatto + indirizzi) dalla madre del
+#        DB `anagrafiche.fn_crea_fornitore`. CRUD, lista paginata, update.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 from typing import Any
 
-from django.db import transaction
-
 from apps.anagrafiche.db.fornitori_repository import (
     FORNITORE_UPDATE_ALLOWED,
     FornitoriRepository,
 )
-from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.anagrafiche.error_codes import (
     E_ANAG_NOT_FOUND,
     E_ANAG_VALIDAZIONE,
@@ -29,7 +24,8 @@ from apps.anagrafiche.services._validators import (
     extract_optional_fields,
     require_found,
 )
-from apps.anagrafiche.services.contatti_service import crea_contatto_inline_se_valido
+from apps.anagrafiche.services.contatti_service import VINCOLI_CONTATTO, contatto_inline_per_madre
+from apps.anagrafiche.services.soggetti_service import indirizzi_per_madre
 from apps.core.api.payload_validators import optional_uuid
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
@@ -50,7 +46,6 @@ class FornitoriService:
 
     def __init__(self) -> None:
         self._repo = FornitoriRepository()
-        self._sogg_repo = SoggettiRepository()
 
     # =================================================================
     # Lista e dettaglio
@@ -98,65 +93,50 @@ class FornitoriService:
         )
         # Verifica che il fornitore esista
         self.get_fornitore(fornitore_id)
+        # Un PATCH vuoto e' un 400, non il 404 che dava il rowcount (2026-10-14).
+        _V.require_campi_da_aggiornare(payload)
         updated = self._repo.update_fornitore(fornitore_id, payload)
-        ErrorManager.require(updated, code=E_ANAG_NOT_FOUND,
-                             message="Fornitore non trovato o nessun campo modificato.")
+        ErrorManager.require(updated, code=E_ANAG_NOT_FOUND, message="Fornitore non trovato.")
         return {"updated": True}
 
     # =================================================================
     # Creazione fornitore
     # =================================================================
 
-    # Scopo: Crea un fornitore completo in una transazione atomica.
-    #        Obiettivo: ruolo FO + fornitore + contatto (opzionale) + indirizzo ruolo (opzionale).
-    #        Perimetro: validazione soggetto_id, get_or_create ruolo, insert fornitore,
-    #        insert contatto e indirizzo nella stessa transazione per soddisfare
-    #        trigger DEFERRED (indirizzi obbligatori per ruolo FO).
+    # Scopo: Crea un fornitore completo: ruolo FO, fornitore nello stato VE,
+    #        contatto del ruolo (opzionale) e indirizzi del ruolo, con la madre
+    #        del DB `anagrafiche.fn_crea_fornitore` (un'istruzione: atomica, e i
+    #        trigger DEFERRED degli indirizzi obbligatori trovano tutto).
+    #        Qui restano i pre-check per l'operatore: il soggetto, i campi del
+    #        payload, la classificazione del contatto inline (EMPTY/PARTIAL/
+    #        VALID: decide SE c'e' un contatto) e gli indirizzi; poi la
+    #        traduzione dei vincoli per nome.
     #        Risultato: dict con id del fornitore e soggetto_ruolo_id.
+    # ⭐ Dal 2026-10-18 (2b-2, lotto 4): fino ad allora i quattro passi stavano
+    #    qui dentro un `transaction.atomic`.
     def crea_fornitore(self, payload: dict[str, Any]) -> dict[str, Any]:
         soggetto_id = optional_uuid(payload, "soggetto_id")
         ErrorManager.require(soggetto_id is not None, code=E_ANAG_VALIDAZIONE,
                              message="soggetto_id obbligatorio.")
         assert soggetto_id is not None
-        soggetto_id = str(soggetto_id)
 
-        # Campi opzionali del fornitore
         fornitore_data = self._extract_fornitore_data(payload)
+        contatto = contatto_inline_per_madre(payload.get("contatto"))
+        indirizzi = indirizzi_per_madre(payload.get("indirizzi"))
 
-        # Contatto e indirizzi inline (opzionali, per creazione da drawer)
-        contatto_data = payload.get("contatto")
-        indirizzi_data = payload.get("indirizzi", [])
-
-        with transaction.atomic():
-            # Step 1: Ruolo FORNITORE (get or create)
-            soggetto_ruolo_id = self._repo.get_or_create_ruolo_fornitore(soggetto_id)
-
-            # Step 2: Insert fornitore
-            result = create_with_constraint_mapping(
-                lambda: {"id": self._repo.create_fornitore(
-                    soggetto_ruolo_id=soggetto_ruolo_id,
-                    **fornitore_data,
-                )},
-                {
-                    "uq_fornitori_soggetto_ruolo_id": "Esiste gia' un fornitore per questo soggetto.",
-                    "uq_fornitori_codice": (
-                        "Esiste gia' un fornitore con questo codice.",
-                        "codice",
-                    ),
-                },
-            )
-
-            # Step 3: Contatto ruolo inline opzionale (EMPTY→skip, PARTIAL→errore, VALID→crea).
-            crea_contatto_inline_se_valido(
-                self._sogg_repo, soggetto_id, soggetto_ruolo_id, contatto_data)
-
-            # Step 4: Indirizzi ruolo (se forniti — obbligatori per trigger DEFERRED).
-            #         Operazione di dominio soggetto_ruolo: delega a SoggettiService.
-            from apps.anagrafiche.services.soggetti_service import SoggettiService
-            SoggettiService().create_indirizzi_ruolo(soggetto_ruolo_id, indirizzi_data, tipo_ruolo_codice="FO")
-
+        fornitore_id, soggetto_ruolo_id = create_with_constraint_mapping(
+            lambda: self._repo.crea_fornitore(str(soggetto_id), fornitore_data, contatto, indirizzi),
+            {
+                "uq_fornitori_soggetto_ruolo_id": "Esiste gia' un fornitore per questo soggetto.",
+                "uq_fornitori_codice": (
+                    "Esiste gia' un fornitore con questo codice.",
+                    "codice",
+                ),
+                **VINCOLI_CONTATTO,
+            },
+        )
         return {
-            "id": result["id"],
+            "id": fornitore_id,
             "soggetto_ruolo_id": soggetto_ruolo_id,
         }
 
@@ -173,6 +153,3 @@ class FornitoriService:
             numeric=("ritenuta_aliquota",),
             dates=("qualifica_scadenza",),
         )
-
-    # Indirizzi a livello ruolo: spostato in SoggettiService.create_indirizzi_ruolo
-    # (operazione di dominio soggetto_ruolo). crea_fornitore vi delega.

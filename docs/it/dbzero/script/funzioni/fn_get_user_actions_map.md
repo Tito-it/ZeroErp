@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_user_actions_map(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_user_actions_map(p_auth_user_id integer)
  RETURNS jsonb
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_user_actions_map(p_auth_user_id integer)
 IS 'Mappa delle azioni di processo di un utente, tutte le azioni attive in una chiamata ({permission_codename: bool}). Legge la catena da script.fn_get_permessi_effettivi_azioni, la stessa di script.fn_check_azione_processo: gate di contesto (veste diversa da OPERATORE -> tutto false), identita'' OPERATORE attiva, super admin -> true, override utente, ereditato dal profilo, default negata, e il TETTO D''AREA (livello_minimo_area dell''azione, script.fn_area_consente_azione). Rev 20261004-56 (brief-db-permessi-tetto-area R3): la catena non si riscrive qui.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

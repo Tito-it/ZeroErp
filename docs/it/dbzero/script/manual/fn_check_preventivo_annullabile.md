@@ -25,7 +25,10 @@ Elenca i motivi che impediscono di **annullare** un preventivo: un ordine già n
 > Il motivo per cui esisteva era che **non c'era modo di disfare il push**, e
 > adesso c'è — alla chiusura il documento **ritira da sé** le righe che nessuno
 > ha ancora emesso
-> ([`trgfn_doc_ritira_commessa_attivita`](/dbzero/vendite/funzioni/trgfn_doc_ritira_commessa_attivita)).
+> (rev 2026-10-11: non più in silenzio — le righe `NON_EMESSA` sono legami, l'annullo chiede
+> conferma e le ritira il verbo di annullo, BB
+> [`vendite.fn_documento_ritira_legami`](/dbzero/vendite/funzioni/fn_documento_ritira_legami);
+> brief-db-annullo-documento-con-legami, D-5).
 > ⭐ E il preventivo **si allinea agli altri documenti**: l'ordine aveva lo stesso
 > divieto, e si è ritirato insieme a questo.
 >

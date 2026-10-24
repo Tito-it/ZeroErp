@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_fondi_fattura_da_decidere
 WITH (security_invoker=on) AS
@@ -135,6 +137,8 @@ UNION ALL
      CROSS JOIN LATERAL ( SELECT vendite.fn_saldo_sorgente_fondo(sa.fattura_sorgente_id, NULL::bigint) AS capienza) x)
   WHERE ((sa.utility_id IS NULL) AND (x.capienza <> (0)::numeric));
 ```
+
+</div>
 
 
 ---

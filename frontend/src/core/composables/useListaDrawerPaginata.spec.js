@@ -32,7 +32,7 @@ describe('useListaDrawerPaginata', () => {
     const fetcher = vi.fn().mockResolvedValue(risposta([{ id: 1 }], 7))
     const l = useListaDrawerPaginata(fetcher)
     await l.carica()
-    expect(fetcher).toHaveBeenCalledWith({ page: 1, pageSize: 10, sortBy: null, sortDir: 'asc' })
+    expect(fetcher).toHaveBeenCalledWith({ limit: 10, offset: 0, sortBy: null, sortDir: 'asc' })
     expect(l.righe.value).toEqual([{ id: 1 }])
     expect(l.totale.value).toBe(7)
     expect(l.paginatorOptions.value.rowsPerPageOptions).toEqual([10, 25, 50, 100])
@@ -43,9 +43,11 @@ describe('useListaDrawerPaginata', () => {
     const l = useListaDrawerPaginata(fetcher)
     l.onPage({ first: 20, rows: 10 })
     expect(l.page.value).toBe(3)
+    // ⭐ Il fetcher riceve la FINESTRA (2026-10-21, un dialetto solo).
+    expect(fetcher).toHaveBeenLastCalledWith({ limit: 10, offset: 20, sortBy: null, sortDir: 'asc' })
     l.onSort({ sortField: 'data', sortOrder: -1 })
     expect(l.page.value).toBe(1)
-    expect(fetcher).toHaveBeenLastCalledWith({ page: 1, pageSize: 10, sortBy: 'data', sortDir: 'desc' })
+    expect(fetcher).toHaveBeenLastCalledWith({ limit: 10, offset: 0, sortBy: 'data', sortDir: 'desc' })
   })
 
   it('il preset della lista si applica una volta, e di nuovo solo dopo reset', () => {

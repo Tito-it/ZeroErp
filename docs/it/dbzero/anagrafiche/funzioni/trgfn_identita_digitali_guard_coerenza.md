@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_identita_digitali_guard_coerenza()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()
  RETURNS trigger
@@ -167,6 +169,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()
 IS 'Guard di coerenza ruolo_applicativo <-> soggetto_ruolo su anagrafiche.identita_digitali. Rev 2026-09-04: il ramo OPERATORE si sdoppia sul flag `tecnica` in DUE MONDI DISGIUNTI — una PERSONA vuole RIS_UMANA piu'' persona fisica pura (invariato), un PROCESSO vuole il ruolo dedicato PROC_AUTO e nessun controllo di persona fisica. ⛔ Il flag NON apre il ramo: scambia un requisito chiuso con un altro, quindi con tecnica=true non si puo'' appendere un''identita'' operatore a un soggetto qualsiasi. ⭐ Serve perche'' ogni policy rls_*_ef_whitelist pretende ruolo_applicativo = OPERATORE: senza questo sdoppiamento un processo automatico non potrebbe avere un perimetro emittente, e prima del 2026-09-04 il database dichiarava di fatto che solo un essere umano poteva averne uno. Brief: brief-db-processi-automatici-identita-e-perimetro §4. ⛔ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): DISABILITATO non e'' piu'' un tipo di veste e si rifiuta con E_RUOLO_APPLICATIVO_RITIRATO; una veste si spegne con attivo = false e il tipo resta, quindi l''operatore spento e'' controllato dal ramo OPERATORE come quello acceso (fino a quel giorno il guard usciva in anticipo su DISABILITATO e non controllava niente). Early-exit resta solo per API_CLIENT.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

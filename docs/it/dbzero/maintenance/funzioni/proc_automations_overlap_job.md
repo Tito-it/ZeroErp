@@ -7,9 +7,13 @@ CREATE PROCEDURE proc_automations_overlap_job()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_automations_overlap_job()
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'topology', 'pg_temp'
 AS $procedure$
   BEGIN
     PERFORM maintenance.fn_run_and_log(
@@ -24,6 +28,8 @@ $procedure$
 COMMENT ON PROCEDURE maintenance.proc_automations_overlap_job()
 IS 'Job wrapper per chiamare fn_apply_automazione_overlap (OVERLAP) con logging e lock. Ricrea gli EXCLUDE mancanti dalle righe active=true di dbops.automazione_overlap.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

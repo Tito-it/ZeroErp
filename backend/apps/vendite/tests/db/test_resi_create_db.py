@@ -6,90 +6,32 @@
 #        al BB `execute_dynamic_insert` (2026-09-26): la testata nasce davvero
 #        in `vendite.resi`, eredita dal DDT sorgente cio' che il trigger le da'
 #        (destinatario, cliente, emittente), e i valori riletti sono quelli
-#        scritti. Presidia `skip_none` (`data` None -> DEFAULT fn_data_operativa()) e
-#        il dict `meta` -> `::jsonb`.
+#        scritti. Presidia `skip_none` (`data` None -> DEFAULT fn_data_operativa()),
+#        il dict `meta` -> `::jsonb` e la nascita in bozza senza che lo stato si
+#        passi (lo mette il DB, P-2 di brief-modello-documento-vendita).
 # Note: ⚠️ Il reso nasce SOLO da un DDT CONSEGNATO
-#       (`trgfn_resi_guard_ddt_consegnato`), e non c'e' un BB `fn_pgtap_*` che
-#       lo costruisca: la catena ordine CONFERMATO -> riga -> DDT generato ->
-#       EMESSO -> SPEDITO -> CONSEGNATO e' la stessa di
-#       `db/pgtap/vendite/test-annulla-reso-gate-accredito-v1.sql`
-#       (`agr_mk_partita`), sul mondo costruito da
-#       `dbops.fn_pgtap_crea_mondo_cliente` + `fn_pgtap_crea_articolo`.
-#       Transazione SEMPRE annullata. Opt-in `ZEROERP_TEST_DB_E2E=1`.
+#       (`trgfn_resi_guard_ddt_consegnato`): la bolla la costruisce
+#       `_ddt_consegnato.crea_ddt_consegnato` (estratto da qui il 2026-10-19,
+#       regola del 2). Transazione SEMPRE annullata. Opt-in `ZEROERP_TEST_DB_E2E=1`.
 # ------------------------------------------------------------
 """
 Indice test eseguiti:
 1) CreateResoDbTests.test_la_testata_nasce_dal_ddt_consegnato_coi_default
+   (anche: il dettaglio porta il magazzino di rientro della bolla d'origine)
 """
 from __future__ import annotations
 
 import json
 import unittest
-from uuid import uuid4
 
 from django.db import connection, transaction
 
 from apps.core.db._helpers import row_to_dict
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 from apps.vendite.db.resi_repository import ResiRepository
+from apps.vendite.tests.db._ddt_consegnato import crea_ddt_consegnato
 
 _META = {"test_scope": "be_create_reso_db", "annidato": {"n": 1, "lista": [1, 2]}}
-
-# ⚠️ Padre e figlio in istruzioni SEPARATE (mai nella stessa CTE): una policy
-#    che risolve il perimetro dal padre non vede le righe scritte dallo stesso
-#    comando e nega fail-closed.
-# ⚠️ L'ordine nasce in BOZZA, prende la riga, POI si conferma (transizione
-#    DRAFT -> CONFERMATO della matrice): le righe di un ordine si scrivono solo
-#    in bozza (`trgfn_doc_righe_lock_fuori_bozza`, dal `20261008-90`). Fino al
-#    2026-10-09 l'ordine nasceva gia' CONFERMATO e la riga gli si aggiungeva
-#    dopo — la forma che quel lock rifiuta.
-_FIXTURE: tuple[str, ...] = (
-    "CREATE TEMP TABLE _mondo AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('create reso db')",
-    "CREATE TEMP TABLE _art AS SELECT dbops.fn_pgtap_crea_articolo('RSART-' || %(sfx)s, false) AS articolo_id",
-    """
-    CREATE TEMP TABLE _refs AS
-    SELECT (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-           (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-           (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo) AS ord_draft,
-           (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO' AND s.attivo) AS ord_conf,
-           (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'EMESSO' AND s.attivo) AS ddt_emesso,
-           (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'SPEDITO' AND s.attivo) AS ddt_spedito,
-           (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'CONSEGNATO' AND s.attivo) AS ddt_consegnato,
-           (SELECT c.id FROM config.causali_trasporto c WHERE c.codice = 'VENDITA' ORDER BY c.id LIMIT 1) AS causale_vendita,
-           (SELECT t.id FROM config.tipi_indirizzi t WHERE t.codice_interno = 'CON') AS tipo_ind_con
-    """,
-    """
-    CREATE TEMP TABLE _ord AS
-    WITH ins AS (
-        INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-            valuta_id, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-        SELECT m.cliente_soggetto_ruolo_id, m.billing_account_id, r.ord_draft, r.valuta_id,
-               'CONSEGNATO', m.emittente_fiscale_id, false, '{"test_scope": "be_create_reso_db"}'::jsonb
-          FROM _mondo m, _refs r
-        RETURNING id
-    )
-    SELECT id AS ordine_id FROM ins
-    """,
-    """
-    INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-        qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-    SELECT o.ordine_id, 1, a.articolo_id, 'Riga reso BE', 2, 2, 10.00, r.iva_id, true, false,
-           '{"test_scope": "be_create_reso_db"}'::jsonb
-      FROM _ord o, _art a, _refs r
-    """,
-    "UPDATE vendite.ordini SET stato_doc_ordine_id = (SELECT ord_conf FROM _refs) WHERE id = (SELECT ordine_id FROM _ord)",
-    "CREATE TEMP TABLE _ddt AS SELECT vendite.fn_genera_ddt_da_ordine((SELECT ordine_id FROM _ord)) AS ddt_id",
-    """
-    INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-    SELECT d.ddt_id, r.tipo_ind_con, '{"display": "CON"}'::jsonb FROM _ddt d, _refs r
-    ON CONFLICT DO NOTHING
-    """,
-    "UPDATE vendite.ddt SET causale_trasporto_id = (SELECT causale_vendita FROM _refs) WHERE id = (SELECT ddt_id FROM _ddt)",
-    "UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT ddt_emesso FROM _refs) WHERE id = (SELECT ddt_id FROM _ddt)",
-    "UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT ddt_spedito FROM _refs) WHERE id = (SELECT ddt_id FROM _ddt)",
-    "UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT ddt_consegnato FROM _refs) WHERE id = (SELECT ddt_id FROM _ddt)",
-)
-
 
 class CreateResoDbTests(unittest.TestCase):
     @classmethod
@@ -97,22 +39,13 @@ class CreateResoDbTests(unittest.TestCase):
         richiedi_db_provvisto()
 
     def test_la_testata_nasce_dal_ddt_consegnato_coi_default(self):
-        sfx = uuid4().hex[:8].upper()
         with transaction.atomic():
             try:
                 with connection.cursor() as cur:
-                    for passo in _FIXTURE:
-                        cur.execute(passo, {"sfx": sfx})
+                    ddt = crea_ddt_consegnato(cur, etichetta="create reso db")
                     cur.execute("SELECT * FROM _mondo")
                     mondo = row_to_dict(cur)
                     assert mondo is not None
-                    cur.execute(
-                        "SELECT d.id, d.uid::text AS uid, s.codice_interno AS stato"
-                        "  FROM vendite.ddt d JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id"
-                        " WHERE d.id = (SELECT ddt_id FROM _ddt)"
-                    )
-                    ddt = row_to_dict(cur)
-                    assert ddt is not None
                     # Il caso si e' formato davvero: senza, il reso sarebbe
                     # rifiutato dal guard e il test proverebbe il guard.
                     self.assertEqual(ddt["stato"], "CONSEGNATO")
@@ -128,7 +61,6 @@ class CreateResoDbTests(unittest.TestCase):
                     creato = ResiRepository().create_reso(
                         sorgente_tipo_id=sorgente_tipo_id,
                         sorgente_uid=ddt["uid"],
-                        stato_doc_reso_id=stato_bozza_id,
                         data=None,
                         meta=_META,
                     )
@@ -150,6 +82,8 @@ class CreateResoDbTests(unittest.TestCase):
                     self.assertEqual(riga["uid"], creato["uid"])
                     self.assertEqual(riga["sorgente_tipo_id"], sorgente_tipo_id)
                     self.assertEqual(riga["sorgente_uid"], ddt["uid"])
+                    # Lo stato non si passa: nasce in bozza perche' lo mette
+                    # il DB (brief-modello-documento-vendita P-2).
                     self.assertEqual(riga["stato_doc_reso_id"], stato_bozza_id)
                     # skip_none: `data` omessa -> DEFAULT fn_data_operativa().
                     self.assertEqual(riga["data"], oggi)
@@ -160,5 +94,20 @@ class CreateResoDbTests(unittest.TestCase):
                     self.assertEqual(riga["meta_tipo"], "object")
                     # ⚠️ Il cursore Django rende il jsonb come TESTO.
                     self.assertEqual(json.loads(riga["meta"]), _META)
+
+                    # Il dettaglio porta il magazzino di rientro con le sue
+                    # etichette (3-bis D-3b-a): senza indicarlo, quello della
+                    # bolla d'origine (`trgfn_resi_default_magazzino`).
+                    cur.execute(
+                        "SELECT d.magazzino_id, m.codice FROM vendite.ddt d"
+                        "  LEFT JOIN magazzino.magazzini m ON m.id = d.magazzino_id"
+                        " WHERE d.id = (SELECT ddt_id FROM _ddt)"
+                    )
+                    mag_bolla, codice_bolla = cur.fetchone()
+                    dettaglio = ResiRepository().get_reso(creato["id"])
+                    assert dettaglio is not None
+                    self.assertEqual(dettaglio["magazzino_id"], mag_bolla)
+                    self.assertEqual(dettaglio["magazzino_codice"], codice_bolla)
+                    self.assertIn("magazzino_descrizione", dettaglio)
             finally:
                 transaction.set_rollback(True)

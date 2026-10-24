@@ -1,6 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (DDT emesso e consegnato); restano scritti a mano il DDT in bozza senza ordine, gli ordini in bozza/confermato e i contratti (sono il caso: le porte delle righe per stato).
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 --
 -- Test: le righe di un documento si aggiungono, modificano e tolgono SOLO
 --   finche' il documento e' in bozza — il building block
@@ -28,10 +35,10 @@
 --   gemello test-delete-righe-documento-bozza-v1: un documento «che nasce
 --   fuori bozza» NON puo' piu' ricevere righe, perche' e' esattamente la
 --   scorciatoia che il BB chiude. Il DDT emesso si fabbrica quindi nel verso
---   vero — DRAFT, righe, causale, indirizzo, transizione — con la ricetta di
---   test-fn-partite-merce-chiusura-v1 (fn_genera_ddt_da_ordine + tre UPDATE
---   di stato). Il cliente lo fabbricano i builder di dbops: su un database
---   da zero anagrafiche.* e' vuoto.
+--   vero — DRAFT, righe, causale, indirizzo, transizione — col builder
+--   dbops.fn_pgtap_crea_ddt_da_ordine (rev 2026-10-25). Il cliente lo
+--   fabbricano i builder di dbops: su un database da zero anagrafiche.* e'
+--   vuoto.
 --
 -- ⭐ IL CASO CHE DA' IL TITOLO (test 8): una riga di DDT consegnato, con
 --   un'attivita' di commessa ALLOCATA sul suo segmento, e attivo = false.
@@ -111,6 +118,16 @@ SELECT is(
 --   DDT adottano il BB a livello RIGA con l'eccezione dell'ubicazione d'arrivo
 --   (-93), ritirando la copia scritta a mano nel loro guard (-92). Il
 --   comportamento e' provato in vendite/test-righe-e-componenti-debiti-residui-v1.
+-- ⭐ 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-4, D-6, D-7): i due
+--   legami di una riga di DDT con la sua origine, vendite.ordini_righe_fulfillment
+--   e vendite.resi_righe_riconsegne, a livello RIGA verso la riga di DDT, su
+--   INSERT e UPDATE (20261011-15): il DELETE e' del guard del legame (D-8). Il comportamento e' provato in
+--   vendite/test-ddt-righe-evase-dall-ordine-v1 (test 24, 36).
+-- ⭐ 2026-10-11 (brief-db-testata-dopo-emissione §11, R-DB-3, D-12): i sette
+--   satelliti del documento (cinque *_indirizzi, le due utility 1:1) a livello
+--   TESTATA, tre porte, col settimo argomento: il codice dei satelliti
+--   E_DOC_DATI_COLLEGATI_NON_BOZZA (20261011-24). Il comportamento e' provato in
+--   vendite/test-testata-dopo-emissione-rdb-v1.
 -- ⚠️ La fascia e' parte del contratto: con _a10_ il nome verrebbe DOPO
 --   block_ddt_dlt e i block_deact, e l'operatore leggerebbe un rimedio che
 --   non e' il rimedio (test 9).
@@ -120,20 +137,29 @@ SELECT is(
                      E'\n' ORDER BY t.tgrelid::regclass::text)
      FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
     WHERE NOT t.tgisinternal AND p.proname = 'trgfn_doc_righe_lock_fuori_bozza'),
-  $atteso$vendite.contratti_righe:trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id')
+  $atteso$vendite.contratti_indirizzi:trg_contratti_indirizzi_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id', 'DRAFT', 'TESTATA', '', '', 'E_DOC_DATI_COLLEGATI_NON_BOZZA')
+vendite.contratti_righe:trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id')
 vendite.contratti_righe_componenti:trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'riga_contratto_id', 'DRAFT', 'RIGA')
-vendite.ddt_righe:trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_id')
-vendite.ddt_righe_componenti:trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'riga_ddt_id', 'DRAFT', 'RIGA')
-vendite.ddt_righe_prelievi:trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_riga_id', 'DRAFT', 'RIGA', 'ubicazione_arrivo_id', 'EMESSO,SPEDITO')
-vendite.offerte_commerciali_eccezioni:trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'offerta_id', 'BOZZA')
-vendite.offerte_commerciali_eccezioni_componenti:trg_oce_comp_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'eccezione_offerta_id', 'BOZZA', 'RIGA')
-vendite.ordini_righe:trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'ordine_id', 'DRAFT', 'TESTATA', 'data_consegna_confermata', 'CONFERMATO,PARZIALMENTE_EVASO')
-vendite.ordini_righe_componenti:trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'riga_ordine_id', 'DRAFT', 'RIGA')
+vendite.contratti_utilities:trg_contratti_utilities_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id', 'DRAFT', 'TESTATA', '', '', 'E_DOC_DATI_COLLEGATI_NON_BOZZA')
+vendite.ddt_indirizzi:trg_ddt_indirizzi_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'ddt_id', 'DRAFT', 'TESTATA', '', '', 'E_DOC_DATI_COLLEGATI_NON_BOZZA')
+vendite.ddt_righe:trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'ddt_id')
+vendite.ddt_righe_componenti:trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'riga_ddt_id', 'DRAFT', 'RIGA')
+vendite.ddt_righe_prelievi:trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'ddt_riga_id', 'DRAFT', 'RIGA', 'ubicazione_arrivo_id', 'EMESSO,SPEDITO')
+vendite.offerte_commerciali_eccezioni:trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA_COMMERCIALE', 'offerta_id', 'BOZZA')
+vendite.offerte_commerciali_eccezioni_componenti:trg_oce_comp_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA_COMMERCIALE', 'eccezione_offerta_id', 'BOZZA', 'RIGA')
+vendite.offerte_commerciali_indirizzi:trg_offerte_commerciali_indirizzi_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA_COMMERCIALE', 'offerta_id', 'BOZZA', 'TESTATA', '', '', 'E_DOC_DATI_COLLEGATI_NON_BOZZA')
+vendite.offerte_commerciali_utilities:trg_offerte_commerciali_utilities_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA_COMMERCIALE', 'offerta_id', 'BOZZA', 'TESTATA', '', '', 'E_DOC_DATI_COLLEGATI_NON_BOZZA')
+vendite.ordini_indirizzi:trg_ordini_indirizzi_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE_VENDITA', 'ordine_id', 'DRAFT', 'TESTATA', '', '', 'E_DOC_DATI_COLLEGATI_NON_BOZZA')
+vendite.ordini_righe:trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE_VENDITA', 'ordine_id', 'DRAFT', 'TESTATA', 'data_consegna_confermata', 'CONFERMATO,PARZIALMENTE_EVASO')
+vendite.ordini_righe_componenti:trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE_VENDITA', 'riga_ordine_id', 'DRAFT', 'RIGA')
+vendite.ordini_righe_fulfillment:trg_ordini_righe_fulfillment_a05_doc_bozza_ins_upd:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'ddt_riga_id', 'DRAFT', 'RIGA')
+vendite.preventivi_indirizzi:trg_preventivi_indirizzi_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('PREVENTIVO', 'preventivo_id', 'DRAFT', 'TESTATA', '', '', 'E_DOC_DATI_COLLEGATI_NON_BOZZA')
 vendite.preventivi_righe:trg_preventivi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('PREVENTIVO', 'preventivo_id')
 vendite.preventivi_righe_componenti:trg_preventivi_righe_componenti_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('PREVENTIVO', 'riga_preventivo_id', 'DRAFT', 'RIGA')
-vendite.resi_righe:trg_resi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('RESO', 'reso_id')
-vendite.resi_righe_rientri:trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('RESO', 'resi_riga_id', 'DRAFT', 'RIGA')$atteso$,
-  '2) I tredici adottanti (sei a livello TESTATA, sette a livello RIGA) sono montati in fascia _a05_ con gli argomenti giusti');
+vendite.resi_righe:trg_resi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('RESO_VENDITA', 'reso_id')
+vendite.resi_righe_riconsegne:trg_resi_righe_riconsegne_a05_doc_bozza_ins_upd:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'ddt_riga_id', 'DRAFT', 'RIGA')
+vendite.resi_righe_rientri:trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('RESO_VENDITA', 'resi_riga_id', 'DRAFT', 'RIGA')$atteso$,
+  '2) I ventidue adottanti (sei righe a livello TESTATA, nove a livello RIGA, sette satelliti) sono montati in fascia _a05_ con gli argomenti giusti');
 
 SELECT is(
   (SELECT count(*)::int
@@ -184,22 +210,17 @@ SELECT
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO'     AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO'    AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_consegnato_id,
   (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno='DRAFT'   ORDER BY s.id LIMIT 1)              AS stato_con_draft_id,
   (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno='ATTIVO'  ORDER BY s.id LIMIT 1)              AS stato_con_attivo_id,
   (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno='CESSATO' ORDER BY s.id LIMIT 1)              AS stato_con_cessato_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo ORDER BY s.id LIMIT 1)           AS sorgente_root_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                           AS tipo_doc_fiscale_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' ORDER BY c.id LIMIT 1)                        AS causale_vendita_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')                                                   AS tipo_ind_con_id
+  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                           AS tipo_doc_fiscale_id
 FROM tmp_cli_lr c;
 
 CREATE TEMP TABLE tmp_fix(chiave text PRIMARY KEY, id bigint);
 CREATE TEMP TABLE tmp_esito(caso text PRIMARY KEY, sqlstate text, messaggio text, righe int);
 
--- Un ordine (DRAFT o CONFERMATO) con una riga.
+-- Un ordine (DRAFT o CONFERMATO) con una riga: e' il caso dei test 12-14.
 CREATE OR REPLACE FUNCTION pg_temp.lr_mk_ordine(p_stato_id bigint, p_qta numeric)
 RETURNS TABLE(ordine_id bigint, ordine_riga_id bigint) AS $$
 DECLARE r RECORD; v_ord bigint; v_orr bigint;
@@ -226,35 +247,6 @@ BEGIN
               (SELECT s.codice_interno FROM config.stati_doc_ordini s WHERE s.id = p_stato_id));
   END IF;
   RETURN QUERY SELECT v_ord, v_orr;
-END $$ LANGUAGE plpgsql;
-
--- Un DDT da ordine (nasce in DRAFT con la riga e il fulfillment), portato
--- allo stato chiesto nel verso vero: causale, indirizzo, transizioni.
-CREATE OR REPLACE FUNCTION pg_temp.lr_mk_ddt_da_ordine(p_ordine_id bigint, p_ordine_riga_id bigint,
-                                                       p_qta numeric, p_fino_a text)
-RETURNS TABLE(ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
-DECLARE r RECORD; v_ddt bigint; v_uid uuid; v_ddtr bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_lr;
-  v_ddt := vendite.fn_genera_ddt_da_ordine(
-      p_ordine_id,
-      jsonb_build_array(jsonb_build_object('ordine_riga_id', p_ordine_riga_id, 'qta_da_evadere', p_qta)),
-      DATE '2026-08-10');
-  IF p_fino_a <> 'DRAFT' THEN
-    INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-    VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-    UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id  WHERE id = v_ddt;
-    UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_emesso_id WHERE id = v_ddt;
-  END IF;
-  IF p_fino_a IN ('SPEDITO', 'CONSEGNATO') THEN
-    UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_spedito_id WHERE id = v_ddt;
-  END IF;
-  IF p_fino_a = 'CONSEGNATO' THEN
-    UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_consegnato_id WHERE id = v_ddt;
-  END IF;
-  SELECT d.uid INTO v_uid  FROM vendite.ddt d        WHERE d.id = v_ddt;
-  SELECT dr.id INTO v_ddtr FROM vendite.ddt_righe dr WHERE dr.ddt_id = v_ddt ORDER BY dr.id LIMIT 1;
-  RETURN QUERY SELECT v_ddt, v_uid, v_ddtr;
 END $$ LANGUAGE plpgsql;
 
 -- Un contratto con una riga AGGIUNTA, portato allo stato chiesto (DRAFT ->
@@ -330,14 +322,17 @@ BEGIN
   RETURNING id INTO v_id;
   INSERT INTO tmp_fix VALUES ('ddt_bozza_riga', v_id);
 
-  -- DDT EMESSO da ordine, con fulfillment (test 7, 9, 10)
-  SELECT * INTO o FROM pg_temp.lr_mk_ordine(r.stato_ord_conf_id, 5);
-  SELECT * INTO d FROM pg_temp.lr_mk_ddt_da_ordine(o.ordine_id, o.ordine_riga_id, 5, 'EMESSO');
+  -- DDT EMESSO da ordine, con fulfillment (test 7, 9, 10): dal builder,
+  -- una riga di 5 a 20 del cliente e dell'articolo del file.
+  SELECT * INTO d FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgtap_lock_righe', 'EMESSO',
+      p_billing_account_id => r.billing_account_id, p_articolo_id => r.articolo_id,
+      p_quantita => 5, p_prezzo => 20);
   INSERT INTO tmp_fix VALUES ('ddt_emesso', d.ddt_id), ('ddt_emesso_riga', d.ddt_riga_id);
 
-  -- DDT CONSEGNATO da ordine, per il caso ALLOCATA (test 8)
-  SELECT * INTO o FROM pg_temp.lr_mk_ordine(r.stato_ord_conf_id, 3);
-  SELECT * INTO d FROM pg_temp.lr_mk_ddt_da_ordine(o.ordine_id, o.ordine_riga_id, 3, 'CONSEGNATO');
+  -- DDT CONSEGNATO da ordine, per il caso ALLOCATA (test 8): una riga di 3 a 20.
+  SELECT * INTO d FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgtap_lock_righe', 'CONSEGNATO',
+      p_billing_account_id => r.billing_account_id, p_articolo_id => r.articolo_id,
+      p_quantita => 3, p_prezzo => 20);
   INSERT INTO tmp_fix VALUES ('ddt_cons', d.ddt_id), ('ddt_cons_riga', d.ddt_riga_id);
 
   -- Ordine in bozza e ordine confermato (test 12-14)
@@ -357,7 +352,7 @@ END $fix$;
 
 -- ── L'attivita' ALLOCATA sul segmento della riga consegnata (test 8) ──
 -- La commessa e la sua ROOT, poi l'attivita' NON_EMESSA sul segmento
--- 'DDT:<uid>:R:<id>': e' cio' che fn_get_stato_push_segment legge come
+-- 'DDT_VENDITA:<uid>:R:<id>': e' cio' che fn_get_stato_push_segment legge come
 -- ALLOCATA, cioe' «merce instradata a fatturazione».
 CREATE TEMP TABLE tmp_com_lr AS
 SELECT vendite.fn_get_or_create_commessa(
@@ -380,13 +375,16 @@ SELECT vendite.fn_link_commessa_sorgente(
   p_meta             => '{}'::jsonb);
 
 CREATE TEMP TABLE tmp_seg_lr AS
-SELECT ('DDT:' || d.uid::text || ':R:' || dr.id::text)::varchar AS segment_key
+SELECT ('DDT_VENDITA:' || d.uid::text || ':R:' || dr.id::text)::varchar AS segment_key
   FROM vendite.ddt d
   JOIN vendite.ddt_righe dr ON dr.ddt_id = d.id
  WHERE d.id = (SELECT id FROM tmp_fix WHERE chiave = 'ddt_cons');
 
 SELECT vendite.fn_upsert_commessa_attivita(
     p_commessa_id => (SELECT commessa_id FROM tmp_com_lr),
+    -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+    p_sorgente_uid => ((SELECT commessa_id FROM tmp_com_lr))::text,
     p_segment_key => (SELECT segment_key FROM tmp_seg_lr),
     p_articolo_id => r.articolo_id,
     p_istanza_utility_id => r.istanza_utility_id, p_data_attivita => DATE '2026-08-15',
@@ -474,19 +472,19 @@ SELECT pg_temp.lr_prova('18_con_cessato_upd',
 -- ── Montaggio (test 19-21): tabelle temporanee, il BB montato a mano ──
 CREATE TEMP TABLE tmp_righe_senza_argv (id serial PRIMARY KEY, ddt_id bigint);
 CREATE TRIGGER trg_tmp_a05_lock BEFORE INSERT ON tmp_righe_senza_argv
-  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT');
+  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA');
 SELECT pg_temp.lr_prova('19_montaggio_argv', 'INSERT INTO tmp_righe_senza_argv (ddt_id) VALUES (1)');
 
 CREATE TEMP TABLE tmp_righe_col_sbagliata (id serial PRIMARY KEY, ddt_id bigint);
 CREATE TRIGGER trg_tmp_a05_lock BEFORE INSERT ON tmp_righe_col_sbagliata
-  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'documento_id');
+  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'documento_id');
 SELECT pg_temp.lr_prova('20_montaggio_col', 'INSERT INTO tmp_righe_col_sbagliata (ddt_id) VALUES (1)');
 
 -- TG_ARGV[2]: lo stato «bozza» si chiama EMESSO per questa tabella finta ->
 -- la riga del DDT emesso PASSA, quella del DDT in bozza NO.
 CREATE TEMP TABLE tmp_righe_bozza_diversa (id serial PRIMARY KEY, ddt_id bigint);
 CREATE TRIGGER trg_tmp_a05_lock BEFORE INSERT ON tmp_righe_bozza_diversa
-  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_id', 'EMESSO');
+  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'ddt_id', 'EMESSO');
 SELECT pg_temp.lr_prova('21a_argv2_emesso',
   format('INSERT INTO tmp_righe_bozza_diversa (ddt_id) VALUES (%s)', (SELECT id FROM tmp_fix WHERE chiave='ddt_emesso')))
  WHERE EXISTS (SELECT 1 FROM tmp_fix WHERE chiave='ddt_emesso');

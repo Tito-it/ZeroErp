@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ddt_guard_transizione_approvazione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_transizione_approvazione()
  RETURNS trigger
@@ -71,6 +73,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione_approvazione()
 IS 'Blocca la transizione a EMESSO di un DDT con componenti BoM CASO A in approvazione prezzo PENDING (E_COMPONENTE_PREZZO_PENDENTE) o con prezzo non valorizzato (E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE). rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codici errore invariati. rev 2026-09-24: il prezzo non autorizzato dei componenti solleva E_DOC_PREZZO_PENDENTE o E_DOC_PREZZO_RIFIUTATO — i motivi del building block script.fn_check_prezzi_autorizzati, che fn_check_ddt_emittibile chiede quando la causale vende — con il conteggio nella frase e riga/componente nel contesto. Prima E_COMPONENTE_PREZZO_PENDENTE, solo sul PENDING. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-6).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

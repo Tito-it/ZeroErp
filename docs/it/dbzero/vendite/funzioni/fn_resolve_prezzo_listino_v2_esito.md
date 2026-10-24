@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_prezzo_listino_v2_esito(p_articolo_id uuid, p_uom_id 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_resolve_prezzo_listino_v2_esito(p_articolo_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer DEFAULT NULL::integer, p_articolo_padre_contesto uuid DEFAULT NULL::uuid, p_listino_versione_id_preferito bigint DEFAULT NULL::bigint)
  RETURNS TABLE(prezzo_finale numeric, prezzo_base_snapshot numeric, tipo_variazione_applicata character varying, valore_variazione_applicata numeric, origine character varying, listino_id bigint, listino_versione_id bigint, listino_riga_id bigint, contratto_id bigint, promo_id bigint, categoria_cliente_listino_id bigint, categoria_cliente_id_snapshot smallint, classe_utenza_id_snapshot integer, tipo_eccezione vendite.tipo_eccezione_contratto, esito_codice text, esito_context jsonb, esito_valori text[])
@@ -60,6 +62,11 @@ DECLARE
     v_bundle_prezzo            vendite.listini_righe.prezzo%TYPE;
     v_bundle_riga_id           vendite.listini_righe_componenti.id%TYPE;
     v_bundle_used              boolean := FALSE;
+
+    -- Versione PREFERITA (percorso rapido): stato e codici per l'esito D-4.
+    v_pref_stato               vendite.listini_versioni.stato%TYPE;
+    v_pref_codice_versione     vendite.listini_versioni.codice_versione%TYPE;
+    v_pref_codice_listino      vendite.listini.codice%TYPE;
 
     -- P-6 (richiesta BE, 2026-08-19): il contesto di OGNI esito porta gli
     -- input della chiamata. Prima ogni codice portava solo cio' che serviva a
@@ -153,11 +160,34 @@ BEGIN
         v_snapshot_categoria  := v_categoria_cliente_id;
         v_listino_versione_id := p_listino_versione_id_preferito;
 
-        -- Recupera listino_id dalla versione fornita.
-        SELECT lv.listino_id
-          INTO v_listino_id
+        -- Recupera listino_id dalla versione fornita, col suo stato.
+        SELECT lv.listino_id, lv.stato, lv.codice_versione, l.codice
+          INTO v_listino_id, v_pref_stato, v_pref_codice_versione, v_pref_codice_listino
           FROM vendite.listini_versioni lv
+          JOIN vendite.listini l ON l.id = lv.listino_id
          WHERE lv.id = p_listino_versione_id_preferito;
+
+        -- D-4 (Tid, 2026-10-16, brief-db-coerenza-listino-della-riga-di-
+        -- commessa §6): mai un prezzo da una versione in BOZZA. Gli altri
+        -- rami la escludono gia' (fn_listino_versione_in_vigore); qui la
+        -- versione la sceglie il chiamante, e si leggeva senza guardarne lo
+        -- stato. Un esito, non un ripiego allo stadio 2: il ripiego
+        -- nasconderebbe il chiamante che passa una bozza.
+        IF v_pref_stato = 'BOZZA' THEN
+            esito_codice  := 'E_PREZZO_LISTINO_VERSIONE_BOZZA';
+            esito_context := v_ctx_base || jsonb_build_object(
+                    'origine_stadio',      'VERSIONE_PREFERITA',
+                    'listino_id',          v_listino_id,
+                    'listino_versione_id', p_listino_versione_id_preferito,
+                    'stato',               v_pref_stato
+                );
+            esito_valori  := ARRAY[
+                v_pref_codice_versione::text,
+                v_pref_codice_listino::text
+            ]::text[];
+            RETURN NEXT;
+            RETURN;
+        END IF;
 
         -- Bundle PRIORITARIO (se padre_contesto fornito).
         IF p_articolo_padre_contesto IS NOT NULL THEN
@@ -622,8 +652,10 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_resolve_prezzo_listino_v2_esito(p_articolo_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer, p_articolo_padre_contesto uuid, p_listino_versione_id_preferito bigint)
-IS '⭐ rev 2026-08-29: il predicato «contratto attivo per (ba, utility, data)» NON sta piu'' qui dentro — e'' stato ESTRATTO in vendite.fn_get_contratto_attivo, che ne e'' la sede unica. Serve identico al risolutore IVA, che da quel contratto arriva al tipo d''uso della fornitura: se le due funzioni scegliessero contratti diversi sullo stesso overlap, prezzo e aliquota della STESSA riga verrebbero da forniture diverse e nessun errore lo direbbe. La scelta del contratto e le colonne lette DOPO sono ora due istruzioni invece di una, ed e'' l''unica differenza: stesso contratto, stesse colonne, stesso esito. NUCLEO del resolver prezzi v5: stesso corpo di vendite.fn_resolve_prezzo_listino_v2, ma NON solleva e NON logga gli 8 esiti «prezzo che non c''e''» — li RITORNA in esito_codice, esito_context, esito_valori (NULL = risolto). Restano errori i 2 E_PARAMETRO_INVALIDO: un parametro sbagliato e'' un difetto del chiamante, un prezzo che non c''e'' e'' un esito (D-3). Esiste perche'' script.fn_log_error_only scrive via dblink FUORI transazione: catturare l''eccezione avrebbe nascosto l''errore ma non la riga di log, una per tentativo. Chi vuole il comportamento storico chiama il guscio fn_resolve_prezzo_listino_v2, che ha firma e RETURNS invariati. Brief: brief-ddt-righe-senza-prezzo §9 slice A.';
+IS 'rev 2026-10-16 (brief-db-coerenza-listino-della-riga-di-commessa §6 D-4, Tid): il percorso rapido (p_listino_versione_id_preferito) non da'' piu'' prezzi da una versione in BOZZA: esito E_PREZZO_LISTINO_VERSIONE_BOZZA (valori: codice della versione, codice del listino), non un ripiego allo stadio successivo. Gli altri rami la escludevano gia''. Un''opzione «anche bozza» non c''e'': nasce col primo chiamante che la chiede. ⭐ rev 2026-08-29: il predicato «contratto attivo per (ba, utility, data)» NON sta piu'' qui dentro — e'' stato ESTRATTO in vendite.fn_get_contratto_attivo, che ne e'' la sede unica. Serve identico al risolutore IVA, che da quel contratto arriva al tipo d''uso della fornitura: se le due funzioni scegliessero contratti diversi sullo stesso overlap, prezzo e aliquota della STESSA riga verrebbero da forniture diverse e nessun errore lo direbbe. La scelta del contratto e le colonne lette DOPO sono ora due istruzioni invece di una, ed e'' l''unica differenza: stesso contratto, stesse colonne, stesso esito. NUCLEO del resolver prezzi v5: stesso corpo di vendite.fn_resolve_prezzo_listino_v2, ma NON solleva e NON logga i 9 esiti «prezzo che non c''e''» — li RITORNA in esito_codice, esito_context, esito_valori (NULL = risolto). Restano errori i 2 E_PARAMETRO_INVALIDO: un parametro sbagliato e'' un difetto del chiamante, un prezzo che non c''e'' e'' un esito (D-3). Esiste perche'' script.fn_log_error_only scrive via dblink FUORI transazione: catturare l''eccezione avrebbe nascosto l''errore ma non la riga di log, una per tentativo. Chi vuole il comportamento storico chiama il guscio fn_resolve_prezzo_listino_v2, che ha firma e RETURNS invariati. Brief: brief-ddt-righe-senza-prezzo §9 slice A.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

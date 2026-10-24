@@ -51,3 +51,25 @@ class DescrizioneOrderByTests(SimpleTestCase):
         self.assertEqual(
             descrizione_order_by(["a"]), "Whitelist (nome FISICO della colonna): a.",
         )
+
+
+# Scopo: ⛔ Lo schema di un lookup dichiara `data.results`, come la risposta
+#        vera (2026-10-21, §B10 del brief-be-verifica-documentazione-api):
+#        dieci lookup di `views_lookup` dichiaravano `data` come lista nuda. Si
+#        guarda lo schema GENERATO da drf-spectacular, non la chiamata
+#        all'helper: e' quello che legge chi genera il client.
+class RispostaLookupSchemaTests(SimpleTestCase):
+    def test_i_lookup_dichiarano_data_results(self) -> None:
+        from drf_spectacular.generators import SchemaGenerator
+
+        componenti = SchemaGenerator().get_schema(request=None, public=True)["components"]["schemas"]
+        for nome in (
+            "TipiSoggettoDettaglioResponse", "FormeGiuridicheResponse",
+            "MatriceIndirizziResponse", "ContiContabiliLookupResponse",
+        ):
+            with self.subTest(componente=nome):
+                self.assertIn(nome, componenti)
+                data = componenti[nome]["properties"]["data"]
+                if "$ref" in data:
+                    data = componenti[data["$ref"].rsplit("/", 1)[1]]
+                self.assertEqual(data["properties"]["results"]["type"], "array")

@@ -1,5 +1,19 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
+--   portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano gia' CONFERMATO
+--   l'ordine F e APERTA la commessa).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): la commessa del caso 7 la apre
+--   dbops.fn_pgtap_crea_commessa sul cliente dell'ordine, in APERTA, senza la riga del
+--   builder (p_con_attivita => false: e' la riga EMESSA del test che ferma il guard);
+--   prima testata scritta a mano e passaggio di stato a parte. L'unita' di misura della
+--   riga EMESSA e' quella dell'articolo costruito, non «la prima per id».
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-4): il mondo si costruisce intero —
+--   azienda e operatore da dbops.fn_pgtap_crea_emittente_operatore (contesto aperto su di
+--   lui), il cliente legato a quell'azienda (terzo argomento di fn_pgtap_crea_cliente_ba);
+--   gli ordini portano l'emittente costruito. Prima emittente e soggetto_ruolo erano «i
+--   primi per id» del database (non usati, ma pescati); valuta e IVA si leggono per codice.
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
 -- Test: vendite.trgfn_ordini_guard_transizione (+ trigger)
 -- ------------------------------------------------------------
@@ -41,8 +55,8 @@
 -- Brief: brief-db-vie-uscita-operatore.md
 -- ------------------------------------------------------------
 
--- Nota emittente: gli ordini passano emittente_fiscale_id esplicito, quello del
---   loro billing account.
+-- Nota emittente: gli ordini passano emittente_fiscale_id esplicito, quello
+--   dell'azienda costruita, a cui e' legato il loro billing account.
 -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): fino a questo giorno gli
 --   ordini nascevano con billing_account_id=NULL per saltare il guard di
 --   coerenza emittente <-> BA. L'ordine senza BA non esiste piu': il cliente si
@@ -84,30 +98,38 @@ SELECT plan(8);
 -- ============================================================
 -- Riferimenti minimi
 -- ============================================================
+-- ⭐ rev 2026-10-24 (Q-4): l'azienda e il suo operatore si COSTRUISCONO, e il
+--   contesto si riapre su di lui: gli ordini nascono sotto il guard di perimetro
+--   come nell'applicazione, sull'emittente costruito.
+CREATE TEMP TABLE tmp_gt_az AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_gt_az)); END $ctx$;
+
 CREATE TEMP TABLE tmp_refs_gt AS
 SELECT
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1
-  ) AS emittente_fiscale_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1
-  ) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST, a.id LIMIT 1
-  ) AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
+  (SELECT emittente_fiscale_id FROM tmp_gt_az) AS emittente_fiscale_id,
+-- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-1/D-2): l'articolo si
+--   COSTRUISCE. Prima si pescava dal catalogo (il primo per id, o il piu' recente):
+--   il primo per id e' l'onere del seed ONERE_SENZA_CONTRATTO (natura servizio), e
+--   da 20261013-42 ordine e bolla portano solo merce. Un articolo costruito ha solo
+--   le proprieta' che il test gli da' (merce, non gestito a magazzino).
+  dbops.fn_pgtap_crea_articolo('PGT-OGT-ART', false) AS articolo_id,
+  (SELECT v.id FROM config.valute v WHERE v.codice = 'EUR') AS valuta_id,
   -- ⚠️ Aggiunta 2026-08-29: dal changeSet 20260829-07 il guard rifiuta
   --   l'ingresso in CONFERMATO se una riga attiva porta un prezzo senza
   --   aliquota (Regola 4, E_ORDINE_RIGA_IVA_MANCANTE). Le righe di questa
   --   fixture il prezzo ce l'hanno — prezzo_unitario e' NOT NULL — quindi
   --   senza iva_id descrivono un documento che il dominio non ammette piu'.
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT'      LIMIT 1) AS stato_draft_id,
-  (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'CONFERMATO' LIMIT 1) AS stato_conf_id,
-  (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'ANNULLATO'  LIMIT 1) AS stato_ann_id,
-  (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'SPEDITO'    LIMIT 1) AS stato_sped_id;
+  --   Per codice: un'aliquota ordinaria positiva, non «la prima per id».
+  (SELECT i.id FROM config.iva i WHERE i.codice_interno = '22' AND i.attivo IS TRUE) AS iva_id,
+  (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT') AS stato_draft_id,
+  (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'CONFERMATO') AS stato_conf_id,
+  (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'ANNULLATO') AS stato_ann_id,
+  (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'SPEDITO') AS stato_sped_id;
 
 CREATE TEMP TABLE tmp_gt_cli AS
-SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('guard transizione ordini');
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('guard transizione ordini', NULL,
+                                             (SELECT soggetto_ruolo_id FROM tmp_gt_az));
 SET CONSTRAINTS ALL IMMEDIATE;
 
 -- Helper: crea ordine DRAFT e ritorna id. Slot via meta.
@@ -116,7 +138,7 @@ CREATE TEMP TABLE tmp_gt_a AS
 WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
       stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),r.stato_draft_id, r.valuta_id,
+  SELECT c.soggetto_ruolo_id, c.billing_account_id, r.emittente_fiscale_id, r.stato_draft_id, r.valuta_id,
          DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"A"}'::jsonb
   FROM tmp_refs_gt r, tmp_gt_cli c RETURNING id
 ) SELECT id FROM ins;
@@ -130,7 +152,7 @@ CREATE TEMP TABLE tmp_gt_b AS
 WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
       stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),r.stato_draft_id, r.valuta_id,
+  SELECT c.soggetto_ruolo_id, c.billing_account_id, r.emittente_fiscale_id, r.stato_draft_id, r.valuta_id,
          DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"B"}'::jsonb
   FROM tmp_refs_gt r, tmp_gt_cli c RETURNING id
 ) SELECT id FROM ins;
@@ -140,7 +162,7 @@ CREATE TEMP TABLE tmp_gt_c AS
 WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
       stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),r.stato_draft_id, r.valuta_id,
+  SELECT c.soggetto_ruolo_id, c.billing_account_id, r.emittente_fiscale_id, r.stato_draft_id, r.valuta_id,
          DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"C"}'::jsonb
   FROM tmp_refs_gt r, tmp_gt_cli c RETURNING id
 ) SELECT id FROM ins;
@@ -154,7 +176,7 @@ CREATE TEMP TABLE tmp_gt_d AS
 WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
       stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),r.stato_draft_id, r.valuta_id,
+  SELECT c.soggetto_ruolo_id, c.billing_account_id, r.emittente_fiscale_id, r.stato_draft_id, r.valuta_id,
          DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"D"}'::jsonb
   FROM tmp_refs_gt r, tmp_gt_cli c RETURNING id
 ) SELECT id FROM ins;
@@ -169,7 +191,7 @@ CREATE TEMP TABLE tmp_gt_e AS
 WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
       stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),r.stato_draft_id, r.valuta_id,
+  SELECT c.soggetto_ruolo_id, c.billing_account_id, r.emittente_fiscale_id, r.stato_draft_id, r.valuta_id,
          DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"E"}'::jsonb
   FROM tmp_refs_gt r, tmp_gt_cli c RETURNING id
 ) SELECT id FROM ins;
@@ -258,26 +280,37 @@ CREATE TEMP TABLE tmp_gt_f AS
 WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
       stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id), r.stato_conf_id, r.valuta_id,
+  SELECT c.soggetto_ruolo_id, c.billing_account_id, r.emittente_fiscale_id, r.stato_draft_id, r.valuta_id,
          DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"F"}'::jsonb
   FROM tmp_refs_gt r, tmp_gt_cli c RETURNING id
 ) SELECT id FROM ins;
+-- ⚠️ rev 2026-10-24 (brief-modello-documento-vendita N-1): l'ordine nasce DRAFT,
+--   prende la riga (DRAFT->CONFERMATO la pretende) e passa a CONFERMATO con
+--   dbops.fn_pgtap_porta_a_stato, come lo slot E.
+INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+SELECT o.id, 1, r.articolo_id, 'riga F', 3.0, 3.0, 10.0, r.iva_id, true, false, '{}'::jsonb
+FROM tmp_gt_f o, tmp_refs_gt r;
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_gt_f), 'CONFERMATO');
+END $x$;
 
 -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): la commessa e' quella del
 --   cliente dell'ordine, con l'emittente dell'ordine. Prima si copiava dalla
 --   prima commessa del database (un altro cliente, magari un altro emittente):
 --   passava solo perche' l'ordine non aveva BA, e il guard «una commessa, un
 --   emittente» non aveva niente da confrontare.
-INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                              emittente_soggetto_ruolo_id, stato_commessa_id)
-SELECT 'PGTAP-GT-COM', c.billing_account_id, c.utility_id,
-       (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
-         WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id)),
-       (SELECT sc.id FROM vendite.stati_commessa sc WHERE sc.codice_interno = 'APERTA')
-  FROM tmp_gt_cli c;
+-- rev 2026-10-24 (Q-2): la testata dal builder, sul billing account dell'ordine,
+--   portata ad APERTA per la matrice. ⚠️ p_con_attivita => false: la riga che
+--   conta e' quella EMESSA scritta sotto, e una riga APPROVATA del builder
+--   sarebbe lavoro in piu' che il caso non dichiara.
+CREATE TEMP TABLE tmp_gt_com AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa(
+    'guard transizione ordini', 'APERTA',
+    (SELECT billing_account_id FROM tmp_gt_cli), false);
 
 INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-SELECT (SELECT id FROM vendite.commesse WHERE codice = 'PGTAP-GT-COM'),
+SELECT (SELECT commessa_id FROM tmp_gt_com),
        (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
        (SELECT id FROM tmp_gt_f)::text,
        'ROOT';
@@ -295,16 +328,16 @@ INSERT INTO vendite.commesse_attivita (
   uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
   valuta_id, prezzo_snapshot, pricing_mode,
   stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-SELECT (SELECT id FROM vendite.commesse WHERE codice = 'PGTAP-GT-COM'),
-       'ORD:PGTAP-GT:R:1',
+SELECT (SELECT commessa_id FROM tmp_gt_com),
+       'ORDINE_VENDITA:PGTAP-GT:R:1',
        r.articolo_id,
        -- ⚠️ vendite.commesse non ha istanza_utility_id: si risolve dal
        --    billing account della commessa, che e' dove vive.
        (SELECT b.istanza_utility_id FROM vendite.commesse c
           JOIN anagrafiche.billing_account b ON b.id = c.billing_account_id
-         WHERE c.codice = 'PGTAP-GT-COM'),
+         WHERE c.id = (SELECT commessa_id FROM tmp_gt_com)),
        DATE '2026-06-15',
-       (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1),
+       (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = r.articolo_id),
        1,
        DATE '2026-06-01', DATE '2026-06-01', DATE '2026-06-30',
        r.valuta_id, 10.000000, 'FIXED',

@@ -7,11 +7,16 @@ CREATE FUNCTION fn_snapshot_indirizzi_fattura(p_fattura_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_snapshot_indirizzi_fattura(p_fattura_id bigint)
  RETURNS TABLE(inserted_rows integer, updated_rows integer)
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-20 (20261020-59, brief-db-grammatica-unica-documenti, 2d G-6):
+--   l'ambito degli indirizzi FATTURE diventa FATTURA, il codice della
+--   sorgente; firma e RETURNS ancorati.
 -- Scopo: fissare lo snapshot degli indirizzi di UNA fattura,
 --        risolvendoli dall'anagrafica del cliente del billing
 --        account di testata. Deterministica e fail-loud: se manca
@@ -61,7 +66,7 @@ BEGIN
         SELECT a.tipo_indirizzo_id, t.codice_interno
           FROM config.tipi_indirizzi_allowed a
           JOIN config.tipi_indirizzi t ON t.id = a.tipo_indirizzo_id
-         WHERE a.ambito = 'FATTURE'
+         WHERE a.ambito = 'FATTURA'
            AND a.attivo IS TRUE
          ORDER BY a.tipo_indirizzo_id
     LOOP
@@ -118,7 +123,7 @@ BEGIN
      WHERE fi.fattura_id = p_fattura_id;
 
     v_mancanti := script.fn_indirizzi_obbligatori_mancanti(
-                      'FATTURE', v_tipi_presenti);
+                      'FATTURA', v_tipi_presenti);
 
     IF COALESCE(array_length(v_mancanti, 1), 0) > 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -140,8 +145,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_snapshot_indirizzi_fattura(p_fattura_id bigint)
-IS 'Fissa lo snapshot degli indirizzi di UNA fattura risolvendoli dall''anagrafica del cliente del billing account di TESTATA — che in gerarchia e'' gia'' il BA padre (D-P): la fattura e'' del padre, quindi gli indirizzi sono del padre, e la funzione non conosce la gerarchia. Risolve sempre dall''anagrafica e mai copiando dai documenti sorgente (D-A): una fattura aggrega N sorgenti e le attivita'' sourceless non hanno snapshot da copiare. I tipi da risolvere e la loro obbligatorieta'' vengono da config.tipi_indirizzi_allowed (ambito FATTURE), mai da un elenco scritto nel codice: la stessa fonte che interroga il guard di emissione. Upsert idempotente su (fattura_id, tipo_indirizzo_id) con WHERE IS DISTINCT FROM, quindi un rerun a dati invariati e'' un vero no-op (0,0) che non tocca l''audit ne'' sveglia il guard di congelamento; non cancella mai (perimetro batch ''iu''). Assenza di un tipo non obbligatorio = nessuna riga e nessun errore; assenza di un obbligatorio = E_INDIRIZZO_FATTURA_MANCANTE, perche'' nel giro notturno non c''e'' nessun operatore davanti e il documento e'' fiscale (C-14d). La soglia di stato non e'' ricontrollata qui: la presidia il trigger a10 di 1.2, per qualunque scrittore. Ritorna (inserted_rows, updated_rows). piano-db-satelliti-fattura Fase 2.1.';
+IS 'Fissa lo snapshot degli indirizzi di UNA fattura risolvendoli dall''anagrafica del cliente del billing account di TESTATA — che in gerarchia e'' gia'' il BA padre (D-P): la fattura e'' del padre, quindi gli indirizzi sono del padre, e la funzione non conosce la gerarchia. Risolve sempre dall''anagrafica e mai copiando dai documenti sorgente (D-A): una fattura aggrega N sorgenti e le attivita'' sourceless non hanno snapshot da copiare. I tipi da risolvere e la loro obbligatorieta'' vengono da config.tipi_indirizzi_allowed (ambito FATTURE), mai da un elenco scritto nel codice: la stessa fonte che interroga il guard di emissione. Upsert idempotente su (fattura_id, tipo_indirizzo_id) con WHERE IS DISTINCT FROM, quindi un rerun a dati invariati e'' un vero no-op (0,0) che non tocca l''audit ne'' sveglia il guard di congelamento; non cancella mai (perimetro batch ''iu''). Assenza di un tipo non obbligatorio = nessuna riga e nessun errore; assenza di un obbligatorio = E_INDIRIZZO_FATTURA_MANCANTE, perche'' nel giro notturno non c''e'' nessun operatore davanti e il documento e'' fiscale (C-14d). La soglia di stato non e'' ricontrollata qui: la presidia il trigger a10 di 1.2, per qualunque scrittore. Ritorna (inserted_rows, updated_rows). piano-db-satelliti-fattura Fase 2.1. Rev 2026-10-20 (20261020-59, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi FATTURE diventa FATTURA, il codice della sorgente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

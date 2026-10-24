@@ -13,7 +13,8 @@
 -- Elenco test (plan 13):
 --   1) struttura: le TRE policy ci sono — una per veste della testata
 --   2) struttura: e la RLS e' ACCESA
---   3) ⛔ la policy shop usa `fn_scope_shop_via_ba`, non la sola proprieta'
+--   3) ⛔ la policy shop chiede il cliente col modo `billing_account_shop`, non
+--      la sola proprieta' (rev 2026-10-21: era `fn_scope_shop_via_ba`)
 --   4) `anagrafiche.vw_pdp` ha security_invoker: la porta di servizio e' chiusa
 --   5) OPERATORE: A vede il PROPRIO cliente
 --   6) ⛔ e non quello di B
@@ -23,7 +24,7 @@
 --      sarebbe persa ricopiando la sola proprieta'
 --  10) ⛔ ne' il cliente di un ALTRO proprietario
 --  11) ⛔ senza veste applicativa: fail-closed
---  12) ⭐ l'adattatore `fn_scope_shop_via_ba` dice il vero nei due versi
+--  12) ⭐ il modo `billing_account_shop` del risolutore dice il vero nei due versi
 --  13) ⭐ delle TRE schede costruite, l'operatore A ne vede esattamente due
 --
 -- ────────────────────────────────────────────────────────────────
@@ -141,12 +142,19 @@ SELECT id AS istanza_utility_id FROM iu;
 --   che rende il test 9 una prova sul CANALE e non sul proprietario. Se
 --   cambiassero tutti e due, quel test sarebbe verde anche con una policy che
 --   guarda la sola proprieta' — cioe' proprio con il difetto che deve scoprire.
+-- ⛔ Ma su un'ALTRA utility (rev 2026-10-14, brief-db-cliente-manuale-uno-per-
+--   soggetto-e-utility): due clienti attivi dello stesso soggetto, utility e
+--   azienda su istanze fittizie sono un doppione (E_CLIENTE_STESSA_CHIAVE). Al
+--   test 9 serve lo stesso proprietario con due canali, non la stessa utility.
 CREATE TEMP TABLE _ba_shop AS
 WITH nuovo AS (
     INSERT INTO anagrafiche.billing_account
         (istanza_utility_id, soggetto_ruolo_id, utility_id, codice,
          categoria_cliente_id, valuta_id, canale_origine)
-    SELECT i.istanza_utility_id, ba.soggetto_ruolo_id, ba.utility_id,
+    SELECT i.istanza_utility_id, ba.soggetto_ruolo_id,
+           (SELECT u.id FROM config.utilities u
+             WHERE u.richiede_pdp IS FALSE AND u.id <> ba.utility_id
+             ORDER BY u.id LIMIT 1),
            left(ba.codice, 40) || '-SHOP', ba.categoria_cliente_id, ba.valuta_id,
            'SHOP'::config.canale_origine
       FROM _istanza_shop i
@@ -210,13 +218,7 @@ WITH u AS (
             '!', true, false, false, '', '', '', now())
     RETURNING id
 ), i AS (
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    SELECT b.soggetto_ruolo_id, u.id,
-           'SHOP_CUSTOMER'::config.ruolo_applicativo, true
-      FROM _ba_shop b CROSS JOIN u
-    RETURNING id
-)
+    SELECT anagrafiche.fn_crea_veste_portale(u.id, b.soggetto_ruolo_id, 'SHOP_CUSTOMER'::config.ruolo_applicativo, true) AS id FROM _ba_shop b CROSS JOIN u)
 SELECT id AS identita_id FROM i;
 
 -- ============================================================
@@ -239,14 +241,16 @@ SELECT ok(
 );
 
 -- ⛔ IL PRESIDIO DELLA CONDIZIONE CHE NON SI POTEVA COPIARE. Si pretende il
---   NOME dell'adattatore: `fn_scope_ba_ownership` da sola compilerebbe, girerebbe
---   e aprirebbe il satellite piu' della testata, in silenzio.
+--   MODO del risolutore: `'billing_account'` da solo compilerebbe, girerebbe e
+--   aprirebbe il satellite piu' della testata, in silenzio.
+--   Rev 2026-10-21 (20261021-39): la policy e' nella forma col perimetro; il
+--   canale SHOP sta nel modo `billing_account_shop` di fn_resolve_controparte_sr_id.
 SELECT ok(
-    (SELECT position('fn_scope_shop_via_ba(' IN p.qual) > 0
+    (SELECT position('fn_resolve_controparte_sr_id(''billing_account_shop''' IN p.qual) > 0
        FROM pg_policies p
       WHERE p.schemaname = 'anagrafiche' AND p.tablename = 'clienti'
         AND p.policyname = 'rls_clienti_shop'),
-    '3. la policy shop usa fn_scope_shop_via_ba, non la sola proprieta'''
+    '3. la policy shop chiede il cliente col modo billing_account_shop, non la sola proprieta'''
 );
 
 -- ⭐ La porta di servizio: senza security_invoker questa vista leggerebbe
@@ -359,10 +363,11 @@ BEGIN
       JOIN _schede sc ON sc.cliente_id = c.id;
     PERFORM set_config('pgtap.visibili_a', v_n::text, true);
 
-    -- ⭐ L'adattatore nei due versi, interrogato direttamente.
+    -- ⭐ Il modo del risolutore nei due versi, interrogato direttamente: il
+    --   soggetto sul BA nato dallo shop, NULL su quello nato da ADMIN.
     PERFORM set_config('pgtap.adattatore',
-        CASE WHEN     script.fn_scope_shop_via_ba(v_shop, v_a.billing_account_id)
-              AND NOT script.fn_scope_shop_via_ba(v_shop, v_a_admin.billing_account_id)
+        CASE WHEN script.fn_resolve_controparte_sr_id('billing_account_shop', v_a.billing_account_id) IS NOT NULL
+              AND script.fn_resolve_controparte_sr_id('billing_account_shop', v_a_admin.billing_account_id) IS NULL
              THEN 'CORRETTO' ELSE 'SBAGLIATO' END, true);
 
     -- ⛔ Nessuna veste: fail-closed.
@@ -396,7 +401,7 @@ SELECT is(current_setting('pgtap.senza_veste', true), '0',
           '11. senza veste applicativa non risponde niente: fail-closed');
 
 SELECT is(current_setting('pgtap.adattatore', true), 'CORRETTO',
-          '12. fn_scope_shop_via_ba dice il vero: BA da shop si'', BA da admin no');
+          '12. il modo billing_account_shop dice il vero: BA da shop si'', BA da admin no');
 
 SELECT is(current_setting('pgtap.visibili_a', true), '2',
           '13. delle TRE schede costruite l''operatore A ne vede esattamente due: le proprie');

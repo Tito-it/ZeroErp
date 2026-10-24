@@ -29,7 +29,7 @@ Endpoint di scrittura che delega a `pratiche_service.sospendi_pratica`. Il servi
 
 - `400`: motivo vuoto (`E_PRATICA_VALIDATION`), pratica gia' sospesa (`E_PRATICA_VALIDATION`), `pratica_id` non valido (`E_INVALID_ID`)
 - `401`: JWT mancante o non valido
-- `409`: sospensione con periodo sovrapposto sullo stesso scope (`E_SOSPENSIONE_OVERLAP`); transizione di stato non ammessa (`PRATICHE_TRANSIZIONE_NON_AMMESSA`)
+- `409`: sospensione con periodo sovrapposto sullo stesso scope (`E_SOSPENSIONE_OVERLAP`); transizione di stato non ammessa (`E_PRATICHE_TRANSIZIONE_NON_AMMESSA`)
 - `422`: `data_inizio` nel futuro (`E_SOSPENSIONE_DATA_FUTURA`)
 
 ## Regole

@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA RIGA DI COMMESSA SENZA DOCUMENTO D'ORIGINE E' UN ONERE O UNA RETTIFICA
+#   vendite.commesse_attivita: CHECK chk_commesse_attivita_senza_sorgente_onere_rettifica
+#   Brief: brief-db-annullo-a-valle-riapre-a-monte (§8.5, decisione di Tid del 2026-10-12)
+#
+# -- LA REGOLA ----------------------------------------------------
+#   Le righe di commessa nascono da tre strade sole:
+#     - l'invio in commessa (preventivo, ordine, contratto, bolla, consumi):
+#       con la sorgente, sempre (il lister la proietta, l'handler la esige);
+#     - vendite.fn_aggiungi_onere_commessa: ONERE, senza sorgente;
+#     - vendite.fn_accredita_riga_reso: RETTIFICA, senza sorgente.
+#   Una riga NORMALE senza sorgente non la scrive nessuno. Fino a qui lo
+#   garantiva la disciplina di chi chiama (lo dice il guard 4 di
+#   vendite.fn_annulla_commessa_attivita): da qui la struttura.
+#   ⭐ Scritta come «con sorgente, oppure ONERE o RETTIFICA»: un movimento nuovo
+#   aggiunto domani nasce con la sorgente obbligatoria, non libero.
+#
+# -- PERCHE' ADESSO ------------------------------------------------
+#   L'annullo della commessa (20261012-19/-22/-23) ritira ogni riga NON_EMESSA
+#   dal verbo del suo genere. Una NORMALE senza sorgente non ne aveva uno: il
+#   lettore la chiamava MANUALE e l'avviso rifiutava sempre, cioe' una commessa
+#   che non si annulla mai. Col vincolo il caso esce dal modello, e il lettore
+#   perde il ramo (20261012-28). Lo facevano solo i pgTAP, come scorciatoia di
+#   fixture: corretti nello stesso giro.
+#
+# -- PRECONDITION -------------------------------------------------
+#   HALT se c'e' gia' una riga che il vincolo rifiuterebbe: l'ADD CONSTRAINT
+#   si fermerebbe a meta' migrate. Si corregge prima, a mano (la query e' quella
+#   del messaggio). Su un DB da zero la tabella e' vuota.
+#   ⚠️ preCondition su dati di esercizio, non su un seed di 80_data: non e' il
+#   divieto di linee-guida-sql 11.4 (precedente: 20261004-30).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261012-27-alter-commesse-attivita-chk-senza-sorgente-onere-rettifica-mctit.yaml
+
+  - changeSet:
+      id: 20261012-27-alter-commesse-attivita-chk-senza-sorgente-onere-rettifica
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.commesse_attivita: CHECK che vuole la sorgente su ogni riga che non e' ONERE o
+        RETTIFICA (le sole due che nascono senza documento d'origine).
+        Brief: brief-db-annullo-a-valle-riapre-a-monte (§8.5).
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            Ci sono righe di commessa senza sorgente che non sono ONERE ne' RETTIFICA: vanno
+            corrette a mano prima del CHECK chk_commesse_attivita_senza_sorgente_onere_rettifica
+            (SELECT id, commessa_id, segment_key, tipo_movimento, stato_emissione
+            FROM vendite.commesse_attivita WHERE sorgente_tipo_id IS NULL
+            AND tipo_movimento NOT IN ('ONERE', 'RETTIFICA')).
+        - and:
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                   WHERE c.conrelid = 'vendite.commesse_attivita'::regclass
+                     AND c.conname = 'chk_commesse_attivita_senza_sorgente_onere_rettifica'
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM vendite.commesse_attivita ca
+                   WHERE ca.sorgente_tipo_id IS NULL
+                     AND ca.tipo_movimento NOT IN ('ONERE', 'RETTIFICA')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_senza_sorgente_onere_rettifica
+                CHECK (sorgente_tipo_id IS NOT NULL
+                       OR tipo_movimento IN ('ONERE', 'RETTIFICA'));
+
+              COMMENT ON CONSTRAINT chk_commesse_attivita_senza_sorgente_onere_rettifica
+                ON vendite.commesse_attivita IS
+                'Una riga senza documento d''origine (sorgente_tipo_id NULL) e'' un ONERE (vendite.fn_aggiungi_onere_commessa) o una RETTIFICA (vendite.fn_accredita_riga_reso): le altre nascono dall''invio in commessa, con la sorgente. Scritto «con sorgente, oppure ONERE o RETTIFICA»: un movimento nuovo nasce con la sorgente obbligatoria. Fino al 2026-10-12 lo garantiva la disciplina di chi chiama; da allora la struttura, perche'' l''annullo della commessa ritira ogni riga dal verbo del suo genere e una NORMALE senza sorgente non ne aveva uno. brief-db-annullo-a-valle-riapre-a-monte §8.5.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita
+                DROP CONSTRAINT IF EXISTS chk_commesse_attivita_senza_sorgente_onere_rettifica;

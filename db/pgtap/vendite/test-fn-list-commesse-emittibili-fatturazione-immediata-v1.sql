@@ -134,6 +134,9 @@ CREATE TEMP TABLE tmp_up_imm AS
 SELECT r.attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_imm),
+  -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+  p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+  p_sorgente_uid => ((SELECT commessa_id FROM tmp_commessa_imm))::text,
   p_segment_key => ('SEG-FI-IMM-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_fi),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_fi),
@@ -156,7 +159,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'FI_IMM')
 ) r;
 
@@ -164,6 +166,9 @@ CREATE TEMP TABLE tmp_up_dif AS
 SELECT r.attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_dif),
+  -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+  p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+  p_sorgente_uid => ((SELECT commessa_id FROM tmp_commessa_dif))::text,
   p_segment_key => ('SEG-FI-DIF-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_fi),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_fi),
@@ -186,7 +191,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'FI_DIF')
 ) r;
 

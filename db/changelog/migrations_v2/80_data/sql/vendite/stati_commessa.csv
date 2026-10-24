@@ -1,7 +1,7 @@
-id,codice,descrizione,attivo,ordine,meta,codice_interno,chiude_commessa,emittibile,modificabile,fase,is_abortito
-1,BOZZA,Bozza,t,10,{},BOZZA,f,f,t,APERTO,f
-2,APERTA,Aperta,t,20,{},APERTA,f,f,t,IN_ATTESA,f
-3,IN_ESECUZIONE,In esecuzione,t,30,{},IN_ESECUZIONE,f,f,t,IN_CORSO,f
-4,PRONTA_FATTURAZIONE,Pronta per fatturazione,t,40,{},PRONTA_FATTURAZIONE,f,t,t,IN_CORSO,f
-5,CHIUSA,Chiusa,t,50,"{""nessuna_azione_key"":""vendite.commesse.stato_info.chiusa""}",CHIUSA,t,f,f,CHIUSO,f
-6,ANNULLATA,Annullata,t,60,"{""nessuna_azione_key"":""vendite.commesse.stato_info.annullata""}",ANNULLATA,t,f,f,CHIUSO,t
+id,codice,descrizione,attivo,ordine,meta,codice_interno,chiude_commessa,emittibile,modificabile,fase,is_abortito,iniziale
+1,BOZZA,Bozza,t,10,{},BOZZA,f,f,t,APERTO,f,t
+2,APERTA,Aperta,t,20,{},APERTA,f,f,t,IN_ATTESA,f,f
+3,IN_ESECUZIONE,In esecuzione,t,30,{},IN_ESECUZIONE,f,f,t,IN_CORSO,f,f
+4,PRONTA_FATTURAZIONE,Pronta per fatturazione,t,40,{},PRONTA_FATTURAZIONE,f,t,t,IN_CORSO,f,f
+5,CHIUSA,Chiusa,t,50,"{""nessuna_azione_key"":""vendite.commesse.stato_info.chiusa""}",CHIUSA,t,f,f,CHIUSO,f,f
+6,ANNULLATA,Annullata,t,60,"{""nessuna_azione_key"":""vendite.commesse.stato_info.annullata""}",ANNULLATA,t,f,f,CHIUSO,t,f

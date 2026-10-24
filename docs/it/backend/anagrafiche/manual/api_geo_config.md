@@ -18,52 +18,45 @@ Tutti gli endpoint di lista accettano i seguenti query parameters:
 
 | Parametro  | Tipo   | Obbligatorio | Default      | Descrizione                              |
 |------------|--------|--------------|--------------|------------------------------------------|
-| search     | string | no           | —            | Testo libero per ricerca                 |
-| limit      | int    | no           | 25           | Numero massimo di risultati per pagina   |
+| search     | string | no           | —            | Ricerca full guidata dal catalogo lista (colonne e soglia minima di caratteri). Sotto soglia la ricerca non si applica: nessun 400 |
+| limit      | int    | no           | 25           | Righe per pagina (1–200)                 |
 | offset     | int    | no           | 0            | Offset per la paginazione                |
-| order_by   | string | no           | descrizione  | Campo di ordinamento (codice/descrizione)|
-| order_dir  | string | no           | ASC          | Direzione: `ASC` o `DESC`               |
+| order_by   | string | no           | descrizione  | Colonna di ordinamento, dalla whitelist dell'entita' (vedi sezioni). Valore fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
+| order_dir  | string | no           | asc          | `asc` o `desc`                           |
 
 ## Formato risposta comune
 
-Tutte le risposte usano l'envelope standard:
-
-```json
-{
-  "status": "ok",
-  "data": { ... }
-}
-```
+Tutte le risposte usano l'envelope standard `{"data": ..., "meta": {"request_id": "..."}}`.
 
 Le liste paginate restituiscono:
 
 ```json
 {
-  "status": "ok",
   "data": {
-    "results": [ ... ],
-    "total": 250,
+    "count": 250,
     "page": 1,
-    "limit": 25
-  }
+    "page_size": 25,
+    "total_pages": 10,
+    "results": [ ... ]
+  },
+  "meta": { "request_id": "..." }
 }
 ```
 
-I lookup restituiscono:
+I lookup restituiscono `{"data": {"results": [ ... ]}, "meta": {...}}`, senza
+paginazione; i campi di ogni riga sono indicati per entita'.
 
-```json
-{
-  "status": "ok",
-  "data": {
-    "results": [
-      {"id": 1, "descrizione": "Italia"},
-      {"id": 2, "descrizione": "Francia"}
-    ]
-  }
-}
-```
+Creazione (`POST`): restituisce la riga creata riletta dalla stessa sorgente di
+lista e dettaglio (con le descrizioni dei JOIN). Aggiornamento (`PATCH`):
+restituisce `{"data": {"updated": true}}`. Dal 2026-10-20 i campi si leggono per
+presenza: una chiave presente si scrive, anche `null`, che svuota un campo nullable
+(ISO2/ISO3, sigla, telefono e continente dello stato; la regione della provincia);
+`null` o `""` su un campo obbligatorio → 400. Una chiave fuori elenco e un corpo
+senza campi → 400 `E_ANAG_VALIDAZIONE` (prima: ignorata, e 404 come un id
+inesistente). Duplicati → 409 `E_ANAG_DUPLICATO`; descrizione/campi obbligatori
+mancanti → 400 `E_ANAG_VALIDAZIONE`.
 
-In caso di errore: `{"status": "error", "error": {"code": "...", "message": "..."}}`.
+In caso di errore: `{"error": {"code": "...", "message": "..."}, "meta": {...}}`.
 
 ---
 
@@ -75,7 +68,12 @@ In caso di errore: `{"status": "error", "error": {"code": "...", "message": "...
 GET /api/v1/anagrafiche/stati/
 ```
 
-Restituisce la lista paginata degli stati. Accetta i parametri comuni di paginazione.
+Restituisce la lista paginata degli stati (`config.stati`). Accetta i parametri comuni.
+
+Campi riga (lista e dettaglio): `id`, `descrizione`, `sigla_stato`, `codice_iso2`,
+`codice_iso3`, `codice_telefonico`, `continente`.
+
+`order_by` ammessi: `descrizione`, `sigla_stato`, `codice_iso2`, `codice_iso3`, `continente`.
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
@@ -136,7 +134,11 @@ curl -X PATCH -H "Authorization: Bearer $TOKEN" \
 GET /api/v1/anagrafiche/stati/lookup/
 ```
 
-Lista leggera per dropdown (senza paginazione).
+Lista per dropdown (senza paginazione), ordinata per `descrizione`. Campi:
+`id`, `descrizione`, `codice_iso2`, `catalogo_comuni_completo` (forma
+dell'indirizzo libero in quello stato: comune e CAP da elenco se `true`, localita'
+altrimenti), `proposto` (`true` sullo stato da preselezionare, da
+`script.fn_stato_proposto_id`, parametro `STATO_PROPOSTO_ISO2`).
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
@@ -158,6 +160,11 @@ Oltre ai parametri comuni, accetta:
 | Parametro | Tipo | Obbligatorio | Descrizione          |
 |-----------|------|--------------|----------------------|
 | stato_id  | int  | no           | Filtra per stato     |
+
+Campi riga (lista e dettaglio, da `config.vw_regioni_lista`): `id`, `descrizione`,
+`stato_id`, `stato_descrizione`.
+
+`order_by` ammessi: `descrizione`, `stato_descrizione`.
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
@@ -214,7 +221,8 @@ curl -X PATCH -H "Authorization: Bearer $TOKEN" \
 GET /api/v1/anagrafiche/regioni/lookup/
 ```
 
-Lista leggera per dropdown. Accetta filtro opzionale `stato_id`.
+Lista per dropdown, ordinata per `descrizione`. Accetta filtro opzionale
+`stato_id`. Campi: `id`, `descrizione`, `stato_id`.
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
@@ -236,6 +244,11 @@ Oltre ai parametri comuni, accetta:
 | Parametro   | Tipo | Obbligatorio | Descrizione          |
 |-------------|------|--------------|----------------------|
 | regione_id  | int  | no           | Filtra per regione   |
+
+Campi riga (lista e dettaglio, da `config.vw_province_lista`): `id`, `descrizione`,
+`sigla`, `regione_id`, `regione_descrizione`.
+
+`order_by` ammessi: `descrizione`, `sigla`, `regione_descrizione`.
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
@@ -293,7 +306,8 @@ curl -X PATCH -H "Authorization: Bearer $TOKEN" \
 GET /api/v1/anagrafiche/province/lookup/
 ```
 
-Lista leggera per dropdown (senza paginazione).
+Lista per dropdown (senza paginazione, senza filtri), ordinata per `descrizione`.
+Campi: `id`, `sigla`, `descrizione`, `regione_descrizione`.
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
@@ -310,7 +324,12 @@ curl -H "Authorization: Bearer $TOKEN" \
 GET /api/v1/anagrafiche/comuni/
 ```
 
-Accetta i parametri comuni di paginazione.
+Accetta i parametri comuni.
+
+Campi riga (da `config.vw_comuni_lista`): `id`, `descrizione`, `provincia_id`,
+`provincia_sigla`, `provincia_descrizione`, `regione_id`, `regione_descrizione`.
+
+`order_by` ammessi: `descrizione`, `provincia_sigla`, `regione_descrizione`.
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
@@ -345,7 +364,11 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 GET /api/v1/anagrafiche/toponomastica/
 ```
 
-Accetta i parametri comuni di paginazione.
+Accetta i parametri comuni.
+
+Campi riga (lista e dettaglio): `id`, `descrizione`, `attivo`.
+
+`order_by` ammessi: `descrizione`, `attivo`.
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
@@ -389,7 +412,7 @@ PATCH /api/v1/anagrafiche/toponomastica/{pk}/
 | Campo       | Tipo    | Obbligatorio | Descrizione            |
 |-------------|---------|--------------|------------------------|
 | descrizione | string  | no           | Nuova denominazione    |
-| attivo      | boolean | no           | Flag attivo/disattivo  |
+| attivo      | boolean | no           | Flag attivo/disattivo (booleano JSON; altro tipo → 400 `E_VALIDATION_INPUT`) |
 
 ```bash
 curl -X PATCH -H "Authorization: Bearer $TOKEN" \
@@ -414,7 +437,11 @@ Oltre ai parametri comuni, accetta:
 |------------|------|--------------|----------------------|
 | comune_id  | int  | no           | Filtra per comune    |
 
-L'ordinamento predefinito e` per `codice`.
+L'ordinamento predefinito e` per `codice`. `order_by` ammessi: `codice`,
+`comune_descrizione`, `provincia_sigla`.
+
+Campi riga (lista e dettaglio, da `config.vw_codici_postali_lista`): `id`, `codice`,
+`comune_id`, `comune_descrizione`, `provincia_id`, `provincia_sigla`.
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
@@ -469,16 +496,17 @@ curl -X PATCH -H "Authorization: Bearer $TOKEN" \
 
 ## Dipendenze DB
 
-- `anagrafiche.stati` -- tabella stati/nazioni
-- `anagrafiche.regioni` -- tabella regioni (FK verso stati)
-- `anagrafiche.province` -- tabella province (FK verso regioni)
-- `anagrafiche.comuni` -- tabella comuni (FK verso province)
-- `anagrafiche.toponomastica` -- tabella tipi via
-- `anagrafiche.codici_postali` -- tabella CAP (FK verso comuni)
+- `config.stati` -- tabella stati/nazioni
+- `config.regioni` -- tabella regioni (FK verso stati); vista `config.vw_regioni_lista`
+- `config.province` -- tabella province (FK verso regioni); vista `config.vw_province_lista`
+- `config.comuni` -- tabella comuni (FK verso province); vista `config.vw_comuni_lista`
+- `config.toponomastica` -- tabella tipi via
+- `config.codici_postali` -- tabella CAP (FK verso comuni); vista `config.vw_codici_postali_lista`
+- `script.fn_stato_proposto_id` -- stato proposto nel lookup stati
 
 ## Note
 
 - La gerarchia geografica e`: Stato > Regione > Provincia > Comune > Codice Postale.
 - I filtri gerarchici (es. `stato_id` su regioni, `regione_id` su province, `comune_id` su codici postali) permettono di popolare dropdown a cascata nel frontend.
-- Gli endpoint lookup restituiscono liste leggere (id + descrizione) senza paginazione, pensati per dropdown e autocomplete.
+- Gli endpoint lookup restituiscono liste leggere senza paginazione (campi indicati per entita'), pensati per dropdown e autocomplete.
 - I comuni non hanno endpoint dettaglio/update ne` lookup separati nella versione corrente.

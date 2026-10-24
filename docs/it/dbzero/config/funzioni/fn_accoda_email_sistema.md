@@ -6,6 +6,8 @@ CREATE FUNCTION fn_accoda_email_sistema(p_destinatario character varying, p_ogge
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_accoda_email_sistema(p_destinatario character varying, p_oggetto text, p_corpo_html text, p_corpo_testo text DEFAULT NULL::text, p_email_account_id integer DEFAULT NULL::integer, p_email_template_id integer DEFAULT NULL::integer, p_auth_user_id integer DEFAULT NULL::integer, p_contesto_json jsonb DEFAULT '{}'::jsonb, p_unita_organizzativa_id integer DEFAULT NULL::integer, p_destinatari_cc text[] DEFAULT NULL::text[], p_pratica_id bigint DEFAULT NULL::bigint)
  RETURNS bigint
@@ -58,6 +60,8 @@ $function$
 COMMENT ON FUNCTION config.fn_accoda_email_sistema(p_destinatario character varying, p_oggetto text, p_corpo_html text, p_corpo_testo text, p_email_account_id integer, p_email_template_id integer, p_auth_user_id integer, p_contesto_json jsonb, p_unita_organizzativa_id integer, p_destinatari_cc text[], p_pratica_id bigint)
 IS 'Accoda una email di ambito SISTEMA (reset password, alert, inviti) da un percorso NON autenticato. ⭐ Esiste perche'' i percorsi di reset e invito girano con AllowAny e authentication_classes = []: senza utente in sessione, con la row level security accesa su config.email_log l''INSERT verrebbe respinto — cioe'' il reset password si romperebbe, che e'' proprio la ragione per cui le email di SISTEMA esistono. ⛔ `ambito` NON e'' un parametro, e nemmeno l''emittente: se lo fossero questa sarebbe una porta per scrivere QUALUNQUE email aggirando la policy. Sa scrivere una cosa sola. ⭐ Rev 2026-09-06: accetta anche unita_organizzativa_id, destinatari_cc e pratica_id — i chiamanti li passavano e senza di essi quel dato sarebbe sparito IN SILENZIO, che e'' peggio di un rifiuto. Non sono perimetro ma CONTESTO: servono a chi legge il giornale, non a chi decide i permessi. ⚠️ SECURITY DEFINER del proprietario della tabella e non di un superuser: la RLS e'' ENABLE senza FORCE, quindi l''owner non la subisce. ⚠️ La gemella che CHIUDE la riga (esito dell''invio) e'' config.fn_chiudi_email_sistema: instradare solo l''INSERT sposterebbe la rottura sull''UPDATE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

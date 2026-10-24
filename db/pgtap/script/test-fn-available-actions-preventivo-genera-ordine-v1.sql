@@ -1,10 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
+--   solo il commento: la destinazione della merce e' ORDINE_VENDITA.
 -- pgTAP test per Zero ERP
 --
 -- Test: capability can_genera_ordine di script.fn_available_actions_preventivo
 --       (20260609-07, brief-preventivi-ordini.md D8). L'azione "genera ordine"
---       e' disponibile finche' restano righe natura destinazione_tipo='ORDINE'
+--       e' disponibile finche' restano righe natura destinazione_tipo='ORDINE_VENDITA'
 --       non allocate (residuo a livello riga).
 --
 -- Indice test (1..4):
@@ -51,7 +53,8 @@ SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('cap genera ordine');
 
 CREATE TEMP TABLE tmp_art AS
 SELECT dbops.fn_pgtap_crea_articolo(
-         ('PGT-CAP-ORD-' || substring(md5(clock_timestamp()::text) from 1 for 12))::varchar
+         ('PGT-CAP-ORD-' || substring(md5(clock_timestamp()::text) from 1 for 12))::varchar,
+         p_natura_vendita_id => (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE')
        ) AS articolo_id;
 
 CREATE TEMP TABLE tmp_refs AS
@@ -67,11 +70,7 @@ SELECT
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   -- ⛔ L'emittente NON si pesca, si DERIVA (2026-09-23, guida pgTAP §5).
   script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE') AS natura_merce_id;
-
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tmp_refs)
- WHERE id = (SELECT articolo_id FROM tmp_refs);
+  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id;
 
 -- Preventivo ACCETTATO + riga MERCE.
 -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la

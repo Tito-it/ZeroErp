@@ -7,6 +7,8 @@ CREATE FUNCTION fn_crea_utente_tecnico(p_processo_codice text, p_emittente_codic
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_crea_utente_tecnico(p_processo_codice text, p_emittente_codice character varying, p_profilo_codice character varying DEFAULT NULL::character varying)
  RETURNS integer
@@ -107,8 +109,8 @@ BEGIN
       FROM config.tipi_ruoli WHERE codice_interno = 'PROC_AUTO';
     SELECT id INTO v_tipo_contatto_id
       FROM config.tipi_contatti WHERE codice_interno = 'PRINCIPALE';
-    SELECT id INTO v_stato_id
-      FROM config.stati WHERE codice_iso2 = 'IT';
+    -- Rev 2026-10-18 (D-1 di Tid): lo stato proposto, non 'IT' nel codice.
+    v_stato_id := script.fn_stato_proposto_id('script.fn_crea_utente_tecnico');
 
     -- ⭐ Lo username porta ENTRAMBI: e' un badge per posto di
     --   lavoro, e il posto di lavoro qui e' (processo, emittente).
@@ -163,10 +165,12 @@ BEGIN
     -- 3. Il contatto di riferimento: il guard differito sui
     --    contatti ammette esplicitamente `is_default` coi canali
     --    vuoti, ed e' la verita' — un processo canali non ne ha.
-    INSERT INTO anagrafiche.contatti
-        (soggetto_id, tipo_contatto_id, nominativo, is_default)
-    VALUES (v_soggetto_id, v_tipo_contatto_id,
-            'Processo automatico: ' || v_username, true);
+    --    (BB anagrafiche.fn_crea_contatto, rev 2026-10-17)
+    PERFORM anagrafiche.fn_crea_contatto(
+        v_soggetto_id, NULL,
+        jsonb_build_object('tipo_contatto_id', v_tipo_contatto_id,
+                           'nominativo',       'Processo automatico: ' || v_username,
+                           'is_default',       true));
 
     -- Padre e figlio in ISTRUZIONI SEPARATE: una CTE unica
     -- condividerebbe la stessa snapshot.
@@ -194,9 +198,8 @@ BEGIN
 
     -- 6. Il binding SOLO se un profilo e' stato chiesto.
     IF p_profilo_codice IS NOT NULL THEN
-        INSERT INTO config.profili_accesso_bindings
-            (profilo_accesso_id, identita_digitale_id)
-        VALUES (v_profilo.id, v_identita_id);
+        -- rev 2026-10-18: il BB del binding (regola del 2).
+        PERFORM config.fn_lega_profilo_identita(v_profilo.id, v_identita_id);
     END IF;
 
     -- 7. Il legame processo -> utente.
@@ -209,8 +212,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_crea_utente_tecnico(p_processo_codice text, p_emittente_codice character varying, p_profilo_codice character varying)
-IS 'Crea l''utente tecnico di un processo automatico PER UN EMITTENTE: utente Django con password inutilizzabile e username processo@emittente, soggetto dedicato col suo contatto, soggetto_ruolo PROC_AUTO, identita'' OPERATORE col flag tecnica, la riga di perimetro in config.user_emittenti_fiscali e il legame in dbops.processi_identita. Ritorna l''auth_user_id. ⭐ L''emittente e'' OBBLIGATORIO e costitutivo: config.user_emittenti_fiscali e'' 1-a-1 sull''utente, quindi un processo che serve N emittenti ha N utenti tecnici. ⚠️ D-9 resta: la funzione non SCEGLIE l''emittente, lo riceve da chi scrive la chiamata. Il profilo e'' facoltativo e di norma non si passa; se indicato dev''essere AD_HOC. ⛔ Mai SUPER_ADMIN. ⭐ Rev 2026-09-05 (R-E strada B): accetta anche il canale CODA_AUTOMATICA; il canale CODA «umano» resta rifiutato, perche'' li'' l''identita'' la porta l''operatore che accoda. ⭐ Rev 2026-09-05 (DB-6): due guard che prima non parlavano. «Processo inesistente» e «processo non eleggibile» erano lo STESSO errore e mandavano a cercare in due posti diversi: adesso il primo e'' E_PROCESSO_NON_TROVATO. E lo username duplicato alzava un 23505 NUDO: adesso e'' E_UTENTE_TECNICO_DA_RIATTIVARE, che indica il verbo giusto — script.fn_riattiva_utente_tecnico. Brief: brief-db-processi-automatici-residui-be, DB-6 e DB-8.';
+IS 'Crea l''utente tecnico di un processo automatico PER UN EMITTENTE: utente Django con password inutilizzabile e username processo@emittente, soggetto dedicato col suo contatto, soggetto_ruolo PROC_AUTO, identita'' OPERATORE col flag tecnica, la riga di perimetro in config.user_emittenti_fiscali e il legame in dbops.processi_identita. Ritorna l''auth_user_id. ⭐ L''emittente e'' OBBLIGATORIO e costitutivo: config.user_emittenti_fiscali e'' 1-a-1 sull''utente, quindi un processo che serve N emittenti ha N utenti tecnici. ⚠️ D-9 resta: la funzione non SCEGLIE l''emittente, lo riceve da chi scrive la chiamata. Il profilo e'' facoltativo e di norma non si passa; se indicato dev''essere AD_HOC. ⛔ Mai SUPER_ADMIN. ⭐ Rev 2026-09-05 (R-E strada B): accetta anche il canale CODA_AUTOMATICA; il canale CODA «umano» resta rifiutato, perche'' li'' l''identita'' la porta l''operatore che accoda. ⭐ Rev 2026-09-05 (DB-6): due guard che prima non parlavano. «Processo inesistente» e «processo non eleggibile» erano lo STESSO errore e mandavano a cercare in due posti diversi: adesso il primo e'' E_PROCESSO_NON_TROVATO. E lo username duplicato alzava un 23505 NUDO: adesso e'' E_UTENTE_TECNICO_DA_RIATTIVARE, che indica il verbo giusto — script.fn_riattiva_utente_tecnico. Brief: brief-db-processi-automatici-residui-be, DB-6 e DB-8. Rev 2026-10-17: il contatto lo scrive il BB anagrafiche.fn_crea_contatto (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 3); comportamento invariato. Rev 2026-10-18: il binding del profilo chiesto lo scrive il BB config.fn_lega_profilo_identita (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 8); comportamento invariato. Rev 2026-10-18 (D-1 di Tid): lo stato del soggetto tecnico e'' lo stato proposto (script.fn_stato_proposto_id), non piu'' ''IT'' scritto nel corpo.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

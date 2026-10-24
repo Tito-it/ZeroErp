@@ -11,7 +11,9 @@ Indice test eseguiti:
 1b) CommesseRepositoryUnitTests.test_get_or_create_commessa_propaga_condizioni_pagamento
 1c) CommesseRepositoryUnitTests.test_get_or_create_commessa_condizioni_assenti_passano_null
 1d) CommesseRepositoryUnitTests.test_get_or_create_commessa_non_passa_emittente
-2) CommesseRepositoryUnitTests.test_link_sorgente_returns_int
+2) CommesseRepositoryUnitTests.test_get_commessa_viva_by_sorgente_legge_la_funzione_db
+2b) CommesseRepositoryUnitTests.test_get_commessa_viva_by_sorgente_none_senza_commessa_aperta
+2c) CommesseRepositoryUnitTests.test_get_commessa_viva_by_sorgente_codice_sconosciuto_raises
 3) CommesseRepositoryUnitTests.test_upsert_attivita_returns_result
 4) CommesseRepositoryUnitTests.test_upsert_attivita_uses_defaults
 5) CommesseRepositoryUnitTests.test_emit_attivita_fatturabili_maps_result
@@ -79,7 +81,7 @@ _ORDINI_COLS = [
     ("uom_id",), ("quantita",), ("qta_operativa",),
     ("uom_operativa_id",), ("factor_to_base",), ("competenza_mese",),
     ("prezzo_snapshot",), ("prezzo_bloccato",), ("pricing_mode",),
-    ("tipo_movimento",), ("tipo_consumo",), ("valuta_id",),
+    ("tipo_movimento",), ("valuta_id",),
     ("meta",), ("tipo_doc_fiscale_id",),
     ("termine_pagamento_id",), ("modalita_pagamento_id",),
 ]
@@ -88,15 +90,15 @@ _ORDINI_COLS = [
 _ORDINI_ROW = (
     # 3 source-specific
     100, "uid-ordine-001", 200,
-    # 28 shared
+    # 27 shared (tipo_consumo ritirato, DB 20261013-60…-67)
     1, 2, 3,
     date(2026, 6, 1), date(2026, 6, 30), False,
-    6, "uid-ordine-001", "ORD:uid-ordine-001:R:200",
+    6, "uid-ordine-001", "ORDINE_VENDITA:uid-ordine-001:R:200",
     "art-uuid-001", 4, date(2026, 6, 1),
     None, Decimal("10.0"), Decimal("10.0"),
     None, Decimal("1"), date(2026, 6, 1),
     Decimal("22.50"), True, "FIXED",
-    "NORMALE", "CONGUAGLIO", 1,
+    "NORMALE", 1,
     {"tipo_commessa": "AUTO", "policy_fatturazione": "DA_DOCUMENTO"},
     7,   # tipo_doc_fiscale_id
     3,   # termine_pagamento_id (le condizioni del DOCUMENTO)
@@ -202,22 +204,42 @@ class CommesseRepositoryUnitTests(TestCase):
         )
         self.assertEqual(sql.count("%s"), len(args))
 
-    # Scopo: Verifica che link_sorgente chiami la funzione DB e restituisca int.
+    # Scopo: La commessa APERTA di un documento la dice il DB
+    #        (`fn_commessa_viva_di_sorgente`), non una SELECT propria su
+    #        `commesse_sorgenti`: con i link di storia (D-12) una `LIMIT 1`
+    #        senza stato poteva dare la commessa annullata.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
-    def test_link_sorgente_returns_int(self, mock_cursor_factory):
+    def test_get_commessa_viva_by_sorgente_legge_la_funzione_db(self, mock_cursor_factory):
         mock_cursor_factory.return_value = _mock_cursor(fetchone=(99,))
-        repo = CommesseRepository()
-        result = repo.link_sorgente(
-            commessa_id=10,
-            sorgente_tipo_id=5,
-            sorgente_uid="PREV-001",
+        result = CommesseRepository().get_commessa_viva_by_sorgente(
+            sorgente_codice="PREVENTIVO", sorgente_chiave="uuid-001",
         )
         self.assertEqual(result, 99)
         sql, args = mock_cursor_factory.return_value.execute.call_args[0]
-        self.assertIn("fn_link_commessa_sorgente", sql)
-        # Segnaposti e valori si corrispondono: un `p_… => %s` senza valore
-        # rende la chiamata irrisolvibile, e il mock da solo non lo vede.
+        self.assertIn("vendite.fn_commessa_viva_di_sorgente", sql)
+        self.assertNotIn("commesse_sorgenti", sql)
+        self.assertEqual(args, ["uuid-001", "PREVENTIVO"])
         self.assertEqual(sql.count("%s"), len(args))
+
+    # Scopo: Nessuna commessa aperta → la funzione torna NULL → None.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_get_commessa_viva_by_sorgente_none_senza_commessa_aperta(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchone=(None,))
+        self.assertIsNone(CommesseRepository().get_commessa_viva_by_sorgente(
+            sorgente_codice="PREVENTIVO", sorgente_chiave="uuid-001",
+        ))
+
+    # Scopo: Codice sorgente assente da config.sorgenti (nessuna riga) → errore
+    #        col suo codice, NON None: un codice sbagliato non deve sembrare
+    #        «nessuna commessa aperta» e far saltare l'aggancio in silenzio.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_get_commessa_viva_by_sorgente_codice_sconosciuto_raises(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchone=None)
+        with self.assertRaises(ServiceError) as ctx:
+            CommesseRepository().get_commessa_viva_by_sorgente(
+                sorgente_codice="SCONOSCIUTO", sorgente_chiave="uuid-001",
+            )
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_SORGENTE_SCONOSCIUTA")
 
     # Scopo: Verifica che upsert_attivita chiami la fn DB e restituisca UpsertAttivitaResult.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
@@ -236,7 +258,6 @@ class CommesseRepositoryUnitTests(TestCase):
             valuta_id=1,
             prezzo_bloccato=True,
             stato_approvazione="APPROVATA",
-            tipo_consumo="ACCONTO",
         )
         result = repo.upsert_attivita(inp)
         self.assertIsInstance(result, UpsertAttivitaResult)
@@ -266,7 +287,8 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(inp.stato_approvazione, "BOZZA")
         self.assertEqual(inp.stato_emissione, "NON_EMESSA")
         self.assertEqual(inp.tipo_movimento, "NORMALE")
-        self.assertEqual(inp.tipo_consumo, "CONGUAGLIO")
+        # `tipo_consumo` ritirato (DB 20261013-60…-67): l'input non lo porta piu'.
+        self.assertFalse(hasattr(inp, "tipo_consumo"))
         repo.upsert_attivita(inp)
 
     # Scopo: Verifica mapping CommessaEmitResult da fn_emit_attivita_fatturabili_da_commessa.
@@ -476,7 +498,7 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertIsInstance(row, PushableRow)
         self.assertEqual(row.billing_account_id, 1)
         self.assertEqual(row.utility_id, 2)
-        self.assertEqual(row.segment_key, "ORD:uid-ordine-001:R:200")
+        self.assertEqual(row.segment_key, "ORDINE_VENDITA:uid-ordine-001:R:200")
         self.assertIsNone(row.uom_id)
         self.assertEqual(row.quantita, Decimal("10.0"))
         self.assertEqual(row.prezzo_snapshot, Decimal("22.50"))
@@ -616,13 +638,14 @@ class CommesseRepositoryUnitTests(TestCase):
             datetime(2026, 3, 2, 9, 30, 0, tzinfo=UTC),      # fatturata_il
             77, 210, "DEFINITIVA",               # fattura_id, _numero, _stato
             "019fc716-7386-7b0d-9c26-0a4d30f3a022",  # sorgente_uid
-            "ORDINI", 100,                       # sorgente_area, _documento_id
+            True, 100,                           # sorgente_apribile, _documento_id
             # Cinque colonne del changeSet 20260820-05, in coda alla RETURNS
             # TABLE: la riga dice COSA e' e DA DOVE VIENE.
             "NORMALE",                           # tipo_movimento
             "ART001", "Articolo di prova",       # articolo_codice, _descrizione
             "ORD0000227",                        # sorgente_documento_numero
             "ORDINE_VENDITA:019fc716-7386-7b0d-9c26-0a4d30f3a022",  # gruppo_key
+            "Ordine",                            # sorgente_etichetta (20261021-20)
         )
         # Due execute: 1) COUNT → fetchone, 2) data → fetchall.
         mock_cursor_factory.return_value = _mock_cursor(
@@ -661,8 +684,13 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(row["fattura_id"], 77)
         self.assertEqual(row["fattura_numero"], 210)
         self.assertEqual(row["fattura_stato"], "DEFINITIVA")
-        self.assertEqual(row["sorgente_area"], "ORDINI")
+        self.assertIs(row["sorgente_apribile"], True)
         self.assertEqual(row["sorgente_documento_id"], 100)
+        # §13.6 (20261021-20): il codice IMMUTABILE della sorgente, e l'etichetta
+        # in coda — posizionale, come le altre.
+        self.assertEqual(row["sorgente_codice_interno"], "PREVENTIVO")
+        self.assertNotIn("sorgente_codice", row)
+        self.assertEqual(row["sorgente_etichetta"], "Ordine")
         # Seconda execute (data query) contiene fn_list_commessa_attivita.
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
         self.assertIn("fn_list_commessa_attivita", sql)

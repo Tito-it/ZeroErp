@@ -1,15 +1,15 @@
 <script setup>
-// Scopo: Select riusabile per scegliere una utility configurata per l'emittente
-// dell'utente corrente, filtrata per tipo ruolo soggetto (CL, FO, ecc.).
-// Se tipoRuoloCodice non e' fornito, mostra tutte le utility EF dell'emittente.
+// Scopo: Select riusabile per scegliere una utility ammessa per il ruolo
+// emittente (EF), filtrata per tipo ruolo soggetto (CL, FO, ecc.).
+// Se tipoRuoloCodice non e' fornito, mostra tutte le utility ammesse per EF.
 //
 // Uso:
 //   <UtilityPerRuoloSelect v-model="form.utility_id" :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE" />
-//   <UtilityPerRuoloSelect v-model="form.utility_id" />  <!-- tutte le utility EF emittente -->
+//   <UtilityPerRuoloSelect v-model="form.utility_id" />  <!-- tutte le utility ammesse per EF -->
 //   <UtilityPerRuoloSelect v-model="filter.utility_id" apply-default />  <!-- filtri lista -->
 //
 // Backend: GET /api/v1/core/lookup/utilities-per-emittente/?ruolo=CL
-// Filtra per: matrice utilities_tipi_ruolo + emittenti_fiscali_utilities per emittente utente.
+// Filtra per: matrice utilities_tipi_ruolo (ruolo EF, piu' il ruolo soggetto se dato).
 import { computed, ref, watch, onMounted } from 'vue'
 import { lookupUtilitiesPerEmittente } from '../apiCore'
 import { useFetchVersion } from '../composables/useFetchVersion'
@@ -52,7 +52,7 @@ const { id: defaultUtilityId, load: loadDefaultUtility } = useUtilityDefaultId({
 // VECCHIO arriverebbe dopo e sovrascriverebbe le voci giuste, senza errore.
 const fetchVersion = useFetchVersion()
 
-// Scopo: Carica le utility configurate per l'emittente dell'utente corrente.
+// Scopo: Carica le utility ammesse per il ruolo EF.
 // Se tipoRuoloCodice e' valorizzato, filtra per intersezione ruolo + EF.
 // Solo la chiamata piu' recente scrive `items` e spegne `loading`.
 async function load() {

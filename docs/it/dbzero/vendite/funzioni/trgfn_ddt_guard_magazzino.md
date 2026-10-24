@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_ddt_guard_magazzino()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_magazzino()
  RETURNS trigger
@@ -73,6 +75,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_magazzino()
 IS 'Guard BEFORE INSERT OR UPDATE OF magazzino_id, magazzino_arrivo_id, causale_trasporto_id, emittente_fiscale_id su vendite.ddt (D-L3-a). E_DDT_MAGAZZINO_INCOERENTE, con la regola nel VARIADIC: arrivo su una bolla che non e'' di trasferimento (causale di magazzino diversa da TRASF_OUT), arrivo uguale alla partenza, magazzino di un altro emittente (letto sotto RLS: invisibile e inesistente rispondono uguale). L''arrivo mancante NON e'' qui: e'' un motivo dell''emissione (script.fn_check_ddt_merce). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt. rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, regola del 2): la regola «magazzino dell''emittente» passa al BB script.fn_magazzino_dell_emittente, che il guard del reso (vendite.trgfn_resi_guard_magazzino) usa uguale. rev 2026-10-09 (brief-db-esecutivi-ba-coppia, regola del 2): «immutabili fuori bozza» (E_DDT_MAGAZZINO_IMMUTABILE) passa al BB vendite.trgfn_doc_testata_lock_fuori_bozza, trigger trg_ddt_a05_lock_fuori_bozza_upd: stesso codice, stessa frase, e parla prima di questo guard.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

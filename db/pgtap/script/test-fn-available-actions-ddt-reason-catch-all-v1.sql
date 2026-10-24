@@ -1,6 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano l'annullo dal verbo (la bolla legata all'ordine non si annulla per UPDATE) e la bolla senza ordine e senza BA del test 17 (e' il caso).
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 -- Test: script.fn_available_actions_ddt — il push a commessa letto da UNA
 --       fonte (vendite.fn_ddt_push_diagnosi): flag, precedenza sul segmento,
 --       decomposizione del catch-all DDT_NON_PUSHABILE nelle sue cause.
@@ -42,6 +49,12 @@
 --      ramo non era esercitato da nessuna riga viva (54 su 54 hanno un BA
 --      visibile): la clausola SENZA_BA del test 14 era vera A VUOTO, e il
 --      giro 7 riscrive proprio la lettura dei BA
+--  18) ⭐ pin di forma di D-2 (brief-db-plancache, 20261012-03): nella diagnosi
+--      la CTE `src` e' MATERIALIZED. Senza, nel ramo «tutti» si ricalcolava per
+--      ogni riga esterna (righe² giri del LATERAL sotto RLS, ~1,05 s su 1,18
+--      con 58 righe): i risultati restano giusti e solo il tempo se ne accorge,
+--      quindi un CREATE OR REPLACE che perdesse la parola passerebbe ogni altro
+--      test. Prima di 16 perche' 16 cambia il contesto.
 --  16) scope: chi non vede il DDT ha zero righe di diagnosi e capability NULL
 --      (⚠️ rosso da owner, che salta la RLS: gira come app; ULTIMO, cambia
 --      il contesto)
@@ -76,7 +89,14 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(17);
+-- L'annullo di una bolla emessa passa dal verbo di stato, che chiede l'azione
+-- emetti_ddt (rev 2026-10-11, D-8 di brief-db-ddt-righe-evase-dall-ordine).
+DO $az_ann$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(
+      NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_ddt');
+END $az_ann$;
+
+SELECT plan(18);
 
 -- ⛔ Niente `SET LOCAL app.current_user_id = '1'` dopo la riga di contesto:
 --    l'operatore lo sceglie (o lo COSTRUISCE, su un database vuoto)
@@ -103,15 +123,9 @@ SELECT
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)              AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                             AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)                         AS iva_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_draft_id,  -- rev 2026-10-08 (D-1)
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO'     AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO'    AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_consegnato_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='ANNULLATO'  AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_annullato_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo ORDER BY s.id LIMIT 1)           AS sorgente_root_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                           AS tipo_doc_fiscale_id,
   (SELECT c2.id FROM config.causali_trasporto c2 WHERE c2.codice='VENDITA'     ORDER BY c2.id LIMIT 1)                AS causale_vendita_id,
-  (SELECT c2.id FROM config.causali_trasporto c2 WHERE c2.codice='CONTO_LAVORO' ORDER BY c2.id LIMIT 1)               AS causale_no_fatt_id,
   (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')                                                   AS tipo_ind_con_id
 FROM tmp_cli c;
 
@@ -140,41 +154,27 @@ SELECT vendite.fn_link_commessa_sorgente(
 -- Helper
 -- ============================================================
 
--- Ordine (trigger p_trigger) + DDT (qta 10) portato a p_stato_finale con la
--- causale p_causale. Ritorna il DDT; la sua riga si legge con rca_riga().
-CREATE OR REPLACE FUNCTION pg_temp.mk_caso(p_trigger varchar, p_stato_finale bigint, p_causale bigint)
+-- La bolla dal builder: ordine del cliente costruito (trigger p_trigger, una
+-- riga di 10 a 25 dell'articolo del file), causale p_causale, stato p_stato.
+-- Ritorna il DDT; la sua riga si legge con rca_riga().
+-- ⭐ ANNULLATO resta qui: la bolla nasce dall'ordine e ne porta il legame,
+--   l'annullo diretto e' rifiutato (E_DOC_ANNULLO_CON_LEGAMI). Passa dal
+--   verbo, dichiarando i legami letti da vendite.fn_documento_legami, come fa
+--   la finestra di conferma (brief-db-annullo-documento-con-legami D-4).
+CREATE OR REPLACE FUNCTION pg_temp.mk_caso(p_trigger varchar, p_stato varchar, p_causale varchar)
 RETURNS bigint AS $$
-DECLARE r RECORD; v_ord bigint; v_ddt bigint;
+DECLARE v_ddt bigint;
 BEGIN
-  SELECT * INTO r FROM tmp_refs;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): l'ordine nasce DRAFT,
-  --   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
-  --   righe non si scrivono piu' (20261008-90).
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
-          DATE '2026-07-15', p_trigger, r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_reason_catchall'))
-  RETURNING id INTO v_ord;
-  -- trgfn_ordini_normalize eredita il trigger dal BA su INSERT: va rimesso.
-  UPDATE vendite.ordini SET fatturazione_trigger = p_trigger WHERE id = v_ord;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'Riga catchall', 10, 10, 25, r.iva_id, true, false,
-          jsonb_build_object('test_scope','pgtap_reason_catchall'));
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-  v_ddt := vendite.fn_genera_ddt_da_ordine(v_ord);
-  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-  VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  UPDATE vendite.ddt SET causale_trasporto_id=p_causale WHERE id=v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_emesso_id WHERE id=v_ddt;  -- DRAFT->EMESSO
-  IF p_stato_finale = r.stato_ddt_annullato_id THEN
-    UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_annullato_id WHERE id=v_ddt;
-  ELSIF p_stato_finale <> r.stato_ddt_emesso_id THEN
-    UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id WHERE id=v_ddt;
-    IF p_stato_finale <> r.stato_ddt_spedito_id THEN
-      UPDATE vendite.ddt SET stato_doc_ddt_id=p_stato_finale WHERE id=v_ddt;
-    END IF;
+  SELECT b.ddt_id INTO v_ddt
+    FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgtap_reason_catchall',
+           CASE WHEN p_stato = 'ANNULLATO' THEN 'EMESSO' ELSE p_stato END,
+           p_billing_account_id   => (SELECT billing_account_id FROM tmp_refs),
+           p_articolo_id          => (SELECT articolo_id FROM tmp_refs),
+           p_fatturazione_trigger => p_trigger,
+           p_causale_codice       => p_causale) b;
+  IF p_stato = 'ANNULLATO' THEN
+    PERFORM vendite.fn_annulla_ddt(v_ddt,
+        (SELECT count(*)::integer FROM vendite.fn_documento_legami('DDT_VENDITA', v_ddt) l));
   END IF;
   RETURN v_ddt;
 END $$ LANGUAGE plpgsql;
@@ -186,7 +186,7 @@ $$ LANGUAGE sql;
 
 -- La segment_key di quella riga, come la compone il lister.
 CREATE OR REPLACE FUNCTION pg_temp.rca_segment(p_ddt bigint) RETURNS varchar AS $$
-  SELECT ('DDT:' || d.uid::text || ':R:' || pg_temp.rca_riga(p_ddt)::text)::varchar
+  SELECT script.fn_segment_key('DDT_VENDITA', d.uid::text, pg_temp.rca_riga(p_ddt))
     FROM vendite.ddt d WHERE d.id = p_ddt;
 $$ LANGUAGE sql;
 
@@ -200,6 +200,9 @@ BEGIN
   SELECT * INTO r FROM tmp_refs;
   PERFORM vendite.fn_upsert_commessa_attivita(
     p_commessa_id => (SELECT commessa_id FROM tmp_com),
+    -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+    p_sorgente_uid => ((SELECT commessa_id FROM tmp_com))::text,
     p_segment_key => p_segment, p_articolo_id => r.articolo_id,
     p_istanza_utility_id => r.istanza_utility_id, p_data_attivita => DATE '2026-07-15',
     p_uom_id => r.uom_id, p_quantita => p_qta,
@@ -232,17 +235,17 @@ $$ LANGUAGE sql;
 -- Fixture
 -- ============================================================
 CREATE TEMP TABLE f AS SELECT
-  pg_temp.mk_caso('CONFERMATO', (SELECT stato_ddt_consegnato_id FROM tmp_refs), (SELECT causale_vendita_id FROM tmp_refs)) AS d_fattura_ordine,
-  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_emesso_id FROM tmp_refs),     (SELECT causale_vendita_id FROM tmp_refs)) AS d_in_viaggio,
-  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_spedito_id FROM tmp_refs),    (SELECT causale_no_fatt_id FROM tmp_refs)) AS d_solo_trasporto,
-  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_annullato_id FROM tmp_refs),  (SELECT causale_vendita_id FROM tmp_refs)) AS d_annullato,
-  pg_temp.mk_caso('CONFERMATO', (SELECT stato_ddt_annullato_id FROM tmp_refs),  (SELECT causale_vendita_id FROM tmp_refs)) AS d_prec,
+  pg_temp.mk_caso('CONFERMATO', 'CONSEGNATO', 'VENDITA')      AS d_fattura_ordine,
+  pg_temp.mk_caso('SPEDITO',    'EMESSO',     'VENDITA')      AS d_in_viaggio,
+  pg_temp.mk_caso('SPEDITO',    'SPEDITO',    'CONTO_LAVORO') AS d_solo_trasporto,
+  pg_temp.mk_caso('SPEDITO',    'ANNULLATO',  'VENDITA')      AS d_annullato,
+  pg_temp.mk_caso('CONFERMATO', 'ANNULLATO',  'VENDITA')      AS d_prec,
   -- ⭐ i casi nuovi del 21-09: trigger CONSEGNATO + DDT CONSEGNATO + VENDITA
   --    = eleggibile (e' il caso A di test-fn-list-ddt-da-pushare-contatore-v1)
-  pg_temp.mk_caso('CONSEGNATO', (SELECT stato_ddt_consegnato_id FROM tmp_refs), (SELECT causale_vendita_id FROM tmp_refs)) AS d_ok,
-  pg_temp.mk_caso('CONSEGNATO', (SELECT stato_ddt_consegnato_id FROM tmp_refs), (SELECT causale_vendita_id FROM tmp_refs)) AS d_alloc,
-  pg_temp.mk_caso('CONSEGNATO', (SELECT stato_ddt_consegnato_id FROM tmp_refs), (SELECT causale_vendita_id FROM tmp_refs)) AS d_emessa,
-  pg_temp.mk_caso('SPEDITO',    (SELECT stato_ddt_annullato_id FROM tmp_refs),  (SELECT causale_vendita_id FROM tmp_refs)) AS d_prec_alloc;
+  pg_temp.mk_caso('CONSEGNATO', 'CONSEGNATO', 'VENDITA')      AS d_ok,
+  pg_temp.mk_caso('CONSEGNATO', 'CONSEGNATO', 'VENDITA')      AS d_alloc,
+  pg_temp.mk_caso('CONSEGNATO', 'CONSEGNATO', 'VENDITA')      AS d_emessa,
+  pg_temp.mk_caso('SPEDITO',    'ANNULLATO',  'VENDITA')      AS d_prec_alloc;
 
 -- EMESSA prima, poi le ALLOCATA (rca_emit emette tutto cio' che trova).
 SELECT pg_temp.mk_af(pg_temp.rca_segment(d_emessa), 10) FROM f;
@@ -477,6 +480,15 @@ SELECT results_eq(
   '17) DDT senza ordine e senza billing account: rank 3 DDT_SENZA_BA, BA NULL, capability spenta');
 
 -- ============================================================
+-- 18) Pin di forma di D-2: la CTE `src` della diagnosi e' MATERIALIZED. Il corpo
+--     e' BEGIN ATOMIC (prosrc vuoto): si legge da pg_get_function_sqlbody, che lo
+--     deparsa senza commenti — una menzione nella prosa non conta.
+SELECT ok(
+  (SELECT pg_get_function_sqlbody(p.oid) ~ '\msrc AS MATERIALIZED\M'
+     FROM pg_proc p
+    WHERE p.oid = 'vendite.fn_ddt_push_diagnosi(bigint)'::regprocedure),
+  '18) forma D-2: nella diagnosi la CTE src e'' MATERIALIZED (senza, il ramo «tutti» la ricalcola per ogni riga)');
+
 -- 16) Scope: chi non vede il documento non vede niente.
 -- ⚠️ Il cancello e' `app.ruolo_applicativo`: con la veste OPERATORE e un
 --    utente senza whitelist la RLS non fa vedere il DDT; la diagnosi

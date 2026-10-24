@@ -7,6 +7,8 @@ CREATE FUNCTION fn_identita_super_admin_senza_scadenza(p_identita_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_identita_super_admin_senza_scadenza(p_identita_id bigint)
  RETURNS boolean
@@ -27,6 +29,8 @@ END
 COMMENT ON FUNCTION script.fn_identita_super_admin_senza_scadenza(p_identita_id bigint)
 IS 'L''identita'' e'' un SUPER_ADMIN che non scade? true se ha un binding SUPER_ADMIN attivo verso un profilo attivo, e'' OPERATORE e utilizzabile oggi (script.fn_veste_utilizzabile), non ha data di fine ne'' sulla veste ne'' sul rapporto (risorsa umana dello stesso soggetto_ruolo), e la sua credenziale non e'' bloccata dall''amministratore. Building block dell''anti-lockout (decisione di Tid del 2026-10-07: resta sempre almeno un amministratore senza scadenza, perche'' il calendario non scrive e nessun guard lo ferma): lo leggono fn_check_almeno_un_super_admin_attivo e fn_check_ultimo_super_admin_attivo. Brief: brief-db-veste-utilizzabile.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

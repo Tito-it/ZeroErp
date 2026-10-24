@@ -40,36 +40,47 @@ SELECT plan(10);
 
 -- Precondizioni: costruiamo un contesto di test isolato.
 -- Serve una categoria, una utility, un soggetto_ruolo emittente, un listino attivo.
+-- rev 2026-10-16 (brief-db-coerenza-listino-della-riga-di-commessa §7.4): il
+--   listino e' della utility e dell'emittente della riga
+--   (anagrafiche.trgfn_categorie_clienti_listini_guard_listino). Prima i quattro
+--   pezzi si PESCAVANO ciascuno per conto suo («la prima utility», «il primo
+--   emittente», «il primo listino»): su dbdev il primo listino era dell'utility 5
+--   e la prima utility la 1, cioe' una riga che il modello non ammette, verde per
+--   coincidenza. E la categoria era 'SILVER', che su un database da zero non c'e'.
+--   Ora si costruiscono: una categoria PROPRIA, il listino dal builder (emittente
+--   di chi agisce), utility ed emittente letti DAL listino.
 
 CREATE TEMP TABLE tmp_ctx_cat AS
-SELECT id AS categoria_cliente_id
-  FROM anagrafiche.categorie_clienti
- WHERE codice = 'SILVER'
- LIMIT 1;
+WITH ins AS (
+    INSERT INTO anagrafiche.categorie_clienti (codice, codice_interno, descrizione, partecipa_promo)
+    SELECT s.sigla, s.sigla, 'Fixture pgTAP: matrice categorie listini', FALSE
+      FROM (SELECT 'PGTAP-CCL-' || substr(md5(clock_timestamp()::text || random()::text), 1, 12) AS sigla) s
+    RETURNING id
+)
+SELECT id AS categoria_cliente_id FROM ins;
+
+CREATE TEMP TABLE tmp_ctx_listino AS
+SELECT l.listino_id
+  FROM dbops.fn_pgtap_crea_listino(
+           (SELECT min(u.id)::integer
+              FROM config.utilities u
+             WHERE EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                            WHERE ltu.utility_id = u.id AND ltu.attivo)),
+           'matrice categorie listini') l;
 
 CREATE TEMP TABLE tmp_ctx_utility AS
-SELECT id AS utility_id
-  FROM config.utilities
- ORDER BY id
- LIMIT 1;
+SELECT l.utility_id
+  FROM vendite.listini l
+ WHERE l.id = (SELECT listino_id FROM tmp_ctx_listino);
 
 CREATE TEMP TABLE tmp_ctx_emittente AS
-SELECT soggetto_ruolo_id
-  FROM anagrafiche.emittenti_fiscali
- WHERE attivo IS TRUE
- ORDER BY id
- LIMIT 1;
+SELECT l.emittente_soggetto_ruolo_id AS soggetto_ruolo_id
+  FROM vendite.listini l
+ WHERE l.id = (SELECT listino_id FROM tmp_ctx_listino);
 
 CREATE TEMP TABLE tmp_ctx_classe AS
 SELECT id AS classe_utenza_id
   FROM config.classi_utenze
- ORDER BY id
- LIMIT 1;
-
-CREATE TEMP TABLE tmp_ctx_listino AS
-SELECT id AS listino_id
-  FROM vendite.listini
- WHERE attivo IS TRUE
  ORDER BY id
  LIMIT 1;
 

@@ -49,6 +49,7 @@
 #   9  il generatore produce righe con `riga_rettificata_id` valorizzato (B4)
 #  10  🔴 il documento e' SEPARATO da quelli ordinari e ha natura NOTA_CREDITO
 #  11  🔴 il documento nasce sul REGISTRO delle note di credito, non su quello fatture
+#  11-bis P-5 (rev 2026-09-17): la NC ha UNA rata negativa uguale al totale, prima del numero
 #  12  la numerazione assegna un numero sul sezionale NC
 #  13  🔴 B6: il legame documentale viene scritto, e il rilancio e' idempotente
 #  14  P-5: l'annullo toglie il ponte e la coda RISALE (la merce torna accreditabile)
@@ -71,6 +72,8 @@ from apps.core.services.service_errors import ServiceError
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services import resi_service
 from apps.vendite.services.fatture_righe_service import FattureRigheService
+from scripts.tests._smoke_contesto import apri_contesto_smoke
+from scripts.tests._smoke_fatturazione import crea_lotto_di_prova
 
 FAIL: list[str] = []
 SKIP: list[str] = []
@@ -128,26 +131,23 @@ def prepara_lotto(cur, ca_ids, *, marker):
         return None, []
 
     lock_batch_id = str(uuid.uuid4())
+    # Utility ed emittente del lotto sono quelli della commessa del reso.
     cur.execute(
         """
-        INSERT INTO vendite.fatturazione_lotti (
-            codice, competenza_mese, utility_id, tipo_doc_fiscale_id,
-            stato_doc_fiscale_id, emittente_soggetto_ruolo_id, tipo_lotto,
-            stato_lotto, stato_operativo, lock_batch_id, meta
-        )
-        SELECT %s, %s, ba.utility_id, %s,
-               (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno='DRAFT'),
-               c.emittente_soggetto_ruolo_id, 'MASSIVO',
-               'IN_ESECUZIONE', 'APERTO', %s, '{"smoke": true}'::jsonb
+        SELECT ba.utility_id, c.emittente_soggetto_ruolo_id
           FROM vendite.commesse c
           JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
          WHERE c.id = %s
-        RETURNING id
         """,
-        [f"SMOKE-NC-{marker}-{uuid.uuid4().hex[:8]}", af_righe[0][6], af_righe[0][7],
-         lock_batch_id, commessa_id],
+        [commessa_id],
     )
-    lotto_id = cur.fetchone()[0]
+    utility_id, emittente_sr_id = cur.fetchone()
+    lotto_id = crea_lotto_di_prova(
+        cur,
+        {"competenza_mese": af_righe[0][6], "tipo_doc_fiscale_id": af_righe[0][7],
+         "utility_id": utility_id, "emittente_sr_id": emittente_sr_id},
+        codice=f"SMOKE-NC-{marker}-{uuid.uuid4().hex[:8]}", lock_batch_id=lock_batch_id,
+    )
     cur.execute(
         "UPDATE vendite.attivita_fatturabili"
         "   SET lock_batch_id = %s, lock_in_fatturazione = TRUE"
@@ -162,11 +162,7 @@ with transaction.atomic():
         # Contesto operatore: la coda, le fatture e i lotti sono sotto RLS.
         # Senza GUC le viste tornano ZERO righe — e uno zero fail-closed
         # somiglia a un dato (memoria feedback_rls_query_contesto_sistema).
-        cur.execute(
-            "SELECT set_config('app.ruolo_applicativo','OPERATORE',false),"
-            "       set_config('app.current_user_id', (SELECT auth_user_id::text"
-            "         FROM config.user_emittenti_fiscali LIMIT 1), false)"
-        )
+        apri_contesto_smoke(cur)
 
         # ── Materia: le righe della coda, accreditate una per una in un
         #    SAVEPOINT proprio e poi classificate per forma della rettifica.
@@ -371,15 +367,38 @@ with transaction.atomic():
 
             # ── 12 · numerazione (la sola parte irreversibile in esercizio:
             #    qui vive dentro la transazione che verra' annullata).
-            # ⚠️ Prima va chiuso lo step EMESSA, e non e' una formalita':
-            #    `fn_assign_numero_fattura` RIFIUTA un documento senza totali e
-            #    senza riepilogo IVA — «la numerazione consuma un progressivo e
-            #    nextval non torna indietro», quindi la coerenza si verifica
-            #    prima di prendere il numero. Sull'NC le RATE non servono: il
-            #    totale a pagare e' negativo, e il guard chiede rate solo se e'
-            #    positivo.
+            # ⚠️ Prima vanno chiusi gli step che il giro vero fa prima del
+            #    numero — ricalcolo IVA, poi piano rate — e non e' una
+            #    formalita': `fn_assign_numero_fattura` RIFIUTA un documento
+            #    senza totali, senza riepilogo IVA o, se il totale non e' zero,
+            #    senza piano rate che quadri. «La numerazione consuma un
+            #    progressivo e nextval non torna indietro», quindi la coerenza
+            #    si verifica prima di prendere il numero.
+            # ⛔ Fino al 2026-10-18 lo smoke saltava il piano rate: «sull'NC le
+            #    rate non servono, il guard le chiede solo se il totale e'
+            #    positivo». Dalla rev 2026-09-17 (P-5) il guard chiede «<> 0»:
+            #    la nota di credito ha UNA rata negativa uguale al totale, e lo
+            #    smoke si fermava su «piano rate assente».
             repo = VenditePipelineRepository()
             repo.run_ricalcola_iva_lotto_task(lotto_id=lotto_id)
+            repo.run_genera_scadenze_lotto_task(lotto_id=lotto_id)
+            cur.execute(
+                """
+                SELECT f.id, f.totale_a_pagare, count(fs.id),
+                       coalesce(sum(fs.importo), 0), bool_and(fs.importo < 0)
+                  FROM vendite.fatture f
+                  LEFT JOIN vendite.fatture_scadenze fs ON fs.fattura_id = f.id
+                 WHERE f.id = ANY(%s)
+                 GROUP BY f.id, f.totale_a_pagare
+                """,
+                [sorted(fatture_nc)],
+            )
+            piani = cur.fetchall()
+            check("11-bis P-5: la nota di credito ha UNA rata negativa uguale al totale",
+                  bool(piani) and all(
+                      p[1] is not None and p[1] < 0 and p[2] == 1 and p[3] == p[1] and p[4]
+                      for p in piani),
+                  f"{[(p[0], str(p[1]), p[2], str(p[3])) for p in piani]}")
             for fattura_id in sorted(fatture_nc):
                 repo.numera_fattura_opz_emessa(fattura_id)
             cur.execute(

@@ -6,6 +6,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_lotti_chiusi_con_gruppi_in_errore
 WITH (security_invoker=true) AS
@@ -23,6 +25,8 @@ SELECT l.id AS lotto_id,
   WHERE ((e.stato_esecuzione = 'ERRORE'::text) AND (l.stato_lotto = 'COMPLETATO'::text))
   GROUP BY l.id, l.codice, l.stato_lotto, l.competenza_mese, l.emittente_soggetto_ruolo_id;
 ```
+
+</div>
 
 
 ---

@@ -1,6 +1,6 @@
 # Guida — Gestione degli Indirizzi
 
-> **Ultimo aggiornamento**: 20 settembre 2026
+> **Ultimo aggiornamento**: 18 ottobre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -24,6 +24,9 @@
 > * [anagrafiche.trgfn_indirizzi_base_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize) — normalizzazione e default sui due layer
 > * [anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo) — la matrice tipo/ruolo (R5)
 > * [anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo) — la matrice tipo/soggetto (R6)
+> * [anagrafiche.trgfn_indirizzi_guard_forma_libera](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera) — le due forme dell'indirizzo libero (R3)
+> * [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_soggetto) e [anagrafiche.fn_crea_indirizzi_ruolo](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_ruolo) — le madri che scrivono gli indirizzi, sui due layer
+> * [script.fn_stato_proposto_id](/dbzero/script/funzioni/fn_stato_proposto_id) — lo stato proposto quando chi scrive non lo dice (R8)
 > * [maintenance.proc_bump_indirizzi_dettaglio](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio) — riclassificazione dei civici
 >
 > **Vedi anche** — guide correlate:
@@ -99,7 +102,7 @@ Vincolo di unicità: un solo indirizzo per tipo per soggetto (`UNIQUE (soggetto_
 Entrambe le tabelle indirizzo (ruolo e soggetto) supportano due modalità:
 
 * **Normalizzata** (preferita): il campo `indirizzo_dettaglio_id` punta a un civico in `indirizzi_dettaglio`. Si ottiene geolocalizzazione, gerarchia completa e deduplicazione.
-* **Libera** (eccezione): il campo `indirizzo_libero` contiene testo non strutturato, con campi ausiliari (`comune_id`, `stato_id`, `locality`, `postal_box`). Utile per indirizzi esteri o importazioni da sistemi legacy.
+* **Libera** (eccezione): il campo `indirizzo_libero` contiene la via scritta a mano, con lo stato e, secondo lo stato, il comune e il CAP scelti dall'elenco oppure la località e il codice postale (`postal_code`). Serve per gli indirizzi esteri, per le vie che lo stradario non ha ancora e per le importazioni da altri sistemi. Le due forme sono in [R3](#r3--completezza-indirizzo-libero).
 
 Le due modalità sono **mutualmente esclusive**: un indirizzo è normalizzato oppure libero, mai entrambi ([R1](#r1--xor-normalizzatolibero)).
 
@@ -291,12 +294,18 @@ Un solo indirizzo per tipo per entità:
 
 ### R3 — Completezza indirizzo libero
 
-Se `indirizzo_dettaglio_id` è NULL (modalità libera), sono obbligatori `indirizzo_libero` e `stato_id`. Inoltre è richiesta una delle seguenti combinazioni:
+Se `indirizzo_dettaglio_id` è NULL (modalità libera), servono sempre la via (`indirizzo_libero`) e lo stato (`stato_id`; se non lo si dice, lo propone il sistema, [R8](#r8-normalizzazione-automatica)). Il resto dipende dallo **stato**, cioè da una sua proprietà: il catalogo dei suoi comuni è completo oppure no (`config.stati.catalogo_comuni_completo`). Oggi è completo per l'Italia.
 
-* `comune_id` + `codice_postale_id` (indirizzo italiano)
-* `locality` + `postal_box` con almeno uno tra `administrative_area` e `sublocality` (indirizzo internazionale)
+| Forma | Quando | Cosa serve | Cosa resta vuoto |
+| --- | --- | --- | --- |
+| **del catalogo** | lo stato ha il catalogo completo | il comune e il CAP scelti dall'elenco (`comune_id`, `codice_postale_id`), coerenti fra loro e con lo stato | località, codice postale libero, regione: li dice già l'elenco. La sotto-località (frazione, quartiere) si può scrivere |
+| **estera** | lo stato non ha il catalogo completo | la località (`locality`) | comune e CAP dell'elenco. Il codice postale (`postal_code`), la regione e la sotto-località sono **facoltativi**: ci sono paesi senza codice postale |
 
-I check constraint `chk_indirizzi_free_requirements` e `chk_indirizzi_soggetti_free_requirements` lo verificano.
+Uno stato con il catalogo **ancora incompleto** (per esempio durante la conversione dei dati di un'azienda) accetta anche la forma del catalogo, se chi scrive sceglie un comune o un CAP. Il catalogo si accende quando è completo: le righe già scritte nella forma estera restano valide finché qualcuno non tocca il loro indirizzo; a quel punto vale la forma del catalogo.
+
+Il rifiuto lo dà il guard [`trgfn_indirizzi_guard_forma_libera`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera), con un codice e il nome del campo da correggere: `E_INDIRIZZO_LIBERO_INCOMPLETO` (manca un campo), `E_INDIRIZZO_CAMPO_ALTRA_FORMA` (un campo dell'altra forma è compilato), `E_INDIRIZZO_COMUNE_ALTRO_STATO` (il comune non è dello stato), `E_INDIRIZZO_CAP_ALTRO_COMUNE` (il CAP non è del comune). I check constraint `chk_indirizzi_free_requirements` e `chk_indirizzi_soggetti_free_requirements` restano come rete per le scritture che non passano dai trigger.
+
+⚠️ Il form legge la stessa proprietà dello stato per scegliere quale variante mostrare: la regola sta in un posto solo.
 
 ### R4 — Protezione stradario_id
 
@@ -325,7 +334,7 @@ I trigger di normalizzazione (`trgfn_indirizzi_dettaglio_normalize` e `trgfn_ind
 * `via_norm`, `civico_norm`: forme normalizzate per confronti e deduplicazione
 * `indirizzo_normalizzato`: stringa leggibile completa
 * In modalità normalizzata, i campi fallback (comune, stato...) vengono azzerati
-* In modalità libera, lo `stato_id` di default viene impostato automaticamente
+* In modalità libera, i testi vuoti diventano NULL (una località di soli spazi non è una località) e lo `stato_id` non detto diventa lo **stato proposto**: il parametro `STATO_PROPOSTO_ISO2`, letto da [`script.fn_stato_proposto_id`](/dbzero/script/funzioni/fn_stato_proposto_id). È una proposta (si può cambiare per utente, per gruppo, per azienda attiva o per sessione); se manca, o indica più di uno stato, il sistema si ferma invece di indovinare
 
 ---
 
@@ -343,9 +352,9 @@ La sequenza tipica per un nuovo indirizzo strutturato:
 
 Per dati non normalizzabili (migrazioni, indirizzi esteri):
 
-1. Inserire con `indirizzo_dettaglio_id = NULL` e `indirizzo_libero` valorizzato
-2. Fornire i campi obbligatori per R3 (`stato_id` + combinazione geografica minima)
-3. Il trigger di normalizzazione azzera i campi di fallback incompatibili e imposta i default
+1. Scrivere l'indirizzo con la madre del suo layer — [`fn_crea_indirizzo_soggetto`](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_soggetto) (un indirizzo) o [`fn_crea_indirizzi_ruolo`](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_ruolo) (un elenco). Le due madri parlano la stessa lingua: un oggetto jsonb col tipo e l'indirizzo, libero, già normalizzato o da via da risolvere
+2. Fornire i campi della forma che lo stato richiede (R3)
+3. Il trigger di normalizzazione porta a NULL i testi vuoti e propone lo stato; il guard della forma rifiuta, col campo, ciò che manca o non torna
 
 La modalità libera è pensata come **eccezione**: la normalizzazione successiva è sempre auspicabile.
 
@@ -405,7 +414,7 @@ Le helper di lettura storica:
 | Funzione / Trigger                                                                                        | Su quale tabella                  | Cosa fa                                                                     |
 | --------------------------------------------------------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------- |
 | [`trgfn_indirizzi_dettaglio_normalize`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize) | `indirizzi_dettaglio`             | Calcola `via_norm`, `civico_norm`, `indirizzo_normalizzato`                 |
-| [`trgfn_indirizzi_base_normalize`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize)           | `indirizzi`, `indirizzi_soggetti` | Normalizza campi, azzera fallback in modalità normalizzata, imposta default |
+| [`trgfn_indirizzi_base_normalize`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize)           | `indirizzi`, `indirizzi_soggetti` | Azzera i campi liberi in modalità normalizzata; in modalità libera porta a NULL i testi vuoti e propone lo stato |
 | [`trgfn_indirizzi_sync_geoloc`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_sync_geoloc)                 | `indirizzi`, `indirizzi_soggetti` | Sincronizza `geoloc` da `indirizzi_dettaglio.civic_geoloc`                  |
 
 ### Guard e vincoli
@@ -414,6 +423,7 @@ Le helper di lettura storica:
 | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------ |
 | [`trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo) | `indirizzi`                       | Valida tipo indirizzo contro matrice ruolo (R5)              |
 | [`trgfn_indirizzi_soggetti_guard_tipo_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo)     | `indirizzi_soggetti`              | Valida tipo indirizzo contro matrice soggetto (R6)           |
+| [`trgfn_indirizzi_guard_forma_libera`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera)                           | `indirizzi`, `indirizzi_soggetti` | La forma dell'indirizzo libero, decisa dallo stato (R3). Gira dopo la normalizzazione |
 | [`trgfn_indirizzi_dettaglio_protect_update`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_protect_update)               | `indirizzi_dettaglio`             | Blocca modifica manuale di `stradario_id` (R4)               |
 | `trgfn_child_requires_active_parent`                                                                                              | `indirizzi`, `indirizzi_soggetti` | Verifica che `indirizzi_dettaglio` e `soggetti` siano attivi |
 | `trgfn_prevent_deactivate_if_children`                                                                                            | `indirizzi_dettaglio`             | Blocca disattivazione se ci sono figli attivi                |

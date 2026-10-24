@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_pratiche_guard_pin_immutabile()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_pin_immutabile()
  RETURNS trigger
@@ -40,6 +42,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_pratiche_guard_pin_immutabile()
 IS 'BEFORE UPDATE OF definizione_id su pratiche.pratiche: il pin dell''edizione di workflow e'' immutabile una volta valorizzato (PRATICHE_PIN_IMMUTABILE 513). Ammette solo NULL->valore (backfill Fase 0). Cuore di V6.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

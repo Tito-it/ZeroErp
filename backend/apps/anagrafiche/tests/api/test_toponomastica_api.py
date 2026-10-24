@@ -126,7 +126,7 @@ class TestToponomasticaRepository(TestCase):
         from apps.anagrafiche.db.geo_repository import GeoRepository
 
         repo = GeoRepository()
-        updated = repo.update_toponomastica(1, descrizione="Viale", attivo=True)
+        updated = repo.update_toponomastica(1, {"descrizione": "Viale", "attivo": True})
 
         self.assertTrue(updated)
         sql = mock_cursor.execute.call_args[0][0]
@@ -143,6 +143,6 @@ class TestToponomasticaRepository(TestCase):
         from apps.anagrafiche.db.geo_repository import GeoRepository
 
         repo = GeoRepository()
-        updated = repo.update_toponomastica(999, descrizione="Test")
+        updated = repo.update_toponomastica(999, {"descrizione": "Test"})
 
         self.assertFalse(updated)

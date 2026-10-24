@@ -126,8 +126,10 @@ SELECT ok(
 -- ⛔ La rotta DIRETTA, non un adattatore. Un `_via_efba` sulla chiave del
 --   billing account compilerebbe e girerebbe, e filtrerebbe su un asse diverso
 --   da quello che la tabella dichiara.
+-- ⭐ Rev 2026-10-18 (D-3b-2 giro 1b, 20261018-33): la rotta si legge nel modo di
+--   script.fn_resolve_emittente_fiscale_id, non piu' nel nome dell'adattatore.
 SELECT ok(
-    (SELECT position('fn_scope_ef_whitelist_via_sr(' IN p.qual) > 0
+    (SELECT position('fn_resolve_emittente_fiscale_id(''soggetto_ruolo''::text' IN p.qual) > 0
         AND position('emittente_soggetto_ruolo_id'  IN p.qual) > 0
        FROM pg_policies p
       WHERE p.schemaname = 'vendite'

@@ -123,7 +123,10 @@ class LottiStatiEnvelopeTests(TestCase):
     def test_conteggio_chiesto_senza_filtro_stato(self):
         p_list, p_count = self._patch({})
         with p_list, p_count as mock_count:
-            fn_list_lotti(competenza_mese=date(2026, 8, 1), stato_lotto="DRAFT")
+            # Un valore DEL vocabolario (`chk_fatturazione_lotti_stato_job`):
+            # fino al 2026-10-20 qui c'era «DRAFT», che e' lo stato FISCALE e
+            # che il filtro accettava senza dire niente.
+            fn_list_lotti(competenza_mese=date(2026, 8, 1), stato_lotto="ERRORE")
         self.assertNotIn("stato_lotto", mock_count.call_args.kwargs)
 
     # Il resto del contesto invece passa: conteggi e lista guardano lo stesso

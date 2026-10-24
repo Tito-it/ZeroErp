@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: script.fn_doc_indirizzi_sede(p_documento)
+#   Dove stanno gli indirizzi di un documento: tabella, colonna verso la
+#   testata, ambito di config.tipi_indirizzi_allowed.
+#   Brief: brief-db-indirizzi-documento-seguono-il-cliente (§7.2 c)
+#
+# -- PERCHE' ------------------------------------------------------------
+#   Il guard di scrittura (sei tabelle), il riempimento dello slot di
+#   default e il motivo d'emissione lavorano sullo stesso documento con
+#   SQL dinamico: la mappa «documento -> tabella, colonna, ambito» sta qui,
+#   una volta. Il selettore e' lo stesso vocabolario di
+#   script.fn_get_stato_testata_documento (DDT, ORDINE, PREVENTIVO,
+#   OFFERTA, CONTRATTO) piu' FATTURA.
+#   Schema e nome separati, non regclass: il testo di un regclass dipende
+#   dal search_path di chi lo stampa, e qui finisce in un format(%I).
+#   Selettore ignoto: zero righe; il chiamante decide (i montaggi dei
+#   trigger lo trattano come errore di montaggio).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261011-44-create-fn-doc-indirizzi-sede-mctit.yaml
+
+  - changeSet:
+      id: 20261011-44-create-fn-doc-indirizzi-sede
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo BB script.fn_doc_indirizzi_sede: per un documento (DDT, ORDINE, PREVENTIVO, OFFERTA,
+        CONTRATTO, FATTURA) la tabella degli indirizzi, la colonna verso la testata e l'ambito.
+        Brief: brief-db-indirizzi-documento-seguono-il-cliente (§7.2 c).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_doc_indirizzi_sede(
+                  p_documento text
+              )
+              RETURNS TABLE (
+                  schema_tabella pg_catalog.pg_namespace.nspname%TYPE,
+                  tabella        pg_catalog.pg_class.relname%TYPE,
+                  colonna_fk     pg_catalog.pg_attribute.attname%TYPE,
+                  ambito         config.tipi_indirizzi_allowed.ambito%TYPE
+              )
+              LANGUAGE plpgsql
+              IMMUTABLE
+              AS $function$
+              -- ⚠️ Tipo nudo DICHIARATO: p_documento e' un selettore senza colonna
+              --   di vocabolario (lo stesso di script.fn_get_stato_testata_documento).
+              --   Schema, tabella e colonna sono nomi del catalogo: ancorati li'.
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dove stanno gli indirizzi di un documento. Zero righe =
+                  --   selettore ignoto: decide il chiamante.
+                  -- ⭐ IMMUTABLE: e' una mappa scritta qui, non legge tabelle.
+                  -- =========================================================
+                  RETURN QUERY
+                  SELECT v.s::name, v.t::name, v.fk::name, v.amb
+                    FROM (VALUES
+                        ('DDT',        'vendite', 'ddt_indirizzi',                 'ddt_id',        'DDT'),
+                        ('ORDINE',     'vendite', 'ordini_indirizzi',              'ordine_id',     'ORDINI'),
+                        ('PREVENTIVO', 'vendite', 'preventivi_indirizzi',          'preventivo_id', 'PREVENTIVI'),
+                        ('OFFERTA',    'vendite', 'offerte_commerciali_indirizzi', 'offerta_id',    'OFFERTE'),
+                        ('CONTRATTO',  'vendite', 'contratti_indirizzi',           'contratto_id',  'CONTRATTI'),
+                        ('FATTURA',    'vendite', 'fatture_indirizzi',             'fattura_id',    'FATTURE')
+                    ) AS v(doc, s, t, fk, amb)
+                   WHERE v.doc = p_documento;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_doc_indirizzi_sede(text)
+              IS 'Dove stanno gli indirizzi di un documento: schema e tabella dei suoi *_indirizzi, la colonna verso la testata, l''ambito di config.tipi_indirizzi_allowed. Selettore: DDT, ORDINE, PREVENTIVO, OFFERTA, CONTRATTO (il vocabolario di script.fn_get_stato_testata_documento) e FATTURA. Zero righe = selettore ignoto, decide il chiamante. Schema e nome separati, non regclass: il testo di un regclass dipende dal search_path, e qui finisce in un format(%I). La usano il guard degli indirizzi del cliente, il riempimento dello slot di default e il motivo d''emissione. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§7.2 c).';

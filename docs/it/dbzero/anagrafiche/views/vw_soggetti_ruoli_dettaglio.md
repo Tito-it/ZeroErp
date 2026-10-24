@@ -5,6 +5,8 @@
 >
 > Vista generale ruolo+soggetto: espone riferimenti fiscali/anagrafici del soggetto a partire da soggetto_ruolo_id, con decodifica tipo ruolo e titolo cortesia.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_soggetti_ruoli_dettaglio AS
 SELECT sr.id AS soggetto_ruolo_id,
@@ -49,6 +51,8 @@ SELECT sr.id AS soggetto_ruolo_id,
      JOIN config.tipi_ruoli tr ON ((tr.id = sr.tipo_ruolo_id)))
      LEFT JOIN config.titoli_cortesia tc ON ((tc.id = s.titolo_cortesia_id)));
 ```
+
+</div>
 
 
 ---

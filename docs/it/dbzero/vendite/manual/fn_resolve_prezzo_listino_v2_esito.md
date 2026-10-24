@@ -48,7 +48,7 @@ Restano errori — e vengono sollevati anche da questa funzione — i due
 `E_PARAMETRO_INVALIDO`: argomenti fuori dominio, e billing account inesistente.
 Lì ha sbagliato chi chiama, o si sta parlando di qualcosa che non esiste.
 
-Diventano esito tutti e otto i casi in cui il prezzo semplicemente non si trova,
+Diventano esito tutti e nove i casi in cui il prezzo semplicemente non si trova,
 compreso **l'articolo escluso da contratto**. L'esclusione dice che quell'articolo
 non si *fattura* a quel cliente, non che non possa *viaggiare*: serve appunto a
 mandarlo in riparazione o a riprenderselo indietro. Il divieto non si allenta —
@@ -97,3 +97,20 @@ Da qui un nucleo che non solleva affatto, invece di un guscio che ingoia.
 ### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
 
 La versione del listino in vigore alla data di riferimento (contratto senza versione fissata, listino della categoria) non è più scelta qui: la dice [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore) (`20260928-41`). Per ogni data la versione in vigore è **al più una**, per costruzione (nessuna sovrapposizione fra versioni ATTIVE e CHIUSE, date di una CHIUSA bloccate), quindi «la prima» e «tutte le valide» sono la stessa cosa. Stesso esito, provato sui dati di dev. La firma è di nuovo ancorata (`%TYPE`, da `20260819-07`: l'ultimo YAML l'aveva sciolta) e `SECURITY INVOKER` è esplicito.
+
+<!-- rev-2026-10-16-versione-bozza -->
+### 🔄 rev 2026-10-16 — mai un prezzo da una versione in bozza
+
+Il **percorso rapido** (`p_listino_versione_id_preferito`: la versione la sceglie chi chiama)
+leggeva la versione senza guardarne lo stato, mentre gli altri rami escludevano già la
+`BOZZA` (`fn_listino_versione_in_vigore`). Una bozza si modifica ancora, quindi il prezzo
+preso da lì non sarebbe riproducibile. Ora la versione in `BOZZA` dà l'esito
+**`E_PREZZO_LISTINO_VERSIONE_BOZZA`** (valori: codice della versione, codice del listino),
+non un ripiego al passo successivo, che nasconderebbe il chiamante sbagliato.
+
+Un'opzione «anche bozza» **non c'è**: i chiamanti di oggi (contratti e offerte, dal
+backend) passano la versione di `vendite.fn_documento_listino_operativo`, che esclude già
+la bozza. Nasce col primo chiamante che la chiede davvero, con il suo caso d'uso.
+Decisione di Tid; brief `brief-db-coerenza-listino-della-riga-di-commessa` §6 D-4
+(`20261016-04`).
+

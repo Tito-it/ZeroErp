@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_indirizzi_sync_geoloc()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_sync_geoloc()
  RETURNS trigger
@@ -25,6 +27,8 @@ AS $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_sync_geoloc()
 IS 'La funzione di trigger per sincronizzare la geolocalizzazione degli indirizzi da anagrafiche.indirizzi_dettaglio.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

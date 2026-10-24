@@ -9,7 +9,7 @@
 --            dbops.fn_sessione_del_migratore, brief-db-secondo-fattore-totp)
 --            90_end/20260926-12 (il registro in sola lettura, forward su dev)
 --            90_end/ci_apply/20260205-41 (voce in v_tabelle_sola_lettura_app)
---            scripts/sql/provision_db_roles.sql (la stessa voce: e' l'ULTIMA
+--            scripts/sql/provision_zeroerp.sql (fase post) (la stessa voce: e' l'ULTIMA
 --            parola in CI, gira dopo ci_apply)
 --
 -- ⭐ CHI SCRIVE IL REGISTRO ED ESEGUE LA SYNC SCEGLIE CHI POSSIEDE LE DEFINER

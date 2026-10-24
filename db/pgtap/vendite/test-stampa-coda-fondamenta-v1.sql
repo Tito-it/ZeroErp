@@ -17,10 +17,11 @@
 --   7)  colonna documento_id
 --   8)  stato e' text
 --   9)  CHECK chk_fatture_stampa_coda_stato presente
---  10)  indice unico PARZIALE anti-doppione (uq_fatture_stampa_coda_vivo)
+--  10)  vincolo di ESCLUSIONE parziale anti-doppione (ex_fatture_stampa_coda_vivo,
+--        al posto di uq_fatture_stampa_coda_vivo dal 2026-10-20: 20261020-29/-31)
 --  11)  indice di polling PARZIALE (ix_fatture_stampa_coda_da_lavorare)
 --  12)  FK sorgente_id -> vendite.fatture
---  13)  esiste vendite.fn_accoda_stampe_lotto(bigint)
+--  13)  esiste vendite.fn_accoda_stampe_lotto(bigint, bigint) (il tipo da stampare, 20261020-30)
 --  14)  fn ritorna integer
 --  15)  seed: 2 azioni_processo attive (approva_attivita_commessa, numera_fatture_lotti)
 --  16)  seed: numera_fatture_lotti e' pericolosa
@@ -73,12 +74,21 @@ SELECT ok(
         AND conrelid = 'vendite.fatture_stampa_coda'::regclass),
     'coda: CHECK chk_fatture_stampa_coda_stato presente');
 
--- Indice unico PARZIALE = anti doppio-accodamento sui work-item vivi.
-SELECT ok(
-    (SELECT indisunique AND indpred IS NOT NULL
-       FROM pg_index
-      WHERE indexrelid = 'vendite.uq_fatture_stampa_coda_vivo'::regclass),
-    'coda: uq_fatture_stampa_coda_vivo e'' unico e parziale');
+-- Vincolo di esclusione PARZIALE = anti doppio-accodamento sui work-item vivi,
+-- per (fattura, tipo); il tipo NULL copre tutti (brief-db-modelli-documento-standard
+-- §9.2 Q-2). Si guarda la clausola, non solo il nome: senza il WHERE la ristampa
+-- dopo FATTO sarebbe impossibile, senza l'intervallo sul tipo il NULL non
+-- escluderebbe niente. I casi li prova test-stampa-coda-tipo-documento-v1.
+SELECT is(
+    (SELECT pg_get_constraintdef(c.oid)
+       FROM pg_constraint c
+      WHERE c.conrelid = 'vendite.fatture_stampa_coda'::regclass
+        AND c.conname = 'ex_fatture_stampa_coda_vivo'
+        AND c.contype = 'x'),
+    'EXCLUDE USING gist (sorgente_tipo_id WITH =, sorgente_id WITH =, '
+    || 'int8range(tipo_documento_output_id, tipo_documento_output_id, ''[]''::text) WITH &&) '
+    || 'WHERE ((stato = ANY (ARRAY[''PENDING''::text, ''IN_CORSO''::text])))',
+    'coda: ex_fatture_stampa_coda_vivo e'' un''esclusione parziale per (fattura, tipo)');
 
 SELECT ok(
     (SELECT indpred IS NOT NULL
@@ -97,9 +107,9 @@ SELECT ok(
 -- ============================================================
 -- Funzione accodatore
 -- ============================================================
-SELECT has_function('vendite', 'fn_accoda_stampe_lotto', ARRAY['bigint'],
-    'esiste vendite.fn_accoda_stampe_lotto(bigint)');
-SELECT function_returns('vendite', 'fn_accoda_stampe_lotto', ARRAY['bigint'], 'integer',
+SELECT has_function('vendite', 'fn_accoda_stampe_lotto', ARRAY['bigint', 'bigint'],
+    'esiste vendite.fn_accoda_stampe_lotto(bigint, bigint)');
+SELECT function_returns('vendite', 'fn_accoda_stampe_lotto', ARRAY['bigint', 'bigint'], 'integer',
     'fn_accoda_stampe_lotto ritorna integer');
 
 -- ============================================================

@@ -185,13 +185,12 @@ class TitoliIvaService:
         _V.validate_allowed_keys(payload, allowed=_UPDATE_KEYS, message=_MESSAGE)
         self._require_titolo(soggetto_id, titolo_id)
         dati = self._normalizza_titolo(payload)
-        aggiornato = self._repo.update_titolo(titolo_id, dati)
-        ErrorManager.require(
-            aggiornato,
-            code=E_ANAG_VALIDAZIONE,
-            message="Nessun campo aggiornabile presente nel payload.",
-            context={"allowed_keys": sorted(_UPDATE_KEYS)},
+        # Prima della scrittura: il rowcount dopo l'UPDATE non distingue il
+        # payload vuoto dal titolo sparito (l'esistenza e' gia' verificata).
+        _V.require_campi_da_aggiornare(
+            dati, context={"allowed_keys": sorted(_UPDATE_KEYS)},
         )
+        self._repo.update_titolo(titolo_id, dati)
         return {"updated": True}
 
     # Scopo: Elimina un titolo, ma SOLO se non ha consumato niente (Q6).
@@ -501,7 +500,7 @@ class TitoliIvaService:
             val = payload["plafond"]
             dati["plafond"] = None if val in (None, "") else val
         if "attivo" in payload:
-            dati["attivo"] = bool(payload["attivo"])
+            dati["attivo"] = _V.require_bool(payload, "attivo")
         return dati
 
     # Scopo: Normalizza una riga di ambito: valorizza la colonna del livello

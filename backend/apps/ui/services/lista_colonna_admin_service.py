@@ -254,10 +254,8 @@ class ListaColonnaAdminService:
             message="Payload colonna lista non valido.",
         )
         data = self._build_update_data(payload, current=current)
-        ErrorManager.require(
-            bool(data),
-            code=E_COLONNA_VALIDATION,
-            message="Nessun campo aggiornabile presente nel payload.",
+        self._v.require_campi_da_aggiornare(
+            data,
             detail=f"allowed_keys={sorted(UPDATE_KEYS)!r}",
         )
 
@@ -540,8 +538,12 @@ class ListaColonnaAdminService:
 
         # Normalize esportabile su tipo_colonna='azione': considera il
         # tipo_colonna nuovo (se presente nel payload) o quello corrente.
+        # ⚠️ Solo se il client ha chiesto qualcosa: il valore DERIVATO non e' un
+        #    campo, e con `{}` faceva passare il controllo del PATCH vuoto e
+        #    scriveva `data_update` (2026-10-20, brief-be-verifica-
+        #    documentazione-api §A2).
         tipo_colonna_finale = data.get("tipo_colonna", current["tipo_colonna"])
-        if tipo_colonna_finale == "azione":
+        if tipo_colonna_finale == "azione" and data:
             data["esportabile"] = False
 
         return data

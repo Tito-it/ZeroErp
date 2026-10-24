@@ -33,12 +33,12 @@ from unittest.mock import MagicMock, patch
 
 import psycopg
 
+from django.conf import settings
+
 from apps.anagrafiche.services.notify_listener import (
     SONDA_SQL,
     CANALE_CAMBIO_REPARTO,
     CANALE_PERMESSI_CATALOGO,
-    CONNECT_TIMEOUT_S,
-    TCP_USER_TIMEOUT_MS,
     PermessiListener,
 )
 from apps.core.services.processi import PROCESSO_LISTEN_PERMESSI
@@ -250,6 +250,7 @@ class PermessiListenerTests(TestCase):
             }
         }
 
+        mock_settings.DB_TETTI_DI_RETE = settings.DB_TETTI_DI_RETE
         conninfo = PermessiListener._get_conninfo()
 
         parametri = psycopg.conninfo.conninfo_to_dict(conninfo)
@@ -418,20 +419,23 @@ class PermessiListenerTests(TestCase):
     #        minuti e la `SELECT 1` resta appesa. Si legge la stringa che
     #        libpq accetta DAVVERO (`conninfo_to_dict` la analizza con
     #        PQconninfoParse, e un parametro sconosciuto solleva).
+    # ⭐ Dal 2026-10-17 i tetti sono quelli di OGNI connessione del backend
+    #    (`settings.DB_TETTI_DI_RETE`, regola del 2): si prova che il listener
+    #    li porti TUTTI, e che fra loro ci siano i due della sonda.
     @patch(_SETTINGS)
     def test_conninfo_porta_i_tetti_di_rete_della_sonda(self, mock_settings):
         mock_settings.DATABASES = {"default": {"NAME": "testdb"}}
+        mock_settings.DB_TETTI_DI_RETE = settings.DB_TETTI_DI_RETE
 
         parametri = psycopg.conninfo.conninfo_to_dict(
             PermessiListener._get_conninfo(),
         )
 
-        self.assertEqual(
-            parametri.get("tcp_user_timeout"), str(TCP_USER_TIMEOUT_MS),
-        )
-        self.assertEqual(
-            parametri.get("connect_timeout"), str(CONNECT_TIMEOUT_S),
-        )
+        self.assertIn("tcp_user_timeout", settings.DB_TETTI_DI_RETE)
+        self.assertIn("connect_timeout", settings.DB_TETTI_DI_RETE)
+        for chiave, valore in settings.DB_TETTI_DI_RETE.items():
+            with self.subTest(parametro=chiave):
+                self.assertEqual(parametri.get(chiave), str(valore))
 
     # Scopo: Il ritardo di riconnessione raddoppia mentre il server non
     #        risponde, ma riparte dalla base a ogni connessione RIUSCITA. Prima

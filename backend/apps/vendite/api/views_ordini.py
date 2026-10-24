@@ -24,7 +24,7 @@ from apps.core.api.payload_validators import (
     corpo_oggetto,
     paginated_envelope,
     parse_list_params,
-    qp_bool,
+    qp_bool_optional,
     qp_int_optional,
 )
 from apps.core.api.success_responses import success_response
@@ -38,7 +38,8 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ordini_service
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
-from apps.vendite.db.ordini_repository import OrdiniRepository
+from apps.core.api.openapi_params import descrizione_order_by
+from apps.vendite.db.ordini_repository import _ORDER_COLS_ORDINI, OrdiniRepository
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.vendite.api._componenti_schema import (
     COMPONENTE_PATCH_REQUEST,
@@ -48,7 +49,11 @@ from apps.vendite.api._componenti_schema import (
     PREVIEW_COMPONENTI_RESPONSE,
     componenti_overrides_field,
 )
-from apps.vendite.api._schema_da_contratto import CAMBIA_STATO_REQUEST, schema_da_contratto
+from apps.vendite.api._date_consegna_schema import DATE_CONSEGNA_REQUEST, DATE_CONSEGNA_RESPONSE
+from apps.vendite.api._schema_da_contratto import (
+    CAMBIA_STATO_CON_CONFERMA_REQUEST,
+    schema_da_contratto,
+)
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=7). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
@@ -180,11 +185,10 @@ class ApiOrdiniList(DomainAPIView):
             OpenApiParameter(name="data_a", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
+            # La frase si LEGGE dalla whitelist (api.md): scritta a mano
+            # elencava 8 colonne su 17 (§B10 del brief-be-verifica-documentazione-api).
             OpenApiParameter(name="order_by", type=str, required=False,
-                             description="campo_sorgente catalogo 'vendite.ordini' "
-                                         "(numero | data | ragione_sociale_completa | "
-                                         "ba_codice | utility_codice | totale_doc | "
-                                         "fatturazione_trigger | stato_descrizione)."),
+                             description=descrizione_order_by(_ORDER_COLS_ORDINI)),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: inline_serializer(
@@ -240,7 +244,8 @@ class ApiOrdiniExportView(DomainAPIView):
             OpenApiParameter(name="utility_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False,
+                             description=descrizione_order_by(_ORDER_COLS_ORDINI)),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={
@@ -299,7 +304,8 @@ class ApiOrdineDetail(DomainAPIView):
         request=_ORDINE_UPDATE_REQUEST,
         responses={200: _ORDINE_RESPONSE},
     )
-    # Scopo: Aggiorna testata ordine (solo DRAFT). PATCH usa request.data
+    # Scopo: Aggiorna testata ordine (quali campi in quale stato lo decide il
+    #        lock di testata del DB). PATCH usa request.data
     #        (api.md §handle_post_json vs request.data): DRF ha gia' parsato il
     #        body; handle_post_json rileggerebbe il raw consumato.
     def patch(self, request: Request, ordine_id: int) -> JsonResponse:
@@ -388,7 +394,7 @@ class ApiOrdineCambiaStato(DomainAPIView):
     model_permission = ("vendite", "ordine")
 
     @extend_schema(
-        request=CAMBIA_STATO_REQUEST,
+        request=CAMBIA_STATO_CON_CONFERMA_REQUEST,
         responses={200: _ORDINE_RESPONSE},
     )
     def post(self, request: Request, ordine_id: int) -> JsonResponse:
@@ -396,6 +402,7 @@ class ApiOrdineCambiaStato(DomainAPIView):
             request,
             handler=lambda payload: ordini_service.cambia_stato(
                 int(ordine_id), payload.get("stato_codice"),
+                legami_confermati=payload.get("legami_confermati"),
             ),
         )
 
@@ -519,6 +526,27 @@ class ApiOrdineRigaDataConsegnaConfermata(DomainAPIView):
         )
 
 
+class ApiOrdineRigheDateConsegna(DomainAPIView):
+    """POST /api/v1/vendite/ordini/<ordine_id>/righe/date-consegna/.
+
+    «Aggiorna date di consegna»: una data su piu' righe, richiesta o
+    confermata, TUTTE o SOLO_VUOTE (brief-db-date-consegna-righe-in-blocco).
+    Le righe gia' spedite si saltano; ogni altro rifiuto e' del DB.
+    """
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
+
+    @extend_schema(request=DATE_CONSEGNA_REQUEST, responses={200: DATE_CONSEGNA_RESPONSE})
+    def post(self, request: Request, ordine_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: ordini_service.aggiorna_date_consegna(
+                int(ordine_id), payload,
+            ),
+        )
+
+
 class ApiOrdineRigaPreviewComponenti(DomainAPIView):
     """POST /api/v1/vendite/ordini/<ordine_id>/righe/preview-componenti/.
 
@@ -527,6 +555,9 @@ class ApiOrdineRigaPreviewComponenti(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "ordine")
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -562,7 +593,7 @@ class ApiOrdineRigaComponentiList(DomainAPIView):
         responses={200: COMPONENTI_LIST_RESPONSE},
     )
     def get(self, request: Request, ordine_id: int, riga_id: int) -> JsonResponse:
-        solo_attivi = qp_bool(request.query_params.get("solo_attivi"), default=True)
+        solo_attivi = qp_bool_optional(request.query_params.get("solo_attivi"), "solo_attivi", default=True)
         return success_response(
             ordini_service.list_componenti_riga(
                 int(ordine_id), int(riga_id), solo_attivi=solo_attivi,
@@ -584,6 +615,7 @@ class ApiOrdineRigaComponenteDetail(DomainAPIView):
         return success_response(
             ordini_service.update_componente(
                 int(ordine_id), int(riga_id), int(componente_id), dict(corpo_oggetto(request)),
+                auth_user_id=get_actor_user_id(request),
             ),
         )
 

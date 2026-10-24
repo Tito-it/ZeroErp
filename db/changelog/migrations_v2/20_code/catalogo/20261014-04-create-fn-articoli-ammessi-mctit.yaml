@@ -1,0 +1,172 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: catalogo.fn_articoli_ammessi — la sede unica del picker degli
+#   articoli di una riga (Lotto 4)
+#   Brief: brief-db-articoli-ammessi-per-documento (§1, R-2, R-4, R-5; §8.6
+#   A-1, A-2, A-7; §9.4)
+#
+# -- CHE COSA --------------------------------------------------------------
+#   Dato il documento e il suo id, e il testo cercato, gli articoli ATTIVI che
+#   la ricerca trova, ciascuno col PRIMO motivo per cui il documento non lo
+#   ammette (motivo NULL = ammesso), prima gli ammessi (A-7). Il motivo e'
+#   quello che il guard di tabella solleverebbe scrivendo la riga: viene dalla
+#   STESSA check (A-2), nelle sue due meta' — il contesto del documento letto
+#   una volta (script.fn_articolo_riga_contesto, 20261014-01) e i motivi per
+#   ogni articolo (script.fn_check_articolo_riga_su_contesto, 20261014-02).
+#   Picker e guard non possono dissentire: e' la stessa funzione.
+#
+# -- LE SCELTE --------------------------------------------------------------
+#   · L'id del documento, non i valori del form (A-1; P-1: la testata nasce
+#     sempre prima delle righe). Obbligatorio per ogni documento con testata
+#     (E_PARAMETRO_INVALIDO); non per ARTICOLO (la distinta: il padre e'
+#     p_articolo_padre_id) e PROMO_ARTICOLO (la promo nasce col suo articolo,
+#     e le sue regole dipendono solo da lui). Il vincolo e' del picker: la
+#     check lo lascia libero, perche' preventivo, ordine e bolla non leggono il
+#     documento.
+#   · Il solo articolo ATTIVO, in piu' della check: ogni riga lo pretende
+#     (E_ATTIVO_REQUIRE, dai require_attivo delle FK), e un articolo spento non
+#     si propone. Come il listino attivo in vendite.fn_listini_selezionabili.
+#   · La ricerca: «contiene», senza distinzione di maiuscole, su codice o
+#     descrizione (strpos su lower: il testo e' letterale, «50%» o «BA_1» non
+#     fanno da jolly). Testo vuoto o NULL: tutti.
+#   · Il tetto lo sceglie il chiamante (p_limit; NULL = nessuno): il backend lo
+#     limita e sonda con +1 (fetch_con_sonda). ordine = la posizione, perche'
+#     chi unisce le colonne di vw_articoli_dettaglio non perda l'ordine.
+#   · Il motivo e' il PRIMO (quello che il guard solleva), intero:
+#     {codice, reason, reason_key, dettaglio, valori}. La resa a video
+#     (grigio con tooltip, o solo se non ci sono ammessi) la sceglie il FE.
+#   · Il composito nella versione di listino esce col motivo
+#     COMPOSITO_COME_BUNDLE (§8.2): per la riga standalone e' un rifiuto, ma
+#     nella versione entra per l'altra strada. Il FE lo propone come bundle.
+#   · SECURITY INVOKER: il documento si legge sotto RLS, come lo legge il guard.
+#
+# -- PRESTAZIONI (R-5) -------------------------------------------------------
+#   La check gira su OGNI articolo che la ricerca trova (i non ammessi
+#   restano nell'elenco, col motivo), prima del tetto: «prima gli ammessi»
+#   non si puo' decidere sui soli primi N. Il lato documento si legge una
+#   volta. Misure datate (dbdev, 2026-10-14) nel §9.4 del brief.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261014-04-create-fn-articoli-ammessi-mctit.yaml
+
+  - changeSet:
+      id: 20261014-04-create-fn-articoli-ammessi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.fn_articoli_ammessi: il picker degli articoli di una riga, coi candidati della
+        ricerca e il primo motivo di esclusione (NULL = ammesso), prima gli ammessi; la stessa check
+        dei guard. Brief: brief-db-articoli-ammessi-per-documento (§9.4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >-
+              SELECT count(*) FROM pg_catalog.pg_proc p
+               WHERE p.pronamespace = 'catalogo'::regnamespace
+                 AND p.proname = 'fn_articoli_ammessi'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.fn_articoli_ammessi(
+                  p_documento         config.tipi_entita.codice%TYPE,
+                  p_documento_id      bigint,
+                  -- p_search: testo libero del picker, nessuna colonna di cui sia il riflesso.
+                  p_search            text DEFAULT NULL,
+                  -- p_limit: un conteggio scelto dal chiamante.
+                  p_limit             integer DEFAULT 50,
+                  p_tipo_eccezione    vendite.tipo_eccezione_contratto DEFAULT NULL,
+                  p_articolo_padre_id catalogo.articoli.id%TYPE DEFAULT NULL)
+              RETURNS TABLE(
+                  articolo_id catalogo.articoli.id%TYPE,
+                  codice      catalogo.articoli.codice%TYPE,
+                  descrizione catalogo.articoli.descrizione%TYPE,
+                  -- motivo: il primo elemento dell'array della check (jsonb).
+                  motivo      jsonb,
+                  -- ordine: la posizione nell'elenco, un conteggio.
+                  ordine      integer)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_contesto jsonb;
+                  v_termine  text := lower(btrim(COALESCE(p_search, '')));
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il picker degli articoli di una riga: i candidati della
+                  --   ricerca col primo motivo per cui il documento non li
+                  --   ammette (NULL = ammesso), prima gli ammessi. Il motivo
+                  --   viene dalla check dei guard (A-2): picker e guard non
+                  --   possono dissentire.
+                  -- =========================================================
+
+                  -- L'id del documento (A-1): ogni documento con testata.
+                  IF p_documento_id IS NULL
+                     AND p_documento IN ('PREVENTIVO', 'ORDINE_VENDITA', 'DDT_VENDITA',
+                                         'OFFERTA_COMMERCIALE', 'CONTRATTO',
+                                         'LISTINO_VERSIONE') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo',
+                          'catalogo.fn_articoli_ammessi',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_documento_id', 'documento', p_documento),
+                          NULL::uuid,
+                          'p_documento_id obbligatorio per ' || p_documento);
+                  END IF;
+
+                  IF p_limit IS NOT NULL AND p_limit < 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo',
+                          'catalogo.fn_articoli_ammessi',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_limit', 'valore', p_limit),
+                          NULL::uuid,
+                          'p_limit deve essere almeno 1 (NULL = nessun tetto)');
+                  END IF;
+
+                  -- Il lato documento, una volta; valida anche p_documento,
+                  -- p_tipo_eccezione e p_articolo_padre_id.
+                  v_contesto := script.fn_articolo_riga_contesto(
+                      p_documento, p_documento_id, p_tipo_eccezione, p_articolo_padre_id);
+
+                  RETURN QUERY
+                  SELECT g.id,
+                         g.codice,
+                         g.descrizione,
+                         g.motivi -> 0,
+                         (row_number() OVER (ORDER BY (g.motivi -> 0) IS NOT NULL, g.codice, g.id))::integer
+                    FROM (
+                          SELECT a.id, a.codice, a.descrizione,
+                                 script.fn_check_articolo_riga_su_contesto(v_contesto, a.id) AS motivi
+                            FROM catalogo.articoli a
+                           WHERE a.attivo
+                             AND (v_termine = ''
+                                  OR strpos(lower(a.codice), v_termine) > 0
+                                  OR strpos(lower(a.descrizione), v_termine) > 0)
+                         ) g
+                   ORDER BY (g.motivi -> 0) IS NOT NULL, g.codice, g.id
+                   LIMIT p_limit;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.fn_articoli_ammessi(text, bigint, text, integer, vendite.tipo_eccezione_contratto, uuid)
+              IS 'Sede unica del picker degli articoli di una riga (R-2, A-7): dato il documento (codice di config.tipi_entita: PREVENTIVO | ORDINE_VENDITA | DDT_VENDITA | OFFERTA_COMMERCIALE | CONTRATTO | LISTINO_VERSIONE | ARTICOLO | PROMO_ARTICOLO) e il suo id (A-1: obbligatorio, E_PARAMETRO_INVALIDO, tranne ARTICOLO, che vuole p_articolo_padre_id, e PROMO_ARTICOLO), gli articoli ATTIVI che la ricerca trova (p_search: «contiene», senza maiuscole, su codice o descrizione, letterale; vuoto = tutti), {articolo_id, codice, descrizione, motivo, ordine}: motivo = il PRIMO motivo della check per tipo di riga ({codice, reason, reason_key, dettaglio, valori}; NULL = ammesso), cioe'' quello che il guard di tabella solleverebbe scrivendo la riga; prima gli ammessi, poi per codice; ordine = la posizione. p_tipo_eccezione per offerta e contratto (AGGIUNTA | OVERRIDE | ESCLUSIONE), obbligatorio. Il tetto (p_limit, NULL = nessuno, almeno 1) lo sceglie il chiamante; la check gira su ogni articolo trovato, prima del tetto. Il composito della versione di listino esce con COMPOSITO_COME_BUNDLE: nella versione entra come bundle, coi componenti. Due meta'' della stessa check dei guard (A-2): script.fn_articolo_riga_contesto (il documento, letto una volta: R-5) e script.fn_check_articolo_riga_su_contesto (i motivi). Sotto RLS (SECURITY INVOKER). Nasce il 2026-10-14, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4); prende il posto dei filtri liberi di catalogo_repository.lookup_articoli per le righe di documento (giro BE/FE).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS catalogo.fn_articoli_ammessi(text, bigint, text, integer, vendite.tipo_eccezione_contratto, uuid);

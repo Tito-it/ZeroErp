@@ -7,40 +7,68 @@ CREATE FUNCTION fn_pgtap_porta_a_stato(p_testata regclass, p_id bigint, p_stato 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_porta_a_stato(p_testata regclass, p_id bigint, p_stato text)
  RETURNS text
  LANGUAGE plpgsql
 AS $function$
--- Scopo: portare una testata di fixture (ordine, preventivo) nello
---   stato voluto per le transizioni della sua matrice, dopo che il
---   test le ha scritto le righe in bozza.
+-- Scopo: portare una testata di fixture nello stato voluto per
+--   le transizioni della sua matrice, dopo che il test le ha
+--   scritto in bozza cio' che i passaggi pretendono (righe,
+--   indirizzi, prezzi…).
 -- Uso:
 --   SELECT dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO')
 --     FROM tmp_ordine o;
+-- rev 2026-10-24 (20261024-22, brief-modello-documento-vendita
+--   N-1): tutte le testate con una matrice, non piu' solo ordine
+--   e preventivo. Un documento nasce in bozza (trigger della
+--   nascita) e si porta avanti da qui.
+-- rev 2026-10-24 (20261024-30, R-4): anche il lotto di
+--   fatturazione, VUOTO (con fatture si muove col verbo
+--   vendite.fn_sync_lotto_fatture_stato).
 DECLARE
     v_col       text;       -- colonna di stato della testata
     v_stati     regclass;   -- catalogo degli stati
     v_matrice   regclass;   -- matrice delle transizioni
+    v_col_da    text;       -- colonna «da» della matrice
+    v_col_a     text;       -- colonna «a» della matrice
+    v_col_vivo  text;       -- colonna «passaggio ammesso» della matrice
+    v_filtro    text;       -- condizione in piu' sui passaggi, letterale della mappa
+    -- Id e codici di stato di uno qualunque degli otto
+    -- vocabolari: bigint e testo in tutti, nessuna colonna
+    -- comune a cui ancorarli (%TYPE[] non e' sintassi valida).
     v_target    bigint;
     v_corrente  bigint;
     v_percorso  bigint[];
     v_passo     bigint;
-    v_n         integer;
     v_codice    text;
+    v_n         integer;    -- righe toccate (ROW_COUNT): un conteggio
 BEGIN
     -- ── Il documento: errore del CHIAMANTE, non un dato ────────
-    IF p_testata = 'vendite.ordini'::regclass THEN
-        v_col     := 'stato_doc_ordine_id';
-        v_stati   := 'config.stati_doc_ordini'::regclass;
-        v_matrice := 'config.transizioni_stati_ordini'::regclass;
-    ELSIF p_testata = 'vendite.preventivi'::regclass THEN
-        v_col     := 'stato_doc_preventivo_id';
-        v_stati   := 'config.stati_doc_preventivi'::regclass;
-        v_matrice := 'config.transizioni_stati_preventivi'::regclass;
-    ELSE
+    -- ⚠️ La fattura: la matrice ha anche i passaggi del LOTTO
+    --   (solo_lotto = true), che il guard della fattura singola
+    --   (vendite.trgfn_fatture_guard_stato) non ammette. Il
+    --   percorso usa solo quelli che il guard accetta.
+    SELECT m.col, m.voc, m.mat, m.da, m.a, m.vivo, m.filtro
+      INTO v_col, v_stati, v_matrice, v_col_da, v_col_a, v_col_vivo, v_filtro
+      FROM (VALUES
+        ('vendite.preventivi'::regclass,          'stato_doc_preventivo_id', 'config.stati_doc_preventivi'::regclass, 'config.transizioni_stati_preventivi'::regclass,  'stato_da_id',   'stato_a_id',  'attivo',  ''),
+        ('vendite.offerte_commerciali'::regclass, 'stato_doc_offerta_id',    'config.stati_doc_offerte'::regclass,    'config.stati_doc_offerte_transizioni'::regclass, 'stato_da_id',   'stato_a_id',  'attivo',  ''),
+        ('vendite.contratti'::regclass,           'stato_doc_contratto_id',  'config.stati_doc_contratti'::regclass,  'config.transizioni_stati_contratti'::regclass,   'stato_da_id',   'stato_a_id',  'attivo',  ''),
+        ('vendite.ordini'::regclass,              'stato_doc_ordine_id',     'config.stati_doc_ordini'::regclass,     'config.transizioni_stati_ordini'::regclass,      'stato_da_id',   'stato_a_id',  'attivo',  ''),
+        ('vendite.ddt'::regclass,                 'stato_doc_ddt_id',        'config.stati_doc_ddt'::regclass,        'config.transizioni_stati_ddt'::regclass,         'stato_da_id',   'stato_a_id',  'attivo',  ''),
+        ('vendite.resi'::regclass,                'stato_doc_reso_id',       'config.stati_doc_reso'::regclass,       'config.transizioni_stati_reso'::regclass,        'stato_da_id',   'stato_a_id',  'attivo',  ''),
+        ('vendite.commesse'::regclass,            'stato_commessa_id',       'vendite.stati_commessa'::regclass,      'vendite.transizioni_stati_commessa'::regclass,   'stato_da_id',   'stato_a_id',  'attivo',  ''),
+        ('vendite.fatture'::regclass,             'stato_doc_fiscale_id',    'config.stati_doc_fiscale'::regclass,    'config.stati_doc_fiscale_transizioni'::regclass, 'stato_from_id', 'stato_to_id', 'ammesso', 'AND t.solo_lotto IS FALSE'),
+        ('vendite.fatturazione_lotti'::regclass,  'stato_doc_fiscale_id',    'config.stati_doc_fiscale'::regclass,    'config.stati_doc_fiscale_transizioni'::regclass, 'stato_from_id', 'stato_to_id', 'ammesso', 'AND t.solo_fattura IS FALSE')
+      ) AS m(tab, col, voc, mat, da, a, vivo, filtro)
+     WHERE m.tab = p_testata;
+
+    IF NOT FOUND THEN
         RAISE EXCEPTION
-            'fn_pgtap_porta_a_stato: documento non gestito: % (noti: vendite.ordini, vendite.preventivi)',
+            'fn_pgtap_porta_a_stato: documento non gestito: % (noti: le testate di vendita con una matrice dei passaggi)',
             p_testata;
     END IF;
 
@@ -74,16 +102,16 @@ BEGIN
         WITH RECURSIVE p(stato, percorso) AS (
             SELECT $1::bigint, ARRAY[$1::bigint]
             UNION ALL
-            SELECT t.stato_a_id::bigint, p.percorso || t.stato_a_id::bigint
+            SELECT t.%2$I::bigint, p.percorso || t.%2$I::bigint
               FROM p
-              JOIN %s t ON t.stato_da_id = p.stato AND t.attivo IS TRUE
-              JOIN %s s ON s.id = t.stato_a_id AND s.attivo IS TRUE
-             WHERE NOT (t.stato_a_id = ANY (p.percorso))
+              JOIN %3$s t ON t.%1$I = p.stato AND t.%4$I IS TRUE %6$s
+              JOIN %5$s s ON s.id = t.%2$I AND s.attivo IS TRUE
+             WHERE NOT (t.%2$I = ANY (p.percorso))
         )
         SELECT p.percorso FROM p
          WHERE p.stato = $2
          ORDER BY cardinality(p.percorso), p.percorso
-         LIMIT 1$q$, v_matrice, v_stati)
+         LIMIT 1$q$, v_col_da, v_col_a, v_matrice, v_col_vivo, v_stati, v_filtro)
        INTO v_percorso USING v_corrente, v_target;
 
     IF v_percorso IS NULL THEN
@@ -115,8 +143,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_porta_a_stato(p_testata regclass, p_id bigint, p_stato text)
-IS 'Fixture pgTAP: porta una testata di vendite.ordini o vendite.preventivi dallo stato corrente allo stato p_stato (codice_interno) per il percorso piu'' corto della matrice delle transizioni attive (config.transizioni_stati_ordini / _preventivi), un UPDATE della colonna di stato per passo: ogni passo passa dai guard di transizione veri, come in produzione. Serve alla forma «bozza, righe, transizioni»: da 20261008-90/-91 le righe si scrivono solo in bozza, e una testata nata fuori bozza non prende piu'' righe. A parita'' di lunghezza vince il percorso con gli id di stato minori. ⛔ Documento non gestito, stato sconosciuto, percorso assente, testata invisibile o UPDATE che non tocca una riga: eccezione, mai un ritorno silenzioso. Ritorna il codice_interno raggiunto; esce con i vincoli IMMEDIATE. Brief: brief-db-righe-e-componenti-debiti-residui (§1, D-1).';
+IS 'Fixture pgTAP: porta una testata di vendita dallo stato corrente allo stato p_stato (codice_interno) per il percorso piu'' corto della sua matrice dei passaggi, un UPDATE per passo, sotto i guard veri: le condizioni d''uscita dalla bozza (righe, indirizzi, prezzi…) le scrive prima il test. Testate: preventivo, offerta, contratto, ordine, DDT, reso, commessa, fattura (la fattura con la matrice config.stati_doc_fiscale_transizioni, colonne stato_from_id/stato_to_id/ammesso, e i soli passaggi con solo_lotto = false, quelli che ammette il guard della fattura singola) e il lotto di fatturazione VUOTO (stessa matrice, i soli passaggi con solo_fattura = false; il filtro per tipo_lotto lo applica il guard del lotto, al passo; un lotto con fatture si muove col verbo vendite.fn_sync_lotto_fatture_stato). Restituisce il codice_interno dello stato raggiunto. Un documento nasce solo nello stato iniziale (script.trgfn_doc_stato_iniziale): una fixture che vuole un documento avanti lo crea e lo porta avanti da qui. Errori del chiamante (testata non gestita, id, stato o percorso inesistenti): RAISE EXCEPTION. rev 2026-10-24: tutte le testate (brief-modello-documento-vendita N-1); 20261024-30: il lotto di fatturazione (R-4).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

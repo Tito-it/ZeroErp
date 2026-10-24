@@ -20,6 +20,7 @@
 //   4) in sola lettura: il gesto non c'e'
 //   5) conferma accettata: verbo chiamato, drawer chiuso, lista avvisata
 //   6) verbo rifiutato: il drawer resta aperto e la lista non si ricarica
+//   7) il reinvio dopo un fallimento rimanda la STESSA key del gesto
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -121,7 +122,8 @@ describe('AccessoAltroDrawer — «Elimina accesso»', () => {
     expect(eliminaCredenziale).not.toHaveBeenCalled()
     await confirmAction.mock.calls[0][0].onAccept()
     await flushPromises()
-    expect(eliminaCredenziale).toHaveBeenCalledWith(ID)
+    // La key del GESTO negli header (`useChiaveGesto`), non quella per chiamata.
+    expect(eliminaCredenziale).toHaveBeenCalledWith(ID, { headers: { 'Idempotency-Key': expect.any(String) } })
     expect(w.emitted('update:visible')?.at(-1)).toEqual([false])
     expect(w.emitted('changed')).toHaveLength(1)
   })
@@ -136,5 +138,23 @@ describe('AccessoAltroDrawer — «Elimina accesso»', () => {
     await flushPromises()
     expect(w.emitted('update:visible')).toBeUndefined()
     expect(w.emitted('changed')).toBeUndefined()
+  })
+
+  it('⭐ il reinvio dopo un fallimento rimanda la STESSA key del gesto', async () => {
+    // Un timeout puo' nascondere un'eliminazione riuscita lato server: il
+    // secondo clic deve ricevere l'esito del primo, non un «non esiste».
+    eliminaCredenziale.mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout' })
+    eliminaCredenziale.mockResolvedValueOnce(comeAxios({ status: 'ok', auth_user_id: ID }))
+    const w = apri(riga())
+    await pulsante(w).trigger('click')
+    await confirmAction.mock.calls[0][0].onAccept()
+    await flushPromises()
+    await pulsante(w).trigger('click')
+    await confirmAction.mock.calls[1][0].onAccept()
+    await flushPromises()
+    const [prima, seconda] = eliminaCredenziale.mock.calls.map((c) => c[1].headers['Idempotency-Key'])
+    expect(prima).toBeTruthy()
+    expect(seconda).toBe(prima)
+    expect(w.emitted('changed')).toHaveLength(1)
   })
 })

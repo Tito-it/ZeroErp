@@ -222,7 +222,7 @@ fi
 #   sposta niente, e i test girano lo stesso sul database nominato nel file.
 #   ⚠️ E' un fallimento SILENZIOSO, ed e' il peggiore che potesse capitare qui:
 #   chi vuole misurare il database scratch della replica CI
-#   (`scripts/ci-local.sh`, `CI_DB=zeroerp_ci`) crede di misurare quello e
+#   (`scripts/ci-local.sh`: `zeroerp_ruoli`) crede di misurare quello e
 #   misura SVILUPPO. Con `pgtap-baseline.sh --update` finirebbe per scrivere i
 #   rossi di sviluppo dentro la baseline della CI, cioe' un metro sbagliato
 #   dentro il file che esiste apposta per tenere il metro omogeneo.
@@ -231,7 +231,10 @@ fi
 #   restano un insieme coerente e non se ne puo' spostare mezzo.
 #
 #   Uso:
-#     PGTAP_ENV_FILE=db/internal.ci.env scripts/pgtap-baseline.sh --update
+#     PGTAP_ENV_FILE=db/internal.ruoli.env PGTAP_BASELINE=db/pgtap/baseline-rossi-scratch.tsv \
+#       scripts/pgtap-baseline.sh --update
+#   (db/internal.ruoli.env: lo scratch del modello dei ruoli, `zeroerp_ruoli`,
+#    utente zeroerp_owner.)
 ENV_FILE=""
 ENV_STYLE=""   # "pg" = variabili PG* native, "django" = DB_* da mappare
 if [ -n "${PGTAP_ENV_FILE:-}" ]; then

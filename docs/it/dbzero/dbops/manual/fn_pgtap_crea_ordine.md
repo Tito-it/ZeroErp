@@ -11,7 +11,7 @@ Guide: [pgTAP — come si scrive un test](/guide/pgtap-come-si-scrive-un-test) �
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-10-07)
+(rev 2026-10-25)
 
 **Un ordine di vendita del mondo, in una chiamata sola**: l'azienda con il suo operatore,
 il cliente fatturabile e la testata nello stato scelto. Torna tutte le chiavi, `uid`
@@ -22,7 +22,22 @@ CREATE TEMP TABLE tmp_o AS
 SELECT * FROM dbops.fn_pgtap_crea_ordine('rls ordini');
 -- un ordine già confermato:
 SELECT * FROM dbops.fn_pgtap_crea_ordine('consegne', 'CONFERMATO');
+-- il secondo ordine dello STESSO cliente (terzo parametro, rev 2026-10-22):
+SELECT * FROM dbops.fn_pgtap_crea_ordine(
+           'consegne 2', 'DRAFT', (SELECT billing_account_id FROM tmp_o));
+-- un ordine di una data passata (quarto parametro, rev 2026-10-25):
+SELECT * FROM dbops.fn_pgtap_crea_ordine('chiusure', p_data => DATE '2026-08-05');
 ```
+
+⚠️ **Il terzo parametro** è il billing account di un cliente già costruito: serve a chi
+vuole due ordini dello stesso cliente. Viene **verificato** dal building block
+[dbops.fn_pgtap_cliente_ba_del_mondo](/dbzero/dbops/manual/fn_pgtap_cliente_ba_del_mondo),
+come per fattura e contratto: un billing account di un'altra azienda solleva subito.
+
+⚠️ **Il quarto parametro** è la data dell'ordine, scritta **alla nascita**: fuori bozza la
+data è congelata, quindi o si sceglie qui o non si sceglie più. Senza, vale la data
+operativa (il default della colonna). Serve a chi costruisce bolle di date passate: una
+bolla più vecchia del suo ordine sarebbe una fixture incoerente.
 
 ---
 ### 🧭 Perché esiste
@@ -49,15 +64,20 @@ regola scritta più volte (regola del 2): ora ha una sede.
 ---
 ### 🚫 Cosa NON scrive
 
-* **Le righe**: sono il caso del test.
-  ⚠️ Dal 2026-10-08 le righe si scrivono **solo in bozza**
-  (`brief-db-righe-e-componenti-debiti-residui`, D-1): un ordine nato già `CONFERMATO`
-  non prende righe. Se servono, il ordine nasce `DRAFT`, il test gli scrive le righe, e
-  lo stato lo porta [`dbops.fn_pgtap_porta_a_stato`](/dbzero/dbops/funzioni/fn_pgtap_porta_a_stato).
-  Lo stato alla nascita resta giusto per una testata **senza** righe.
-* **Il cambio di stato**: l'ordine ha un guard di transizione, e una fixture che lo
-  attraversasse proverebbe quello invece del proprio caso. Lo stato si sceglie alla
-  nascita, col secondo parametro; uno stato che non esiste viene rifiutato per nome.
+* **Le righe**: sono il caso del test. Si scrivono **solo in bozza**
+  (`brief-db-righe-e-componenti-debiti-residui`, D-1, 2026-10-08).
+
+---
+### 🔁 Lo stato: nasce in bozza, poi si porta avanti
+
+(rev 2026-10-24, `brief-modello-documento-vendita` N-1)
+
+Un documento nasce solo nel suo stato iniziale. L'ordine del builder nasce in bozza e, se il
+secondo parametro chiede un altro stato, ci arriva per la **matrice dei passaggi**
+([`dbops.fn_pgtap_porta_a_stato`](/dbzero/dbops/funzioni/fn_pgtap_porta_a_stato)), sotto i
+controlli veri. Un passaggio che pretende ciò che il builder non scrive (le righe, per la
+conferma) qui si ferma: allora il test chiede la bozza, scrive le righe e porta avanti da sé.
+Uno stato che non esiste viene rifiutato per nome, prima di costruire.
 
 ---
 ### ⚠️ Il contratto sui vincoli differiti

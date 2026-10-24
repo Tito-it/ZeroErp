@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_parameter_fk_surrogate(p_code text, p_value text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_parameter_fk_surrogate(p_code text, p_value text)
  RETURNS boolean
@@ -71,6 +73,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_parameter_fk_surrogate(p_code text, p_value text)
 IS 'Check FK-surrogata generico per parametri. Lookup registry config.parameter_fk_surrogate (EXACT > LIKE), poi lookup dinamico sul target. Ritorna boolean. Usata dai dispatcher config.trgfn_parameters_fk_surrogate_dispatch e config.trgfn_parameter_overrides_fk_surrogate_dispatch. ⭐ rev 2026-08-31: «valore assente» comprende la STRINGA VUOTA e non solo il NULL. L''argomento sta sul modello e non sulla comodita'': config.parameters.default_value e config.parameter_overrides.overridden_value sono ENTRAMBE NOT NULL, quindi il ramo NULL era codice irraggiungibile da tutti e due i chiamanti e la regola che dichiarava — «assenza di valore, nessun controllo» — non si applicava mai; su un parametro il vuoto e'' l''unica forma che «nessun valore» puo'' assumere. ⛔ Senza questa rev, db/changelog/migrations_v2/80_data/sql/config/parameters.csv e'' un file INTOCCABILE: la riga DEFAULT_UTILITY ha default_value vuoto e una riga di registry attiva, il suo mirror e'' runOnChange, e qualunque modifica al CSV lo sveglia e fa morire il migrate su quella riga (successo il 2026-08-25). ⚠️ Solo la stringa vuota, NON il bianco: un valore fatto di spazi resta rifiutato, perche'' un codice_interno non e'' mai bianco e questa check e'' l''unica cosa che intercetta quel refuso. brief-db-default-iva-chiave-naturale §2-bis (decisione A, Tid 2026-08-31).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

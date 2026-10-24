@@ -99,13 +99,29 @@ All'esecuzione del resolver prezzi v5, l'attivita' in commessa riceve uno snapsh
 | `tipo_variazione_applicata`      | varchar(16)   | `PERCENTUALE` \| `VALORE_FISSO` \| `PREZZO_FISSO` \| `NESSUNA`                                    |
 | `valore_variazione_applicata`    | numeric(10,4) | Valore della variazione effettivamente applicata                                                  |
 | `promo_id`                       | bigint        | FK a `vendite.promo_articoli`; valorizzato se `origine_prezzo = 'PROMO'`                          |
-| `contratto_id`                   | bigint        | FK a `vendite.contratti`; valorizzato se `origine_prezzo CONTRATTO_*`                             |
+| `contratto_id`                   | bigint        | FK a `vendite.contratti`; valorizzato se `origine_prezzo CONTRATTO_*`; il contratto è del conto di fatturazione della commessa (guard `trgfn_attivita_guard_contratto`) |
 | `categoria_cliente_id_snapshot`  | smallint      | FK a `anagrafiche.categorie_clienti`; congela la categoria al momento del calcolo                 |
 | `classe_utenza_id_snapshot`      | integer       | FK a `config.classi_utenze`; congela la classe utenza al momento del calcolo                      |
 
 Due CHECK presidiano il dominio di `origine_prezzo` e `tipo_variazione_applicata`. Il campo `meta` resta per dettagli non strutturati (es. deroghe, flag specifici): qui stanno solo le dimensioni che servono per query dirette e filtri dashboard.
 
 Le stesse 8 colonne vengono propagate su [`vendite.attivita_fatturabili`](/dbzero/vendite/tabelle/attivita_fatturabili), preservando la tracciabilita' fino al layer fatture.
+
+---
+
+### Riga di listino e versione: coerenti (15-10-2026)
+
+La riga porta la **versione** del listino sotto cui è registrata (`listino_versione_id`) e la
+**riga di listino** da cui viene il prezzo (`listino_riga_id`). Le due non possono dire cose
+diverse: la riga di listino deve essere dello stesso articolo e della stessa unità di misura
+della riga di commessa e, se la versione c'è, di quella versione. La versione senza riga di
+listino è lecita (il push la scrive così); la riga di listino senza versione no
+(`chk_commesse_attivita_listino_riga_con_versione`, dal 16-10-2026). Dal 16-10-2026 il listino
+dev'essere **dell'azienda della commessa** e la versione **non in bozza**: mai un prezzo da una
+bozza. Lo tiene
+[vendite.trgfn_attivita_guard_listino_riga](/dbzero/vendite/manual/trgfn_attivita_guard_listino_riga)
+(`E_ATTIVITA_LISTINO_RIGA_INCOERENTE`, `E_ATTIVITA_LISTINO_EMITTENTE_DIVERSO`,
+`E_ATTIVITA_LISTINO_VERSIONE_BOZZA`), decisioni di Tid.
 
 ---
 
@@ -135,7 +151,9 @@ risalire alla commessa per sapere che natura ha la riga.
 campo `meta` (jsonb), validato solo dalla funzione di upsert: un INSERT diretto lo aggirava, e
 un discriminatore su cui si fondano soldi e riconciliazioni non puo' dipendere dalla buona
 educazione del chiamante. Ora e' una colonna con un CHECK, e il campo `meta` non lo ospita
-piu'. Su `meta` resta `tipo_consumo` (`ACCONTO` | `CONGUAGLIO` | `STORNO`), non promosso.
+piu'. Nemmeno `tipo_consumo`, che ci stava accanto: è ritirato dal 2026-10-13 (`20261013-16`),
+perché nessuno lo leggeva e il suo vocabolario rifiutava il push di contratti e consumi. Le righe
+scritte prima lo portano ancora in `meta`, come fotografia.
 
 > ⚠️ **La riga `RETTIFICA` diceva «nessuno, oggi» fino al 20-08-2026**, ed era
 > vero quando fu scritta: il cantiere nota di credito l'ha resa il verbo di

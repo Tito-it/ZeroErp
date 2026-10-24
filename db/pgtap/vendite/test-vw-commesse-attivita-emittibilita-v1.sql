@@ -54,6 +54,26 @@
 --
 -- ChangeSet: 20260909-59-create-vw-commesse-attivita-emittibilita
 -- Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L3)
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
+--   portano avanti con dbops.fn_pgtap_porta_a_stato (prima le commesse nascevano gia'
+--   in stato_ok / stato_ko).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): le commesse le costruisce
+--   dbops.fn_pgtap_crea_commessa sul billing account del test, con UNA riga APPROVATA:
+--   PRONTA_FATTURAZIONE per le testate emittibili, BOZZA (riga chiesta, p_con_attivita
+--   => true) per testata_ko. Prima testata e riga erano scritte a mano con articolo,
+--   unita' di misura, tipo documento e valuta pescati «il primo per id», e lo stato «no»
+--   era «il primo non emittibile per id». Le due righe fuori mese (mese_prima /
+--   mese_dopo) restano scritte dal test, su una commessa del builder, con articolo,
+--   unita' di misura, tipo documento e valuta della prima riga scritta dal builder. Il
+--   test 0 conta le righe costruite (11) al posto del catalogo pescato.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-4): i tre lotti-testimone (DRAFT,
+--   EMESSA, DEFINITIVA) nascono da dbops.fn_pgtap_crea_lotto (madre
+--   vendite.fn_create_fatturazione_lotto, stato per la matrice, tipo documento della
+--   riga, cliente del test), e l'esito ERRORE E_PULL_COMMESSA di «trattenuta» lo scrive
+--   il builder (p_gruppo_key_trattenuto). Prima i lotti erano INSERT a mano, gia' nello
+--   stato. Restano del test gli altri tre ERRORE del lotto DRAFT (il builder ne
+--   trattiene UNO), il PENDING e il COMPLETED: sono forme del caso. Le asserzioni non
+--   leggono codice ne' utility del lotto.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -95,39 +115,10 @@ SELECT plan(9);
 -- ============================================================
 -- Fixture
 -- ============================================================
-CREATE TEMP TABLE tmp_ce_rif AS
-SELECT
-  (SELECT m.soggetto_ruolo_id FROM tmp_ce_mondo m)             AS emittente_sr,
-  (SELECT c.billing_account_id FROM tmp_ce_cliente c)          AS billing_account_id,
-  (SELECT c.utility_id FROM tmp_ce_cliente c)                  AS utility_id,
-  (SELECT c.istanza_utility_id FROM tmp_ce_cliente c)          AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE
-    ORDER BY a.id LIMIT 1)                                     AS articolo_id,
-  (SELECT u.id FROM catalogo.unita_misura u
-    WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)              AS uom_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t
-    WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)              AS tipo_doc_fiscale_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)     AS valuta_id,
-  -- ⭐ Le DUE testate: una emittibile e una no. Servono al test 3, che e' il
-  --   punto dell'ortogonalita'.
-  (SELECT sc.id FROM vendite.stati_commessa sc
-    WHERE sc.attivo IS TRUE AND sc.emittibile IS TRUE
-    ORDER BY sc.id LIMIT 1)                                    AS stato_ok,
-  (SELECT sc.id FROM vendite.stati_commessa sc
-    WHERE sc.attivo IS TRUE AND sc.emittibile IS FALSE
-      AND sc.codice_interno <> 'ANNULLATA'
-    ORDER BY sc.id LIMIT 1)                                    AS stato_ko,
-  date_trunc('month', script.fn_data_operativa())::date                      AS mese;
-
-SELECT ok(
-  (SELECT r.emittente_sr IS NOT NULL AND r.billing_account_id IS NOT NULL
-      AND r.articolo_id IS NOT NULL AND r.uom_id IS NOT NULL
-      AND r.tipo_doc_fiscale_id IS NOT NULL AND r.valuta_id IS NOT NULL
-      AND r.stato_ok IS NOT NULL AND r.stato_ko IS NOT NULL
-     FROM tmp_ce_rif r),
-  '0. riferimenti minimi risolti (emittente, anagrafiche, catalogo, due stati commessa)'
-);
+-- ⭐ Le DUE testate, per codice_interno: una emittibile e una no. Servono al
+--   test 3, che e' il punto dell'ortogonalita'.
+CREATE TEMP TABLE tmp_ce_stati AS
+SELECT 'PRONTA_FATTURAZIONE'::varchar AS stato_ok, 'BOZZA'::varchar AS stato_ko;
 
 -- Un caso = una COMMESSA con UNA riga: cosi' ogni caso ha la sua gruppo_key.
 CREATE TEMP TABLE tmp_ce (caso text, commessa_id bigint, ca_id bigint, gruppo_key text);
@@ -135,11 +126,16 @@ CREATE TEMP TABLE tmp_ce (caso text, commessa_id bigint, ca_id bigint, gruppo_ke
 DO $fixture$
 DECLARE
     r          record;
-    v_rif      record;
+    v_st       record;
+    v_mese     vendite.commesse_attivita.competenza_mese%TYPE;
     v_comm     vendite.commesse.id%TYPE;
     v_ca       vendite.commesse_attivita.id%TYPE;
+    -- la riga del primo caso costruito dal builder: le righe fuori mese ne
+    --   prendono articolo, unita' di misura, tipo documento e valuta.
+    v_modello  vendite.commesse_attivita%ROWTYPE;
 BEGIN
-    SELECT * INTO v_rif FROM tmp_ce_rif;
+    SELECT * INTO v_st FROM tmp_ce_stati;
+    v_mese := date_trunc('month', script.fn_data_operativa())::date;
 
     FOR r IN
         SELECT * FROM (VALUES
@@ -160,92 +156,131 @@ BEGIN
             ('mese_dopo',     'NON_EMESSA', 'APPROVATA',  true,   1)
         ) AS v(caso, emissione, approvazione, testata_ok, off_mese)
     LOOP
-        INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                      emittente_soggetto_ruolo_id, stato_commessa_id)
-        VALUES ('PGTAP-CE-' || upper(r.caso) || '-'
-                            || substr(md5(clock_timestamp()::text), 1, 6),
-                v_rif.billing_account_id, v_rif.utility_id, v_rif.emittente_sr,
-                CASE WHEN r.testata_ok THEN v_rif.stato_ok ELSE v_rif.stato_ko END)
-        RETURNING id INTO v_comm;
+        IF r.off_mese = 0 THEN
+            -- Il builder: testata dalla madre, UNA riga APPROVATA/NON_EMESSA,
+            --   lo stato per la matrice (in BOZZA la riga la si chiede).
+            SELECT c.commessa_id, c.attivita_id INTO v_comm, v_ca
+              FROM dbops.fn_pgtap_crea_commessa(
+                       'emittibilita ' || r.caso,
+                       CASE WHEN r.testata_ok THEN v_st.stato_ok ELSE v_st.stato_ko END,
+                       (SELECT billing_account_id FROM tmp_ce_cliente),
+                       true) c;
 
-        INSERT INTO vendite.commesse_attivita (
-            commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
-            uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
-            tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-            stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-        VALUES (v_comm,
-                'PGTAP-CE-' || r.caso || '-' || substr(md5(clock_timestamp()::text), 1, 12),
-                v_rif.articolo_id, v_rif.istanza_utility_id,
-                (v_rif.mese + (r.off_mese || ' month')::interval)::date,
-                v_rif.uom_id, 1,
-                (v_rif.mese + (r.off_mese || ' month')::interval)::date,
-                (v_rif.mese + (r.off_mese || ' month')::interval)::date,
-                ((v_rif.mese + (r.off_mese || ' month')::interval)
-                  + INTERVAL '1 month - 1 day')::date,
-                v_rif.tipo_doc_fiscale_id, v_rif.valuta_id, 10.000000, 'FIXED',
-                r.approvazione, r.emissione, NULL, NULL)
-        RETURNING id INTO v_ca;
+            IF v_modello.id IS NULL THEN
+                SELECT * INTO v_modello FROM vendite.commesse_attivita ca WHERE ca.id = v_ca;
+            END IF;
+        ELSE
+            -- ⚠️ La riga FUORI MESE e' una forma del test: il builder scrive la
+            --   riga nel mese corrente. Commessa del builder (in BOZZA, senza
+            --   riga), la riga scritta qui, poi lo stato per la matrice.
+            SELECT c.commessa_id INTO v_comm
+              FROM dbops.fn_pgtap_crea_commessa(
+                       'emittibilita ' || r.caso, NULL,
+                       (SELECT billing_account_id FROM tmp_ce_cliente)) c;
+
+            INSERT INTO vendite.commesse_attivita (
+                commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
+                uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
+                tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
+                stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+            VALUES (v_comm,
+                    'PGTAP-CE-' || r.caso || '-' || substr(md5(clock_timestamp()::text), 1, 12),
+                    v_modello.articolo_id, v_modello.istanza_utility_id,
+                    (v_mese + (r.off_mese || ' month')::interval)::date,
+                    v_modello.uom_id, 1,
+                    (v_mese + (r.off_mese || ' month')::interval)::date,
+                    (v_mese + (r.off_mese || ' month')::interval)::date,
+                    ((v_mese + (r.off_mese || ' month')::interval)
+                      + INTERVAL '1 month - 1 day')::date,
+                    v_modello.tipo_doc_fiscale_id, v_modello.valuta_id, 10.000000, 'FIXED',
+                    r.approvazione, r.emissione,
+                    -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+                    (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text)
+            RETURNING id INTO v_ca;
+
+            PERFORM dbops.fn_pgtap_porta_a_stato('vendite.commesse', v_comm,
+                CASE WHEN r.testata_ok THEN v_st.stato_ok ELSE v_st.stato_ko END);
+        END IF;
+
+        -- ⚠️ Il passaggio a PRONTA_FATTURAZIONE pretende una riga APPROVATA e
+        --   NON_EMESSA (fn_check_commessa_pronta_fatturazione): la riga nasce
+        --   pronta e, passata la testata, si porta alla forma del caso.
+        IF r.testata_ok AND (r.approvazione, r.emissione) IS DISTINCT FROM ('APPROVATA', 'NON_EMESSA') THEN
+            UPDATE vendite.commesse_attivita ca
+               SET stato_approvazione = r.approvazione,
+                   stato_emissione    = r.emissione
+             WHERE ca.id = v_ca;
+        END IF;
 
         INSERT INTO tmp_ce VALUES (
             r.caso, v_comm, v_ca,
             -- ⭐ La chiave si CHIEDE alla sola fonte, non si scrive a mano.
-            vendite.fn_build_gruppo_fatturabile_key(NULL, NULL, v_comm));
+            vendite.fn_build_gruppo_fatturabile_key(
+                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text, v_comm));
     END LOOP;
 END;
 $fixture$;
 
--- I lotti-testimone, e i loro esiti.
-DO $lotti$
-DECLARE
-    v_rif      record;
-    v_vivo     vendite.fatturazione_lotti.id%TYPE;
-    v_vivo2    vendite.fatturazione_lotti.id%TYPE;
-    v_chiuso   vendite.fatturazione_lotti.id%TYPE;
-BEGIN
-    SELECT * INTO v_rif FROM tmp_ce_rif;
+CREATE TEMP TABLE tmp_ce_rif AS
+SELECT
+  (SELECT m.soggetto_ruolo_id FROM tmp_ce_mondo m)             AS emittente_sr,
+  (SELECT c.billing_account_id FROM tmp_ce_cliente c)          AS billing_account_id,
+  -- il tipo documento dei lotti e' quello della riga scritta, non un pescato
+  (SELECT ca.tipo_doc_fiscale_id FROM vendite.commesse_attivita ca
+    WHERE ca.id = (SELECT t.ca_id FROM tmp_ce t WHERE t.caso = 'pronta')) AS tipo_doc_fiscale_id,
+  (SELECT sc.emittibile FROM vendite.stati_commessa sc, tmp_ce_stati st
+    WHERE sc.codice_interno = st.stato_ok AND sc.attivo IS TRUE)          AS stato_ok_emittibile,
+  (SELECT sc.emittibile FROM vendite.stati_commessa sc, tmp_ce_stati st
+    WHERE sc.codice_interno = st.stato_ko AND sc.attivo IS TRUE)          AS stato_ko_emittibile,
+  -- le righe costruite: una per commessa, sul cliente del test
+  (SELECT count(*) FROM tmp_ce t
+     JOIN vendite.commesse_attivita ca ON ca.id = t.ca_id AND ca.commessa_id = t.commessa_id
+     JOIN vendite.commesse c ON c.id = t.commessa_id
+    WHERE c.billing_account_id = (SELECT billing_account_id FROM tmp_ce_cliente)) AS n_costruite,
+  date_trunc('month', script.fn_data_operativa())::date                      AS mese;
 
-    INSERT INTO vendite.fatturazione_lotti
-        (codice, competenza_mese, tipo_doc_fiscale_id,
-         emittente_soggetto_ruolo_id, stato_doc_fiscale_id)
-    VALUES ('PGTAP-CE-LOTTO-VIVO', v_rif.mese, v_rif.tipo_doc_fiscale_id,
-            v_rif.emittente_sr,
-            (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT'))
-    RETURNING id INTO v_vivo;
+SELECT ok(
+  (SELECT r.emittente_sr IS NOT NULL AND r.billing_account_id IS NOT NULL
+      AND r.tipo_doc_fiscale_id IS NOT NULL
+      AND r.stato_ok_emittibile IS TRUE AND r.stato_ko_emittibile IS FALSE
+      AND r.n_costruite = 11
+     FROM tmp_ce_rif r),
+  '0. riferimenti minimi risolti (emittente, anagrafiche, undici righe costruite, due stati commessa)'
+);
 
-    INSERT INTO vendite.fatturazione_lotti
-        (codice, competenza_mese, tipo_doc_fiscale_id,
-         emittente_soggetto_ruolo_id, stato_doc_fiscale_id)
-    VALUES ('PGTAP-CE-LOTTO-VIVO2', v_rif.mese, v_rif.tipo_doc_fiscale_id,
-            v_rif.emittente_sr,
-            (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'EMESSA'))
-    RETURNING id INTO v_vivo2;
+-- I lotti-testimone, dal builder: lotto vuoto, stato per la matrice.
+--   Il DRAFT trattiene «trattenuta» (l'esito ERRORE lo scrive il builder).
+--   ⭐ DEFINITIVA: chiuso, non annullato. E' il caso del difetto §6.1.
+CREATE TEMP TABLE tmp_ce_lotti AS
+SELECT v.caso, l.*
+  FROM tmp_ce_rif r,
+       (VALUES ('vivo', 'DRAFT', 1), ('vivo2', 'EMESSA', 2), ('chiuso', 'DEFINITIVA', 3))
+           AS v(caso, stato, ord),
+       LATERAL dbops.fn_pgtap_crea_lotto(
+           'emittibilita ' || v.caso, v.stato::varchar, r.billing_account_id,
+           p_tipo_doc_fiscale_id   => r.tipo_doc_fiscale_id,
+           p_competenza_mese       => r.mese,
+           p_gruppo_key_trattenuto => CASE WHEN v.caso = 'vivo'
+               THEN (SELECT t.gruppo_key FROM tmp_ce t WHERE t.caso = 'trattenuta') END) l
+ ORDER BY v.ord;
 
-    -- ⭐ DEFINITIVA: chiuso, non annullato. E' il caso del difetto §6.1.
-    INSERT INTO vendite.fatturazione_lotti
-        (codice, competenza_mese, tipo_doc_fiscale_id,
-         emittente_soggetto_ruolo_id, stato_doc_fiscale_id)
-    VALUES ('PGTAP-CE-LOTTO-CHIUSO', v_rif.mese, v_rif.tipo_doc_fiscale_id,
-            v_rif.emittente_sr,
-            (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DEFINITIVA'))
-    RETURNING id INTO v_chiuso;
+-- Gli altri esiti sono forme del caso: il builder ne trattiene uno solo.
+-- ⚠️ `errore_codice` e `errore_messaggio` sono OBBLIGATORI su ERRORE: lo
+--   pretende il CHECK chk_fatturazione_lotti_esiti_errore_parlante, e ha
+--   ragione — un errore che non sa dire cosa e' successo non e' un esito.
+INSERT INTO vendite.fatturazione_lotti_esiti
+    (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio)
+SELECT (SELECT l.lotto_id FROM tmp_ce_lotti l WHERE l.caso = 'vivo'),
+       t.gruppo_key, 'ERRORE', 'E_PULL_COMMESSA', 'rotto per la prova'
+  FROM tmp_ce t WHERE t.caso IN ('due_lotti', 'mese_prima', 'mese_dopo');
 
-    -- ⚠️ `errore_codice` e `errore_messaggio` sono OBBLIGATORI su ERRORE: lo
-    --   pretende il CHECK chk_fatturazione_lotti_esiti_errore_parlante, e ha
-    --   ragione — un errore che non sa dire cosa e' successo non e' un esito.
-    INSERT INTO vendite.fatturazione_lotti_esiti
-        (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio)
-    SELECT v_vivo, t.gruppo_key, 'ERRORE', 'E_PULL_COMMESSA', 'rotto per la prova'
-      FROM tmp_ce t WHERE t.caso IN ('trattenuta', 'due_lotti', 'mese_prima', 'mese_dopo');
+INSERT INTO vendite.fatturazione_lotti_esiti (lotto_id, gruppo_key, stato_esecuzione)
+SELECT (SELECT l.lotto_id FROM tmp_ce_lotti l WHERE l.caso = 'vivo2'), t.gruppo_key, 'PENDING'
+  FROM tmp_ce t WHERE t.caso = 'due_lotti';
 
-    INSERT INTO vendite.fatturazione_lotti_esiti (lotto_id, gruppo_key, stato_esecuzione)
-    SELECT v_vivo2, t.gruppo_key, 'PENDING'
-      FROM tmp_ce t WHERE t.caso = 'due_lotti';
-
-    INSERT INTO vendite.fatturazione_lotti_esiti (lotto_id, gruppo_key, stato_esecuzione)
-    SELECT v_chiuso, t.gruppo_key, 'COMPLETED'
-      FROM tmp_ce t WHERE t.caso = 'lotto_chiuso';
-END;
-$lotti$;
+INSERT INTO vendite.fatturazione_lotti_esiti (lotto_id, gruppo_key, stato_esecuzione)
+SELECT (SELECT l.lotto_id FROM tmp_ce_lotti l WHERE l.caso = 'chiuso'), t.gruppo_key, 'COMPLETED'
+  FROM tmp_ce t WHERE t.caso = 'lotto_chiuso';
 
 -- ============================================================
 -- 1) Il contratto

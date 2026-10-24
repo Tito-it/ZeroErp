@@ -1,6 +1,6 @@
 # Sicurezza e qualità statica — strumenti, presidi, configurazione
 
-> **Ultimo aggiornamento**: 26 settembre 2026
+> **Ultimo aggiornamento**: 20 ottobre 2026
 >
 > **Destinatari**: chi sviluppa su backend, frontend o DB, e chi mette in piedi una macchina.
 > La versione descrittiva, per tutti, è la guida [Sicurezza di ZeroErp](../guide/sicurezza.md).
@@ -14,6 +14,7 @@
 > * [Configurazione Django](backend/configurazione-django.md) — superficie pubblica, nginx, rate limit, variabili d'ambiente
 > * [Linee guida SQL §11](../linee-guida-sql.md) — i divieti dei changeSet e i loro guardrail
 > * [Presidi e registri del debito](../guide/presidi-e-registri-del-debito.md) — perché un presidio nasce a zero
+> * [Qualità BE/FE — indicatori e lezioni](qualita-be-fe-indicatori.md) — che cosa si rilegge nel tempo, e la scorecard pesata
 > * `SECURITY.md` in radice — come si segnala una vulnerabilità
 
 ---
@@ -44,17 +45,17 @@ al primo aggiornamento.
 | Presidio | Guarda | Al commit | In CI | A mano |
 | --- | --- | --- | --- | --- |
 | **ruff** | Python: difetti e sicurezza (bandit) | ✅ hook `ruff-check` | ✅ via pre-commit (`ci-validate`) | `ruff check .` |
-| **mypy** | Python: tipi fra gli strati (type checker), a cricchetto | — | ✅ `ci-validate`, passo dedicato, dal 2026-10-08 | vedi sotto |
+| **mypy** | Python: tipi fra gli strati (type checker), a cricchetto | — | ✅ `ci-validate`, passo dedicato | vedi sotto |
 | **gitleaks** | segreti nei commit | ✅ hook `gitleaks` (staged) | ✅ via pre-commit, sui commit del range | vedi sotto |
 | **pip-audit** | dipendenze Python con CVE note | — | ✅ `ci-validate`, passo dedicato | vedi sotto |
-| **npm audit** | dipendenze JavaScript, `high`/`critical` | — | ✅ `ci-frontend`, dal 2026-10-08 | `npm audit --audit-level=high` |
+| **npm audit** | dipendenze JavaScript, `high`/`critical` | — | ✅ `ci-frontend` | `npm audit --audit-level=high` |
 | **Trivy** | immagine Docker (OS + librerie), HIGH/CRITICAL | — | ✅ `ci.yaml` | — |
-| **`check --deploy`** | configurazione Django di produzione | — | ✅ `ci-validate`, completo dal 2026-10-08, con cricchetto | vedi sotto |
+| **`check --deploy`** | configurazione Django di produzione | — | ✅ `ci-validate`, completo, con l'elenco degli avvisi accettati | vedi sotto |
 | **oxlint + eslint** | JavaScript/Vue | — | ✅ `ci-frontend` (`npm run lint`) | `npm run lint` |
-| **guard frontend** | 9 regole del progetto (`guard:*`) | — | ✅ `ci-frontend` (`npm run guards`) | `npm run guards` |
+| **guard frontend** | le regole del progetto (i `guard:*` di `package.json`) | — | ✅ `ci-frontend` (`npm run guards`) | `npm run guards` |
 | **header licenza, chiavi i18n, classi morte** | file nuovi, locales, CSS | ✅ hook locali | ✅ via pre-commit | `pre-commit run <id>` |
-| **guardrail SQL/Liquibase** | changeSet | — | ✅ `ci-validate` (7 passi) | `python scripts/guardrail_*.py` |
-| **plpgsql_check, privilegi ruolo app, pgTAP** | funzioni, GRANT, RLS | — | ✅ `ci-validate` | `scripts/testpgtap.sh` |
+| **guardrail SQL/Liquibase** | changeSet e definizioni live | — | ✅ `ci-validate`, un passo per guardrail | `python scripts/guardrail_*.py` |
+| **plpgsql_check, postura dei ruoli, pgTAP** | funzioni, GRANT e proprietà, RLS | — | ✅ `ci-validate` | `scripts/testpgtap.sh` |
 | **shellcheck, `systemd-analyze`** | script bash, unit dei worker | — | ✅ `ci-validate` | — |
 | **test Django di sicurezza** | permessi, superficie, perimetro | — | ✅ `ci-validate` | `python manage.py test` |
 
@@ -89,8 +90,8 @@ porta argomenti, così `ruff check` a mano e il cancello dicono la stessa cosa.
 | `PIE` | costruzioni ridondanti — fra cui la chiave duplicata in un `dict`/`TypedDict` |
 | `G`, `LOG` | uso corretto del logging (`logger.exception` dentro un `except`, e solo lì) |
 | **`S`** | **sicurezza** (le regole di Bandit, via flake8-bandit): SQL composto a stringhe, `except: pass`, template senza autoescape, `subprocess`, password cablate, hash deboli, `pickle`/`yaml.load`, ... |
-| `B` | bugbear, accesa il 2026-09-28: fra le altre `zip()` senza `strict=` (tronca **in silenzio** alla lista più corta: si scrive `strict=True`, e `strict=False` solo dove la troncatura è voluta, col perché), una funzione nel ciclo che legge la variabile del ciclo, `raise` dentro un `except` senza `from` |
-| `DTZ` | flake8-datetimez, accesa il 2026-10-09 a zero: `date.today()`, `datetime.now()` senza fuso, `datetime(...)`/`strptime` naive — il giorno e l'ora del **processo** (`TIME_ZONE = 'UTC'`), che non è il fuso dell'azienda. L'«oggi» è `fuso_aziendale.oggi_aziendale()`, l'ora mostrata `locale_formatters`; un naive voluto si marca col motivo ([brief un-solo-fuso-aziendale](work-done/brief-be-db-fe-un-solo-fuso-aziendale.md) B-9) |
+| `B` | bugbear: fra le altre `zip()` senza `strict=` (tronca **in silenzio** alla lista più corta: si scrive `strict=True`, e `strict=False` solo dove la troncatura è voluta, col perché), una funzione nel ciclo che legge la variabile del ciclo, `raise` dentro un `except` senza `from` |
+| `DTZ` | flake8-datetimez: `date.today()`, `datetime.now()` senza fuso, `datetime(...)`/`strptime` naive — il giorno e l'ora del **processo** (`TIME_ZONE = 'UTC'`), che non è il fuso dell'azienda. L'«oggi» è `fuso_aziendale.oggi_aziendale()`, l'ora mostrata `locale_formatters`; un naive voluto si marca col motivo ([brief un-solo-fuso-aziendale](work-done/brief-be-db-fe-un-solo-fuso-aziendale.md) B-9) |
 | `RUF100` | `# noqa` morti: una direttiva che non sopprime più niente |
 
 ### Le eccezioni, e perché
@@ -99,8 +100,8 @@ porta argomenti, così `ruff check` a mano e il cancello dicono la stessa cosa.
 | --- | --- | --- |
 | `ignore = ["S101"]` | ovunque | `assert` si usa per restringere il tipo. Il rischio della regola (`python -O` toglie gli assert) è chiuso alla radice: `settings.py` **rifiuta l'avvio** con gli assert spenti. Un **controllo** si scrive `if …: raise`, mai `assert` |
 | `T201`, `T203`, `S603`, `S607` | `scripts/**`, `backend/scripts/**` | negli script da riga di comando `print` è l'interfaccia e lanciare `git` dal PATH è il lavoro |
+| `T201`, `T203` | `docs/it/dev/*/allegati/*.py` | gli script allegati ai brief (collaudi lanciati a mano con `manage-env.sh shell <`) parlano a chi li lancia con `print` |
 | `S` | `**/tests/**`, `test_*.py`, `conftest.py` | nei test `assert` è il linguaggio e le password sono finte per costruzione |
-| `B904` | 4 righe, sul punto | `raise AssertionError("unreachable")` dopo `ErrorManager.raise_error`: righe che non si eseguono mai. La regola resta accesa |
 | formattatore | — | **spento**: riformattare tutto renderebbe illeggibile `git blame` |
 
 ### Come si usa `# noqa`
@@ -135,8 +136,8 @@ aperto protegge solo ciò che avanza.
 **File**: `backend/mypy.ini` (perimetro e regole), `backend/mypy.baseline.json` (il registro),
 `scripts/check_mypy_baseline.py` (il cancello). **Dipendenze**: `backend/requirements-dev.in`
 → `requirements-dev.txt` (mypy, `django-stubs`, `djangorestframework-stubs`, `types-bleach`, `types-openpyxl`), nella venv del
-backend ma **non** nell'immagine Docker. Acceso il 2026-10-08
-([piano](work-done/piano-be-type-checker.md)).
+backend ma **non** nell'immagine Docker. Il [piano](work-done/piano-be-type-checker.md) che l'ha
+acceso ne racconta la storia e lo smaltimento dell'arretrato.
 
 ### Perché
 
@@ -153,38 +154,37 @@ mesi un metodo che non esisteva più, e il test lo fabbricava col mock.
 | Strumento | mypy con i plugin Django e DRF | il plugin legge settings e modelli: conosce l'ORM. Pylance non ha un plugin Django, e resta spento in VS Code (due checker che dicono cose diverse sono peggio di uno) |
 | Perimetro | `apps/` e `zeroerp_backend/`, **esclusi** `tests/` e `migrations/` | i difetti stanno fra gli strati, quindi tutti gli strati; i test controllano mock, le migration sono generate |
 | Severità | base + `check_untyped_defs` | senza, mypy salta il corpo delle funzioni non annotate. Niente `strict` |
-| Librerie senza tipi | `ignore_missing_imports` **per nome** (oggi solo `weasyprint`, che non ha stub; `bleach` e `openpyxl` hanno i loro dal 2026-10-09) | globale, un import sbagliato del progetto diventerebbe `Any` in silenzio. Uno stub (`types-…`) è una dipendenza nuova: entra con l'ok di Tid, e la voce si toglie |
+| Librerie senza tipi | `ignore_missing_imports` **per nome**, in `mypy.ini`, solo per una libreria che non ha stub | globale, un import sbagliato del progetto diventerebbe `Any` in silenzio. Uno stub (`types-…`) è una dipendenza nuova: entra con l'ok di Tid, e la voce si toglie |
 | Dove gira | CI, sempre su **tutto** il perimetro; non in pre-commit | una firma cambiata in un file rompe il chiamante in un altro; l'hook vede i soli file in stage e il plugin vuole l'ambiente Django |
 
 ### Il registro
 
-⚠️ A differenza di `ruff`, mypy **nasce con un registro aperto** (decisione di Tid,
-2026-10-08): l'arretrato era di centinaia di rilievi su codice scritto senza checker, e
-sanarlo prima avrebbe rimandato di mesi la protezione del codice nuovo. Il registro deve
-**scendere**: la sede del suo smaltimento è il piano (lotti L2, L3+).
+A differenza di `ruff`, mypy **è nato con un registro aperto** (decisione di Tid): l'arretrato su
+codice scritto senza checker è stato smaltito dopo l'accensione, nei lotti del
+[piano](work-done/piano-be-type-checker.md), che ne tiene i numeri. Oggi il registro è **vuoto**,
+e il cricchetto non lo lascia risalire: per mypy vale la stessa regola degli altri presidi, un
+rosso vuol dire «l'hai introdotto tu».
 
-* **Stato**: **0** rilievi al 2026-10-09 (erano 620 alla nascita, il 2026-10-08; gli ultimi 2,
-  il valore NaN/infinito nella formattazione dei documenti, chiusi dal
-  [brief](work-done/brief-db-valore-numerico-non-finito-nei-documenti.md)). Il codice nuovo non
-  aggiunge voci: nasce pulito.
 * La chiave è **per nome**: file + codice (`[arg-type]`) + messaggio, con un conteggio. Mai il
   numero di riga, che cambia a ogni modifica sopra il punto.
 * Il cancello è **rosso** su: un rilievo nuovo; una voce del registro che non c'è più (sanata e
   non tolta); un'uscita di mypy che non sa leggere (configurazione rotta, plugin che non parte,
-  ambiente Django non caricato).
+  ambiente Django non caricato o incompleto: le settings rifiutano l'avvio se manca una variabile
+  obbligatoria, e mypy esce con un `INTERNAL ERROR`).
 * ⚠️ Limite: due rilievi identici nello stesso file sono una chiave col conteggio 2.
 
-Come si sana una voce: si corregge il codice (se è un difetto) o la firma (se l'annotazione era
+Come si sana una voce, se un `--rigenera` ne riporta: si corregge il codice (se è un difetto) o la firma (se l'annotazione era
 sbagliata), poi `--aggiorna` toglie la voce. ⛔ `--rigenera` riscrive il registro da zero, quindi
 anche **aggiungendo**: solo per una decisione (un aggiornamento di mypy o degli stub), e il diff
 lo mostra.
 
 ### Comandi
 
-Dalla cartella `backend/`, con la venv del backend e l'ambiente della macchina caricato:
+Dalla cartella `backend/`, con la venv del backend e l'ambiente della shell caricato (`env.sh`,
+sezione [I file](#i-file)):
 
 ```bash
-set -a && . ./.env && set +a
+set -a && . ./env.sh && set +a
 .venv/bin/python ../scripts/check_mypy_baseline.py              # il cancello, come in CI
 .venv/bin/python ../scripts/check_mypy_baseline.py --aggiorna   # toglie le voci sanate
 .venv/bin/mypy apps/vendite/services/commesse_service.py        # i rilievi di un file, a mano
@@ -247,8 +247,8 @@ gitleaks git --redact .
 * **Trivy** — `ci.yaml`, sull'immagine Docker costruita: fallisce su vulnerabilità HIGH/CRITICAL
   che hanno una correzione disponibile (`ignore-unfixed`).
 * **npm** — le correzioni di sicurezza di dipendenze transitive si fissano in
-  `frontend/package.json` → `overrides`. **`npm audit --audit-level=high`** in `ci-frontend.yaml`
-  dal 2026-10-08 (D1-f), acceso a zero, dopo `npm ci`: il gemello di `pip-audit`. Ferma solo
+  `frontend/package.json` → `overrides`. **`npm audit --audit-level=high`** in `ci-frontend.yaml`,
+  dopo `npm ci`: il gemello di `pip-audit`. Ferma solo
   `high`/`critical`, dipendenze di sviluppo comprese. Come `pip-audit`, un avviso su un lock che
   non cambia non arriva qui (il workflow gira sulle push che toccano `frontend/**`).
 
@@ -261,9 +261,9 @@ redirect HTTPS, lunghezza della `SECRET_KEY`, `DEBUG`, X-Frame-Options…), e og
 può agganciarne di suoi (drf-spectacular lo fa). In `ci-validate` il passo «Django check --deploy
 (completo)» li esegue così:
 
-* **completo**, senza `--tag security`, dal 2026-10-08 (D3-b): un controllo di produzione nuovo,
-  portato da una libreria o da un aggiornamento di Django, fa rosso senza che nessuno lo debba
-  accendere. drf-spectacular è a zero, e lo tiene a zero anche il registro per nome
+* **completo**, senza `--tag security`: un controllo di produzione nuovo, portato da una libreria
+  o da un aggiornamento di Django, fa rosso senza che nessuno lo debba accendere. Gli avvisi di
+  drf-spectacular li presidia anche il registro per nome
   `apps/core/tests/test_schema_openapi_registro.py`;
 * **`mail.E001` è silenziato** in `settings.py` (`SILENCED_SYSTEM_CHECKS`), **per progetto**:
   Django non spedisce posta in ZeroErp — tutta la posta passa dal servizio email e da
@@ -275,10 +275,10 @@ può agganciarne di suoi (drf-spectacular lo fa). In `ci-validate` il passo «Dj
 * HSTS e redirect si impostano ai valori di **produzione** (un anno, redirect acceso): se un
   giorno si spegnessero, `W004`/`W008` tornerebbero rossi;
 * un **avviso** (`W`), di qualunque famiglia, non cambia l'uscita di `check` (un errore `E` sì):
-  il cancello lo fa un `grep` con l'elenco dei rilievi **accettati**. Oggi sono `W005` (HSTS senza sottodomini) e
-  `W021` (HSTS senza preload), spenti **per scelta** e non debito: riguardano il dominio intero,
-  non ZeroErp, e il preload è di fatto irreversibile (brief sicurezza §1.3). `W004`/`W008` sono
-  chiusi dal 2026-09-28. Quell'elenco si **accorcia**, non si allunga per far passare una PR.
+  il cancello lo fa un `grep` con l'elenco dei rilievi **accettati**: `W005` (HSTS senza
+  sottodomini) e `W021` (HSTS senza preload), spenti **per scelta** e non debito: riguardano il
+  dominio intero, non ZeroErp, e il preload è di fatto irreversibile (brief sicurezza §1.3).
+  Quell'elenco si **accorcia**, non si allunga per far passare una PR.
 
 ### HSTS e redirect HTTPS
 
@@ -298,14 +298,13 @@ non in Nginx: sono versionati e li verifica `check --deploy`.
   `kill -HUP` non rilegge `.env.systemd`.
 
 La **CSP** invece sta in Nginx, perché la pagina HTML non la serve Django:
-[configurazione Django](backend/configurazione-django.md), sezione Nginx. ✅ Applicata su
-`backend-dev` dal 2026-09-28, con `Referrer-Policy` e `Permissions-Policy`, dopo un giro di
-collaudo in `Report-Only`.
+[configurazione Django](backend/configurazione-django.md), sezione Nginx, con `Referrer-Policy` e
+`Permissions-Policy`. Una politica nuova si collauda prima in `Report-Only`.
 
-A mano, con l'ambiente della macchina caricato:
+A mano, con l'ambiente della shell caricato:
 
 ```bash
-cd backend && set -a && . ./.env && set +a
+cd backend && set -a && . ./env.sh && set +a
 python manage.py check --deploy
 ```
 
@@ -341,7 +340,12 @@ da un agente.
 
 **Postura del DB** (`ci-validate`):
 
-* «Privilegi del ruolo applicativo»: i GRANT di `zeroerp_app` corrispondono al contratto;
+* «DB bootstrap» e «Ruoli di sistema - fase post»: i ruoli (`zeroerp_owner`, `zeroerp_job`,
+  `zeroerp_app`) e i loro GRANT nascono da `scripts/sql/provision_zeroerp.sql`, lo stesso script
+  di un'installazione, e la fase post verifica che il proprietario sia uno solo;
+* pgTAP di postura in `db/pgtap/dbops/` e `db/pgtap/maintenance/` (`test-*postura*`): le tabelle
+  sono del migratore, l'applicazione non possiede niente, `zeroerp_app` ha solo i privilegi del
+  contratto;
 * pgTAP in `db/pgtap/rls/`: struttura delle policy in lettura e scrittura
   (`test-rls-policies-structure.sql`, `test-rls-write-policies-structure.sql`) e tabelle scoperte
   (`test-rls-perimetro-scoperto.sql`).
@@ -387,8 +391,8 @@ carattere speciale), in `AUTH_PASSWORD_VALIDATORS`.
 | File | Tracciato | Contiene |
 | --- | --- | --- |
 | `backend/.env.example` | ✅ | il **modello**: nomi delle variabili e segnaposto |
-| `backend/.env` | ⛔ mai | l'ambiente della shell e di `manage.py` sulla macchina |
-| `backend/.env.systemd` | ⛔ mai | lo stesso, per il servizio (senza `export`) |
+| `backend/env.sh` | ⛔ mai | l'ambiente della shell (`set -a && . ./env.sh && set +a`): mypy e `manage.py` a mano |
+| `backend/.env.systemd` | ⛔ mai | lo stesso, per il servizio e i timer (senza `export`); lo leggono anche `manage-env.sh` e `manage-test.sh` |
 | `db/internal.env`, `internal*.env` | ⛔ mai | credenziali DB per pgTAP e strumenti |
 | `git.env` | ✅ | solo segnaposto e la lista degli schemi per la doc |
 
@@ -407,20 +411,20 @@ file che era già tracciato prima della regola. Il presidio è gitleaks.
 
 ### Le chiavi dei dati cifrati
 
-`crypto_service` cifra i segreti salvati nel DB (oggi le password SMTP degli account email)
-con le chiavi **Fernet** di `DJANGO_FIELD_ENCRYPTION_KEYS`, **separate dalla `SECRET_KEY`**.
-Fino al 2026-09-28 la chiave era derivata dalla `SECRET_KEY`: ruotare quella avrebbe reso
-illeggibile ogni dato cifrato, cioè non la si sarebbe ruotata mai.
+`crypto_service` cifra i segreti salvati nel DB con le chiavi **Fernet** di
+`DJANGO_FIELD_ENCRYPTION_KEYS`, **separate dalla `SECRET_KEY`**: una chiave derivata dalla
+`SECRET_KEY` renderebbe illeggibile ogni dato cifrato al primo cambio, cioè la `SECRET_KEY` non
+si ruoterebbe mai.
 
 * **La `SECRET_KEY`** firma JWT e sessioni. Cambiarla fa rientrare gli utenti e azzera i
   contatori dei nomi di login inesistenti (`nome_tentato`); i dati cifrati non li tocca.
 * **Le chiavi di cifratura** sono un elenco separato da virgola: si cifra con la **prima**, si
   decifra con **tutte** (`MultiFernet`). Chi le conosce può decifrare quei dati.
 * Ogni colonna cifrata è iscritta in `crypto_service.CAMPI_CIFRATI`: è l'elenco che la
-  rotazione percorre. Oggi due: la password SMTP (`config.email_account`) e il segreto del
-  secondo fattore (`config.auth_totp_device`, dal 2026-10-01). La seconda è chiusa in
-  scrittura all'app, e la rotazione la riscrive col verbo `script.fn_totp_ricifra_segreto`,
-  che sostituisce il segreto solo se è ancora quello letto.
+  rotazione percorre, e l'unico posto in cui si legge quali sono. Una colonna chiusa in
+  scrittura all'app si riscrive col suo verbo: per il segreto del secondo fattore
+  (`config.auth_totp_device`) è `script.fn_totp_ricifra_segreto`, che sostituisce il segreto
+  solo se è ancora quello letto.
 
 Le chiavi si gestiscono con due script in `backend/scripts/`, che tengono allineati i due file
 d'ambiente (`env.sh` e `.env.systemd`), non stampano mai una chiave e salvano una copia dei due
@@ -452,7 +456,7 @@ Rotazione delle chiavi di cifratura:
 ⭐ **Migrazione una-tantum** dei dati cifrati prima del 2026-09-28, su ogni macchina con dati:
 `chiave-cifratura-aggiungi.sh`, poi `chiave-cifratura-ricifra.sh --migrazione` (che passa
 `--anche-chiave-da-secret-key`), con la `SECRET_KEY` di allora **ancora in uso**, poi il
-riavvio. Solo **dopo** si può ruotare la `SECRET_KEY`. Fatta su `backend-dev` il 2026-09-28.
+riavvio. Solo **dopo** si può ruotare la `SECRET_KEY`.
 
 Generazione:
 
@@ -465,16 +469,13 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 ## Aperto
 
-Il debito sta in un registro solo:
-[migliorie generali BE/FE](work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md).
-Qui l'elenco di ciò che, in tema sicurezza, oggi **non** c'è.
+Qui l'elenco di ciò che, in tema sicurezza, oggi **non** c'è. Il debito aperto del progetto, con
+lo stato di ciascuna voce, sta in `.codex/PROJECT_CONTEXT.md` § «Aperto — Media priorità»;
+la storia delle voci chiuse in [migliorie generali BE/FE](work-done/migliorie-generali-BE-FE-da-test-valutazione.md) §9.
 
 | Cosa | Stato |
 | --- | --- |
-| **Rotazione dei segreti** rimasti nella storia del repo (`backend/.env`, e la chiave che era commentata in `settings.py`) | non urgente, decisione di Tid del 2026-09-26: il repo è privato. La chiave di cifratura è separata dal 2026-09-28 (brief §3.5): la `SECRET_KEY` si può ruotare dopo la migrazione dei dati cifrati, sezione [Le chiavi dei dati cifrati](#le-chiavi-dei-dati-cifrati) |
-| **CSP** e header di pagina (`Referrer-Policy`, `Permissions-Policy`) in Nginx | ✅ applicata su `backend-dev` il 2026-09-28 dopo il collaudo in `Report-Only` — brief [sicurezza: header, token, MFA](work-done/brief-be-fe-sicurezza-header-token-mfa.md) §1.6, registro voce D3-c. In produzione va la politica senza le due eccezioni di Vite, scritta accanto nel vhost documentato |
-| `npm audit` in CI | ✅ 2026-10-08 (D1-f): passo in `ci-frontend.yaml`, sezione [Dipendenze e immagine](#dipendenze-e-immagine) |
+| **Rotazione dei segreti** rimasti nella storia del repo (`backend/.env`, e la chiave che era commentata in `settings.py`) | non urgente, decisione di Tid del 2026-09-26: il repo è privato. Con le chiavi di cifratura separate, la `SECRET_KEY` si può ruotare dopo la migrazione dei dati cifrati, sezione [Le chiavi dei dati cifrati](#le-chiavi-dei-dati-cifrati) |
 | Dependabot (nessun `.github/dependabot.yml` nel repo) | da decidere |
-| Token JWT fuori da `localStorage` | ✅ fatto il 2026-09-28 (brief §2): refresh in cookie `HttpOnly`/`SameSite=Strict` (BB `apps/core/api/refresh_cookie.py`), access di 10 minuti solo in memoria (`frontend/src/core/sessione.js`), rinnovo coordinato fra schede. Resta il collaudo a video su `backend-dev` |
-| Autenticazione a due fattori | stesso brief, §3 |
-| Nessun filtro che oscuri i dati sensibili nei log | proposto |
+| Nessun filtro che oscuri i dati sensibili nei log | proposto, senza brief |
+| `djangorestframework-simplejwt` senza un manutentore certo | in PROJECT_CONTEXT § «Aperto — Media priorità» |

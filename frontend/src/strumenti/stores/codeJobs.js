@@ -14,8 +14,8 @@
 //    questo l'unica che non poteva passare da `bindPeriodo` — cioe' l'unica
 //    senza l'invariante «`da > a` non puo' esistere» e senza il verso giusto
 //    degli eventi (una data digitata a mano non applicava il filtro). L'ordinamento viaggia come
-// `sort_by`/`sort_dir` (convenzione endpoint tracciamento, whitelist BE
-// ELENCA_SORT_SQL / CODA_STAMPA_SORT_SQL).
+// `order_by`/`order_dir` come ogni altra lista (whitelist BE ELENCA_SORT_SQL /
+// CODA_STAMPA_SORT_SQL). Fino al 2026-10-20 l'endpoint voleva `sort_by`/`sort_dir`.
 //
 // Semantica CODA: `alwaysFetch: true` — il lavoro pendente e' visibile al
 // mount senza ricerca. userScoped: reset al logout (feedback_pinia_userscoped).
@@ -27,10 +27,11 @@ import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptySta
 import { listCodaLavori, listCodaStampa } from '../../core/api/tracciamento'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 import { defaultFiltroDataDaString } from '../../core/utils/date'
+import { paramsOrdinamento } from '../../core/utils/listParams'
 import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 // Scopo: mappa filtri store → query param degli endpoint coda (limit/offset +
-//        filtri opzionali + sort_by/sort_dir maiuscolo come da contratto BE).
+//        filtri opzionali + order_by/order_dir).
 function buildCodaParams(f) {
   const p = { limit: f.limit, offset: f.offset }
   if (f.ambito === 'tutti') p.ambito = 'tutti'
@@ -44,12 +45,8 @@ function buildCodaParams(f) {
   // default, e il parametro le chiede. ⛔ Il filtro sta nel BACKEND e non qui:
   // la lista è paginata lato server, filtrare a valle filtrerebbe solo la
   // pagina visibile.
-  if (f.archiviate) p.archiviate = 1
-  if (f.order_by) {
-    p.sort_by = f.order_by
-    p.sort_dir = f.order_dir === 'asc' ? 'ASC' : 'DESC'
-  }
-  return p
+  if (f.archiviate) p.archiviate = true
+  return { ...p, ...paramsOrdinamento(f) }
 }
 
 // Factory: crea uno store coda con l'interfaccia standard delle liste

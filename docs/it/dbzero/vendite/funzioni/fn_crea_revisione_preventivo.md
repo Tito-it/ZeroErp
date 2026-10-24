@@ -7,17 +7,24 @@ CREATE FUNCTION fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
  RETURNS TABLE(nuovo_preventivo_id bigint, numero character varying, nuova_rev integer)
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-24 (20261024-21, brief-modello-documento-vendita N-1/P-2):
+--   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+--   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
 DECLARE
   v_stato_corrente_cod  config.stati_doc_preventivi.codice_interno%TYPE;
   v_numero              vendite.preventivi.numero%TYPE;
   v_max_rev             vendite.preventivi.rev%TYPE;
-  v_stato_draft_id      config.stati_doc_preventivi.id%TYPE;
   v_new_id              vendite.preventivi.id%TYPE;
+  -- La data della testata nuova, letta dal RETURNING (rev 2026-10-13):
+  -- e' il riferimento delle date di consegna copiate.
+  v_new_data            vendite.preventivi.data%TYPE;
   v_new_rev             vendite.preventivi.rev%TYPE;
   v_has_draft           boolean;
   v_riga                vendite.preventivi_righe%ROWTYPE;
@@ -55,6 +62,13 @@ BEGIN
   --   copiano con un elenco ESPLICITO di colonne, quindi una colonna non
   --   nominata non passa — e' lo stesso punto in cui si perdeva al push
   --   (20260913-20). Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo.
+  --   ⚠️ rev 2026-10-13 (collaudo date di consegna, decisione di Tid): una
+  --   data ANTERIORE alla data della rev N+1 (che nasce con la data di oggi)
+  --   si copia NULL, per la regola script.fn_data_consegna_ammessa — quella
+  --   del guard di riga, che altrimenti rifiuterebbe l'INSERT. Non si
+  --   rifiuta la revisione (la rev N e' fuori bozza: la data li' non si
+  --   correggerebbe) e non si porta alla data della revisione (sarebbe una
+  --   richiesta mai fatta dal cliente). La rev N la conserva.
   --
   -- NOTE marche di approvazione prezzo (rev 2026-09-14, 20260914-14, D di Tid):
   --   stato_approvazione_prezzo e pratica_approvazione_prezzo_id si copiano
@@ -187,21 +201,6 @@ BEGIN
     NULL::uuid,
     jsonb_build_object('preventivo_id', p_preventivo_id, 'numero', v_numero));
 
-  -- Recupera stato DRAFT id
-  SELECT id INTO v_stato_draft_id
-    FROM config.stati_doc_preventivi
-   WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
-
-  IF v_stato_draft_id IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_crea_revisione_preventivo',
-      'E_CONFIG_MANCANTE',
-      jsonb_build_object('tabella', 'config.stati_doc_preventivi', 'codice', 'DRAFT'),
-      NULL::uuid,
-      'stato DRAFT non trovato o non attivo in config.stati_doc_preventivi'
-    );
-  END IF;
-
   -- Calcola nuova revisione
   SELECT COALESCE(MAX(p.rev), 0) + 1
     INTO v_new_rev
@@ -218,7 +217,7 @@ BEGIN
     validita_dal, validita_al,
     totale_imponibile, totale_iva, totale_documento,
     valuta_id, competenza_mese, fatturazione_immediata,
-    stato_doc_preventivo_id, data, termine_pagamento_id,
+    data, termine_pagamento_id,
     storicizza, meta,
     user_insert, user_update
   )
@@ -228,12 +227,12 @@ BEGIN
     p.validita_dal, p.validita_al,
     0, 0, 0,
     p.valuta_id, p.competenza_mese, p.fatturazione_immediata,
-    v_stato_draft_id, (SELECT script.fn_data_operativa()), p.termine_pagamento_id,
+    (SELECT script.fn_data_operativa()), p.termine_pagamento_id,
     p.storicizza, p.meta,
     COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
   FROM vendite.preventivi p
   WHERE p.id = p_preventivo_id
-  RETURNING id INTO v_new_id;
+  RETURNING id, data INTO v_new_id, v_new_data;
 
   -- Copia righe attive, e per ciascuna i suoi componenti BoM.
   -- Una riga alla volta, con RETURNING (rev 2026-10-08): la
@@ -262,7 +261,12 @@ BEGIN
       v_riga.quantita, v_riga.prezzo_unitario, v_riga.sconto_percentuale,
       v_riga.iva_id, v_riga.ordine, v_riga.attivo,
       v_riga.qta_operativa, v_riga.uom_operativa_id, v_riga.factor_to_base,
-      v_riga.data_consegna_richiesta_cliente,
+      -- rev 2026-10-13 (collaudo date di consegna, decisione di Tid): una
+      -- richiesta ANTERIORE alla data della rev N+1 arriva NULL — la regola
+      -- del guard di riga, script.fn_data_consegna_ammessa. La rev N, fuori
+      -- bozza, conserva la sua; la rev N+1 e' DRAFT e l'operatore la riscrive.
+      CASE WHEN script.fn_data_consegna_ammessa(v_riga.data_consegna_richiesta_cliente, v_new_data)
+           THEN v_riga.data_consegna_richiesta_cliente END,
       v_riga.stato_approvazione_prezzo, v_riga.pratica_approvazione_prezzo_id,
       v_riga.meta,
       COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
@@ -325,8 +329,10 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
-IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (tutti, anche gli spenti, rimappati per identita'') e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2. rev 2026-08-05 (20260805-25): codici rinominati con prefisso E_ — E_PREV_REVISIONE_STATO_NON_AMMESSO (850), E_PREV_REVISIONE_BOZZA_ESISTENTE (851), E_PREV_STATO_CORRENTE_NON_TROVATO (852); i vecchi nomi restano a catalogo ritirati con obsoleto_dal. rev 2026-09-14 (20260914-13): le righe copiate portano data_consegna_richiesta_cliente — la data chiesta dal cliente sopravvive alla revisione come sopravvive al push (20260913-20); firma e RETURNS TABLE di nuovo ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 6-quinquies. rev 2026-09-14 (20260914-14, D di Tid): le righe copiate portano anche le marche di approvazione prezzo — stato_approvazione_prezzo + pratica_approvazione_prezzo_id 1:1, come i componenti e come fn_crea_revisione_offerta (invariante: prezzo fuori policy sempre marcato; ciclo di vita della pratica su rev superata: dominio approvazioni, refactor-prezzi 4.7). Presidio: test-fn-crea-revisione-preventivo-riga-completa-v1. rev 2026-09-15 (20260915-41, D3 di Tid): la TESTATA copia emittente_fiscale_id dalla rev N — prima lo riempiva il default di sessione, e per un super admin su un altro emittente attivo la rev N+1 nasceva incoerente col BA (rifiutata dal guard). Brief: brief-db-emittente-di-default-un-bb-solo, sezione 7.1. rev 2026-09-24 (20260924-34, decisione di Tid): nessuna revisione con un prezzo IN ATTESA — guard sul primo motivo di script.fn_check_prezzi_in_attesa (righe e componenti attivi PENDING), lo stesso con cui la capability spegne «Crea revisione». Una riga in attesa ricopiata restava legata alla pratica della rev N e sulla rev N+1 non si esitava piu''''. Approvato e rifiutato continuano a ricopiarsi (azzerarli farebbe passare un prezzo rifiutato). Brief: brief-db-preventivi-congelamento-pricing §10. rev 2026-10-08 (20261008-35, brief-db-righe-e-componenti-le-altre-famiglie §2.1, D-1 di Tid): i componenti delle righe copiate si copiano TUTTI, anche gli opzionali spenti (la revisione e'' lo stesso documento: non portarli li cancellava, e nella rev N+1 non si potevano piu'' riaccendere), e si rimappano per identita'', una riga alla volta col suo RETURNING, invece che con un ROW_NUMBER sui due insiemi. Forma di fn_crea_revisione_offerta (20261005-19). rev 2026-10-08 (20261008-87, brief-db-righe-e-componenti-debiti-residui §3, D-3 di Tid): un componente SPENTO in PENDING si copia con stato_approvazione_prezzo e pratica_approvazione_prezzo_id a NULL. La pratica e'' della rev N e sulla rev N+1 non si esiterebbe mai; un attivo in attesa continua a fermare la revisione, approvato e rifiutato si copiano 1:1. La richiesta nuova alla riaccensione e'' dell''L3 dei componenti, che non esiste ancora (debito dichiarato). Gemella: fn_crea_revisione_offerta (20261008-88).';
+IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (tutti, anche gli spenti, rimappati per identita'') e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2. rev 2026-08-05 (20260805-25): codici rinominati con prefisso E_ — E_PREV_REVISIONE_STATO_NON_AMMESSO (850), E_PREV_REVISIONE_BOZZA_ESISTENTE (851), E_PREV_STATO_CORRENTE_NON_TROVATO (852); i vecchi nomi restano a catalogo ritirati con obsoleto_dal. rev 2026-09-14 (20260914-13): le righe copiate portano data_consegna_richiesta_cliente — la data chiesta dal cliente sopravvive alla revisione come sopravvive al push (20260913-20); firma e RETURNS TABLE di nuovo ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 6-quinquies. rev 2026-09-14 (20260914-14, D di Tid): le righe copiate portano anche le marche di approvazione prezzo — stato_approvazione_prezzo + pratica_approvazione_prezzo_id 1:1, come i componenti e come fn_crea_revisione_offerta (invariante: prezzo fuori policy sempre marcato; ciclo di vita della pratica su rev superata: dominio approvazioni, refactor-prezzi 4.7). Presidio: test-fn-crea-revisione-preventivo-riga-completa-v1. rev 2026-09-15 (20260915-41, D3 di Tid): la TESTATA copia emittente_fiscale_id dalla rev N — prima lo riempiva il default di sessione, e per un super admin su un altro emittente attivo la rev N+1 nasceva incoerente col BA (rifiutata dal guard). Brief: brief-db-emittente-di-default-un-bb-solo, sezione 7.1. rev 2026-09-24 (20260924-34, decisione di Tid): nessuna revisione con un prezzo IN ATTESA — guard sul primo motivo di script.fn_check_prezzi_in_attesa (righe e componenti attivi PENDING), lo stesso con cui la capability spegne «Crea revisione». Una riga in attesa ricopiata restava legata alla pratica della rev N e sulla rev N+1 non si esitava piu''''. Approvato e rifiutato continuano a ricopiarsi (azzerarli farebbe passare un prezzo rifiutato). Brief: brief-db-preventivi-congelamento-pricing §10. rev 2026-10-08 (20261008-35, brief-db-righe-e-componenti-le-altre-famiglie §2.1, D-1 di Tid): i componenti delle righe copiate si copiano TUTTI, anche gli opzionali spenti (la revisione e'' lo stesso documento: non portarli li cancellava, e nella rev N+1 non si potevano piu'' riaccendere), e si rimappano per identita'', una riga alla volta col suo RETURNING, invece che con un ROW_NUMBER sui due insiemi. Forma di fn_crea_revisione_offerta (20261005-19). rev 2026-10-08 (20261008-87, brief-db-righe-e-componenti-debiti-residui §3, D-3 di Tid): un componente SPENTO in PENDING si copia con stato_approvazione_prezzo e pratica_approvazione_prezzo_id a NULL. La pratica e'' della rev N e sulla rev N+1 non si esiterebbe mai; un attivo in attesa continua a fermare la revisione, approvato e rifiutato si copiano 1:1. La richiesta nuova alla riaccensione e'' dell''L3 dei componenti, che non esiste ancora (debito dichiarato). Gemella: fn_crea_revisione_offerta (20261008-88). ⭐ rev 2026-10-13 (20261013-68, collaudo date di consegna, decisione di Tid): una data_consegna_richiesta_cliente ANTERIORE alla data della rev N+1 (letta dal RETURNING della testata nuova) si copia NULL — script.fn_data_consegna_ammessa, la regola del guard di riga script.trgfn_doc_righe_guard_data_consegna, che altrimenti rifiuterebbe l''INSERT. Non si rifiuta la revisione (la rev N e'' fuori bozza e la data li'' non si correggerebbe) e non si porta alla data della revisione (sarebbe una richiesta mai fatta dal cliente): la rev N la conserva, la rev N+1 e'' DRAFT. Firma invariata.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

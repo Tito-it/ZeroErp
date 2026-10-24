@@ -179,3 +179,13 @@ mentre i log di dominio governano stato/esito funzionale visibile in dashboard.
 ---
 
 > **“Un error log strutturato con identità transazionale e contesto dettagliato semplifica il debug e il monitoraggio degli incidenti applicativi.”**
+
+---
+
+### 🧹 Scadenza
+
+Una riga di errore resta **90 giorni** dall'orario dell'errore (`occurred_at`), come le
+chiamate di [`dbops.request_log`](/dbzero/dbops/manual/request_log): regola CLEANUP_AT id=25.
+La scadenza la calcola il job settimanale delle automazioni, non un trigger alla nascita:
+la tabella la scrive anche una sessione dblink che non legge le regole. Dettaglio nella
+guida [Audit e tracciabilità](/guide/audit-e-tracciabilita).

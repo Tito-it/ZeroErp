@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_prezzi_autorizzati(p_testata regclass, p_documento_id b
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_prezzi_autorizzati(p_testata regclass, p_documento_id bigint)
  RETURNS jsonb
@@ -240,6 +242,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_prezzi_autorizzati(p_testata regclass, p_documento_id bigint)
 IS 'Building block: i motivi per cui un documento di vendita contiene prezzi che nessuno ha autorizzato — in attesa di approvazione (PENDING) o rifiutati (REJECTED) — su righe o componenti BoM ATTIVI. PURA: non solleva sul contenuto e non scrive. Ritorna [] oppure un array ordinato di {codice, reason, reason_key, dettaglio, valori}: prima E_DOC_PREZZO_PENDENTE, poi E_DOC_PREZZO_RIFIUTATO (entrambi CONFLITTO_STATO); nel dettaglio n_prezzi e la prima riga/componente, nei valori il conteggio. ⭐ Il documento si indica con la tabella di TESTATA (regclass): vendite.preventivi, vendite.contratti, vendite.offerte_commerciali (le righe con prezzo sono le eccezioni), vendite.ordini e vendite.ddt (solo i componenti portano lo stato). Un''altra tabella solleva E_PARAMETRO_INVALIDO: un [] farebbe passare tutto in silenzio. ⭐ Il predicato sta qui, la politica nel documento: QUANDO chiederlo (verso EMESSO/ACCETTATO, ATTIVO, EMESSA/ACCETTATA, CONFERMATO; il DDT solo se la causale vende) lo decidono le check e i guard di ciascun documento. ⚠️ Solo righe e componenti ATTIVI: i componenti si spengono invece di cancellarsi, e uno rifiutato e poi tolto bloccherebbe il documento per sempre. Prima di questa funzione la stessa domanda era scritta in cinque sedi che non dicevano la stessa cosa, e il REJECTED non lo guardava nessuna. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-2, D-5, D-6).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

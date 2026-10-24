@@ -34,6 +34,8 @@ defineProps({
   // cascata soglie L2 con livello categoria_cliente del BA.
   billingAccountId: { type: Number, default: null },
   isModificabile: { type: Boolean, default: true },
+  // La data del preventivo: minimo del calendario delle date di consegna.
+  dataDocumento: { type: String, default: null },
 })
 const emit = defineEmits(['changed', 'form-aperto'])
 
@@ -81,7 +83,12 @@ function approvazioneTooltip(data) {
 //    aperta, inoltrata al drawer per le sue uscite. La tiene il form di riga,
 //    che si registra presso la tabella (`registra` dello slot).
 const tabella = ref(null)
-defineExpose({ ...unisciFotografie(() => tabella.value) })
+defineExpose({
+  ...unisciFotografie(() => tabella.value),
+  // Il drawer padre rilegge le righe dopo un gesto fatto altrove (un documento
+  // collegato chiuso dalla barra collegamenti).
+  loadRighe: () => tabella.value?.loadRighe(),
+})
 </script>
 
 <template>
@@ -123,6 +130,7 @@ defineExpose({ ...unisciFotografie(() => tabella.value) })
         :preventivo-id="preventivoId"
         :billing-account-id="billingAccountId"
         :riga="riga"
+        :data-documento="dataDocumento"
         @saved="onSaved"
         @componenti-changed="onComponentiChanged"
         @cancel="onCancel"

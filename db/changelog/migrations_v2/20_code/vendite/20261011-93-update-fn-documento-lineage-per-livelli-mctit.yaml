@@ -1,0 +1,283 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PANNELLO «PASSAGGI» RISALE LA CATENA UN LIVELLO ALLA VOLTA
+#   vendite.fn_documento_lineage(bigint, text, text)
+#   Brief: brief-db-lineage-seminata-per-chiave §8.5 (giro A).
+#
+# ── IL DIFETTO, SUL MODELLO ─────────────────────────────────────────
+#   La funzione leggeva vw_documento_lineage_archi, cioe' l'INTERO grafo
+#   decorato di tutti i documenti del sistema (20261010-44 lo leggeva una
+#   volta sola invece che a ogni livello, ma sempre intero). Aprire il pannello
+#   di un documento costava quanto tutti i documenti.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   A ogni livello UNA chiamata a fn_documento_lineage_archi col seme = i nodi
+#   correnti di tutti i percorsi aperti; la decorazione (codice, stato, fase,
+#   natura) si legge UNA volta alla fine da fn_documento_lineage_nodi, per i
+#   soli nodi toccati. La semantica e' quella di prima, identica: percorsi
+#   (un nodo raggiunto per due strade compare due volte), guardia dei cicli
+#   sul percorso e non globale (assente al livello 1, come nella ricorsione),
+#   al massimo 10 livelli, stesso ORDER BY e stesso `ordine`.
+#   Firma, RETURNS TABLE coi suoi %TYPE, controlli dei parametri: invariati.
+#   Le due funzioni chiamate dichiarano gia' jit = off e piano generico
+#   (20261011-67): qui non serve niente.
+#
+# ── PROVE E FATTI DATATI (2026-10-11, dbdev come app, copia pg_temp) ──
+#   Equivalenza: ognuno dei 477 nodi nelle due direzioni (954 casi, 710 righe
+#   per parte), EXCEPT ALL a zero nei due versi, colonna `ordine` compresa.
+#   Tempi: media ~154 → ~16 ms a chiamata (massimo ~88), con 20261011-92.
+#   Il costo segue la lunghezza della catena, non il numero dei documenti.
+#
+# Presidio: db/pgtap/vendite/test-documento-lineage-v1.sql (forma e guardie),
+#   db/pgtap/vendite/test-documento-lineage-seminata-v1.sql (17-18: la catena
+#   di un grafo costruito, nelle due direzioni).
+# Dipendenze: 20261011-92 (gli archi per chiave in forma leakproof).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-93-update-fn-documento-lineage-per-livelli-mctit.yaml
+
+  - changeSet:
+      id: 20261011-93-update-fn-documento-lineage-per-livelli
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_documento_lineage (pannello «Passaggi») risale la catena un livello alla volta da
+        fn_documento_lineage_archi e decora i soli nodi toccati con fn_documento_lineage_nodi,
+        invece di leggere l'intero grafo. Stessa semantica (percorsi, guardia dei cicli, 10
+        livelli, ordine). ~154 → ~16 ms a chiamata (dbdev come app).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE oid = to_regprocedure('vendite.fn_documento_lineage(bigint, text, text)')
+            - sqlCheck:
+                expectedResult: 2
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                   WHERE p.pronamespace = 'vendite'::regnamespace
+                     AND p.proname IN ('fn_documento_lineage_archi', 'fn_documento_lineage_nodi')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_documento_lineage(
+                  p_tipo_id   config.sorgenti.id%TYPE,
+                  -- ⚠️ p_uid NON e' ancorabile: e' la chiave POLIMORFA del nodo — uuid per
+                  --    preventivi e offerte, id per tutto il resto, secondo il key_selector
+                  --    di config.sorgenti — resa a text. Non e' il riflesso di UNA colonna.
+                  p_uid       text,
+                  -- ⚠️ idem p_direzione: 'avanti'|'indietro' non e' il valore di una colonna.
+                  p_direzione text DEFAULT 'avanti'
+              )
+               RETURNS TABLE(
+                             -- livello e ordine li CALCOLA il traversal: non c'e' colonna.
+                             livello                 integer,
+                             ordine                  integer,
+                             -- la lettera diagnostica nasce in fn_documento_lineage_archi, non in tabella.
+                             arco                    text,
+                             ruolo                   vendite.commesse_sorgenti.ruolo_link%TYPE,
+                             from_tipo_id            config.sorgenti.id%TYPE,
+                             -- from_uid/to_uid e from_codice/to_codice: stessa ragione di
+                             -- p_uid — chiave polimorfa e `numero` di otto tabelle diverse.
+                             from_uid                text,
+                             from_codice             text,
+                             to_tipo_id              config.sorgenti.id%TYPE,
+                             to_uid                  text,
+                             to_codice               text,
+                             -- lo stato arriva dalla UNION di otto config.stati_doc_*:
+                             -- nessuna singola colonna da ancorare.
+                             to_stato_codice_interno character varying,
+                             to_fase                 character varying,
+                             to_is_abortito          boolean,
+                             is_ramo_inverso         boolean,
+                             -- ⭐ rev 2026-08-20: la NATURA dei due estremi. Senza, nel
+                             --    pannello «Passaggi» due nodi FATTURA della stessa commessa
+                             --    — la fattura e la nota di credito che la rettifica — sono
+                             --    la stessa riga scritta due volte: stesso tipo, stesso
+                             --    stato, e `codice` NULL finche' non sono numerati.
+                             from_natura_doc_codice_interno  config.nature_doc_fiscale.codice_interno%TYPE,
+                             to_natura_doc_codice_interno    config.nature_doc_fiscale.codice_interno%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: la catena di UN documento per il pannello «Passaggi», risalendo il
+              --   grafo UN LIVELLO ALLA VOLTA dalle funzioni per chiave (rev 2026-10-11,
+              --   brief-db-lineage-seminata-per-chiave, giro A). Prima leggeva la vista degli
+              --   archi, cioe' l'intero grafo decorato di tutti i documenti del sistema.
+              -- Lo stato del traversal e' un insieme di PERCORSI: {t, u} il nodo corrente,
+              --   {v} i nodi gia' visitati SU QUEL PERCORSO. E' la semantica di prima,
+              --   identica: un nodo raggiunto per due strade compare due volte, ciascuna col
+              --   suo livello; la guardia dei cicli e' sul percorso, non globale.
+              -- A ogni livello: UNA chiamata a fn_documento_lineage_archi col seme = i nodi
+              --   correnti (distinti) di tutti i percorsi; poi ogni percorso prende gli archi
+              --   che partono dal suo nodo (avanti: from; indietro: to). Al massimo 10 livelli
+              --   (prima: livello < 10 nel termine ricorsivo).
+              -- ⚠️ Al livello 1 il controllo dei visitati non c'e', come prima: la ricorsione
+              --   lo applicava solo dal livello 2 (un cappio dal nodo di partenza non esiste
+              --   per costruzione — N esclude rr = fr — ma l'equivalenza non lo da' per scontato).
+              -- La decorazione (codice, stato, fase, natura) si legge UNA volta alla fine, da
+              --   fn_documento_lineage_nodi, per i soli nodi toccati: e' la stessa LEFT JOIN
+              --   della vista degli archi, quindi un nodo che chi legge non vede esce con le
+              --   colonne NULL, come prima.
+              DECLARE
+                  v_avanti  boolean := (p_direzione = 'avanti');
+                  v_stati   jsonb;                 -- [{t, u, v:[...]}] i percorsi aperti
+                  v_archi   jsonb := '[]'::jsonb;  -- [{l, from_t, from_u, to_t, to_u, arco, ruolo, inv}]
+                  v_livello integer := 0;
+                  v_tipi    bigint[];
+                  v_uids    text[];
+                  v_nuovi   jsonb;
+              BEGIN
+                  IF p_tipo_id IS NULL OR p_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
+                          jsonb_build_object('detail', 'p_tipo_id obbligatorio e > 0',
+                                             'p_tipo_id', p_tipo_id),
+                          NULL::uuid,
+                          concat('p_tipo_id non valido: ', COALESCE(p_tipo_id::text, 'NULL')));
+                  END IF;
+
+                  IF p_uid IS NULL OR btrim(p_uid) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
+                          jsonb_build_object('detail', 'p_uid obbligatorio (chiave nodo)'),
+                          NULL::uuid,
+                          'p_uid non valido (NULL o vuoto)');
+                  END IF;
+
+                  IF p_direzione IS NULL OR p_direzione NOT IN ('avanti', 'indietro') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
+                          jsonb_build_object('detail', 'p_direzione deve essere avanti|indietro',
+                                             'p_direzione', p_direzione),
+                          NULL::uuid,
+                          concat('p_direzione non valido: ', COALESCE(p_direzione, 'NULL')));
+                  END IF;
+
+                  v_stati := jsonb_build_array(jsonb_build_object(
+                                 't', p_tipo_id, 'u', p_uid,
+                                 'v', jsonb_build_array(p_tipo_id::text || ':' || p_uid)));
+
+                  WHILE v_livello < 10 AND jsonb_array_length(v_stati) > 0 LOOP
+                      v_livello := v_livello + 1;
+
+                      -- Il seme del livello: i nodi correnti, distinti.
+                      SELECT array_agg(q.t), array_agg(q.u)
+                        INTO v_tipi, v_uids
+                        FROM (SELECT DISTINCT (s->>'t')::bigint AS t, s->>'u' AS u
+                                FROM jsonb_array_elements(v_stati) s) q;
+
+                      -- Ogni percorso prende gli archi che partono dal suo nodo; il nodo
+                      -- successivo non deve stare fra i visitati del percorso (dal livello 2).
+                      WITH stati AS (
+                          SELECT (s->>'t')::bigint AS t, s->>'u' AS u, s->'v' AS v
+                            FROM jsonb_array_elements(v_stati) s
+                      ), passi AS (
+                          SELECT a.*, st.v,
+                                 CASE WHEN v_avanti THEN a.to_tipo_id ELSE a.from_tipo_id END AS nt,
+                                 CASE WHEN v_avanti THEN a.to_uid     ELSE a.from_uid     END AS nu
+                            FROM stati st
+                            JOIN vendite.fn_documento_lineage_archi(v_tipi, v_uids) a
+                              ON (    v_avanti AND a.from_tipo_id = st.t AND a.from_uid = st.u)
+                              OR (NOT v_avanti AND a.to_tipo_id   = st.t AND a.to_uid   = st.u)
+                      )
+                      SELECT coalesce(jsonb_agg(jsonb_build_object(
+                                 'l', v_livello,
+                                 'from_t', p.from_tipo_id, 'from_u', p.from_uid,
+                                 'to_t', p.to_tipo_id, 'to_u', p.to_uid,
+                                 'arco', p.arco, 'ruolo', p.ruolo, 'inv', p.is_ramo_inverso,
+                                 'nt', p.nt, 'nu', p.nu, 'v', p.v)), '[]'::jsonb)
+                        INTO v_nuovi
+                        FROM passi p
+                       WHERE v_livello = 1
+                          OR NOT (to_jsonb(p.nt::text || ':' || p.nu) <@ p.v);
+
+                      v_archi := v_archi || v_nuovi;
+                      SELECT coalesce(jsonb_agg(jsonb_build_object(
+                                 't', n->'nt', 'u', n->'nu',
+                                 'v', (n->'v') || to_jsonb((n->>'nt') || ':' || (n->>'nu')))), '[]'::jsonb)
+                        INTO v_stati
+                        FROM jsonb_array_elements(v_nuovi) n;
+                  END LOOP;
+
+                  -- La decorazione, una volta: i nodi toccati dagli archi trovati.
+                  SELECT array_agg(k.t), array_agg(k.u)
+                    INTO v_tipi, v_uids
+                    FROM (SELECT (e->>'from_t')::bigint AS t, e->>'from_u' AS u FROM jsonb_array_elements(v_archi) e
+                          UNION
+                          SELECT (e->>'to_t')::bigint, e->>'to_u' FROM jsonb_array_elements(v_archi) e) k;
+
+                  RETURN QUERY
+                  WITH t AS (
+                      SELECT (e->>'l')::integer        AS livello,
+                             e->>'arco'                AS arco,
+                             e->>'ruolo'               AS ruolo,
+                             (e->>'from_t')::bigint    AS from_tipo_id,
+                             e->>'from_u'              AS from_uid,
+                             (e->>'to_t')::bigint      AS to_tipo_id,
+                             e->>'to_u'                AS to_uid,
+                             (e->>'inv')::boolean      AS is_ramo_inverso
+                        FROM jsonb_array_elements(v_archi) e
+                  ), nodi AS MATERIALIZED (
+                      SELECT n.tipo_id, n.uid, n.codice, n.stato_codice_interno, n.fase,
+                             n.is_abortito, n.natura_doc_codice_interno
+                        FROM vendite.fn_documento_lineage_nodi(v_tipi, v_uids) n
+                  )
+                  SELECT t.livello::integer,
+                         (ROW_NUMBER() OVER (ORDER BY t.livello,
+                                                      t.from_tipo_id, t.from_uid,
+                                                      t.to_tipo_id, t.to_uid))::integer AS ordine,
+                         t.arco::text, t.ruolo::varchar,
+                         t.from_tipo_id, t.from_uid::text, nf.codice::text,
+                         t.to_tipo_id, t.to_uid::text, nt.codice::text,
+                         nt.stato_codice_interno::varchar, nt.fase::varchar, nt.is_abortito,
+                         t.is_ramo_inverso,
+                         nf.natura_doc_codice_interno::varchar, nt.natura_doc_codice_interno::varchar
+                    FROM t
+                    LEFT JOIN nodi nf ON nf.tipo_id = t.from_tipo_id AND nf.uid = t.from_uid
+                    LEFT JOIN nodi nt ON nt.tipo_id = t.to_tipo_id   AND nt.uid = t.to_uid
+                   ORDER BY ordine;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $c$
+              BEGIN
+                  EXECUTE format('COMMENT ON FUNCTION vendite.fn_documento_lineage(bigint, text, text) IS %L',
+                      '⭐ rev 2026-10-11 (20261011-93): la catena si risale UN LIVELLO ALLA VOLTA da '
+                      'vendite.fn_documento_lineage_archi (seme = i nodi correnti dei percorsi aperti) e si '
+                      'decora una volta, alla fine, da vendite.fn_documento_lineage_nodi per i soli nodi '
+                      'toccati: il costo segue la catena, non il grafo intero. Semantica identica (percorsi, '
+                      'guardia dei cicli sul percorso, 10 livelli, ordine). La «sorgente unica» qui sotto e'' '
+                      'ora la grammatica degli archi in fn_documento_lineage_archi, di cui la vista e'' la '
+                      'proiezione. '
+                      || coalesce(obj_description('vendite.fn_documento_lineage(bigint, text, text)'::regprocedure, 'pg_proc'), ''));
+              END
+              $c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Si torna indietro ri-applicando il corpo di 20261010-44 (la vista
+              --    degli archi letta una volta, intera).
+              SELECT 1;

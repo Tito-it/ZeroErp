@@ -5,6 +5,8 @@
 >
 > Indirizzo completo: stradario + comune + provincia + CAP + via estesa.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW script.vw_indirizzo_completo AS
 SELECT s.id AS id_stradario,
@@ -24,6 +26,8 @@ SELECT s.id AS id_stradario,
      JOIN config.codici_postali cp ON ((s.codice_postale_id = cp.id)))
      JOIN script.vw_stradario_esteso ve ON ((s.stradario_generale_id = ve.id_via)));
 ```
+
+</div>
 
 
 ---

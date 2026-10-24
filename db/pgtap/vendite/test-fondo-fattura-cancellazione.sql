@@ -3,6 +3,19 @@
 -- pgTAP test per Zero ERP
 -- Test: la CANCELLAZIONE di un atto di fondo fattura, e lo stato di NASCITA
 --
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): sorgente e figlia
+--   congelata nascono in bozza e si portano avanti con
+--   dbops.fn_pgtap_porta_a_stato (prima nascevano gia' DEFINITIVA).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-4): cliente, azienda e
+--   registro li costruisce dbops.fn_pgtap_crea_mondo_cliente (+
+--   script.fn_pgtap_registro_fattura) invece di pescare il primo billing
+--   account, che su un database ricostruito non c'e'. Il contesto si apre
+--   DOPO, sull'operatore del mondo.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-5): le tre fatture le
+--   scrive dbops.fn_pgtap_crea_fattura sul cliente del mondo, con minimo e
+--   totale alla nascita e lo stato per la matrice; niente piu' INSERT a mano,
+--   snapshot in LATERAL e porta_a_stato nel file.
+--
 -- Elenco test (plan 14):
 --  1) Riferimenti minimi presenti
 --  2) D-22: un atto non puo' NASCERE gia' ANNULLATO
@@ -54,7 +67,12 @@ BEGIN;
 -- ⚠️ 2. CONTESTO APPLICATIVO: questo test gira come gira l'applicazione
 --   (OPERATORE + RLS attiva), non come owner. Dal changeSet 20260831-62 la
 --   tabella degli atti ha le sue policy, e la fixture le attraversa.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+--   Il mondo (azienda, operatore, cliente) si costruisce PRIMA, e il contesto
+--   si apre sul suo operatore.
+CREATE TEMP TABLE tmp_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('fondo_cancellazione');
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_mondo)); END $ctx$;
 
 -- ⚠️ 3. VINCOLI DIFFERITI: senza, non verrebbero mai esercitati (si chiude in
 --   ROLLBACK) e il file sarebbe verde per sottrazione.
@@ -68,23 +86,15 @@ SELECT plan(14);
 CREATE TEMP TABLE tmp_costanti AS
 SELECT 'pgtap_fondo_cancellazione'::text AS test_scope;
 
+-- I riferimenti del documento sono quelli del mondo: il registro e' quello
+-- della sua azienda (lo crea se non c'e').
 CREATE TEMP TABLE tmp_refs AS
-WITH ba AS (
-  SELECT b.id, b.utility_id
-    FROM anagrafiche.billing_account b
-   ORDER BY b.data_insert DESC NULLS LAST, b.id DESC
-   LIMIT 1
-)
-SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(ba.id)) AS registro_id,
-       ba.id                                                                        AS billing_account_id,
-       ba.utility_id                                                                AS utility_id,
+SELECT script.fn_pgtap_registro_fattura(m.emittente_soggetto_ruolo_id)              AS registro_id,
+       m.billing_account_id,
+       m.utility_id,
        (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
        (SELECT id FROM config.valute ORDER BY id LIMIT 1)                           AS valuta_id,
-       (SELECT m.emittente_soggetto_ruolo_id
-          FROM anagrafiche.emittenti_fiscali_billing_account m
-         WHERE (m.billing_account_id = ba.id OR m.is_default IS TRUE)
-         ORDER BY CASE WHEN m.billing_account_id = ba.id THEN 0 ELSE 1 END, m.id
-         LIMIT 1)                                                                   AS emittente_soggetto_ruolo_id,
+       m.emittente_soggetto_ruolo_id,
        (SELECT t.id FROM vendite.tipi_fondi_fattura t
          WHERE t.attivo IS TRUE AND t.codice_interno = 'F_F_ADD_ACC'
          ORDER BY t.id LIMIT 1)                                                     AS tipo_fondo_id,
@@ -92,7 +102,7 @@ SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(
          WHERE s.codice_interno = 'DEFINITIVA' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_definitiva_id,
        (SELECT s.id FROM config.stati_doc_fiscale s
          WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)      AS stato_draft_id
-  FROM ba;
+  FROM tmp_mondo m;
 
 SELECT ok(
   (SELECT registro_id IS NOT NULL
@@ -114,54 +124,32 @@ SELECT ok(
   '1) Riferimenti minimi presenti, e la soglia congela_fiscale dice cio'' che il test assume'
 );
 
+-- ⭐ Le tre fatture le scrive il builder (rev 2026-10-24, R-5): cliente del
+--   mondo (terzo parametro), minimo e totale alla NASCITA, e fuori bozza
+--   indirizzi, intestazione e matrice, sotto i guard veri. Un builder per
+--   istruzione: le tabelle si leggono dopo.
+
 -- La fattura SORGENTE del fondo: definitiva, di minimo, totale 100.
 CREATE TEMP TABLE tmp_src AS
-WITH ins AS (
-  INSERT INTO vendite.fatture (
-      registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
-      minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
-         true, 100.00,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
-    FROM tmp_refs r
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT f.fattura_id AS id
+  FROM dbops.fn_pgtap_crea_fattura(
+         'fondo_cancellazione', 'DEFINITIVA', (SELECT billing_account_id FROM tmp_refs),
+         false, false, p_minimo => true, p_totale_a_pagare => 100.00) f;
 
 -- La figlia ANCORA LAVORABILE: DRAFT, quindi i suoi satelliti si toccano.
 CREATE TEMP TABLE tmp_figlia_ok AS
-WITH ins AS (
-  INSERT INTO vendite.fatture (
-      registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
-      minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_draft_id,
-         false, 200.00,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
-    FROM tmp_refs r
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT f.fattura_id AS id
+  FROM dbops.fn_pgtap_crea_fattura(
+         'fondo_cancellazione', 'DRAFT', (SELECT billing_account_id FROM tmp_refs),
+         false, false, p_minimo => false, p_totale_a_pagare => 200.00) f;
 
 -- ⭐ La figlia CONGELATA: e' il caso nuovo di G-3, e sui dati di oggi non
 --   esiste. Si COSTRUISCE, o il test 9 passerebbe a vuoto.
 CREATE TEMP TABLE tmp_figlia_ko AS
-WITH ins AS (
-  INSERT INTO vendite.fatture (
-      registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
-      minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
-         false, 300.00,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
-    FROM tmp_refs r
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT f.fattura_id AS id
+  FROM dbops.fn_pgtap_crea_fattura(
+         'fondo_cancellazione', 'DEFINITIVA', (SELECT billing_account_id FROM tmp_refs),
+         false, false, p_minimo => false, p_totale_a_pagare => 300.00) f;
 
 -- ============================================================
 -- D-22 — LO STATO DI NASCITA

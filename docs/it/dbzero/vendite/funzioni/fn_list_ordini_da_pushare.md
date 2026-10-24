@@ -7,11 +7,16 @@ CREATE FUNCTION fn_list_ordini_da_pushare(p_competenza_mese date, p_billing_acco
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_ordini_da_pushare(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_ordine_id bigint DEFAULT NULL::bigint)
- RETURNS TABLE(ordine_id bigint, ordine_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, tipo_consumo character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer)
+ RETURNS TABLE(ordine_id bigint, ordine_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer)
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-20 (20261020-92, brief-db-grammatica-unica-documenti, 2e G-8):
+--   la chiave e' ORDINE_VENDITA:<uid>:R:<riga>, composta da
+--   script.fn_segment_key (era ORD:...). Firma e RETURNS ancorati.
 DECLARE
   v_sorgente_tipo_id    config.sorgenti.id%TYPE;
   v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
@@ -63,7 +68,7 @@ BEGIN
     o.fatturazione_immediata,
     v_sorgente_tipo_id,
     o.uid::text,
-    ('ORD:' || o.uid::text || ':R:' || or_r.id::text)::varchar,
+    script.fn_segment_key('ORDINE_VENDITA', o.uid::text, or_r.id),
     or_r.articolo_id,
     ba.istanza_utility_id,
     o.data,
@@ -80,7 +85,6 @@ BEGIN
     TRUE,
     'FIXED'::varchar,
     'NORMALE'::varchar,
-    'CONGUAGLIO'::varchar,
     o.valuta_id,
     jsonb_build_object(
       'ordine_numero',       o.numero,
@@ -114,15 +118,17 @@ BEGIN
     -- reason della capability: vede anche i componenti #CMP e
     -- non dipende piu' da stato_emissione (ALLOCATA basta).
     AND script.fn_get_stato_push_segment(
-          'ORD:' || o.uid::text || ':R:' || or_r.id::text) = 'LIBERA'
+          script.fn_segment_key('ORDINE_VENDITA', o.uid::text, or_r.id)) = 'LIBERA'
   ORDER BY o.id, or_r.id
   LIMIT p_limit;
 END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ordini_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ordine_id bigint)
-IS 'Lista righe ordine eligible al push su commessa (fatturazione_trigger CONFERMATO; stato documento libero sull''asse spedizione, esclusi DRAFT/ANNULLATO/FATTURATO). uom_id da catalogo.articoli (canonica). p_ordine_id opzionale: NULL=batch globale, NOT NULL=singolo ordine. Filtri in AND. Esclude EMESSA via NOT EXISTS. rev 2026-07-10: fix orfano trigger CONFERMATO evaso (decoupling fatturazione/spedizione, piano-db-fix-orfano-push-ordine-confermato). rev 2026-07-19: esclusione su ALLOCAZIONE via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.ordini.fatturazione_immediata (era costante FALSE) — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta la costante TRUE: l''accoppiamento flag/prezzo esiste solo sui preventivi. Espone termine_pagamento_id e modalita_pagamento_id dell''ordine (rev 2026-08-03, T.1). rev 2026-10-10 (20261010-56): via il filtro billing_account_id IS NOT NULL (colonna NOT NULL). Brief: brief-db-istanza-nasce-col-ba-residui (D-1).';
+IS 'Lista righe ordine eligible al push su commessa (fatturazione_trigger CONFERMATO; stato documento libero sull''asse spedizione, esclusi DRAFT/ANNULLATO/FATTURATO). uom_id da catalogo.articoli (canonica). p_ordine_id opzionale: NULL=batch globale, NOT NULL=singolo ordine. Filtri in AND. Esclude EMESSA via NOT EXISTS. rev 2026-07-10: fix orfano trigger CONFERMATO evaso (decoupling fatturazione/spedizione, piano-db-fix-orfano-push-ordine-confermato). rev 2026-07-19: esclusione su ALLOCAZIONE via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.ordini.fatturazione_immediata (era costante FALSE) — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta la costante TRUE: l''accoppiamento flag/prezzo esiste solo sui preventivi. Espone termine_pagamento_id e modalita_pagamento_id dell''ordine (rev 2026-08-03, T.1). rev 2026-10-10 (20261010-56): via il filtro billing_account_id IS NOT NULL (colonna NOT NULL). Brief: brief-db-istanza-nasce-col-ba-residui (D-1). rev 2026-10-13 (20261013-22): tipo_consumo RITIRATO in tutta la catena del push (madre, batch, cinque lister, builder pgTAP). Non aveva un lettore, e il vocabolario della madre (ACCONTO/CONGUAGLIO/STORNO) non lo produceva nessuna sorgente con un significato: preventivi, ordini e DDT scrivevano la costante CONGUAGLIO, contratti (l''erogazione della riga) e consumi (CONSUMO) un valore che la madre rifiutava, quindi il loro push falliva sempre (E_PARAMETRO_INVALIDO). L''erogazione resta dove gia'' stava, in meta.tipo_erogazione. Decisione A di Tid, 2026-10-13. Colonna tipo_consumo tolta dal RETURNS TABLE (DROP + CREATE). Rev 2026-10-20 (20261020-92, brief-db-grammatica-unica-documenti 2e, G-8): la chiave e'' ORDINE_VENDITA:<uid>:R:<riga>, composta da script.fn_segment_key (era ORD:...).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

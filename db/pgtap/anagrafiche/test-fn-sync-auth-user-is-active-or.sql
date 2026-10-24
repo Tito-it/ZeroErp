@@ -125,13 +125,15 @@ SELECT ok(
 -- =========================================================
 -- 2) User con 1 identita CLIENTE_PORTALE attiva -> is_active=true
 -- =========================================================
-INSERT INTO anagrafiche.identita_digitali
-    (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-SELECT
-    (SELECT sr_id FROM _t_sr_cl WHERE rn = 1),
-    (SELECT auth_user_id FROM _t_au_pool WHERE idx = 1),
-    'CLIENTE_PORTALE'::config.ruolo_applicativo, true
- WHERE (SELECT count(*) FROM _t_sr_cl) = 5;
+-- La veste dal BB anagrafiche.fn_crea_veste_portale (rev 2026-10-18,
+-- brief-db-processi-accensione-per-ambiente 2b-1 lotto 6).
+DO $veste$
+BEGIN
+    PERFORM 1 FROM (
+        SELECT anagrafiche.fn_crea_veste_portale((SELECT auth_user_id FROM _t_au_pool WHERE idx = 1), (SELECT sr_id FROM _t_sr_cl WHERE rn = 1), 'CLIENTE_PORTALE'::config.ruolo_applicativo, true) WHERE (SELECT count(*) FROM _t_sr_cl) = 5
+    ) AS v;
+END
+$veste$;
 
 SELECT anagrafiche.fn_sync_auth_user_is_active(
     (SELECT auth_user_id FROM _t_au_pool WHERE idx = 1)
@@ -153,19 +155,17 @@ END;
 -- 3) User con 2 identita attive (CLIENTE_PORTALE + SHOP_CUSTOMER)
 --    -> is_active=true (entrambe concorrono via OR)
 -- =========================================================
-INSERT INTO anagrafiche.identita_digitali
-    (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-SELECT
-    (SELECT sr_id FROM _t_sr_cl WHERE rn = 2),
-    (SELECT auth_user_id FROM _t_au_pool WHERE idx = 2),
-    'CLIENTE_PORTALE'::config.ruolo_applicativo, true
- WHERE (SELECT count(*) FROM _t_sr_cl) = 5
-UNION ALL
-SELECT
-    (SELECT sr_id FROM _t_sr_cl WHERE rn = 2),
-    (SELECT auth_user_id FROM _t_au_pool WHERE idx = 2),
-    'SHOP_CUSTOMER'::config.ruolo_applicativo, true
- WHERE (SELECT count(*) FROM _t_sr_cl) = 5;
+-- La veste dal BB anagrafiche.fn_crea_veste_portale (rev 2026-10-18,
+-- brief-db-processi-accensione-per-ambiente 2b-1 lotto 6).
+DO $veste$
+BEGIN
+    PERFORM 1 FROM (
+        SELECT anagrafiche.fn_crea_veste_portale((SELECT auth_user_id FROM _t_au_pool WHERE idx = 2), (SELECT sr_id FROM _t_sr_cl WHERE rn = 2), 'CLIENTE_PORTALE'::config.ruolo_applicativo, true) WHERE (SELECT count(*) FROM _t_sr_cl) = 5
+        UNION ALL
+        SELECT anagrafiche.fn_crea_veste_portale((SELECT auth_user_id FROM _t_au_pool WHERE idx = 2), (SELECT sr_id FROM _t_sr_cl WHERE rn = 2), 'SHOP_CUSTOMER'::config.ruolo_applicativo, true) WHERE (SELECT count(*) FROM _t_sr_cl) = 5
+    ) AS v;
+END
+$veste$;
 
 SELECT anagrafiche.fn_sync_auth_user_is_active(
     (SELECT auth_user_id FROM _t_au_pool WHERE idx = 2)
@@ -220,19 +220,17 @@ END;
 -- 5) User con CLIENTE_PORTALE attiva + SHOP_CUSTOMER spenta
 --    -> is_active=true (OR: basta la veste utilizzabile)
 -- =========================================================
-INSERT INTO anagrafiche.identita_digitali
-    (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-SELECT
-    (SELECT sr_id FROM _t_sr_cl WHERE rn = 4),
-    (SELECT auth_user_id FROM _t_au_pool WHERE idx = 4),
-    'CLIENTE_PORTALE'::config.ruolo_applicativo, true
- WHERE (SELECT count(*) FROM _t_sr_cl) = 5
-UNION ALL
-SELECT
-    (SELECT sr_id FROM _t_sr_cl WHERE rn = 4),
-    (SELECT auth_user_id FROM _t_au_pool WHERE idx = 4),
-    'SHOP_CUSTOMER'::config.ruolo_applicativo, false
- WHERE (SELECT count(*) FROM _t_sr_cl) = 5;
+-- La veste dal BB anagrafiche.fn_crea_veste_portale (rev 2026-10-18,
+-- brief-db-processi-accensione-per-ambiente 2b-1 lotto 6).
+DO $veste$
+BEGIN
+    PERFORM 1 FROM (
+        SELECT anagrafiche.fn_crea_veste_portale((SELECT auth_user_id FROM _t_au_pool WHERE idx = 4), (SELECT sr_id FROM _t_sr_cl WHERE rn = 4), 'CLIENTE_PORTALE'::config.ruolo_applicativo, true) WHERE (SELECT count(*) FROM _t_sr_cl) = 5
+        UNION ALL
+        SELECT anagrafiche.fn_crea_veste_portale((SELECT auth_user_id FROM _t_au_pool WHERE idx = 4), (SELECT sr_id FROM _t_sr_cl WHERE rn = 4), 'SHOP_CUSTOMER'::config.ruolo_applicativo, false) WHERE (SELECT count(*) FROM _t_sr_cl) = 5
+    ) AS v;
+END
+$veste$;
 
 SELECT anagrafiche.fn_sync_auth_user_is_active(
     (SELECT auth_user_id FROM _t_au_pool WHERE idx = 4)
@@ -254,13 +252,15 @@ END;
 -- 6) User con sola identita CLIENTE_PORTALE ma attivo=false
 --    -> is_active=false (nessuna identita utilizzabile)
 -- =========================================================
-INSERT INTO anagrafiche.identita_digitali
-    (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-SELECT
-    (SELECT sr_id FROM _t_sr_cl WHERE rn = 5),
-    (SELECT auth_user_id FROM _t_au_pool WHERE idx = 5),
-    'CLIENTE_PORTALE'::config.ruolo_applicativo, false
- WHERE (SELECT count(*) FROM _t_sr_cl) = 5;
+-- La veste dal BB anagrafiche.fn_crea_veste_portale (rev 2026-10-18,
+-- brief-db-processi-accensione-per-ambiente 2b-1 lotto 6).
+DO $veste$
+BEGIN
+    PERFORM 1 FROM (
+        SELECT anagrafiche.fn_crea_veste_portale((SELECT auth_user_id FROM _t_au_pool WHERE idx = 5), (SELECT sr_id FROM _t_sr_cl WHERE rn = 5), 'CLIENTE_PORTALE'::config.ruolo_applicativo, false) WHERE (SELECT count(*) FROM _t_sr_cl) = 5
+    ) AS v;
+END
+$veste$;
 
 SELECT anagrafiche.fn_sync_auth_user_is_active(
     (SELECT auth_user_id FROM _t_au_pool WHERE idx = 5)

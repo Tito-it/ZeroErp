@@ -7,6 +7,8 @@ CREATE FUNCTION fn_snapshot_indirizzo(p_indirizzo_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_snapshot_indirizzo(p_indirizzo_id bigint)
  RETURNS TABLE(snapshot jsonb, origine_soggetto_ruolo_id bigint)
@@ -87,6 +89,8 @@ $function$
 COMMENT ON FUNCTION script.fn_snapshot_indirizzo(p_indirizzo_id bigint)
 IS 'Compone lo snapshot canonico (intestazione, via, cap, citta, prov, stato, display) di un indirizzo del layer RUOLO, a partire dal suo id. Ogni valore passa da NULLIF(btrim(...)): `prov` arriva da config.province.sigla che e'' un character(10) e `stato` da config.stati.codice_iso2 — senza il btrim lo snapshot congelerebbe il riempimento a spazi per sempre, e la Provincia della FatturaPA e'' di due caratteri (fix 2026-07-31, segnalazione BE su giro reale). Le chiavi vuote diventano NULL e spariscono con jsonb_strip_nulls. Gemella: script.fn_snapshot_indirizzo_soggetto, che deve restare identica nello shape.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

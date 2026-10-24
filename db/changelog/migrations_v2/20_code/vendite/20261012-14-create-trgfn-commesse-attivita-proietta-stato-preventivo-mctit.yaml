@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE DI COMMESSA DI UN PREVENTIVO RIPROIETTANO IL SUO STATO
+#   vendite.trgfn_commesse_attivita_proietta_stato_preventivo() -> trigger
+#   Brief: brief-db-annullo-a-valle-riapre-a-monte (D-1, D-10 di Tid; R-3, R-8)
+#
+# ── PERCHE' UN TRIGGER, E NON UNA CHIAMATA DA UNA MADRE ─────────────
+#   Lo stato di un ordine dalle bolle lo riproiettano le madri DB che
+#   scrivono i legami (vendite.fn_ordine_proietta_stato_evasione chiamato da
+#   fn_genera_ddt_da_ordine, dai verbi del reso, ...). L'invio in commessa
+#   invece NON ha una madre nel DB: lo orchestra il backend, che scrive le
+#   righe una per una (fn_upsert_commessa_attivita). Fino a qui il
+#   passaggio ACCETTATO -> EVASO lo faceva il backend dopo l'invio singolo,
+#   «best-effort», e l'invio batch non lo faceva affatto. D-10: lo fa il DB.
+#   Il solo punto del DB che vede ogni strada (invio singolo e batch,
+#   ritiro all'annullo di un documento, annullo della commessa, cancellazione)
+#   e' la riga di commessa: da li' il trigger chiama il BB
+#   vendite.fn_preventivo_proietta_stato_smistamento (20261012-12).
+#
+# ── COSA FA ─────────────────────────────────────────────────────────
+#   Per una riga con sorgente PREVENTIVO (config.sorgenti.codice_interno)
+#   trova il preventivo dal suo uid (sorgente_uid = <preventivo>.uid::text,
+#   indice ix_preventivi_uid_text) e chiama il BB. Ogni altra riga (altre
+#   sorgenti, sourceless) esce subito. AFTER ROW: il BB legge il residuo
+#   DOPO la scrittura della riga. Il BB scrive solo se lo stato cambia,
+#   quindi durante un invio di N righe il preventivo diventa EVASO una
+#   volta, all'ultima.
+#   ⚠️ Costo: per ogni riga di un preventivo il BB rilegge il residuo delle
+#   righe del preventivo (decine, sull'indice del segmento). E' il prezzo di
+#   una regola che vale su ogni strada; per le righe delle altre sorgenti il
+#   costo e' una lettura di config.sorgenti per id.
+#   SECURITY INVOKER: legge il preventivo con la RLS di chi scrive la riga
+#   (l'app che invia: il lister le ha gia' fatto vedere quel preventivo; il
+#   proprietario dentro i verbi DEFINER). Un preventivo invisibile non si
+#   tocca.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-14-create-trgfn-commesse-attivita-proietta-stato-preventivo-mctit.yaml
+
+  - changeSet:
+      id: 20261012-14-create-trgfn-commesse-attivita-proietta-stato-preventivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Funzione trigger vendite.trgfn_commesse_attivita_proietta_stato_preventivo: una riga di
+        commessa di un preventivo che nasce, cambia stato_emissione o sparisce riproietta lo stato
+        del preventivo (BB vendite.fn_preventivo_proietta_stato_smistamento). D-10.
+        Brief: brief-db-annullo-a-valle-riapre-a-monte (R-8).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_preventivo_proietta_stato_smistamento';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_commesse_attivita_proietta_stato_preventivo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.trgfn_commesse_attivita_proietta_stato_preventivo()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: una riga di commessa di un preventivo e' nata, ha
+              --   cambiato stato_emissione o e' sparita: il preventivo si
+              --   riproietta (ACCETTATO <-> EVASO) dal BB
+              --   vendite.fn_preventivo_proietta_stato_smistamento.
+              -- Montaggio: AFTER INSERT OR DELETE, e AFTER UPDATE con WHEN sul
+              --   cambio di stato_emissione, FOR EACH ROW. Vedi l'intestazione
+              --   del changeSet.
+              -- =========================================================
+              DECLARE
+                  v_sorgente_tipo_id vendite.commesse_attivita.sorgente_tipo_id%TYPE;
+                  v_sorgente_uid     vendite.commesse_attivita.sorgente_uid%TYPE;
+                  v_preventivo_id    vendite.preventivi.id%TYPE;
+              BEGIN
+                  IF TG_OP = 'DELETE' THEN
+                      v_sorgente_tipo_id := OLD.sorgente_tipo_id;
+                      v_sorgente_uid     := OLD.sorgente_uid;
+                  ELSE
+                      v_sorgente_tipo_id := NEW.sorgente_tipo_id;
+                      v_sorgente_uid     := NEW.sorgente_uid;
+                  END IF;
+
+                  -- Sourceless (oneri, rettifiche) o di un'altra sorgente: niente.
+                  IF v_sorgente_tipo_id IS NULL
+                     OR NOT EXISTS (SELECT 1
+                                      FROM config.sorgenti s
+                                     WHERE s.id = v_sorgente_tipo_id
+                                       AND s.codice_interno = 'PREVENTIVO') THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- La chiave e' <preventivo>.uid::text (fn_list_preventivi_da_pushare).
+                  SELECT p.id
+                    INTO v_preventivo_id
+                    FROM vendite.preventivi p
+                   WHERE p.uid::text = v_sorgente_uid;
+
+                  IF v_preventivo_id IS NOT NULL THEN
+                      PERFORM vendite.fn_preventivo_proietta_stato_smistamento(v_preventivo_id);
+                  END IF;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_commesse_attivita_proietta_stato_preventivo() IS
+                  'Funzione trigger (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte D-1/D-10 di Tid): una riga di vendite.commesse_attivita con sorgente PREVENTIVO che nasce, cambia stato_emissione o sparisce riproietta lo stato del suo preventivo (ACCETTATO <-> EVASO) dal BB vendite.fn_preventivo_proietta_stato_smistamento. Trigger e non chiamata da una madre perche'' l''invio in commessa nel DB non ha una madre (lo orchestra il backend riga per riga): la riga di commessa e'' il solo punto che vede ogni strada (invio singolo e batch, ritiro all''annullo di un documento, annullo della commessa, cancellazione). Prende il posto del gate EVASO del backend dopo l''invio in commessa. Il preventivo si trova dal suo uid (sorgente_uid = uid::text); le righe sourceless e delle altre sorgenti escono subito. SECURITY INVOKER: la RLS di chi scrive la riga; un preventivo invisibile non si tocca. Montaggio: trg_commesse_attivita_z90_proietta_stato_preventivo_ins_dlt e _upd (20261012-15).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.trgfn_commesse_attivita_proietta_stato_preventivo();

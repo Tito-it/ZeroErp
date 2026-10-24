@@ -10,12 +10,11 @@
 from __future__ import annotations
 
 import json
-from datetime import date
-from decimal import Decimal
 from typing import Any
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
+    coerce_jsonb_dict,
     pattern_contiene,
     RicercaFull,
     add_ricerca_full_condition,
@@ -158,8 +157,53 @@ CONTATTO_UPDATE_COLS: frozenset[str] = frozenset({
 INDIRIZZO_RUOLO_UPDATE_COLS: frozenset[str] = frozenset({
     "tipo_indirizzo_id", "istanza_utility_id", "indirizzo_dettaglio_id",
     "indirizzo_libero", "stato_id", "comune_id", "codice_postale_id",
-    "administrative_area", "locality", "sublocality", "postal_box",
+    "administrative_area", "locality", "sublocality", "postal_code",
 })
+
+# BB (regola del 2, 2026-10-22, brief-db-dati-societari-in-creazione §6): la
+# sezione «dati societari» come parametri nominati, con i cast agli enum. La
+# passano TRE funzioni DB con gli STESSI nomi: il verbo
+# `fn_scrivi_dati_societari` e le due porte di creazione `fn_crea_soggetto_pg`
+# e `fn_crea_soggetto_pf` (dal `20261020-02/-03`). Fino a quel giorno il binding
+# era scritto in due copie, e la DI ne avrebbe aggiunta una terza.
+# ⚠️ Stato intero: una chiave assente vale NULL. Socio unico e liquidazione a
+#    NULL valgono il default di `config.parameters`, risolto dal DB.
+_DATI_SOCIETARI_CAST: dict[str, str] = {
+    "forma_giuridica_id": "", "id_prov_iscri_rea": "", "iscrizione_rea": "",
+    "capitale_sociale": "",
+    "socio_unico": "::anagrafiche.socio_unico_enum",
+    "liquidazione": "::anagrafiche.liquidazione_enum",
+    "destinatario_fe": "", "pec_fatturazione": "", "codice_sdi": "",
+    "data_costituzione": "::date",
+}
+# Le chiavi della sezione: il contratto da cui parte il service.
+DATI_SOCIETARI_COLS: frozenset[str] = frozenset(_DATI_SOCIETARI_CAST)
+_SQL_PARAMETRI_DATI_SOCIETARI = ",\n".join(
+    f"p_{col} := %s{cast}" for col, cast in _DATI_SOCIETARI_CAST.items()
+)
+
+
+# Scopo: i valori della sezione, nell'ordine di `_SQL_PARAMETRI_DATI_SOCIETARI`.
+#        `None` = nessuna sezione: tutti NULL.
+def _parametri_dati_societari(dati_societari: dict[str, Any] | None) -> list[Any]:
+    ds = dati_societari or {}
+    return [ds.get(col) for col in _DATI_SOCIETARI_CAST]
+
+
+# Le colonne del contatto appena creato che il repository restituisce: le
+# stesse della RETURNING che c'era prima della madre (2026-10-18).
+_CONTATTO_CREATO_COLS: tuple[str, ...] = (
+    "id", "nominativo", "email", "telefono", "cellulare", "pec",
+    "tipo_contatto_id", "unita_organizzativa_id", "note",
+    "soggetto_ruolo_id", "istanza_utility_id",
+)
+
+# Le colonne dell'indirizzo di ruolo appena creato che il repository
+# restituisce: la chiave, il ruolo e le colonne scrivibili (la stessa
+# whitelist dell'update), forma estera compresa (2026-10-19).
+_INDIRIZZO_RUOLO_CREATO_COLS: tuple[str, ...] = (
+    "id", "soggetto_ruolo_id", *sorted(INDIRIZZO_RUOLO_UPDATE_COLS),
+)
 
 
 class SoggettiRepository:
@@ -329,11 +373,17 @@ class SoggettiRepository:
     # =================================================================
 
     # Scopo: Crea soggetto PF chiamando la funzione DB building block.
-    #        Obiettivo: INSERT soggetto + contatto default, tutto in funzione PG.
+    #        Obiettivo: INSERT soggetto + contatto default + dati societari
+    #        (la DI, policy OPTIONAL), tutto in funzione PG.
     # ⛔ `sesso` e `tipo_soggetto_dettaglio_id` senza default, come a DB: la
     #    natura e il sesso non si inventano (brief-db-sesso-senza-default D4).
     #    `sesso=None` e' un valore legittimo (DI, OPTIONAL): se la natura lo
     #    pretende, rifiuta il guard `trgfn_soggetti_guard_sesso_policy`.
+    # ⚠️ `dati_societari` (2026-10-22, `20261020-03`): fino a quel giorno la porta
+    #    non la riceveva, e la sezione di una DI si perdeva in silenzio. QUANDO
+    #    si scrive (policy, sezione «presente») lo decide il DB
+    #    (`fn_scrivi_dati_societari_alla_nascita`); per un privato una sezione
+    #    presente e' un rifiuto del guard della natura.
     def crea_soggetto_pf(
         self, *, cognome: str, nome: str, codice_fiscale: str, email: str,
         sesso: str | None, tipo_soggetto_dettaglio_id: int,
@@ -343,8 +393,9 @@ class SoggettiRepository:
         comune_nascita_id: int | None = None,
         tipo_contatto_id: int | None = None,
         partita_iva: str | None = None,
+        dati_societari: dict[str, Any] | None = None,
     ) -> str:
-        sql = """
+        sql = f"""
             SELECT anagrafiche.fn_crea_soggetto_pf(
                 p_cognome           := %s,
                 p_nome              := %s,
@@ -356,7 +407,8 @@ class SoggettiRepository:
                 p_comune_nascita_id := %s,
                 p_tipo_contatto_id  := %s,
                 p_tipo_soggetto_dettaglio_id := %s,
-                p_partita_iva       := %s
+                p_partita_iva       := %s,
+                {_SQL_PARAMETRI_DATI_SOCIETARI}
             )
         """
         with connection.cursor() as cursor:
@@ -364,6 +416,7 @@ class SoggettiRepository:
                 cognome, nome, codice_fiscale, email,
                 data_nascita, sesso, stato_iso2, comune_nascita_id, tipo_contatto_id,
                 tipo_soggetto_dettaglio_id, partita_iva,
+                *_parametri_dati_societari(dati_societari),
             ])
             row = cursor.fetchone()
             assert row is not None
@@ -372,23 +425,16 @@ class SoggettiRepository:
     # Scopo: Crea soggetto PG chiamando la funzione DB building block.
     #        Obiettivo: INSERT soggetto + contatto default + dati societari
     #        (se policy REQUIRED o dati forniti). Non crea indirizzi ne' ruoli.
+    # ⚠️ Dal 2026-10-22 (`20261020-02`) la sezione arriva intera, data di
+    #    costituzione compresa: prima la funzione la passava al verbo a NULL.
     def crea_soggetto_pg(
         self, *, ragione_sociale: str, tipo_soggetto_dettaglio_id: int,
         email: str, codice_fiscale: str | None = None,
         partita_iva: str | None = None, stato_iso2: str | None = None,
-        forma_giuridica_id: int | None = None,
-        id_prov_iscri_rea: int | None = None,
-        iscrizione_rea: str | None = None,
-        capitale_sociale: float | None = None,
-        # None = i default di `config.parameters` (fn_crea_soggetto_pg): fino al
-        # 2026-10-09 qui c'erano "IT"/"SU"/"LN" cablati, una copia del dato.
-        socio_unico: str | None = None, liquidazione: str | None = None,
-        destinatario_fe: str | None = None,
-        pec_fatturazione: str | None = None,
-        codice_sdi: str | None = None,
+        dati_societari: dict[str, Any] | None = None,
         tipo_contatto_id: int | None = None,
     ) -> str:
-        sql = """
+        sql = f"""
             SELECT anagrafiche.fn_crea_soggetto_pg(
                 p_ragione_sociale            := %s,
                 p_tipo_soggetto_dettaglio_id := %s,
@@ -396,26 +442,15 @@ class SoggettiRepository:
                 p_codice_fiscale             := %s,
                 p_partita_iva                := %s,
                 p_stato_iso2                 := %s,
-                p_forma_giuridica_id         := %s,
-                p_id_prov_iscri_rea          := %s,
-                p_iscrizione_rea             := %s,
-                p_capitale_sociale           := %s,
-                p_socio_unico                := %s::anagrafiche.socio_unico_enum,
-                p_liquidazione               := %s::anagrafiche.liquidazione_enum,
-                p_destinatario_fe            := %s,
-                p_pec_fatturazione           := %s,
-                p_codice_sdi                 := %s,
-                p_tipo_contatto_id           := %s
+                p_tipo_contatto_id           := %s,
+                {_SQL_PARAMETRI_DATI_SOCIETARI}
             )
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
                 ragione_sociale, tipo_soggetto_dettaglio_id, email,
-                codice_fiscale, partita_iva, stato_iso2,
-                forma_giuridica_id, id_prov_iscri_rea, iscrizione_rea,
-                capitale_sociale, socio_unico, liquidazione,
-                destinatario_fe, pec_fatturazione, codice_sdi,
-                tipo_contatto_id,
+                codice_fiscale, partita_iva, stato_iso2, tipo_contatto_id,
+                *_parametri_dati_societari(dati_societari),
             ])
             row = cursor.fetchone()
             assert row is not None
@@ -469,39 +504,16 @@ class SoggettiRepository:
     #    (forma per natura, REA e capitale per forma, canale FE) stanno nei
     #    trigger della tabella e arrivano come errori di dominio col campo.
     def scrivi_dati_societari(
-        self, soggetto_id: str, *,
-        forma_giuridica_id: int | None,
-        id_prov_iscri_rea: int | None,
-        iscrizione_rea: str | None,
-        capitale_sociale: Decimal | None,
-        socio_unico: str | None,
-        liquidazione: str | None,
-        destinatario_fe: str | None,
-        pec_fatturazione: str | None,
-        codice_sdi: str | None,
-        data_costituzione: date | None,
+        self, soggetto_id: str, dati_societari: dict[str, Any],
     ) -> int:
-        sql = """
+        sql = f"""
             SELECT anagrafiche.fn_scrivi_dati_societari(
                 p_soggetto_id        := %s::uuid,
-                p_forma_giuridica_id := %s,
-                p_id_prov_iscri_rea  := %s,
-                p_iscrizione_rea     := %s,
-                p_capitale_sociale   := %s,
-                p_socio_unico        := %s::anagrafiche.socio_unico_enum,
-                p_liquidazione       := %s::anagrafiche.liquidazione_enum,
-                p_destinatario_fe    := %s,
-                p_pec_fatturazione   := %s,
-                p_codice_sdi         := %s,
-                p_data_costituzione  := %s::date
+                {_SQL_PARAMETRI_DATI_SOCIETARI}
             )
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                soggetto_id, forma_giuridica_id, id_prov_iscri_rea, iscrizione_rea,
-                capitale_sociale, socio_unico, liquidazione,
-                destinatario_fe, pec_fatturazione, codice_sdi, data_costituzione,
-            ])
+            cursor.execute(sql, [soggetto_id, *_parametri_dati_societari(dati_societari)])
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
@@ -528,6 +540,11 @@ class SoggettiRepository:
 
     # Scopo: Crea contatto per un soggetto. Se soggetto_ruolo_id fornito, il contatto
     #        e' specifico del ruolo; altrimenti e' a livello soggetto (fallback).
+    # ⭐ Dal 2026-10-18 (2b-2, lotto 3) scrive la madre del DB
+    #    `anagrafiche.fn_crea_contatto`: nominativo e tipo obbligatori
+    #    (`E_CONTATTO_INCOMPLETO`, col campo), le chiavi assenti al DEFAULT.
+    #    Le unicita' escono dai vincoli, tradotti per nome dal chiamante.
+    #    Ritorna le stesse colonne di prima, non la riga intera.
     def crea_contatto(
         self, soggetto_id: str, *, nominativo: str, email: str | None = None,
         telefono: str | None = None, cellulare: str | None = None,
@@ -535,23 +552,23 @@ class SoggettiRepository:
         unita_organizzativa_id: int | None = None, note: str | None = None,
         soggetto_ruolo_id: int | None = None, istanza_utility_id: int | None = None,
     ) -> dict[str, Any]:
-        sql = """
-            INSERT INTO anagrafiche.contatti
-                (soggetto_id, soggetto_ruolo_id, istanza_utility_id, nominativo, email,
-                 telefono, cellulare, pec, tipo_contatto_id, unita_organizzativa_id, note)
-            VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, nominativo, email, telefono, cellulare, pec,
-                      tipo_contatto_id, unita_organizzativa_id, note,
-                      soggetto_ruolo_id, istanza_utility_id
-        """
+        campi = {
+            k: v for k, v in {
+                "nominativo": nominativo, "email": email, "telefono": telefono,
+                "cellulare": cellulare, "pec": pec, "tipo_contatto_id": tipo_contatto_id,
+                "unita_organizzativa_id": unita_organizzativa_id, "note": note,
+                "istanza_utility_id": istanza_utility_id,
+            }.items() if v is not None
+        }
         with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                soggetto_id, soggetto_ruolo_id, istanza_utility_id, nominativo, email,
-                telefono, cellulare, pec, tipo_contatto_id, unita_organizzativa_id, note,
-            ])
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
+            cursor.execute(
+                "SELECT anagrafiche.fn_crea_contatto(%s::uuid, %s::bigint, %s::jsonb)",
+                [soggetto_id, soggetto_ruolo_id, json.dumps(campi)],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        riga = coerce_jsonb_dict(row[0])
+        return {k: riga.get(k) for k in _CONTATTO_CREATO_COLS}
 
     # Scopo: Aggiorna un contatto esistente con verifica ownership soggetto o ruolo.
     #        SET composto dal BB `sql_set_clause` (whitelist RIGIDA
@@ -626,38 +643,37 @@ class SoggettiRepository:
             cursor.execute(sql, [soggetto_id])
             return rows_to_list(cursor)
 
-    # Scopo: Crea indirizzo soggetto chiamando la funzione DB.
-    #        Supporta modalita' normalizzata (indirizzo_dettaglio_id)
-    #        e modalita' libera (indirizzo_libero + stato_id).
-    def crea_indirizzo_soggetto(
-        self, soggetto_id: str, *,
-        tipo_indirizzo_codice: str,
-        indirizzo_dettaglio_id: int | None = None,
-        indirizzo_libero: str | None = None,
-        stato_id: int | None = None,
-        comune_id: int | None = None,
-        codice_postale_id: int | None = None,
-    ) -> int:
-        sql = """
-            SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-                p_soggetto_id            := %s::uuid,
-                p_tipo_indirizzo_codice  := %s,
-                p_indirizzo_dettaglio_id := %s,
-                p_indirizzo_libero       := %s,
-                p_stato_id               := %s,
-                p_comune_id              := %s,
-                p_codice_postale_id      := %s
-            )
-        """
+    # Scopo: Crea un indirizzo del soggetto con la madre del DB
+    #        `anagrafiche.fn_crea_indirizzo_soggetto(soggetto, indirizzo jsonb)`
+    #        (firma dal 2026-10-18: la posizionale non c'e' piu'). Ritorna l'id
+    #        della riga di `indirizzi_soggetti`.
+    def crea_indirizzo_soggetto(self, soggetto_id: str, indirizzo: dict[str, Any]) -> int:
         with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                soggetto_id, tipo_indirizzo_codice,
-                indirizzo_dettaglio_id, indirizzo_libero,
-                stato_id, comune_id, codice_postale_id,
-            ])
+            cursor.execute(
+                "SELECT anagrafiche.fn_crea_indirizzo_soggetto(%s::uuid, %s::jsonb)",
+                [soggetto_id, json.dumps(indirizzo, default=str)],
+            )
             row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        assert row is not None
+        return int(row[0])
+
+    # Scopo: Gli indirizzi di un soggetto dalla madre plurale del DB
+    #        `anagrafiche.fn_crea_indirizzi_soggetto` (gemella di
+    #        `fn_crea_indirizzi_ruolo`): con `copia_obbligatori` i tipi
+    #        obbligatori del tipo di soggetto che mancano ricevono una copia del
+    #        primo; un tipo che il soggetto ha gia' si salta; ogni riga dalla
+    #        singolare. Ritorna quanti ne ha scritti.
+    def crea_indirizzi_soggetto(
+        self, soggetto_id: str, indirizzi: list[dict[str, Any]], *, copia_obbligatori: bool,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT anagrafiche.fn_crea_indirizzi_soggetto(%s::uuid, %s::jsonb, %s)",
+                [soggetto_id, json.dumps(indirizzi, default=str), copia_obbligatori],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
 
     # Scopo: Elimina un'associazione indirizzo-soggetto per id.
     def delete_indirizzo_soggetto(self, indirizzo_soggetto_id: int, soggetto_id: str) -> bool:
@@ -673,58 +689,55 @@ class SoggettiRepository:
     # Indirizzi ruolo (anagrafiche.indirizzi — con istanza_utility_id)
     # =================================================================
 
-    # Scopo: Restituisce i tipo_indirizzo_id gia' presenti per un soggetto_ruolo.
-    #        Usato per evitare INSERT duplicati quando il ruolo esiste gia'.
-    def get_existing_tipo_indirizzo_ids(self, soggetto_ruolo_id: int) -> set[int]:
-        sql = """
-            SELECT tipo_indirizzo_id
-              FROM anagrafiche.indirizzi
-             WHERE soggetto_ruolo_id = %s
-        """
+    # Scopo: Gli indirizzi di un ruolo dalla madre del DB
+    #        `anagrafiche.fn_crea_indirizzi_ruolo` (auto-clone dei tipi
+    #        obbligatori, salto dei tipi presenti, via risolta da
+    #        `fn_create_indirizzo`). Ritorna quanti ne ha scritti.
+    def crea_indirizzi_ruolo(self, soggetto_ruolo_id: int, indirizzi: list[dict[str, Any]]) -> int:
         with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_ruolo_id])
-            return {row[0] for row in cursor.fetchall()}
+            cursor.execute(
+                "SELECT anagrafiche.fn_crea_indirizzi_ruolo(%s::bigint, %s::jsonb)",
+                [soggetto_ruolo_id, json.dumps(indirizzi, default=str)],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
 
     # Campi nullable dell'update indirizzi ruolo: stringa vuota -> NULL.
     _IND_RUOLO_NULLABLE = {
         "istanza_utility_id", "indirizzo_dettaglio_id", "indirizzo_libero",
         "stato_id", "comune_id", "codice_postale_id",
-        "administrative_area", "locality", "sublocality", "postal_box",
+        "administrative_area", "locality", "sublocality", "postal_code",
     }
 
-    # Scopo: Crea indirizzo a livello ruolo.
-    #        Supporta modalita' normalizzata (indirizzo_dettaglio_id)
-    #        e libera (indirizzo_libero + stato_id).
-    #        Il trigger guard valida tipo_indirizzo_id vs matrice ammessi.
+    # Scopo: Crea UN indirizzo del ruolo, anche di un'istanza, con la madre del
+    #        DB `anagrafiche.fn_crea_indirizzo_ruolo(ruolo, indirizzo jsonb)`: la
+    #        grammatica di `fn_indirizzo_elemento` (tipo per id o codice; forma
+    #        libera, dettaglio gia' risolto o via da risolvere), piu' la chiave
+    #        `istanza_utility_id`. Ritorna la riga scritta, riletta per id
+    #        (`_INDIRIZZO_RUOLO_CREATO_COLS`).
+    # ⭐ Dal 2026-10-19 (R-DB-16b, brief-db-processi-accensione-per-ambiente
+    #    §6.16): fino ad allora la INSERT era qui, posizionale, senza i campi
+    #    della forma estera, e la via la risolveva il backend prima di scrivere.
     def crea_indirizzo_ruolo(
-        self, soggetto_ruolo_id: int, *,
-        tipo_indirizzo_id: int,
-        istanza_utility_id: int | None = None,
-        indirizzo_dettaglio_id: int | None = None,
-        indirizzo_libero: str | None = None,
-        stato_id: int | None = None,
-        comune_id: int | None = None,
-        codice_postale_id: int | None = None,
+        self, soggetto_ruolo_id: int, indirizzo: dict[str, Any],
     ) -> dict[str, Any]:
-        sql = """
-            INSERT INTO anagrafiche.indirizzi
-                (soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-                 indirizzo_dettaglio_id, indirizzo_libero,
-                 stato_id, comune_id, codice_postale_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-                      indirizzo_dettaglio_id, indirizzo_libero,
-                      stato_id, comune_id, codice_postale_id
-        """
+        # Due istruzioni: la riga scritta dalla madre non e' visibile allo
+        # snapshot dell'istruzione che la chiama.
         with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-                indirizzo_dettaglio_id, indirizzo_libero,
-                stato_id, comune_id, codice_postale_id,
-            ])
+            cursor.execute(
+                "SELECT anagrafiche.fn_crea_indirizzo_ruolo(%s::bigint, %s::jsonb)",
+                [soggetto_ruolo_id, json.dumps(indirizzo, default=str)],
+            )
+            indirizzo_id = cursor.fetchone()[0]
+            cursor.execute(
+                f"SELECT {', '.join(_INDIRIZZO_RUOLO_CREATO_COLS)} "  # noqa: S608 — colonne da una tupla letterale del modulo, valore come parametro
+                "FROM anagrafiche.indirizzi WHERE id = %s",
+                [indirizzo_id],
+            )
             result = row_to_dict(cursor)
-            assert result is not None
-            return result
+        assert result is not None
+        return result
 
     # Scopo: Aggiorna indirizzo ruolo con ownership check su soggetto_ruolo_id.
     #        SET dal BB `sql_set_clause` (whitelist RIGIDA
@@ -764,14 +777,6 @@ class SoggettiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [indirizzo_id, soggetto_ruolo_id])
             return cursor.rowcount > 0
-
-    # Scopo: Risolve tipo_indirizzo codice → id. Usa COALESCE(codice_interno, codice) per match.
-    def resolve_tipo_indirizzo_id(self, codice: str) -> int | None:
-        sql = "SELECT id FROM config.tipi_indirizzi WHERE COALESCE(codice_interno, codice) = %s LIMIT 1"
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [codice])
-            row = cursor.fetchone()
-            return row[0] if row else None
 
     # =================================================================
     # Ruoli

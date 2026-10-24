@@ -28,9 +28,14 @@ applicando le regole di arrotondamento definite per **emittente/utility**.
 * `p_fattura_id` obbligatorio.
 * Totali calcolati da `fatture_riepiloghi_iva`.
 * Totale fondi fattura via `vendite.fn_get_totale_fondi_fattura()`.
-* Arrotondamento calcolato in base a:
-  * `anagrafiche.emittenti_fiscali_utilities.arrotondamento_importi_dec`
-  * `anagrafiche.emittenti_fiscali_utilities.metodo_arrotondamento_importi`
+* Arrotondamento calcolato con i parametri **effettivi** di emittente e utility,
+  da `anagrafiche.fn_parametri_importo_utility`: la riga di
+  `anagrafiche.emittenti_fiscali_utilities` se c'è, altrimenti i valori di sistema
+  dell'utility (`config.utilities`) e, per il metodo, la policy generale
+  dell'emittente. Senza la riga la fattura **si chiude** (rev 21-10-2026,
+  brief-db-modelli-documento-standard §10.3 K-7): `E_CONFIG_MANCANTE` resta solo
+  per una fattura senza utility. L'arrotondamento lo fa `script.fn_arrotonda_importo`, la sede
+  unica delle quattro regole (rev 21-10-2026, R-2: prima una copia delle formule).
 * Aggiorna il saldo tecnico con `fn_set_arrotondamento_scope()`.
 * Imposta `minimo = true` quando `totale_a_pagare` rientra nella soglia
   (`minimo_soglia_min`/`minimo_soglia_max`).

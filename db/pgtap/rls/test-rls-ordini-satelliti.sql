@@ -60,6 +60,13 @@ SELECT m.lato, m.emittente_fiscale_id, c.*
 
 -- ⚠️ `canale_origine` resta il default ADMIN: serve al test 8, che verifica che
 --   la veste SHOP non basti la proprieta'.
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3a): l'articolo
+--   si COSTRUISCE. Ordine e bolla ammettono solo merce non solo-componente, e
+--   su un database ricostruito il catalogo ha solo i cinque ONERE_* (servizi):
+--   cercarlo dava NULL e la riga moriva su E_UOM_MISSING.
+CREATE TEMP TABLE _art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGTAP-RLS-ORD-SAT', false) AS id;
+
 CREATE TEMP TABLE _ordini AS
 WITH ord AS (
     -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): l'ordine ha sempre il BA.
@@ -83,7 +90,7 @@ WITH r AS (
         --   pretende, e non ha default.
         (ordine_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa, prezzo_unitario)
     SELECT o.ordine_id, 1,
-           (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1),
+           (SELECT id FROM _art),
            'Riga pgTAP RLS', 1, 1, 100.00
       FROM _ordini o
     RETURNING id, ordine_id
@@ -172,7 +179,7 @@ BEGIN
         INSERT INTO vendite.ordini_righe
             (ordine_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa, prezzo_unitario)
         VALUES (v_b.ordine_id, 99,
-                (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1),
+                (SELECT id FROM _art),
                 'intrusione', 1, 1, 1.00);
         PERFORM set_config('pgtap.scrittura', 'PASSATA', true);
     EXCEPTION WHEN insufficient_privilege OR check_violation THEN

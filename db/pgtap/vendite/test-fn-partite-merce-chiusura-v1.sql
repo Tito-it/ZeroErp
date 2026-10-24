@@ -1,11 +1,14 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, D-1): gli ordini costruiti dal builder nascono al 2026-08-05 (p_data_ordine), come gli ordini scritti a mano prima del giro 1: nessuna bolla piu' vecchia del suo ordine.
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): le bolle da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (date della greedy con p_data, tre spedizioni dalla stessa riga con p_qta_da_evadere e p_ordine_id, la bozza DRAFT); restano scritti a mano l'ordine B senza bolla, il legame della riga MULTIPLA e la riga a mano (in bozza, il caso del 11/13), la bolla di ri-consegna (indirizzo e causale; gli stati per dbops.fn_pgtap_porta_a_stato) e il reso (giro 2).
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_partite_merce — la partita di merce PER DOCUMENTO
 --       (D14 quarta leva; brief-db-partita-merce-per-documento §2, §2-bis, §3;
 --        changeSet 20260921-21..-24).
 --
--- Indice test (plan 15):
+-- Indice test (plan 16):
 --   1) la funzione esiste, e' BEGIN ATOMIC (dipendenze nel catalogo) e NON e'
 --      SECURITY DEFINER (la RLS resta di chi legge)
 --   2) ⭐ pin di D1: la vista e' la PROIEZIONE della funzione — nomina
@@ -36,6 +39,10 @@
 --      fatturato_da_ordine 0 e non 5, differenza 0 e non -5 — ereditato il
 --      22-09 da test-vw-contatore-merce-v1 (ritirato con la vista, D6): era il
 --      solo presidio di questa cintura
+--  16) ⭐ la riga che evade UNA riga d'ordine ha origine ORDINE_VENDITA, il
+--      codice della sorgente, e il codice esiste in config.sorgenti (rev
+--      2026-10-20, 20261020-24, brief-db-grammatica-unica-documenti §12.8:
+--      prima era il codice corto ORDINE; rosso senza il changeSet)
 --
 -- Scopo:
 --  - la chiusura e' «equivalente per costruzione» alla vista; questo file la
@@ -66,7 +73,7 @@ DO $az$ BEGIN
         NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
 END $az$;
 
-SELECT plan(15);
+SELECT plan(16);
 
 -- ⛔ Niente `SET LOCAL app.current_user_id = '1'` dopo la riga di contesto:
 --    l'operatore lo sceglie (o lo COSTRUISCE, su un database vuoto)
@@ -131,9 +138,6 @@ SELECT
   --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
   --   righe non si scrivono piu' (20261008-90).
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO'     AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO'    AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_consegnato_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo ORDER BY s.id LIMIT 1)        AS sorgente_ddt_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA'    AND s.attivo ORDER BY s.id LIMIT 1)        AS sorgente_root_id,
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo ORDER BY s.id LIMIT 1)        AS stato_reso_draft_id,
@@ -171,7 +175,9 @@ SELECT vendite.fn_link_commessa_sorgente(
 -- la snapshot e le policy negano fail-closed)
 -- ============================================================
 
--- Un ordine CONFERMATO con una riga da p_qta.
+-- Un ordine CONFERMATO con una riga da p_qta, SENZA bolla: serve all'ordine B
+-- del caso 8, che una bolla la riceve solo per legame. Le bolle da ordine
+-- vengono dal builder dbops.fn_pgtap_crea_ddt_da_ordine (qui sotto).
 CREATE OR REPLACE FUNCTION pg_temp.ch_mk_ordine(p_qta numeric)
 RETURNS TABLE(ordine_id bigint, ordine_uid uuid, ordine_riga_id bigint) AS $$
 DECLARE r RECORD; v_ord bigint; v_uid uuid; v_orr bigint;
@@ -194,50 +200,13 @@ BEGIN
   RETURN QUERY SELECT v_ord, v_uid, v_orr;
 END $$ LANGUAGE plpgsql;
 
--- Un DDT CONSEGNATO che evade p_qta della riga d'ordine, alla data p_data.
--- La data e' la chiave della greedy `alloc` (oldest-first): va scelta.
--- `p_riga_manuale` (rev 2026-09-22): la riga aggiunta A MANO (caso 3) entra
--- PRIMA delle transizioni — il BB trgfn_doc_righe_lock_fuori_bozza non
--- ammette righe in un DDT fuori bozza.
-CREATE OR REPLACE FUNCTION pg_temp.ch_mk_ddt(p_ordine_id bigint, p_ordine_riga_id bigint,
-                                             p_qta numeric, p_data date,
-                                             p_riga_manuale numeric DEFAULT NULL)
-RETURNS TABLE(ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
-DECLARE r RECORD; v_ddt bigint; v_uid uuid; v_ddtr bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_ch;
-  v_ddt := vendite.fn_genera_ddt_da_ordine(
-      p_ordine_id,
-      jsonb_build_array(jsonb_build_object('ordine_riga_id', p_ordine_riga_id, 'qta_da_evadere', p_qta)),
-      p_data);
-  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-  VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id      WHERE id = v_ddt;
-  IF p_riga_manuale IS NOT NULL THEN
-    INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
-        qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-    VALUES (v_ddt, 900, r.articolo_id, 'Riga aggiunta a mano', p_riga_manuale, p_riga_manuale, 20, r.iva_id,
-            true, false, jsonb_build_object('test_scope','pgtap_chiusura'));
-  END IF;
-  UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_emesso_id     WHERE id = v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_spedito_id    WHERE id = v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_consegnato_id WHERE id = v_ddt;
-  SELECT d.uid INTO v_uid  FROM vendite.ddt d        WHERE d.id = v_ddt;
-  SELECT dr.id INTO v_ddtr FROM vendite.ddt_righe dr WHERE dr.ddt_id = v_ddt ORDER BY dr.id LIMIT 1;
-  RETURN QUERY SELECT v_ddt, v_uid, v_ddtr;
-END $$ LANGUAGE plpgsql;
-
--- Un DDT lasciato in BOZZA (serve al 12).
-CREATE OR REPLACE FUNCTION pg_temp.ch_mk_ddt_bozza(p_ordine_id bigint, p_ordine_riga_id bigint, p_qta numeric)
-RETURNS bigint AS $$
-DECLARE v_ddt bigint;
-BEGIN
-  v_ddt := vendite.fn_genera_ddt_da_ordine(
-      p_ordine_id,
-      jsonb_build_array(jsonb_build_object('ordine_riga_id', p_ordine_riga_id, 'qta_da_evadere', p_qta)),
-      DATE '2026-08-20');
-  RETURN v_ddt;
-END $$ LANGUAGE plpgsql;
+-- Una bolla dal builder, col cliente e l'articolo del file, riga a 20 e
+-- trigger CONSEGNATO. La data e' la chiave della greedy `alloc`
+-- (oldest-first): va scelta (p_data).
+-- ⚠️ La riga a mano (caso 3) e il legame della riga MULTIPLA (caso 8) nascono
+--   solo con la bolla in bozza (trgfn_doc_righe_lock_fuori_bozza; D-6 del
+--   2026-10-11): quelle bolle si chiedono DRAFT e si portano a CONSEGNATO
+--   con dbops.fn_pgtap_porta_a_stato.
 
 -- Un'attivita' fatturabile sul segmento dato (corsia ORD o DDT): NORMALE, o
 -- ONERE (caso 5) — la causale e' obbligatoria se e solo se tipo_movimento =
@@ -253,6 +222,9 @@ BEGIN
   END IF;
   PERFORM vendite.fn_upsert_commessa_attivita(
     p_commessa_id => (SELECT commessa_id FROM tmp_com_ch),
+    -- La riga NORMALE ha la sua sorgente; ONERE e RETTIFICA no (vincolo 20261012-27).
+    p_sorgente_tipo_id => CASE WHEN p_tipo_mov = 'NORMALE' THEN (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA') END,
+    p_sorgente_uid => CASE WHEN p_tipo_mov = 'NORMALE' THEN ((SELECT commessa_id FROM tmp_com_ch))::text END,
     p_segment_key => p_segment, p_articolo_id => r.articolo_id,
     p_istanza_utility_id => r.istanza_utility_id, p_data_attivita => DATE '2026-08-15',
     p_uom_id => r.uom_id, p_quantita => p_qta,
@@ -321,10 +293,12 @@ END $$ LANGUAGE plpgsql;
 
 -- La RI-SPEDIZIONE (DDT di ri-consegna portato a CONSEGNATO), alla data data:
 -- la data ordina le sorelle nella finestra di `migra`.
+-- ⚠️ La bolla di ri-consegna nasce dal reso, non da un ordine: indirizzo e
+--   causale a mano, gli stati per la matrice.
 CREATE OR REPLACE FUNCTION pg_temp.ch_rispedisci(p_reso_id bigint, p_resi_riga_id bigint,
                                                  p_qta numeric, p_data date)
 RETURNS TABLE(ddt_id bigint, ddt_riga_id bigint) AS $$
-DECLARE r RECORD; v_ddt bigint; v_ord smallint; v_tappa RECORD; v_riga bigint;
+DECLARE r RECORD; v_ddt bigint; v_riga bigint;
 BEGIN
   SELECT * INTO r FROM tmp_refs_ch;
   v_ddt := vendite.fn_genera_ddt_riconsegna(
@@ -334,16 +308,7 @@ BEGIN
   INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
   VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
   UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id WHERE id = v_ddt;
-  FOR v_tappa IN
-      SELECT s.id, s.ordine FROM config.stati_doc_ddt s
-       WHERE s.codice_interno IN ('EMESSO','SPEDITO','CONSEGNATO') ORDER BY s.ordine
-  LOOP
-      SELECT s.ordine INTO v_ord
-        FROM vendite.ddt d JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
-       WHERE d.id = v_ddt;
-      CONTINUE WHEN v_ord >= v_tappa.ordine;
-      UPDATE vendite.ddt SET stato_doc_ddt_id = v_tappa.id WHERE id = v_ddt;
-  END LOOP;
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ddt', v_ddt, 'CONSEGNATO');
   SELECT dr.id INTO v_riga FROM vendite.ddt_righe dr WHERE dr.ddt_id = v_ddt ORDER BY dr.id LIMIT 1;
   RETURN QUERY SELECT v_ddt, v_riga;
 END $$ LANGUAGE plpgsql;
@@ -363,11 +328,26 @@ $$ LANGUAGE sql;
 --          fatturato dall'ORDINE per 15. La greedy `alloc` versa nel piu'
 --          vecchio: 10 al primo, 5 al secondo, 0 al terzo.
 -- ============================================================
-CREATE TEMP TABLE tmp_o1 AS SELECT * FROM pg_temp.ch_mk_ordine(30);
-CREATE TEMP TABLE tmp_d1 AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-10');
-CREATE TEMP TABLE tmp_d2 AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-11');
-CREATE TEMP TABLE tmp_d3 AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-12');
-SELECT pg_temp.ch_mk_af(('ORD:' || (SELECT ordine_uid FROM tmp_o1)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_o1)::text)::varchar, 15);
+-- Il primo DDT resta in bozza: prende il legame con l'ordine B (caso 8).
+CREATE TEMP TABLE tmp_d1 AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('chiusura 1', 'DRAFT', p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_ch),
+         p_articolo_id => (SELECT articolo_id FROM tmp_refs_ch), p_prezzo => 20,
+         p_fatturazione_trigger => 'CONSEGNATO',
+         p_quantita => 30, p_qta_da_evadere => 10, p_data => DATE '2026-08-10',
+         p_data_ordine => DATE '2026-08-05');
+CREATE TEMP TABLE tmp_o1 AS SELECT ordine_id, ordine_uid, ordine_riga_id FROM tmp_d1;
+CREATE TEMP TABLE tmp_ob AS SELECT * FROM pg_temp.ch_mk_ordine(10);
+INSERT INTO vendite.ordini_righe_fulfillment (ordine_riga_id, ddt_riga_id, qta_evasa, storicizza)
+SELECT (SELECT ordine_riga_id FROM tmp_ob), d.ddt_riga_id, d.quantita, false
+  FROM tmp_d1 d;
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_d1), 'CONSEGNATO');
+CREATE TEMP TABLE tmp_d2 AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('chiusura 1', p_ordine_id => (SELECT ordine_id FROM tmp_o1),
+         p_qta_da_evadere => 10, p_data => DATE '2026-08-11');
+CREATE TEMP TABLE tmp_d3 AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('chiusura 1', p_ordine_id => (SELECT ordine_id FROM tmp_o1),
+         p_qta_da_evadere => 10, p_data => DATE '2026-08-12');
+SELECT pg_temp.ch_mk_af(script.fn_segment_key('ORDINE_VENDITA', (SELECT ordine_uid FROM tmp_o1)::text, (SELECT ordine_riga_id FROM tmp_o1)), 15);
 
 -- ⭐ Il DDT di MEZZO chiesto da solo. Senza R1 (il primo DDT, stessa riga
 --    d'ordine) la sua partizione sarebbe {se stesso} e prenderebbe 10.
@@ -405,9 +385,13 @@ SELECT is(
 --   e' 1: la PRIMA sorella la prende tutta, la SECONDA resta a 0.
 --   Chiedere la seconda da sola SENZA la sorella darebbe LEAST(2, 1 - 0) = 1.
 -- ============================================================
-CREATE TEMP TABLE tmp_o2 AS SELECT * FROM pg_temp.ch_mk_ordine(10);
-CREATE TEMP TABLE tmp_p AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o2), (SELECT ordine_riga_id FROM tmp_o2), 10, DATE '2026-08-13');
-SELECT pg_temp.ch_fattura(('DDT:' || (SELECT ddt_uid FROM tmp_p)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p)::text)::varchar, 6);
+CREATE TEMP TABLE tmp_p AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('chiusura 2', p_stato_codice_interno => 'CONSEGNATO', p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_ch),
+         p_articolo_id => (SELECT articolo_id FROM tmp_refs_ch), p_prezzo => 20,
+         p_fatturazione_trigger => 'CONSEGNATO',
+         p_quantita => 10, p_data => DATE '2026-08-13',
+         p_data_ordine => DATE '2026-08-05');
+SELECT pg_temp.ch_fattura(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_p)::text, (SELECT ddt_riga_id FROM tmp_p)), 6);
 CREATE TEMP TABLE tmp_reso AS SELECT * FROM pg_temp.ch_mk_reso((SELECT ddt_riga_id FROM tmp_p), (SELECT ddt_uid FROM tmp_p), 5);
 SELECT vendite.fn_accredita_riga_reso((SELECT resi_riga_id FROM tmp_reso));
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com_ch), true, false);
@@ -433,13 +417,23 @@ SELECT ok(
 -- CASO 3 — la riga A MANO su un DDT misto, stesso articolo dell'ordine:
 --          sospetto acceso e origine NESSUNA anche per la chiusura.
 --          rev 2026-09-22: DDT SUO (ordine da 10 + riga a mano da 4, entrata
---          in bozza dentro ch_mk_ddt): fino al 21-09 la riga si aggiungeva
+--          con la bolla in bozza): fino al 21-09 la riga si aggiungeva
 --          al DDT di mezzo gia' consegnato, che il BB delle righe non
 --          ammette piu' — e aggiungerla prima avrebbe cambiato i conti dei
 --          test 4-10.
 -- ============================================================
-CREATE TEMP TABLE tmp_o3 AS SELECT * FROM pg_temp.ch_mk_ordine(10);
-CREATE TEMP TABLE tmp_d3m AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o3), (SELECT ordine_riga_id FROM tmp_o3), 10, DATE '2026-08-14', 4);
+CREATE TEMP TABLE tmp_d3m AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('chiusura 3', 'DRAFT', p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_ch),
+         p_articolo_id => (SELECT articolo_id FROM tmp_refs_ch), p_prezzo => 20,
+         p_fatturazione_trigger => 'CONSEGNATO',
+         p_quantita => 10, p_data => DATE '2026-08-14',
+         p_data_ordine => DATE '2026-08-05');
+INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+SELECT d.ddt_id, 900, r.articolo_id, 'Riga aggiunta a mano', 4, 4, 20, r.iva_id,
+       true, false, jsonb_build_object('test_scope','pgtap_chiusura')
+  FROM tmp_d3m d, tmp_refs_ch r;
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_d3m), 'CONSEGNATO');
 
 SELECT is(
   (SELECT p.origine || '|' || p.sospetto_duplicato_ordine::text
@@ -448,12 +442,28 @@ SELECT is(
   'NESSUNA|true',
   '11) la riga a mano con l''articolo gia'' nell''ordine: origine NESSUNA e sospetto acceso, anche per chiusura');
 
+-- 16) Sullo stesso DDT, la riga che evade la riga d'ordine: l'origine e' il
+--     codice della sorgente (grammatica unica, §12.8), non il codice corto, e
+--     nomina una riga di config.sorgenti. Funzione e vista dicono lo stesso.
+SELECT results_eq(
+  $q$SELECT p.origine::text,
+            EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = p.origine),
+            (SELECT v.origine::text FROM vendite.vw_partite_merce v WHERE v.ddt_riga_id = p.ddt_riga_id)
+       FROM vendite.fn_partite_merce(ARRAY[(SELECT ddt_id FROM tmp_d3m)]) p
+      WHERE p.ddt_riga_id = (SELECT ddt_riga_id FROM tmp_d3m)$q$,
+  $q$VALUES ('ORDINE_VENDITA', true, 'ORDINE_VENDITA')$q$,
+  '16) la riga che evade una riga d''ordine: origine ORDINE_VENDITA, codice di config.sorgenti, per la funzione come per la vista');
+
 -- ============================================================
 -- CASO 4 — niente da seminare
 -- ============================================================
 -- Un ordine SUO: quello del caso 2 e' EVASO (10 su 10) e non ammette altri DDT.
-CREATE TEMP TABLE tmp_o4 AS SELECT * FROM pg_temp.ch_mk_ordine(5);
-CREATE TEMP TABLE tmp_bozza AS SELECT pg_temp.ch_mk_ddt_bozza((SELECT ordine_id FROM tmp_o4), (SELECT ordine_riga_id FROM tmp_o4), 5) AS ddt_id;
+CREATE TEMP TABLE tmp_bozza AS
+SELECT ddt_id FROM dbops.fn_pgtap_crea_ddt_da_ordine('chiusura 4', 'DRAFT', p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_ch),
+         p_articolo_id => (SELECT articolo_id FROM tmp_refs_ch), p_prezzo => 20,
+         p_fatturazione_trigger => 'CONSEGNATO',
+         p_quantita => 5, p_data => DATE '2026-08-20',
+         p_data_ordine => DATE '2026-08-05');
 
 SELECT is(
   (SELECT count(*) FROM vendite.fn_partite_merce(ARRAY[(SELECT ddt_id FROM tmp_bozza)]))::text
@@ -468,9 +478,7 @@ SELECT is(
 --          riga minima (A). Chiesta per B non esce; chiesta per A esce
 --          MULTIPLA — come la legge il backend (§2-bis.7).
 -- ============================================================
-CREATE TEMP TABLE tmp_ob AS SELECT * FROM pg_temp.ch_mk_ordine(10);
-INSERT INTO vendite.ordini_righe_fulfillment (ordine_riga_id, ddt_riga_id, qta_evasa, storicizza)
-VALUES ((SELECT ordine_riga_id FROM tmp_ob), (SELECT ddt_riga_id FROM tmp_d1), 10, false);
+-- (il legame con B nasce con il primo DDT in bozza, caso 1: D-6 del 2026-10-11)
 
 SELECT results_eq(
   $q$SELECT (SELECT count(*)::int FROM vendite.fn_partite_merce(NULL, ARRAY[(SELECT ordine_id FROM tmp_ob)]) p
@@ -495,14 +503,19 @@ SELECT results_eq(
 --          giusta. Ereditato dal presidio del contatore ritirato
 --          (test-vw-contatore-merce-v1, test 5).
 -- ============================================================
-CREATE TEMP TABLE tmp_o5 AS SELECT * FROM pg_temp.ch_mk_ordine(10);
-CREATE TEMP TABLE tmp_d5 AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o5), (SELECT ordine_riga_id FROM tmp_o5), 10, DATE '2026-08-16');
-SELECT pg_temp.ch_mk_af(('DDT:' || (SELECT ddt_uid FROM tmp_d5)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_d5)::text)::varchar, 10);
-SELECT pg_temp.ch_mk_af(('ORD:' || (SELECT ordine_uid FROM tmp_o5)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_o5)::text)::varchar, 5, 'ONERE');
+CREATE TEMP TABLE tmp_d5 AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('chiusura 5', p_stato_codice_interno => 'CONSEGNATO', p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_ch),
+         p_articolo_id => (SELECT articolo_id FROM tmp_refs_ch), p_prezzo => 20,
+         p_fatturazione_trigger => 'CONSEGNATO',
+         p_quantita => 10, p_data => DATE '2026-08-16',
+         p_data_ordine => DATE '2026-08-05');
+CREATE TEMP TABLE tmp_o5 AS SELECT ordine_id, ordine_uid, ordine_riga_id FROM tmp_d5;
+SELECT pg_temp.ch_mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_d5)::text, (SELECT ddt_riga_id FROM tmp_d5)), 10);
+SELECT pg_temp.ch_mk_af(script.fn_segment_key('ORDINE_VENDITA', (SELECT ordine_uid FROM tmp_o5)::text, (SELECT ordine_riga_id FROM tmp_o5)), 5, 'ONERE');
 
 SELECT results_eq(
   $q$SELECT p.fatturato_merce, p.fatturato_da_ordine, p.fatturato, p.differenza,
-            (SELECT count(*)::int FROM vendite.fn_af_merce_per_riga(ARRAY[('ORD:' || o.ordine_uid::text || ':R:' || o.ordine_riga_id::text)::varchar]) f
+            (SELECT count(*)::int FROM vendite.fn_af_merce_per_riga(ARRAY[script.fn_segment_key('ORDINE_VENDITA', o.ordine_uid::text, o.ordine_riga_id)]) f
               WHERE f.tipo_movimento = 'ONERE' AND f.quantita = 5)
        FROM vendite.fn_partite_merce(ARRAY[(SELECT ddt_id FROM tmp_d5)]) p, tmp_o5 o$q$,
   $q$VALUES (10::numeric, 0::numeric, 10::numeric, 0::numeric, 1)$q$,
@@ -519,7 +532,7 @@ SELECT set_config('app.current_user_id', '999999999', true);
 SELECT is(
   (SELECT count(*) FROM vendite.fn_partite_merce(ARRAY[(SELECT ddt_id FROM tmp_d2)])),
   0::bigint,
-  '14) scope che non vede il DDT: la partita sparisce, non esce con dei conti a zero');
+  '14) scope che non vede il DDT: la partita sparisce, non esce con dei conti a zero (rosso da owner, che salta la RLS; verde come app)');
 
 SELECT * FROM finish();
 ROLLBACK;

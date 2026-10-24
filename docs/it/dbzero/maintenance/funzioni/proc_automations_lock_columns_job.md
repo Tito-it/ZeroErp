@@ -7,9 +7,13 @@ CREATE PROCEDURE proc_automations_lock_columns_job()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_automations_lock_columns_job()
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'topology', 'pg_temp'
 AS $procedure$
   BEGIN
     -- rev 20260923-46: anche il guard delle date di validita'
@@ -29,6 +33,8 @@ $procedure$
 COMMENT ON PROCEDURE maintenance.proc_automations_lock_columns_job()
 IS 'Job wrapper per dbops.fn_run_automations_lock_columns, che converge i trigger di lock columns verso il registro (crea, rigenera, toglie). Rev 20260923-46: monta anche il guard delle date di validita'' (dbops.fn_run_automations_date_validita, automazione DATE_VALIDITA), stessa famiglia del lock. Rev 20260926-05: non chiama piu'' dbops.fn_run_automations_drop_lock_trg (ritirata), che cancellava per funzione anche i lock scritti a mano.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

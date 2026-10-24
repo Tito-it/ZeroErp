@@ -77,8 +77,8 @@
 |------|--------|--------|--------|
 | trg_articoli_a10_articoli_componenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('catalogo', 'articoli_componenti', 'componente_id', 'id', 'attivo')` |
 | trg_articoli_a10_articoli_descrizioni_aggiuntive_block_d_315e77 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'articoli_descrizioni_aggiuntive', 'articolo_id', 'id', 'attivo')` |
-| trg_articoli_a10_articoli_gruppi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'articoli_gruppi', 'attivo', 'gruppo_voce_id', 'id')` |
 | trg_articoli_a10_articoli_gruppi_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'articoli_gruppi', 'attivo', 'gruppo_voce_id', 'id')` |
+| trg_articoli_a10_articoli_gruppi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'articoli_gruppi', 'attivo', 'gruppo_voce_id', 'id')` |
 | trg_articoli_a10_articoli_spesa_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'articoli_spesa', 'attivo', 'spesa_id', 'id')` |
 | trg_articoli_a10_articoli_spesa_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'articoli_spesa', 'attivo', 'spesa_id', 'id')` |
 | trg_articoli_a10_articoli_tipologie_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'articoli_tipologie', 'attivo', 'tipo_voce_id', 'id')` |
@@ -87,8 +87,8 @@
 | trg_articoli_a10_articolo_regole_fatturazione_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'articolo_regole_fatturazione', 'articolo_id', 'id', 'attivo')` |
 | trg_articoli_a10_assets_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'assets', 'articolo_id', 'id', 'attivo')` |
 | trg_articoli_a10_attivita_fatturabili_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'attivita_fatturabili', 'articolo_id', 'id', 'attivo')` |
-| trg_articoli_a10_causali_onere_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'causali_onere', 'attivo', 'causale_onere_id', 'id')` |
 | trg_articoli_a10_causali_onere_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'causali_onere', 'attivo', 'causale_onere_id', 'id')` |
+| trg_articoli_a10_causali_onere_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'causali_onere', 'attivo', 'causale_onere_id', 'id')` |
 | trg_articoli_a10_commesse_attivita_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'commesse_attivita', 'articolo_id', 'id', 'attivo')` |
 | trg_articoli_a10_contratti_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'contratti_righe', 'articolo_id', 'id', 'attivo')` |
 | trg_articoli_a10_contratti_righe_componenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'contratti_righe_componenti', 'componente_id', 'id', 'attivo')` |
@@ -98,9 +98,12 @@
 | trg_articoli_a10_guard_flags_struttura_bom_attiva_upd | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva()` |
 | trg_articoli_a10_guard_iva_bom_attiva_upd | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_articoli_guard_iva_bom_attiva()` |
 | trg_articoli_a10_guard_listino_se_composito_upd | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_articoli_guard_listino_se_composito()` |
+| trg_articoli_a10_guard_onere_natura_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_articoli_guard_onere_natura()` |
+| trg_articoli_a10_guard_onere_natura_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION catalogo.trgfn_articoli_guard_onere_natura()` |
+| trg_articoli_a10_guard_struttura_se_usato_upd | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_articoli_guard_struttura_se_usato()` |
 | trg_articoli_a10_inventari_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'inventari_righe', 'articolo_id', 'id', 'attivo')` |
-| trg_articoli_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_articoli_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
+| trg_articoli_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_articoli_a10_listini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'listini_righe', 'articolo_id', 'id', 'attivo')` |
 | trg_articoli_a10_listini_righe_componenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'listini_righe_componenti', 'articolo_figlio_id', 'id', 'attivo')` |
 | trg_articoli_a10_listini_tipologie_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'listini_tipologie', 'attivo', 'listino_tipologia_id', 'id')` |
@@ -129,12 +132,12 @@
 | trg_articoli_a10_unita_misura_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id', 'id')` |
 | trg_articoli_a10_unita_misura_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id', 'id')` |
 | trg_articoli_a10_valore_giacenza_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'valore_giacenza', 'articolo_id', 'id', 'attivo')` |
-| trg_articoli_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_articoli_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_articoli_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_articoli_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_articoli_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_articoli_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('articoli_id')` |
+| trg_articoli_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_articoli_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('articoli_id')` |
+| trg_articoli_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('articoli_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Smoke — CATENA DI RISOLUZIONE INDIRIZZI DOCUMENTO sul percorso reale, dopo il
-#         ripuntamento del mixin su `script.fn_resolve_indirizzo_documento`
-#         (Fase 0 del piano BE/FE satelliti fattura, 2026-07-31).
+# Smoke — CATENA DI RISOLUZIONE INDIRIZZI DOCUMENTO sul percorso reale:
+#         `script.fn_resolve_indirizzo_documento` (Fase 0 del piano BE/FE
+#         satelliti fattura, 2026-07-31). Dal 2026-10-12 il backend non la
+#         chiama piu': la usa il DB, nel building block dello slot di default
+#         `vendite.fn_doc_indirizzo_default` (brief-db-indirizzi-documento-
+#         seguono-il-cliente). Lo smoke la interroga direttamente.
 # Uso:    ./manage-env.sh shell < scripts/tests/smoke-indirizzi-documento-catena.py
 # ------------------------------------------------------------
 #
@@ -34,17 +37,27 @@
 #      (filtro di uguaglianza, non solo ordinamento)
 #   4  layer SOGGETTO: nessun indirizzo di ruolo -> snapshot senza origine_indirizzo_id
 #   5  tipo non risolvibile -> zero righe (nessun errore: decide il chiamante)
-#   6  il mixin espone la catena a tutti e 5 i domini (stessa implementazione)
-#   7  i 3 domini precontrattuali dichiarano l'istanza di testata, gli esecutivi no
+#   6  i 5 domini dichiarano il documento per lo slot di default DB
 # ------------------------------------------------------------
 
 from django.db import connection, transaction
+
+from apps.core.db._helpers import coerce_jsonb_dict, row_to_dict
+from apps.config.sorgenti import (
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+)
+from scripts.tests._smoke_indirizzo import crea_indirizzo_libero_ruolo
 
 from apps.vendite.db.contratti_repository import ContrattiRepository
 from apps.vendite.db.ddt_repository import DdtRepository
 from apps.vendite.db.offerte_repository import OfferteRepository
 from apps.vendite.db.ordini_repository import OrdiniRepository
 from apps.vendite.db.preventivi_repository import PreventiviRepository
+from scripts.tests._smoke_contesto import apri_contesto_smoke, seleziona_emittente_di_prova
 
 FAIL: list[str] = []
 
@@ -73,41 +86,54 @@ if row is None:
     raise SystemExit("Prerequisito DB assente: il ripuntamento non è collaudabile.")
 print(f"    args: {row[0]}\n    ret : {row[1]}\n")
 
-repo = PreventiviRepository()
+
+
+# Scopo: la catena, interrogata come la interroga il building block DB.
+def _risolvi(*, soggetto_ruolo_id, istanza_utility_id, tipo_codice):
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            SELECT snapshot, origine_indirizzo_id, origine_soggetto_ruolo_id
+              FROM script.fn_resolve_indirizzo_documento(%s, %s, %s)
+            """,
+            [soggetto_ruolo_id, istanza_utility_id, tipo_codice],
+        )
+        row = row_to_dict(cur)
+    if row is not None:
+        row["snapshot"] = coerce_jsonb_dict(row.get("snapshot"))
+    return row
+
 
 with transaction.atomic():
     with connection.cursor() as cur:
         # Contesto operatore (le anagrafiche non sono RLS, ma i documenti sì:
         # lo smoke resta coerente con il percorso applicativo).
-        cur.execute(
-            "SELECT set_config('app.ruolo_applicativo','OPERATORE',false),"
-            "       set_config('app.current_user_id', (SELECT auth_user_id::text"
-            "         FROM config.user_emittenti_fiscali LIMIT 1), false)"
-        )
+        apri_contesto_smoke(cur)
 
-        # Fixture: un soggetto_ruolo CLIENTE con billing account e istanza, preso
-        # dai dati reali. Serve una coppia (ruolo, istanza) coerente.
+        # Fixture: un soggetto_ruolo CLIENTE con billing account e istanza,
+        # COSTRUITO dentro la transazione annullata dal builder delle fixture
+        # (`dbops.fn_pgtap_crea_cliente_ba`). ⛔ Fino al 2026-10-18 lo smoke
+        # prendeva il primo BA dei dati reali e ne cancellava gli indirizzi: un
+        # documento fuori bozza che li usava (un contratto annullato) lo fermava
+        # col lock delle righe, e l'esito dipendeva da cosa c'era su dbdev.
+        # Sull'emittente DI PROVA, scelto come lo sceglie l'operatore:
+        # `dev.smoke` e' super admin in «Tutti gli emittenti», e un BA nuovo
+        # ne vuole uno.
+        _ef_id, ef_sr_id = seleziona_emittente_di_prova(cur)
         cur.execute(
-            """
-            SELECT ba.soggetto_ruolo_id, ba.istanza_utility_id
-              FROM anagrafiche.billing_account ba
-             ORDER BY ba.id
-             LIMIT 1
-            """
+            "SELECT soggetto_ruolo_id, istanza_utility_id"
+            "  FROM dbops.fn_pgtap_crea_cliente_ba('smoke catena indirizzi', NULL, %s)",
+            [ef_sr_id],
         )
-        base = cur.fetchone()
-        if not base:
-            raise SystemExit("Nessun billing account: smoke impossibile.")
-        sr_id, istanza_id = base
-        # Un'ALTRA istanza qualsiasi, per la controprova cross-istanza (3c):
-        # risolvere per lei non deve pescare l'indirizzo dell'istanza sopra.
+        sr_id, istanza_id = cur.fetchone()
+        # Un'ALTRA istanza, per la controprova cross-istanza (3c): risolvere per
+        # lei non deve pescare l'indirizzo dell'istanza sopra.
         cur.execute(
-            "SELECT istanza_utility_id FROM anagrafiche.billing_account"
-            " WHERE istanza_utility_id <> %s ORDER BY id LIMIT 1",
-            [istanza_id],
+            "SELECT istanza_utility_id"
+            "  FROM dbops.fn_pgtap_crea_cliente_ba('smoke catena indirizzi, altra istanza', NULL, %s)",
+            [ef_sr_id],
         )
-        row_altra = cur.fetchone()
-        altra_istanza_id = row_altra[0] if row_altra else None
+        altra_istanza_id = cur.fetchone()[0]
         print(f"fixture: soggetto_ruolo {sr_id}, istanza {istanza_id}, "
               f"altra istanza {altra_istanza_id}\n")
 
@@ -146,27 +172,14 @@ with transaction.atomic():
         )
 
         # --- 2) layer RUOLO: indirizzo GENERICO (istanza NULL) --------------
-        # `anagrafiche.indirizzi` non ha colonne CAP/città. Il CHECK
-        # `chk_indirizzi_free_requirements` impone, per un indirizzo NON
-        # normalizzato: `indirizzo_libero` + `stato_id` + la terna
-        # (locality, postal_box, administrative_area) — oppure comune/CAP
-        # normalizzati. Lo snapshot lo compone la funzione DB, non lo smoke.
-        cur.execute(
-            """
-            INSERT INTO anagrafiche.indirizzi
-                   (soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-                    indirizzo_libero, stato_id, locality, postal_box,
-                    administrative_area)
-            VALUES (%s, %s, NULL, 'Via GENERICA 1 - smoke',
-                    (SELECT id FROM config.stati WHERE codice_iso2 = 'IT'),
-                    'Roma', '00100', 'RM')
-            RETURNING id
-            """,
-            [sr_id, tipo_id],
+        # Un indirizzo NON normalizzato, nella forma che decide lo stato
+        # (BB `_smoke_indirizzo`). Lo snapshot lo compone la funzione DB.
+        id_generico = crea_indirizzo_libero_ruolo(
+            cur, soggetto_ruolo_id=sr_id, tipo_indirizzo_id=tipo_id,
+            testo="Via GENERICA 1 - smoke",
         )
-        id_generico = cur.fetchone()[0]
 
-    risolto = repo.resolve_indirizzo_documento(
+    risolto = _risolvi(
         soggetto_ruolo_id=sr_id, istanza_utility_id=istanza_id, tipo_codice=tipo_codice,
     )
     check("2) layer RUOLO risolve con origine agganciata",
@@ -181,22 +194,12 @@ with transaction.atomic():
     # del mixin (`istanza_utility_id NULLS FIRST`) avrebbe continuato a vincere
     # il generico: è esattamente il difetto C-14c.
     with connection.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO anagrafiche.indirizzi
-                   (soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-                    indirizzo_libero, stato_id, locality, postal_box,
-                    administrative_area)
-            VALUES (%s, %s, %s, 'Via ISTANZA 99 - smoke',
-                    (SELECT id FROM config.stati WHERE codice_iso2 = 'IT'),
-                    'Milano', '20100', 'MI')
-            RETURNING id
-            """,
-            [sr_id, tipo_id, istanza_id],
+        id_istanza = crea_indirizzo_libero_ruolo(
+            cur, soggetto_ruolo_id=sr_id, tipo_indirizzo_id=tipo_id,
+            testo="Via ISTANZA 99 - smoke", istanza_utility_id=istanza_id,
         )
-        id_istanza = cur.fetchone()[0]
 
-    risolto = repo.resolve_indirizzo_documento(
+    risolto = _risolvi(
         soggetto_ruolo_id=sr_id, istanza_utility_id=istanza_id, tipo_codice=tipo_codice,
     )
     check("3) PRECEDENZA ISTANZA: vince l'indirizzo dell'istanza, non il generico",
@@ -205,7 +208,7 @@ with transaction.atomic():
           f"(istanza={id_istanza}, generico={id_generico})")
 
     # Controprova: un documento SENZA istanza deve prendere il generico.
-    risolto_senza = repo.resolve_indirizzo_documento(
+    risolto_senza = _risolvi(
         soggetto_ruolo_id=sr_id, istanza_utility_id=None, tipo_codice=tipo_codice,
     )
     check("3b) documento senza istanza -> indirizzo generico",
@@ -219,7 +222,7 @@ with transaction.atomic():
     # senza, un `OR istanza IS NOT NULL` sbagliato passerebbe il caso 3
     # e servirebbe l'indirizzo di un'altra fornitura.
     if altra_istanza_id is not None:
-        risolto_altra = repo.resolve_indirizzo_documento(
+        risolto_altra = _risolvi(
             soggetto_ruolo_id=sr_id, istanza_utility_id=altra_istanza_id,
             tipo_codice=tipo_codice,
         )
@@ -261,7 +264,7 @@ with transaction.atomic():
         tipo_sog = cur.fetchone()
 
     if tipo_sog:
-        risolto = repo.resolve_indirizzo_documento(
+        risolto = _risolvi(
             soggetto_ruolo_id=sr_id, istanza_utility_id=istanza_id,
             tipo_codice=tipo_sog[0],
         )
@@ -300,7 +303,7 @@ with transaction.atomic():
         tipo_orfano = cur.fetchone()
 
     if tipo_orfano:
-        risolto = repo.resolve_indirizzo_documento(
+        risolto = _risolvi(
             soggetto_ruolo_id=sr_id, istanza_utility_id=istanza_id,
             tipo_codice=tipo_orfano[0],
         )
@@ -312,26 +315,23 @@ with transaction.atomic():
 
     transaction.set_rollback(True)
 
-# --- 6/7) la catena è condivisa, e il cablaggio dell'istanza è corretto ---
+# --- 6) lo slot di default e' del DB, per tutti e 5 i domini ---------------
+# Il documento e' il codice della SORGENTE (grammatica unica, brief-db-
+# grammatica-unica-documenti §11.4): dal 2026-10-19 non piu' i codici corti
+# OFFERTA/ORDINE/DDT, che qui restavano scritti a mano e davano rosso.
 repos = {
-    "PREVENTIVI": PreventiviRepository, "OFFERTE": OfferteRepository,
-    "ORDINI": OrdiniRepository, "DDT": DdtRepository,
-    "CONTRATTI": ContrattiRepository,
+    SORGENTE_PREVENTIVO: PreventiviRepository,
+    SORGENTE_OFFERTA_COMMERCIALE: OfferteRepository,
+    SORGENTE_ORDINE_VENDITA: OrdiniRepository,
+    SORGENTE_DDT_VENDITA: DdtRepository,
+    SORGENTE_CONTRATTO: ContrattiRepository,
 }
 # Attributi DI CLASSE del mixin: si leggono dalla classe, senza istanziare.
-senza_catena = [n for n, cls in repos.items()
-                if not hasattr(cls, "resolve_indirizzo_documento")]
-check("6) tutti e 5 i domini espongono la catena unica", not senza_catena,
-      f"mancanti: {senza_catena}" if senza_catena else "preventivi, offerte, ordini, ddt, contratti")
-
-# Precontrattuali: istanza in testata. Esecutivi: dal billing account.
-attesi = {"PREVENTIVI": "istanza_utility_id", "OFFERTE": "istanza_utility_id",
-          "CONTRATTI": "istanza_utility_id", "ORDINI": None, "DDT": None}
-errati = {n: (cls._indirizzi_doc_istanza_column, attesi[n])
+errati = {n: getattr(cls, "_indirizzi_documento", None)
           for n, cls in repos.items()
-          if cls._indirizzi_doc_istanza_column != attesi[n]}
-check("7) istanza di testata dichiarata dai soli precontrattuali", not errati,
-      str(errati) if errati else "3 precontrattuali + 2 esecutivi via BA")
+          if getattr(cls, "_indirizzi_documento", None) != n}
+check("6) i 5 domini dichiarano il documento per fn_doc_indirizzo_default", not errati,
+      str(errati) if errati else "preventivo, offerta, ordine, ddt, contratto")
 
 print("\n=== ROLLBACK eseguito: nessun indirizzo di prova persistito ===")
 print(f"=== ESITO: {'FALLITO — ' + ', '.join(FAIL) if FAIL else 'TUTTO VERDE'} ===\n")

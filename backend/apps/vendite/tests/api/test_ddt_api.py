@@ -25,11 +25,17 @@ Indice test eseguiti:
 12) test_indirizzi_get_ok         — 200 pannello indirizzi tipi+slot (mock service)
 13) test_indirizzi_upsert_ok      — 200 upsert slot indirizzo, payload propagato (mock)
 14) test_indirizzi_delete_ok      — 200 delete slot indirizzo (mock service)
+15) test_cambia_stato_annullo_con_conferma — legami_confermati propagato al service
+16) test_legami_ok                — 200 GET legami della bolla (mock service)
+17) test_riga_qta_evasa_ok        — 200 POST verbo quantita' evasa, payload propagato
 """
 
 from unittest.mock import ANY, Mock, patch
 
-from django.test import Client
+from django.test import SimpleTestCase
+
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
@@ -40,7 +46,7 @@ _SVC = "apps.vendite.services.ddt_service"
 # emetti/ vive in ddt_documenti_views (multipart, emetti + genera PDF atomico).
 _DOC_VIEW_SVC = "apps.vendite.api.ddt_documenti_views.ddt_service"
 _DOC_GEN_SVC = "apps.vendite.api.ddt_documenti_views.DocumentGenerationService"
-_DOC_REPO = "apps.documenti.api.contesto_helpers.DocumentiRepository"
+_SORGENTI_REPO = "apps.documenti.api.contesto_helpers.SorgentiRepository"
 _DDT_REPO = "apps.vendite.api.ddt_documenti_views.DdtRepository"
 _VIEW_ATOMIC = "apps.documenti.api.sorgente_documenti_views.transaction.atomic"
 
@@ -53,7 +59,7 @@ class TestDdtApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     def test_list_richiede_jwt(self) -> None:
         resp = self.client.get(_BASE)
@@ -110,11 +116,11 @@ class TestDdtApi(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_VIEW_ATOMIC)
     @patch(_DOC_GEN_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_DDT_REPO)
     @patch(_DOC_VIEW_SVC)
     def test_emetti_ok(
-        self, svc_mod, repo_cls, doc_repo_cls, doc_svc_cls, _atomic, _auth,
+        self, svc_mod, repo_cls, sorgenti_repo_cls, doc_svc_cls, _atomic, _auth,
     ) -> None:
         # Emissione documentale multipart (mirror ordini): la view orchestra
         # ddt_service.emetti (assegna numero) + genera_documento in atomico.
@@ -128,8 +134,8 @@ class TestDdtApi(JwtMockedApiTest):
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 5, "codice": "DDT_VENDITA", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 5, "codice": "DDT_VENDITA",
         }
         doc_svc_cls.return_value.genera_documento.return_value = {
             "id": 100, "uid": "doc-uid-100", "nome_file": "ddt.pdf",
@@ -156,7 +162,41 @@ class TestDdtApi(JwtMockedApiTest):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["stato"], "SPEDITO")
-        mock_cs.assert_called_once_with(7, "SPEDITO")
+        # Al primo tentativo nessuna dichiarazione (D-8): None, non assente.
+        mock_cs.assert_called_once_with(7, "SPEDITO", legami_confermati=None)
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.cambia_stato")
+    def test_cambia_stato_annullo_con_conferma(self, mock_cs, _auth) -> None:
+        mock_cs.return_value = {"ddt_id": 7, "stato": "ANNULLATO"}
+        resp = self.client.post(
+            f"{_BASE}7/cambia-stato/",
+            data={"stato_codice": "ANNULLATO", "legami_confermati": 2},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        mock_cs.assert_called_once_with(7, "ANNULLATO", legami_confermati=2)
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.get_legami")
+    def test_legami_ok(self, mock_leg, _auth) -> None:
+        mock_leg.return_value = {"documento": "DDT_VENDITA", "id": 7, "legami": 1, "righe": []}
+        resp = self.client.get(f"{_BASE}7/legami/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["data"]["legami"], 1)
+        mock_leg.assert_called_once_with(7)
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.correggi_qta_evasa")
+    def test_riga_qta_evasa_ok(self, mock_qta, _auth) -> None:
+        mock_qta.return_value = {"ddt_id": 7, "riga_id": 31, "qta_evasa": "6"}
+        resp = self.client.post(
+            f"{_BASE}7/righe/31/qta-evasa/", data={"qta_operativa": "6"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["data"]["qta_evasa"], "6")
+        mock_qta.assert_called_once_with(7, 31, {"qta_operativa": "6"})
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.push_a_commessa")
@@ -260,7 +300,7 @@ class TestOrdineGeneraDdtApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.crea_ddt_da_ordine")
@@ -290,3 +330,12 @@ class TestOrdineGeneraDdtApi(JwtMockedApiTest):
         mock_gen.assert_called_once_with(
             7, [{"ordine_riga_id": 11, "qta_da_evadere": "2"}],
         )
+
+
+class DdtEmettiPermessoTests(SimpleTestCase):
+    # Scopo: l'emissione chiede l'azione di processo che il verbo DB applica
+    #        (`emetti_ddt`), come il preventivo chiede la sua (2026-10-20, §A5).
+    def test_emetti_dichiara_emetti_ddt(self) -> None:
+        from apps.vendite.api.ddt_documenti_views import ApiDdtEmetti
+
+        self.assertEqual(ApiDdtEmetti.post_permission, "emetti_ddt")

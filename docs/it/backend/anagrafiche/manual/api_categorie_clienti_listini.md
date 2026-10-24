@@ -38,8 +38,8 @@ classe_utenza, listino) si popolano dai rispettivi lookup specifici.
 | `valid_at` | date ISO | Filtra righe la cui `validita` daterange contiene la data |
 | `limit` | int (default 25, max 200) | Paginazione |
 | `offset` | int | Paginazione |
-| `order_by` | string | `categoria_codice \| categoria_descrizione \| utility_codice \| utility_descrizione \| listino_codice \| listino_descrizione \| valido_dal \| valido_al \| attivo \| data_insert \| data_update` |
-| `order_dir` | string | `asc \| desc` (default `desc` per `valido_dal`) |
+| `order_by` | string | `categoria_codice \| categoria_descrizione \| utility_codice \| utility_descrizione \| emittente_ragione_sociale \| listino_codice \| listino_descrizione \| valido_dal \| valido_al \| attivo \| data_insert \| data_update` (default `valido_dal`) |
+| `order_dir` | string | `asc \| desc`. Assente: le colonne data (`valido_dal`, `valido_al`, `data_insert`, `data_update`) partono `desc`, le altre `asc`; anche la lista senza `order_by` parte da `valido_dal desc` (fino al 2026-10-20 partiva `asc`) |
 
 ### Payload create (`POST`)
 

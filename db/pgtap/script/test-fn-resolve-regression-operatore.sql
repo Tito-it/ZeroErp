@@ -137,10 +137,11 @@ SELECT id.id AS identita_id
    )
  LIMIT 1;
 
-INSERT INTO config.profili_accesso_bindings
-    (profilo_accesso_id, identita_digitale_id, attivo)
-SELECT 9100, sp.identita_id, true
-  FROM _t_spare_id sp;
+DO $lega$
+BEGIN
+    PERFORM config.fn_lega_profilo_identita(9100, sp.identita_id) FROM _t_spare_id sp;
+END
+$lega$;
 
 -- Se nessuna spare identita: svuoto _t_op cosi' i test 5..11 passano
 -- banalmente (graceful skip). Non possiamo rimuovere il binding di tid

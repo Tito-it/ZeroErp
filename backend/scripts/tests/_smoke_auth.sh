@@ -16,10 +16,13 @@
 #   smoke_login                       # -> TOKEN (e AUTH_STATUS/AUTH_BODY)
 #   smoke_login -D "${TMPFILE}.hdr"   # salva gli header (cookie del refresh)
 # Credenziali (le legge l'include, dagli argomenti dello smoke):
-#   USERNAME = SMOKE_USER: l'utente `smoke`, dedicato agli smoke (dal
-#              2026-10-02; com'e' fatto e come si ricrea:
-#              docs/it/dev/infra/comandi-utili-run-book.md §11). Il default
-#              `tid` resta solo come ripiego per chi non imposta SMOKE_USER.
+#   USERNAME = SMOKE_USER: l'utente `dev.smoke`, dedicato agli smoke e
+#              creato dal provisioning di sviluppo (`manage.py
+#              provision_utenti_sviluppo`, che stampa anche le variabili;
+#              docs/it/dev/infra/comandi-utili-run-book.md §11). Prima era
+#              `smoke`, creato a mano (2026-10-02). Nessun ripiego: senza
+#              SMOKE_USER lo smoke si ferma e lo dice (fino al 2026-10-16
+#              ripiegava sull'utente personale `tid`).
 #   PASSWORD = primo argomento dello smoke, o SMOKE_PASSWORD; se manca la si
 #              chiede a terminale (con `--senza-prompt`: errore ed uscita).
 #   Uno smoke che vuole un utente diverso riassegna USERNAME/PASSWORD dopo
@@ -61,7 +64,7 @@ source "${_SMOKE_DIR_AUTH}/_smoke_https.sh"
 source "${_SMOKE_DIR_AUTH}/_smoke_secondo_fattore.sh"
 source "${_SMOKE_DIR_AUTH}/_smoke_refresh.sh"
 
-USERNAME="${SMOKE_USER:-tid}"
+USERNAME="${SMOKE_USER:-}"
 PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
 SMOKE_TOKEN_MARGINE="${SMOKE_TOKEN_MARGINE:-180}"
 SMOKE_LOGIN_FONTE=""

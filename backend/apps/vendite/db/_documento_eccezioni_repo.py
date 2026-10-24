@@ -4,13 +4,16 @@
 # Doc: Python
 # Scopo: Le letture del DB comuni ai due documenti di vendita con listino ed
 #        eccezioni (contratto, offerta commerciale): la versione di listino che
-#        li governa e le combinazioni erogazione/fonte di una riga.
-# Note: brief-db-offerta-emissione-ed-erogazione (§C.6.4, §C.9.6), 2026-10-07.
+#        li governa, le combinazioni erogazione/fonte di una riga e la scheda
+#        di fornitura che l'anagrafica da' a un cliente.
+# Note: brief-db-offerta-emissione-ed-erogazione (§C.6.4, §C.9.6), 2026-10-07;
+#       la scheda: brief-db-indirizzi-documento-seguono-il-cliente (R-BE-5).
 # ------------------------------------------------------------
 
 # PERCHE' ESISTE (regola del 2). Le due domande hanno la stessa risposta sui due
 # documenti, e il DB la da' con UNA funzione che prende il documento come
-# selettore (`p_documento` = 'CONTRATTO' | 'OFFERTA'). Il backend la legge una
+# selettore (`p_documento` = 'CONTRATTO' | 'OFFERTA_COMMERCIALE', i codici di
+# `config.sorgenti`). Il backend la legge una
 # volta sola, qui; i due service la chiamano col proprio selettore.
 #
 # ⛔ NON sono regole di dominio: sono le LETTURE di regole che vivono nel DB.
@@ -31,10 +34,13 @@ from typing import Any, Literal
 
 from django.db import connection
 
-from apps.core.db._helpers import rows_to_list
+from apps.core.db._helpers import row_to_dict, rows_to_list
 
-# Il selettore del DB: i due documenti con listino ed eccezioni.
-DocumentoEccezioni = Literal["CONTRATTO", "OFFERTA"]
+# Il selettore del DB: i due documenti con listino ed eccezioni, coi codici di
+# `config.sorgenti` (brief-db-grammatica-unica-documenti, lotto 1: il DB rifiuta
+# `OFFERTA` con E_DOC_TIPO_NON_GESTITO). I chiamanti passano le costanti di
+# `apps.config.sorgenti`, che sono `Final`: mypy le confronta con questo elenco.
+DocumentoEccezioni = Literal["CONTRATTO", "OFFERTA_COMMERCIALE"]
 
 
 # Scopo: La versione di listino che governa il documento: quella fissata se
@@ -75,3 +81,26 @@ def list_erogazioni_riga(
             [documento, int(documento_id), str(articolo_id)],
         )
         return rows_to_list(cursor)
+
+
+# Scopo: La scheda di fornitura che l'anagrafica da' alla coppia (istanza,
+#        utility): `vendite.fn_get_fornitura_da_anagrafica`, la sede unica che
+#        scrive anche il BB della nascita del contratto e del cambio di cliente
+#        in bozza (D-5, D-7 di Tid). Il drawer la mostra PRIMA della creazione,
+#        perche' l'operatore veda cosa verra' scritto e lo corregga.
+#        None = la coppia non ha dati precontrattuali (zero righe; al piu' una
+#        per `uq_istanze_dati_precontrattuali_id_utility_id`).
+# ⛔ Nessuna copia della derivazione qui (tipo d'uso dalla classe): la fa il DB.
+#    La coppia NULL il DB la rifiuta (`E_DOC_FORNITURA_PARAMETRO_MANCANTE`):
+#    chi chiama la passa intera.
+def fornitura_da_anagrafica(istanza_utility_id: int, utility_id: int) -> dict[str, Any] | None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT istanza_dati_precontrattuali_id, classe_utenza_id, tipo_utenza_id,
+                   param_1_num, param_2_txt, meta
+              FROM vendite.fn_get_fornitura_da_anagrafica(%s, %s)
+            """,
+            [int(istanza_utility_id), int(utility_id)],
+        )
+        return row_to_dict(cursor)

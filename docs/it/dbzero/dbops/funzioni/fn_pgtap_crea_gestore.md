@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_crea_gestore(p_etichetta text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_gestore(p_etichetta text DEFAULT 'pgTAP'::text)
  RETURNS TABLE(gestore_id bigint, gestore_soggetto_ruolo_id bigint, gestore_soggetto_id uuid)
@@ -66,6 +68,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_gestore(p_etichetta text)
 IS 'Fixture pgTAP: il GESTORE dell''installazione — lo PRENDE se c''e'', lo costruisce (soggetto + ruolo GE + riga, dentro la finestra differita) se non c''e''. ⚠️ anagrafiche.gestori e'' dato di MACCHINA: su un database ricostruito e'' vuota, e i quattro file che leggevano «il primo Gestore» non trovavano niente. ⛔ Prendi-o-costruisci e non costruisci-sempre, perche'' il gestore e'' un SINGLETON: un secondo lo rifiuta un guard, quindi un builder che creasse sempre sarebbe rosso proprio su dbdev. ⛔ I conti bancari del gestore NON li scrive: uso, IBAN e predefinito sono il caso del test. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-fixture-che-costruiscono-giro-2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

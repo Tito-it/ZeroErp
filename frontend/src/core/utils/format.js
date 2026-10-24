@@ -90,6 +90,26 @@ export function formatNumber(value, opts = {}) {
   return Number(value).toLocaleString(locale, formatOpts)
 }
 
+// Le cifre decimali di una QUANTITA' a video e nei campi di input: le quantita'
+// dei documenti e del magazzino (UoM base) arrivano fino a 6 decimali — la
+// proporzione dei componenti di un kit reso si arrotonda li' (round(…, 6) in
+// `vendite.fn_reso_merce_da_rientrare`). Una sede sola per il numero.
+export const QTA_MAX_DECIMALI = 6
+
+/**
+ * Una QUANTITA' a video: niente zeri inutili («4», «2,5»), fino a
+ * `QTA_MAX_DECIMALI` decimali. Regola del 2 (2026-10-13): la stessa forma era
+ * scritta a mano nei componenti del kit della fattura, e la chiedevano i
+ * prelievi della bolla, i rientri del reso e i blocchi di magazzino.
+ * @param {number|string|null} value
+ * @param {object} [opts]
+ * @param {string} [opts.placeholder='']
+ * @returns {string}
+ */
+export function formatQuantita(value, { placeholder = '' } = {}) {
+  return formatNumber(value, { placeholder, minimumFractionDigits: 0, maximumFractionDigits: QTA_MAX_DECIMALI })
+}
+
 /**
  * Etichetta IVA per liste/colonne compatte.
  * - Aliquota > 0 → "22%" (aliquota numerica)

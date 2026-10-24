@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.anagrafiche.db.emittenti_fiscali_repository import (
@@ -57,6 +57,12 @@ _EMITTENTE_NON_EDITABLE_GAPS: tuple[str, ...] = ("codice", "soggetto_id")
 #    2026-09-26 una PATCH che lo portava veniva accettata e il campo ignorato;
 #    ora e' un 400 che lo nomina.
 _UPDATE_EMITTENTE_KEYS: frozenset[str] = EMITTENTE_UPDATE_ALLOWED
+# Le chiavi della CREAZIONE: quelle che `crea_emittente` legge (il drawer manda
+# solo queste, verificato il 2026-10-21).
+_CREA_EMITTENTE_KEYS: frozenset[str] = frozenset({
+    "soggetto_id", "codice", "valuta_id", "attivo", "bollo_auto",
+    "regime_fiscale_rf", "rounding_policy", "bollo_soglia",
+})
 _UPDATE_UTILITY_KEYS: frozenset[str] = UTILITIES_UPDATE_ALLOWED
 
 # Validator stateless del dominio (solo il codice errore): condivisibile.
@@ -153,6 +159,12 @@ class EmittentiFiscaliService:
     #        Nota: il primo emittente creato attiva il trigger default_bootstrap che
     #        popola automaticamente il default mapping in emittenti_fiscali_billing_account.
     def crea_emittente(self, payload: dict[str, Any]) -> dict[str, Any]:
+        # ⛔ Una chiave fuori contratto e' un 400, come nella PATCH: fino al
+        #    2026-10-21 la creazione la scartava in silenzio
+        #    (brief-be-verifica-documentazione-api §B2, regola di api.md).
+        _V.validate_allowed_keys(
+            payload, allowed=_CREA_EMITTENTE_KEYS, message="Payload emittente fiscale non valido.",
+        )
         soggetto_id = optional_uuid(payload, "soggetto_id")
         ErrorManager.require(
             soggetto_id is not None,
@@ -179,43 +191,27 @@ class EmittentiFiscaliService:
 
         # Il regime: dichiarato = scelto e confermato; assente = default DB RF01,
         # NON confermato (l'emittente entra nel presidio dei regimi da confermare).
-        regime_dichiarato = _regime_dichiarato(payload)
+        # Qui si rifiuta solo il vuoto: la conferma la fa la madre del DB.
+        _regime_dichiarato(payload)
 
         # Campi opzionali (incluso attivo se passato dal payload, default DB true)
         emittente_data = self._extract_emittente_data(payload)
 
-        # Atomic: ruolo EF e insert emittente devono essere consistenti — se fallisce
-        # l'insert dopo aver creato il ruolo, il rollback evita ruoli orfani.
-        with _regime_nel_catalogo(), transaction.atomic():
-            soggetto_ruolo_id = self._repo.get_or_create_ruolo_emittente(soggetto_id)
-            result = create_with_constraint_mapping(
-                lambda: {"id": self._repo.create_emittente(
-                    soggetto_ruolo_id=soggetto_ruolo_id,
-                    codice=codice,
-                    **emittente_data,
-                )},
+        # ⭐ Una madre sola (2026-10-18, 2b-2): ruolo EF, riga e conferma del
+        #    regime dichiarato in un'istruzione, `fn_crea_emittente_fiscale`.
+        #    Restano qui il pre-check della partita IVA (sopra) e la traduzione
+        #    dei vincoli per nome.
+        with _regime_nel_catalogo():
+            emittente_id, soggetto_ruolo_id = create_with_constraint_mapping(
+                lambda: self._repo.crea_emittente_fiscale(soggetto_id, codice, emittente_data),
                 {
                     "uq_emittenti_fiscali_ruolo": "Esiste gia' un emittente fiscale per questo soggetto.",
                     "uq:codice": "Esiste gia' un emittente fiscale con questo codice.",
                 },
             )
-            # ⭐ La INSERT non conferma mai il regime (il default RF01 e un
-            #    RF01 scelto sono indistinguibili): la dichiarazione e' un
-            #    UPDATE del regime, nella stessa transazione. Lo stesso valore
-            #    gia' scritto dalla INSERT va bene: conta la colonna nominata.
-            # ⚠️ L'esito si controlla: una UPDATE che non tocca la riga (0 righe)
-            #    lascerebbe l'emittente creato e NON confermato, senza errore.
-            if regime_dichiarato:
-                ErrorManager.require(
-                    self._repo.update_emittente(
-                        result["id"], {_CAMPO_REGIME: emittente_data[_CAMPO_REGIME]},
-                    ),
-                    code=E_ANAG_NOT_FOUND,
-                    message="Emittente fiscale appena creato non trovato per la conferma del regime.",
-                )
 
         return {
-            "id": result["id"],
+            "id": emittente_id,
             "soggetto_ruolo_id": soggetto_ruolo_id,
         }
 
@@ -250,6 +246,8 @@ class EmittentiFiscaliService:
         _regime_dichiarato(payload)
         # Verifica che l'emittente esista
         self.get_emittente(emittente_id)
+        # Un PATCH vuoto e' un 400, non il 404 che dava il rowcount (2026-10-14).
+        _V.require_campi_da_aggiornare(payload)
         # Copia difensiva: il repo normalizza stringhe vuote -> None e non deve mutare
         # request.data della view (che potrebbe essere riusato dal middleware di logging).
         with _regime_nel_catalogo():
@@ -257,7 +255,7 @@ class EmittentiFiscaliService:
         ErrorManager.require(
             updated,
             code=E_ANAG_NOT_FOUND,
-            message="Emittente fiscale non trovato o nessun campo modificato.",
+            message="Emittente fiscale non trovato.",
         )
         return {"updated": True}
 
@@ -580,12 +578,14 @@ class EmittentiFiscaliUtilitiesService:
             self._parent, self._repo, emittente_id, record_id,
             "Record utility non trovato per l'emittente indicato.",
         )
+        # Un PATCH vuoto e' un 400, non il 404 che dava il rowcount (2026-10-14).
+        _V.require_campi_da_aggiornare(payload)
         with self._vincoli_tradotti(record_id=record_id):
             updated = self._repo.update_record(record_id, dict(payload))
         ErrorManager.require(
             updated,
             code=E_ANAG_NOT_FOUND,
-            message="Record utility non trovato o nessun campo modificato.",
+            message="Record utility non trovato.",
         )
         return {"updated": True}
 

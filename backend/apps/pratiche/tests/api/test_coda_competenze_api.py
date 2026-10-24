@@ -19,7 +19,8 @@ Indice test eseguiti:
 import json
 from unittest.mock import Mock, patch
 
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
@@ -58,7 +59,7 @@ class CodaLavoroApiTests(JwtMockedApiTest):
 
     def setUp(self):
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
         self.url = "/api/v1/pratiche/coda-lavoro/"
 
     @patch(f"{_VIEWS}.pratiche_service.get_coda_lavoro", return_value=[_mock_coda_row()])
@@ -88,7 +89,7 @@ class PrendiInCaricoApiTests(JwtMockedApiTest):
 
     def setUp(self):
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
         self.url = "/api/v1/pratiche/flussi/10/prendi-in-carico/"
 
     @patch(f"{_VIEWS}.pratiche_service.prendi_in_carico", return_value=True)
@@ -115,7 +116,7 @@ class CompetenzeFlussiApiTests(JwtMockedApiTest):
 
     def setUp(self):
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
         self.url_list = "/api/v1/pratiche/competenze-flussi/"
 
     @patch(f"{_VIEWS}.pratiche_service.get_competenze_flussi", return_value=[{

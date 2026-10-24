@@ -55,7 +55,7 @@ _AMMESSI: dict[tuple[str, str], str] = {
     #    lotto) non sono piu' eccezioni dal 2026-10-04: il loro 100 e' la
     #    costante `DEFAULT_LIMIT_EVENTI`, letta da view e firme.
     # Lookup (autocomplete): un contratto suo, piu' corto di una pagina.
-    ("core/api/views_lookup.py", 'qp.get("limit"), 30)'): "lookup: 30 righe, tetto 100",
+    ("core/api/views_lookup.py", '"limit", 30)'): "lookup: 30 righe, tetto 100",
     ("catalogo/api/views.py", '"limit", 20)'): "lookup articoli: 20 righe",
     # Il ripiego NON si usa: la riga gira solo se il client ha mandato `limit`.
     ("anagrafiche/api/views_billing_account.py", 'qp_int_strict(raw_limit, "limit", 0)'): "solo con limit esplicito",
@@ -73,6 +73,7 @@ _DEFAULT_FIRMA = re.compile(r"\b(?:limit|page_size): int = \d+")
 #    tendina), un batch prende cio' che deve lavorare.
 _FIRME_AMMESSE: dict[tuple[str, str], str] = {
     ("catalogo/services/catalogo_service.py", "fn_lookup_articoli"): "lookup articoli: 20 righe",
+    ("catalogo/services/catalogo_service.py", "fn_lookup_articoli_ammessi"): "picker delle righe di documento: 20 righe, come il lookup",
     ("anagrafiche/db/conti_bancari_repository.py", "search_conti_bancari"): "autocomplete IBAN",
     ("anagrafiche/db/conti_bancari_repository.py", "search_bank_branches"): "autocomplete filiali",
     ("anagrafiche/services/conti_bancari_service.py", "search_conti_bancari"): "autocomplete IBAN",

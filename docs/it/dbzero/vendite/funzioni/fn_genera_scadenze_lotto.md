@@ -7,6 +7,8 @@ CREATE FUNCTION fn_genera_scadenze_lotto(p_lotto_id bigint, p_batch_size integer
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_genera_scadenze_lotto(p_lotto_id bigint, p_batch_size integer DEFAULT 1000)
  RETURNS TABLE(fatture_count integer, deleted_rows integer, inserted_rows integer, skipped_rows integer, skipped_errore_rows integer, failed_rows integer)
@@ -203,6 +205,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_genera_scadenze_lotto(p_lotto_id bigint, p_batch_size integer)
 IS 'Fase 4.2 — wrapper di lotto del generatore del piano rate, task genera_scadenze_lotto dello step EMESSA. Modello: fn_snapshot_fattura_lotto. DUE filtri distinti e contati a parte, e la distinzione e'' sostanziale (D-Q pt.2): le fatture oltre la soglia DRAFT/EMESSA si saltano perche'' non hanno lavoro da fare (D-F), quelle con stato_esecuzione = ERRORE si saltano e NON si riprovano, perche'' questo e'' uno step a VALLE del DRAFT e li'' la fattura e'' un rifiuto, non un candidato — riprovarla qui vorrebbe dire portare verso la numerazione un documento gia'' dichiarato difettoso. Un contatore unico direbbe «cinque saltate» senza distinguere cinque documenti chiusi da cinque rotti, che per il cockpit sono l''opposto. Il fallimento di UNA fattura non uccide il giro (D-Q pt.1): sotto-blocco per fattura, marcatura C su fatture_log, si cattura raise_exception e non others. Al successo il task ritira le PROPRIE segnalazioni filtrando su meta->>''task'' e mai sul nome della funzione (D-Q pt.3). ⭐ rev 2026-08-21 (cantiere brief-db-liste-drawer-lotto, L1/P-4): il ramo EXCEPTION cattura anche CONSTRAINT_NAME e lo scrive in meta->>''error_code''. Prima registrava solo RETURNED_SQLSTATE, che qui vale SEMPRE P0001 per costruzione — la clausola cattura `raise_exception` e nient''altro — quindi come codice non distingueva niente: una chiave che risponde sempre lo stesso valore. Il codice registrato a catalogo, quello su cui il backend mappa status HTTP e ui_action, viaggia nel campo CONSTRAINT della diagnostica, dove lo mette script.fn_log_and_raise_error. jsonb_strip_nulls e non jsonb_build_object nudo: CONSTRAINT_NAME e'' vuoto quando l''errore non viene da fn_log_and_raise_error (un CHECK violato, per dire), e una chiave presente con valore null in una lista si legge come una cella bianca indistinguibile da «non c''e''». Le altre quattro chiavi non sono mai nulle, quindi lo strip non puo'' mangiare altro. FORWARD-ONLY: le righe di log gia'' scritte non hanno il codice e non lo avranno mai, perche'' dal testo del messaggio non e'' ricostruibile.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

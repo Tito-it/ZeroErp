@@ -58,7 +58,7 @@ script.fn_available_actions_preventivo(
     "can_genera_ordine_reason":     "PREVENTIVO_NON_ACCETTATO",
     "can_genera_ordine_reason_key": "preventivi.genera_ordine_reason.non_accettato",
     "can_create_revisione":         false,   // true solo in EMESSO
-    "non_editable_fields":          ["utility_id"],  // sempre presente; vedi dettaglio sotto
+    "non_editable_fields":          ["utility_id", "emittente_fiscale_id"],  // in bozza; vedi dettaglio sotto
     "stato_codice":                 "DRAFT"  // codice_interno stato corrente
 }
 ```
@@ -93,31 +93,22 @@ BA e utility del preventivo sono `NOT NULL` — `brief-db-istanza-nasce-col-ba-r
 
 ### Dettaglio `non_editable_fields`
 
-> ⚠️ **Superato il 2026-10-10** (brief `brief-db-testata-dopo-emissione`, fase 2). Le liste
-> qui sotto erano scritte a mano nella funzione: la terza copia della regola «che cosa si
-> cambia ancora fuori bozza». Ora `non_editable_fields` e `can_edit_testata` si leggono dal
-> montaggio del lock di testata con
-> [`script.fn_doc_testata_in_stato`](/dbzero/script/funzioni/fn_doc_testata_in_stato): restano
-> nella capability solo le colonne «sempre» (campi di sistema e lock assoluti, valgono anche in
-> bozza), seguite da quelle che il lock blocca nello stato. Fuori bozza `can_edit_testata` è vero
-> negli stati in cui una colonna resta aperta (le note di un documento vivo, `valido_al` e
-> CIG/CUP del contratto attivo), falso a documento chiuso. La tabella resta per la storia.
+Le colonne della testata che il form non lascia cambiare **nello stato del preventivo**. Non
+sono scritte nella funzione: le dice il montaggio del lock di testata
+(`trg_preventivi_a05_lock_fuori_bozza_upd`), letto con
+[`script.fn_doc_testata_in_stato`](/dbzero/script/funzioni/fn_doc_testata_in_stato). Così il
+form e il lock che rifiuta l'aggiornamento non possono dire due cose diverse.
 
-Due famiglie di immutabilità:
+* **Sempre**, bozza compresa: `utility_id` ed `emittente_fiscale_id`. In bozza si cambia il
+  cliente, dentro la stessa utility e dello stesso emittente.
+* **Fuori bozza**: in più le colonne che il montaggio ferma in quello stato (cliente,
+  identità, condizioni); `competenza_mese` e le note restano aperte in `EMESSO` e `ACCETTATO`.
 
-| Famiglia | Campi | Sempre? |
-|---|---|---|
-| Sempre immutabili (regola di dominio) | `utility_id` | sì, anche in DRAFT |
-| Bloccati fuori DRAFT (whitelist Python) | `billing_account_id`, `istanza_utility_id`, `valuta_id`, `termine_pagamento_id`, `validita_dal`, `validita_al`, `competenza_mese`, `fatturazione_immediata`, `meta` | solo fuori DRAFT |
+`can_edit_testata` è vero se nello stato almeno una colonna del montaggio si cambia.
 
-Risultato per stato:
-
-| Stato | `non_editable_fields` |
-|---|---|
-| `DRAFT` | `["utility_id"]` |
-| Fuori DRAFT | `["utility_id", "billing_account_id", "istanza_utility_id", "valuta_id", "termine_pagamento_id", "validita_dal", "validita_al", "competenza_mese", "fatturazione_immediata", "meta"]` |
-
-> **Nota di consistenza** — `utility_id` è nella whitelist `aggiorna_preventivo` del service Python al momento. Il BE deve rimuoverlo dalla whitelist per allineare il contratto API alla regola di dominio (l'utility identifica il preventivo, non cambia post-create). Senza la rimozione lato Python, il FE renderizza il campo readonly ma il PATCH lo accetta — incoerenza temporanea ammessa in fase di sviluppo.
+> Storia: fino al 2026-10-10 le liste erano scritte a mano qui (la terza copia della regola);
+> fino al 2026-10-18 la funzione teneva una sua lista «sempre» con la sola `utility_id`.
+> Brief: `brief-db-testata-dopo-emissione` (fase 2), `brief-db-indirizzi-documento-seguono-il-cliente` (§8.7).
 
 ### Dettaglio `available_actions` per stato
 
@@ -158,7 +149,7 @@ fatturazione, push commessa).
    - `can_push_commessa = (stato = 'ACCETTATO') AND vendite.fn_preventivo_ha_residuo_commessa(id)` *(rev 12-06-2026)*
    - `can_genera_ordine = (stato = 'ACCETTATO') AND vendite.fn_preventivo_ha_residuo_ordine(id)` *(rev 09-06-2026)*
    - `can_create_revisione = (stato = 'EMESSO')`
-   - `non_editable_fields`: costante ridotta in DRAFT, allargata altrove.
+   - `non_editable_fields`: dal montaggio del lock di testata, nello stato.
 5. **Build JSONB** — `jsonb_build_object` con tutte le chiavi.
 
 > **Nota** — la "Fase 3" anticipata nelle revisioni precedenti è stata
@@ -229,3 +220,9 @@ motivo** (`enabled`, `reason`, `reason_key`, `reasons`) se il preventivo ha un p
 attesa — [script.fn_check_prezzi_in_attesa](/dbzero/script/funzioni/fn_check_prezzi_in_attesa),
 la stessa funzione con cui `fn_crea_revisione_preventivo` rifiuta. `can_create_revisione`
 diventa **veritiero**: vero solo se la revisione si può davvero creare.
+
+## Rev 2026-10-11 — gli indirizzi (brief-db-testata-dopo-emissione §11, R-DB-3)
+
+Nuovo `can_edit_indirizzi`: vero se gli indirizzi si possono scrivere nello stato del
+documento, letto dal lock montato sui suoi indirizzi (in bozza sì, fuori no). Il backend li
+rifiutava da sé fuori DRAFT: ora la regola sta nel lock.

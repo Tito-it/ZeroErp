@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_commessa_chiudibile(p_commessa_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_commessa_chiudibile(p_commessa_id bigint)
  RETURNS jsonb
@@ -81,6 +83,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_commessa_chiudibile(p_commessa_id bigint)
 IS 'Funzione PURA (fn_check_*): motivi ostativi alla chiusura di una commessa. Ritorna [] se chiudibile, altrimenti array di {codice, reason, reason_key, dettaglio}. Motivo unico: esistono righe APPROVATA+NON_EMESSA (codice 559) — quelle che fn_list_commesse_emittibili avrebbe raccolto, e CHIUSA e'' terminale/irreversibile. Speculare al guard di INGRESSO ->PRONTA_FATTURAZIONE (E_COMMESSA_NESSUNA_RIGA_APPROVATA). Rende sicuro l''arco IN_ESECUZIONE->CHIUSA. Sorgente UNICA condivisa da vendite.trgfn_commesse_guard_transizione (solleva) e script.fn_available_actions_commessa (espone enabled/reasons). rev 2026-07-24.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_vendite_contabili_guard_transizione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_guard_transizione()
  RETURNS trigger
@@ -79,6 +81,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_guard_transizione()
 IS 'Guard del grafo degli stati della distinta contabile: la transizione deve esistere e essere attiva in pagamenti.transizioni_stati_contabile. Solo UPDATE OF stato_id — l''INSERT resta libero perche'' una distinta puo'' nascere in uno stato qualunque. Nato il 2026-08-21: fino ad allora pagamenti era l''unico dominio con degli stati e nessuna regola su come ci si passa.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

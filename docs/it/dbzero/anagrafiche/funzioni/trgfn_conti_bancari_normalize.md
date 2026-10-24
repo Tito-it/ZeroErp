@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_conti_bancari_normalize()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_conti_bancari_normalize()
  RETURNS trigger
@@ -35,6 +37,8 @@ IS 'Trigger function BEFORE INSERT/UPDATE su anagrafiche.conti_bancari:
  - Deriva paese da IBAN se mancante
  - Aggiorna audit (data_update, user_insert/user_update).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -17,8 +17,11 @@ import { defineStore } from 'pinia'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { useListaStoreCore } from '../../../core/composables/useListaStoreCore'
 import { TAB_ENTITIES } from '../../../core/constants'
+import { STATO_DDT } from '../constants'
+import { avvisaDocumentiCollegati } from '../../_shared/annullo/avvisoDocumentiCollegati'
 import {
   cambiaStatoDdt,
+  correggiQtaEvasa as apiCorreggiQtaEvasa,
   createDdt,
   createRiga,
   deleteDdt,
@@ -104,9 +107,13 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
 
   // Transizione di stato generica data-driven (SPEDITO/CONSEGNATO/RESO/ANNULLATO).
   // `statoCodice` = target_state dell'azione; il trigger DB valida l'ammissibilita'.
-  async function cambiaStato(id, statoCodice) {
-    const res = await cambiaStatoDdt(id, statoCodice)
+  // `dichiarazione`: la conferma dell'annullo di una bolla con legami (D-8).
+  // ⚠️ L'annullo ritira i legami: si avvisano i tab dei documenti che si
+  // riaprono (BB `avvisaDocumentiCollegati`).
+  async function cambiaStato(id, statoCodice, dichiarazione = {}) {
+    const res = await cambiaStatoDdt(id, statoCodice, dichiarazione)
     emitDataChanged(TAB_ENTITIES.DDT, id)
+    if (statoCodice === STATO_DDT.ANNULLATO) avvisaDocumentiCollegati(emitDataChanged)
     return res.data.data
   }
 
@@ -145,6 +152,16 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
     return res.data.data
   }
 
+  // La quantita' evasa di una riga legata a un ordine o a un reso (D-2): cambia
+  // anche il residuo (e lo stato) dell'ordine e la copertura del reso.
+  async function correggiQtaEvasa(ddtId, rigaId, qtaOperativa) {
+    const res = await apiCorreggiQtaEvasa(ddtId, rigaId, qtaOperativa)
+    emitDataChanged(TAB_ENTITIES.DDT, ddtId)
+    emitDataChanged(TAB_ENTITIES.ORDINE, null)
+    emitDataChanged(TAB_ENTITIES.RESO, null)
+    return res.data.data
+  }
+
   return {
     // Lista: TUTTO il core, non un sottoinsieme (`fetchSospesa` e
     // `erroreCaricamento` li leggono i BB di pagina con un guard `in store`).
@@ -156,7 +173,7 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
     // riepilogo IVA
     loadRiepilogoIva,
     // righe
-    addRiga, aggiornaRiga, eliminaRiga,
+    addRiga, aggiornaRiga, eliminaRiga, correggiQtaEvasa,
   }
 }, {
   userScoped: true,

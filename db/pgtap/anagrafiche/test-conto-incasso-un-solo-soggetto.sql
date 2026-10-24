@@ -59,26 +59,38 @@ SELECT plan(10);
 CREATE TEMP TABLE tmp_costanti AS
 SELECT 'pgtap_conto_incasso_unico'::text AS test_scope;
 
+-- ⚠️ rev 2026-10-19 (R-BE-15, brief-db-processi-accensione-per-ambiente
+--   §6.17.2): i riferimenti si COSTRUISCONO. Prima si pescavano «il primo
+--   ruolo» e «la prima istanza» del database, senza legame fra loro: il test 4
+--   metteva sul ruolo di un soggetto l'istanza di un altro, cioe' proprio la riga
+--   che il guard trgfn_guard_istanza_del_ruolo (20261019-82) ora rifiuta con
+--   E_ISTANZA_ALTRO_SOGGETTO. E su un database ricostruito (la CI) la pesca era
+--   vuota: il test moriva al primo. Ora due clienti, A e B (soggetti distinti,
+--   ognuno col ruolo e la sua istanza), da dbops.fn_pgtap_crea_cliente_ba, e la
+--   filiale da dbops.fn_pgtap_crea_filiale_bancaria. L'istanza del test 4 e'
+--   quella di A, il soggetto del primo ruolo.
+--   ⛔ Cio' che i builder scrivono si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_cli AS
+SELECT 'A' AS lato, c.* FROM dbops.fn_pgtap_crea_cliente_ba('conto incasso unico A') c
+UNION ALL
+SELECT 'B' AS lato, c.* FROM dbops.fn_pgtap_crea_cliente_ba('conto incasso unico B') c;
+
+CREATE TEMP TABLE tmp_bb AS
+SELECT bank_branch_id FROM dbops.fn_pgtap_crea_filiale_bancaria('conto incasso unico');
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT b.id FROM anagrafiche.bank_branches b
-    WHERE b.attivo IS TRUE ORDER BY b.id LIMIT 1)              AS bank_branch_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr
-    ORDER BY sr.id LIMIT 1)                                    AS sr_primo,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr
-    ORDER BY sr.id OFFSET 1 LIMIT 1)                           AS sr_secondo,
-  (SELECT iu.id FROM anagrafiche.istanze_utilities iu
-    ORDER BY iu.id LIMIT 1)                                    AS istanza_utility_id,
+  (SELECT bank_branch_id FROM tmp_bb)                          AS bank_branch_id,
+  a.soggetto_ruolo_id                                          AS sr_primo,
+  b.soggetto_ruolo_id                                          AS sr_secondo,
+  a.istanza_utility_id                                         AS istanza_utility_id,
   -- ⚠️ Per la seconda porta servono due SOGGETTI distinti, non due ruoli: il
-  --    vincolo gemello nomina il soggetto, e due ruoli possono essere dello
-  --    stesso soggetto — prenderli per buoni renderebbe il test verde per la
-  --    ragione sbagliata.
-  (SELECT sr.soggetto_id FROM anagrafiche.soggetti_ruoli sr
-    ORDER BY sr.id LIMIT 1)                                    AS sogg_primo,
-  (SELECT sr2.soggetto_id FROM anagrafiche.soggetti_ruoli sr2
-    WHERE sr2.soggetto_id <> (SELECT sr.soggetto_id FROM anagrafiche.soggetti_ruoli sr
-                               ORDER BY sr.id LIMIT 1)
-    ORDER BY sr2.id LIMIT 1)                                   AS sogg_secondo;
+  --    vincolo gemello nomina il soggetto. I due clienti li danno per
+  --    costruzione.
+  a.soggetto_id                                                AS sogg_primo,
+  b.soggetto_id                                                AS sogg_secondo
+  FROM tmp_cli a, tmp_cli b
+ WHERE a.lato = 'A' AND b.lato = 'B';
 
 SELECT ok(
   (SELECT bank_branch_id IS NOT NULL

@@ -5,6 +5,8 @@
 >
 > Le tabelle che dovrebbero filtrare e non filtrano, per due criteri indipendenti letti dal catalogo di PostgreSQL: FIGLIA_DI_TABELLA_PROTETTA (ha una FK verso una tabella con la row level security accesa) e POLICY_INERTE (porta una policy e la row level security spenta). ⛔ L'invariante NON e' «la vista e' vuota»: e' «nessuna riga fuori da DEBITO_DICHIARATO» — un debito dichiarato in dbops.rls_perimetro_debito e' una riga attesa, un NON_DICHIARATO e' un allarme, un DEBITO_ESTINTO e' una riga di registro da togliere. ⚠️ FORCE ROW LEVEL SECURITY non entra nel criterio: in questo database nessuna tabella lo usa, e l'applicazione non e' owner. Presidio: db/pgtap/rls/test-rls-perimetro-scoperto.sql. Brief: brief-db-perimetro-emittente-righe-documento §8.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_rls_perimetro_scoperto AS
 WITH stato_rel AS (
@@ -75,6 +77,8 @@ UNION ALL
            FROM perimetro p
           WHERE ((p.criterio = d.criterio) AND (p.schema_tabella = d.schema_tabella) AND (p.nome_tabella = d.nome_tabella)))));
 ```
+
+</div>
 
 
 ---

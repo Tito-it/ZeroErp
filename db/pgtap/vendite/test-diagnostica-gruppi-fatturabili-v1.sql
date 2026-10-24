@@ -6,6 +6,27 @@
 --       La FOTOGRAFIA di un gruppo fatturabile: quante righe, in che stato, e
 --       in che stato e' la testata della commessa.
 --       Brief: brief-db-emittibilita-visibile-e-sbloccabile §9 F4.
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
+--   portano avanti con dbops.fn_pgtap_porta_a_stato (prima le commesse nascevano gia'
+--   nello stato bloccato / emittibile).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): il mondo si COSTRUISCE
+--   (dbops.fn_pgtap_crea_mondo_cliente, nell'azienda di chi agisce) e le tre commesse
+--   (CA, CB, quella del trattenuto) le apre dbops.fn_pgtap_crea_commessa su quel
+--   cliente, nello stato scelto per flag. Prima il billing account si pescava («il
+--   primo per id»: su un database da zero non c'e', e il file moriva su
+--   billing_account_id NULL) e le testate si scrivevano a mano. Articolo, unita' di
+--   misura, tipo documento e valuta delle righe del test vengono dalla riga che il
+--   builder scrive su CB, non dal catalogo pescato; emittente e utility della corsia
+--   (test 11) dalla testata di CA. ⚠️ Fuori bozza il builder scrive UNA riga sua
+--   (sorgente COMMESSA, gruppo proprio): su CB non entra in GA ne' in GB. Il test 0
+--   non pretende piu' la valuta: la riga del builder non la porta.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-4): il lotto DRAFT dell'addendum e
+--   l'esito ERRORE E_PULL_COMMESSA che trattiene la commessa nascono da
+--   dbops.fn_pgtap_crea_lotto (madre vendite.fn_create_fatturazione_lotto, tipo
+--   documento della riga, cliente del test, p_gruppo_key_trattenuto); prima lotto ed
+--   esito erano INSERT a mano. ⚠️ Il codice del lotto lo decide la madre: il test 13 lo
+--   confronta col codice COSTRUITO (tmp_dg_lotto), non piu' col letterale
+--   'PGTAP-DG-LOTTO'. Cosa prova non cambia: il lotto che trattiene e' nominato.
 --
 -- Perche' esiste: fino al 2026-08-15 questa query stava in
 -- `CommesseRepository.diagnostica_gruppi`, ed era l'ultima copia dei filtri di
@@ -17,6 +38,7 @@
 -- Fixture costruita dentro il test:
 --   CA (stato NON emittibile) -> gruppo GA con sei righe, una per classe
 --   CA + CB (stato emittibile) -> gruppo GB condiviso: e' il caso multi-commessa
+--   (CB porta anche la riga del builder, in un gruppo suo, fuori dalla fotografia)
 --
 -- Indice test (0..11):
 --   0) Precondizioni (riferimenti minimi risolti, due stati contrapposti)
@@ -50,53 +72,84 @@ SELECT plan(14);
 -- ============================================================
 -- 0) Riferimenti minimi
 -- ============================================================
--- ⚠️ Niente LIMIT 1 senza ORDER BY. ⚠️ L'emittente si DERIVA dall'operatore:
---   le policy ef_whitelist lo pretendono in scrittura.
-CREATE TEMP TABLE tmp_dg_refs AS
+-- ⭐ Il cliente si COSTRUISCE, nell'azienda di chi agisce: il mondo lo apre
+--   dbops.fn_pgtap_crea_mondo_cliente, col contesto gia' aperto sopra.
+CREATE TEMP TABLE tmp_dg_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('diagnostica gruppi');
+
+-- Due stati CONTRAPPOSTI: e' l'asse su cui il difetto della copia Python si
+-- vedeva (bool_or su piu' commesse). Scelti per flag, non per codice: la
+-- semantica sta in `emittibile`, non nel nome. ⚠️ Niente LIMIT 1 senza ORDER BY.
+CREATE TEMP TABLE tmp_dg_stati AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS articolo_id,
-  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE
-    ORDER BY u.id LIMIT 1) AS uom_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE
-    ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  -- Due stati CONTRAPPOSTI: e' l'asse su cui il difetto della copia Python si
-  -- vedeva (bool_or su piu' commesse). Scelti per flag, non per codice: la
-  -- semantica sta in `emittibile`, non nel nome.
-  (SELECT sc.id FROM vendite.stati_commessa sc
+  (SELECT sc.codice_interno FROM vendite.stati_commessa sc
     WHERE sc.attivo IS TRUE AND sc.emittibile IS FALSE
       AND sc.codice_interno <> 'ANNULLATA'
-    ORDER BY COALESCE(sc.ordine, 32767), sc.id LIMIT 1) AS stato_bloccato_id,
-  (SELECT sc.id FROM vendite.stati_commessa sc
+    ORDER BY COALESCE(sc.ordine, 32767), sc.id LIMIT 1) AS stato_bloccato,
+  (SELECT sc.codice_interno FROM vendite.stati_commessa sc
     WHERE sc.attivo IS TRUE AND sc.emittibile IS TRUE
-    ORDER BY COALESCE(sc.ordine, 32767), sc.id LIMIT 1) AS stato_emittibile_id,
-  script.fn_pgtap_emittente_sr_operatore()                          AS ef_sr,
+    ORDER BY COALESCE(sc.ordine, 32767), sc.id LIMIT 1) AS stato_emittibile;
+
+-- ============================================================
+-- Fixture: due commesse, stato contrapposto
+-- ============================================================
+-- Il builder: testata dalla madre, lo stato per la matrice. CB, emittibile,
+--   esce dalla bozza con la riga APPROVATA che il passaggio pretende.
+CREATE TEMP TABLE tmp_dg_commessa AS
+SELECT 'CA'::text AS slot, c.*
+  FROM dbops.fn_pgtap_crea_commessa('diagnostica CA',
+           (SELECT stato_bloccato FROM tmp_dg_stati),
+           (SELECT billing_account_id FROM tmp_dg_mondo)) c;
+
+INSERT INTO tmp_dg_commessa
+SELECT 'CB'::text, c.*
+  FROM dbops.fn_pgtap_crea_commessa('diagnostica CB',
+           (SELECT stato_emittibile FROM tmp_dg_stati),
+           (SELECT billing_account_id FROM tmp_dg_mondo)) c;
+
+-- ⚠️ Emittente e utility dalla testata di CA (sono la corsia del test 11);
+--   articolo, unita' di misura, tipo documento e valuta dalla riga che il
+--   builder ha scritto su CB: niente catalogo pescato.
+CREATE TEMP TABLE tmp_dg_refs AS
+SELECT
+  ca_t.billing_account_id,
+  ca_t.utility_id,
+  (SELECT m.istanza_utility_id FROM tmp_dg_mondo m)                 AS istanza_utility_id,
+  cb_a.articolo_id,
+  cb_a.uom_id,
+  cb_a.tipo_doc_fiscale_id,
+  cb_a.valuta_id,
+  (SELECT sc.id FROM vendite.stati_commessa sc, tmp_dg_stati st
+    WHERE sc.codice_interno = st.stato_bloccato)                    AS stato_bloccato_id,
+  (SELECT sc.id FROM vendite.stati_commessa sc, tmp_dg_stati st
+    WHERE sc.codice_interno = st.stato_emittibile)                  AS stato_emittibile_id,
+  ca_t.emittente_soggetto_ruolo_id                                  AS ef_sr,
   (SELECT s.id FROM config.sorgenti s
     WHERE s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE
-    ORDER BY s.id LIMIT 1) AS sorgente_tipo_id;
+    ORDER BY s.id LIMIT 1) AS sorgente_tipo_id
+  FROM tmp_dg_commessa a
+  JOIN vendite.commesse ca_t ON ca_t.id = a.commessa_id
+  JOIN tmp_dg_commessa b ON b.slot = 'CB'
+  JOIN vendite.commesse_attivita cb_a ON cb_a.id = b.attivita_id
+ WHERE a.slot = 'CA';
 
 CREATE TEMP TABLE tmp_dg_uid AS
 SELECT 'GA'::text AS slot, uuidv7()::text AS uid
 UNION ALL SELECT 'GB', uuidv7()::text;
 
 SELECT ok(
-  (SELECT billing_account_id IS NOT NULL AND articolo_id IS NOT NULL
-      AND uom_id IS NOT NULL AND tipo_doc_fiscale_id IS NOT NULL
-      AND valuta_id IS NOT NULL AND ef_sr IS NOT NULL
-      AND sorgente_tipo_id IS NOT NULL
-      AND stato_bloccato_id IS NOT NULL AND stato_emittibile_id IS NOT NULL
-      AND stato_bloccato_id <> stato_emittibile_id
-     FROM tmp_dg_refs),
+  (SELECT r.billing_account_id IS NOT NULL AND r.articolo_id IS NOT NULL
+      AND r.uom_id IS NOT NULL AND r.tipo_doc_fiscale_id IS NOT NULL
+      AND r.ef_sr IS NOT NULL
+      AND r.sorgente_tipo_id IS NOT NULL
+      AND r.stato_bloccato_id IS NOT NULL AND r.stato_emittibile_id IS NOT NULL
+      AND r.stato_bloccato_id <> r.stato_emittibile_id
+      -- le due testate sono arrivate negli stati scelti
+      AND (SELECT count(*) FROM tmp_dg_commessa c
+             JOIN vendite.commesse t ON t.id = c.commessa_id
+            WHERE t.stato_commessa_id = CASE c.slot WHEN 'CA' THEN r.stato_bloccato_id
+                                                    ELSE r.stato_emittibile_id END) = 2
+     FROM tmp_dg_refs r),
   '0. Precondizioni soddisfatte (due stati commessa contrapposti su emittibile)'
 );
 
@@ -106,29 +159,6 @@ SELECT ok(
       AND p.proname = 'fn_diagnostica_gruppi_fatturabili') = 1,
   '1. vendite.fn_diagnostica_gruppi_fatturabili esiste'
 );
-
--- ============================================================
--- Fixture: due commesse, stato contrapposto
--- ============================================================
-CREATE TEMP TABLE tmp_dg_commessa (slot text, commessa_id bigint);
-
-WITH ins AS (
-  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                emittente_soggetto_ruolo_id, stato_commessa_id)
-  SELECT 'PGTAP-DG-CA-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id, r.ef_sr, r.stato_bloccato_id
-    FROM tmp_dg_refs r
-  RETURNING id)
-INSERT INTO tmp_dg_commessa SELECT 'CA', id FROM ins;
-
-WITH ins AS (
-  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                emittente_soggetto_ruolo_id, stato_commessa_id)
-  SELECT 'PGTAP-DG-CB-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id, r.ef_sr, r.stato_emittibile_id
-    FROM tmp_dg_refs r
-  RETURNING id)
-INSERT INTO tmp_dg_commessa SELECT 'CB', id FROM ins;
 
 -- Helper: una riga di commessa, variando quello che al test serve variare.
 -- ⚠️ Il gruppo si sceglie con lo `slot` dell'uid, mai ricostruendo la chiave.
@@ -349,49 +379,48 @@ SELECT ok(
 --   Il backend ne ricavava «verificare emittente e utility della commessa» —
 --   due cose giuste da controllare, e non una parola sull'unica che contava.
 CREATE TEMP TABLE tmp_dg_trat (commessa_id bigint, gruppo_key text, lotto_id bigint);
+CREATE TEMP TABLE tmp_dg_lotto (lotto_id bigint, codice text);
 
 DO $addendum$
 DECLARE
     v_r    record;
     v_comm vendite.commesse.id%TYPE;
+    v_ca   vendite.commesse_attivita.id%TYPE;
+    v_tdf  vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE;
     v_lot  vendite.fatturazione_lotti.id%TYPE;
+    v_cod  vendite.fatturazione_lotti.codice%TYPE;
+    v_key  vendite.fatturazione_lotti_esiti.gruppo_key%TYPE;
     v_mese vendite.commesse_attivita.competenza_mese%TYPE;
 BEGIN
     SELECT * INTO v_r FROM tmp_dg_refs;
     v_mese := date_trunc('month', script.fn_data_operativa())::date;
 
-    INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                  emittente_soggetto_ruolo_id, stato_commessa_id)
-    VALUES ('PGTAP-DG-TRAT-' || substr(md5(clock_timestamp()::text), 1, 6),
-            v_r.billing_account_id, v_r.utility_id, v_r.ef_sr, v_r.stato_emittibile_id)
-    RETURNING id INTO v_comm;
+    -- Il builder: commessa emittibile del cliente del test, con UNA riga
+    --   APPROVATA/NON_EMESSA del mese (sorgente COMMESSA, gruppo proprio).
+    SELECT c.commessa_id, c.attivita_id INTO v_comm, v_ca
+      FROM dbops.fn_pgtap_crea_commessa('diagnostica trattenuto',
+               (SELECT sc.codice_interno FROM vendite.stati_commessa sc
+                 WHERE sc.id = v_r.stato_emittibile_id),
+               v_r.billing_account_id) c;
 
-    INSERT INTO vendite.commesse_attivita (
-        commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
-        uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
-        tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-        stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-    VALUES (v_comm, 'PGTAP-DG-TRAT-' || substr(md5(clock_timestamp()::text), 1, 12),
-            v_r.articolo_id, v_r.istanza_utility_id, v_mese,
-            v_r.uom_id, 1, v_mese, v_mese,
-            (v_mese + INTERVAL '1 month - 1 day')::date,
-            v_r.tipo_doc_fiscale_id, v_r.valuta_id, 10.000000, 'FIXED',
-            'APPROVATA', 'NON_EMESSA', NULL, NULL);
+    -- il tipo documento del lotto e' quello della riga scritta
+    SELECT ca.tipo_doc_fiscale_id INTO v_tdf
+      FROM vendite.commesse_attivita ca WHERE ca.id = v_ca;
 
-    INSERT INTO vendite.fatturazione_lotti
-        (codice, competenza_mese, tipo_doc_fiscale_id,
-         emittente_soggetto_ruolo_id, stato_doc_fiscale_id)
-    VALUES ('PGTAP-DG-LOTTO', v_mese, v_r.tipo_doc_fiscale_id, v_r.ef_sr,
-            (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT'))
-    RETURNING id INTO v_lot;
+    v_key := vendite.fn_build_gruppo_fatturabile_key(
+                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text, v_comm);
 
-    INSERT INTO tmp_dg_trat
-    VALUES (v_comm, vendite.fn_build_gruppo_fatturabile_key(NULL, NULL, v_comm), v_lot);
+    -- Il lotto DRAFT che trattiene il gruppo: il builder scrive anche l'esito
+    --   ERRORE E_PULL_COMMESSA. Il codice lo decide la madre.
+    SELECT l.lotto_id, l.codice INTO v_lot, v_cod
+      FROM dbops.fn_pgtap_crea_lotto('diagnostica trattenuto', 'DRAFT',
+               v_r.billing_account_id,
+               p_tipo_doc_fiscale_id   => v_tdf,
+               p_competenza_mese       => v_mese,
+               p_gruppo_key_trattenuto => v_key) l;
 
-    INSERT INTO vendite.fatturazione_lotti_esiti
-        (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio)
-    SELECT v_lot, t.gruppo_key, 'ERRORE', 'E_PULL_COMMESSA', 'rotto per la prova'
-      FROM tmp_dg_trat t;
+    INSERT INTO tmp_dg_trat VALUES (v_comm, v_key, v_lot);
+    INSERT INTO tmp_dg_lotto VALUES (v_lot, v_cod);
 END;
 $addendum$;
 
@@ -423,7 +452,7 @@ SELECT results_eq(
             (SELECT jsonb_array_length(lotti_trattenenti) FROM tmp_dg_foto_trat),
             (SELECT jsonb_array_length(f.lotti_trattenenti) FROM tmp_dg_foto f
               WHERE f.gruppo_key = (SELECT gruppo_key FROM tmp_dg_key WHERE slot = 'GA')) $$,
-  $$ VALUES ('PGTAP-DG-LOTTO', 1, 0) $$,
+  $$ VALUES ((SELECT codice FROM tmp_dg_lotto), 1, 0) $$,
   '13. lotti_trattenenti NOMINA il lotto che trattiene, ed e'' un array vuoto (mai NULL) su un gruppo libero'
 );
 

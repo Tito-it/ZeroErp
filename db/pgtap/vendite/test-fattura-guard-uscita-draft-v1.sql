@@ -11,14 +11,29 @@
 -- Piano: piano-db-satelliti-fattura.md Fase 2.5, criterio allargato dal
 --        brief-db-snapshot-intestazione-fattura.md §3.5 (passo I.4)
 -- ------------------------------------------------------------
--- Indice test (1..11):
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le fatture nascono in
+--   bozza; la «gia_fuori» si completa, si porta in EMESSA con
+--   dbops.fn_pgtap_porta_a_stato e poi si rende di nuovo NUDA (indirizzo
+--   cancellato, intestazione a NULL: in EMESSA non c'e' congelamento), cosi'
+--   l'8 prova ancora l'uscita in testa sullo stato di partenza (prima nasceva
+--   gia' EMESSA).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): le tre fatture le
+--   costruisce dbops.fn_pgtap_crea_fattura sullo stesso cliente; la «gia_fuori»
+--   arriva in EMESSA gia' spogliata dal builder (p_spoglia_indirizzi,
+--   p_spoglia_intestazione) invece degli snapshot finti scritti e tolti a mano.
+--   Il registro, il tipo e la valuta non si pescano piu'. Il 2 conta le
+--   fatture vere nella forma dichiarata, non la temp table.
+-- Indice test (plan 12; il 6-bis e' del 2026-10-21):
 --   1) Cablaggio: BEFORE UPDATE OF stato_doc_fiscale_id, FOR EACH ROW
 --   2) Fixture: tre fatture nude create (due DRAFT, una EMESSA)
 --   3) DRAFT -> EMESSA a mani vuote: rifiutato
 --   4) ...e il messaggio nomina ENTRAMBE le mancanze
 --   5) Con il solo indirizzo FATT: ancora rifiutato, e solo per l'intestazione
 --   6) Intestazione a '{}' e non NULL: ancora rifiutata (jsonb_typeof, non IS NULL)
---   7) Fattura completa: DRAFT -> EMESSA passa
+--   6-bis) Intestazione senza la sede legale del cedente: rifiutata, e il
+--      messaggio dice che manca la sede (brief-db-modelli-documento-standard
+--      §10.7 R-5, changeSet 20261021-13)
+--   7) Fattura completa, con la sede del cedente: DRAFT -> EMESSA passa
 --   8) Fattura gia' oltre la bozza: EMESSA -> DEFINITIVA passa anche se nuda
 --   9) Riscrittura dello stato con lo stesso valore: nessun presidio
 --  10) UPDATE di un'altra colonna: il trigger non scatta affatto
@@ -65,9 +80,18 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ L'AZIENDA SI COSTRUISCE, e il contesto e' quello del SUO operatore
+--   (rev 2026-10-21, brief-db-modelli-documento-standard §10.7 R-5). Fino a quel
+--   giorno la fixture pescava «il primo BA con un emittente risolvibile»: su un
+--   database ricostruito da zero (lo scratch, la CI) non ce n'e' uno, e il file
+--   era rosso dal test 2 in poi, cioe' non verificava niente.
+CREATE TEMP TABLE tmp_mondo_gud AS
+SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
 
-SELECT plan(11);
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM tmp_mondo_gud)); END $ctx$;
+
+SELECT plan(12);
 
 -- ============================================================
 -- 1) Cablaggio sul catalogo.
@@ -95,61 +119,56 @@ SELECT is(
 );
 
 -- ============================================================
--- Riferimenti e fixture (stesso criterio di 2.6: si parte da un BA che ha un
--- emittente fiscale risolvibile, altrimenti la fattura non e' creabile)
+-- Riferimenti e fixture: le tre fatture dal builder, sullo STESSO cliente
 -- ============================================================
+-- ⭐ rev 2026-10-24 (Q-2/Q-4): le fatture le costruisce dbops.fn_pgtap_crea_fattura
+--   (registro dell'azienda di chi agisce, tipo e valuta col loro ORDER BY). La
+--   prima costruisce il cliente, le altre due lo riusano (terzo parametro).
+--   La «gia_fuori» arriva in EMESSA NUDA (quarto e quinto parametro): il
+--   builder la completa coi building block, la porta in EMESSA per la matrice
+--   e la spoglia li', dove congela_fiscale e' false. Senza la spoliazione l'8
+--   passerebbe perche' la fattura e' completa, non perche' il guard esce sullo
+--   stato di partenza.
+CREATE TEMP TABLE tmp_f_lav_gud AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('guard uscita draft lavorata');
+
+CREATE TEMP TABLE tmp_f_int_gud AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+    'guard uscita draft intatta', 'DRAFT', (SELECT billing_account_id FROM tmp_f_lav_gud));
+
+CREATE TEMP TABLE tmp_f_fuori_gud AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+    'guard uscita draft gia fuori', 'EMESSA', (SELECT billing_account_id FROM tmp_f_lav_gud),
+    true, true);
+
+CREATE TEMP TABLE tmp_fatture_gud AS
+SELECT fattura_id AS id, 'lavorata'::text AS caso FROM tmp_f_lav_gud
+UNION ALL SELECT fattura_id, 'intatta'   FROM tmp_f_int_gud
+UNION ALL SELECT fattura_id, 'gia_fuori' FROM tmp_f_fuori_gud;
+
 CREATE TEMP TABLE tmp_refs_gud AS
 SELECT
-  ba.id                                          AS billing_account_id,
-  anagrafiche.fn_get_emittente_fiscale_id(ba.id) AS emittente_soggetto_ruolo_id,
-  (SELECT m.registro_id
-     FROM vendite.tipi_doc_fiscale_registri m
-     JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
-    WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS registro_id,
-  (SELECT m.tipo_doc_fiscale_id
-     FROM vendite.tipi_doc_fiscale_registri m
-     JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
-    WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS tipo_doc_fiscale_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT s.id FROM config.stati_doc_fiscale s
     WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE)      AS stato_draft_id,
   (SELECT s.id FROM config.stati_doc_fiscale s
     WHERE s.codice_interno = 'EMESSA' AND s.attivo IS TRUE)     AS stato_emessa_id,
   (SELECT s.id FROM config.stati_doc_fiscale s
     WHERE s.codice_interno = 'DEFINITIVA' AND s.attivo IS TRUE) AS stato_def_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'FATT') AS fatt_id
-FROM anagrafiche.billing_account ba
-WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-ORDER BY ba.id
-LIMIT 1;
+  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'FATT') AS fatt_id;
 
-
--- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva.
---   La riga sopra sceglieva «un registro qualunque» accanto a un emittente che
---   viene da un'altra parte: che i due coincidessero era un CASO, e dal
---   2026-08-30 vendite.trgfn_fatture_guard_registro_emittente non lo ammette
---   piu'. L'helper risponde con il registro di QUESTO emittente, creandolo se
---   non ce n'e' uno — la riga vive nella transazione del test.
-UPDATE tmp_refs_gud SET registro_id = script.fn_pgtap_registro_fattura(emittente_soggetto_ruolo_id);
-CREATE TEMP TABLE tmp_fatture_gud AS
-WITH ins AS (
-  INSERT INTO vendite.fatture (
-    registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-    tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, meta
-  )
-  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id,
-         r.billing_account_id, r.tipo_doc_fiscale_id, v.stato_id, r.valuta_id,
-         jsonb_build_object('test', 'pgtap_guard_uscita_draft', 'caso', v.caso)
-    FROM tmp_refs_gud r
-   CROSS JOIN LATERAL (VALUES ('lavorata',  r.stato_draft_id),
-                              ('intatta',   r.stato_draft_id),
-                              ('gia_fuori', r.stato_emessa_id)) AS v(caso, stato_id)
-  RETURNING id, meta ->> 'caso' AS caso
-)
-SELECT id, caso FROM ins;
-
+-- ⚠️ Il 2 conta le fatture VERE nella forma dichiarata (stato, nessun
+--   indirizzo, intestazione a NULL), non le righe della temp table: con il
+--   builder quel conteggio sarebbe stato vero per costruzione.
 SELECT is(
-  (SELECT count(*)::int FROM tmp_fatture_gud), 3,
+  (SELECT count(*)::int
+     FROM tmp_fatture_gud t
+     JOIN vendite.fatture f          ON f.id = t.id
+     JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
+    WHERE s.codice_interno = CASE t.caso WHEN 'gia_fuori' THEN 'EMESSA' ELSE 'DRAFT' END
+      AND f.emittente_snapshot IS NULL
+      AND f.cliente_snapshot IS NULL
+      AND NOT EXISTS (SELECT 1 FROM vendite.fatture_indirizzi i WHERE i.fattura_id = f.id)),
+  3,
   '2) fixture: tre fatture nude create (due DRAFT, una EMESSA)'
 );
 
@@ -208,11 +227,30 @@ SELECT throws_like(
 );
 
 -- ============================================================
--- 7) Documento completo: la porta si apre. E' il test di NON-REGRESSIONE che
---    dice che la pipeline reale non e' ostacolata.
+-- 6-bis) L'intestazione dell'emittente c'e', ma senza la sede legale del
+--    cedente: e' quello che lo snapshot scrive quando l'azienda non ha la sede
+--    (la chiave manca). Non e' completa, e il messaggio lo dice.
 -- ============================================================
 UPDATE vendite.fatture
    SET emittente_snapshot = '{"denominazione":"Emittente pgTAP","id_fiscale":"00000000000"}'::jsonb,
+       cliente_snapshot   = '{"denominazione":"Cliente pgTAP","id_fiscale":"11111111111"}'::jsonb
+ WHERE id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata');
+
+SELECT throws_like(
+  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+         (SELECT stato_emessa_id FROM tmp_refs_gud),
+         (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata')),
+  '%intestazione incompleta: manca la sede legale dell''emittente%',
+  '6-bis) intestazione senza la sede legale del cedente: rifiutata'
+);
+
+-- ============================================================
+-- 7) Documento completo: la porta si apre. E' il test di NON-REGRESSIONE che
+--    dice che la pipeline reale non e' ostacolata. ⚠️ Dal 2026-10-21 completo
+--    vuol dire anche con la sede del cedente nell'intestazione.
+-- ============================================================
+UPDATE vendite.fatture
+   SET emittente_snapshot = '{"denominazione":"Emittente pgTAP","id_fiscale":"00000000000","sede":{"via":"Via Cedente 1","cap":"83100"}}'::jsonb,
        cliente_snapshot   = '{"denominazione":"Cliente pgTAP","id_fiscale":"11111111111"}'::jsonb
  WHERE id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata');
 

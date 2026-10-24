@@ -97,7 +97,7 @@ La vista è costruita come:
 | `locality`                   | `text`                 | Località (uso internazionale).            |
 | `administrative_area`        | `text`                 | Area amministrativa (uso internazionale). |
 | `sublocality`                | `text`                 | Sublocalità (uso internazionale).         |
-| `postal_box`                 | `text`                 | Casella postale (uso internazionale).     |
+| `postal_code`                | `text`                 | Codice postale libero della forma estera (facoltativo). Fino al 18-10-2026 si chiamava `postal_box`. |
 
 (Sono esposti anche campi di audit e dettagli civico/stradario per completezza.)
 

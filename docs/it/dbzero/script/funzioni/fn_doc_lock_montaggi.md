@@ -7,6 +7,8 @@ CREATE FUNCTION fn_doc_lock_montaggi(p_tabella regclass)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_doc_lock_montaggi(p_tabella regclass)
  RETURNS TABLE(trigger_nome name, regola jsonb)
@@ -39,6 +41,8 @@ $function$
 COMMENT ON FUNCTION script.fn_doc_lock_montaggi(p_tabella regclass)
 IS 'Building block (2026-10-10, brief-db-testata-dopo-emissione fase 1, R-1; D-F2 di Tid: si legge il montaggio, nessuna tabella nuova): il LETTORE DEL MONTAGGIO. I trigger montati su p_tabella che eseguono vendite.trgfn_doc_righe_lock_fuori_bozza o vendite.trgfn_doc_testata_lock_fuori_bozza e che scattano (tgenabled O o A), una riga per trigger in ordine di nome, con la regola che i loro argomenti dicono (pg_trigger.tgargs -> dbops.fn_trigger_argomenti -> script.fn_doc_lock_regola, la stessa grammatica del trigger). Lock e capability leggono cosi'' lo stesso dato e lo capiscono allo stesso modo. Lo usa script.fn_doc_colonna_modificabile.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_ordine_riga_spedita LEGGE IL BB «MERCE PARTITA»
+#   Brief: brief-db-date-consegna-righe-in-blocco (§4.1, regola del 2, scelta (a))
+#
+#   Il 20261012-04 la scriveva come seconda sede dell'espressione di
+#   vendite.fn_partite_merce (ordine >= EMESSO e non is_abortito), con
+#   l'estrazione dichiarata. Ora la regola sta in
+#   script.vw_stati_doc_ddt_merce_partita (20261012-30) e qui si legge.
+#   Significato invariato. Firma, SECURITY DEFINER, search_path, GRANT: gli
+#   stessi (CREATE OR REPLACE li conserva; il GRANT si ripete, idempotente).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-31-update-fn-ordine-riga-spedita-dal-bb-merce-partita-mctit.yaml
+
+  - changeSet:
+      id: 20261012-31-update-fn-ordine-riga-spedita-dal-bb-merce-partita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_ordine_riga_spedita: lo stato «merce partita» dal BB
+        script.vw_stati_doc_ddt_merce_partita invece della copia dell'espressione di
+        fn_partite_merce. Significato invariato. Brief: brief-db-date-consegna-righe-in-blocco (§4.1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_ordine_riga_spedita';
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_class c
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'script' AND c.relname = 'vw_stati_doc_ddt_merce_partita';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ordine_riga_spedita(p_ordine_riga_id vendite.ordini_righe.id%TYPE)
+              -- Tipo nudo: un esito CALCOLATO (EXISTS), nessuna colonna di cui sia il riflesso.
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+                  -- Scopo: la riga d'ordine e' gia' partita con un DDT? Vero se un
+                  --   suo legame porta a una riga di DDT il cui stato dice «merce
+                  --   partita» (BB script.vw_stati_doc_ddt_merce_partita: uscito dalla
+                  --   bozza e non abortito). Basta un DDT, anche per una parte della
+                  --   riga (P-1). Un id assente risponde falso.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.ordini_righe_fulfillment f
+                        JOIN vendite.ddt_righe dr ON dr.id = f.ddt_riga_id
+                        JOIN vendite.ddt d        ON d.id  = dr.ddt_id
+                        JOIN script.vw_stati_doc_ddt_merce_partita s ON s.id = d.stato_doc_ddt_id
+                       WHERE f.ordine_riga_id = p_ordine_riga_id
+                         AND s.merce_partita);
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ordine_riga_spedita(vendite.ordini_righe.id%TYPE) IS
+                  'Lettore (2026-10-11, brief-db-date-consegna-righe-in-blocco D-7, P-1): la riga d''ordine e'' gia'' partita con un DDT? Vero se almeno un suo legame (vendite.ordini_righe_fulfillment) porta a una riga di DDT il cui stato dice merce partita: il BB script.vw_stati_doc_ddt_merce_partita (uscito dalla bozza, ordine >= EMESSO, e non abortito). Basta un DDT, anche per una parte della riga: una spedizione parziale ferma la data confermata come una totale (P-1 di Tid). Un DDT in bozza non conta. Un id assente risponde falso. ⛔ SECURITY DEFINER: la legge il guard della data di consegna confermata, e DDT e righe di DDT hanno RLS; sotto la RLS di chi scrive un DDT fuori perimetro sparirebbe e il guard diventerebbe fail-open (stessa scelta di script.fn_get_stato_testata_documento). PERIMETRO: un booleano su una riga d''ordine, nessuna colonna esposta. Consumatore: script.fn_check_ordine_riga_data_consegna_confermata. rev 2026-10-12 (20261012-31): lo stato dal BB, non piu'' la copia dell''espressione di vendite.fn_partite_merce (regola del 2, scelta (a) di Tid).';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_ordine_riga_spedita(vendite.ordini_righe.id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La forma del 20261012-04: l'espressione scritta sul posto.
+              CREATE OR REPLACE FUNCTION vendite.fn_ordine_riga_spedita(p_ordine_riga_id vendite.ordini_righe.id%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.ordini_righe_fulfillment f
+                        JOIN vendite.ddt_righe dr  ON dr.id = f.ddt_riga_id
+                        JOIN vendite.ddt d         ON d.id  = dr.ddt_id
+                        JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
+                       WHERE f.ordine_riga_id = p_ordine_riga_id
+                         AND NOT s.is_abortito
+                         AND s.ordine >= (SELECT e.ordine
+                                            FROM config.stati_doc_ddt e
+                                           WHERE e.codice_interno = 'EMESSO'));
+              $function$;

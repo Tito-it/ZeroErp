@@ -14,7 +14,8 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
-from apps.core.api.constants import DEFAULT_LIMIT
+from apps.core.api.openapi_params import parametri_finestra
+from apps.core.api.payload_validators import pagina_da_query, qp_bool_optional
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
@@ -81,21 +82,26 @@ class ConfigTableRecordsView(_PermessoSullOggettoMixin, DomainAPIView):
 
     @extend_schema(
         operation_id="core_config_tables_records_list",
-        parameters=[OpenApiParameter(name="rel", type=str, location="path", required=True)],
+        parameters=[
+            OpenApiParameter(name="rel", type=str, location="path", required=True),
+            *parametri_finestra(),
+        ],
         responses={200: inline_serializer(name="ConfigTableRecordsResp", fields={"data": serializers.DictField()})},
     )
     def get(self, request: Request, rel: str) -> JsonResponse:
         # Riusa il lookup esistente, sulla lista del pannello
-        from apps.core.api.payload_validators import qp_int
         qp = request.query_params
+        limit, offset = pagina_da_query(qp)
         data = ConfigCrudService().list_records(
             rel,
             search=(qp.get("search") or "").strip() or None,
             order_col=qp.get("order_col", "descrizione"),
             order_dir=qp.get("order_dir", "asc"),
-            attivo_only=qp.get("attivo_only", "false").lower() not in ("0", "false", "no"),
-            page=qp_int(qp.get("page"), 1),
-            page_size=qp_int(qp.get("page_size"), DEFAULT_LIMIT),
+            # Il vocabolario unico dei flag (§A6): prima `attivo_only=banana`
+            # valeva true, perche' solo `0/false/no` erano falsi.
+            attivo_only=qp_bool_optional(qp.get("attivo_only"), "attivo_only", default=False),
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 

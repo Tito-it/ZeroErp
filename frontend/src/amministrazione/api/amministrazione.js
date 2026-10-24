@@ -2,7 +2,6 @@
 // Usa l'istanza axios condivisa con interceptor JWT.
 
 import api from '../../core/api'
-import { generateIdempotencyKey } from '../../core/utils/idempotency'
 
 const BASE = '/amm-software'
 
@@ -66,16 +65,18 @@ export function bloccaCredenziale(authUserId, motivo) {
   return api.post(
     `${BASE}/credenziali/${authUserId}/blocca/`,
     { motivo },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
-// Scopo: elimina una credenziale che non ha mai avuto una veste. Il gesto e'
-//        irreversibile: la chiave fa rispondere il doppio invio come il primo.
-export function eliminaCredenziale(authUserId) {
+// Scopo: elimina una credenziale che non ha mai avuto una veste.
+// ⚠️ Il gesto e' irreversibile, ma la key che l'interceptor mette da solo e'
+//    una per CHIAMATA: il doppio invio risponde come il primo solo se il
+//    chiamante passa in `config` la key del GESTO (`useChiaveGesto`), come fa
+//    `useEliminaCredenziale`.
+export function eliminaCredenziale(authUserId, config = {}) {
   return api.delete(
     `${BASE}/credenziali/${authUserId}/`,
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+    config,
   )
 }
 
@@ -84,7 +85,6 @@ export function sbloccaCredenziale(authUserId) {
   return api.post(
     `${BASE}/credenziali/${authUserId}/sblocca/`,
     {},
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -203,7 +203,6 @@ function postIdentita(codice, azione, emittenteCodice) {
   return api.post(
     `${BASE}/processi/${encodeURIComponent(codice)}/identita/${azione}`,
     { emittente_codice: emittenteCodice },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -239,7 +238,20 @@ export function eseguiOraProcesso(codice, unit) {
   return api.post(
     `${BASE}/processi/${encodeURIComponent(codice)}/esegui-ora/`,
     { unit },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
+// Scopo: la SCELTA A MANO sull'accensione di un processo, su questa
+//        installazione: `acceso` true accende, false spegne, null toglie la
+//        scelta e torna il default per ambiente. Il motivo è obbligatorio per
+//        tutti e tre i gesti (brief-db-processi-accensione-per-ambiente §6.0
+//        punto 5).
+// Risposta: l'accensione rinfrescata, nella forma di `accensione` del
+// dettaglio. ⚠️ `require_idempotency_key`: senza header 400.
+export function impostaAccensioneProcesso(codice, acceso, motivo) {
+  return api.post(
+    `${BASE}/processi/${encodeURIComponent(codice)}/accensione/`,
+    { acceso, motivo },
   )
 }
 

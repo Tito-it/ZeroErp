@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: catalogo.trgfn_articoli_componenti_guard_un_livello()
+#   La distinta base ha un livello solo: il componente non e' un composito.
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.4 D-4, §9.1)
+#
+# -- IL CASO ------------------------------------------------------------
+#   I guard della distinta giudicavano il PADRE (trgfn_..._guard_is_composito,
+#   trgfn_..._guard_solo_componente), mai il componente: un composito entrava
+#   come componente di un altro composito. Il resto del modello lavora su un
+#   livello: le cinque fn_*_riga_componenti_init leggono i figli diretti, le
+#   tabelle dei componenti di riga non hanno un «componente padre», il bundle
+#   di listino e' la somma di un livello (fn_espandi_listino_versione). Il
+#   kit interno finiva nei documenti come un articolo semplice, e i suoi
+#   figli non li vedevano ne' il magazzino ne' la fattura. E i cicli (A in B,
+#   B in A) non li fermava nessuno: c'era solo chk_articoli_componenti_no_selfref.
+#   Con un livello solo un ciclo non si costruisce.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   BEFORE INSERT OR UPDATE OF attivo (montaggio: 20261013-02), come il
+#   guard dell'IVA: giudica il legame quando nasce e quando si riaccende.
+#   componente_id non si cambia (trgfn_articoli_componenti_block_modifica_struttura),
+#   quindi l'UPDATE da guardare e' solo la riaccensione. Un legame spento
+#   non e' parte della distinta e non si giudica.
+#   Il lato articolo (un componente che diventa composito) lo chiude
+#   20261013-03.
+#   ⚠️ I legami gia' scritti non si rigiudicano: un guard giudica le
+#   scritture. Su dbdev sono dati di prova.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261013-01-create-trgfn-articoli-componenti-guard-un-livello-mctit.yaml
+
+  - changeSet:
+      id: 20261013-01-create-trgfn-articoli-componenti-guard-un-livello
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo guard catalogo.trgfn_articoli_componenti_guard_un_livello: il componente di una distinta
+        non e' un composito (E_BOM_COMPONENTE_COMPOSITO). Brief:
+        brief-db-articoli-ammessi-per-documento (§8.4 D-4).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_guard_un_livello()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_is_composito   catalogo.articoli.is_composito%TYPE;
+                  v_codice_padre   catalogo.articoli.codice%TYPE;
+                  v_codice_comp    catalogo.articoli.codice%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La distinta base ha un livello solo: il componente di un
+                  --   legame attivo non e' un articolo composito.
+                  --   BEFORE INSERT OR UPDATE OF attivo su catalogo.articoli_componenti.
+                  --   Si giudica il legame che nasce attivo e quello che si
+                  --   riaccende; un legame spento non e' parte della distinta.
+                  -- =========================================================
+                  IF NOT COALESCE(NEW.attivo, FALSE) THEN
+                      RETURN NEW;
+                  END IF;
+                  IF TG_OP = 'UPDATE' AND COALESCE(OLD.attivo, FALSE) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT a_comp.is_composito, a_comp.codice, a_padre.codice
+                    INTO v_is_composito, v_codice_comp, v_codice_padre
+                    FROM catalogo.articoli a_comp
+                    LEFT JOIN catalogo.articoli a_padre ON a_padre.id = NEW.prodotto_id
+                   WHERE a_comp.id = NEW.componente_id;
+
+                  -- Componente assente: parla la FK.
+                  IF COALESCE(v_is_composito, FALSE) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', TG_NAME::text, 'E_BOM_COMPONENTE_COMPOSITO',
+                          jsonb_build_object(
+                              'campo',         'componente_id',
+                              'prodotto_id',   NEW.prodotto_id,
+                              'componente_id', NEW.componente_id),
+                          NULL::uuid,
+                          v_codice_comp,
+                          COALESCE(v_codice_padre, NEW.prodotto_id::text));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_guard_un_livello()
+              IS 'Guard BEFORE INSERT OR UPDATE OF attivo su catalogo.articoli_componenti: la distinta base ha un livello solo, il componente di un legame attivo non e'' un articolo composito (E_BOM_COMPONENTE_COMPOSITO, campo componente_id). Si giudicano il legame che nasce attivo e quello che si riaccende (componente_id non si cambia: trgfn_articoli_componenti_block_modifica_struttura). Il resto del modello lavora su un livello (le fn_*_riga_componenti_init leggono i figli diretti, le tabelle dei componenti di riga sono piatte, il bundle di listino e'' la somma di un livello) e con un livello solo un ciclo non si costruisce. Il lato articolo (un componente che diventa composito) e'' in catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva. Brief: brief-db-articoli-ammessi-per-documento (§8.4 D-4).';

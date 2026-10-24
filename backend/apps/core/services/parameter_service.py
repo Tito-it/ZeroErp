@@ -132,8 +132,9 @@ class ParameterService:
             message=f"Parametro '{code}' assente o senza valore.",
         )
         assert value is not None
+        value = value.strip()
         try:
-            return date.fromisoformat(value.strip())
+            return date.fromisoformat(value)
         except ValueError:
             ErrorManager.raise_error(
                 code="E_CONFIG_MANCANTE",

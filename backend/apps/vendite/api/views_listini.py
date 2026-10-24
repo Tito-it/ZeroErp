@@ -87,10 +87,11 @@ def _versione_write_fields() -> dict[str, serializers.Field]:
 
 # Scopo: Definisce i campi write riga listino per schema API.
 def _riga_write_fields(*, include_identity: bool) -> dict[str, serializers.Field]:
+    # ⛔ Niente `billing_account_id`/`utility_id`/`emittente_soggetto_ruolo_id`:
+    #    la riga non li ha piu' (F1-DB-25, il contesto vive su listino e
+    #    contratto), e il service li rifiuta con un 400. Fino al 2026-10-20 lo
+    #    schema li pubblicava ancora: un client generato li mandava e sbatteva.
     fields: dict[str, serializers.Field] = {
-        "billing_account_id": serializers.IntegerField(required=False, allow_null=True),
-        "utility_id": serializers.IntegerField(required=False, allow_null=True),
-        "emittente_soggetto_ruolo_id": serializers.IntegerField(required=False, allow_null=True),
         "prezzo": serializers.DecimalField(required=False, max_digits=22, decimal_places=10),
         "meta": serializers.JSONField(required=False, allow_null=True),
         "attivo": serializers.BooleanField(required=False),
@@ -404,8 +405,6 @@ class ApiListinoVersioneRigheList(DomainAPIView):
     @extend_schema(
         parameters=[
             param_ricerca_full(),
-            OpenApiParameter(name="billing_account_id", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="utility_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
@@ -427,8 +426,6 @@ class ApiListinoVersioneRigheList(DomainAPIView):
             listino_id,
             ver_id,
             search=p["search"],
-            billing_account_id=qp_int_optional(qp.get("billing_account_id"), "billing_account_id"),
-            utility_id=qp_int_optional(qp.get("utility_id"), "utility_id"),
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             order_by=p["order_by"],
             order_dir=p["order_dir"],
@@ -655,17 +652,13 @@ class ApiListinoVersioneBundleDetail(DomainAPIView):
     def post(
         self, request: Request, listino_id: int, ver_id: int, padre_id: str,
     ) -> JsonResponse:
+        # ⛔ `rows` passa GREZZO: la forma la giudica il BB `voci` nel service
+        #    (assente o non lista = 400). Fino al 2026-10-21 qui un corpo senza
+        #    `rows` diventava `[]`, e il salvataggio — che sostituisce il bundle
+        #    in blocco — cancellava ogni prezzo rispondendo 200. Una lista
+        #    vuota ESPLICITA resta il modo di svuotarlo.
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            rows_raw = payload.get("rows") or []
-            if not isinstance(rows_raw, list):
-                from apps.core.services.error_manager import ErrorManager
-
-                ErrorManager.raise_error(
-                    code="E_VENDITE_VALIDATION",
-                    message="Campo 'rows' deve essere una lista.",
-                    function_name="vendite.api.ApiListinoVersioneBundleDetail.post",
-                )
-            return fn_save_bundle(listino_id, ver_id, padre_id, rows_raw)
+            return fn_save_bundle(listino_id, ver_id, padre_id, payload.get("rows"))
 
         return handle_post_json(request, handler=_handler)
 

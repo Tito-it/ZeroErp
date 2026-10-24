@@ -265,7 +265,9 @@ sono le sue trappole. **44 guide**, raggruppate per area:
   [configurazione](./guide/gestione-pratiche-configurazione.md) ·
   [code di lavoro](./guide/gestione-code-di-lavoro.md) ·
   [tracciamento processi e job](./guide/analisi-tracciamento-processi-e-job.md) ·
-  [job pgAgent](./guide/processi-pgagent-funzionali.md)
+  [job pgAgent](./guide/processi-pgagent-funzionali.md) ·
+  [statistiche del planner](./guide/statistiche-del-planner.md) ·
+  [un database che resta veloce](./guide/database-che-resta-veloce.md)
 - **Documenti e comunicazioni** — [documenti e stampe](./guide/documenti-e-stampe.md) ·
   [gestione mail](./guide/gestione-mail.md)
 - **Accessi e sicurezza** — [multi-face auth](./guide/architettura-multi-face-auth.md) ·
@@ -273,6 +275,7 @@ sono le sue trappole. **44 guide**, raggruppate per area:
   [risorse umane e accessi](./guide/risorse-umane-e-accessi.md) ·
   [contratto GUC](./guide/contratto-guc-app.md)
 - **Dati, audit e storicizzazione** — [audit e tracciabilità](./guide/audit-e-tracciabilita.md) ·
+  [operazioni che non si ripetono](./guide/operazioni-che-non-si-ripetono.md) ·
   [storicizzazione tabelle](./guide/storicizzazione-tabelle.md) ·
   [`tx_id`](./guide/tx_id_implementation_guide.md) ·
   [sorgente polimorfa](./guide/sorgente-polimorfa.md) ·

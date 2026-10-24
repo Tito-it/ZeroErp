@@ -6,6 +6,10 @@
 > [brief-db-esclusioni-implicite.md](../work-done/brief-db-esclusioni-implicite.md) §6.2, verificato il
 > 2026-10-05. Tid (stesso giorno): «l'osservazione va risolta, anche il difetto del cliente».
 > Voce **D18** di [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md).
+> ⚠️ **Eredità del 2026-10-14/15:** `trgfn_clienti_set_parent_istanza` è stato riscritto da
+> `20261014-17` per la catena delle istanze **fittizie** (C-9 di
+> [brief-db-cliente-manuale-uno-per-soggetto-e-utility](../work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility.md)):
+> il corpo di partenza è quello della doc auto-generata, e i difetti di §2 valgono anche per quel ramo.
 > **Stato:** 📝 **proposta da analizzare**. Niente scritto in `migrations_v2/`.
 
 ## 1. In parole semplici

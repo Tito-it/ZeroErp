@@ -64,6 +64,14 @@ SELECT id AS stato_id
 FROM config.stati
 ORDER BY id
 LIMIT 1;
+-- rev 2026-10-18: i campi della forma che il guard vuole per questo stato
+--   (dbops.fn_pgtap_indirizzo_libero_forma: comune e CAP per l'Italia).
+ALTER TABLE tmp_stato_test ADD COLUMN comune_id integer, ADD COLUMN codice_postale_id integer,
+                           ADD COLUMN locality varchar, ADD COLUMN postal_code varchar;
+UPDATE tmp_stato_test
+   SET (comune_id, codice_postale_id, locality, postal_code) =
+       (SELECT f.comune_id, f.codice_postale_id, f.locality, f.postal_code
+          FROM dbops.fn_pgtap_indirizzo_libero_forma(tmp_stato_test.stato_id) f);
 
 SELECT ok(
     (SELECT count(*) FROM tmp_stato_test) = 1,
@@ -272,49 +280,55 @@ SELECT
     TRUE
 FROM tmp_soggetto_pr_ok s;
 
--- ⚠️ Forma libera COMPLETA: chk_indirizzi_soggetti_free_requirements vuole
---   indirizzo_libero + stato_id + locality + postal_box + administrative_area.
---   Il solo indirizzo_libero non basta piu'.
+-- ⚠️ Forma libera COMPLETA: la forma la sceglie dallo stato il guard
+--   anagrafiche.trgfn_indirizzi_guard_forma_libera (rev 2026-10-18: l'Italia
+--   vuole comune e CAP del catalogo, in tmp_stato_test dall'helper).
+--   Il solo indirizzo_libero non basta.
 INSERT INTO anagrafiche.indirizzi_soggetti (
     soggetto_id,
     tipo_indirizzo_id,
     indirizzo_libero,
     stato_id,
+    comune_id,
+    codice_postale_id,
     locality,
-    postal_box,
-    administrative_area
+    postal_code
 )
 SELECT
     s.id,
     t.tipo_indirizzo_id,
     'Via Test PR RES',
     (SELECT stato_id FROM tmp_stato_test),
-    'Roma',
-    '00100',
-    'RM'
+    (SELECT comune_id FROM tmp_stato_test),
+    (SELECT codice_postale_id FROM tmp_stato_test),
+    (SELECT locality FROM tmp_stato_test),
+    (SELECT postal_code FROM tmp_stato_test)
 FROM tmp_soggetto_pr_ok s
 JOIN tmp_tipo_res t ON TRUE;
 
--- ⚠️ Forma libera COMPLETA: chk_indirizzi_soggetti_free_requirements vuole
---   indirizzo_libero + stato_id + locality + postal_box + administrative_area.
---   Il solo indirizzo_libero non basta piu'.
+-- ⚠️ Forma libera COMPLETA: la forma la sceglie dallo stato il guard
+--   anagrafiche.trgfn_indirizzi_guard_forma_libera (rev 2026-10-18: l'Italia
+--   vuole comune e CAP del catalogo, in tmp_stato_test dall'helper).
+--   Il solo indirizzo_libero non basta.
 INSERT INTO anagrafiche.indirizzi_soggetti (
     soggetto_id,
     tipo_indirizzo_id,
     indirizzo_libero,
     stato_id,
+    comune_id,
+    codice_postale_id,
     locality,
-    postal_box,
-    administrative_area
+    postal_code
 )
 SELECT
     s.id,
     t.tipo_indirizzo_id,
     'Via Test PR DOMFISC',
     (SELECT stato_id FROM tmp_stato_test),
-    'Roma',
-    '00100',
-    'RM'
+    (SELECT comune_id FROM tmp_stato_test),
+    (SELECT codice_postale_id FROM tmp_stato_test),
+    (SELECT locality FROM tmp_stato_test),
+    (SELECT postal_code FROM tmp_stato_test)
 FROM tmp_soggetto_pr_ok s
 JOIN tmp_tipo_domfisc t ON TRUE;
 
@@ -496,26 +510,29 @@ SELECT
     TRUE
 FROM tmp_soggetto_sc_ok s;
 
--- ⚠️ Forma libera COMPLETA: chk_indirizzi_soggetti_free_requirements vuole
---   indirizzo_libero + stato_id + locality + postal_box + administrative_area.
---   Il solo indirizzo_libero non basta piu'.
+-- ⚠️ Forma libera COMPLETA: la forma la sceglie dallo stato il guard
+--   anagrafiche.trgfn_indirizzi_guard_forma_libera (rev 2026-10-18: l'Italia
+--   vuole comune e CAP del catalogo, in tmp_stato_test dall'helper).
+--   Il solo indirizzo_libero non basta.
 INSERT INTO anagrafiche.indirizzi_soggetti (
     soggetto_id,
     tipo_indirizzo_id,
     indirizzo_libero,
     stato_id,
+    comune_id,
+    codice_postale_id,
     locality,
-    postal_box,
-    administrative_area
+    postal_code
 )
 SELECT
     s.id,
     t.tipo_indirizzo_id,
     'Via Test SC SEDELEG',
     (SELECT stato_id FROM tmp_stato_test),
-    'Roma',
-    '00100',
-    'RM'
+    (SELECT comune_id FROM tmp_stato_test),
+    (SELECT codice_postale_id FROM tmp_stato_test),
+    (SELECT locality FROM tmp_stato_test),
+    (SELECT postal_code FROM tmp_stato_test)
 FROM tmp_soggetto_sc_ok s
 JOIN tmp_tipo_sedeleg t ON TRUE;
 

@@ -1,6 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (CONSEGNATO, EMESSO; ANNULLATO = EMESSO + il verbo vendite.fn_annulla_ddt, che resta perche' l'annullo con legami passa da li'); il reso resta scritto a mano (giro 2).
 -- pgTAP test per Zero ERP
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 -- Test: rami DDT e RESO della proiezione di stato (vw_stato_sorgente_*)
 --       — step 6b, brief-db-fatturazione-ddt-resi §4a.
 -- (changeset 20260718-09/-10)
@@ -45,12 +51,23 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (in CI l'utente 1 non esiste;
+--   anagrafiche e articoli sono vuoti). fn_pgtap_crea_mondo_cliente fa azienda,
+--   operatore, cliente BA legato a quell'azienda e APRE il contesto da se'.
+CREATE TEMP TABLE _m AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP stato sorgente');
+-- Il mondo ha gia' aperto il contesto sul suo operatore: la riga lo
+--   dichiara (e il guardrail del preambolo la cerca).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m)); END $ctx$;
+
+-- L'annullo di una bolla emessa passa dal verbo di stato, che chiede l'azione
+-- emetti_ddt (rev 2026-10-11, D-8 di brief-db-ddt-righe-evase-dall-ordine).
+DO $az_ann$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(
+      NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_ddt');
+END $az_ann$;
 
 SELECT plan(13);
-
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
 -- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
@@ -65,90 +82,41 @@ END $az$;
 -- ============================================================
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  -- ⚠️ L'emittente si DERIVA da chi agisce, non si pesca: da quando le viste
-  --   vw_stato_sorgente_* sono security_invoker (20260821-08/-09) le policy
-  --   ef_whitelist si applicano anche in lettura, e un documento intestato a un
-  --   emittente diverso da quello dell'operatore sarebbe invisibile alla vista.
-  --   Oggi i due valori coincidono per caso — un solo emittente ha documenti —
-  --   e proprio per questo il test passava: coincidenza, non costruzione.
-  script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
-  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata d'ordine nasce DRAFT,
-  --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
-  --   righe non si scrivono piu' (20261008-90).
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo LIMIT 1) AS stato_ord_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='ANNULLATO' AND s.attivo LIMIT 1)  AS stato_ddt_annullato_id,
+  -- ⛔ rev 2026-10-13: il BA del mondo costruito; l'articolo si costruisce
+  --   (merce, non gestito: il test non misura il magazzino).
+  (SELECT billing_account_id FROM _m)                                    AS billing_account_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-STATO-SORG', false)                AS articolo_id,
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)  AS sorgente_ddt_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='RESO_VENDITA' AND s.attivo LIMIT 1) AS sorgente_reso_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id;
-
--- Ordine -> DDT portato allo stato richiesto (percorso ammesso dalla matrice:
--- ANNULLATO solo da EMESSO, CONSEGNATO passando da SPEDITO).
-CREATE OR REPLACE FUNCTION pg_temp.mk_ddt(p_stato bigint)
-RETURNS TABLE(ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
-DECLARE r RECORD; v_ord bigint; v_ddt bigint; v_uid uuid; v_riga bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
-          DATE '2026-07-15', 'CONSEGNATO', r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_stato_sorgente'))
-  RETURNING id INTO v_ord;
-  UPDATE vendite.ordini SET fatturazione_trigger = 'CONSEGNATO' WHERE id = v_ord;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'Riga proiezione', 10, 10, 25, r.iva_id, true, false,
-          jsonb_build_object('test_scope','pgtap_stato_sorgente'));
-  -- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90).
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-  v_ddt := vendite.fn_genera_ddt_da_ordine(v_ord);
-  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-  VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  -- causale obbligatoria all'emissione (step 5b)
-  UPDATE vendite.ddt SET causale_trasporto_id=r.causale_vendita_id WHERE id=v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_emesso_id WHERE id=v_ddt;
-  IF p_stato = r.stato_ddt_annullato_id THEN
-    UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_annullato_id WHERE id=v_ddt;
-  ELSIF p_stato <> r.stato_ddt_emesso_id THEN
-    UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id WHERE id=v_ddt;
-    IF p_stato <> r.stato_ddt_spedito_id THEN
-      UPDATE vendite.ddt SET stato_doc_ddt_id=p_stato WHERE id=v_ddt;
-    END IF;
-  END IF;
-  SELECT d.uid INTO v_uid FROM vendite.ddt d WHERE d.id=v_ddt;
-  SELECT dr.id INTO v_riga FROM vendite.ddt_righe dr WHERE dr.ddt_id=v_ddt LIMIT 1;
-  RETURN QUERY SELECT v_ddt, v_uid, v_riga;
-END $$ LANGUAGE plpgsql;
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='RESO_VENDITA' AND s.attivo LIMIT 1) AS sorgente_reso_id;
 
 -- ============================================================
 -- FIXTURE
 -- ============================================================
-CREATE TEMP TABLE tmp_cons AS SELECT * FROM pg_temp.mk_ddt((SELECT stato_ddt_consegnato_id FROM tmp_refs));
-CREATE TEMP TABLE tmp_ann  AS SELECT * FROM pg_temp.mk_ddt((SELECT stato_ddt_annullato_id  FROM tmp_refs));
-CREATE TEMP TABLE tmp_eme  AS SELECT * FROM pg_temp.mk_ddt((SELECT stato_ddt_emesso_id     FROM tmp_refs));
+-- Le bolle dal builder, una per stato. Il guard del reso pretende la bolla
+-- CONSEGNATA; l'annullata parte da EMESSA (la matrice ammette ANNULLATO solo da li').
+CREATE TEMP TABLE tmp_cons AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('stato sorgente', 'CONSEGNATO',
+         p_billing_account_id => (SELECT billing_account_id FROM tmp_refs),
+         p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'CONSEGNATO');
+CREATE TEMP TABLE tmp_ann AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('stato sorgente', 'EMESSO',
+         p_billing_account_id => (SELECT billing_account_id FROM tmp_refs),
+         p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'CONSEGNATO');
+CREATE TEMP TABLE tmp_eme AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('stato sorgente', 'EMESSO',
+         p_billing_account_id => (SELECT billing_account_id FROM tmp_refs),
+         p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'CONSEGNATO');
+
+-- ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-8): la bolla nasce
+--   dall'ordine e ne porta il legame. L'annullo diretto e' rifiutato
+--   (E_DOC_ANNULLO_CON_LEGAMI): passa dal verbo, dichiarando i legami letti
+--   da vendite.fn_documento_legami, come fa la finestra di conferma
+--   (rev 2026-10-11, brief-db-annullo-documento-con-legami D-4).
+SELECT vendite.fn_annulla_ddt(a.ddt_id,
+         (SELECT count(*)::integer FROM vendite.fn_documento_legami('DDT_VENDITA', a.ddt_id) l))
+  FROM tmp_ann a;
 
 -- Reso in DRAFT sul DDT consegnato (il guard pretende il DDT CONSEGNATO)
 CREATE TEMP TABLE tmp_reso AS
@@ -284,7 +252,8 @@ CREATE TEMP TABLE tmp_prat_ddt AS
 WITH ins AS (
   INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id, priorita_id)
   VALUES (script.fn_pgtap_emittente_operatore(), (SELECT tp_id FROM tmp_prat_ddt_tp),
-          (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1),
+          -- ⛔ rev 2026-10-13: il soggetto e' il cliente costruito, non il primo del DB.
+          (SELECT cliente_soggetto_id FROM _m),
           (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA'),
           (SELECT id FROM config.priorita_pratiche WHERE codice_interno = 'NORMALE'))
   RETURNING id

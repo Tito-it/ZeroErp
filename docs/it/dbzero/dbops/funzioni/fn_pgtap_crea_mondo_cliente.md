@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_crea_mondo_cliente(p_etichetta text, p_sigla character 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_mondo_cliente(p_etichetta text DEFAULT 'pgTAP'::text, p_sigla character varying DEFAULT NULL::character varying)
  RETURNS TABLE(emittente_fiscale_id bigint, emittente_codice character varying, emittente_soggetto_ruolo_id bigint, auth_user_id integer, identita_id bigint, billing_account_id bigint, istanza_utility_id bigint, cliente_soggetto_ruolo_id bigint, cliente_soggetto_id uuid, utility_id integer)
@@ -22,6 +24,12 @@ AS $function$
 -- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper: chi vuole la
 --   finestra differita la riapre subito dopo con
 --   SET CONSTRAINTS ALL DEFERRED, e lo dichiara in testa al file.
+-- Rev 2026-10-21 (20261021-68): con un contesto gia' aperto l'azienda
+--   di chi agisce la dice script.fn_resolve_emittente_for_user, come
+--   per il legame del BA: anche il super admin che ha scelto
+--   l'emittente in alto (app.current_emittente_id) ha un mondo.
+-- Rev 2026-10-24 (20261024-39, §4-octies): il ramo B legge l'azienda
+--   dal building block dbops.fn_pgtap_azienda_di_chi_agisce.
 DECLARE
     v_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
     v_identita  anagrafiche.identita_digitali.id%TYPE;
@@ -64,38 +72,14 @@ BEGIN
                 p_sigla, v_user_id;
         END IF;
 
-        SELECT ef.id, ef.codice, ef.soggetto_ruolo_id
-          INTO v_ef_id, v_ef_codice, v_ef_sr_id
-          FROM config.user_emittenti_fiscali uef
-          JOIN anagrafiche.emittenti_fiscali ef
-            ON ef.id = uef.emittente_fiscale_id
-         WHERE uef.auth_user_id = v_user_id;
-
-        -- ⚠️ Guard sul RISULTATO: un operatore senza riga in
-        --   user_emittenti_fiscali e' fail-closed dal 2026-08-18
-        --   (P-2a) e non vede NESSUN emittente. Tornare una tupla
-        --   con un NULL dentro manderebbe il chiamante a cercare
-        --   il difetto tre passi piu' in la'.
-        IF v_ef_id IS NULL THEN
-            RAISE EXCEPTION
-                'fn_pgtap_crea_mondo_cliente: l''operatore di contesto (auth_user_id = %) non ha un emittente in config.user_emittenti_fiscali: la fixture ha aperto un contesto che non puo'' scrivere. Aprire il contesto senza argomento (script.fn_pgtap_set_contesto_operatore()), o chiamare questa funzione PRIMA del contesto',
-                v_user_id;
-        END IF;
-
-        -- Una sola riga per costruzione: uq_identita_digitali_auth_user_ruolo_attivo
-        -- e' UNIQUE su (auth_user_id, ruolo_applicativo) WHERE attivo.
-        SELECT idg.id
-          INTO v_identita
-          FROM anagrafiche.identita_digitali idg
-         WHERE idg.auth_user_id = v_user_id
-           AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-           AND idg.attivo;
-
-        IF v_identita IS NULL THEN
-            RAISE EXCEPTION
-                'fn_pgtap_crea_mondo_cliente: nessuna identita'' OPERATORE attiva per auth_user_id = %: il contesto e'' aperto su un utente che l''applicazione non farebbe entrare',
-                v_user_id;
-        END IF;
+        -- ⭐ L'azienda di chi agisce, dal building block estratto da
+        --   qui (rev 20261024-39): la stessa regola di produzione del
+        --   trigger z90 (script.fn_resolve_emittente_for_user), coi
+        --   suoi controlli (azienda, identita' OPERATORE attiva).
+        SELECT a.emittente_fiscale_id, a.emittente_codice,
+               a.emittente_soggetto_ruolo_id, a.identita_id
+          INTO v_ef_id, v_ef_codice, v_ef_sr_id, v_identita
+          FROM dbops.fn_pgtap_azienda_di_chi_agisce('fn_pgtap_crea_mondo_cliente') a;
     END IF;
 
     -- Il cliente, in entrambi i rami DOPO il contesto e SENZA
@@ -139,8 +123,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_mondo_cliente(p_etichetta text, p_sigla character varying)
-IS 'Fixture pgTAP: il MONDO MINIMO di un test di dominio in una chiamata — azienda + operatore + contesto aperto + cliente fatturabile legato a quella azienda — e ritorna tutte le chiavi. ⭐ Esiste per la REGOLA D''ORDINE, non per fare l''elenco della spesa: prima il mondo, poi il contesto, e il legame BA -> emittente lo scrive il trigger z90 verso chi agisce (chiederlo anche col terzo parametro di fn_pgtap_crea_cliente_ba li fa sbattere su uq_emittenti_fiscali_ba). ⚠️ Con un contesto gia'' aperto RIUSA l''azienda di chi agisce e rifiuta p_sigla: una seconda azienda si costruisce coi builder atomici, prima del contesto. ⛔ NON comprende registro (script.fn_pgtap_registro_fattura si semina dal contesto), articolo (i flag sono il caso del test) ne'' i cataloghi di 80_data, che da zero ci sono e vanno scelti con un ORDER BY stabile. ⚠️ Esce con i vincoli IMMEDIATE: chi li vuole differiti riapre con SET CONSTRAINTS ALL DEFERRED e lo dichiara in testa al file (rev 20260921-18). Brief: brief-db-fixture-che-costruiscono-giro-2.md';
+IS 'Fixture pgTAP: il MONDO MINIMO di un test di dominio in una chiamata — azienda + operatore + contesto aperto + cliente fatturabile legato a quella azienda — e ritorna tutte le chiavi. ⭐ Esiste per la REGOLA D''ORDINE, non per fare l''elenco della spesa: prima il mondo, poi il contesto, e il legame BA -> emittente lo scrive il trigger z90 verso chi agisce (chiederlo anche col terzo parametro di fn_pgtap_crea_cliente_ba li fa sbattere su uq_emittenti_fiscali_ba). ⚠️ Con un contesto gia'' aperto RIUSA l''azienda di chi agisce e rifiuta p_sigla: una seconda azienda si costruisce coi builder atomici, prima del contesto. ⛔ NON comprende registro (script.fn_pgtap_registro_fattura si semina dal contesto), articolo (i flag sono il caso del test) ne'' i cataloghi di 80_data, che da zero ci sono e vanno scelti con un ORDER BY stabile. ⚠️ Esce con i vincoli IMMEDIATE: chi li vuole differiti riapre con SET CONSTRAINTS ALL DEFERRED e lo dichiara in testa al file (rev 20260921-18). Brief: brief-db-fixture-che-costruiscono-giro-2.md Rev 2026-10-21 (20261021-68, richiesta BE R-2): con un contesto gia'' aperto l''azienda di chi agisce la dice script.fn_resolve_emittente_for_user (l''emittente scelto in alto, app.current_emittente_id, se l''utente lo puo'' usare; altrimenti la riga in config.user_emittenti_fiscali), la stessa regola del trigger che lega il BA: il super admin che ha scelto l''emittente (dev.smoke negli smoke Python) ha un mondo, quello senza scelta e l''operatore senza riga sollevano come prima. Rev 2026-10-24 (20261024-39, brief-modello-documento-vendita §4-octies): quell''azienda viene dal building block dbops.fn_pgtap_azienda_di_chi_agisce, estratto da qui.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

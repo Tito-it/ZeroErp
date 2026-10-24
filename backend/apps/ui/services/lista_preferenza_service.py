@@ -176,17 +176,10 @@ class ListaPreferenzaService:
         # colonne: lista di oggetti normalizzati
         colonne_raw = payload.get("colonne")
         if colonne_raw is not None:
-            ErrorManager.require(
-                isinstance(colonne_raw, list),
-                code=E_UI_PREFERENZA_VALIDAZIONE,
+            config["colonne"] = self._validator.voci(
+                colonne_raw, self._validate_colonna, campo="colonne",
                 message="Preferenza lista non valida.",
-                detail="Il campo 'colonne' deve essere una lista.",
             )
-            assert isinstance(colonne_raw, list)
-            config["colonne"] = [
-                self._validate_colonna(c, idx)
-                for idx, c in enumerate(colonne_raw)
-            ]
 
         # ordinamento: lista di oggetti {col, dir}; trasparente al BE
         ordinamento = payload.get("ordinamento")
@@ -225,19 +218,12 @@ class ListaPreferenzaService:
 
         return config
 
-    # Scopo: Valida una singola colonna nella preferenza. Whitelist chiavi,
+    # Scopo: Legge una colonna della preferenza (lettore di `PayloadValidator.voci`,
+    #        che ha gia' giudicato la forma: un oggetto). Whitelist chiavi,
     #        codice obbligatorio, ordine/larghezza int, visibile/fissata bool.
     def _validate_colonna(
-        self, raw: Any, idx: int,
+        self, raw: dict[str, Any], idx: int,
     ) -> dict[str, Any]:
-        ErrorManager.require(
-            isinstance(raw, dict),
-            code=E_UI_PREFERENZA_VALIDAZIONE,
-            message="Preferenza lista non valida.",
-            detail=f"colonne[{idx}] deve essere un oggetto.",
-        )
-        assert isinstance(raw, dict)
-
         self._validator.validate_allowed_keys(
             raw, allowed=_COLONNA_KEYS,
             message=f"colonne[{idx}]: campi non supportati.",

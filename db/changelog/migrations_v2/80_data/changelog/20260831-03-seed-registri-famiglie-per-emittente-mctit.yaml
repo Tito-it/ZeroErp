@@ -92,6 +92,9 @@ databaseChangeLog:
       runOnChange: true
       validCheckSums:
         - ANY
+      # ⭐ rev 2026-10-20 (brief-db-grammatica-unica-documenti 2c, G-5): le famiglie si
+      #    chiamano col codice della loro sorgente (20261020-32): DDT_VENDITA, ORDINE_VENDITA,
+      #    RESO_VENDITA (COMMESSA resta). runOnChange + ANY: rigira, la primitiva e' idempotente.
       failOnError: true
       comment: >
         C2-12: un registro di numerazione per ogni emittente e ognuna delle quattro famiglie NON
@@ -134,7 +137,7 @@ databaseChangeLog:
                 sql: |
                   SELECT COUNT(*)
                     FROM vendite.famiglie_documento
-                   WHERE codice_interno IN ('DDT', 'ORDINE', 'COMMESSA', 'RESO');
+                   WHERE codice_interno IN ('DDT_VENDITA', 'ORDINE_VENDITA', 'COMMESSA', 'RESO_VENDITA');
             # ⭐ La primitiva e' di 20_code (20260901-18) e su un DB da zero
             #    precede 80_data: il controllo costa niente e NOMINA la
             #    dipendenza, come fa 20260915-34.
@@ -161,10 +164,10 @@ databaseChangeLog:
               --    Fabbricargliene uno «di famiglia» creerebbe un sezionale che
               --    nessuno risolve e che a video sembrerebbe configurazione —
               --    e la primitiva la esclude da se'.
-              SELECT vendite.fn_provision_registri_famiglia('DDT'),
-                     vendite.fn_provision_registri_famiglia('ORDINE'),
+              SELECT vendite.fn_provision_registri_famiglia('DDT_VENDITA'),
+                     vendite.fn_provision_registri_famiglia('ORDINE_VENDITA'),
                      vendite.fn_provision_registri_famiglia('COMMESSA'),
-                     vendite.fn_provision_registri_famiglia('RESO');
+                     vendite.fn_provision_registri_famiglia('RESO_VENDITA');
       rollback:
         - sql:
             splitStatements: false
@@ -178,5 +181,5 @@ databaseChangeLog:
               --   perimetro di questo passo sono le sue quattro famiglie.
               DELETE FROM vendite.registri_fatturazione r
                WHERE r.meta->>'origine' = 'C2-12'
-                 AND r.famiglia_documento IN ('DDT', 'ORDINE', 'COMMESSA', 'RESO')
+                 AND r.famiglia_documento IN ('DDT_VENDITA', 'ORDINE_VENDITA', 'COMMESSA', 'RESO_VENDITA')
                  AND NOT EXISTS (SELECT 1 FROM vendite.fatture f WHERE f.registro_id = r.id);

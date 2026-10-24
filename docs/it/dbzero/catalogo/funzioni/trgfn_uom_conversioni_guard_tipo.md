@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_uom_conversioni_guard_tipo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.trgfn_uom_conversioni_guard_tipo()
  RETURNS trigger
@@ -69,6 +71,8 @@ $function$
 COMMENT ON FUNCTION catalogo.trgfn_uom_conversioni_guard_tipo()
 IS 'Blocca conversioni globali tra UoM di tipologia diversa in catalogo.unita_misura_conversioni.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

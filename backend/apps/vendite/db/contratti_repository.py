@@ -22,6 +22,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.config.sorgenti import SORGENTE_CONTRATTO
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
@@ -38,6 +39,7 @@ from apps.core.db.righe_lista_mixin import RigheListaMixin
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
+from apps.vendite.db._lineage_sintesi import unisci_sintesi_lineage
 
 
 # Colonne jsonb delle tabelle scritte qui (testata, righe, utility): dichiarate
@@ -319,10 +321,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     # Configurazione mixin indirizzi documento.
     _indirizzi_table = "vendite.contratti_indirizzi"
     _indirizzi_fk_documento = "contratto_id"
-    _indirizzi_ambito = "CONTRATTI"
-    _indirizzi_documento_table = "vendite.contratti"
-    # Precontrattuale: istanza congelata in testata (vedi preventivi).
-    _indirizzi_doc_istanza_column = "istanza_utility_id"
+    _indirizzi_documento = SORGENTE_CONTRATTO
 
     # =================================================================
     # Lista e dettaglio testata
@@ -461,6 +460,9 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             )
             results = rows_to_list(cursor)
 
+        # Le colonne del grafo dalla sintesi, per le chiavi della pagina
+        # (brief-db-lineage-seminata-per-chiave B1): la vista non le porta piu'.
+        unisci_sintesi_lineage(results, tipo_codice_interno=SORGENTE_CONTRATTO)
         return results, total_count
 
     # Scopo: Dettaglio singolo contratto (solo testata, senza righe/utility).
@@ -622,54 +624,6 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             cursor.execute(sql, [contratto_id])
             return row_to_dict(cursor)
 
-    # Scopo: Conta le eccezioni "bloccanti" (OVERRIDE / ESCLUSIONE) attive
-    #        sul contratto. Usato dal service per impedire la rimozione del
-    #        listino dalla testata: senza listino di riferimento, OVERRIDE
-    #        e ESCLUSIONE perdono significato (refactor modalita 2026-05-15
-    #        §3-bis-F). AGGIUNTA non blocca (resta valida senza listino).
-    # Scopo: Conta le righe persistite attive (qualsiasi tipo_eccezione) di
-    #        un contratto. Usato dal service per bloccare la modifica di
-    #        `listino_id`, `tipo_variazione_globale`, `valore_variazione_globale`
-    #        in stato DRAFT quando ci sono righe già caricate: cambiare il
-    #        contesto pricing (listino o variazione globale) con eccezioni
-    #        persistite causerebbe drift semantico silente (prezzi calcolati
-    #        contro un riferimento diverso da quello che le righe assumevano).
-    #        Pattern coerente con `count_eccezioni_bloccanti` ma generico:
-    #        anche le AGGIUNTA su contratti senza listino contano.
-    def count_righe_attive(self, contratto_id: int) -> int:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT COUNT(*)::int
-                  FROM vendite.contratti_righe
-                 WHERE contratto_id = %s
-                   AND attivo = TRUE
-                """,
-                [contratto_id],
-            )
-            row = cursor.fetchone()
-            return int(row[0]) if row else 0
-
-    def count_eccezioni_bloccanti(
-        self, contratto_id: int,
-    ) -> dict[str, int]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT tipo_eccezione, COUNT(*)::int
-                  FROM vendite.contratti_righe
-                 WHERE contratto_id = %s
-                   AND attivo = TRUE
-                   AND tipo_eccezione IN ('OVERRIDE', 'ESCLUSIONE')
-                 GROUP BY tipo_eccezione
-                """,
-                [contratto_id],
-            )
-            counts = {"OVERRIDE": 0, "ESCLUSIONE": 0}
-            for tipo, n in cursor.fetchall():
-                counts[tipo] = int(n)
-            return counts
-
     # Scopo: Creazione atomica del contratto via funzione madre DB.
     #        Obiettivo: fondere in UNA sola statement (vendite.fn_create_contratto)
     #        la generazione del numero (`fn_generate_codice`), l'INSERT testata
@@ -721,6 +675,10 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     # `ContrattiCatenaUpdateTests`, che confronta i tre anelli fra loro: senza
     # un punto di accesso, il terzo anello non era verificabile da un test.
     TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        # Il cliente, in coppia (B-1, brief-db-indirizzi-documento-seguono-il-
+        # cliente §8.3): li risolve il service, li ferma fuori bozza il lock.
+        "billing_account_id",
+        "istanza_utility_id",
         "ambito",
         "valido_dal",
         "valido_al",
@@ -772,42 +730,21 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             )
             return cursor.rowcount > 0
 
-    # Scopo: Pre-check applicativo overlap per l'attivazione manuale del
-    #        contratto (guard §3.3 brief refactor-overlap). Delega alla fn di
-    #        dominio `vendite.fn_contratto_sovrapposto` (firma invariata,
-    #        semantica DRAFT-escluso dal 2026-06-02) passando gli attributi del
-    #        contratto STESSO. Ritorna l'incumbent ATTIVO sovrapposto
-    #        (id + numero + validita') o None. Read-only: non tenta l'INSERT/
-    #        UPDATE, serve solo a dare un messaggio che NOMINA il contratto in
-    #        conflitto prima che l'EXCLUDE `ex_contratti_no_overlap` sollevi
-    #        all'attivazione (defense-in-depth, l'EXCLUDE resta la difesa dura).
-    #        Il contratto stesso (DRAFT in attivazione) non si auto-conflitta:
-    #        la fn ignora i DRAFT.
-    def get_contratto_sovrapposto(self, contratto_id: int) -> dict[str, Any] | None:
+    # Scopo: Annulla il contratto via il verbo DB `vendite.fn_annulla_contratto`
+    #        (brief-db-annullo-documento-con-legami): con legami (offerta
+    #        d'origine, righe di commessa da emettere) `legami_confermati`
+    #        dichiara quanti l'operatore ne ha visti; se non corrisponde,
+    #        E_DOC_ANNULLO_CON_LEGAMI. Lo stato passa ad ANNULLATO coi guard della
+    #        tabella (matrice e freni, fra cui le fatture).
+    # Ritorna: i legami confermati (0 se non ce n'erano).
+    def annulla(self, contratto_id: int, legami_confermati: int | None) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT inc.id, inc.numero, inc.valido_dal, inc.valido_al
-                  FROM vendite.contratti c
-                  JOIN vendite.contratti inc
-                    ON inc.id = vendite.fn_contratto_sovrapposto(
-                           c.billing_account_id,
-                           c.istanza_utility_id,
-                           c.utility_id,
-                           c.ambito,
-                           c.valido_dal,
-                           c.valido_al
-                       )
-                   -- Safeguard: se emetti() fosse invocato su un contratto gia'
-                   -- ATTIVO (re-emit), la fn potrebbe restituire se stesso ->
-                   -- escludo l'auto-match. Nel caso normale (contratto DRAFT in
-                   -- attivazione) la fn ignora gia' i DRAFT, quindi e' un no-op.
-                   AND inc.id <> c.id
-                 WHERE c.id = %s
-                """,
-                [contratto_id],
+                "SELECT vendite.fn_annulla_contratto(%s, %s)",
+                [int(contratto_id), legami_confermati],
             )
-            return row_to_dict(cursor)
+            row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
 
     # =================================================================
     # Contratti_righe
@@ -873,7 +810,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "generazione_canone",
         "competenza_canone",
         "prezzo_unitario",
-        "quantita",
+        # ⛔ Niente `quantita`: la calcola il DB (`trgfn_qta_from_operativa`).
         "qta_operativa",
         "uom_operativa_id",
         "factor_to_base",
@@ -912,7 +849,6 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "generazione_canone",
         "competenza_canone",
         "prezzo_unitario",
-        "quantita",
         "qta_operativa",
         "uom_operativa_id",
         "factor_to_base",

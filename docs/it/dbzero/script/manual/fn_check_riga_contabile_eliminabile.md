@@ -5,7 +5,9 @@
 > **Chi la chiama:**
 >
 > • [pagamenti.trgfn_vendite_contabili_righe_guard_contenuto](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_contenuto) — il guard che solleva il primo motivo
-> • il backend, in `LATERAL` sulla lista delle righe (`elimina_blocco_reason` / `elimina_blocco_reason_key`) — *passo BE-4 del brief*
+> • il backend, sul dettaglio di una riga
+>
+> **Dove stanno i motivi:** [script.fn_check_riga_contabile_eliminabile_su_distinta](/dbzero/script/manual/fn_check_riga_contabile_eliminabile_su_distinta) — le liste chiamano quella, con la testata già letta *(dal 21-10-2026)*
 >
 > **Approfondimento tabelle:**
 >
@@ -42,6 +44,19 @@ primo motivo con `script.fn_raise_primo_motivo_se_presente`. Il backend legge lo
 stesso elenco per spegnere il cestino col perché. Tooltip e rifiuto non
 «coincidono oggi»: **non possono divergere**, perché la regola sta scritta in un
 posto solo.
+
+### ⭐ Lettura e giudizio in due metà *(dal 21-10-2026)*
+
+Questa funzione **legge**: la riga e la sua testata sotto la row security, con i
+due guard di chiamata. Poi **delega** i motivi a
+[`fn_check_riga_contabile_eliminabile_su_distinta`](/dbzero/script/manual/fn_check_riga_contabile_eliminabile_su_distinta),
+che li giudica sulla testata. Per chi la chiama non cambia niente.
+
+⛔ **Una lista non la chiama per riga.** Ogni chiamata è un'istruzione a sé, e
+ricalcolerebbe il perimetro dell'utente per ogni riga della lista
+([linee-guida-sql §13.2](/linee-guida-sql)). La lista ha già letto la testata e
+chiama la metà su distinta. Il guard e il dettaglio restano qui, perché hanno
+bisogno della lettura e del 404.
 
 ---
 

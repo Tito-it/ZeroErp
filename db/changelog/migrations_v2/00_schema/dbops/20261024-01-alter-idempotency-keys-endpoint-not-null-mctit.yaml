@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.idempotency_keys.endpoint — NOT NULL: OGNI KEY E' LEGATA A UNA RICHIESTA
+#   Brief: brief-be-verifica-documentazione-api §I.5 (debito dichiarato il
+#   2026-10-23), passo 7; decisione di Tid del 2026-10-24: chiuderlo ora, prima
+#   di BE-1.
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   D7 (20261023-03/-04): una key si rimanda solo a chi l'ha prenotata, sullo
+#   stesso endpoint. endpoint era nullable solo per le righe nate prima del
+#   2026-10-23, che non sanno chi le ha prenotate: la funzione le rimandava a
+#   chiunque e le legava alla prima ripresa. E' un buco di D7, tenuto aperto
+#   per non perdere quelle righe. Da qui ogni key e' legata.
+#
+# -- CHE COSA CAMBIA -----------------------------------------------------------------
+#   * le righe senza endpoint si CANCELLANO. Non si riempiono: il valore non
+#     c'e', e inventarlo legherebbe la key alla richiesta sbagliata. Una key
+#     cancellata vuol dire solo che un reinvio con quella key verrebbe
+#     rieseguito: le righe hanno passato da tempo il gesto del frontend (al
+#     massimo dieci minuti), a parte quelle degli ultimi minuti prima dell'apply;
+#   * endpoint NOT NULL; il CHECK «non vuoto» perde il ramo «IS NULL OR», che
+#     non ha piu' niente da ammettere;
+#   * i COMMENT di endpoint e auth_user_id non parlano piu' delle righe vecchie.
+#   Il ramo «riga senza legame» di dbops.fn_idempotency_prenota lo ritira
+#   20261024-02.
+#
+#   ⚠️ RICADUTA BE, dichiarata e accettata da Tid il 2026-10-24 (ambiente di
+#   sviluppo): fino a BE-1 il backend prenota col suo SQL
+#   (IdempotencyStore.claim_or_replay, INSERT senza endpoint). Dopo questo apply
+#   quella INSERT fallisce col 23502, e ogni POST in modalita' forte risponde
+#   500 finche' BE-1 non e' in esercizio. Da zero (CI) non ci sono righe da
+#   cancellare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261024-01-alter-idempotency-keys-endpoint-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20261024-01-alter-idempotency-keys-endpoint-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.idempotency_keys.endpoint NOT NULL: cancellate le righe nate prima del 2026-10-23,
+        che non sanno chi ha prenotato la key; il CHECK «non vuoto» perde il ramo NULL. Chiude il
+        debito di D7. Brief: brief-be-verifica-documentazione-api §I.5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- le righe senza legame: il valore non c'e', non si inventa
+              DELETE FROM dbops.idempotency_keys
+               WHERE endpoint IS NULL;
+
+              ALTER TABLE dbops.idempotency_keys
+                  ALTER COLUMN endpoint SET NOT NULL;
+
+              ALTER TABLE dbops.idempotency_keys
+                  DROP CONSTRAINT chk_idempotency_keys_endpoint_non_vuoto,
+                  ADD CONSTRAINT chk_idempotency_keys_endpoint_non_vuoto
+                      CHECK (btrim(endpoint) <> '');
+
+              COMMENT ON COLUMN dbops.idempotency_keys.auth_user_id IS
+                'Utente Django che ha prenotato la key (NULL = richiesta anonima). Il replay avviene solo per lo stesso utente sullo stesso endpoint (dbops.fn_idempotency_prenota, E_IDEMPOTENCY_KEY_RIUSATA). Nessuna FK verso django.auth_user: due mondi, come dbops.request_log.';
+              COMMENT ON COLUMN dbops.idempotency_keys.endpoint IS
+                'Metodo e percorso della richiesta che ha prenotato la key, senza query string. Obbligatorio: ogni key e'' legata alla richiesta che l''ha prenotata, e si rimanda solo su quella (D7). Brief: brief-be-verifica-documentazione-api D7, §I.5.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.idempotency_keys
+                  ALTER COLUMN endpoint DROP NOT NULL,
+                  DROP CONSTRAINT IF EXISTS chk_idempotency_keys_endpoint_non_vuoto,
+                  ADD CONSTRAINT chk_idempotency_keys_endpoint_non_vuoto
+                      CHECK (endpoint IS NULL OR btrim(endpoint) <> '');
+              -- le righe cancellate non tornano

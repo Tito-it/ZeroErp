@@ -30,6 +30,7 @@ from collections.abc import Mapping
 
 from typing import Any
 
+from apps.config.sorgenti import SORGENTE_PREVENTIVO
 from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.documenti.services.context_builders._number_formatting import (
@@ -56,13 +57,13 @@ E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
 class PreventivoDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti PREVENTIVO."""
 
-    CODE = "PREVENTIVO"
+    CODE = SORGENTE_PREVENTIVO
     # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
     CONTEXT_VERSION = 2
 
-    # Tipi indirizzo ammessi nell'ambito PREVENTIVI
+    # Tipi indirizzo ammessi nell'ambito PREVENTIVO
     # (`config.tipi_indirizzi_allowed`: FATT, CON, FORNITURA, RES — stesso
-    # insieme di OFFERTE). Dichiarati qui e non letti a runtime: il context
+    # insieme di OFFERTA_COMMERCIALE). Dichiarati qui e non letti a runtime: il context
     # deve essere deterministico a parita' di documento (il `context_hash`
     # governa il dedup), e una modifica di configurazione non puo' cambiare la
     # forma di un contesto gia' generato.

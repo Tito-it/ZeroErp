@@ -82,6 +82,23 @@ _TODAY = oggi_aziendale()
 _TOMORROW = _TODAY + timedelta(days=1)
 _FAR_FUTURE = _TODAY + timedelta(days=365)
 
+# ⛔ «Oggi» e' UNO per il test e per il service. `_TODAY` si calcola all'IMPORT
+#    del modulo, la guardia del service a ogni CHIAMATA: una suite che passa la
+#    mezzanotte fra le due vedeva `_TOMORROW` diventare «oggi» per il service, e
+#    otto casi uscivano `E_PROMO_RETROATTIVA` (visto il 2026-10-21 su una suite
+#    partita prima delle 24). Il giorno del service si fissa a quello del test.
+_oggi_fisso = patch(
+    "apps.vendite.services.promo_articoli_service.oggi_aziendale", return_value=_TODAY,
+)
+
+
+def setUpModule() -> None:
+    _oggi_fisso.start()
+
+
+def tearDownModule() -> None:
+    _oggi_fisso.stop()
+
 
 def _base_payload(**overrides):
     data = {

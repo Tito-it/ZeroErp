@@ -7,6 +7,8 @@ CREATE FUNCTION fn_chiudi_riconsegna_reso(p_reso_id bigint, p_righe jsonb, p_not
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_chiudi_riconsegna_reso(p_reso_id bigint, p_righe jsonb DEFAULT NULL::jsonb, p_note character varying DEFAULT NULL::character varying)
  RETURNS integer
@@ -33,7 +35,6 @@ DECLARE
     v_stato          config.stati_doc_reso.codice_interno%TYPE;
     v_riga           RECORD;
     v_ord            RECORD;
-    v_stato_target_id config.stati_doc_ordini.id%TYPE;
     v_residuo        numeric;
     v_qta            numeric;
     v_n              integer := 0;
@@ -136,17 +137,9 @@ BEGIN
          WHERE rr.reso_id = p_reso_id
            AND rr.ordine_riga_id IS NOT NULL
     LOOP
-        IF vendite.fn_ordine_ha_residuo_evasione(v_ord.ordine_id) THEN
-            SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
-             WHERE codice_interno = 'PARZIALMENTE_EVASO' AND attivo IS TRUE;
-        ELSE
-            SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
-             WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
-        END IF;
-        UPDATE vendite.ordini
-           SET stato_doc_ordine_id = v_stato_target_id
-         WHERE id = v_ord.ordine_id
-           AND stato_doc_ordine_id IS DISTINCT FROM v_stato_target_id;
+        -- ⭐ rev 2026-10-11: la proiezione e' il building block
+        --    vendite.fn_ordine_proietta_stato_evasione (brief-db-ddt-righe-evase-dall-ordine).
+        PERFORM vendite.fn_ordine_proietta_stato_evasione(v_ord.ordine_id);
     END LOOP;
 
     RETURN v_n;
@@ -154,8 +147,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_chiudi_riconsegna_reso(p_reso_id bigint, p_righe jsonb, p_note character varying)
-IS 'Madre CHIUSURA ri-consegna (brief-db-chiusura-riconsegna-reso-definitivo S4.3): dichiara che una quota di merce resa PER RI-CONSEGNA non tornera'' al cliente. Scrive vendite.resi_righe_rinunce e ri-proietta lo stato ordine (il residuo si chiude -> EVASO). Speculare a fn_genera_ddt_riconsegna: gate reso CONFERMATO, p_righe NULL = tutta la copertura residua altrimenti [{resi_riga_id, qta}] troncata al residuo, E_RESO_NESSUNA_RICONSEGNA_PENDENTE se non c''e'' nulla da chiudere. Ritorna il numero di righe chiuse. NON crea documenti e NON cambia numeri: l''importo dell''accredito resta identico, passa solo da FACOLTATIVA a DOVUTA. MERCE FISICA: la quota rinunciata resta materialmente al fornitore - senza modulo magazzino non c''e'' nulla da movimentare, ma quando il magazzino arrivera'' il movimento parte da qui (S5.4). rev 2026-07-26.';
+IS 'Madre CHIUSURA ri-consegna (brief-db-chiusura-riconsegna-reso-definitivo S4.3): dichiara che una quota di merce resa PER RI-CONSEGNA non tornera'' al cliente. Scrive vendite.resi_righe_rinunce e ri-proietta lo stato ordine (il residuo si chiude -> EVASO). Speculare a fn_genera_ddt_riconsegna: gate reso CONFERMATO, p_righe NULL = tutta la copertura residua altrimenti [{resi_riga_id, qta}] troncata al residuo, E_RESO_NESSUNA_RICONSEGNA_PENDENTE se non c''e'' nulla da chiudere. Ritorna il numero di righe chiuse. NON crea documenti e NON cambia numeri: l''importo dell''accredito resta identico, passa solo da FACOLTATIVA a DOVUTA. MERCE FISICA: la quota rinunciata resta materialmente al fornitore - senza modulo magazzino non c''e'' nulla da movimentare, ma quando il magazzino arrivera'' il movimento parte da qui (S5.4). rev 2026-07-26. ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine §5.2): la proiezione dello stato dell''ordine e'' il building block vendite.fn_ordine_proietta_stato_evasione; la copia scritta a mano qui si ritira (regola del 2). Comportamento invariato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

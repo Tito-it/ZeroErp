@@ -7,18 +7,17 @@ CREATE FUNCTION fn_disdetta_cliente(p_cliente_id bigint, p_data_cessazione date)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_disdetta_cliente(p_cliente_id bigint, p_data_cessazione date)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_stato_attivo_id   config.stati_cliente.id%TYPE;
     v_stato_chiuso_id   config.stati_cliente.id%TYPE;
-    v_codice_attivo     config.stati_cliente.codice_interno%TYPE := 'AT';
     v_codice_chiuso     config.stati_cliente.codice_interno%TYPE := 'CH';
     v_data_attivazione  anagrafiche.clienti.data_attivazione%TYPE;
-    v_stato_corrente_id anagrafiche.clienti.stato_cliente_id%TYPE;
 BEGIN
 -- ------------------------------------------------------------
 -- Funzione: script.fn_disdetta_cliente
@@ -26,20 +25,22 @@ BEGIN
 -- Scopo:
 --   Cessazione di un cliente senza subentro (disdetta).
 --   Chiude il cliente impostando data_chiusura e stato CH.
+--   Da quale stato si puo' chiudere lo decide il grafo
+--   config.transizioni_stati_cliente, applicato dal guard
+--   anagrafiche.trgfn_clienti_guard_stato_date (rev 2026-10-14,
+--   brief-db-cliente-manuale-uno-per-soggetto-e-utility, C-6):
+--   AT, SF, SC si chiudono; un chiuso, un annullato o un
+--   pre-contrattuale no.
 --   I trigger cascata gestiscono:
 --     - trgfn_clienti_set_periodo -> aggiorna periodo
---     - trgfn_clienti_sync_stato_pdp -> PDP torna DISPONIBILE
+--     - trgfn_clienti_sync_stato_pdp -> PDP libero se nessuno lo occupa
 --     - trgfn_storico_generic -> storicizzazione
 --     - trgfn_audit_data_user_generic -> audit
 --
 -- Policy BA:
 --   Il billing_account NON viene toccato dalla disdetta.
---   Resta attivo per fatture finali, conguagli e riconciliazioni.
---   La chiusura del BA e' un'operazione separata.
---
--- Parametri:
---   p_cliente_id      -> ID del cliente da cessare (NOT NULL, > 0)
---   p_data_cessazione -> Data di cessazione (NOT NULL, >= data_attivazione)
+--   Resta per fatture finali e conguagli; non si riattiva
+--   (C-5: chi torna apre una catena nuova).
 --
 -- Ritorna:
 --   ID del cliente cessato
@@ -76,34 +77,30 @@ BEGIN
     END IF;
 
     ----------------------------------------------------------------
-    -- 2) Recupero ID stati cliente AT e CH
+    -- 2) Stato CH
     ----------------------------------------------------------------
-    SELECT sc.id INTO v_stato_attivo_id
-      FROM config.stati_cliente sc
-     WHERE sc.codice_interno = v_codice_attivo;
-
     SELECT sc.id INTO v_stato_chiuso_id
       FROM config.stati_cliente sc
      WHERE sc.codice_interno = v_codice_chiuso;
 
-    IF v_stato_attivo_id IS NULL OR v_stato_chiuso_id IS NULL THEN
+    IF v_stato_chiuso_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'database',
             'script.fn_disdetta_cliente',
             'E_CONFIG_MANCANTE',
             jsonb_build_object(
-                'detail', 'Stati cliente AT e/o CH non trovati in config.stati_cliente'
+                'detail', 'Stato cliente CH non trovato in config.stati_cliente'
             ),
             NULL::uuid,
-            'AT/CH'
+            'CH'
         );
     END IF;
 
     ----------------------------------------------------------------
     -- 3) Leggo il cliente con lock (evita race condition)
     ----------------------------------------------------------------
-    SELECT c.stato_cliente_id, c.data_attivazione
-      INTO v_stato_corrente_id, v_data_attivazione
+    SELECT c.data_attivazione
+      INTO v_data_attivazione
       FROM anagrafiche.clienti c
      WHERE c.id = p_cliente_id
        FOR UPDATE;
@@ -120,25 +117,7 @@ BEGIN
     END IF;
 
     ----------------------------------------------------------------
-    -- 4) Guard: il cliente deve essere in stato ATTIVO (AT)
-    ----------------------------------------------------------------
-    IF v_stato_corrente_id <> v_stato_attivo_id THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database',
-            'script.fn_disdetta_cliente',
-            'E_CLIENTE_NON_ATTIVO',
-            jsonb_build_object(
-                'p_cliente_id', p_cliente_id,
-                'stato_corrente_id', v_stato_corrente_id,
-                'stato_atteso', 'AT'
-            ),
-            NULL::uuid,
-            p_cliente_id::text, v_stato_corrente_id::text
-        );
-    END IF;
-
-    ----------------------------------------------------------------
-    -- 5) Guard: data cessazione >= data attivazione
+    -- 4) Guard: data cessazione >= data attivazione
     ----------------------------------------------------------------
     IF v_data_attivazione IS NOT NULL
        AND p_data_cessazione < v_data_attivazione
@@ -159,12 +138,8 @@ BEGIN
     END IF;
 
     ----------------------------------------------------------------
-    -- 6) Eseguo disdetta: data_chiusura + stato CH
-    --    I trigger cascata sulla tabella clienti gestiscono:
-    --      - trgfn_clienti_set_periodo -> [data_attivazione, data_chiusura)
-    --      - trgfn_clienti_sync_stato_pdp -> PDP torna DISPONIBILE
-    --      - trgfn_storico_generic -> storicizzazione
-    --      - trgfn_audit_data_user_generic -> audit
+    -- 5) Eseguo disdetta: data_chiusura + stato CH. Il grafo
+    --    (da quale stato) lo applica il guard sulla tabella.
     ----------------------------------------------------------------
     UPDATE anagrafiche.clienti c
        SET data_chiusura    = p_data_cessazione,
@@ -176,11 +151,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_disdetta_cliente(p_cliente_id bigint, p_data_cessazione date)
-IS 'Cessazione cliente senza subentro (disdetta).
-Chiude il cliente con data_chiusura e stato CH.
-I trigger cascata aggiornano periodo, PDP (DISPONIBILE) e storico.
-Il billing_account resta attivo (policy: chiusura BA separata).';
+IS 'Cessazione cliente senza subentro (disdetta): data_chiusura e stato CH. Da quale stato si chiude lo decide il grafo config.transizioni_stati_cliente (guard anagrafiche.trgfn_clienti_guard_stato_date: AT, SF, SC; rev 2026-10-14, prima solo AT). I trigger aggiornano periodo, PDP e storico. Il billing account resta per fatture finali e conguagli e non si riattiva: chi torna apre una catena nuova (C-5). Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

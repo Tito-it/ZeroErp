@@ -193,3 +193,33 @@ contratto con una riga o un componente BoM **attivi** in attesa di approvazione
 Motivi nuovi: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
 `common.azione_reason.prezzo_pendente` / `common.azione_reason.prezzo_rifiutato`.
 (changeSet `20260924-26`, brief `brief-db-preventivi-congelamento-pricing`.)
+
+## Rev 2026-10-11 — fornitura e indirizzi (brief-db-testata-dopo-emissione §11, R-DB-3)
+
+Nuovi `can_edit_utility` e `can_edit_indirizzi`: veri se fornitura e indirizzi si possono
+scrivere nello stato del contratto, letti dai lock montati su `vendite.contratti_utilities` e
+`vendite.contratti_indirizzi` (in bozza sì, fuori no). Il backend li rifiutava da sé fuori
+DRAFT: ora la regola sta nel lock.
+
+## Rev 2026-10-20 — «Attiva» spento sopra un contratto vincolante
+
+Verso `ATTIVO` l'array dei motivi finisce, dopo listino, prezzi e indirizzi, col
+motivo di [`script.fn_check_contratto_sovrapposto`](/dbzero/script/funzioni/fn_check_contratto_sovrapposto):
+il periodo si sovrappone a un contratto vincolante (attivo o cessato) dello stesso
+cliente, punto di fornitura, utility e ambito.
+
+| Campo | Valore |
+| --- | --- |
+| `reason` | `CONTRATTO_SOVRAPPOSTO` |
+| `reason_key` | `vendite.contratti.azione_reason.contratto_sovrapposto` |
+| `valori` | `[numero del contratto in conflitto]` → `{0}` nel testo |
+
+Prima «Attiva» restava acceso, l'operatore apriva il dialog della stampa e solo alla
+conferma prendeva il rifiuto. Il guard di transizione solleva lo stesso motivo, nello
+stesso ordine. Una bozza non spegne niente: due bozze sovrapposte restano ammesse, e
+il pulsante si spegne sulla seconda solo quando la prima è attivata.
+
+⚠️ Un contratto vincolante che l'operatore non vede (perimetro degli emittenti) non dà
+motivo: il pulsante resta acceso e alla conferma risponde il vincolo di esclusione.
+
+(changeSet `20261020-20`.)

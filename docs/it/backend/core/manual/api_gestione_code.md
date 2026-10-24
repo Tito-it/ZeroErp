@@ -80,8 +80,9 @@ area `core`. I POST richiedono `Idempotency-Key` (header).
   operatore**: la coda è una risorsa condivisa; `code_manage` serve solo per
   azioni e dettaglio sui job altrui),
   `stato`, `tipo` (job_type), `solo_vivi`, `data_da`/`data_a` (YYYY-MM-DD,
-  inclusiva; giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09)), `archiviate` (bool, default `false` — vedi §6), `limit` (max
-  200)/`offset`, `sort_by`/`sort_dir`.
+  inclusiva; giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09)), `archiviate` (bool, default `false` — vedi §6), `limit` (default
+  25, max 200)/`offset`, `order_by`/`order_dir` (fino al 2026-10-20
+  `sort_by`/`sort_dir`, oggi ignorati: brief-be-verifica-documentazione-api §A4).
 - Ogni riga porta `is_mio` (calcolato dal BE: la `scope_key` del job coincide
   con quella del chiamante) e `proprietario` (`scope->>'username'`).
 
@@ -337,7 +338,7 @@ sono incluse (lì non c'è niente di nascosto da dichiarare).
 | `E_VALIDATION_INPUT` | 400 | `ids` assente/vuoto, non interi positivi, o oltre 200 |
 | `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` | **riga fallita** nel giro (409 se fosse sola) | archiviazione di una riga ancora VIVA (`PENDING`/`IN_CORSO`). Lo solleva il **trigger**, con la sua frase a catalogo |
 | `E_VALIDATION_INPUT` | 400 | `extra_tentativi` fuori range 1..10; `data_da`/`data_a` non `YYYY-MM-DD`, `solo_vivi`/`archiviate` non booleani, `lotto_id` non intero |
-| `E_SEARCH_VALIDATION` | 400 | `sort_by` fuori dalla whitelist della coda, o `sort_dir` diverso da `asc`/`desc` |
+| `E_SEARCH_VALIDATION` | 400 | `order_by` fuori dalla whitelist della coda, o `order_dir` diverso da `asc`/`desc` |
 | `E_IDEMPOTENCY_KEY_REQUIRED` | 400 | POST senza header `Idempotency-Key` |
 
 ## Dipendenze DB

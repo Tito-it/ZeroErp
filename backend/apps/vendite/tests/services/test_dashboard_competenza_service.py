@@ -657,11 +657,13 @@ class DashCompetenzaAttivitaServiceTests(TestCase):
         kwargs = mock_repo.call_args.kwargs
         self.assertTrue(kwargs["solo_ritardo"])
 
-    # Scopo: Paginazione invalida -> E_VENDITE_VALIDATION (validate_pagination).
-    def test_attivita_page_invalida(self):
-        with self.assertRaises(ServiceError) as ctx:
-            fn_dash_competenza_attivita(competenza_mese=date(2026, 5, 1), page=0)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+    # Scopo: la finestra arriva al repository come `limit`/`offset` (dal
+    #        2026-10-21 un dialetto solo: la valida `pagina_da_query`, nella view).
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_attivita", return_value=([], 0))
+    def test_attivita_page_invalida(self, mock_repo):
+        fn_dash_competenza_attivita(competenza_mese=date(2026, 5, 1), limit=10, offset=30)
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual((kwargs["limit"], kwargs["offset"]), (10, 30))
 
     # Scopo: order_by/order_dir (whitelist) inoltrati al repository per
     #        l'ordinamento server-side su tutte le pagine.
@@ -752,11 +754,13 @@ class DashCompetenzaCommesseServiceTests(TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    # Scopo: Paginazione invalida -> E_VENDITE_VALIDATION.
-    def test_commesse_page_invalida(self):
-        with self.assertRaises(ServiceError) as ctx:
-            fn_dash_competenza_commesse(competenza_mese=date(2026, 5, 1), page=0)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+    # Scopo: la finestra arriva al repository come `limit`/`offset` (dal
+    #        2026-10-21 un dialetto solo: la valida `pagina_da_query`, nella view).
+    @patch.object(vendite_service.VenditeRepository, "list_dash_competenza_commesse", return_value=([], 0))
+    def test_commesse_page_invalida(self, mock_repo):
+        fn_dash_competenza_commesse(competenza_mese=date(2026, 5, 1), limit=10, offset=30)
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual((kwargs["limit"], kwargs["offset"]), (10, 30))
 
 
 class DashCompetenzaErroriServiceTests(TestCase):
@@ -853,9 +857,9 @@ class DashCompetenzaGruppiServiceTests(TestCase):
                 "n_gruppi_oneri": 0,
             },
             "tipi": [
-                {"tipo_gruppo": "PREVENTIVO", "area_documento": "PREVENTIVI",
+                {"tipo_gruppo": "PREVENTIVO", "documento_apribile": True,
                  "n_gruppi": 1, "n_attivita": 3},
-                {"tipo_gruppo": "ONERI_COMMESSA", "area_documento": None,
+                {"tipo_gruppo": "ONERI_COMMESSA", "documento_apribile": None,
                  "n_gruppi": 2, "n_attivita": 2},
             ],
             "clienti": [],
@@ -1032,7 +1036,7 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
               ultimo_lotto_id=None, ultimo_lotto_stato=None,
               ultimo_lotto_pre_fiscale=None):
         return [(
-            "ORDINE_VENDITA:uid-1", "ORDINE_VENDITA", "ORDINI", "ORD0005174",
+            "ORDINE_VENDITA:uid-1", "ORDINE_VENDITA", True, "ORD0005174",
             4277, "CMM-2026…", "Rossi SRL", "DA_EMETTERE", 3, Decimal("731.00"),
             False, date(2026, 8, 3), date(2026, 8, 3), documento_id,
             emittibile, stato, stato_descr, ba_codice, id_fiscale, emittente,
@@ -1730,7 +1734,7 @@ class DashCompetenzaGruppiExportParitaTests(TestCase):
 
     # Parametri del service che NON sono filtri di perimetro: l'export li governa
     # per conto suo (niente paginazione, cap righe dal BB di export).
-    _NON_FILTRI = {"page", "page_size", "max_rows"}
+    _NON_FILTRI = {"limit", "offset", "max_rows"}
 
     # Scopo: le classi delle due view che chiamano `_filtri_gruppi_da_query`.
     def _classi_che_usano_il_lettore(self) -> set[str]:

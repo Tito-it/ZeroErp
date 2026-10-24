@@ -83,12 +83,28 @@ chiamano la canonica: la logica di whitelist non è duplicata in nessuno di essi
 
 ### Regole implementative
 
-* `LANGUAGE sql`, `STABLE`: inlineable dal planner nei predicati `USING`.
+* `LANGUAGE sql`, `STABLE`: il planner la incorpora, e nel predicato resta la
+  chiamata alla canonica.
 * `%TYPE` sul parametro emittente per coerenza con la colonna sorgente.
-* **Nota performance**: i controlli super_admin / identità attiva (dentro la
-  canonica) dipendono solo dall'attore, non dalla riga → valutati una volta
-  sola dal planner. L'unico costo per-riga è il test di appartenenza alla
-  whitelist.
+* ⛔ **Il perimetro si calcola per riga.** Fino al 2026-10-18 questa pagina
+  diceva che super admin e veste «dipendono solo dall'attore → valutati una
+  volta sola dal planner». Non era vero: la canonica è plpgsql, opaca, e una
+  policy che chiama questa funzione ricalcola **a ogni riga** super admin,
+  veste utilizzabile, giorno operativo e whitelist.
+
+### ⭐ rev 2026-10-18 — le policy dirette non la chiamano più
+
+Le policy ef_whitelist con la colonna emittente (13 scritte a mano e quelle
+dello storico, generate da `dbops.fn_storico_arma_scope`) usano ora
+[`fn_scope_ef_perimetro`](fn_scope_ef_perimetro.md). Il perimetro
+([`fn_get_emittenti_scope_pk_ids`](fn_get_emittenti_scope_pk_ids.md)) arriva in
+una sottoquery non correlata, che PostgreSQL valuta **una volta per
+istruzione**. ChangeSet `20261018-16…-29`, brief
+`brief-db-plancache-funzioni-con-query-incorporate` §5quinquies.
+
+Questa funzione resta per chi chiede su **un** emittente: gli adattatori
+`via_*`, `fn_scope_email_ambito`, il repository dei titoli IVA. Stesse
+risposte di prima.
 
 ---
 

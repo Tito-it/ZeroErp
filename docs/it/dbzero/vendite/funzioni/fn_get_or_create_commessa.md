@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_or_create_commessa(p_billing_account_id bigint, p_utility
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying DEFAULT 'AUTO'::character varying, p_policy_fatturazione character varying DEFAULT 'DA_DOCUMENTO'::character varying, p_fatturazione_immediata boolean DEFAULT false, p_priorita_operativa character varying DEFAULT 'NORMALE'::character varying, p_competenza_dal date DEFAULT NULL::date, p_competenza_al date DEFAULT NULL::date, p_meta jsonb DEFAULT '{}'::jsonb, p_force_new boolean DEFAULT false, p_termine_pagamento_id bigint DEFAULT NULL::bigint, p_modalita_pagamento_id integer DEFAULT NULL::integer)
  RETURNS bigint
@@ -240,6 +242,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying, p_policy_fatturazione character varying, p_fatturazione_immediata boolean, p_priorita_operativa character varying, p_competenza_dal date, p_competenza_al date, p_meta jsonb, p_force_new boolean, p_termine_pagamento_id bigint, p_modalita_pagamento_id integer)
 IS 'Trova o crea la commessa di un billing account, componendone il codice come <prefisso><sigla emittente>-<anno>-<progressivo><suffisso>. ⭐ rev 2026-08-31 (brief-db-prefisso-sul-registro-e-allineamento-contatori, P-5): chiama vendite.fn_assegna_numero_documento come DDT, ordini e resi, invece di rifare per conto proprio i sei passi della numerazione. ⭐ CI STA DENTRO GRAZIE AL PARAMETRO `corpo`: il codice commessa porta sigla e anno DENTRO la stringa — e'' l''unico dei cinque la cui IDENTITA'' e'' la stringa nuda, perche'' uq_commesse_codice guarda quella e non una quadrupla di colonne — quindi passa quei due pezzi come corpo, che per gli altri tre e'' vuoto. ⭐ PREFISSO, SUFFISSO e LUNGHEZZA vengono TUTTI dal REGISTRO (decisione di Tid, 2026-08-31: «cosi'' diventa parametrizzabile anche quello», e il suffisso «come standard» insieme agli altri); i DEFAULT con cui un registro nasce stanno in vendite.famiglie_documento, che per la commessa dichiara 9 cifre contro le 7 degli altri. ⛔ config.sistema_codici NON C''ENTRA PIU'': il 20260831-53 ne ha tolto le righe. ⚠️ ED E'' PROPRIO QUI CHE SI E'' VISTO IL DANNO: fino al 20260831-54 la funzione centrale leggeva la lunghezza da quel catalogo, e tolte le righe la trovava NULL — 7 cifre a tutti, cioe'' giusto per caso su DDT, ordini e resi e SBAGLIATO su questa commessa (CMM-ACME-2026-0000007 invece di CMM-ACME-2026-000000007), senza nessun errore. Corretto dal 20260831-55. ⚠️ IL SEPARATORE si e'' sdoppiato, ed e'' la parte che si dimentica: quello FRA I PEZZI del corpo (sigla-anno-) e'' del DOMINIO commessa e vive qui; quello davanti al prefisso NON ESISTE PIU'' — se serve si scrive dentro il prefisso del registro (''CMM-''). ⛔ Cosi'' sparisce un caso speciale che la commessa aveva e gli altri no: un prefisso vuoto le lasciava un separatore ORFANO in testa (`-ACME-2026-000000001`), che spezzato sul trattino dava un primo pezzo VUOTO. ⚠️ La data e'' quella di CREAZIONE (script.fn_data_operativa(), mai now() nudo), perche'' la commessa non ha una data documento — ed e'' il motivo per cui il cancello di monotonia non puo'' morderla. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-5 e P-16.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

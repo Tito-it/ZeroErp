@@ -27,6 +27,8 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"   # smoke_emetti
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -119,15 +121,22 @@ log_ok "Login JWT OK"
 # --- 1. Lista preventivi ---
 echo ""
 echo "-- 1. Lista preventivi --"
-do_curl GET "/api/v1/vendite/preventivi/?page=1&page_size=5"
+do_curl GET "/api/v1/vendite/preventivi/?limit=5"
 check "GET lista preventivi" 200
 
 # --- 2. Crea preventivo ---
 echo ""
 echo "-- 2. Crea preventivo BOZZA --"
-# Occorre un utility_id valido; usiamo 1 (presumibilmente seed)
+# Il preventivo nasce SEMPRE col suo cliente (brief-db-istanza-nasce-col-ba):
+# la terna dal BB _smoke_cliente.sh. Fino al 2026-10-12 lo smoke mandava il solo
+# `utility_id: 1` cablato (400 «istanza_utility_id obbligatorio»). Nessun
+# emittente nel payload: vale quello attivo, lo stesso del cliente.
+smoke_cliente_dal_lookup
+if [[ -z "$BA_ID" ]]; then
+    echo -e "${RED}Setup fallito: nessun cliente dal lookup. Stop.${NC}"; exit 1
+fi
 do_curl POST "/api/v1/vendite/preventivi/" \
-    '{"utility_id": 1}'
+    "{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID}, \"istanza_utility_id\": ${ISTANZA_ID}}"
 check "POST crea preventivo" 200 "data.id"
 PREV_ID="$EXTRACTED"
 log_info "preventivo_id = $PREV_ID"
@@ -158,7 +167,7 @@ echo "-- 5. Aggiungi riga --"
 # Query per trovare il primo articolo attivo
 ARTICOLO_ID=$(curl -s \
     -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/catalogo/articoli/?page_size=1" 2>/dev/null | \
+    "${BASE_URL}/api/v1/catalogo/articoli/?limit=1" 2>/dev/null | \
     python3 -c "
 import sys, json
 try:
@@ -174,7 +183,7 @@ if [[ -z "$ARTICOLO_ID" ]]; then
 else
     log_info "articolo_id = $ARTICOLO_ID"
     do_curl POST "/api/v1/vendite/preventivi/${PREV_ID}/righe/" \
-        "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"10\", \"prezzo_unitario\": \"100.00\", \"iva_id\": 16}"
+        "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"10\", \"prezzo_unitario\": \"100.00\"}"
     check "POST aggiungi riga" 200 "data.id"
     RIGA_ID="$EXTRACTED"
     log_info "riga_id = $RIGA_ID"
@@ -192,25 +201,59 @@ else
         '{"qta_operativa": "20"}'
     check "PATCH riga" 200
 
-    # --- 8. Cambio stato BOZZA → EMESSO ---
+    # --- 8. Emissione BOZZA → EMESSO ---
+    # Dal BB _smoke_documenti.sh: /emetti/ (multipart, stato + documento). Il
+    # cambio di stato diretto verso EMESSO risponde 400 «Usare l'endpoint
+    # /emetti/», e fino al 2026-10-12 lo smoke lo usava.
     echo ""
-    echo "-- 8. Cambio stato BOZZA -> EMESSO --"
-    do_curl POST "/api/v1/vendite/preventivi/${PREV_ID}/stato/" \
-        '{"nuovo_stato": "EMESSO"}'
-    check "POST cambio stato EMESSO" 200
+    echo "-- 8. Emissione BOZZA -> EMESSO (/emetti/) --"
+    smoke_emetti preventivi "$PREV_ID"
+    if [[ "$SMOKE_EMETTI_SENZA_MODELLO" == "1" ]]; then
+        log_info "$(json_get "$LAST_BODY" ".error.detail")"
+        echo ""
+        echo "Smoke non conclusivo: nessun modello di documento per i preventivi dell'emittente"
+        echo "attivo (Configurazione → modelli documento). Passi 8 e seguenti non eseguiti."
+        echo " Risultato: ${PASS} OK / ${FAIL} FAIL (interrotto al passo 8)"
+        [[ "$FAIL" -eq 0 ]] && exit 0 || exit 1
+    fi
+    check "Emissione preventivo (/emetti/)" 200
 
     # --- 9. PATCH su EMESSO (409 atteso) ---
+    # Fuori bozza l'identita' della testata non cambia (BB
+    # vendite.trgfn_doc_testata_lock_fuori_bozza, E_DOC_IDENTITA_FUORI_BOZZA): si
+    # prova la valuta, cambiandola con un'altra valuta VERA (lookup), cosi' il
+    # rifiuto e' il blocco e non una chiave sbagliata. ⚠️ Fino al 2026-10-12 il
+    # passo provava `fatturazione_immediata`, che dal D-14 di
+    # brief-db-annullo-a-valle-riapre-a-monte si blocca solo con una commessa
+    # aperta: su un preventivo appena emesso la modifica e' giusto che passi.
     echo ""
     echo "-- 9. PATCH su EMESSO (409 atteso) --"
+    do_curl GET "/api/v1/vendite/preventivi/${PREV_ID}/"
+    VALUTA_ATTUALE=$(json_get "$LAST_BODY" "data.valuta_id")
+    do_curl GET "/api/v1/core/lookup/codici/?rel=config.valute&limit=20"
+    ALTRA_VALUTA=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+try:
+    rows = json.load(sys.stdin).get('data', {}).get('results') or []
+    print(next((r['id'] for r in rows if str(r['id']) != sys.argv[1]), ''))
+except Exception:
+    print('')
+" "$VALUTA_ATTUALE" 2>/dev/null)
     do_curl PATCH "/api/v1/vendite/preventivi/${PREV_ID}/" \
-        '{"fatturazione_immediata": false}'
-    check "PATCH su EMESSO bloccato" 409
+        "{\"valuta_id\": ${ALTRA_VALUTA:-0}}"
+    check "PATCH valuta su EMESSO bloccata" 409
+    ERR_CODE=$(json_get "$LAST_BODY" "error.code")
+    [[ "$ERR_CODE" == "E_DOC_IDENTITA_FUORI_BOZZA" ]] && log_ok "codice E_DOC_IDENTITA_FUORI_BOZZA" \
+        || log_fail "codice atteso E_DOC_IDENTITA_FUORI_BOZZA, ricevuto '${ERR_CODE:-<vuoto>}'"
 
     # --- 10. Cambio stato EMESSO → ACCETTATO ---
     echo ""
     echo "-- 10. Cambio stato EMESSO -> ACCETTATO --"
+    # Accettare vuol dire anche scegliere la modalita' di fatturazione
+    # (fatturazione_immediata obbligatorio; con false serve competenza_mese).
+    # Fino al 2026-10-12 lo smoke non la passava (400 E_PREV_VALIDAZIONE).
     do_curl POST "/api/v1/vendite/preventivi/${PREV_ID}/stato/" \
-        '{"nuovo_stato": "ACCETTATO"}'
+        '{"nuovo_stato": "ACCETTATO", "fatturazione_immediata": true}'
     check "POST cambio stato ACCETTATO" 200
 
     # --- 11. Smistamento (sostituisce /stato-fatturazione/, 2026-06-12:
@@ -237,11 +280,9 @@ else
         log_fail "POST push commessa — atteso 200 o 400, ricevuto $LAST_STATUS"
     fi
 
-    # --- 13. Pratiche collegate ---
-    echo ""
-    echo "-- 13. Pratiche collegate --"
-    do_curl GET "/api/v1/vendite/preventivi/${PREV_ID}/pratiche/"
-    check "GET pratiche collegate" 200
+    # --- 13. (ritirato) Pratiche collegate ---
+    # La rotta `preventivi/<id>/pratiche/` e' stata ritirata il 2026-07-16
+    # (commit bbf0c9ebd6): il passo provava un endpoint che non c'e' piu'.
 fi
 
 # --- 14. DELETE riga (crea nuovo preventivo per test soft delete) ---
@@ -252,7 +293,7 @@ if [[ "$LAST_STATUS" == "200" ]]; then
     PREV2_ID=$(json_get "$LAST_BODY" "data.id")
     if [[ -n "$ARTICOLO_ID" && -n "$PREV2_ID" ]]; then
         do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/righe/" \
-            "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"5\", \"prezzo_unitario\": \"50.00\", \"iva_id\": 16}"
+            "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"5\", \"prezzo_unitario\": \"50.00\"}"
         RIGA2_ID=$(json_get "$LAST_BODY" "data.id")
         if [[ -n "$RIGA2_ID" ]]; then
             do_curl DELETE "/api/v1/vendite/preventivi/${PREV2_ID}/righe/${RIGA2_ID}/"

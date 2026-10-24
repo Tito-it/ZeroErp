@@ -185,15 +185,17 @@ SELECT 1, s.id, 'Referente pgTAP create-cliente',
 --   al SET CONSTRAINTS in fondo al file — grazie alla finestra DEFERRED aperta
 --   in testa, non per default. Un soggetto senza i suoi indirizzi
 --   obbligatori non e' un soggetto valido, quindi la fixture li deve creare.
---   Forma libera completa: chk_indirizzi_free_requirements vuole
---   indirizzo_libero + stato_id + (locality, postal_box, administrative_area).
+--   Forma libera: la vuole il guard anagrafiche.trgfn_indirizzi_guard_forma_libera,
+--   che la sceglie dallo stato (rev 2026-10-18: l'Italia vuole comune e CAP
+--   del catalogo; li da' dbops.fn_pgtap_indirizzo_libero_forma).
 INSERT INTO anagrafiche.indirizzi_soggetti (
     soggetto_id, tipo_indirizzo_id,
-    indirizzo_libero, stato_id, locality, postal_box, administrative_area
+    indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code
 )
 SELECT s.id, ti.id,
-       'Via pgTAP create-cliente 1', r.stato_id, 'Roma', '00100', 'RM'
-  FROM tmp_soggetto s, tmp_rif_cc r, config.tipi_indirizzi ti
+       'Via pgTAP create-cliente 1', r.stato_id, f.comune_id, f.codice_postale_id, f.locality, f.postal_code
+  FROM tmp_soggetto s, tmp_rif_cc r, config.tipi_indirizzi ti,
+       dbops.fn_pgtap_indirizzo_libero_forma(r.stato_id) f
  WHERE ti.codice_interno IN ('RES', 'DOMFISC');
 
 -- ---------------------------------------------------------
@@ -221,11 +223,12 @@ SELECT is(
 --   per quanto presente, non lo soddisfa.
 INSERT INTO anagrafiche.indirizzi (
     soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-    indirizzo_libero, stato_id, locality, postal_box, administrative_area
+    indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code
 )
 SELECT sr.id, ti.id, NULL,
-       'Via pgTAP create-cliente 2', r.stato_id, 'Roma', '00100', 'RM'
-  FROM tmp_soggetto_ruolo sr, tmp_rif_cc r, config.tipi_indirizzi ti
+       'Via pgTAP create-cliente 2', r.stato_id, f.comune_id, f.codice_postale_id, f.locality, f.postal_code
+  FROM tmp_soggetto_ruolo sr, tmp_rif_cc r, config.tipi_indirizzi ti,
+       dbops.fn_pgtap_indirizzo_libero_forma(r.stato_id) f
  WHERE ti.codice_interno = 'FATT';
 
 -- ---------------------------------------------------------

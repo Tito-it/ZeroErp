@@ -73,9 +73,14 @@ Obiettivi principali:
   contratto. Necessario perche’ i constraint DB non possono referenziare altre
   tabelle — il predicato `WHERE` di `ex_contratti_no_overlap` dipende da un
   campo sulla stessa riga.
-* **Trigger `trg_contratti_z90_sync_is_abortito_snapshot_ins_upd`** (BEFORE
-  INSERT OR UPDATE OF `stato_doc_contratto_id`, fase `_z90_`): mantiene
-  `is_abortito_snapshot` aggiornato ad ogni transizione di stato.
+* **Trigger `trg_contratti_z90_snapshot_da_stato_ins_upd`** (BEFORE INSERT OR
+  UPDATE, fase `_z90_`; BB
+  [`vendite.trgfn_doc_snapshot_da_stato`](/dbzero/vendite/funzioni/trgfn_doc_snapshot_da_stato),
+  dal 2026-10-11 al posto di `trg_contratti_z90_sync_is_abortito_snapshot_ins_upd`):
+  mantiene `is_abortito_snapshot` e `is_draft_snapshot` allineati allo stato a
+  ogni scrittura, anche se qualcuno li scrive a mano. Serve anche all'indice
+  unico sui vivi `uq_contratti_offerta_id` (un'offerta genera al più un
+  contratto vivo).
   Deve essere BEFORE (non AFTER): il predicato WHERE del constraint e’
   valutato al momento della scrittura della riga.
 * La colonna `validita` (GENERATED ALWAYS STORED) rimane immutata e continua
@@ -207,6 +212,11 @@ Trigger modalità C rimossi:
 
 * Transizione DRAFT→ATTIVO con `listino_id IS NULL`: richiede almeno una riga AGGIUNTA con `prezzo_unitario NOT NULL`. Errore: `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` (451).
 * Transizione DRAFT→ATTIVO con `listino_id IS NOT NULL`: fissa `listino_versione_id` sulla versione attiva a `CURRENT_DATE`. Se non trovata: attivazione consentita, `listino_versione_id` resta NULL (§4.4).
+* Dal 2026-10-21 il guard di transizione (`vendite.trgfn_contratti_guard_transizione_stato`) rifiuta
+  anche un contratto con una riga che la regola intera (articolo, erogazione, fonte) non ammette
+  più: `script.fn_check_righe_documento`, `E_DOC_RIGA_NON_AMMESSA`; la capability spegne «Attiva»
+  con lo stesso motivo. Le regole di una riga dipendono da dati che stanno fuori dalla riga, e in
+  DRAFT la riga si corregge (`brief-db-offerta-emissione-ed-erogazione` §I.2, H-R4).
 
 **Lock post-attivazione** (dal Step 2.3):
 

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_iu_sync_catasto_unita_indirizzo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo()
  RETURNS trigger
@@ -39,6 +41,8 @@ IS 'Funzione trigger che garantisce la presenza del legame
     tra catasto_unita_immobiliari e indirizzi_dettaglio nella tabella ponte
     catasto_unita_immobiliari_indirizzi quando istanze_utilities ha entrambi i riferimenti.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

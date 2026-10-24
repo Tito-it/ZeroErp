@@ -26,6 +26,7 @@
 #  14. delete_versione_200_happy_path
 #  15. clona_versione_200_happy_path
 #  16. pubblica_versione_200_happy_path
+#  16-bis. personalizza_template_routing_e_payload
 #  17. asset_list_requires_jwt
 #  18. asset_list_ok_envelope_paginated
 #  19. asset_upload_requires_file_field
@@ -310,6 +311,7 @@ class DocumentiApiWriteTests(JwtMockedApiTest):
         }
         resp = self.client.post(
             "/api/v1/documenti/templates/",
+            headers={"Idempotency-Key": "doc-312"},
             data=self._CREATE_PAYLOAD,
             content_type="application/json",
         )
@@ -333,6 +335,7 @@ class DocumentiApiWriteTests(JwtMockedApiTest):
         )
         resp = self.client.post(
             "/api/v1/documenti/templates/",
+            headers={"Idempotency-Key": "doc-335"},
             data=self._CREATE_PAYLOAD,
             content_type="application/json",
         )
@@ -343,6 +346,7 @@ class DocumentiApiWriteTests(JwtMockedApiTest):
     def test_post_template_requires_jwt(self) -> None:
         resp = self.client.post(
             "/api/v1/documenti/templates/",
+            headers={"Idempotency-Key": "doc-345"},
             data=self._CREATE_PAYLOAD,
             content_type="application/json",
         )
@@ -416,6 +420,7 @@ class DocumentiApiVersioniWriteTests(JwtMockedApiTest):
         }
         resp = self.client.post(
             "/api/v1/documenti/templates/1/versioni/",
+            headers={"Idempotency-Key": "doc-418"},
             data=self._CREATE_VERSIONE_PAYLOAD,
             content_type="application/json",
         )
@@ -470,6 +475,7 @@ class DocumentiApiVersioniWriteTests(JwtMockedApiTest):
         }
         resp = self.client.post(
             "/api/v1/documenti/templates/1/versioni/11/clona/",
+            headers={"Idempotency-Key": "doc-472"},
             data={"titolo": "Clone v7"},
             content_type="application/json",
         )
@@ -489,11 +495,34 @@ class DocumentiApiVersioniWriteTests(JwtMockedApiTest):
         }
         resp = self.client.post(
             "/api/v1/documenti/templates/1/versioni/11/pubblica/",
+            headers={"Idempotency-Key": "doc-491"},
             data={"valido_dal": "2026-06-01"},
             content_type="application/json",
         )
         self.assertIn(resp.status_code, (200, 201))
         self.assertEqual(resp.json()["data"]["stato"], "PUBBLICATA")
+
+    # 16-bis. POST personalizza: il verbo sul modello standard arriva al
+    #         service con l'id del path e il corpo.
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(Mock(is_superuser=True), None),
+    )
+    @patch("apps.documenti.api.views.TemplateAdminService")
+    def test_personalizza_template_routing_e_payload(self, mocked_svc_cls, _mock_auth) -> None:
+        mocked_svc_cls.return_value.personalizza_template.return_value = {
+            "id": 900, "standard": False, "emittente_fiscale_id": 11,
+        }
+        resp = self.client.post(
+            "/api/v1/documenti/templates/2728/personalizza/",
+            headers={"Idempotency-Key": "doc-510"},
+            data={"emittente_fiscale_id": 11},
+            content_type="application/json",
+        )
+        self.assertIn(resp.status_code, (200, 201))
+        self.assertEqual(resp.json()["data"]["id"], 900)
+        args = mocked_svc_cls.return_value.personalizza_template.call_args.args
+        self.assertEqual(args[1:], (2728, {"emittente_fiscale_id": 11}))
 
 
 class DocumentiAssetApiTests(JwtMockedApiTest):
@@ -559,6 +588,7 @@ class DocumentiAssetApiTests(JwtMockedApiTest):
     def test_asset_upload_requires_file_field(self, _mock_auth) -> None:
         resp = self.client.post(
             "/api/v1/documenti/asset/",
+            headers={"Idempotency-Key": "doc-582"},
             data={
                 "codice": "LOGO",
                 "codice_interno": "LOGO_X",
@@ -589,6 +619,7 @@ class DocumentiAssetApiTests(JwtMockedApiTest):
         )
         resp = self.client.post(
             "/api/v1/documenti/asset/",
+            headers={"Idempotency-Key": "doc-612"},
             data={
                 "file": uploaded,
                 "codice": "LOGO-ACME",
@@ -610,6 +641,34 @@ class DocumentiAssetApiTests(JwtMockedApiTest):
         self.assertEqual(kwargs["metadati"]["asset_tipo_id"], 1)
         self.assertEqual(kwargs["metadati"]["emittente_fiscale_id"], 5)
         self.assertEqual(kwargs["metadati"]["attivo"], True)
+
+    # 20-bis. il flag `attivo` del multipart passa dal BB dei booleani del
+    #         trasporto (A6): fuori vocabolario e' un 400 col campo, e il
+    #         service non parte. Fino al 2026-10-21 «si» valeva false in
+    #         silenzio, e l'asset nasceva spento.
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(Mock(is_superuser=True), None),
+    )
+    @patch("apps.documenti.api.views.TemplateAssetAdminService")
+    def test_asset_upload_attivo_fuori_vocabolario_400(
+        self, mocked_admin_cls, _mock_auth
+    ) -> None:
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        resp = self.client.post(
+            "/api/v1/documenti/asset/",
+            headers={"Idempotency-Key": "doc-attivo-si"},
+            data={
+                "file": SimpleUploadedFile("logo.png", b"X", content_type="image/png"),
+                "codice": "LOGO", "codice_interno": "LOGO", "descrizione": "x",
+                "asset_tipo_id": "1", "emittente_fiscale_id": "5",
+                "attivo": "si",
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()["error"]["code"], "E_VALIDATION_INPUT")
+        mocked_admin_cls.return_value.upload_asset.assert_not_called()
 
     # 21. PATCH metadati asset.
     @patch(

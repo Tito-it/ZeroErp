@@ -41,8 +41,10 @@ utente: farsele passare da fuori aprirebbe una lettura cross-area — conteggi d
 vendite a chi quell'area non ce l'ha. Il fatto che il client sappia gia' quali
 widget vede non cambia la sostanza: la lista dei permessi non e' un parametro.
 
-⭐ **Envelope per chiave**: un contatore che fallisce degrada **la sua** card
-(`{"valore": null, "ok": false}`) senza oscurare le altre. Una dashboard mezza
+⭐ **Envelope per chiave**: la risposta è
+`{"contatori": {"<contatore_key>": {"valore": <n>, "ok": true}, …}}`. Un
+contatore che fallisce degrada **la sua** card (`{"valore": null, "ok": false}`)
+senza oscurare le altre. Una dashboard mezza
 piena e' informazione; una dashboard bianca perche' una query e' andata storta e'
 un guasto.
 
@@ -53,8 +55,8 @@ contatori: la funzione DB non viene chiamata due volte per la stessa richiesta.
 
 | metodo | fa |
 |---|---|
-| `PUT` | upsert della preferenza utente — body: `widget` (lista di oggetti) e `dimensione_max` (int), entrambi opzionali |
-| `DELETE` | cancella la preferenza: la dashboard **torna al preset**, non si svuota |
+| `PUT` | upsert della preferenza utente, **`Idempotency-Key` obbligatoria** — body: `widget` (lista, max 100, di oggetti con le sole chiavi `codice` obbligatorio, `ordine` intero positivo, `visibile` booleano; codici duplicati rifiutati) e `dimensione_max` (intero positivo, max 100), entrambi opzionali. Altre chiavi, nel corpo o nel widget: `400 E_UI_PREFERENZA_VALIDAZIONE`. Risposta `{"id", "preset_base_id"}` |
+| `DELETE` | cancella la preferenza: la dashboard **torna al preset**, non si svuota. Idempotente: `{"deleted": true\|false}` |
 
 La `DELETE` e' il «ripristina predefiniti» della UI: senza preferenza la cascata
 riparte dal preset di ruolo/emittente/sistema.
@@ -63,13 +65,23 @@ riparte dal preset di ruolo/emittente/sistema.
 
 Tombstone del banner **«il preset e' stato aggiornato»**: scrive
 `preset_aggiornato_ignored_at = NOW()` sulla preferenza dell'utente. Body vuoto
-ammesso.
+ammesso, **`Idempotency-Key` obbligatoria**. Risposta `{"ignored": true}`; senza
+preferenza: `404 E_UI_PREFERENZA_NON_TROVATA`.
 
 ⚠️ Serve perche' i due fatti convivono: l'utente ha personalizzato la sua
 dashboard **e** l'amministratore ha cambiato il preset da cui era partita. Il
 banner glielo dice; questo endpoint registra che ha scelto di tenersi la sua —
 altrimenti l'avviso tornerebbe a ogni caricamento, che e' il modo piu' rapido di
 insegnare a ignorare gli avvisi.
+
+## Codici errore
+
+| codice | HTTP | quando |
+|---|---|---|
+| `E_UI_DASHBOARD_NON_TROVATA` | 404 | `codice` dashboard inesistente (tutte e quattro le rotte) |
+| `E_UI_PREFERENZA_VALIDAZIONE` | 400 | corpo del `PUT` fuori whitelist o malformato |
+| `E_UI_PREFERENZA_NON_TROVATA` | 404 | `ignore-preset-update` senza una preferenza salvata |
+| `E_IDEMPOTENCY_KEY_REQUIRED` | 400 | `PUT` preferenza o `POST` ignore-preset-update senza chiave |
 
 ## Dove guardare nel codice
 

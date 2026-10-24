@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_attivita_fatturabili_guard_quantita_immutabile()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile()
  RETURNS trigger
@@ -59,6 +61,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile()
 IS 'Guard mirror-enforcement quantita attivita_fatturabili: blocca UPDATE che porterebbe la quantita a un valore diverso dalla commessa madre (commessa_attivita_id). L''emit (upsert = specchio) passa; bypass via GUC zeroerp.maintenance_reset_lotto_draft. Errore E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE. Brief immutabilita-quantita §4a (2026-07-21).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

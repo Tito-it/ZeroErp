@@ -27,6 +27,7 @@
 -- Elenco test (plan 6):
 --   1) ogni lista attiva con vista_sql ha la vista nel proprio schema_dati
 --   2) ogni campo_sorgente (non azione, non vuoto) di quelle liste e' una colonna della vista
+--      o della sintesi della lineage (D-B2, 2026-10-11)
 --   3) le sei liste geografiche dichiarano tutte una vista (decisione §8 punto 6)
 --   4) vista_sql che esiste solo in un ALTRO schema: E_UI_VISTA_SQL_NON_TROVATA
 --   5) campo_sorgente che esiste solo nell'omonima di un altro schema: E_UI_CAMPO_SORGENTE_NON_TROVATO
@@ -72,9 +73,16 @@ SELECT is(
              WHERE n.nspname = ld.schema_dati
                AND c.relname = ld.vista_sql
                AND a.attname = lc.campo_sorgente
-               AND a.attnum > 0 AND NOT a.attisdropped)),
+               AND a.attnum > 0 AND NOT a.attisdropped)
+        -- ⭐ D-B2 (giro B di brief-db-lineage-seminata-per-chiave, 2026-10-11):
+        --    oppure e' una colonna della sintesi della lineage, che il backend
+        --    chiede per le chiavi della pagina. Stessa regola del guard
+        --    trgfn_ui_lista_colonna_a10_valida_campo_sorgente (20261011-99).
+        AND NOT EXISTS (
+            SELECT 1 FROM vendite.vw_documento_lineage_sintesi_colonne sc
+             WHERE sc.colonna = lc.campo_sorgente)),
     '{}'::text[],
-    '2) ogni campo_sorgente delle liste con vista e'' una colonna della vista (anche le colonne spente)');
+    '2) ogni campo_sorgente delle liste con vista e'' una colonna della vista o della sintesi della lineage (anche le colonne spente)');
 
 -- ============================================================
 -- 3) Le geografiche: tutte con la vista

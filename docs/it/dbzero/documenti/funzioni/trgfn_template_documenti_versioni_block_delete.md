@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_template_documenti_versioni_block_delete()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.trgfn_template_documenti_versioni_block_delete()
  RETURNS trigger
@@ -68,6 +70,8 @@ $function$
 COMMENT ON FUNCTION documenti.trgfn_template_documenti_versioni_block_delete()
 IS 'Guard A2: blocca DELETE su versioni PUBBLICATA/OBSOLETA o gia'' usate da documenti generati.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

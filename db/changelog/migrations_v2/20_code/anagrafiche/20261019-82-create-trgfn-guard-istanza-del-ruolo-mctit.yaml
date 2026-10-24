@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GUARD: L'ISTANZA DI UNA RIGA DI RUOLO E' DEL SOGGETTO DEL RUOLO
+#   anagrafiche.trgfn_guard_istanza_del_ruolo, un corpo per le due tabelle
+#   che legano a un ruolo (soggetto_ruolo_id, NOT NULL) una cosa che puo'
+#   essere di una sua istanza (istanza_utility_id, facoltativa):
+#   * anagrafiche.indirizzi (la R-BE-15);
+#   * anagrafiche.soggetti_ruoli_conti_bancari (D-17a di Tid: stesso difetto).
+#   brief-db-processi-accensione-per-ambiente §6.17 e §6.17.1.
+#
+# -- IL DIFETTO --------------------------------------------------------------------
+#   Nessun controllo diceva che l'istanza fosse del soggetto del ruolo: una
+#   riga poteva stare sul ruolo di un soggetto ed essere dell'istanza di un
+#   altro. La risoluzione degli indirizzi (istanza, poi ruolo, poi soggetto)
+#   avrebbe dato a un soggetto l'indirizzo di un altro.
+#
+# -- QUANDO SCATTA ------------------------------------------------------------------
+#   * BEFORE INSERT OR UPDATE, per chiunque scriva: le madri
+#     (fn_crea_indirizzo_ruolo, fn_crea_indirizzi_ruolo) e l'UPDATE del
+#     backend, che puo' cambiare istanza_utility_id (indirizzi e legame dei
+#     conti del ruolo);
+#   * UPDATE senza OF: il corpo esce se ruolo e istanza non cambiano. Nessun
+#     trigger BEFORE delle due tabelle scrive quelle colonne (2026-10-19);
+#   * fascia a10: e' un guard sui legami, senza ordine di dominio con gli
+#     altri (linee-guida-trigger).
+#
+# -- L'ALTRA PORTA ----------------------------------------------------------------
+#   Il soggetto dell'istanza e quello del ruolo non cambiano: lock di colonna
+#   E_ISTANZA_SOGGETTO_IMMUTABILE (D-7, 2026-10-09) e
+#   E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE (D-17d, dbops.automation_lock_columns).
+#   Quindi basta giudicare le righe che si scrivono.
+#
+# -- IL RIFIUTO --------------------------------------------------------------------
+#   E_ISTANZA_ALTRO_SOGGETTO, DATO_ERRATO, contesto campo = istanza_utility_id
+#   e la tabella: il backend lo mostra sul form senza tradurlo. Il confronto
+#   dal BB anagrafiche.fn_istanza_di_altro_soggetto (20261019-80).
+#   Le righe di prima restano valide finche' nessuno tocca ruolo o istanza;
+#   su dbdev, il 2026-10-19 10:40, nessuna violava la regola.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261019-82-create-trgfn-guard-istanza-del-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20261019-82-create-trgfn-guard-istanza-del-ruolo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard anagrafiche.trgfn_guard_istanza_del_ruolo su indirizzi e
+        soggetti_ruoli_conti_bancari (a10, INSERT e UPDATE): l'istanza della riga e' del
+        soggetto del ruolo, E_ISTANZA_ALTRO_SOGGETTO col campo istanza_utility_id. R-BE-15,
+        D-17a e D-17c di Tid, brief-db-processi-accensione-per-ambiente §6.17.1.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_guard_istanza_del_ruolo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_chi              text := 'anagrafiche.trgfn_guard_istanza_del_ruolo';
+                  v_soggetto_ruolo   anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                  v_soggetto_istanza anagrafiche.istanze_utilities.soggetto_id%TYPE;
+                  v_codice_istanza   anagrafiche.istanze_utilities.codice%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   L'istanza della riga (istanza_utility_id) e' del
+                  --   soggetto del suo ruolo (soggetto_ruolo_id). Un corpo
+                  --   per anagrafiche.indirizzi e
+                  --   anagrafiche.soggetti_ruoli_conti_bancari.
+                  --
+                  -- Regole:
+                  --   - nessuna istanza: niente da giudicare;
+                  --   - UPDATE che non tocca ruolo e istanza: niente da
+                  --     giudicare (le righe di prima restano valide finche'
+                  --     non si toccano);
+                  --   - il confronto dal BB fn_istanza_di_altro_soggetto.
+                  -- =========================================================
+                  IF NEW.istanza_utility_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF TG_OP = 'UPDATE'
+                     AND (OLD.soggetto_ruolo_id, OLD.istanza_utility_id)
+                         IS NOT DISTINCT FROM
+                         (NEW.soggetto_ruolo_id, NEW.istanza_utility_id)
+                  THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT sr.soggetto_id
+                    INTO v_soggetto_ruolo
+                    FROM anagrafiche.soggetti_ruoli sr
+                   WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                  v_soggetto_istanza := anagrafiche.fn_istanza_di_altro_soggetto(
+                      NEW.istanza_utility_id, v_soggetto_ruolo);
+
+                  IF v_soggetto_istanza IS NOT NULL THEN
+                      SELECT iu.codice
+                        INTO v_codice_istanza
+                        FROM anagrafiche.istanze_utilities iu
+                       WHERE iu.id = NEW.istanza_utility_id;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_ISTANZA_ALTRO_SOGGETTO',
+                          jsonb_build_object('campo', 'istanza_utility_id',
+                                             'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                             'istanza_utility_id', NEW.istanza_utility_id,
+                                             'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
+                                             'soggetto_id', v_soggetto_ruolo,
+                                             'soggetto_id_istanza', v_soggetto_istanza),
+                          NEW.tx_id,
+                          COALESCE(v_codice_istanza::text, NEW.istanza_utility_id::text));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_guard_istanza_del_ruolo() IS
+                  'Guard (2026-10-19), un corpo per anagrafiche.indirizzi e anagrafiche.soggetti_ruoli_conti_bancari: l''istanza della riga (istanza_utility_id) e'' del soggetto del suo ruolo (soggetto_ruolo_id). BEFORE INSERT OR UPDATE in fascia a10, per ogni scrittore (madri e UPDATE del backend). Esce senza istanza, e in UPDATE se ruolo e istanza non cambiano. Rifiuto E_ISTANZA_ALTRO_SOGGETTO (DATO_ERRATO), contesto campo = istanza_utility_id e la tabella; nella frase il codice dell''istanza. Il confronto dal BB anagrafiche.fn_istanza_di_altro_soggetto. L''altra porta (il soggetto dell''istanza o del ruolo che cambia) la chiudono i lock E_ISTANZA_SOGGETTO_IMMUTABILE ed E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE. R-BE-15, D-17a e D-17c di Tid, brief-db-processi-accensione-per-ambiente §6.17.1.';
+
+              DROP TRIGGER IF EXISTS trg_indirizzi_a10_guard_istanza_ins_upd
+                  ON anagrafiche.indirizzi;
+              CREATE TRIGGER trg_indirizzi_a10_guard_istanza_ins_upd
+                  BEFORE INSERT OR UPDATE ON anagrafiche.indirizzi
+                  FOR EACH ROW EXECUTE FUNCTION anagrafiche.trgfn_guard_istanza_del_ruolo();
+
+              DROP TRIGGER IF EXISTS trg_soggetti_ruoli_conti_bancari_a10_guard_istanza_ins_upd
+                  ON anagrafiche.soggetti_ruoli_conti_bancari;
+              CREATE TRIGGER trg_soggetti_ruoli_conti_bancari_a10_guard_istanza_ins_upd
+                  BEFORE INSERT OR UPDATE ON anagrafiche.soggetti_ruoli_conti_bancari
+                  FOR EACH ROW EXECUTE FUNCTION anagrafiche.trgfn_guard_istanza_del_ruolo();
+      rollback:
+        - sql:
+            sql: >
+              DROP TRIGGER IF EXISTS trg_indirizzi_a10_guard_istanza_ins_upd ON anagrafiche.indirizzi;
+              DROP TRIGGER IF EXISTS trg_soggetti_ruoli_conti_bancari_a10_guard_istanza_ins_upd ON anagrafiche.soggetti_ruoli_conti_bancari;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_guard_istanza_del_ruolo();

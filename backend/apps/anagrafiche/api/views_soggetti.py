@@ -25,6 +25,7 @@ from apps.core.api.payload_validators import (
     qp_int_optional,
 )
 from apps.core.api.success_responses import success_response
+from apps.anagrafiche.api.schema_indirizzo import campi_indirizzo_madre
 from apps.anagrafiche.services.soggetti_service import SoggettiService
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
@@ -85,6 +86,14 @@ class SoggettiView(DomainAPIView):
             "ragione_sociale": serializers.CharField(required=False),
             "codice_fiscale": serializers.CharField(),
             "partita_iva": serializers.CharField(required=False),
+            # Gli indirizzi del soggetto, alla madre plurale del DB
+            # `fn_crea_indirizzi_soggetto`; `auto_clone` (assente = vero) copia
+            # il primo sui tipi obbligatori che mancano.
+            "indirizzi": serializers.ListField(
+                child=inline_serializer(name="SoggettoCreateIndirizzo", fields=campi_indirizzo_madre()),
+                required=False,
+            ),
+            "auto_clone": serializers.BooleanField(required=False, default=True),
         }),
         responses={200: inline_serializer(name="SoggettoCreateResp", fields={"data": serializers.DictField()})},
     )
@@ -211,10 +220,7 @@ class SoggettiIndirizziView(DomainAPIView):
         return success_response({"results": SoggettiService().get_soggetto_indirizzi(soggetto_id)})
 
     @extend_schema(
-        request=inline_serializer(name="IndirizzoSoggettoCreateReq", fields={
-            "tipo_indirizzo_codice": serializers.CharField(),
-            "indirizzo_dettaglio_id": serializers.IntegerField(required=False),
-        }),
+        request=inline_serializer(name="IndirizzoSoggettoCreateReq", fields=campi_indirizzo_madre()),
         responses={200: inline_serializer(name="IndirizzoSoggettoCreateResp", fields={"data": serializers.DictField()})},
     )
     # Scopo: Crea indirizzo layer soggetto.
@@ -231,9 +237,7 @@ class SoggettiIndirizziDetailView(DomainAPIView):
     model_permission = ("anagrafiche", "soggetto")
 
     @extend_schema(
-        request=inline_serializer(name="ReplaceIndirizzoReq", fields={
-            "tipo_indirizzo_codice": serializers.CharField(),
-        }),
+        request=inline_serializer(name="ReplaceIndirizzoReq", fields=campi_indirizzo_madre()),
         responses={200: inline_serializer(name="ReplaceIndirizzoResp", fields={"data": serializers.DictField()})},
     )
     # Scopo: Sostituisce indirizzo soggetto (delete vecchio + create nuovo).
@@ -417,7 +421,10 @@ class SoggettiRuoliView(DomainAPIView):
             "codice_ruolo": serializers.CharField(),
             # Indirizzi DEL RUOLO (stessa forma della creazione soggetto): per i
             # ruoli con indirizzi obbligatori (CL, FO, GE) sono necessari.
-            "indirizzi": serializers.ListField(child=serializers.DictField(), required=False),
+            "indirizzi": serializers.ListField(
+                child=inline_serializer(name="RuoloAssignIndirizzo", fields=campi_indirizzo_madre()),
+                required=False,
+            ),
         }),
         responses={200: inline_serializer(name="RuoloAssignResp", fields={"data": serializers.DictField()})},
     )
@@ -432,6 +439,9 @@ class SoggettiRuoliView(DomainAPIView):
 class ValidaCFPIVAView(DomainAPIView):
     """POST validazione CF (congruenza + duplicato) e P.IVA (duplicato)."""
     area_funzionale = "anagrafiche"
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=inline_serializer(name="ValidaCFPIVAReq", fields={
@@ -534,6 +544,9 @@ class SoggettiExportView(DomainAPIView):
 class GeneraCFView(DomainAPIView):
     """POST genera codice fiscale italiano da dati anagrafici."""
     area_funzionale = "anagrafiche"
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=inline_serializer(name="GeneraCFReq", fields={

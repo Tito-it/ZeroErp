@@ -83,6 +83,7 @@
 --  - ⚠️ gli errori si asseriscono sulla FRASE (throws_like), non su P0001:
 --    i guard di transizione sanno sollevare anche altro, e P0001 direbbe solo
 --    «errore di dominio», non quale.
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): l'ambito degli indirizzi della bolla e' DDT_VENDITA.
 -- ------------------------------------------------------------
 
 -- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
@@ -110,15 +111,12 @@ CREATE TEMP TABLE _m AS
 SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP prezzi autorizzati');
 
 -- Due articoli costruiti: un KIT composito e il suo COMPONENTE, con una
--- distinta base valida oggi. Il flag composito si accende PRIMA della
--- distinta: catalogo.trgfn_articoli_componenti_guard_is_composito rifiuta la
--- distinta di un articolo semplice.
+-- distinta base valida oggi. Il KIT nasce composito:
+-- catalogo.trgfn_articoli_componenti_guard_is_composito rifiuta la distinta
+-- di un articolo semplice.
 CREATE TEMP TABLE _a AS
-SELECT dbops.fn_pgtap_crea_articolo('PGT-PZA-KIT', false) AS kit_id,
-       dbops.fn_pgtap_crea_articolo('PGT-PZA-CMP', false) AS cmp_id;
-
-UPDATE catalogo.articoli SET is_composito = true
- WHERE id = (SELECT kit_id FROM _a);
+SELECT dbops.fn_pgtap_crea_articolo('PGT-PZA-KIT', false, p_is_composito => true) AS kit_id,
+       dbops.fn_pgtap_crea_articolo('PGT-PZA-CMP', false)                         AS cmp_id;
 
 -- ⚠️ obbligatorio = false: un componente obbligatorio non si spegne dalla riga
 --   documento (script.trgfn_componenti_guard_obbligatorio), e il caso 8 — un
@@ -723,7 +721,7 @@ BEGIN
         INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
         SELECT v_ddt, ti.id, '{"pgtap": true}'::jsonb
           FROM config.tipi_indirizzi ti
-         WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT', ARRAY[]::integer[]));
+         WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', ARRAY[]::integer[]));
 
         INSERT INTO _d VALUES (v_tag, v_ddt, v_comp);
     END LOOP;

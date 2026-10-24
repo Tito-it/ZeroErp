@@ -1,9 +1,25 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d): area_documento diventa documento_apribile (config.sorgenti.area ritirata).
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_dash_competenza_gruppi (elenco dei gruppi fatturabili)
 -- Brief: brief-db-emissione-fattura-per-documento-sorgente PARTE A (step A10)
 -- Changeset coperti: 20260727-16, 20260727-17 (+ seed CSV), 20260727-18
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
+--   preventivo nasceva gia' ACCETTATO).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): il mondo si
+--   COSTRUISCE (azienda A col suo operatore, cliente, articolo servizio; per il
+--   test 8 un'azienda B) invece di pescare «il primo BA / articolo / emittente /
+--   operatore»; il contratto nasce DRAFT da dbops.fn_pgtap_crea_contratto.
+--   L'articolo-onere resta del catalogo seminato (uno per causale, UNIQUE): si
+--   legge per la causale SPESE_TRASFERTA, non «il primo per id».
+-- rev 2026-10-24 (brief-modello-documento-vendita R-2/R-9): l'azienda A, il
+--   suo operatore, il contesto e il cliente nascono da
+--   dbops.fn_pgtap_crea_mondo_cliente (whitelist su A dal builder: tolta la
+--   prima riscrittura a mano e il set_config; resta quella del test 8, che
+--   sposta lo scope su B ed e' il caso del test); il contratto nasce DRAFT col
+--   periodo 2081 dal builder.
 -- ------------------------------------------------------------
 -- Indice test (plan 8):
 --  1) la vista espone i 3 gruppi della commessa: preventivo, contratto, oneri
@@ -11,8 +27,8 @@
 --  3) valore per gruppo = somma di prezzo_snapshot * quantita
 --  4) G8 ⭐ la somma dei gruppi coincide con le righe DA_EMETTERE della vista base
 --  5) G8 le chiavi esposte sono accettate TALI E QUALI da fn_emit come p_gruppi
---  6) D-5 riferimento del gruppo documento = numero del documento (via area)
---  7) G4 il gruppo oneri c'e', con area NULL e riferimento = commessa (LEFT JOIN)
+--  6) D-5 riferimento del gruppo documento = numero del documento (sorgente apribile)
+--  7) G4 il gruppo oneri c'e', con documento_apribile NULL e riferimento = commessa (LEFT JOIN)
 --  8) G14 operatore fuori scope emittente -> zero righe
 --  (security_invoker: presidiato da rls/test-rls-viste-security-invoker.sql,
 --   non piu' qui)
@@ -48,37 +64,43 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⭐ rev 2026-10-24 (Q-4): l'azienda A e il suo operatore si costruiscono, e
+--   il contesto si apre su di lui; B e' solo un emittente, il perimetro fuori
+--   scope del test 8.
+-- rev 2026-10-24 (R-9): A, l'operatore, il contesto e il cliente sono il
+--   mondo del builder, in una chiamata.
+CREATE TEMP TABLE tmp_vg_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('vista gruppi');
+
+CREATE TEMP TABLE tmp_vg_ef_b AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente();
+
+-- Il contesto l'ha gia' aperto il mondo sul suo operatore: la riga lo rende
+-- esplicito (ed e' cio' che legge scripts/guardrail_pgtap_preambolo.py).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_vg_mondo)); END $ctx$;
 
 SELECT plan(8);
+
+CREATE TEMP TABLE tmp_vg_cli AS
+SELECT billing_account_id, istanza_utility_id, utility_id FROM tmp_vg_mondo;
 
 -- ============================================================
 -- Riferimenti minimi
 -- ============================================================
 CREATE TEMP TABLE tmp_vg_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                         AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                         AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                         AS istanza_utility_id,
+  (SELECT billing_account_id FROM tmp_vg_cli)       AS billing_account_id,
+  (SELECT utility_id FROM tmp_vg_cli)               AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_vg_cli)       AS istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo('PGT-VG-SERV', false,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'SERVIZIO_UNA_TANTUM')) AS articolo_id,
   (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-      AND a.causale_onere_id IS NULL
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1) AS articolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.causale_onere_id IS NOT NULL
-    ORDER BY a.id LIMIT 1)                          AS articolo_onere_id,
+     JOIN config.causali_onere co ON co.id = a.causale_onere_id
+    WHERE co.codice_interno = 'SPESE_TRASFERTA' AND a.attivo IS TRUE) AS articolo_onere_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  (SELECT emittente_fiscale_id FROM tmp_vg_mondo) AS emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_prev_accettato_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t
@@ -86,21 +108,45 @@ SELECT
       AND EXISTS (SELECT 1 FROM vendite.tipi_doc_fiscale_registri m WHERE m.tipo_doc_fiscale_id = t.id)
     ORDER BY t.id LIMIT 1)                          AS tipo_doc_fiscale_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO' LIMIT 1) AS src_preventivo_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'CONTRATTO' LIMIT 1)  AS src_contratto_id;
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'CONTRATTO' LIMIT 1)  AS src_contratto_id,
+  (SELECT s.id FROM config.stati_doc_contratti s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1)                AS stato_contr_draft_id;
 
+-- ⚠️ rev 2026-10-24: il preventivo nasce in bozza (lo stato non si scrive: lo
+--   mette il trigger della nascita) e va ad ACCETTATO con
+--   dbops.fn_pgtap_porta_a_stato, sotto i guard veri: senza righe non hanno
+--   motivi da sollevare.
 CREATE TEMP TABLE tmp_vg_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-VGRUPPI', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2081-01-01', DATE '2081-12-31', r.valuta_id, r.stato_prev_accettato_id,
+         DATE '2081-01-01', DATE '2081-12-31', r.valuta_id,
          DATE '2081-01-01', false, false,
          jsonb_build_object('test_scope', 'pgtap_vgruppi'), r.emittente_fiscale_id
   FROM tmp_vg_refs r
   RETURNING id, uid, numero)
 SELECT * FROM ins;
+
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_vg_prev), 'ACCETTATO');
+END $porta$;
+
+-- Contratto VERO per il gruppo C (rev 2026-10-13): basta la testata in bozza.
+--   La madre lo aggancia alla commessa (20261012-46) e il link ne verifica
+--   l'esistenza: un uuid inventato non passa piu'.
+-- rev 2026-10-24 (Q-2): nasce dal builder, dalla madre di produzione, sul
+--   cliente del test.
+-- rev 2026-10-24 (R-2): il periodo e la data 2081 li prende dal builder.
+CREATE TEMP TABLE tmp_vg_k AS
+SELECT * FROM dbops.fn_pgtap_crea_contratto(
+                 'vista gruppi', 'DRAFT', (SELECT billing_account_id FROM tmp_vg_refs), NULL,
+                 DATE '2081-01-01', DATE '2081-12-31', DATE '2081-01-01');
+
+CREATE TEMP TABLE tmp_vg_contr AS
+SELECT k.id, k.uid FROM vendite.contratti k WHERE k.id = (SELECT contratto_id FROM tmp_vg_k);
 
 CREATE TEMP TABLE tmp_vg_comm AS
 SELECT vendite.fn_get_or_create_commessa(
@@ -157,9 +203,8 @@ CROSS JOIN LATERAL (
                                ELSE (SELECT src_contratto_id FROM tmp_vg_refs) END,
     p_sorgente_uid => CASE WHEN x.g = 'P'
                            THEN (SELECT uid::text FROM tmp_vg_prev)
-                           ELSE 'c0000000-0000-4000-8000-000000000002' END,
+                           ELSE (SELECT uid::text FROM tmp_vg_contr) END,
     p_tipo_movimento => 'NORMALE',
-    p_tipo_consumo => 'CONGUAGLIO',
     p_meta => jsonb_build_object('test_scope', 'pgtap_vgruppi')
   )
 ) r;
@@ -186,38 +231,23 @@ SELECT vendite.fn_aggiungi_onere_commessa(
 --   misurerebbe zero per il motivo sbagliato.
 --   Qui impersoniamo un operatore whitelistato sull'emittente della commessa
 --   fixture; al test 8 spostiamo la whitelist su un altro emittente.
+--   rev 2026-10-24 (R-9): la sessione e la whitelist su A le ha aperte il
+--   mondo (la commessa nasce sul suo cliente, quindi e' di A): la riscrittura
+--   a mano verso «l'emittente effettivo della commessa» e il set_config sono
+--   usciti.
 -- ============================================================
 CREATE TEMP TABLE tmp_vg_op AS
 SELECT id.auth_user_id AS user_id
   FROM anagrafiche.identita_digitali id
- WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+ WHERE id.auth_user_id = (SELECT auth_user_id FROM tmp_vg_mondo)
+   AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
    AND id.attivo = true
    AND NOT EXISTS (
        SELECT 1 FROM config.profili_accesso_bindings pab
        JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
        WHERE pab.identita_digitale_id = id.id
          AND pab.attivo = true
-         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso)
- ORDER BY id.id LIMIT 1;
-
--- Emittente EFFETTIVO della commessa (risolto da fn_get_or_create_commessa),
--- non quello pescato nei refs: e' quello che la vista confronta.
-CREATE TEMP TABLE tmp_vg_ef AS
-SELECT ef.id AS emittente_fiscale_id
-  FROM anagrafiche.emittenti_fiscali ef
-  JOIN vendite.commesse c ON c.id = (SELECT commessa_id FROM tmp_vg_comm)
- WHERE ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
- LIMIT 1;
-
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_vg_op);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
-
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-SELECT (SELECT user_id FROM tmp_vg_op), (SELECT emittente_fiscale_id FROM tmp_vg_ef);
-
-SELECT set_config('app.current_user_id', (SELECT user_id::text FROM tmp_vg_op), true);
+         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso);
 
 -- ============================================================
 -- TEST 1: i tre gruppi ci sono tutti — documenti E oneri.
@@ -294,27 +324,27 @@ SELECT is(
 
 -- ============================================================
 -- TEST 6 (D-5): il riferimento leggibile. L'operatore deve vedere il numero
---   del documento, non la chiave. Passa da config.sorgenti.area ->
+--   del documento, non la chiave. Passa da config.sorgenti.apribile ->
 --   vw_dash_fatturazione_documenti.
 -- ============================================================
 SELECT is(
-  (SELECT ARRAY[g.area_documento::text, g.riferimento::text]
+  (SELECT ARRAY[g.documento_apribile::text, g.riferimento::text]
      FROM vendite.vw_dash_competenza_gruppi g
     WHERE g.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)
       AND g.tipo_gruppo = 'PREVENTIVO'
       AND g.stadio = 'DA_EMETTERE'),
-  ARRAY['PREVENTIVI'::text, (SELECT numero::text FROM tmp_vg_prev)],
-  '6) D-5: gruppo preventivo -> area PREVENTIVI e riferimento = numero documento'
+  ARRAY['true'::text, (SELECT numero::text FROM tmp_vg_prev)],
+  '6) D-5: gruppo preventivo -> documento apribile e riferimento = numero documento'
 );
 
 -- ============================================================
--- TEST 7 (G4): il gruppo oneri non ha area ne' documento, e proprio per
+-- TEST 7 (G4): il gruppo oneri non ha sorgente ne' documento, e proprio per
 --   questo il join deve essere LEFT: se fosse INNER sparirebbe dall'elenco,
 --   che e' esattamente il difetto che il concetto di gruppo evita.
 -- ============================================================
 SELECT is(
   (SELECT ARRAY[g.tipo_gruppo::text,
-                COALESCE(g.area_documento::text, '<NULL>'),
+                COALESCE(g.documento_apribile::text, '<NULL>'),
                 g.riferimento::text]
      FROM vendite.vw_dash_competenza_gruppi g
     WHERE g.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)
@@ -322,7 +352,7 @@ SELECT is(
   ARRAY['ONERI_COMMESSA'::text, '<NULL>'::text,
         (SELECT c.codice::text FROM vendite.commesse c
           WHERE c.id = (SELECT commessa_id FROM tmp_vg_comm))],
-  '7) G4: gruppo oneri presente, area NULL, riferimento = codice commessa'
+  '7) G4: gruppo oneri presente, documento_apribile NULL, riferimento = codice commessa'
 );
 
 -- ============================================================
@@ -333,17 +363,17 @@ SELECT is(
 -- Sposta la whitelist dello STESSO operatore su un emittente diverso:
 -- cambia solo il perimetro, non l'identita'. Se i gruppi restassero
 -- visibili, vorrebbe dire che la vista non eredita davvero lo scope.
+-- ⚠️ Questa riscrittura RESTA (rev 2026-10-24, R-9): e' il caso del test.
 SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
 DELETE FROM config.user_emittenti_fiscali
  WHERE auth_user_id = (SELECT user_id FROM tmp_vg_op);
 SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
 INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-SELECT (SELECT user_id FROM tmp_vg_op), ef.id
-  FROM anagrafiche.emittenti_fiscali ef
- WHERE ef.attivo IS TRUE
-   AND ef.id <> (SELECT emittente_fiscale_id FROM tmp_vg_ef)
- ORDER BY ef.id LIMIT 1;
+-- L'emittente diverso e' B, costruito (rev 2026-10-24): prima «il primo
+-- emittente attivo diverso».
+SELECT (SELECT user_id FROM tmp_vg_op), b.emittente_fiscale_id
+  FROM tmp_vg_ef_b b;
 
 SELECT is(
   (SELECT count(*)::int FROM vendite.vw_dash_competenza_gruppi g

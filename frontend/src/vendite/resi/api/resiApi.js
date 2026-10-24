@@ -10,7 +10,6 @@
 
 import api from '../../../core/api'
 import { makeRigheListaApi } from '../../_shared/righe/righeListaApi'
-import { generateIdempotencyKey } from '../../../core/utils/idempotency'
 
 const BASE = '/vendite/resi'
 
@@ -118,6 +117,24 @@ export function deleteRiga(resoId, rigaId) {
   return api.delete(`${BASE}/${resoId}/righe/${rigaId}/`)
 }
 
+// --- Rientri: dove rientra la merce (3-bis R-1b) ---
+// La situazione del reso: { muove_merce, magazzino_id, magazzino_usa_ubicazioni,
+// voci: [{ resi_riga_id, ddt_riga_componente_id, riga_nr, articolo_*, uom_codice,
+// qta, esatta, rientrata, automatico, prelievi_origine: [...], rientri: [...] }] }.
+export function getRientri(resoId) {
+  return api.get(`${BASE}/${resoId}/rientri/`)
+}
+
+// Payload: ddt_riga_prelievo_id (il prelievo d'origine, obbligatorio), qta
+// (obbligatoria), ubicazione_id. Le regole le applica il DB.
+export function createRientro(resoId, rigaId, payload) {
+  return api.post(`${BASE}/${resoId}/righe/${rigaId}/rientri/`, payload)
+}
+
+export function deleteRientro(resoId, rigaId, rientroId) {
+  return api.delete(`${BASE}/${resoId}/righe/${rigaId}/rientri/${rientroId}/`)
+}
+
 // --- Code di lavoro (viste dedicate, righe reso CONFERMATE) ---
 
 export function listDaAccreditare(params = {}) {
@@ -151,7 +168,6 @@ export function accreditaRighe(resiRigaIds) {
   return api.post(
     `${BASE}/accrediti/`,
     { resi_riga_ids: resiRigaIds },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -163,7 +179,6 @@ export function annullaAccredito(resoId, rigaId, motivo) {
   return api.post(
     `${BASE}/${resoId}/righe/${rigaId}/annulla-accredito/`,
     { motivo },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 

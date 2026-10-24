@@ -15,7 +15,7 @@
 #  - riga UNA_TANTUM/FISSA (addebito standard, qta+prezzo)
 #  - /emetti/ → ATTIVO (prereq documentale gated: skip se template/emittente assente)
 #  - push CONTRATTO (POST /commesse/push/run/, batch globale sorgente CONTRATTO)
-#  - 1 commesse_attivita per riga, segment_key CONTR:<uid>:R:<riga>:M:<YYYY-MM inizio>
+#  - 1 commesse_attivita per riga, segment_key CONTRATTO:<uid>:R:<riga>:M:<YYYY-MM inizio>
 #  - commessa emittibile (PRONTA_FATTURAZIONE + approvate >= 1)
 #  - idempotenza push: re-run = nessun doppione (upsert su segment_key)
 #
@@ -28,6 +28,9 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"   # smoke_emetti
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_soggetto.sh"
 # Override esplicito emittente (opzionale). Se vuoto, si deriva dal documento
 # sorgente del BA (vedi setup); ultimo fallback 32.
 EMITTENTE_OVERRIDE="${EMITTENTE_ID:-}"
@@ -91,37 +94,22 @@ log_ok "Autenticazione JWT"
 
 # --- 1. Setup: tripla BA+utility+istanza + articolo ---
 echo ""; echo "-- 1. Setup tripla BA+utility+istanza + articolo --"
-BA_RAW=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/anagrafiche/billing-account/lookup/" 2>/dev/null)
-TRIPLE=$(echo "$BA_RAW" | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin).get('data', {})
-    rows = d.get('results', d) if isinstance(d, dict) else d
-    for r in (rows or []):
-        if r.get('utility_id') and r.get('istanza_utility_id'):
-            print(r['id'], r['utility_id'], r['istanza_utility_id']); break
-except Exception:
-    pass
-" 2>/dev/null)
-BA_ID=$(echo "$TRIPLE" | awk '{print $1}')
-UTILITY_ID=$(echo "$TRIPLE" | awk '{print $2}')
-ISTANZA_ID=$(echo "$TRIPLE" | awk '{print $3}')
+smoke_cliente_dal_lookup   # BB _smoke_cliente.sh: BA_ID, UTILITY_ID, ISTANZA_ID
 
-# Emittente: NON hardcodare (no-hardcoded-ids). Si deriva dallo stesso documento
-# sorgente del BA → coerente per costruzione col guard BA<->emittente del contratto.
-# Override esplicito via EMITTENTE_ID; fallback finale 32 solo se nulla risolto.
+# Emittente: mai un id scritto a mano. Col cliente dal lookup non si passa (vale
+# l'emittente attivo, lo stesso del cliente: _smoke_cliente.sh); col ripiego su un
+# documento esistente si prende il suo, coerente col suo BA. Override: EMITTENTE_ID.
 EF_SRC=""
 if [[ -z "$BA_ID" || -z "$ISTANZA_ID" ]]; then
     log_info "lookup BA vuoto/scope; provo a riusare un documento esistente (preventivi/ordini/contratti)"
     for SRC in preventivi ordini contratti; do
         PAIR=$(curl -s -H "Authorization: Bearer $TOKEN" \
-            "${BASE_URL}/api/v1/vendite/${SRC}/?page_size=20" 2>/dev/null | python3 -c "
+            "${BASE_URL}/api/v1/vendite/${SRC}/?limit=20" 2>/dev/null | python3 -c "
 import sys, json
 try:
     rows = json.load(sys.stdin).get('data',{}).get('results',[])
     # Preferisci una riga che espone anche l'emittente (coerente col BA → guard BA<->EF);
-    # se nessuna lo espone, ripiega sulla prima riga BA+istanza valida (emittente vuoto → 32).
+    # se nessuna lo espone, ripiega sulla prima riga BA+istanza valida (emittente vuoto: default del DB).
     cand = [r for r in rows if r.get('billing_account_id') and r.get('istanza_utility_id')]
     best = next((r for r in cand if r.get('emittente_fiscale_id')), cand[0] if cand else None)
     if best:
@@ -145,7 +133,7 @@ fi
 log_info "billing_account_id=$BA_ID utility_id=$UTILITY_ID istanza_utility_id=$ISTANZA_ID"
 
 ARTICOLO_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/catalogo/articoli/?page_size=1" 2>/dev/null | python3 -c "
+    "${BASE_URL}/api/v1/catalogo/articoli/?limit=1" 2>/dev/null | python3 -c "
 import sys, json
 try:
     r = json.load(sys.stdin).get('data',{}).get('results',[])
@@ -164,9 +152,46 @@ echo ""; echo "-- 2. Crea contratto DRAFT --"
 # (BA, istanza, utility, ambito) nel periodo di validità può far fallire la create
 # se esiste già un contratto sovrapposto — in quel caso l'errore è parlante.
 AMBITO="${SMOKE_AMBITO:-COMMODITY}"
-# Emittente coerente col BA: override esplicito → emittente del doc sorgente → 32.
-EMITTENTE_FISCALE_ID="${EMITTENTE_OVERRIDE:-${EF_SRC:-32}}"
-CREATE_PAYLOAD="{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID:-null}, \"istanza_utility_id\": ${ISTANZA_ID}, \"ambito\": \"${AMBITO}\", \"emittente_fiscale_id\": ${EMITTENTE_FISCALE_ID}, \"valido_dal\": \"${OGGI}\", \"data\": \"${OGGI}\"}"
+# ⭐ I contratti di questo smoke non restano vivi: il prezzo di OGNI documento
+# del cliente di prova passa dal contratto ATTIVO, e uno lasciato acceso (modalita'
+# C, senza listino) fa fallire gli altri smoke sullo stesso cliente. Si chiudono
+# i residui ora e i propri all'uscita, qualunque sia (BB _smoke_documenti.sh).
+smoke_chiudi_contratti "$BA_ID" "$AMBITO"   # residui sul cliente condiviso
+
+# ⭐ Un CLIENTE PROPRIO per ogni giro. Il contratto non puo' sovrapporsi a un
+# altro sulla chiave (cliente, istanza, utility, ambito) nel periodo, e il
+# vincolo non guarda lo stato: un contratto cessato OGGI occupa ancora oggi.
+# Sul cliente condiviso, due giri nello stesso giorno si scontravano
+# (E_VENDITE_CONTRATTO_OVERLAP) e il contratto attivo governava i prezzi degli
+# altri smoke. La creazione manuale di un cliente apre ogni volta istanza e BA
+# nuovi: il contratto vive li', isolato.
+# ⭐ E un SOGGETTO PROPRIO per ogni giro (2026-10-15): dal 2026-10-14 un
+# soggetto ha UN cliente manuale per utility e azienda (E_CLIENTE_STESSA_CHIAVE,
+# brief-db-cliente-manuale-uno-per-soggetto-e-utility C-1/C-2). Prima il
+# cliente nasceva sul soggetto del primo cliente della lista: dal secondo giro
+# il DB lo rifiutava, giustamente. Soggetto e cliente li crea il BB
+# `smoke_cliente_del_giro` (_smoke_cliente.sh), dall'API.
+smoke_cliente_del_giro "Contratto" "" "${UTILITY_ID:-}"
+if [[ -z "$SOGG_ID" ]]; then
+    echo -e "${RED}Setup fallito: impossibile creare il soggetto del giro (motivo sopra). Stop.${NC}"; exit 1
+fi
+log_info "soggetto del giro: $SOGG_ID (CF $SOGG_CF)"
+LAST_STATUS="$GIRO_LAST_STATUS"; LAST_BODY="$GIRO_LAST_BODY"
+if ! check "POST cliente proprio del giro" 200 "data.billing_account_id"; then
+    echo -e "${RED}Setup fallito: impossibile creare il cliente del giro. Stop.${NC}"; exit 1
+fi
+BA_ID="$GIRO_BA_ID"
+ISTANZA_ID="$GIRO_ISTANZA_ID"
+UTILITY_ID="$GIRO_UTILITY_ID"
+EF_SRC=""   # l'emittente e' quello attivo, lo stesso del nuovo cliente
+log_info "cliente del giro: BA=$BA_ID istanza=$ISTANZA_ID utility=$UTILITY_ID"
+trap 'smoke_chiudi_contratti "$BA_ID" "$AMBITO"; rm -f "$TMPFILE"' EXIT
+# Emittente coerente col BA: override esplicito → emittente del doc sorgente →
+# nessuno (default del DB: l'emittente attivo, lo stesso del cliente del lookup).
+EMITTENTE_FISCALE_ID="${EMITTENTE_OVERRIDE:-${EF_SRC:-}}"
+EMITTENTE_JSON=""
+[[ -n "$EMITTENTE_FISCALE_ID" ]] && EMITTENTE_JSON=", \"emittente_fiscale_id\": ${EMITTENTE_FISCALE_ID}"
+CREATE_PAYLOAD="{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID:-null}, \"istanza_utility_id\": ${ISTANZA_ID}, \"ambito\": \"${AMBITO}\"${EMITTENTE_JSON}, \"valido_dal\": \"${OGGI}\", \"data\": \"${OGGI}\"}"
 log_info "payload create = $CREATE_PAYLOAD"
 do_curl POST "/api/v1/vendite/contratti/" "$CREATE_PAYLOAD"
 if ! check "POST crea contratto" 200 "data.id"; then
@@ -191,7 +216,7 @@ fi
 # Niente iva_id: non è un campo della riga contratto (l'IVA è a valle).
 echo ""; echo "-- 3. Aggiungi riga addebito standard (AGGIUNTA, UNA_TANTUM/FISSA) --"
 do_curl POST "/api/v1/vendite/contratti/${CONTRATTO_ID}/righe/" \
-    "{\"articolo_id\": \"$ARTICOLO_ID\", \"tipo_eccezione\": \"AGGIUNTA\", \"tipo_erogazione\": \"UNA_TANTUM\", \"fonte_quantita_attesa\": \"FISSA\", \"quantita\": \"1\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"120.00\"}"
+    "{\"articolo_id\": \"$ARTICOLO_ID\", \"tipo_eccezione\": \"AGGIUNTA\", \"tipo_erogazione\": \"UNA_TANTUM\", \"fonte_quantita_attesa\": \"FISSA\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"120.00\"}"
 if check "POST riga contratto" 200 "data.id"; then
     RIGA_ID="$EXTRACTED"
 else
@@ -201,9 +226,7 @@ log_info "riga_id = $RIGA_ID"
 
 # --- 4. Emetti → ATTIVO (prereq documentale gated) ---
 echo ""; echo "-- 4. /emetti/ → ATTIVO (skip se prereq documentale assente) --"
-curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" \
-    -F "x=" "${BASE_URL}/api/v1/vendite/contratti/${CONTRATTO_ID}/emetti/" > "$TMPFILE" 2>/dev/null
-LAST_STATUS=$(tail -1 "$TMPFILE"); LAST_BODY=$(sed '$d' "$TMPFILE")
+smoke_emetti contratti "$CONTRATTO_ID"   # BB _smoke_documenti.sh
 ATTIVO_OK=0
 if [[ "$LAST_STATUS" == "200" ]]; then
     log_ok "POST /emetti/ → ATTIVO"
@@ -217,13 +240,13 @@ else
     log_info "Body: $(echo "$LAST_BODY" | head -c 200)"
 fi
 
-# Funzione: cerca la nostra attività (segment_key CONTR:<uid>:R:<riga>:M:...) tra
+# Funzione: cerca la nostra attività (segment_key CONTRATTO:<uid>:R:<riga>:M:...) tra
 # le commesse passate in $@ e stampa "commessa_id|segment_key|competenza_mese".
 trova_attivita() {
     local uid="$1"; shift
     for cid in "$@"; do
         [[ -z "$cid" || "$cid" == "None" ]] && continue
-        do_curl GET "/api/v1/vendite/commesse/${cid}/attivita/?page_size=200"
+        do_curl GET "/api/v1/vendite/commesse/${cid}/attivita/?limit=200"
         local found
         found=$(echo "$LAST_BODY" | python3 -c "
 import sys, json
@@ -232,7 +255,7 @@ try:
     rows = json.load(sys.stdin).get('data',{}).get('results',[])
     for a in rows:
         sk = a.get('segment_key') or ''
-        if sk.startswith('CONTR:'+uid+':'):
+        if sk.startswith('CONTRATTO:'+uid+':'):
             print(cid+'|'+sk+'|'+str(a.get('competenza_mese') or '')); break
 except Exception:
     pass
@@ -260,7 +283,7 @@ except Exception: pass
     fi
 
     # --- 6. Verifica attività con segment_key del nostro contratto ---
-    echo ""; echo "-- 6. Attività con segment_key CONTR:<uid>:R:<riga>:M:<mese-inizio> --"
+    echo ""; echo "-- 6. Attività con segment_key CONTRATTO:<uid>:R:<riga>:M:<mese-inizio> --"
     COMMESSA_ID=""; SEG=""; COMPETENZA=""
     if [[ "$PUSH_OK" == "1" ]]; then
         HIT=$(trova_attivita "$CONTRATTO_UID" $COMMESSE_IDS || true)
@@ -268,16 +291,16 @@ except Exception: pass
             COMMESSA_ID="${HIT%%|*}"; rest="${HIT#*|}"; SEG="${rest%%|*}"; COMPETENZA="${rest##*|}"
             log_ok "attività trovata (commessa=$COMMESSA_ID)"
             log_info "segment_key = $SEG ; competenza_mese = $COMPETENZA"
-            if [[ "$SEG" == "CONTR:${CONTRATTO_UID}:R:${RIGA_ID}:M:${MESE_INIZIO}" ]]; then
+            if [[ "$SEG" == "CONTRATTO:${CONTRATTO_UID}:R:${RIGA_ID}:M:${MESE_INIZIO}" ]]; then
                 log_ok "segment_key atteso (riga $RIGA_ID, mese-inizio $MESE_INIZIO)"
             else
-                log_fail "segment_key inatteso: atteso CONTR:${CONTRATTO_UID}:R:${RIGA_ID}:M:${MESE_INIZIO}"
+                log_fail "segment_key inatteso: atteso CONTRATTO:${CONTRATTO_UID}:R:${RIGA_ID}:M:${MESE_INIZIO}"
             fi
             [[ "$COMPETENZA" == "${MESE_INIZIO}-01" ]] \
                 && log_ok "competenza_mese = ${MESE_INIZIO}-01 (mese inizio contratto)" \
                 || log_info "competenza_mese = $COMPETENZA (atteso ${MESE_INIZIO}-01)"
         else
-            log_fail "nessuna attività con segment_key CONTR:${CONTRATTO_UID}: nelle commesse pushate"
+            log_fail "nessuna attività con segment_key CONTRATTO:${CONTRATTO_UID}: nelle commesse pushate"
         fi
     else
         log_skip "push non OK: salto verifica attività"
@@ -305,7 +328,7 @@ except Exception: pass
     echo ""; echo "-- 8. Re-push CONTRATTO (attesa: nessun doppione, upsert segment_key) --"
     if [[ -n "$COMMESSA_ID" ]]; then
         # conteggio attività col nostro segment_key PRIMA
-        do_curl GET "/api/v1/vendite/commesse/${COMMESSA_ID}/attivita/?page_size=200"
+        do_curl GET "/api/v1/vendite/commesse/${COMMESSA_ID}/attivita/?limit=200"
         N_PRE=$(echo "$LAST_BODY" | python3 -c "
 import sys, json
 sk='$SEG'
@@ -316,7 +339,7 @@ except Exception: print(0)
         do_curl POST "/api/v1/vendite/commesse/push/run/" \
             '{"source_types": ["CONTRATTO"]}' "Idempotency-Key: smoke-contr-repush-$(date +%s%N)"
         check "POST re-push CONTRATTO" 200 || true
-        do_curl GET "/api/v1/vendite/commesse/${COMMESSA_ID}/attivita/?page_size=200"
+        do_curl GET "/api/v1/vendite/commesse/${COMMESSA_ID}/attivita/?limit=200"
         N_POST=$(echo "$LAST_BODY" | python3 -c "
 import sys, json
 sk='$SEG'

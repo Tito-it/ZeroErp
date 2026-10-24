@@ -25,10 +25,10 @@ from apps.core.api.payload_validators import (
     corpo_oggetto,
     optional_int,
     optional_uuid,
+    pagina_da_query,
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
-    qp_int,
     qp_iso_date_optional,
     qp_str,
     qp_str_upper,
@@ -46,15 +46,6 @@ from apps.ui.api.export_helpers import build_export_response, parse_export_forma
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 
 
-# Scopo: Decodifica query param a bool opzionale. Valori True: 1|true|yes|on
-# (case-insensitive). Valori False: qualsiasi altra stringa non vuota. None
-# se il param non e' presente. Usato per filtri di lista.
-def _parse_optional_bool(raw: str | None) -> bool | None:
-    if raw is None:
-        return None
-    return raw.lower() in ("1", "true", "yes", "on")
-
-
 # ================================================================== #
 # Operatori                                                            #
 # ================================================================== #
@@ -70,6 +61,13 @@ class OperatoriListView(AdminAPIView):
             OpenApiParameter(name="is_super_admin", type=bool, required=False),
             OpenApiParameter(name="unita_organizzativa_id", type=int, required=False),
             OpenApiParameter(name="is_active", type=bool, required=False),
+            OpenApiParameter(
+                name="includi_di_prova", type=bool, required=False,
+                description=(
+                    "Mostra anche gli utenti di prova (etichetta del provisioning di "
+                    "sviluppo). Assente o false: nascosti. Ogni riga dice `di_prova`."
+                ),
+            ),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),
@@ -80,8 +78,12 @@ class OperatoriListView(AdminAPIView):
     # Scopo: Lista paginata operatori con filtri.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
-        is_active = _parse_optional_bool(qp.get("is_active"))
-        is_super_admin = _parse_optional_bool(qp.get("is_super_admin"))
+        limit, offset = pagina_da_query(qp)  # clamp e 400 nel BB
+        is_active = qp_bool_optional(qp.get("is_active"), "is_active")
+        is_super_admin = qp_bool_optional(qp.get("is_super_admin"), "is_super_admin")
+        # ⛔ Strict: `?includi_di_prova=banana` e' un 400, non un «no» in silenzio.
+        #    Assente = gli utenti di prova restano nascosti (il default del tab).
+        includi_di_prova = qp_bool_optional(qp.get("includi_di_prova"), "includi_di_prova")
 
         repo = AmmSoftwareService()
         results, total_count = repo.list_operatori(
@@ -89,8 +91,9 @@ class OperatoriListView(AdminAPIView):
             is_super_admin=is_super_admin,
             unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
             is_active=is_active,
-            limit=optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT,  # clamp nel repository
-            offset=optional_int({"v": qp.get("offset")}, "v") or 0,
+            includi_di_prova=includi_di_prova is True,
+            limit=limit,
+            offset=offset,
             order_by=qp.get("order_by") or None,
             order_dir=qp.get("order_dir") or None,
         )
@@ -213,7 +216,7 @@ class OverrideAreeView(AdminAPIView):
         responses={200: inline_serializer(name="OverrideAreePutResp", fields={"data": serializers.DictField()})},
     )
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        results = AmmSoftwareService().put_override_aree(auth_user_id, corpo_oggetto(request).get("items", []))
+        results = AmmSoftwareService().put_override_aree(auth_user_id, corpo_oggetto(request).get("items"))
         return success_response({"results": results})
 
 
@@ -229,7 +232,7 @@ class OverrideAzioniView(AdminAPIView):
         responses={200: inline_serializer(name="OverrideAzioniPutResp", fields={"data": serializers.DictField()})},
     )
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        results = AmmSoftwareService().put_override_azioni(auth_user_id, corpo_oggetto(request).get("items", []))
+        results = AmmSoftwareService().put_override_azioni(auth_user_id, corpo_oggetto(request).get("items"))
         return success_response({"results": results})
 
 
@@ -247,7 +250,7 @@ class OverrideOggettiView(AdminAPIView):
     )
     # Scopo: Sostituisce override oggetti di un operatore.
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        results = AmmSoftwareService().put_override_oggetti(auth_user_id, corpo_oggetto(request).get("items", []))
+        results = AmmSoftwareService().put_override_oggetti(auth_user_id, corpo_oggetto(request).get("items"))
         return success_response({"results": results})
 
 
@@ -415,7 +418,7 @@ class RepartoProfiloView(AdminAPIView):
     def put(self, request: Request, uo_id: int) -> JsonResponse:
         corpo = corpo_oggetto(request)
         result = AmmSoftwareService().put_profilo_reparto(
-            uo_id, corpo.get("aree", []), corpo.get("azioni", []),
+            uo_id, corpo.get("aree"), corpo.get("azioni"),
             payload=corpo,
         )
         return success_response(result)
@@ -456,13 +459,14 @@ class ProcessiListView(AdminAPIView):
     # Scopo: Elenco paginato dei processi automatici con filtri di pannello.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
+        limit, offset = pagina_da_query(qp)
         return success_response(ProcessiService().list_processi(
             classe=qp_str_upper(qp.get("classe")),
             canale=qp_str_upper(qp.get("canale")),
             attivo=qp_bool_optional(qp.get("attivo"), "attivo"),
             search=qp_str(qp.get("search")),
-            limit=qp_int(qp.get("limit"), DEFAULT_LIMIT),
-            offset=qp_int(qp.get("offset"), 0),
+            limit=limit,
+            offset=offset,
             order_by=qp_str(qp.get("order_by")),
             order_dir=qp_str(qp.get("order_dir")),
         ))
@@ -561,12 +565,8 @@ class ProcessiRunView(AdminAPIView):
     )
     # Scopo: Storia recente delle corse di un processo.
     def get(self, request: Request, codice: str) -> JsonResponse:
-        qp = request.query_params
-        return success_response(ProcessiService().list_run(
-            codice,
-            limit=qp_int(qp.get("limit"), DEFAULT_LIMIT),
-            offset=qp_int(qp.get("offset"), 0),
-        ))
+        limit, offset = pagina_da_query(request.query_params)
+        return success_response(ProcessiService().list_run(codice, limit=limit, offset=offset))
 
 
 # Scopo: il pezzo comune ai due verbi sull'utente tecnico (crea / riattiva):
@@ -681,6 +681,44 @@ class ProcessiEseguiOraView(AdminAPIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
+class ProcessiAccensioneView(AdminAPIView):
+    """POST la scelta a mano sull'ACCENSIONE di un processo, su questa
+    installazione: `{"acceso": true|false|null, "motivo": "..."}`. `true`
+    accende, `false` spegne, `null` toglie la scelta e torna il default per
+    ambiente del catalogo. Risposta: l'accensione rinfrescata, nella forma di
+    `accensione` del dettaglio.
+
+    I limiti (processo non spegnibile, senza sveglia, motivo) li dice il guard
+    di `dbops.processi_accensione`; il service li traduce
+    (brief-db-processi-accensione-per-ambiente §6.0 punto 5).
+    ⚠️ La sede della fiducia e' `AdminAPIView`, come per «Esegui ora» («il
+    permesso e' vostro, come per Esegui ora», dal brief DB): v1 solo
+    SUPER_ADMIN.
+    """
+
+    @extend_schema(
+        parameters=[_IDEMPOTENCY_HEADER_PARAM],
+        request=inline_serializer(
+            name="ProcessiAccensioneReq",
+            fields={
+                "acceso": serializers.BooleanField(allow_null=True),
+                "motivo": serializers.CharField(),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="ProcessiAccensioneResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Accende, spegne o riporta al default il processo, col motivo.
+    def post(self, request: Request, codice: str) -> JsonResponse:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
+            return ProcessiService().imposta_accensione(
+                codice, payload, attore=request.user.get_username(),
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
 class AuditLogView(AdminAPIView):
     """GET audit log globale modifiche permessi."""
 
@@ -699,14 +737,15 @@ class AuditLogView(AdminAPIView):
     # Scopo: Timeline globale eventi audit permessi.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
+        limit, offset = pagina_da_query(qp)
         events, total_count = AmmSoftwareService().list_audit_log(
             data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
             data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
             tabella=qp.get("tabella") or None,
             order_by=qp.get("order_by") or None,
             order_dir=qp.get("order_dir") or None,
-            limit=optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT,  # clamp nel repository
-            offset=optional_int({"v": qp.get("offset")}, "v") or 0,
+            limit=limit,
+            offset=offset,
         )
         return success_response({"count": total_count, "results": events})
 
@@ -898,7 +937,7 @@ def _parse_auth_user_ids(raw: str | None) -> list[int]:
             valore is not None and 0 < valore <= INTEGER_MAX,
             code=E_AMM_VALIDAZIONE,
             message="auth_user_ids: attesi id interi positivi separati da virgola.",
-            context={"field": "auth_user_ids"},
+            context={"parametro": "auth_user_ids"},
         )
         assert valore is not None
         if valore not in ids:
@@ -907,7 +946,7 @@ def _parse_auth_user_ids(raw: str | None) -> list[int]:
         bool(ids),
         code=E_AMM_VALIDAZIONE,
         message="auth_user_ids: obbligatorio, almeno un id.",
-        context={"field": "auth_user_ids"},
+        context={"parametro": "auth_user_ids"},
     )
     return ids
 

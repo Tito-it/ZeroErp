@@ -6,6 +6,8 @@ CREATE FUNCTION fn_fuso_operativo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_fuso_operativo()
  RETURNS text
@@ -88,6 +90,8 @@ $function$
 COMMENT ON FUNCTION script.fn_fuso_operativo()
 IS 'Il NOME del fuso dell''azienda (config.parameters.SYSTEM_FUSO_ORARIO). ⭐ SEDE UNICA della lettura e della validazione del fuso (brief-be-db-fe-un-solo-fuso-aziendale D-1, 20261009-40): la usano fn_data_operativa (che giorno e'' oggi), fn_inizio_giorno_operativo (quando comincia il giorno D), fn_giorno_operativo (in che giorno cade un istante) e il backend (ore a video). Nessun altro legge il parametro. ⛔ Legge il default NUDO e non script.fn_get_parameter_full: la cascata di override darebbe allo stesso fatto giorni diversi secondo chi lo guarda. ⛔ FAIL-LOUD su tre condizioni, tutte con E_CONFIG_MANCANTE: parametro assente, valore vuoto (il registro ammette il vuoto), valore che il sistema non riconosce (rete di sicurezza EXCEPTION sul 22023 di AT TIME ZONE). La validita'' del nome la decide il registro config.parameter_fk_surrogate alla scrittura (riga 7 -> pg_timezone_names): qui non si rilegge pg_timezone_names, che costa ~8 ms. Mai un ripiego a UTC. ℹ️ STABLE: il parametro non cambia dentro un''istruzione.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

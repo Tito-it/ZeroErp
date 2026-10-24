@@ -1,5 +1,21 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato; il preventivo
+--   senza BA del test 3 nasce DRAFT (prima ACCETTATO: il trigger della nascita
+--   avrebbe parlato prima del NOT NULL, coprendo il 23502 che il test chiede).
+-- rev 2026-10-24 (brief-modello-documento-vendita R-6/Q-4): il mondo si
+--   costruisce. Cliente ed emittente da dbops.fn_pgtap_crea_mondo_cliente,
+--   i due articoli da dbops.fn_pgtap_crea_articolo con la natura del caso
+--   (MERCE, SERVIZIO_UNA_TANTUM), la commessa dei casi 8-12 da
+--   dbops.fn_pgtap_crea_commessa sul cliente del mondo. Prima si pescavano il
+--   primo billing account, il primo emittente, «i primi due articoli per id»
+--   (riscrivendone la natura: il primo e' un articolo-onere e il file moriva
+--   li'), la prima unita' di misura e il primo stato commessa. Numero e stato
+--   delle testate non si scrivono piu': li assegnano il dominio e il trigger
+--   della nascita (l'INSERT del test 3, che non deve nascere, resta com'era).
+-- rev 2026-10-24 (brief-modello-documento-vendita §4-octies): le attivita' dei casi 8, 10 e 12 le scrive dbops.fn_pgtap_crea_commessa_attivita con la sorgente (chiave dal dominio, stato di emissione dichiarato) invece degli INSERT con la chiave composta a mano; il caso 11 (#CMP) resta a mano, con la base della chiave da script.fn_segment_key.
 -- pgTAP test per Zero ERP
 --
 -- Test: vendite.fn_preventivo_ha_residuo_commessa (20260612-03) +
@@ -26,8 +42,11 @@
 --      esclusa appena instradata, non solo dopo fatturazione)
 --  11) Post-push componente BoM (segment_key #CMP, NON_EMESSA) -> residuo = false
 --      (match a prefisso §4: una riga composita viene esclusa)
---  12) Attivita ANNULLATA -> residuo = false (decisione: riga instradata, non
---      ri-pushabile; non riapre il preventivo)
+--  12) Attivita ANNULLATA -> residuo = true: una riga ritirata non occupa, la
+--      riga torna da mandare in commessa (rev 2026-10-12, 20261012-08/-09,
+--      brief-db-annullo-a-valle-riapre-a-monte D-5 di Tid). Fino a quel giorno
+--      il test fissava la decisione del 2026-06-28 «riga instradata, non
+--      ri-pushabile; non riapre il preventivo», che D-5 sostituisce.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -51,37 +70,48 @@ SELECT plan(12);
 -- ============================================================
 -- 0) Riferimenti minimi + classificazione nature
 -- ============================================================
+-- ⭐ rev 2026-10-24 (Q-4): il cliente e l'emittente da
+--   dbops.fn_pgtap_crea_mondo_cliente (col contesto aperto riusa l'azienda di
+--   chi agisce: emittente e BA d'accordo per costruzione); gli articoli
+--   nascono con la natura del caso: merce -> MERCE (ORDINE), servizio ->
+--   SERVIZIO_UNA_TANTUM (COMMESSA). ⛔ Cio' che il builder scrive si legge in
+--   un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_rc_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('residuo commessa');
+
+CREATE TEMP TABLE tmp_rc_art AS
+SELECT
+  dbops.fn_pgtap_crea_articolo('PGT-RC-MERCE',
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'MERCE')) AS art_merce_id,
+  dbops.fn_pgtap_crea_articolo('PGT-RC-SERV', false,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'SERVIZIO_UNA_TANTUM')) AS art_serv_id;
+
 CREATE TEMP TABLE tmp_rc_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1 OFFSET 0) AS art_merce_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1 OFFSET 1) AS art_serv_id,
+  m.billing_account_id,
+  m.utility_id,
+  m.istanza_utility_id,
+  x.art_merce_id,
+  x.art_serv_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_accettato_id,
+    WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE) AS stato_accettato_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice = 'DRAFT' AND s.attivo IS TRUE LIMIT 1) AS stato_draft_id,
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE) AS stato_draft_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE
-    ORDER BY u.id LIMIT 1) AS uom_id,
+  -- L'unita' di misura e' quella dell'articolo del servizio: le attivita'
+  --   dei casi 8-12 sono sue. Prima era la prima del catalogo per id.
+  (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = x.art_serv_id) AS uom_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE
     ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
-  (SELECT sc.id FROM vendite.stati_commessa sc WHERE sc.attivo IS TRUE
-    ORDER BY sc.id LIMIT 1) AS stato_commessa_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  m.emittente_fiscale_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE') AS natura_merce_id,
-  (SELECT id FROM config.nature_vendita WHERE codice_interno = 'SERVIZIO_UNA_TANTUM') AS natura_serv_id;
+  (SELECT id FROM config.nature_vendita WHERE codice_interno = 'SERVIZIO_UNA_TANTUM') AS natura_serv_id,
+  (SELECT s.id FROM config.sorgenti s
+    WHERE s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE) AS sorgente_preventivo_id
+FROM tmp_rc_mondo m, tmp_rc_art x;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND art_merce_id IS NOT NULL
@@ -90,12 +120,6 @@ SELECT ok(
      FROM tmp_rc_refs),
   '0. Precondizioni soddisfatte'
 );
-
--- Classifica gli articoli di test: merce -> ORDINE, servizio -> COMMESSA.
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tmp_rc_refs)
- WHERE id = (SELECT art_merce_id FROM tmp_rc_refs);
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_serv_id FROM tmp_rc_refs)
- WHERE id = (SELECT art_serv_id FROM tmp_rc_refs);
 
 -- Preventivo MISTO ACCETTATO (BA ok): 1 riga servizio + 1 riga merce.
 -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): i
@@ -106,11 +130,11 @@ UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_serv_id FROM tmp
 CREATE TEMP TABLE tmp_rc_misto AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-RC-MISTO', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
+  SELECT r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_residuo_commessa'), r.emittente_fiscale_id
     FROM tmp_rc_refs r
@@ -137,11 +161,11 @@ END $x$;
 CREATE TEMP TABLE tmp_rc_merce AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-RC-MERCE', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
+  SELECT r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_residuo_commessa_merce'), r.emittente_fiscale_id
     FROM tmp_rc_refs r
@@ -160,11 +184,11 @@ END $x$;
 CREATE TEMP TABLE tmp_rc_draft AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-RC-DRAFT', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
+  SELECT r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_residuo_commessa_draft'), r.emittente_fiscale_id
     FROM tmp_rc_refs r
@@ -199,6 +223,10 @@ SELECT is(
 --    giorno il caso esisteva, e il test chiedeva «residuo = false, testata
 --    incompleta». Ora billing_account_id e' NOT NULL: il guard dell'emittente
 --    lascia parlare il vincolo (23502), che e' la regola.
+--    ⚠️ rev 2026-10-24: nello stato iniziale (DRAFT). Con uno stato avanti il
+--    trigger della nascita (a05, BEFORE INSERT) solleverebbe
+--    E_DOC_STATO_INIZIALE_NON_VALIDO prima del vincolo, e il test smetterebbe
+--    di parlare del billing account.
 -- ============================================================
 SELECT throws_ok(
   $$INSERT INTO vendite.preventivi (
@@ -206,7 +234,7 @@ SELECT throws_ok(
       validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
       fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
     SELECT 'PGTAP-RC-NOBA', 0, r.istanza_utility_id, r.utility_id,
-           DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+           DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
            DATE '2080-01-01', false, false,
            jsonb_build_object('test_scope','pgtap_residuo_commessa_noba'), r.emittente_fiscale_id
       FROM tmp_rc_refs r$$,
@@ -251,44 +279,31 @@ SELECT ok(
 -- 8) Post-push: riga servizio EMESSA in commessa -> residuo false
 --    (la merce residua non conta sul ramo commessa)
 -- ============================================================
+-- ⭐ rev 2026-10-24 (Q-4): la commessa nasce dalla madre del dominio
+--   (dbops.fn_pgtap_crea_commessa), sul cliente del mondo, nello stato
+--   iniziale: emittente e whitelist d'accordo per costruzione. Prima era un
+--   INSERT diretto col primo stato commessa per id. Le attivita' dei casi
+--   8, 10 e 12 le scrive il builder (rev §4-octies); l'11 resta qui.
 CREATE TEMP TABLE tmp_rc_commessa AS
-WITH ins AS (
--- 🔴 EMITTENTE, aggiunto il 2026-08-18.
---   La policy `rls_commesse_ef_whitelist` ammette, per il ruolo OPERATORE, solo gli
---   emittenti nella whitelist dell'utente — e la stessa espressione sta nel
---   `WITH CHECK`, quindi vale in scrittura. Senza
---   `emittente_soggetto_ruolo_id` l'INSERT moriva con «la nuova riga viola la
---   regola di sicurezza per riga» e il file si fermava li'.
---   L'emittente non si sceglie a mano: `script.fn_pgtap_emittente_sr_operatore()`
---   e' la compagna esatta della `fn_scope_ef_whitelist_via_sr` che la policy
---   interroga. Brief: brief-db-pgtap-runner-rls-baseline §26.
-  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id, stato_commessa_id,
-                               emittente_soggetto_ruolo_id)
-  SELECT 'PGTAP-RC-CMD-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id, r.stato_commessa_id,
-         script.fn_pgtap_emittente_sr_operatore()
-    FROM tmp_rc_refs r
-  RETURNING id)
-SELECT id FROM ins;
+SELECT c.commessa_id AS id
+  FROM dbops.fn_pgtap_crea_commessa('residuo commessa', NULL,
+         (SELECT billing_account_id FROM tmp_rc_refs)) c;
 
-INSERT INTO vendite.commesse_attivita (
-  commessa_id, segment_key,
-  articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
-  competenza_mese, competenza_dal, competenza_al,
-  tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
-  pricing_mode, stato_approvazione, stato_emissione,
-  sorgente_tipo_id, sorgente_uid
-)
-SELECT
-  (SELECT id FROM tmp_rc_commessa),
-  'PREV:' || (SELECT uid FROM tmp_rc_misto)::text || ':R:' || (SELECT id FROM tmp_rc_riga_serv)::text,
-  r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 2,
-  DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31',
-  r.tipo_doc_fiscale_id, r.valuta_id, 30.000000,
-  'FIXED', 'BOZZA', 'EMESSA',
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1),
-  (SELECT uid FROM tmp_rc_misto)::text
-FROM tmp_rc_refs r;
+-- rev 2026-10-24 (§4-octies): l'attivita' EMESSA della riga di servizio la
+--   scrive il builder con la sorgente; la chiave la compone il dominio.
+CREATE TEMP TABLE tmp_rc_att8 AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+    p_commessa_id        => (SELECT id FROM tmp_rc_commessa),
+    p_prezzo_snapshot    => 30.000000,
+    p_articolo_id        => (SELECT art_serv_id FROM tmp_rc_refs),
+    p_sorgente_codice    => 'PREVENTIVO',
+    p_sorgente_uid       => (SELECT uid::text FROM tmp_rc_misto),
+    p_sorgente_riga_id   => (SELECT id FROM tmp_rc_riga_serv),
+    p_quantita           => 2,
+    p_stato_approvazione => 'BOZZA',
+    p_stato_emissione    => 'EMESSA',
+    p_competenza_dal     => DATE '2080-01-01',
+    p_competenza_al      => DATE '2080-12-31');
 
 SELECT is(
   vendite.fn_preventivo_ha_residuo_commessa((SELECT id FROM tmp_rc_misto)),
@@ -342,19 +357,19 @@ BEGIN
 
     FOR caso IN
         SELECT * FROM (VALUES
-            ('tmp_rc_nonemessa', 'PGTAP-RC-NONEMESSA', 'pgtap_residuo_nonemessa'),
-            ('tmp_rc_bom',       'PGTAP-RC-BOM',       'pgtap_residuo_bom'),
-            ('tmp_rc_annull',    'PGTAP-RC-ANNULL',    'pgtap_residuo_annull')
-        ) AS v(tabella, numero, scope)
+            ('tmp_rc_nonemessa', 'pgtap_residuo_nonemessa'),
+            ('tmp_rc_bom',       'pgtap_residuo_bom'),
+            ('tmp_rc_annull',    'pgtap_residuo_annull')
+        ) AS v(tabella, scope)
     LOOP
         -- 1) La testata.
         INSERT INTO vendite.preventivi (
-            numero, rev, billing_account_id, istanza_utility_id, utility_id,
-            validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+            billing_account_id, istanza_utility_id, utility_id,
+            validita_dal, validita_al, valuta_id, data,
             fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
         VALUES (
-            caso.numero, 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-            DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
+            r.billing_account_id, r.istanza_utility_id, r.utility_id,
+            DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
             DATE '2080-01-01', false, false,
             jsonb_build_object('test_scope', caso.scope), r.emittente_fiscale_id)
         RETURNING id, uid INTO v_prev_id, v_prev_uid;
@@ -374,47 +389,73 @@ BEGIN
 END
 $servizio$;
 
--- Attivita NON_EMESSA con segment_key esatto (caso 10)
-INSERT INTO vendite.commesse_attivita (
-  commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
-  competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
-  pricing_mode, stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-SELECT (SELECT id FROM tmp_rc_commessa),
-  'PREV:' || (SELECT prev_uid FROM tmp_rc_nonemessa)::text || ':R:' || (SELECT riga_id FROM tmp_rc_nonemessa)::text,
-  r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
-  DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31', r.tipo_doc_fiscale_id, r.valuta_id, 25.000000,
-  'FIXED', 'BOZZA', 'NON_EMESSA',
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1),
-  (SELECT prev_uid FROM tmp_rc_nonemessa)::text
-FROM tmp_rc_refs r;
+-- Attivita NON_EMESSA con la chiave esatta della riga (caso 10): dal builder.
+CREATE TEMP TABLE tmp_rc_att10 AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+    p_commessa_id        => (SELECT id FROM tmp_rc_commessa),
+    p_prezzo_snapshot    => 25.000000,
+    p_articolo_id        => (SELECT art_serv_id FROM tmp_rc_refs),
+    p_sorgente_codice    => 'PREVENTIVO',
+    p_sorgente_uid       => (SELECT prev_uid::text FROM tmp_rc_nonemessa),
+    p_sorgente_riga_id   => (SELECT riga_id FROM tmp_rc_nonemessa),
+    p_quantita           => 1,
+    p_stato_approvazione => 'BOZZA',
+    p_stato_emissione    => 'NON_EMESSA',
+    p_competenza_dal     => DATE '2080-01-01',
+    p_competenza_al      => DATE '2080-12-31');
 
 -- Attivita NON_EMESSA con segment_key componente BoM '#CMP:<id>' (caso 11)
+-- ⚠️ rev 2026-10-24 (§4-octies): resta scritta a mano, perche' la chiave col
+--   suffisso #CMP e' il caso (il match a prefisso) e il builder non la scrive;
+--   la base <sorgente>:<uid>:R:<riga> la compone pero' script.fn_segment_key
+--   (il suffisso lo aggiunge chi scrive la riga, come nel dominio).
 INSERT INTO vendite.commesse_attivita (
   commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
   competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
   pricing_mode, stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
 SELECT (SELECT id FROM tmp_rc_commessa),
-  'PREV:' || (SELECT prev_uid FROM tmp_rc_bom)::text || ':R:' || (SELECT riga_id FROM tmp_rc_bom)::text || '#CMP:999',
+  script.fn_segment_key('PREVENTIVO', (SELECT prev_uid FROM tmp_rc_bom)::text, (SELECT riga_id FROM tmp_rc_bom)) || '#CMP:999',
   r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
   DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31', r.tipo_doc_fiscale_id, r.valuta_id, 25.000000,
   'FIXED', 'BOZZA', 'NON_EMESSA',
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1),
+  r.sorgente_preventivo_id,
   (SELECT prev_uid FROM tmp_rc_bom)::text
 FROM tmp_rc_refs r;
 
--- Attivita ANNULLATA con segment_key esatto (caso 12)
-INSERT INTO vendite.commesse_attivita (
-  commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
-  competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
-  pricing_mode, stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-SELECT (SELECT id FROM tmp_rc_commessa),
-  'PREV:' || (SELECT prev_uid FROM tmp_rc_annull)::text || ':R:' || (SELECT riga_id FROM tmp_rc_annull)::text,
-  r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
-  DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31', r.tipo_doc_fiscale_id, r.valuta_id, 25.000000,
-  'FIXED', 'BOZZA', 'ANNULLATA',
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1),
-  (SELECT prev_uid FROM tmp_rc_annull)::text
-FROM tmp_rc_refs r;
+-- Attivita ANNULLATA con la chiave esatta della riga (caso 12): dal builder.
+CREATE TEMP TABLE tmp_rc_att12 AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+    p_commessa_id        => (SELECT id FROM tmp_rc_commessa),
+    p_prezzo_snapshot    => 25.000000,
+    p_articolo_id        => (SELECT art_serv_id FROM tmp_rc_refs),
+    p_sorgente_codice    => 'PREVENTIVO',
+    p_sorgente_uid       => (SELECT prev_uid::text FROM tmp_rc_annull),
+    p_sorgente_riga_id   => (SELECT riga_id FROM tmp_rc_annull),
+    p_quantita           => 1,
+    p_stato_approvazione => 'BOZZA',
+    p_stato_emissione    => 'ANNULLATA',
+    p_competenza_dal     => DATE '2080-01-01',
+    p_competenza_al      => DATE '2080-12-31');
+
+-- Le righe scritte davvero, ciascuna sulla chiave della sua riga e nello
+-- stato del caso (controllo, non test: niente verde per sottrazione).
+DO $chk$ BEGIN
+  IF (SELECT count(*) FROM vendite.commesse_attivita ca
+        JOIN (SELECT attivita_id, 'EMESSA' AS st,
+                     script.fn_segment_key('PREVENTIVO', (SELECT uid::text FROM tmp_rc_misto),
+                                           (SELECT id FROM tmp_rc_riga_serv)) AS k FROM tmp_rc_att8
+              UNION ALL
+              SELECT attivita_id, 'NON_EMESSA',
+                     script.fn_segment_key('PREVENTIVO', (SELECT prev_uid::text FROM tmp_rc_nonemessa),
+                                           (SELECT riga_id FROM tmp_rc_nonemessa)) FROM tmp_rc_att10
+              UNION ALL
+              SELECT attivita_id, 'ANNULLATA',
+                     script.fn_segment_key('PREVENTIVO', (SELECT prev_uid::text FROM tmp_rc_annull),
+                                           (SELECT riga_id FROM tmp_rc_annull)) FROM tmp_rc_att12) t
+          ON t.attivita_id = ca.id AND ca.segment_key = t.k AND ca.stato_emissione = t.st) <> 3 THEN
+    RAISE EXCEPTION 'fixture: attese 3 attivita'' dal builder (casi 8, 10, 12)';
+  END IF;
+END $chk$;
 
 -- ============================================================
 -- 10) NON_EMESSA -> residuo = false (IL FIX: esclusa appena instradata)
@@ -435,12 +476,12 @@ SELECT is(
 );
 
 -- ============================================================
--- 12) Attivita ANNULLATA -> residuo = false (riga instradata, non ri-pushabile)
+-- 12) Attivita ANNULLATA -> residuo = true (D-5: la riga ritirata non occupa)
 -- ============================================================
 SELECT is(
   vendite.fn_preventivo_ha_residuo_commessa((SELECT prev_id FROM tmp_rc_annull)),
-  false,
-  '12. Attivita ANNULLATA: residuo commessa = false (decisione: non riapre il preventivo)'
+  true,
+  '12. Attivita ANNULLATA: residuo commessa = true (D-5: una riga ritirata non occupa, la riga torna da mandare)'
 );
 
 SELECT * FROM finish();

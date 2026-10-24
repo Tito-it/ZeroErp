@@ -21,7 +21,7 @@ GET e' la lista a catalogo `pratiche.flussi` (`lista_codice` della view `ApiPrat
 |---|---|---|
 | `search` | string | Ricerca libera sulle colonne accese a catalogo (`template_flusso_descrizione`); sotto la soglia della lista non filtra |
 | `limit` / `offset` | integer | Paginazione (default 25, massimo 200) |
-| `order_by` | string | Whitelist `FLUSSI_ORDER_COLS`: `sequenza`, `template_flusso_descrizione`, `stato_descrizione`, `esito_descrizione`, `data_scadenza`, `risorsa_umana_display`, `unita_organizzativa_descrizione`, `data_insert`; fuori whitelist = default |
+| `order_by` | string | Whitelist `FLUSSI_ORDER_COLS`: `sequenza`, `template_flusso_descrizione`, `stato_descrizione`, `esito_descrizione`, `data_scadenza`, `risorsa_umana_display`, `unita_organizzativa_descrizione`, `data_insert`; fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
 | `order_dir` | string | `asc` / `desc`; assente = ASC, DESC sulle date (`data_scadenza`, `data_insert`) |
 | `emittente_fiscale_id` | integer | Emittente (PK) della pratica aperta — `lista_emittente_param` della view: scioglie il cancello di perimetro per chi ha piu' emittenti nello scope. **Non filtra**: le righe le decide la pratica del path, sotto la sua RLS |
 
@@ -94,17 +94,17 @@ Senza ordinamento: `sequenza` ASC, spareggio su `id`.
   perimetro della lista: l'utente ha piu' emittenti nello scope e la richiesta
   non porta `emittente_fiscale_id` in query.
 - `400`: `pratica_id` non valido (`E_INVALID_ID`), JSON non valido
-- `409`: **prerequisiti non soddisfatti** (`PRATICHE_PREREQUISITI_NON_SODDISFATTI`,
+- `409`: **prerequisiti non soddisfatti** (`E_PRATICHE_PREREQUISITI_NON_SODDISFATTI`,
   catalogo DB id 300): il flusso non e' ancora eseguibile, mancano i prerequisiti
   del template. Guard `trgfn_flussi_guard_prerequisiti`; messaggio parlante con
   l'elenco dei template mancanti.
 - `401`: JWT mancante o non valido
-- `409`: **flusso non ripetibile** (`PRATICHE_FLUSSO_NON_RIPETIBILE`, catalogo
+- `409`: **flusso non ripetibile** (`E_PRATICHE_FLUSSO_NON_RIPETIBILE`, catalogo
   DB id 483, workflow v2 D3): la regola `template_flussi.ripetibilita` vieta
   una nuova istanza — `MAI` = esiste gia' un'istanza non annullata;
   `SE_NON_POSITIVO` = l'ultima istanza (`MAX(id)`) e' ancora aperta oppure
   chiusa con esito `POSITIVO`. `SEMPRE` non blocca mai.
-- `409`: **pratica terminale** (`PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO`,
+- `409`: **pratica terminale** (`E_PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO`,
   catalogo DB id 490): non si possono creare flussi su una pratica in stato
   terminale (`CHIUSA`/`ANNULLATA`). Guard `trg_flussi_a10_guard_pratica_terminale_ins_upd`.
 
@@ -130,7 +130,7 @@ Senza ordinamento: `sequenza` ASC, spareggio su `id`.
   (`verifica_prerequisiti`, `canali`) restano tolleranti ai flussi legacy con
   `template_flusso_id` NULL eventualmente ancora presenti a DB.
 - POST: lo stato iniziale `DA_ESEGUIRE` viene risolto da `config.stati_flussi_pratiche`.
-- POST: il trigger DB `trgfn_flussi_guard_prerequisiti` verifica che tutti i prerequisiti del template siano soddisfatti; in caso contrario l'INSERT fallisce e il service traduce l'errore nel codice parlante `PRATICHE_PREREQUISITI_NON_SODDISFATTI` (id 300, HTTP 409) via marker.
+- POST: il trigger DB `trgfn_flussi_guard_prerequisiti` verifica che tutti i prerequisiti del template siano soddisfatti; in caso contrario l'INSERT fallisce e il service traduce l'errore nel codice parlante `E_PRATICHE_PREREQUISITI_NON_SODDISFATTI` (id 300, HTTP 409) via marker.
 - POST (2026-06-12, D3): il guard `trg_flussi_a10_guard_ripetibilita_ins`
   applica la regola di ripetibilita' del template; il service traduce
   l'errore DB nel codice parlante 483 via marker sul messaggio (vedi
@@ -139,7 +139,7 @@ Senza ordinamento: `sequenza` ASC, spareggio su `id`.
   [api_percorso](api_percorso.md)).
 - POST (2026-06-14): il guard `trg_flussi_a10_guard_pratica_terminale_ins_upd`
   blocca la creazione di flussi su pratica terminale (`CHIUSA`/`ANNULLATA`); il
-  service traduce l'errore nel codice parlante `PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO`
+  service traduce l'errore nel codice parlante `E_PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO`
   (id 490) via marker.
 - POST: wrappato in `@transaction.atomic()`.
 - Endpoint v1 richiede JWT.

@@ -1,0 +1,209 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVA COLONNA: natura_vendita_id su vendite.ordini_righe e vendite.ddt_righe
+#   La riga dice che cosa si e' venduto, non che cosa e' l'articolo oggi.
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-4, §9.2)
+#
+# -- PERCHE' (A-4 di Tid, 2026-10-12) -----------------------------------
+#   Le regole sulle righe (Lotto 3: ordine e bolla solo merce) giudicano la
+#   natura. Letta viva dall'articolo, un cambio in anagrafica renderebbe
+#   «sbagliata» una riga gia' venduta, e il passo dopo (la bolla) la
+#   rifiuterebbe per una modifica fatta altrove. La riga di preventivo la
+#   porta gia'; ordine e bolla no.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   bigint, FK verso config.nature_vendita, come preventivi_righe
+#   (fk_prevrighe_nature_vendita). NOT NULL: catalogo.articoli.natura_vendita_id
+#   e' NOT NULL, quindi una natura c'e' sempre. Nessun indice sulla FK: la
+#   politica e' opt-in e il preventivo non lo ha (dbops.fk_index_policy).
+#   La scrive il DB, non chi inserisce: script.trgfn_righe_natura_vendita
+#   (20261013-08/-09). Il lock di colonna e' un dato (dbops.automation_lock_columns).
+#
+# -- IL BACKFILL ---------------------------------------------------------
+#   Le righe gia' scritte prendono la natura dalla loro ORIGINE, se c'e':
+#     ordini_righe : la riga di preventivo (preventivo_riga_id), poi l'articolo;
+#     ddt_righe    : la riga d'ordine che evadono (ordini_righe_fulfillment),
+#                    la riga di bolla da cui nascono le riconsegne
+#                    (resi_righe_riconsegne -> resi_righe.ddt_riga_id, anche a
+#                    catena), poi l'articolo.
+#   ⛔ L'UPDATE si fa coi trigger della tabella SPENTI, letti per nome da
+#   pg_trigger e riaccesi col loro modo: il lock «righe solo in bozza»
+#   rifiuterebbe le righe dei documenti emessi, e i require_attivo giudicano i
+#   padri a ogni UPDATE anche se la FK non cambia (ref. 20261011-69). E' una
+#   colonna nuova scritta dal DB: audit e storico non hanno niente da dire.
+#   Non DISABLE TRIGGER USER: riaccenderebbe anche quelli spenti di proposito.
+#   Su un database nuovo le tabelle sono vuote e il blocco non fa niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261013-07-alter-ordini-ddt-righe-add-natura-vendita-mctit.yaml
+
+  - changeSet:
+      id: 20261013-07-alter-ordini-ddt-righe-add-natura-vendita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ordini_righe e vendite.ddt_righe: natura_vendita_id (FK config.nature_vendita, NOT
+        NULL), la natura con cui la riga e' stata venduta. Backfill dall'origine (preventivo,
+        ordine, riconsegna) e poi dall'articolo. Brief: brief-db-articoli-ammessi-per-documento
+        (§8.6 A-4).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: ordini_righe
+                    columnName: natura_vendita_id
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: ddt_righe
+                    columnName: natura_vendita_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ordini_righe
+                  ADD COLUMN natura_vendita_id bigint NULL,
+                  ADD CONSTRAINT fk_ordrig_natura_vendita
+                      FOREIGN KEY (natura_vendita_id) REFERENCES config.nature_vendita (id);
+
+              ALTER TABLE vendite.ddt_righe
+                  ADD COLUMN natura_vendita_id bigint NULL,
+                  ADD CONSTRAINT fk_ddt_vendita_r_natura_vendita
+                      FOREIGN KEY (natura_vendita_id) REFERENCES config.nature_vendita (id);
+
+              DO $backfill$
+              DECLARE
+                  v_trg   record;
+                  v_spenti jsonb := '[]'::jsonb;
+                  v_n     integer;
+                  v_giro  integer := 0;
+              BEGIN
+                  -- Spegne per nome i trigger utente ACCESI delle due tabelle,
+                  -- ricordandone il modo (O = origin, A = always, R = replica).
+                  FOR v_trg IN
+                      SELECT c.relname, t.tgname, t.tgenabled
+                        FROM pg_trigger t
+                        JOIN pg_class c ON c.oid = t.tgrelid
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = 'vendite'
+                         AND c.relname IN ('ordini_righe', 'ddt_righe')
+                         AND NOT t.tgisinternal
+                         AND t.tgenabled <> 'D'
+                  LOOP
+                      EXECUTE format('ALTER TABLE vendite.%I DISABLE TRIGGER %I',
+                                     v_trg.relname, v_trg.tgname);
+                      v_spenti := v_spenti || jsonb_build_object(
+                          'tabella', v_trg.relname, 'trigger', v_trg.tgname,
+                          'modo', v_trg.tgenabled::text);
+                  END LOOP;
+
+                  -- Ordine: dalla riga di preventivo, poi dall'articolo.
+                  UPDATE vendite.ordini_righe orr
+                     SET natura_vendita_id = COALESCE(
+                             (SELECT pr.natura_vendita_id FROM vendite.preventivi_righe pr
+                               WHERE pr.id = orr.preventivo_riga_id),
+                             (SELECT a.natura_vendita_id FROM catalogo.articoli a
+                               WHERE a.id = orr.articolo_id))
+                   WHERE orr.natura_vendita_id IS NULL;
+
+                  -- Bolla, 1: la riga d'ordine che evade.
+                  UPDATE vendite.ddt_righe dr
+                     SET natura_vendita_id = src.natura_vendita_id
+                    FROM (SELECT f.ddt_riga_id, min(orr.natura_vendita_id) AS natura_vendita_id
+                            FROM vendite.ordini_righe_fulfillment f
+                            JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id
+                           GROUP BY f.ddt_riga_id) src
+                   WHERE src.ddt_riga_id = dr.id
+                     AND dr.natura_vendita_id IS NULL;
+
+                  -- Bolla, 2: le righe che non sono riconsegne, dall'articolo.
+                  UPDATE vendite.ddt_righe dr
+                     SET natura_vendita_id = a.natura_vendita_id
+                    FROM catalogo.articoli a
+                   WHERE a.id = dr.articolo_id
+                     AND dr.natura_vendita_id IS NULL
+                     AND NOT EXISTS (SELECT 1 FROM vendite.resi_righe_riconsegne rrr
+                                      WHERE rrr.ddt_riga_id = dr.id);
+
+                  -- Bolla, 3: le riconsegne, dalla riga di bolla d'origine. A
+                  -- giri: una riconsegna puo' nascere da una riga che e' a sua
+                  -- volta una riconsegna. Il tetto ferma un ciclo che il modello
+                  -- non ammette, invece di girare per sempre.
+                  LOOP
+                      v_giro := v_giro + 1;
+                      UPDATE vendite.ddt_righe dr
+                         SET natura_vendita_id = src.natura_vendita_id
+                        FROM (SELECT rrr.ddt_riga_id, min(d_src.natura_vendita_id) AS natura_vendita_id
+                                FROM vendite.resi_righe_riconsegne rrr
+                                JOIN vendite.resi_righe rr   ON rr.id = rrr.resi_riga_id
+                                JOIN vendite.ddt_righe d_src ON d_src.id = rr.ddt_riga_id
+                               WHERE d_src.natura_vendita_id IS NOT NULL
+                               GROUP BY rrr.ddt_riga_id) src
+                       WHERE src.ddt_riga_id = dr.id
+                         AND dr.natura_vendita_id IS NULL;
+                      GET DIAGNOSTICS v_n = ROW_COUNT;
+                      EXIT WHEN v_n = 0 OR v_giro >= 20;
+                  END LOOP;
+
+                  -- Bolla, 4: cio' che resta (origine senza natura), dall'articolo.
+                  UPDATE vendite.ddt_righe dr
+                     SET natura_vendita_id = a.natura_vendita_id
+                    FROM catalogo.articoli a
+                   WHERE a.id = dr.articolo_id
+                     AND dr.natura_vendita_id IS NULL;
+
+                  -- Riaccende ciascuno col suo modo.
+                  FOR v_trg IN
+                      SELECT e->>'tabella' AS tabella, e->>'trigger' AS trigger, e->>'modo' AS modo
+                        FROM jsonb_array_elements(v_spenti) e
+                  LOOP
+                      EXECUTE format('ALTER TABLE vendite.%I %s TRIGGER %I',
+                                     v_trg.tabella,
+                                     CASE v_trg.modo WHEN 'A' THEN 'ENABLE ALWAYS'
+                                                     WHEN 'R' THEN 'ENABLE REPLICA'
+                                                     ELSE 'ENABLE' END,
+                                     v_trg.trigger);
+                  END LOOP;
+              END
+              $backfill$;
+
+              ALTER TABLE vendite.ordini_righe ALTER COLUMN natura_vendita_id SET NOT NULL;
+              ALTER TABLE vendite.ddt_righe    ALTER COLUMN natura_vendita_id SET NOT NULL;
+
+              COMMENT ON COLUMN vendite.ordini_righe.natura_vendita_id IS
+                  'La natura di vendita con cui la riga e'' stata venduta, congelata: un cambio '
+                  'della natura dell''articolo in anagrafica non la tocca. La scrive il DB '
+                  '(script.trgfn_righe_natura_vendita, modo CHIAMANTE): il valore portato dal verbo '
+                  'che copia la riga (fn_push_preventivo_a_ordine porta quella della riga di '
+                  'preventivo), altrimenti quella dell''articolo; si riscrive solo quando cambia '
+                  'l''articolo. A mano non si cambia (dbops.automation_lock_columns, '
+                  'E_RIGA_NATURA_VENDITA_IMMUTABILE). La leggono le regole sulle righe. Brief: '
+                  'brief-db-articoli-ammessi-per-documento (A-4).';
+              COMMENT ON COLUMN vendite.ddt_righe.natura_vendita_id IS
+                  'La natura di vendita con cui la riga e'' stata venduta, congelata: un cambio '
+                  'della natura dell''articolo in anagrafica non la tocca. La scrive il DB '
+                  '(script.trgfn_righe_natura_vendita, modo CHIAMANTE): il valore portato dal verbo '
+                  'che genera la riga (fn_genera_ddt_da_ordine dalla riga d''ordine, '
+                  'fn_genera_ddt_riconsegna dalla riga di bolla d''origine), altrimenti quella '
+                  'dell''articolo; si riscrive solo quando cambia l''articolo. A mano non si cambia '
+                  '(dbops.automation_lock_columns, E_RIGA_NATURA_VENDITA_IMMUTABILE). Brief: '
+                  'brief-db-articoli-ammessi-per-documento (A-4).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ddt_righe    DROP COLUMN IF EXISTS natura_vendita_id;
+              ALTER TABLE vendite.ordini_righe DROP COLUMN IF EXISTS natura_vendita_id;

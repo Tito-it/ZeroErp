@@ -40,7 +40,8 @@ from apps.vendite.db._event_log_repo_mixin import EventLogRepositoryMixin
 from apps.vendite.db.commesse_repository import (
     TIPO_MOVIMENTO_NORMALE,
 )
-from apps.core.services.value_normalizer import as_bool, empty_to_none
+from apps.core.api.payload_validators import optional_bool
+from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db._data_documento_sql import (
     SQL_DATA_DOCUMENTO_CORRENTE,
     costruisci_perimetro_lotti_numerabili,
@@ -325,10 +326,19 @@ _GROUP_ATTIVITA_SELECT = """
                     a.competenza_al,
                     a.data_attivita,
                     COALESCE(r.calcolo_qta_padre, 'fissa') AS calcolo_qta_padre,
-                    COALESCE(r.arrotondamento_importi_dec, 2) AS arrotondamento_importi_dec,
+                    -- ⭐ Decimali e metodo dell'IMPORTO dal BB del DB
+                    --    `vendite.fn_parametri_importo_riga` (brief-db-modelli-
+                    --    documento-standard §10.9 R-3): la regola dell'articolo,
+                    --    se no i parametri effettivi dell'emittente per l'utility
+                    --    della fattura — la stessa catena del trigger della riga
+                    --    e del ricalcolo dei totali. ⛔ Fino al 2026-10-21 qui
+                    --    c'erano i letterali `COALESCE(…, 2)` / `'HALF_UP'`: un
+                    --    emittente con parametri suoi raggruppava a 2 decimali e
+                    --    il DB arrotondava la riga coi suoi.
+                    --    Le QUANTITA' restano qui (3 / HALF_UP): e' la copia unica.
+                    pi.arrotondamento_importi_dec,
                     COALESCE(r.arrotondamento_quantita_dec, 3) AS arrotondamento_quantita_dec,
-                    COALESCE(r.metodo_arrotondamento_importi, 'HALF_UP')
-                        AS metodo_arrotondamento_importi,
+                    pi.metodo_arrotondamento_importi,
                     COALESCE(r.metodo_arrotondamento_quantita, 'HALF_UP')
                         AS metodo_arrotondamento_quantita,
                     a.tipo_movimento,
@@ -355,12 +365,36 @@ _GROUP_ATTIVITA_SELECT = """
                 -- una rettifica, cioe' sul caso normale.
                 LEFT JOIN vendite.fatture_righe fr
                   ON fr.id = a.fattura_riga_rettificata_id
+                -- Emittente e utility della FATTURA che l'attivita' produrra':
+                -- dal resolver che usa la chiave della testata
+                -- (`fn_build_fattura_key`), col BA della riga — non ricopiati
+                -- qui. Il tipo di documento non serve per questi due anelli
+                -- (NULL: il resolver non solleva, lascia il registro vuoto).
+                LEFT JOIN LATERAL vendite.fn_resolve_registro_documento(
+                    p_billing_account_id_riga => a.billing_account_id,
+                    p_tipo_doc_fiscale_id     => NULL
+                ) rr ON true
+                LEFT JOIN LATERAL vendite.fn_parametri_importo_riga(
+                    a.articolo_id, rr.emittente_soggetto_ruolo_id, rr.utility_id
+                ) pi ON true
 """
 
 
 # Scopo: Costruisce un `GroupAttivitaInput` da una riga di `_GROUP_ATTIVITA_SELECT`.
 #        Unico mapping: le due letture non possono divergere.
 def _group_attivita_input_da_row(row: tuple[Any, ...]) -> GroupAttivitaInput:
+    # ⚠️ Decimali e metodo dell'importo NULL = il BB non ha da dove prenderli:
+    #    niente regole dell'articolo e nessuna utility risolta (il BA della riga
+    #    non visibile sotto RLS). Come il trigger della riga, non si indovina:
+    #    E_CONFIG_MANCANTE, invece del `int(None)` che sarebbe un 500 muto.
+    ErrorManager.require(
+        row[9] is not None and row[11] is not None,
+        code="E_CONFIG_MANCANTE",
+        message="Parametri di arrotondamento dell'importo non risolti per l'attivita'.",
+        detail=f"attivita_id={row[0]} articolo_id={row[1]}",
+        context={"attivita_id": row[0]},
+        function_name="vendite.pipeline_repository._group_attivita_input_da_row",
+    )
     return GroupAttivitaInput(
         attivita_id=int(row[0]),
         # ⚠️ `str`, non `int`: e' un UUID (catalogo.articoli.id).
@@ -1772,7 +1806,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     ) -> None:
         assert context is not None
         # Normalizza i parametri JSON prima della chiamata alla funzione SQL.
-        lock = as_bool(params.get("lock"), default=False)
+        lock = optional_bool(params, "lock", default=False)
         data_fatturazione = empty_to_none(params.get("data_fatturazione"))
         valuta_id = empty_to_none(params.get("valuta_id"))
         # Emittente: fonte primaria e` il lotto persistito (context); i params JSON non lo sovrascrivono.
@@ -2626,14 +2660,20 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         return int(row[0])
 
     # Scopo: Accoda in vendite.fatture_stampa_coda una riga PENDING per ogni
-    #        fattura del lotto (outbox stampa, Fase C C-2c).
-    #        Idempotente (indice unico parziale sui work-item vivi).
-    #        Ritorna il numero di righe accodate.
-    def accoda_stampe_lotto(self, lotto_id: int) -> int:
+    #        fattura del lotto (outbox stampa, Fase C C-2c), col tipo di
+    #        documento da stampare quando il chiamante lo conosce (C-1,
+    #        brief-db-modelli-documento-standard §9): NULL = lo deduce la
+    #        risoluzione al drenaggio, se la sorgente ne ha uno solo.
+    #        Idempotente (vincolo di esclusione ex_fatture_stampa_coda_vivo:
+    #        una riga viva per fattura e tipo, una col tipo NULL esclude le
+    #        altre). Ritorna il numero di righe accodate.
+    def accoda_stampe_lotto(
+        self, lotto_id: int, tipo_documento_output_id: int | None = None,
+    ) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT vendite.fn_accoda_stampe_lotto(%s)",
-                [lotto_id],
+                "SELECT vendite.fn_accoda_stampe_lotto(%s, %s)",
+                [lotto_id, tipo_documento_output_id],
             )
             row = cursor.fetchone()
         assert row is not None
@@ -2708,11 +2748,13 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #        drainer. `FOR UPDATE SKIP LOCKED` → più worker in parallelo non si
     #        pestano (ognuno prende righe diverse); il flip a IN_CORSO nella
     #        stessa istruzione le sottrae ai claim successivi (e al
-    #        ri-accodamento, uq_fatture_stampa_coda_vivo). `data_update = now()`
+    #        ri-accodamento, ex_fatture_stampa_coda_vivo). `data_update = now()`
     #        = claimed_at per il reaper (la tabella non ha trigger audit).
     #        Ordine per id (indice parziale ix_fatture_stampa_coda_da_lavorare).
     #        Il render avviene FUORI da qui: la connessione non tiene il lock
-    #        durante l'I/O (I-4b). Ritorna i work-item claimati (lista dict).
+    #        durante l'I/O (I-4b). Ritorna i work-item claimati (lista dict),
+    #        col tipo di documento da stampare (NULL = lo deduce la
+    #        risoluzione).
     def claim_stampe_pending(self, limit: int) -> list[dict[str, Any]]:
         safe_limit = max(1, int(limit))
         sql = """
@@ -2731,7 +2773,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
               FROM claimed
              WHERE c.id = claimed.id
             RETURNING c.id, c.sorgente_tipo_id, c.sorgente_id, c.sorgente_uid,
-                      c.lotto_id, c.template_documento_id, c.tentativi
+                      c.lotto_id, c.template_documento_id,
+                      c.tipo_documento_output_id, c.tentativi
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
@@ -2945,7 +2988,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             sort_by, sort_dir,
             colonne=CODA_STAMPA_SORT_SQL, default="c.data_insert",
             default_desc=True, colonne_desc=CODA_STAMPA_SORT_COLONNE_DATA,
-            tiebreak="c.id", rifiuta_fuori_whitelist=True,
+            tiebreak="c.id",
         )
         from_join = """
               FROM vendite.fatture_stampa_coda c

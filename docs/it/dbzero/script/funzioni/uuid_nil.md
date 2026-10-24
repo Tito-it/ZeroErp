@@ -7,6 +7,8 @@ CREATE FUNCTION uuid_nil()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.uuid_nil()
  RETURNS uuid
@@ -19,6 +21,8 @@ $function$
 COMMENT ON FUNCTION script.uuid_nil()
 IS 'Restituisce l’UUID nil (all-zeros) come helper per usi in trigger e funzioni';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

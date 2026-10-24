@@ -8,6 +8,7 @@ import { usePreventiviStore } from '../stores/preventivi'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
+import { useForzaturaConfermata } from '../../../core/composables/useForzaturaConfermata'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
@@ -24,7 +25,8 @@ import { getPreventivoFormDefaults } from '../../api/formDefaults'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { createPreventivo, getContestoPricing } from '../api/preventiviApi'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
-import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../../core/apiCore'
+import { ripristinaBillingAccount, ripristinaIstanzaUtility } from '../../../core/utils/ripristinaLookup'
+import { useCambioClienteDocumento } from '../../_shared/cliente/useCambioClienteDocumento'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import AppDrawer from '../../../core/components/AppDrawer.vue'
@@ -47,6 +49,9 @@ import { SORGENTE_CODES } from '../../../documenti/constants'
 import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
 import PreventivoEmissioneDialog from './dialogs/PreventivoEmissioneDialog.vue'
 import PreventivoAccettazioneDialog from './dialogs/PreventivoAccettazioneDialog.vue'
+import DocumentoAnnulloLegamiDialog from '../../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
+import DateConsegnaRigheDialog from '../../_shared/dateConsegna/DateConsegnaRigheDialog.vue'
+import { useDateConsegnaRighe } from '../../_shared/dateConsegna/useDateConsegnaRighe'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 import Message from 'primevue/message'
@@ -215,6 +220,7 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 // Composable centralizzato (Fase 4.F2): availableActions/canEdit/flag/isLocked/
 // nonEditableFields uniformi a Contratti/Promo. Qui editFlag = can_edit_testata.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
@@ -247,18 +253,27 @@ const showSmistamento = computed(() => {
   const stato = detail.value?.stato_codice_interno
   return stato === STATO_PREVENTIVO.ACCETTATO || stato === STATO_PREVENTIVO.EVASO
 })
+// Smistamento spento quando nessuno dei due rami e' eseguibile (es. EVASO):
+// stato ⇒ disabilita col motivo (frontend-standards). Il motivo e' quello che
+// il DB manda per ramo (`can_*_reason_key`), a tooltip sul pulsante — non piu'
+// due banner che ripetevano la nota di stato della barra.
+const smistamentoReason = computed(() => {
+  if (canPushCommessa.value || canGeneraOrdine.value) return ''
+  const keys = [generaOrdineReasonKey.value, pushCommessaReasonKey.value]
+    .filter(k => k && te(k))
+  return [...new Set(keys.map(k => t(k)))].join('\n')
+})
 // Per PreventiviForm passiamo l'array originale (no Set): il prop e' typed Array.
-// Quando il drawer ha gia' un detail (CREATE post auto-save bozza o EDIT classico)
-// blocchiamo lato UX il cambio di billing_account_id e istanza_utility_id: il
-// preventivo a quel punto e' agganciato al BA/istanza scelti e si sta gestendo
-// il dettaglio righe; un cambio sarebbe un nuovo preventivo, non una modifica
-// della testata. utility_id era gia' immutabile via metadata BE.
+// Quali campi si cambiano lo dice la capability (`testata.campiBloccati`, dal
+// lock di testata del DB): in bozza il cliente (BA e istanza, in coppia) si
+// cambia, e gli indirizzi lo seguono (D-1 di brief-db-indirizzi-documento-
+// seguono-il-cliente); utility ed emittente mai.
+// ⛔ Fino al 2026-10-19 qui c'era una regola del solo FE, «a preventivo
+//    esistente BA e istanza sono bloccati», che scavalcava la capability: il
+//    cambio di cliente in bozza, deciso e gestito dal backend, era impossibile
+//    da video (trovato nel collaudo di Tid).
 const nonEditableFields = computed(() => {
   const base = testata.campiBloccati.value
-  // Post auto-save bozza / EDIT: cambiare BA o istanza sarebbe un altro
-  // preventivo, non una modifica → entrambi bloccati. utility_id è già
-  // immutabile via metadata BE.
-  if (hasDetail.value) return [...base, 'billing_account_id', 'istanza_utility_id']
   // Aperto da pratica: blocca SOLO i campi effettivamente ereditati (passati,
   // non-null) dal contesto — "se passati da esterno → valorizzati e non
   // modificabili". Un campo assente (es. pratica senza BA) resta editabile:
@@ -307,12 +322,12 @@ function defaultForm() {
     billing_account_id: null,
     // _obj per BillingAccountLookup AutoComplete (pattern restore lookup ricco,
     // memoria feedback_autocomplete_restore). Popolato da onBaSelected (FE)
-    // o da loadDetail() via getBillingAccountLookupById in edit.
+    // o da loadDetail() da ripristinaBillingAccount in edit.
     billing_account_obj: null,
     istanza_utility_id: null,
     // _obj per IstanzaUtilityLookup AutoComplete (pattern restore lookup ricco).
     // Popolato da onIstanzaSelected (FE) o da prefillFromPratica() via
-    // getIstanzaUtilityLookupById (pratica senza BA). Un preventivo salvato ha
+    // ripristinaIstanzaUtility (pratica senza BA). Un preventivo salvato ha
     // sempre il BA (brief-db-istanza-nasce-col-ba, R-2): l'istanza e' derivata
     // e il picker e' nascosto.
     istanza_utility_obj: null,
@@ -413,7 +428,7 @@ async function loadDetail(id = null) {
     utility_id: data.utility_id,
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
     billing_account_id: data.billing_account_id,
-    billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
+    billing_account_obj: null,  // popolato sotto da ripristinaBillingAccount
     istanza_utility_id: data.istanza_utility_id,
     istanza_utility_obj: null,  // il BA c'e' sempre: l'istanza e' derivata, picker nascosto
     valuta_id: data.valuta_id,
@@ -434,21 +449,29 @@ async function loadDetail(id = null) {
   // ⚠️ Il ramo «preventivo prospect senza BA», che ripristinava il picker
   //    istanza, e' stato tolto il 2026-10-08: il BA e' NOT NULL
   //    (brief-db-istanza-nasce-col-ba, R-2).
-  if (data.billing_account_id) {
-    try {
-      const res = await getBillingAccountLookupById(data.billing_account_id)
-      const ba = res?.data?.data
-      if (ba) form.value.billing_account_obj = ba
-    } catch {
-      // Resto: form parte senza _obj, l'utente puo' rieseguire la ricerca.
-    }
-  }
+  await ripristinaBillingAccount(form.value, data.billing_account_id)
   // Riepilogo IVA aggregato: il trigger DB lo mantiene in sync con le righe
   // su ogni mutazione, qui leggiamo lo stato corrente. Best-effort: in caso
   // di failure il pannello resta vuoto, i totali aggregati nella testata
   // restano comunque visibili.
   await loadRiepilogoIva(targetId)
 }
+
+// ⭐ Il cambio di cliente in modifica si salva subito, con conferma (BB
+//    `useCambioClienteDocumento`, decisione di Tid 2026-10-19): il DB rifa' gli
+//    indirizzi, e pannello e «Indirizzi» mostrano subito quelli del cliente
+//    nuovo. Vale anche dopo l'auto-save della bozza (c'e' il dettaglio).
+useCambioClienteDocumento({
+  form,
+  detail,
+  attivo: () => hasDetail.value && testata.modificabile.value
+    && !nonEditableFields.value.includes('billing_account_id'),
+  salva: (corpo) => execute(
+    () => store.update(effectivePreventivoId.value, corpo),
+    { successMessage: t('vendite.preventivi.preventivo_salvato') },
+  ),
+  ricarica: () => loadDetail(),
+})
 
 // Scopo: in CREATE da pratica, pre-compila cliente/istanza dal contesto pratica
 // e ne ripristina gli _obj per i lookup (stesso restore di loadDetail). I campi
@@ -463,18 +486,10 @@ async function prefillFromPratica() {
   if (ctx.billingAccountId) {
     // BA-first, istanza derivata dal BA (picker istanza nascosto).
     form.value.billing_account_id = ctx.billingAccountId
-    try {
-      const res = await getBillingAccountLookupById(ctx.billingAccountId)
-      const ba = res?.data?.data
-      if (ba) form.value.billing_account_obj = ba
-    } catch { /* best-effort: il campo resta col solo id, comunque bloccato */ }
+    await ripristinaBillingAccount(form.value, ctx.billingAccountId)
   } else if (ctx.istanzaUtilityId) {
     // Pratica con la sola istanza: picker istanza visibile, disabilitato.
-    try {
-      const res = await getIstanzaUtilityLookupById(ctx.istanzaUtilityId)
-      const iu = res?.data?.data
-      if (iu) form.value.istanza_utility_obj = iu
-    } catch { /* best-effort */ }
+    await ripristinaIstanzaUtility(form.value, ctx.istanzaUtilityId)
   }
 }
 
@@ -610,9 +625,15 @@ const { close } = useDrawerAutosaveBozza({
 //    risolutore (I2), non un default copiato dall'anagrafica.
 // Watcher BA→defaults condiviso (guard token + valuta BA-wins nel composable).
 // Extra preventivo: termine pagamento (solo se l'operatore non l'ha scelto).
-const { applicaDefaults: applicaDefaultsBa } = useBaFormDefaults({
+// ⛔ Il guard del watch non e' `isEdit` ma «il documento esiste» (2026-10-19,
+//    decisione di Tid): dopo l'auto-save della bozza il drawer e' ancora in
+//    creazione, ma un cambio di cliente passa da `useCambioClienteDocumento`
+//    (si salva subito, o si annulla) come in modifica. Coi default applicati,
+//    un «Annulla» lasciava nel form il termine di pagamento del cliente
+//    scartato (se prima era vuoto), e il Salva successivo lo scriveva.
+const { applicaDefaults: applicaDefaultsBa, inCorso: defaultsClienteInCorso } = useBaFormDefaults({
   form,
-  isEdit,
+  isEdit: computed(() => isEdit.value || hasDetail.value),
   fetchDefaults: getPreventivoFormDefaults,
   apply: (data, f) => {
     if (f.termine_pagamento_id == null && data.termine_pagamento_id != null) {
@@ -629,8 +650,11 @@ const { applicaDefaults: applicaDefaultsBa } = useBaFormDefaults({
 // Defense-in-depth: il footer segue la stessa regola (`useTestataDocumento`),
 // ma la guard sta anche qui cosi' qualsiasi consumer futuro del computed
 // (shortcut tastiera, save programmato) e' coperto.
+// Finche' arrivano i dati del cliente (BB `useBaFormDefaults`) il Salva
+// aspetta: partirebbe un form senza quei dati, presi per scelte dell'operatore.
 const canSave = computed(() => {
   if (!testata.modificabile.value) return false
+  if (defaultsClienteInCorso.value) return false
   const f = form.value
   if (f.utility_id == null) return false
   if (!isEdit.value && f.istanza_utility_id == null) return false
@@ -715,9 +739,26 @@ const emissioneLoading = ref(false)
 // pannello in coda al contenuto del drawer — le azioni di processo stanno in
 // alto, come per il «Genera reso» del DDT.
 const smistamentoDialogVisible = ref(false)
-// Ref alla barra collegamenti: lo smistamento crea archi verso ordine/commessa,
-// quindi i chip vanno ricaricati insieme al detail (vedi `onSmistato`).
-const collegamentiRef = ref(null)
+// ⭐ L'annullo e' un gesto CONFERMABILE (brief-db-annullo-documento-con-
+//    legami): con righe di commessa da emettere il DB lo rifiuta
+//    (`confirm_and_retry`) finche' chi conferma non dichiara quanti legami ha
+//    visto; la domanda la porta a video `DocumentoAnnulloLegamiDialog`.
+//    ⚠️ Solo l'annullo passa da qui: le altre transizioni restano su
+//    `execute`, perche' l'accettazione accende i campi del suo dialog con i
+//    `campiErrati` dell'handler del drawer.
+const cambioStato = useForzaturaConfermata()
+const { richiestaConferma: domandaAnnullo } = cambioStato
+
+// Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
+//        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
+//        ordine riapre il residuo e riaccende «Genera DDT» — quindi si
+//        rileggono testata (stato, capability), righe. I chip li rilegge la
+//        barra da se'. Le liste in ascolto le ha gia' avvisate lo store del
+//        verbo, nel drawer impilato.
+async function onDocumentoCollegatoChiuso() {
+  await loadDetail()
+  righeTableRef.value?.loadRighe()
+}
 // Dialog accettazione estratto in PreventivoAccettazioneDialog (componente
 // condiviso col percorso pratica): qui resta solo apertura + conferma. Il
 // payload {fatturazione_immediata, competenza_mese} arriva gia' BE-ready.
@@ -800,11 +841,27 @@ async function handleEmissioneConferma({ files }) {
 }
 
 async function eseguiCambioStato(nuovoStato, extras = {}) {
-  const result = await execute(
-    () => store.cambiaStato(effectivePreventivoId.value, nuovoStato, extras),
-    { successMessage: t('vendite.preventivi.stato_cambiato') }
-  )
+  const opts = { successMessage: t('vendite.preventivi.stato_cambiato') }
+  // L'annullo: primo tentativo SEMPRE senza dichiarazione.
+  const result = nuovoStato === STATO_PREVENTIVO.ANNULLATO
+    ? await cambioStato.esegui(
+      (dichiarazione) => store.cambiaStato(effectivePreventivoId.value, nuovoStato, { ...extras, ...dichiarazione }),
+      opts,
+    )
+    : await execute(() => store.cambiaStato(effectivePreventivoId.value, nuovoStato, extras), opts)
+  await dopoCambioStato(result)
+}
+
+// Scopo: l'operatore ha visto i legami e conferma l'annullo: si ripete la
+//        chiamata DICHIARANDO quanti erano.
+async function onConfermaAnnullo(dichiarazione) {
+  await dopoCambioStato(await cambioStato.conferma(dichiarazione))
+}
+
+async function dopoCambioStato(result) {
   if (result !== null) {
+    // L'annullo ritira i legami: i chip dei collegamenti li rilegge la barra,
+    // agganciata al dettaglio (`:versione`).
     await loadDetail()
     emit('saved', result)
   }
@@ -834,10 +891,34 @@ function onNuovaRevisione() {
 // verbo `generaOrdine`, non questo drawer.
 async function onSmistato() {
   await loadDetail()
-  collegamentiRef.value?.reload()
   // `changed` resta il contratto del drawer verso CHI LO HA APERTO, che non e'
   // per forza una lista in ascolto dell'evento (es. l'host dei flussi pratica).
   emit('changed')
+}
+
+// «Aggiorna date di consegna» (brief-db-date-consegna-righe-in-blocco): la
+// riga di preventivo porta la sola data richiesta, e si scrive in bozza (D-3,
+// D-4). Fuori bozza l'azione non compare: `can_edit_righe` non porta un
+// motivo (BF-3). In readonly puro — anche una revisione superata — nemmeno.
+const dateConsegna = useDateConsegnaRighe({
+  colonne: [{
+    colonna: 'data_consegna_richiesta_cliente',
+    labelKey: 'vendite.preventivi.riga_data_consegna_richiesta_cliente',
+    attiva: () => caps.flag('can_edit_righe'),
+  }],
+  readonlyPuro: () => isReadonlyPuro.value,
+  presente: () => hasDetail.value,
+  righe: () => detail.value?.righe_count ?? 0,
+})
+const dateConsegnaAzione = dateConsegna.azione
+const dateConsegnaVisible = dateConsegna.dialogVisible
+const dateConsegnaColonne = dateConsegna.colonneAttive
+
+// Scopo: le date sono cambiate sulle righe: si rileggono le righe e la
+//        testata, come dopo il verbo per riga (`@changed` della tabella righe).
+function onDateConsegnaAggiornate() {
+  righeTableRef.value?.loadRighe()
+  loadDetail()
 }
 
 // Azioni della testata preventivo consumate da DrawerActionsBar.
@@ -874,15 +955,19 @@ const drawerActions = computed(() => {
   // Smistamento: apre la dialog dedicata (righe residue instradate per natura
   // verso ordine/commessa). Da ACCETTATO in poi; resta visibile anche in
   // readonly puro — la dialog si apre consuntiva (footer di sola chiusura).
+  // Spento col motivo quando nessun ramo e' eseguibile (`smistamentoReason`).
   if (showSmistamento.value) {
     list.push({
       key: 'smistamento',
       kind: 'manage',
       label: t('vendite.preventivi.section_smistamento'),
       icon: MANAGE_ICONS.INVIA_A_COMMESSA,
+      disabled: !!smistamentoReason.value,
+      tooltip: smistamentoReason.value || undefined,
       command: () => { smistamentoDialogVisible.value = true },
     })
   }
+  list.push(...dateConsegnaAzione.value)
   list.push({
     key: 'manage-note',
     kind: 'manage',
@@ -1000,9 +1085,10 @@ const drawerActions = computed(() => {
            segnalazione a colpo d'occhio sotto i pulsanti — «Ordine»,
            «Contratto». Il grafo completo si apre dai chip stessi in dialog. -->
       <DocumentoCollegamentiBar
-        ref="collegamentiRef"
         base-path="/vendite/preventivi"
+        :versione="detail"
         :doc-id="effectivePreventivoId"
+        @documento-chiuso="onDocumentoCollegatoChiuso"
         :readonly="isReadonlyPuro" />
     </template>
 
@@ -1019,15 +1105,6 @@ const drawerActions = computed(() => {
     <Message v-if="hasDetail && detail.ba_ha_contratto_attivo === false"
       severity="info" :closable="false" class="mt-1">
       {{ t('vendite.preventivi.banner_no_contratto_attivo') }}
-    </Message>
-    <Message v-if="hasDetail && !canPushCommessa && pushCommessaReasonKey && te(pushCommessaReasonKey)"
-      severity="info" :closable="false" class="mt-1">
-      {{ t(pushCommessaReasonKey) }}
-    </Message>
-    <!-- Ramo ordine dello smistamento: stessa forma del ramo commessa sopra. -->
-    <Message v-if="hasDetail && !canGeneraOrdine && generaOrdineReasonKey && te(generaOrdineReasonKey)"
-      severity="info" :closable="false" class="mt-1">
-      {{ t(generaOrdineReasonKey) }}
     </Message>
 
     <Divider v-if="hasDetail" />
@@ -1066,7 +1143,8 @@ const drawerActions = computed(() => {
               :doc-id="effectivePreventivoId"
               :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
               :istanza-utility-id="detail?.istanza_utility_id ?? null"
-              :readonly="isReadonly"
+              :readonly="isReadonlyPuro"
+              :capabilities="capabilities"
               :bordo="false" />
 
             <Divider />
@@ -1076,6 +1154,7 @@ const drawerActions = computed(() => {
               :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
               :billing-account-id="form.billing_account_id"
               :is-modificabile="canEditRighe && !isReadonly"
+              :data-documento="detail?.data ?? null"
               @changed="loadDetail()"
               @form-aperto="onFormAperto" />
 
@@ -1124,6 +1203,21 @@ const drawerActions = computed(() => {
     :preventivo-id="effectivePreventivoId"
   />
 
+  <!-- La conferma dell'annullo di un preventivo con legami: aperta dalla
+       domanda del DB, chiusa dalla conferma o dalla rinuncia. -->
+  <DocumentoAnnulloLegamiDialog
+    v-if="effectivePreventivoId"
+    :visible="domandaAnnullo !== null"
+    base-path="/vendite/preventivi"
+    :doc-id="effectivePreventivoId"
+    :header="t('vendite.preventivi.azione_annulla')"
+    :domanda="domandaAnnullo"
+    :loading="cambioStato.loading.value"
+    :readonly="isReadonlyPuro"
+    @conferma="onConfermaAnnullo"
+    @cancel="cambioStato.annulla()"
+  />
+
   <!-- Dialog emissione preventivo (transizione BOZZA → EMESSO). Wrapper sul
        building block DocumentoEmissioneDialog: anteprima PDF + allegati,
        conferma orchestra atomic state + genera + allegati via /emetti/. -->
@@ -1159,6 +1253,16 @@ const drawerActions = computed(() => {
     :preventivo-id="effectivePreventivoId"
     :consuntivo="isReadonlyPuro"
     @smistato="onSmistato"
+  />
+
+  <DateConsegnaRigheDialog
+    v-if="effectivePreventivoId"
+    v-model:visible="dateConsegnaVisible"
+    :invia="(payload) => store.aggiornaDateConsegna(effectivePreventivoId, payload)"
+    :colonne="dateConsegnaColonne"
+    :data-documento="detail?.data ?? null"
+    :readonly="isReadonlyPuro"
+    @aggiornate="onDateConsegnaAggiornate"
   />
 </template>
 

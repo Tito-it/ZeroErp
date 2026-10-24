@@ -57,16 +57,20 @@ SELECT has_table('dbops', 'processi', 'dbops.processi esiste');
 -- 2..7. I cancelli, su casi COSTRUITI
 -- ============================================================
 SELECT throws_ok(
-    $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
-      VALUES (9001, 'PGTAP-CLASSE-IGNOTA', 'test', 'FANTASIA', 'COMMAND')$$,
+    -- ⚠️ 20261016-20: le righe con una sveglia dichiarano l'accensione, altrimenti
+    --   il 23514 verrebbe da chk_processi_accensione (verde per il vincolo sbagliato).
+    $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
+      VALUES (9001, 'PGTAP-CLASSE-IGNOTA', 'test', 'FANTASIA', 'COMMAND', true, true, true, 'PROGRAMMA', true)$$,
     '23514',
     NULL,
     'chk_processi_classe respinge una classe fuori catalogo'
 );
 
 SELECT throws_ok(
-    $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
-      VALUES (9002, 'PGTAP-CANALE-IGNOTO', 'test', 'DOMINIO', 'PICCIONE')$$,
+    $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
+      VALUES (9002, 'PGTAP-CANALE-IGNOTO', 'test', 'DOMINIO', 'PICCIONE', true, true, true, 'PROGRAMMA', true)$$,
     '23514',
     NULL,
     'chk_processi_canale respinge un canale fuori catalogo'
@@ -75,8 +79,9 @@ SELECT throws_ok(
 -- Il codice e' l'attore, e ci si aggancia la FK di job_run_log: un doppione
 -- renderebbe ambiguo «chi ha eseguito».
 SELECT throws_ok(
-    $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
-      VALUES (9003, 'run_fatturazione_batch', 'doppione', 'DOMINIO', 'COMMAND')$$,
+    $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
+      VALUES (9003, 'run_fatturazione_batch', 'doppione', 'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA', true)$$,
     '23505',
     NULL,
     'uq_processi_codice respinge un codice gia'' registrato'
@@ -195,9 +200,11 @@ DO $mancante$
 DECLARE
     v_id dbops.processi.id%TYPE := 9101;
 BEGIN
-    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
+    -- 20261016-20: chi ha una sveglia dichiara l'accensione; un CODA no.
+    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
     VALUES (v_id, 'PGTAP-DOMINIO-SENZA-BERSAGLI',
-            'processo di prova senza bersagli dichiarati', 'DOMINIO', 'COMMAND');
+            'processo di prova senza bersagli dichiarati', 'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA', true);
 END
 $mancante$;
 
@@ -214,10 +221,12 @@ DECLARE
     v_processo_id dbops.processi_bersagli.processo_id%TYPE := 9102;
     v_bersaglio   dbops.processi_bersagli.id%TYPE          := 9102;
 BEGIN
-    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
+    -- 20261016-20: chi ha una sveglia dichiara l'accensione; un CODA no.
+    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
     VALUES (v_processo_id, 'PGTAP-PERCORSO-ROTTO',
             'processo di prova con percorso su colonna inesistente',
-            'DOMINIO', 'COMMAND');
+            'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA', true);
 
     -- Padre e figlio in DUE istruzioni: una CTE unica condividerebbe la stessa
     -- snapshot e la FK non troverebbe il padre.
@@ -239,9 +248,10 @@ SELECT is(
 -- ============================================================
 -- 13. Nessun bypass non dichiarato
 -- ============================================================
--- ⚠️ La regola presidiata non e' «la vista e' vuota»: oggi
---   zeroerp_batch_fatturazione ha il bypass ed e' un debito registrato, con la
---   fase in cui si chiude. La regola e' che non ne compaia uno NUOVO.
+-- ⚠️ La regola presidiata non e' «la vista e' vuota»: un bypass puo' essere un
+--   debito registrato, con la fase in cui si chiude (lo e' stato
+--   zeroerp_batch_fatturazione, ritirato il 2026-10-15). La regola e' che non ne
+--   compaia uno NUOVO.
 SELECT is_empty(
     $$SELECT ruolo FROM dbops.vw_processi_che_bypassano
        WHERE stato = 'NON_DICHIARATO'$$,
@@ -266,10 +276,12 @@ DECLARE
     v_processo_id dbops.processi_bersagli.processo_id%TYPE := 9103;
     v_bersaglio   dbops.processi_bersagli.id%TYPE          := 9103;
 BEGIN
-    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
+    -- 20261016-20: chi ha una sveglia dichiara l'accensione; un CODA no.
+    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
     VALUES (v_processo_id, 'PGTAP-BERSAGLIO-SCOPERTO',
             'processo di prova con percorso dichiarato e nessuna difesa',
-            'DOMINIO', 'COMMAND');
+            'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA', true);
 
     -- ⭐ Il bersaglio e' `dbops.processi` stessa: ha la colonna dichiarata,
     --   quindi il percorso e' valido — ed e' una tabella senza RLS e senza

@@ -101,11 +101,14 @@ class AITool(abc.ABC):
     def preview(self, params: dict[str, Any], request: Any) -> dict[str, Any]:
         return {"summary": f"Eseguire {self.name} con i parametri forniti"}
 
-    # Scopo: Il `page_size` che l'LLM ha chiesto, normalizzato e messo sotto al
-    #        tetto del tool (default 10, max 50).
+    # Scopo: Il `limit` (quante righe) che l'LLM ha chiesto, normalizzato e
+    #        messo sotto al tetto del tool (default 10, max 50).
+    # ⭐ Fino al 2026-10-21 il parametro dei tool si chiamava `page_size` (e il
+    #    metodo `safe_page_size`): rinominato col dialetto unico delle liste
+    #    (Tid), perche' il modello e il frontend chiedano righe con lo stesso nome.
     #
     # 🔴 PERCHE' NON E' PIU' UN `min()` SECCO (2026-09-10). Era
-    #    `min(params.get("page_size", 10), max_size)`, e su tre input plausibili
+    #    `min(params.get("limit", 10), max_size)`, e su tre input plausibili
     #    si rompeva o taceva:
     #
     #      · `"20"` — la forma in cui un LLM manda un intero — sollevava
@@ -127,8 +130,8 @@ class AITool(abc.ABC):
     #    scritto nella `description` di ogni tool, quindi chiedere 200 non e' un
     #    errore del chiamante — e' una richiesta che il contratto riduce.
     @staticmethod
-    def safe_page_size(params: dict[str, Any], max_size: int = 50) -> int:
-        grezzo = params.get("page_size")
+    def safe_limit(params: dict[str, Any], max_size: int = 50) -> int:
+        grezzo = params.get("limit")
         if grezzo is None:
             return min(10, max_size)
         # `bool` e' sottoclasse di `int`: senza questo, `True` diventerebbe 1.
@@ -136,19 +139,19 @@ class AITool(abc.ABC):
             isinstance(grezzo, float) and not grezzo.is_integer()
         ):
             raise ValueError(
-                f"page_size deve essere un intero fra 1 e {max_size}: "
+                f"limit deve essere un intero fra 1 e {max_size}: "
                 f"ricevuto {grezzo!r}.",
             )
         try:
             valore = int(grezzo)
         except (TypeError, ValueError):
             raise ValueError(
-                f"page_size deve essere un intero fra 1 e {max_size}: "
+                f"limit deve essere un intero fra 1 e {max_size}: "
                 f"ricevuto {grezzo!r}.",
             ) from None
         if valore < 1:
             raise ValueError(
-                f"page_size deve essere almeno 1: ricevuto {valore}. "
+                f"limit deve essere almeno 1: ricevuto {valore}. "
                 f"Per meno risultati chiedine 1, non 0.",
             )
         return min(valore, max_size)
@@ -163,7 +166,7 @@ class AITool(abc.ABC):
     #    modello invece riceverebbe TUTTE le righe credendole filtrate, e le
     #    riporterebbe all'utente come risultato della ricerca. Il messaggio
     #    nomina il dato e la soglia: un errore azionabile il modello lo
-    #    corregge al giro dopo (stesso criterio di `safe_page_size`).
+    #    corregge al giro dopo (stesso criterio di `safe_limit`).
     # ⭐ La soglia e' quella del BB (`RICERCA_MIN_CARATTERI`), non un 3 scritto
     #    qui: il giorno che cambia, strumenti e liste cambiano insieme.
     @staticmethod

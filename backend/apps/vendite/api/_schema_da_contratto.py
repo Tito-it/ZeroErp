@@ -76,6 +76,10 @@ TIPI: Tipi = {
     "causale_trasporto_id": (_intero, True),
     "aspetto_bene_id": (_intero, True),
     "modalita_addebito_trasporto_id": (_intero, True),
+    # Il magazzino di bolla e reso (Lotto 3 D-L3-a, 3-bis D-3b-a): nullable in
+    # bozza, obbligatorio all'emissione/conferma se il documento muove merce.
+    "magazzino_id": (_intero, True),
+    "magazzino_arrivo_id": (_intero, True),
     "ddt_id": (_intero, False),
     "istanza_utility_id": (_intero, True),
     "contratto_id": (_intero, False),
@@ -114,6 +118,16 @@ TIPI: Tipi = {
     "descrizione": (_testo, False),
     "quantita": (_decimale, False),
     "qta_operativa": (_decimale, True),
+    # I prelievi della bolla (Lotto 3 D-L3-b): quantita' in UoM base, la voce
+    # (componente del kit) e la posizione fisica.
+    "qta": (_decimale, False),
+    "ddt_riga_componente_id": (_intero, True),
+    "lotto_id": (_intero, True),
+    "asset_id": (_intero, True),
+    "ubicazione_id": (_intero, True),
+    "ubicazione_arrivo_id": (_intero, True),
+    # Il rientro del reso (3-bis D-3b-b): il prelievo d'origine della bolla.
+    "ddt_riga_prelievo_id": (_intero, False),
     "uom_operativa_id": (_intero, True),
     "factor_to_base": (_decimale, False),
     "prezzo_unitario": (_decimale, True),
@@ -144,6 +158,10 @@ TIPI: Tipi = {
     "attivo": (_booleano, False),
     # ── azioni ───────────────────────────────────────────────
     "stato_codice": (_testo, False),
+    # La conferma dell'annullo di un documento con legami
+    # (brief-db-annullo-documento-con-legami): quanti legami l'operatore ha
+    # visto. Assente al primo tentativo.
+    "legami_confermati": (_intero, True),
 }
 
 
@@ -165,4 +183,10 @@ def schema_da_contratto(
 #    nome sono due classi, e drf-spectacular avverte che lo schema e' sbagliato.
 CAMBIA_STATO_REQUEST = schema_da_contratto(
     "VenditeCambiaStatoReq", ("stato_codice",), obbligatorie=("stato_codice",),
+)
+# Il cambio di stato di un documento che si annulla con conferma (bolla,
+# ordine): verso ANNULLATO porta la dichiarazione `legami_confermati`.
+CAMBIA_STATO_CON_CONFERMA_REQUEST = schema_da_contratto(
+    "VenditeCambiaStatoConConfermaReq", ("stato_codice", "legami_confermati"),
+    obbligatorie=("stato_codice",),
 )

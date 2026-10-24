@@ -40,7 +40,8 @@ from unittest.mock import Mock, patch
 
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
@@ -59,7 +60,7 @@ _VIEW_ATOMIC = "apps.documenti.api.sorgente_documenti_views.transaction.atomic"
 # (refactor 2026-05-28): il patch deve puntare lì per mockare la risoluzione
 # del sorgente_tipo. ContrattiRepository resta importato in
 # contratti_documenti_views perche' fetcha il contratto prima del helper.
-_DOC_REPO = "apps.documenti.api.contesto_helpers.DocumentiRepository"
+_SORGENTI_REPO = "apps.documenti.api.contesto_helpers.SorgentiRepository"
 _CONTRATTI_REPO = "apps.vendite.api.contratti_documenti_views.ContrattiRepository"
 _BASE = "/api/v1/vendite/contratti/"
 
@@ -68,7 +69,7 @@ class _BaseApiTest(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()
         cache.clear()
-        self.client = Client()
+        self.client = ClientApi()
 
 
 class TestList(_BaseApiTest):
@@ -131,18 +132,17 @@ class TestDetailGet(_BaseApiTest):
 class TestDocumentiContratto(_BaseApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_CONTRATTI_REPO)
-    def test_post_documento_anteprima_ok(self, repo_cls, doc_repo_cls, svc_cls, _auth):
+    def test_post_documento_anteprima_ok(self, repo_cls, sorgenti_repo_cls, svc_cls, _auth):
         repo_cls.return_value.get_for_documento_generation.return_value = {
             "id": 7,
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
             "id": 4,
             "codice": "CONTRATTO",
-            "attivo": True,
         }
         svc_cls.return_value.anteprima_documento.return_value = {
             "pdf_bytes": b"%PDF",
@@ -166,18 +166,17 @@ class TestDocumentiContratto(_BaseApiTest):
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_CONTRATTI_REPO)
-    def test_get_documenti_list_ok(self, repo_cls, doc_repo_cls, svc_cls, _auth):
+    def test_get_documenti_list_ok(self, repo_cls, sorgenti_repo_cls, svc_cls, _auth):
         repo_cls.return_value.get_for_documento_generation.return_value = {
             "id": 7,
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
             "id": 4,
             "codice": "CONTRATTO",
-            "attivo": True,
         }
         svc_cls.return_value.list_documenti_per_sorgente.return_value = {
             "results": [{"id": 1, "nome_file": "contratto.pdf"}],
@@ -246,14 +245,14 @@ class TestPost(_BaseApiTest):
     @patch(_SVC)
     def test_post_create_overlap_409(self, svc_cls, _auth):
         svc_cls.return_value.create_contratto.side_effect = ServiceError(
-            code="E_VENDITE_CONTRATTO_OVERLAP",
+            code="E_CONTRATTO_OVERLAP_ESISTENTE",
             message="Contratto sovrapposto.",
         )
         resp = self.client.post(
             _BASE, data=json.dumps(self._OK), content_type="application/json",
         )
         self.assertEqual(resp.status_code, 409)
-        self.assertEqual(resp.json()["error"]["code"], "E_VENDITE_CONTRATTO_OVERLAP")
+        self.assertEqual(resp.json()["error"]["code"], "E_CONTRATTO_OVERLAP_ESISTENTE")
 
 
 class TestPatch(_BaseApiTest):
@@ -355,7 +354,9 @@ class TestRighe(_BaseApiTest):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(svc_cls.return_value.update_riga.call_args.args[0], 99)
+        # ⛔ Il contratto dell'URL arriva al service: e' quello su cui il service
+        #    verifica che la riga sia sua (prima la view lo scartava).
+        self.assertEqual(svc_cls.return_value.update_riga.call_args.args[:2], (1, 99))
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC)
@@ -364,7 +365,7 @@ class TestRighe(_BaseApiTest):
         resp = self.client.delete(_BASE + "1/righe/99/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["id"], 99)
-        svc_cls.return_value.delete_riga.assert_called_once_with(99)
+        svc_cls.return_value.delete_riga.assert_called_once_with(1, 99)
 
 
 class TestUtility(_BaseApiTest):
@@ -402,11 +403,11 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_VIEW_ATOMIC)
     @patch(_DOC_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_CONTRATTI_REPO)
     @patch(_SVC_VIEW_DOC)
     def test_emetti_integration_atomic_state_genera_allegati(
-        self, svc_cls, repo_cls, doc_repo_cls, doc_svc_cls, _atomic, _auth,
+        self, svc_cls, repo_cls, sorgenti_repo_cls, doc_svc_cls, _atomic, _auth,
     ):
         svc_cls.return_value.emetti.return_value = {
             "id": 7, "stato_codice": "ATTIVO",
@@ -416,8 +417,8 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 4, "codice": "CONTRATTO", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 4, "codice": "CONTRATTO",
         }
         doc_svc_cls.return_value.genera_documento.return_value = {
             "id": 100, "uid": "doc-uid-100", "nome_file": "contratto.pdf",
@@ -449,18 +450,18 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
     # esistente. Verifica route e delega a list_documento_files.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_CONTRATTI_REPO)
     def test_get_documento_allegati_list_ok(
-        self, repo_cls, doc_repo_cls, doc_svc_cls, _auth,
+        self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ):
         repo_cls.return_value.get_for_documento_generation.return_value = {
             "id": 7,
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 4, "codice": "CONTRATTO", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 4, "codice": "CONTRATTO",
         }
         doc_svc_cls.return_value.list_documento_files.return_value = {
             "files": [
@@ -482,18 +483,18 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
     # aggiungi_allegati.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_CONTRATTI_REPO)
     def test_post_documento_allegati_upload_ok(
-        self, repo_cls, doc_repo_cls, doc_svc_cls, _auth,
+        self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ):
         repo_cls.return_value.get_for_documento_generation.return_value = {
             "id": 7,
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 4, "codice": "CONTRATTO", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 4, "codice": "CONTRATTO",
         }
         doc_svc_cls.return_value.aggiungi_allegati.return_value = {
             "allegati": [{"id": 200, "file_name": "extra.pdf"}],

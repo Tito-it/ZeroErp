@@ -41,7 +41,7 @@
 --   10) CLIENTE_PORTALE vede zero su tutte e 13 (il magazzino e' interno)
 --   11) senza veste: zero su tutte e 13 (fail-closed)
 --   Lo smistatore:
---   12) i rami di fn_scope_note_magazzino_ef_whitelist sono esattamente i valori di chk_note_target_tipo
+--   12) i rami di fn_scope_note_magazzino_ef_perimetro (rev 2026-10-21, 20261021-25) sono esattamente i valori di chk_note_target_tipo
 -- ------------------------------------------------------------
 BEGIN;
 SET CONSTRAINTS ALL IMMEDIATE;
@@ -120,10 +120,8 @@ BEGIN
 
     FOR m IN SELECT * FROM _mondi ORDER BY lato LOOP
         r.lato := m.lato;
-        INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id, emittente_fiscale_id)
-        VALUES ('PGT-RLS-' || m.lato, 'rls ' || m.lato, v_ind, m.emittente_fiscale_id) RETURNING id INTO r.mag;
-        INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id, emittente_fiscale_id)
-        VALUES ('PGT-RLS-' || m.lato || '2', 'rls ' || m.lato || ' 2', v_ind, m.emittente_fiscale_id) RETURNING id INTO v_mag2;
+        r.mag := magazzino.fn_crea_magazzino('PGT-RLS-' || m.lato, 'rls ' || m.lato, v_ind, '{}'::jsonb, m.emittente_fiscale_id);
+        v_mag2 := magazzino.fn_crea_magazzino('PGT-RLS-' || m.lato || '2', 'rls ' || m.lato || ' 2', v_ind, '{}'::jsonb, m.emittente_fiscale_id);
         INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (r.mag, 'U-' || m.lato, v_tubi) RETURNING id INTO r.ubi;
         INSERT INTO magazzino.inventari (magazzino_id) VALUES (r.mag) RETURNING id INTO r.inv;
         INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata) VALUES (r.inv, v_art, 5) RETURNING id INTO r.inv_riga;
@@ -309,7 +307,7 @@ SELECT is((SELECT valore FROM _esiti WHERE chiave = 'senza_veste'), '0',
 SELECT is(
     (WITH rami AS (
         SELECT (regexp_matches(p.prosrc, 'WHEN ''([A-Z_]+)''', 'g'))[1] AS v
-          FROM pg_proc p WHERE p.pronamespace = 'script'::regnamespace AND p.proname = 'fn_scope_note_magazzino_ef_whitelist'
+          FROM pg_proc p WHERE p.pronamespace = 'script'::regnamespace AND p.proname = 'fn_scope_note_magazzino_ef_perimetro'
      ), chk AS (
         SELECT (regexp_matches(pg_get_constraintdef(c.oid), '''([A-Z_]+)''', 'g'))[1] AS v
           FROM pg_constraint c WHERE c.conrelid = 'magazzino.note'::regclass AND c.conname = 'chk_note_target_tipo'

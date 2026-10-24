@@ -55,8 +55,8 @@ SELECT plan(11);
 --   ⇒ La fixture si fabbrica il proprio processo invece di appoggiarsi a uno
 --     del catalogo: MANUTENZIONE, cosi' il guard di classe non entra in gioco e
 --     questo file continua a collaudare cio' che collaudava.
-INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
-VALUES (9703, 'PGTAP_PROC_TXID', 'processo di prova per test-tx-id-coerenza', 'MANUTENZIONE', 'CODA');
+INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, causa_fallimento)
+VALUES (9703, 'PGTAP_PROC_TXID', 'processo di prova per test-tx-id-coerenza', 'MANUTENZIONE', 'CODA', 'PROGRAMMA');
 
 -- ⚠️ Creato QUI, prima che il test azzeri `dbops.tx_id`: questo INSERT passa
 --   dal trigger tx_id, e farlo piu' sotto falserebbe l'asserzione 2.

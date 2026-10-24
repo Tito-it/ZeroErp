@@ -21,6 +21,8 @@ from apps.documenti.api.views import (
     ApiContextBuilders,
     ApiTemplateDetail,
     ApiTemplateList,
+    ApiTemplatePersonalizza,
+    ApiTemplateRisoluzione,
     ApiTemplateVersioneClona,
     ApiTemplateVersioneDetail,
     ApiTemplateVersionePubblica,
@@ -38,10 +40,22 @@ urlpatterns = [
         ApiTemplateList.as_view(),
         name="documenti-templates-list",
     ),
+    # Con che cosa stampa ogni azienda (lettura del DB, K-5).
+    path(
+        "templates/risoluzione/",
+        ApiTemplateRisoluzione.as_view(),
+        name="documenti-templates-risoluzione",
+    ),
     path(
         "templates/<int:template_id>/",
         ApiTemplateDetail.as_view(),
         name="documenti-templates-detail",
+    ),
+    # Comando sul modello standard: la copia per un emittente (D-2).
+    path(
+        "templates/<int:template_id>/personalizza/",
+        ApiTemplatePersonalizza.as_view(),
+        name="documenti-templates-personalizza",
     ),
     path(
         "templates/<int:template_id>/versioni/",

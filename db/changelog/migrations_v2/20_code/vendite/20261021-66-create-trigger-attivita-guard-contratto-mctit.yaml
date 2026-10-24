@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGIO: vendite.trgfn_attivita_guard_contratto (20261021-65) su
+#   vendite.commesse_attivita e vendite.attivita_fatturabili.
+#
+#   AFTER INSERT OR UPDATE, FOR EACH ROW, senza WHEN: in INSERT non c'e' OLD,
+#   e il filtro «cambiano contratto o commessa» sta nel corpo.
+#   Trigger scritti a mano, non da ci_apply (linee-guida-sql §11.5).
+#   ⛔ Nomi sotto i 63 caratteri (45 e 50).
+#
+#   ORDINE fra gli AFTER: le FK (RI_ConstraintTrigger_*, maiuscole) vengono
+#   prima, quindi un contratto che non esiste lo rifiuta la FK. Fra gli a10,
+#   _guard_contratto precede _guard_listino_riga: su una riga che sbaglia
+#   entrambe le provenienze parla il contratto, che e' la scelta piu' a monte.
+#   Decisione di Tid D-1, 2026-10-21.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261021-66-create-trigger-attivita-guard-contratto-mctit.yaml
+
+  - changeSet:
+      id: 20261021-66-create-trigger-attivita-guard-contratto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta vendite.trgfn_attivita_guard_contratto su vendite.commesse_attivita e
+        vendite.attivita_fatturabili (AFTER INSERT OR UPDATE): il contratto citato per il prezzo e' del
+        billing account della commessa. Decisione di Tid D-1, 2026-10-21.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+               WHERE t.tgname IN ('trg_commesse_attivita_a10_guard_contratto_ins_upd',
+                                  'trg_attivita_fatturabili_a10_guard_contratto_ins_upd')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_commesse_attivita_a10_guard_contratto_ins_upd
+                  AFTER INSERT OR UPDATE
+                  ON vendite.commesse_attivita
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_attivita_guard_contratto();
+
+              CREATE TRIGGER trg_attivita_fatturabili_a10_guard_contratto_ins_upd
+                  AFTER INSERT OR UPDATE
+                  ON vendite.attivita_fatturabili
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_attivita_guard_contratto();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_commesse_attivita_a10_guard_contratto_ins_upd
+                  ON vendite.commesse_attivita;
+              DROP TRIGGER IF EXISTS trg_attivita_fatturabili_a10_guard_contratto_ins_upd
+                  ON vendite.attivita_fatturabili;

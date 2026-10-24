@@ -52,6 +52,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useActionPermission } from '../../core/composables/useActionPermission'
 import { useDebouncedAction } from '../../core/composables/useDebouncedAction'
 import { useJobPolling } from '../../core/composables/useJobPolling'
+import { useChiaveGesto } from '../../core/composables/useChiaveGesto'
 import { useRigheInGiro } from '../../core/composables/useRigheInGiro'
 import { MANAGE_ICONS, READONLY_DOMAINS, STATUS_ICONS } from '../../core/constants'
 import { MODO_DATA_DOCUMENTO, STATO_EMISSIONE_ATTIVITA, STATO_ESECUZIONE_LOTTO } from '../constants'
@@ -1357,6 +1358,13 @@ function useVerboFatturazione({ apiFn, keys, buildEsitoOk, maxConcurrent = 1 }) 
     reloadDopoAzione()
   }
 
+  // ⭐ La key del GESTO, una per verbo (`useChiaveGesto`): un «Fattura»
+  //    ripremuto dopo un timeout con lo stesso mese, gli stessi gruppi e la
+  //    stessa data rimanda la stessa key, e il backend restituisce il giro gia'
+  //    accodato invece di accodarne un altro. Il dialog della data resta
+  //    aperto fino all'esito, e aprirlo azzera la key (`azzeraGesto`).
+  const gesto = useChiaveGesto()
+
   const { start, isFollowing, nJobsInCorso, resume } = useJobPolling({
     fetchStatus: (jobId) => getFatturazioneRun(jobId),
     maxConcurrent,
@@ -1405,17 +1413,19 @@ function useVerboFatturazione({ apiFn, keys, buildEsitoOk, maxConcurrent = 1 }) 
       // l'operatore ha cambiato mese, e i suoi lotti appartengono al mese in
       // cui e' partito, non a quello che si sta guardando all'arrivo.
       const competenza = competenzaCorrente.value
-      const res = await execute(() =>
-        apiOptions ? apiFn(competenza, apiOptions)
-                   : apiFn(competenza))
-      if (res === null) return
+      const opzioni = apiOptions ?? {}
+      const res = await execute(() => gesto.invia(
+        { competenza, ...opzioni },
+        (config) => apiFn(competenza, opzioni, config),
+      ))
+      if (res === null) return false
       // Stessa selezione ancora viva → il BE non crea un secondo job:
       // restituisce l'id di QUELLO in corso (chiave di idempotenza
       // competenza+scope+gruppi). Seguirlo di nuovo lo conterebbe due volte;
       // e all'operatore va detto che non ha avviato niente di nuovo.
       if (isFollowing(res.job_id)) {
         notify.info(t('vendite.dashboard_competenza.fattura_giro_gia_in_corso'))
-        return
+        return true
       }
       const gruppiGiro = apiOptions?.gruppi ?? []
       const avviato = start(res.job_id, {
@@ -1426,7 +1436,7 @@ function useVerboFatturazione({ apiFn, keys, buildEsitoOk, maxConcurrent = 1 }) 
         // perimetro): il lavoro parte lo stesso, l'esito no — dirlo e' il
         // minimo, tacere lascerebbe credere che non sia successo nulla.
         notify.warn(t(keys.inCoda))
-        return
+        return true
       }
       notify.success(t(keys.accodato))
       // Marcatura DOPO l'avvio riuscito: se il POST fallisce non devono
@@ -1441,8 +1451,11 @@ function useVerboFatturazione({ apiFn, keys, buildEsitoOk, maxConcurrent = 1 }) 
           (r) => !inviati.has(r.gruppo_key),
         )
       }
+      return true
   }
-  return { avvia, nGiriInCorso: nJobsInCorso, resume }
+  // `avvia` risponde `true` se il giro e' partito (o era gia' in corso): lo
+  // legge il dialog della data per chiudersi solo all'esito.
+  return { avvia, nGiriInCorso: nJobsInCorso, resume, azzeraGesto: gesto.azzera }
 }
 
 // Scopo: lista dal payload BE, sempre un array (il campo puo' mancare del
@@ -1546,7 +1559,9 @@ function notificaNonServiti(nonServiti, nLotti, context) {
 
 // Verbo FATTURA (C-6): card DA_EMETTERE. Corsia differita → ferma a EMESSA,
 // cumulativo su competenza ≤ M.
-const { avvia: onFatturaMese, nGiriInCorso: nGiriMese, resume: resumeMese } = useVerboFatturazione({
+const {
+  avvia: onFatturaMese, nGiriInCorso: nGiriMese, resume: resumeMese, azzeraGesto: azzeraGestoMese,
+} = useVerboFatturazione({
   apiFn: runFatturazione,
   keys: {
     accodato: 'vendite.dashboard_competenza.fattura_mese_accodato',
@@ -1583,6 +1598,7 @@ const { avvia: onFatturaMese, nGiriInCorso: nGiriMese, resume: resumeMese } = us
 // nomina il giro di provenienza.
 const {
   avvia: avviaFatturaGruppi, nGiriInCorso: nGiriMirata, resume: resumeMirata,
+  azzeraGesto: azzeraGestoMirata,
 } = useVerboFatturazione({
   apiFn: runFatturazione,
   // Nessun tetto (decisione D1, 2026-08-17): il verbo resta premibile con
@@ -1674,14 +1690,18 @@ const dialogDataCreazione = ref({ visible: false, perimetro: '', esegui: null })
 
 // Scopo: apre il dialog della data prima di un verbo di CREAZIONE, portandosi
 //        dietro la frase del perimetro e cosa fare alla conferma.
-function chiediDataECrea(perimetro, esegui) {
+// ⭐ Aprire il dialog e' un GESTO NUOVO: la key si azzera qui, e il dialog
+//    resta aperto fino all'esito (un reinvio dopo un timeout avviene dentro,
+//    con la stessa key). Vedi la testa di `NumerazioneDataDialog`.
+function chiediDataECrea(perimetro, esegui, azzeraGesto) {
+  azzeraGesto()
   dialogDataCreazione.value = { visible: true, perimetro, esegui }
 }
 
-function confermaDataCreazione(dataDocumento) {
+// `true` = il giro e' partito: il dialog si chiude.
+async function confermaDataCreazione(dataDocumento) {
   const azione = dialogDataCreazione.value.esegui
-  dialogDataCreazione.value = { visible: false, perimetro: '', esegui: null }
-  azione?.(dataDocumento)
+  return (await azione?.(dataDocumento)) === true
 }
 
 // Verbo «Fattura mese»: la data prima, poi il giro (la conferma e' il dialog).
@@ -1693,6 +1713,7 @@ function onFatturaMeseClick() {
     (dataDocumento) => onFatturaMese({
       apiOptions: dataDocumento ? { dataDocumento } : null,
     }),
+    azzeraGestoMese,
   )
 }
 
@@ -1720,6 +1741,7 @@ function fatturaGruppi(righe) {
       apiOptions: dataDocumento ? { gruppi, dataDocumento } : { gruppi },
       giro: riferimenti,
     }),
+    azzeraGestoMirata,
   )
 }
 
@@ -1736,8 +1758,12 @@ function fatturaGruppi(righe) {
 // La commessa resta raggiungibile: e' il contenitore in cui il gruppo verra'
 // fatturato, e vederlo prima di premere «Fattura» ha senso.
 //
+// L'area del BB e' il codice della sorgente, cioe' `tipo_gruppo`, e vale solo
+// se il documento ha una pagina (`documento_apribile`, da `config.sorgenti`):
+// dal 2026-10-20 il BE non manda piu' il plurale `area_documento`
+// (brief-db-grammatica-unica-documenti, 2d / L2d-1).
 // I gruppi SOURCELESS (oneri di commessa) non hanno documento: `documento_id`
-// e `area_documento` sono NULL e il BB nasconde da se' la voce — lasciando la
+// e `documento_apribile` sono NULL e il BB nasconde da se' la voce — lasciando la
 // sola commessa, che per loro E' il riferimento (il `riferimento` di quelle
 // righe e' infatti il codice commessa).
 // Scopo: il motivo del blocco, con la via d'uscita SOLO a chi puo' percorrerla.
@@ -1855,7 +1881,7 @@ function buildGruppoRowActions(row) {
       command: () => apriCommessa(row),
     },
     buildApriDocumentoAction({
-      area: row.area_documento,
+      area: row.documento_apribile ? row.tipo_gruppo : null,
       documentoId: row.documento_id,
       // `riferimento` senza ripiego: e' NOT NULL per contratto (vedi
       // `DashCompetenzaGruppoRow`), e questa voce si rende solo quando
@@ -2045,14 +2071,14 @@ onActivated(() => {
             class="app-dash-mese-errori"
             v-tooltip.right="t('vendite.dashboard_competenza.mese_errori', { n: statiMesi[idx].errori })"
           >
-            <i :class="STATUS_ICONS.ERRORE" /> {{ statiMesi[idx].errori }}
+            {{ statiMesi[idx].errori }} <i :class="STATUS_ICONS.ERRORE" />
           </span>
           <span
             v-if="statiMesi[idx].aperti > 0"
             class="app-dash-mese-fermi"
             v-tooltip.right="t('vendite.dashboard_competenza.mese_aperti', { n: statiMesi[idx].aperti })"
           >
-            <i :class="STATUS_ICONS.ATTESA" /> {{ statiMesi[idx].aperti }}
+            {{ statiMesi[idx].aperti }} <i :class="STATUS_ICONS.ATTESA" />
           </span>
           <i
             v-if="statiMesi[idx].stato === 'ok'"
@@ -2078,10 +2104,10 @@ onActivated(() => {
         >
           <template #badge>
             <span v-if="statoMeseCorrente.errori > 0" class="app-dash-mese-errori">
-              <i :class="STATUS_ICONS.ERRORE" /> {{ statoMeseCorrente.errori }}
+              {{ statoMeseCorrente.errori }} <i :class="STATUS_ICONS.ERRORE" />
             </span>
             <span v-if="statoMeseCorrente.aperti > 0" class="app-dash-mese-fermi">
-              <i :class="STATUS_ICONS.ATTESA" /> {{ statoMeseCorrente.aperti }}
+              {{ statoMeseCorrente.aperti }} <i :class="STATUS_ICONS.ATTESA" />
             </span>
             <i v-if="statoMeseCorrente.stato === 'ok'" class="app-dash-mese-ok" :class="STATUS_ICONS.TUTTO_OK" />
             <i v-else-if="statoMeseCorrente.stato === 'vuoto'" class="app-dash-mese-vuoto" :class="STATUS_ICONS.NON_APPLICABILE" />
@@ -3003,7 +3029,7 @@ onActivated(() => {
       :modo="MODO_DATA_DOCUMENTO.CREAZIONE"
       :competenza-mese="competenzaCorrente"
       :perimetro-testo="dialogDataCreazione.perimetro"
-      @conferma="confermaDataCreazione"
+      :azione="confermaDataCreazione"
     />
 
   </div>

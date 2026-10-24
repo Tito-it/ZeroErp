@@ -94,14 +94,16 @@ SELECT id AS profilo_id,
        CASE tipo WHEN 'AD_HOC' THEN 1 ELSE 2 END AS n
   FROM ins;
 
-INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, identita_digitale_id, attivo)
-SELECT p.profilo_id, idg.id, TRUE
-  FROM _t_profili p
+DO $lega$
+BEGIN
+    PERFORM config.fn_lega_profilo_identita(p.profilo_id, idg.id) FROM _t_profili p
  CROSS JOIN anagrafiche.identita_digitali idg
  WHERE p.n = 1
    AND idg.auth_user_id = NULLIF(current_setting('app.current_user_id', true), '')::integer
    AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
    AND idg.attivo;
+END
+$lega$;
 
 INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, ruolo_applicativo, attivo)
 SELECT p.profilo_id, 'OPERATORE'::config.ruolo_applicativo, TRUE

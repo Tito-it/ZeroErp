@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ddt_push_diagnosi(p_ddt_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ddt_push_diagnosi(p_ddt_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(ddt_id bigint, riga_id bigint, motivo_rank integer, motivo text, billing_account_id bigint, ordine_riga_id bigint, segment text, quantita_push numeric)
@@ -48,7 +50,7 @@ BEGIN ATOMIC
              dr.quantita
             FROM (docs d
               JOIN vendite.ddt_righe dr ON (((dr.ddt_id = d.id) AND (dr.attivo IS TRUE))))
-         ), src AS (
+         ), src AS MATERIALIZED (
           SELECT r.dr_id,
              s.src_fatturazione_trigger,
              s.src_ordine_riga_id
@@ -80,7 +82,7 @@ BEGIN ATOMIC
              sdd_trg.ordine AS trg_ord,
              pm.ddt_riga_id AS pm_presente,
              pm.stato AS pm_stato,
-             script.fn_get_stato_push_segment((((('DDT:'::text || (r.d_uid)::text) || ':R:'::text) || (r.dr_id)::text))::character varying) AS segment,
+             script.fn_get_stato_push_segment(script.fn_segment_key('DDT_VENDITA'::character varying, (r.d_uid)::text, r.dr_id)) AS segment,
              GREATEST((0)::numeric, LEAST(r.quantita, COALESCE(pm.differenza, (0)::numeric))) AS qta_push
             FROM ((((((righe r
               JOIN config.stati_doc_ddt sdd ON ((sdd.id = r.stato_doc_ddt_id)))
@@ -105,7 +107,7 @@ BEGIN ATOMIC
              c.segment,
              c.qta_push,
              ( SELECT r.rank
-                    FROM ( VALUES (1,c.sdd_abort), (1,((c.sdd_cod)::text = 'RESO'::text)), (2,(c.caus_fatt IS NOT TRUE)), (3,(c.ba_id IS NULL)), (4,(c.segment <> 'LIBERA'::text)), (5,((c.trg IS NOT NULL) AND ((c.trg)::text <> 'CONFERMATO'::text) AND ((c.trg_ord IS NULL) OR (c.sdd_ord < c.trg_ord)))), (5,((c.trg IS NULL) AND ((c.sdd_cod)::text <> ALL ((ARRAY['SPEDITO'::character varying, 'CONSEGNATO'::character varying])::text[])))), (6,((c.trg)::text = 'CONFERMATO'::text)), (7,((c.pm_stato)::text = 'RICONSEGNA'::text)), (8,((c.pm_stato)::text = 'NON_FATTURABILE'::text)), (9,((c.pm_stato)::text = 'NON_MISURABILE'::text)), (10,(c.pm_presente IS NULL)), (11,(c.qta_push <= (0)::numeric))) r(rank, hit)
+                    FROM ( VALUES (1,c.sdd_abort), (1,((c.sdd_cod)::text = 'RESO'::text)), (2,(c.caus_fatt IS NOT TRUE)), (3,(c.ba_id IS NULL)), (4,(c.segment <> 'LIBERA'::text)), (5,((c.trg IS NOT NULL) AND ((c.trg)::text <> 'CONFERMATO'::text) AND ((c.trg_ord IS NULL) OR (c.sdd_ord < c.trg_ord)))), (5,((c.trg IS NULL) AND ((c.sdd_cod)::text <> ALL (ARRAY[('SPEDITO'::character varying)::text, ('CONSEGNATO'::character varying)::text])))), (6,((c.trg)::text = 'CONFERMATO'::text)), (7,((c.pm_stato)::text = 'RICONSEGNA'::text)), (8,((c.pm_stato)::text = 'NON_FATTURABILE'::text)), (9,((c.pm_stato)::text = 'NON_MISURABILE'::text)), (10,(c.pm_presente IS NULL)), (11,(c.qta_push <= (0)::numeric))) r(rank, hit)
                    WHERE r.hit
                    ORDER BY r.rank
                   LIMIT 1) AS mrank
@@ -140,8 +142,10 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION vendite.fn_ddt_push_diagnosi(p_ddt_id bigint)
-IS 'FONTE UNICA dell''eleggibilita'' al push a commessa (rev 2026-09-21, D14 seconda leva, forma B2): per ogni riga ATTIVA di DDT, IL motivo di esclusione (NULL = eleggibile) e i fatti per chi agisce — billing_account_id (della testata: NULL se manca o se invisibile a chi legge), ordine_riga_id (la riga d''ordine sorgente: primo fulfillment per id), segment (LIBERA/ALLOCATA/EMESSA da script.fn_get_stato_push_segment), quantita_push (la dose: GREATEST(0, LEAST(quantita, differenza della partita))). p_ddt_id NULL = tutte le righe. vendite.fn_list_ddt_da_pushare DERIVA da qui (FROM fn_ddt_push_diagnosi WHERE motivo IS NULL + filtri di chiamata e proiezione) e script.fn_available_actions_ddt la legge UNA volta: flag = esiste motivo NULL; poi ALLOCATA -> DDT_GIA_INVIATO, EMESSA -> DDT_GIA_FATTURATO; poi min(rank). ⛔ Un predicato di eleggibilita'' nuovo si aggiunge QUI come rank: nel lister non c''e'' piu'' un posto dove metterlo. motivo_rank = precedenza: 1 ANNULLATO/RESO, 2 SOLO_TRASPORTO (causale non fatturabile O assente), 3 SENZA_BA, 4 ROUTED, 5 MERCE_IN_VIAGGIO, 6 FATTURA_DA_ORDINE, 7 RICONSEGNA, 8 NON_FATTURABILE, 9 NON_MISURABILE, 10 SENZA_PARTITA, 11 CONTATORE. La capability mappa per STRINGA, non per numero, e il suo CASE ha un ELSE che fa cadere i motivi nuovi nel generico. BEGIN ATOMIC: le dipendenze (fn_partite_merce, fn_get_stato_push_segment, tabelle) sono in pg_depend. Il documento chiesto e'' un seme a due rami in UNION ALL, mai `p IS NULL OR`. ⭐ TUTTO SI LEGGE PER SEME, e le tre CTE MATERIALIZED sono la forma, non un suggerimento: la partita da vendite.fn_partite_merce col DDT come seme (quarta leva, 2026-09-21) in `pm` (giro 6: inlinata, come app era il lato interno di un nested loop ri-eseguito per ogni riga); i BILLING ACCOUNT in `ba_vis`, seminata dalle CHIAVI in gioco (giro 7, 2026-09-22: il LEFT JOIN alla tabella faceva rivalutare la policy su OGNI BA per OGNI riga, e nemmeno forzando l''indice diventava un Index Cond). ⚠️ `ba_vis` e'' letta come INVOKER: un BA che esiste ma che la policy non mostra non entra, e la riga esce SENZA_BA — semantica della rank 3 invariata, provata su casi COSTRUITI (sui dati vivi il ramo non e'' esercitato). `righe` e `src` escono da `cand` solo perche'' le chiavi dei BA siano calcolabili prima. ⭐ rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-6): il BA e'' UNO, quello della testata del DDT. Fino a questa revisione era COALESCE(BA del DDT, BA dell''ordine sorgente), per riga: un DDT senza BA con righe di ordini diversi spingeva su BA diversi, e uno col BA diverso dall''ordine spingeva col suo. Da oggi la riga che evade un ordine ha il BA del DDT (vendite.trgfn_ordini_ful_guard_consistenza) e la seconda fonte non aggiunge niente. I motivi 7/8/9 si leggono da `stato` (rev 2026-08-18, §23.2 brief-design-partita-merce-generalizzata). Brief: brief-db-partita-merce-per-documento §10, §13, §14; brief-db-ddt-reason-push-catch-all §3 (Decisione A).';
+IS '⭐ rev 2026-10-11 (20261012-03): la CTE src (riga d''ordine sorgente) e'' MATERIALIZED. Senza, nel ramo «tutti» la sottoquery si ricalcolava per ogni riga esterna — righe² giri del LATERAL sotto RLS (~1,05 s su 1,18 con 58 righe, dbdev come app). Stesse righe. FONTE UNICA dell''eleggibilita'' al push a commessa (rev 2026-09-21, D14 seconda leva, forma B2): per ogni riga ATTIVA di DDT, IL motivo di esclusione (NULL = eleggibile) e i fatti per chi agisce — billing_account_id (della testata: NULL se manca o se invisibile a chi legge), ordine_riga_id (la riga d''ordine sorgente: primo fulfillment per id), segment (LIBERA/ALLOCATA/EMESSA da script.fn_get_stato_push_segment), quantita_push (la dose: GREATEST(0, LEAST(quantita, differenza della partita))). p_ddt_id NULL = tutte le righe. vendite.fn_list_ddt_da_pushare DERIVA da qui (FROM fn_ddt_push_diagnosi WHERE motivo IS NULL + filtri di chiamata e proiezione) e script.fn_available_actions_ddt la legge UNA volta: flag = esiste motivo NULL; poi ALLOCATA -> DDT_GIA_INVIATO, EMESSA -> DDT_GIA_FATTURATO; poi min(rank). ⛔ Un predicato di eleggibilita'' nuovo si aggiunge QUI come rank: nel lister non c''e'' piu'' un posto dove metterlo. motivo_rank = precedenza: 1 ANNULLATO/RESO, 2 SOLO_TRASPORTO (causale non fatturabile O assente), 3 SENZA_BA, 4 ROUTED, 5 MERCE_IN_VIAGGIO, 6 FATTURA_DA_ORDINE, 7 RICONSEGNA, 8 NON_FATTURABILE, 9 NON_MISURABILE, 10 SENZA_PARTITA, 11 CONTATORE. La capability mappa per STRINGA, non per numero, e il suo CASE ha un ELSE che fa cadere i motivi nuovi nel generico. BEGIN ATOMIC: le dipendenze (fn_partite_merce, fn_get_stato_push_segment, tabelle) sono in pg_depend. Il documento chiesto e'' un seme a due rami in UNION ALL, mai `p IS NULL OR`. ⭐ TUTTO SI LEGGE PER SEME, e le tre CTE MATERIALIZED sono la forma, non un suggerimento: la partita da vendite.fn_partite_merce col DDT come seme (quarta leva, 2026-09-21) in `pm` (giro 6: inlinata, come app era il lato interno di un nested loop ri-eseguito per ogni riga); i BILLING ACCOUNT in `ba_vis`, seminata dalle CHIAVI in gioco (giro 7, 2026-09-22: il LEFT JOIN alla tabella faceva rivalutare la policy su OGNI BA per OGNI riga, e nemmeno forzando l''indice diventava un Index Cond). ⚠️ `ba_vis` e'' letta come INVOKER: un BA che esiste ma che la policy non mostra non entra, e la riga esce SENZA_BA — semantica della rank 3 invariata, provata su casi COSTRUITI (sui dati vivi il ramo non e'' esercitato). `righe` e `src` escono da `cand` solo perche'' le chiavi dei BA siano calcolabili prima. ⭐ rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-6): il BA e'' UNO, quello della testata del DDT. Fino a questa revisione era COALESCE(BA del DDT, BA dell''ordine sorgente), per riga: un DDT senza BA con righe di ordini diversi spingeva su BA diversi, e uno col BA diverso dall''ordine spingeva col suo. Da oggi la riga che evade un ordine ha il BA del DDT (vendite.trgfn_ordini_ful_guard_consistenza) e la seconda fonte non aggiunge niente. I motivi 7/8/9 si leggono da `stato` (rev 2026-08-18, §23.2 brief-design-partita-merce-generalizzata). Brief: brief-db-partita-merce-per-documento §10, §13, §14; brief-db-ddt-reason-push-catch-all §3 (Decisione A). Rev 2026-10-20 (20261020-94, brief-db-grammatica-unica-documenti 2e, G-8): la chiave della riga di bolla la compone script.fn_segment_key (DDT_VENDITA).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -16,12 +16,14 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| causa_fallimento | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_codici_errore_codice_non_vuoto |  |
 | CHECK | chk_codici_errore_note_una_riga |  |
+| FOREIGN KEY | fk_codici_errore_cause_fallimento | causa_fallimento |
 | FOREIGN KEY | fk_codici_errore_classi_errore | classe |
 | PRIMARY KEY | pk_codici_errore | codice |
 

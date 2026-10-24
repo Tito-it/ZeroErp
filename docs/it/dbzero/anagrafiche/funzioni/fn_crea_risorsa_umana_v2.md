@@ -7,6 +7,8 @@ CREATE FUNCTION fn_crea_risorsa_umana_v2(p_soggetto_id uuid, p_qualifica_id inte
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(p_soggetto_id uuid DEFAULT NULL::uuid, p_qualifica_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer, p_valido_dal date DEFAULT script.fn_data_operativa(), p_valido_al date DEFAULT NULL::date, p_auth_user_id integer DEFAULT NULL::integer, p_is_super_admin boolean DEFAULT false, p_attivo boolean DEFAULT true)
  RETURNS bigint
@@ -17,7 +19,6 @@ DECLARE
     v_ru_id        anagrafiche.risorse_umane.id%TYPE;
     v_identita_id  anagrafiche.identita_digitali.id%TYPE;
     v_profilo_sa   config.profili_accesso_bindings.profilo_accesso_id%TYPE;
-    v_n_profili_sa integer;  -- un conteggio: nessuna colonna di cui sia il riflesso
 BEGIN
     -- =========================================================
     -- Scopo (v2 multi-face native, Chunk A Fase 7 2026-04-29):
@@ -93,33 +94,13 @@ BEGIN
         END IF;
     END IF;
 
-    -- ⛔ Il profilo SUPER_ADMIN si RISOLVE, non si scrive (rev 20260923-10).
-    --   Fino a questa revisione il binding usava l'id cablato 9100: vero solo
-    --   perche' il seed di config.profili_accesso porta l'id esplicito. La
-    --   chiave stabile e' l'enum `tipo` (linee-guida-sql §6d, punto 1: e' la
-    --   stessa dei guard anti-lockout e di script.fn_is_super_admin); `codice`
-    --   e' modificabile e non ha lock.
-    -- ⚠️ Il modello non vieta DUE profili di tipo SUPER_ADMIN, e sceglierne uno
-    --   per id sarebbe un'ambiguita', non una scelta: si pretende esattamente
-    --   un profilo attivo, e si solleva PRIMA di ogni scrittura.
+    -- ⛔ Il profilo SUPER_ADMIN si RISOLVE, non si scrive (rev 20260923-10):
+    --   per tipo, fra i profili attivi, esattamente uno, PRIMA di ogni
+    --   scrittura. ⭐ Dal 20261019-17 la regola sta nel lettore
+    --   config.fn_profilo_super_admin_id (R-BE-11, regola del 2): era scritta
+    --   qui e nel backend.
     IF p_is_super_admin AND p_auth_user_id IS NOT NULL THEN
-        SELECT count(*), min(pa.id)
-          INTO v_n_profili_sa, v_profilo_sa
-          FROM config.profili_accesso pa
-         WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
-           AND pa.attivo;
-
-        IF v_n_profili_sa <> 1 THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
-                'E_CONFIG_MANCANTE',
-                jsonb_build_object('tipo_profilo_accesso', 'SUPER_ADMIN',
-                                   'profili_attivi', v_n_profili_sa),
-                NULL::uuid,
-                'un solo profilo di accesso SUPER_ADMIN attivo (trovati '
-                    || v_n_profili_sa::text || ')'
-            );
-        END IF;
+        v_profilo_sa := config.fn_profilo_super_admin_id();
     END IF;
 
     -- Step 1: soggetto_ruolo RIS_UMANA
@@ -194,16 +175,9 @@ BEGIN
         -- Differenza vs v1: predicato boolean diretto invece
         -- di confronto con enum legacy.
         IF p_is_super_admin THEN
-            INSERT INTO config.profili_accesso_bindings (
-                profilo_accesso_id,
-                identita_digitale_id,
-                attivo
-            )
-            VALUES (
-                v_profilo_sa,
-                v_identita_id,
-                true
-            );
+            -- rev 2026-10-18: il BB del binding (regola del 2);
+            -- attivo = true e' il DEFAULT della colonna.
+            PERFORM config.fn_lega_profilo_identita(v_profilo_sa, v_identita_id);
         END IF;
     END IF;
 
@@ -212,8 +186,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(p_soggetto_id uuid, p_qualifica_id integer, p_unita_organizzativa_id integer, p_valido_dal date, p_valido_al date, p_auth_user_id integer, p_is_super_admin boolean, p_attivo boolean)
-IS 'Building block multi-face native (v2 Chunk A Fase 7 2026-04-29). Sostituisce v1 (firma con p_ruolo_sistema config.ruolo_sistema) con p_is_super_admin/p_attivo. Body invariato salvo: identita_digitali.attivo=p_attivo (era hardcoded true) e binding SUPER_ADMIN gated su p_is_super_admin invece di p_ruolo_sistema=ADMIN. v1 droppata in Chunk B post BE migrato. ⛔ Rev 20260923-10: il profilo del binding SUPER_ADMIN si RISOLVE per config.profili_accesso.tipo = SUPER_ADMIN fra i profili attivi (chiave stabile, linee-guida-sql §6d), non piu'' con l''id cablato 9100; se i profili attivi di quel tipo non sono esattamente uno solleva E_CONFIG_MANCANTE prima di ogni scrittura. ⛔ Rev 20261002-01: una persona e'' una risorsa umana sola (uq_risorse_umane_soggetto_ruolo, anche spenta): se il soggetto lo e'' gia'' solleva E_RISORSA_UMANA_GIA_PRESENTE (campo soggetto_id) invece di lasciar arrivare il 23505; vale per ogni chiamante, non solo per fn_crea_operatore_v2.';
+IS 'Building block multi-face native (v2 Chunk A Fase 7 2026-04-29). Sostituisce v1 (firma con p_ruolo_sistema config.ruolo_sistema) con p_is_super_admin/p_attivo. Body invariato salvo: identita_digitali.attivo=p_attivo (era hardcoded true) e binding SUPER_ADMIN gated su p_is_super_admin invece di p_ruolo_sistema=ADMIN. v1 droppata in Chunk B post BE migrato. ⛔ Rev 20260923-10: il profilo del binding SUPER_ADMIN si RISOLVE per config.profili_accesso.tipo = SUPER_ADMIN fra i profili attivi (chiave stabile, linee-guida-sql §6d), non piu'' con l''id cablato 9100; se i profili attivi di quel tipo non sono esattamente uno solleva E_CONFIG_MANCANTE prima di ogni scrittura. ⛔ Rev 20261002-01: una persona e'' una risorsa umana sola (uq_risorse_umane_soggetto_ruolo, anche spenta): se il soggetto lo e'' gia'' solleva E_RISORSA_UMANA_GIA_PRESENTE (campo soggetto_id) invece di lasciar arrivare il 23505; vale per ogni chiamante, non solo per fn_crea_operatore_v2. Rev 2026-10-18: il binding SUPER_ADMIN lo scrive il BB config.fn_lega_profilo_identita (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 8); comportamento invariato. ⭐ Rev 2026-10-18 (20261019-17, R-BE-11, regola del 2): il profilo SUPER_ADMIN lo risolve config.fn_profilo_super_admin_id, sede unica della regola che era scritta qui e nel backend; la firma si ancora con %TYPE. Comportamento invariato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

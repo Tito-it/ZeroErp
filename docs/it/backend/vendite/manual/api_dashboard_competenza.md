@@ -22,11 +22,34 @@ viste (DB-first); il service fa solo il **pivot** del formato lungo. Livello are
 `LETTURA` sufficiente; nessuna azione di processo.
 
 ```text
-GET /api/v1/vendite/dashboard-competenza/            (ApiDashboardCompetenza)
-GET /api/v1/vendite/dashboard-competenza/attivita/   (ApiDashboardCompetenzaAttivita)
-GET /api/v1/vendite/dashboard-competenza/commesse/   (ApiDashboardCompetenzaCommesse)
-GET /api/v1/vendite/dashboard-competenza/errori/     (ApiDashboardCompetenzaErrori)
+GET /api/v1/vendite/dashboard-competenza/                   (ApiDashboardCompetenza)
+GET /api/v1/vendite/dashboard-competenza/attivita/          (ApiDashboardCompetenzaAttivita)
+GET /api/v1/vendite/dashboard-competenza/commesse/          (ApiDashboardCompetenzaCommesse)
+GET /api/v1/vendite/dashboard-competenza/commesse/export/   (ApiDashboardCompetenzaCommesseExport)
+GET /api/v1/vendite/dashboard-competenza/gruppi/            (ApiDashboardCompetenzaGruppi)
+GET /api/v1/vendite/dashboard-competenza/gruppi/export/     (ApiDashboardCompetenzaGruppiExport)
+GET /api/v1/vendite/dashboard-competenza/residui/           (ApiDashboardCompetenzaResidui)
+GET /api/v1/vendite/dashboard-competenza/residui/export/    (ApiDashboardCompetenzaResiduiExport)
+GET /api/v1/vendite/dashboard-competenza/errori/            (ApiDashboardCompetenzaErrori)
+GET /api/v1/vendite/dashboard-competenza/errori/export/     (ApiDashboardCompetenzaErroriExport)
 ```
+
+Gli export (`?formato=csv|xlsx`, default csv; mai `format`) prendono gli stessi
+filtri e lo stesso ordinamento della lista gemella, colonne dal catalogo della
+lista. Le liste `commesse/`, `gruppi/`, `residui/`, `errori/` e i loro export
+dichiarano `lista_codice` (`vendite.dash_competenza_*`): il cancello di
+perimetro emittente può rispondere `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`.
+
+**Ordinamento comune** a tutte le liste: con `order_by` e senza `order_dir` le
+colonne data (per nome: `data_*`, `*_dal/_al`, `*_at`, `competenza_mese`)
+partono DESC, le altre ASC; il vuoto vale come minimo (`ASC NULLS FIRST` /
+`DESC NULLS LAST`, `sql_order_direction`). Paginazione `limit`/`offset`
+(`pagina_da_query`): `limit` default 25, max 200, `offset` default 0; non
+interi, `limit` fuori da 1..200 o `offset` negativo → 400 `E_VALIDATION_INPUT`
+(il fuori limite dal 2026-10-21: prima si riportava nei limiti in silenzio). ⛔
+`page`/`page_size` in query sono un 400 `E_VALIDATION_INPUT` dal 2026-10-21
+(prima erano il contratto di queste liste); la risposta porta ancora `page` e
+`page_size`, ricavati dall'offset.
 
 Catena: view (`views_dashboard_competenza.py`) →
 `vendite_service.fn_dash_competenza_{mensile,attivita,commesse,errori}` →
@@ -53,8 +76,6 @@ emittente è DB-side via GUC nella vista): `commesse/` fa `GROUP BY commessa_id`
 
 - `competenza_mese` (obbligatorio, date ISO): mese di competenza; qualsiasi
   giorno viene normalizzato al 1° del mese.
-- `registro_id` (int, opzionale) / `registro_non_risolvibile` (bool,
-  opzionale) — filtro sezionale, vedi sotto. Alternativi.
 - `stadio` (opzionale): `DA_APPROVARE | DA_EMETTERE | EMESSA_NON_FATTURATA |
   FATTURATA` (case-insensitive; fuori whitelist → `E_VENDITE_VALIDATION`;
   assente = tutti gli stadi).
@@ -64,21 +85,24 @@ emittente è DB-side via GUC nella vista): `commesse/` fa `GROUP BY commessa_id`
   (convenzione delle liste standard). `order_by` in whitelist —
   `commessa_codice` | `cliente_display` | `articolo_codice` (ordina per la
   descrizione **mostrata**, `COALESCE(art.descrizione, art.codice)`) |
-  `data_attivita` (default; ordina per la **colonna data**, non per la stringa
-  gg/mm/aaaa del FE) | `valore`; `order_dir` = `asc` | `desc`. Server-side
+  `data_attivita` (ordina per la **colonna data**, non per la stringa
+  gg/mm/aaaa del FE) | `valore`; `order_dir` = `asc` | `desc`. Senza `order_by`:
+  `valore DESC`. Server-side
   perché la lista è paginata: ordine corretto su **tutte** le pagine. Colonna
   fuori whitelist o direzione ≠ asc/desc → 400 (`E_VENDITE_VALIDATION`). Tiebreak
   stabile `(commessa_codice, commessa_attivita_id)`.
-- `page` / `page_size` (opzionali): paginazione standard (default 1/50, max 200).
+- `limit` / `offset` (opzionali): paginazione standard (default 25/0, max 200).
+- ⚠️ `registro_id` / `registro_non_risolvibile` **non** esistono qui: il filtro
+  sezionale è solo di `gruppi/`.
 
 ### `GET /dashboard-competenza/commesse/`
 
 Stesso perimetro e stessi filtri di `attivita/` (`competenza_mese` obbligatorio,
-`stadio`, `solo_ritardo`, `page`/`page_size`), ma **aggregato per commessa**.
+`stadio`, `solo_ritardo`, `limit`/`offset`), ma **aggregato per commessa**.
 
 - `order_by` / `order_dir` (opzionali): whitelist **aggregata** —
   `commessa_codice` | `cliente_display` | `n_attivita` | `valore_tot` (default,
-  DESC) | `data_attivita_max`; `order_dir` = `asc` | `desc`. Le colonne di riga
+  DESC) | `data_attivita_max` | `emittente_ragione_sociale`; `order_dir` = `asc` | `desc`. Le colonne di riga
   (es. `data_attivita`) **non** sono ammesse qui → 400 (`E_VENDITE_VALIDATION`).
   Tiebreak stabile `(commessa_codice, commessa_id)`.
 - Il `count` dell'envelope è il **numero di commesse distinte** nel perimetro
@@ -97,6 +121,12 @@ Elenco dei **gruppi fatturabili** (emissione mirata, 2026-07-27).
   Python**: il vocabolario è estensibile lato DB e una lista parallela si
   disallineerebbe al primo tipo aggiunto; il valore è un bind param e le voci
   valide del perimetro le dichiara il blocco `tipi` della risposta.
+- `ba_fatturazione_id` (int, opzionale) / `ba_non_determinabile` (bool,
+  opzionale): filtro **cliente** sul BA di fatturazione (lo stesso che entra
+  nella chiave fattura). Alternativi: `ba_non_determinabile=true` vince e
+  seleziona i gruppi senza BA determinabile.
+- `registro_id` (int, opzionale) / `registro_non_risolvibile` (bool,
+  opzionale): filtro **sezionale**, vedi §«Il filtro per sezionale».
 - `search` (opzionale): ricerca libera, le colonne le decide il catalogo della
   lista `vendite.dash_competenza_gruppi` (`ricerca_full` nella configurazione).
   Sotto 3 caratteri il termine si **ignora** (nessun `400`, nessuna lista
@@ -104,8 +134,12 @@ Elenco dei **gruppi fatturabili** (emissione mirata, 2026-07-27).
   repository; le tre facet non la seguono (perimetro base).
 - `order_by` / `order_dir` (opzionali): whitelist `riferimento` | `tipo_gruppo` |
   `cliente_display` | `commessa_codice` | `n_attivita` | `valore` (default,
-  DESC) | `data_attivita_max`; tiebreak stabile su `gruppo_key`.
-- `page` / `page_size` (opzionali): paginazione standard.
+  DESC) | `data_attivita_max` | `ba_codice_fatturazione` | `id_fiscale` |
+  `emittente_ragione_sociale` | `registro_codice` | `data_documento_prevista` |
+  `ultimo_esito` | `ultimo_errore_codice` | `ultimo_errore_quando` |
+  `ultimo_lotto_codice`; fuori whitelist → 400 `E_VENDITE_VALIDATION`;
+  tiebreak stabile `gruppo_key ASC, stadio`.
+- `limit` / `offset` (opzionali): paginazione standard.
 
 ### `GET /dashboard-competenza/residui/`
 
@@ -117,8 +151,10 @@ cui agisce il verbo «Riporta da emettere».
 - `order_by` / `order_dir` (opzionali): whitelist di **dieci** colonne, chiavate
   sul `campo_sorgente` del catalogo e non sul `codice` — due divergono
   (`articolo` → `articolo_codice`, `lotto_provenienza` →
-  `lotto_provenienza_codice`). Default `competenza_mese` **ASC**.
-- `page` / `page_size` (opzionali): paginazione standard.
+  `lotto_provenienza_codice`). Senza `order_by`: `competenza_mese`, che ora
+  segue la regola delle date (DESC senza `order_dir`); la colonna è comunque
+  costante sul mese, e l'ordine visibile lo decide il tiebreak.
+- `limit` / `offset` (opzionali): paginazione standard.
 
 ⛔ **Non esiste un parametro per scegliere il motivo**, ed è deliberato. Lo
 stadio `EMESSA_NON_FATTURATA` contiene **quattro** situazioni e solo `RESIDUO`
@@ -158,14 +194,14 @@ catalogo `vendite.dash_competenza_residui`. Hard cap 10.000 righe.
   vivi di tutti i mesi.
 - `order_by` / `order_dir` (opzionali, **dal 2026-08-03**): ordinamento
   server-side. `order_by` in whitelist — `tipo_evento` | `lotto_codice` |
-  `fattura_numero` | `error_code` | `data_evento` (default); `order_dir` =
-  `asc` | `desc` (default `desc`: eventi recenti prima). Era l'unica lista
-  delle tre dashboard senza ordinamento. Colonna fuori whitelist o direzione
+  `fattura_numero` | `error_code` | `data_evento` (default) |
+  `emittente_ragione_sociale`; `order_dir` = `asc` | `desc` (senza: DESC su
+  `data_evento`, ASC sulle altre). Colonna fuori whitelist o direzione
   ≠ asc/desc → 400 (`E_VENDITE_VALIDATION`, validato nel service).
-  ⚠️ `NULLS LAST` esplicito su ogni colonna: metà della union non ha i campi
-  di documento (un errore di task non ha fattura, una fattura critical non ha
-  task), e in DESC quei NULL finirebbero in testa.
-- `page` / `page_size` (opzionali): paginazione standard.
+  ⚠️ NULL come minimo (`ASC NULLS FIRST` / `DESC NULLS LAST`): metà della
+  union non ha i campi di documento (un errore di task non ha fattura, una
+  fattura critical non ha task), e in DESC finiscono in coda.
+- `limit` / `offset` (opzionali): paginazione standard.
 
 ## Output
 
@@ -182,6 +218,8 @@ catalogo `vendite.dash_competenza_residui`. Hard cap 10.000 righe.
             "valore_fatturato": "3000.50", "valore_display": "3000.50",
             "n_in_ritardo": 1, "valore_in_ritardo": "100.00",
             "n_residui": 0, "valore_residui": "0",
+            "n_trattenute": 0, "valore_trattenuto": "0",
+            "n_fatture": 2, "n_fatture_stato": "OK",
             "stati_fattura": [
               { "stato_fattura_codice_interno": "DRAFT",
                 "stato_fattura_codice": "DRAFT", "n_attivita": 3,
@@ -190,7 +228,12 @@ catalogo `vendite.dash_competenza_residui`. Hard cap 10.000 righe.
             ] }
         ],
         "totali": { "valore_teorico": "3300.00", "valore_fatturato": "3000.50",
-                    "valore_da_fatturare": "300.00", "n_in_ritardo": 1 },
+                    "valore_da_fatturare": "300.00", "n_in_ritardo": 1,
+                    "copertura_fatturato": "3000.50",
+                    "copertura_da_fatturare": "300.00",
+                    "copertura_da_addebitare": "300.00",
+                    "copertura_da_accreditare": "0",
+                    "rettifiche_valore": "0", "rettifiche_n": 0 },
         "n_errori": 1 }
     ]
   }
@@ -215,6 +258,19 @@ catalogo `vendite.dash_competenza_residui`. Hard cap 10.000 righe.
   `valore_da_fatturare` = teorico dei non fatturati / `n_in_ritardo`). Il FE
   rende `valore_display` e `totali` senza scegliere la misura. Importi
   serializzati come stringhe.
+- `n_trattenute` / `valore_trattenuto`: la quota della cella trattenuta da un
+  giro ancora in corso (simmetrico: `0` dove non si applica).
+- `n_fatture`: quante **fatture** (non attività) nella cella; `n_fatture_stato`
+  dice perché il numero c'è o no — `OK` (valorizzato, anche `0`),
+  `NON_APPLICABILE` (`n_fatture: null`: stadio senza documento, cioè
+  `DA_APPROVARE`/`DA_EMETTERE`, o cella vuota), `ERRORE` (`null`: il conteggio
+  doveva riuscire e non è riuscito). Si calcola su `FATTURATA` ed
+  `EMESSA_NON_FATTURATA`.
+- `totali.copertura_*`: la copertura in **valore assoluto** (niente si
+  compensa): `copertura_fatturato`, `copertura_da_fatturare` e le sue due voci
+  `copertura_da_addebitare` + `copertura_da_accreditare` (=
+  `copertura_da_fatturare`). I tre totali netti restano invariati.
+  `rettifiche_valore` / `rettifiche_n`: le rettifiche (note di credito) del mese.
 - `n_errori` = errori vivi del mese (blocco 4), per semaforo/badge senza seconda
   chiamata.
 
@@ -269,11 +325,13 @@ assi grezzi (`stato_approvazione`, `stato_emissione`), `valore`,
 `data_emissione` (= `attivita_fatturabili.data_insert`, DL-5), `emessa_in_ritardo`
 (NULL se non emessa), flag AF (`sospesa`, `posticipa_al`), aggancio fattura
 (`fattura_id/anno/serie/numero`, `stato_fattura_codice_interno/codice`,
-`valore_fatturato`, `fattura_critical`).
+`valore_fatturato`, `fattura_critical`), `lotto_id`. Nessun `registro_id` /
+`registro_non_risolvibile` (campi e filtro esistono solo su `gruppi/`).
 Ordinamento: default `valore DESC NULLS LAST, commessa_codice,
 commessa_attivita_id`; con `order_by`/`order_dir` (vedi Input) l'ORDER BY diventa
-`<colonna whitelist> <asc|desc> NULLS LAST` + tiebreak `commessa_codice,
-commessa_attivita_id` — colonna e direzione **whitelistate** (mai input grezzo).
+`<colonna whitelist> ASC NULLS FIRST | DESC NULLS LAST` + tiebreak
+`commessa_codice ASC, commessa_attivita_id <stessa direzione>` — colonna e
+direzione **whitelistate** (mai input grezzo).
 
 ### Drill-down per commessa (aggregato)
 
@@ -281,7 +339,7 @@ Envelope paginato standard; `count` = numero di **commesse** distinte. Ogni riga
 `commessa_id`, `commessa_codice`, `cliente_display`, `n_attivita` (COUNT),
 `n_in_ritardo` (COUNT FILTER `emessa_in_ritardo`), `valore_tot` (SUM `valore`),
 `valore_fatturato_tot` (SUM `valore_fatturato`), `data_attivita_min` /
-`data_attivita_max` (MIN/MAX). Importi/date serializzati come stringhe (NULL
+`data_attivita_max` (MIN/MAX), `emittente_ragione_sociale`. Importi/date serializzati come stringhe (NULL
 preservato). Ordinamento: default `valore_tot DESC NULLS LAST, commessa_codice,
 commessa_id`; con `order_by`/`order_dir` colonna **aggregata** whitelistata +
 stesso tiebreak.
@@ -290,17 +348,30 @@ stesso tiebreak.
 
 Envelope paginato standard **più** la chiave `riepilogo` — i totali di TUTTO il
 perimetro, non della pagina: `n_gruppi`, `n_attivita`, `valore`,
-`n_gruppi_oneri`. Vengono dal DB
+`n_gruppi_oneri`, `n_gruppi_trattenuti` (i primi quattro **escludono** i gruppi
+trattenuti da un lotto ancora in gioco, che restano visibili in lista). Vengono dal DB
 (`vw_dash_competenza_gruppi_riepilogo` **aggrega** la vista di dettaglio, quindi
 i due numeri non possono divergere); sommare le righe della pagina corrente lato
 client produrrebbe un parziale con l'aria di un totale.
 
 Ogni riga: `gruppo_key`, `tipo_gruppo` (`codice_interno` della sorgente, oppure
-`ONERI_COMMESSA`), `area_documento`, `riferimento` (numero leggibile del
+`ONERI_COMMESSA`), `documento_apribile` (dal 2026-10-20 al posto di
+`area_documento`, il plurale ritirato: vero quando il documento ha una sua pagina,
+che si apre da `tipo_gruppo`; `null` sugli oneri), `riferimento` (numero leggibile del
 documento, o la commessa per gli oneri), `documento_id`,
 `commessa_id/commessa_codice`, `cliente_display`, `stadio`, `n_attivita`,
 `valore`, `ha_oneri`, `data_attivita_min` / `data_attivita_max`, `registri_n`,
-`registro_codice`, `data_documento_prevista`, `respinta_il`, `respinta_motivo`.
+`registro_codice`, `data_documento_prevista`, `respinta_il`, `respinta_motivo`,
+`commessa_emittibile`, `commessa_stato_codice_interno` /
+`commessa_stato_descrizione`, `ba_codice_fatturazione`, `id_fiscale`,
+`emittente_ragione_sociale` e l'esito dell'ultimo tentativo (`ultimo_esito`,
+`ultimo_errore_*`, `ultimo_lotto_codice`).
+
+Oltre a `riepilogo`, la risposta porta le facet `tipi`, `clienti`
+(`ba_fatturazione_id`, `cliente_display`, `ba_codice_fatturazione`,
+`id_fiscale`, `n_gruppi`, `n_attivita`; `ba_fatturazione_id: null` = cliente
+non determinabile), `registri` e `n_gruppi_perimetro` — tutte sul perimetro
+**base** (mese + stadio), non sui filtri. L'export restituisce le sole righe.
 
 #### ⭐ `respinta_il` / `respinta_motivo` — la bandiera della commessa respinta
 
@@ -378,7 +449,7 @@ poter filtrare. Il rimedio non è spegnere la colonna a catalogo — è ancorare
 la ricerca alla sorgente del documento, ed è un cantiere aperto (DL-2).
 
 Il blocco **`tipi`** è la *facet* del filtro: le voci realmente presenti nel
-perimetro con il conteggio (`tipo_gruppo`, `area_documento`, `n_gruppi`,
+perimetro con il conteggio (`tipo_gruppo`, `documento_apribile`, `n_gruppi`,
 `n_attivita`), ordinate per numerosità.
 
 > ⚠️ **Tre blocchi, due perimetri diversi, ed è voluto.** `results` e
@@ -534,7 +605,8 @@ dove dichiara di che natura sono le righe che si stanno leggendo.
 Envelope paginato standard; ogni riga: `tipo_evento`
 (`TASK_ERRORE | FATTURA_CRITICA`), `competenza_mese`, `lotto_id/lotto_codice/
 stato_lotto`, `fattura_id/anno/serie/numero`, `task_code`, `error_code`,
-`messaggio`, `data_evento`, `commesse_fallite`, `n_commesse_fallite`.
+`messaggio`, `data_evento`, `commesse_fallite`, `n_commesse_fallite`,
+`emittente_ragione_sociale`.
 Ordinamento: `data_evento DESC NULLS LAST` di
 default, oppure la colonna scelta via `order_by` (vedi Input), sempre seguita
 dal tiebreaker deterministico su **chiavi naturali** — `tipo_evento, lotto_id,
@@ -658,3 +730,6 @@ tecnica in `meta.context.dettaglio_tecnico` della riga di log.
 - **Emissione mirata (2026-07-27)**: aggiunto `gruppi/` sopra le viste
   `20260727-18/19`. Additivo: i quattro endpoint preesistenti sono invariati.
   Brief: `dev/work-done/brief-be-fe-emissione-fattura-mirata.md`.
+- 2026-10-21: le cinque liste (`attivita/`, `commesse/`, `gruppi/`, `residui/`,
+  `errori/`) leggono la finestra come `limit`/`offset` (`pagina_da_query`);
+  `page`/`page_size` in query diventano un 400. Envelope invariato.

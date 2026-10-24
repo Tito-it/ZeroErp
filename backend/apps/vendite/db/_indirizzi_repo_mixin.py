@@ -42,75 +42,25 @@ class IndirizziDocumentoRepositoryMixin:
 
     - ``_indirizzi_table``: nome FQN tabella (es. ``"vendite.ddt_indirizzi"``).
     - ``_indirizzi_fk_documento``: colonna FK al documento (es. ``"ddt_id"``).
-    - ``_indirizzi_ambito``: ambito whitelist in config.tipi_indirizzi_allowed
-      (es. ``"DDT"``).
-    - ``_indirizzi_documento_table``: tabella testata del documento (es.
-      ``"vendite.ddt"``), per il guard di ownership del picker.
-    - ``_indirizzi_doc_sr_column`` (opzionale): colonna soggetto_ruolo NATIVA
-      della testata quando il dominio ce l'ha (ordini ``soggetto_ruolo_id``,
-      ddt ``destinatario_soggetto_ruolo_id``). Ha priorita' sul BA: e'
-      l'identita' che il FE usa per il picker. Col BA la colonna e' una
-      COPIA del suo ruolo, legata dalla FK composta (``fk_ordini_ba_cliente``,
-      ``fk_ddt_ba_cliente``): le due fonti coincidono. Senza BA — solo il DDT
-      la cui causale non manda merce a un cliente (trasferimento, conto
-      lavoro, riparazione: ``config.causali_trasporto.richiede_cliente``) —
-      e' l'unica ancora: il terzista o il deposito. None = risoluzione solo
-      via billing_account.
-    - ``_indirizzi_doc_istanza_column`` (opzionale): colonna istanza NATIVA
-      della testata. La dichiarano i soli documenti **precontrattuali**
-      (preventivi, offerte, contratti), che scelgono l'istanza prima che
-      esista un BA e la congelano sulla testata. Gli **esecutivi** la
-      leggono dal BA (``ba.istanza_utility_id``, FK NOT NULL) e non duplicano
-      la colonna: ordine e fattura il BA lo hanno sempre; DDT e reso no
-      quando la causale non va a un cliente, e allora un'istanza non c'e'.
-      Vedi guida `gestione-delle-istanze-utility` §«relazione 1:1 per utility»
-      e brief-db-esecutivi-ba-coppia (D-1, D-2, D-3).
+    - ``_indirizzi_documento``: il documento, col codice di
+      ``config.sorgenti`` (costanti ``SORGENTE_*`` di
+      ``apps/config/sorgenti.py``: ``DDT_VENDITA``, ``ORDINE_VENDITA``,
+      ``OFFERTA_COMMERCIALE``, ``PREVENTIVO``, ``CONTRATTO``). Un codice solo
+      per due usi: l'ambito della whitelist ``config.tipi_indirizzi_allowed``
+      (FK verso le sorgenti) e il selettore di
+      ``vendite.fn_doc_indirizzo_default``. Fino al 2026-10-20 l'ambito era
+      un attributo a parte col plurale (``ORDINI``, ``OFFERTE``…), ritirato
+      col sotto-giro 2d di brief-db-grammatica-unica-documenti (G-6).
+
+    Chi e' il cliente del documento non lo sa piu' il mixin: lo legge il DB
+    (``script.fn_get_cliente_testata_documento``), che tiene anche la regola
+    «un indirizzo d'anagrafica e' del cliente del documento»
+    (brief-db-indirizzi-documento-seguono-il-cliente).
     """
 
     _indirizzi_table: str
     _indirizzi_fk_documento: str
-    _indirizzi_ambito: str
-    _indirizzi_documento_table: str
-    _indirizzi_doc_sr_column: str | None = None
-    _indirizzi_doc_istanza_column: str | None = None
-
-    # Scopo: Ancora del documento per la risoluzione indirizzi: la coppia
-    #        (soggetto_ruolo, istanza_utility). Una sola query, perche' i due
-    #        valori stanno sulla stessa riga di testata.
-    #        - soggetto_ruolo: colonna nativa se dichiarata (fallback BA);
-    #        - istanza: colonna nativa se dichiarata (precontrattuali),
-    #          altrimenti da `ba.istanza_utility_id` (esecutivi).
-    #        LEFT JOIN sul BA: il DDT senza cliente (causale che non manda
-    #        merce a un cliente) resta risolvibile dalla colonna nativa, con
-    #        l'istanza NULL.
-    #        (None, None) se il documento non esiste.
-    def get_ancora_indirizzi_documento(
-        self, documento_id: int,
-    ) -> tuple[int | None, int | None]:
-        sr_col = self._indirizzi_doc_sr_column
-        ist_col = self._indirizzi_doc_istanza_column
-        sr_expr = f"COALESCE(d.{sr_col}, ba.soggetto_ruolo_id)" if sr_col \
-            else "ba.soggetto_ruolo_id"
-        ist_expr = f"COALESCE(d.{ist_col}, ba.istanza_utility_id)" if ist_col \
-            else "ba.istanza_utility_id"
-        sql = f"""
-            SELECT {sr_expr}, {ist_expr}
-              FROM {self._indirizzi_documento_table} d
-              LEFT JOIN anagrafiche.billing_account ba
-                ON ba.id = d.billing_account_id
-             WHERE d.id = %s
-        """  # noqa: S608 — tabella/colonne da attributi di classe letterali della sottoclasse, valori come parametri
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [documento_id])
-            row = cursor.fetchone()
-            return (row[0], row[1]) if row else (None, None)
-
-    # Scopo: soggetto_ruolo del CLIENTE/DESTINATARIO del documento, ancora
-    #        unica per il guard di ownership del picker. Delega alla coppia
-    #        sopra: un solo SQL da mantenere.
-    def get_soggetto_ruolo_documento(self, documento_id: int) -> int | None:
-        soggetto_ruolo, _ = self.get_ancora_indirizzi_documento(documento_id)
-        return soggetto_ruolo
+    _indirizzi_documento: str
 
     # Scopo: Tipi indirizzo ammessi per l'ambito del documento (slot del
     #        pannello FE): il GET li restituisce insieme alle righe cosi' la
@@ -128,7 +78,7 @@ class IndirizziDocumentoRepositoryMixin:
              ORDER BY a.obbligatorio DESC, ti.id
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [self._indirizzi_ambito])
+            cursor.execute(sql, [self._indirizzi_documento])
             return rows_to_list(cursor)
 
     # Scopo: Indirizzi del documento con tipo denormalizzato (drawer + PDF
@@ -158,46 +108,22 @@ class IndirizziDocumentoRepositoryMixin:
             cursor.execute(sql, [documento_id])
             return [_snapshot_to_dict(r) for r in rows_to_list(cursor)]
 
-    # Scopo: Risolve l'indirizzo di un tipo per il documento delegando a
-    #        `script.fn_resolve_indirizzo_documento` (2026-07-31): catena a due
-    #        layer RUOLO → SOGGETTO con **precedenza all'istanza** del documento.
-    #        Ritorna {snapshot, origine_indirizzo_id, origine_soggetto_ruolo_id}
-    #        oppure None se nessun layer ha risposto (l'obbligatorieta' la
-    #        decide il chiamante, non questa).
-    #
-    # ⚠️ Perche' l'SQL non sta piu' qui. Fino al 2026-07-30 il mixin aveva due
-    #    metodi propri (`find_indirizzo_ruolo_per_tipi` +
-    #    `find_snapshot_soggetto_per_tipi`) con la catena replicata in Python, e
-    #    stava per nascerne una **terza** copia per il task fattura. Ora la
-    #    catena ha un solo proprietario a DB (regola del 2 / D-5: lo snapshot si
-    #    compone server-side, mai a mano).
-    #    Due conseguenze di merito, entrambe volute:
-    #      1. l'ordinamento e' cambiato. Il vecchio SQL faceva
-    #         `ORDER BY ... i.istanza_utility_id NULLS FIRST`, cioe' preferiva
-    #         l'indirizzo **generico** e ignorava l'istanza del documento; la
-    #         funzione DB fa `ORDER BY (istanza_utility_id IS NULL)` e mette
-    #         davanti quello **dell'istanza richiesta**. Per un ERP di utilities
-    #         e' il verso giusto;
-    #      2. il layer SOGGETTO non compone piu' lo snapshot in Python (5 chiavi
-    #         assemblate a mano): lo produce `fn_snapshot_indirizzo_soggetto`
-    #         con lo **stesso shape canonico** del layer RUOLO.
-    def resolve_indirizzo_documento(
-        self,
-        *,
-        soggetto_ruolo_id: int,
-        istanza_utility_id: int | None,
-        tipo_codice: str,
-    ) -> dict[str, Any] | None:
-        sql = """
-            SELECT snapshot, origine_indirizzo_id, origine_soggetto_ruolo_id
-              FROM script.fn_resolve_indirizzo_documento(%s, %s, %s)
-        """
+    # Scopo: Riempie lo slot di default del documento dall'anagrafica del suo
+    #        cliente, SOLO se e' vuoto: `vendite.fn_doc_indirizzo_default`.
+    #        Quale slot e quale ripiego e' un dato
+    #        (`config.tipi_indirizzi_allowed.slot_default` /
+    #        `ripiego_tipo_indirizzo_id`), la risoluzione e' quella di
+    #        `script.fn_resolve_indirizzo_documento`. Torna True se ha scritto.
+    #        ⚠️ Non e' best-effort: un errore del DB sale, e il chiamante lo
+    #        mette nella stessa transazione della creazione.
+    def riempi_indirizzo_default(self, documento_id: int) -> bool:
         with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_ruolo_id, istanza_utility_id, tipo_codice])
-            row = row_to_dict(cursor)
-        if row is None:
-            return None
-        return _snapshot_to_dict(row)
+            cursor.execute(
+                "SELECT vendite.fn_doc_indirizzo_default(%s, %s)",
+                [self._indirizzi_documento, documento_id],
+            )
+            row = cursor.fetchone()
+            return bool(row and row[0])
 
     # Scopo: Compone server-side lo snapshot canonico da un indirizzo
     #        anagrafico di ruolo (D-5, single source DB). Ritorna

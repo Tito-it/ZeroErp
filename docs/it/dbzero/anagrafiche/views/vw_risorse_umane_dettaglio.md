@@ -1,6 +1,8 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/vw_risorse_umane_dettaglio.md" %}
 # 🔍 View `vw_risorse_umane_dettaglio`
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_risorse_umane_dettaglio AS
 SELECT ru.id AS risorsa_umana_id,
@@ -51,6 +53,8 @@ SELECT ru.id AS risorsa_umana_id,
      LEFT JOIN config.qualifiche q ON ((q.id = ru.qualifica_id)))
      LEFT JOIN config.unita_organizzative uo ON ((uo.id = ru.unita_organizzativa_id)));
 ```
+
+</div>
 
 
 ---

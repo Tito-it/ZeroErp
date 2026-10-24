@@ -28,6 +28,8 @@ Indice test eseguiti:
 14) test_put_override_oggetti_valida_catalogo — model non registrato -> E_AMM_VALIDAZIONE
 15) test_put_override_oggetti_empty_skippa_validazione — lista vuota non chiama lookup
 16) test_get_model_overrides_lookup — lookup catalogo model
+17) test_override_su_credenziale_non_operatore_e_404 — macchina, ALTRO o id inesistente: 404 su GET e PUT dei tre override, niente scritto
+18) test_voci_malformate_sono_400_non_500 — items non lista, voce non oggetto, campo mancante: 400 E_AMM_VALIDAZIONE, niente scritto
 """
 
 import json
@@ -111,12 +113,20 @@ def _make_request(method: str = "GET", data: dict | None = None) -> MagicMock:
     return request
 
 
+# Le voci come il service le passa al repository: i campi comuni a ogni
+# override (`motivo`, `valido_dal`, `valido_al`) sempre presenti, validati.
+def _normalizzate(items):
+    return [{"motivo": None, "valido_dal": None, "valido_al": None, **it} for it in items]
+
+
 class TestOverrideAreeView(TestCase):
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_get_override_aree(self, mock_repo_cls):
         """GET override aree ritorna lista."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.get_override_aree.return_value = [SAMPLE_OVERRIDE_AREA]
         mock_repo_cls.return_value = mock_repo
 
@@ -132,6 +142,8 @@ class TestOverrideAreeView(TestCase):
     def test_put_override_aree(self, mock_invalidate, mock_repo_cls):
         """PUT override aree sostituisce e ritorna lista aggiornata."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.get_override_aree.return_value = [SAMPLE_OVERRIDE_AREA]
         mock_repo_cls.return_value = mock_repo
 
@@ -140,7 +152,7 @@ class TestOverrideAreeView(TestCase):
         view = OverrideAreeView()
         response = view.put(request, auth_user_id=1)
 
-        mock_repo.put_override_aree.assert_called_once_with(1, items)
+        mock_repo.put_override_aree.assert_called_once_with(1, _normalizzate(items))
         data = json.loads(response.content)
         self.assertEqual(len(data["data"]["results"]), 1)
 
@@ -149,6 +161,8 @@ class TestOverrideAreeView(TestCase):
     def test_put_override_aree_invalidates_cache(self, mock_invalidate, mock_repo_cls):
         """PUT invalida cache utente dopo modifica."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.get_override_aree.return_value = []
         mock_repo_cls.return_value = mock_repo
 
@@ -164,6 +178,8 @@ class TestOverrideAzioniView(TestCase):
     def test_get_override_azioni(self, mock_repo_cls):
         """GET override azioni ritorna lista."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.get_override_azioni.return_value = [SAMPLE_OVERRIDE_AZIONE]
         mock_repo_cls.return_value = mock_repo
 
@@ -178,6 +194,8 @@ class TestOverrideAzioniView(TestCase):
     def test_put_override_azioni(self, mock_invalidate, mock_repo_cls):
         """PUT override azioni sostituisce e ritorna lista aggiornata."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.get_override_azioni.return_value = [SAMPLE_OVERRIDE_AZIONE]
         mock_repo_cls.return_value = mock_repo
 
@@ -186,7 +204,7 @@ class TestOverrideAzioniView(TestCase):
         view = OverrideAzioniView()
         response = view.put(request, auth_user_id=1)
 
-        mock_repo.put_override_azioni.assert_called_once_with(1, items)
+        mock_repo.put_override_azioni.assert_called_once_with(1, _normalizzate(items))
         data = json.loads(response.content)
         self.assertEqual(len(data["data"]["results"]), 1)
 
@@ -195,6 +213,8 @@ class TestOverrideAzioniView(TestCase):
     def test_put_override_azioni_invalidates_cache(self, mock_invalidate, mock_repo_cls):
         """PUT invalida cache utente dopo modifica."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.get_override_azioni.return_value = []
         mock_repo_cls.return_value = mock_repo
 
@@ -345,6 +365,8 @@ class TestOverrideOggettiView(TestCase):
     def test_get_override_oggetti(self, mock_repo_cls):
         """GET override oggetti ritorna lista con info model+area."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.get_override_oggetti.return_value = [SAMPLE_OVERRIDE_OGGETTO]
         mock_repo_cls.return_value = mock_repo
 
@@ -362,6 +384,8 @@ class TestOverrideOggettiView(TestCase):
     def test_put_override_oggetti(self, mock_invalidate, mock_repo_cls):
         """PUT override oggetti sostituisce e ritorna lista aggiornata."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.list_model_overrides.return_value = [SAMPLE_MODEL_OVERRIDE]
         mock_repo.get_override_oggetti.return_value = [SAMPLE_OVERRIDE_OGGETTO]
         mock_repo_cls.return_value = mock_repo
@@ -374,7 +398,7 @@ class TestOverrideOggettiView(TestCase):
         view = OverrideOggettiView()
         response = view.put(request, auth_user_id=1)
 
-        mock_repo.put_override_oggetti.assert_called_once_with(1, items)
+        mock_repo.put_override_oggetti.assert_called_once_with(1, _normalizzate(items))
         data = json.loads(response.content)
         self.assertEqual(len(data["data"]["results"]), 1)
 
@@ -383,6 +407,8 @@ class TestOverrideOggettiView(TestCase):
     def test_put_override_oggetti_invalidates_cache(self, mock_invalidate, mock_repo_cls):
         """PUT invalida cache utente dopo modifica."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.list_model_overrides.return_value = [SAMPLE_MODEL_OVERRIDE]
         mock_repo.get_override_oggetti.return_value = []
         mock_repo_cls.return_value = mock_repo
@@ -397,6 +423,8 @@ class TestOverrideOggettiView(TestCase):
     def test_put_override_oggetti_valida_catalogo(self, mock_invalidate, mock_repo_cls):
         """PUT con model non registrato -> E_AMM_VALIDAZIONE, nessuna scrittura."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.list_model_overrides.return_value = [SAMPLE_MODEL_OVERRIDE]
         mock_repo_cls.return_value = mock_repo
 
@@ -418,6 +446,8 @@ class TestOverrideOggettiView(TestCase):
     def test_put_override_oggetti_empty_skippa_validazione(self, mock_invalidate, mock_repo_cls):
         """PUT con lista vuota non interroga il catalogo (cancellazione pura)."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.get_override_oggetti.return_value = []
         mock_repo_cls.return_value = mock_repo
 
@@ -435,6 +465,8 @@ class TestModelOverridesLookupView(TestCase):
     def test_get_model_overrides_lookup(self, mock_repo_cls):
         """GET lookup ritorna catalogo con schema area + capability."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.list_model_overrides.return_value = [SAMPLE_MODEL_OVERRIDE]
         mock_repo_cls.return_value = mock_repo
 
@@ -454,6 +486,8 @@ class TestModelOverridesLookupView(TestCase):
     def test_get_model_overrides_lookup_riservato(self, mock_repo_cls):
         """Fase 8: model riservati hanno can_override=False + reason i18n."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.list_model_overrides.return_value = [
             SAMPLE_MODEL_OVERRIDE,
             SAMPLE_MODEL_OVERRIDE_RISERVATO,
@@ -484,6 +518,8 @@ class TestModelOverridesLookupView(TestCase):
         deve rifiutare.
         """
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.list_model_overrides.return_value = [
             SAMPLE_MODEL_OVERRIDE,
             SAMPLE_MODEL_OVERRIDE_RISERVATO,
@@ -518,3 +554,70 @@ class TestOverridePermissionDenied(TestCase):
 
         perm = IsAdminZeroERP()
         self.assertFalse(perm.has_permission(request, OverrideAreeView()))
+
+
+class TestOverrideSoloSuOperatori(TestCase):
+
+    # Scopo: ⛔ le rotte `operatori/{id}/override-*` valgono solo per una
+    #        credenziale di categoria OPERATORE, come tutte le `operatori/{id}/`.
+    #        Prima un id di macchina (SISTEMA) o di cliente del portale (ALTRO)
+    #        riceveva gli override col PUT, e il GET rispondeva una lista vuota.
+    #        Ora e' il 404 di `get_operatore`, e il repository non scrive niente.
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    def test_override_su_credenziale_non_operatore_e_404(self, mock_repo_cls, _invalidate):
+        mock_repo = mock_repo_cls.return_value
+        put = {"items": [{"area_id": 2, "livello": "LETTURA"}]}
+        for categoria in ("SISTEMA", "ALTRO", None):
+            mock_repo.get_categoria_accesso.return_value = categoria
+            for view in (OverrideAreeView(), OverrideAzioniView(), OverrideOggettiView()):
+                for metodo in ("get", "put"):
+                    with self.subTest(categoria=categoria, view=type(view).__name__, metodo=metodo):
+                        request = _make_request(metodo.upper(), put if metodo == "put" else None)
+                        with self.assertRaises(ServiceError) as ctx:
+                            getattr(view, metodo)(request, auth_user_id=7)
+                        self.assertEqual(ctx.exception.code, "E_AMM_OPERATORE_NOT_FOUND")
+        for nome in (
+            "put_override_aree", "put_override_azioni", "put_override_oggetti",
+            "get_override_aree", "get_override_azioni", "get_override_oggetti",
+        ):
+            getattr(mock_repo, nome).assert_not_called()
+
+
+class TestVociOverrideValidate(TestCase):
+
+    # Scopo: ⛔ le voci dei tre PUT si validano PRIMA del repository. Fino al
+    #        2026-10-20 arrivavano crude: una chiave mancante era un KeyError, una
+    #        voce non-oggetto un AttributeError — un 500 per un errore di chi chiama.
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    def test_voci_malformate_sono_400_non_500(self, mock_repo_cls, _invalidate):
+        mock_repo = mock_repo_cls.return_value
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
+        mock_repo.list_model_overrides.return_value = [SAMPLE_MODEL_OVERRIDE]
+        casi = (
+            # `items` assente: il repository sostituisce in blocco, e un corpo
+            # senza la chiave cancellava tutti gli override con un 200.
+            (OverrideAreeView, {}),
+            (OverrideAzioniView, {"item": [{"azione_id": 3, "abilitata": True}]}),
+            (OverrideOggettiView, {}),
+            # campi comuni: le date e il motivo, validati prima del DB
+            (OverrideAreeView, {"items": [{"area_id": 2, "livello": "LETTURA", "valido_dal": "ieri"}]}),
+            (OverrideAzioniView, {"items": [{"azione_id": 3, "abilitata": True, "motivo": {"x": 1}}]}),
+            (OverrideAreeView, {"items": None}),
+            (OverrideAreeView, {"items": ["non un oggetto"]}),
+            (OverrideAreeView, {"items": [{"livello": "LETTURA"}]}),
+            (OverrideAreeView, {"items": [{"area_id": 2}]}),
+            (OverrideAzioniView, {"items": [{"azione_id": 3}]}),
+            (OverrideAzioniView, {"items": [{"azione_id": 3, "abilitata": "true"}]}),
+            (OverrideOggettiView, {"items": [{"app_label": "anagrafiche", "model_name": "conto_bancario"}]}),
+        )
+        for vista, corpo in casi:
+            with self.subTest(vista=vista.__name__, corpo=corpo):
+                with self.assertRaises(ServiceError) as ctx:
+                    vista().put(_make_request("PUT", corpo), auth_user_id=1)
+                self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+        mock_repo.put_override_aree.assert_not_called()
+        mock_repo.put_override_azioni.assert_not_called()
+        mock_repo.put_override_oggetti.assert_not_called()

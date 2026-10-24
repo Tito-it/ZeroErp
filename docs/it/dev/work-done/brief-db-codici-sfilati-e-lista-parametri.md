@@ -3,7 +3,7 @@
 > **Chi scrive:** sessione backend (`dev/backend-tid`), 2026-10-07. **A chi:** team
 > DB (`dev/db-tid`), tramite Tid.
 > **Origine:** §7 di
-> [analisi-be-difetti-emersi-verifica-doc-api-core.md](../work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)
+> [analisi-be-difetti-emersi-verifica-doc-api-core.md](../work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)
 > (voci E-1, E-2, E-5, F-5). Fino a oggi quelle richieste stavano solo nell'analisi:
 > questo brief le porta al team (ok di Tid, 2026-10-07).
 > **Stato (2026-10-07 sera):** ✅ giro DB applicato su dbdev (`-70`…`-73` e seed,

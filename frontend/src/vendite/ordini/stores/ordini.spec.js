@@ -12,19 +12,26 @@
 //  1. avvisa ORDINE e DDT, con gli id giusti
 //  2. senza `ddt_id` nella risposta avvisa solo l'ORDINE
 //  3. se l'api fallisce l'errore risale e non parte nessun avviso
+//  4. date in blocco: scrivere avvisa l'ORDINE e ritorna la response intera
+//  5. date in blocco: l'anteprima non avvisa nessuno
+//  6. data confermata di una riga: avvisa l'ORDINE
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 import { useOrdiniStore } from './ordini'
-import { generaDdtFromOrdine } from '../api/ordiniApi'
+import {
+  aggiornaDateConsegna, cambiaDataConsegnaConfermata, generaDdtFromOrdine,
+} from '../api/ordiniApi'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../../core/constants'
 
 // Tutti gli export che lo store importa: il modulo vero caricherebbe il
 // client HTTP, che in ambiente node non ha `localStorage`.
 vi.mock('../api/ordiniApi', () => ({
+  aggiornaDateConsegna: vi.fn(),
+  cambiaDataConsegnaConfermata: vi.fn(),
   cambiaStatoOrdine: vi.fn(),
   confermaOrdine: vi.fn(),
   createOrdine: vi.fn(),
@@ -76,5 +83,43 @@ describe('store ordini — generaDdt', () => {
     await expect(useOrdiniStore().generaDdt(12)).rejects.toThrow('rifiutato')
     stop()
     expect(eventi).toEqual([])
+  })
+})
+
+// brief-db-date-consegna-righe-in-blocco: i due verbi delle date scrivono
+// sull'ordine, e fino al 2026-10-12 li chiamavano i dialog senza avvisare.
+describe('store ordini — date di consegna', () => {
+  beforeEach(() => { setActivePinia(createPinia()) })
+
+  it('date in blocco: scrivere avvisa l\'ORDINE e ritorna la response intera', async () => {
+    // L'esito porta una chiave `data`: lo store ritorna la response, non
+    // l'esito, o `useApiHandler.execute` darebbe la sola data.
+    const response = { data: { data: { aggiornate: 2, saltate_spedite: 0, data: '2026-11-20' } } }
+    aggiornaDateConsegna.mockResolvedValue(response)
+    const { eventi, stop } = ascolta()
+    const payload = { colonna: 'data_consegna_confermata', data: '2026-11-20', modalita: 'TUTTE', anteprima: false }
+    const esito = await useOrdiniStore().aggiornaDateConsegna(12, payload)
+    stop()
+    expect(aggiornaDateConsegna).toHaveBeenCalledWith(12, payload)
+    expect(esito).toBe(response)
+    expect(eventi).toEqual([[TAB_ENTITIES.ORDINE, 12]])
+  })
+
+  it('date in blocco: l\'anteprima non avvisa nessuno', async () => {
+    aggiornaDateConsegna.mockResolvedValue({ data: { data: { aggiornate: 2 } } })
+    const { eventi, stop } = ascolta()
+    await useOrdiniStore().aggiornaDateConsegna(12, { anteprima: true })
+    stop()
+    expect(eventi).toEqual([])
+  })
+
+  it('data confermata di una riga: avvisa l\'ORDINE', async () => {
+    cambiaDataConsegnaConfermata.mockResolvedValue({ data: { data: { riga_id: 3 } } })
+    const { eventi, stop } = ascolta()
+    const esito = await useOrdiniStore().cambiaDataConsegnaConfermata(12, 3, '2026-11-20')
+    stop()
+    expect(cambiaDataConsegnaConfermata).toHaveBeenCalledWith(12, 3, '2026-11-20')
+    expect(esito).toEqual({ riga_id: 3 })
+    expect(eventi).toEqual([[TAB_ENTITIES.ORDINE, 12]])
   })
 })

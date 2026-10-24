@@ -88,12 +88,24 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: |
+          # ⭐ I RUOLI DI SISTEMA (brief-db-ruoli-di-sistema, fase 2). Li crea lo
+          #   stesso script dello scratch e di un'installazione:
+          #   scripts/sql/provision_zeroerp.sql, fase `ruoli` — zeroerp_owner
+          #   (proprietario di tutto e migratore), zeroerp_job (pgAgent: solo le
+          #   procedure dei job), zeroerp_app (il backend) — e il database
+          #   `zeroerp`, che il container crea di `postgres`, passa a zeroerp_owner.
+          #   Le password sono letterali, come prima: il database vive dentro il
+          #   runner per la durata del job (D-3).
+          #   ⚠️ zeroerp_owner e' NOCREATEDB: il vecchio `zeroerp` aveva CREATEDB, ma
+          #   nessuno lo usa — i test Django girano sul database configurato
+          #   (backend/zeroerp_backend/test_runner.py), non ne creano uno.
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v fase=ruoli -v db_name=zeroerp \
+            -v owner_password=secret-owner -v job_password=secret-job -v app_password=secret-app \
+            -v log_password=secret-log \
+            -f scripts/sql/provision_zeroerp.sql
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "CREATE ROLE zeroerp LOGIN PASSWORD 'secret';"
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "ALTER ROLE zeroerp SET myapp.user_language = 'it';"
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "CREATE ROLE zeroerp_log LOGIN PASSWORD 'secret-log';"
+            "ALTER ROLE zeroerp_owner IN DATABASE zeroerp SET myapp.user_language = 'it';"
           # ⛔ CORRETTO il 2026-09-05. La riga precedente diceva
           #   `user=zeroerp password=postgres`: la password di `zeroerp` in
           #   questo workflow e' `secret` (riga sopra), quindi quel DSN non si
@@ -104,10 +116,7 @@ jobs:
           #   giornale, non lo legge), ed e' quello che i GRANT di
           #   `90_end/20260905-38` si aspettano.
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "ALTER ROLE zeroerp IN DATABASE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp_log password=secret-log';"
-          # ⚠️ Solo `zeroerp`: in QUESTO workflow `zeroerp_app` non viene creato
-          #   (lo fa `ci-validate`, dove gira la suite pgTAP). Un ALTER ROLE su
-          #   un ruolo inesistente fermerebbe la build con ON_ERROR_STOP=1.
+            "ALTER ROLE zeroerp_owner IN DATABASE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp_log password=secret-log';"
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
              "SELECT name, setting FROM pg_settings WHERE name LIKE 'myapp.%' ORDER BY name;"
 
@@ -165,15 +174,17 @@ jobs:
             --changeLogFile=db/changelog/changelog-provision-pre.yaml \
             update --contexts=provision
 
-      - name: Grant CREATE on public (CI bootstrap)
+      - name: Proprieta' a zeroerp_owner (provision_zeroerp.sql, fase pre)
         env:
           PGPASSWORD: postgres
+        # ⭐ Al posto dei GRANT di raccordo (CREATE su public, DML sulle tabelle di
+        #   Liquibase, pg_maintain): cio' che il provision-pre ha creato da superuser
+        #   (tabelle di Liquibase, schema `internal`) passa a zeroerp_owner, che da
+        #   proprietario non ha bisogno d'altro — nemmeno di pg_maintain per il job
+        #   delle statistiche. Brief: brief-db-ruoli-di-sistema, fase 2.
         run: |
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "GRANT USAGE, CREATE ON SCHEMA public TO zeroerp;
-             GRANT CREATE ON DATABASE zeroerp TO zeroerp;
-             GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO zeroerp;
-             GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO zeroerp;"
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -v fase=pre -f scripts/sql/provision_zeroerp.sql
 
       - name: Applica migrazioni Liquibase
         run: |
@@ -182,24 +193,10 @@ jobs:
           # 1) Migrazioni standard (no test, no provision)
           liquibase \
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff" \
-            --username=zeroerp \
-            --password=secret \
+            --username=zeroerp_owner \
+            --password=secret-owner \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts="!provision and !dati_macchina"
-
-      # Ruolo batch per-job zeroerp_batch_fatturazione: BYPASSRLS richiede superuser
-      # -> provisioning come 'postgres' (non Liquibase, che gira come 'zeroerp').
-      # Riusa lo stesso script admin di dbdev/prod (DRY). Dopo le migrazioni: le
-      # tabelle del perimetro esistono. migrator_role=zeroerp = owner oggetti in CI.
-      - name: Provision ruolo batch fatturazione (BYPASSRLS, superuser)
-        env:
-          PGPASSWORD: postgres
-        run: |
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
-            -v batch_role=zeroerp_batch_fatturazione \
-            -v batch_password=secret \
-            -v migrator_role=zeroerp \
-            -f scripts/sql/provision_db_role_batch_fatturazione.sql
 
       - name: Liquibase admin (provision - post)
         run: |
@@ -215,16 +212,29 @@ jobs:
         run: |
           liquibase \
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff%20-c%20myapp.env%3Dci" \
-            --username=zeroerp \
-            --password=secret \
+            --username=zeroerp_owner \
+            --password=secret-owner \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts=ci_apply
       
+      # ⭐ La fase post del modello: EXECUTE di zeroerp_job sulle procedure dei
+      #   job, la proprieta' ripassata e la VERIFICA «un owner solo» — se un
+      #   oggetto del progetto non e' di zeroerp_owner (fuori dal registro
+      #   dbops.sec_functions_owner) la build si ferma e lo nomina.
+      - name: Ruoli di sistema - fase post e verifica «un owner solo»
+        env:
+          PGPASSWORD: postgres
+        run: |
+          # ⭐ L'ambiente della CI e' SVILUPPO (brief-db-processi-accensione-per-ambiente,
+          #   R-2): si dichiara qui, una volta, e non cambia.
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -v fase=post -v ambiente=SVILUPPO -f scripts/sql/provision_zeroerp.sql
+
       - name: Genera doc DB
         # Qui sopra non serve più caricare i tuoi secrets, ma usiamo quelli del servizio
         #  Attenzione la documentazione DB usa un env specifico per CI 
         env:
-          DATABASE_DSN: "host=localhost port=5432 dbname=zeroerp user=zeroerp password=secret"
+          DATABASE_DSN: "host=localhost port=5432 dbname=zeroerp user=zeroerp_owner password=secret-owner"
           DB_DOCS_MODE: "ci"
 
         run: |
@@ -254,30 +264,6 @@ jobs:
           publish_dir: ./site-zensical
           enable_jekyll: false
 
-#  Blocatto AWS 27 01 2026 - non più usato
-
-
-      # (Opzionale) Deploy anche su S3 nello stesso job
-#      - name: Configura credenziali AWS (best-effort)
-#        uses: aws-actions/configure-aws-credentials@v2
-#        with:
-#          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-#          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-#          aws-region: eu-central-1
-#        continue-on-error: true # se i secret mancano, non fallire il job
-
-#      - name: Sincronizza su S3 (se credenziali presenti)
-#        env:
-#          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-#          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-#          AWS_DEFAULT_REGION: eu-central-1
-#        shell: bash
-#        run: |
-#          if [[ -n "$AWS_ACCESS_KEY_ID" && -n "$AWS_SECRET_ACCESS_KEY" ]]; then
-#            aws s3 sync site/ s3://zeroerp-docs-tid/ --delete
-#          else
-#            echo "No AWS creds → skipping S3 sync."
-#          fi
 
       
   docker:
@@ -443,42 +429,3 @@ jobs:
 
            #  Promemoria comando per scaricare l'immagine localmente (dopo push su main):
             #  docker pull ghcr.io/<tuo_owner>/zeroerp:latest
-
-  #publish-docs:
-  #  needs: build
-  #  runs-on: ubuntu-latest
-
-  #  steps:
-  #    - name: Download generated site artifact
-  #      uses: actions/download-artifact@v4
-  #      with:
-  #        name: docs-site
-  #        path: site/
-
-  # ----------------------------
-  # Pubblica su GitHub Pages
-  # ----------------------------
-  #    - name: Deploy to GitHub Pages
-  #      uses: peaceiris/actions-gh-pages@v3
-  #      with:
-  #        deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
-  # il repo di destinazione (case-sensitive)
-  #        external_repository: Tito-it/ZeroERP-Docs
-  #        publish_branch: gh-pages
-  #        publish_dir:
-  #          ./site
-  # opzionali:
-  # user_name: GitHub Actions
-  # user_name: GitHub Actions
-  # user_email: actions@github.com
-
-  # eventualmente mantieni anche l’S3 sync se ti serve
-  #    - name: Configura credenziali AWS
-  #      uses: aws-actions/configure-aws-credentials@v2
-  #      with:
-  #        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  #        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  #        aws-region: eu-central-1
-
-  #    - name: Sincronizza su S3
-  #      run: aws s3 sync site/ s3://zeroerp-docs-tid/ --delete

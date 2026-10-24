@@ -32,6 +32,7 @@ import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useIvaRisolta } from '../../_shared/righe/useIvaRisolta'
+import { SORGENTE_CODES } from '../../../documenti/constants'
 import { DATE_FORMAT, MANAGE_ICONS } from '../../../core/constants'
 import { parseIsoDate, toDateString } from '../../../core/utils/date'
 
@@ -46,7 +47,11 @@ const props = defineProps({
   // Refactor cascata 2026-05-15: BA del preventivo per popolare il livello
   // categoria_cliente della cascata soglie. Senza, soglia "generica" utente.
   billingAccountId: { type: Number, default: null },
-  riga: { type: Object, default: null }
+  riga: { type: Object, default: null },
+  // La data del documento (ISO, dal dettaglio): il minimo del calendario
+  // delle date di consegna. Solo un aiuto: il rifiuto vero e' del DB
+  // (`E_DOC_RIGA_DATA_CONSEGNA_ANTERIORE`).
+  dataDocumento: { type: String, default: null },
 })
 
 // Carica i limiti per il BA corrente. Watch + immediate: lo scatto immediato
@@ -65,9 +70,11 @@ const {
   origineLabel: ivaOrigineLabel,
   risolviPer: risolviIvaPer,
   reset: resetIva,
-} = useIvaRisolta({ documentoTipo: 'PREVENTIVO', documentoId: () => props.preventivoId })
+} = useIvaRisolta({ documentoTipo: SORGENTE_CODES.PREVENTIVO, documentoId: () => props.preventivoId })
 
 const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
+
+const minDataConsegna = computed(() => parseIsoDate(props.dataDocumento))
 
 const form = ref({
   articolo_id: null,
@@ -403,9 +410,13 @@ function buildRigaPayload(extras = {}) {
   // quindi svuotare il DatePicker toglie la data.
   const dataConsegna = toDateString(f.data_consegna_richiesta_cliente)
   if (isEdit.value) {
+    // ⛔ La descrizione si modifica a video, quindi viaggia: fino al 2026-10-20
+    //    l'edit non la spediva, e la modifica si perdeva senza avviso (i gemelli
+    //    ordini e DDT la mandavano gia').
     const base = {
       qta_operativa: f.qta_operativa,
       sconto_percentuale: f.sconto_percentuale,
+      descrizione: f.descrizione || null,
       data_consegna_richiesta_cliente: dataConsegna,
     }
     // Refactor componenti 2026-05-11: per riga CASO A il prezzo padre e'
@@ -473,8 +484,7 @@ defineExpose({ modificato, chiudiConConferma })
     <div class="form-field">
       <label>{{ t('vendite.preventivi.riga_articolo') }} <span v-if="!isEdit">*</span></label>
       <ArticoloLookup :model-value="articoloObj" :disabled="isEdit"
-        :filtri="{ soloComponenti: 'escludi' }"
-        :escludi-destinazione="['CONTRATTO']"
+        documento="PREVENTIVO" :documento-id="preventivoId"
         :placeholder="t('vendite.preventivi.riga_cerca_articolo')" @select="onArticoloSelect" />
     </div>
 
@@ -586,7 +596,7 @@ defineExpose({ modificato, chiudiConConferma })
       <div class="form-field">
         <label>{{ t('vendite.preventivi.riga_data_consegna_richiesta_cliente') }}</label>
         <DatePicker v-model="form.data_consegna_richiesta_cliente"
-          :date-format="DATE_FORMAT" show-icon show-button-bar />
+          :date-format="DATE_FORMAT" :min-date="minDataConsegna" show-icon show-button-bar />
       </div>
     </div>
 

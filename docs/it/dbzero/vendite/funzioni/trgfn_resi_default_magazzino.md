@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_resi_default_magazzino()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_resi_default_magazzino()
  RETURNS trigger
@@ -33,6 +35,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_resi_default_magazzino()
 IS 'BEFORE INSERT su vendite.resi: se magazzino_id manca, prende il magazzino della bolla d''origine (sorgente DDT_VENDITA, per uid) — D-3b-a: la merce rientra, di norma, da dove era partita. Non il predefinito dell''emittente. Bolla senza magazzino: resta NULL, e se il reso muove merce lo chiede la check della conferma. Gira dopo trgfn_resi_normalize e prima del guard (ordine alfabetico dei trigger, fascia z10). Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

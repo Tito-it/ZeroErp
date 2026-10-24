@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_fornitore_attivo(p_fornitore_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_check_fornitore_attivo(p_fornitore_id bigint)
  RETURNS boolean
@@ -30,6 +32,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_check_fornitore_attivo(p_fornitore_id bigint)
 IS 'Check puro boolean: ritorna TRUE se il fornitore e attivo e il suo stato non blocca ordini, FALSE altrimenti. No raise.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

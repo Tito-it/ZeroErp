@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_famiglie_documento_guard_disattivazione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_guard_disattivazione()
  RETURNS trigger
@@ -72,6 +74,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_famiglie_documento_guard_disattivazione()
 IS 'Guard `_a10_` su vendite.famiglie_documento: rifiuta lo spegnimento di una famiglia che ha ancora registri accesi o documenti numerati. ⛔ PERCHE'': non si difende la coerenza di un catalogo, si difende un PRESIDIO — anagrafiche.fn_ba_ha_storia_emittente e fn_get_storia_emittente_ba iterano `WHERE fd.attivo`, quindi una famiglia spenta esce dal giro e i suoi documenti smettono di trattenere il billing account presso l''emittente che li ha numerati. Nessun errore e nessun log: il controllo guarda semplicemente in un posto in meno. ⭐ §12.5.2 — QUI NON C''E'' IL PREDICATO: si chiama script.fn_check_famiglia_documento_disattivabile e si solleva il codice del PRIMO motivo, cosi'' il rifiuto e il cestino spento della lista non possono divergere. ⛔ SOLO LA TRANSIZIONE VERSO SPENTO (`OLD.attivo AND NOT NEW.attivo`): riaccendere rimette in gioco un presidio, non lo toglie. ⭐ L''USCITA SUL NO-OP E'' OBBLIGATORIA: `UPDATE OF` scatta quando lo statement NOMINA la colonna anche a valore invariato, e il mirror CSV 20260830-14 riscrive `attivo` a ogni migrate — senza il confronto ogni migrate fallirebbe. ⚠️ Niente `campo` nel contesto: l''operatore ha premuto un interruttore, non compilato un input; il frontend spegne il pulsante col motivo. ⚠️ tx_id NULL e non NEW.tx_id: `_a10_` scatta prima del trigger che lo genera. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.4 (DB-2).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

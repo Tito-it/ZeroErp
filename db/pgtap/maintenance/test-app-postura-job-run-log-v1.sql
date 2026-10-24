@@ -4,7 +4,7 @@
 --   maintenance.job_run_log · maintenance.vw_job_run_da_guardare
 --   script.fn_job_run_start / script.fn_job_run_end (la porta di scrittura)
 --
--- Sede della postura: scripts/sql/provision_db_roles.sql (blocco `maintenance`
+-- Sede della postura: scripts/sql/provision_zeroerp.sql (fase post) (blocco `maintenance`
 --   in fondo: USAGE sullo schema + SELECT sul giornale, dal 2026-09-19) e il
 --   changeSet gemello 90_end/20260919-08 per i database già provisionati.
 --

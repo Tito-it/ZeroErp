@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_emittente_fiscale_pk(p_billing_account_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_get_emittente_fiscale_pk(p_billing_account_id bigint)
  RETURNS bigint
@@ -78,6 +80,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_get_emittente_fiscale_pk(p_billing_account_id bigint)
 IS 'Restituisce anagrafiche.emittenti_fiscali.id (PK numerica reale) per un billing_account, e SOLLEVA se non e'' risolvibile. ⭐ Dal 20260913-03 (D13) non riscrive piu'' la regola: e'' l''involucro PK di script.fn_get_ba_emittente_sr_id — la stessa coppia lettore/involucro di anagrafiche.fn_get_emittente_fiscale_id, che ne e'' l''involucro SR. La regola ha TRE livelli: mapping specifico; altrimenti, in sessione, l''emittente dell''operatore che sta agendo; altrimenti il default. Qui restano il guard sul parametro (E_PARAMETRO_INVALIDO su NULL o <= 0), la traduzione soggetto_ruolo -> PK con il filtro ef.attivo (difesa: sul modello un emittente con una riga di mapping non si disattiva) e E_EMITTENTE_DEFAULT_MISSING quando nessun livello risponde. Fino a quel changeSet teneva una copia a due livelli della regola, e con il terzo livello del lettore le due copie avrebbero risposto cose diverse sullo stesso BA senza legame — la RLS lo mostra, il guard del documento lo rifiuta. Consumatori: trgfn_<doc>_guard_emittente_ba (preventivi, ordini, ddt, resi, contratti, offerte), trgfn_ddt_normalize, trgfn_resi_normalize, fn_lookup_utilities_per_ba, fn_genera_pratica_da_preventivo, il backend. Brief: brief-db-ba-riserva-emittente-operatore-d13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

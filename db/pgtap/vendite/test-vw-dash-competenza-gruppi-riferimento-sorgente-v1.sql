@@ -5,6 +5,15 @@
 --       risolti da vendite.fn_get_sorgente_documento_ref
 -- Brief: brief-db-riferimento-gruppi-lateral-costosa §6
 -- Changeset coperti: 20260901-04
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
+--   preventivo nasceva gia' EMESSO).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-4): il mondo si COSTRUISCE
+--   (azienda A col suo operatore, contesto su di lui, cliente, articolo
+--   servizio) invece di pescare «il primo BA / articolo / emittente per id».
+-- rev 2026-10-24 (brief-modello-documento-vendita R-9): azienda, operatore,
+--   contesto e cliente nascono in una chiamata da
+--   dbops.fn_pgtap_crea_mondo_cliente, al posto dei tre builder atomici.
 -- ------------------------------------------------------------
 -- Indice test (1..6):
 --  1) controllo: PRIMA della revisione riferimento = numero e documento_id = rev spinta
@@ -23,9 +32,10 @@
 --    zero — passerebbe a vuoto sempre.
 --    ⛔ Zero occorrenze non significa che il caso non esista: significa che
 --    non c'e' ancora un controesempio. Il modello lo ammette, ed e' verificato:
---    fn_crea_revisione_preventivo NON tocca commesse_attivita, e
---    trgfn_doc_ritira_commessa_attivita scatta solo all'ingresso in uno stato
---    abortito. Quindi le attivita' spinte dalla rev 0 restano sulla rev 0.
+--    fn_crea_revisione_preventivo NON tocca commesse_attivita, e le righe di
+--    commessa si ritirano solo annullando il documento (rev 2026-10-11: dal
+--    verbo di annullo, dopo la conferma; prima dal ritiro automatico _z90_).
+--    Quindi le attivita' spinte dalla rev 0 restano sulla rev 0.
 --
 -- ⭐ IL TEST 2 E' IL GEMELLO «ESISTE» dei test 3 e 4. Senza, se un giorno
 --    fn_crea_revisione_preventivo smettesse di produrre la revisione, i test 3
@@ -56,37 +66,40 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⭐ rev 2026-10-24 (Q-4): l'azienda e il suo operatore si costruiscono PRIMA
+--   del contesto, e il contesto si apre su di lui: la vista legge nel suo
+--   perimetro, e il cliente che nasce dopo il trigger z90 lo lega a lei.
+-- rev 2026-10-24 (R-9): il mondo del builder fa i tre passi nell'ordine giusto.
+CREATE TEMP TABLE tmp_rif_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('vista gruppi riferimento');
+
+-- Il contesto l'ha gia' aperto il mondo sul suo operatore: la riga lo rende
+-- esplicito (ed e' cio' che legge scripts/guardrail_pgtap_preambolo.py).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_rif_mondo)); END $ctx$;
 
 SELECT plan(6);
+
+CREATE TEMP TABLE tmp_rif_cli AS
+SELECT billing_account_id, istanza_utility_id, utility_id FROM tmp_rif_mondo;
 
 -- ============================================================
 -- Riferimenti minimi
 -- ============================================================
 CREATE TEMP TABLE tmp_rif_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                         AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                         AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                         AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-      AND a.causale_onere_id IS NULL
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1) AS articolo_id,
+  (SELECT billing_account_id FROM tmp_rif_cli)      AS billing_account_id,
+  (SELECT utility_id FROM tmp_rif_cli)              AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_rif_cli)      AS istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo('PGT-VGRIF-SERV', false,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'SERVIZIO_UNA_TANTUM')) AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  (SELECT emittente_fiscale_id FROM tmp_rif_mondo) AS emittente_fiscale_id,
   -- ⚠️ EMESSO e non ACCETTATO: fn_crea_revisione_preventivo ammette la
   --   revisione SOLO da EMESSO (E_PREV_REVISIONE_STATO_NON_AMMESSO). Il
-  --   preventivo nasce gia' nello stato da cui si revisiona.
+  --   preventivo si porta nello stato da cui si revisiona (rev 2026-10-24:
+  --   nasce in bozza e ci arriva con dbops.fn_pgtap_porta_a_stato).
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE LIMIT 1) AS stato_prev_emesso_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t
@@ -100,15 +113,21 @@ CREATE TEMP TABLE tmp_rif_prev0 AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-VGRIF', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2082-01-01', DATE '2082-12-31', r.valuta_id, r.stato_prev_emesso_id,
+         DATE '2082-01-01', DATE '2082-12-31', r.valuta_id,
          DATE '2082-01-01', false, false,
          jsonb_build_object('test_scope', 'pgtap_vgrif'), r.emittente_fiscale_id
   FROM tmp_rif_refs r
   RETURNING id, uid, numero)
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-24: nato in bozza, va a EMESSO sotto i guard veri (senza
+--   righe non hanno motivi da sollevare).
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_rif_prev0), 'EMESSO');
+END $porta$;
 
 CREATE TEMP TABLE tmp_rif_comm AS
 SELECT vendite.fn_get_or_create_commessa(
@@ -160,7 +179,6 @@ SELECT * FROM vendite.fn_upsert_commessa_attivita(
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_rif_refs),
   p_sorgente_uid => (SELECT uid::text FROM tmp_rif_prev0),
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('test_scope', 'pgtap_vgrif')
 );
 

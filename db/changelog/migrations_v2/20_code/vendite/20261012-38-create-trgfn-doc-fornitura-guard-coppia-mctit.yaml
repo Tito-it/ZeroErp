@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.trgfn_doc_fornitura_guard_coppia()
+#   La scheda di fornitura di un documento e' della fornitura del documento:
+#   la sua coppia (istanza, utility) e' quella della testata.
+#   Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4, D-6)
+#
+# -- IL CASO ------------------------------------------------------------
+#   vendite.contratti_utilities e vendite.offerte_commerciali_utilities
+#   portano una copia della coppia della testata, e nessun vincolo le legava:
+#   FK semplici sulle due colonne, la FK composta e' solo sulla testata.
+#   Una scheda poteva nascere (o restare, dopo un cambio di cliente) su
+#   un'altra fornitura, e il prezzo e l'IVA la leggono.
+#
+# -- PERCHE' UN GUARD E NON UNA FK (D-6 di Tid, 2026-10-12) ----------------
+#   Una FK composta scheda -> testata con ON UPDATE CASCADE aggiornerebbe la
+#   coppia della scheda PRIMA del trigger che la rifa' dall'anagrafica
+#   (20261012-40): il guard tipo/classe del contratto
+#   (trgfn_contratti_utilities_guard_tipo_classe) giudicherebbe la classe
+#   vecchia contro la utility nuova, e un cambio fra una utility con tipi
+#   d'uso e una senza fallirebbe. Una FK senza cascata scatta prima del
+#   trigger (i trigger RI precedono i trg_ nell'ordine dei nomi), una
+#   differita torna immediata nei pgTAP (SET CONSTRAINTS ALL IMMEDIATE).
+#
+# -- LA FORMA ------------------------------------------------------------
+#   BEFORE INSERT OR UPDATE OF la coppia e la colonna verso la testata
+#   (montaggi: 20261012-39). Le tre colonne non hanno scrittori automatici
+#   sulla scheda, quindi UPDATE OF e' la forma giusta (linee-guida-trigger).
+#   La testata si legge sotto la RLS di chi scrive: assente o invisibile, la
+#   FK e la policy della scheda parlano.
+#   E_DOC_FORNITURA_FUORI_TESTATA, TECNICO: la coppia della scheda non la
+#   sceglie una persona, la deriva dalla testata chi scrive (il backend, i
+#   verbi). Se non coincide, il chiamante e' rotto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-38-create-trgfn-doc-fornitura-guard-coppia-mctit.yaml
+
+  - changeSet:
+      id: 20261012-38-create-trgfn-doc-fornitura-guard-coppia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo guard BB vendite.trgfn_doc_fornitura_guard_coppia: la coppia (istanza, utility) della
+        scheda di fornitura e' quella della testata. Brief:
+        brief-db-indirizzi-documento-seguono-il-cliente (§8.4, D-6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_doc_fornitura_guard_coppia()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- ⚠️ v_documento nudo: e' il selettore del montaggio (TG_ARGV), senza
+                  --   colonna di vocabolario. v_testata_id e' POLIMORFO: l'id di due
+                  --   testate diverse. v_numero e v_etichetta sono testo da leggere.
+                  v_documento   text := TG_ARGV[0];
+                  v_schema      pg_catalog.pg_namespace.nspname%TYPE;
+                  v_testata     pg_catalog.pg_class.relname%TYPE;
+                  v_col_numero  pg_catalog.pg_attribute.attname%TYPE;
+                  v_fk_col      pg_catalog.pg_attribute.attname%TYPE;
+                  v_etichetta   text;
+                  v_testata_id  bigint;
+                  v_istanza     anagrafiche.istanze_dati_precontrattuali.istanza_utility_id%TYPE;
+                  v_utility     anagrafiche.istanze_dati_precontrattuali.utility_id%TYPE;
+                  v_numero      text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La scheda di fornitura descrive la fornitura del suo
+                  --   documento: la coppia (istanza, utility) e' quella della
+                  --   testata.
+                  -- =========================================================
+                  SELECT s.schema_tabella, s.testata, s.colonna_etichetta, s.colonna_fk, s.etichetta
+                    INTO v_schema, v_testata, v_col_numero, v_fk_col, v_etichetta
+                    FROM vendite.fn_doc_fornitura_sede(v_documento) AS s;
+
+                  -- Montaggio errato: errore di chiamante, non di dato.
+                  IF v_fk_col IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_DOC_TIPO_NON_GESTITO',
+                          jsonb_build_object('trigger',   TG_NAME,
+                                             'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                             'documento', v_documento),
+                          NULL::uuid,
+                          COALESCE(v_documento, '<null>'));
+                  END IF;
+
+                  v_testata_id := (to_jsonb(NEW) ->> v_fk_col)::bigint;
+
+                  EXECUTE format(
+                      'SELECT t.istanza_utility_id, t.utility_id, t.%I::text FROM %I.%I t WHERE t.id = $1',
+                      v_col_numero, v_schema, v_testata)
+                     INTO v_istanza, v_utility, v_numero
+                    USING v_testata_id;
+
+                  -- Testata assente o fuori dalla RLS di chi scrive: parlano la FK
+                  -- e la policy della scheda.
+                  IF v_istanza IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF NEW.istanza_utility_id IS DISTINCT FROM v_istanza
+                     OR NEW.utility_id IS DISTINCT FROM v_utility THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_DOC_FORNITURA_FUORI_TESTATA',
+                          jsonb_build_object(
+                              'table',                      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'documento',                  v_documento,
+                              'testata_id',                 v_testata_id,
+                              'istanza_utility_id',         NEW.istanza_utility_id,
+                              'utility_id',                 NEW.utility_id,
+                              'istanza_utility_id_testata', v_istanza,
+                              'utility_id_testata',         v_utility),
+                          NULL::uuid,
+                          v_etichetta || ' ' || COALESCE(v_numero, v_testata_id::text));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_doc_fornitura_guard_coppia()
+              IS 'Guard BB BEFORE INSERT OR UPDATE OF istanza_utility_id, utility_id, <colonna verso la testata> sulle schede di fornitura (vendite.contratti_utilities, vendite.offerte_commerciali_utilities), TG_ARGV[0] = documento (CONTRATTO | OFFERTA, vendite.fn_doc_fornitura_sede). La coppia (istanza, utility) della scheda e'' quella della testata, altrimenti E_DOC_FORNITURA_FUORI_TESTATA (TECNICO: la coppia la deriva dalla testata chi scrive, non la sceglie una persona). Testata assente o fuori dalla RLS di chi scrive: passa, parlano la FK e la policy della scheda. Un guard e non una FK composta con ON UPDATE CASCADE (D-6 di Tid, 2026-10-12): la cascata cambierebbe la coppia della scheda prima che vendite.trgfn_doc_fornitura_segue_cliente la rifaccia, e il guard tipo/classe del contratto giudicherebbe la classe vecchia contro la utility nuova. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4).';

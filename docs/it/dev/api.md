@@ -334,8 +334,9 @@ Il helper gestisce in modo centralizzato:
 
 1. Parsing JSON del body (`parse_json_body`)
 2. Validazione `Idempotency-Key` (se `require_idempotency_key=True`)
-3. Idempotency strong mode (claim/replay/in_progress su `dbops.idempotency_keys`)
-4. Esecuzione handler e wrap in `success_response`
+3. Idempotency strong mode (prenotazione con `dbops.fn_idempotency_prenota`: esegui, replay, in corso)
+4. Esecuzione handler e wrap in `success_response` — per un'operazione `ATOMICA` in modalità
+   forte, insieme all'esito `completed` in una transazione sola (§Idempotency-Key)
 5. Gestione errori con `exception_to_error_response`
 
 ```python
@@ -358,20 +359,91 @@ I parametri del payload si estraggono con i validator di `apps.core.api.payload_
 | Funzione                                       | Scopo                                         |
 | ---------------------------------------------- | --------------------------------------------- |
 | `optional_int(payload, "key")`                 | Estrae int o None, errore se non convertibile |
-| `optional_bool(payload, "key", default=False)` | Estrae bool con default                       |
+| `optional_bool(payload, "key", default=False)` | Estrae bool con default: **solo booleani JSON** |
 | `optional_iso_date(payload, "key")`            | Estrae `date` da stringa ISO                  |
 | `optional_uuid(payload, "key")`                | Estrae UUID                                   |
+
+⛔ **Tre regole del corpo, decise da Tid il 2026-10-20** (brief-be-verifica-documentazione-api):
+
+* **Un flag del corpo è un booleano JSON.** Mai `bool(payload.get("x"))`: `bool("false")`
+  è `True` (creava un SUPER_ADMIN e chiudeva un contratto nella successione).
+  `optional_bool` delega a `PayloadValidator.optional_bool`: `"false"`, `"1"`, `0` sono
+  un 400 col campo. Query string e multipart sono stringhe per natura e hanno i loro
+  helper (`qp_bool_optional`), non questo.
+* **Una chiave fuori contratto è un 400**, non uno scarto silenzioso:
+  `validate_allowed_keys` prima di filtrare il payload, in creazione come in modifica
+  (le chiavi gestite a parte — `componenti_overrides`, `richiesta_approvazione` — si
+  aggiungono all'insieme ammesso). La risposta «ok» con il valore perso non la vede nessuno.
+* **Un campo obbligatorio si legge dal BB** (`PayloadValidator.require_*`), mai con
+  `payload["x"]`: una chiave mancante sarebbe un `KeyError`, cioè un 500 per un errore
+  di chi chiama.
 
 ### Idempotency-Key
 
 | Regola          | Dettaglio                                                                               |
 | --------------- | --------------------------------------------------------------------------------------- |
 | Header          | `Idempotency-Key` (stringa libera, tipicamente UUID)                                    |
-| Obbligatorieta` | `require_idempotency_key=True` su tutti gli endpoint che modificano stato               |
-| Strong mode     | Attivabile con `DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1`                                |
-| Store           | Tabella `dbops.idempotency_keys`                                                        |
+| Obbligatorieta` | **ogni POST che scrive**, per costruzione (`_ApiViewBase.initial`, vedi sotto)          |
+| Strong mode     | Attivabile con `DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1`, sugli endpoint con `handle_post_json(require_idempotency_key=True)` |
+| Prenotazione    | `dbops.fn_idempotency_prenota` (key, utente, endpoint = metodo + percorso, `request_id`, ripresa ammessa), da `IdempotencyStore.claim_or_replay`; registro in `dbops.idempotency_keys` |
 | Replay          | Key gia` completata: restituisce risposta cached con header `X-Idempotency-Replayed: 1` |
 | In-progress     | Key gia` in elaborazione: `409` con codice `E_IDEMPOTENCY_IN_PROGRESS`                  |
+| Key riusata     | Key prenotata da un altro utente o su un altro endpoint: `400` `E_IDEMPOTENCY_KEY_RIUSATA` (la risposta salvata non si rimanda) |
+| Key fallita     | `failed`: si riprende sempre, l'operazione si riesegue                                  |
+| Key orfana      | `in_progress` oltre `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI`: si riprende solo se l'endpoint è **ATOMICA** |
+
+**L'unità di lavoro** (decisione di Tid del 2026-10-23, brief-be-verifica-documentazione-api
+§I.7.2). In modalità forte ogni endpoint dichiara com'è fatta la sua operazione,
+`handle_post_json(..., unita_di_lavoro=UnitaDiLavoro.…)`:
+
+| Valore | Com'è fatta | Transazione | Key orfana oltre la soglia |
+| --- | --- | --- | --- |
+| `ATOMICA` (default) | un'unità di lavoro sola, che **finisce dentro la richiesta** (niente thread, coda o job che continuano tenendo la key) | handler ed esito `completed` in un `transaction.atomic()`; `failed` scritto **fuori**, dopo il rollback | si riprende: se manca l'esito, manca anche l'operazione |
+| `A_PASSI` | committa un passo alla volta (pipeline del lotto, numerazione del lotto, push delle commesse) | nessun `atomic` esterno | resta `IN_CORSO` finché scade o il frontend genera una key nuova |
+
+* ⛔ Un endpoint nuovo che lavora a passi **lo dichiara**, e si aggiunge al registro di
+  `apps/core/tests/test_unita_di_lavoro.py`; il motivo sta nel commento `⭐ A_PASSI` accanto
+  alla chiamata, una sede sola (il presidio è a cricchetto nei due versi).
+* ⚠️ L'`atomic` esterno c'è **solo in modalità forte**: senza registro non c'è un esito da tenere
+  insieme all'operazione. Un service che compone più scritture resta responsabile del proprio
+  `atomic` (§Atomicità).
+* ⚠️ **Il diario dentro l'`atomic`.** Dopo un errore DB catturato la transazione è abortita, e una
+  riga di `dbops.error_log` scritta lì sparirebbe senza errore: per le ATOMICA
+  `ErrorManager.log_error_only` la mette in coda e la scrive a transazione chiusa
+  (`ErrorManager.diario_dopo_la_transazione`).
+* ⭐ **La soglia sta sopra il timeout di gunicorn** (BE-5). La ripresa è sicura solo perché
+  nessuna richiesta vive più del timeout del worker: all'avvio e a ogni `kill -HUP`
+  `backend/gunicorn.conf.py` rifiuta di partire, in modalità forte, se
+  `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` (chiesta a `dbops.fn_idempotency_soglia_secondi`, la
+  stessa lettura della prenotazione: il backend non ricopia la regola) non supera il timeout di
+  almeno 30 secondi, se il timeout è 0 (nessun tetto) o se il worker non è `sync`
+  (in `gthread` il timeout non è il tetto di una richiesta). Le due impostazioni si cambiano
+  insieme.
+* Il racconto intero, per chi non legge il codice: la guida
+  [Le operazioni che non si ripetono](/guide/operazioni-che-non-si-ripetono).
+
+⛔ **Una POST che scrive porta la key, e lo garantisce la classe base** (decisione
+di Tid del 2026-10-20, brief-be-verifica-documentazione-api §A5). Le quattro
+porte (`DomainAPIView`, `AdminAPIView`, `PortaleAPIView`, `ShopAPIView`) ereditano
+da `_ApiViewBase`, il cui `initial()` — dopo autenticazione e permessi — risponde
+**400 `E_IDEMPOTENCY_KEY_REQUIRED`** a ogni POST senza header. Il criterio è la
+semantica HTTP: una POST di creazione o di azione non è idempotente. **PATCH, PUT e
+DELETE** lo sono, e restano senza obbligo (alcuni endpoint la chiedono ancora con
+`handle_post_json(require_idempotency_key=True)`).
+
+- **Una POST che LEGGE lo dichiara**: `post_accesso = "view"` (anteprime, preview dei
+  componenti, risoluzione di prezzo e IVA, verifiche). Lo stesso attributo abbassa
+  il permesso alla lettura: senza, la POST chiederebbe la key e il livello di scrittura.
+- `handle_post_json(require_idempotency_key=True)` resta per la **modalità forte**
+  (claim/replay), che il solo controllo di presenza non fa.
+- **Frontend**: la key la mette l'interceptor di `core/api.js` (`applicaIdempotencyKey`)
+  su ogni POST/PUT/PATCH/DELETE che non ne porta una, una per chiamata. ⛔ Non si
+  genera più a mano nelle funzioni API: le 69 copie sono state ritirate.
+- **Test**: `ClientApi` (`apps/core/tests/_helpers/jwt_mock.py`, il `client_class` di
+  `JwtMockedApiTest`) fa lo stesso. Chi prova l'assenza usa `Client` semplice.
+- **Smoke bash**: la funzione `curl()` di `_smoke_https.sh` la mette sulle POST.
+- ⚠️ Fino a quel giorno la key era una scelta della singola view: 82 scritture su
+  457 la chiedevano, senza un criterio (fatto datato).
 
 ---
 
@@ -389,17 +461,14 @@ class ApiLottiList(APIView):
             {"competenza_mese": request.query_params.get("competenza_mese")},
             "competenza_mese",
         )
-        page = optional_int({"page": request.query_params.get("page", "1")}, "page")
-        page_size = optional_int(
-            {"page_size": request.query_params.get("page_size", "50")}, "page_size"
-        )
+        limit, offset = pagina_da_query(request.query_params)  # la finestra, dal BB
         auth_user_id = get_scope_user_id(request)       # None per superuser
 
         data = fn_list_lotti(
             competenza_mese=competenza_mese,
             auth_user_id=auth_user_id,
-            page=page,
-            page_size=page_size,
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 ```
@@ -413,13 +482,13 @@ I filtri opzionali da query string si normalizzano con gli helper di
 | Funzione                                                            | Scopo                                                                                                   |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `qp_str(raw)`                                                       | stringa o `None` se assente/vuota (strip)                                                               |
-| `qp_int(raw, default)`                                              | int con default; fallback silenzioso al default se non numerico                                         |
 | `qp_int_strict(raw, name, default)`                                 | int con default; **400** se presente ma non numerico o fuori da `bigint`                                |
 | `qp_int_optional(raw, name, *, min_val, max_val)`                   | int **opzionale strict**: `None` se assente/vuoto, **400** se non numerico o fuori range (default `bigint`) |
-| `qp_bool(raw, default=True)`                                        | bool con default (False solo su `0/false/no/n/off`)                                                     |
-| `qp_bool_optional(raw, name)`                                       | bool **opzionale strict**: `None` se assente/vuoto, `True/False` sui token, **400** se non riconosciuto |
+| `qp_bool_optional(raw, name, default=None)`                         | il **flag** di query string e multipart: `true`/`false` (maiuscole ammesse), assente/vuoto = `default`, **ogni altro valore 400** |
 | `qp_iso_date_optional(raw, name)`                                   | `date` **opzionale strict**: `None` se assente/vuoto, **400** se malformata                             |
-| `parse_list_params(qp, *, default_limit, max_limit, default_order)` | bundle `search/limit/offset/order_by/order_dir/page` per liste **offset-based**                         |
+| `parse_list_params(qp, *, default_limit, max_limit, default_order)` | bundle `search/limit/offset/order_by/order_dir/page` di una lista                                        |
+| `pagina_da_query(qp, *, default_limit, max_limit)`                  | `(limit, offset)` di **ogni** lista: `page`/`page_size` e valori illeggibili sono un **400**, limiti da `limiti_pagina`. Lo usa `parse_list_params` |
+| `envelope_da_offset(results, total_count, *, limit, offset)`        | l'envelope paginato (`count`/`page`/`page_size`/`total_pages`/`results`) da una finestra `limit`/`offset`; `page` la ricava `pagina_di(offset, limit)` |
 
 ⚠️ **Il tetto di un intero è il tipo DOVE ARRIVA** (dal 2026-10-08): un confronto
 `col = %s` regge qualunque intero, un **parametro di funzione** `integer` o un cast
@@ -436,6 +505,36 @@ dichiara `min_val=INTEGER_MIN, max_val=INTEGER_MAX` (`apps.core.services.payload
   **`400` `E_VALIDATION_INPUT`** (niente coercion silenziosa: prima alcuni filtri
   bool accettavano il garbage come `True`/`False`).
 * token bool riconosciuti: `1/true/yes/y/on` → `True`, `0/false/no/n/off` → `False`.
+
+#### ⛔ Un filtro a vocabolario chiuso si valida PRIMA della query (dal 2026-10-20)
+
+Un valore sbagliato che arriva nel `WHERE` risponde una lista **vuota** con un 200,
+indistinguibile da «non c'è niente». Due forme, secondo chi possiede il vocabolario:
+
+* **una tabella** (`config.stati_doc_*`, `config.tipi_entita`, …):
+  `richiedi_codice_a_vocabolario(tabella, colonna, valore, codice_errore=…, parametro=…)`.
+  Esistenza e basta: i codici **dismessi** sono ammessi (i documenti vecchi li portano);
+* **un CHECK**: una costante specchio + `validate_enum_param`, e la costante si
+  iscrive nel registro `core/tests/db/test_specchi_dei_check_db.py`, che la confronta
+  col CHECK.
+
+⛔ **Il 400 di un filtro NON porta `field`** (decisione di Tid, 2026-10-20). Un
+filtro è un parametro di query, non un input del form in cui l'operatore si trova
+(§«Escono solo i nomi»): il valore esce da una select o da un chip, quindi il 400
+vuol dire un client che sbaglia (bundle vecchio, URL a mano, client esterno). Il
+nome del parametro sta nel messaggio e nel `context` diagnostico, alla chiave
+`parametro`. I due BB lo fanno da soli.
+
+Il dettaglio e i consumatori stanno nel catalogo BB backend.
+
+#### ⛔ Un SATELLITE legge prima la sua testata
+
+Una lista o un conteggio «di» un documento (righe, segnalazioni, task-run, contesto)
+legge prima la testata nel perimetro, e su un padre inesistente o fuori perimetro
+risponde il **404** del dominio, non `200 []` o zeri. Per il lotto c'è il BB
+`lotto_visibile` (`vendite/services/_lotto_perimetro.py`); per i documenti
+`testata_o_not_found` / `riga_del_padre_o_not_found` — anche sulle **scritture** di
+una riga, che va per il solo `riga_id`.
 
 #### ⛔ Un PERIMETRO non è un filtro, e «assente» non vale `False`
 
@@ -455,9 +554,12 @@ client sia uno solo non la rende vera.
 Forma (decisione di Tid, 2026-09-23, `GET /pagamenti/rate/`):
 
 * la **view** resta sull'helper *strict* (`qp_bool_optional`): `?x=banana` deve
-  restare un **400**, non diventare `True` in silenzio. ⚠️ Per questo non si usa
-  `qp_bool(raw, default=True)`, che è indulgente — è la forma già in uso su
-  `solo_ultima_revisione`, e lì quel `banana` passa;
+  restare un **400**, non diventare `True` in silenzio. ⭐ Dal 2026-10-20 è
+  l'**unico** lettore dei flag di trasporto, col solo vocabolario `true`/`false`
+  (Tid, brief-be-verifica-documentazione-api §A6): `qp_bool` (indulgente: tutto
+  ciò che non era `0/false/no/n/off` valeva vero), `as_bool` e
+  `_parse_optional_bool` (tutto ciò che non era `1/true/yes/on` valeva falso) sono
+  ritirati. `1`, `0`, `yes` sono un 400;
 * il **service** traduce l'assenza: `True if x is None else bool(x)`, con il
   perché accanto. ⛔ Mai `bool(x)` secco, che mappa `None` su `False`;
 * il **repository** dichiara `x: bool = True`, così anche un chiamante interno
@@ -471,18 +573,39 @@ attivi lo conta — l'operatore legge «1 filtro attivo» e nel pannello non tro
 niente da toccare. *`filterDefaults` risponde a due domande — «cosa mando» e
 «cosa conto come filtro» — e per un perimetro le due risposte divergono.*
 
-> **Paginazione page-based** (`page`/`page_size`, alternativa a `limit`/`offset`):
-> validala nel service con
-> `validate_pagination(page, page_size, *, error_code, function_name)`
-> (`apps.core.services.list_helpers`), che valida e ritorna l'offset. Per
-> l'ordinamento: `validate_order_params(order_by, order_dir, *, allowed_columns, error_code, function_name)`.
+> **Ordinamento** nel service: `validate_order_params(order_by, order_dir, *, allowed_columns, error_code, function_name)`
+> (`apps.core.services.list_helpers`). ⛔ `validate_pagination` (la
+> paginazione page-based) è **ritirata** dal 2026-10-21: c'è un dialetto solo.
 
 ### Paginazione
 
-| Parametro                | Default                | Max                 |
-| ------------------------ | ---------------------- | ------------------- |
-| `page`                   | 1                      | —                   |
-| `page_size` / `limit`    | `DEFAULT_LIMIT` (25)   | `MAX_LIMIT` (200)   |
+| Parametro | Default                | Max                 |
+| --------- | ---------------------- | ------------------- |
+| `limit`   | `DEFAULT_LIMIT` (25)   | `MAX_LIMIT` (200)   |
+| `offset`  | 0                      | —                   |
+
+⛔ **Un dialetto solo: `limit`/`offset`** (decisione di Tid del 2026-10-21).
+Ogni lista legge la finestra **solo** da `pagina_da_query` (anche via
+`parse_list_params`), che rifiuta `page`/`page_size` con un **400**. La storia:
+il 2026-10-20 (brief-be-verifica-documentazione-api §A3) le liste offset-based
+smisero di ignorarli in silenzio — chi li mandava riceveva la prima pagina di
+25 righe senza errore; il 2026-10-21 anche la ventina di liste che parlava
+`page`/`page_size` (dashboard, tracciamento, note, pagamenti, lotti, ricerca
+globale, lookup codici, tabelle di configurazione, audit dei permessi) è passata
+a `limit`/`offset`, e il frontend non traduce più (`paramsFinestra`).
+⛔ Anche `?limit=abc` e `?offset=xyz` sono un **400**: il ripiego muto sul
+default (`qp_int`, ritirato) dava la prima pagina a chi ne aveva chiesta
+un'altra. ⛔ E così il **fuori limite** (Tid, 2026-10-21): `limit` fuori da
+1..tetto della lista è `limit_fuori_limiti_1_<tetto>`, un `offset` negativo è
+`offset_negativo`. Fino a quel giorno `limit=500` diventava 200 in silenzio, e
+chi chiedeva «tutto» riceveva una parte credendola il tutto. Il clamp di
+`limiti_pagina` resta la difesa interna dei repository, non la risposta
+all'utente; i service non ripetono il controllo (ritirati quel giorno i guard
+di `pipeline_service` e `commesse_service`, irraggiungibili via HTTP). I presidi: `core/tests/api/test_paginazione_dialetto.py` (letture a
+mano di `limit`/`offset`, letture di `page`/`page_size`) e, lato frontend,
+`src/core/paginazioneDialetto.spec.js` (nessuna chiamata manda
+`page`/`page_size`). Nello schema OpenAPI i due parametri li dichiara
+`parametri_finestra(default_limit=…, max_limit=…)` (`apps.core.api.openapi_params`).
 
 ⭐ **Una sede sola: `apps.core.api.constants`** (2026-09-28). Il default e'
 quello che l'operatore vede a video (la misura `PAGINA` del catalogo
@@ -500,7 +623,9 @@ repository (dal 2026-10-04): `limit: int = DEFAULT_LIMIT`, mai un numero —
 una lista aveva il suo default nella view e un altro, diverso, nella firma; il
 presidio le guarda, con le eccezioni (lookup, batch) in `_FIRME_AMMESSE`.
 
-Risposta paginata:
+Risposta paginata (l'**envelope** conserva `page`/`page_size`: li ricava
+dalla finestra `envelope_da_offset`, e servono al paginatore per leggere dove
+il backend ha riportato una pagina stantia):
 
 ```json
 {
@@ -515,7 +640,8 @@ Risposta paginata:
 }
 ```
 
-Pattern alternativo (per endpoint che usano `limit`/`offset`):
+Forma ridotta (le liste che non dichiarano la pagina: solo il totale e le righe;
+la finestra in ingresso è comunque `limit`/`offset`):
 
 ```json
 {
@@ -587,6 +713,17 @@ contrario, senza errore. Il ripiego che questa sezione prescriveva — passare
 `qp_str(qp.get("order_dir"))` invece di `p["order_dir"]` — è stato **ritirato**
 dalle view che lo usavano solo per la direzione.
 
+⭐ **Le date partono DESC anche dal nome, e il default segue la lista** (dal
+2026-10-20, Tid). `parse_list_params(default_order=...)` riempie `order_by` con la
+colonna di default: fino a quel giorno `sql_order_clause` la trattava come una
+colonna scelta e ignorava `default_desc`, e ordini, resi, DDT, fatture, contratti e
+preventivi si aprivano dal più vecchio. Ora la colonna di default segue
+`default_desc` (una coda si apre crescente apposta, come le rate), e ogni altra
+colonna data chiesta senza verso parte DESC, dichiarata in `colonne_desc` **o
+riconosciuta dal nome** (`e_chiave_data`: `data`, `data_*`, `*_at`, `*_dal`/`*_al`,
+`competenza_mese`). Chi compone l'`ORDER BY` a mano passa
+`sql_order_direction(order_dir, default_desc=e_chiave_data(order_by))`.
+
 ⚠️ **Un validatore di dominio che riceve `p["order_dir"]` deve ammettere
 l'assenza**: `validate_order_params(..., nullable=True)`. Senza, la lista
 risponde 400 a una richiesta senza verso (era il caso dei quattro validatori di
@@ -596,6 +733,24 @@ catalogo e listini, allineati lo stesso giorno).
 (`"descrizione"` se non lo si passa) che per molte liste non è una colonna. Lì
 `order_by` si legge ancora grezzo (`qp_str(qp.get("order_by"))`), per quel
 motivo e non per la direzione.
+
+#### ⛔ Un `order_by` fuori whitelist è un 400, in ogni lista (dal 2026-10-20)
+
+Decisione di Tid (brief-be-verifica-documentazione-api §A1). Una chiave di
+ordinamento **indicata** e assente dalla whitelist della lista risponde **400
+`E_VALIDATION_INPUT`** (`order_by_invalid`), o il 400 del dominio dove il service
+la valida prima. Una chiave **non indicata** prende il default della lista.
+
+Fino a quel giorno metà delle liste (anagrafiche, vendite, amm-software…)
+ripiegava in silenzio sul default: rispondeva 200, ordinata diversamente da come
+era stato chiesto, e nessuno lo vedeva. La sede della regola è il BB
+`colonna_ordinamento` (catalogo BB §Ordinamento SQL), letto da `sql_order_clause`,
+da `sql_order_direction_lista` e dai repository che compongono l'`ORDER BY` a mano.
+⛔ Mai più `COLS.get(order_by, default)`.
+
+⚠️ Il `default_order` di `parse_list_params` arriva al repository come se il client
+l'avesse chiesto: dev'essere una **chiave della whitelist**, o `""` per lasciare il
+default al repository.
 
 #### La whitelist di ordinamento si chiava sul `campo_sorgente` FISICO
 
@@ -794,6 +949,25 @@ nessun errore. Le chiavi di primo livello si leggono dal
 ## Endpoint PATCH (aggiornamento parziale)
 
 Usato quando un'entita` ammette modifica di campi specifici senza che questo costituisca un'azione di dominio distinta (es. aggiornare descrizione o scadenza di una pratica).
+
+⛔ **Una PATCH senza campi è un 400, in ogni dominio** (decisione di Tid del
+2026-10-20, brief-be-verifica-documentazione-api §A2). Il service la rifiuta col
+BB `PayloadValidator.require_campi_da_aggiornare` sui campi **già estratti** (dopo
+whitelist e normalizzazione), prima di scrivere. Fino a quel giorno lo stesso
+corpo `{}` rispondeva in tre modi: 400 in alcuni domini, **404 su un record che
+esiste** in anagrafiche (l'UPDATE vuoto tocca zero righe), **200 senza scrivere**
+altrove — un «salvato» che non ha salvato. Presidio trasversale:
+`apps/core/tests/test_patch_vuota_e_400.py`.
+
+⭐ **In PATCH una chiave presente si scrive, anche `null`; una chiave assente non
+si tocca.** `null` su un campo nullable lo svuota; su un campo NOT NULL (un flag,
+una descrizione obbligatoria) è un 400, mai un «spegni» o un «lascia com'è».
+⛔ Niente `dynamic_update` (None = «non toccare») per una PATCH che riceve il
+`null` dal client: è il difetto che rendeva impossibile svuotare un campo in geo
+(2026-10-20). La lettura per presenza ha un BB, **`PayloadValidator.campi_per_presenza`**
+(testi nullable/NOT NULL con `max_len`, maiuscoli, id nullable/obbligatori, flag
+NOT NULL, lettori di dominio per le altre forme; chiave fuori contratto e PATCH
+vuota sono 400 dentro il BB): non si riscrive a mano.
 
 ```python
 class ApiPraticaDetail(APIView):
@@ -1166,7 +1340,7 @@ I nomi usano kebab-case: `reset-draft`, `calcoli-tempo`, `regole-generazione`.
 
 Per l'inventario completo degli endpoint attivi per dominio, consultare la documentazione OpenAPI generata automaticamente all'endpoint `/api/docs/` oppure i documenti manuali per dominio:
 
-* **Pratiche**: [api_pratiche_list.md](/backend/pratiche/manual/api_pratiche_list) | [api_pratiche_generate.md](/backend/pratiche/manual/api_pratiche_generate) | [api_pratiche_note.md](/backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati.md](/backend/pratiche/manual/api_pratiche_allegati) | [api_flusso_assegnazione.md](/backend/pratiche/manual/api_flusso_assegnazione) | [api_operatori_reparto.md](/backend/pratiche/manual/api_operatori_reparto) | [api_prendi_in_carico.md](/backend/pratiche/manual/api_prendi_in_carico) | [api_coda_lavoro.md](/backend/pratiche/manual/api_coda_lavoro)
+* **Pratiche**: [api_coda_lavoro.md](/backend/pratiche/manual/api_coda_lavoro) | [api_competenze_flussi.md](/backend/pratiche/manual/api_competenze_flussi) | [api_definizioni_workflow.md](/backend/pratiche/manual/api_definizioni_workflow) | [api_flussi_list.md](/backend/pratiche/manual/api_flussi_list) | [api_flusso_assegnazione.md](/backend/pratiche/manual/api_flusso_assegnazione) | [api_flusso_canali.md](/backend/pratiche/manual/api_flusso_canali) | [api_flusso_detail.md](/backend/pratiche/manual/api_flusso_detail) | [api_flusso_prerequisiti.md](/backend/pratiche/manual/api_flusso_prerequisiti) | [api_flusso_riattiva.md](/backend/pratiche/manual/api_flusso_riattiva) | [api_flusso_sospendi.md](/backend/pratiche/manual/api_flusso_sospendi) | [api_flusso_stato.md](/backend/pratiche/manual/api_flusso_stato) | [api_formule_tempo.md](/backend/pratiche/manual/api_formule_tempo) | [api_genera_pratica.md](/backend/pratiche/manual/api_genera_pratica) | [api_operatori_reparto.md](/backend/pratiche/manual/api_operatori_reparto) | [api_percorso.md](/backend/pratiche/manual/api_percorso) | [api_pratica_assegnazione.md](/backend/pratiche/manual/api_pratica_assegnazione) | [api_pratica_calcoli_tempo.md](/backend/pratiche/manual/api_pratica_calcoli_tempo) | [api_pratica_detail.md](/backend/pratiche/manual/api_pratica_detail) | [api_pratica_giornale.md](/backend/pratiche/manual/api_pratica_giornale) | [api_pratica_riattiva.md](/backend/pratiche/manual/api_pratica_riattiva) | [api_pratica_sospendi.md](/backend/pratiche/manual/api_pratica_sospendi) | [api_pratica_sospensioni.md](/backend/pratiche/manual/api_pratica_sospensioni) | [api_pratica_stato.md](/backend/pratiche/manual/api_pratica_stato) | [api_pratiche_allegati.md](/backend/pratiche/manual/api_pratiche_allegati) | [api_pratiche_generate.md](/backend/pratiche/manual/api_pratiche_generate) | [api_pratiche_list.md](/backend/pratiche/manual/api_pratiche_list) | [api_pratiche_note.md](/backend/pratiche/manual/api_pratiche_note) | [api_prendi_in_carico.md](/backend/pratiche/manual/api_prendi_in_carico) | [api_regole_generazione.md](/backend/pratiche/manual/api_regole_generazione)
 * **Amm. Software**: [api_amm_software.md](../backend/amm-software/manual/api_amm_software.md) — dal 2026-10-02 l'area **Accessi** (§«Area Accessi» della pagina): `accessi/altri/` e `accessi/sistema/`, le due liste che con gli operatori censiscono TUTTE le credenziali (la partizione la decide il DB, `script.fn_categoria_accesso`), e le azioni della **credenziale** — `credenziali/<id>/`, `blocca/`, `sblocca/` (`Idempotency-Key`), `secondo-fattore/…` — che valgono per tutte le sue vesti e quindi non stanno sotto `/operatori/` (il secondo fattore ci stava fino a quel giorno: ritirato). Dal 2026-09-18 anche `GET /amm-software/processi/presidi/conteggi/` (§6.1-bis): la **testata sola** dei presidi (`totale · con_righe · non_letti`) per il **pallino della topbar**, stesso giro di `presidi/` senza le prime righe, stessa porta `AdminAPIView`; un presidio non leggibile è `non_letti`, non un errore | [api_error_log.md](../backend/amm-software/manual/api_error_log.md) — dal 2026-09-19 `GET /amm-software/error-log/` (+ `export/`): la **consultazione di `dbops.error_log`** per i tecnici (pezzo E dell'osservabilità) — quale funzione ha sollevato quale codice, quando, in quale transazione — con frase, causa, soluzione e **classe** dal catalogo per JOIN e il `context` **com'è**. Ogni filtro della whitelist ha il suo indice (P-3) ed è provato con `EXPLAIN`; `function_name` è un prefisso `LIKE` con `_` escapato, `tx_id` è il ponte dal giornale di dominio. Stessa porta `AdminAPIView` dei due diari accanto; lista `dbops.error_log` esente dal perimetro emittente
 * **Anagrafiche**: [api_soggetti.md](../backend/anagrafiche/manual/api_soggetti.md) | [api_clienti.md](../backend/anagrafiche/manual/api_clienti.md) | [api_indirizzi.md](../backend/anagrafiche/manual/api_indirizzi.md) | [api_indirizzi_ruolo.md](../backend/anagrafiche/manual/api_indirizzi_ruolo.md) | [api_contatti_ruolo.md](../backend/anagrafiche/manual/api_contatti_ruolo.md) | [api_conti_bancari_ruolo.md](../backend/anagrafiche/manual/api_conti_bancari_ruolo.md) | [api_conti_bancari_soggetto.md](../backend/anagrafiche/manual/api_conti_bancari_soggetto.md) (conti del soggetto, lookup IBAN e filiali) | [api_geo_config.md](../backend/anagrafiche/manual/api_geo_config.md) | [api_fornitori.md](../backend/anagrafiche/manual/api_fornitori.md) | [api_categorie_clienti.md](../backend/anagrafiche/manual/api_categorie_clienti.md) | [api_categorie_clienti_listini.md](../backend/anagrafiche/manual/api_categorie_clienti_listini.md) | [api_emittenti_fiscali.md](../backend/anagrafiche/manual/api_emittenti_fiscali.md) | [api_risorse_umane_lookup.md](../backend/anagrafiche/manual/api_risorse_umane_lookup.md) — `GET /anagrafiche/risorse-umane/lookup/`, il picker delle persone interne (responsabile commessa): cross-dominio, legge la vista modello `vw_risorse_umane_dettaglio`
 * **Catalogo**: [api_catalogo.md](/backend/catalogo/manual/api_catalogo) — articoli (CRUD, lista `catalogo.articoli` id 26, UoM operative, BoM, note): oltre alla natura di vendita (*dove va* la riga) l'articolo dichiara **da dove arriva** — `modo_approvvigionamento_id` (lookup generico `rel=config.modi_approvvigionamento`, default `ACQUISTO`), `gestito_a_magazzino` (default `false`, fail-safe) e `lead_time_giorni` (nullable per modello). ⚠️ `ARTICOLI_DETAIL_COLUMNS` è una proiezione **per nome** da `vw_articoli_dettaglio`: una colonna nuova della vista non esce finché nessuno la nomina
@@ -1175,14 +1349,20 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Parametri**: [api_parameter_settings.md](../backend/core/manual/api_parameter_settings.md)
 * **Core — Lookup dedicati**: [api_lookup_dedicati.md](../backend/core/manual/api_lookup_dedicati.md) — tipi soggetto dettaglio, tipi ruolo per natura, forme giuridiche, utility per emittente, conti contabili, sistema codici, comuni
 * **Core — Lookup tipi di entità**: [api_tipi_entita_lookup.md](../backend/core/manual/api_tipi_entita_lookup.md) — dal 2026-09-19 `GET /core/lookup/tipi-entita/`: il vocabolario **vivo** di `config.tipi_entita` con l'`etichetta_key` che il DB dichiara. ⛔ Lookup dedicato perché la tabella non ha `id`/`descrizione`. Nasce perché la tendina «Entità» del giornale trasversale si era ricopiata sette codici su nove: un vocabolario del DB si legge, non si specchia
+
+#### Vendite: documenti, fatturazione e commesse
+
 * **Vendite — Pricing v5**: [api_preventivi.md](/backend/vendite/manual/api_preventivi) | [api_listini.md](/backend/vendite/manual/api_listini) | [api_contratti.md](/backend/vendite/manual/api_contratti) | [api_promo_articoli.md](/backend/vendite/manual/api_promo_articoli) | [api_pricing.md](/backend/vendite/manual/api_pricing) | [api_approvazioni_prezzo.md](/backend/vendite/manual/api_approvazioni_prezzo) | [api_vendite_lookups.md](/backend/vendite/manual/api_vendite_lookups) | [api_vendite_form_defaults.md](/backend/vendite/manual/api_vendite_form_defaults) | [api_registri_numerazione.md](/backend/vendite/manual/api_registri_numerazione) | [api_famiglie_documento.md](/backend/vendite/manual/api_famiglie_documento) — il CRUD delle famiglie di documento (`/vendite/famiglie/`, `AdminAPIView`): la creazione passa dalla madre `fn_crea_famiglia_documento`, che provvede anche i registri; `colonna_billing_account` è **facoltativa** come `colonna_serie` (`NULL` = «questa famiglia non ha un billing account», la forma dell'ordine di acquisto)
 * **Vendite — Ciclo attivo**: [api_offerte.md](/backend/vendite/manual/api_offerte) | [api_ordini.md](/backend/vendite/manual/api_ordini)
 * **Vendite — Lotto: i documenti PRESI IN CARICO**: [api_lotto_gruppi_list.md](/backend/vendite/manual/api_lotto_gruppi_list) — `GET /vendite/lotti/<id>/gruppi/` (+ `/export/`): che cosa il lotto ha preso in carico e com'è andato ciascun documento, **compresi quelli che una fattura non sono mai diventati**. ⛔ Non è un doppione di `/fatture/`, ed è la ragione per cui esiste: quella lista si aggancia a `fattura_id`, quindi un documento caduto PRIMA che una fattura esista non ha niente a cui appendersi — sul lotto LTF-0009578 se ne vedevano due su tre, e il terzo era nominato solo da una segnalazione, con l'identificativo della COMMESSA. ⚠️ Le due liste non sono in corrispondenza 1:1 nemmeno a giro riuscito (`fn_build_fattura_key` può raccogliere più gruppi nello stesso documento): sono due domande diverse. ⭐ La risposta porta **`perimetro_dichiarato`**, e senza quel flag «non ha lavorato niente» e «non dichiara un perimetro» si leggono uguali — un giro DI MASSA non scrive nessun gruppo, perché l'assenza di righe È il criterio (garanzia G1). 🔒 Il cancello di scope è la TESTATA, e il JOIN vale anche per il conteggio (dal 2026-09-10 anche `fatturazione_lotti_gruppi` porta il perimetro: §Enforcement RLS). ⚠️ L'ordine di default non è alfabetico ma «i falliti in cima»: `ERRORE` ordinato per stringa verrebbe dopo `COMPLETED`, cioè il caso che interessa finirebbe in fondo
 * **Vendite — Cockpit fatturazione (Fase C)**: [api_fatturazione.md](/backend/vendite/manual/api_fatturazione) — endpoint di comando del cockpit: giro «Fattura competenza» (`POST fatturazione/run/`, non bloccante via coda lavori `dbops.coda_lavori`) + polling `run/<job_id>/`, «Rendi definitive» perimetro (`POST fatturazione/numera/`) e singolo lotto (`lotti/<id>/numera/`), ristampa massiva (`lotti/<id>/ristampa/`), esiti giri + stato coda stampa (`fatturazione/esiti/`). Dal 2026-07-27 `fatturazione/run/` accetta `gruppi[]` = **emissione mirata** (stesso verbo, perimetro ristretto ai gruppi fatturabili scelti; assente = giro di massa invariato). Idempotenza 2-layer, identità operatore catturata (RLS come nel web), gate fiscale I-7
-* **Vendite — Commesse (governo operativo)**: [api_commessa_stato.md](/backend/vendite/manual/api_commessa_stato) — dal 2026-09-14 il dettaglio porta anche la **testata leggibile** (`descrizione`, `data_apertura`, responsabile — Blocco C di `brief-db-modifiche-certe-ciclo-vendita-e-articolo`) e `PATCH /commesse/<id>/` la scrive (parziale; `data_apertura` in sola lettura; il responsabile deve essere una risorsa umana **attiva**, 400 col campo prima del require DB che risponderebbe `E_ATTIVO_REQUIRE`, TECNICO). Il picker è `GET /anagrafiche/risorse-umane/lookup/` | [api_commessa_attivita.md](/backend/vendite/manual/api_commessa_attivita) — lista righe + azioni APPROVA (riga/mese) e, dal 2026-07-28, **ANNULLA riga manuale** (`POST /commesse/<id>/attivita/<att_id>/annulla/`): non cancella, porta `stato_emissione` ad `ANNULLATA` (valore già filtrato da tutte le porte verso fattura e cockpit) con motivo obbligatorio tracciato; gate `carica_voce_manuale`, perimetro = righe sourceless non emesse su commessa modificabile | [api_commesse_pricing.md](/backend/vendite/manual/api_commesse_pricing) — azioni prezzo N5/N7/sblocco, dal 2026-07-23 gated su azione di processo **`prezzo_override_manuale`** (stesso codename dei gate prezzo di preventivi/contratti/DDT) | [api_commessa_oneri.md](/backend/vendite/manual/api_commessa_oneri) — **porta oneri**: `POST /commesse/<id>/oneri/` crea la riga di puro valore (qta=1, `tipo_movimento=ONERE`, già APPROVATA, sourceless), causale/UoM/IVA derivate dall'articolo-onere dalla madre DB; gate `carica_voce_manuale`, presidio all'ingresso senza approvazione a due passi
+* **Vendite — Commesse (governo operativo)**: [api_commessa_stato.md](/backend/vendite/manual/api_commessa_stato) — dal 2026-09-14 il dettaglio porta anche la **testata leggibile** (`descrizione`, `data_apertura`, responsabile — Blocco C di `brief-db-modifiche-certe-ciclo-vendita-e-articolo`) e `PATCH /commesse/<id>/` la scrive (parziale; `data_apertura` in sola lettura; il responsabile deve essere una risorsa umana **attiva**, 400 col campo prima del require DB che risponderebbe `E_ATTIVO_REQUIRE`, TECNICO). Il picker è `GET /anagrafiche/risorse-umane/lookup/`. ⭐ Dal 2026-10-12 l'**annullo** della commessa passa dal verbo `vendite.fn_annulla_commessa` con la conferma dei legami (`GET /commesse/<id>/legami/` + `legami_confermati`, la stessa forma di bolla, ordine, preventivo e contratto): annullare riapre a monte ciò che l'ha riempita (brief-db-annullo-a-valle-riapre-a-monte) | [api_commessa_attivita.md](/backend/vendite/manual/api_commessa_attivita) — lista righe + azioni APPROVA (riga/mese) e, dal 2026-07-28, **ANNULLA riga manuale** (`POST /commesse/<id>/attivita/<att_id>/annulla/`): non cancella, porta `stato_emissione` ad `ANNULLATA` (valore già filtrato da tutte le porte verso fattura e cockpit) con motivo obbligatorio tracciato; gate `carica_voce_manuale`, perimetro = righe sourceless non emesse su commessa modificabile | [api_commesse_pricing.md](/backend/vendite/manual/api_commesse_pricing) — azioni prezzo N5/N7/sblocco, dal 2026-07-23 gated su azione di processo **`prezzo_override_manuale`** (stesso codename dei gate prezzo di preventivi/contratti/DDT) | [api_commessa_oneri.md](/backend/vendite/manual/api_commessa_oneri) — **porta oneri**: `POST /commesse/<id>/oneri/` crea la riga di puro valore (qta=1, `tipo_movimento=ONERE`, già APPROVATA, sourceless), causale/UoM/IVA derivate dall'articolo-onere dalla madre DB; gate `carica_voce_manuale`, presidio all'ingresso senza approvazione a due passi
 * **Vendite — registro delle righe di commessa**: `GET /vendite/commesse/<id>/registro/` (opz. `commessa_attivita_id` per una riga sola, `limit`/`offset`) espone gli eventi che il database scrive su `vendite.commesse_attivita_log` — oneri aggiunti, righe annullate a mano, **ritirate alla chiusura del documento di origine**, riportate «da emettere», accrediti. Risponde a «perché questa riga è così»: chi, quando, con quale **motivo**. ⛔ **Lo scope sta sulla riga di commessa, non sul log**: il `JOIN` è il cancello e vale anche per il **conteggio** (un totale senza cancello direbbe «12 eventi» mostrandone 3). Dal 2026-09-10 anche `commesse_attivita_log` porta il perimetro (§Enforcement RLS): l'ordine resta, il fail-open no. È la stessa lezione di `attivita_fatturabili`. ⚠️ Il vocabolario degli eventi è del DB ed è **aperto**: la query non ne nomina nessuno e non filtra, così un evento nuovo compare da sé; il frontend lo risolve con ripiego sul codice grezzo. 🔴 Nasce il 2026-08-28 perché quella tabella **si scriveva e non si leggeva**: sei tipi di evento irraggiungibili da qualunque schermata, e una guida che prometteva il contrario.
 * **Vendite — «Riporta da emettere» (recupero delle attività residue)**: [api_riporta_da_emettere.md](/backend/vendite/manual/api_riporta_da_emettere) — `POST /vendite/attivita-fatturabili/riporta-da-emettere/` (permesso dedicato `riporta_da_emettere`, `Idempotency-Key` obbligatoria) rimette in coda di fatturazione un elenco di attività **residue** e riporta a `NON_EMESSA` le righe di commessa passate a `EMESSA` per causa loro. ⛔ Non ricrea lotti né fatture: il lavoro ricompare in «Da emettere» e segue il giro normale. ⭐ **Sincrono** — due scritture e una transazione, nessun job: accodarlo per simmetria con «Rendi definitive» importerebbe la dedup, che qui non esiste. Il compagno `riportabili/` restituisce i **motivi ostativi** senza tentare nulla (è un POST pur essendo una lettura: una selezione di 200 righe non sta in una query string) e porta lo **stesso permesso del verbo** — dichiarato a mano, perché senza `post_permission` un POST cadrebbe su `add` d'area, che è il gate sbagliato nei due versi. Serve a **spiegare invece di far fallire** — incontrare `E_ATTIVITA_GIA_DA_EMETTERE` significa che l'elenco a schermo era invecchiato — e il frontend lo chiama **prima** di ogni riporto: la mutazione è atomica, quindi senza quel passo il rifiuto arriverebbe come *un* errore per l'intero elenco e chi guarda non saprebbe quale riga lo ha fermato. 🔴 Lo **scope sta sulla commessa**, non sull'attività: la riga di commessa è il cancello, e il danno di sbagliarlo sarebbe lo **stato spezzato** (attività liberata, riga di commessa no). Dal 2026-09-10 anche `attivita_fatturabili` porta il perimetro (§Enforcement RLS). ⚠️ Il perimetro **non usa `fatturato`**, che dal `20260826-33` è una colonna generata: un verbo fondato lì smetterebbe di funzionare in silenzio.
 * **Vendite — Fattura (consultazione)**: [api_fattura_dettaglio.md](/backend/vendite/manual/api_fattura_dettaglio) — `GET /vendite/fatture/<id>/` restituisce il **documento completo** (testata decodificata + righe da `vw_fattura_righe_esposte` con kit risolti + riepilogo IVA + piano rate) in un round-trip, per il drawer di consultazione. Orchestra gli **stessi** lettori che alimentano il contesto del PDF → video e stampa raccontano lo stesso documento per costruzione (regola R17). Sola lettura: oltre EMESSA le righe sono congelate a DB. ⚠️ **Ordine di lettura vincolante**: prima la testata — fuori scope è un 404, non un documento vuoto (righe e riepiloghi portano il perimetro dal `20260729-05`: la frase «no» era stantia da luglio — §Enforcement RLS). Include le note fattura (`<id>/note/`, sesto dominio del BB partizionato) e i `contatori` dei badge (oggi `note`) — dict e non scalare per reggere i prossimi senza cambiare shape; il conteggio sta **dopo** il cancello di testata, così un documento fuori scope non conta niente (dal 2026-09-09 anche `note_fatture` porta il perimetro)
+
+#### Vendite: giornali, situazioni e cruscotti
+
 * **Vendite — Giornale trasversale degli eventi**: [api_giornale.md](/backend/vendite/manual/api_giornale) — dal 2026-09-19 `GET /vendite/giornale/` (+ `export/`): «cosa è andato storto, su tutto, nell'ultimo periodo» — la Storia di tutte le entità insieme filtrata per gravità (default `ERROR`, che **include** la gravità `NULL`), per registro, tipo di entità, date e **filo** (`tx_id` o `correlation_id`), con `entita_display` risolto nel backend e `ritirate_count`. ⭐ **Terzo lettore** di `script.vw_giornale_entita` sullo stesso corpo dei due per entità — non un aggregato nuovo. ⛔ Niente `context`/`payload`: la lista è una vetrina, la Storia dell'entità è il pezzo forense. 🔒 Il perimetro lo applica la vista (`security_invoker`) riga per riga e nei conteggi, ed è **provato** sul DB vero con due emittenti costruiti (pezzo G dell'osservabilità)
 * **Vendite — Giornale fattura (la storia del documento)**: [api_fattura_giornale.md](/backend/vendite/manual/api_fattura_giornale) — `GET /vendite/fatture/<id>/giornale/`: «cosa è successo a questo documento, in ordine di tempo», elenco paginato di sola lettura che alimenta la scheda «Storia» del drawer fattura. ⭐ **Primo consumatore di `script.vw_giornale_entita`** (la vista che cuce i quattro registri di evento): fino al 2026-08-24 il suo perimetro era verificato dal pgTAP e non dall'uso. ⛔ Da non confondere con `/passaggi/`, che dice con quali **altri documenti** la fattura è legata: qui si risponde a *«cosa le è successo»*. 🔴 **Il cancello è la testata**: la vista è `security_invoker` e su una fattura fuori scope risponderebbe **zero righe** — cioè «non è successo niente» invece di «non la vedi». Il 404 nasce da `vendite.fatture`, non dalla vista. ⛔ L'ordine **non può appoggiarsi al solo tempo** (`now()` è il timestamp di transazione: 38 righe su 3 istanti), a ordinare dentro l'istante è il tiebreak. ⚠️ Le segnalazioni **ritirate** sono nascoste di default e `ritirate_count` dichiara quante: senza quel numero «nessun evento» e «tre eventi tutti superati» si leggono uguali
 * **Vendite — Fondi fattura (governo)**: [api_fondi_fattura.md](/backend/vendite/manual/api_fondi_fattura) — `GET /vendite/fondi-fattura/da-decidere/` (+ `/export/` CSV/XLSX, colonne dalla configurazione lista dell'operatore): l'elenco dei casi in cui il giro automatico **si ferma** e la scelta resta a una persona (4 motivi a vocabolario chiuso). Read-only su `vw_fondi_fattura_da_decidere`, `security_invoker` → **va letta con la connessione dell'utente, mai da un canale di sistema**. ⭐ L'elenco **presenta, non sana**: nessuna riga ha un gemello automatico che la corregge, perché sanarla vorrebbe dire muovere denaro senza che nessuno l'abbia deciso. ⭐ **E un verbo, dal 31-08-2026**: `DELETE /vendite/fondi-fattura/<id>/` cancella un atto che non e' ancora diventato un fatto — il **metodo dice il verbo**, e §Grammatica URL vieta di scriverlo nel path. `post_permission = governa_fondo_fattura` (azione «pericolosa») e `Idempotency-Key` obbligatoria, perche' il gesto e' irreversibile. ⛔ **Non serve al riporto sbagliato**: quello si disfa annullando la sistemazione che lo ha creato, e il rifiuto **nomina** quella strada invece di dire «non si puo'». Il criterio del rifiuto sta in **una sede sola** a database (`fn_check_fondo_cancellabile`, sei motivi), quindi il backend **non ne tiene una copia**: traduce e passa
@@ -1191,12 +1371,17 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Vendite — Situazione aperta**: [api_dashboard_aperto.md](/backend/vendite/manual/api_dashboard_aperto) — stock documenti per `area × fase` senza asse temporale + drill-down (read-only su `vw_dash_aperto_*`; sostituisce la dashboard 5-card, Fase 3 due-lenti)
 * **Vendite — Dashboard competenza (Lente 1)**: [api_dashboard_competenza.md](/backend/vendite/manual/api_dashboard_competenza) — funnel commessa→fattura per mese di competenza: aggregata 12 mesi × 4 stadi + breakdown stato fattura, drill-down attività, drill-down per commessa, **gruppi fatturabili** (`gruppi/` — l'unità dell'emissione mirata: documento sorgente oppure oneri di commessa, con riepilogo di perimetro nell'envelope; la `gruppo_key` è la stessa accettata da `fatturazione/run/`), errori vivi, e dal 2026-08-27 i **residui** (`residui/` + `residui/export/` — le attività che una fattura non ce l'hanno più e che nessun giro riprenderà da solo: è l'elenco su cui agisce «Riporta da emettere». ⛔ Non è un filtro di `attivita/`: lo stadio `EMESSA_NON_FATTURATA` contiene **quattro** situazioni e solo `RESIDUO` chiede un'azione — esporre un parametro per sceglierla darebbe l'illusione di poter allargare il perimetro del verbo, che invece lo decide il modello. ⚠️ Default `competenza_mese` **ASC** e non `valore` DESC come le liste sorelle: non è una lista di grandezze, è una **coda di recupero** — il residuo più vecchio è il più vicino al limite di emissione) (read-only su `vw_dash_competenza_*`)
 * **Vendite — Dashboard backlog (Lente 2)**: [api_dashboard_backlog.md](/backend/vendite/manual/api_dashboard_backlog) — non-collegati per anzianità + classe di azionabilità: contatori 🟠/🔵/🔴 + lista con motivo/azione (read-only su `vw_dash_backlog_*` + lookup `config.motivi_fermo`)
+
+#### Pagamenti, magazzino e documenti
+
 * **Pagamenti — il giro degli incassi** (registrato qui il 2026-09-12: le 25 rotte erano in esercizio dal 2026-08-24 e nessuna pagina le nominava — `copertura_doc_api` dava l'area al **4%**): [api_pagamenti.md](/backend/pagamenti/manual/api_pagamenti) — una pagina sola per il dominio, come per la generazione documenti: la **distinta** (`distinte/`, `<id>/stato/`, e dal 2026-09-18 le righe come **lista configurabile** `distinte/<id>/righe/` + `export/` — lista `pagamenti.distinta_righe`, paginata, «la contabile in CSV/Excel»; fino a quel giorno viaggiavano dentro il dettaglio, su una `DataTable` grezza senza pagina né export), la **registrazione** (`anteprima-registrazione/`, `registra/` — una sola `SELECT` sulla madre, esito `NULLA_DA_POSTARE` che risale intatto — e la **correzione guidata** `correggi/`), l'**abbinamento** (`righe/<id>/abbina/` con la forzatura a due tempi: `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` è il primo codice con `ui_action = confirm_and_retry`), le due **code** (`righe/?coda=`), `rate/fuori-capienza/`, la **base dei saldi** a tre livelli (`rate/<id>/saldo/`, `fatture/<id>/saldo/`, `fatture/<id>/rate/` — sede unica, forma unica `residuo · in_lavorazione · incassato`; `escludi_riga_id` = «prima di sé» sulla rata dal 17/09 e sul documento dal 18/09, stesso parametro dichiarato una volta) e dal 2026-09-17 la sua **quarta lettura**, `rate/` — l'elenco paginato delle rate col saldo (lista `pagamenti.rate`), sorgente del **picker** della distinta e dello scadenzario: pagina prima, saldo dopo dal nucleo `fn_get_saldi_rate` con l'array degli id, numero fattura **esatto** (101 non porta 1010), «aperta» = `residuo <> 0`, e dal 18/09 `solo_numerate` — le rate delle **bozze** fuori, il picker lo passa sempre; e il verbo di collezione `distinte/<id>/righe/da-rate/` — **N rate scelte → N righe** con esito **PARZIALE per riga** via `run_fan_out`, ogni fallita col suo errore intero (`ui_action` compresa: il secondo tempo della capienza è per riga) —, le **sistemazioni** (`eccedenze/`, `sistemazioni/` + `conferma/`/`annulla/`, `fatture/<id>/sistemazioni/` + `export/`) e i **canali di incasso** (`enti-incasso/`, `conti-incasso/`). ⚠️ Le quattro rotte `fatture/<id>/…` hanno `skip_area_check`: le consuma il drawer fattura di `vendite`, che non può chiamare `pagamenti` lateralmente. 🔴 `registra/` e `correggi/` sono gated su `registra_distinta`, fail-closed finché l'azione non è assegnata a un profilo
 * **Magazzino — le anagrafiche** (2026-09-21, [piano](work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)): [api_anagrafiche_magazzino.md](/backend/magazzino/manual/api_anagrafiche_magazzino) — `GET/POST /magazzino/magazzini/` (+ `export/`, `<id>/` GET/PATCH), le ubicazioni **sotto il padre** `GET/POST /magazzino/magazzini/<id>/ubicazioni/` (+ `export/`, `<uid>/`), i lotti **per articolo** `GET/POST /magazzino/lotti/?articolo_id=` (+ `export/`, `<id>/`). Liste a catalogo 80-82; RLS sull'emittente del magazzino (404 no-leak, `E_MAG_*_NON_TROVAT*`), `lotti` senza perimetro (`perimetro_emittente = false`). Il documento interno, i lookup di riga e la consultazione hanno la loro pagina (riga sotto).
 * **Magazzino — il documento interno e la consultazione** (2026-09-25, [piano Lotto 2](work-done/piano-be-fe-magazzino-lotto-2-motore.md)): [api_magazzino.md](/backend/magazzino/manual/api_magazzino) — inventario e rettifica come **una famiglia** (`FamigliaDocumentoInterno`, rotte sotto `/magazzino/{inventari|rettifiche}/` dalla stessa factory): lista + `export/`, crea/dettaglio/`PATCH`/`DELETE`, `<id>/stato/`, **`<id>/registra/`** (il gesto irreversibile: `post_permission = registra_magazzino` **e** lo stesso controllo dentro il verbo a DB), righe (lista, `export/`, CRUD), e solo per l'inventario `<id>/piano/` (+ `export/`). Il dettaglio porta il blob `capabilities` di `fn_available_actions_<famiglia>` **intatto**, con la terna `can_registra*`. L'anteprima `righe/motivi/` è `fn_check_riga_magazzino` così com'è; tre lookup di riga dedicati (ubicazioni, lotti, seriali). Consultazione: `disponibilita/` (+ `articoli/`, `blocchi/`), `movimenti/` (con `inventario_id`/`rettifica_id` per il deep-link dal documento registrato). Liste a catalogo 70-77. Scritta il 2026-09-25: le rotte erano in esercizio dal 2026-09-18 senza una pagina che le nominasse.
-* **Documenti**: [api_documenti_templates.md](/backend/documenti/manual/api_documenti_templates) — read-only v1 motore documentale (lista/dettaglio template + versioni). Building block trasversali per view "per sorgente" (offerta/preventivo/contratto): [api_documenti_helpers.md](/backend/documenti/manual/api_documenti_helpers) — `resolve_contesto_documentale` + `extract_allegati` (2026-05-28). **Ristampa fedele** (2026-08-03): [api_ristampa_fedele.md](/backend/documenti/manual/api_ristampa_fedele) — `GET .../documenti/<id>/ristampa/` sui 6 domini sorgente: ri-renderizza il documento **com'era** (versione di template pinnata, anche OBSOLETA + `context_json` congelato), senza persistere nulla. È il terzo percorso, distinto dallo **scarica originale** (`file/`, richiede il file su storage: la persistenza è iniziata il 2026-07-21) e dal **genera nuovo documento** (`genera/`, modello e dati di oggi — che fino al 2026-08-03 si chiamava impropriamente «ristampa»). Fedeltà dichiarata in header `X-Ristampa-Pdf-Hash-Match`: byte diversi = fedele nel contenuto, non un errore.
+* **Documenti**: [api_documenti_templates.md](/backend/documenti/manual/api_documenti_templates) — il motore documentale: template (CRUD della testata, i modelli **standard** senza emittente e `personalizza/` che ne copia uno per un emittente), versioni (CRUD, `clona`, `pubblica`), asset (upload multipart, PATCH, download, miniatura) e `context-builders`. [api_documenti_per_sorgente.md](/backend/documenti/manual/api_documenti_per_sorgente) — le rotte documenti dei sei domini sorgente. Building block trasversali per view "per sorgente" (offerta/preventivo/contratto): [api_documenti_helpers.md](/backend/documenti/manual/api_documenti_helpers) — `resolve_contesto_documentale` + `extract_allegati` (2026-05-28). **Ristampa fedele** (2026-08-03): [api_ristampa_fedele.md](/backend/documenti/manual/api_ristampa_fedele) — `GET .../documenti/<id>/ristampa/` sui 6 domini sorgente: ri-renderizza il documento **com'era** (versione di template pinnata, anche OBSOLETA + `context_json` congelato), senza persistere nulla. È il terzo percorso, distinto dallo **scarica originale** (`file/`, richiede il file su storage: la persistenza è iniziata il 2026-07-21) e dal **genera nuovo documento** (`genera/`, modello e dati di oggi — che fino al 2026-08-03 si chiamava impropriamente «ristampa»). Fedeltà dichiarata in header `X-Ristampa-Pdf-Hash-Match`: byte diversi = fedele nel contenuto, non un errore.
 * **Core — Gestione code (tracciamento)**: [api_gestione_code.md](/backend/core/manual/api_gestione_code) — badge conteggi code + liveness worker (`tracciamento/code/conteggi/`), liste coda lavori/stampa (`tracciamento/coda-lavori/`, `tracciamento/coda-stampa/`, scope operatore, `?ambito=tutti` con `code_manage`), dettaglio job e azioni `annulla/`/`requeue/` (ownership scope-based BE, 404 no-leak). ⭐ Dal 2026-09-04 anche l'**archiviazione** — `archivia/` e `ripristina/` su **entrambe** le code, rotte di **collezione** (`{"ids": [...]}`, tetto 200, dedup) perché il gesto è di massa e il menu di riga manda un elenco di uno: toglie una riga dall'**elenco** senza toccarne lo **stato**, perché i conteggi del pannello «Esiti fatturazione» sono un `GROUP BY` sullo stato **senza filtro di visibilità** e qualunque cancellazione o annullamento li sposterebbe. ⛔ Gate **`code_manage`** e non l'ownership degli altri due verbi: l'effetto è **globale** (chi archivia toglie la riga anche all'amministratore), e un verbo globale in un modello di permessi per-proprietario non compone. ⛔ Il criterio «solo una riga non viva si archivia» sta nel **trigger** (`dbops.trgfn_coda_archiviazione`, una funzione per due code) più il `CHECK`: il backend traduce `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` (409) e passa, senza tenerne una copia — e nemmeno scrive `archiviato_il`/`archiviato_da`, che le deriva il trigger dalla GUC. ⚠️ Le liste nascondono le archiviate di default (`?archiviate=1` le chiede) e dichiarano **`archiviate_count`**: senza quel numero «coda pulita» e «tre righe messe via» si leggono uguali. ⛔ E la bandiera **non entra** nel `WHERE` di claim, drainer, reaper, `mark_*` e `count_*`: è la cosa che distingue l'archiviazione da un annullamento silenzioso. ⛔ **Esito PARZIALE via `run_fan_out`** (un savepoint per riga): il rifiuto è per riga, quindi venti archiviazioni buone non si perdono per una riga tornata al lavoro — chi consuma guarda `esito` e `falliti[]`, non lo status. È anche la ragione per cui non si fa un solo `UPDATE … WHERE id = ANY(…)` col predicato di stato: sarebbe la seconda copia di «riga viva». ⭐ **Dal 2026-09-06 la soglia di liveness del badge non è più un numero nel backend**: arriva dal *dichiarato di deploy* (`backend/deploy/sveglie.json`, campo `tolleranza_minuti`) via `apps.core.services.sveglie` — vedi [sveglie_processi.md](/backend/core/manual/sveglie_processi). Il valore a video non cambia (10 minuti per entrambi i drainer): cambia **chi lo dice**. Prima era `WORKER_ATTIVO_SOGLIA_MINUTI = 10` accanto a un commento che spiegava la scelta con l'`OnCalendar` scritto in un ALTRO file — cioè lo stesso fatto in due sedi che non si conoscevano, e la divergenza sarebbe stata **muta**: un pallino verde su un worker fermo. ⚠️ Il contratto della risposta per worker è `{last_run_at, attivo, in_corso, ultima_conclusa}` — dal 2026-09-14 senza `last_ok`, che era l'esito di una corsa accanto alla data di un'altra (dettaglio in [api_gestione_code.md](/backend/core/manual/api_gestione_code) §1)
 * **UI — Personalizzazioni liste (runtime)**: [api_ui_liste.md](/backend/ui/manual/api_ui_liste) — risoluzione configurazione lista, catalogo modale, UPSERT/DELETE preferenza utente, e dal 2026-09-30 `GET /ui/misure-pagina/`: le misure «righe per pagina» e i due default dal catalogo DB `ui.misure_pagina`, per **tutti** i paginatori (il frontend le legge una volta per sessione). Meta-API trasversale (`skip_area_check=True`).
+* **UI — Dashboard (preferenze e contatori)**: [api_ui_dashboard.md](/backend/ui/manual/api_ui_dashboard)
+* **UI — Export liste**: [api_export_liste.md](/backend/ui/manual/api_export_liste) — il BB comune e l'elenco degli export serviti.
 * **UI — Personalizzazioni liste (admin Blocco F)**: [api_ui_admin_personalizzazioni.md](/backend/ui/manual/api_ui_admin_personalizzazioni) — Fase 1: CRUD preset (testata + composizione atomica) + UPSERT/DELETE permessi colonna; auth via azioni di processo `ui_preset_manage`/`ui_permesso_manage` o SUPER_ADMIN. Fase 2 (DEF-5b 2026-05-10): CRUD `ui.lista_definizione` + `ui.lista_colonna` SUPER_ADMIN-only via `AdminAPIView`.
 * **UI — Export liste (DEF-1, 2026-05-10)**: endpoint dedicato per dominio (`GET /api/v1/anagrafiche/clienti/export/?formato=csv|xlsx`, `GET /api/v1/anagrafiche/soggetti/export/?formato=csv|xlsx` dal 2026-05-11, `GET /api/v1/anagrafiche/fornitori/export/?formato=csv|xlsx` dal 2026-05-24, `GET /api/v1/vendite/contratti/export/?formato=csv|xlsx` dal 2026-06-02; estensione altre liste in DEF-8). Renderer puro generico `apps.ui.services.lista_export_service.ListaExportService` no-fetch: riceve righe + config colonne + filtri applicati, produce bytes CSV (BOM UTF-8 + header `#` JSON filtri) o XLSX (foglio "Dati" + foglio "Filtri applicati", styling header bold). Hard cap 10.000 righe, errori `E_UI_EXPORT_LIMIT_EXCEEDED` (422) / `E_UI_EXPORT_FORMAT_INVALID` (400) / `E_UI_EXPORT_FAILED` (500). Niente SQL dinamico sulla `vista_sql`: ogni dominio chiama il proprio repository esistente e delega al renderer. **Coda invariante estratta** (regola del 2, 2026-06-02) in `apps.ui.api.export_helpers.{parse_export_format,build_export_response}`: ogni view export mantiene solo il parsing dei propri filtri + la chiamata al service con `limit=EXPORT_MAX_ROWS+1`; validazione formato, guard limite, risoluzione colonne dalla config runtime, render e `HttpResponse` vivono nel building block. ⭐ **La view `…/export/` dichiara LO STESSO `lista_codice` della lista accanto** — e dal 2026-09-18 lo pretende un presidio che legge le coppie dalle rotte (`apps/core/tests/test_export_lista_codice_pari.py`, 28 coppie): due letterali uguali divergono al primo rename senza nessun errore, e il file avrebbe le colonne di un'altra lista. La forma che non diverge è `lista_codice = ApiLista.lista_codice` (`distinta_righe`, `sistemazioni_fattura`). ⭐ **La ricerca libera nel file la dichiara il BB, non la view** (2026-09-29, regola del 2): `build_export_response` passa al renderer `filtri_export_con_ricerca(request, …)`, che legge `search` dalla richiesta e lo scrive come `"Ricerca"` **solo se ha filtrato davvero** (dopo lo `strip`, alla soglia della lista — `soglia_ricerca`, la stessa di `add_ricerca_full_condition`); le chiavi `search`/`Ricerca` eventualmente messe dal caller si tolgono, così non compare due volte. Le view dichiarano solo i **propri** filtri (i `resolve_filtri_export_label` non hanno più il parametro `search`). Prima la dichiaravano le view, a modo loro, e chi se ne dimenticava (righe distinta, righe inventario/rettifica, righe dei documenti di vendita) consegnava un file filtrato con `# Filtri applicati: {}`. ⚠️ Invariante: una lista con colonne `ricercabile_full` applica `search` anche nell'export — il file è la lista che l'operatore vede.
 
@@ -1453,16 +1638,31 @@ Vedi `docs/it/dev/work-done/analisi-attivazione-rls-operatori.md`.
 
 ### Validazione input
 
-La validazione vive nel **service layer**, tramite helper procedurali:
+La validazione vive nel **service layer**, col building block `PayloadValidator`
+(`apps/core/services/payload_helpers.py`), istanziato una volta per service col
+codice d'errore del dominio:
 
 ```python
-descrizione = _require_str(payload, "descrizione", "Descrizione obbligatoria.")
-sigla = _optional_str(payload, "sigla", "Sigla non puo' essere vuota.")
+_V = PayloadValidator(validation_code="E_DDT_VALIDAZIONE")
+
+# il contratto: una chiave fuori whitelist e' un 400, prima di qualunque lettura
+data = _V.solo_chiavi_ammesse(payload, ammesse=CREATE_PAYLOAD_RIGA, colonne=CREATE_KEYS_RIGA,
+                              function_name=f"{_FN}.gestisci_riga")
+quantita = _V.require_decimal(payload, "quantita", min_value=Decimal("0"))
+tipo = _V.optional_enum(payload, "tipo", allowed=TIPI_AMMESSI)
 ```
 
-Non si usano serializer DRF ne' Pydantic — gli helper `_require_str`, `_optional_str`,
-`optional_int`, `optional_bool` sono sufficienti per il volume attuale.
-Rivalutare se i payload distinti superano 20-30.
+* Un metodo per tipo (`require_*` / `optional_*` / `extract_optional_*` a tre stati
+  per i PATCH): stringhe, interi, decimali (rifiuta `NaN`), enum, date, uuid, booleani.
+  L'elenco e le regole stanno nel
+  [catalogo BB backend](backend/catalogo-building-block-backend.md) (`PayloadValidator`).
+* ⛔ **Un flag del corpo non si legge con `bool(payload.get(...))`**: `bool("false")` è
+  `True` (il 2026-10-20 creava un SUPER_ADMIN). Si usa `optional_bool` / `require_bool`.
+* ⛔ Niente helper locali `_require_str`, `_extract_*` nei service: sono le copie che il
+  BB ha ritirato. Quelle che restano sono debito, non modello.
+* Non si usano serializer DRF né Pydantic per **validare**. I serializer compaiono solo
+  come descrizione dello schema OpenAPI, e quello del corpo si **legge dal contratto**
+  (`schema_da_contratto`, §Schema OpenAPI e checklist), non si scrive a mano.
 
 ### Comunicazione cross-modulo
 
@@ -2221,7 +2421,7 @@ documento lo nominava:
 | ----------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------ |
 | Unit test service / API       | `apps/*/tests/services/`, `apps/*/tests/api/` | Validazione, dedup, not found, orchestrazione, envelope (repository mockati)                                                                               | No       | ✅ sempre                       |
 | **Guardrail su DB provvisto** | `apps/*/tests/db/` + i guardrail di `core`    | La **giuntura**: che `diag.constraint_name` sopravviva a libpq, che ogni codice del DB abbia una policy, che i tipi di handler della coda esistano davvero | Sì       | ✅ via `ZEROERP_TEST_DB_E2E=1`  |
-| Smoke end-to-end              | `backend/scripts/tests/smoke-*.py`            | Percorsi HTTP reali, in `transaction.atomic()` + `set_rollback(True)`                                                                                      | Sì       | ⛔ **mai**: la CI non li nomina |
+| Smoke end-to-end              | `backend/scripts/tests/smoke-*` (`.py`, `.sh`) | Percorsi reali: i `.py` in `transaction.atomic()` + `set_rollback(True)`, i bash via HTTP                                                                                      | Sì       | ⛔ no — ogni notte su sviluppo |
 
 Quando si crea o tocca un service, si scrivono/aggiornano i test corrispondenti.
 
@@ -2233,15 +2433,14 @@ mesi di 500 con il test verde). Dal 2026-10-08 lo vede **mypy** in CI, a cricche
 prova solo il secondo livello qui sotto.
 
 ⭐ **Il secondo livello si accende con `richiedi_db_provvisto`**
-(`apps/core/tests/db_e2e.py`) ed è oggi in **22 file** (rimisurato il
-2026-09-11; erano 19 il 09-09 — il livello cresce). È
+(`apps/core/tests/db_e2e.py`); il numero dei file che lo usano lo stampa
+`scripts/indicatori-qualita-be-fe.sh` ([indicatori](qualita-be-fe-indicatori.md)). È
 l'unico che vede il pezzo in mezzo: i pgTAP coprono il lato DB, i test unitari col
 `diag` finto coprono il lato Python, e **nessuno dei due vede la giuntura**.
 
-⛔ **Il terzo livello non lo esegue niente**, ed è il difetto che quel livello si
-porta dietro dal giorno in cui è nato: vedi §«Gli smoke» qui sotto. Il registro
-`baseline-smoke.tsv` ha due righe — cioè è nella condizione migliore per
-accendere un cancello, non nella peggiore.
+⚠️ **Il terzo livello non è un cancello**: la CI non lo lancia. Dal 2026-10-13 lo
+lancia però il **giro notturno** sul DB di sviluppo (§«Gli smoke» qui sotto):
+una regressione arriva nel digest delle 7, non blocca un merge.
 
 #### Convenzioni dei file di test
 
@@ -2327,13 +2526,23 @@ accendere un cancello, non nella peggiore.
 
 #### Gli smoke
 
-`backend/scripts/tests/smoke-*.py` parlano col database di sviluppo, ognuno in
-`transaction.atomic()` + `set_rollback(True)`: si possono lanciare senza lasciare
-niente. ⛔ Non li raccoglie il runner Django e non li esegue la CI, quindi
-vanno lanciati a mano:
+Due famiglie in `backend/scripts/tests/`, un runner solo:
+
+| | `smoke-*.py` | `smoke-test-*.sh` |
+| --- | --- | --- |
+| Come parlano | in-process (`./manage-env.sh shell <`), col database di sviluppo | via **HTTP** col backend in esecuzione (`BASE_URL`), utente degli smoke di `backend/env.sh` (`dev.smoke`, dal provisioning di sviluppo: run-book §11) |
+| Cosa lasciano | niente: `transaction.atomic()` + `set_rollback(True)` | ⚠️ **scrivono** sul database di sviluppo (documenti di prova sull'emittente attivo dell'utente degli smoke) |
+
+⛔ Non li raccoglie il runner Django e non li esegue la CI. Li lancia
+`scripts/smoke-baseline.sh`, a mano o **ogni notte**: dal 2026-10-13 il management
+command `smoke_notturno` (timer `zeroerp-smoke-notturno`, 02:30) gira il runner sul DB
+di sviluppo, e con una regressione la corsa chiude `ok=false` e finisce nel digest
+delle 7. ⛔ **Solo sviluppo**: la sveglia è spenta di default e il comando non
+parte senza `SMOKE_NOTTURNO_CONSENTITO=1`, perché i bash scrivono. Fino al 2026-10-12 il runner prendeva i soli `.py`: i bash non li
+lanciava nessuno, e al primo giro completo erano rossi piu' della meta'.
 
 ```bash
-scripts/smoke-baseline.sh                   # tutti, ~4 min
+scripts/smoke-baseline.sh                   # tutti (Python ~4 min, piu' i bash)
 scripts/smoke-baseline.sh fattura-scadenze  # solo quelli col nome dato
 scripts/smoke-baseline.sh --update          # rigenera il registro dei noti
 ```
@@ -2347,6 +2556,20 @@ Stessa forma di `pgtap-baseline.sh`: non-verde **noto** → silenzio, **nuovo** 
 * ⚠️ **Gli esiti sono tre**: oltre a verde e rosso c'è `SENZA_MATERIA` (una
   precondizione assente, dichiarata con `raise SystemExit`). La copertura di quel
   giro vale zero, non «parziale».
+* **I bash** fanno un login solo per il giro (`smoke-login.sh`), rinnovato quando
+  il token sta per scadere; su un `429` (freno dei login, o delle ricerche: 30 al
+  minuto per IP) aspettano e riprovano una volta (`LIMITE_RICHIESTE` se non
+  basta). Chi non si puo' lanciare
+  nell'ambiente (es. `smoke-test-ai-assistant.sh` senza `AI_PROVIDER=mock`) e'
+  **stampato** fra gli esclusi, mai saltato in silenzio. ⛔ Escluso anche
+  `smoke-c9-fatturazione-parte-alta.py`, salvo chiamarlo per nome
+  (`scripts/smoke-baseline.sh c9`): è l'unico che **non fa rollback** — approva,
+  emette fatture e consuma la numerazione fiscale — quindi non può stare nel giro
+  di ogni notte. Uno smoke che chiude con
+  dei `SKIP` nel riepilogo e' `PARZIALE`, non verde: i passi saltati valgono zero.
+* ⏱ A fine giro lo script stampa i **tempi**: durata del giro, quanto ha atteso
+  sul freno e gli smoke piu' lenti. Un giro che nessuno ha tempo di lanciare non
+  protegge niente: i rimedi alla lentezza si scelgono su questi numeri.
 
 ---
 
@@ -2358,11 +2581,17 @@ Stessa forma di `pgtap-baseline.sh`: non-verde **noto** → silenzio, **nuovo** 
 4. Detail + Update sulla stessa URL: `def get` + `def patch`
 5. Per POST/PATCH: usare `handle_post_json` con handler che chiama il **service**
 6. Per GET: usare `success_response()` e `paginated_envelope()` per le liste
-7. Aggiungere `@extend_schema` con `inline_serializer` per request e response
+7. Aggiungere `@extend_schema` con `request` e `responses`. Lo schema del **corpo** di una
+   scrittura si legge dal contratto del service con `schema_da_contratto` (chiavi ammesse +
+   dizionario dei tipi del dominio): una chiave senza tipo è un errore all'import.
+   `inline_serializer` resta per le risposte e per i corpi che non hanno un contratto
 8. Registrare la route in `urls.py` con name `<dominio>-<risorsa>-list` / `<dominio>-<risorsa>-detail`
-9. Scrivere test service in `tests/services/` (validazione, dedup, not found)
-10. Se endpoint di ricerca: `is_search_endpoint = True`
-11. Registrare i codici errore prima dell'uso: il codice nasce **a catalogo**
+9. Scrivere test service in `tests/services/` (validazione, dedup, not found) e, se
+   l'endpoint chiama una funzione del DB, un test sul DB vero (`richiedi_db_provvisto`)
+10. Documentare la rotta in `docs/it/backend/<dominio>/manual/`: la copertura la
+    controlla `core/tests/test_copertura_doc_api.py`
+11. Se endpoint di ricerca: `is_search_endpoint = True`
+12. Registrare i codici errore prima dell'uso: il codice nasce **a catalogo**
     (`config.codici_errore`, con la sua classe — richiesta al team DB), poi
     `./manage-env.sh genera_error_policies` lo porta nel backend. Status e
     `ui_action` si derivano dalla classe; il modulo generato non si tocca a mano

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_partite_merce(p_ddt_ids bigint[], p_ordine_ids bigint[])
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_partite_merce(p_ddt_ids bigint[] DEFAULT NULL::bigint[], p_ordine_ids bigint[] DEFAULT NULL::bigint[])
  RETURNS TABLE(ddt_riga_id bigint, ddt_id bigint, ddt_uid uuid, articolo_id uuid, is_composito boolean, ordine_riga_id bigint, ordine_id bigint, origine character varying, fatturabile boolean, consegnato numeric, reso numeric, in_riconsegna numeric, tenuti numeric, fatturato_merce numeric, fatturato_da_ordine numeric, fatturato numeric, misurabile boolean, differenza numeric, stato character varying, e_riconsegna boolean, sospetto_duplicato_ordine boolean, rettificato numeric, riconsegna_quota_nuova numeric)
@@ -102,13 +104,13 @@ BEGIN ATOMIC
             FROM dr_in dr
            WHERE (NOT ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL)))
          ), chiavi_af AS MATERIALIZED (
-          SELECT (((('DDT:'::text || (d.uid)::text) || ':R:'::text) || (dr.id)::text))::character varying AS k
+          SELECT script.fn_segment_key('DDT_VENDITA'::character varying, (d.uid)::text, dr.id) AS k
             FROM ((origini o_1
               JOIN vendite.ddt_righe dr ON ((dr.id = o_1.ddt_riga_id)))
               JOIN vendite.ddt d ON ((d.id = dr.ddt_id)))
            WHERE (NOT ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL)))
          UNION
-          SELECT (((('ORD:'::text || (od.uid)::text) || ':R:'::text) || (orr_1.id)::text))::character varying AS "varchar"
+          SELECT script.fn_segment_key('ORDINE_VENDITA'::character varying, (od.uid)::text, orr_1.id) AS "varchar"
             FROM ((fulfillment_in f
               JOIN vendite.ordini_righe orr_1 ON ((orr_1.id = f.ordine_riga_id)))
               JOIN vendite.ordini od ON ((od.id = orr_1.ordine_id)))
@@ -130,22 +132,17 @@ BEGIN ATOMIC
              a.misurabile
             FROM vendite.fn_af_merce_per_riga(NULL::character varying[]) a(corsia, riga_id, tipo_movimento, quantita, misurabile, da_componenti, voci)
            WHERE ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL))
-         ), soglia AS (
-          SELECT s.ordine AS ordine_emesso
-            FROM config.stati_doc_ddt s
-           WHERE ((s.codice_interno)::text = 'EMESSO'::text)
          ), ponte_riga AS (
           SELECT ri.ddt_riga_origine,
              ri.ddt_riga_nuova,
              d_new.data AS ddt_nuovo_data,
-             (sdd_n.ordine >= sg.ordine_emesso) AS emesso,
+             sm_n.merce_partita AS emesso,
              sum(ri.qta) AS qta
-            FROM ((((riconsegne_in ri
+            FROM (((riconsegne_in ri
               JOIN vendite.ddt_righe dr_new ON ((dr_new.id = ri.ddt_riga_nuova)))
               JOIN vendite.ddt d_new ON ((d_new.id = dr_new.ddt_id)))
-              JOIN config.stati_doc_ddt sdd_n ON ((sdd_n.id = d_new.stato_doc_ddt_id)))
-              CROSS JOIN soglia sg)
-           GROUP BY ri.ddt_riga_origine, ri.ddt_riga_nuova, d_new.data, (sdd_n.ordine >= sg.ordine_emesso)
+              JOIN script.vw_stati_doc_ddt_merce_partita sm_n ON ((sm_n.id = d_new.stato_doc_ddt_id)))
+           GROUP BY ri.ddt_riga_origine, ri.ddt_riga_nuova, d_new.data, sm_n.merce_partita
          ), ponte AS (
           SELECT p.ddt_riga_origine,
              COALESCE(sum(p.qta) FILTER (WHERE p.emesso), (0)::numeric) AS riconsegnato,
@@ -156,7 +153,7 @@ BEGIN ATOMIC
           SELECT DISTINCT p.ddt_riga_origine,
              GREATEST((0)::numeric, (- COALESCE(ret.quantita, (0)::numeric))) AS accreditato
             FROM (ponte_riga p
-              LEFT JOIN af ret ON ((((ret.corsia)::text = 'DDT'::text) AND (ret.riga_id = p.ddt_riga_origine) AND ((ret.tipo_movimento)::text = 'RETTIFICA'::text))))
+              LEFT JOIN af ret ON ((((ret.corsia)::text = 'DDT_VENDITA'::text) AND (ret.riga_id = p.ddt_riga_origine) AND ((ret.tipo_movimento)::text = 'RETTIFICA'::text))))
          ), migra AS (
           SELECT p.ddt_riga_nuova,
              p.ddt_riga_origine,
@@ -194,16 +191,15 @@ BEGIN ATOMIC
                  END + COALESCE(pt.riconsegnato, (0)::numeric)) - COALESCE(mo.quota_migrata, (0)::numeric)))::numeric(18,6) AS consegnato,
              COALESCE(pt.in_riconsegna, (0)::numeric) AS in_riconsegna,
              COALESCE(caus.fatturabile, false) AS fatturabile
-            FROM ((((((((dr_in dr
+            FROM (((((((dr_in dr
               JOIN vendite.ddt d ON ((d.id = dr.ddt_id)))
-              JOIN config.stati_doc_ddt sdd ON ((sdd.id = d.stato_doc_ddt_id)))
+              JOIN script.vw_stati_doc_ddt_merce_partita sm ON ((sm.id = d.stato_doc_ddt_id)))
               JOIN catalogo.articoli art ON ((art.id = dr.articolo_id)))
               LEFT JOIN config.causali_trasporto caus ON ((caus.id = d.causale_trasporto_id)))
               LEFT JOIN ponte pt ON ((pt.ddt_riga_origine = dr.id)))
               LEFT JOIN migra_origine mo ON ((mo.ddt_riga_origine = dr.id)))
               LEFT JOIN migra_nuova mn ON ((mn.ddt_riga_nuova = dr.id)))
-              CROSS JOIN soglia sg)
-           WHERE ((NOT sdd.is_abortito) AND (sdd.ordine >= sg.ordine_emesso))
+           WHERE sm.merce_partita
          ), orig AS (
           SELECT f.ddt_riga_id,
              count(DISTINCT f.ordine_riga_id) AS n_origini,
@@ -245,7 +241,7 @@ BEGIN ATOMIC
              COALESCE(fo.misurabile, true) AS ord_misurabile
             FROM ((riga r_1
               JOIN orig o_1 ON ((o_1.ddt_riga_id = r_1.ddt_riga_id)))
-              LEFT JOIN af fo ON ((((fo.corsia)::text = 'ORD'::text) AND (fo.riga_id = o_1.ordine_riga_id) AND ((fo.tipo_movimento)::text = 'NORMALE'::text))))
+              LEFT JOIN af fo ON ((((fo.corsia)::text = 'ORDINE_VENDITA'::text) AND (fo.riga_id = o_1.ordine_riga_id) AND ((fo.tipo_movimento)::text = 'NORMALE'::text))))
            WHERE (NOT r_1.e_riconsegna)
          )
   SELECT r.ddt_riga_id,
@@ -259,7 +255,7 @@ BEGIN ATOMIC
          CASE
              WHEN (o.ddt_riga_id IS NULL) THEN 'NESSUNA'::text
              WHEN (o.n_origini > 1) THEN 'MULTIPLA'::text
-             ELSE 'ORDINE'::text
+             ELSE 'ORDINE_VENDITA'::text
          END)::character varying AS origine,
      r.fatturabile,
      r.consegnato,
@@ -293,8 +289,8 @@ BEGIN ATOMIC
       LEFT JOIN res ON ((res.ddt_riga_id = r.ddt_riga_id)))
       LEFT JOIN sospetto sos ON ((sos.ddt_riga_id = r.ddt_riga_id)))
       LEFT JOIN alloc al ON ((al.ddt_riga_id = r.ddt_riga_id)))
-      LEFT JOIN af fd ON ((((fd.corsia)::text = 'DDT'::text) AND (fd.riga_id = r.ddt_riga_id) AND ((fd.tipo_movimento)::text = 'NORMALE'::text))))
-      LEFT JOIN af fr ON ((((fr.corsia)::text = 'DDT'::text) AND (fr.riga_id = r.ddt_riga_id) AND ((fr.tipo_movimento)::text = 'RETTIFICA'::text))))
+      LEFT JOIN af fd ON ((((fd.corsia)::text = 'DDT_VENDITA'::text) AND (fd.riga_id = r.ddt_riga_id) AND ((fd.tipo_movimento)::text = 'NORMALE'::text))))
+      LEFT JOIN af fr ON ((((fr.corsia)::text = 'DDT_VENDITA'::text) AND (fr.riga_id = r.ddt_riga_id) AND ((fr.tipo_movimento)::text = 'RETTIFICA'::text))))
       CROSS JOIN LATERAL ( SELECT (r.consegnato - COALESCE(res.reso, (0)::numeric)) AS tenuti,
              ((COALESCE(fd.quantita, (0)::numeric) + COALESCE(al.fatturato_da_ordine, (0)::numeric)) + COALESCE(fr.quantita, (0)::numeric)) AS fatturato,
              (COALESCE(fd.misurabile, true) AND COALESCE(al.ord_misurabile, true) AND COALESCE(fr.misurabile, true)) AS misurabile) v)
@@ -304,8 +300,10 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION vendite.fn_partite_merce(p_ddt_ids bigint[], p_ordine_ids bigint[])
-IS 'LA PARTITA DI MERCE PER DOCUMENTO (D14, quarta leva, 2026-09-21): lo stesso conto di vendite.vw_partite_merce — che ne e'' la proiezione senza filtro, fn_partite_merce(NULL, NULL) — ristretto alla CHIUSURA dei documenti chiesti. Semi: p_ddt_ids (i DDT) e p_ordine_ids (gli ordini: le righe che li evadono); entrambi NULL = tutte le partite; un array VUOTO semina zero righe. Con entrambi valorizzati l''uscita e'' l''unione: ddt_id nei DDT chiesti OR ordine_id negli ordini chiesti — e `ordine_id` e'' la colonna PROIETTATA (min(ordine_riga_id) di `orig`), quindi una riga MULTIPLA esce sotto l''ordine della riga minima, come la legge il backend. La chiusura: R0 = righe dei semi; R1 = righe che condividono con una di R0 la riga d''ordine di `orig` (la partizione della greedy `alloc` e'' completa); O = R0 ∪ R1 ∪ le origini di ri-consegna (la finestra di `migra` e'' intera). Equivalente alla vista per costruzione: ogni colonna dipende solo da cio'' che la chiusura conserva. ⛔ Chi aggiunge una finestra o un insieme con una chiave nuova (articolo, cliente, commessa) DEVE allargare la chiusura, o la funzione sbaglia SOLO con un seme e la vista resta giusta: il presidio e'' test-fn-partite-merce-chiusura-v1, a casi costruiti. `af` (fn_af_merce_per_riga) e'' letta PER CHIAVE dal giro 4 (D5, 2026-09-21): le chiavi DDT delle origini O e le chiavi ORD dei fulfillment della chiusura, chiave BASE (i suffissi #RET/#CMP li risolve la funzione); la chiave ORD nasce dall''uid dell''ordine, letto sotto RLS — ordine e commessa devono stare nello stesso perimetro, e il BA li tiene insieme. BEGIN ATOMIC: le dipendenze sono in pg_depend (rinomina a monte rifiutata; catena RLS leggibile dal presidio security_invoker). I due modi sono rami in UNION ALL, mai `p IS NULL OR col = ANY(p)`: in piano generico quell''OR e'' una scansione intera sotto policy. INVOKER: la RLS resta di chi legge. Chiamanti per documento: fn_list_ddt_da_pushare, fn_ddt_push_diagnosi, BE list_partite_merce. Brief: brief-db-partita-merce-per-documento. ⚠️ rev 2026-09-22 (giro 8 RITIRATO, brief §16.7): la catena del sospetto era stata seminata da `riga`; come app la diagnosi «tutte» e'''' passata da 63 a 90 ms e la vista intera da 47 a 78, perche'''' il planner ha cambiato il piano di `riga` (da Index Scan sulla PK di ddt a Seq Scan per riga). Ripristinata la forma del 20260921-53. ⛔ La catena resta il pezzo piu'''' caro della partita (17,6 ms su 46, zero righe): il perche'''' e'''' sul modello — riempie la sola colonna sospetto_duplicato_ordine, un avviso per una PERSONA — ma la cura non e'''' quella provata, e il banco di prova (corpo eseguito come query) NON predice il piano dentro la funzione.';
+IS 'LA PARTITA DI MERCE PER DOCUMENTO (D14, quarta leva, 2026-09-21): lo stesso conto di vendite.vw_partite_merce — che ne e'' la proiezione senza filtro, fn_partite_merce(NULL, NULL) — ristretto alla CHIUSURA dei documenti chiesti. Semi: p_ddt_ids (i DDT) e p_ordine_ids (gli ordini: le righe che li evadono); entrambi NULL = tutte le partite; un array VUOTO semina zero righe. Con entrambi valorizzati l''uscita e'' l''unione: ddt_id nei DDT chiesti OR ordine_id negli ordini chiesti — e `ordine_id` e'' la colonna PROIETTATA (min(ordine_riga_id) di `orig`), quindi una riga MULTIPLA esce sotto l''ordine della riga minima, come la legge il backend. La chiusura: R0 = righe dei semi; R1 = righe che condividono con una di R0 la riga d''ordine di `orig` (la partizione della greedy `alloc` e'' completa); O = R0 ∪ R1 ∪ le origini di ri-consegna (la finestra di `migra` e'' intera). Equivalente alla vista per costruzione: ogni colonna dipende solo da cio'' che la chiusura conserva. ⛔ Chi aggiunge una finestra o un insieme con una chiave nuova (articolo, cliente, commessa) DEVE allargare la chiusura, o la funzione sbaglia SOLO con un seme e la vista resta giusta: il presidio e'' test-fn-partite-merce-chiusura-v1, a casi costruiti. `af` (fn_af_merce_per_riga) e'' letta PER CHIAVE dal giro 4 (D5, 2026-09-21): le chiavi DDT delle origini O e le chiavi ORD dei fulfillment della chiusura, chiave BASE (i suffissi #RET/#CMP li risolve la funzione); la chiave ORD nasce dall''uid dell''ordine, letto sotto RLS — ordine e commessa devono stare nello stesso perimetro, e il BA li tiene insieme. BEGIN ATOMIC: le dipendenze sono in pg_depend (rinomina a monte rifiutata; catena RLS leggibile dal presidio security_invoker). I due modi sono rami in UNION ALL, mai `p IS NULL OR col = ANY(p)`: in piano generico quell''OR e'' una scansione intera sotto policy. INVOKER: la RLS resta di chi legge. Chiamanti per documento: fn_list_ddt_da_pushare, fn_ddt_push_diagnosi, BE list_partite_merce. Brief: brief-db-partita-merce-per-documento. ⚠️ rev 2026-09-22 (giro 8 RITIRATO, brief §16.7): la catena del sospetto era stata seminata da `riga`; come app la diagnosi «tutte» e'' passata da 63 a 90 ms e la vista intera da 47 a 78, perche'' il planner ha cambiato il piano di `riga` (da Index Scan sulla PK di ddt a Seq Scan per riga). Ripristinata la forma del 20260921-53. ⛔ La catena resta il pezzo piu'' caro della partita (17,6 ms su 46, zero righe): il perche'' e'' sul modello — riempie la sola colonna sospetto_duplicato_ordine, un avviso per una PERSONA — ma la cura non e'' quella provata, e il banco di prova (corpo eseguito come query) NON predice il piano dentro la funzione. rev 2026-10-12 (20261012-32, brief-db-date-consegna-righe-in-blocco §4.1, regola del 2, scelta (a) di Tid): «merce partita» dal BB script.vw_stati_doc_ddt_merce_partita in `riga` (filtro) e in `ponte_riga` (emesso), al posto della CTE `soglia` con l''espressione scritta qui; la stessa regola viveva anche in vendite.fn_ordine_riga_spedita e in dbops.vw_ddt_emessi_senza_scarico. Uscita identica (EXCEPT ALL a zero nei due versi, prova pre-apply). Cambio di significato solo dove il modello lo ammette e i dati non lo producono: una ri-consegna in uno stato abortito (l''annullo ritira i legami, quindi non dovrebbe esistere) conta come in_riconsegna invece che riconsegnata, e uno stato con ordine NULL non fa piu'' sparire la quantita''. Commento: gli apostrofi raddoppiati due volte nella nota del 2026-09-22 tornano singoli. rev 2026-10-20 (20261020-24, brief-db-grammatica-unica-documenti §12.8, decisione di Tid): `origine` e'' il codice della sorgente da cui la merce parte (ORDINE -> ORDINE_VENDITA, la grammatica di config.sorgenti), oppure NESSUNA (nessuna riga d''ordine evasa) o MULTIPLA (piu'' righe d''ordine): questi due non sono sorgenti, dicono l''assenza e l''ambiguita'' dell''origine e restano. RETURNS TABLE ancorato con %TYPE dove la colonna esiste (origine su config.sorgenti.codice_interno: il tipo resta character varying); SECURITY INVOKER scritto. Nessun lettore confronta il valore ORDINE: fn_situazione_merce_ordine legge solo MULTIPLA (censimento su pg_get_functiondef, dbdev 2026-10-20). Rev 2026-10-20 (20261020-87, brief-db-grammatica-unica-documenti 2e, G-8): le chiavi chieste al contatore le compone script.fn_segment_key; la corsia e'' DDT_VENDITA / ORDINE_VENDITA.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

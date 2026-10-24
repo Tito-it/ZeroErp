@@ -24,6 +24,8 @@ import TabPanels from 'primevue/tabpanels'
 import Tag from 'primevue/tag'
 
 import BillingAccountLookup from '../../../core/components/BillingAccountLookup.vue'
+import { ripristinaBillingAccount } from '../../../core/utils/ripristinaLookup'
+import { useCambioClienteDocumento } from '../../_shared/cliente/useCambioClienteDocumento'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
@@ -56,6 +58,9 @@ import { displayDate, parseIsoDate, toDateString, oggiAziendaleString } from '..
 import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { getOffertaFormDefaults } from '../../api/formDefaults'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
+import {
+  applicaFornituraDaDefaults, schedaDaForm, schedaDaFornitura, schedaVuota,
+} from '../../_shared/fornitura/schedaFornitura'
 import ListinoDocumentoSelect from '../../components/ListinoDocumentoSelect.vue'
 import TipoVariazioneSelect from '../../components/TipoVariazioneSelect.vue'
 import {
@@ -121,22 +126,30 @@ const stato = computed(() => detail.value?.stato_codice_interno || null)
 // blocca tutta la testata fuori BOZZA, equivalente a `!canEdit`), ma resta
 // pronto per future estensioni (es. "modificabile solo meta in EMESSA").
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 
-// Push contratto / genera ordine: le azioni arrivano data-driven in
-// `available_actions` solo quando sono eseguibili, quindi da sole spariscono
-// senza spiegare perche'. La capability espone anche il motivo: banner
-// informativo, mirror di PreventiviDrawer/OrdiniDrawer.
+// Push contratto / genera ordine: fuori da un'offerta trasformabile le due
+// azioni NON arrivano in `available_actions` (non accettata, o gia' trasformata),
+// quindi da sole spariscono senza spiegare perche'. La capability espone anche il
+// motivo: banner informativo, mirror di PreventiviDrawer/OrdiniDrawer.
+// ⭐ Dal 2026-10-21 (brief-db-offerta-emissione-ed-erogazione H-R2, I-D2) da
+//    ACCETTATA senza documenti vivi le due azioni arrivano PROPOSTE anche spente,
+//    col motivo delle righe (`RIGA_NON_AMMESSA`): lo dice il tooltip del
+//    pulsante, il canale unico del perche' di un pulsante spento. Il banner
+//    parla solo per le azioni che non ci sono: ripetere qui il motivo lo
+//    mostrerebbe due volte, e senza i valori della frase (`{0}`, `{1}`).
 // ⚠️ Un motivo si mostra UNA volta: le due azioni sono mutuamente esclusive con
 //    la stessa abilitazione (fn_available_actions_offerta), quindi i due motivi
 //    coincidono quasi sempre («Disponibile dopo l'accettazione» compariva due
 //    volte, 2026-10-07) — e due `:key` uguali nel `v-for`.
 const pushReasons = computed(() => {
+  const proposte = new Set((availableActions.value || []).map((a) => a.key))
   const motivi = [
-    { ok: caps.flag('can_push_contratto'), key: capabilities.value.can_push_contratto_reason_key },
-    { ok: caps.flag('can_genera_ordine'), key: capabilities.value.can_genera_ordine_reason_key },
-  ].filter((r) => !r.ok && r.key && te(r.key))
+    { azione: 'push_contratto', ok: caps.flag('can_push_contratto'), key: capabilities.value.can_push_contratto_reason_key },
+    { azione: 'genera_ordine', ok: caps.flag('can_genera_ordine'), key: capabilities.value.can_genera_ordine_reason_key },
+  ].filter((r) => !r.ok && !proposte.has(r.azione) && r.key && te(r.key))
   return motivi.filter((r, i) => motivi.findIndex((m) => m.key === r.key) === i)
 })
 
@@ -200,9 +213,6 @@ const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
 // Sub-drawer + dialogs.
 const eccezioniDrawerVisible = ref(false)
 const noteDrawerVisible = ref(false)
-// Ref alla barra collegamenti: le azioni dell'offerta creano archi
-// (offerta→contratto, offerta→ordine) — i chip si ricaricano in refreshDetail.
-const collegamentiRef = ref(null)
 const emissioneDialogVisible = ref(false)
 const esitoDialogVisible = ref(false)
 const esitoDialogModalita = ref('ACCETTATA') // ACCETTATA | RIFIUTATA | ANNULLATA
@@ -257,12 +267,8 @@ function defaultForm() {
     valore_variazione_globale: null,
     validita_dal: oggiAziendaleString(),
     validita_al: null,
-    // Sezione utility inline (mirror contratti_utilities)
-    utility_tipo_utenza_id: null,
-    utility_classe_utenza_id: null,
-    utility_param_1_num: null,
-    utility_param_2_txt: null,
-    utility_istanza_dati_precontrattuali_id: null,
+    // Scheda di fornitura inline (BB `schedaFornitura`, come il contratto)
+    ...schedaVuota(),
   }
 }
 
@@ -273,16 +279,17 @@ function resetForm() {
 }
 
 function populateFromDetail(d) {
+  const stessoCliente = form.value.billing_account_id === d.billing_account_id
+    && form.value.billing_account_obj != null
   form.value = {
     emittente_fiscale_id: d.emittente_fiscale_id,
     billing_account_id: d.billing_account_id,
-    billing_account_obj: d.billing_account_display ? {
-      id: d.billing_account_id,
-      ragione_sociale: d.billing_account_display,
-      utility_codice: d.utility_codice || null,
-      utility_descrizione: d.utility_display || null,
-      pdp: d.pdp || null,
-    } : null,
+    // Il cliente per il lookup: lo stesso oggetto se il cliente non e' cambiato
+    // (niente lampeggio alla ricarica), altrimenti lo rilegge
+    // `ripristinaBillingAccount` qui sotto. ⛔ Fino al 2026-10-19 si costruiva a
+    // mano dai campi del dettaglio, con la chiave sbagliata della ragione
+    // sociale: riaperto, il campo mostrava il solo codice (collaudo di Tid).
+    billing_account_obj: stessoCliente ? form.value.billing_account_obj : null,
     istanza_utility_id: d.istanza_utility_id,
     utility_id: d.utility_id,
     listino_id: d.listino_id,
@@ -292,12 +299,9 @@ function populateFromDetail(d) {
     valore_variazione_globale: d.valore_variazione_globale,
     validita_dal: d.validita_dal,
     validita_al: d.validita_al,
-    utility_tipo_utenza_id: d.utility?.tipo_utenza_id || null,
-    utility_classe_utenza_id: d.utility?.classe_utenza_id || null,
-    utility_param_1_num: d.utility?.param_1_num ?? null,
-    utility_param_2_txt: d.utility?.param_2_txt || null,
-    utility_istanza_dati_precontrattuali_id: d.utility?.istanza_dati_precontrattuali_id || null,
+    ...schedaDaFornitura(d.utility),
   }
+  if (!stessoCliente) ripristinaBillingAccount(form.value, d.billing_account_id)
 }
 
 function toIsoDate(d) {
@@ -326,6 +330,11 @@ function onListinoChange(nuovoListinoId) {
   }
 }
 
+// ⛔ In modifica la utility dell'offerta non si cambia (E-3 di Tid, lock del DB
+//    «ferma sempre»): il cliente si cambia DENTRO la stessa utility, che filtra
+//    il lookup. Fino al 2026-10-19 qui si riscriveva sempre: pulito il cliente,
+//    il filtro passava alla utility di default e si poteva scegliere un cliente
+//    che il backend rifiuta. Come il ContrattoDrawer.
 function onBaSelected(item) {
   if (!item) {
     form.value.billing_account_id = null
@@ -335,19 +344,24 @@ function onBaSelected(item) {
     // mantiene il filtro lookup BA sull'utility tipica del proprio EF
     // invece di tornare a "vedo tutti i BA". Coerente col `defaultForm()`
     // che pre-popola `utility_id` da `utilityDefaultId.value` in CREATE.
-    form.value.utility_id = utilityDefaultId.value
+    if (!isEdit.value) form.value.utility_id = utilityDefaultId.value
     return
   }
   form.value.billing_account_id = item.id
   form.value.billing_account_obj = item
   form.value.istanza_utility_id = item.istanza_utility_id || null
-  form.value.utility_id = item.utility_id || null
+  if (!isEdit.value) form.value.utility_id = item.utility_id || null
 }
 
 // Auto-fill valuta dal form-defaults BE (BB resolve_valuta_default), al cambio
 // BA in CREATE: la valuta del BA vince (regola di coerenza dominio). Watcher
 // condiviso `useBaFormDefaults` con guard latest-wins inclusa.
-useBaFormDefaults({ form, isEdit, fetchDefaults: getOffertaFormDefaults })
+// ⭐ In creazione la scheda di fornitura segue il cliente scelto: quella che
+//    l'anagrafica gli da', che l'operatore vede e corregge (R-FE-3 di
+//    brief-db-indirizzi-documento-seguono-il-cliente, D-7 di Tid).
+const { inCorso: defaultsClienteInCorso } = useBaFormDefaults({
+  form, isEdit, fetchDefaults: getOffertaFormDefaults, apply: applicaFornituraDaDefaults,
+})
 
 // Carica/resetta su apertura/chiusura/cambio-id.
 // Watch composito [visible, offertaId]: scatena ricaricamento sia quando il
@@ -416,13 +430,19 @@ async function loadOrReset() {
 watch(() => [props.visible, props.offertaId], loadOrReset)
 
 // Validazione FE create: campi obbligatori secondo whitelist BE.
+// Finche' arrivano i dati del cliente (BB `useBaFormDefaults`) il Salva
+// aspetta: partirebbe un form senza quei dati, presi per scelte dell'operatore.
 const canSave = computed(() => {
   if (!testata.modificabile.value) return false
+  if (defaultsClienteInCorso.value) return false
   const f = form.value
   const hasTipo = !!f.tipo_variazione_globale
   const hasValore = f.valore_variazione_globale != null && f.valore_variazione_globale !== ''
   if (hasTipo !== hasValore) return false
-  if (isEdit.value) return true
+  // In bozza il cliente si cambia ma non si toglie (come il contratto): col BA
+  // svuotato il backend rifiuterebbe su `istanza_utility_id`, un campo che il
+  // form non mostra.
+  if (isEdit.value) return !!f.billing_account_id
   return !!(f.emittente_fiscale_id
     && f.billing_account_id
     && f.istanza_utility_id
@@ -439,10 +459,16 @@ function buildPayload() {
   // dict vuoto per safety, evitando PATCH inutili.
   if (isEdit.value && !testata.modificabile.value) return {}
   return {
-    emittente_fiscale_id: f.emittente_fiscale_id,
+    // Emittente e utility SOLO in CREATE: si scelgono alla nascita e non si
+    // cambiano, nemmeno in bozza (lock del DB «ferma sempre»); in EDIT il BE
+    // le rifiuta sul campo (R-BE-9, brief-db-indirizzi-documento-seguono-il-
+    // cliente §8.7.3). Come il ContrattoDrawer.
+    ...(isEdit.value ? {} : {
+      emittente_fiscale_id: f.emittente_fiscale_id,
+      utility_id: f.utility_id,
+    }),
     billing_account_id: f.billing_account_id,
     istanza_utility_id: f.istanza_utility_id,
-    utility_id: f.utility_id,
     listino_id: f.listino_id,
     listino_versione_id: f.listino_versione_id || null,
     // Valuta inviata SOLO in CREATE: snapshot immutabile post-INSERT.
@@ -458,38 +484,13 @@ function buildPayload() {
   }
 }
 
-function buildUtilityPayloadFromForm() {
-  const f = form.value
-  return {
-    istanza_utility_id: f.istanza_utility_id,
-    utility_id: f.utility_id,
-    tipo_utenza_id: f.utility_tipo_utenza_id || null,
-    classe_utenza_id: f.utility_classe_utenza_id || null,
-    param_1_num: f.utility_param_1_num != null && f.utility_param_1_num !== ''
-      ? String(f.utility_param_1_num) : null,
-    param_2_txt: f.utility_param_2_txt || null,
-    istanza_dati_precontrattuali_id: f.utility_istanza_dati_precontrattuali_id || null,
-  }
-}
-
-// Costruisce il sub-oggetto `utility` opzionale per le chiamate atomiche
-// CREATE/UPDATE testata. Restituisce null se i campi business non sono
-// valorizzati (nessuna ragione di toccare il record satellite).
+// Il sotto-oggetto `utility` della richiesta (BB `schedaDaForm`): null finche'
+// il cliente non e' scelto, perche' la scheda e' della sua coppia (istanza,
+// utility), che il backend prende dalla testata.
 function buildUtilityInline() {
-  const u = buildUtilityPayloadFromForm()
-  if (!u.istanza_utility_id || !u.utility_id) return null
-  return {
-    // istanza_utility_id/utility_id sono richiesti dal BE in create della
-    // utility; nella UPDATE vengono ignorati perche' immutabili (lo split
-    // BE filtra solo i campi business sulla whitelist update).
-    istanza_utility_id: u.istanza_utility_id,
-    utility_id: u.utility_id,
-    tipo_utenza_id: u.tipo_utenza_id,
-    classe_utenza_id: u.classe_utenza_id,
-    param_1_num: u.param_1_num,
-    param_2_txt: u.param_2_txt,
-    istanza_dati_precontrattuali_id: u.istanza_dati_precontrattuali_id,
-  }
+  const f = form.value
+  if (!f.istanza_utility_id || !f.utility_id) return null
+  return schedaDaForm(f)
 }
 
 async function handleSave() {
@@ -500,7 +501,10 @@ async function handleSave() {
   const payload = buildPayload()
   const utilityInline = buildUtilityInline()
   // I dati della fornitura viaggiano solo se si cambiano ancora
-  // (`can_edit_utility`, che il BE legge per lo stesso sotto-oggetto).
+  // (`can_edit_utility` della capability: il lock dei satelliti del DB).
+  // Un cambio di cliente qui non arriva: si e' gia' salvato alla scelta, con la
+  // conferma (BB `useCambioClienteDocumento`, 2026-10-19), e la scheda del form
+  // e' gia' quella del cliente nuovo.
   if (utilityInline && (!isEdit.value || caps.flag('can_edit_utility'))) {
     payload.utility = utilityInline
   }
@@ -542,11 +546,27 @@ async function refreshDetail() {
   detail.value = d
   populateFromDetail(d)
   applica()
-  // Chip collegamenti riallineati qui e non nei singoli handler: push contratto
-  // e genera ordine creano archi (offerta→contratto, offerta→ordine) e passano
-  // TUTTI da questo punto — agganciarlo qui vale anche per le azioni future.
-  collegamentiRef.value?.reload()
+  // I chip dei collegamenti si riallineano da soli su questo `detail` nuovo
+  // (`:versione` della barra): push contratto e genera ordine creano archi e
+  // passano TUTTI da qui — e cosi' anche le azioni future.
 }
+
+// ⭐ Il cambio di cliente in modifica si salva subito, con conferma (BB
+//    `useCambioClienteDocumento`, decisione di Tid 2026-10-19): il DB rifa'
+//    indirizzi e scheda, e pannello e «Indirizzi» mostrano subito quelli del
+//    cliente nuovo. La scheda non salvata del cliente vecchio si scarta.
+useCambioClienteDocumento({
+  form,
+  detail,
+  attivo: () => isEdit.value && detail.value != null && !testata.bloccato('billing_account_id'),
+  salva: (corpo) => execute(
+    () => store.update(props.offertaId, corpo),
+    { successMessage: t('vendite.offerte.salvata') },
+  ),
+  ricarica: refreshDetail,
+  scartaDipendenti: () => Object.assign(form.value, schedaDaFornitura(detail.value?.utility)),
+  messaggio: 'vendite.cliente.cambio_messaggio_con_fornitura',
+})
 
 // Reload revisioni dopo un'azione che cambia lo stato di una riga della
 // catena (emissione, esito, annullo): solo se il tab e' gia' agganciato a
@@ -568,7 +588,10 @@ function reloadRevisioni() {
 //   - push_contratto        -> OffertaPushDialog (con guard proattivo
 //     contratto_id per la race-condition cross-tab)
 //   - genera_ordine         -> confirmAction + store.generaOrdine (conversione
-//     §7.4; la fn DB espone l'azione solo se nessun ordine già generato)
+//     §7.4; dal 2026-10-21 la genera il verbo DB `fn_genera_ordine_da_offerta`)
+// Un'azione spenta (`enabled:false`, es. «Genera ordine» con una riga che non
+// va in un ordine) arriva come pulsante disabilitato col tooltip del motivo
+// (`mapAvailableActionsToDrawerActions`): il click non arriva qui.
 // `requires_motivazione` arriva dalla fn DB ma non viene letta qui: la
 // motivazione obbligatoria e' enforced dal dialog esito + dal BE
 // (motivazione_rifiuto NOT NULL su RIFIUTATA/ANNULLATA).
@@ -616,8 +639,8 @@ function onActionDispatch(action) {
     case 'genera_ordine':
       // Conversione §7.4: la fn DB non ritorna l'azione se un ordine e' gia'
       // nato da questa offerta (idempotenza 1:1). requires_confirm=true →
-      // confermiamo prima di generare; la race concorrente e' coperta dal
-      // guard BE (E_ORD_OFFERTA_GIA_CONVERTITA) + UNIQUE parziale.
+      // confermiamo prima di generare; la race concorrente la ferma il verbo
+      // DB (offerta FOR UPDATE, E_ORD_OFFERTA_GIA_CONVERTITA).
       confirmAction({
         header: t('vendite.offerte.genera_ordine_titolo'),
         message: t('vendite.offerte.genera_ordine_messaggio'),
@@ -780,9 +803,10 @@ async function onGeneraOrdine() {
 //   1) Transizioni di stato + azioni speciali data-driven dal BE
 //      (script.fn_available_actions_offerta, mapped 1:1 in azioni
 //      `kind:'state'` con label/icona/severity dal jsonb). Include
-//      `genera_ordine` (conversione §7.4), che la fn espone solo se
-//      ACCETTATA e nessun ordine già generato (idempotenza 1:1): il bottone
-//      sparisce a conversione avvenuta come per `push_contratto`.
+//      `genera_ordine` (conversione §7.4), che la fn propone da ACCETTATA
+//      senza documenti vivi (spenta col motivo se una riga non va in un
+//      ordine): il bottone sparisce a conversione avvenuta come per
+//      `push_contratto`.
 //   2) Manage action `manage-eccezioni` per il sub-drawer delle righe
 //      (master-detail inline, `OffertaRigheDrawer`). Allineato al pattern
 //      ContrattoDrawer: le righe vivono in un sub-drawer dedicato, non in una
@@ -899,9 +923,10 @@ const footerDrawer = useFooterDocumento({
            Solo in EDIT: in CREATE non c'e' ancora un documento. -->
       <DocumentoCollegamentiBar
         v-if="isEdit && offertaId"
-        ref="collegamentiRef"
         base-path="/vendite/offerte"
+        :versione="detail"
         :doc-id="offertaId"
+        @documento-chiuso="refreshDetail"
         :readonly="parentReadonly" />
 
       <!-- Motivo per cui push contratto / genera ordine non sono offerti
@@ -976,21 +1001,24 @@ const footerDrawer = useFooterDocumento({
               <div class="form-field">
                 <label>{{ t('vendite.offerte.field_utility') }} <span v-if="!isEdit">*</span></label>
                 <!-- Building block standard utility-per-ruolo-EF
-                     (`UtilityPerRuoloSelect`). Filtra le utility configurate
-                     per l'EF dell'operatore + ammesse al ruolo CLIENTE
-                     (intersezione `emittenti_fiscali_utilities` x
-                     `utilities_tipi_ruolo`). Pre-popolata dal `defaultForm()`
+                     (`UtilityPerRuoloSelect`). Le utility ammesse per il ruolo EF
+                     e per il ruolo CLIENTE (`utilities_tipi_ruolo`). Pre-popolata dal `defaultForm()`
                      via `utilityDefaultId` (parametro `DEFAULT_UTILITY`,
                      codice_interno -> id locale). Quando l'operatore sceglie
                      il BA, `onBaSelected` sovrascrive con la utility canonical
                      del BA (coerenza FK garantita); se l'operatore pulisce
                      il BA, ripristiniamo il default per mantenere il filtro
-                     lookup BA sull'utility tipica. -->
+                     lookup BA sull'utility tipica.
+                     ⭐ Col cliente scelto la utility E' la sua (FK composta
+                     `fk_offerte_commerciali_ba_coppia`): il campo si spegne e
+                     la mostra, come nella bolla. Senza cliente filtra solo la
+                     ricerca del cliente. Fino al 2026-10-13 restava aperta col
+                     cliente fermo, e ogni cambio era rifiutato dal DB. -->
                 <UtilityPerRuoloSelect
                   v-model="form.utility_id"
                   :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
                   :placeholder="t('vendite.offerte.field_utility')"
-                  :disabled="testata.bloccato('utility_id')"
+                  :disabled="testata.bloccato('billing_account_id') || form.billing_account_id != null"
                 />
               </div>
             </div>
@@ -1001,18 +1029,19 @@ const footerDrawer = useFooterDocumento({
               <!-- `utility-id` (da utilityDefaultId in CREATE) pre-filtra
                    il lookup BA sull'utility dell'operatore. Lookup ricco
                    (3 righe: ragione sociale + codice + PDP) — sta a tutta
-                   larghezza in una propria riga. -->
+                   larghezza in una propria riga.
+                   ⭐ Il cliente si cambia anche in modifica, finche' l'offerta
+                   e' in bozza (decisione di Tid del 2026-10-12, come nel
+                   preventivo): fuori bozza lo ferma il lock di testata del DB
+                   (`E_DOC_CLIENTE_FUORI_BOZZA`) e lo spegne la capability.
+                   Indirizzi e scheda di fornitura seguono il cliente nuovo:
+                   li rifa' il DB. -->
               <BillingAccountLookup
-                v-if="!isEdit"
                 :model-value="form.billing_account_obj"
                 :utility-id="form.utility_id"
                 :placeholder="t('vendite.offerte.select_billing_account')"
+                :disabled="testata.bloccato('billing_account_id')"
                 @update:model-value="onBaSelected"
-              />
-              <InputText
-                v-else
-                :model-value="detail?.billing_account_display"
-                disabled
               />
             </div>
 
@@ -1158,7 +1187,8 @@ const footerDrawer = useFooterDocumento({
             :doc-id="offertaId"
             :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
             :istanza-utility-id="detail?.istanza_utility_id ?? null"
-            :readonly="isReadonly" />
+            :readonly="parentReadonly"
+            :capabilities="capabilities" />
 
           <!-- Motivazione (sola lettura, valorizzata su RIFIUTATA/ANNULLATA) -->
           <template v-if="isEdit && detail?.motivazione_rifiuto">

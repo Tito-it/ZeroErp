@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
+-- rev 2026-10-24 (brief-modello-documento-vendita §4-octies): il mondo si COSTRUISCE. Prima la fixture pescava «il primo BA con utility», l'articolo, l'unita' di misura, il tipo documento e «il primo stato commessa per id», e usava un uuid sintetico come sorgente (che il guard sulle sorgenti oggi respinge): su un database ricostruito moriva al test 3. Ora: commessa dal builder, un preventivo VERO come sorgente, le due righe dal builder dell'attivita' con la chiave del dominio (script.fn_segment_key). Il caso provato non cambia.
 -- pgTAP test per Zero ERP
 -- Test: drop uq_commesse_attivita_src_uid_partial
 -- ------------------------------------------------------------
@@ -31,46 +33,15 @@ SELECT plan(4);
 -- ============================================================
 -- Setup riferimenti minimi
 -- ============================================================
-CREATE TEMP TABLE tmp_refs_srcuid AS
-SELECT
-  (SELECT ba.id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS billing_account_id,
-  (SELECT ba.utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS utility_id,
-  (SELECT ba.istanza_utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS istanza_utility_id,
-  (SELECT a.id
-     FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1
-  ) AS articolo_id,
-  (SELECT u.id
-     FROM catalogo.unita_misura u
-    WHERE u.attivo IS TRUE
-    ORDER BY u.id LIMIT 1
-  ) AS uom_id,
-  (SELECT t.id
-     FROM config.tipi_doc_fiscale t
-    WHERE t.attivo IS TRUE
-    ORDER BY t.id LIMIT 1
-  ) AS tipo_doc_fiscale_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT sc.id FROM vendite.stati_commessa sc WHERE sc.attivo IS TRUE ORDER BY sc.id LIMIT 1) AS stato_commessa_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1) AS sorgente_tipo_id,
-  -- uid sorgente fisso deterministico per il test (no collision con dati reali)
-  '00000000-0000-0000-0001-000000000099'::uuid AS sorgente_uid_test;
+-- La commessa e il documento sorgente si costruiscono (rev 2026-10-24): un
+-- preventivo VERO, perche' la tabella verifica che la chiave della sorgente
+-- esista (guard sorgente polimorfa, 2026-07-18).
+CREATE TEMP TABLE tmp_commessa_srcuid AS
+SELECT c.commessa_id AS id, c.billing_account_id
+  FROM dbops.fn_pgtap_crea_commessa('drop uq src uid') c;
+
+CREATE TEMP TABLE tmp_prev_srcuid AS
+SELECT p.preventivo_uid FROM dbops.fn_pgtap_crea_preventivo('drop uq src uid') p;
 
 -- ============================================================
 -- TEST 1) Indice ridondante non esiste piu`
@@ -104,49 +75,32 @@ SELECT ok(
 -- TEST 3) Multi-riga: 2 righe con stessa sorgente ma segment_key diversi
 -- Verifica che il drop abiliti il pattern 1 documento → N righe commessa.
 -- ============================================================
-CREATE TEMP TABLE tmp_commessa_srcuid AS
-WITH ins AS (
-  -- ⚠️ L'emittente NON si omette. La colonna e' nullable, ma l'unico
-  -- scrittore reale (vendite.fn_get_or_create_commessa) la risolve sempre
-  -- e su 58 commesse in essere zero hanno NULL: una commessa senza
-  -- emittente non e' uno stato del dominio, e con la RLS attiva la policy
-  -- rls_commesse_ef_whitelist la respinge (fail-closed sull'SR NULL).
-  INSERT INTO vendite.commesse (
-    codice, billing_account_id, utility_id, stato_commessa_id,
-    emittente_soggetto_ruolo_id
-  )
-  SELECT
-    'PGTAP-SRCUID-' || substr(md5(clock_timestamp()::text), 1, 8),
-    r.billing_account_id, r.utility_id, r.stato_commessa_id,
-    script.fn_pgtap_emittente_sr_operatore()
-  FROM tmp_refs_srcuid r
-  RETURNING id
-)
-SELECT id FROM ins;
+-- (la commessa e' gia' costruita in testa, dal builder)
 
 SELECT lives_ok(
   $$
-    INSERT INTO vendite.commesse_attivita (
-      commessa_id, segment_key,
-      articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
-      competenza_mese, competenza_dal, competenza_al,
-      tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
-      pricing_mode, stato_approvazione, stato_emissione,
-      sorgente_tipo_id, sorgente_uid
-    )
-    SELECT
-      (SELECT id FROM tmp_commessa_srcuid),
-      'PREV:' || r.sorgente_uid_test::text || ':R:' || v.riga::text,
-      r.articolo_id, r.istanza_utility_id, DATE '2026-06-01', r.uom_id, 1,
-      DATE '2026-06-01', DATE '2026-06-01', DATE '2026-06-30',
-      r.tipo_doc_fiscale_id, r.valuta_id, 10.00,
-      'FIXED', 'BOZZA', 'NON_EMESSA',
-      r.sorgente_tipo_id, r.sorgente_uid_test::text
-    FROM tmp_refs_srcuid r
-    CROSS JOIN (VALUES (1),(2)) AS v(riga);
+    DO $righe$
+    BEGIN
+      PERFORM dbops.fn_pgtap_crea_commessa_attivita(
+          p_commessa_id      => (SELECT id FROM tmp_commessa_srcuid),
+          p_sorgente_codice  => 'PREVENTIVO',
+          p_sorgente_uid     => (SELECT preventivo_uid::text FROM tmp_prev_srcuid),
+          p_sorgente_riga_id => v.riga,
+          p_stato_approvazione => 'BOZZA')
+        FROM (VALUES (1), (2)) AS v(riga);
+    END $righe$;
   $$,
   'Multi-riga: 2 righe con stessa sorgente_uid ma segment_key diversi → inserimento accettato'
 );
+
+DO $conta$
+BEGIN
+  IF (SELECT count(DISTINCT ca.segment_key) FROM vendite.commesse_attivita ca
+       WHERE ca.commessa_id = (SELECT id FROM tmp_commessa_srcuid)
+         AND ca.sorgente_uid = (SELECT preventivo_uid::text FROM tmp_prev_srcuid)) <> 2 THEN
+    RAISE EXCEPTION 'fixture: attese 2 righe con la stessa sorgente e due chiavi diverse';
+  END IF;
+END $conta$;
 
 -- ============================================================
 -- TEST 4) uq_commesse_sorgenti_src_uid_ruolo ancora attivo

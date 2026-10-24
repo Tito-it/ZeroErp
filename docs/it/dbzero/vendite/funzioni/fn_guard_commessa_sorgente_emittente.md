@@ -6,6 +6,8 @@ CREATE FUNCTION fn_guard_commessa_sorgente_emittente(p_commessa_id bigint, p_sor
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_guard_commessa_sorgente_emittente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text)
  RETURNS void
@@ -71,6 +73,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_guard_commessa_sorgente_emittente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text)
 IS 'Guard fail-fast sull''invariante «una commessa non puo'' aggregare diversi emittenti insieme» (H4): la sorgente che si sta collegando deve stare sullo stesso emittente fiscale della commessa. Solleva E_COMMESSA_SORGENTE_EMITTENTE_MISTO nominando la commessa, il documento e i due emittenti. ⭐ La DECISIONE non e'' qui: sta in vendite.fn_check_commessa_sorgente_emittente_omogeneo, e questa funzione compone soltanto la frase — si condivide la funzione, non una copia della sua logica. rev 2026-08-26: l''emittente della commessa si legge dalla sua colonna (NOT NULL) e quello del documento da script.fn_get_sorgente_emittente_sr_id; nessuno dei due passa piu'' dal billing account. ⚠️ SECURITY DEFINER: per comporre il messaggio rilegge vendite.commesse, che ha la RLS. ⚠️ La risoluzione del messaggio e'' avvolta in un blocco EXCEPTION: se fallisce, l''errore di dominio esce lo stesso con un «?» al posto dell''emittente — il messaggio non deve mai mangiarsi il verdetto. ⛔ Nessuna GUC di override e nessuna eccezione per il pregresso. Piano: brief-db-emittente-commessa-invariante, L6.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

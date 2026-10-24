@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_permessi_effettivi_oggetti(p_auth_user_id integer, p_app_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_permessi_effettivi_oggetti(p_auth_user_id integer, p_app_label character varying DEFAULT NULL::character varying, p_model_name character varying DEFAULT NULL::character varying)
  RETURNS TABLE(app_label character varying, model_name character varying, area_schema_db character varying, livello_override config.livello_accesso, livello_area config.livello_accesso, livello_specifico config.livello_accesso, livello config.livello_accesso, limitato_da_area boolean)
@@ -100,6 +102,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_permessi_effettivi_oggetti(p_auth_user_id integer, p_app_label character varying, p_model_name character varying)
 IS 'Gli oggetti effettivi di un operatore, col tetto d''area (brief-db-permessi-tetto-area, D-1…D-3). Per ogni oggetto: area_schema_db (script.fn_area_di_oggetto: l''area e'' quella dell''oggetto, R4), livello_override (l''override valido, grezzo), livello_area (script.fn_resolve_livello_area), livello_specifico (la catena senza tetto: override, altrimenti area), livello (script.fn_livello_con_tetto_area: il piu'' restrittivo fra override e area) e limitato_da_area (l''override allarga e il tetto lo ferma: dormiente, D-3). Gate di contesto e identita'' OPERATORE assente -> BLOCCATO; super admin -> TUTTO, prima del tetto. p_app_label e p_model_name NULL -> tutto il catalogo config.area_model_overrides (un override esiste solo per un oggetto a catalogo); altrimenti una riga per l''oggetto chiesto, a catalogo o no. Sede UNICA della catena degli oggetti: la leggono script.fn_resolve_livello_oggetto, script.fn_get_user_object_permissions_map e il pannello permessi (backend). plpgsql, STABLE, INVOKER.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

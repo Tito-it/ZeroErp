@@ -7,6 +7,8 @@ CREATE FUNCTION fn_imposta_deve_cambiare_password(p_auth_user_id integer, p_valo
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_imposta_deve_cambiare_password(p_auth_user_id integer, p_valore boolean)
  RETURNS void
@@ -45,6 +47,8 @@ $function$
 COMMENT ON FUNCTION script.fn_imposta_deve_cambiare_password(p_auth_user_id integer, p_valore boolean)
 IS 'Scrive il cambio password obbligatorio della CREDENZIALE (D-7): upsert su config.credenziali, dove la riga nasce alla prima scrittura. La chiamano invito operatore, cambio password, reset e attivazione (backend). SECURITY DEFINER del PROPRIETARIO, non di un superuser, search_path bloccato: l''app su config.credenziali ha solo SELECT. Nessun guard di permesso, dichiarato: i chiamanti girano come admin, come l''utente stesso o prima del login. Credenziale inesistente -> E_CREDENZIALE_NON_TROVATA (la FK verso django.auth_user in CI non esiste). Brief: brief-db-blocco-login-per-credenziale §3.4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

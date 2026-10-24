@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_attivita_fatturabili_normalize()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
  RETURNS trigger
@@ -133,6 +135,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
 IS 'Normalizza competenze/sorgente; risolve tipo_doc_fiscale_id e valuta_id (catena BA -> emittente -> gestore). Commessa-aware: skip normalizzazione competenze quando commessa_attivita_id IS NOT NULL.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -19,6 +19,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.config.sorgenti import SORGENTE_ORDINE_VENDITA
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
@@ -33,6 +34,7 @@ from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
+from apps.vendite.db._lineage_sintesi import unisci_sintesi_lineage
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
 from apps.vendite.db._righe_repo_mixin import (
     COLONNE_RIGHE_COMMERCIALI,
@@ -117,6 +119,14 @@ class OrdiniRepository(
     _righe_ordinamento = _ORDER_COLS_RIGHE
     _righe_ricerca = _RICERCA_RIGHE
     _righe_colonne_desc = ("data_consegna_confermata", "data_consegna_richiesta_cliente")
+    # Le date di consegna in blocco (BB `scrivi_data_consegna`): la confermata
+    # salta le righe gia' spedite, motivo della check di riga (D-7, BF-1).
+    _righe_date_consegna = {
+        "data_consegna_richiesta_cliente": None,
+        "data_consegna_confermata": (
+            "script.fn_check_ordine_riga_data_consegna_confermata", "RIGA_SPEDITA",
+        ),
+    }
 
     # Configurazione mixin componenti (tabella + FK riga padre).
     _componenti_table_name = "vendite.ordini_righe_componenti"
@@ -129,13 +139,7 @@ class OrdiniRepository(
     # Configurazione mixin indirizzi documento.
     _indirizzi_table = "vendite.ordini_indirizzi"
     _indirizzi_fk_documento = "ordine_id"
-    _indirizzi_ambito = "ORDINI"
-    _indirizzi_documento_table = "vendite.ordini"
-    # Ancora ownership/auto-default = soggetto_ruolo NATIVO della testata
-    # (NOT NULL): e' il ruolo del BA, che sull'ordine e' NOT NULL e lo lega
-    # con la FK composta `fk_ordini_ba_cliente` (brief-db-esecutivi-ba-coppia
-    # D-1, D-5). Si legge la colonna nativa per non dipendere dalla JOIN.
-    _indirizzi_doc_sr_column = "soggetto_ruolo_id"
+    _indirizzi_documento = SORGENTE_ORDINE_VENDITA
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_ordini_lista)
@@ -236,6 +240,9 @@ class OrdiniRepository(
             cursor.execute(data_sql, [*params, safe_limit, safe_offset])
             results = rows_to_list(cursor)
 
+        # Le colonne del grafo dalla sintesi, per le chiavi della pagina
+        # (brief-db-lineage-seminata-per-chiave B1): la vista non le porta piu'.
+        unisci_sintesi_lineage(results, tipo_codice_interno=SORGENTE_ORDINE_VENDITA)
         return results, total_count
 
     # Scopo: Dettaglio singolo ordine. Riusa la vista canonica (che ha gia'
@@ -257,11 +264,18 @@ class OrdiniRepository(
                 -- brief emissione mirata. Letta dalla tabella e non dalla vista
                 -- di lista, che non la espone (la vista e' del team DB).
                 o.fatturazione_immediata,
-                ba.istanza_utility_id
+                ba.istanza_utility_id,
+                -- Il nome del tipo d'origine come lo legge una persona: la
+                -- stampa lo mette sulla carta al posto del codice
+                -- (brief-db-grammatica-unica-documenti §12.9). LEFT: NULL
+                -- quando l'ordine non ha origine.
+                so.etichetta AS documento_origine_etichetta
               FROM vendite.vw_ordini_lista v
               JOIN vendite.ordini o ON o.id = v.id
               LEFT JOIN anagrafiche.billing_account ba
                 ON ba.id = v.billing_account_id
+              LEFT JOIN config.sorgenti so
+                ON so.codice_interno = v.documento_origine_tipo
              WHERE v.id = %s
         """
         with connection.cursor() as cursor:
@@ -349,7 +363,8 @@ class OrdiniRepository(
     #        `numero` e' generato dal trigger BEFORE INSERT
     #        (trgfn_ordini_gen_codice) → non si passa. `emittente_fiscale_id`
     #        opzionale: se None il trigger lo valorizza da GUC.
-    #        `stato_doc_ordine_id` obbligatorio (DRAFT in create).
+    #        Lo stato non si scrive: lo mette il DB, lo stato iniziale del
+    #        vocabolario (`script.trgfn_doc_stato_iniziale`).
     def create_ordine(
         self,
         *,
@@ -361,7 +376,6 @@ class OrdiniRepository(
         fatturazione_trigger: str | None = None,
         agente_soggetto_ruolo_id: int | None = None,
         data: date | None = None,
-        stato_doc_ordine_id: int,
         meta: dict[str, Any] | None = None,
         fatturazione_immediata: bool | None = None,
     ) -> dict[str, Any]:
@@ -374,7 +388,6 @@ class OrdiniRepository(
         #    brief-db-esecutivi-ba-coppia §10.2 domanda 2).
         valori: dict[str, Any] = {
             "billing_account_id": billing_account_id,
-            "stato_doc_ordine_id": stato_doc_ordine_id,
             "emittente_fiscale_id": emittente_fiscale_id,
             "valuta_id": valuta_id,
             "modalita_pagamento_id": modalita_pagamento_id,
@@ -392,31 +405,16 @@ class OrdiniRepository(
             returning="id, uid::text AS uid, numero",
         )
 
-    # Scopo: Valorizza la provenienza upstream (documento_origine) di un ordine
-    #        appena creato dalla conversione preventivo/offerta → ordine. UPDATE
-    #        mirato sulle sole colonne `documento_origine_*` (NON lockate dal
-    #        trigger immutabilità cliente, che intercetta solo
-    #        billing_account_id/numero/soggetto_ruolo_id) → nessuna interferenza.
-    #        Il CHECK di co-presenza richiede entrambe valorizzate insieme.
-    def set_documento_origine(
-        self, ordine_id: int, tipo: str, origine_id: int,
-    ) -> bool:
-        sql = """
-            UPDATE vendite.ordini
-               SET documento_origine_tipo = %s,
-                   documento_origine_id   = %s
-             WHERE id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [tipo, int(origine_id), int(ordine_id)])
-            return cursor.rowcount > 0
-
-    # Scopo: Idempotenza 1:1 della conversione upstream → ordine. Ritorna il
-    #        primo ordine già nato da (tipo, origine_id) o None. Specchio
-    #        applicativo dell'UNIQUE parziale uq_ordini_v_documento_origine_offerta
-    #        (per OFFERTA): il guard BE in crea_ordine_da_offerta lo usa per
-    #        fallire fast con E_ORD_OFFERTA_GIA_CONVERTITA prima di lavorare,
-    #        lasciando l'UNIQUE come rete sulla race concorrente.
+    # Scopo: Il primo ordine VIVO nato da (tipo, origine_id), o None. Lo
+    #        leggono lo smistamento del preventivo (esito MERCE_PRESENTE) e
+    #        l'handler che aggancia l'ordine alla pratica.
+    #        ⛔ Solo i vivi (`NOT is_abortito_snapshot`, 2026-10-11): dal D-2 di
+    #        brief-db-annullo-documento-con-legami un ordine annullato rilascia
+    #        le righe del preventivo, che puo' generarne un altro. Leggere anche
+    #        gli annullati darebbe MERCE_PRESENTE per un ordine morto e
+    #        aggancerebbe alla pratica quello sbagliato.
+    #        L'offerta non passa piu' da qui: «l'offerta e' gia' trasformata?»
+    #        lo dice `vendite.fn_offerta_documenti_vivi`, dentro il verbo DB.
     def get_ordine_by_documento_origine(
         self, tipo: str, origine_id: int,
     ) -> dict[str, Any] | None:
@@ -425,6 +423,7 @@ class OrdiniRepository(
               FROM vendite.ordini
              WHERE documento_origine_tipo = %s
                AND documento_origine_id   = %s
+               AND NOT is_abortito_snapshot
              ORDER BY id
              LIMIT 1
         """
@@ -443,14 +442,14 @@ class OrdiniRepository(
             SELECT ps.sorgente_uid::bigint
               FROM pratiche.pratiche_sorgenti ps
               JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
-             WHERE s.codice_interno = 'ORDINE_VENDITA'
+             WHERE s.codice_interno = %s
                AND ps.ruolo_link    = 'COLLEGATO'
                AND ps.pratica_id    = %s
              ORDER BY ps.id DESC
              LIMIT 1
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [pratica_id])
+            cursor.execute(sql, [SORGENTE_ORDINE_VENDITA, pratica_id])
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
@@ -488,6 +487,22 @@ class OrdiniRepository(
                 [ordine_id],
             )
             return cursor.rowcount > 0
+
+    # Scopo: Annulla l'ordine via il verbo DB `vendite.fn_annulla_ordine`
+    #        (brief-db-annullo-documento-con-legami): con legami (righe di
+    #        preventivo, offerta d'origine, righe di commessa da emettere)
+    #        `legami_confermati` dichiara quanti l'operatore ne ha visti; se non
+    #        corrisponde, E_DOC_ANNULLO_CON_LEGAMI. Ritira i consumi e porta lo
+    #        stato ad ANNULLATO (matrice e freni dai guard della tabella).
+    # Ritorna: i legami confermati (0 se non ce n'erano).
+    def annulla(self, ordine_id: int, legami_confermati: int | None) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_annulla_ordine(%s, %s)",
+                [int(ordine_id), legami_confermati],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
 
     # Scopo: Cambia stato ordine via UPDATE diretto di stato_doc_ordine_id. La
     #        transizione e' validata dal trigger DB

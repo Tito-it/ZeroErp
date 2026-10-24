@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_pdp_set_default_stato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_pdp_set_default_stato()
  RETURNS trigger
@@ -55,6 +57,8 @@ COMMENT ON FUNCTION anagrafiche.trgfn_pdp_set_default_stato()
 IS 'Imposta automaticamente lo stato tecnico DISPONIBILE su anagrafiche.pdp
     se non specificato durante  inserimento.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

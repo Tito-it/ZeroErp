@@ -34,7 +34,8 @@ Indice test eseguiti:
 import base64
 from unittest.mock import MagicMock, patch
 
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.services import crypto_service
 from apps.core.services.service_errors import ServiceError
@@ -52,7 +53,7 @@ class _Base(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
         self.user = MagicMock(id=42, is_authenticated=True, is_superuser=False)
         self.user.get_username.return_value = "alice"
         self.user.check_password.side_effect = lambda p: p == _PASSWORD

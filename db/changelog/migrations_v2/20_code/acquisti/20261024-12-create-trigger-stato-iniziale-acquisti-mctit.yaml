@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BB DELLA NASCITA, MONTATO SULLE TESTATE D'ACQUISTO
+#   Brief: brief-modello-documento-vendita §4-ter e §5 (P-3 di Tid,
+#   2026-10-24): acquisti nasce sul modello nello stesso giro del gemello di
+#   vendita, non lo rincorre in una «fase due». Ordine e DDT d'acquisto usano
+#   gli stessi vocabolari di quelli di vendita (config.stati_doc_ordini,
+#   config.stati_doc_ddt).
+#
+#   Fatto datato, 2026-10-24: nessuno scrittore di acquisti (funzioni DB,
+#   backend) da adeguare. Il trigger e' la regola, non una correzione.
+#   Fascia _a05_: prima di trg_ordini_a10_ao_only_consegna_tipo_con_ins_upd e
+#   dei trigger tecnici (audit, gen_tx_id).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/acquisti/20261024-12-create-trigger-stato-iniziale-acquisti-mctit.yaml
+
+  - changeSet:
+      id: 20261024-12-create-trigger-stato-iniziale-acquisti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta script.trgfn_doc_stato_iniziale (BEFORE INSERT, _a05_) sulle testate di acquisti:
+        ordini, ddt. Brief: brief-modello-documento-vendita (N-2, Tid
+        2026-10-24).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_doc_stato_iniziale';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ordini_a05_stato_iniziale_ins
+                  BEFORE INSERT ON acquisti.ordini
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_stato_iniziale(
+                      'stato_doc_ordine_id', 'config.stati_doc_ordini');
+
+              COMMENT ON TRIGGER trg_ordini_a05_stato_iniziale_ins ON acquisti.ordini IS
+                  'Nascita nello stato iniziale (BB script.trgfn_doc_stato_iniziale): stato assente -> lo stato iniziale di config.stati_doc_ordini; altro stato -> E_DOC_STATO_INIZIALE_NON_VALIDO. Fascia _a05_: prima di ogni altro trigger BEFORE INSERT. Brief: brief-modello-documento-vendita (N-1 … N-3, P-2, Tid 2026-10-24).';
+
+              CREATE TRIGGER trg_ddt_a05_stato_iniziale_ins
+                  BEFORE INSERT ON acquisti.ddt
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_stato_iniziale(
+                      'stato_doc_ddt_id', 'config.stati_doc_ddt');
+
+              COMMENT ON TRIGGER trg_ddt_a05_stato_iniziale_ins ON acquisti.ddt IS
+                  'Nascita nello stato iniziale (BB script.trgfn_doc_stato_iniziale): stato assente -> lo stato iniziale di config.stati_doc_ddt; altro stato -> E_DOC_STATO_INIZIALE_NON_VALIDO. Fascia _a05_: prima di ogni altro trigger BEFORE INSERT. Brief: brief-modello-documento-vendita (N-1 … N-3, P-2, Tid 2026-10-24).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_a05_stato_iniziale_ins ON acquisti.ordini;
+              DROP TRIGGER IF EXISTS trg_ddt_a05_stato_iniziale_ins ON acquisti.ddt;

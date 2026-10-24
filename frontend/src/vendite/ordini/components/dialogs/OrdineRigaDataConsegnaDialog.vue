@@ -13,7 +13,7 @@
 //    motivo dalla capability `can_edit_data_consegna_confermata` del dettaglio,
 //    e il rifiuto vero resta del DB (lock delle righe, `E_RIGA_DOC_NON_BOZZA`).
 // ⚠️ Il campo vuoto e' una risposta legittima: toglie la promessa (`null`).
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DatePicker from 'primevue/datepicker'
 import AppDialog from '../../../../core/components/AppDialog.vue'
@@ -21,7 +21,7 @@ import { useApiHandler } from '../../../../core/composables/useApiHandler'
 import { useFotografiaDialog } from '../../../../core/composables/useFotografiaDialog'
 import { DATE_FORMAT } from '../../../../core/constants'
 import { parseIsoDate, toDateString } from '../../../../core/utils/date'
-import { cambiaDataConsegnaConfermata } from '../../api/ordiniApi'
+import { useOrdiniStore } from '../../stores/ordini'
 
 const props = defineProps({
   visible: { type: Boolean, required: true },
@@ -33,13 +33,20 @@ const props = defineProps({
   //    drawer e' in protect, e senza l'override `FormFooter` nasconderebbe il
   //    pulsante di conferma (stessa ragione di `AccreditoAnnullaDialog`).
   readonly: { type: Boolean, default: false },
+  // La data del documento (ISO, dal dettaglio): il minimo del calendario
+  // delle date di consegna. Solo un aiuto: il rifiuto vero e' del DB
+  // (`E_DOC_RIGA_DATA_CONSEGNA_ANTERIORE`).
+  dataDocumento: { type: String, default: null },
 })
 const emit = defineEmits(['update:visible', 'salvata'])
 
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
+// Lo store scrive e avvisa le liste (frontend-standards §«Producer cross-tab»).
+const store = useOrdiniStore()
 
 const dataScelta = ref(null)
+const minDataConsegna = computed(() => parseIsoDate(props.dataDocumento))
 
 // All'apertura, la data che la riga porta oggi. Dichiarato PRIMA della
 // fotografia: il suo watch fissa dopo questo giro, e vede il valore iniziale.
@@ -59,7 +66,7 @@ async function salva() {
   if (!props.riga) return
   const data = dataScelta.value ? toDateString(dataScelta.value) : null
   const res = await execute(
-    () => cambiaDataConsegnaConfermata(props.ordineId, props.riga.id, data),
+    () => store.cambiaDataConsegnaConfermata(props.ordineId, props.riga.id, data),
     { successMessage: t('vendite.ordini.data_consegna_confermata_salvata') },
   )
   if (res === null) return
@@ -91,6 +98,7 @@ async function salva() {
         <DatePicker
           v-model="dataScelta"
           :date-format="DATE_FORMAT"
+          :min-date="minDataConsegna"
           show-icon
           show-button-bar
         />

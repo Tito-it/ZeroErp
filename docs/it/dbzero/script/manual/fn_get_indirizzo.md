@@ -62,7 +62,7 @@ RETURNS TABLE(
   indirizzo_dettaglio_id anagrafiche.indirizzi.indirizzo_dettaglio_id%TYPE,
   indirizzo_libero       anagrafiche.indirizzi.indirizzo_libero%TYPE,
   is_normalizzato        boolean,
-  ...campi geografici (stato, regione, provincia, comune, CAP, locality, administrative_area, sublocality, postal_box)
+  ...campi geografici (stato, regione, provincia, comune, CAP, locality, administrative_area, sublocality, postal_code)
 )
 LANGUAGE plpgsql
 STABLE ROWS 10;

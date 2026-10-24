@@ -102,9 +102,13 @@ Vincoli DB:
   eccezione OVERRIDE/ESCLUSIONE per coppia `(contratto_id, articolo_id)`.
 - `uq_contrighe_one_aggiunta_per_articolo` (UNIQUE parziale): max 1
   AGGIUNTA per coppia `(contratto_id, articolo_id)`.
-- `script.trgfn_righe_guard_aggiunta_fuori_listino` (BEFORE INSERT/UPDATE, generica per contratto e offerta):
-  blocca AGGIUNTA per articolo gia' presente nel listino di riferimento del
-  contratto. L'operatore avrebbe dovuto usare OVERRIDE.
+- `script.trgfn_righe_guard_articolo_ammesso` (BEFORE INSERT/UPDATE OF `articolo_id`, lo stesso
+  su contratto e offerta; dal Lotto 3b di brief-db-articoli-ammessi-per-documento, 2026-10-13):
+  rifiuta l'articolo col primo motivo di `script.fn_check_articolo_riga`, la stessa check del
+  picker. Fra i motivi: AGGIUNTA di un articolo gia' nel listino (`E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO`,
+  si usa OVERRIDE), OVERRIDE o ESCLUSIONE senza listino o fuori listino, ESCLUSIONE di un figlio di
+  bundle. Ha ritirato `trgfn_righe_guard_aggiunta_fuori_listino` e
+  `trgfn_righe_guard_esclusione_figlio_bundle`.
 
 `tipo_eccezione` e' **immutabile in UPDATE**. Per cambiare tipo serve
 DELETE + INSERT (evita cambi di semantica silenti). Validato in
@@ -167,7 +171,7 @@ modellato).
 Il contratto ATTIVO e' **blindato** per garantire stabilita' contrattuale.
 ⭐ Dal 2026-10-10 la regola ha **una sede sola**, il lock di testata del DB
 (`vendite.trgfn_doc_testata_lock_fuori_bozza`, montato colonna per colonna e per
-stato: [brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)).
+stato: [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)).
 Il backend non ha piu' la sua tabella per stato (`_CONTRATTO_PATCH_ALLOWED_BY_STATE`,
 ritirata): passa la scrittura e il 409 del lock arriva com'e'. Il form spegne i
 campi prima, leggendo `can_edit_testata` e `non_editable_fields` dalla capability,
@@ -205,10 +209,11 @@ AND NOT draft` (refactor overlap 2026-06-02, migration `20260602-17..22`):
   dell'incumbent, nella stessa transazione (close-before-activate).
 
 Difesa a due livelli: il backstop duro e' l'EXCLUDE gist parziale
-`ex_contratti_no_overlap` (`WHERE partecipa_overlap_snapshot`); davanti, il
-service esegue un **pre-check proattivo** (`fn_contratto_sovrapposto`) in
-`emetti()` che solleva `E_VENDITE_CONTRATTO_OVERLAP` (409) **nominando** il
-contratto incumbent in conflitto. `ambito` resta nella chiave: forniture di
+`ex_contratti_no_overlap` (`WHERE partecipa_overlap_snapshot`); davanti, il DB
+(`script.fn_check_contratto_sovrapposto`) spegne «Attiva» nella capability col
+motivo che **nomina** il contratto in conflitto, e il guard della transizione
+rifiuta con `E_CONTRATTO_OVERLAP_ESISTENTE` (409). L'EXCLUDE, sulla corsa,
+risponde con lo stesso codice (senza il numero, che il vincolo non da'). `ambito` resta nella chiave: forniture di
 ambiti diversi (es. COMMERCIO vs COMMODITY) sullo stesso punto coesistono
 legittimamente.
 
@@ -252,8 +257,9 @@ non lo sceglie l'operatore da zero: **lo dice l'articolo**.
   QUOTA_FISSA solo CANONE/FISSA, CONSUMO a letture o manuale, PRODOTTI una
   tantum. **Senza tipologia** (solo un'AGGIUNTA puo' averlo: un OVERRIDE sta nel
   listino, che la tipologia la pretende) decide la **natura di vendita**
-  (`config.nature_vendita_erogazioni`). Vince la tipologia. Il composito ammette
-  in piu' DERIVATA_COMPONENTI. Sede unica: `vendite.fn_articolo_erogazioni`.
+  (`config.nature_vendita_erogazioni`). Vince la tipologia. Il composito (kit)
+  ammette le sole combinazioni FISSA (I-D6, 2026-10-21): si vende a quantita'
+  fissa. Sede unica: `vendite.fn_articolo_erogazioni`.
 - **La riga eredita** erogazione e fonte che non indica (solo all'INSERT);
   CANONE porta con se' la sua `generazione_canone`. La scelta dell'operatore
   vince, dentro il perimetro.
@@ -261,14 +267,17 @@ non lo sceglie l'operatore da zero: **lo dice l'articolo**.
   quelle della utility del documento: una combinazione fuori →
   `E_RIGA_EROGAZIONE_FUORI_PERIMETRO`; un articolo di una tipologia che la
   utility non prevede → `E_RIGA_TIPOLOGIA_FUORI_UTILITY`. Le righe gia' scritte
-  restano come sono (B-D6).
+  le intercetta il primo passo che le usa (dal 2026-10-21, §H-§I del brief:
+  supera B-D6): l'emissione dell'offerta, il push al contratto, la generazione
+  dell'ordine e l'attivazione del contratto si spengono col motivo
+  `RIGA_NON_AMMESSA` e rifiutano con `E_DOC_RIGA_NON_AMMESSA`.
 - **Il form** propone le sole combinazioni ammesse e preseleziona il default
   (`GET …/righe/erogazioni/`). Il push offerta → contratto ricopia i valori
   della riga, quindi quelli ereditati.
 
-- **La quantita' segue la fonte** (2026-10-08, F-1): solo FISSA e
-  DERIVATA_COMPONENTI portano una quantita' sulla riga
-  (`script.fn_fonte_porta_quantita`). Con una fonte a valle `quantita` la svuota
+- **La quantita' segue la fonte** (2026-10-08, F-1): solo la FISSA porta una
+  quantita' sulla riga (`script.fn_fonte_porta_quantita`; la
+  DERIVATA_COMPONENTI e' ritirata dal 2026-10-21, I-D1). Con una fonte a valle `quantita` la svuota
   il DB (`trgfn_qta_from_operativa`) e una `qta_operativa` valorizzata e'
   rifiutata (`E_RIGA_QUANTITA_CON_FONTE_A_VALLE`, campo `qta_operativa`).
 

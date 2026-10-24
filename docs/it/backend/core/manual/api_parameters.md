@@ -103,11 +103,8 @@ Il contesto utente viene risolto dal JWT. Query string opzionale:
 
 | Parametro              | Tipo | Note |
 |------------------------|------|------|
-| `categoria_cliente_id` | int  | Attiva il livello categoria cliente (fra user e group). Deve essere > 0, altrimenti `E_PARAMETER_VALIDATION` |
-| `billing_account_id`   | int  | Alternativa: la categoria si deriva dal BA. Ignorato se c'e' `categoria_cliente_id`. BA inesistente → categoria NULL senza errore |
-
-> ⚠️ Difetto noto (F-6): `billing_account_id` non e' controllato (esistenza e
-> scope) — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+| `categoria_cliente_id` | int  | Attiva il livello categoria cliente (fra user e group). Non numerico o ≤ 0 → 400 `E_VALIDATION_INPUT` (2026-10-20: prima la doc indicava `E_PARAMETER_VALIDATION`) |
+| `billing_account_id`   | int  | Alternativa: la categoria si deriva dal BA (BB `categoria_cliente_da_query`). Ignorato se c'e' `categoria_cliente_id`. Non numerico o ≤ 0 → 400 `E_VALIDATION_INPUT`; BA inesistente o fuori scope (RLS) → 404 `E_ANAG_NOT_FOUND`, senza distinguere i due casi |
 
 ### Output
 
@@ -116,16 +113,16 @@ Il contesto utente viene risolto dal JWT. Query string opzionale:
   "data": [
     {
       "code": "DEFAULT_IVA",
-      "description": "ID IVA di default per creazione clienti",
-      "default_value": "16",
+      "description": "Aliquota IVA predefinita (codice_interno)",
+      "default_value": "22",
       "emittente_value": "10",
       "emittente_override_id": 7,
       "group_value": null,
       "categoria_cliente_value": null,
       "categoria_cliente_override_id": null,
-      "user_value": "22",
+      "user_value": "4",
       "user_override_id": 42,
-      "resolved_value": "22"
+      "resolved_value": "4"
     },
     {
       "code": "DEFAULT_CURRENCY",
@@ -165,7 +162,7 @@ Il contesto utente viene risolto dal JWT. Query string opzionale:
 
 - Restituisce **tutti** i parametri di sistema, non solo quelli con override.
 - La catena di precedenza per `resolved_value`: user → categoria_cliente → group → emittente → default.
-- `user_override_id` e' presente solo se l'utente ha un override personale attivo.
+- `user_override_id` c'e' sempre come chiave: `null` se l'utente non ha un override personale attivo.
 
 ---
 
@@ -182,7 +179,7 @@ Body JSON:
 | Campo            | Tipo   | Obbligatorio | Note |
 |------------------|--------|:------------:|------|
 | `parameter_code` | string | Si           | Codice del parametro da sovrascrivere |
-| `value`          | string | Si           | Nuovo valore dell'override |
+| `value`          | string | Si | Nuovo valore dell'override. Assente o `null` → 400 `E_PARAMETER_VALIDATION` (campo `value`), niente scritto (dal 2026-10-21: prima override con stringa vuota e 200). `""` esplicito resta un valore |
 | `scope`          | string | No           | `user` (default), `emittente` (admin), `categoria_cliente` (admin) |
 | `categoria_cliente_id` | int | Se `scope=categoria_cliente` | Intero positivo |
 
@@ -208,7 +205,7 @@ Body JSON:
 - Il `parameter_code` deve esistere in `config.parameters`: se manca, **404
   `E_PARAMETER_NOT_FOUND`** e non si scrive niente (dal 2026-09-28; prima l'INSERT
   violava il NOT NULL su `parameter_id` ed usciva `E_DATABASE` 400 — E-9 dell'
-  [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+  [analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 - Errore `E_PARAMETER_VALIDATION` se `parameter_code` vuoto, `scope` non ammesso o
   `categoria_cliente_id` mancante/non positivo.
 
@@ -273,7 +270,7 @@ parameter_repository.py (Repository)
   ├── get_parameter()               → script.fn_get_parameter_full
   ├── get_parameters()              → script.fn_get_parameter_full (loop)
   ├── list_for_user()               → script.fn_list_parameters_for_user
-  ├── upsert_*_override()           → CTE UPDATE-poi-INSERT (ON CONFLICT non regge i NULL degli scope)
+  ├── upsert_*_override()           → INSERT … ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5 DO UPDATE
   ├── delete_*_override()           → DELETE con check di appartenenza allo scope
   └── get_emittente_fiscale_id_for_user()  → whitelist personale, poi gestore globale
 ```

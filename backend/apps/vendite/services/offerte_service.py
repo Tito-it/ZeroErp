@@ -7,10 +7,11 @@
 #
 #        L'offerta commerciale e' il documento pre-contrattuale: vive nel
 #        ciclo BOZZA -> EMESSA -> (ACCETTATA | RIFIUTATA | SUPERATA) +
-#        terminale di ritiro BOZZA -> ANNULLATA. La state machine e' enforced
-#        dal trigger DB trgfn_offerte_commerciali_guard_transizione; il
-#        service applica solo pre-validazioni applicative (stato corrente,
-#        payload obbligatorio motivazione su RIFIUTATA/ANNULLATA) e lascia
+#        terminale di ritiro BOZZA | ACCETTATA -> ANNULLATA. La state
+#        machine e' enforced dal trigger DB
+#        trgfn_offerte_commerciali_guard_transizione; il service applica
+#        solo pre-validazioni applicative (stato corrente, payload
+#        obbligatorio motivazione su RIFIUTATA/ANNULLATA) e lascia
 #        al DB le invarianti complesse (listino_versione_id NULL in
 #        emissione, listino non ATTIVO, transizione non ammessa, ecc.).
 #
@@ -32,10 +33,16 @@ from typing import Any
 
 from django.db import transaction
 
+from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE
+from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.capability_blob import capabilities_o_vuoto
-from apps.core.services.testata_guard import pagina_dopo_testata, testata_o_not_found
+from apps.core.services.testata_guard import (
+    pagina_dopo_testata,
+    riga_del_padre_o_not_found,
+    testata_o_not_found,
+)
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     translate_db_errors,
@@ -44,20 +51,25 @@ from apps.vendite.db._documento_eccezioni_repo import (
     list_erogazioni_riga,
     listino_versione_operativa,
 )
+from apps.vendite.db.contratti_repository import ContrattiRepository
 from apps.vendite.db.offerte_repository import (
     _ORDER_COLS_OFFERTE,
     OffertaRigheListaRepository,
     OfferteRepository,
 )
+from apps.vendite.services._cliente_coppia_documento import (
+    coppia_cambiata,
+    rifiuta_colonne_ferme,
+    risolvi_cliente_coppia,
+)
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
-    auto_assegna_indirizzo_default,
     delete_indirizzo_documento,
     list_indirizzi_documento,
     upsert_indirizzo_documento,
 )
 from apps.vendite.services._approvazioni_prezzo_constants import (
-    SORGENTE_OFFERTA,
+    META_SORGENTE_OFFERTA,
     STATO_APPROVAZIONE_PENDING,
 )
 from apps.vendite.services._componenti_service_helpers import (
@@ -105,8 +117,10 @@ class StatoOfferta:
     SUPERATA = "SUPERATA"
 
 
-# Set di stati editabili (testata, eccezioni, utility). Estraibile in futuro
-# se le regole differenziassero per oggetto (oggi e' "solo BOZZA").
+# Gli stati da cui si ELIMINA l'offerta e si passa alle transizioni manuali
+# che partono dalla bozza. ⛔ Non governa piu' testata, utility ne' eccezioni:
+# quali colonne e quali righe si cambiano in quale stato lo dicono i lock del DB
+# (`trgfn_doc_testata_lock_fuori_bozza`, `trgfn_doc_righe_lock_fuori_bozza`).
 _STATI_EDITABILI: frozenset[str] = frozenset({StatoOfferta.BOZZA})
 
 
@@ -185,6 +199,13 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
 }
 
 
+# Lo dicono il BB `risolvi_cliente_coppia` (prima) e la FK composta (dopo):
+# una frase sola.
+_MSG_BA_FUORI_COPPIA = (
+    "Il billing account non e' quello dell'istanza e della utility dell'offerta."
+)
+
+
 # FK constraints catalogati (best-effort: i nomi corrispondono a quelli
 # emessi da Postgres su violazione FK).
 _FK_CONSTRAINTS: dict[str, tuple] = {
@@ -196,7 +217,7 @@ _FK_CONSTRAINTS: dict[str, tuple] = {
     # semplice qui sopra resta accanto, e dice solo «non esiste».
     "fk_offerte_commerciali_ba_coppia": (
         E_VENDITE_FK,
-        "Il billing account non e' quello dell'istanza e della utility dell'offerta.",
+        _MSG_BA_FUORI_COPPIA,
         "billing_account_id",
     ),
     "fk_offerte_commerciali_emittente_fiscale": (
@@ -258,11 +279,12 @@ CREATE_KEYS_OFFERTA: frozenset[str] = frozenset({
 # Whitelist payload update offerta (testata). Sub-set di create (immutabili:
 # codice/uid/stato_doc_offerta_id/revisione_numero/revisione_padre_id e
 # tutti i campi audit/timestamp di transizione).
+# ⛔ Dal 2026-10-19 (R-BE-9) niente `utility_id` ne' `emittente_fiscale_id`: si
+#    scelgono alla creazione e non si cambiano, nemmeno in bozza (E-3 di Tid; il
+#    lock del DB «ferma sempre»). Le rifiuta sul campo `rifiuta_colonne_ferme`.
 UPDATE_KEYS_OFFERTA: frozenset[str] = frozenset({
-    "emittente_fiscale_id",
     "billing_account_id",
     "istanza_utility_id",
-    "utility_id",
     "listino_id",
     "listino_versione_id",
     "valore_variazione_globale",
@@ -296,7 +318,11 @@ CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
     "generazione_canone",
     "competenza_canone",
     "prezzo_unitario",
-    "quantita",
+    # ⛔ Niente `quantita`: e' calcolata dal DB da `qta_operativa` (FISSA) e
+    #    vuota con una fonte a valle (`script.trgfn_qta_from_operativa`). Un
+    #    client che la manda riceve un 400 sulla chiave. Fino al 2026-10-21
+    #    restava per la DERIVATA_COMPONENTI, ritirata (I-D1 di
+    #    brief-db-offerta-emissione-ed-erogazione).
     "qta_operativa",
     "uom_operativa_id",
     "factor_to_base",
@@ -404,6 +430,13 @@ class OfferteService:
         #    applica il BB `add_ricerca_full_condition` nel repository, uguale
         #    per tutte le liste. Fino al 2026-09-23 qui era un 400: il frontend
         #    manda il termine a ogni tasto, e i primi due erano un errore.
+        # ⛔ Il filtro di stato esiste nel vocabolario, o e' un 400 sul campo: un
+        #    valore sbagliato finiva nel WHERE e la lista rispondeva vuota con un
+        #    200 (2026-10-20). Codici dismessi ammessi: i documenti vecchi li portano.
+        richiedi_codice_a_vocabolario(
+            "config.stati_doc_offerte", "codice_interno", stato_codice_interno,
+            codice_errore="E_VENDITE_VALIDATION", parametro="stato_codice_interno",
+        )
         filters: dict[str, Any] = {
             "billing_account_id": billing_account_id,
             "stato_codice_interno": stato_codice_interno,
@@ -542,17 +575,12 @@ class OfferteService:
                 message="Campo 'utility' deve essere oggetto.",
                 context={"got": type(utility_payload).__name__},
             )
-        stato_bozza_id = self._repo.get_stato_id_by_codice(StatoOfferta.BOZZA)
-        ErrorManager.require(
-            stato_bozza_id is not None,
-            code=E_VENDITE_VALIDATION,
-            message="Stato BOZZA non configurato in config.stati_doc_offerte.",
-        )
-        assert stato_bozza_id is not None
+        # Lo stato non si passa: l'offerta nasce nello stato iniziale del suo
+        # vocabolario, e lo mette il DB (BB `script.trgfn_doc_stato_iniziale`,
+        # brief-modello-documento-vendita P-2).
         data: dict[str, Any] = self._con_meta_normalizzato(
             {k: v for k, v in payload.items() if k != "utility"},
         )
-        data["stato_doc_offerta_id"] = stato_bozza_id
         # `codice` NON in payload (vedi nota CREATE_KEYS_OFFERTA): il trigger
         # BEFORE INSERT genera OFC-NNNNNNN via `script.fn_generate_codice`.
         # `revisione_numero` ha default DB = 1.
@@ -567,9 +595,9 @@ class OfferteService:
                     self._add_utility_inline(
                         offerta_id, payload, utility_payload,
                     )
-        # UX v2: auto-assegnazione best-effort dell'indirizzo default
-        # (indirizzo di ruolo CON del cliente, fallback FATT). Mai bloccante.
-        auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(offerta_id))
+                # Slot di default dall'anagrafica del cliente, nella stessa
+                # transazione: lo decide il DB (`vendite.fn_doc_indirizzo_default`).
+                self._repo.riempi_indirizzo_default(int(offerta_id))
         return self.get_offerta(offerta_id)
 
     # Scopo: Crea il record utility 1:1 contestualmente alla testata. Riusa
@@ -613,15 +641,26 @@ class OfferteService:
     #        col create (refactor atomico 2026-05-26). Eredita
     #        `istanza_utility_id`/`utility_id` dalla testata se non passati
     #        esplicitamente nel sub-oggetto (coerenza FK garantita dal BA).
-    #        ⚠️ Il satellite `offerte_commerciali_utilities` NON ha un lock a
-    #        DB: quando si cambia lo dice solo la capability (`can_edit_utility`).
-    #        Il cancello qui la LEGGE, non la riscrive.
+    #        In quale stato la fornitura si cambia lo dice il DB: il lock «solo
+    #        in bozza» dei satelliti (`E_DOC_DATI_COLLEGATI_NON_BOZZA`, 409) e la
+    #        capability `can_edit_utility`. Fino al 2026-10-11 qui si leggeva la
+    #        capability prima di scrivere (brief-db-testata-dopo-emissione §11,
+    #        R-BE-6): ora il 409 del lock passa com'e'.
+    #        ⛔ Con un CAMBIO DI COPPIA (cliente, istanza o utility diversi da
+    #        quelli della testata) la scheda del payload NON si applica: il
+    #        trigger `trg_*_m50_fornitura_segue_cliente_upd` l'ha appena rifatta
+    #        dal contatore nuovo, e l'upsert ci riscriverebbe sopra i dati del
+    #        contatore di prima (R-BE-6 di brief-db-indirizzi-documento-seguono-
+    #        il-cliente: D-5 svanirebbe in silenzio). Il dettaglio restituito
+    #        porta la scheda rifatta dal DB.
     def aggiorna_offerta(
         self, offerta_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
+        rifiuta_colonne_ferme(
+            payload, code=E_VENDITE_VALIDATION, function_name=f"{__name__}.aggiorna_offerta",
+        )
         self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_OFFERTA)
-        self._guard_payload_non_vuoto(payload, op="aggiorna_offerta")
         # Prima la testata: fuori perimetro o inesistente e' un 404.
         self._get_offerta_or_raise(
             offerta_id, op="aggiorna_offerta", getter=self._repo.get_stato_codice,
@@ -636,34 +675,50 @@ class OfferteService:
                 message="Campo 'utility' deve essere oggetto.",
                 context={"got": type(utility_payload).__name__},
             )
-            # ⛔ Il messaggio non dice IN QUALI stati: lo sa solo la capability,
-            #    e una frase che lo ripete ne sarebbe la seconda copia.
-            capabilities = self._repo.get_available_actions(offerta_id)
-            ErrorManager.require(
-                bool(capabilities.get("can_edit_utility")),
-                code=E_VENDITE_VALIDATION,
-                message=(
-                    "I dati della fornitura dell'offerta non si cambiano "
-                    f"nello stato corrente ('{capabilities.get('stato_codice')}')."
-                ),
-                context={
-                    "offerta_id": offerta_id,
-                    "stato_corrente": capabilities.get("stato_codice"),
-                },
-            )
         testata_payload = self._con_meta_normalizzato(
             {k: v for k, v in payload.items() if k != "utility"},
         )
-        # Guard: payload "vuoto" dopo aver estratto utility non e' un no-op
-        # (l'upsert utility e' un side-effect valido).
-        if not testata_payload and utility_payload is None:
-            self._guard_payload_non_vuoto({}, op="aggiorna_offerta")
+        # Almeno un campo, della testata o della scheda: `{"utility": {}}` da
+        # solo non e' una modifica (fino al 2026-10-14 passava, e la risposta
+        # era «salvata» senza aver scritto niente).
+        self._v.require_campi_da_aggiornare(
+            testata_payload, sotto_oggetti={"utility": utility_payload},
+            context={"op": "aggiorna_offerta"}, log_to_db=False,
+        )
 
         with self._db_errors({"offerta_id": offerta_id}):
             with transaction.atomic():
+                cambia_coppia = False
                 if testata_payload:
+                    # Letta dal helper del 404, non con `or {}`: la utility della
+                    # coppia serve (si indicizza), e un'offerta sparita nel
+                    # frattempo e' «non trovata», non un KeyError (500).
+                    coppia = self._get_offerta_or_raise(
+                        offerta_id, op="aggiorna_offerta", getter=self._repo.get_coppia,
+                    )
+                    # Il cliente si cambia per coppia: BA e istanza viaggiano
+                    # insieme, letti dal lato che il payload porta (BB
+                    # `risolvi_cliente_coppia`, lo stesso di preventivo e
+                    # contratto), dentro la utility della testata, che non cambia.
+                    if "billing_account_id" in testata_payload or "istanza_utility_id" in testata_payload:
+                        (
+                            testata_payload["billing_account_id"],
+                            testata_payload["istanza_utility_id"],
+                        ) = risolvi_cliente_coppia(
+                            billing_account_id=self._v.optional_positive_int(
+                                testata_payload, "billing_account_id",
+                            ),
+                            istanza_utility_id=self._v.optional_positive_int(
+                                testata_payload, "istanza_utility_id",
+                            ),
+                            utility_id=int(coppia["utility_id"]),
+                            code=E_VENDITE_VALIDATION,
+                            msg_ba_fuori_coppia=_MSG_BA_FUORI_COPPIA,
+                            function_name=f"{__name__}.aggiorna_offerta",
+                        )
+                    cambia_coppia = coppia_cambiata(testata_payload, coppia)
                     self._repo.update_offerta(offerta_id, testata_payload)
-                if utility_payload is not None:
+                if utility_payload is not None and not cambia_coppia:
                     self._upsert_utility_inline(offerta_id, utility_payload)
         return self.get_offerta(offerta_id)
 
@@ -836,13 +891,11 @@ class OfferteService:
                 contratto_id = self._repo.push_a_contratto(
                     offerta_id, pratica_id, chiudi_esistente,
                 )
-        # UX v2: la cascata DB copia gli indirizzi dell'offerta sul contratto;
-        # fallback best-effort dall'anagrafica di ruolo se la sorgente non
-        # aveva slot compatibili. Import locale per evitare cicli fra service.
-        from apps.vendite.services.contratti_service import (
-            auto_assegna_indirizzo_default_contratto,
-        )
-        auto_assegna_indirizzo_default_contratto(int(contratto_id))
+                # La cascata DB copia gli indirizzi dell'offerta sul contratto;
+                # il default riempie lo slot SOLO se e' rimasto vuoto (la
+                # sorgente vince). Il verbo scrive la testata da se', non passa
+                # da `vendite.fn_create_contratto`: il default va chiamato qui.
+                ContrattiRepository().riempi_indirizzo_default(int(contratto_id))
         contratto = self._repo.get_contratto_minimal(contratto_id)
         ErrorManager.require(
             contratto is not None,
@@ -886,16 +939,23 @@ class OfferteService:
             limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
         )
 
-    # Scopo: BOZZA -> ANNULLATA (ritiro interno prima dell'emissione).
-    #        Motivazione obbligatoria. Pattern simmetrico al contratto
-    #        "annulla DRAFT". Il trigger DB valorizza `data_annullamento` +
+    # Scopo: -> ANNULLATA, da BOZZA (ritiro prima dell'emissione) o da
+    #        ACCETTATA (l'offerta che non si trasforma piu'). Motivazione
+    #        obbligatoria. Il trigger DB valorizza `data_annullamento` +
     #        `motivazione_rifiuto`.
+    #        ⛔ Nessuno stato di partenza scritto qui: da quali stati si annulla
+    #        lo dicono le transizioni (`config.stati_doc_offerte_transizioni`) e
+    #        il guard, che da ACCETTATA rifiuta se dall'offerta vive un
+    #        contratto o un ordine (`E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI`).
+    #        Fino al 2026-10-21 c'era un «solo da BOZZA», specchio della state
+    #        machine: avrebbe rifiutato l'annullo da ACCETTATA che il DB ammette
+    #        (brief-db-offerta-emissione-ed-erogazione H-R3).
     def annulla(self, offerta_id: int, *, motivazione: str) -> dict[str, Any]:
         self._v.guard_non_empty_string(motivazione, field="motivazione")
         return self._cambia_stato_manuale(
             offerta_id,
             target_codice=StatoOfferta.ANNULLATA,
-            expected_from=_STATI_EDITABILI,
+            expected_from=None,
             motivazione=motivazione.strip(),
         )
 
@@ -940,7 +1000,9 @@ class OfferteService:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_ECCEZIONE)
         payload = self._con_meta_normalizzato(payload)
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        # «Solo in bozza» lo dice il DB (`trgfn_doc_righe_lock_fuori_bozza` su
+        # eccezioni e componenti, `E_RIGA_DOC_NON_BOZZA`, 409): qui l'esistenza.
+        self._get_offerta_or_raise(offerta_id, op="righe", getter=self._repo.get_stato_codice)
         # ⚠️ La fonte non si pretende qui (2026-10-04, brief-db-righe-esclusione-
         # solo-non-si-vende): l'ESCLUSIONE nasce vuota, e su OVERRIDE/AGGIUNTA la
         # riempie il trigger DB dall'erogazione, che il guard DB rende obbligatoria.
@@ -960,7 +1022,8 @@ class OfferteService:
             payload, auth_user_id, function_name="offerte_service.crea_eccezione",
         )
         # Flag opt-in workflow L3. Estratto qui per non finire nel payload INSERT.
-        richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
+        richiesta_approvazione = self._v.optional_bool(payload, "richiesta_approvazione") is True
+        payload.pop("richiesta_approvazione", None)
 
         # Estrae overrides BoM prima di passare il payload al repo (la colonna
         # non esiste su `offerte_commerciali_eccezioni`); normalizza valori.
@@ -1041,7 +1104,7 @@ class OfferteService:
                     link_riga_a_pratica(
                         pratica_id=pratica_id_l3,
                         riga_id=eccezione_id,
-                        sorgente=SORGENTE_OFFERTA,
+                        sorgente=META_SORGENTE_OFFERTA,
                     )
                 # Auto-init componenti BoM su articolo composito (mirror del
                 # flow contratti: la fn DB e' idempotente, no-op se gia'
@@ -1083,17 +1146,21 @@ class OfferteService:
         payload = self._con_meta_normalizzato(payload)
         # Flag opt-in workflow L3 (estratto prima del guard non-vuoto: non e' un
         # campo di update di per se').
-        richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
-        self._guard_payload_non_vuoto(payload, op="aggiorna_eccezione")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
-        existing = self._repo.get_eccezione(eccezione_id)
-        ErrorManager.require(
-            existing is not None and existing.get("offerta_id") == offerta_id,
+        richiesta_approvazione = self._v.optional_bool(payload, "richiesta_approvazione") is True
+        payload.pop("richiesta_approvazione", None)
+        self._v.require_campi_da_aggiornare(
+            payload, context={"op": "aggiorna_eccezione"}, log_to_db=False,
+        )
+        # «Solo in bozza» lo dice il DB (`trgfn_doc_righe_lock_fuori_bozza` su
+        # eccezioni e componenti, `E_RIGA_DOC_NON_BOZZA`, 409): qui l'esistenza.
+        self._get_offerta_or_raise(offerta_id, op="righe", getter=self._repo.get_stato_codice)
+        existing = riga_del_padre_o_not_found(
+            self._repo.get_eccezione, eccezione_id,
+            padre_id=offerta_id, chiave_padre="offerta_id",
             code=E_VENDITE_NOT_FOUND,
             message="Eccezione non trovata o non appartenente all'offerta.",
-            context={"offerta_id": offerta_id, "eccezione_id": eccezione_id},
+            function_name="vendite.offerte_service.aggiorna_eccezione",
         )
-        assert existing is not None
         # Gate prezzo L1+L2+L3 quando il PATCH tocca `prezzo_unitario` su
         # OVERRIDE/AGGIUNTA non composito. Il prezzo composito e' derivato →
         # nessun gate (i componenti hanno il proprio workflow). `articolo_id` e
@@ -1209,7 +1276,7 @@ class OfferteService:
         self._get_offerta_or_raise(
             offerta_id, op="list_erogazioni_riga", getter=self._repo.get_stato_codice,
         )
-        return list_erogazioni_riga("OFFERTA", offerta_id, articolo)
+        return list_erogazioni_riga(SORGENTE_OFFERTA_COMMERCIALE, offerta_id, articolo)
 
     # =================================================================
     # Componenti BoM su eccezione (mirror contratti, simmetria 2026-05-26)
@@ -1311,11 +1378,14 @@ class OfferteService:
         self,
         offerta_id: int, eccezione_id: int, componente_id: int,
         payload: dict[str, Any],
+        *, auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.guard_positive_int(eccezione_id, field="eccezione_id")
         self._v.guard_positive_int(componente_id, field="componente_id")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        # «Solo in bozza» lo dice il DB (`trgfn_doc_righe_lock_fuori_bozza` su
+        # eccezioni e componenti, `E_RIGA_DOC_NON_BOZZA`, 409): qui l'esistenza.
+        self._get_offerta_or_raise(offerta_id, op="righe", getter=self._repo.get_stato_codice)
         self._load_componente_for_modification(
             offerta_id=offerta_id, eccezione_id=eccezione_id,
             componente_id=componente_id,
@@ -1326,7 +1396,7 @@ class OfferteService:
         #    `stato_approvazione_prezzo` — un operatore poteva approvarsi da
         #    solo un prezzo L3 PENDING. `origine_prezzo` la deriva il server.
         payload = dati_patch_componente(
-            payload,
+            payload, auth_user_id=auth_user_id,
             function_name="offerte_service.update_componente_eccezione",
         )
         with self._db_errors(
@@ -1335,13 +1405,7 @@ class OfferteService:
                 "Violazione vincolo DB su componente eccezione offerta."
             ),
         ):
-            updated = self._repo.update_componente(componente_id, **payload)
-        ErrorManager.require(
-            updated,
-            code=E_VENDITE_VALIDATION,
-            message="Nessun campo aggiornato sul componente.",
-            detail="Payload vuoto o senza campi nella whitelist.",
-        )
+            self._repo.update_componente(componente_id, **payload)
         return {"status": "ok", "componente_id": componente_id}
 
     # Scopo: Soft delete componente BoM eccezione (`attivo=FALSE`). Il trigger
@@ -1353,7 +1417,9 @@ class OfferteService:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.guard_positive_int(eccezione_id, field="eccezione_id")
         self._v.guard_positive_int(componente_id, field="componente_id")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        # «Solo in bozza» lo dice il DB (`trgfn_doc_righe_lock_fuori_bozza` su
+        # eccezioni e componenti, `E_RIGA_DOC_NON_BOZZA`, 409): qui l'esistenza.
+        self._get_offerta_or_raise(offerta_id, op="righe", getter=self._repo.get_stato_codice)
         self._load_componente_for_modification(
             offerta_id=offerta_id, eccezione_id=eccezione_id,
             componente_id=componente_id,
@@ -1404,13 +1470,15 @@ class OfferteService:
     def elimina_eccezione(self, offerta_id: int, eccezione_id: int) -> None:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.guard_positive_int(eccezione_id, field="eccezione_id")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
-        existing = self._repo.get_eccezione(eccezione_id)
-        ErrorManager.require(
-            existing is not None and existing.get("offerta_id") == offerta_id,
+        # «Solo in bozza» lo dice il DB (`trgfn_doc_righe_lock_fuori_bozza` su
+        # eccezioni e componenti, `E_RIGA_DOC_NON_BOZZA`, 409): qui l'esistenza.
+        self._get_offerta_or_raise(offerta_id, op="righe", getter=self._repo.get_stato_codice)
+        riga_del_padre_o_not_found(
+            self._repo.get_eccezione, eccezione_id,
+            padre_id=offerta_id, chiave_padre="offerta_id",
             code=E_VENDITE_NOT_FOUND,
             message="Eccezione non trovata o non appartenente all'offerta.",
-            context={"offerta_id": offerta_id, "eccezione_id": eccezione_id},
+            function_name="vendite.offerte_service.elimina_eccezione",
         )
         with self._db_errors({"eccezione_id": eccezione_id}):
             with transaction.atomic():
@@ -1427,14 +1495,15 @@ class OfferteService:
         return self._repo.get_utility(offerta_id)
 
     # Scopo: Crea il record utility 1:1. UNIQUE su offerta_id: doppio create
-    #        rilevato e mappato a E_VENDITE_DUPLICATO. Solo in BOZZA.
+    #        rilevato e mappato a E_VENDITE_DUPLICATO. Lo stato lo giudica il
+    #        DB (vedi `aggiorna_offerta`).
     def crea_utility(
         self, offerta_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_UTILITY)
         payload = self._con_meta_normalizzato(payload)
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        self._get_offerta_or_raise(offerta_id, op="crea_utility", getter=self._repo.get_stato_codice)
         for required in ("istanza_utility_id", "utility_id"):
             ErrorManager.require(
                 required in payload and payload[required] is not None,
@@ -1449,8 +1518,9 @@ class OfferteService:
         assert row is not None
         return row
 
-    # Scopo: Aggiorna il record utility (campi business). Solo in BOZZA.
-    #        Payload vuoto -> 400 (no-op silenzioso evitato).
+    # Scopo: Aggiorna il record utility (campi business). Lo stato lo giudica
+    #        il DB (vedi `aggiorna_offerta`). Payload vuoto -> 400 (no-op
+    #        silenzioso evitato).
     def aggiorna_utility(
         self, offerta_id: int, utility_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
@@ -1458,8 +1528,10 @@ class OfferteService:
         self._v.guard_positive_int(utility_id, field="utility_id")
         self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_UTILITY)
         payload = self._con_meta_normalizzato(payload)
-        self._guard_payload_non_vuoto(payload, op="aggiorna_utility")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        self._v.require_campi_da_aggiornare(
+            payload, context={"op": "aggiorna_utility"}, log_to_db=False,
+        )
+        self._get_offerta_or_raise(offerta_id, op="aggiorna_utility", getter=self._repo.get_stato_codice)
         existing = self._repo.get_utility(offerta_id)
         ErrorManager.require(
             existing is not None and existing.get("id") == utility_id,
@@ -1478,11 +1550,6 @@ class OfferteService:
     # Helper interni
     # =================================================================
 
-    # Scopo: Fail-fast su payload vuoto in update. Senza questo guard, il
-    #        repository ritorna False senza errori, ma il service restituisce
-    #        comunque `get_offerta(...)` — l'operatore vedrebbe un "successo"
-    #        ingannevole sul tasto Salva quando in realta' non e' stato
-    #        scritto nulla.
     # Scopo: Normalizza `meta` (se presente) con il BB `optional_meta`:
     #        oggetto JSON (dict, o stringa che ne contiene uno) -> dict,
     #        `null` -> `{}`, qualunque altra cosa -> 400 E_VENDITE_VALIDATION.
@@ -1500,17 +1567,6 @@ class OfferteService:
         if "meta" not in payload:
             return payload
         return {**payload, "meta": self._v.optional_meta(payload)}
-
-    def _guard_payload_non_vuoto(
-        self, payload: dict[str, Any], *, op: str
-    ) -> None:
-        ErrorManager.require(
-            bool(payload),
-            code=E_VENDITE_VALIDATION,
-            message="Nessun campo da aggiornare.",
-            detail=f"Operazione {op}: il payload e' vuoto.",
-            context={"op": op},
-        )
 
     # Scopo: Verifica che l'offerta esista e sia in uno degli stati attesi.
     #        Solleva 404 se offerta inesistente, 422 se stato fuori scope.
@@ -1536,17 +1592,23 @@ class OfferteService:
     # Scopo: Esegue una transizione di stato manuale. Il guard pre-condizione
     #        (`expected_from`) e' difesa applicativa; il trigger DB rifinisce
     #        ulteriormente (es. BOZZA->EMESSA fallisce se listino_versione_id
-    #        NULL o versione non ATTIVA).
+    #        NULL o versione non ATTIVA). `expected_from=None`: nessuno stato di
+    #        partenza qui, solo l'esistenza (404); la transizione la giudica il DB.
     def _cambia_stato_manuale(
         self,
         offerta_id: int,
         *,
         target_codice: str,
-        expected_from: set[str] | frozenset[str],
+        expected_from: set[str] | frozenset[str] | None,
         motivazione: str | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        self._assert_stato_corrente(offerta_id, expected=expected_from)
+        if expected_from is None:
+            self._get_offerta_or_raise(
+                offerta_id, op="_cambia_stato_manuale", getter=self._repo.get_stato_codice,
+            )
+        else:
+            self._assert_stato_corrente(offerta_id, expected=expected_from)
         target_stato_id = self._repo.get_stato_id_by_codice(target_codice)
         ErrorManager.require(
             target_stato_id is not None,
@@ -1640,7 +1702,7 @@ def _load_offerta_context_for_pricing(
     # contratti). La versione la dice il DB, con la regola che governa le righe
     # a video e che congela all'emissione: la fissata, altrimenti quella in
     # vigore oggi (`vendite.fn_documento_listino_operativo`).
-    listino_versione_id_preferito = listino_versione_operativa("OFFERTA", offerta_id)
+    listino_versione_id_preferito = listino_versione_operativa(SORGENTE_OFFERTA_COMMERCIALE, offerta_id)
 
     assert ba_id_raw is not None and utility_id_raw is not None
     return {
@@ -1770,7 +1832,7 @@ def _orchestrate_l3_request_offerta(
         link_riga_a_pratica(
             pratica_id=pratica_id,
             riga_id=riga_id_for_link,
-            sorgente=SORGENTE_OFFERTA,
+            sorgente=META_SORGENTE_OFFERTA,
         )
     return pratica_id
 
@@ -1781,18 +1843,16 @@ def _orchestrate_l3_request_offerta(
 
 _INDIRIZZI_CFG = IndirizziDocumentoConfig(
     # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
-    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    # dei test unit raggiungono il repository.
     repo_factory=lambda: OfferteRepository(),
-    stati_modificabili=_STATI_EDITABILI,
     not_found_code=E_VENDITE_NOT_FOUND,
-    stato_error_code=E_VENDITE_VALIDATION,
     error_code=E_VENDITE_VALIDATION,
     fn_prefix="vendite.offerte_service",
 )
 
 
-# Scopo: Pannello indirizzi dell'offerta (ambito OFFERTE). Guard, ownership e
-#        traduzione errori DB nel BB condiviso.
+# Scopo: Pannello indirizzi dell'offerta (ambito OFFERTE). Guard di esistenza
+#        e traduzione errori DB nel BB condiviso.
 def list_indirizzi(offerta_id: int) -> dict[str, Any]:
     return list_indirizzi_documento(_INDIRIZZI_CFG, offerta_id)
 

@@ -10,6 +10,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useArticoliStore } from '../stores/articoli'
+import { useAuthStore } from '../../stores/auth'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
@@ -37,6 +38,7 @@ import AttivoTag from '../../core/components/AttivoTag.vue'
 
 const { t } = useI18n()
 const store = useArticoliStore()
+const auth = useAuthStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const isReadonly = useInjectReadonly()
@@ -65,13 +67,44 @@ const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { v
 // `isEdit` su singoli campi.
 const nonEditableFields = computed(() => detail.value?.non_editable_fields || [])
 function isFieldLocked(name) {
+  if (correzioneStruttura.value && colonneStruttura.value.includes(name)) return false
   return isEdit.value && nonEditableFields.value.includes(name)
 }
-// I flag struttura (is_composito, is_solo_componente, requires_serial)
-// arrivano nel `non_editable_fields` quando l'articolo partecipa a una BoM
-// attiva (lock condizionali registrati in `dbops.lock_columns_conditional`
-// + fn `dbops.fn_non_editable_fields`, migrations 20260522-02..04). Single
-// source of truth BE — nessuna logica locale FE.
+
+// ⭐ La CORREZIONE DI STRUTTURA (A-10, Lotto 3u): un articolo usato non cambia
+// la sua struttura, e la via normale e' un articolo nuovo. Per un errore di
+// caricamento il SUPER_ADMIN ha una porta sola, il verbo
+// `catalogo.fn_articolo_correggi_struttura`. Qui l'azione riapre i campi
+// strutturali bloccati; al salvataggio quelli cambiati viaggiano nello STESSO
+// PATCH (`correzione_struttura`), e il backend li scrive col verbo e poi
+// l'UPDATE in una transazione (R-BE-1, 2026-10-18).
+// ⭐ Quali campi riaprire lo dice il dettaglio (`struttura_correggibile`), dalla
+// sede del DB da cui il verbo legge le colonne ammesse (R-DB-3): nessuna copia
+// qui. La causale onere non e' in questo form.
+const colonneStruttura = computed(() => detail.value?.struttura_correggibile || [])
+const correzioneStruttura = ref(false)
+const strutturaBloccata = computed(() =>
+  colonneStruttura.value.some(c => nonEditableFields.value.includes(c)))
+
+// Scopo: le colonne strutturali che l'amministratore ha cambiato rispetto al
+// dettaglio caricato: le sole da mandare al verbo.
+function campiStrutturaCambiati() {
+  const campi = {}
+  for (const c of colonneStruttura.value) {
+    if (!(c in form.value)) continue
+    if (form.value[c] !== detail.value?.[c]) campi[c] = form.value[c]
+  }
+  return campi
+}
+// I flag struttura arrivano nel `non_editable_fields` quando l'articolo
+// partecipa a una BoM attiva (is_composito, is_solo_componente,
+// requires_serial; migrations 20260522-02..04) e, da A-10
+// (brief-db-articoli-ammessi-per-documento, 2026-10-13), quando e' USATO: le
+// otto colonne strutturali (natura, tipologia di listino, causale onere,
+// composito, solo componente, gestito a magazzino, lotto, seriale). Lock
+// condizionali in `dbops.lock_columns_conditional` + `dbops.fn_non_editable_fields`.
+// Single source of truth BE — nessuna logica locale FE: ogni campo che il DB
+// puo' bloccare legge `isFieldLocked`. La causale onere non e' in questo form.
 
 // Sub-drawer e riepilogo (edit mode)
 const uomDrawerVisible = ref(false)
@@ -178,6 +211,7 @@ async function loadDetail() {
     lead_time_giorni: data.lead_time_giorni ?? null,
   }
   fissa()
+  correzioneStruttura.value = false
   // Carica riepilogo in parallelo
   await Promise.all([loadUomRiepilogo(), loadBomRiepilogo(), loadNoteRiepilogo()])
 }
@@ -238,6 +272,13 @@ async function handleSave() {
       modo_approvvigionamento_id: f.modo_approvvigionamento_id,
       gestito_a_magazzino: f.gestito_a_magazzino,
       lead_time_giorni: f.lead_time_giorni,
+    }
+    // La struttura cambiata viaggia nel PATCH: il backend la passa prima al
+    // verbo dell'amministratore, poi aggiorna il resto (che porta gli stessi
+    // valori), in una transazione. Un rifiuto annulla tutto.
+    if (correzioneStruttura.value) {
+      const campi = campiStrutturaCambiati()
+      if (Object.keys(campi).length) payload.correzione_struttura = campi
     }
     const result = await execute(
       () => store.update(props.articoloId, payload),
@@ -309,6 +350,16 @@ function onConfirmDisattiva() {
   })
 }
 
+function onConfirmCorreggiStruttura() {
+  if (!detail.value) return
+  confirmAction({
+    header: t('catalogo.correggi_struttura_dialog_titolo'),
+    message: t('catalogo.correggi_struttura_dialog_messaggio', { codice: detail.value.codice }),
+    acceptLabel: t('catalogo.correggi_struttura'),
+    onAccept: () => { correzioneStruttura.value = true },
+  })
+}
+
 function onConfirmRiattiva() {
   if (!detail.value) return
   confirmAction({
@@ -355,6 +406,18 @@ const drawerActions = computed(() => {
       hideWhenReadonly: true,
       command: onConfirmRiattiva,
     },
+    {
+      // Solo l'amministratore, e solo quando c'e' davvero una struttura
+      // bloccata da riaprire. Il permesso lo ripete il verbo DB.
+      key: 'correggi_struttura',
+      kind: 'state',
+      label: t('catalogo.correggi_struttura'),
+      icon: MANAGE_ICONS.SBLOCCA,
+      outlined: true,
+      visible: auth.isSuperAdmin && strutturaBloccata.value && !correzioneStruttura.value,
+      hideWhenReadonly: true,
+      command: onConfirmCorreggiStruttura,
+    },
   ]
 })
 </script>
@@ -389,6 +452,7 @@ const drawerActions = computed(() => {
       </DrawerEntityHeader>
 
       <DrawerActionsBar :actions="drawerActions" />
+      <small v-if="correzioneStruttura" class="app-field-hint">{{ t('catalogo.correggi_struttura_attiva') }}</small>
     </template>
 
     <div class="form-grid-2col">
@@ -433,7 +497,8 @@ const drawerActions = computed(() => {
       </div>
       <div class="form-field">
         <label>{{ t('catalogo.field_listino_tipologia') }}</label>
-        <LookupSelect v-model="form.listino_tipologia_id" rel="config.listini_tipologie" :placeholder="t('catalogo.select_listino_tipologia')" show-clear />
+        <LookupSelect v-model="form.listino_tipologia_id" rel="config.listini_tipologie" :placeholder="t('catalogo.select_listino_tipologia')" show-clear
+          :disabled="isFieldLocked('listino_tipologia_id')" />
         <small class="app-text-muted mt-025">{{ t('catalogo.hint_listino_tipologia') }}</small>
       </div>
       <div class="form-field">
@@ -443,7 +508,8 @@ const drawerActions = computed(() => {
       <div class="form-field">
         <label>{{ t('catalogo.field_natura_vendita') }}</label>
         <!-- NOT NULL a DB (default MERCE): niente show-clear -->
-        <LookupSelect v-model="form.natura_vendita_id" rel="config.nature_vendita" :placeholder="t('catalogo.select_natura_vendita')" />
+        <LookupSelect v-model="form.natura_vendita_id" rel="config.nature_vendita" :placeholder="t('catalogo.select_natura_vendita')"
+          :disabled="isFieldLocked('natura_vendita_id')" />
         <small class="app-text-muted mt-025">{{ t('catalogo.hint_natura_vendita') }}</small>
       </div>
     </div>
@@ -474,9 +540,10 @@ const drawerActions = computed(() => {
 
     <!-- La GRANA del registro di magazzino, decisa dall'articolo (M-5): per
          seriale e/o per lotti, «o sempre o mai». `requires_serial` entra
-         nel lock BoM; ⛔ `requires_lotto` NO (Lotto 1 §4.3: il lotto non
-         entra nella distinta) — niente `isFieldLocked`, chi copia il
-         gemello a occhi chiusi eredita un lucchetto che non esiste. -->
+         nel lock BoM; `requires_lotto` no (Lotto 1 §4.3: il lotto non entra
+         nella distinta), ma da A-10 entrambi si fermano quando l'articolo e'
+         USATO. Il lucchetto lo dice il DB in `non_editable_fields`: qui si
+         legge e basta, per tutte le colonne che il DB puo' bloccare. -->
     <div class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('catalogo.field_requires_serial') }}</label>
@@ -485,7 +552,8 @@ const drawerActions = computed(() => {
       </div>
       <div class="form-field">
         <label>{{ t('catalogo.field_requires_lotto') }}</label>
-        <ToggleSwitch v-model="form.requires_lotto" />
+        <ToggleSwitch v-model="form.requires_lotto"
+          :disabled="isFieldLocked('requires_lotto')" />
         <small class="app-text-muted mt-025">{{ t('catalogo.hint_requires_lotto') }}</small>
       </div>
     </div>
@@ -505,7 +573,8 @@ const drawerActions = computed(() => {
       </div>
       <div class="form-field">
         <label>{{ t('catalogo.field_gestito_a_magazzino') }}</label>
-        <ToggleSwitch v-model="form.gestito_a_magazzino" />
+        <ToggleSwitch v-model="form.gestito_a_magazzino"
+          :disabled="isFieldLocked('gestito_a_magazzino')" />
         <small class="app-text-muted mt-025">{{ t('catalogo.hint_gestito_a_magazzino') }}</small>
       </div>
       <div class="form-field">

@@ -1,0 +1,37 @@
+# Template systemd — giro NOTTURNO degli smoke (scripts/smoke-baseline.sh).
+# Fonte di verità versionata: si edita QUI e si ri-renderizza con
+# `sudo backend/bin/install-timers.sh`. Placeholder per-host sostituiti
+# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app),
+# __COMANDO__ (l'argv dopo run-command.sh, campo `comando` di sveglie.json).
+# La cadenza sta in `backend/deploy/sveglie.json`, non qui.
+#
+# 🔴 PERCHE' ESISTE, ed è un fatto datato. Il 2026-10-12 metà degli smoke bash
+# erano rossi da settimane: non li lanciava nessuno, perché un giro dura minuti
+# e va ricordato. Questo unit li lancia ogni notte, e una regressione arriva da
+# sola nel digest delle 07:00 (corsa `ok=false` su maintenance.job_run_log,
+# presidio maintenance.vw_job_run_da_guardare).
+#
+# ⛔ SOLO SVILUPPO: gli smoke scrivono documenti di prova sul database. Il
+# processo è acceso in SVILUPPO e spento in PRODUZIONE (default a catalogo,
+# dbops.processi, dal 2026-10-16: l'`ExecCondition` lo chiede al DB), e in
+# PRODUZIONE non si accende nemmeno a mano (accendibile_in_produzione = false,
+# il guard lo rifiuta e lo stato effettivo lo ignora: R-BE-5, dal 2026-10-18).
+# Il consenso SMOKE_NOTTURNO_CONSENTITO in .env.systemd è ritirato: il divieto
+# sta nel catalogo.
+#
+# ⚠️ TimeoutStartSec esplicito: una corsa aperta da più di un'ora esce come
+# «presa e mai chiusa». Il comando ha già un suo limite (50 minuti) sotto
+# questo; il tetto dell'unit è la seconda rete.
+[Unit]
+Description=ZeroERP giro notturno degli smoke (solo sviluppo)
+After=network.target
+
+[Service]
+Type=oneshot
+User=__APP_USER__
+Group=www-data
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env.systemd
+TimeoutStartSec=55min
+ExecCondition=__APP_DIR__/bin/run-command.sh e_dovuto zeroerp-smoke-notturno
+ExecStart=__APP_DIR__/bin/run-command.sh __COMANDO__

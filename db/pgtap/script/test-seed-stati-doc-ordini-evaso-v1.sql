@@ -5,19 +5,29 @@
 --       + reason dedicato in script.fn_available_actions_ordine
 -- ------------------------------------------------------------
 -- Parallelo a test-seed-stati-doc-preventivi-evaso-v1.sql, applicato agli
--- ordini di vendita. EVASO = ordine gia' propagato a commessa (stato
--- terminale). La transizione CONFERMATO -> EVASO ha manuale=false: la invoca
--- il BE dopo il push commessa, non e' un bottone UI.
+-- ordini di vendita. La transizione CONFERMATO -> EVASO ha manuale=false: non
+-- e' un bottone UI.
+-- ⚠️ rev 2026-10-11: il file fissava due regole che il modello ha cambiato a
+--   luglio, ed era rosso da allora (test 4 e 6).
+--   * EVASO = «spedizione completa» (proiezione dell'evasione,
+--     vendite.fn_ordine_proietta_stato_evasione), non piu' «gia' propagato a
+--     commessa»: dal 2026-07-09 ha uscite AUTOMATICHE verso CONFERMATO e
+--     PARZIALMENTE_EVASO (una bolla annullata o una riga tolta lo riapre).
+--     Resta terminale per l'operatore: nessuna uscita manuale.
+--   * ORDINE_GIA_EVASO e' stato tolto il 2026-07-10 (20260710-02, fix «orfano
+--     da push»): la spedizione non chiude il push in commessa, e il «gia'
+--     fatturato» lo dice ORDINE_GIA_FATTURATO dalle righe di commessa.
 --
 -- Indice test (1..7):
 -- 1) Stato EVASO esiste (codice_interno='EVASO', codice='EVASO', attivo=TRUE)
 -- 2) EVASO ha ordine=25 (subito dopo CONFERMATO=20, prima di ALLOCATO=30)
 -- 3) Transizione CONFERMATO -> EVASO esiste, attiva, con manuale=false
--- 4) Nessuna transizione in uscita da EVASO (config: stato terminale)
+-- 4) Da EVASO nessuna uscita manuale; le sole uscite sono le automatiche
+--    verso CONFERMATO e PARZIALMENTE_EVASO
 -- 5) Guard: CONFERMATO -> EVASO ammessa (lives) — il guard approvazione
 --    (->CONFERMATO only) e il guard matrice non bloccano
--- 6) fn_available_actions_ordine su EVASO: can_push_commessa=false,
---    reason='ORDINE_GIA_EVASO', stato_codice='EVASO'
+-- 6) fn_available_actions_ordine su EVASO: lo stato non spegne il push in
+--    commessa (righe ancora da spingere -> acceso, senza motivo)
 -- 7) Guard: EVASO -> ANNULLATO bloccata (throws) — terminale a runtime
 -- ------------------------------------------------------------
 -- Nota emittente: l'ordine fixture passa emittente_fiscale_id esplicito e
@@ -100,15 +110,16 @@ SELECT ok(
 );
 
 -- ============================================================
--- TEST 4) Nessuna transizione in uscita da EVASO (config: terminale)
+-- TEST 4) Da EVASO: nessuna uscita manuale, solo le automatiche del rientro
 -- ============================================================
-SELECT ok(
-  NOT EXISTS (
-    SELECT 1
-    FROM config.transizioni_stati_ordini t
-    JOIN config.stati_doc_ordini sd ON sd.id = t.stato_da_id AND sd.codice_interno = 'EVASO'
-  ),
-  '4) config.transizioni_stati_ordini: nessuna transizione in uscita da EVASO (terminale)'
+SELECT is(
+  (SELECT string_agg(sa.codice_interno || ':' || COALESCE(t.meta->>'manuale', 'NULL'), ',' ORDER BY sa.codice_interno)
+     FROM config.transizioni_stati_ordini t
+     JOIN config.stati_doc_ordini sd ON sd.id = t.stato_da_id AND sd.codice_interno = 'EVASO'
+     JOIN config.stati_doc_ordini sa ON sa.id = t.stato_a_id
+    WHERE t.attivo IS TRUE),
+  'CONFERMATO:false,PARZIALMENTE_EVASO:false',
+  '4) da EVASO nessuna uscita manuale: solo il rientro automatico verso CONFERMATO e PARZIALMENTE_EVASO'
 );
 
 -- ============================================================
@@ -121,8 +132,12 @@ SELECT
   --   coincidevano per caso, su un database ricostruito no.
   script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
   (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST, a.id LIMIT 1) AS articolo_id,
+-- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-1/D-2): l'articolo si
+--   COSTRUISCE. Prima si pescava dal catalogo (il primo per id, o il piu' recente):
+--   il primo per id e' l'onere del seed ONERE_SENZA_CONTRATTO (natura servizio), e
+--   da 20261013-42 ordine e bolla portano solo merce. Un articolo costruito ha solo
+--   le proprieta' che il test gli da' (merce, non gestito a magazzino).
+  dbops.fn_pgtap_crea_articolo('PGT-SDOE-ART', false) AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   -- ⚠️ rev 2026-10-08 (D-1): lo stato di nascita e l'aliquota della riga, che la conferma pretende.
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT'      LIMIT 1) AS stato_draft_id,
@@ -177,14 +192,18 @@ SELECT lives_ok(
 );
 
 -- ============================================================
--- TEST 6) fn_available_actions_ordine su EVASO: push off + reason dedicato
+-- TEST 6) fn_available_actions_ordine su EVASO: lo stato non spegne il push
 -- ============================================================
+-- ⭐ Dal 2026-07-10 (20260710-02) il push segue l'eleggibilita' reale
+--   (fn_list_ordini_da_pushare), non lo stato: un ordine EVASO con righe mai
+--   spinte e' un «orfano» da recuperare, e il bottone resta acceso. Questo
+--   ordine ha una riga mai spinta e fatturazione_trigger CONFERMATO.
 SELECT ok(
-  (SELECT (script.fn_available_actions_ordine(o.id)->>'can_push_commessa')::boolean IS FALSE
-      AND (script.fn_available_actions_ordine(o.id)->>'can_push_commessa_reason') = 'ORDINE_GIA_EVASO'
+  (SELECT (script.fn_available_actions_ordine(o.id)->>'can_push_commessa')::boolean IS TRUE
+      AND (script.fn_available_actions_ordine(o.id)->>'can_push_commessa_reason') IS NULL
       AND (script.fn_available_actions_ordine(o.id)->>'stato_codice') = 'EVASO'
      FROM tmp_ord_ev o),
-  '6) EVASO: can_push_commessa=false, reason=ORDINE_GIA_EVASO, stato_codice=EVASO'
+  '6) EVASO con righe da spingere: push in commessa acceso, nessun motivo (ORDINE_GIA_EVASO non esiste piu'')'
 );
 
 -- ============================================================

@@ -1,0 +1,240 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL REGISTRO DELLE FATTURE NASCE CON L'EMITTENTE
+#   vendite.fn_codice_registro_provisionato  (nuova: la regola del codice)
+#   vendite.fn_provision_registri            (primitiva: la FATTURA non e' piu'
+#                                             esclusa)
+#   R-BE-14 del BE, decisioni D-14a … D-14d di Tid (2026-10-18),
+#   brief-db-processi-accensione-per-ambiente §6.12 (richiesta) e §6.14
+#   (risposta).
+#
+# -- IL DIFETTO -----------------------------------------------------------------
+#   Nessun emittente nasceva col registro delle fatture, quello di
+#   un'installazione nuova compreso: la primitiva escludeva la FATTURA con un
+#   letterale («il suo registro dipende da (tipo documento, natura)»), e
+#   nessun altro lo creava. Il primo documento fiscale si fermava su
+#   vendite.fn_get_registro_id con E_CONFIG_MANCANTE «registro non risolto».
+#   Caso del BE: l'emittente di prova del verbo di sviluppo (DEVA).
+#
+# -- LA REGOLA NUOVA (D-14a, D-14b, D-14c) --------------------------------------
+#   Per ogni emittente selezionato che ha almeno una coppia (tipo documento
+#   attivo, natura attiva) scoperta (vendite.fn_coppie_fattura_scoperte,
+#   20261019-07):
+#   * nasce UN registro delle fatture STANDARD, con la stessa regola degli
+#     altri registri (codice, descrizione, reset ANNUALE, default di forma
+#     dalla famiglia FATTURA), utility NULL;
+#   * ogni coppia scoperta si collega a quel registro
+#     (vendite.tipi_doc_fiscale_registri).
+#   Un emittente configurato a mano riceve il registro standard solo per le
+#   coppie che non ha (D-14c). Il CRUD dei registri divide poi lo standard
+#   quando serve (D-14b). Un registro standard SPENTO non si ricollega e non si
+#   rifa': spegnerlo e' una scelta di chi amministra, e la coppia resta scoperta.
+#
+# -- PERCHE' LA REGOLA DEL CODICE ESCE IN UNA FUNZIONE ---------------------------
+#   `left(famiglia, 3) || '-' || emittente` serviva gia' ai registri delle
+#   famiglie; ora serve anche a far nascere il registro standard delle fatture
+#   e a RITROVARLO per collegarlo. Tre copie dello stesso letterale nella stessa
+#   funzione: la prima che cambia rompe il collegamento in silenzio.
+#
+# -- IL VALORE DI RITORNO ----------------------------------------------------------
+#   Resta «quanti registri ha creato» (famiglie + fatture). I collegamenti non
+#   si contano: nessun chiamante legge il numero per decidere, e cambiargli
+#   significato ingannerebbe chi lo legge oggi.
+#
+# -- QUELLO CHE NON CAMBIA --------------------------------------------------------
+#   Firma, SECURITY DEFINER, search_path, volatilita'; la regola dei registri
+#   delle famiglie (stesso codice, stessa idempotenza sulla coppia emittente,
+#   famiglia). Corpo di partenza: quello vivo (= doc auto-generata, 2026-10-18).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261019-08-update-fn-provision-registri-fattura-standard-mctit.yaml
+
+  - changeSet:
+      id: 20261019-08-update-fn-provision-registri-fattura-standard
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La primitiva vendite.fn_provision_registri non esclude piu' la FATTURA: per ogni
+        emittente con coppie (tipo documento, natura) scoperte crea un registro delle fatture
+        standard e ci collega le coppie. La regola del codice esce in
+        vendite.fn_codice_registro_provisionato. R-BE-14, D-14a … D-14d di Tid,
+        brief-db-processi-accensione-per-ambiente §6.14.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_codice_registro_provisionato(
+                  p_famiglia_documento          vendite.famiglie_documento.codice_interno%TYPE,
+                  p_emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE)
+               RETURNS vendite.registri_fatturazione.codice%TYPE
+               LANGUAGE sql
+               IMMUTABLE
+              AS $function$
+                  -- ⚠️ Prime tre lettere della famiglia + id dell'emittente:
+                  --   deterministico, unico per costruzione, e dentro i 16
+                  --   caratteri della colonna. ⛔ NON la sigla
+                  --   dell'emittente: e' varchar(32) contro 16, e troncarla
+                  --   su una UNIQUE trasformerebbe due sigle simili in una
+                  --   collisione. La parte parlante sta nella descrizione.
+                  SELECT left(p_famiglia_documento, 3) || '-' || p_emittente_soggetto_ruolo_id::text;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_codice_registro_provisionato(
+                      vendite.famiglie_documento.codice_interno%TYPE,
+                      anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE)
+              IS 'La regola del CODICE di un registro nato dal provisioning: prime tre lettere della famiglia, un trattino, l''id del soggetto_ruolo dell''emittente (es. DDT-123, FAT-123). Deterministica e unica per costruzione, dentro i 16 caratteri della colonna; mai la sigla dell''emittente (varchar(32), troncata su una UNIQUE farebbe collidere due sigle simili). ⭐ Esce dalla primitiva vendite.fn_provision_registri il 2026-10-18 (20261019-08) perche'' serve tre volte: i registri delle famiglie, il registro standard delle fatture, e il RITROVARLO per collegargli le coppie (tipo documento, natura). R-BE-14, brief-db-processi-accensione-per-ambiente §6.14.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_provision_registri(
+                      p_emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE DEFAULT NULL,
+                      p_famiglia_documento          vendite.famiglie_documento.codice_interno%TYPE DEFAULT NULL)
+               RETURNS integer
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  -- un conteggio: niente colonna da ancorare
+                  v_creati integer;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare i registri di numerazione MANCANTI per le
+                  --   combinazioni (emittente, famiglia) che il filtro
+                  --   seleziona, e dire quanti ne ha creati. Per la FATTURA
+                  --   (dal 2026-10-18, R-BE-14) anche i COLLEGAMENTI delle
+                  --   coppie (tipo documento, natura) scoperte.
+                  --
+                  -- Filtri, entrambi opzionali:
+                  --   - p_emittente_soggetto_ruolo_id NULL = tutti gli
+                  --     emittenti;
+                  --   - p_famiglia_documento NULL = tutte le famiglie attive.
+                  --   ⭐ I due involucri passano uno dei due e lasciano NULL
+                  --   l'altro: e' l'unica differenza fra le due porte.
+                  --
+                  -- Regole:
+                  --   - le famiglie si LEGGONO dal catalogo, non si elencano:
+                  --     una famiglia nuova entra da sola;
+                  --   - un registro per famiglia, valido per tutte le utility;
+                  --   - idempotente sulla COPPIA (emittente, famiglia), quindi
+                  --     un registro creato a mano con un altro codice vale lo
+                  --     stesso e non ne nasce un secondo;
+                  --   - la FATTURA non ha UN registro ma uno per coppia
+                  --     (tipo documento, natura): nasce il registro STANDARD
+                  --     solo per l'emittente che ha coppie scoperte, e le
+                  --     coppie scoperte si collegano a lui. Il codice e'
+                  --     sempre quello di fn_codice_registro_provisionato.
+                  -- =========================================================
+
+                  -- 1) I registri. ⭐ UN solo INSERT per tutte le famiglie,
+                  --    FATTURA compresa: la regola di come nasce un registro
+                  --    (codice, descrizione, reset, default di forma) e' una,
+                  --    e cambiano solo le condizioni nel WHERE.
+                  INSERT INTO vendite.registri_fatturazione (
+                      codice, descrizione, famiglia_documento,
+                      emittente_soggetto_ruolo_id, utility_id,
+                      reset_policy, attivo, prefisso, lunghezza_numero, meta)
+                  SELECT
+                      vendite.fn_codice_registro_provisionato(fd.codice_interno, ef.soggetto_ruolo_id),
+                      'Registro ' || lower(fd.descrizione) || ' — ' || ef.codice,
+                      fd.codice_interno,
+                      ef.soggetto_ruolo_id,
+                      NULL,
+                      'ANNUALE',
+                      TRUE,
+                      -- ⭐ IL DEFAULT VIENE DAL CATALOGO DELLE FAMIGLIE: prefisso
+                      --   e lunghezza sono proprieta' del TIPO DOCUMENTO, e `fd`
+                      --   E' il tipo documento. Il registro tiene l'EFFETTIVO,
+                      --   cioe' l'override del sezionale.
+                      fd.prefisso_default,
+                      fd.lunghezza_default,
+                      -- ⚠️ `origine` non dice CHI ha chiamato ma QUALE
+                      --   meccanismo ha creato la riga: le righe nate dalle due
+                      --   porte sono la stessa cosa, e distinguerle inviterebbe
+                      --   a trattarle diversamente.
+                      jsonb_build_object('origine', 'C2-12', 'famiglia', fd.codice_interno)
+                    FROM anagrafiche.emittenti_fiscali ef
+                   CROSS JOIN vendite.famiglie_documento fd
+                   WHERE (p_emittente_soggetto_ruolo_id IS NULL
+                          OR ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                     AND (p_famiglia_documento IS NULL
+                          OR fd.codice_interno = p_famiglia_documento)
+                     AND fd.attivo IS TRUE
+                     AND (
+                           -- a) una famiglia a registro unico: manca il suo
+                           --    registro (idempotente sulla coppia emittente,
+                           --    famiglia, qualunque sia il codice).
+                           (fd.codice_interno <> 'FATTURA'
+                            AND NOT EXISTS (
+                                  SELECT 1
+                                    FROM vendite.registri_fatturazione r
+                                   WHERE r.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
+                                     AND r.famiglia_documento          = fd.codice_interno))
+                           OR
+                           -- b) la FATTURA: l'emittente ha coppie scoperte e
+                           --    non ha ancora il registro STANDARD. ⚠️ Lo
+                           --    standard si ritrova dal CODICE: se esiste ma
+                           --    e' spento non se ne fa un altro (la UNIQUE sul
+                           --    codice lo vieterebbe, ed e' giusto: spegnerlo
+                           --    e' una scelta).
+                           (fd.codice_interno = 'FATTURA'
+                            AND ef.soggetto_ruolo_id IN (
+                                  SELECT c.emittente_soggetto_ruolo_id
+                                    FROM vendite.fn_coppie_fattura_scoperte(p_emittente_soggetto_ruolo_id) c)
+                            AND NOT EXISTS (
+                                  SELECT 1
+                                    FROM vendite.registri_fatturazione r
+                                   WHERE r.codice = vendite.fn_codice_registro_provisionato(
+                                                        fd.codice_interno, ef.soggetto_ruolo_id))));
+
+                  GET DIAGNOSTICS v_creati = ROW_COUNT;
+
+                  IF p_famiglia_documento IS NOT NULL AND p_famiglia_documento <> 'FATTURA' THEN
+                      RETURN v_creati;
+                  END IF;
+
+                  -- 2) Le coppie scoperte si collegano al registro standard
+                  --    del loro emittente, se e' acceso. ⭐ Le coppie le dice
+                  --    lo STESSO lettore del passo 1: nessuna seconda regola.
+                  INSERT INTO vendite.tipi_doc_fiscale_registri (
+                      tipo_doc_fiscale_id, natura_doc_id, registro_id, meta)
+                  SELECT c.tipo_doc_fiscale_id,
+                         c.natura_doc_id,
+                         r.id,
+                         jsonb_build_object('origine', 'C2-12')
+                    FROM vendite.fn_coppie_fattura_scoperte(p_emittente_soggetto_ruolo_id) c
+                    JOIN vendite.registri_fatturazione r
+                      ON r.codice = vendite.fn_codice_registro_provisionato(
+                                        'FATTURA', c.emittente_soggetto_ruolo_id)
+                     AND r.emittente_soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
+                     AND r.famiglia_documento = 'FATTURA'
+                     AND r.utility_id IS NULL
+                     AND r.attivo IS TRUE;
+
+                  RETURN v_creati;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_provision_registri(
+                      anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                      vendite.famiglie_documento.codice_interno%TYPE)
+              IS 'PRIMITIVA del provisioning: crea i registri di numerazione MANCANTI per le combinazioni (emittente, famiglia) selezionate dai due filtri — entrambi opzionali, NULL = tutti — e torna quanti REGISTRI ha creato. ⛔ ESISTE PER NON AVERE DUE COPIE della regola di come nasce un registro: il codice (vendite.fn_codice_registro_provisionato), la descrizione, il reset ANNUALE e i default di forma presi dalla famiglia sono un CONTRATTO. Sopra ci stanno due involucri sottili: fn_provision_registri_emittente (trigger su anagrafiche.emittenti_fiscali) e fn_provision_registri_famiglia (la madre che crea una famiglia, e dal 2026-10-18 i trigger su config.tipi_doc_fiscale e config.nature_doc_fiscale per la FATTURA). ⭐ IDEMPOTENTE: sulla COPPIA (emittente, famiglia) per le famiglie a registro unico; sulle coppie (tipo documento, natura) scoperte per la FATTURA. ⭐ I DEFAULT DI FORMA VENGONO DAL CATALOGO DELLE FAMIGLIE. ⭐ Rev 2026-10-18 (20261019-08, R-BE-14, D-14a … D-14d di Tid): la FATTURA non e'' piu'' esclusa. Per ogni emittente con coppie (tipo documento attivo, natura attiva) scoperte — vendite.fn_coppie_fattura_scoperte, che chiama fn_lookup_registro_id — nasce UN registro delle fatture STANDARD (codice FAT-<emittente>, utility NULL) e le coppie scoperte si collegano a lui in vendite.tipi_doc_fiscale_registri. Un emittente configurato a mano lo riceve solo per le coppie che non ha; il CRUD dei registri divide lo standard quando serve. Un registro standard SPENTO non si ricollega ne'' si rifa'': spegnerlo e'' una scelta, e la coppia resta scoperta. I collegamenti non entrano nel numero restituito. Prima di allora nessun emittente nasceva col registro delle fatture e il primo documento fiscale si fermava su fn_get_registro_id. ⚠️ SECURITY DEFINER come l''originale: scrive sui registri leggendo gli emittenti, e la puo'' chiamare un trigger nel contesto di chi crea l''emittente. Piano: brief-be-fe-crud-registri-di-numerazione 11.6 (DB-4); brief-db-processi-accensione-per-ambiente §6.14.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback: il corpo di 20260901-18 rifarebbe nascere gli
+              -- emittenti senza registro delle fatture (R-BE-14). Se serve
+              -- davvero, ri-applicare 20260901-18; poi
+              -- DROP FUNCTION vendite.fn_codice_registro_provisionato.
+              SELECT 1;

@@ -51,9 +51,11 @@
 --   16) offerta: togliere l'erogazione a un'AGGIUNTA e' rifiutato
 --   17) offerta: canale CONSTRAINT = il codice
 --   18) offerta: canale COLUMN = tipo_erogazione
---   19) R4: il contratto attivato si lista con l'OVERRIDE
+--   19) D-2 (20261013-24): l'OVERRIDE con erogazione ereditata CONSUMO non si
+--       lista: il push del contratto manda solo le UNA_TANTUM
 --   20) R4: l'ESCLUSIONE non si lista (non si fattura)
---   21) R4: tipo_consumo e' l'erogazione della riga (ereditata), senza ripiego su CANONE
+--   21) l'erogazione dell'OVERRIDE e' quella ereditata e NON e' UNA_TANTUM:
+--       e' cio' che rende il 19 un'esclusione per erogazione, non una coincidenza
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -87,8 +89,10 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
+-- Un listino TIPIZZATO accetta solo articoli della sua tipologia: nascono con quella.
 CREATE TEMP TABLE tmp_ero_art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-ERO-' || v.sigla) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-ERO-' || v.sigla,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_ero_listino)) AS id
   FROM (VALUES ('A'), ('C'), ('E')) AS v(sigla);
 
 -- Scopo: id di un articolo della fixture per sigla.
@@ -96,11 +100,6 @@ CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
 RETURNS uuid LANGUAGE sql STABLE AS $fx$
   SELECT id FROM tmp_ero_art WHERE sigla = p_sigla;
 $fx$;
-
--- Un listino TIPIZZATO accetta solo articoli della sua tipologia.
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM tmp_ero_listino)
- WHERE id IN (SELECT id FROM tmp_ero_art);
 
 -- A e C a listino; E no: e' l'articolo dell'AGGIUNTA, che sul contratto deve
 -- stare fuori listino (guard _a10_guard_aggiunta_fuori_listino).
@@ -341,12 +340,17 @@ SELECT is(
 -- ============================================================
 -- 19..21 — R4: il lister del push
 -- ============================================================
--- Sul contratto restano A (OVERRIDE, UNA_TANTUM, test 8) e C (ESCLUSIONE, test
--- 7). Si attiva — la strada di un contratto vero: righe in bozza, poi ATTIVO —
--- e si chiede il push del solo contratto della fixture.
+-- Sul contratto restano A (OVERRIDE, test 8) e C (ESCLUSIONE, test 7). Si
+-- attiva — la strada di un contratto vero: righe in bozza, poi ATTIVO — e si
+-- chiede il push del solo contratto della fixture.
 -- ⭐ L'erogazione di A e' quella EREDITATA dalla tipologia del listino (rev
---   2026-10-07): non CANONE, che era il vecchio ripiego del lister — il test 21
---   passerebbe per coincidenza.
+--   2026-10-07), CONSUMO.
+-- 🔴 rev 2026-10-13 (20261013-24, D-2 di Tid): il push del contratto manda
+--   solo le righe UNA_TANTUM; CANONE, ORARIO e CONSUMO aspettano la loro
+--   generazione (brief-db-contratto-righe-periodiche-in-commessa). Il 19 voleva
+--   A in lista e il 21 la sua erogazione in meta: ora A non si lista. La
+--   proiezione in meta.tipo_erogazione la tengono vendite/test-push-contratto-
+--   dalla-madre-v1 (3) e vendite/test-fn-list-contratti-da-pushare-v1 (3, 5).
 UPDATE vendite.contratti
    SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')
  WHERE id = (SELECT id FROM tmp_ero_contratto);
@@ -357,23 +361,19 @@ SELECT * FROM vendite.fn_list_contratti_da_pushare(
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_ero_push WHERE articolo_id = pg_temp.art('A')),
-    1,
-    '19) R4: il contratto attivato si lista con l''OVERRIDE');
+    0,
+    '19) D-2: l''OVERRIDE con erogazione ereditata CONSUMO non si lista (solo UNA_TANTUM)');
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_ero_push WHERE articolo_id = pg_temp.art('C')),
     0,
     '20) R4: l''ESCLUSIONE non si lista: non si fattura');
 
-SELECT is(
-    (SELECT p.tipo_consumo::text
-       FROM tmp_ero_push p
-      WHERE p.articolo_id = pg_temp.art('A')
-        AND p.tipo_consumo IS DISTINCT FROM 'CANONE'),
-    (SELECT r.tipo_erogazione::text
+SELECT ok(
+    (SELECT r.tipo_erogazione IS NOT NULL AND r.tipo_erogazione::text <> 'UNA_TANTUM'
        FROM vendite.contratti_righe r
       WHERE r.contratto_id = (SELECT id FROM tmp_ero_contratto) AND r.articolo_id = pg_temp.art('A')),
-    '21) R4: tipo_consumo e'' l''erogazione della riga (ereditata, non CANONE), senza ripiego');
+    '21) l''erogazione dell''OVERRIDE e'' quella ereditata, e non e'' UNA_TANTUM: il 19 esclude per erogazione');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_apply_automazione_overlap(p_exec_mode text, p_dry_run boolean
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_apply_automazione_overlap(p_exec_mode text, p_dry_run boolean)
  RETURNS void
@@ -278,6 +280,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_apply_automazione_overlap(p_exec_mode text, p_dry_run boolean)
 IS 'Applica i vincoli EXCLUDE GiST in base a dbops.automazione_overlap. Chiavi: key_columns (colonne validate+quotate) + key_expressions (espressioni as-is). EXCLUDE parziali via where_predicate (NULL = totale). Dual codepath periodo (range_col o valido_dal/al). Idempotente per EXCLUDE/temporal UNIQUE PG18. key_expressions/where_predicate sono DDL di fiducia DBA-only.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

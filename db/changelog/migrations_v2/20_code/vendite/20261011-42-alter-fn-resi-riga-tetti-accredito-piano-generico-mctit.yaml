@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I TETTI DELL'ACCREDITO SI PIANIFICANO UNA VOLTA: plan_cache_mode = force_generic_plan
+#   vendite.fn_resi_riga_tetti_accredito(bigint, bigint)
+#   Brief: brief-db-plancache-funzioni-con-query-incorporate §5bis (D-3a,
+#   decisione di Tid).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   La funzione e' SQL SECURITY DEFINER con SET search_path, quindi non si
+#   incorpora mai nel chiamante: le sue query si pianificano dentro di lei.
+#   Al suo interno legge vendite.fn_resi_da_accreditare (SQL, si incorpora:
+#   una query enorme) con un seme che dipende dal parametro p_resi_riga_id.
+#   In modo `auto` la plancache confronta i costi STIMATI, il piano generico
+#   le sembra piu' caro, e lei ripianifica a ogni chiamata. La chiama il guard
+#   del ponte (trgfn_resi_accrediti_guard) a ogni riga scritta su
+#   vendite.resi_righe_accrediti.
+#   Fatti datati 2026-10-11, dbdev come app: 50 chiamate su argomenti veri,
+#   auto 7,1 ms, generico 1,5 ms a chiamata.
+#
+# ── LA CURA, E PERCHE' QUI ──────────────────────────────────────────
+#   ALTER FUNCTION … SET plan_cache_mode = force_generic_plan sulla funzione
+#   stessa: il GUC vale durante la sua chiamata e torna com'era all'uscita,
+#   quindi tocca solo le sue query. Provato su una copia pg_temp in sessione
+#   `auto`: la clausola su una SQL non incorporata funziona in PG18.
+#   ⛔ NON sul trigger trgfn_resi_accrediti_guard: il generico acceso su tutta
+#   la finestra dell'INSERT del ponte (guard e trigger della tabella) peggiora
+#   il verbo — qualche istruzione di quel percorso sta meglio coi piani
+#   personalizzati.
+#   ⛔ NON sul verbo vendite.fn_accredita_riga_reso: imporrebbe il generico a
+#   tutto il verbo, compresa quella finestra (decisione di Tid, D-3a).
+#   ⭐ ALTER, non CREATE OR REPLACE: corpo, firma, SECURITY DEFINER e
+#   search_path restano quelli applicati.
+#
+# ── ⛔ PROPRIETA' INVISIBILE NEL CORPO ───────────────────────────────
+#   Come ROWS e COST: un CREATE OR REPLACE FUNCTION senza la clausola
+#   `SET plan_cache_mode = force_generic_plan` la perde, senza errore e con
+#   risultati identici. Chi riscrive la funzione la ripete, accanto a
+#   `SET search_path`. Presidio:
+#   db/pgtap/script/test-plan-cache-mode-piano-generico-v1.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-42-alter-fn-resi-riga-tetti-accredito-piano-generico-mctit.yaml
+
+  - changeSet:
+      id: 20261011-42-alter-fn-resi-riga-tetti-accredito-piano-generico
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fn_resi_riga_tetti_accredito: SET plan_cache_mode = force_generic_plan. In modo auto
+        la plancache ripianificava a ogni chiamata la coda accrediti incorporata: 7,1 contro 1,5 ms a
+        chiamata. Sulla funzione e non sul guard ne' sul verbo: il generico su tutta la finestra
+        dell'INSERT del ponte peggiora. ALTER: corpo, DEFINER e search_path restano.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'fn_resi_riga_tetti_accredito';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ Si perde a ogni CREATE OR REPLACE che non ripete la clausola SET:
+              --    presidio in script/test-plan-cache-mode-piano-generico-v1.sql.
+              ALTER FUNCTION vendite.fn_resi_riga_tetti_accredito(bigint, bigint)
+                SET plan_cache_mode = force_generic_plan;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER FUNCTION vendite.fn_resi_riga_tetti_accredito(bigint, bigint) RESET plan_cache_mode;

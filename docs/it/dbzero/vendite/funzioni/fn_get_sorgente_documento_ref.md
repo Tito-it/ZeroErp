@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_sorgente_documento_ref(p_sorgente_tipo_id bigint, p_sorge
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_sorgente_documento_ref(p_sorgente_tipo_id bigint, p_sorgente_uid text)
  RETURNS TABLE(documento_id bigint, documento_numero text)
@@ -153,6 +155,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_sorgente_documento_ref(p_sorgente_tipo_id bigint, p_sorgente_uid text)
 IS 'Il documento di origine di una riga a sorgente polimorfa, in DUE informazioni e UNA lettura: `documento_id` (l''id numerico, per l''azione «apri documento sorgente») e `documento_numero` (il numero che l''operatore legge — DDT0010839, ORD0000227, RESO0005122). Sostituisce vendite.fn_get_sorgente_documento_id, che faceva la sola prima meta'': una gemella per l''etichetta avrebbe voluto DUE EXECUTE per riga di lista e DUE copie della stessa regola di risoluzione. 🔴 La traduzione non e'' banale perche'' la chiave e'' polimorfa per costruzione: con config.sorgenti.key_selector = ''id'' il campo sorgente_uid contiene gia'' l''id in forma testuale, con ''uid'' contiene un UUID e l''id va LETTO sulla target_table — e nel dato reale (misurato 2026-08-16) 88 righe su 88 di commesse_attivita portano un UUID, ordini e DDT compresi. ⭐ L''ETICHETTA SI DICHIARA, NON SI INDOVINA: la colonna arriva da config.sorgenti.label_selector, gemella di key_selector — `numero` su preventivi, contratti, ordini, ddt, resi e fatture, `codice` su offerte commerciali e commesse. Un COALESCE(numero, codice) funzionerebbe oggi e diventerebbe una colonna vuota in silenzio alla terza convenzione. label_selector NULL (ATTIVITA, ATTIVITA_CONSUMI, le cinque *_RIGA) = nessun numero leggibile: `documento_numero` resta NULL e NON spegne `documento_id`. ⭐ RESTITUISCE SEMPRE UNA RIGA, anche tutta a NULL: una RETURNS TABLE che a volte torna zero righe funziona con LEFT JOIN LATERAL e CANCELLA la riga chiamante se un domani qualcuno scrive CROSS JOIN LATERAL per distrazione. ⚠️ NON SOLLEVA, ed e'' la differenza con vendite.fn_link_commessa_sorgente: quella scrive un legame e davanti a una chiave irrisolvibile alza E_SORG_NORM_NON_RISOLTA, perche'' un legame sbagliato e'' peggio di nessun legame; questa risponde a una lista, dove una sorgente non risolta deve solo far sparire l''azione — come per le voci manuali, gli oneri e le rettifiche, che un documento a monte non ce l''hanno per progetto. ⚠️ SECURITY INVOKER: le tabelle di destinazione hanno la RLS operatori, quindi NULL significa «non risolvibile O non visibile a chi chiede», non «non esiste». Richiesta BE del 2026-08-20 (punto 2), brief-design-note-credito-resi §40.1.4. ⭐ rev 2026-10-05 (20261005-26): la chiave si riconosce con i building block script.fn_sorgente_chiave_uuid / _id (forma CANONICA, mai un errore), la stessa regola del guard della sorgente polimorfa, del rubinetto fn_link_commessa_sorgente e dei lettori fn_stato_sorgente / vw_pratica_doc_sorgente. Prima una copia della regex, piu'' larga (maiuscole, zeri davanti), e un cast che su un id fuori range sollevava 22003 dentro una lista: ora quella chiave e'' semplicemente non risolta. Una chiave non canonica resta non risolta qui come altrove.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -87,12 +87,14 @@ WITH ins AS (
 )
 SELECT id AS profilo_id FROM ins;
 
-INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, identita_digitale_id, attivo)
-SELECT (SELECT profilo_id FROM _t_profilo), idg.id, TRUE
-  FROM anagrafiche.identita_digitali idg
+DO $lega$
+BEGIN
+    PERFORM config.fn_lega_profilo_identita((SELECT profilo_id FROM _t_profilo), idg.id) FROM anagrafiche.identita_digitali idg
  WHERE idg.auth_user_id = NULLIF(current_setting('app.current_user_id', true), '')::integer
    AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
    AND idg.attivo;
+END
+$lega$;
 
 CREATE TEMP TABLE _t_ctx AS
 SELECT ld.codice                                                         AS lista_codice,

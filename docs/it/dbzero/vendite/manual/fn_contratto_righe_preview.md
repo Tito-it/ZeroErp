@@ -153,7 +153,7 @@ Uniforme tra Parte 1b (sorgente listino) e Parte 2b (sorgente contratto_righe_co
 | `quantita` | Snapshot quantita della riga persistita; valorizzata solo per righe con eccezione (OVERRIDE/ESCLUSIONE/AGGIUNTA), NULL per DA_LISTINO puro |
 | `qta_operativa` | Quantita in UoM operativa; valorizzata solo per righe con eccezione, NULL per DA_LISTINO puro |
 | `tipo_erogazione` | `CANONE` / `UNA_TANTUM` / `ORARIO` / `CONSUMO`; valorizzato solo per righe con eccezione, NULL per DA_LISTINO puro |
-| `fonte_quantita_attesa` | `FISSA` / `MANUALE` / `TIMESHEET` / `LETTURE` / `DERIVATA_COMPONENTI`; valorizzata solo per righe con eccezione, NULL per DA_LISTINO puro |
+| `fonte_quantita_attesa` | `FISSA` / `MANUALE` / `TIMESHEET` / `LETTURE` (`DERIVATA_COMPONENTI` ritirata il 2026-10-21); valorizzata solo per righe con eccezione, NULL per DA_LISTINO puro |
 | `riga_key` / `azioni` / `escludi_blocco_codice` | Chiave di riga, verbi ammessi e motivo per cui «Escludi» è spento: vedi rev 2026-09-28 |
 | `ordine` | `contratti_righe.ordine` della riga persistita; NULL per DA_LISTINO puro |
 | `uom_operativa_id` | `contratti_righe.uom_operativa_id` così com'è scritto (NULL per DA_LISTINO puro, e per una riga senza quantità); è il dato che il form di modifica rimanda al `PATCH` |
@@ -163,7 +163,7 @@ Uniforme tra Parte 1b (sorgente listino) e Parte 2b (sorgente contratto_righe_co
 - **Colonne qta/tipo/fonte NULL per DA_LISTINO**: nelle parti 1a/1b, `quantita`, `qta_operativa`, `tipo_erogazione` e `fonte_quantita_attesa` vengono da `cr.*` via LEFT JOIN. Quando non c'è eccezione (DA_LISTINO puro) il JOIN non trova righe e i campi sono NULL. Per OVERRIDE/ESCLUSIONE il JOIN trova la riga eccezione e i campi sono valorizzati. Per AGGIUNTA (parti 2a/2b) il JOIN è diretto e i campi sono sempre valorizzati. Il consumer FE deve gestire NULL come "usa il default listino".
 - **`STABLE`**: nessun side effect, ottimizzabile dal planner per chiamate multiple nella stessa transazione.
 - **Duplicazioni**: mutualmente esclusivi per costruzione. 1a usa `is_composito=FALSE` da listino, 1b usa padri compositi da `listini_righe_componenti`, 2a/2b filtrano su `tipo_eccezione=AGGIUNTA` con rispettivo `is_composito`. Non ci sono doppioni tra le parti.
-- **AGGIUNTA su articolo già in listino**: la guard `script.trgfn_righe_guard_aggiunta_fuori_listino` lo previene in fase di INSERT. La fn non duplica questo check.
+- **AGGIUNTA su articolo già in listino**, e OVERRIDE o ESCLUSIONE fuori listino: li previene in fase di INSERT la check di riga `script.fn_check_articolo_riga` (guard `script.trgfn_righe_guard_articolo_ammesso`, dal 2026-10-13). La fn non duplica questo check.
 - **Contratto inesistente**: se `p_contratto_id` non corrisponde a nessun contratto, la fn ritorna zero righe (non raise).
 
 

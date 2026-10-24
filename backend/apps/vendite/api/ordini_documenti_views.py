@@ -23,6 +23,7 @@ from typing import Any
 
 from rest_framework.request import Request
 
+from apps.config.sorgenti import SORGENTE_ORDINE_VENDITA
 from apps.documenti.api.sorgente_documenti_views import (
     build_documenti_sorgente_views,
 )
@@ -32,10 +33,6 @@ from apps.documenti.services.document_generation_service import (
 from apps.vendite.db.ordini_repository import OrdiniRepository
 from apps.vendite.services import ordini_service
 
-# Codice sorgente ORDINE_VENDITA -> id risolto runtime via repo (memoria
-# feedback_no_hardcoded_ids). Allineato a config.sorgenti.codice +
-# documenti.tipi_documento_output.codice + template context_builder_code.
-_CODICE_SORGENTE_ORDINE = "ORDINE_VENDITA"
 
 
 # Scopo: Closure di dominio per il factory: contesto minimo (id, uid,
@@ -60,7 +57,7 @@ def _emetti_call(request: Request, ordine_id: int) -> dict[str, Any]:
 
 _views = build_documenti_sorgente_views(
     schema_prefix="Ordine",
-    sorgente_codice=_CODICE_SORGENTE_ORDINE,
+    sorgente_codice=SORGENTE_ORDINE_VENDITA,
     not_found_message="Ordine non trovato.",
     emittente_message="Emittente fiscale non risolto per l'ordine.",
     get_entity=_get_entity,

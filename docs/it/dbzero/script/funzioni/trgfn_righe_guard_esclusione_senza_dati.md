@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_righe_guard_esclusione_senza_dati()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_righe_guard_esclusione_senza_dati()
  RETURNS trigger
@@ -63,6 +65,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_righe_guard_esclusione_senza_dati()
 IS 'Guard: una riga ESCLUSIONE di vendite.contratti_righe o di vendite.offerte_commerciali_eccezioni non porta dati di vendita: prezzo_unitario, quantita, qta_operativa, uom_operativa_id, factor_to_base, tipo_erogazione, fonte_quantita_attesa, periodicita, generazione_canone, competenza_canone restano vuoti (E_RIGA_ESCLUSIONE_CON_DATI, DATO_ERRATO, nessun valore). campo = il primo valorizzato nell''ordine dell''elenco (canale COLUMN), colonne = tutti i valorizzati. Stessa regola e stesso elenco dei CHECK chk_contrighe_esclusione_senza_dati / chk_offerte_eccezioni_esclusione_senza_dati, che restano la rete. TG_ARGV[0] = colonna del padre (contratto_id | offerta_id), solo per il contesto. Trigger _a10_ BEFORE INSERT WHEN (NEW.tipo_eccezione = ''ESCLUSIONE''): l''UPDATE di un''esclusione lo rifiuta il guard _a05_, il cambio di tipo il lock di colonna, ciascuno col suo rimedio. Nasce il 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende (R1, R8; decisione di Tid: «l''esclusione e'' solo non si vende»).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

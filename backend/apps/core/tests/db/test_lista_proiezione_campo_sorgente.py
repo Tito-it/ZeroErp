@@ -770,7 +770,7 @@ _ESERCIZI: dict[str, Esercizio] = {
             stato_esecuzione=None,
             limit=1,
             offset=0,
-            **_ordine(ob, od, "id", chiavi=("sort_by", "sort_dir")),
+            **_ordine(ob, od),
         ),
     ),
     # ⭐ La scheda «Presi in carico» (brief-db-esito-gruppo-lotto): i documenti

@@ -65,3 +65,23 @@ nella capability solo le colonne «sempre» (valide anche in bozza); dopo vengon
 lock blocca nello stato. Fuori bozza `can_edit_testata` è vero negli stati in cui una colonna
 resta aperta (le note di un documento vivo, i dati di trasporto della bolla), falso a documento
 chiuso. Brief `brief-db-testata-dopo-emissione`, fase 2.
+
+## Rev 2026-10-11 — il cliente e gli indirizzi (brief-db-testata-dopo-emissione §11)
+
+* **Il cliente (R-DB-1).** `billing_account_id` non è più fermo su ogni bolla. Lo è, anche in
+  bozza, solo se un vincolo lo tiene: la bolla nasce da un ordine o da un reso, o evade già
+  righe d'ordine. Il vincolo lo dice `vendite.fn_ddt_vincoli_cliente`, la stessa funzione del
+  guard. La bolla senza sorgente riceve il cliente in bozza.
+* **Gli indirizzi (R-DB-3).** `can_edit_indirizzi`: vero se gli indirizzi si possono scrivere
+  nello stato della bolla, letto dal lock montato su `vendite.ddt_indirizzi` (in bozza sì,
+  fuori no).
+
+### ⛔ Si pianifica una volta (`plan_cache_mode`, changeSet 20261010-83)
+
+La funzione porta `SET plan_cache_mode = force_generic_plan`: chiama con un
+parametro la diagnosi del push, una funzione SQL che si incorpora in una query
+grande, e in modo `auto` la plancache la ripianificava a ogni chiamata.
+⚠️ È una proprietà **invisibile nel corpo**: un `CREATE OR REPLACE` che non la
+ripete la perde, senza errore e con gli stessi risultati. Presidio:
+`db/pgtap/script/test-plan-cache-mode-piano-generico-v1.sql`.
+

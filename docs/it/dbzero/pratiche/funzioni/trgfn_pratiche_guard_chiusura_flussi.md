@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_pratiche_guard_chiusura_flussi()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_chiusura_flussi()
  RETURNS trigger
@@ -91,6 +93,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_pratiche_guard_chiusura_flussi()
 IS 'BEFORE UPDATE OF stato_id: blocca la transizione a CHIUSA se restano (a) flussi obbligatori non completati ancora percorribili (fn_check_chiusura_pratica, err 485) o (b) flussi istanziati non terminali (fn_pratica_flussi_aperti, err 501, D1). Ramo morto di un bivio non blocca. Stesso predicato dell''auto-chiusura.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

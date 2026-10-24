@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_sistemazione_di_contabile(p_contabile_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_sistemazione_di_contabile(p_contabile_id bigint)
  RETURNS bigint
@@ -58,6 +60,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_sistemazione_di_contabile(p_contabile_id bigint)
 IS 'Dice se una distinta contabile e'' nata da un atto di sistemazione, e quale: un id, fuori dalla row security. ⭐ Esiste perche'' girando il verso del legame (D15-e) la domanda e'' passata da «guarda una colonna della riga» a «leggi un''altra tabella» — e pagamenti.sistemazioni ha la RLS. 🔴 Il varco che chiude e'' raggiungibile: la contabile di una compensazione e'' una distinta INTERNA, e quelle sono visibili a tutti gli operatori — quindi un operatore di un''altra azienda potrebbe agganciarla a un proprio lotto di fatturazione, e un guard che leggesse l''atto sotto RLS non vedrebbe niente e tacerebbe. ⚠️ Non allarga niente: chi chiede scopre solo che quella distinta e'' impegnata. ⚠️ Dipende dalla RLS abilitata e NON forzata.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from django.db import connection
@@ -44,10 +45,11 @@ from apps.core.services.list_helpers import (
     validate_order_params,
 )
 from apps.core.services.payload_helpers import translate_db_errors
-from apps.core.services.service_errors import E_VALIDATION_INPUT
+from apps.core.services.service_errors import E_CONFIG_MANCANTE, E_VALIDATION_INPUT
 from apps.core.services.sveglie import sveglia_di_processo, sveglie_di_processo
 
 _FN = "core.processi_service"
+logger = logging.getLogger(__name__)
 E_VALIDATION = "E_CORE_VALIDATION"
 # Il codice del payload malformato di un VERBO (unit assente o non del
 # processo) e' `E_VALIDATION_INPUT` (da `service_errors`): quello che il resto
@@ -61,6 +63,20 @@ E_VALIDATION = "E_CORE_VALIDATION"
 #    esiste», che e' un'altra cosa — e un messaggio che parla del lavoro
 #    sbagliato manda a cercare nel posto sbagliato.
 E_NOT_FOUND = "E_PROCESSO_NON_TROVATO"
+# I limiti della scelta a mano: li solleva il guard di `dbops.processi_accensione`
+# (codici a catalogo); qui servono per la capability e per il motivo del gesto
+# «torna al default», che a DB non passa dal guard (e' una DELETE).
+E_PROCESSO_NON_SPEGNIBILE = "E_PROCESSO_NON_SPEGNIBILE"
+E_PROCESSO_SENZA_SVEGLIA = "E_PROCESSO_SENZA_SVEGLIA"
+E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE = "E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE"
+# Le chiavi i18n del motivo per cui «Accendi» e' spento (il tooltip del drawer,
+# `bloccoAttivo(accensione, 'can_accendere', 'can_accendere')`).
+_PREFISSO_ACCENDI_BLOCCO = "amministrazione.processi.accendi_blocco."
+ACCENDI_REASON_KEY_PER_CODICE: dict[str, str] = {
+    E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE: _PREFISSO_ACCENDI_BLOCCO + "non_accendibile_in_produzione",
+    E_CONFIG_MANCANTE: _PREFISSO_ACCENDI_BLOCCO + "non_decidibile",
+}
+E_MOTIVO_OBBLIGATORIO = "E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO"
 
 # Vocabolari del registro: sono gli stessi `CHECK` di `dbops.processi`.
 # ⚠️ Qui servono a rifiutare un FILTRO senza senso con un 400 parlante invece
@@ -177,7 +193,16 @@ class ProcessiService:
         #    la capability «Esegui ora» (piano §2.5). Il dichiarato e' cio' che
         #    il client MOSTRA; la capability e' cio' su cui DECIDE — e la
         #    produce lo stesso predicato con cui `esegui_ora` rifiuta.
-        dettaglio["sveglie"] = self._sveglie_con_capability(codice)
+        # ⭐ L'accensione del processo su questa installazione (brief-db-
+        #    processi-accensione-per-ambiente §6.0 punto 5): lo stato effettivo
+        #    e da dove viene. E' del PROCESSO, non della sveglia: viaggia una
+        #    volta, e le capability delle sveglie la leggono da qui — la STESSA
+        #    lettura con cui `esegui_ora` rifiuta.
+        accensione = self._repo.accensione_processo(codice)
+        dettaglio["accensione"] = _con_capability_accensione(accensione)
+        dettaglio["sveglie"] = self._sveglie_con_capability(
+            codice, acceso=accensione["acceso"] if accensione else None,
+        )
         return dettaglio
 
     # Scopo: la riga del processo dal registro, o il 404 di dominio. E' il
@@ -199,7 +224,9 @@ class ProcessiService:
     #        la terna `can_esegui_ora*` per ciascuna. I lavori vivi si leggono
     #        con UNA query per tutte le unit del processo (`= ANY`), non una
     #        per riga.
-    def _sveglie_con_capability(self, processo_codice: str) -> list[dict[str, Any]]:
+    def _sveglie_con_capability(
+        self, processo_codice: str, *, acceso: bool | None,
+    ) -> list[dict[str, Any]]:
         sveglie = sveglie_di_processo(processo_codice)
         if not sveglie:
             return []
@@ -208,7 +235,7 @@ class ProcessiService:
             chiavi=[chiave_idempotenza(s.unit) for s in sveglie],
         )
         return [
-            riga_sveglia(s, lavoro_vivo=vivi.get(chiave_idempotenza(s.unit)))
+            riga_sveglia(s, acceso=acceso, lavoro_vivo=vivi.get(chiave_idempotenza(s.unit)))
             for s in sveglie
         ]
 
@@ -265,7 +292,11 @@ class ProcessiService:
         vivi = self._coda.lavori_vivi_per_chiave(
             job_type=JOB_TYPE_ESEGUI_PROCESSO, chiavi=[chiave],
         )
-        motivi = motivi_esegui_ora(sveglia, lavoro_vivo=vivi.get(chiave))
+        motivi = motivi_esegui_ora(
+            sveglia,
+            acceso=self._repo.acceso_processo(codice),
+            lavoro_vivo=vivi.get(chiave),
+        )
         if motivi:
             raise motivi[0].come_errore(unit=unit)
 
@@ -280,6 +311,68 @@ class ProcessiService:
             origine=ORIGINE_API,
         )
         return {"job_id": job_id, "stato": "PENDING", "unit": unit}
+
+    # Scopo: La SCELTA A MANO sull'accensione di un processo, su questa
+    #        installazione (brief-db-processi-accensione-per-ambiente §6.0
+    #        punto 5): `acceso` True/False la scrive, None la toglie e torna il
+    #        default per ambiente. Ritorna l'accensione rinfrescata (la stessa
+    #        forma del dettaglio), cosi' il drawer non deve ricalcolare niente.
+    #
+    #        Nell'ordine, e ogni rifiuto prima di scrivere:
+    #          1. `acceso` presente e booleano o null (400, campo `acceso`):
+    #             null va DETTO — un campo assente non vale «torna al default»;
+    #          2. `motivo` obbligatorio per TUTTI e tre i gesti (400, campo
+    #             `motivo`). Per accendere e spegnere lo pretende anche il guard
+    #             della tabella; per «torna al default» il DB cancella la riga e
+    #             non lascia traccia, quindi il motivo e' l'unica cosa che resta
+    #             (nel log applicativo, sotto) — vedi la nota ⚠️;
+    #          3. il processo esiste (404);
+    #          4. il verbo del DB: «non spegnibile» e «senza sveglia» li rifiuta
+    #             il guard, col loro codice; qui si traducono.
+    # ⚠️ «Chi» lo scrive il DB in `user_update`, ma oggi e' `CURRENT_USER`
+    #    (il ruolo PostgreSQL, sempre `zeroerp_app`), non la persona: e' una
+    #    richiesta aperta al team DB. Finche' non c'e', la persona e il motivo
+    #    stanno nel log applicativo di questo gesto, che e' anche l'unica
+    #    traccia di «torna al default».
+    def imposta_accensione(
+        self, codice: str, payload: dict[str, Any], *, attore: str,
+    ) -> dict[str, Any]:
+        fn = f"{_FN}.imposta_accensione"
+        ErrorManager.require(
+            "acceso" in payload and (payload["acceso"] is None or isinstance(payload["acceso"], bool)),
+            code=E_VALIDATION_INPUT,
+            message="Indicare se accendere (true), spegnere (false) o tornare al default (null).",
+            context={"field": "acceso"},
+            function_name=fn,
+        )
+        acceso: bool | None = payload["acceso"]
+        motivo_grezzo = payload.get("motivo")
+        motivo = motivo_grezzo.strip() if isinstance(motivo_grezzo, str) else ""
+        ErrorManager.require(
+            bool(motivo),
+            code=E_MOTIVO_OBBLIGATORIO,
+            message="Indicare il motivo della scelta.",
+            context={"field": "motivo"},
+            function_name=fn,
+        )
+        self._require_processo(codice, fn=fn)
+        with translate_db_errors(
+            context={"op": fn},
+            fallback_code=E_VALIDATION,
+            fallback_message="Accensione del processo non aggiornata.",
+        ):
+            self._repo.imposta_accensione(codice, acceso=acceso, motivo=motivo)
+        logger.info(
+            "accensione processo %s: %s da %s, motivo: %s",
+            codice,
+            {True: "acceso", False: "spento", None: "torna al default"}[acceso],
+            attore,
+            motivo,
+        )
+        accensione = _con_capability_accensione(self._repo.accensione_processo(codice))
+        # La riga c'e': il processo l'ha trovato `_require_processo` qui sopra.
+        assert accensione is not None
+        return accensione
 
     # Scopo: Le corse recenti di un processo (tab «Ultimi run» del drawer).
     def list_run(
@@ -387,3 +480,62 @@ class ProcessiService:
                 row = cursor.fetchone()
         assert row is not None
         return {"auth_user_id": int(row[0])}
+
+
+# Scopo: l'accensione come viaggia al client, piu' la capability del gesto:
+#        `can_imposta_accensione` (e il suo `_reason`). Il drawer mostra
+#        l'interruttore solo se il flag e' vero — «assente sui non
+#        spegnibili» (brief DB §6.0 punto 5) — e non deduce niente da
+#        `spegnibile` per decidere.
+# ⭐ Il flag discende dal catalogo, come il guard che rifiuterebbe il gesto:
+#    `spegnibile` False -> il guard dice NON_SPEGNIBILE; NULL (CODA o
+#    ritirato, senza sveglia) -> il guard dice SENZA_SVEGLIA.
+# ⭐ Piu' la terna del SOLO gesto «accendi» (`can_accendere`, `_reason`,
+#    `_reason_key`, R-BE-5 di brief-db-processi-accensione-per-ambiente §6.7.3):
+#    in PRODUZIONE un processo non accendibile (lo smoke notturno) si spegne e
+#    torna al default, ma non si accende a mano. Il permesso e' la risposta del
+#    predicato del guard (`accendere_ammesso` dal repository), non una regola
+#    ricostruita qui: False -> NON_ACCENDIBILE_IN_PRODUZIONE, None (ambiente
+#    non dichiarato) -> CONFIG_MANCANTE, come il guard.
+def _con_capability_accensione(accensione: dict[str, Any] | None) -> dict[str, Any] | None:
+    if accensione is None:
+        return None
+    accensione = dict(accensione)
+    ammesso = accensione.pop("accendere_ammesso", None)
+    # ⭐ Una scelta «accendi» scritta PRIMA del divieto (o prima che l'ambiente
+    #    fosse dichiarato) resta nella riga, ma lo stato effettivo la ignora
+    #    (§6.6). Senza dirlo, il drawer mostrerebbe «Spento» sopra «Scelta a
+    #    mano: …», che si contraddicono. `ammessa` e' la risposta dello stesso
+    #    predicato: una scelta che non accende e' sempre ammessa.
+    scelta = accensione.get("scelta_a_mano")
+    if scelta is not None:
+        accensione["scelta_a_mano"] = {
+            **scelta, "ammessa": ammesso is not False if scelta.get("acceso") is True else True,
+        }
+    spegnibile = accensione.get("spegnibile")
+    reason = (
+        None if spegnibile is True
+        else E_PROCESSO_NON_SPEGNIBILE if spegnibile is False
+        else E_PROCESSO_SENZA_SVEGLIA
+    )
+    reason_accendere = (
+        reason if reason is not None
+        else None if ammesso is True
+        else E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE if ammesso is False
+        else E_CONFIG_MANCANTE
+    )
+    return {
+        **accensione,
+        # Il processo ha una sveglia da accendere o spegnere? I processi `CODA`
+        # (li avvia una persona) e i ritirati no: il drawer non mostra
+        # l'accensione. NULL di `spegnibile` e' esattamente quel caso (CHECK
+        # del catalogo che lo lega al canale).
+        "ha_sveglia": spegnibile is not None,
+        "can_imposta_accensione": reason is None,
+        "can_imposta_accensione_reason": reason,
+        "can_accendere": reason_accendere is None,
+        "can_accendere_reason": reason_accendere,
+        "can_accendere_reason_key": (
+            ACCENDI_REASON_KEY_PER_CODICE.get(reason_accendere) if reason_accendere else None
+        ),
+    }

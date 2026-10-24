@@ -22,8 +22,10 @@
 # - NIENTE cambia_stato generico: conferma e annullo hanno entrambi effetti
 #   (riapertura/storno residuo, proiezione stato ordine, flip DDT) -> sempre
 #   le fn madri DB, mai UPDATE nudo dello stato.
-# - Righe editabili solo con testata DRAFT: enforcement BE (il DB non ha il
-#   trigger di editabilita', item 14c del brief DB — parita' DDT).
+# - Righe editabili solo con testata DRAFT: lo decide il DB
+#   (`trg_resi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt`, dal
+#   `20260929-01`, 3-bis D-3b-h), con `E_RIGA_DOC_NON_BOZZA`; il pre-check del
+#   BB `richiedi_righe_in_bozza` risponde con lo stesso codice (parita' DDT).
 
 import logging
 from dataclasses import dataclass, field
@@ -33,6 +35,9 @@ from typing import Any
 
 from django.db import transaction
 
+from apps.config.db.sorgenti_repository import SorgentiRepository
+from apps.config.sorgenti import SORGENTE_DDT_VENDITA, SORGENTE_RESO_VENDITA
+from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
@@ -49,6 +54,7 @@ from apps.core.services.testata_guard import (
     testata_o_not_found,
 )
 from apps.core.services.value_normalizer import empty_to_none
+from apps.vendite.db.ddt_repository import DdtRepository
 from apps.vendite.db.resi_repository import ResiRepository
 
 logger = logging.getLogger(__name__)
@@ -61,12 +67,20 @@ _PAYLOAD = PayloadValidator(validation_code="E_RESO_VALIDAZIONE")
 # nella traduzione errori DB (BB translate_db_errors: i codici E_RESO_* /
 # E_STATO_RESO_* dei guard DB sono estratti dal testo del RAISE).
 E_VENDITE_VALIDATION = "E_VENDITE_VALIDATION"
+E_VENDITE_DUPLICATO = "E_VENDITE_DUPLICATO"
 E_VENDITE_FK = "E_VENDITE_FK"
 
 # Mappe vincolo DB -> (codice, messaggio) per map_integrity_error (frammento
 # nome vincolo). `vendite.resi`/`resi_righe` non hanno UNIQUE di dominio
 # scrivibili dal BE (uq_resi_anno_numero e' del trigger numerazione) -> solo FK.
-_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {}
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+    # Lo stesso prelievo d'origine nella stessa ubicazione due volte sotto la
+    # stessa riga: si aumenta la quantita' del rientro che c'e' (3-bis D-3b-b).
+    "uq_resi_righe_rientri_posizione": (
+        E_VENDITE_DUPLICATO,
+        "Questa riga ha gia' un rientro da questo prelievo in questa posizione: aumentane la quantita'.",
+    ),
+}
 _FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "fk_resi_billing_account": (E_VENDITE_FK, "Cliente (billing account) non valido."),
     # Rete sotto l'eredita' dal DDT (`trgfn_resi_normalize` e il guard D-6
@@ -90,25 +104,26 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
         "La utility del reso e' quella del suo billing account: senza billing account non c'e'.",
         "billing_account_id",
     ),
+    "chk_resi_righe_rientri_qta_positiva": (
+        E_VENDITE_VALIDATION, "La quantita' che rientra deve essere maggiore di zero.", "qta",
+    ),
+    "chk_resi_righe_rientri_qta_finito": (
+        E_VENDITE_VALIDATION, "La quantita' che rientra non e' un numero valido.", "qta",
+    ),
 }
 
 # ── Costanti di dominio ──
 _FN = "vendite.resi_service"
 _STATO_BOZZA = "DRAFT"
-# La TESTATA e' editabile solo in bozza (E_RESO_STATO_TRANSIZIONE). Le RIGHE
-# seguono la stessa regola ma col codice del DB, `E_RIGA_DOC_NON_BOZZA` (BB
-# `richiedi_righe_in_bozza`, come ddt/ordini/preventivi/contratti): fino al
-# 2026-09-22 un set solo serviva entrambe, e lo stesso rifiuto usciva con un
-# nome diverso per il reso. A DB il BB `trgfn_doc_righe_lock_fuori_bozza`
-# non e' ancora montato su `resi_righe` (il lettore non conosce RESO): il
-# pre-check e' l'unico cancello, e quando il DB arrivera' avra' lo stesso codice.
+# Il reso si ELIMINA solo in bozza (abbandono del drawer, `elimina_reso`). I
+# campi della testata li governa il lock di testata del DB
+# (`trg_resi_a05_lock_fuori_bozza_upd`: in bozza tutto, dopo la conferma le
+# sole note); le RIGHE il lock delle righe (`E_RIGA_DOC_NON_BOZZA`, dal
+# `20260929-01`), con lo stesso codice del pre-check `richiedi_righe_in_bozza`.
 _STATI_MODIFICABILI: frozenset[str] = frozenset({_STATO_BOZZA})
 # Stato richiesto al DDT sorgente per aprire un reso (non si rende cio' che
 # non e' stato consegnato — brief DB §3).
 _STATO_DDT_SORGENTE = "CONSEGNATO"
-# Sorgente data-driven (config.sorgenti, riuso riga esistente — mai id
-# hardcoded, memoria feedback_no_hardcoded_ids).
-_SORGENTE_DDT = "DDT_VENDITA"
 
 # Tetto della selezione massiva di accrediti. Non e' una regola fiscale: e' il
 # confine oltre il quale «ho scelto queste righe» non vuol piu' dire niente, e
@@ -149,8 +164,11 @@ def _get_riga_or_raise(
 # Whitelist campi testata accettati in create/update (null_vs_empty -> None).
 # Il resto (BA/destinatario/utility/valuta/emittente) e' EREDITATO dal DDT
 # sorgente via trgfn_resi_normalize e immutabile (non_editable_fields).
-CREATE_KEYS_RESO: frozenset[str] = frozenset({"ddt_id", "data", "meta", "righe"})
-UPDATE_KEYS_RESO: frozenset[str] = frozenset({"data", "meta"})
+# `magazzino_id`: dove rientra la merce (3-bis D-3b-a). Senza, lo propone il DB
+# dalla bolla d'origine (`trgfn_resi_default_magazzino`); stesso emittente e
+# fermo fuori bozza sono guard DB.
+CREATE_KEYS_RESO: frozenset[str] = frozenset({"ddt_id", "data", "meta", "righe", "magazzino_id"})
+UPDATE_KEYS_RESO: frozenset[str] = frozenset({"data", "meta", "magazzino_id"})
 # NB: `quantita` (base) NON e' accettata nel payload riga: il trigger DB
 # `trgfn_qta_from_operativa` su INSERT la calcola SEMPRE da qta_operativa
 # (E_QTA_MISSING se assente) e su UPDATE un set diretto della base senza
@@ -183,6 +201,13 @@ def list_resi_rows(
     order_dir: str = "desc",
     max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
+    # ⛔ Il filtro di stato esiste nel vocabolario, o e' un 400 sul campo: un
+    #    valore sbagliato finiva nel WHERE e la lista rispondeva vuota con un
+    #    200 (2026-10-20). Codici dismessi ammessi: i documenti vecchi li portano.
+    richiedi_codice_a_vocabolario(
+        "config.stati_doc_reso", "codice_interno", stato_codice,
+        codice_errore="E_RESO_VALIDAZIONE", parametro="stato_codice_interno",
+    )
     repo = ResiRepository()
     return repo.list_resi(
         stato_codice=stato_codice,
@@ -289,7 +314,7 @@ def _valida_filtro_documento(
         code="E_RESO_VALIDAZIONE",
         message="Filtri documento incompatibili.",
         detail="ddt_id e ordine_id sono alternativi: indicarne uno solo",
-        context={"field": "ordine_id"},
+        context={"parametro": "ordine_id"},
         function_name=function_name,
         log_to_db=True,
     )
@@ -305,7 +330,7 @@ def _valida_filtro_documento(
             code="E_RESO_VALIDAZIONE",
             message="Identificativo documento non valido.",
             detail=f"{nome} deve essere maggiore di zero (ricevuto: {valore})",
-            context={"field": nome},
+            context={"parametro": nome},
             function_name=function_name,
             log_to_db=True,
         )
@@ -446,7 +471,8 @@ def resolve_filtri_coda_export_label(
 #        transazione (compone 2+ scritture — guardrail atomicita' api.md).
 def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
     repo = ResiRepository()
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RESO}
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _PAYLOAD.solo_chiavi_ammesse(payload, ammesse=CREATE_KEYS_RESO, function_name=f"{_FN}.crea_reso")
 
     ddt_id = _PAYLOAD.require_positive_int(
         data, "ddt_id",
@@ -474,64 +500,54 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
         function_name=f"{_FN}.crea_reso",
     )
 
-    sorgente_tipo_id = repo.get_sorgente_tipo_id_by_codice(_SORGENTE_DDT)
+    sorgente = SorgentiRepository().get_sorgente_attiva(SORGENTE_DDT_VENDITA)
     ErrorManager.require(
-        sorgente_tipo_id is not None,
+        sorgente is not None,
         code="E_RESO_VALIDAZIONE",
         message="Sorgente DDT_VENDITA non configurata in config.sorgenti.",
         function_name=f"{_FN}.crea_reso",
     )
-    assert sorgente_tipo_id is not None
+    assert sorgente is not None
+    sorgente_tipo_id = sorgente["id"]
 
-    stato_bozza_id = repo.get_stato_id_by_codice(_STATO_BOZZA)
-    ErrorManager.require(
-        stato_bozza_id is not None,
-        code="E_RESO_VALIDAZIONE",
-        message="Stato DRAFT non configurato in config.stati_doc_reso.",
-        function_name=f"{_FN}.crea_reso",
-    )
-    assert stato_bozza_id is not None
-
-    righe = data.get("righe")
-    ErrorManager.require(
-        righe is None or isinstance(righe, list),
-        code="E_RESO_VALIDAZIONE",
-        message="righe deve essere una lista di righe reso.",
-        function_name=f"{_FN}.crea_reso",
+    # Le righe sono FACOLTATIVE alla nascita (un reso puo' nascere vuoto): se
+    # ci sono, una lista di voci, ogni voce un oggetto (BB), giudicate PRIMA di
+    # scrivere la testata. I campi della riga li legge `_crea_riga`.
+    righe_raw = data.get("righe")
+    righe: list[dict[str, Any]] = (
+        [] if righe_raw is None
+        else _PAYLOAD.voci(righe_raw, lambda voce, _indice: dict(voce), campo="righe", function_name=f"{_FN}.crea_reso")
     )
 
     meta = data.get("meta")
     with _db_errors("crea_reso"), transaction.atomic():
         # transaction.atomic anche senza righe: costo nullo, e col pannello FE
         # (testata + N righe) l'unita' e' atomica per costruzione.
+        # Lo stato non si passa: il reso nasce nello stato iniziale del suo
+        # vocabolario, e lo mette il DB (BB `script.trgfn_doc_stato_iniziale`,
+        # brief-modello-documento-vendita P-2).
         creato = repo.create_reso(
             sorgente_tipo_id=int(sorgente_tipo_id),
             sorgente_uid=str(ddt["uid"]),
-            stato_doc_reso_id=int(stato_bozza_id),
             data=_parse_data_iso(data.get("data"), op="crea_reso"),
             meta=meta if isinstance(meta, dict) else None,
+            magazzino_id=data.get("magazzino_id"),
         )
         reso_id = int(creato["id"])
         righe_ids: list[int] = []
-        for idx, riga_payload in enumerate(righe or []):
-            ErrorManager.require(
-                isinstance(riga_payload, dict),
-                code="E_RESO_VALIDAZIONE",
-                message="Ogni riga reso deve essere un oggetto.",
-                function_name=f"{_FN}.crea_reso",
-            )
+        for idx, riga_payload in enumerate(righe):
             # Testata appena creata (0 righe): riga_nr deterministico idx+1,
             # nessun round-trip next_riga_nr per riga (era N+1).
             out = _crea_riga(
-                repo, reso_id, ddt_id, dict(riga_payload), riga_nr=idx + 1,
+                repo, reso_id, ddt_id, riga_payload, riga_nr=idx + 1,
             )
             righe_ids.append(out["riga_id"])
 
     return {**creato, "righe_ids": righe_ids}
 
 
-# Scopo: Aggiorna testata reso (soli campi data/meta — il resto e' ereditato
-#        dal DDT sorgente e immutabile).
+# Scopo: Aggiorna testata reso (data, note, magazzino di rientro — il resto e'
+#        ereditato dal DDT sorgente e immutabile).
 #
 # Quali colonne si cambiano in quale stato lo dice il DB, colonna per colonna:
 # il lock di testata `vendite.trgfn_doc_testata_lock_fuori_bozza` (in bozza
@@ -543,11 +559,10 @@ def aggiorna_reso(reso_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     # Prima la testata: fuori perimetro o inesistente e' un 404. Basta sapere
     # che esiste: il lettore leggero, non la testata intera.
     _get_testata_or_raise(repo, reso_id, op="aggiorna_reso", getter=repo.get_stato_codice)
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RESO}
-    ErrorManager.require(
-        len(data) > 0,
-        code="E_RESO_VALIDAZIONE",
-        message="Nessun campo aggiornabile nel payload.",
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _PAYLOAD.solo_chiavi_ammesse(payload, ammesse=UPDATE_KEYS_RESO, function_name=f"{_FN}.aggiorna_reso")
+    _PAYLOAD.require_campi_da_aggiornare(
+        data,
         function_name=f"{_FN}.aggiorna_reso",
     )
     if "data" in data:
@@ -583,6 +598,115 @@ def elimina_reso(reso_id: int) -> dict[str, Any]:
 #  AZIONI DI DOMINIO — fn madri DB (atomiche per costruzione:
 #  NIENTE transaction.atomic extra, una sola SELECT fn_madre)
 # ══════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════
+#  RIENTRI — dove rientra la merce (3-bis R-1b, piano-be-fe-magazzino-lotto-3
+#  B2). ⛔ Nessuna regola ricopiata: bozza, prelievo della riga di bolla
+#  giusta (trigger) e, alla conferma, quadratura, tetto per prelievo e
+#  ubicazione (`script.fn_check_reso_merce`) li giudica il DB.
+# ══════════════════════════════════════════════════════════
+
+# Il prelievo d'origine si sceglie alla creazione e non cambia (il DB rifiuta
+# un rientro che cambia prelievo).
+CREATE_KEYS_RIENTRO: frozenset[str] = frozenset({"ddt_riga_prelievo_id", "qta", "ubicazione_id"})
+UPDATE_KEYS_RIENTRO: frozenset[str] = frozenset({"qta", "ubicazione_id"})
+
+
+# Scopo: I rientri del reso per la griglia: la testata (fa rientrare merce?,
+#        magazzino di rientro e se usa ubicazioni) e le VOCI (la riga o il
+#        componente del kit com'era uscito), ognuna coi prelievi d'origine fra
+#        cui scegliere e i suoi rientri. Prima la testata: fuori perimetro e' 404.
+def get_rientri(reso_id: int) -> dict[str, Any]:
+    repo = ResiRepository()
+    testata = _get_testata_or_raise(
+        repo, reso_id, op="get_rientri", getter=repo.get_testata_rientri,
+    )
+    origini: dict[tuple[int, int | None], list[dict[str, Any]]] = {}
+    for prelievo in repo.list_prelievi_origine(reso_id):
+        chiave = (prelievo["resi_riga_id"], prelievo["ddt_riga_componente_id"])
+        origini.setdefault(chiave, []).append(prelievo)
+    rientri: dict[tuple[int, int | None], list[dict[str, Any]]] = {}
+    for rientro in repo.list_rientri(reso_id):
+        chiave = (rientro["resi_riga_id"], rientro["ddt_riga_componente_id"])
+        rientri.setdefault(chiave, []).append(rientro)
+    voci = []
+    for voce in repo.list_merce_da_rientrare(reso_id):
+        chiave = (voce["resi_riga_id"], voce["ddt_riga_componente_id"])
+        voci.append({
+            **voce,
+            "prelievi_origine": origini.get(chiave, []),
+            "rientri": rientri.get(chiave, []),
+        })
+    return {**testata, "voci": voci}
+
+
+# Scopo: Normalizza il payload di un rientro: chiavi del contratto, vuoti a
+#        None, id interi positivi, `qta` decimale.
+def _payload_rientro(
+    payload: dict[str, Any], chiavi: frozenset[str], *, op: str, in_creazione: bool,
+) -> dict[str, Any]:
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _PAYLOAD.solo_chiavi_ammesse(payload, ammesse=chiavi, function_name=f"{_FN}.{op}")
+    fn = f"{_FN}.{op}"
+    if in_creazione:
+        data["ddt_riga_prelievo_id"] = _PAYLOAD.require_positive_int(data, "ddt_riga_prelievo_id", function_name=fn)
+    if "ubicazione_id" in data:
+        data["ubicazione_id"] = _PAYLOAD.optional_positive_int(data, "ubicazione_id", function_name=fn)
+    if in_creazione or "qta" in data:
+        data["qta"] = _PAYLOAD.require_decimal(data, "qta", function_name=fn)
+    return data
+
+
+# Scopo: Il rientro, se e' di questa riga; altrimenti E_RESO_NOT_FOUND.
+def _get_rientro_or_raise(
+    repo: ResiRepository, riga_id: int, rientro_id: int, *, op: str,
+) -> dict[str, Any]:
+    return riga_del_padre_o_not_found(
+        repo.get_rientro, rientro_id, padre_id=riga_id, chiave_padre="resi_riga_id",
+        code="E_RESO_NOT_FOUND", message="Rientro non trovato per questa riga.",
+        function_name=f"{_FN}.{op}",
+    )
+
+
+# Scopo: Nuovo rientro sotto una riga del reso.
+def crea_rientro(reso_id: int, riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    repo = ResiRepository()
+    _get_testata_or_raise(repo, reso_id, op="crea_rientro", getter=repo.get_stato_codice)
+    _get_riga_or_raise(repo, reso_id, riga_id, op="crea_rientro")
+    data = _payload_rientro(payload, CREATE_KEYS_RIENTRO, op="crea_rientro", in_creazione=True)
+    with _db_errors("crea_rientro"):
+        creato = repo.create_rientro({**data, "resi_riga_id": riga_id})
+    return {"reso_id": reso_id, "riga_id": riga_id, "rientro_id": int(creato["id"])}
+
+
+# Scopo: Cambia quantita' o ubicazione di un rientro.
+def aggiorna_rientro(
+    reso_id: int, riga_id: int, rientro_id: int, payload: dict[str, Any],
+) -> dict[str, Any]:
+    repo = ResiRepository()
+    _get_testata_or_raise(repo, reso_id, op="aggiorna_rientro", getter=repo.get_stato_codice)
+    _get_riga_or_raise(repo, reso_id, riga_id, op="aggiorna_rientro")
+    _get_rientro_or_raise(repo, riga_id, rientro_id, op="aggiorna_rientro")
+    data = _payload_rientro(payload, UPDATE_KEYS_RIENTRO, op="aggiorna_rientro", in_creazione=False)
+    _PAYLOAD.require_campi_da_aggiornare(
+        data,
+        function_name=f"{_FN}.aggiorna_rientro",
+    )
+    with _db_errors("aggiorna_rientro"):
+        repo.update_rientro(rientro_id, **data)
+    return {"reso_id": reso_id, "riga_id": riga_id, "rientro_id": rientro_id, "updated": True}
+
+
+# Scopo: Toglie un rientro.
+def elimina_rientro(reso_id: int, riga_id: int, rientro_id: int) -> dict[str, Any]:
+    repo = ResiRepository()
+    _get_testata_or_raise(repo, reso_id, op="elimina_rientro", getter=repo.get_stato_codice)
+    _get_riga_or_raise(repo, reso_id, riga_id, op="elimina_rientro")
+    _get_rientro_or_raise(repo, riga_id, rientro_id, op="elimina_rientro")
+    with _db_errors("elimina_rientro"):
+        deleted = repo.delete_rientro(rientro_id)
+    return {"reso_id": reso_id, "riga_id": riga_id, "rientro_id": rientro_id, "deleted": deleted}
+
 
 # Scopo: Conferma il reso (DRAFT -> CONFERMATO) via fn madre atomica
 #        `fn_conferma_reso`: numero dal trigger, riapertura residuo ordine,
@@ -630,8 +754,13 @@ def genera_ddt_riconsegna(
     # Guard di merito (CONFERMATO, copertura pendente, over-ri-spedizione)
     # nella fn madre / guard ponte DB: E_RESO_NON_CONFERMATO,
     # E_RESO_NESSUNA_RICONSEGNA_PENDENTE, E_RESO_RICONSEGNA_SUPERA_RESO.
-    with _db_errors("genera_ddt_riconsegna"):
+    # Il verbo e il default nella stessa transazione, come il DDT da ordine:
+    # la cascata copia gli indirizzi del DDT d'origine, e il default riempie
+    # lo slot SOLO se e' rimasto vuoto (la sorgente vince;
+    # brief-db-indirizzi-documento-seguono-il-cliente).
+    with _db_errors("genera_ddt_riconsegna"), transaction.atomic():
         ddt_id = repo.genera_ddt_riconsegna(int(reso_id), righe, data)
+        DdtRepository().riempi_indirizzo_default(int(ddt_id))
     return {"reso_id": int(reso_id), "ddt_id": ddt_id, "numero": None}
 
 
@@ -850,10 +979,10 @@ def aggiorna_riga(
     repo = ResiRepository()
     _richiedi_righe_in_bozza(repo, reso_id, verbo="modificare", op="aggiorna_riga")
     _get_riga_or_raise(repo, reso_id, riga_id, op="aggiorna_riga")
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RIGA}
-    ErrorManager.require(
-        len(data) > 0,
-        code="E_RESO_VALIDAZIONE",
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _PAYLOAD.solo_chiavi_ammesse(payload, ammesse=UPDATE_KEYS_RIGA, function_name=f"{_FN}.aggiorna_riga")
+    _PAYLOAD.require_campi_da_aggiornare(
+        data,
         message="Nessun campo aggiornabile nel payload riga.",
         function_name=f"{_FN}.aggiorna_riga",
     )
@@ -887,7 +1016,8 @@ def _crea_riga(
     repo: ResiRepository, reso_id: int, ddt_id: int, payload: dict[str, Any],
     *, riga_nr: int | None = None,
 ) -> dict[str, Any]:
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RIGA}
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _PAYLOAD.solo_chiavi_ammesse(payload, ammesse=CREATE_KEYS_RIGA, function_name=f"{_FN}._crea_riga")
     fn = f"{_FN}._crea_riga"
 
     ddt_riga_id = _PAYLOAD.require_positive_int(
@@ -1009,26 +1139,9 @@ def _parse_righe_riconsegna(righe_raw: Any) -> list[dict[str, Any]] | None:
     fn = f"{_FN}._parse_righe_riconsegna"
     if righe_raw is None:
         return None
-    ErrorManager.require(
-        isinstance(righe_raw, list) and len(righe_raw) > 0,
-        code="E_RESO_VALIDAZIONE",
-        message=(
-            "righe deve essere una lista non vuota di {resi_riga_id, qta}; "
-            "ometterla per ri-spedire tutta la copertura residua."
-        ),
-        detail=f"righe={righe_raw!r}",
-        function_name=fn,
-    )
-    parsed: list[dict[str, Any]] = []
-    for elem in righe_raw:
-        ErrorManager.require(
-            isinstance(elem, dict),
-            code="E_RESO_VALIDAZIONE",
-            message="Ogni elemento di righe deve essere un oggetto "
-                    "{resi_riga_id, qta}.",
-            detail=f"elem={elem!r}",
-            function_name=fn,
-        )
+    # La forma (lista, ogni voce un oggetto) la giudica il BB; qui il dominio:
+    # vuota non e' «tutto», e' un 400 (per tutto si omette).
+    def _leggi(elem: dict[str, Any], _indice: int) -> dict[str, Any]:
         resi_riga_id = _PAYLOAD.require_positive_int(
             elem, "resi_riga_id",
             message="resi_riga_id obbligatorio in ogni riga di ri-spedizione.",
@@ -1042,7 +1155,20 @@ def _parse_righe_riconsegna(righe_raw: Any) -> list[dict[str, Any]] | None:
                     "(unita' BASE).",
             function_name=fn,
         )
-        parsed.append({"resi_riga_id": resi_riga_id, "qta": qta})
+        return {"resi_riga_id": resi_riga_id, "qta": qta}
+
+    parsed = _PAYLOAD.voci(righe_raw, _leggi, campo="righe", function_name=fn)
+    ErrorManager.require(
+        len(parsed) > 0,
+        code="E_RESO_VALIDAZIONE",
+        message=(
+            "righe deve essere una lista non vuota di {resi_riga_id, qta}; "
+            "ometterla per ri-spedire tutta la copertura residua."
+        ),
+        detail="righe=[]",
+        context={"field": "righe"},
+        function_name=fn,
+    )
     return parsed
 
 
@@ -1143,7 +1269,7 @@ def _richiedi_righe_in_bozza(
         id_name="reso_id", function_name=f"{_FN}.{op}",
     )
     richiedi_righe_in_bozza(
-        reso, documento="Reso", documento_id=reso_id, verbo=verbo,
+        reso, documento=SORGENTE_RESO_VENDITA, documento_id=reso_id, verbo=verbo,
         function_name=f"{_FN}.{op}",
     )
     return reso

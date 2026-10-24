@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_ordini_da_pushare + trgfn_ordini_normalize
 -- ------------------------------------------------------------
@@ -51,38 +52,32 @@ SELECT ok(
 -- ============================================================
 -- 0b) Riferimenti minimi
 -- ============================================================
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti). Prima BA, ruolo e articolo si pescavano col LIMIT 1:
+--   su zeroerp_ci erano NULL e l'ordine moriva sul NOT NULL di
+--   soggetto_ruolo_id. Ora un'azienda nuova col suo operatore (contesto aperto
+--   su di lui), il cliente legato a lei (dbops.fn_pgtap_crea_mondo_cliente) e un
+--   articolo merce non gestito. Il BA nasce con fatturazione_ordini al default
+--   CONFERMATO, che e' cio' che il test 3 pretende. Le asserzioni leggono solo
+--   gli ordini costruiti qui. Modello: test-ddt-magazzino-testata-v1.
+CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _az)); END $ctx$;
+CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP list ordini');
+
 CREATE TEMP TABLE tmp_refs_ord AS
 SELECT
-  (SELECT ba.id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS billing_account_id,
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  )) AS soggetto_ruolo_id,
-  (SELECT a.id
-     FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1
-  ) AS articolo_id,
+  m.billing_account_id,
+  m.cliente_soggetto_ruolo_id AS soggetto_ruolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-LIST-ORD-V1', false) AS articolo_id,
   (SELECT s.id
      FROM config.stati_doc_ordini s
     WHERE s.codice = 'CONFERMATO' AND s.attivo IS TRUE
-    LIMIT 1
+    ORDER BY s.id LIMIT 1
   ) AS stato_confermato_id,
   (SELECT s.id
      FROM config.stati_doc_ordini s
     WHERE s.codice = 'DRAFT' AND s.attivo IS TRUE
-    LIMIT 1
+    ORDER BY s.id LIMIT 1
   ) AS stato_bozza_id,
   (SELECT v.id
      FROM config.valute v
@@ -91,8 +86,9 @@ SELECT
   (SELECT s.id
      FROM config.sorgenti s
     WHERE s.codice = 'ORDINE_VENDITA' AND s.attivo IS TRUE
-    LIMIT 1
-  ) AS sorgente_tipo_id;
+    ORDER BY s.id LIMIT 1
+  ) AS sorgente_tipo_id
+FROM _m m;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL
@@ -168,7 +164,7 @@ SELECT ok(
     SELECT 1
     FROM vendite.fn_list_ordini_da_pushare(NULL, NULL, NULL) rp
     WHERE rp.ordine_id = (SELECT id FROM tmp_ordine)
-      AND rp.segment_key = 'ORD:' || (SELECT uid FROM tmp_ordine)::text
+      AND rp.segment_key = 'ORDINE_VENDITA:' || (SELECT uid FROM tmp_ordine)::text
                            || ':R:' || (SELECT id FROM tmp_ordine_riga)::text
   ),
   'Segment key formato corretto (ORD:<uid>:R:<riga_id>)'

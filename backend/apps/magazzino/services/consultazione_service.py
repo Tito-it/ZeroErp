@@ -147,7 +147,7 @@ def list_movimenti(
         inventario_id is None or rettifica_id is None,
         code=E_VALIDAZIONE,
         message="Indicare un solo documento sorgente (inventario o rettifica).",
-        context={"field": "inventario_id"},
+        context={"parametro": "inventario_id"},
         function_name=f"{_FN}.list_movimenti",
     )
     documento_sorgente = None

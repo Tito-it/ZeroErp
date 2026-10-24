@@ -120,7 +120,7 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 - Auth: JWT, `skip_area_check = True`
 - Body JSON:
   - `parameter_code` (string, **obbligatorio**) — codice parametro da sovrascrivere
-  - `value` (string, **obbligatorio**) — nuovo valore dell'override
+  - `value` (string) — nuovo valore dell'override, **obbligatorio**: assente o `null` → 400 `E_PARAMETER_VALIDATION` (campo `value`), niente scritto (dal 2026-10-21: prima diventava un override con stringa vuota e risposta 200). `""` esplicito resta un valore
   - `scope` (string, opzionale, default `"user"`) — uno fra:
     - `"user"` — override personale (default, qualunque utente)
     - `"emittente"` — override per emittente fiscale (admin-only; EF derivato dal profilo utente)
@@ -141,11 +141,11 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
     - `user` → `django_user_id = utente corrente`
     - `emittente` → `emittente_fiscale_id = EF utente`
     - `categoria_cliente` → `categoria_cliente_id = <id>`
-    Che le altre dimensioni siano NULL lo garantisce il DB (`chk_parameter_overrides_un_ambito`, dal 2026-10-07): le righe miste non esistono. Fino ad allora il perimetro lo teneva il repository (F-5 dell'[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+    Che le altre dimensioni siano NULL lo garantisce il DB (`chk_parameter_overrides_un_ambito`, dal 2026-10-07): le righe miste non esistono. Fino ad allora il perimetro lo teneva il repository (F-5 dell'[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
   - Se l'override esiste gia' sullo stesso ambito, aggiorna il valore e `data_update` e lo **riattiva** (`attivo = true`): impostare un override vuol dire volerlo in vigore. L'upsert e' un `INSERT … ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5 DO UPDATE` (unicita' `NULLS NOT DISTINCT`): due richieste concorrenti sullo stesso ambito non creano un doppione e non rispondono errore, la seconda aggiorna (dal 2026-10-07; prima il vincolo v4 non scattava e il doppione era possibile). Fino al 2026-09-28 una riga spenta (`attivo` false o NULL) veniva aggiornata e restava spenta — risposta con l'id, ma override ignorato dalla risoluzione e assente dalla lista, che leggono solo `attivo = true`
   - Se il `parameter_code` non esiste in `config.parameters` → **404 `E_PARAMETER_NOT_FOUND`**, niente scritto (dal 2026-09-28, E-9: prima `E_DATABASE` 400 dalla violazione del NOT NULL)
 - Errori:
-  - `E_PARAMETER_VALIDATION` (400) — codice parametro vuoto, `scope` non ammesso, `categoria_cliente_id` mancante/non-positivo per scope categoria, emittente non risolvibile per scope emittente
+  - `E_PARAMETER_VALIDATION` (400) — codice parametro vuoto, `value` assente o `null`, `scope` non ammesso, `categoria_cliente_id` mancante/non-positivo per scope categoria, emittente non risolvibile per scope emittente
   - `E_PERMISSION_DENIED` (403) — scope `emittente` o `categoria_cliente` da non-admin
   - `E_PARAMETER_NOT_FOUND` (404) — `parameter_code` inesistente
 
@@ -217,7 +217,7 @@ parameter_repository.py (ParameterRepository)
     ├── get_parameter()       → fn_get_parameter_full()
     ├── get_parameters()      → fn_get_parameter_full() x N
     ├── list_for_user()       → fn_list_parameters_for_user()
-    ├── upsert_{user,emittente,categoria_cliente}_override() → CTE UPDATE-poi-INSERT (ON CONFLICT non regge i NULL degli scope)
+    ├── upsert_{user,emittente,categoria_cliente}_override() → INSERT … ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5 DO UPDATE
     ├── delete_{user,emittente,categoria_cliente}_override() → DELETE con verifica di appartenenza allo scope
     └── get_emittente_fiscale_id_for_user() → whitelist personale, poi gestore globale
 ```

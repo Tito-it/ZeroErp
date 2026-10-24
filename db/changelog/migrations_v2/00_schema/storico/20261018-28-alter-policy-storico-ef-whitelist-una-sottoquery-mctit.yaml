@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE POLICY DELLO STORICO GIA' ARMATE: IL PERIMETRO IN UNA SOTTOQUERY
+#   storico.* — rls_sto_<tabella>_ef_whitelist (FOR SELECT)
+#   Brief: brief-db-plancache-funzioni-con-query-incorporate §5quinquies, D-3b-2c.
+#
+# Come -21, sulla forma di -26: le policy che passano ancora il perimetro in
+# due sottoquery (riconosciute da «IS NULL)) dentro fn_scope_ef_perimetro)
+# passano a una. Nessuna preCondition sul numero (§11.4).
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/storico/20261018-28-alter-policy-storico-ef-whitelist-una-sottoquery-mctit.yaml
+
+  - changeSet:
+      id: 20261018-28-alter-policy-storico-ef-whitelist-una-sottoquery
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le policy di lettura delle shadow storico calcolano il perimetro in una sottoquery sola. D-3b-2c.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid = to_regprocedure('script.fn_scope_ef_perimetro(bigint[],bigint)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $r$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT p.polname, format('%I.%I', n.nspname, c.relname) AS tab
+                        FROM pg_catalog.pg_policy p
+                        JOIN pg_catalog.pg_class c     ON c.oid = p.polrelid
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = 'storico'
+                         AND p.polcmd = 'r'
+                         AND p.polname LIKE 'rls\_sto\_%\_ef\_whitelist'
+                         AND pg_catalog.pg_get_expr(p.polqual, p.polrelid) ~ 'fn_scope_ef_perimetro\(\( SELECT \('
+                  LOOP
+                      EXECUTE format('ALTER POLICY %I ON %s USING (%s)', r.polname, r.tab,
+                                     $q$(current_setting('app.ruolo_applicativo', true) = 'OPERATORE') AND script.fn_scope_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids(NULLIF(current_setting('app.current_user_id', true), '')::integer)), scope_emittente_fiscale_id)$q$);
+                  END LOOP;
+              END
+              $r$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $r$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT p.polname, format('%I.%I', n.nspname, c.relname) AS tab
+                        FROM pg_catalog.pg_policy p
+                        JOIN pg_catalog.pg_class c     ON c.oid = p.polrelid
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = 'storico'
+                         AND p.polcmd = 'r'
+                         AND p.polname LIKE 'rls\_sto\_%\_ef\_whitelist'
+                         AND pg_catalog.pg_get_expr(p.polqual, p.polrelid) ~ 'fn_scope_ef_perimetro\(\( SELECT fn_get|fn_scope_ef_perimetro\(\( SELECT script\.fn_get'
+                  LOOP
+                      EXECUTE format('ALTER POLICY %I ON %s USING (%s)', r.polname, r.tab,
+                                     $q$(current_setting('app.ruolo_applicativo', true) = 'OPERATORE') AND script.fn_scope_ef_perimetro((SELECT (script.fn_get_emittenti_scope_pk_ids(NULLIF(current_setting('app.current_user_id', true), '')::integer) IS NULL)), (SELECT script.fn_get_emittenti_scope_pk_ids(NULLIF(current_setting('app.current_user_id', true), '')::integer)), scope_emittente_fiscale_id)$q$);
+                  END LOOP;
+              END
+              $r$;

@@ -22,11 +22,12 @@ from apps.core.api.payload_validators import (
     optional_iso_date,
     paginated_envelope,
     parse_list_params,
-    qp_bool,
+    qp_bool_optional,
     qp_str,
 )
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.api.indirizzi_documento_views import (
@@ -37,6 +38,7 @@ from apps.vendite.services import preventivi_service
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.vendite.db.preventivi_repository import PreventiviRepository
 from apps.core.api.openapi_params import param_ricerca_full
+from apps.vendite.api._date_consegna_schema import DATE_CONSEGNA_REQUEST, DATE_CONSEGNA_RESPONSE
 from apps.vendite.api._schema_da_contratto import schema_da_contratto
 from apps.vendite.api._componenti_schema import (
     COMPONENTE_PATCH_REQUEST,
@@ -145,7 +147,7 @@ class ApiPreventiviList(DomainAPIView):
     #        l'unico outlier del dominio). order_dir assente -> il default 'desc'
     #        di dominio, scritto qui. Usa direttamente
     #        list_preventivi_rows + paginated_envelope (mirror views_ordini); il
-    #        wrapper list_preventivi(page/page_size) resta per AI tool + test.
+    #        wrapper list_preventivi(limit/offset, envelope) resta per AI tool + test.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         auth_user_id = get_scope_user_id(request)
@@ -160,7 +162,7 @@ class ApiPreventiviList(DomainAPIView):
             search=qp_str(qp.get("search")),
             # Default true: lista pulita senza storico revisioni. Il FE
             # passa "false" esplicito col toggle "Mostra storico".
-            solo_ultima_revisione=qp_bool(qp.get("solo_ultima_revisione"), default=True),
+            solo_ultima_revisione=qp_bool_optional(qp.get("solo_ultima_revisione"), "solo_ultima_revisione", default=True),
             auth_user_id=auth_user_id,
             limit=p["limit"],
             offset=p["offset"],
@@ -243,7 +245,7 @@ class ApiPreventiviExportView(DomainAPIView):
         data_da = optional_iso_date({"v": qp.get("data_da")}, "v")
         data_al = optional_iso_date({"v": qp.get("data_al")}, "v")
         search = qp_str(qp.get("search"))
-        solo_ultima_revisione = qp_bool(qp.get("solo_ultima_revisione"), default=True)
+        solo_ultima_revisione = qp_bool_optional(qp.get("solo_ultima_revisione"), "solo_ultima_revisione", default=True)
 
         results, total = preventivi_service.list_preventivi_rows(
             stato_codice=stato_codice,
@@ -368,6 +370,11 @@ class ApiPreventivoStato(DomainAPIView):
                 "competenza_mese": serializers.DateField(
                     required=False, allow_null=True,
                 ),
+                # Verso ANNULLATO: quanti legami l'operatore ha visto nella
+                # finestra di conferma (assente al primo tentativo).
+                "legami_confermati": serializers.IntegerField(
+                    required=False, allow_null=True,
+                ),
             },
         ),
         responses={200: inline_serializer(
@@ -388,6 +395,7 @@ class ApiPreventivoStato(DomainAPIView):
                 # user serve al hook atomico EMESSO per scope emittente +
                 # audit `generato_da_user_id` su documenti_generati.
                 user=request.user,
+                legami_confermati=payload.get("legami_confermati"),
             )
         return handle_post_json(request, handler=_handler)
 
@@ -523,12 +531,13 @@ class ApiPreventivoCollegaPratica(DomainAPIView):
         )},
     )
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
+        # Dal BB: `payload["pratica_id"]` assente era un KeyError, cioe' un 500.
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            flusso_raw = payload.get("flusso_id")
+            v = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
             return preventivi_service.collega_pratica(
                 preventivo_id,
-                pratica_id=int(payload["pratica_id"]),
-                flusso_id=int(flusso_raw) if flusso_raw is not None else None,
+                pratica_id=v.require_positive_int(payload, "pratica_id"),
+                flusso_id=v.optional_positive_int(payload, "flusso_id"),
             )
         return handle_post_json(request, handler=_handler)
 
@@ -737,6 +746,27 @@ class ApiPreventivoRigaDetail(DomainAPIView):
         return success_response(result)
 
 
+class ApiPreventivoRigheDateConsegna(DomainAPIView):
+    """POST /api/v1/vendite/preventivi/<preventivo_id>/righe/date-consegna/.
+
+    «Aggiorna date di consegna»: la data richiesta dal cliente su piu' righe,
+    TUTTE o SOLO_VUOTE (brief-db-date-consegna-righe-in-blocco). Il lock delle
+    righe la ammette solo in bozza.
+    """
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
+
+    @extend_schema(request=DATE_CONSEGNA_REQUEST, responses={200: DATE_CONSEGNA_RESPONSE})
+    def post(self, request: Request, preventivo_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: preventivi_service.aggiorna_date_consegna(
+                int(preventivo_id), payload,
+            ),
+        )
+
+
 # ── Componenti BoM CASO A (refactor componenti 2026-05-11) ──
 #
 # Endpoint nidificati sotto riga padre:
@@ -769,6 +799,9 @@ class ApiPreventivoRigaPreviewComponenti(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "preventivo")
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -815,11 +848,8 @@ class ApiPreventivoRigaComponentiList(DomainAPIView):
     def get(
         self, request: Request, preventivo_id: int, riga_id: int,
     ) -> JsonResponse:
-        # Parsing query param: stringhe "false"/"0"/"no" → False, altrimenti True.
-        solo_attivi_raw = request.query_params.get("solo_attivi", "true")
-        solo_attivi = str(solo_attivi_raw).strip().lower() not in (
-            "false", "0", "no", "off",
-        )
+        # Il BB dei flag di trasporto (§A6), come i gemelli DDT e ordini.
+        solo_attivi = qp_bool_optional(request.query_params.get("solo_attivi"), "solo_attivi", default=True)
         result = preventivi_service.list_componenti_riga(
             preventivo_id, riga_id, solo_attivi=solo_attivi,
         )
@@ -914,6 +944,9 @@ class ApiPreventivoRigaSuggerisciPrezzo(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "preventivo")
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=inline_serializer(
@@ -1164,11 +1197,13 @@ class ApiPreventivoGeneraPratica(DomainAPIView):
     )
     # Scopo: Genera pratica esecutiva da preventivo via POST.
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
+        # Dal BB: un campo assente era un KeyError, cioe' un 500.
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
+            v = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
             return preventivi_service.genera_pratica(
                 preventivo_id,
-                tipo_prestazione_id=int(payload["tipo_prestazione_id"]),
-                priorita_id=int(payload["priorita_id"]),
+                tipo_prestazione_id=v.require_positive_int(payload, "tipo_prestazione_id"),
+                priorita_id=v.require_positive_int(payload, "priorita_id"),
                 descrizione=payload.get("descrizione"),
             )
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)

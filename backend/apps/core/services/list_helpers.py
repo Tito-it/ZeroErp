@@ -14,7 +14,6 @@ from typing import Any, overload
 
 from collections.abc import Collection
 
-from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import order_dir_ammessa
 from apps.core.services.error_manager import ErrorManager
 
@@ -115,7 +114,7 @@ def validate_order_params(
 #        2026-07-06 (regola del 2, ok Tid): unifica i blocchi
 #        "ErrorManager.require(x in WHITELIST)" duplicati nei service vendite
 #        (area fermi, stadio competenza, area backlog, sort_by/sort_dir lotto
-#        fatture). Speculare a validate_order_params/validate_pagination.
+#        fatture). Speculare a validate_order_params.
 def validate_enum_param(
     value: str | None,
     *,
@@ -131,44 +130,14 @@ def validate_enum_param(
         code=error_code,
         message=f"Parametro {param_name} non valido.",
         detail=f"Valori ammessi: {', '.join(allowed)}",
-        context={param_name: value},
+        # ⛔ Niente `field`: e' un parametro di QUERY, non un input del form
+        # (api.md §«Escono solo i nomi», decisione di Tid 2026-10-20). Il nome
+        # resta nel context diagnostico come `parametro`, e nel messaggio.
+        context={param_name: value, "parametro": param_name},
         function_name=function_name,
         log_to_db=log_to_db,
     )
     return value
-
-
-# Scopo: Valida i parametri di paginazione page-based (page >= 1,
-#        1 <= page_size <= MAX_LIMIT) e ritorna l'offset calcolato `(page-1)*page_size`.
-#        `error_code`/`function_name` parametrici. Speculare a `validate_order_params`.
-#        NB: convenzione PAGE-based; per le liste offset-based esiste già
-#        `parse_list_params` (apps/core/api/payload_validators.py).
-def validate_pagination(
-    page: int,
-    page_size: int,
-    *,
-    error_code: str,
-    function_name: str,
-) -> int:
-    ErrorManager.require(
-        page >= 1,
-        code=error_code,
-        message="Parametri paginazione non validi.",
-        detail="page deve essere >= 1",
-        context={"page": page},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    ErrorManager.require(
-        1 <= page_size <= MAX_LIMIT,
-        code=error_code,
-        message="Parametri paginazione non validi.",
-        detail=f"page_size deve essere compreso tra 1 e {MAX_LIMIT}",
-        context={"page_size": page_size},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return (page - 1) * page_size
 
 
 # Scopo: Envelope di una collezione CONSEGNATA PER INTERO — le figlie di

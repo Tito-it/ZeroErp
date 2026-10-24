@@ -26,6 +26,7 @@ from apps.anagrafiche.db.billing_account_repository import BillingAccountReposit
 from apps.anagrafiche.services.valuta_resolver import resolve_valuta_default
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
+from apps.vendite.db._documento_eccezioni_repo import fornitura_da_anagrafica
 from apps.vendite.db.listini_repository import ListiniRepository
 
 
@@ -139,6 +140,22 @@ def _apply_ba_categoria_utility(
     })
 
 
+# Scopo: la scheda di fornitura che l'anagrafica da' al cliente scelto
+#        (R-BE-5 di brief-db-indirizzi-documento-seguono-il-cliente): il drawer
+#        di contratto e offerta la precompila in creazione, l'operatore la vede
+#        e la corregge (condizione di Tid su D-7). Alla nascita del contratto il
+#        DB parte dalla stessa scheda e ci applica le chiavi dell'operatore.
+#        `fornitura` None: niente BA, o la coppia senza dati precontrattuali.
+def _apply_fornitura(payload: dict[str, Any]) -> None:
+    istanza_id = payload.get("istanza_utility_id")
+    utility_id = payload.get("utility_id")
+    payload["fornitura"] = (
+        fornitura_da_anagrafica(int(istanza_id), int(utility_id))
+        if istanza_id is not None and utility_id is not None
+        else None
+    )
+
+
 def fn_get_contratto_form_defaults(
     *,
     billing_account_id: int | None,
@@ -172,6 +189,7 @@ def fn_get_contratto_form_defaults(
         "valuta_id": None,
         "valuta_codice": None,
         "valuta_descrizione": None,
+        "fornitura": None,
     }
 
     ba: dict[str, Any] | None = None
@@ -190,6 +208,7 @@ def fn_get_contratto_form_defaults(
         )
         assert ba is not None
         _apply_ba_categoria_utility(payload, ba, ba_id)
+        _apply_fornitura(payload)
 
     valuta = resolve_valuta_default(
         billing_account_id=ba_id,
@@ -229,6 +248,7 @@ def fn_get_offerta_form_defaults(
         "valuta_id": None,
         "valuta_codice": None,
         "valuta_descrizione": None,
+        "fornitura": None,
     }
 
     ba: dict[str, Any] | None = None
@@ -247,6 +267,7 @@ def fn_get_offerta_form_defaults(
         )
         assert ba is not None
         _apply_ba_categoria_utility(payload, ba, ba_id)
+        _apply_fornitura(payload)
 
     valuta = resolve_valuta_default(
         billing_account_id=ba_id,

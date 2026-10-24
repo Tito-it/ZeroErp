@@ -1,0 +1,190 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LE PROCEDURE DEI JOB GIRANO COME IL PROPRIETARIO.
+#   Brief: brief-db-ruoli-di-sistema §3.1, fase 1-bis (D-2 di Tid, 2026-10-14)
+#
+# Le 16 procedure `maintenance.proc_*_job` diventano SECURITY DEFINER. Chi le chiama — pgAgent, la
+# convergenza di ci_apply, una persona — le esegue come il PROPRIETARIO, e cio'
+# che creano (shadow di storico, trigger, indici delle FK) nasce suo.
+#
+# ── PERCHE' ADESSO, prima dei ruoli ─────────────────────────────────
+#   Funziona con l'owner di oggi (titodb su dbdev, zeroerp in CI) e prepara
+#   pgAgent come `zeroerp_job`, che potra' SOLO chiamarle. Su dbdev il lavoro
+#   notturno smette di girare come `postgres` e gira come `titodb`:
+#   * gli oggetti che le automazioni creano nascono del proprietario (oggi
+#     nascevano di postgres: e' il motivo di provision_storico_scope.sql);
+#   * ⭐ le primitive delle automazioni che agiscono solo dove
+#     `current_user` e' il proprietario (fn_storico_arma_scope & co.) di notte
+#     SALTAVANO con un WARN: con DEFINER lavorano, come gia' in CI, dove
+#     ci_apply gira da proprietario. La notte di dbdev fa quello che fa la CI.
+#   Censito il 2026-10-14: su dbdev tabelle, viste, sequenze e schemi del
+#   progetto sono tutti di titodb; di postgres solo sei funzioni DEFINER volute
+#   (log via dblink, tx_id, verbale fuori transazione, registro degli owner),
+#   che titodb chiama come oggi.
+#
+# ── ⛔ search_path ───────────────────────────────────────────────────
+#   Una DEFINER lo fissa (igiene: chi la chiama non deve poter cambiare cosa
+#   risolve un nome), ma una troppo stretta ACCECA le funzioni INVOKER chiamate
+#   dentro, che risolvono col search_path in vigore. Si fissa quello con cui i
+#   job girano OGGI: il default del database, «"$user", public, topology»
+#   (pg_db_role_setting, 2026-10-14; pgAgent e ci_apply non ne hanno uno loro).
+#   "$user" cade: nessuno schema ha il nome di un ruolo. pg_temp in coda.
+#
+# ── ⛔ EXECUTE tolto a PUBLIC ────────────────────────────────────────
+#   Il default di PostgreSQL da' EXECUTE a PUBLIC. Con INVOKER era innocuo (chi
+#   chiama lavora coi suoi diritti); con DEFINER chiunque lancerebbe le
+#   automazioni come proprietario. Censito il 2026-10-14: nessuna funzione del
+#   database e nessun punto del backend le chiama; i pgTAP le nominano solo nei
+#   commenti; oggi le eseguono postgres (superuser) e il proprietario, che il
+#   privilegio lo hanno comunque. L'EXECUTE a `zeroerp_job` lo da' il
+#   provisioning, quando il ruolo esiste (brief §4).
+#   ⚠️ `maintenance` e' fuori dal loop dei grant di ci_apply (20260205-41) e
+#   dalla whitelist di provision_db_roles.sql: questo REVOKE non viene riaperto.
+#
+# ⚠️ Nessuna procedura dei job fa COMMIT (una DEFINER non potrebbe): la
+#   convergenza in CI le chiama dentro la transazione del changeSet.
+# ⚠️ ALTER e non CREATE OR REPLACE: cambiano gli attributi, i corpi restano
+#   quelli vivi — nessun corpo ricopiato, nessuna regressione possibile.
+# ⚠️ proc_apply_fk_index_policy_job: il modello ne ha UNA firma, `(boolean)`,
+#   quella che il job chiama (20260116-11). Su dbdev ne esiste anche una `()`
+#   che nessun changelog crea — un database costruito da zero non ce l'ha
+#   (zeroerp_ci, 2026-10-14) — e che nessuno chiama: un residuo di sviluppo,
+#   da togliere A MANO su dbdev (brief §8). Qui non si nomina: un changeSet
+#   per un oggetto che esiste su una macchina sola sarebbe codice da ritirare.
+#
+# Presidio: db/pgtap/maintenance/test-proc-job-definer-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261014-55-alter-proc-job-security-definer-mctit.yaml
+
+  - changeSet:
+      id: 20261014-55-alter-proc-job-security-definer
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le 16 procedure maintenance.proc_*_job diventano SECURITY DEFINER con search_path fisso
+        (public, topology, pg_temp: quello con cui i job girano oggi) e perdono l'EXECUTE di
+        PUBLIC. Chi le chiama le esegue come il proprietario: pgAgent potra' girare come
+        zeroerp_job senza diritti propri. brief-db-ruoli-di-sistema §3.1, fase 1-bis.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM unnest(ARRAY[
+                  'maintenance.proc_accoda_chiusura_scadenze_job()',
+                  'maintenance.proc_analyze_statistiche_job()',
+                  'maintenance.proc_apply_fk_index_policy_job(boolean)',
+                  'maintenance.proc_apply_storicizza_defaults_job()',
+                  'maintenance.proc_automations_attivo_job()',
+                  'maintenance.proc_automations_audit_update_job()',
+                  'maintenance.proc_automations_cleanup_job()',
+                  'maintenance.proc_automations_delete_block_job()',
+                  'maintenance.proc_automations_lock_columns_job()',
+                  'maintenance.proc_automations_overlap_job()',
+                  'maintenance.proc_automations_storico_job()',
+                  'maintenance.proc_automations_storico_provision_job()',
+                  'maintenance.proc_automations_tx_id_job()',
+                  'maintenance.proc_guardiano_digest_job()',
+                  'maintenance.proc_sync_auth_user_expired_job()',
+                  'maintenance.proc_sync_storico_set_storicizza_job()']) AS s(firma)
+               WHERE to_regprocedure(s.firma) IS NULL;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER PROCEDURE maintenance.proc_accoda_chiusura_scadenze_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_accoda_chiusura_scadenze_job() FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_analyze_statistiche_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_analyze_statistiche_job() FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_apply_fk_index_policy_job(boolean)
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_apply_fk_index_policy_job(boolean) FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_apply_storicizza_defaults_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_apply_storicizza_defaults_job() FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_attivo_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_automations_attivo_job() FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_audit_update_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_automations_audit_update_job() FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_cleanup_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_automations_cleanup_job() FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_delete_block_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_automations_delete_block_job() FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_lock_columns_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_automations_lock_columns_job() FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_overlap_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_automations_overlap_job() FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_storico_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_automations_storico_job() FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_storico_provision_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_automations_storico_provision_job() FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_tx_id_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_automations_tx_id_job() FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_guardiano_digest_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_guardiano_digest_job() FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_sync_auth_user_expired_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_sync_auth_user_expired_job() FROM PUBLIC;
+              ALTER PROCEDURE maintenance.proc_sync_storico_set_storicizza_job()
+                  SECURITY DEFINER SET search_path = public, topology, pg_temp;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_sync_storico_set_storicizza_job() FROM PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER PROCEDURE maintenance.proc_accoda_chiusura_scadenze_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_accoda_chiusura_scadenze_job() TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_analyze_statistiche_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_analyze_statistiche_job() TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_apply_fk_index_policy_job(boolean) SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_apply_fk_index_policy_job(boolean) TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_apply_storicizza_defaults_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_apply_storicizza_defaults_job() TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_attivo_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_automations_attivo_job() TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_audit_update_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_automations_audit_update_job() TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_cleanup_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_automations_cleanup_job() TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_delete_block_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_automations_delete_block_job() TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_lock_columns_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_automations_lock_columns_job() TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_overlap_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_automations_overlap_job() TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_storico_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_automations_storico_job() TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_storico_provision_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_automations_storico_provision_job() TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_automations_tx_id_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_automations_tx_id_job() TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_guardiano_digest_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_guardiano_digest_job() TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_sync_auth_user_expired_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_sync_auth_user_expired_job() TO PUBLIC;
+              ALTER PROCEDURE maintenance.proc_sync_storico_set_storicizza_job() SECURITY INVOKER RESET search_path;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_sync_storico_set_storicizza_job() TO PUBLIC;

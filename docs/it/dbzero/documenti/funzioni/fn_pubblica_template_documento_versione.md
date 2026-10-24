@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pubblica_template_documento_versione(p_versione_id bigint, p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_versione_contesto integer, p_valido_al date DEFAULT NULL::date)
  RETURNS TABLE(versione_id bigint, template_documento_id bigint, versioni_obsolete integer)
@@ -177,6 +179,8 @@ $function$
 COMMENT ON FUNCTION documenti.fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_versione_contesto integer, p_valido_al date)
 IS 'Pubblica una versione template documento con auto-close atomico delle versioni PUBBLICATE precedenti sovrapposte. Rev 20260930-21: p_versione_contesto (obbligatorio) e'' la forma dei dati che il builder produce; la versione si pubblica solo se dichiara di leggere quella forma (documenti.fn_guard_versione_contesto: E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA). Rev 20260924-02: l''ordine delle date non e'' piu'' giudicato sui parametri: lo giudica il guard comune script.trgfn_guard_date_validita sull''UPDATE della versione (E_DATA_AL_MINORE_DAL).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

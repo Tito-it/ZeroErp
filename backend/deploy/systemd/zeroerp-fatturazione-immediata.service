@@ -18,11 +18,14 @@
 # `maintenance.job_run_log`. Per questo non serve `RemainAfterExit` né un lock
 # di systemd, e immediata/differita non si bloccano a vicenda.
 #
-# ⚠️ NON abilitato dall'installer, a differenza dei due drainer — decisione di
-# Tid, 2026-08-16. I drainer processano una coda (a coda vuota non fanno nulla);
-# questo EMETTE DOCUMENTI. Accenderlo di riflesso con un `sudo install-timers.sh`
-# vorrebbe dire iniziare a fatturare su un host che nessuno ha dichiarato pronto.
-# L'installer lo scrive e stampa il comando per accenderlo.
+# ⚠️ SPENTO di default, a differenza dei due drainer — decisione di Tid,
+# 2026-08-16. I drainer processano una coda (a coda vuota non fanno nulla);
+# questo EMETTE DOCUMENTI, e accenderlo di riflesso vorrebbe dire iniziare a
+# fatturare su un host che nessuno ha dichiarato pronto. Dal 2026-10-16 lo
+# spento non e' piu' dell'installer (che installa e accende ogni timer) ma del
+# processo: `run_fatturazione_batch` e' spento in tutti e due gli ambienti a
+# catalogo (dbops.processi), l'`ExecCondition` qui sotto salta ogni sveglia, e
+# lo si accende dal drawer dei processi quando l'installazione e' pronta.
 [Unit]
 Description=ZeroERP fatturazione batch — corsia immediata (GIORNALIERO)
 After=network.target
@@ -33,4 +36,17 @@ User=__APP_USER__
 Group=www-data
 WorkingDirectory=__APP_DIR__
 EnvironmentFile=__APP_DIR__/.env.systemd
+# ⛔ TimeoutStartSec, il TETTO della corsa (dal 2026-10-17): un `oneshot` senza
+# tetto resta «in avvio» per sempre se qualcosa si appende, e finche' non
+# finisce il timer non ne lancia un'altra — il 2026-10-16 due sveglie sono
+# rimaste ferme oltre un'ora su una connessione al DB caduta a meta'.
+# 55min: nessuna tolleranza a catalogo: il tetto comune, sotto l'ora dopo cui
+#   la corsa risulta «presa e mai chiusa» (come lo smoke). Copre anche
+#   l'`ExecCondition`.
+TimeoutStartSec=55min
+# ⭐ Il processo e' ACCESO su questa installazione? Lo chiede `e_dovuto` al DB
+# (`maintenance.fn_sveglia_accesa`, dal 2026-10-16): spento esce 1 e systemd
+# salta senza errore; ambiente non dichiarato esce 255 e l'unit fallisce.
+# Su ogni sveglia, anche su chi oggi non si spegne mai: e' il catalogo a dirlo.
+ExecCondition=__APP_DIR__/bin/run-command.sh e_dovuto zeroerp-fatturazione-immediata
 ExecStart=__APP_DIR__/bin/run-command.sh __COMANDO__

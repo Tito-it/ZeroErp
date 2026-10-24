@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FUNZIONE DI SCOPE CHE RICEVE IL PERIMETRO GIA' CALCOLATO
+#   script.fn_scope_ef_perimetro(boolean,bigint[],bigint)
+#   Brief: brief-db-plancache-funzioni-con-query-incorporate §5quinquies, D-3b-2 (ondata 1a).
+#
+# Le policy ef_whitelist chiedevano per OGNI riga il perimetro dell'utente
+# (super admin, veste, whitelist): una plpgsql per riga. Questa funzione
+# riceve il perimetro dalla policy, calcolato una volta per istruzione da
+# script.fn_get_emittenti_scope_pk_ids (-17: COST), e confronta solo l'emittente della riga.
+# E' pura (IMMUTABLE) e il pianificatore la INCORPORA: nel piano resta
+# `(InitPlan 1) OR COALESCE(emittente = ANY ((InitPlan 2)), false)`.
+# Provato sullo scratch (2026-10-18), EXPLAIN di vendite.ddt sotto policy.
+# ⛔ Ogni parametro una volta sola nel corpo: e' la condizione perche'
+#    l'incorporazione regga con argomenti-sottoquery.
+# Presidio: script/test-scope-ef-perimetro-una-volta-per-istruzione-v1.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261018-16-create-fn-scope-ef-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261018-16-create-fn-scope-ef-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_scope_ef_perimetro: la funzione di scope delle policy ef_whitelist che riceve il perimetro gia' calcolato (una volta per istruzione) e confronta l'emittente della riga. Pura, incorporata. D-3b-2 di brief-db-plancache-funzioni-con-query-incorporate.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid = to_regprocedure('script.fn_scope_ef_perimetro(boolean,bigint[],bigint)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_perimetro(
+                  p_tutti                boolean,   -- calcolato: «il perimetro e' tutti»
+                  -- ⚠️ `bigint[]` esplicito: elementi = anagrafiche.emittenti_fiscali.id.
+                  p_emittenti            bigint[],
+                  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               IMMUTABLE
+               -- ⚠️ Nessun COST: la funzione e' pura e il pianificatore la INCORPORA, quindi
+               --    nel piano non compare lei ma il suo corpo (un OR e un = ANY). Misurata ed
+               --    elencata fra le economiche di script/test-policy-funzioni-cost-v1.
+              AS $function$
+                  -- Scopo: l'emittente della riga sta nel perimetro dell'operatore?
+                  --   La funzione di scope delle policy ef_whitelist (linee-guida-sql
+                  --   §10.3). Il perimetro NON lo calcola lei: glielo passa la policy,
+                  --   in due sottoquery scalari non correlate su script.fn_get_emittenti_scope_pk_ids,
+                  --   che PostgreSQL valuta UNA volta per istruzione (InitPlan):
+                  --     script.fn_scope_ef_perimetro(
+                  --         (SELECT script.fn_get_emittenti_scope_pk_ids(<utente>) IS NULL),
+                  --         (SELECT script.fn_get_emittenti_scope_pk_ids(<utente>)),
+                  --         <emittente della riga>)
+                  -- ⛔ Ogni parametro compare UNA volta sola nel corpo: con un parametro
+                  --    usato due volte e un argomento che e' una sottoquery, PostgreSQL
+                  --    rifiuta di incorporare la funzione, e la chiamata torna per riga.
+                  --    Per questo «tutti» arriva come booleano a parte, e non come
+                  --    perimetro NULL riletto qui.
+                  -- COALESCE: emittente NULL (riferimento non risolto) -> false, non NULL.
+                  SELECT p_tutti OR coalesce(p_emittente_fiscale_id = ANY (p_emittenti), false)
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_perimetro(boolean,bigint[],bigint) IS
+              'Funzione di scope delle policy ef_whitelist (linee-guida-sql §10.3): l''emittente della riga sta nel perimetro dell''operatore? Il perimetro lo passa la policy, calcolato UNA volta per istruzione da script.fn_get_emittenti_scope_pk_ids in due sottoquery scalari non correlate (InitPlan): p_tutti = perimetro NULL, p_emittenti = il perimetro. Pura e incorporata dal pianificatore: per riga resta solo `emittente = ANY (...)`. Ogni parametro compare una volta sola nel corpo, altrimenti con un argomento-sottoquery l''incorporazione e'' rifiutata. Emittente NULL -> false. Rev 2026-10-18 (20261018-16, D-3b-2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION script.fn_scope_ef_perimetro(boolean,bigint[],bigint);

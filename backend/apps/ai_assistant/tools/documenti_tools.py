@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from apps.config.sorgenti import SORGENTE_PREVENTIVO
 from apps.ai_assistant.tools.base import AITool, EndpointGemello
 from apps.vendite.api.preventivi_documenti_views import ApiPreventivoDocumentiList
 
@@ -33,7 +34,7 @@ def _resolve_uid_preventivo(sorgente_id: int) -> str | None:
 
 
 _SORGENTE_UID_RESOLVERS: dict[str, Callable[[int], str | None]] = {
-    "PREVENTIVO": _resolve_uid_preventivo,
+    SORGENTE_PREVENTIVO: _resolve_uid_preventivo,
 }
 
 
@@ -76,7 +77,7 @@ class CercaDocumentiGeneratiTool(AITool):
                         "type": "integer",
                         "description": "ID applicativo del record sorgente (es. preventivo_id). Usare prima il tool di ricerca del dominio per ottenere l'ID.",
                     },
-                    "page_size": {
+                    "limit": {
                         "type": "integer",
                         "description": "Numero versioni da restituire (default 10, max 50).",
                     },
@@ -103,7 +104,7 @@ class CercaDocumentiGeneratiTool(AITool):
 
     # Scopo: Risolve sorgente_uid + sorgente_tipo_id e delega al service.
     def execute(self, params: dict[str, Any], request: Any) -> dict[str, Any]:
-        from apps.documenti.db.documenti_repository import DocumentiRepository
+        from apps.config.db.sorgenti_repository import SorgentiRepository
         from apps.documenti.services.document_generation_service import (
             DocumentGenerationService,
         )
@@ -120,9 +121,8 @@ class CercaDocumentiGeneratiTool(AITool):
         if not sorgente_uid:
             return {"error": "Record sorgente non trovato o non accessibile."}
 
-        doc_repo = DocumentiRepository()
-        sorgente = doc_repo.get_sorgente_tipo_id_by_codice(sorgente_code)
-        if not sorgente or not sorgente.get("attivo"):
+        sorgente = SorgentiRepository().get_sorgente_attiva(sorgente_code)
+        if sorgente is None:
             return {
                 "error": f"Sorgente '{sorgente_code}' non configurata o non attiva.",
             }
@@ -133,7 +133,7 @@ class CercaDocumentiGeneratiTool(AITool):
             user,
             sorgente_tipo_id=sorgente_tipo_id,
             sorgente_uid=sorgente_uid,
-            limit=self.safe_page_size(params),
+            limit=self.safe_limit(params),
             offset=0,
         )
         rows = result.get("results") or []

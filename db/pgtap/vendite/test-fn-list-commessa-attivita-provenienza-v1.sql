@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): test 11 su config.sorgenti.apribile (area ritirata).
+-- rev 2026-10-21 (brief-db-grammatica-unica-documenti, G-1, 20261021-20): test 18 ordina per sorgente_etichetta; sorgente_codice e' ritirata.
 -- pgTAP test per Zero ERP
 --
 -- Test: la PROVENIENZA della riga di commessa arriva a valle
@@ -137,15 +139,16 @@ SELECT is(
   '10. ogni label_selector nomina una colonna che esiste sulla target_table'
 );
 
--- ⭐ COERENZA. `area` valorizzata = la sorgente E' un documento sfogliabile,
---   quindi ha un numero che l'operatore legge. Una sorgente nuova sfogliabile e
+-- ⭐ COERENZA. `apribile` = la sorgente E' un documento con una sua pagina
+--   (rev 2026-10-20, 2d: era `area` valorizzata, ritirata), quindi ha un numero
+--   che l'operatore legge. Una sorgente nuova sfogliabile e
 --   senza label_selector darebbe una colonna «Origine» vuota per sempre, e
 --   sarebbe l'unico sintomo.
 SELECT is(
   (SELECT count(*)::int FROM config.sorgenti s
-    WHERE s.attivo IS TRUE AND s.area IS NOT NULL AND s.label_selector IS NULL),
+    WHERE s.attivo IS TRUE AND s.apribile AND s.label_selector IS NULL),
   0,
-  '11. ogni sorgente sfogliabile (area valorizzata) dichiara un label_selector'
+  '11. ogni sorgente apribile dichiara un label_selector'
 );
 
 -- ============================================================
@@ -201,8 +204,10 @@ END;
 -- ⚠️ La riga sourceless e' il caso che ha cambiato il disegno: RETTIFICA e
 --   ONERE non hanno documento a monte per progetto (misurato il 2026-08-20:
 --   9 righe su 98, il 100% delle righe di nota di credito). Qui si usa una
---   NORMALE senza sorgente perche' l'ONERE pretenderebbe una causale, e il
---   comportamento sotto esame — «niente sorgente» — e' identico.
+--   RETTIFICA perche' l'ONERE pretenderebbe una causale, e il comportamento
+--   sotto esame — «niente sorgente» — e' identico. ⛔ Non una NORMALE: senza
+--   sorgente la rifiuta il vincolo chk_commesse_attivita_senza_sorgente_onere_rettifica
+--   (20261012-27), e il caso non esiste piu' nel modello.
 
 CREATE TEMP TABLE tmp_refs_lcp AS
 SELECT
@@ -282,8 +287,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   -- ⭐ Sorgente ASSENTE: e' il soggetto del test.
   p_sorgente_tipo_id    => NULL,
   p_sorgente_uid        => NULL,
-  p_tipo_movimento      => 'NORMALE',
-  p_tipo_consumo        => 'CONGUAGLIO',
+  p_tipo_movimento      => 'RETTIFICA',
   p_meta                => jsonb_build_object('case', 'LCP_SOURCELESS')
 ) r;
 
@@ -333,7 +337,7 @@ SELECT lives_ok($$
   BEGIN
     SELECT commessa_id INTO v_commessa FROM tmp_commessa_lcp;
     FOREACH c IN ARRAY ARRAY['tipo_movimento','articolo_codice','articolo_descrizione',
-                             'sorgente_codice','sorgente_documento_numero','gruppo_key'] LOOP
+                             'sorgente_etichetta','sorgente_documento_numero','gruppo_key'] LOOP
       -- ⭐ POSIZIONALE, e di proposito: sono gli OTTO argomenti della firma
       --   precedente al filtro `p_tipo_movimento`. Il nono e' stato appeso IN
       --   CODA con un DEFAULT apposta perche' chiamate come questa continuino a
@@ -402,7 +406,7 @@ SELECT is(
 -- ============================================================
 -- 23..27  Il quarto filtro: p_tipo_movimento
 -- ============================================================
--- La fixture ha UNA riga, `NORMALE`: basta e avanza, perche' le cinque
+-- La fixture ha UNA riga, `RETTIFICA`: basta e avanza, perche' le cinque
 -- asserzioni misurano il comportamento del FILTRO, non la popolazione.
 
 SELECT is(
@@ -415,7 +419,7 @@ SELECT is(
 SELECT is(
   (SELECT count(*)::int FROM vendite.fn_list_commessa_attivita(
       p_commessa_id    => (SELECT commessa_id FROM tmp_commessa_lcp),
-      p_tipo_movimento => 'NORMALE')),
+      p_tipo_movimento => 'RETTIFICA')),
   1,
   '24. filtro sul movimento presente: la riga c''e'''
 );
@@ -426,7 +430,7 @@ SELECT is(
 SELECT is(
   (SELECT count(*)::int FROM vendite.fn_list_commessa_attivita(
       p_commessa_id    => (SELECT commessa_id FROM tmp_commessa_lcp),
-      p_tipo_movimento => 'RETTIFICA')),
+      p_tipo_movimento => 'NORMALE')),
   0,
   '25. filtro su un movimento assente: zero righe, senza errore'
 );
@@ -448,7 +452,7 @@ $$, 'P0001', NULL,
 SELECT is(
   (SELECT count(*)::int FROM vendite.fn_list_commessa_attivita(
       p_commessa_id    => (SELECT commessa_id FROM tmp_commessa_lcp),
-      p_tipo_movimento => '  normale  ')),
+      p_tipo_movimento => '  rettifica  ')),
   1,
   '27. p_tipo_movimento tollera spazi e minuscole'
 );

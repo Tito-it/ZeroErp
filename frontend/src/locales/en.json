@@ -11,8 +11,10 @@
     "azione_reason": {
       "senza_righe": "The document has no rows: add at least one to proceed.",
       "indirizzi_mancanti": "Required document addresses are missing: fill them in the Addresses section.",
+      "indirizzo_non_del_cliente": "A document address does not belong to its customer: pick one of the customer's addresses, or type it in, in the Addresses section.",
       "prezzo_pendente": "Some prices are waiting for approval ({0}).",
-      "prezzo_rifiutato": "Some prices were rejected by the manager ({0}): correct them or remove the lines."
+      "prezzo_rifiutato": "Some prices were rejected by the manager ({0}): correct them or remove the lines.",
+      "riga_non_ammessa": "{0}: the line for item {1} is not allowed."
     },
     "refine_hint_troncato": "Showing the first {shown}. Refine your search to see the others.",
     "save": "Save",
@@ -464,9 +466,12 @@
       "aliquota_iva": "VAT rate",
       "applica_fattura": "Applies to invoice",
       "applica_lotto": "Applies to batch",
+        "apribile": "Openable (has its own page)",
       "area": "Area",
       "arrotondamento_decimali": "Rounding decimals",
       "arrotondamento_metodo": "Rounding method",
+      "arrotondamento_importi_dec": "Amount decimals",
+      "metodo_arrotondamento_importi": "Amount rounding",
       "assoggettamento_id": "VAT liability",
       "attende_sorgente_tipo_id": "Waits for source document of type",
       "attivo": "Active",
@@ -503,6 +508,7 @@
       "entita_tabella": "Entity table",
       "esito": "Outcome",
       "esito_default": "Default outcome",
+        "etichetta": "Label",
       "extra_country": "Country data (JSON)",
       "fase": "Phase",
       "fatturabile": "Billable",
@@ -514,6 +520,7 @@
       "handler_key": "Handler key",
       "handler_params": "Handler parameters (JSON)",
       "id_iva_split": "Split payment VAT",
+      "iniziale": "Initial state",
       "intervallo": "Interval (days)",
       "is_abortito": "Aborted state",
       "is_bozza": "Draft state",
@@ -619,7 +626,8 @@
     "back_home": "Back to Home",
     "lookup_load_failed": "Could not load the list. Retry or contact the administrator.",
     "bersaglio_apri_senza_id": "Open {entita}",
-    "http_413_file_troppo_grande": "The file is too large: it exceeds the maximum size the server accepts. Use a smaller file."
+    "http_413_file_troppo_grande": "The file is too large: it exceeds the maximum size the server accepts. Use a smaller file.",
+    "soluzione_riprova_fra_poco": "Wait a few seconds and try again: the operation will not be performed twice."
   },
   "placeholder": {
     "wip_title": "Under construction",
@@ -1057,10 +1065,12 @@
       "sezione_dove_vive": "Where the document lives",
       "sezione_forma": "Shape new registers are born with",
       "sezione_stato": "Status",
-      "schema_tabella": "Schema",
-      "nome_tabella": "Table",
+      "sorgente_placeholder": "Choose the document source",
+      "sorgente_hint": "A family belongs to a source: its code becomes the family's internal code, and the documents' table is the source's table. On creation the code shown in the list equals the internal code; it can be changed afterwards, when editing.",
+      "sorgente_ha_famiglia": "It already has a family: if that one is off, switch it back on.",
+      "sorgente_tabella_numerata": "Its table is already numbered by the active family “{famiglia}”.",
+      "tabella_dalla_sorgente": "It is the source's table: it is not typed in, the source catalogue states it.",
       "codice_immutabile": "The code cannot be changed: it is the target of the registers' reference, and changing it would detach them all.",
-      "codice_nasce_dal_interno": "On creation the code shown in the list equals the internal code; it can be changed afterwards, when editing.",
       "serie_hint": "Empty = this family does not handle series. If you fill it in, that column must also tell numbers apart on the document itself.",
       "billing_account_hint": "Empty = this family has no billing account (for instance a purchase order, whose counterparty is a supplier).",
       "registri_totali": "Registers, across all issuers",
@@ -1639,6 +1649,10 @@
     "col_override": "Overrides",
     "mostra_permessi": "Show permissions",
     "mostra_permessi_hint": "Under each operator, its areas: effective level, overrides set and items limited by the area.",
+    "mostra_di_prova": "Show test users",
+    "mostra_di_prova_hint": "The users created by the development provisioning (dev.*): hidden by default.",
+    "di_prova_badge": "Test",
+    "di_prova_tooltip": "Test user, created by the development provisioning: it exists only in development installations.",
     "permessi_nessuna_area": "No area matches the filters.",
     "permessi_area_senza_voci": "This area has no objects or process actions to configure: only the area level applies.",
     "azione_abilitata": "Enabled",
@@ -1680,7 +1694,8 @@
       "col_jobname": "Job",
       "col_origine": "Origin",
       "col_esito": "Outcome",
-      "presidi_titolo": "Checks that must stay empty",
+      "tab_processi": "Processes",
+      "tab_presidi": "Checks",
       "presidi_help": "Anything listed below is something to fix. Each check's explanation comes from the database, which is where that rule is written.",
       "presidi_errore": "The checks could not be read. «No rows» below would mean «all clear»: that is not what is happening.",
       "presidi_troncato": "first {n} rows",
@@ -1705,17 +1720,39 @@
       "presidi_badge_tooltip": "System checks: {allarmi} to look at, {non_letti} unread — read at {ora}",
       "tab_sveglie": "Schedules",
       "sveglie_help": "The deployment schedules declared for this process: what starts it and how often. It is the project declaration, not the state of this host: what is actually running is told by the runs.",
+      "ambiente": "Environment: {ambiente}",
+      "ambiente_valore": {
+        "SVILUPPO": "Development",
+        "PRODUZIONE": "Production"
+      },
+      "ambiente_non_dichiarato": "Installation environment not declared",
+      "acceso": "On",
+      "spento": "Off",
+      "accensione_non_decidibile": "On/off cannot be determined",
+      "accensione_mai_spento": "Never switched off: if it were off, something would break without anyone noticing.",
+      "accensione_a_mano": "Set by hand: {motivo} ({quando}, {chi})",
+      "accensione_a_mano_non_ammessa": "Manual choice not applied: in production this process cannot be switched on by hand ({motivo}, {quando}, {chi}). «Back to default» removes it.",
+      "accensione_default": "Process default for the {ambiente} environment",
+      "accendi": "Switch on",
+      "spegni": "Switch off",
+      "torna_al_default": "Back to default",
+      "accendi_blocco": {
+        "non_accendibile_in_produzione": "This process cannot be switched on by hand in a production installation: it is meant for development only (for example, it writes test data). It can be switched off or reset to the default.",
+        "non_decidibile": "It is not known whether switching it on by hand is allowed: the environment of this installation is not declared."
+      },
+      "accendi_spiegazione": "The process will start again at its next schedule, on this installation.",
+      "spegni_spiegazione": "The process will no longer start, neither from its schedule nor with «Run now», until you switch it back on.",
+      "torna_al_default_spiegazione": "The manual choice is removed: the process goes back on or off as its default for the environment says.",
+      "accensione_motivo": "Reason",
+      "accensione_ok": "Process on/off updated.",
       "sveglie_nessuna": "No deployment schedule declared for this process: if it runs, something else wakes it (pgAgent, for instance).",
       "col_unit": "Unit",
       "col_forma": "Form",
       "col_cadenza": "Cadence",
-      "col_abilita": "On this installation",
       "col_comando": "Command",
       "forma_timer": "timer",
       "forma_servizio": "service",
       "sveglia_sempre_accesa": "always on",
-      "sveglia_abilitata": "enabled",
-      "sveglia_spenta": "disabled",
       "sveglia_dovuto_giorno": "every day from {dalle} (company time)",
       "sveglia_dovuto_settimana": "every {giorno} from {dalle} (company time)",
       "sveglia_dovuto_mese": "on day {giorno} of every month from {dalle} (company time)",
@@ -1726,7 +1763,8 @@
       "esegui_ora_accodato": "Job #{job_id} queued: it starts at the drainer's next pass.",
       "esegui_ora_blocco": {
         "non_avviabile_a_mano": "This schedule is declared not startable by hand in the deployment: its command is not suited to «Run now» (it is long by nature, or it is the drainer itself).",
-        "non_abilitata": "The schedule is disabled on this installation: it is enabled from the deployment, not from here.",
+        "non_abilitata": "The process is switched off on this installation: switch it back on before running it.",
+        "non_decidibile": "It is not known whether the process is on: the environment of this installation has not been declared.",
         "gia_in_coda": "Already queued (job #{job_id}): it can be pressed again once that job has finished."
       }
     },
@@ -1918,6 +1956,10 @@
     "disattiva_dialog_messaggio": "Article {codice} will be deactivated. Linked operative UoMs, BoM rows and price lists remain unchanged. Confirm?",
     "riattiva_dialog_titolo": "Reactivate article",
     "riattiva_dialog_messaggio": "Article {codice} will be reactivated. Child entities (operative UoMs, BoM rows) keep their current state: reactivate them separately if needed. Confirm?",
+    "correggi_struttura": "Correct structure",
+    "correggi_struttura_dialog_titolo": "Correct the article structure",
+    "correggi_struttura_dialog_messaggio": "Article {codice} is already in use: its structure (sales nature, price list type, composite, component only, stock, lots and serials) normally does not change, and a new article is the way to sell or manage it differently. Use the correction only for a data entry error: documents already written do not change. Continue?",
+    "correggi_struttura_attiva": "Structure correction: the structural fields are reopened. On save they go through the administrator correction.",
     "uom_creata": "Unit of measure created",
     "uom_salvata": "Unit of measure saved",
     "uom_tipo_creato": "UoM type created",
@@ -2079,7 +2121,14 @@
     "section_uso": "Usage",
     "section_regole_input": "Input Rules",
     "section_extra": "Other",
-    "select_rounding_mode": "Select rounding mode"
+    "select_rounding_mode": "Select rounding mode",
+    "distinta": {
+      "componente_reason": {
+        "componente_padre": "It is the item itself: it cannot be a component of its own bill of materials.",
+        "componente_composito": "It is a kit itself: a bill of materials contains simple items only.",
+        "iva_discordante": "Its VAT rate differs from the kit's: components carry the parent's VAT."
+      }
+    }
   },
   "billing_account": {
     "search_placeholder": "Search BA by code, business name, tax ID or PDP...",
@@ -2107,6 +2156,37 @@
     "indirizzo_label": "Address"
   },
   "vendite": {
+    "righe": {
+      "articolo_reason": {
+        "solo_componente": "Item usable only inside a kit: add the kit that contains it.",
+        "ricorrente_usa_offerta": "Recurring service: it is sold with a commercial offer, not with a quote.",
+        "natura_non_merce": "It is a service: orders and delivery notes carry goods only.",
+        "senza_erogazione": "Item with no allowed delivery mode: it cannot be in an offer or a contract.",
+        "aggiunta_gia_in_listino": "Already in the document's price list: to change its price use «different price», not a new line.",
+        "eccezione_senza_listino": "The document has no price list in force: a different price or an exclusion applies only to a price-list item.",
+        "eccezione_fuori_listino": "Not in the document's price list: add it as a new line.",
+        "composito_come_bundle": "It is a kit: it enters a price list as a bundle, with its components' prices.",
+        "tipologia_mancante": "The item has no price-list type: it cannot enter a price list.",
+        "tipologia_incompatibile": "The item's type is not the price list's type.",
+        "kit_senza_componenti": "Kit without components: complete its bill of materials before using it."
+      }
+    },
+    "date_consegna": {
+      "azione": "Update delivery dates",
+      "nessuna_riga": "The document has no lines.",
+      "titolo": "Update delivery dates",
+      "intro": "Writes one delivery date on several lines of the document.",
+      "colonna": "Date to update",
+      "data": "Date",
+      "modalita": "On which lines",
+      "modalita_solo_vuote": "Only lines without a date",
+      "modalita_tutte": "All lines (overwrites the dates already set)",
+      "conferma_titolo": "Overwrite the dates?",
+      "conferma_tutte": "The date will be written on {aggiornate} lines, replacing those already set. Continue?",
+      "conferma_tutte_con_saltate": "The date will be written on {aggiornate} lines, replacing those already set. {saltate} lines have already left with a delivery note and stay as they are. Continue?",
+      "esito": "Delivery date updated on {aggiornate} lines.",
+      "esito_con_saltate": "Delivery date updated on {aggiornate} lines; {saltate} already shipped with a delivery note stay as they are."
+    },
     "approvazioni_prezzo": {
       "page_title": "Price approvals",
       "page_description": "Pending requests for approval of price changes proposed by operators.",
@@ -2382,6 +2462,8 @@
       "field_codice_commessa": "Order Code",
       "field_tipo_utenza": "Usage type",
       "field_classe_utenza": "Usage class",
+      "field_param_1_num": "Param 1 (number)",
+      "field_param_2_txt": "Param 2 (text)",
       "field_pdp": "PDP/POD",
       "field_nr_righe": "Number of rows",
       "field_utility_associata": "Associated utility",
@@ -2399,11 +2481,9 @@
       "fonte_quantita_value_manuale": "Manual (on document)",
       "fonte_quantita_value_timesheet": "From time tracking",
       "fonte_quantita_value_letture": "From utility readings",
-      "fonte_quantita_value_derivata_componenti": "Derived from BoM components",
       "fonte_quantita_tag_manuale": "Defined on document",
       "fonte_quantita_tag_timesheet": "From time tracking",
       "fonte_quantita_tag_letture": "From utility readings",
-      "fonte_quantita_tag_derivata_componenti": "Derived from components",
       "fonte_quantita_tag_tooltip": "Quantity will be determined downstream, not set here.",
       "select_categoria_cliente": "Select category...",
       "select_billing_account": "Search client...",
@@ -2520,7 +2600,8 @@
       "tipo_erogazione_orario": "Hourly",
       "erogazioni_articolo_non_ammesso": "This item cannot be sold on this document: its type is not among those allowed by the utility.",
       "azione_reason": {
-        "listino_senza_versione_in_vigore": "The price list has no version in force today: the contract cannot be activated."
+        "listino_senza_versione_in_vigore": "The price list has no version in force today: the contract cannot be activated.",
+        "contratto_sovrapposto": "The period overlaps contract {0}, already binding for the same customer and supply point: change the dates or close that contract first."
       },
       "pdf": {
         "label_anteprima": "Preview",
@@ -2537,13 +2618,13 @@
       }
     },
     "dash_comune": {
-      "area_preventivi": "Quotes",
-      "area_ordini": "Orders",
-      "area_offerte": "Offers",
-      "area_contratti": "Contracts",
-      "area_commesse": "Jobs",
-      "area_ddt": "Delivery notes",
-      "area_resi": "Returns",
+      "area_preventivo": "Quotes",
+      "area_ordine_vendita": "Orders",
+      "area_offerta_commerciale": "Offers",
+      "area_contratto": "Contracts",
+      "area_commessa": "Jobs",
+      "area_ddt_vendita": "Delivery notes",
+      "area_reso_vendita": "Returns",
       "fase_aperto": "In preparation",
       "fase_in_attesa": "Awaiting customer",
       "fase_in_corso": "In progress",
@@ -2815,6 +2896,31 @@
       "section_trasporto": "Transport",
       "field_causale_trasporto": "Transport reason",
       "field_causale_richiesta_emissione": "Required to issue the DDT: it declares whether the goods are a sale to invoice or transport only",
+      "field_magazzino": "Departure warehouse",
+      "field_magazzino_placeholder": "The company's default, if you don't choose one",
+      "field_magazzino_richiesto_emissione": "Required to issue a delivery note that moves goods: the warehouse the goods leave from",
+      "field_magazzino_arrivo": "Arrival warehouse",
+      "prelievi": {
+        "titolo": "Picking",
+        "intro": "Where the goods leave from, line by line: lot, serial number, shelf. Lines with nothing to choose are picked automatically on issue.",
+        "senza_magazzino": "Choose the departure warehouse first: lots, serial numbers and shelves depend on it.",
+        "voce_riga": "Line {nr}",
+        "componente": "kit component",
+        "prelevata": "{prelevata} of {qta} {uom}",
+        "automatico": "Automatic on issue",
+        "completo": "Complete",
+        "da_completare": "To complete",
+        "oltre": "Over the line",
+        "campo_qta": "Quantity",
+        "campo_lotto": "Lot",
+        "campo_seriale": "Serial number",
+        "campo_ubicazione": "Shelf",
+        "campo_ubicazione_arrivo": "Arrival shelf",
+        "aggiungi": "Add picking",
+        "togli": "Remove picking",
+        "salvato": "Picking saved",
+        "tolto": "Picking removed"
+      },
       "field_aspetto_bene": "Goods appearance",
       "field_modalita_addebito": "Transport charge",
       "field_vettore": "Carrier",
@@ -2933,7 +3039,18 @@
         "prelievi_incompleti": "One or more lines have picks that do not cover their quantity: complete the picks before issuing.",
         "merce_non_prelevabile": "A pick is not accepted by the warehouse (lot, serial or location not valid for the item): open it from the line picks.",
         "merce_non_disponibile": "The goods to ship are not available in stock in sufficient quantity."
-      }
+      },
+      "correggi_qta_evasa_reason": {
+        "ddt_non_in_bozza": "The shipped quantity can only be corrected while the delivery note is a draft.",
+        "riga_non_evasa": "The line does not come from an order or a return: change the quantity from the line.",
+        "ddt_senza_origine": "The delivery note does not come from an order or a return: change the quantity from the line.",
+        "legami_multipli": "The line is linked to several source lines: the shipped quantity cannot be corrected on its own."
+      },
+      "correggi_qta_evasa": "Correct shipped quantity",
+      "correggi_qta_evasa_ok": "Shipped quantity corrected",
+      "correggi_qta_evasa_spiegazione": "Line {riga} comes from an order or a return: the new quantity also changes what is shipped for the source, and the order status.",
+      "correggi_qta_evasa_nuova": "New quantity",
+      "riga_evasa_hint": "Line shipped from an order or a return: item, unit of measure and quantity cannot be changed here. Correct the quantity with «Correct shipped quantity»."
     },
     "famiglie_documento": {
       "col_codice_interno": "Internal code",
@@ -2952,10 +3069,11 @@
       "col_attivo": "Active",
       "col_data_insert": "Created",
       "FATTURA": "Invoices",
-      "DDT": "Delivery notes",
-      "ORDINE": "Orders",
+      "DDT_VENDITA": "Delivery notes",
+      "ORDINE_VENDITA": "Orders",
       "COMMESSA": "Jobs",
-      "RESO": "Returns"
+      "RESO_VENDITA": "Returns",
+      "DISTINTA_INCASSO": "Collection slips"
     },
     "fatturazione": {
       "esiti_titolo": "Invoicing results",
@@ -3057,6 +3175,11 @@
       "collegamento_cliente": "Invoices for {valore} — no date limit.",
       "collegamento_rimuovi": "Clear filter"
     },
+    "cliente": {
+      "cambio_titolo": "Change customer",
+      "cambio_messaggio": "The document's customer changes right away: the addresses move to the new customer. Your other changes still need saving.",
+      "cambio_messaggio_con_fornitura": "The document's customer changes right away: addresses and supply details move to the new customer. Your other changes still need saving."
+    },
     "indirizzi": {
       "da_soggetto": "from subject",
       "tt_slot": "{tipo} address set on this document",
@@ -3102,6 +3225,12 @@
       "nessuna_origine": "No upstream document",
       "nessuna_pratica": "Document created without a case",
       "ramo_inverso": "return branch",
+      "legame_ritirato": "link withdrawn",
+      "legame_ritirato_tooltip": "This document no longer contributes anything here: its lines have been withdrawn (cancelled). The status shown belongs to the document, which may stay active for other documents' lines.",
+      "chip_ritirato": "link withdrawn | links withdrawn",
+      "chip_ritirato_tooltip": "Link withdrawn: this document and the other one no longer carry anything to each other. It stays in the steps as history: click to see them.",
+      "chip_annullato": "link cancelled | links cancelled",
+      "chip_annullato_tooltip": "Cancelled document: it no longer counts among the links. It stays in the steps as history: click to see them.",
       "collegamenti_apri": "Open the lineage for details",
       "collegamenti_apri_pratica": "Open the linked case",
       "commessa_titolo": "Job lineage",
@@ -3116,9 +3245,24 @@
       "tipo_fattura": "Invoice",
       "tipo_commessa": "Job",
       "tipo_reso_vendita": "Return",
+      "tipo_attivita_consumi": "Consumption",
       "natura_fattura": "Invoice",
       "natura_nota_credito": "Credit note",
       "natura_nota_debito": "Debit note"
+    },
+    "annullo_legami": {
+      "righe": "What is reopened",
+      "riga": "line {riga} · {qta} become available again",
+      "riga_senza_qta": "line {riga} becomes available again",
+      "commessa": "a line to be issued is cancelled",
+      "provenienza": "can be converted again",
+      "spiegazione": "If you confirm, the document is cancelled and these become available again: quantities to ship, lines to order, job lines, the offer to convert.",
+      "commessa_da_mandare": "can be sent to a job again · lines: {n}",
+      "commessa_da_accreditare": "is to be credited again · lines: {n}",
+      "si_annulla": "What is cancelled",
+      "oneri_annullati": "charges cancelled with the job: {n}",
+      "spiegazione_commessa": "If you confirm, the job is cancelled: the lines not yet issued leave the job, the documents they come from can be sent to a job again, the return is to be credited again, the charges are cancelled.",
+      "nessun_legame": "The links with other documents are no longer there: if you confirm, the document is cancelled without withdrawing anything."
     },
     "listini": {
       "search_placeholder": "Search by price list code or description...",
@@ -3129,6 +3273,7 @@
       "listino": "Price list",
       "listino_creato": "Price list created",
       "listino_salvato": "Price list saved",
+      "attivo_con_storia": "This price list has a history: it is switched off by setting the end of validity on its version, not here.",
       "versione": "Version",
       "versione_creata": "Version created",
       "warning_bozza_esistente": "A DRAFT version already exists for this price list ({codice}). You can proceed, but check there are no overlaps.",
@@ -3567,7 +3712,7 @@
       "esito_rifiutata_messaggio": "Confirm the customer rejected the offer? The state is terminal: to re-propose, create a new offer.",
       "esito_rifiutata_conferma": "Reject",
       "esito_annullata_titolo": "Cancel offer",
-      "esito_annullata_messaggio": "Confirm offer cancellation? Cancellation is allowed only in DRAFT (before issuance).",
+      "esito_annullata_messaggio": "Confirm offer cancellation? A cancelled offer can no longer be issued or converted.",
       "esito_annullata_conferma": "Cancel offer",
       "esito_warn_motivazione": "Reason is required and is stored in the offer history.",
       "crea_revisione_titolo": "Create revision",
@@ -3593,7 +3738,8 @@
       "successione_effetto": "On confirmation, the existing contract will be closed on {data} and the new draft contract will be generated.",
       "azione_reason": {
         "listino_senza_versione_in_vigore": "The price list has no version in force today: publish one or choose another price list.",
-        "listino_versione_non_attiva": "The linked price list version is not ACTIVE."
+        "listino_versione_non_attiva": "The linked price list version is not ACTIVE.",
+        "documenti_vivi": "The offer generated a contract or an order that is not cancelled: to cancel the offer, cancel that document first."
       },
       "col_descrizione": "Description",
       "col_qta": "Qty",
@@ -3718,7 +3864,8 @@
       },
       "data_consegna_confermata_reason": {
         "in_bozza": "In draft the date is changed by editing the line.",
-        "stato_non_ammette": "In this status the delivery date can no longer be changed."
+        "stato_non_ammette": "In this status the delivery date can no longer be changed.",
+        "riga_spedita": "The goods on this line have already left with a delivery note: the confirmed delivery date stays the one they left with."
       },
       "azione_data_consegna_confermata": "Change the confirmed delivery date",
       "data_consegna_confermata_titolo": "Confirmed delivery date",
@@ -4010,7 +4157,10 @@
       "col_valido_al": "To",
       "col_attivo": "Status",
       "saved": "Promo updated.",
-      "created": "Promo created."
+      "created": "Promo created.",
+      "articolo_reason": {
+        "solo_componente": "Item usable only inside a kit: a promotion on it would never apply. Put the promotion on the kit."
+      }
     },
     "resi": {
       "reso": "Return",
@@ -4036,6 +4186,33 @@
       "field_data": "Date",
       "field_valuta": "Currency",
       "field_ddt_origine": "Source delivery note",
+      "field_magazzino": "Return warehouse",
+      "field_magazzino_richiesto_conferma": "Required to confirm a return that brings goods back: the warehouse the goods return to",
+      "rientri": {
+        "titolo": "Restocking",
+        "intro": "Where the returned goods go back: for each line, from which picking of the delivery note (lot, serial number) and onto which shelf. Lines with nothing to choose are restocked automatically on confirmation.",
+        "senza_magazzino": "Choose the return warehouse first: the shelves depend on it.",
+        "voce_riga": "Line {nr}",
+        "componente": "kit component",
+        "rientrata": "{rientrata} of {qta} {uom}",
+        "automatico": "Automatic on confirmation",
+        "completo": "Complete",
+        "da_completare": "To complete",
+        "oltre": "Over the line",
+        "lotto": "Lot",
+        "seriale": "Serial number",
+        "da_ubicazione": "from shelf",
+        "in_ubicazione": "on shelf",
+        "senza_posizione": "No lot or shelf",
+        "uscito": "{qta} {uom} shipped",
+        "campo_origine": "From which delivery note picking",
+        "campo_qta": "Quantity",
+        "campo_ubicazione": "Shelf",
+        "aggiungi": "Add restocking",
+        "togli": "Remove restocking",
+        "salvato": "Restocking saved",
+        "tolto": "Restocking removed"
+      },
       "reso_salvato": "Return saved",
       "reso_confermato": "Return confirmed",
       "reso_annullato": "Return cancelled",
@@ -4811,6 +4988,25 @@
     }
   },
   "magazzino": {
+    "blocchi": {
+      "blocca": "Hold goods",
+      "titolo_apri": "Hold goods",
+      "apri_conferma": "Hold",
+      "aperto": "Goods on hold",
+      "campo_qta": "Pieces to hold",
+      "campo_soggetto": "For whom",
+      "campo_nota": "Note",
+      "per_chi_aiuto": "A hold says who it is for: choose the party or write a note. It stops other issues until you release it.",
+      "campo_lotto": "Lot",
+      "campo_seriale": "Serial number",
+      "campo_ubicazione": "Shelf",
+      "libera": "Release",
+      "titolo_libera": "Release the hold",
+      "libera_conferma": "Release",
+      "libera_domanda": "Release {qta} held pieces?",
+      "campo_nota_liberazione": "Why you release it (optional)",
+      "liberato": "Hold released"
+    },
     "disponibilita": {
       "blocco": {
         "giacenza_insufficiente": "Insufficient stock: the outgoing quantity exceeds what the ledger shows on hand for the item, or for the given lot or serial.",
@@ -5524,6 +5720,32 @@
       "col_sorgente": "Source",
       "col_emittente": "Issuer",
       "col_is_default": "Default",
+      "col_standard": "Standard",
+      "col_stato_scarto": "Alignment with the standard",
+      "standard_hint": "Standard system template: used by the companies that have no template of their own for this document. It cannot be changed from the application: to change it, customize it for a company.",
+      "scarto": {
+        "ALLINEATA": "Aligned",
+        "ALLINEATA_hint": "The copy starts from the version the standard template prints with today.",
+        "STANDARD_AVANTI": "Standard ahead",
+        "STANDARD_AVANTI_hint": "The standard template has published a new version: the copy works, but lacks its changes.",
+        "CONTESTO_SUPERATO": "Data shape outdated",
+        "CONTESTO_SUPERATO_hint": "The copy reads an older data shape than the standard template: printing will stop. Start again from the standard or update it.",
+        "ORIGINE_NON_DICHIARATA": "Origin not declared",
+        "ORIGINE_NON_DICHIARATA_hint": "The template does not declare which standard version it derives from: only the data shape is compared."
+      },
+      "personalizza": {
+        "action": "Customize",
+        "title": "Customize for a company",
+        "hint": "Creates the company's template from the version the standard prints with today. The first version is a draft: until you publish it, the company keeps printing with the standard.",
+        "nomi_hint": "Empty code, internal code and description: those of the standard template.",
+        "predefinito_auto": "Let the system decide (yes, unless the company already has one)",
+        "done": "Customized template created: publish its first version to use it."
+      },
+      "risoluzione": {
+        "titolo_standard": "Printing with the standard template:",
+        "SENZA_PREDEFINITO": "{azienda}: has its own templates for {documento}, but none is the default. Printing of this document stops: mark one of its templates as default.",
+        "NON_RISOLTO": "{azienda}: no template prints {documento}, not even the standard one. Reactivate the standard template or publish a valid version of it."
+      },
       "field_codice": "Code",
       "field_codice_interno": "Internal code",
       "field_descrizione": "Description",
@@ -5668,10 +5890,40 @@
       "lotto": "Batch",
       "task_run": "Run",
       "contratto": "Contract",
-      "ordine_vendita": "Order",
+      "ordine_vendita": "Sales order",
       "preventivo": "Quote",
       "flusso": "Workflow step",
-      "definizione_workflow": "Workflow edition"
+      "definizione_workflow": "Workflow edition",
+      "offerta_commerciale": "Offer",
+      "ddt_vendita": "Sales delivery note",
+      "listino_versione": "Price list version",
+      "articolo": "Item",
+      "promo_articolo": "Item promotion",
+      "attivita": "Billable activity",
+      "attivita_consumi": "Consumption activity",
+      "reso_vendita": "Sales return",
+      "preventivo_riga": "Quote line",
+      "contratto_riga": "Contract line",
+      "ordine_vendita_riga": "Sales order line",
+      "ddt_vendita_riga": "Sales delivery note line",
+      "fattura_riga": "Invoice line",
+      "reso_vendita_riga": "Sales return line",
+      "ddt_vendita_prelievo": "Picking",
+      "reso_vendita_rientro": "Restocking",
+      "ordine_acquisto": "Purchase order",
+      "ddt_acquisto": "Purchase delivery note",
+      "inventario": "Stock count",
+      "inventario_riga": "Stock count line",
+      "rettifica": "Adjustment",
+      "rettifica_riga": "Adjustment line",
+      "trasferimento": "Transfer",
+      "trasferimento_riga": "Transfer line",
+      "evento_asset": "Asset event",
+      "distinta_incasso": "Collection sheet",
+      "email": "Email",
+      "articolo_componente": "BOM component",
+      "asset": "Asset",
+      "movimento": "Stock movement"
     },
     "registri_giornale": {
       "event_log": "Domain events",
@@ -5882,6 +6134,9 @@
       "indirizzo_libero": "Address",
       "stato": "Country",
       "locality": "City / Locality",
+      "postal_code": "Postal code",
+      "administrative_area": "Region / Province",
+      "sublocality": "District / Neighbourhood",
       "auto_clone": "Use same address for all required types",
       "obbligatorio": "Required",
       "tipo_gia_creato": "Address type already present",

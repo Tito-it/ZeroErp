@@ -22,7 +22,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { paramsPagina } from '../../core/utils/listParams'
+import { paramsFinestra } from '../../core/utils/listParams'
 import { listEntiIncasso } from '../api/pagamenti'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
@@ -31,7 +31,7 @@ function buildParams(f) {
   // ⚠️ `orderDirDefault: 'asc'`: e' l'ordine naturale di un elenco di codici, ed
   //    e' anche il default del backend — mandare `desc` mostrerebbe la
   //    configurazione al contrario di come la legge chi la mantiene.
-  const p = paramsPagina(f, { orderDirDefault: 'asc' })
+  const p = paramsFinestra(f, { orderDirDefault: 'asc' })
   if (f.tipo) p.tipo = f.tipo
   if (f.centro_riscossione_id != null) p.centro_riscossione_id = f.centro_riscossione_id
   // ⚠️ `!= null` e non un test di verita': `false` e' un filtro legittimo

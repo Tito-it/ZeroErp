@@ -11,7 +11,7 @@
 import { MANAGE_ICONS } from '../core/constants'
 import { NAV_ICONS } from '../core/navigation'
 import { labelOrCode } from '../core/utils/i18nLabel'
-import { DOCUMENTO_DRAWER_TIPI } from '../core/drawerEntita'
+import { DOCUMENTO_DRAWER_TIPI, drawerEntita } from '../core/drawerEntita'
 import {
   statoCommessaSeverity,
   statoContrattoSeverity,
@@ -22,55 +22,60 @@ import {
   statoResoSeverity,
 } from '../core/utils/severity'
 
+// ⭐ La chiave e' il codice della SORGENTE (`config.sorgenti.codice_interno`),
+// lo stesso che il BE mette in `area`: dal 2026-10-20 il plurale (`ORDINI`,
+// `RESI`…) e' ritirato (brief-db-grammatica-unica-documenti, 2d / G-6). Per
+// questo coincide con le chiavi di DOCUMENTO_DRAWER_TIPI, salvo la commessa,
+// che dal cruscotto apre il drawer di GESTIONE.
 // Ordine di iterazione = ordine funnel (allineato alla whitelist BE
-// DASH_FATTURAZIONE_AREE). DDT dopo ORDINI (e' il suo veicolo di
-// fatturazione differita, DL-21); RESI in coda (flusso inverso, vive solo
+// DASH_FATTURAZIONE_AREE). Il DDT dopo l'ordine (e' il suo veicolo di
+// fatturazione differita, DL-21); il reso in coda (flusso inverso, vive solo
 // nel Backlog — DL-24).
 // `drawerTipo`: chiave del registro dei drawer (`core/drawerEntita.js`) — il drawer di
 // dettaglio che l'azione "apri documento" apre sull'id di riga (null = area
-// senza drawer, riga consultiva). COMMESSE usa il drawer di GESTIONE, non
+// senza drawer, riga consultiva). COMMESSA usa il drawer di GESTIONE, non
 // quello leggero dei passaggi: dal Backlog si governa la commessa.
 // `icon`: icona dell'azione, quella dell'area (le stesse della sidebar) —
 // nelle liste drill-down, che sono cross-area, l'icona dice quale documento
-// si sta per aprire. COMMESSE non ha voce di navigazione: MANAGE_ICONS.
+// si sta per aprire. COMMESSA non ha voce di navigazione: MANAGE_ICONS.
 // `apertoHintKey` (opzionale): chiave i18n dell'hint mostrato sulla card
 // della Situazione aperta quando la misura dell'area non e' ovvia — oggi
-// solo ORDINI (misura MISTA, DL-23 emendato: netta per trigger S/C, piena
+// solo ORDINE_VENDITA (misura MISTA, DL-23 emendato: netta per trigger S/C, piena
 // per CONFERMATO). Vive qui e non nella view: la semantica e' per-area,
 // come drawer, icona e severity.
 export const DASH_AREA_CONFIG = {
-  PREVENTIVI: {
+  [DOCUMENTO_DRAWER_TIPI.PREVENTIVO]: {
     drawerTipo: DOCUMENTO_DRAWER_TIPI.PREVENTIVO,
     icon: NAV_ICONS.PREVENTIVI,
     severity: statoPreventiveSeverity,
   },
-  ORDINI: {
+  [DOCUMENTO_DRAWER_TIPI.ORDINE_VENDITA]: {
     drawerTipo: DOCUMENTO_DRAWER_TIPI.ORDINE_VENDITA,
     icon: NAV_ICONS.ORDINI,
     severity: statoOrdineSeverity,
     apertoHintKey: 'vendite.situazione_aperta.card_ordini_hint',
   },
-  DDT: {
+  [DOCUMENTO_DRAWER_TIPI.DDT_VENDITA]: {
     drawerTipo: DOCUMENTO_DRAWER_TIPI.DDT_VENDITA,
     icon: NAV_ICONS.DDT,
     severity: statoDdtSeverity,
   },
-  OFFERTE: {
+  [DOCUMENTO_DRAWER_TIPI.OFFERTA_COMMERCIALE]: {
     drawerTipo: DOCUMENTO_DRAWER_TIPI.OFFERTA_COMMERCIALE,
     icon: NAV_ICONS.OFFERTE,
     severity: statoOffertaSeverity,
   },
-  CONTRATTI: {
+  [DOCUMENTO_DRAWER_TIPI.CONTRATTO]: {
     drawerTipo: DOCUMENTO_DRAWER_TIPI.CONTRATTO,
     icon: NAV_ICONS.CONTRATTI,
     severity: statoContrattoSeverity,
   },
-  COMMESSE: {
+  [DOCUMENTO_DRAWER_TIPI.COMMESSA]: {
     drawerTipo: DOCUMENTO_DRAWER_TIPI.COMMESSA_GESTIONE,
     icon: MANAGE_ICONS.COMMESSA,
     severity: statoCommessaSeverity,
   },
-  RESI: {
+  [DOCUMENTO_DRAWER_TIPI.RESO_VENDITA]: {
     drawerTipo: DOCUMENTO_DRAWER_TIPI.RESO_VENDITA,
     icon: NAV_ICONS.RESI,
     severity: statoResoSeverity,
@@ -112,9 +117,17 @@ export function dashMotivoLabel(t, te, motivo) {
 //        (cambio rotta). Nascosta se l'area non ha un drawer o la riga non ha
 //        id di dominio. `onApri(drawerTipo, documentoId)` lo passa il caller:
 //        tipicamente `apri` di useDocumentoDrawer.
+// ⭐ `area` e' il codice della SORGENTE (dal 2026-10-20, brief-db-grammatica-
+//    unica-documenti 2d), quindi un documento che non e' un'area del cruscotto
+//    — la FATTURA d'origine di una riga di commessa — si apre lo stesso dal
+//    registro dei drawer, se il suo tipo e' una sorgente iscritta. La voce del
+//    cruscotto, quando c'e', vince: la COMMESSA dal cruscotto apre il drawer di
+//    GESTIONE, non quello leggero. Il caller passa `area` null quando il DB dice
+//    che il documento non ha una pagina (`*_apribile`).
 export function buildApriDocumentoAction({ area, documentoId, label, onApri }) {
   const config = DASH_AREA_CONFIG[area]
-  const drawerTipo = config?.drawerTipo ?? null
+  const drawerTipo = config?.drawerTipo
+    ?? (drawerEntita(area)?.sorgente === true ? area : null)
   return {
     key: 'apri',
     label,

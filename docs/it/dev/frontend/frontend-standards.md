@@ -1181,7 +1181,7 @@ a `paramsRicerca`:
 
 ```js
 function buildParams(f, _termine, ricerca) {
-  const p = paramsPagina(f)
+  const p = paramsFinestra(f)                   // limit/offset + ordinamento
   Object.assign(p, paramsRicerca(f, ricerca))  // soglia della lista
   // ... filtri di dominio ...
   return p
@@ -2048,9 +2048,10 @@ Cosa centralizza:
 | Regola | Perché |
 | --- | --- |
 | ⛔ **Niente X in alto** (`closable: false`) | Il footer di un dialog è **sempre visibile** (`max-height: 90%`, footer in coda): ogni dialog ha già Annulla o Chiudi, e la X era un doppione con una semantica sua (chiude senza `cancel`). Nel **drawer** la X resta, per la ragione opposta — il footer di un form lungo sta sotto il fold (§`FormFooter`) |
+| ⭐ **Il tasto detto in alto a destra** (2026-10-11, Tid): l'etichetta «Esc» (`app-kbd`) | Come accanto alla X del drawer, ma **senza X**: l'etichetta non è un pulsante e non la sostituisce, dice che ESC chiude come Annulla. In `AppDialog` è nello slot `#header` (il titolo lo rende il BB, con l'id di `aria-labelledby` via `useId`); nella `ConfirmDialog` di `App.vue`, che quello slot non lo inoltra, è il `::before` delle azioni di testa (`.app-dialog-tasto-css`, testo da `data-tasto`). Non c'è dove ESC è spento (`closeOnEscape=false`) né su `ui.isCompatto` |
 | ⭐ **`header` obbligatorio** (prop `required`) | Un `Dialog` PrimeVue senza titolo rende comunque la riga di testa, e con `justify-content: space-between` l'unico figlio — le azioni — finiva **a sinistra**: era la «X a sinistra» vista in-app, non un secondo chrome. Il titolo è un fatto dell'azione, non un ornamento |
 | **ESC = Annulla**, e **si spegne mentre lavora** (`closeOnEscape && !loading`) | La direzione sicura resta aperta da tastiera; a salvataggio in volo il dialog non si chiude sotto la risposta. Era riscritto a mano in due dialog (`ExportDialog`, `AttivaVersioneDialog`): ora lo fa il BB |
-| ⭐ **ESC chiude SOLO il dialog in cima**, mai il drawer sotto | In PrimeVue `Dialog` e `Drawer` hanno ciascuno un listener `keydown` su `document` e si chiudono per conto proprio: un ESC in un dialog aperto da un drawer chiudeva **entrambi** (rilievo di Tid, 2026-09-18). Il BB gestisce ESC **sulla propria radice** (`pt.root.onKeydown`, prima di `document` nella risalita) e tiene spento il listener di PrimeVue; `core/utils/escapeSoloInCima` — installato in `main.js` **prima** di ogni Drawer — ingoia l'ESC che sfugge alla radice quando c'è un dialog aperto. Il dialog vede l'ESC **per primo** (fase capture) e lo cede solo a un campo con la **tendina aperta** — segnale ARIA `aria-expanded="true"` sul controllo a fuoco (AutoComplete della lookup, Select, DatePicker): lì l'ESC chiude la tendina, il dialog resta. ⛔ Non `defaultPrevented`: l'AutoComplete di PrimeVue lo fa **sempre**, anche a tendina chiusa — con quel criterio ESC in «Abbina fattura» non chiudeva niente (rilievo di Tid, stesso giorno). Stessa forma sulla `ConfirmDialog` in `App.vue`. Due **drawer** impilati: la stessa regola nel chrome del drawer, `useDrawerInCima` (§«Sede: `AppDrawer`») |
+| ⭐ **ESC chiude SOLO il dialog in cima**, mai il drawer sotto | In PrimeVue `Dialog` e `Drawer` hanno ciascuno un listener `keydown` su `document` e si chiudono per conto proprio: un ESC in un dialog aperto da un drawer chiudeva **entrambi** (rilievo di Tid, 2026-09-18). Il BB gestisce ESC **sulla propria radice** (`pt.root.onKeydown`, prima di `document` nella risalita) e tiene spento il listener di PrimeVue; `core/utils/escapeSoloInCima` — installato in `main.js` **prima** di ogni Drawer — ingoia l'ESC che sfugge alla radice quando c'è un dialog aperto. Il dialog vede l'ESC **per primo** (fase capture) e lo cede solo a un campo con la **tendina aperta** — segnale ARIA `aria-expanded="true"` sul controllo a fuoco (AutoComplete della lookup, Select, DatePicker): lì l'ESC chiude la tendina, il dialog resta. ⛔ Non `defaultPrevented`: l'AutoComplete di PrimeVue lo fa **sempre**, anche a tendina chiusa — con quel criterio ESC in «Abbina fattura» non chiudeva niente (rilievo di Tid, stesso giorno). ⭐ **All'apertura il fuoco entra nel dialog** (2026-10-11, rilievo di Tid: «ESC funziona su qualcuno, non su tutti»): l'ESC sulla radice si sente solo col fuoco **dentro**, e PrimeVue ce lo porta solo verso un `[autofocus]` o verso la **sua** X — che con `closable: false` non c'è. Nei dialog senza `autofocus` il fuoco restava sul drawer sotto o sul body, e `escapeSoloInCima` ingoiava l'ESC senza chiudere niente. Ora `AppDialog` su `show` mette il fuoco sulla radice (`tabindex=-1`) se non è già dentro; un `autofocus` lo sposta poi PrimeVue. Stessa forma sulla `ConfirmDialog` in `App.vue` (lì il fuoco lo porta già l'`autofocus` del pulsante Conferma). Due **drawer** impilati: la stessa regola nel chrome del drawer, `useDrawerInCima` (§«Sede: `AppDrawer`») |
 | **Click fuori non chiude** (`dismissableMask: false`) | Terza via d'uscita accidentale, stessa ragione della X |
 | **Un footer c'è sempre** | Nessuna prop `hide-footer`: senza X, un dialog senza footer non avrebbe **nessuna** uscita visibile. Il caso speciale (wizard, terzo bottone) è lo slot `#footer`, che il chrome lo mantiene |
 
@@ -3272,11 +3273,21 @@ stato espanso — invita a chiudere). Standard PrimeVue/Material allineato.
 PrimeVue usa `chevron-right` (chiusa) / `chevron-down` (aperta). Il toggle
 «espandi tutte» della lista usa la **stessa** coppia, `MANAGE_ICONS.ROW_EXPAND` /
 `MANAGE_ICONS.ROW_COLLAPSE`, così riga e lista portano lo stesso segno. Stessa
-coppia per i gruppi annidati della sidebar (a sidebar chiusa, `ROW_EXPAND`
-accanto all'icona del gruppo segnala che dentro ci sono altre voci) e per i toggler di riga scritti a mano
+coppia per i toggler di riga scritti a mano
 nei drawer (`isExpanded(data) ? ROW_COLLAPSE : ROW_EXPAND`). ⛔ Mai il glifo
 `pi pi-chevron-*` cablato per un toggle di espansione.
 `EXPAND`/`COLLAPSE` restano per accordion, pannelli e tree.
+
+**Il segno di sottomenu** (Tid, 2026-10-24): una voce di menu che contiene altre
+voci porta `MANAGE_ICONS.SOTTOMENU` (`pi-caret-right`, chiusa) /
+`SOTTOMENU_APERTO` (`pi-caret-down`, aperta), **sempre** con la classe
+`app-sottomenu-icon` (main.css), che le dà il colore dell'icona della sua voce.
+Vale per la sidebar chiusa (`SidebarItem`, prop `gruppo`), per i gruppi a sidebar
+aperta (`SidebarDomain`) e per i sottomenu di un `TieredMenu` (slot
+`#submenuicon`, al posto dell'`AngleRight` di PrimeVue). ⛔ Non `ROW_EXPAND`: è il
+toggle delle righe di tabella, e fino a quel giorno la sidebar lo prendeva in
+prestito — col grigio del testo secondario accanto a un'icona colorata, un segno
+che sembrava fuori contesto.
 
 ⛔ **Su una `<ListaConfigurabile>` il toggle «espandi tutte» NON si scrive in
 pagina** (2026-09-18): è l'azione standard di `useListaAzioni`, accanto a
@@ -3483,6 +3494,22 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
   `content` dell'overlay-tipo, e la chiave in `NAV_ICONS`. Mai una PrimeIcon
   singola generica. `icone.spec.js` fallisce se una classe composta delle
   costanti non ha le sue regole in `main.css`.
+- **Famiglia dei diari** (Tid, 2026-10-24): stesso schema, base **righe di
+  testo** (`pi-align-left` `\e947`, «un registro») con lo stesso angolo
+  ritagliato, e il simbolo di che cosa registra: Audit log matita
+  (`\e942`), Error log triangolo (`\e922`), Log email busta (`\e979`).
+  Classi `.app-nav-icon-log-*`, chiavi `NAV_ICONS.AUDIT_LOG` / `ERROR_LOG` /
+  `EMAIL_LOG`. Un registro nuovo entra nella famiglia allo stesso modo.
+  ⛔ Il Log email non porta più `NAV_ICONS.EMAIL`: è la voce accanto, nello
+  stesso menu.
+- **Processi automatici** (Tid, 2026-10-24): server (`pi-server` `\e9e4`) +
+  frecce circolari (`pi-sync` `\e9e6`), «il server che lavora da solo, a
+  ciclo». Non è un registro, quindi ha una base sua. ⛔ Non più `pi-cog`, che è il
+  dominio Configurazione e `MANAGE_ICONS.PERSONALIZZA`.
+- ⭐ La **geometria dell'angolo aperto** (ritaglio della base, posizione e
+  misura del simbolo) è **una regola sola** in `main.css`, condivisa da
+  documenti di vendita, diari e processi: una famiglia nuova aggiunge le sue
+  classi ai due selettori di quella regola e dichiara solo i due `content`.
 
 ### Regole CSS per i componenti
 
@@ -3552,6 +3579,12 @@ un buco.
 ## Gestione errori API
 
 I componenti **non gestiscono errori manualmente**. Il composable `useApiHandler` intercetta, estrae il messaggio dall'envelope backend e mostra il toast.
+
+⛔ **L'interceptor axios di `core/api.js` non mostra toast** (rinnova il token, porta agli
+obblighi pendenti). Un `try/catch` col `catch` vuoto «gestito dall'interceptor» inghiotte
+l'errore: il 2026-10-23 ne sono stati corretti quattordici. `execute` accetta anche l'azione di uno
+store, che restituisce il dato già estratto; un'azione che non restituisce niente dà `undefined`
+al successo e `null` sull'errore.
 
 ```js
 // Caricamento (toast solo su errore) — la funzione viene dal modulo api/

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_attivita_fatturabili_guard_ba_coerenza()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()
  RETURNS trigger
@@ -83,6 +85,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()
 IS 'Guard BEFORE INSERT OR UPDATE su vendite.attivita_fatturabili: la riga e il suo billing account devono nominare la stessa istanza di utility. 🔴 Dal 2026-09-10 valida DAVVERO: prima usciva su commessa_attivita_id IS NOT NULL, che essendo la colonna NOT NULL valeva per ogni riga sopravvissuta — un presidio che sembrava esserci e non c''era. Brief: brief-db-perimetro-emittente-righe-documento.md §11.13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -38,6 +38,7 @@ l'offerta commerciale segue il percorso:
 
 ```
 offerta ACCETTATA → fn_push_offerta_a_contratto → contratto DRAFT
+offerta ACCETTATA → fn_genera_ordine_da_offerta → ordine DRAFT   (in alternativa, mai entrambi)
 ```
 
 La simmetria strutturale con `vendite.contratti` e' intenzionale e garantisce che
@@ -50,12 +51,22 @@ La simmetria strutturale con `vendite.contratti` e' intenzionale e garantisce ch
 1. **Creazione offerta** (BOZZA) — compilazione emittente, BA, istanza utility, listino,
    variazione globale ed eccezioni puntuali.
 2. **Emissione** (BOZZA → EMESSA) — il trigger guard congela `listino_versione_id` se NULL
-   e verifica che la versione sia ATTIVA (§5.3). Viene valorizzata `data_emissione`.
+   e verifica che la versione sia ATTIVA (§5.3). Viene valorizzata `data_emissione`. Dal
+   2026-10-21 rifiuta anche un'offerta con una riga che la regola intera non ammette piu'
+   (`script.fn_check_righe_documento`, `E_DOC_RIGA_NON_AMMESSA`): le regole di una riga
+   dipendono da dati che stanno fuori dalla riga (listino in vigore, vocabolario del
+   perimetro), e le righe gia' scritte le intercetta il primo passo che le usa.
 3. **Esito commerciale** — il cliente risponde:
-   - **ACCETTATA** → `fn_push_offerta_a_contratto` crea contratto DRAFT.
+   - **ACCETTATA** → `fn_push_offerta_a_contratto` crea un contratto DRAFT, oppure
+     `fn_genera_ordine_da_offerta` crea un ordine DRAFT (dal 2026-10-21 un verbo DB; prima
+     lo componeva il backend). Pulsanti spenti col motivo se una riga non puo' andare nel
+     documento da generare (`fn_check_righe_documento`, `fn_check_righe_offerta_in_ordine`).
    - **RIFIUTATA** → l'operatore inserisce `motivazione_rifiuto`; valorizzata `data_rifiuto`.
 4. **Annullamento** (BOZZA → ANNULLATA) — ritiro interno prima dell'emissione;
-   valorizzate `data_annullamento` e `motivazione_rifiuto`.
+   valorizzate `data_annullamento` e `motivazione_rifiuto`. Dal 2026-10-21 anche
+   **ACCETTATA → ANNULLATA**, l'uscita quando l'offerta non si trasforma: ammessa solo se
+   l'offerta non vive in un contratto o in un ordine non annullato
+   (`script.fn_check_offerta_annullabile`, `E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI`).
 5. **Revisione** (Step 7) — `fn_crea_revisione_offerta` crea rev.N+1 e marca la rev.N
    corrente come SUPERATA (stato terminale tecnico).
 
@@ -67,11 +78,15 @@ La simmetria strutturale con `vendite.contratti` e' intenzionale e garantisce ch
 | -------- | ---------- | -------------------------- | --------------------------------------------- |
 | BOZZA    | EMESSA     | operatore                  | Congela listino_versione_id; valorizza data_emissione |
 | BOZZA    | ANNULLATA  | operatore                  | Ritiro interno; valorizza data_annullamento e motivazione_rifiuto |
-| EMESSA   | ACCETTATA  | operatore                  | Innesca push a contratto; valorizza data_accettazione |
+| EMESSA   | ACCETTATA  | operatore                  | Apre push a contratto o genera ordine; valorizza data_accettazione |
+| ACCETTATA | ANNULLATA | operatore                  | Dal 2026-10-21: solo senza contratto o ordine vivo; motivazione obbligatoria |
 | EMESSA   | RIFIUTATA  | operatore                  | No del cliente; valorizza data_rifiuto e motivazione_rifiuto |
 | EMESSA   | SUPERATA   | trigger (fn_crea_revisione) | Stato terminale tecnico; rev.N+1 diventa la nuova offerta |
 
-Stati terminali immutabili: **ACCETTATA**, **RIFIUTATA**, **SUPERATA**, **ANNULLATA**.
+Stati terminali immutabili: **RIFIUTATA**, **ANNULLATA**. **SUPERATA** ha il solo rientro
+automatico (SUPERATA → EMESSA, quando la revisione si annulla). **ACCETTATA** non e' terminale:
+si trasforma in un contratto o in un ordine, oppure si annulla (`brief-db-offerta-emissione-ed-erogazione`
+§H.3, H-R3).
 
 #### Timestamp di transizione
 
@@ -80,7 +95,7 @@ Stati terminali immutabili: **ACCETTATA**, **RIFIUTATA**, **SUPERATA**, **ANNULL
 | `data_emissione`     | BOZZA → EMESSA           |
 | `data_accettazione`  | EMESSA → ACCETTATA       |
 | `data_rifiuto`       | EMESSA → RIFIUTATA       |
-| `data_annullamento`  | BOZZA → ANNULLATA        |
+| `data_annullamento`  | BOZZA o ACCETTATA → ANNULLATA |
 
 `data_rifiuto` e `data_annullamento` sono distinte per consentire report separati sui
 due flussi di chiusura negativa (rifiuto cliente vs. ritiro interno).

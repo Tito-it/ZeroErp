@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_crea_preventivo(p_etichetta text, p_stato_codice_intern
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_preventivo(p_etichetta text DEFAULT 'pgTAP'::text, p_stato_codice_interno character varying DEFAULT 'DRAFT'::character varying)
  RETURNS TABLE(preventivo_id bigint, preventivo_uid uuid, emittente_fiscale_id bigint, emittente_soggetto_ruolo_id bigint, auth_user_id integer, billing_account_id bigint, istanza_utility_id bigint, cliente_soggetto_ruolo_id bigint, utility_id integer, stato_doc_preventivo_id bigint, valuta_id integer)
@@ -18,6 +20,12 @@ AS $function$
 --   CREATE TEMP TABLE tmp_p AS
 --   SELECT * FROM dbops.fn_pgtap_crea_preventivo('rls preventivi');
 -- ⛔ Le righe NON le scrive: sono il caso del test.
+-- ⭐ rev 2026-10-24 (20261024-24, brief-modello-documento-vendita N-1):
+--   il preventivo NASCE nello stato iniziale (trigger della nascita); uno
+--   stato diverso si raggiunge con dbops.fn_pgtap_porta_a_stato, sotto
+--   i guard veri. Un passaggio che pretende cio' che il builder non
+--   scrive (righe, indirizzi…) qui fallisce: il test lo scrive e porta
+--   avanti da se'.
 -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
 --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
 DECLARE
@@ -58,12 +66,18 @@ BEGIN
     INSERT INTO vendite.preventivi (
         billing_account_id, istanza_utility_id, utility_id,
         validita_dal, validita_al, valuta_id,
-        stato_doc_preventivo_id, emittente_fiscale_id, meta)
+        emittente_fiscale_id, meta)
     VALUES (v_ba_id, v_ist_id, v_utility,
             (SELECT script.fn_data_operativa()), (SELECT script.fn_data_operativa()) + 30, v_valuta_id,
-            v_stato_id, v_ef_id,
+            v_ef_id,
             jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
     RETURNING id, uid INTO v_preventivo, v_uid;
+
+    -- Lo stato chiesto (rev 20261024-24): il documento e' nato nello stato
+    -- iniziale; se il test ne vuole un altro, ci arriva per la matrice.
+    IF v_stato_id IS DISTINCT FROM script.fn_stato_iniziale_id('config.stati_doc_preventivi'::regclass) THEN
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi'::regclass, v_preventivo, p_stato_codice_interno);
+    END IF;
 
     -- Contratto dichiarato, non fiducia nel chiamato.
     SET CONSTRAINTS ALL IMMEDIATE;
@@ -76,8 +90,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_preventivo(p_etichetta text, p_stato_codice_interno character varying)
-IS 'Fixture pgTAP: un PREVENTIVO del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata nello stato scelto alla nascita, con l''emittente del mondo, il suo billing account, la sua istanza e utility, la prima valuta del catalogo e una validita'' di trenta giorni da oggi. Il numero lo assegna il trigger del dominio, come in produzione. ⛔ NON scrive righe: sono il caso del test. ⛔ Non cambia stato: vendite.preventivi ha un guard di transizione, lo stato si sceglie col secondo parametro. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti.';
+IS 'Fixture pgTAP: un PREVENTIVO del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata, con l''emittente del mondo, il suo billing account, la sua istanza e utility, la prima valuta del catalogo e una validita'' di trenta giorni da oggi. Il numero lo assegna il trigger del dominio, come in produzione. ⭐ Lo stato: il preventivo NASCE nello stato iniziale (trigger della nascita) e, se il secondo parametro ne chiede un altro, ci arriva per la matrice con dbops.fn_pgtap_porta_a_stato, sotto i guard veri; un passaggio che pretende cio'' che il builder non scrive (le righe, per l''emissione) si ferma: il test chiede la bozza, scrive le righe e porta avanti da se''. Uno stato inesistente solleva prima di costruire. ⛔ NON scrive righe: sono il caso del test. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti. Rev 2026-10-24 (20261024-24, brief-modello-documento-vendita N-1): nascita in bozza; COMMENT allineato dal 20261024-29.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

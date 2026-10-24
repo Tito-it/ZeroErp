@@ -31,6 +31,7 @@ import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../../core/composables/useTabFreshness'
 import { MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
+import { SORGENTE_CODES } from '../../../documenti/constants'
 import { useStoreFilterBindings } from '../../../core/composables/useStoreFilterBindings'
 import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { STATI_OFFERTA_SEGNALA_SCADENZA } from '../constants'
@@ -241,7 +242,7 @@ onMounted(() => store.fetchList())
 
     <PdfDocumentiSorgenteDialog
       v-model:visible="pdfDialogVisible"
-      sorgente-code="OFFERTA_COMMERCIALE"
+      :sorgente-code="SORGENTE_CODES.OFFERTA_COMMERCIALE"
       :sorgente-id="pdfDialogOfferta?.id ?? null"
       :emittente-fiscale-id="pdfDialogOfferta?.emittente_fiscale_id ?? null"
       :title="pdfDialogOfferta

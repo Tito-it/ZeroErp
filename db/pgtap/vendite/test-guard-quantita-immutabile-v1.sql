@@ -7,7 +7,8 @@
 --
 -- Nota fixture: NON si usa fn_emit (richiede una ROOT source documentale reale,
 -- guard esistenza sorgente-polimorfa 2026-07-18, senza bypass). La CA nasce
--- SENZA sorgente (p_sorgente_* NULL, consentito) e l'AF si crea con INSERT
+-- con la commessa come sorgente (una NORMALE senza sorgente e' rifiutata dal
+-- vincolo 20261012-27) e l'AF si crea con INSERT
 -- diretto coerente alla CA. I guard testati scattano su UPDATE OF quantita,
 -- quindi INSERT e flip di stato non li attivano.
 -- ------------------------------------------------------------
@@ -106,8 +107,8 @@ SELECT vendite.fn_get_or_create_commessa(
 
 SELECT ok((SELECT commessa_id IS NOT NULL FROM tmp_commessa), '6) commessa creata');
 
--- commessa_attivita: NON_EMESSA, APPROVATA, quantita 1.0, SENZA sorgente doc
--- (p_sorgente_* NULL -> nessun guard di esistenza sorgente polimorfa).
+-- commessa_attivita: NON_EMESSA, APPROVATA, quantita 1.0, sorgente COMMESSA
+-- (la commessa di test: il guard di esistenza della sorgente la trova).
 CREATE TEMP TABLE tmp_ca AS
 SELECT r.attivita_id AS commessa_attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
@@ -143,10 +144,10 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_prezzo_da_riallineare => false,
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
-  p_sorgente_tipo_id => NULL,
-  p_sorgente_uid => NULL,
+  -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+  p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+  p_sorgente_uid => ((SELECT commessa_id FROM tmp_commessa))::text,
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'ACCONTO',
   p_meta => jsonb_build_object('case', 'GUARD_Q')
 ) r;
 

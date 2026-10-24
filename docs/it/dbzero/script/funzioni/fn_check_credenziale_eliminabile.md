@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_credenziale_eliminabile(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_credenziale_eliminabile(p_auth_user_id integer)
  RETURNS jsonb
@@ -150,6 +152,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_credenziale_eliminabile(p_auth_user_id integer)
 IS 'I motivi per cui una CREDENZIALE non si puo'' eliminare (linee-guida-sql §12.5.1): ''[]'' se si puo'', altrimenti l''array ORDINATO {codice, reason, reason_key, dettaglio, valori}. In ordine: CON_VESTI (E_CREDENZIALE_CON_VESTI, amministrazione.accessi.elimina_reason.con_vesti: almeno una veste anche spenta, script.fn_credenziale_ha_vesti, la regola di NESSUNA_VESTE del presidio; D-1), STORIA_NON_VERIFICABILE (E_CREDENZIALE_STORIA_NON_VERIFICABILE, amministrazione.accessi.elimina_reason.storia_non_verificabile: manca la FK di anagrafiche.identita_digitali verso django.auth_user, cioe'' il ponte django non e'' nato; fail-closed, decisione di Tid del 2026-10-06) e CON_STORIA (E_CREDENZIALE_CON_STORIA, amministrazione.accessi.elimina_reason.con_storia: la credenziale compare in una tabella che la tiene con una FK RESTRICT o NO ACTION, derivata da pg_constraint; dettaglio.dove e il valore le nominano; le righe della stessa tabella che la seguono in CASCADE non contano; D-2). Con CON_VESTI esce senza cercare la storia. La chiama script.fn_elimina_credenziale e ne solleva il primo motivo (§12.5.2); la legge il backend per can_delete/delete_reason sulle righe di «Altri accessi». SECURITY DEFINER del proprietario, search_path bloccato: la storia sta anche sotto RLS, e il motivo e'' uno stato, non una visibilita''. Restituisce solo nomi di tabelle. Id NULL o <= 0 -> E_AUTH_CHIAMATA_NON_VALIDA. STABLE. Brief: brief-db-elimina-credenziale-senza-veste §4.1.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

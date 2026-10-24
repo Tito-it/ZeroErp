@@ -235,6 +235,8 @@ SELECT is(
 --   sarebbe verde anche il giorno in cui una policy sparisse o cambiasse nome —
 --   il join non troverebbe niente, e «nessuna riga cattiva» e' cio' che dice un
 --   presidio che non guarda piu' niente. Il denominatore e' scritto: due.
+-- ⭐ Rev 2026-10-18 (D-3b-2 ondata 2, 20261018-50): la rotta si legge nel modo di
+--   script.fn_resolve_emittente_fiscale_id, non piu' nel nome dell'adattatore.
 SELECT is(
     (SELECT count(*)::int
        FROM (VALUES ('documenti_generati_eventi'), ('documenti_generati_file'))
@@ -243,10 +245,10 @@ SELECT is(
          ON p.schemaname = 'documenti'
         AND p.tablename  = a.tab
         AND p.policyname LIKE '%\_ef\_whitelist'
-      WHERE position('fn_scope_ef_whitelist_via_documento_generato(' IN p.qual)       > 0
-        AND position('fn_scope_ef_whitelist_via_documento_generato(' IN p.with_check) > 0),
+      WHERE position('fn_resolve_emittente_fiscale_id(''documento_generato''::text' IN p.qual)       > 0
+        AND position('fn_resolve_emittente_fiscale_id(''documento_generato''::text' IN p.with_check) > 0),
     2,
-    '3. tutte e due le policy di veste operatore usano _via_documento_generato'
+    '3. tutte e due le policy di veste operatore passano dal modo documento_generato del risolutore'
 );
 
 -- ============================================================

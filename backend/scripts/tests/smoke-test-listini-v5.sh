@@ -48,6 +48,8 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"   # smoke_emetti
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -203,6 +205,9 @@ log_info "Cleanup SMK-V5-* completato"
 
 TEST_SUFFIX=$(date +%Y%m%d%H%M%S)
 TODAY=$(date +%F)
+# Una promo non nasce retroattiva: la create vuole valido_dal > oggi
+# (E_PROMO_RETROATTIVA). Le prove della promo usano questa data.
+PROMO_DAL=$(date -d tomorrow +%F)
 FAR_FUTURE="2099-12-31"
 CATEGORIA_CODE="SMK-V5-CAT-${TEST_SUFFIX}"
 LISTINO_CODE="SMK-V5-LST-${TEST_SUFFIX}"
@@ -212,11 +217,31 @@ PROMO_CODE="SMK-V5-PR-${TEST_SUFFIX}"
 # --- 2. Seed articolo + UoM + BA + utility + emittente ---
 echo ""
 echo "-- 2. Seed catalogo + anagrafiche --"
-do_curl GET "/api/v1/catalogo/articoli/?attivo=true&page=1&page_size=1&order_by=codice&order_dir=asc"
+# Il primo articolo attivo CON una tipologia di listino (il listino la vuole).
+# ⚠️ Non semplicemente il primo per codice: gli smoke del catalogo creano
+# articoli senza tipologia, e uno di quelli finiva qui — `None` passava il
+# controllo «vuoto» e rompeva il JSON della create del listino (400
+# E_VALIDATION_INPUT «corpo non e' un JSON valido»).
+ARTICOLO_ID=""; UOM_ID=""; LISTINO_TIPOLOGIA_ID=""
+# ⚠️ La lista pagina con `limit`/`offset` (parse_list_params): `page` e
+# `page_size` sono un 400 (dal 2026-10-20; prima erano ignorati).
+for offset in $(seq 0 100 3000); do
+    do_curl GET "/api/v1/catalogo/articoli/?attivo=true&limit=100&offset=${offset}&order_by=codice&order_dir=asc"
+    [[ "$LAST_STATUS" != "200" ]] && break
+    read -r ARTICOLO_ID UOM_ID LISTINO_TIPOLOGIA_ID <<< "$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+try:
+    rows = json.load(sys.stdin).get('data', {}).get('results') or []
+    r = next((x for x in rows if x.get('listino_tipologia_id') and x.get('uom_id')), None)
+    print(r['id'], r['uom_id'], r['listino_tipologia_id']) if r else print('')
+except Exception:
+    print('')
+" 2>/dev/null)"
+    [[ -n "$ARTICOLO_ID" ]] && break
+    N_RIGHE=$(echo "$LAST_BODY" | python3 -c "import sys,json; print(len(json.load(sys.stdin)['data']['results']))" 2>/dev/null || echo 0)
+    [[ "$N_RIGHE" -lt 100 ]] && break   # ultima pagina
+done
 check "Lista articoli seed" "200"
-ARTICOLO_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
-UOM_ID=$(json_get "$LAST_BODY" ".data.results.0.uom_id")
-LISTINO_TIPOLOGIA_ID=$(json_get "$LAST_BODY" ".data.results.0.listino_tipologia_id")
 if [[ -z "$ARTICOLO_ID" || -z "$UOM_ID" || -z "$LISTINO_TIPOLOGIA_ID" ]]; then
     echo -e "${RED}ERRORE:${NC} articolo seed senza uom/tipologia. Impossibile continuare."
     exit 3
@@ -224,21 +249,21 @@ fi
 log_info "Articolo=${ARTICOLO_ID} uom=${UOM_ID} tipologia=${LISTINO_TIPOLOGIA_ID}"
 
 # BA esistente (il test resolver richiede un BA reale)
-do_curl GET "/api/v1/anagrafiche/billing-account/lookup/?q=BA"
-BA_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
-BA_UTILITY_ID=$(json_get "$LAST_BODY" ".data.results.0.utility_id")
-BA_ISTANZA_ID=$(json_get "$LAST_BODY" ".data.results.0.istanza_utility_id")
+smoke_cliente_dal_lookup   # BB _smoke_cliente.sh: BA_ID, UTILITY_ID, ISTANZA_ID
+BA_UTILITY_ID="$UTILITY_ID"
+BA_ISTANZA_ID="$ISTANZA_ID"
 if [[ -z "$BA_ID" || -z "$BA_UTILITY_ID" ]]; then
     echo -e "${RED}ERRORE:${NC} nessun BA lookup disponibile. Serve almeno 1 BA seed."
     exit 3
 fi
 log_info "BA=${BA_ID} utility=${BA_UTILITY_ID} istanza=${BA_ISTANZA_ID}"
 
-# Emittente: prendo il primo autorizzato via endpoint emittenti
-do_curl GET "/api/v1/anagrafiche/emittenti-fiscali/?attivo=true&page=1&page_size=1"
-EMITTENTE_SR=$(json_get "$LAST_BODY" ".data.results.0.soggetto_ruolo_id")
+# Emittente: quello ATTIVO dell'operatore (BB _smoke_cliente.sh), lo stesso
+# del cliente del lookup. Non «il primo della lista»: vedi il BB.
+smoke_emittente_attivo   # -> EMITTENTE_ATTIVO_ID, EMITTENTE_ATTIVO_SR_ID
+EMITTENTE_SR="$EMITTENTE_ATTIVO_SR_ID"
 if [[ -z "$EMITTENTE_SR" ]]; then
-    echo -e "${RED}ERRORE:${NC} nessun emittente fiscale disponibile."
+    echo -e "${RED}ERRORE:${NC} nessun emittente attivo per l'operatore."
     exit 3
 fi
 log_info "Emittente soggetto_ruolo_id=${EMITTENTE_SR}"
@@ -247,35 +272,57 @@ log_info "Emittente soggetto_ruolo_id=${EMITTENTE_SR}"
 # Il cleanup iniziale SMK-V5-% non copre promo residue da run v3/v4 con
 # codice diverso che possono condividere (articolo_id, uom_id). Le
 # disattivo tutte prima di creare la nuova.
-"${BACKEND_DIR}/manage-env.sh" dbshell -- -q -c "
+# ⚠️ Una promo GIA' INIZIATA non si spegne (E_PROMO_INIZIATA_CAMPI_RISTRETTI:
+# solo descrizione, valido_al e meta): si CHIUDE a oggi, e la nuova (che parte
+# domani, PROMO_DAL) non la sovrappone. Una promo futura invece si spegne.
+# Fino al 2026-10-12 l'UPDATE unico falliva sulle promo iniziate, l'errore
+# finiva in /dev/null e il log diceva «completato»: il giro dopo trovava
+# E_VENDITE_PROMO_OVERLAP.
+if ERR_PULIZIA=$("${BACKEND_DIR}/manage-env.sh" dbshell -- -q -v ON_ERROR_STOP=1 -c "
+    UPDATE vendite.promo_articoli
+       SET valido_al = script.fn_data_operativa()
+     WHERE articolo_id = '${ARTICOLO_ID}'::uuid AND uom_id = ${UOM_ID}
+       AND attivo IS TRUE AND valido_dal <= script.fn_data_operativa()
+       AND (valido_al IS NULL OR valido_al > script.fn_data_operativa());
     UPDATE vendite.promo_articoli
        SET attivo = false
-     WHERE articolo_id = '${ARTICOLO_ID}'::uuid
-       AND uom_id = ${UOM_ID}
-       AND attivo IS TRUE;
-" >/dev/null 2>&1 || log_info "Cleanup promo residue sull'articolo fallito (non bloccante)"
-log_info "Cleanup promo residue su (articolo=${ARTICOLO_ID}, uom=${UOM_ID}) completato"
+     WHERE articolo_id = '${ARTICOLO_ID}'::uuid AND uom_id = ${UOM_ID}
+       AND attivo IS TRUE AND valido_dal > script.fn_data_operativa();
+" 2>&1); then
+    log_info "Cleanup promo residue su (articolo=${ARTICOLO_ID}, uom=${UOM_ID}) completato"
+else
+    log_info "Cleanup promo residue FALLITO (non bloccante): $(echo "$ERR_PULIZIA" | grep -m1 -E 'ERRORE|ERROR')"
+fi
 
-# Cleanup aggressivo contratti smoke residui: l'EXCLUDE no-overlap NON
-# filtra per stato CESSATO, quindi cessare non libera la chiave. Serve
-# DELETE fisico. Limitato ai contratti marcati smoke_v5 per non toccare
-# dati reali.
-"${BACKEND_DIR}/manage-env.sh" dbshell -- -q -c "
-    DELETE FROM vendite.contratti_righe
-     WHERE contratto_id IN (SELECT id FROM vendite.contratti WHERE meta->>'smoke_v5'='true');
-    DELETE FROM vendite.contratti_utilities
-     WHERE contratto_id IN (SELECT id FROM vendite.contratti WHERE meta->>'smoke_v5'='true');
-    DELETE FROM vendite.contratti WHERE meta->>'smoke_v5'='true';
-" >/dev/null 2>&1 || log_info "Cleanup contratti smoke fallito (non bloccante)"
-log_info "Cleanup contratti smoke completato"
+# Contratti di questo smoke ancora vivi (ambito COMMERCIO sul cliente di prova):
+# si chiudono con le transizioni ammesse, ora i residui e all'uscita i propri
+# (BB _smoke_documenti.sh). ⚠️ Fino al 2026-10-12 qui c'era un DELETE fisico dei
+# contratti marcati smoke_v5, che falliva in silenzio (errori in /dev/null) e
+# lasciava tutto com'era, mentre il log diceva «completato». L'EXCLUDE no-overlap
+# non guarda lo stato, ma non serve liberarlo: ogni giro usa anni propri
+# (YEAR_A…), quindi cessare basta, e un contratto cessato il prezzo non lo vede.
+smoke_chiudi_contratti "$BA_ID" COMMERCIO
+trap 'smoke_chiudi_contratti "$BA_ID" COMMERCIO; rm -f "$TMPFILE"' EXIT
 
-# Se sul BA+istanza+utility+ambito COMMODITY c'e' gia' un contratto
-# reale con validita' aperta (upper = infinity), gli anni 2100+ sono
-# comunque coperti. In quel caso spostiamo automaticamente lo smoke su
-# un anno piu' alto calcolato da epoch (granularita' al secondo).
-# Offset = epoch % 900 -> range 2100..3000.
-EPOCH_OFFSET=$(( $(date +%s) % 900 ))
-YEAR_A=$(( 2100 + EPOCH_OFFSET ))
+# Gli anni dei contratti di questo giro: il primo DOPO il piu' alto gia' usato
+# dai contratti COMMERCIO del cliente (minimo 2100). Il vincolo di non
+# sovrapposizione non guarda lo stato, quindi anche i contratti cessati dei giri
+# precedenti occupano i loro anni: si va sempre avanti, mai si torna su un anno.
+# ⚠️ Fino al 2026-10-13 era `2100 + epoch % 900`, che si ripete ogni 15 minuti:
+# il giro notturno, partito ogni ora a hh:00:03, riprendeva gli stessi anni del
+# giro prima e l'attivazione rispondeva E_VENDITE_CONTRATTO_OVERLAP.
+ANNO_MAX=$(curl -s -H "Authorization: Bearer ${TOKEN:-none}" \
+    "${BASE_URL}/api/v1/vendite/contratti/?billing_account_id=${BA_ID}&limit=200" 2>/dev/null | python3 -c "
+import sys, json
+try:
+    rows = json.load(sys.stdin).get('data', {}).get('results') or []
+    anni = [int(str(d)[:4]) for r in rows if r.get('ambito') == 'COMMERCIO'
+            for d in (r.get('valido_dal'), r.get('valido_al')) if d]
+    print(max(anni) if anni else 0)
+except Exception:
+    print(0)
+" 2>/dev/null)
+YEAR_A=$(( ${ANNO_MAX:-0} >= 2100 ? ANNO_MAX + 1 : 2100 ))
 YEAR_B=$(( YEAR_A + 1 ))
 YEAR_C=$(( YEAR_A + 2 ))
 YEAR_SNAP=$(( YEAR_A + 3 ))
@@ -354,7 +401,7 @@ check "PATCH matrice variazione" "200"
 echo ""
 echo "-- 12. Crea promo (-10%) --"
 do_curl POST "/api/v1/vendite/promo-articoli/" \
-    "{\"codice\":\"${PROMO_CODE}\",\"descrizione\":\"Smoke V5 promo\",\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_id\":${UOM_ID},\"tipo_variazione\":\"PERCENTUALE\",\"valore_variazione\":\"-10\",\"valido_dal\":\"${TODAY}\",\"valido_al\":\"${FAR_FUTURE}\"}"
+    "{\"codice\":\"${PROMO_CODE}\",\"descrizione\":\"Smoke V5 promo\",\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_id\":${UOM_ID},\"tipo_variazione\":\"PERCENTUALE\",\"valore_variazione\":\"-10\",\"valido_dal\":\"${PROMO_DAL}\",\"valido_al\":\"${FAR_FUTURE}\"}"
 check "Create promo" "200" ".data.id"
 PROMO_ID="$EXTRACTED"
 
@@ -362,7 +409,7 @@ PROMO_ID="$EXTRACTED"
 echo ""
 echo "-- 13. Overlap promo rifiutato --"
 do_curl POST "/api/v1/vendite/promo-articoli/" \
-    "{\"codice\":\"${PROMO_CODE}-DUP\",\"descrizione\":\"dup\",\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_id\":${UOM_ID},\"tipo_variazione\":\"PERCENTUALE\",\"valore_variazione\":\"-5\",\"valido_dal\":\"${TODAY}\",\"valido_al\":\"${FAR_FUTURE}\"}"
+    "{\"codice\":\"${PROMO_CODE}-DUP\",\"descrizione\":\"dup\",\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_id\":${UOM_ID},\"tipo_variazione\":\"PERCENTUALE\",\"valore_variazione\":\"-5\",\"valido_dal\":\"${PROMO_DAL}\",\"valido_al\":\"${FAR_FUTURE}\"}"
 check_any "Overlap promo rifiutato" "400" "409" ".error.code"
 
 # --- 14. PATCH promo ---
@@ -393,9 +440,22 @@ CONTRATTO_A_ID="$EXTRACTED"
 # --- 16. Contratto A: DRAFT -> ATTIVO ---
 echo ""
 echo "-- 16. Cambio stato contratto A -> ATTIVO --"
-do_curl POST "/api/v1/vendite/contratti/${CONTRATTO_A_ID}/cambia-stato/" "{\"codice_interno\":\"ATTIVO\"}"
-check "Contratto A attivato" "200" ".data.stato_codice"
-log_info "Stato: ${EXTRACTED}"
+smoke_emetti contratti "$CONTRATTO_A_ID"
+# Senza un modello di documento per i contratti dell'emittente, /emetti/ non puo'
+# attivare niente (E_DOCUMENTI_NOT_FOUND): e' configurazione dell'ambiente, non
+# un difetto. Lo smoke lo DICHIARA (non conclusivo) invece di contare rossi o
+# verdi che da qui in poi non proverebbero nulla.
+if [[ "$SMOKE_EMETTI_SENZA_MODELLO" == "1" ]]; then
+    log_info "$(json_get "$LAST_BODY" ".error.detail")"
+    echo ""
+    echo "Smoke non conclusivo: nessun modello di documento per i contratti dell'emittente"
+    echo "attivo (Configurazione → modelli documento). Passi 16 e seguenti non eseguiti."
+    echo " Risultato: ${PASS} OK / ${FAIL} FAIL (interrotto al passo 16)"
+    [[ "$FAIL" -eq 0 ]] && exit 0 || exit 1
+fi
+check "Contratto A attivato (/emetti/)" "200"
+do_curl GET "/api/v1/vendite/contratti/${CONTRATTO_A_ID}/"
+log_info "Stato: $(json_get "$LAST_BODY" ".data.stato_codice_interno")"
 
 # --- 17. Contratto A: PATCH valido_al in ATTIVO ---
 echo ""
@@ -421,8 +481,24 @@ if [[ "$LAST_STATUS" == "200" ]]; then
     log_ok "Create contratto B (HTTP 200)"
     # Aggiungo riga override
     do_curl POST "/api/v1/vendite/contratti/${CONTRATTO_B_ID}/righe/" \
-        "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_operativa_id\":${UOM_ID},\"tipo_erogazione\":\"CANONE\",\"prezzo_unitario\":\"30.0000000000\",\"qta_operativa\":\"1\",\"quantita\":\"1\"}"
+        "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_operativa_id\":${UOM_ID},\"tipo_eccezione\":\"OVERRIDE\",\"tipo_erogazione\":\"UNA_TANTUM\",\"fonte_quantita_attesa\":\"FISSA\",\"prezzo_unitario\":\"48.0000000000\",\"qta_operativa\":\"1\"}"
+    # `tipo_eccezione` e' obbligatorio (OVERRIDE | ESCLUSIONE | AGGIUNTA): questa
+    # riga corregge il prezzo di listino, quindi OVERRIDE. Fino al 2026-10-12
+    # mancava (400 «tipo_eccezione obbligatorio»). Il prezzo (48 sul listino a
+    # 50) resta dentro la soglia di variazione, che e' un PARAMETRO
+    # ⚠️ L'erogazione e' quella che la tipologia dell'articolo ammette
+    # (config.listini_tipologie_erogazioni; per l'articolo seed UNA_TANTUM con
+    # quantita' FISSA): CANONE rispondeva E_RIGA_EROGAZIONE_FUORI_PERIMETRO.
+    # La riga del contratto C (senza listino) e' un'AGGIUNTA, stessa erogazione.
+    # (PARAM_MAX_SCONTO_PCT): lo smoke prova che l'override vince, non il limite.
+    # Con 30 (-40%) rispondeva 403 E_PRICING_SCONTO_ECCESSIVO.
     check "Riga override contratto B" "200" ".data.id"
+    # Il resolver legge solo i contratti ATTIVI (scenario B, passo 26): un B
+    # rimasto in bozza fa ricadere il prezzo sulla categoria del cliente. Fino
+    # al 2026-10-20 non si attivava, e il passo 26 passava solo finche' il
+    # cliente di prova aveva per caso una categoria mappata.
+    smoke_emetti contratti "$CONTRATTO_B_ID"
+    check "Contratto B attivato (/emetti/)" "200"
 else
     log_info "Contratto B salta (HTTP $LAST_STATUS) — continuo"
     CONTRATTO_B_ID=""
@@ -442,22 +518,27 @@ CONTRATTO_C_ID="$EXTRACTED"
 # --- 20. Contratto C: attivazione senza righe rifiutata ---
 echo ""
 echo "-- 20. Attivazione C senza righe rifiutata --"
-do_curl POST "/api/v1/vendite/contratti/${CONTRATTO_C_ID}/cambia-stato/" "{\"codice_interno\":\"ATTIVO\"}"
-check "Attivazione C senza righe rifiutata" "400" ".error.code"
-log_info "Codice errore: ${EXTRACTED:-n/d}"
+smoke_emetti contratti "$CONTRATTO_C_ID"
+# Il rifiuto di dominio ha il suo codice e il suo stato (422, una regola del
+# documento): fino al 2026-10-12 lo smoke si aspettava un 400 generico, e lo
+# prendeva dalla strada sbagliata (il cambio di stato diretto).
+check "Attivazione C senza righe rifiutata" "422" ".error.code"
+[[ "$EXTRACTED" == "E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE" ]] \
+    && log_ok "Codice corretto: E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE" \
+    || log_fail "Codice atteso E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE, ricevuto '${EXTRACTED:-<vuoto>}'"
 
 # --- 21. Contratto C: aggiungi riga con prezzo ---
 echo ""
 echo "-- 21. Aggiungi riga con prezzo_unitario --"
 do_curl POST "/api/v1/vendite/contratti/${CONTRATTO_C_ID}/righe/" \
-    "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_operativa_id\":${UOM_ID},\"tipo_erogazione\":\"CANONE\",\"prezzo_unitario\":\"40.0000000000\",\"qta_operativa\":\"1\",\"quantita\":\"1\"}"
+    "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_operativa_id\":${UOM_ID},\"tipo_eccezione\":\"AGGIUNTA\",\"tipo_erogazione\":\"UNA_TANTUM\",\"fonte_quantita_attesa\":\"FISSA\",\"prezzo_unitario\":\"40.0000000000\",\"qta_operativa\":\"1\"}"
 check "Riga contratto C con prezzo" "200"
 
 # --- 22. Contratto C: attivazione ora OK ---
 echo ""
 echo "-- 22. Attivazione C con riga completa --"
-do_curl POST "/api/v1/vendite/contratti/${CONTRATTO_C_ID}/cambia-stato/" "{\"codice_interno\":\"ATTIVO\"}"
-check "Attivazione C OK" "200"
+smoke_emetti contratti "$CONTRATTO_C_ID"
+check "Attivazione C OK (/emetti/)" "200"
 
 # --- 23. Snapshot categoria PATCH in DRAFT (su contratto nuovo) ---
 echo ""
@@ -478,11 +559,24 @@ check "PATCH categoria snapshot in DRAFT" "200"
 # --- 24. Snapshot categoria PATCH in ATTIVO rifiutato ---
 echo ""
 echo "-- 24. Snapshot categoria: attivo contratto, PATCH rifiutato --"
-do_curl POST "/api/v1/vendite/contratti/${CONTRATTO_SNAP_ID}/cambia-stato/" "{\"codice_interno\":\"ATTIVO\"}"
+smoke_emetti contratti "$CONTRATTO_SNAP_ID"
 if [[ "$LAST_STATUS" == "200" ]]; then
+    # ⚠️ Una categoria DIVERSA da quella del contratto: il blocco fuori bozza
+    # guarda se il valore cambia, e una PATCH con lo stesso valore (quello messo
+    # in bozza al passo 23) e' giusto che passi. Fino al 2026-10-13 il passo
+    # riprovava proprio quello, e il rifiuto arrivava prima, dal backend.
+    do_curl GET "/api/v1/core/lookup/codici/?rel=anagrafiche.categorie_clienti&limit=50"
+    ALTRA_CATEGORIA=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+try:
+    rows = json.load(sys.stdin).get('data', {}).get('results') or []
+    print(next((r['id'] for r in rows if str(r['id']) != sys.argv[1]), ''))
+except Exception:
+    print('')
+" "$CATEGORIA_ID" 2>/dev/null)
     do_curl PATCH "/api/v1/vendite/contratti/${CONTRATTO_SNAP_ID}/" \
-        "{\"categoria_cliente_id_snapshot\":${CATEGORIA_ID}}"
-    check "PATCH categoria in ATTIVO rifiutato" "400" ".error.code"
+        "{\"categoria_cliente_id_snapshot\":${ALTRA_CATEGORIA:-0}}"
+    check_any "PATCH categoria in ATTIVO rifiutato" "400" "409" ".error.code"
     log_info "Codice: ${EXTRACTED:-n/d}"
 else
     log_info "Contratto snap non attivabile (HTTP $LAST_STATUS) — salto test 24"
@@ -557,13 +651,14 @@ else
     log_fail "Scenario C: HTTP inatteso ${LAST_STATUS}"
 fi
 
-# Scenario D — STADIO 0 PROMO: data=TODAY (coperto dalla promo smoke creata
-# al test 12 con valido_dal=TODAY, valido_al=2099-12-31). Il resolver applica
+# Scenario D — STADIO 0 PROMO: data=PROMO_DAL (coperto dalla promo smoke creata
+# al test 12 con valido_dal=PROMO_DAL, cioe' domani: una promo non nasce
+# retroattiva). Il resolver applica
 # promo solo se la categoria del BA ha partecipa_promo=TRUE.
 echo ""
 echo "-- 28. Resolver scenario D (STADIO 0 promo overlay) --"
 do_curl POST "/api/v1/vendite/pricing/resolve/" \
-    "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_id\":${UOM_ID},\"data_riferimento\":\"${TODAY}\",\"ba_id\":${BA_ID},\"utility_id\":${BA_UTILITY_ID},\"emittente_soggetto_ruolo_id\":${EMITTENTE_SR}}"
+    "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_id\":${UOM_ID},\"data_riferimento\":\"${PROMO_DAL}\",\"ba_id\":${BA_ID},\"utility_id\":${BA_UTILITY_ID},\"emittente_soggetto_ruolo_id\":${EMITTENTE_SR}}"
 if [[ "$LAST_STATUS" == "200" ]]; then
     ORIGINE=$(json_get "$LAST_BODY" ".data.origine")
     PREZZO=$(json_get "$LAST_BODY" ".data.prezzo_finale")

@@ -232,3 +232,9 @@ letto da [`script.fn_check_ordine_data_consegna_confermata`](/dbzero/script/funz
 Il flag discende dal motivo. Capability di documento, non di riga: la regola guarda solo
 lo stato della testata.
 (changeSet `20261010-67`, brief `brief-db-testata-dopo-emissione`, fase 1.)
+
+## Rev 2026-10-11 — gli indirizzi (brief-db-testata-dopo-emissione §11, R-DB-3)
+
+Nuovo `can_edit_indirizzi`: vero se gli indirizzi si possono scrivere nello stato del
+documento, letto dal lock montato sui suoi indirizzi (in bozza sì, fuori no). Il backend li
+rifiutava da sé fuori DRAFT: ora la regola sta nel lock.

@@ -54,10 +54,28 @@ funzione è `SECURITY INVOKER`: contava saperlo. Se un domani la RLS ci
 arrivasse, chi non vede il ponte leggerebbe «nessun accredito» e si troverebbe
 il bottone acceso — lì servirebbe una `SECURITY DEFINER`, non un `COALESCE`.
 
-**Precedenza fra motivi**: lo **specifico** batte il generico — accrediti prima
-di `requires_righe`. Oggi non si incontrano (le transizioni `annulla` non
-dichiarano `requires_righe`, e un reso con accrediti ha per forza righe), ma un
-ordine non scritto è un ordine che il prossimo cambia senza accorgersene.
+**Precedenza fra motivi**: lo **specifico** batte il generico — accrediti, poi
+`requires_righe`, poi la merce (la «Conferma»). Oggi non si incontrano (le
+transizioni `annulla` non dichiarano `requires_righe`, un reso con accrediti ha
+per forza righe, e la check della merce con zero righe non parla), ma un ordine
+non scritto è un ordine che il prossimo cambia senza accorgersene. Per questo la
+precedenza è scritta **una volta**, nelle condizioni calcolate per ogni
+transizione, e la leggono tutti e quattro i campi: `enabled`, `reason`,
+`reason_key` e `reasons`.
+
+### La «Conferma» porta i motivi interi (14-10-2026)
+
+Quando a spegnere la «Conferma» è la merce (magazzino mancante, rientri
+incompleti, rientro oltre l'uscito…), l'azione porta anche **`reasons`**:
+l'elenco dei motivi di
+[`script.fn_check_reso_merce`](/dbzero/script/funzioni/fn_check_reso_merce), ciascuno
+coi suoi **`valori`**. È la stessa forma della «Emetti» della bolla, e il frontend
+la legge già per tutti i documenti: con i valori il tooltip dice «Riga 2 del
+reso: indicati 0 pezzi su 4» invece di mostrare i segnaposti `{0}`, `{1}`, `{2}`.
+Il primo motivo (`reason`, `reason_key`) si ricava dallo stesso elenco, così le
+due letture non possono separarsi. La chiave `reasons` c'è sempre e vale `null`
+quando a spegnere l'azione non è la merce. Brief
+`brief-db-reso-motivi-conferma-con-valori`.
 
 ### Mirror RIDOTTO del DDT
 

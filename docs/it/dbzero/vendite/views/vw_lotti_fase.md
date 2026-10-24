@@ -14,6 +14,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_lotti_fase
 WITH (security_invoker=true) AS
@@ -29,6 +31,8 @@ SELECT l.id AS lotto_id,
    FROM (vendite.fatturazione_lotti l
      LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = l.stato_doc_fiscale_id)));
 ```
+
+</div>
 
 
 ---

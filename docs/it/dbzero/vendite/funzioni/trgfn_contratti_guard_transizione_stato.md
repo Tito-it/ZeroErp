@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_contratti_guard_transizione_stato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
  RETURNS trigger
@@ -30,6 +32,17 @@ AS $function$
 --   dal building block script.fn_check_prezzi_autorizzati — righe E
 --   componenti, PENDING E REJECTED (brief-db-preventivi-congelamento-
 --   pricing, D-4/D-5).
+-- Aggiornato 2026-10-11: ->ATTIVO solleva anche il primo motivo di
+--   script.fn_check_indirizzi_documento_cliente — un indirizzo d'anagrafica
+--   che non e' del cliente del contratto (brief-db-indirizzi-documento-
+--   seguono-il-cliente, D-3).
+-- Aggiornato 2026-10-20: ->ATTIVO solleva per ultimo il motivo di
+--   script.fn_check_contratto_sovrapposto — un contratto vincolante
+--   sovrapposto sulla quintupla dell'EXCLUDE (richiesta BE del 2026-10-19).
+-- Aggiornato 2026-10-21: ->ATTIVO solleva, dopo gli indirizzi e prima del
+--   sovrapposto, il primo motivo di script.fn_check_righe_documento — una
+--   riga che la regola intera non ammette piu' (brief-db-offerta-emissione-
+--   ed-erogazione §I.2, H-R4).
 DECLARE
     v_codice_da config.stati_doc_contratti.codice_interno%TYPE;
     v_codice_a  config.stati_doc_contratti.codice_interno%TYPE;
@@ -115,13 +128,87 @@ BEGIN
                 'stato_a',      v_codice_a));
     END IF;
 
+    -- Indirizzi del cliente (rev 2026-10-11, brief-db-indirizzi-documento-
+    -- seguono-il-cliente, D-3 di Tid): il cliente del contratto (BA/istanza)
+    -- si cambia in DRAFT, e un indirizzo d'anagrafica del cliente di prima, o
+    -- di una fornitura che il contratto non ha piu', non si attiva.
+    -- ⭐ Il predicato e' script.fn_check_indirizzi_documento_cliente, lo
+    --   stesso che fn_available_actions_contratto somma per spegnere «Attiva»,
+    --   dopo listino e prezzi: lo stesso ordine qui.
+    IF v_codice_a = 'ATTIVO' THEN
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'database', TG_NAME::text,
+            script.fn_check_indirizzi_documento_cliente('CONTRATTO', NEW.id),
+            'tipo_indirizzo_id',
+            NEW.tx_id,
+            jsonb_build_object(
+                'contratto_id', NEW.id,
+                'numero',       NEW.numero,
+                'stato_da',     v_codice_da,
+                'stato_a',      v_codice_a));
+    END IF;
+
+    -- Le righe (rev 2026-10-21, brief-db-offerta-emissione-ed-erogazione
+    -- §I.2, H-R4): la regola di una riga dipende da dati che stanno fuori
+    -- dalla riga (il listino operativo, il vocabolario del perimetro), e i
+    -- guard di riga la giudicano solo quando la riga si scrive. Le righe gia'
+    -- scritte le intercetta l'attivazione (R-6, A-5 di brief-db-articoli-
+    -- ammessi-per-documento). In DRAFT le righe si correggono: nessuna uscita
+    -- nuova serve.
+    -- ⭐ Il predicato e' script.fn_check_righe_documento, lo stesso che
+    --   fn_available_actions_contratto somma per spegnere «Attiva», dopo gli
+    --   indirizzi: lo stesso ordine qui.
+    IF v_codice_a = 'ATTIVO' THEN
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'database', TG_NAME::text,
+            script.fn_check_righe_documento('CONTRATTO', NEW.id),
+            'articolo_id',
+            NEW.tx_id,
+            jsonb_build_object(
+                'contratto_id', NEW.id,
+                'numero',       NEW.numero,
+                'stato_da',     v_codice_da,
+                'stato_a',      v_codice_a));
+    END IF;
+
+    -- Contratto vincolante sovrapposto (rev 2026-10-20, richiesta BE del
+    -- 2026-10-19): un periodo che si sovrappone a un contratto non in bozza e
+    -- non abortito dello stesso cliente, punto di fornitura, utility e ambito
+    -- non si attiva. Fin qui lo fermava solo l'EXCLUDE ex_contratti_no_overlap,
+    -- con un 23P01 che non nomina il contratto in conflitto: l'EXCLUDE resta la
+    -- difesa dura, il codice parlante arriva da qui.
+    -- ⭐ Il predicato e' script.fn_check_contratto_sovrapposto, lo stesso che
+    --   fn_available_actions_contratto somma per ultimo per spegnere «Attiva»:
+    --   lo stesso ordine qui.
+    -- ⚠️ La quintupla e' quella di NEW: un UPDATE che porta ad ATTIVO
+    --   cambiando le date nella stessa istruzione si giudica sulle date nuove
+    --   (la riga salvata e' ancora quella di ieri).
+    -- ⚠️ Nessun campo: il rimedio sta nelle date o nell'altro contratto, non
+    --   in un input solo.
+    IF v_codice_a = 'ATTIVO' THEN
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'database', TG_NAME::text,
+            script.fn_check_contratto_sovrapposto(
+                NEW.billing_account_id, NEW.istanza_utility_id, NEW.utility_id,
+                NEW.ambito, NEW.valido_dal, NEW.valido_al),
+            NULL,
+            NEW.tx_id,
+            jsonb_build_object(
+                'contratto_id', NEW.id,
+                'numero',       NEW.numero,
+                'stato_da',     v_codice_da,
+                'stato_a',      v_codice_a));
+    END IF;
+
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
-IS 'Trigger function: controlla transizioni stato contratto. DRAFT->ATTIVO: sempre ammessa (check PENDING componenti BoM). DRAFT->ANNULLATO: sempre ammessa (nessuna fatturazione su DRAFT). ATTIVO->ANNULLATO: non ammessa (raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA). ATTIVO->CESSATO: job automatico (GUC app.cessazione_automatica=true) ammette valido_al<oggi; cessazione manuale ammette valido_al>=oggi (no retroattiva). Retroattiva raise E_CONTRATTO_VALIDO_AL_RETROATTIVO (449); NULL raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA. rev 2026-05-20 (DRAFT->ANNULLATO). rev 2026-09-24: all''''ingresso in ATTIVO il controllo del prezzo passa dal building block script.fn_check_prezzi_autorizzati via fn_raise_primo_motivo_se_presente — righe E componenti BoM attivi, PENDING E REJECTED, codici E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO. Prima guardava i soli componenti PENDING e sollevava E_COMPONENTE_PREZZO_PENDENTE (che resta al guard per riga dei componenti). La capability fn_available_actions_contratto legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5).';
+IS 'Trigger function: controlla transizioni stato contratto. DRAFT->ATTIVO: sempre ammessa (check PENDING componenti BoM). DRAFT->ANNULLATO: sempre ammessa (nessuna fatturazione su DRAFT). ATTIVO->ANNULLATO: non ammessa (raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA). ATTIVO->CESSATO: job automatico (GUC app.cessazione_automatica=true) ammette valido_al<oggi; cessazione manuale ammette valido_al>=oggi (no retroattiva). Retroattiva raise E_CONTRATTO_VALIDO_AL_RETROATTIVO (449); NULL raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA. rev 2026-05-20 (DRAFT->ANNULLATO). rev 2026-09-24: all''''ingresso in ATTIVO il controllo del prezzo passa dal building block script.fn_check_prezzi_autorizzati via fn_raise_primo_motivo_se_presente — righe E componenti BoM attivi, PENDING E REJECTED, codici E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO. Prima guardava i soli componenti PENDING e sollevava E_COMPONENTE_PREZZO_PENDENTE (che resta al guard per riga dei componenti). La capability fn_available_actions_contratto legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5). rev 2026-10-11 (brief-db-indirizzi-documento-seguono-il-cliente, D-3 di Tid): verso ATTIVO, dopo i prezzi, solleva il primo motivo di script.fn_check_indirizzi_documento_cliente(''CONTRATTO'', id) — E_INDIRIZZO_DOC_NON_DEL_CLIENTE, un indirizzo d''anagrafica che non e'' del cliente del contratto — nell''ordine della capability. rev 2026-10-20 (richiesta BE del 2026-10-19): verso ATTIVO, dopo gli indirizzi, solleva il primo motivo di script.fn_check_contratto_sovrapposto(NEW.quintupla) — E_CONTRATTO_OVERLAP_ESISTENTE col numero del contratto vincolante (ATTIVO o CESSATO) sovrapposto — nell''ordine della capability. L''EXCLUDE ex_contratti_no_overlap resta la difesa dura. rev 2026-10-21 (20261021-59, brief-db-offerta-emissione-ed-erogazione §I.2, H-R4): verso ATTIVO, dopo gli indirizzi e prima del sovrapposto, solleva il primo motivo di script.fn_check_righe_documento(''CONTRATTO'', id) — E_DOC_RIGA_NON_AMMESSA, una riga che la regola intera (articolo, erogazione, fonte) non ammette piu'' — nell''ordine della capability.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

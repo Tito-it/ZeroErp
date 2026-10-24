@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_uom_factor(p_articolo_id uuid, p_uom_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.fn_get_uom_factor(p_articolo_id uuid, p_uom_id bigint)
  RETURNS numeric
@@ -101,6 +103,8 @@ IS 'Restituisce il fattore di conversione tra l''UoM base dell''articolo e l''Uo
    Se non trovata, cerca la conversione inversa e restituisce il reciproco.
    Restituisce NULL se non trovata.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

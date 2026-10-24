@@ -89,7 +89,7 @@ class SituazioneMerceServiceTests(TestCase):
             sorted(out.keys()),
             ["accrediti", "contesto", "partite", "riconsegne", "righe_ordine"],
         )
-        self.assertEqual(out["contesto"], "ORDINE")
+        self.assertEqual(out["contesto"], "ORDINE_VENDITA")
         repo.list_situazione_merce_ordine.assert_called_once_with(
             ordine_id=42, ddt_id=None
         )
@@ -118,7 +118,7 @@ class SituazioneMerceServiceTests(TestCase):
         ):
             out = get_situazione_merce(ddt_id=7)
 
-        self.assertEqual(out["contesto"], "DDT")
+        self.assertEqual(out["contesto"], "DDT_VENDITA")
         repo.list_situazione_merce_ordine.assert_called_once_with(
             ordine_id=None, ddt_id=7
         )

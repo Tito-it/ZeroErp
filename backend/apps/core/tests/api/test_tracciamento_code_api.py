@@ -10,6 +10,7 @@
 #   1) conteggi_200 — delega a conteggi_code con auth_user_id scope
 #   2) coda_lavori_list_200 — parsing filtri (ambito/stato/tipo/limit)
 #   3) coda_lavori_list_default_miei — tutti=False di default
+#   3-bis) coda_lavori_ordinamento_order_by — `order_by`/`order_dir` (§A4)
 #   4) coda_stampa_list_200 — lotto_id + parsing condiviso
 #   5) coda_lavori_detail_200 — delega dettaglio_job
 #   6) annulla_richiede_idempotency_key — 400 senza header
@@ -22,7 +23,7 @@ from datetime import date
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from django.test import Client, RequestFactory, override_settings
+from django.test import Client, RequestFactory
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
@@ -103,6 +104,28 @@ class TestApiCodaLavoriList(TestCase):
         self.assertFalse(mock_svc.elenca_coda_lavori.call_args.kwargs["tutti"])
 
 
+    # 3-bis. ⛔ L'ordinamento arriva come `order_by`/`order_dir`, i nomi di ogni
+    #        altra lista (Tid, 2026-10-20, §A4): `sort_by`/`sort_dir`, il
+    #        contratto di prima, non ordinano piu' niente.
+    @patch(f"{_VIEWS}.gestione_service")
+    def test_coda_lavori_ordinamento_order_by(self, mock_svc):
+        from apps.core.api.views_tracciamento import ApiCodaLavoriList
+
+        mock_svc.elenca_coda_lavori.return_value = {"count": 0, "results": []}
+        ApiCodaLavoriList().get(_make_get_request(
+            "/api/v1/core/tracciamento/coda-lavori/",
+            {"order_by": "ended_at", "order_dir": "asc"},
+        ))
+        kwargs = mock_svc.elenca_coda_lavori.call_args.kwargs
+        self.assertEqual((kwargs["sort_by"], kwargs["sort_dir"]), ("ended_at", "asc"))
+        ApiCodaLavoriList().get(_make_get_request(
+            "/api/v1/core/tracciamento/coda-lavori/",
+            {"sort_by": "ended_at", "sort_dir": "asc"},
+        ))
+        kwargs = mock_svc.elenca_coda_lavori.call_args.kwargs
+        self.assertEqual((kwargs["sort_by"], kwargs["sort_dir"]), (None, None))
+
+
 class TestApiCodaStampaList(TestCase):
 
     # 4. Parsing condiviso + lotto_id. L'ambito per-operatore vive nel service
@@ -114,7 +137,7 @@ class TestApiCodaStampaList(TestCase):
         mock_svc.elenca_coda_stampa.return_value = {"count": 0, "results": []}
         request = _make_get_request(
             "/api/v1/core/tracciamento/coda-stampa/",
-            {"lotto_id": "117", "solo_vivi": "1"},
+            {"lotto_id": "117", "solo_vivi": "true"},
         )
         response = ApiCodaStampaList().get(request)
         self.assertEqual(response.status_code, 200)
@@ -147,9 +170,9 @@ _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 # PERICOLOSO — senza il guard DatabaseOperationForbidden, con
 # DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1 il claim idempotenza scriverebbe sul
 # DB DEV reale (successo, 2026-07-22: chiavi a-1/r-1 finite in
-# dbops.idempotency_keys). Flag OFF deterministico: qui si testa la delega al
-# service, lo store ha i suoi test dedicati.
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
+# dbops.idempotency_keys). Il flag lo spegne il runner per tutta la suite
+# (`zeroerp_backend/test_runner.py`): qui si testa la delega al service, lo
+# store ha i suoi test dedicati.
 class TestAzioniHttp(JwtMockedApiTest):
     """Azioni annulla/requeue a livello HTTP (idempotency + delega)."""
 

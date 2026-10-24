@@ -1,4 +1,4 @@
 id,codice_interno,codice,descrizione,destinazione_tipo,attivo,ordine,meta,e_cessione_beni
-1,MERCE,MERCE,"Bene fisico da evadere (magazzino, DDT)",ORDINE,true,10,{},t
+1,MERCE,MERCE,"Bene fisico da evadere (magazzino, DDT)",ORDINE_VENDITA,true,10,{},t
 2,SERVIZIO_UNA_TANTUM,SERV_UT,Servizio una tantum (commessa diretta),COMMESSA,true,20,{},f
 3,SERVIZIO_RICORRENTE,SERV_RIC,"Servizio ricorrente (contratto, canone)",CONTRATTO,true,30,{},f

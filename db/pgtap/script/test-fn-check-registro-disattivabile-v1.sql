@@ -12,6 +12,7 @@
 -- pgTAP test per Zero ERP
 -- Test: script.fn_check_registro_disattivabile  (20260831-38)
 --       Richiesta: brief-db-richieste-aperte-dal-backend-2, voce 2
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): la famiglia della bolla e' DDT_VENDITA.
 -- ------------------------------------------------------------
 -- Elenco test (plan 9):
 -- 1) ⭐ Un registro SENZA figli: la check risponde []
@@ -95,7 +96,7 @@ WITH ins AS (
       famiglia_documento, reset_policy, attivo, utility_id)
   SELECT 'CRD-' || ef.soggetto_ruolo_id::text,
          'Registro pgTAP check disattivabile',
-         ef.soggetto_ruolo_id, 'DDT', 'ANNUALE', true,
+         ef.soggetto_ruolo_id, 'DDT_VENDITA', 'ANNUALE', true,
          (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1)
     FROM tmp_crd_ef ef
   RETURNING id, emittente_soggetto_ruolo_id
@@ -132,7 +133,7 @@ UPDATE vendite.registri_fatturazione
 CREATE TEMP TABLE tmp_crd_num AS
 SELECT vendite.fn_get_next_progressivo(
            (SELECT registro_id FROM tmp_crd),
-           DATE '2101-06-15', NULL, '', NULL, 'DDT') AS numero;
+           DATE '2101-06-15', NULL, '', NULL, 'DDT_VENDITA') AS numero;
 
 SELECT is(
     (SELECT string_agg(m ->> 'reason', ',' ORDER BY m ->> 'reason')

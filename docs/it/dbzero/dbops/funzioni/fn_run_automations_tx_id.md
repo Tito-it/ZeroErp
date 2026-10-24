@@ -7,12 +7,17 @@ CREATE FUNCTION fn_run_automations_tx_id(p_exec_mode text, p_schemas text[], p_d
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_run_automations_tx_id(p_exec_mode text, p_schemas text[], p_dry_run boolean)
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
 DECLARE
+  -- ⭐ Rev 2026-10-16: il contesto dell'errore, costruito una volta e usato
+  --   dalle due chiamate del gestore (registro e involucro).
+  v_ctx_errore dbops.error_log.context%TYPE;
   v_schemas text[];
   rtab record;
   rrule record;
@@ -141,16 +146,25 @@ BEGIN
                 EXECUTE FUNCTION dbops.trgfn_tx_id_managed()
               $f$, trg_name, rtab.schema_name, rtab.table_name);
             EXCEPTION WHEN others THEN
-                PERFORM script.fn_log_and_raise_error(
-                  'dbops',
-                  'run_automations',
-                  'E_TX_ID',
-                  jsonb_build_object(
+                -- ⭐ Rev 2026-10-16 (brief-db-presidio-job-run-a-chi-tocca D8, D10, D11):
+                --   un guasto dell'AMBIENTE (script.fn_sqlstate_di_ambiente: connessione,
+                --   risorse, arresto, sistema, privilegio, lock) si rilancia COM'E', col suo
+                --   SQLSTATE: l'involucro lo faceva diventare P0001, e il presidio dei job lo
+                --   mandava allo sviluppo. Prima si scrive nel registro errori, col contesto.
+                v_ctx_errore := jsonb_build_object(
                     'where','TX_ID',
                     'table', rtab.schema_name||'.'||rtab.table_name,
                     'error', SQLERRM
-                  ) , NULL::uuid, SQLERRM
-                );
+                  );
+                IF script.fn_sqlstate_di_ambiente(SQLSTATE) THEN
+                  PERFORM script.fn_log_error_only(
+                      'dbops', 'run_automations', 'E_TX_ID',
+                      v_ctx_errore, NULL::uuid, SQLERRM);
+                  RAISE;
+                END IF;
+                PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'run_automations', 'E_TX_ID',
+                    v_ctx_errore, NULL::uuid, SQLERRM);
 
             END;
           END IF;
@@ -162,8 +176,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_tx_id(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Crea i trigger TX_ID dove esiste tx_id UUID.';
+IS 'Crea i trigger TX_ID dove esiste tx_id UUID. ⭐ Rev 2026-10-16: nel gestore WHEN others, un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia COM''E'', col suo SQLSTATE, dopo averlo scritto nel registro errori con lo stesso codice e contesto (fn_log_error_only). Prima diventava P0001 col codice dell''involucro, e il presidio dei job (maintenance.vw_job_run_da_guardare) lo mandava allo sviluppo. I difetti di struttura escono come prima. Brief: brief-db-presidio-job-run-a-chi-tocca D8, D11.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

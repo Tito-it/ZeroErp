@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AMBIENTE NON CAMBIA
+#   dbops.trgfn_installazione_guard_immutabile: rifiuta UPDATE, DELETE e
+#   TRUNCATE di dbops.installazione (E_AMBIENTE_IMMUTABILE).
+#   Brief: brief-db-processi-accensione-per-ambiente (decisione di Tid del
+#   2026-10-16: l'ambiente si scrive una volta, alla nascita)
+#
+# -- PERCHE' IN TUTTE E DUE LE DIREZIONI -----------------------------
+#   SVILUPPO -> PRODUZIONE: un database di sviluppo contiene dati nati fuori
+#   dal verbo di provisioning (gli smoke scrivono dalle API normali), e nessuna
+#   regola lo certifica pulito. PRODUZIONE -> SVILUPPO: protegge dall'errore
+#   (un DBA sul database sbagliato); una copia della produzione resta
+#   produzione.
+#
+# -- LA FORMA -------------------------------------------------------
+#   Una funzione per due trigger (20261016-17): BEFORE UPDATE OR DELETE per
+#   riga, BEFORE TRUNCATE per istruzione (il TRUNCATE non attraversa i trigger
+#   di riga). Rifiuta anche un UPDATE che non cambia niente: la riga non si
+#   scrive, punto. Il proprietario puo' sempre disattivare il trigger: contro un
+#   DBA malevolo nessun guard regge, e la difesa sono i ruoli (R-3).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261016-16-create-trgfn-installazione-guard-immutabile-mctit.yaml
+
+  - changeSet:
+      id: 20261016-16-create-trgfn-installazione-guard-immutabile
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea dbops.trgfn_installazione_guard_immutabile: l'ambiente dell'installazione non si
+        cambia ne' si cancella (E_AMBIENTE_IMMUTABILE). Brief: brief-db-processi-accensione-per-ambiente.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.trgfn_installazione_guard_immutabile()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_ambiente dbops.installazione.ambiente%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   L'ambiente dell'installazione si scrive una volta,
+                  --   alla nascita, e non cambia piu' (decisione di Tid del
+                  --   2026-10-16). Rifiuta UPDATE, DELETE e TRUNCATE.
+                  --
+                  -- Regole:
+                  --   - anche un UPDATE allo stesso valore e' rifiutato: la
+                  --     riga non si riscrive;
+                  --   - nel TRUNCATE (trigger di istruzione) OLD non c'e':
+                  --     il valore si legge dalla tabella.
+                  -- =========================================================
+                  IF TG_LEVEL = 'ROW' THEN
+                      v_ambiente := OLD.ambiente;
+                  ELSE
+                      SELECT i.ambiente
+                        INTO v_ambiente
+                        FROM dbops.installazione i
+                       WHERE i.id = 1;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'dbops', 'trgfn_installazione_guard_immutabile', 'E_AMBIENTE_IMMUTABILE',
+                      jsonb_build_object('operazione', TG_OP,
+                                         'ambiente',   v_ambiente),
+                      NULL::uuid,
+                      COALESCE(v_ambiente, '-'));
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.trgfn_installazione_guard_immutabile()
+              IS 'Guard su dbops.installazione: rifiuta UPDATE e DELETE (trigger di riga) e TRUNCATE (trigger di istruzione) con E_AMBIENTE_IMMUTABILE. L''ambiente si scrive una volta, alla nascita, dalla fase post del provisioning, e non cambia in nessuna delle due direzioni: un database di sviluppo non si certifica pulito, una copia della produzione resta produzione (decisione di Tid del 2026-10-16). Anche un UPDATE allo stesso valore e'' rifiutato. Il proprietario puo'' disattivare il trigger: la difesa contro un DBA malevolo sono i ruoli, non un guard. Brief: brief-db-processi-accensione-per-ambiente.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.trgfn_installazione_guard_immutabile();

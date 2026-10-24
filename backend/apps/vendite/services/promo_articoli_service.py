@@ -253,10 +253,8 @@ class PromoArticoliService:
         self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS, message=_MESSAGE)
         data = self._build_update_data(payload)
 
-        ErrorManager.require(
-            bool(data),
-            code=E_VENDITE_VALIDATION,
-            message="Nessun campo aggiornabile presente nel payload.",
+        self._v.require_campi_da_aggiornare(
+            data,
             context={"allowed_keys": sorted(_UPDATE_KEYS)},
         )
 

@@ -10,17 +10,17 @@
 #  3) Crea articolo padre composito
 #  4) Crea articolo figlio componente
 #  5) Dettaglio articolo padre (array Fase 3)
-#  6) Create UoM operativa
+#  6) UoM operativa base seminata dal DB (non si crea a mano)
 #  7) Lista UoM operative
 #  8) PATCH UoM operativa
 #  9) Create componente BoM
 # 10) Lista componenti BoM
-# 11) PATCH componente BoM
+# 11) Coefficiente BoM: struttura rifiutata (409), chiudi + inserisci la nuova versione
 # 12) Create componente self-reference (400 atteso)
 # 13) Lista note articolo
 # 14) Create nota articolo (opzionale, richiede NOTE_STYLE_ID)
 # 15) PATCH nota articolo (opzionale)
-# 16) DELETE nota / componente / UoM
+# 16) DELETE nota; righe BoM e UoM base disattivate (non si cancellano)
 # 17) Disattiva articoli di test
 # ------------------------------------------------------------
 set -euo pipefail
@@ -161,7 +161,10 @@ CHILD_DESC="Smoke catalogo fase 3 figlio ${TEST_SUFFIX}"
 # --- 2. Lookup UoM attive ---
 echo ""
 echo "-- 2. Lookup UoM seed --"
-do_curl GET "/api/v1/catalogo/unita-misura/lookup/?limit=5"
+# Il lookup dedicato `catalogo/unita-misura/lookup/` e' stato ritirato: le UoM
+# passano dal lookup generico whitelist (`rel=catalogo.unita_misura`), come il
+# frontend e smoke-test-catalogo-crud.
+do_curl GET "/api/v1/core/lookup/codici/?rel=catalogo.unita_misura&limit=5"
 check "Lookup UoM attive" "200"
 UOM_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
 UOM_CODE=$(json_get "$LAST_BODY" ".data.results.0.codice")
@@ -210,13 +213,21 @@ except Exception:
 " 2>/dev/null)
 log_info "Dettaglio arrays: uom_operative=${UOM_INITIAL_COUNT:-?} componenti=${COMP_INITIAL_COUNT:-?}"
 
-# --- 6. Create UoM operativa ---
+# --- 6. UoM operativa base: la semina il DB ---
+# ⭐ L'UoM operativa base nasce CON l'articolo (trigger
+# catalogo.trgfn_articoli_seed_uom_base, uom_id = quello dell'articolo): crearla a
+# mano risponde uq_artuomop_articolo_uom (duplicato). Si legge quella seminata.
 echo ""
-echo "-- 6. Create UoM operativa --"
-do_curl POST "/api/v1/catalogo/articoli/${PARENT_ID}/uom/" "{\"uom_id\":${UOM_ID},\"is_base\":true,\"factor_to_base\":\"1\"}"
-check "Create UoM operativa base" "200" ".data.id"
+echo "-- 6. UoM operativa base seminata dal DB --"
+do_curl GET "/api/v1/catalogo/articoli/${PARENT_ID}/uom/"
+check "Lista UoM operative dopo la create" "200" ".data.results.0.id"
 UOM_OP_ID="$EXTRACTED"
-log_info "UoM operativa creata: id=${UOM_OP_ID}"
+UOM_OP_BASE=$(json_get "$LAST_BODY" ".data.results.0.is_base")
+if [[ "$UOM_OP_BASE" == "True" || "$UOM_OP_BASE" == "true" ]]; then
+    log_ok "UoM operativa base seminata: id=${UOM_OP_ID} (is_base=true)"
+else
+    log_fail "UoM operativa seminata attesa is_base=true, ricevuto '${UOM_OP_BASE:-<vuoto>}'"
+fi
 
 # --- 7. Lista UoM operative ---
 echo ""
@@ -247,12 +258,29 @@ do_curl GET "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/"
 check "Lista componenti BoM" "200" ".data.count"
 log_info "Componenti trovati: ${EXTRACTED:-?}"
 
-# --- 11. PATCH componente BoM ---
+# --- 11. Cambiare il coefficiente: chiudi + inserisci ---
+# ⭐ La BoM e' immutabile nei campi di struttura (trigger
+# catalogo.trgfn_articoli_componenti_block_modifica_struttura, E_BOM_MODIFICA_VIETATA):
+# una riga non si corregge, si CHIUDE (valido_al) e se ne inserisce una nuova,
+# come le versioni dei listini v5. Fino al 2026-10-12 lo smoke faceva PATCH di
+# coeff_qta, che oggi e' giusto venga rifiutata: lo prova (11a), poi la strada vera.
+OGGI=$(date +%F); DOMANI=$(date -d tomorrow +%F)
 echo ""
-echo "-- 11. PATCH componente BoM --"
+echo "-- 11a. PATCH coeff_qta (struttura: atteso 409) --"
 do_curl PATCH "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/${COMP_ROW_ID}/" "{\"coeff_qta\":\"3\"}"
-check "PATCH componente BoM" "200" ".data.coeff_qta"
-log_info "coeff_qta aggiornato: ${EXTRACTED:-n/d}"
+check "PATCH struttura BoM rifiutata" "409" ".error.code"
+[[ "$EXTRACTED" == "E_BOM_MODIFICA_VIETATA" ]] && log_ok "Codice corretto: E_BOM_MODIFICA_VIETATA" \
+    || log_fail "Codice atteso E_BOM_MODIFICA_VIETATA, ricevuto '${EXTRACTED:-<vuoto>}'"
+echo ""
+echo "-- 11b. Chiudi la riga (valido_al = oggi) --"
+do_curl PATCH "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/${COMP_ROW_ID}/" "{\"valido_al\":\"${OGGI}\"}"
+check "Chiusura riga BoM" "200" ".data.id"
+echo ""
+echo "-- 11c. Inserisci la nuova versione (coeff_qta 3, da domani) --"
+do_curl POST "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/" "{\"componente_id\":\"${CHILD_ID}\",\"coeff_qta\":\"3\",\"valido_dal\":\"${DOMANI}\",\"obbligatorio\":true}"
+check "Nuova versione riga BoM" "200" ".data.coeff_qta"
+COMP_ROW_ID_V2=$(json_get "$LAST_BODY" ".data.id")
+log_info "coeff_qta nuova versione: ${EXTRACTED:-n/d} (id=${COMP_ROW_ID_V2:-?})"
 
 # --- 12. Create componente self-reference ---
 echo ""
@@ -300,16 +328,30 @@ if [[ -n "$NOTE_ID" ]]; then
 else
     log_info "DELETE nota skipped"
 fi
-do_curl DELETE "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/${COMP_ROW_ID}/"
-check "DELETE componente BoM" "200" ".data.deleted"
-do_curl DELETE "/api/v1/catalogo/articoli/${PARENT_ID}/uom/${UOM_OP_ID}/"
-check "DELETE UoM operativa" "200" ".data.deleted"
+# Le righe BoM non si cancellano (DELETE bloccato, tracciabilita' delle
+# versioni): si spengono, figli prima del padre (passo 17).
+for comp in "$COMP_ROW_ID" "${COMP_ROW_ID_V2:-}"; do
+    [[ -z "$comp" ]] && continue
+    do_curl PATCH "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/${comp}/" "{\"attivo\":false}"
+    check "Disattiva riga BoM ${comp}" "200" ".data.id"
+done
+# L'UoM operativa base non si cancella (e' quella dell'articolo): si disattiva,
+# figlio prima del padre (passo 17, guard E_ATTIVO_BLOCK_CHILDREN_ACTIVE).
+do_curl PATCH "/api/v1/catalogo/articoli/${PARENT_ID}/uom/${UOM_OP_ID}/" "{\"attivo\":false}"
+check "Disattiva UoM operativa base del padre" "200" ".data.attivo"
 
 # --- 17. Disattiva articoli di test ---
 echo ""
 echo "-- 17. Disattiva articoli di test --"
 do_curl POST "/api/v1/catalogo/articoli/${PARENT_ID}/disattiva/" "{}"
 check "Disattiva articolo padre" "200" ".data.attivo"
+# Anche il figlio ha la sua UoM operativa base seminata: prima quella.
+do_curl GET "/api/v1/catalogo/articoli/${CHILD_ID}/uom/"
+CHILD_UOM_OP_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
+if [[ -n "$CHILD_UOM_OP_ID" ]]; then
+    do_curl PATCH "/api/v1/catalogo/articoli/${CHILD_ID}/uom/${CHILD_UOM_OP_ID}/" "{\"attivo\":false}"
+    check "Disattiva UoM operativa base del figlio" "200" ".data.attivo"
+fi
 do_curl POST "/api/v1/catalogo/articoli/${CHILD_ID}/disattiva/" "{}"
 check "Disattiva articolo figlio" "200" ".data.attivo"
 

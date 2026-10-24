@@ -152,7 +152,6 @@ class ListiniRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=LISTINI_ORDER_COLUMNS, default="l.codice", tiebreak="l.id",
-            rifiuta_fuori_whitelist=True,
         )
 
         conditions: list[str] = []
@@ -247,7 +246,14 @@ class ListiniRepository:
                         SELECT COUNT(*)
                           FROM vendite.listini_versioni v
                          WHERE v.listino_id = l.id
-                    ) AS versioni_count
+                    ) AS versioni_count,
+                    -- ⭐ Un listino con storia (una versione ATTIVA o CHIUSA)
+                    --    non si spegne col flag: si spegne con la fine validita'
+                    --    della versione (decisione di Tid, 2026-10-21; il DB
+                    --    rifiuta con E_LISTINO_CON_STORIA_NON_SPEGNIBILE). La
+                    --    regola e' del DB e si LEGGE da li', non si ricopia qui:
+                    --    il drawer mostra il toggle solo se e' falso.
+                    vendite.fn_listino_ha_storia(l.id) AS ha_storia
                   FROM vendite.listini l
                   LEFT JOIN config.utilities u ON u.id = l.utility_id
                   LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
@@ -689,8 +695,6 @@ class ListiniRepository:
         versione_id: int,
         *,
         search: str | None = None,
-        billing_account_id: int | None = None,
-        utility_id: int | None = None,
         attivo: bool | None = True,
         order_by: str = "articolo_descrizione",
         order_dir: str | None = "asc",
@@ -706,7 +710,7 @@ class ListiniRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=RIGHE_ORDER_COLUMNS, default="articolo_descrizione",
-            tiebreak="row_key", rifiuta_fuori_whitelist=True,
+            tiebreak="row_key",
         )
 
         conditions: list[str] = ["r.listino_versione_id = %s"]
@@ -715,13 +719,10 @@ class ListiniRepository:
         # Join guard: la versione deve appartenere al listino richiesto.
         join_guard_params: list[Any] = [listino_id]
 
-        # billing_account_id / utility_id / emittente_soggetto_ruolo_id sono
-        # stati droppati da listini_righe nel cleanup v5 (F1-DB-25): le
-        # dimensioni di contesto vivono ora sul listino o sul contratto.
-        # I parametri restano nella firma per retrocompatibilita' chiamanti
-        # ma sono ignorati.
-        _ = billing_account_id
-        _ = utility_id
+        # ⛔ Niente filtro per billing_account/utility: le colonne sono state
+        #    tolte da listini_righe (F1-DB-25), il contesto vive sul listino o
+        #    sul contratto. Fino al 2026-10-20 i parametri restavano nella firma
+        #    e venivano IGNORATI: un filtro accettato che non filtrava.
         if attivo is not None:
             conditions.append("r.attivo = %s")
             params.append(attivo)
@@ -1015,10 +1016,16 @@ class ListiniRepository:
 
     # Scopo: Restituisce versioni ATTIVE in scadenza entro N giorni senza successore.
     #        Filtro temporale isolato per facilitare futura migrazione daterange (N1).
+    # ⛔ La scadenza e' `valido_al` (incluso), NON `upper(validita)`:
+    #    `validita` e' `daterange(valido_dal, valido_al, '[]')`, che PostgreSQL
+    #    normalizza in `[)`, quindi `upper()` vale `valido_al + 1`. Fino al
+    #    2026-10-21 la query leggeva `upper()` e sbagliava di un giorno la
+    #    scadenza, i giorni rimanenti e il successore contiguo
+    #    (brief-be-verifica-documentazione-api §C1).
     def _filter_versioni_in_scadenza(self) -> str:
         return (
-            "upper(v.validita) IS NOT NULL "
-            "AND upper(v.validita) <= (SELECT script.fn_data_operativa()) + %(giorni)s * INTERVAL '1 day'"
+            "v.valido_al IS NOT NULL "
+            "AND v.valido_al <= (SELECT script.fn_data_operativa()) + %(giorni)s * INTERVAL '1 day'"
         )
 
     # Scopo: Lista versioni operativamente ATTIVE oggi che scadono entro `giorni`
@@ -1041,8 +1048,8 @@ class ListiniRepository:
                     v.id AS versione_id,
                     v.codice_versione,
                     v.valido_dal,
-                    upper(v.validita) AS valido_al,
-                    upper(v.validita) - (SELECT script.fn_data_operativa()) AS giorni_rimanenti
+                    v.valido_al,
+                    v.valido_al - (SELECT script.fn_data_operativa()) AS giorni_rimanenti
                   FROM vendite.listini_versioni v
                   JOIN vendite.listini l ON l.id = v.listino_id
                   LEFT JOIN config.utilities u ON u.id = l.utility_id
@@ -1057,10 +1064,12 @@ class ListiniRepository:
                         WHERE succ.listino_id = v.listino_id
                           AND succ.id != v.id
                           AND succ.attivo IS TRUE
-                          AND succ.valido_dal > upper(v.validita)
+                          -- Il successore CONTIGUO nasce il giorno dopo la
+                          -- scadenza: `valido_dal = valido_al + 1`, cioe' `>`.
+                          AND succ.valido_dal > v.valido_al
                           AND (
                               succ.stato = 'BOZZA'
-                              OR succ.validita && daterange(upper(v.validita), NULL, '[)')
+                              OR succ.validita && daterange(v.valido_al + 1, NULL, '[)')
                           )
                    )
                  ORDER BY v.valido_al ASC, l.codice

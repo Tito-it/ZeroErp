@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW magazzino.vw_disponibilita
 WITH (security_invoker=true) AS
@@ -28,6 +30,8 @@ WITH blocchi AS (
    FROM (magazzino.vw_giacenza g
      FULL JOIN blocchi b ON (((b.articolo_id = g.articolo_id) AND (b.magazzino_id = g.magazzino_id))));
 ```
+
+</div>
 
 
 ---

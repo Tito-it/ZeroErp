@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL VERBO DELLE STATISTICHE — ANALYZE, e poi la prova di esserci riuscito.
+#   Brief: brief-db-statistiche-tabelle-job-notturno §4.1, §4.2 (D15)
+#
+# Lo chiama il job notturno `analyze_statistiche` (pgAgent) e, in CI, la
+# convergenza di 90_end/ci_apply/20260926-10. E' la sola sede del lavoro.
+#
+# ── ⛔ PERCHE' L'AUTOVERIFICA STA QUI ───────────────────────────────
+#   ANALYZE non fallisce su una tabella che non puo' analizzare: la SALTA con un
+#   WARNING. Senza un controllo, un job che salta meta' delle tabelle scrive
+#   «done» nel giornale. Subito dopo ANALYZE, nella stessa transazione, si legge
+#   maintenance.vw_statistiche_mancanti e, se resta anche una tabella, si solleva
+#   E_STATISTICHE_MANCANTI: fn_run_and_log scrive la riga rossa fuori
+#   transazione, e la vedono il panorama e il digest.
+#   ⭐ La verifica sta nel job e non in una vista guardata dal digest perche'
+#   SOLO QUI ha un senso preciso: subito dopo ANALYZE una tabella senza
+#   statistiche e' un errore. In un'ora qualunque la stessa riga sarebbe anche
+#   la tabella creata da una migrazione di oggi pomeriggio — un presidio che
+#   dipende dal calendario (la classe di D16).
+#
+# ── ⚠️ UNA TRANSAZIONE SOLA ─────────────────────────────────────────
+#   Nessun COMMIT fra una tabella e l'altra: la CI chiama la procedura dentro la
+#   transazione del changeSet. ANALYZE tiene SHARE UPDATE EXCLUSIVE su ogni
+#   tabella fino alla fine: non blocca letture ne' scritture, blocca DDL, un
+#   altro ANALYZE e l'autovacuum. Da qui l'orario del job, lontano dagli altri.
+#
+# ── p_tabelle, in coda e facoltativo ────────────────────────────────
+#   NULL (il job): ANALYZE di tutto il database, autoverifica sul perimetro.
+#   Un elenco: ANALYZE e autoverifica di quelle sole — dopo un import, o in un
+#   pgTAP, che non deve analizzare tutto il database per provare la regola.
+#
+# ⚠️ Il catalogo di sistema (pg_proc & co.): ANALYZE senza argomenti lo analizza
+#   se il ruolo e' il proprietario del database o superuser, altrimenti lo
+#   salta. E' dentro il lavoro e FUORI dall'autoverifica (D-1 di Tid,
+#   2026-10-14): i diritti sui cataloghi non sono nostri da dare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261014-51-create-fn-analyze-statistiche-mctit.yaml
+
+  - changeSet:
+      id: 20261014-51-create-fn-analyze-statistiche
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.fn_analyze_statistiche(p_tabelle regclass[] DEFAULT NULL): ANALYZE del
+        database (o delle tabelle indicate) e, nella stessa transazione, l'autoverifica su
+        maintenance.vw_statistiche_mancanti: se una tabella resta senza statistiche solleva
+        E_STATISTICHE_MANCANTI, perche' ANALYZE salta in silenzio cio' che non puo'
+        analizzare. Brief: brief-db-statistiche-tabelle-job-notturno.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'maintenance' AND p.proname = 'fn_analyze_statistiche';
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_class c
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'maintenance' AND c.relname = 'vw_statistiche_mancanti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Tipi nudi: un elenco di tabelle qualunque, e un conteggio.
+              CREATE FUNCTION maintenance.fn_analyze_statistiche(
+                  p_tabelle regclass[] DEFAULT NULL)
+              RETURNS integer
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_tabella  regclass;
+                  v_mancanti integer;
+                  v_elenco   text;
+                  v_tabelle  jsonb;
+              BEGIN
+                  -- Scopo: dare al planner statistiche vere. ANALYZE del database
+                  --   (p_tabelle NULL) o delle tabelle indicate, poi la prova di
+                  --   esserci riuscito: ANALYZE salta con un WARNING cio' che non
+                  --   puo' analizzare, e senza questa prova il giornale direbbe
+                  --   «done». Ritorna quante tabelle del perimetro restano senza
+                  --   statistiche: sempre 0, perche' altrimenti solleva.
+                  IF p_tabelle IS NULL THEN
+                      ANALYZE;
+                  ELSE
+                      FOREACH v_tabella IN ARRAY p_tabelle LOOP
+                          EXECUTE format('ANALYZE %s', v_tabella);
+                      END LOOP;
+                  END IF;
+
+                  -- ⭐ L'autoverifica: nella stessa transazione, quindi vede
+                  --   reltuples appena scritto da ANALYZE.
+                  SELECT count(*)::integer,
+                         string_agg(m.relid::text || ' (' || m.motivo || ')', ', '
+                                    ORDER BY m.relid::text)
+                             FILTER (WHERE m.ordinale <= 10),
+                         jsonb_agg(jsonb_build_object('tabella', m.relid::text,
+                                                      'motivo',  m.motivo)
+                                   ORDER BY m.relid::text)
+                    INTO v_mancanti, v_elenco, v_tabelle
+                    FROM (SELECT s.relid, s.motivo,
+                                 row_number() OVER (ORDER BY s.relid::text) AS ordinale
+                            FROM maintenance.vw_statistiche_mancanti s
+                           WHERE p_tabelle IS NULL
+                              OR s.relid = ANY (p_tabelle)) m;
+
+                  IF v_mancanti > 0 THEN
+                      -- TECNICO: nessun operatore ha un gesto da fare; il
+                      --   rimedio e' un diritto al ruolo del job (provisioning)
+                      --   o una tabella da guardare.
+                      PERFORM script.fn_log_and_raise_error(
+                          'maintenance',
+                          'fn_analyze_statistiche',
+                          'E_STATISTICHE_MANCANTI',
+                          jsonb_build_object(
+                              'tabelle', v_tabelle,
+                              'ruolo',   current_user),
+                          NULL::uuid,
+                          v_mancanti::text,
+                          v_elenco);
+                  END IF;
+
+                  RETURN v_mancanti;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION maintenance.fn_analyze_statistiche(regclass[]) IS
+                  'ANALYZE del database (p_tabelle NULL, il job notturno analyze_statistiche e la convergenza in CI) o delle tabelle indicate, poi l''AUTOVERIFICA nella stessa transazione: se maintenance.vw_statistiche_mancanti ha ancora una tabella (nel perimetro, o fra quelle indicate) solleva E_STATISTICHE_MANCANTI con le tabelle nel contesto. ⛔ Senza, un ANALYZE che salta meta'' delle tabelle (lo fa con un WARNING, senza fallire) lascerebbe «done» nel giornale. ⭐ La verifica sta qui e non in una vista guardata dal digest: subito dopo ANALYZE una tabella senza statistiche e'' un errore, in un''ora qualunque potrebbe essere solo nata da poco. Una transazione sola (la CI la chiama dentro un changeSet): SHARE UPDATE EXCLUSIVE su ogni tabella fino alla fine, che blocca DDL e autovacuum ma non letture e scritture. Il catalogo di sistema e'' analizzato se il ruolo e'' proprietario del database o superuser, e resta fuori dall''autoverifica (D-1). Brief: brief-db-statistiche-tabelle-job-notturno (D15).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS maintenance.fn_analyze_statistiche(regclass[]);

@@ -2,17 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
-// Scopo: La conversione `limit`/`offset` -> `page`/`page_size` delle liste
-//        paginate PAGE-BASED, in un punto solo — e, dal 2026-09-18,
+// Scopo: La finestra `limit`/`offset` delle liste, in un punto solo
+//        (`paramsFinestra`; fino al 2026-10-21 la conversione verso
+//        `page`/`page_size`, ritirata col dialetto) — e, dal 2026-09-18,
 //        l'ORDINAMENTO come lo chiede il backend (`paramsOrdinamento`), che
 //        serve sia alla fetch della lista sia al suo export.
 // Note: ⚠️ Perche' esiste. `useSearchTable` governa `limit`/`offset` — e' la
-//       lingua del building block e della DataTable; una parte degli endpoint
-//       pagina invece con `page`/`page_size`. La traduzione fra le due lingue
-//       sta nel `buildParams` dello store, che e' il confine giusto: ne'
-//       l'endpoint ne' il BB si adattano all'altro. Ma la stessa aritmetica era
-//       scritta a mano in tre domini, e alla prima correzione sarebbe
-//       divergente.
+//       lingua del building block, della DataTable e (dal 2026-10-21) di ogni
+//       lista del backend. Fino a quel giorno una parte degli endpoint
+//       paginava con `page`/`page_size`, e la stessa aritmetica di traduzione
+//       era scritta a mano in tre domini.
 //       ⭐ Estratto il 2026-08-28 con la regola del 2 (ok di Tid) alla TERZA
 //       sede: `vendite/stores/lotti`, `vendite/stores/fondiFatturaDaDecidere` e
 //       le quattro liste di `pagamenti`.
@@ -29,40 +28,41 @@
 import { RICERCA } from '../constants'
 import { USO_MISURA, misuraDefault } from '../misurePagina'
 
-// Scopo: i due parametri di pagina che un endpoint page-based si aspetta, piu'
-//        l'ordinamento quando c'e'. Cio' che varia — i filtri di dominio —
+// Scopo: la finestra della lista come la chiede il backend — `limit`/`offset`,
+//        piu' l'ordinamento quando c'e'. Cio' che varia — i filtri di dominio —
 //        resta al chiamante, che e' l'unico a sapere come si chiamano.
+//
+// ⭐ Un dialetto solo (2026-10-21, decisione Tid): fino a quel giorno una
+//    ventina di liste del backend paginava con `page`/`page_size`, e questa
+//    funzione si chiamava `paramsPagina` e traduceva `limit`/`offset` nella
+//    loro lingua. Ora il backend le rifiuta con un 400 (`pagina_da_query`):
+//    la traduzione non serve piu', e la funzione resta il punto in cui la
+//    finestra prende la sua forma.
 //
 // @param {object} f - i filtri dello store (`limit`, `offset`, `order_by`, `order_dir`).
 // @param {object} [opts]
-// @param {number} [opts.pageSizeDefault] - pagina di ripiego (default: il 25 di progetto).
+// @param {number} [opts.limitDefault] - finestra di ripiego (default: la misura di pagina).
 // @param {'asc'|'desc'} [opts.orderDirDefault='desc'] - verso di ripiego quando
 //        `order_by` c'e' e `order_dir` no.
-// @returns {{page:number, page_size:number, order_by?:string, order_dir?:string}}
+// @returns {{limit:number, offset:number, order_by?:string, order_dir?:string}}
 //
-// ⚠️ IL GUARD SUL LIMIT NON E' PRUDENZA. Uno `0` produrrebbe una divisione per
-//    zero e una `page` **NaN**, che il backend rifiuta con un 400 illeggibile —
-//    un errore che sembra un difetto del server invece che una pagina sbagliata.
-//    ⭐ E il confronto e' `> 0`, non il `||` che una delle tre copie usava: con
-//    `||` un `limit` NEGATIVO passa intero e produce una `page` negativa. Il
-//    caso oggi non capita da nessuna parte, e infatti non e' per questo che si
-//    stringe: si stringe perche' il ramo esiste.
+// ⚠️ IL GUARD SUL LIMIT (`> 0`) NON E' PRUDENZA: il backend riporta uno `0`
+//    o un negativo a 1 riga, e una lista di una riga sembra una lista vuota
+//    sbagliata invece di una finestra sbagliata.
 //
 // ⛔ `orderDirDefault` E' UN PARAMETRO, e la ragione va letta prima di
-//    toglierlo: le tre copie NON erano identiche — `lotti` ripiegava su `asc`,
-//    le altre due su `desc`. Oggi il ripiego non scatta in nessuna delle tre
-//    (tutte tengono `order_dir` sempre valorizzato nei filtri), quindi
-//    unificarlo sarebbe stato invisibile **e** avrebbe cambiato il verso di una
-//    lista che si apre col piu' recente in cima, il giorno in cui quel ramo si
-//    fosse acceso. Un'estrazione appiana la duplicazione, non le differenze.
-export function paramsPagina(f, {
-  pageSizeDefault = misuraDefault(USO_MISURA.PAGINA),
+//    toglierlo: le copie da cui e' nata NON erano identiche — `lotti` ripiegava
+//    su `asc`, le altre su `desc`. Oggi il ripiego non scatta (tutte tengono
+//    `order_dir` sempre valorizzato nei filtri), ma unificarlo avrebbe
+//    cambiato il verso di una lista il giorno in cui quel ramo si fosse
+//    acceso. Un'estrazione appiana la duplicazione, non le differenze.
+export function paramsFinestra(f, {
+  limitDefault = misuraDefault(USO_MISURA.PAGINA),
   orderDirDefault = 'desc',
 } = {}) {
-  const pageSize = f.limit > 0 ? f.limit : pageSizeDefault
   return {
-    page: Math.floor((f.offset || 0) / pageSize) + 1,
-    page_size: pageSize,
+    limit: f.limit > 0 ? f.limit : limitDefault,
+    offset: f.offset > 0 ? f.offset : 0,
     ...paramsOrdinamento(f, { orderDirDefault }),
   }
 }
@@ -75,13 +75,13 @@ export function paramsPagina(f, {
 // ⭐ Estratto il 2026-09-18 (regola del 2, ok Tid) alla DODICESIMA copia del
 //    blocco «l'export segue l'ordinamento a video» nei `getExportParams`
 //    (`if (store.filters.order_by) { p.order_by = …; p.order_dir = … || X }`):
-//    lo stesso blocco viveva anche dentro `paramsPagina` qui sopra e nel
+//    lo stesso blocco viveva anche dentro `paramsPagina` (oggi `paramsFinestra`) qui sopra e nel
 //    `buildParams` di `useListaStoreCore`, che ora chiamano questa funzione.
 //    Il file che scarichi e' la lista che stai guardando, e la forma con cui la
 //    lista chiede l'ordine al backend e' UNA.
 //
 // ⛔ `orderDirDefault` resta un parametro, per la stessa ragione scritta su
-//    `paramsPagina`: le copie NON erano identiche (`asc` sugli store di
+//    `paramsFinestra`: le copie NON erano identiche (`asc` sugli store di
 //    `useListaStoreCore`, `desc` sui documenti di vendita). Oggi il ripiego non
 //    scatta — `useSearchTable.onSort` scrive sempre `order_by` e `order_dir`
 //    insieme — ma appianarlo avrebbe cambiato il verso di una lista il giorno

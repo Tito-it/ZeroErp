@@ -69,3 +69,17 @@ display), **nessun** filtro/scope/paginazione (restano nel repository BE).
 
 La definizione lista + colonne è in `ui.lista_definizione` / `ui.lista_colonna`
 (`codice = vendite.ddt`).
+
+---
+
+### 🔄 rev 2026-10-11 — la lista non calcola più il grafo
+
+Changeset `20261011-97`. La vista non legge più la sintesi della lineage di tutti
+i documenti. Le colonne della frontiera e del transito (`frontiera_*`,
+`n_discendenti_attivi`, `is_transitato`) le chiede il backend a
+[`fn_documento_lineage_sintesi`](fn_documento_lineage_sintesi.md) per i soli
+documenti della pagina. La pratica (`pratica_id`, `pratica_numero`,
+`n_pratiche`) resta qui, filtrabile e ordinabile, e la legge
+`pratiche.fn_pratica_del_documento`. Una pagina da 25 righe costava ~320-390 ms,
+ora ~8-70 ms più la sintesi delle 25 chiavi (~58 ms) — dbdev, 2026-10-11.
+

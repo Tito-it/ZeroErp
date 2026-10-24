@@ -8,8 +8,11 @@
 > LETTORI: dbops.vw_punti_primo_motivo (il rubinetto: i soli punti che sollevano il primo motivo a mano) e dbops.vw_punti_canale_campo (il presidio C2: tutti i siti, bonificati compresi). Prima la risalita viveva dentro la sola vw_punti_primo_motivo, e la seconda l'avrebbe ricopiata.
 > ⚠️ Le fn_check_* si cercano nel sorgente SENZA commenti; una riga per (funzione, check, codice) — un codice che arriva da piu' strade si aggrega. ⚠️ La finestra di un motivo NON e' «fino al ;»: le check a CTE costruiscono piu' motivi in uno statement, quindi il sorgente si spezza sulle occorrenze di 'codice',. ⚠️ Euristica su pg_proc.prosrc: riconosce la forma scritta, non il significato. Brief: brief-be-presidio-ui-action-e-canale-campi §4.
 > ⭐ rev 2026-10-10 (20261010-43) — PREFILTRO `prosrc LIKE '%fn\_check\_%'` sulla CTE funzioni: senza, la stima arrivava a ~304 milioni (funzioni di sistema a cardinalita' fissa sopra 1.221 corpi, moltiplicata dalla ricorsione) e PostgreSQL compilava la vista col JIT — ~1,1 s di compilazione per ~110 ms di lavoro, pagati da ogni lettore. Risultato identico (un nome di funzione e' un token: un commento non lo compone). ⛔ Il prefiltro e' una proprieta' invisibile nei risultati: un REPLACE che lo perde non rompe niente e torna lento. Lo presidia db/pgtap/dbops/test-vw-funzioni-check-codici-sotto-jit-v1.sql.
+> ⭐ rev 2026-10-12 (20261012-26) — LA CARDINALITA' DICHIARATA: il prefiltro da solo teneva la stima sotto la soglia solo finche' le statistiche di pg_proc stimavano pochi corpi con fn_check_ (32 stimati, 170 veri dopo un autoanalyze: vw_punti_canale_campo a ~192.000 su zeroerp_ci). Le estrazioni passano da dbops.fn_regexp_occorrenze (ROWS 1: regexp_matches ne dichiara 10, le occorrenze vere per corpo sono fra 0,03 e 0,94), il taglio dei motivi da unnest(regexp_split_to_array) (regexp_split_to_table ne dichiara 1.000) e l'estrazione delle deleghe sta in deleghe_grezze MATERIALIZED (prima si rifaceva per ogni coppia di check). Righe identiche (EXCEPT ALL a zero sulle tre viste); la stima resta sotto la soglia anche con un prefiltro stimato tre volte e mezzo piu' largo del vero. Lo presidia lo stesso pgTAP, test 4 e 5.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
+<div data-search-exclude markdown>
 
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_funzioni_check_codici
@@ -33,7 +36,7 @@ WITH RECURSIVE funzioni AS MATERIALIZED (
             m_1.m[1] AS csch,
             m_1.m[2] AS cfn
            FROM (funzioni f
-             CROSS JOIN LATERAL regexp_matches(f.sorgente, '(\w+)\.(fn_check_\w+)\s*\('::text, 'g'::text) m_1(m))
+             CROSS JOIN LATERAL dbops.fn_regexp_occorrenze(f.sorgente, '(\w+)\.(fn_check_\w+)\s*\('::text) m_1(m))
         ), check_nomi(csch, cfn) AS (
          SELECT l_1.csch,
             l_1.cfn
@@ -44,7 +47,7 @@ WITH RECURSIVE funzioni AS MATERIALIZED (
            FROM (((check_nomi cn
              JOIN pg_namespace ns ON ((ns.nspname = cn.csch)))
              JOIN pg_proc p ON (((p.proname = cn.cfn) AND (p.pronamespace = ns.oid))))
-             CROSS JOIN LATERAL regexp_matches(regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/'::text, ''::text, 'g'::text), '--[^\n]*'::text, ''::text, 'g'::text), '(\w+)\.(fn_check_\w+)\s*\('::text, 'g'::text) d(m))
+             CROSS JOIN LATERAL dbops.fn_regexp_occorrenze(regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/'::text, ''::text, 'g'::text), '--[^\n]*'::text, ''::text, 'g'::text), '(\w+)\.(fn_check_\w+)\s*\('::text) d(m))
         ), checks AS MATERIALIZED (
          SELECT DISTINCT c_1.oid AS check_oid,
             cn.csch,
@@ -54,35 +57,41 @@ WITH RECURSIVE funzioni AS MATERIALIZED (
            FROM ((check_nomi cn
              JOIN pg_namespace ns ON ((ns.nspname = cn.csch)))
              JOIN pg_proc c_1 ON (((c_1.proname = cn.cfn) AND (c_1.pronamespace = ns.oid))))
-        ), deleghe AS (
-         SELECT DISTINCT c_1.check_oid,
-            d.check_oid AS delegata_oid,
+        ), deleghe_grezze AS MATERIALIZED (
+         SELECT c_1.check_oid,
+            x.dsch,
+            x.dfn,
             x.resto
-           FROM ((checks c_1
+           FROM (checks c_1
              CROSS JOIN LATERAL ( SELECT m_1.m[1] AS dsch,
                     m_1.m[2] AS dfn,
                     m_1.m[3] AS resto
-                   FROM regexp_matches(c_1.csrc, '(?:\|\||:=)\s*(\w+)\.(fn_check_\w+)\s*\(([^;]*)'::text, 'g'::text) m_1(m)
+                   FROM dbops.fn_regexp_occorrenze(c_1.csrc, '(?:\|\||:=)\s*(\w+)\.(fn_check_\w+)\s*\(([^;]*)'::text) m_1(m)
                 UNION ALL
                  SELECT m_1.m[1] AS m,
                     m_1.m[2] AS m,
                     m_1.m[3] AS m
-                   FROM regexp_matches(c_1.csrc, 'jsonb_agg\s*\([^;]*?jsonb_array_elements\s*\(\s*(\w+)\.(fn_check_\w+)\s*\(([^;]*)'::text, 'g'::text) m_1(m)) x)
-             JOIN checks d ON (((d.csch = x.dsch) AND (d.cfn = x.dfn))))
-          WHERE (d.check_oid <> c_1.check_oid)
+                   FROM dbops.fn_regexp_occorrenze(c_1.csrc, 'jsonb_agg\s*\([^;]*?jsonb_array_elements\s*\(\s*(\w+)\.(fn_check_\w+)\s*\(([^;]*)'::text) m_1(m)) x)
+        ), deleghe AS (
+         SELECT DISTINCT g.check_oid,
+            d.check_oid AS delegata_oid,
+            g.resto
+           FROM (deleghe_grezze g
+             JOIN checks d ON (((d.csch = g.dsch) AND (d.cfn = g.dfn))))
+          WHERE (d.check_oid <> g.check_oid)
         ), filtri AS (
          SELECT DISTINCT dl.check_oid,
             dl.delegata_oid,
             l_1.m[1] AS codice
            FROM ((deleghe dl
-             CROSS JOIN LATERAL regexp_matches(dl.resto, '->>\s*''codice''\s*(?:=\s*''E_[A-Z0-9_]+''|IN\s*\([^)]*\))'::text, 'g'::text) f(m))
-             CROSS JOIN LATERAL regexp_matches(f.m[1], '''(E_[A-Z0-9_]+)'''::text, 'g'::text) l_1(m))
+             CROSS JOIN LATERAL dbops.fn_regexp_occorrenze(dl.resto, '->>\s*''codice''\s*(?:=\s*''E_[A-Z0-9_]+''|IN\s*\([^)]*\))'::text) f(m))
+             CROSS JOIN LATERAL dbops.fn_regexp_occorrenze(f.m[1], '''(E_[A-Z0-9_]+)'''::text) l_1(m))
         ), motivi AS (
          SELECT c_1.check_oid,
             (regexp_match(s.pz, '^''(E_[A-Z0-9_]+)'''::text))[1] AS codice,
             split_part(s.pz, ';'::text, 1) AS finestra
            FROM (checks c_1
-             CROSS JOIN LATERAL regexp_split_to_table(c_1.csrc, '''codice''\s*,\s*'::text) WITH ORDINALITY s(pz, k))
+             CROSS JOIN LATERAL unnest(regexp_split_to_array(c_1.csrc, '''codice''\s*,\s*'::text)) WITH ORDINALITY s(pz, k))
           WHERE (s.k > 1)
         ), motivi_propri AS (
          SELECT m_1.check_oid,
@@ -149,6 +158,8 @@ WITH RECURSIVE funzioni AS MATERIALIZED (
      JOIN checks c ON (((c.csch = l.csch) AND (c.cfn = l.cfn))))
      LEFT JOIN motivi_per_codice m ON ((m.check_oid = c.check_oid)));
 ```
+
+</div>
 
 
 ---

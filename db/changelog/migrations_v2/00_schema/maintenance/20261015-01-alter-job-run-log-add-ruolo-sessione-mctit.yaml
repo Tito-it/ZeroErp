@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL GIORNALE DEI JOB DICE CON CHE RUOLO E' GIRATA OGNI CORSA.
+#   Brief: brief-db-ruoli-di-sistema §7 D-5
+#
+# `ruolo_sessione` = il ruolo che si e' COLLEGATO (session_user), non quello con
+# cui il lavoro gira: le procedure dei job sono SECURITY DEFINER del
+# proprietario (20261014-55), quindi current_user sarebbe sempre lui. E' cio'
+# che serve al presidio «nessun superuser al lavoro»
+# (maintenance.vw_job_run_da_superuser, 20261015-04).
+#
+# ⚠️ NESSUN DEFAULT, apposta: la riga di una corsa FALLITA la scrive
+#   maintenance.fn_job_run_log_failure via dblink, in un'altra sessione — un
+#   default `session_user` direbbe il ruolo del canale di log. La valorizzano
+#   le due funzioni che scrivono (20261015-02, -03).
+# ⚠️ NULL sulle righe di prima: «non registrato», non un guasto.
+# ⚠️ L'INSERT di zeroerp_log sul giornale e' concesso per tabella
+#   (90_end/20260905-38), quindi copre anche questa colonna.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/maintenance/20261015-01-alter-job-run-log-add-ruolo-sessione-mctit.yaml
+
+  - changeSet:
+      id: 20261015-01-alter-job-run-log-add-ruolo-sessione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.job_run_log.ruolo_sessione: il ruolo che si e' collegato (session_user) per
+        la corsa. Senza default: la riga di un fallimento la scrive un'altra sessione (dblink).
+        Brief: brief-db-ruoli-di-sistema D-5.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - columnExists:
+                schemaName: maintenance
+                tableName: job_run_log
+                columnName: ruolo_sessione
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE maintenance.job_run_log ADD COLUMN ruolo_sessione text;
+
+              COMMENT ON COLUMN maintenance.job_run_log.ruolo_sessione IS
+                  'Il ruolo che si e'' COLLEGATO per la corsa (session_user): pgAgent (zeroerp_job), il migratore in ci_apply, una persona. Non quello con cui il lavoro gira: le procedure dei job sono SECURITY DEFINER del proprietario. Lo valorizzano maintenance.fn_run_and_log (la corsa) e maintenance.fn_job_run_log_failure (il verbale di un fallimento, che via dblink gira in un''altra sessione: per questo la colonna non ha default). NULL sulle corse registrate prima del 2026-10-15. Lo legge maintenance.vw_job_run_da_superuser. Brief: brief-db-ruoli-di-sistema D-5.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE maintenance.job_run_log DROP COLUMN IF EXISTS ruolo_sessione;

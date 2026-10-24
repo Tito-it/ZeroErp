@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Schema `config`
 
 ## 📚 Tabelle (manuale)
@@ -109,6 +114,7 @@
 - [titoli_cortesia](manual/titoli_cortesia.md) — * **Uniformare i titoli**     Gestire centralmente i titoli di cortesia per tutti i soggetti/contatti, evitando discrepanze tra form, report e stampe.
 - [token_monouso](manual/token_monouso.md) — La tabella `config.token_monouso` implementa un **meccanismo generico di token monouso** riutilizzabile per qualsiasi flusso che richieda un link sicuro con scadenza: invito operatore, reset password, conferma email, attivazione account.
 - [toponomastica](manual/toponomastica.md) — (latest review 02-01-26) * **Censimento dei toponimi**   Elenco delle tipologie di vie, strade, piazze, viali, ecc., utilizzate come prefisso negli indirizzi. * **Fondamentale per lo stradario**   Fornisce i prefissi standardizzati che, uniti al nome (es. "Garibaldi", "Roma"), generano i record di **`stradario_generale`**. * **Integrazione con lo stato geografico**   Collegato alla tabella `config.stati` per associare ogni tipo di toponimo all’area amministrativa di riferimento.
+- [transizioni_stati_cliente](manual/transizioni_stati_cliente.md) — (latest review 14-10-26)
 - [transizioni_stati_contratti](manual/transizioni_stati_contratti.md) — (rev 2026-05-28)
 - [transizioni_stati_ddt](manual/transizioni_stati_ddt.md) — (rev 2026-07-09)
 - [transizioni_stati_flussi_pratiche](manual/transizioni_stati_flussi_pratiche.md) — `config.transizioni_stati_flussi_pratiche` definisce la **matrice delle transizioni ammesse** tra stati dei flussi pratica. Il trigger guard `trgfn_flussi_guard_transizione` consulta questa tabella per bloccare qualsiasi transizione non configurata.
@@ -131,10 +137,16 @@
 - [fn_get_aliquota_iva](manual/fn_get_aliquota_iva.md) — (latest review 10-02-2026)   La funzione **`config.fn_get_aliquota_iva()`** restituisce l’aliquota IVA applicando l’eventuale override definito in `config.iva_stati` per lo Stato specificato.
 - [fn_get_natura_doc_fiscale_id](manual/fn_get_natura_doc_fiscale_id.md) — (rev 2026-08-18)
 - [fn_get_stati_doc_fiscale](manual/fn_get_stati_doc_fiscale.md) — (latest review 24-01-2026) La funzione **`config.fn_get_stati_doc_fiscale`** restituisce gli stati validi per **LOTTO** o **FATTURA**, con eventuale filtro sulle **transizioni ammesse**.
+- [fn_imposta_emittente_attivo](manual/fn_imposta_emittente_attivo.md)
+- [fn_imposta_override_oggetti](manual/fn_imposta_override_oggetti.md)
+- [fn_lega_profilo_identita](manual/fn_lega_profilo_identita.md)
+- [fn_lega_profilo_reparto](manual/fn_lega_profilo_reparto.md) — (19-10-2026 — R-BE-7 del backend, decisioni D-16b e D-16c di Tid, `brief-db-processi-accensione-per-ambiente` §6.16)
 - [fn_pannello_colonne_scrivibili](manual/fn_pannello_colonne_scrivibili.md) — (scritta il 27-09-2026)
 - [fn_pannello_scrivi](manual/fn_pannello_scrivi.md) — (scritta il 25-09-2026)
+- [fn_profilo_super_admin_id](manual/fn_profilo_super_admin_id.md) — (18-10-2026 — R-BE-11 del backend, regola del 2, ok di Tid; `brief-db-processi-accensione-per-ambiente` §6.15)
 - [fn_resolve_email_account](manual/fn_resolve_email_account.md) — Risolve l'account SMTP da utilizzare per l'invio di una email, dato il reparto (unita' organizzativa) del contesto. Implementa una catena di fallback a 2 livelli per garantire che ci sia sempre un account disponibile.
 - [fn_resolve_email_template](manual/fn_resolve_email_template.md) — Risolve il template email da utilizzare per un dato codice, reparto, tipo prestazione e lingua. Implementa una catena di fallback a 5 livelli che permette di specializzare i testi per reparto e tipo pratica mantenendo sempre un default di sistema.
+- [fn_scrivi_profilo_accesso](manual/fn_scrivi_profilo_accesso.md)
 - [trgfn_comuni_protect_update](manual/trgfn_comuni_protect_update.md) — (latest review 29-12-25) Impedire la modifica dei campi chiave di `config.comuni` quando il comune e' gia' utilizzato nello stradario.
 - [trgfn_credenziali_guard_ultimo_super_admin](manual/trgfn_credenziali_guard_ultimo_super_admin.md) — (scritta il 25-09-2026)
 - [trgfn_iva_guard_conti_iva](manual/trgfn_iva_guard_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.

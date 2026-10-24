@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_contratti_utilities_guard_tipo_classe()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_utilities_guard_tipo_classe()
  RETURNS trigger
@@ -96,6 +98,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_contratti_utilities_guard_tipo_classe()
 IS 'Guard BEFORE INS/UPD su vendite.contratti_utilities: coerenza tipo_utenza_id, classe_utenza_id e utility. Pricing v5.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

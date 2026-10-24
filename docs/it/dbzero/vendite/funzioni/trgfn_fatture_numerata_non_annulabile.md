@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_fatture_numerata_non_annulabile()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_numerata_non_annulabile()
  RETURNS trigger
@@ -41,6 +43,8 @@ BEGIN
   RETURN NEW;
 END$function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -46,7 +46,9 @@ Endpoint di sola lettura su `pratiche.giornale`. Il giornale e' popolato automat
 ## Regole
 
 - Ordinamento: `data_insert DESC, id DESC` (piu' recente in cima).
-- `limit` clamped tra 1 e 200; `offset` clamped a >= 0.
+- Finestra letta da `pagina_da_query`: `limit` fuori da 1..200 (`limit_fuori_limiti_1_200`),
+  `offset` negativo (`offset_negativo`) o valori non interi → 400 `E_VALIDATION_INPUT`
+  (dal 2026-10-21; prima si riportavano nei limiti in silenzio). `page`/`page_size` → 400.
 - Il giornale e' append-only: nessuna operazione di modifica/cancellazione.
 - `flusso_id` e' nullable: eventi a livello di pratica hanno `flusso_id = null`.
 - `tx_id` correla l'evento alla transazione DB che lo ha generato.

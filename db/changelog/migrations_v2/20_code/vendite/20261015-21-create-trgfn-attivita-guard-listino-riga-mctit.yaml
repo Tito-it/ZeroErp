@@ -1,0 +1,116 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.trgfn_attivita_guard_listino_riga()
+#   La riga di listino citata per il prezzo e' coerente con la riga che la
+#   cita: stesso articolo, stessa unita' di misura, stessa versione (se c'e').
+#   Il predicato e' vendite.fn_listino_riga_coerente (20261015-20); qui resta
+#   solo il quando.
+#
+# -- DUE TABELLE, UNA FUNZIONE ---------------------------------------------
+#   La montano vendite.commesse_attivita e vendite.attivita_fatturabili
+#   (20261015-22): sono i due posti che portano listino_riga_id, e i due che
+#   vendite.trgfn_listini_righe_guard_stato guarda per dire «propagata».
+#   attivita_fatturabili NON ha listino_versione_id: la colonna si legge per
+#   NOME da to_jsonb(NEW), che da' NULL dove non c'e' (versione non
+#   confrontata). Un NEW.listino_versione_id diretto non compilerebbe per la
+#   tabella che non ce l'ha (e plpgsql_check lo segnalerebbe).
+#
+# -- QUANDO ---------------------------------------------------------------
+#   AFTER INSERT OR UPDATE, per riga: giudica la riga FINALE, dopo ogni
+#   trigger BEFORE (linee-guida-trigger, «UPDATE OF»: uom_id e articolo_id
+#   non devono poter cambiare per una via che un OF non vede).
+#   Riga di listino NULL -> niente da giudicare. In UPDATE si giudica solo se
+#   cambia una delle quattro colonne: le scritture dell'emissione e degli
+#   stati non rileggono il listino.
+#
+# -- IL CODICE ------------------------------------------------------------
+#   E_ATTIVITA_LISTINO_RIGA_INCOERENTE, TECNICO: la riga di listino non la
+#   sceglie l'operatore, la scrive il programma dal risolutore. Una riga
+#   incoerente e' un difetto di chi scrive, non un gesto da rimediare a
+#   video: nessun bersaglio, il dettaglio nel contesto per chi diagnostica.
+#   Brief: brief-db-coerenza-listino-della-riga-di-commessa (§5, primo giro).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261015-21-create-trgfn-attivita-guard-listino-riga-mctit.yaml
+
+  - changeSet:
+      id: 20261015-21-create-trgfn-attivita-guard-listino-riga
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova vendite.trgfn_attivita_guard_listino_riga: su commesse_attivita e attivita_fatturabili la
+        riga di listino citata per il prezzo e' dello stesso articolo, della stessa unita' di misura e
+        (se c'e') della stessa versione -> altrimenti E_ATTIVITA_LISTINO_RIGA_INCOERENTE. Decisione di
+        Tid, 2026-10-15.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_guard_listino_riga()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- attivita_fatturabili non ha la colonna: NULL, non si confronta.
+                  v_versione_new vendite.listini_righe.listino_versione_id%TYPE :=
+                      (to_jsonb(NEW) ->> 'listino_versione_id')::bigint;
+                  v_versione_old vendite.listini_righe.listino_versione_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   AFTER INSERT OR UPDATE su commesse_attivita e
+                  --   attivita_fatturabili: la riga di listino citata e'
+                  --   coerente con la riga (vendite.fn_listino_riga_coerente).
+                  -- =========================================================
+                  IF NEW.listino_riga_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF TG_OP = 'UPDATE' THEN
+                      v_versione_old := (to_jsonb(OLD) ->> 'listino_versione_id')::bigint;
+                      IF  NEW.listino_riga_id IS NOT DISTINCT FROM OLD.listino_riga_id
+                      AND NEW.articolo_id     IS NOT DISTINCT FROM OLD.articolo_id
+                      AND NEW.uom_id          IS NOT DISTINCT FROM OLD.uom_id
+                      AND v_versione_new      IS NOT DISTINCT FROM v_versione_old THEN
+                          RETURN NULL;
+                      END IF;
+                  END IF;
+
+                  IF NOT vendite.fn_listino_riga_coerente(
+                             NEW.listino_riga_id, NEW.articolo_id, NEW.uom_id, v_versione_new) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_ATTIVITA_LISTINO_RIGA_INCOERENTE',
+                          jsonb_build_object(
+                              'campo',               'listino_riga_id',
+                              'tabella',             TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'id',                  NEW.id,
+                              'listino_riga_id',     NEW.listino_riga_id,
+                              'articolo_id',         NEW.articolo_id,
+                              'uom_id',              NEW.uom_id,
+                              'listino_versione_id', v_versione_new),
+                          NEW.tx_id,
+                          NEW.listino_riga_id::text);
+                  END IF;
+
+                  RETURN NULL;   -- trigger AFTER: il valore di ritorno e' ignorato
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_attivita_guard_listino_riga()
+              IS 'Guard AFTER INSERT OR UPDATE su vendite.commesse_attivita e vendite.attivita_fatturabili (decisione di Tid, 2026-10-15): la riga di listino citata per il prezzo (listino_riga_id) e'' dello stesso articolo, della stessa unita'' di misura e, se la riga porta la versione (solo commesse_attivita), della stessa versione -> altrimenti E_ATTIVITA_LISTINO_RIGA_INCOERENTE (TECNICO: la riga di listino la scrive il programma dal risolutore, non l''operatore; valori: id della riga di listino; campo listino_riga_id). Predicato: vendite.fn_listino_riga_coerente (SECURITY DEFINER, listini_righe ha la RLS). La versione si legge per nome da to_jsonb(NEW): attivita_fatturabili non la porta. AFTER: giudica la riga finale. Riga di listino NULL -> passa; in UPDATE giudica solo se cambia riga di listino, articolo, unita'' di misura o versione. Il lato della riga di listino (articolo, unita'' di misura e versione immutabili) lo tiene il lock di colonna, codice E_LISTINO_RIGA_IDENTITA_IMMUTABILE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.trgfn_attivita_guard_listino_riga();

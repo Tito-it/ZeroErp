@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_credenziale_bloccabile(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_credenziale_bloccabile(p_auth_user_id integer)
  RETURNS jsonb
@@ -73,6 +75,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_credenziale_bloccabile(p_auth_user_id integer)
 IS 'I motivi per cui una CREDENZIALE non si puo'' bloccare (linee-guida-sql §12.5.1): ''[]'' se si puo'', altrimenti l''array ORDINATO {codice, reason, reason_key, dettaglio, valori}. In ordine: CREDENZIALE_DI_SISTEMA (E_CREDENZIALE_DI_SISTEMA, amministrazione.accessi.blocca_reason.credenziale_di_sistema: categoria SISTEMA di script.fn_categoria_accesso, l''utente di un processo o un API_CLIENT) e ULTIMO_SUPER_ADMIN (E_PROFILO_ULTIMO_SUPER_ADMIN, amministrazione.accessi.blocca_reason.ultimo_super_admin: script.fn_check_ultimo_super_admin_attivo, stato prima del blocco). La legge il backend per la capability can_block/block_reason/block_reason_key del dettaglio credenziale; la chiama script.fn_blocca_credenziale e ne solleva il primo motivo (§12.5.2), salvo il motivo di sistema dalla sessione del migratore. Non la chiama il guard config.trgfn_credenziali_guard_ultimo_super_admin, che e'' AFTER ROW (stato dopo) e resta la rete per le corse. Id NULL o <= 0 -> E_AUTH_CHIAMATA_NON_VALIDA. STABLE, SECURITY INVOKER. Brief: brief-db-credenziale-verbi-amministratore (R-DB-A5, R-DB-A6).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_annulla_reso(p_reso_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_annulla_reso(p_reso_id bigint)
  RETURNS void
@@ -31,7 +33,6 @@ DECLARE
     v_ddt_uid          vendite.resi.sorgente_uid%TYPE;
     v_ddt_id           vendite.ddt.id%TYPE;
     v_ddt_stato        config.stati_doc_ddt.codice_interno%TYPE;
-    v_stato_target_id  config.stati_doc_ordini.id%TYPE;
     v_stato_cons_id    config.stati_doc_ddt.id%TYPE;
     v_tutto_reso       boolean;
     v_ord              RECORD;
@@ -165,17 +166,9 @@ BEGIN
              WHERE rr.reso_id = p_reso_id
                AND tr.riapre_residuo IS TRUE
         LOOP
-            IF vendite.fn_ordine_ha_residuo_evasione(v_ord.ordine_id) THEN
-                SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
-                 WHERE codice_interno = 'PARZIALMENTE_EVASO' AND attivo IS TRUE;
-            ELSE
-                SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
-                 WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
-            END IF;
-            UPDATE vendite.ordini
-               SET stato_doc_ordine_id = v_stato_target_id
-             WHERE id = v_ord.ordine_id
-               AND stato_doc_ordine_id IS DISTINCT FROM v_stato_target_id;
+            -- ⭐ rev 2026-10-11: la proiezione e' il building block
+            --    vendite.fn_ordine_proietta_stato_evasione (brief-db-ddt-righe-evase-dall-ordine).
+            PERFORM vendite.fn_ordine_proietta_stato_evasione(v_ord.ordine_id);
         END LOOP;
 
         -- Ri-flip DDT RESO->CONSEGNATO se non piu' reso totale.
@@ -230,8 +223,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_annulla_reso(p_reso_id bigint)
-IS 'Madre annullo reso con storno: -> ANNULLATO, ri-proiezione stato ordine, ri-flip DDT RESO->CONSEGNATO se non piu totale. Simmetrica a fn_conferma_reso. brief S2/S5. ⛔ DUE guardie di RIFIUTO, gemelle fra loro e tutte e due prima di qualunque scrittura: E_RESO_ANNULLO_CON_RICONSEGNE (la merce e'' gia'' ripartita) e - dal 2026-08-19 - E_RESO_ANNULLO_CON_ACCREDITO (esiste almeno una riga di ponte in vendite.resi_righe_accrediti). ⚠️ Senza la seconda un reso accreditato si annullava lasciando VIVE le rettifiche a quantita'' negativa in vendite.commesse_attivita, e il primo giro di fatturazione emetteva una nota di credito per un reso annullato: i due lister (fn_list_emittibili_lane, fn_emit_attivita_fatturabili_da_commessa) non nominano mai il reso e non riparano a valle. Il predicato e'' l''ESISTENZA del ponte, non lo stato delle rettifiche: se l''accredito e'' ormai troppo tardi per essere disfatto lo dice la sua madre con E_ACCREDITO_ANNULLO_NON_AMMESSO, e ricalcolare qui «tutte NON_EMESSA» sarebbe una seconda copia della stessa regola. ⛔ Si RIFIUTA e non si cascata: vendite.fn_annulla_accredito_riga_reso pretende un motivo obbligatorio che una cascata automatica dovrebbe inventarsi, e se una sola rettifica non e'' piu'' NON_EMESSA l''annullo del reso non deve avvenire affatto - non avvenire a meta''. ⭐⚠️ VINCOLO RECIPROCO su TRE posti (C-3), con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: la guardia si auto-ripara perche'' l''annullo dell''accredito CANCELLA le righe di ponte - se un giorno diventasse un soft-delete i tre posti si cambiano INSIEME. rev 2026-07-13. rev 2026-07-17 (step 2b): il ri-flip conta solo i resi CONFERMATI. rev 2026-07-17 (step 2): il ri-flip legge l helper unico vw_resi_righe_effettive. rev 2026-08-19: guardia accredito (brief-design-note-credito-resi; segnalazione BE del 2026-08-19). ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f, M-8): VERBO. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (fuori perimetro E_RESO_NOT_FOUND); permesso conferma_reso su OGNI annullo (script.fn_guard_azione). Lo stato si scrive con la porta del registro aperta (GUC zeroerp.reso_cambio_stato); annullando un reso CONFERMATO che aveva fatto rientrare merce, i suoi carichi si stornano (magazzino.fn_storna_movimenti_sorgente sui rientri, sorgente RESO_VENDITA_RIENTRO) al costo del carico — se la merce e'' gia'' uscita di nuovo, la primitiva rifiuta. Le due guardie di rifiuto (ri-consegne, accrediti) restano prima di ogni scrittura. La firma non cambia (RETURNS void).';
+IS 'Madre annullo reso con storno: -> ANNULLATO, ri-proiezione stato ordine, ri-flip DDT RESO->CONSEGNATO se non piu totale. Simmetrica a fn_conferma_reso. brief S2/S5. ⛔ DUE guardie di RIFIUTO, gemelle fra loro e tutte e due prima di qualunque scrittura: E_RESO_ANNULLO_CON_RICONSEGNE (la merce e'' gia'' ripartita) e - dal 2026-08-19 - E_RESO_ANNULLO_CON_ACCREDITO (esiste almeno una riga di ponte in vendite.resi_righe_accrediti). ⚠️ Senza la seconda un reso accreditato si annullava lasciando VIVE le rettifiche a quantita'' negativa in vendite.commesse_attivita, e il primo giro di fatturazione emetteva una nota di credito per un reso annullato: i due lister (fn_list_emittibili_lane, fn_emit_attivita_fatturabili_da_commessa) non nominano mai il reso e non riparano a valle. Il predicato e'' l''ESISTENZA del ponte, non lo stato delle rettifiche: se l''accredito e'' ormai troppo tardi per essere disfatto lo dice la sua madre con E_ACCREDITO_ANNULLO_NON_AMMESSO, e ricalcolare qui «tutte NON_EMESSA» sarebbe una seconda copia della stessa regola. ⛔ Si RIFIUTA e non si cascata: vendite.fn_annulla_accredito_riga_reso pretende un motivo obbligatorio che una cascata automatica dovrebbe inventarsi, e se una sola rettifica non e'' piu'' NON_EMESSA l''annullo del reso non deve avvenire affatto - non avvenire a meta''. ⭐⚠️ VINCOLO RECIPROCO su TRE posti (C-3), con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: la guardia si auto-ripara perche'' l''annullo dell''accredito CANCELLA le righe di ponte - se un giorno diventasse un soft-delete i tre posti si cambiano INSIEME. rev 2026-07-13. rev 2026-07-17 (step 2b): il ri-flip conta solo i resi CONFERMATI. rev 2026-07-17 (step 2): il ri-flip legge l helper unico vw_resi_righe_effettive. rev 2026-08-19: guardia accredito (brief-design-note-credito-resi; segnalazione BE del 2026-08-19). ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f, M-8): VERBO. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (fuori perimetro E_RESO_NOT_FOUND); permesso conferma_reso su OGNI annullo (script.fn_guard_azione). Lo stato si scrive con la porta del registro aperta (GUC zeroerp.reso_cambio_stato); annullando un reso CONFERMATO che aveva fatto rientrare merce, i suoi carichi si stornano (magazzino.fn_storna_movimenti_sorgente sui rientri, sorgente RESO_VENDITA_RIENTRO) al costo del carico — se la merce e'' gia'' uscita di nuovo, la primitiva rifiuta. Le due guardie di rifiuto (ri-consegne, accrediti) restano prima di ogni scrittura. La firma non cambia (RETURNS void). ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine §5.2): la proiezione dello stato dell''ordine e'' il building block vendite.fn_ordine_proietta_stato_evasione; la copia scritta a mano qui si ritira (regola del 2). Comportamento invariato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

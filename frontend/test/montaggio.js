@@ -138,7 +138,9 @@ afterEach(() => {
 })
 
 export function monta(componente, props = {}, opts = {}) {
-  const { provide = {}, messages = {}, slots = {}, global = {} } = opts
+  // `attachTo`: per i test che guardano il FUOCO (`document.activeElement`),
+  // che jsdom muove solo su elementi attaccati al documento.
+  const { provide = {}, messages = {}, slots = {}, global = {}, attachTo } = opts
   let pinia = getActivePinia()
   if (!pinia) {
     pinia = createPinia()
@@ -147,6 +149,7 @@ export function monta(componente, props = {}, opts = {}) {
   const wrapper = mount(componente, {
     props,
     slots,
+    attachTo,
     global: {
       // ⚠️ I SERVIZI di PrimeVue stanno qui perche' `main.js` li installa
       //    sull'app vera, e un componente che chiama `useConfirm()` o

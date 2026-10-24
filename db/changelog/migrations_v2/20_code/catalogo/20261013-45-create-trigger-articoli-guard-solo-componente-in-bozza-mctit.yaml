@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGIO: catalogo.trgfn_articoli_guard_solo_componente_in_bozza su
+#   catalogo.articoli
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-3, §9.3.1)
+#
+#   BEFORE UPDATE OF is_solo_componente: nessun trigger BEFORE di
+#   catalogo.articoli scrive la colonna, quindi UPDATE OF e' la forma giusta.
+#   Il nome viene dopo ..._a10_guard_flags_struttura_bom_attiva_upd ('f' < 's'):
+#   prima parla la distinta (il flag non cambia per un figlio di BoM attiva),
+#   poi i documenti.
+#   ⛔ Nome sotto i 63 caratteri (51).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261013-45-create-trigger-articoli-guard-solo-componente-in-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20261013-45-create-trigger-articoli-guard-solo-componente-in-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta catalogo.trgfn_articoli_guard_solo_componente_in_bozza su catalogo.articoli (BEFORE
+        UPDATE OF is_solo_componente). Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'catalogo'
+                 AND c.relname = 'articoli'
+                 AND t.tgname = 'trg_articoli_a10_guard_solo_componente_in_bozza_upd'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_articoli_a10_guard_solo_componente_in_bozza_upd
+                  BEFORE UPDATE OF is_solo_componente
+                  ON catalogo.articoli
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_articoli_guard_solo_componente_in_bozza();

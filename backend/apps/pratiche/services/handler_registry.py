@@ -33,6 +33,12 @@ class BaseFlussoHandler(Protocol):
 # Popolato a runtime via register_handler() chiamato da AppConfig.ready() del
 # dominio chiamante (es. apps/vendite/apps.py), per evitare la dipendenza di
 # import pratiche→vendite (l'handler vive in vendite).
+# ⛔ RITIRARE un handler: a DB prima i collegamenti in ogni versione del
+#    workflow (quelle pubblicate di un emittente si ri-versionano), poi
+#    l'handler in `pratiche.handler_flussi`, e SOLO DOPO lo si toglie da qui.
+#    Al contrario, un collegamento attivo trova la chiave sparita e il flusso
+#    risponde 500 E_HANDLER_NON_REGISTRATO (successo il 2026-10-13 con
+#    `vendita.accetta_preventivo`). Presidio: test_handler_registro_coerente_db.
 HANDLER_MAP: dict[str, type[BaseFlussoHandler]] = {}
 
 

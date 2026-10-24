@@ -22,86 +22,66 @@
 // ⚠️ Niente `useReadonlyMode`: dietro `adminOnly` non c'è un livello d'area da
 //    risolvere — o sei super admin e vedi tutto, o non arrivi alla pagina. Un
 //    terzo cancello che non decide niente sarebbe rumore.
-import { computed, onMounted, onActivated } from 'vue'
+// ⭐ DUE SCHEDE, PROCESSI E PRESIDI (2026-10-14, Tid). Fino ad allora i presidi
+//    stavano SOTTO la lista, con un tetto in `vh`: a ogni presidio acceso la
+//    sezione saliva e le righe visibili della lista calavano — due contenuti
+//    che si dividono un'altezza sola se la rubano a vicenda, qualunque tetto si
+//    scelga. Ora ognuno ha la pagina intera, e la notizia dei presidi sta nel
+//    BADGE della scheda, che si legge anche senza aprirla.
+// ⭐ Si apre SEMPRE su «Processi», anche tornando dopo aver lasciato i
+//    presidi aperti (`ripartiDaIniziale`); il pallino in topbar porta GIÀ sui presidi
+//    (`?tab=presidi`, `PROCESSI_TABS`). ⛔ La vista non cambia scheda da sola
+//    quando un presidio si accende: i presidi arrivano dopo il primo disegno, e
+//    la pagina salterebbe sotto gli occhi di chi legge. Il richiamo è il badge.
+import { computed, onActivated } from 'vue'
 import { useI18n } from 'vue-i18n'
-import InputText from 'primevue/inputtext'
-import Select from 'primevue/select'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
+import Tab from 'primevue/tab'
+import TabPanels from 'primevue/tabpanels'
+import TabPanel from 'primevue/tabpanel'
 import Tag from 'primevue/tag'
-import Message from 'primevue/message'
 import { useProcessiAutomaticiStore } from '../stores/processiAutomatici'
-import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useDrawerState } from '../../core/composables/useDrawerState'
-import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
-import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
-import PageActionsBar from '../../core/components/PageActionsBar.vue'
+import { useTabDaQuery } from '../../core/composables/useTabDaQuery'
+import { PROCESSI_TABS } from '../../core/constants'
+import ProcessiAutomaticiTab from '../components/ProcessiAutomaticiTab.vue'
 import ProcessoDrawer from '../components/ProcessoDrawer.vue'
 import PresidiProcessiPanel from '../components/PresidiProcessiPanel.vue'
-import { displayTimestamp } from '../../core/utils/date'
 import { SEGMENTO_NON_LETTI, statoPallino } from '../../core/utils/pallinoPresidi'
-import FiltriLista from '../../core/components/FiltriLista.vue'
-import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 
 const { t } = useI18n()
 const store = useProcessiAutomaticiStore()
 
-// ⭐ La testata dei presidi si COLORA con la stessa funzione del pallino in
+// La scheda attiva, pilotabile da fuori con `?tab=` (il pallino in topbar apre
+// i presidi). Guard sulla rotta, pulizia della query e agganci KeepAlive
+// vivono nel BB.
+const activeTab = useTabDaQuery({
+  nomeRotta: 'strumenti-diagnostica-processi-automatici',
+  ammessi: PROCESSI_TABS,
+  iniziale: PROCESSI_TABS.PROCESSI,
+  // A ogni ingresso si riparte da «Processi», non dalla scheda dell'ultima
+  // visita (Tid 2026-10-24); i presidi si raggiungono dal pallino o dal badge.
+  ripartiDaIniziale: true,
+})
+
+// ⭐ Il badge della scheda si COLORA con la stessa funzione del pallino in
 //    topbar (`statoPallino`): accesi = danger, non letti = warn («cecita', non
 //    guasto»), tutto a zero = un verde con lo `0`. Fino al 2026-09-19 i due
 //    colori qui erano INVERTITI rispetto al pallino (warn sugli accesi, danger
 //    sui non letti): due sedi per lo stesso vocabolario, e dicevano il
 //    contrario. ⚠️ `null` (lettura fallita) = nessun tag: il verde vuol dire
-//    «visto e vuoto», e qui non si e' visto niente — lo dice il pannello sotto.
+//    «visto e vuoto», e qui non si e' visto niente — lo dice il pannello.
 const testataPresidi = computed(() => statoPallino(store.presidiTestata))
 
-// ⛔ Nessun `onNew` e nessun `exportFn`: lo scaffolding omette da sé le azioni
-//    che non gli si passano. Il registro è catalogo — non si crea un processo
-//    da qui — e l'export non ha endpoint.
-const {
-  searchText, applyFilters, paginatorProps, onPage, onSort, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
-} = useListaConfigurabilePage(store, {
-  searchTableOptions: { defaultSortField: 'codice' },
-})
-
 const drawer = useDrawerState()
-// ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
-//    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
-//    casella dica la verita' quando il filtro viene cambiato da FUORI —
-//    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
-//    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
-//    continua a mostrare il valore di prima, senza nessun errore.
-const { bindSelect } = useStoreFilterBindings(store, applyFilters)
-const { value: classeFilter, onChange: onClasseChange } = bindSelect('classe')
-const { value: canaleFilter, onChange: onCanaleChange } = bindSelect('canale')
 
-const classeOptions = [
-  { label: t('amministrazione.processi.classe_tutte'), value: null },
-  { label: 'MANUTENZIONE', value: 'MANUTENZIONE' },
-  { label: 'AMMINISTRAZIONE', value: 'AMMINISTRAZIONE' },
-  { label: 'DOMINIO', value: 'DOMINIO' },
-]
-const canaleOptions = [
-  { label: t('amministrazione.processi.canale_tutti'), value: null },
-  { label: 'PGAGENT', value: 'PGAGENT' },
-  { label: 'COMMAND', value: 'COMMAND' },
-  { label: 'CODA', value: 'CODA' },
-]
-
-// ⚠️ I presidi si caricano una volta all'apertura e si ricaricano col
-//    «Ricarica» della lista: un registro di catalogo non cambia ogni pochi
-//    secondi, e un polling qui sarebbe lavoro sprecato che sfarfalla sotto gli
-//    occhi di chi legge.
-// La LISTA al mount: il rientro lo rinfresca gia' lo scaffolding
-// (`useListaConfigurabilePage` → `useSearchTable`).
-onMounted(() => {
-  store.fetchList()
-})
-
-// ⚠️ I PRESIDI no: nessuno li rinfresca al rientro, e sono proprio il dato che
-//    invecchia — un processo che stanotte ha smesso di dare segni di vita si
-//    vede solo rileggendoli. `onActivated` copre il primo montaggio E ogni
-//    rientro, quindi stanno qui e NON in `onMounted`: tenerli in tutti e due
-//    li caricherebbe due volte all'apertura.
+// ⚠️ I PRESIDI si leggono all'apertura della PAGINA, non della scheda: il badge
+//    deve dire la verita' anche a chi resta sui processi. Nessuno li rinfresca
+//    al rientro, e sono proprio il dato che invecchia — un processo che
+//    stanotte ha smesso di dare segni di vita si vede solo rileggendoli.
+//    `onActivated` copre il primo montaggio E ogni rientro. Nessun polling: un
+//    registro di catalogo non cambia ogni pochi secondi.
 onActivated(() => {
   store.caricaPresidi()
 })
@@ -119,128 +99,51 @@ function onIdentitaCreata() {
 
 <template>
   <div class="app-page">
-    <div class="app-page-toolbar">
-      <FiltriLista :store="store">
-        <template #sempre>
-          <InputText
-            v-model="searchText"
-            class="app-filter-w-lg"
-            :placeholder="t('amministrazione.processi.search_placeholder')"
-          />
-        </template>
-        <Select
-          v-model="classeFilter"
-          class="app-filter-w-sm"
-          :options="classeOptions"
-          option-label="label"
-          option-value="value"
-          :placeholder="t('amministrazione.processi.classe_tutte')"
-          @change="onClasseChange"
-        />
-        <Select
-          v-model="canaleFilter"
-          class="app-filter-w-sm"
-          :options="canaleOptions"
-          option-label="label"
-          option-value="value"
-          :placeholder="t('amministrazione.processi.canale_tutti')"
-          @change="onCanaleChange"
-        />
-      </FiltriLista>
-      <PageActionsBar :actions="pageActions">
-        <template #suffix>
-          <ListaConfigStatusTag :dirty="dirty" />
-        </template>
-      </PageActionsBar>
-    </div>
-
-    <!-- ⛔ «Lista vuota» e «lista non letta» si assomigliano e dicono cose
-         opposte: il BB dello store distingue, e qui si rende la differenza. -->
-    <Message v-if="store.erroreCaricamento" severity="error" :closable="false">
-      {{ t('amministrazione.processi.errore_caricamento') }}
-    </Message>
-
-    <ListaConfigurabile
-      ref="listaRef"
-      codice="amm.processi"
-      :rows="store.items"
-      :total="store.totalRecords"
-      :loading="store.loading"
-      :paginator-options="paginatorProps"
-      :page="tablePage"
-      :sort-field="paginatorProps.sortField"
-      :sort-order="paginatorProps.sortOrder"
-      @page="onPage"
-      @sort="onSort"
-      @row-click="openDettaglio"
-      @config-loaded="onConfigLoaded"
-    >
-      <template #cell-classe="{ data }">
-        <Tag :value="data.classe" severity="info" />
-      </template>
-
-      <template #cell-identita_attive="{ data }">
-        <!-- ⭐ Tre stati, non due: «non ne vuole» non è «gliene manca una».
-             Un processo di coda gira con l'identità di chi lo accoda, e
-             mostrarlo come carente insegnerebbe a ignorare l'avviso. -->
-        <span v-if="!data.vuole_identita" class="app-proc-na">—</span>
-        <Tag
-          v-else
-          :value="String(data.identita_attive)"
-          :severity="data.identita_attive > 0 ? 'success' : 'warn'"
-        />
-      </template>
-
-      <template #cell-ultimo_run="{ data }">
-        <span v-if="!data.ultimo_run" class="app-proc-na">
-          {{ t('amministrazione.processi.mai_girato') }}
-        </span>
-        <span v-else>{{ displayTimestamp(data.ultimo_run) }}</span>
-      </template>
-
-      <template #cell-ultimo_ok="{ data }">
-        <!-- ⚠️ `null` non è «fallito»: nessuna corsa vera conclusa (mai
-             girato, solo corse saltate, o l'ultima ancora in corso). -->
-        <Tag
-          v-if="data.ultimo_ok === true"
-          :value="t('amministrazione.processi.esito_ok')"
-          severity="success"
-        />
-        <Tag
-          v-else-if="data.ultimo_ok === false"
-          :value="t('amministrazione.processi.esito_ko')"
-          severity="danger"
-        />
-        <span v-else class="app-proc-na">—</span>
-      </template>
-    </ListaConfigurabile>
-
-    <section class="app-proc-presidi">
-      <h3 class="app-proc-presidi-titolo">
-        {{ t('amministrazione.processi.presidi_titolo') }}
-        <!-- ⛔ Un controllo NON LETTO non è uno zero: senza il suo segmento la
-             testata resterebbe verde mentre non si è visto niente, che su una
-             schermata nata per dire «va tutto bene» è il difetto peggiore.
-             I segmenti (e i colori) sono quelli di `statoPallino`, gli stessi
-             del pallino in topbar. -->
-        <Tag
-          v-for="seg in testataPresidi?.segmenti ?? []"
-          :key="seg.chiave"
-          :value="seg.chiave === SEGMENTO_NON_LETTI
-            ? t('amministrazione.processi.presidi_non_letti_conteggio', { n: seg.valore })
-            : String(seg.valore)"
-          :severity="seg.severity"
-        />
-      </h3>
-      <p class="app-proc-help">{{ t('amministrazione.processi.presidi_help') }}</p>
-      <div class="app-proc-presidi-corpo">
-        <PresidiProcessiPanel
-          :presidi="store.presidi"
-          :loading="store.presidiLoading"
-          :errore="store.presidiErrore"
-        />
-      </div>
-    </section>
+    <!-- ⚠️ NIENTE `app-tab-content` sul contenitore <Tabs> (§Pattern Tab-View):
+         sul contenitore i TabPanels schiacciano fuori vista la TabList appena
+         la tabella si popola. -->
+    <Tabs v-model:value="activeTab" lazy>
+      <TabList>
+        <Tab :value="PROCESSI_TABS.PROCESSI">{{ t('amministrazione.processi.tab_processi') }}</Tab>
+        <Tab :value="PROCESSI_TABS.PRESIDI">
+          <span class="app-proc-tab-presidi">
+            {{ t('amministrazione.processi.tab_presidi') }}
+            <!-- ⛔ Un controllo NON LETTO non è uno zero: senza il suo segmento
+                 il badge resterebbe verde mentre non si è visto niente, che su
+                 una schermata nata per dire «va tutto bene» è il difetto
+                 peggiore. Segmenti e colori sono quelli di `statoPallino`, gli
+                 stessi del pallino in topbar. -->
+            <Tag
+              v-for="seg in testataPresidi?.segmenti ?? []"
+              :key="seg.chiave"
+              :value="seg.chiave === SEGMENTO_NON_LETTI
+                ? t('amministrazione.processi.presidi_non_letti_conteggio', { n: seg.valore })
+                : String(seg.valore)"
+              :severity="seg.severity"
+            />
+          </span>
+        </Tab>
+      </TabList>
+      <TabPanels>
+        <TabPanel :value="PROCESSI_TABS.PROCESSI">
+          <ProcessiAutomaticiTab @apri="openDettaglio" />
+        </TabPanel>
+        <TabPanel :value="PROCESSI_TABS.PRESIDI">
+          <!-- ⛔ Niente filtri sui presidi (Tid, 2026-10-14): filtri e azioni
+               di lista sono della scheda Processi, e restano lì. -->
+          <div class="app-tab-content">
+            <p class="app-proc-help">{{ t('amministrazione.processi.presidi_help') }}</p>
+            <div class="app-proc-presidi-corpo">
+              <PresidiProcessiPanel
+                :presidi="store.presidi"
+                :loading="store.presidiLoading"
+                :errore="store.presidiErrore"
+              />
+            </div>
+          </div>
+        </TabPanel>
+      </TabPanels>
+    </Tabs>
 
     <ProcessoDrawer
       :visible="drawer.state.visible"
@@ -252,28 +155,13 @@ function onIdentitaCreata() {
 </template>
 
 <style scoped>
-.app-proc-na { opacity: 0.55; }
-/* ⛔ La sezione dei presidi ha un TETTO e scrolla dentro di sé. La pagina non
-   scrolla (`.app-page` è `overflow: hidden`) e la lista può schiacciarsi
-   (`min-height: 0`): un pannello senza limite prende tutta l'altezza e la
-   lista — il contenuto principale — finisce a ZERO pixel, senza nessun
-   errore. È successo il 2026-09-15 con 17 presidi a catalogo: il numero e la
-   lunghezza li decide il DB, non questa pagina, quindi il limite sta qui.
-   ⚠️ `vh` e non `%`: una percentuale che non riesce a risolversi vale `none`,
-   cioè torna il difetto in silenzio. `flex: 0 0 auto`: la sezione non cede
-   spazio alla lista oltre il tetto, ma nemmeno glielo ruba. */
-.app-proc-presidi {
-  margin-top: 1.25rem;
-  flex: 0 0 auto;
-  max-height: 40vh;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.app-proc-presidi-corpo { flex: 1 1 auto; min-height: 0; overflow: auto; }
-.app-proc-presidi-titolo {
-  display: flex; align-items: center; gap: 0.5rem;
-  font-size: 1rem; margin: 0 0 0.25rem;
+.app-proc-tab-presidi { display: inline-flex; align-items: center; gap: 0.5rem; }
+/* Il pannello prende l'altezza che resta e scorre DENTRO di se' (le schede,
+   con la striscia dei presidi a zero ferma sotto). `overflow: hidden` e' la
+   rete: senza, un pannello lungo spingerebbe fuori la pagina. */
+.app-proc-presidi-corpo {
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column;
 }
 .app-proc-help { font-size: 0.85rem; opacity: 0.8; margin: 0 0 0.75rem; }
 </style>

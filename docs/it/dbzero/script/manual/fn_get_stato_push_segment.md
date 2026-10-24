@@ -24,8 +24,20 @@ dalle push-list) e ritorna:
 
 | valore | significato |
 |---|---|
-| `LIBERA` | nessuna attività: riga mai instradata in commessa |
-| `ALLOCATA` | attività presenti, non tutte fatturate — pushata, in attesa di billing. **ANNULLATA inclusa** (decisione preventivi 2026-06-28: instradata = esclusa; il ri-push è un flusso da progettare a parte) |
+| `LIBERA` | nessuna attività **viva**: riga mai instradata in commessa, o instradata e ritirata (`ANNULLATA`) |
+| `ALLOCATA` | attività vive presenti, non tutte fatturate — pushata, in attesa di billing |
+
+⭐ **rev 2026-10-12 (`20261012-08`, brief-db-annullo-a-valle-riapre-a-monte, D-5 di
+Tid): una riga `ANNULLATA` non occupa più il segmento.** Fino a quel giorno contava
+come allocata (decisione del 2026-06-28: «instradata = esclusa; il ri-push è un
+flusso da progettare a parte»). Il ri-push è quello di D30: annullata la commessa,
+il documento a monte deve tornare spingibile. Sicuro sul modello: una riga
+`ANNULLATA` con sorgente nasce dal ritiro all'annullo del documento a monte (morto,
+escluso dai lister per stato) o della commessa; `ANNULLATA` è irreversibile. Il
+predicato è scritto «diverso da `ANNULLATA`»: uno stato nuovo occupa, solo il ritiro
+libera. Da quel giorno leggono questa funzione, invece di un predicato proprio, anche
+`vendite.vw_preventivi_righe_smistabili_commessa`,
+`vendite.vw_preventivi_smistamento_righe` e `vendite.fn_list_consumi_da_pushare`.
 | `EMESSA` | attività presenti e **tutte** fatturate |
 
 Il match è «la chiave esatta, o la chiave con un suffisso `#CMP:` / `#RET:`»:

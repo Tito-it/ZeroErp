@@ -56,12 +56,9 @@ _COMPETENZA = date(2083, 2, 1)
 # vincolo UNIQUE globale.
 _FIXTURE: tuple[str, ...] = (
     "CREATE TEMP TABLE _mondo AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('ricerca liste vendite')",
-    "CREATE TEMP TABLE _art AS SELECT dbops.fn_pgtap_crea_articolo('RVART-' || %(sfx)s, false) AS articolo_id",
     """
     CREATE TEMP TABLE _refs AS
     SELECT (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-           (SELECT s.id FROM config.stati_doc_preventivi s
-             WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_prev_id,
            (SELECT t.id FROM config.tipi_doc_fiscale t
              WHERE t.attivo IS TRUE
                AND EXISTS (SELECT 1 FROM vendite.tipi_doc_fiscale_registri m
@@ -71,13 +68,16 @@ _FIXTURE: tuple[str, ...] = (
              WHERE s.codice_interno = 'PREVENTIVO' ORDER BY s.id LIMIT 1) AS src_preventivo_id
     """,
     # ── Listino e riga ─────────────────────────────────────────────────────
-    # ⚠️ L'articolo prende la TIPOLOGIA del listino: il guard
-    #    `trgfn_listini_righe_guard_tipologia` rifiuta un articolo senza.
+    # ⚠️ L'articolo nasce della TIPOLOGIA del listino: il guard
+    #    `trgfn_listini_righe_guard_tipologia` rifiuta un articolo senza, e su
+    #    un articolo usato la tipologia non cambia piu' (guard A-10). Per
+    #    questo il listino nasce prima dell'articolo.
     "CREATE TEMP TABLE _lst AS SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _mondo), 'ricerca')",
+    "CREATE TEMP TABLE _art AS SELECT dbops.fn_pgtap_crea_articolo('RVART-' || %(sfx)s, false,"
+    " p_listino_tipologia_id => (SELECT tipologia_id FROM _lst)) AS articolo_id",
     """
     UPDATE catalogo.articoli
-       SET descrizione = 'Articolo ricdescart',
-           listino_tipologia_id = (SELECT tipologia_id FROM _lst)
+       SET descrizione = 'Articolo ricdescart'
      WHERE id = (SELECT articolo_id FROM _art)
     """,
     """
@@ -118,21 +118,25 @@ _FIXTURE: tuple[str, ...] = (
     # NUMERO del documento, distinto dal codice commessa (un gruppo senza
     # documento avrebbe riferimento = codice commessa, e le due colonne non
     # sarebbero provate separatamente).
+    # ⭐ Il preventivo NASCE in bozza (lo stato lo mette il DB, BB
+    #    `script.trgfn_doc_stato_iniziale`) e va a EMESSO per la matrice, sotto
+    #    i guard veri: brief-modello-documento-vendita N-1.
     """
     CREATE TEMP TABLE _prev AS
     WITH ins AS (
         INSERT INTO vendite.preventivi
             (numero, rev, billing_account_id, istanza_utility_id, utility_id,
-             validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+             validita_dal, validita_al, valuta_id, data,
              fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
         SELECT 'RVPRV-' || %(sfx)s, 0, m.billing_account_id, m.istanza_utility_id, m.utility_id,
-               DATE '2083-02-01', DATE '2083-12-31', r.valuta_id, r.stato_prev_id, DATE '2083-02-01',
+               DATE '2083-02-01', DATE '2083-12-31', r.valuta_id, DATE '2083-02-01',
                false, false, '{"test_scope": "be_ricerca_liste_vendite"}'::jsonb, m.emittente_fiscale_id
           FROM _mondo m, _refs r
         RETURNING id, uid, numero
     )
     SELECT * FROM ins
     """,
+    "SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM _prev), 'EMESSO')",
     """
     CREATE TEMP TABLE _comm AS
     SELECT vendite.fn_get_or_create_commessa(
@@ -185,7 +189,6 @@ _FIXTURE: tuple[str, ...] = (
         p_sorgente_tipo_id              => (SELECT src_preventivo_id FROM _refs),
         p_sorgente_uid                  => (SELECT uid::text FROM _prev),
         p_tipo_movimento                => 'NORMALE',
-        p_tipo_consumo                  => 'CONGUAGLIO',
         p_meta                          => '{"test_scope": "be_ricerca_liste_vendite"}'::jsonb
     )
     """,
@@ -196,9 +199,8 @@ _FIXTURE: tuple[str, ...] = (
     CREATE TEMP TABLE _cnt AS
     WITH ins AS (
         INSERT INTO vendite.contratti (numero, billing_account_id, istanza_utility_id, utility_id,
-               stato_doc_contratto_id, valido_dal, valido_al)
+               valido_dal, valido_al)
         SELECT 'RVCNT-' || %(sfx)s, m.billing_account_id, m.istanza_utility_id, m.utility_id,
-               (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
                script.fn_data_operativa(), script.fn_data_operativa() + 365
           FROM _mondo m
         RETURNING id
@@ -237,10 +239,9 @@ _FIXTURE: tuple[str, ...] = (
     CREATE TEMP TABLE _off AS
     WITH ins AS (
         INSERT INTO vendite.offerte_commerciali (emittente_fiscale_id, billing_account_id,
-               istanza_utility_id, utility_id, listino_id, validita_dal, stato_doc_offerta_id)
+               istanza_utility_id, utility_id, listino_id, validita_dal)
         SELECT m.emittente_fiscale_id, m.billing_account_id, m.istanza_utility_id, m.utility_id,
-               (SELECT listino_id FROM _lst), script.fn_data_operativa(),
-               (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')
+               (SELECT listino_id FROM _lst), script.fn_data_operativa()
           FROM _mondo m
         RETURNING id
     )

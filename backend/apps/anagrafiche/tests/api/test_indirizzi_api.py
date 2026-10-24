@@ -14,13 +14,13 @@ Indice test eseguiti:
  3) test_list_indirizzi_with_search — filtro ILIKE attivo
  4) test_get_indirizzo_dettaglio — dettaglio singolo
  5) test_get_indirizzo_dettaglio_not_found — id non esistente
- 6) test_create_indirizzo_dettaglio — chiamata fn_get_or_create
+ 6) (ritirato il 2026-10-18 con `create_indirizzo_dettaglio`: la via la risolve la madre `fn_create_indirizzo`)
  7) test_update_indirizzo_dettaglio — UPDATE dinamico
  8) test_update_indirizzo_no_fields — nessun campo → nessun update
  9) test_list_comuni — lista con provincia e regione
 10) test_list_comuni_empty — nessun risultato
 11) test_list_codici_postali — CAP per comune
-12) test_get_or_create_stradario — creazione via nuova
+12) (ritirato il 2026-10-18 con `get_or_create_stradario`, copia non atomica di `fn_create_indirizzo`)
 13) test_codici_postali_leggono_la_vista_col_filtro_comune — vista di lista + filtro
 14) test_regioni_leggono_la_vista_col_filtro_stato — vista di lista + filtro
 15) test_stati_ordinano_per_iso3 — la freccia ISO3 entra in whitelist
@@ -154,25 +154,6 @@ class TestGetIndirizzoDettaglio(TestCase):
         self.assertIsNone(result)
 
 
-class TestCreateIndirizzoDettaglio(TestCase):
-    """Test IndirizziRepository.create_indirizzo_dettaglio()."""
-
-    @patch("apps.anagrafiche.db.indirizzi_repository.connection")
-    def test_create_indirizzo_dettaglio(self, mock_conn):
-        """Chiama fn_get_or_create e ritorna id."""
-        mc = _mock_cursor(fetchone_value=(42,))
-        _setup_conn(mock_conn, mc)
-
-        from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
-
-        result_id = IndirizziRepository().create_indirizzo_dettaglio(
-            stradario_id=10, civico=15, estensione_civico="A",
-        )
-        self.assertEqual(result_id, 42)
-        sql = mc.execute.call_args[0][0]
-        self.assertIn("fn_get_or_create_indirizzo_dettaglio", sql)
-
-
 class TestUpdateIndirizzoDettaglio(TestCase):
     """Test IndirizziRepository.update_indirizzo_dettaglio()."""
 
@@ -185,18 +166,21 @@ class TestUpdateIndirizzoDettaglio(TestCase):
         from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 
         updated = IndirizziRepository().update_indirizzo_dettaglio(
-            1, civico=20, scala="C",
+            1, {"civico": 20, "scala": "C", "palazzina": None},
         )
         self.assertTrue(updated)
         sql = mc.execute.call_args[0][0]
         self.assertIn("civico = %s", sql)
         self.assertIn("scala = %s", sql)
+        # ⛔ Un `None` SVUOTA il campo (2026-10-20): fino a quel giorno valeva
+        #    «non toccare», e svuotare la palazzina dal drawer non scriveva.
+        self.assertIn("palazzina = %s", sql)
 
     def test_update_indirizzo_no_fields(self):
-        """Nessun campo fornito — nessun UPDATE, ritorna False."""
+        """Nessun campo fornito — nessun UPDATE, ritorna False (il 400 lo da' il service)."""
         from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 
-        updated = IndirizziRepository().update_indirizzo_dettaglio(1)
+        updated = IndirizziRepository().update_indirizzo_dettaglio(1, {})
         self.assertFalse(updated)
 
 
@@ -321,33 +305,3 @@ class TestCodiciPostali(TestCase):
         results = IndirizziRepository().list_codici_postali_by_comune(1)
         self.assertEqual(len(results), 2)
         self.assertEqual(results[0]["codice"], "20121")
-
-
-class TestGetOrCreateStradario(TestCase):
-    """Test IndirizziRepository.get_or_create_stradario()."""
-
-    @patch("apps.anagrafiche.db.indirizzi_repository.connection")
-    def test_get_or_create_stradario(self, mock_conn):
-        """Creazione via nuova — due INSERT ON CONFLICT."""
-        # Singolo cursor con due execute — stradario_generale poi stradario
-        mc = MagicMock()
-        # fetchone restituisce prima (100,) per stradario_generale, poi (200,) per stradario
-        mc.fetchone.side_effect = [(100,), (200,)]
-        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mc)
-        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
-
-        from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
-
-        stradario_id = IndirizziRepository().get_or_create_stradario(
-            toponomastica_id=1,
-            descrizione_via="Roma",
-            comune_id=10,
-            codice_postale_id=20,
-        )
-        self.assertEqual(stradario_id, 200)
-        # Verifica che entrambi gli INSERT sono stati chiamati (2 execute)
-        self.assertEqual(mc.execute.call_count, 2)
-        sql1 = mc.execute.call_args_list[0][0][0]
-        self.assertIn("stradario_generale", sql1)
-        sql2 = mc.execute.call_args_list[1][0][0]
-        self.assertIn("config.stradario", sql2)

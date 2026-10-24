@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SEED dbops.lock_columns_conditional: is_composito spento nel form quando
+#   l'articolo e' componente di una distinta in vigore o futura.
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.4 D-4, §9.1)
+#
+#   E' il lato CAPABILITY (dbops.fn_non_editable_fields: quali campi il form
+#   spegne) del check 3 di catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva
+#   (20261013-03): stesso predicato, cosi' il form non lascia acceso un campo
+#   che il guard rifiuterebbe (linee-guida-sql §12.2, punto 1).
+#   ⭐ «AND NOT is_composito»: il guard rifiuta solo il passaggio a composito.
+#   Un articolo gia' composito e componente (un dato nato prima del guard)
+#   deve poter tornare semplice: spegnere il campo anche li' sarebbe una regola
+#   che il guard non ha.
+#   Una riga nuova accanto a quella di 20260522-04 (padre di distinta): il
+#   vincolo uq_lock_columns_conditional comprende condition_expr, e
+#   fn_non_editable_fields spegne la colonna se una qualsiasi regola vale.
+#   Il giorno e' quello aziendale (script.fn_data_operativa), come in 20261010-01.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261013-04-seed-lock-columns-conditional-componente-non-composito-mctit.yaml
+
+  - changeSet:
+      id: 20261013-04-seed-lock-columns-conditional-componente-non-composito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.lock_columns_conditional (catalogo.articoli.is_composito): spento nel form se l'articolo
+        semplice e' componente di una distinta in vigore o futura, gemello del check 3 di
+        trgfn_articoli_guard_flags_struttura_bom_attiva. Brief:
+        brief-db-articoli-ammessi-per-documento (§8.4 D-4).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: lock_columns_conditional
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              INSERT INTO dbops.lock_columns_conditional
+                  (schema_name, table_name, column_name, condition_expr, descrizione)
+              VALUES
+                  (
+                      'catalogo',
+                      'articoli',
+                      'is_composito',
+                      'EXISTS (SELECT 1 FROM catalogo.articoli_componenti ac JOIN catalogo.articoli a ON a.id = ac.componente_id WHERE ac.componente_id = $1::uuid AND a.is_composito IS NOT TRUE AND ac.attivo IS TRUE AND ac.validita && daterange(script.fn_data_operativa(), NULL, ''[)''))',
+                      'is_composito non attivabile se articolo componente di una distinta in vigore o futura: la distinta ha un livello solo (simmetrico a trg_articoli_a10_guard_flags_struttura_bom_attiva_upd check 3)'
+                  )
+              ON CONFLICT ON CONSTRAINT uq_lock_columns_conditional DO UPDATE
+                  SET descrizione  = EXCLUDED.descrizione,
+                      data_update  = now(),
+                      user_update  = CURRENT_USER;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.lock_columns_conditional
+               WHERE schema_name = 'catalogo'
+                 AND table_name  = 'articoli'
+                 AND column_name = 'is_composito'
+                 AND condition_expr LIKE '%componente_id = $1::uuid%';

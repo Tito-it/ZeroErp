@@ -16,6 +16,8 @@ from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_risorsa_umana_id, handle_post_json
 from apps.core.api.payload_validators import (
+    pagina_da_query,
+    optional_bool,
     optional_istante,
     qp_iso_date_optional,
     corpo_oggetto,
@@ -29,8 +31,17 @@ from apps.core.api.payload_validators import (
 from apps.core.api.openapi_params import descrizione_order_by, param_ricerca_full
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.pratiche.db.pratiche_repository import FLUSSI_ORDER_COLS, PraticheRepository
 from apps.pratiche.services import generazione_service, pratiche_service
+
+
+# ⛔ I campi obbligatori del corpo si leggono dal BB, non con `payload["x"]`:
+#    un campo assente era un KeyError, cioe' un 500 `E_GENERICO`, per un errore
+#    di chi chiama (2026-10-20). Il codice e' quello che ogni pagina documenta.
+_V_PRATICA = PayloadValidator(validation_code="E_PRATICA_VALIDATION")
+_V_FLUSSO = PayloadValidator(validation_code="E_FLUSSO_VALIDATION")
+_V_ID = PayloadValidator(validation_code="E_INVALID_ID")
 
 
 # Alias locale: la verifica ownership flusso-pratica e' centralizzata nel service.
@@ -155,8 +166,8 @@ class ApiPraticheList(DomainAPIView):
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             pratica_id = pratiche_service.crea_pratica(
-                emittente_fiscale_id=int(payload["emittente_fiscale_id"]),
-                tipo_prestazione_id=int(payload["tipo_prestazione_id"]),
+                emittente_fiscale_id=_V_PRATICA.require_positive_int(payload, "emittente_fiscale_id"),
+                tipo_prestazione_id=_V_PRATICA.require_positive_int(payload, "tipo_prestazione_id"),
                 # Opzionale: assente -> default NORMALE risolto dal service.
                 priorita_id=optional_int(payload, "priorita_id"),
                 soggetto_id=str(payload["soggetto_id"]) if payload.get("soggetto_id") else None,
@@ -252,7 +263,9 @@ class ApiPraticaStato(DomainAPIView):
     # Scopo: Gestisce la richiesta HTTP POST per cambiare stato pratica.
     def post(self, request: Request, pratica_id: int) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            pratiche_service.cambia_stato_pratica(pratica_id, str(payload["nuovo_stato"]))
+            pratiche_service.cambia_stato_pratica(
+                pratica_id, _V_PRATICA.require_string(payload, "nuovo_stato"),
+            )
             return {"status": "ok"}
 
         return handle_post_json(request, handler=_handler)
@@ -319,8 +332,7 @@ class ApiPraticaGiornale(DomainAPIView):
     # Scopo: Restituisce via GET il giornale di bordo della pratica (con tx_id).
     def get(self, request: Request, pratica_id: int) -> JsonResponse:
         qp = request.query_params
-        limit = optional_int({"v": qp.get("limit", str(DEFAULT_LIMIT_EVENTI))}, "v") or DEFAULT_LIMIT_EVENTI
-        offset = optional_int({"v": qp.get("offset", "0")}, "v") or 0
+        limit, offset = pagina_da_query(qp, default_limit=DEFAULT_LIMIT_EVENTI)
 
         items, total = pratiche_service.get_giornale(pratica_id, limit=limit, offset=offset)
         return success_response({"count": total, "results": items})
@@ -533,7 +545,7 @@ class ApiPraticaFlussoStato(DomainAPIView):
         stato_corrente = (flusso or {}).get("stato_codice_interno")
 
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            nuovo_stato = str(payload["nuovo_stato"])
+            nuovo_stato = _V_FLUSSO.require_string(payload, "nuovo_stato")
             if nuovo_stato == "COMPLETATO":
                 ErrorManager.require(
                     "esito" in payload and payload["esito"],
@@ -707,7 +719,7 @@ class ApiPraticaFlussoGenera(DomainAPIView):
 
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             nuova_pratica_id = generazione_service.genera_pratica_manuale(
-                flusso_id, int(payload["regola_id"]),
+                flusso_id, _V_ID.require_positive_int(payload, "regola_id"),
             )
             return {"pratica_id": nuova_pratica_id, "status": "ok"}
 
@@ -1266,10 +1278,10 @@ class ApiCompetenzeFlussiList(DomainAPIView):
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict) -> dict:
             competenza_id = pratiche_service.crea_competenza_flusso(
-                template_flusso_id=int(payload["template_flusso_id"]),
-                unita_organizzativa_id=int(payload["unita_organizzativa_id"]),
-                risorsa_umana_id=int(payload["risorsa_umana_id"]),
-                attivo=bool(payload.get("attivo", True)),
+                template_flusso_id=_V_ID.require_positive_int(payload, "template_flusso_id"),
+                unita_organizzativa_id=_V_ID.require_positive_int(payload, "unita_organizzativa_id"),
+                risorsa_umana_id=_V_ID.require_positive_int(payload, "risorsa_umana_id"),
+                attivo=optional_bool(payload, "attivo", default=True),
             )
             return {"competenza_id": competenza_id, "status": "ok"}
         return handle_post_json(request, handler=_handler)

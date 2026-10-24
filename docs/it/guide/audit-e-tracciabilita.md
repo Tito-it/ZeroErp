@@ -332,13 +332,32 @@ impostato all'inserimento ma calcolato in batch dal framework di
 automazione [`fn_apply_cleanup_at()`](/dbzero/dbops/funzioni/fn_apply_cleanup_at), che applica un TTL configurato
 in [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl) a partire dalla colonna `data_insert`.
 
-| Tabella                 | Retention  | Regola override     | Note             |
-| ----------------------- | ---------- | ------------------- | ---------------- |
-| `dbops.sessioni_utente` | 180 giorni | id=13, priorità 190 | Audit compliance |
-| `dbops.request_log`     | 90 giorni  | id=14, priorità 190 | Volume elevato   |
+| Tabella                  | Retention  | Regola override     | Note                                       |
+| ------------------------ | ---------- | ------------------- | ------------------------------------------ |
+| `dbops.sessioni_utente`  | 180 giorni | id=13, priorità 190 | Audit compliance                           |
+| `dbops.request_log`      | 90 giorni  | id=14, priorità 190 | Volume elevato; scadenza scritta alla nascita |
+| `dbops.idempotency_keys` | 1 giorno   | id=24, priorità 190 | Base `data_insert`; scadenza scritta alla nascita |
+| `dbops.error_log`        | 90 giorni  | id=25, priorità 190 | Base `occurred_at`; scadenza calcolata dal job |
+| `dbops.audit_log`        | 90 giorni  | id=26, priorità 190 | Base `executed_at`; scadenza calcolata dal job |
 
-Le altre tabelle con `cleanup_at` (es. `error_log`, `audit_log`,
-`idempotency_keys`) usano il TTL default di 30 giorni (regola id=11).
+⛔ **Una tabella con `cleanup_at` si pulisce solo se sta in
+[`dbops.automation_scope`](/dbzero/dbops/tabelle/automation_scope)**: l'orchestratore scorre
+le tabelle dello scope, non tutte quelle che hanno la colonna. Per lo schema `dbops` lo
+scope elenca `sessioni_utente`, `processi_accensione`, `idempotency_keys`, `request_log`,
+`error_log` e `audit_log`.
+
+Errori e chiamate restano **90 giorni** insieme: chi indaga su una richiesta guarda la
+chiamata (`request_log`) e l'errore che ne è uscito (`error_log`), e i due registri devono
+scadere insieme. `audit_log`, il registro dei giri delle automazioni, segue la stessa regola.
+
+⚠️ `error_log` e `audit_log` **non** hanno il trigger alla nascita: li scrivono anche
+sessioni dblink, con un ruolo che non legge le regole di scadenza, e il trigger farebbe
+fallire la registrazione degli errori. La scadenza la calcola il job settimanale sulle righe
+che non l'hanno ancora.
+
+Una key di idempotenza vive un giorno perché serve solo finché il client può rimandare la
+**stessa** richiesta: il frontend la tiene per un gesto, al massimo dieci minuti, poi ne
+genera una nuova.
 
 #### ⭐ I registri di dominio: la scadenza si scrive alla nascita
 
@@ -359,6 +378,9 @@ batch resta per il **pregresso** (righe a `NULL`), una volta.
 | `vendite.fatture_log`                  | 750 giorni | `data_ora`   | id=17  |
 | `vendite.fatturazione_lotti_task_runs` | 750 giorni | `started_at` | id=18  |
 | `vendite.commesse_push_log`            | 750 giorni | `run_at`     | id=19  |
+
+Lo stesso trigger è montato anche su due registri di `dbops`, `request_log` (90 giorni) e
+`idempotency_keys` (un giorno), con le regole della tabella sopra.
 
 750 e non 30: sono i quattro registri che `script.vw_giornale_entita` legge insieme (più
 il registro di giro del push, a cui punta il `correlation_id` di `event_log`) e la storia

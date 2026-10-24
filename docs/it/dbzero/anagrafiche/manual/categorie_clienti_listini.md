@@ -70,6 +70,15 @@ Caratteristiche principali:
 
 Il sentinel `-1` per `classe_utenza_id` NULL e' sicuro: `config.classi_utenze.id` e' `serial` e parte da 1.
 
+⭐ **Il listino è della utility e dell'azienda della riga** (rev 16-10-2026, decisione di Tid).
+Una riga «clienti dell'azienda A, utility Gas» può puntare solo a un listino dell'azienda A per
+il Gas. È la stessa regola che contratti e offerte hanno già, con lo stesso controllo
+(`script.fn_check_listino_documento`) e codici propri della matrice:
+`E_CATEGORIA_LISTINO_UTILITY_DIVERSA` ed `E_CATEGORIA_LISTINO_EMITTENTE_DIVERSO`. Prima la
+configurazione sbagliata entrava, il resolver sceglieva il listino dell'altra azienda e lo
+sbaglio veniva fuori solo al push in commessa, come errore tecnico. Guard:
+[anagrafiche.trgfn_categorie_clienti_listini_guard_listino](/dbzero/anagrafiche/manual/trgfn_categorie_clienti_listini_guard_listino).
+
 ---
 
 ### Semantica del fallback `classe_utenza_id`
@@ -99,6 +108,10 @@ Per il dominio commercio (utility `Base`) il campo e' **sempre NULL**: non esist
 Nessun trigger di tabella per `validita`: e' una colonna generata. L'ordine delle
 due date lo verifica il guard comune `script.trgfn_guard_date_validita`, montato
 dall'automazione `DATE_VALIDITA` su ogni tabella con `valido_dal`/`valido_al`.
+
+`trg_categorie_clienti_listini_a10_guard_listino_ins` e `_upd` (dal 16-10-2026): il listino è
+della utility e dell'azienda della riga. In modifica scattano solo se cambiano listino, utility
+o azienda.
 
 Trigger di audit e `tx_id` si applicano per policy globale del progetto (vedi `linee-guida-trigger.md`).
 

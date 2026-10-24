@@ -80,10 +80,12 @@
 #      non il solo conteggio)
 #   8  base ZERO -> zero rate, nessun fallimento (D-D: documento legittimo)
 #   9  D-F: una fattura oltre EMESSA finisce in `skipped_rows` e NON in
-#      `failed_rows` — i due contatori restano distinti
+#      `failed_rows` — i due contatori restano distinti. Il lotto chiuso si
+#      costruisce (9a e' la sua precondizione)
 # ------------------------------------------------------------
 
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import connection, transaction
@@ -93,24 +95,17 @@ from django.db import connection, transaction
 # «'str' object has no attribute 'get'» — e' successo scrivendo questo file,
 # ed e' lo stesso difetto che il worker della coda ha gia' pagato.
 from apps.core.db._helpers import coerce_jsonb_dict
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services.fatture_righe_service import FattureRigheService
-
-# Attivita' esistente usata come TEMPLATE: da lei si ereditano billing account,
-# istanza utility, uom, valuta e tipo documento, cosi' il fixture resta coerente
-# con la configurazione reale dell'ambiente invece di inventare identificativi.
-# Stesso criterio degli altri smoke di fatturazione.
-SQL_TEMPLATE = """
-    SELECT a.articolo_id, a.istanza_utility_id, a.billing_account_id,
-           a.uom_id, a.valuta_id, a.tipo_doc_fiscale_id,
-           a.sorgente_tipo_id, a.sorgente_origine_tipo_id, a.competenza_mese,
-           c.emittente_soggetto_ruolo_id, c.utility_id
-      FROM vendite.attivita_fatturabili a
-      JOIN vendite.commesse c ON c.id = a.commessa_id
-     WHERE a.commessa_id IS NOT NULL
-     ORDER BY a.id DESC
-     LIMIT 1
-"""
+from apps.vendite.services.pipeline_service import run_lotto_pipeline_until_done
+from scripts.tests._smoke_contesto import apri_contesto_smoke
+from scripts.tests._smoke_fatturazione import (
+    costruisci_base_fatturazione,
+    crea_attivita_di_commessa,
+    crea_commessa_di_prova,
+    crea_lotto_di_prova,
+)
 
 FAIL: list[str] = []
 SKIP: list[str] = []
@@ -129,75 +124,6 @@ def check(label, cond, detail=""):
 def skip(label, motivo):
     print(f"  SKIP {label} — {motivo}")
     SKIP.append(label)
-
-
-# Scopo: Commessa che PORTA il termine di pagamento (D-R). E' il punto in cui il
-#        fixture entra nella catena reale invece di scavalcarla.
-def crea_commessa(cur, t, *, termine_id, marker):
-    cur.execute(
-        """
-        SELECT vendite.fn_get_or_create_commessa(
-            p_billing_account_id => %s, p_utility_id => %s,
-            p_competenza_dal => %s, p_competenza_al => %s,
-            p_meta => %s::jsonb, p_force_new => true,
-            p_termine_pagamento_id => %s
-        )
-        """,
-        [t["billing_account_id"], t["utility_id"],
-         t["competenza_mese"], t["competenza_mese"],
-         f'{{"smoke": "{marker}"}}', termine_id],
-    )
-    return cur.fetchone()[0]
-
-
-# Scopo: Riga di commessa + attivita' fatturabile gia' lockata sul lotto: e' lo
-#        stato in cui il task `select_attivita` le consegna al generatore righe.
-def crea_attivita(cur, t, *, commessa_id, segment_key, lock_batch_id, prezzo):
-    cur.execute(
-        """
-        SELECT attivita_id FROM vendite.fn_upsert_commessa_attivita(
-            p_commessa_id => %s, p_segment_key => %s, p_articolo_id => %s,
-            p_istanza_utility_id => %s, p_data_attivita => %s, p_uom_id => %s,
-            p_quantita => 1, p_competenza_mese => %s, p_competenza_dal => %s,
-            p_competenza_al => %s, p_prezzo_snapshot => %s,
-            p_prezzo_base_snapshot => NULL, p_origine_prezzo => NULL,
-            p_tipo_variazione_applicata => NULL,
-            p_valore_variazione_applicata => NULL, p_promo_id => NULL,
-            p_contratto_id => NULL, p_categoria_cliente_id_snapshot => NULL,
-            p_classe_utenza_id_snapshot => NULL,
-            p_tipo_doc_fiscale_id => %s, p_valuta_id => %s,
-            p_prezzo_bloccato => true, p_meta => '{}'::jsonb
-        )
-        """,
-        [commessa_id, segment_key, t["articolo_id"], t["istanza_utility_id"],
-         t["data"], t["uom_id"], t["competenza_mese"], t["data"], t["data"],
-         prezzo, t["tipo_doc_fiscale_id"], t["valuta_id"]],
-    )
-    ca_id = cur.fetchone()[0]
-    cur.execute(
-        """
-        INSERT INTO vendite.attivita_fatturabili (
-            articolo_id, istanza_utility_id, billing_account_id, data_attivita,
-            quantita, uom_id, qta_operativa, uom_operativa_id, factor_to_base,
-            prezzo_unitario, valuta_id, tipo_doc_fiscale_id,
-            competenza_mese, competenza_dal, competenza_al,
-            commessa_id, commessa_attivita_id,
-            sorgente_tipo_id, sorgente_uid, sorgente_origine_tipo_id,
-            lock_batch_id, lock_in_fatturazione, approvato,
-            stato_esecuzione, prezzo_bloccato, meta
-        ) VALUES (
-            %s, %s, %s, %s, 1, %s, 1, %s, 1, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, TRUE, TRUE, 'PENDING', TRUE, '{}'::jsonb
-        ) RETURNING id
-        """,
-        [t["articolo_id"], t["istanza_utility_id"], t["billing_account_id"],
-         t["data"], t["uom_id"], t["uom_id"], prezzo, t["valuta_id"],
-         t["tipo_doc_fiscale_id"], t["competenza_mese"], t["data"], t["data"],
-         commessa_id, ca_id, t["sorgente_tipo_id"], str(uuid.uuid4()),
-         t["sorgente_origine_tipo_id"], lock_batch_id],
-    )
-    return cur.fetchone()[0]
 
 
 # Scopo: Piano rate di una fattura, ordinato per numero di rata. Ritorna le
@@ -224,24 +150,13 @@ with transaction.atomic():
         # `vendite.fatturazione_lotti` e `vendite.fatture` sono sotto RLS: senza
         # GUC le query tornano 0 righe e lo smoke mentirebbe. Trappola gia'
         # pagata: un conteggio fail-closed somiglia a un dato.
-        cur.execute(
-            "SELECT set_config('app.ruolo_applicativo','OPERATORE',false),"
-            "       set_config('app.current_user_id', (SELECT auth_user_id::text"
-            "         FROM config.user_emittenti_fiscali LIMIT 1), false)"
-        )
+        apri_contesto_smoke(cur)
 
-        cur.execute(SQL_TEMPLATE)
-        row = cur.fetchone()
-        if not row:
-            raise SystemExit("Nessuna attivita' fatturabile da usare come template.")
-        t = {
-            "articolo_id": row[0], "istanza_utility_id": row[1],
-            "billing_account_id": row[2], "uom_id": row[3], "valuta_id": row[4],
-            "tipo_doc_fiscale_id": row[5], "sorgente_tipo_id": row[6],
-            "sorgente_origine_tipo_id": row[7], "competenza_mese": row[8],
-            "emittente_sr_id": row[9], "utility_id": row[10],
-        }
-        t["data"] = t["competenza_mese"]
+        # La base della fixture si COSTRUISCE dalle radici di prova
+        # (brief-be-utenti-di-sviluppo T-7b): niente attivita' esistente da
+        # copiare, che su un database nuovo non c'e'.
+        marker = uuid.uuid4().hex[:8]
+        t = costruisci_base_fatturazione(cur, marker=marker)
 
         # Termine a PIU' RATE: e' l'unico che rende osservabili la ripartizione,
         # la progressione di `numero_rata` e la quadratura sull'ultima rata. Con
@@ -263,28 +178,11 @@ with transaction.atomic():
         print(f"termine {term_cod} (id {term_id}): {n_rate} rate, "
               f"offset {off_1}g + {interv}g, arrotondamento {metodo} a {dec} dec.\n")
 
-        marker = uuid.uuid4().hex[:8]
         lock_batch_id = str(uuid.uuid4())
-        cur.execute(
-            """
-            INSERT INTO vendite.fatturazione_lotti (
-                codice, competenza_mese, utility_id, tipo_doc_fiscale_id,
-                stato_doc_fiscale_id, emittente_soggetto_ruolo_id, tipo_lotto,
-                stato_lotto, stato_operativo, lock_batch_id, meta
-            )
-            SELECT %s, %s, %s, %s,
-                   (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno='DRAFT'),
-                   %s, 'MASSIVO', 'IN_ESECUZIONE', 'APERTO', %s,
-                   '{"smoke": true}'::jsonb
-            RETURNING id
-            """,
-            [f"SMOKE-SCAD-{marker}", t["competenza_mese"], t["utility_id"],
-             t["tipo_doc_fiscale_id"], t["emittente_sr_id"], lock_batch_id],
-        )
-        lotto_id = cur.fetchone()[0]
+        lotto_id = crea_lotto_di_prova(cur, t, codice=f"SMOKE-SCAD-{marker}", lock_batch_id=lock_batch_id)
 
-        commessa_id = crea_commessa(cur, t, termine_id=term_id, marker=marker)
-        attivita_id = crea_attivita(
+        commessa_id = crea_commessa_di_prova(cur, t, termine_id=term_id, marker=marker)
+        _ca_id, attivita_id = crea_attivita_di_commessa(
             cur, t, commessa_id=commessa_id, lock_batch_id=lock_batch_id,
             segment_key=f"SMOKE:{marker}:R1", prezzo=Decimal("333.33"),
         )
@@ -447,26 +345,48 @@ with transaction.atomic():
     #    documenti CHIUSI — e non in `skipped_errore_rows`, che e' il contatore
     #    dei documenti ROTTI. Sommarli direbbe «una saltata» senza dire quale
     #    dei due casi, che per il cockpit sono l'opposto.
+    #    Il lotto CHIUSO si COSTRUISCE dal percorso vivo (brief-be-utenti-di-
+    #    sviluppo §9.11, dopo la correzione DB del §9.10): un'attivita' marcata
+    #    col giro su una competenza isolata nel futuro, e il driver della
+    #    pipeline che crea il lotto, emette e numera fino a DEFINITIVA — lo
+    #    stesso di «Rendi definitive». Prima lo si cercava fra i dati
+    #    esistenti, e su un database nuovo il test era sempre SKIP.
+    with connection.cursor() as cur:
+        competenza_df = (oggi_aziendale() + timedelta(days=800)).replace(day=1)
+        marker_df = uuid.uuid4().hex[:8]
+        t_df = costruisci_base_fatturazione(cur, marker=marker_df, competenza_mese=competenza_df)
+        lock_df = str(uuid.uuid4())
+        crea_attivita_di_commessa(
+            cur, t_df, segment_key=f"SMOKE:{marker_df}:DF", lock_batch_id=lock_df,
+            prezzo=Decimal("50.00"), stato_approvazione="APPROVATA",
+            stato_emissione="EMESSA", emit_batch_id=lock_df,
+        )
+    esito_giro = run_lotto_pipeline_until_done(
+        competenza_mese=competenza_df, tipo_doc_fiscale_id=t_df["tipo_doc_fiscale_id"],
+        utility_id=t_df["utility_id"], billing_account_id=t_df["billing_account_id"],
+        emittente_soggetto_ruolo_id=t_df["emittente_sr_id"], lock_batch_id=lock_df,
+        fino_a_stato="DEFINITIVA",
+    )
+    lotto_chiuso = esito_giro["lotto_id"]
     with connection.cursor() as cur:
         cur.execute(
             """
-            SELECT lf.lotto_id
+            SELECT array_agg(s.codice_interno ORDER BY f.id)
               FROM vendite.fatturazione_lotti_fatture lf
               JOIN vendite.fatture f ON f.id = lf.fattura_id
               JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
-             WHERE s.codice_interno NOT IN ('DRAFT', 'EMESSA')
-             GROUP BY lf.lotto_id
-            HAVING count(*) = count(*) FILTER (
-                     WHERE s.codice_interno NOT IN ('DRAFT','EMESSA'))
-             ORDER BY lf.lotto_id DESC LIMIT 1
-            """
+             WHERE lf.lotto_id = %s
+            """,
+            [lotto_chiuso],
         )
-        r = cur.fetchone()
-    if not r:
-        skip("9) D-F fattura oltre soglia",
-             "nessun lotto con sole fatture oltre EMESSA su questo ambiente")
-    else:
-        lotto_chiuso = r[0]
+        stati_df = cur.fetchone()[0] or []
+    precondizione_df = bool(stati_df) and all(st == "DEFINITIVA" for st in stati_df)
+    check("9a) precondizione: il lotto del giro ha sole fatture DEFINITIVA",
+          precondizione_df,
+          f"lotto {lotto_chiuso} stati={stati_df} esito={esito_giro.get('motivo_stop')}")
+    # ⚠️ Senza la precondizione il 9 non prova niente (o non ha un lotto): il
+    #    FAIL e' gia' sul 9a, e un secondo FAIL o un'eccezione lo coprirebbero.
+    if precondizione_df:
         esito_df = repo.run_genera_scadenze_lotto_task(lotto_id=lotto_chiuso)
         check("9) D-F: fattura oltre EMESSA -> skipped_rows, non failed",
               esito_df["skipped_rows"] > 0

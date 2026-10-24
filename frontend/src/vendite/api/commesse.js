@@ -5,7 +5,6 @@
 // righe, approvazione (A-1/A-2), azione di stato utente e azioni prezzo
 // N5/N7/sblocco sulle righe.
 import api from '../../core/api'
-import { generateIdempotencyKey } from '../../core/utils/idempotency'
 
 const BASE = '/vendite/commesse'
 
@@ -36,7 +35,6 @@ export function approvaCommessaAttivita(commessaId, righeIds = null) {
   return api.post(
     `${BASE}/${commessaId}/attivita/approva/`,
     payload,
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -48,17 +46,17 @@ export function approvaCompetenza(competenzaMese, { commessaIds = null } = {}) {
   return api.post(
     '/vendite/fatturazione/approva-competenza/',
     payload,
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
 // POST azione di stato utente (chiudi/riapri/annulla) — target dalla lista
 // available_actions delle capabilities (transizioni manuali data-driven).
-export function cambiaStatoCommessa(commessaId, nuovoStato) {
+// `dichiarazione`: la conferma dell'annullo con legami (`{ legami_confermati }`,
+// il numero letto da `GET …/legami/`); vuota al primo tentativo.
+export function cambiaStatoCommessa(commessaId, nuovoStato, dichiarazione = {}) {
   return api.post(
     `${BASE}/${commessaId}/stato/`,
-    { nuovo_stato: nuovoStato },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+    { nuovo_stato: nuovoStato, ...dichiarazione },
   )
 }
 
@@ -79,7 +77,6 @@ export function aggiungiOnereCommessa(commessaId, {
   return api.post(
     `${BASE}/${commessaId}/oneri/`,
     payload,
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -91,7 +88,6 @@ export function riallineaPrezzoAttivita(commessaId, attId, { confermaVersioneDiv
   return api.post(
     `${BASE}/${commessaId}/attivita/${attId}/riallinea-prezzo/`,
     payload,
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -101,7 +97,6 @@ export function variazionePrezzoAttivita(commessaId, attId, { prezzo, motivo }) 
   return api.post(
     `${BASE}/${commessaId}/attivita/${attId}/variazione-prezzo-eccezionale/`,
     { prezzo, motivo },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -114,7 +109,6 @@ export function annullaRigaCommessa(commessaId, attId, { motivo }) {
   return api.post(
     `${BASE}/${commessaId}/attivita/${attId}/annulla/`,
     { motivo },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -125,7 +119,6 @@ export function sbloccaPrezzoAttivita(commessaId, attId, { motivo }) {
   return api.post(
     `${BASE}/${commessaId}/attivita/${attId}/sblocca-prezzo/`,
     { motivo },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 

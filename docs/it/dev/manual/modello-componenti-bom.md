@@ -40,7 +40,7 @@ Colonne strutturali (immutabili):
 | Colonna                                       | Significato                                                       |
 | --------------------------------------------- | ----------------------------------------------------------------- |
 | `prodotto_id`                                 | articolo padre composito                                          |
-| `componente_id`                               | articolo figlio (puo' essere a sua volta composito? No, vedi §9)  |
+| `componente_id`                               | articolo figlio, sempre semplice: la distinta ha un livello (§9.2) |
 | `coeff_qta`                                   | quantita' del figlio per unita' di padre                          |
 | `obbligatorio`                                | TRUE = sempre incluso, FALSE = opzionale                          |
 | `esposizione_in_fattura`                      | come il figlio si vede in fattura: `NASCOSTO` (default) \| `DESCRITTIVO` \| `VALORIZZATO` (vedi §7) |
@@ -129,7 +129,7 @@ Razionale:
 Vincolo di dominio: il padre composito e tutti i suoi figli BoM
 condividono la **stessa aliquota IVA**.
 
-Trigger `catalogo.trgfn_articoli_componenti_guard_iva`:
+Regola `E_BOM_IVA_DISCORDANTE` di [`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga) (documento `ARTICOLO`), sollevata dal guard [`catalogo.trgfn_articoli_componenti_guard_componente`](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente) (dal 2026-10-13; prima `catalogo.trgfn_articoli_componenti_guard_iva`):
 
 - BEFORE INSERT OR UPDATE OF `attivo` su `catalogo.articoli_componenti`:
   per un legame attivo, NEW.componente deve avere `iva_id` uguale al
@@ -169,8 +169,8 @@ potevano aggirare l'invariante, entrambi chiusi:
 - **spegni → cambia IVA → riaccendi**: deattivando il legame, il guard
   su `articoli.iva_id` lo ignora (controlla solo `attivo = TRUE`), quindi
   si potrebbe cambiare l'IVA del figlio e riattivare. Chiuso il 2026-06-03
-  estendendo `trgfn_articoli_componenti_guard_iva` a `BEFORE INSERT OR
-  UPDATE OF attivo`: l'IVA e' ri-verificata a ogni riaccensione
+  estendendo il guard IVA del legame a `BEFORE INSERT OR
+  UPDATE OF attivo` (oggi il guard di tabella della distinta, che giudica anche la riattivazione): l'IVA e' ri-verificata a ogni riaccensione
   (`FALSE→TRUE`).
 
 Un ri-controllo a valle sarebbe quindi ridondante e — se presente solo su
@@ -315,10 +315,29 @@ standalone passano NULL → comportamento invariato.
 del composito nel documento. Significa "articolo scaduto/non
 configurato per questa data".
 
-### 9.2 Compositi annidati (BoM ricorsiva)
-Non gestiti dal modello attuale. Un figlio puo' a sua volta essere
-`is_composito = TRUE`? Da definire. Soluzione pragmatica: VIETATO via
-guard "figlio non puo' essere composito".
+### 9.2 Compositi annidati (BoM ricorsiva): vietati
+
+**La distinta ha un livello solo** (decisione D-4 di Tid, 2026-10-13,
+brief-db-articoli-ammessi-per-documento): il componente di un legame attivo
+non e' un articolo composito. Tutto il modello lavora su un livello — le
+`fn_*_riga_componenti_init` leggono i figli diretti, le tabelle dei componenti
+di riga non hanno un «componente padre», il bundle di listino e' la somma di
+un livello — e un kit dentro un kit finirebbe nei documenti come un articolo
+semplice, con i suoi componenti invisibili a magazzino e fattura. Con un
+livello solo, poi, un ciclo (A in B, B in A) non si costruisce.
+
+Due guard, dai due lati:
+
+- sul legame: il motivo `E_BOM_COMPONENTE_COMPOSITO` di [`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga), sollevato dal guard di tabella
+  [`catalogo.trgfn_articoli_componenti_guard_componente`](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente) (dal 2026-10-13; prima `trgfn_articoli_componenti_guard_un_livello`);
+- sull'articolo: il check 3 di
+  [`catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva`](/dbzero/catalogo/manual/trgfn_articoli_guard_flags_struttura_bom_attiva)
+  (`E_BOM_COMPONENTE_DIVENTA_COMPOSITO`): un componente di una distinta in
+  vigore o futura non diventa composito. Il form spegne il campo con la
+  regola gemella di `dbops.lock_columns_conditional`.
+
+Una distinta a piu' livelli, se un giorno servira', e' un cantiere a se':
+tocca tutte le letture qui sopra.
 
 ### 9.3 BoM contratto immutabile per documento (2026-05-13)
 

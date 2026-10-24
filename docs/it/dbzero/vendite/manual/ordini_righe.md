@@ -53,7 +53,21 @@ Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenz
 * **Delete‑block**: `trg_ordini_righe_a10_block_dlt` → traduce in una frase il
   rifiuto di togliere una riga con legami a valle (fulfillment, resi); a rifiutare
   sono le FK ([`trgfn_dlt_block_ordrig_ddtrig`](/dbzero/vendite/funzioni/trgfn_dlt_block_ordrig_ddtrig)).
+* **Data confermata ferma su una riga spedita**: `trg_ordini_righe_a10_guard_data_consegna_spedita_upd`
+  → la `data_consegna_confermata` di una riga già partita con un DDT uscito dalla
+  bozza, anche per una parte, non cambia più (`E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA`):
+  la data di consegna si scrive prima di spedire. Il guard solleva il primo motivo di
+  [`script.fn_check_ordine_riga_data_consegna_confermata`](/dbzero/script/funzioni/fn_check_ordine_riga_data_consegna_confermata),
+  la stessa check della colonna `data_consegna_confermata_blocco` di
+  [vw_ordini_righe_dettaglio](/dbzero/vendite/views/vw_ordini_righe_dettaglio)
+  (2026-10-11, `brief-db-date-consegna-righe-in-blocco` D-7).
 * **Quantità da operativa**: `trg_a10_ins_upd_ordini_righe_qta_from_operativa` → invoca `script.trgfn_qta_from_operativa('true','false')` per calcolare `quantita` e aggiornare `factor_to_base` a ogni INSERT/UPDATE.
+* **Natura di vendita** (dal 2026-10-13, brief-db-articoli-ammessi-per-documento A-4):
+  `natura_vendita_id` (NOT NULL) è la natura con cui la riga è stata venduta. La scrive
+  [`script.trgfn_righe_natura_vendita`](/dbzero/script/manual/trgfn_righe_natura_vendita) (`…_a10_natura_vendita_ins_upd`, modo CHIAMANTE): quella portata dal verbo che
+  copia la riga, `fn_push_preventivo_a_ordine` porta quella della riga di preventivo, altrimenti quella dell'articolo; si riscrive solo quando cambia
+  l'articolo. A mano non si cambia (`…_a10_lock_columns_upd`, generato da
+  `dbops.automation_lock_columns`, `E_RIGA_NATURA_VENDITA_IMMUTABILE`).
 * **Sync stato ordine**: gestito a livello testata dal trigger su fulfillment (vedi doc dedicata), senza usare terminologia “ortogonale”.
 
 ---

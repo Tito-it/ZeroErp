@@ -5,6 +5,8 @@
 >
 > Estensione Italia: province con accisa, regioni e codici ISTAT/catastali via jsonb.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW script.vw_ita_province_regioni AS
 SELECT p.id AS id_provincia,
@@ -28,6 +30,8 @@ SELECT p.id AS id_provincia,
      JOIN config.regioni r ON ((p.regione_id = r.id)))
      JOIN config.stati s ON ((r.stato_id = s.id)));
 ```
+
+</div>
 
 
 ---

@@ -13,15 +13,14 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.api.openapi_params import parametri_finestra
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     optional_int,
-    qp_bool,
+    pagina_da_query,
     qp_bool_optional,
-    qp_int,
     qp_int_optional,
     qp_iso_date_optional,
     qp_str,
@@ -40,24 +39,10 @@ from apps.core.services.tracciamento_service import (
 )
 
 
-# Scopo: page_size (page-based) da query string con default e cap standard
-#        MAX_LIMIT. Helper
-#        LOCALE: solo le liste di tracciamento usano la convenzione page/page_size
-#        a livello view (le liste offset-based usano core.parse_list_params).
-def _parse_page_size(qp) -> int:
-    return min(qp_int(qp.get("page_size"), DEFAULT_LIMIT), MAX_LIMIT)
 
 
 # ---- Parametri OpenAPI comuni riusabili ----
 
-_PAGE_PARAM = OpenApiParameter(
-    name="page", type=int, location=OpenApiParameter.QUERY,
-    required=False, description="Numero pagina (default 1).",
-)
-_PAGE_SIZE_PARAM = OpenApiParameter(
-    name="page_size", type=int, location=OpenApiParameter.QUERY,
-    required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-)
 _ATTIVO_ONLY_PARAM = OpenApiParameter(
     name="attivo_only", type=bool, location=OpenApiParameter.QUERY,
     required=False, description="Filtra solo record attivi (default: true).",
@@ -123,7 +108,7 @@ class ApiAuditLog(DomainAPIView):
                 name="date_to", type=str, location=OpenApiParameter.QUERY,
                 required=False, description="Data fine (YYYY-MM-DD).",
             ),
-            _SEARCH_PARAM, _PAGE_PARAM, _PAGE_SIZE_PARAM,
+            _SEARCH_PARAM, *parametri_finestra(),
         ],
         responses={200: inline_serializer(
             name="AuditLogResponse",
@@ -149,14 +134,15 @@ class ApiAuditLog(DomainAPIView):
         raw_status = qp_str(qp.get("status"))
         status = raw_status.upper() if raw_status else None
 
+        limit, offset = pagina_da_query(qp)
         data = fn_list_audit_logs(
             status=status,
             function_name=qp_str(qp.get("function_name")),
             date_from=qp_iso_date_optional(qp.get("date_from"), "date_from"),
             date_to=qp_iso_date_optional(qp.get("date_to"), "date_to"),
             search=qp_str(qp.get("search")),
-            page=qp_int(qp.get("page"), 1),
-            page_size=_parse_page_size(qp),
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -173,7 +159,7 @@ class ApiDominiTask(DomainAPIView):
     throttle_classes = [SearchBurstRateThrottle]
 
     @extend_schema(
-        parameters=[_ATTIVO_ONLY_PARAM, _SEARCH_PARAM, _PAGE_PARAM, _PAGE_SIZE_PARAM],
+        parameters=[_ATTIVO_ONLY_PARAM, _SEARCH_PARAM, *parametri_finestra()],
         responses={200: inline_serializer(
             name="DominiTaskResponse",
             fields={
@@ -194,11 +180,12 @@ class ApiDominiTask(DomainAPIView):
     # Scopo: Restituisce via GET l'elenco paginato dei domini task.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
+        limit, offset = pagina_da_query(qp)
         data = fn_list_domini_task(
-            attivo_only=qp_bool(qp.get("attivo_only")),
+            attivo_only=qp_bool_optional(qp.get("attivo_only"), "attivo_only", default=True),
             search=qp_str(qp.get("search")),
-            page=qp_int(qp.get("page"), 1),
-            page_size=_parse_page_size(qp),
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -220,7 +207,7 @@ class ApiTaskRegistry(DomainAPIView):
                 name="dominio", type=str, location=OpenApiParameter.QUERY,
                 required=False, description="Filtra per codice dominio (es. FATTURAZIONE).",
             ),
-            _ATTIVO_ONLY_PARAM, _SEARCH_PARAM, _PAGE_PARAM, _PAGE_SIZE_PARAM,
+            _ATTIVO_ONLY_PARAM, _SEARCH_PARAM, *parametri_finestra(),
         ],
         responses={200: inline_serializer(
             name="TaskRegistryResponse",
@@ -244,12 +231,13 @@ class ApiTaskRegistry(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         raw_dominio = qp_str(qp.get("dominio"))
+        limit, offset = pagina_da_query(qp)
         data = fn_list_task_registry(
             dominio_codice=raw_dominio.upper() if raw_dominio else None,
-            attivo_only=qp_bool(qp.get("attivo_only")),
+            attivo_only=qp_bool_optional(qp.get("attivo_only"), "attivo_only", default=True),
             search=qp_str(qp.get("search")),
-            page=qp_int(qp.get("page"), 1),
-            page_size=_parse_page_size(qp),
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -275,7 +263,7 @@ class ApiTaskImplementations(DomainAPIView):
                 name="dominio", type=str, location=OpenApiParameter.QUERY,
                 required=False, description="Filtra per codice dominio.",
             ),
-            _ATTIVO_ONLY_PARAM, _PAGE_PARAM, _PAGE_SIZE_PARAM,
+            _ATTIVO_ONLY_PARAM, *parametri_finestra(),
         ],
         responses={200: inline_serializer(
             name="TaskImplResponse",
@@ -299,12 +287,13 @@ class ApiTaskImplementations(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         raw_dominio = qp_str(qp.get("dominio"))
+        limit, offset = pagina_da_query(qp)
         data = fn_list_task_implementations(
             task_code=qp_str(qp.get("task_code")),
             dominio_codice=raw_dominio.upper() if raw_dominio else None,
-            attivo_only=qp_bool(qp.get("attivo_only")),
-            page=qp_int(qp.get("page"), 1),
-            page_size=_parse_page_size(qp),
+            attivo_only=qp_bool_optional(qp.get("attivo_only"), "attivo_only", default=True),
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -338,7 +327,7 @@ class ApiJobRuns(DomainAPIView):
                 name="date_to", type=str, location=OpenApiParameter.QUERY,
                 required=False, description="Data fine (YYYY-MM-DD).",
             ),
-            _SEARCH_PARAM, _PAGE_PARAM, _PAGE_SIZE_PARAM,
+            _SEARCH_PARAM, *parametri_finestra(),
         ],
         responses={200: inline_serializer(
             name="JobRunsResponse",
@@ -361,19 +350,19 @@ class ApiJobRuns(DomainAPIView):
     # con filtri opzionali su jobname, esito, intervallo date e ricerca libera.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
-        raw_ok = qp.get("ok")
-        ok: bool | None = None
-        if raw_ok is not None:
-            ok = raw_ok.strip().lower() in {"1", "true", "yes", "y"}
+        # ⛔ Il vocabolario unico dei flag (§A6, 2026-10-20): prima `1/yes/y`
+        #    erano «riuscite» e ogni altro valore, `banana` compreso, «fallite».
+        ok = qp_bool_optional(qp.get("ok"), "ok")
 
+        limit, offset = pagina_da_query(qp)
         data = fn_list_job_runs(
             jobname=qp_str(qp.get("jobname")),
             ok=ok,
             date_from=qp_iso_date_optional(qp.get("date_from"), "date_from"),
             date_to=qp_iso_date_optional(qp.get("date_to"), "date_to"),
             search=qp_str(qp.get("search")),
-            page=qp_int(qp.get("page"), 1),
-            page_size=_parse_page_size(qp),
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -388,7 +377,7 @@ class ApiJobSummary(DomainAPIView):
     area_funzionale = "core"
 
     @extend_schema(
-        parameters=[_PAGE_PARAM, _PAGE_SIZE_PARAM],
+        parameters=[*parametri_finestra()],
         responses={200: inline_serializer(
             name="JobSummaryResponse",
             fields={
@@ -410,9 +399,10 @@ class ApiJobSummary(DomainAPIView):
     # successi, fallimenti e ultimo esito.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
+        limit, offset = pagina_da_query(qp)
         data = fn_list_job_summary(
-            page=qp_int(qp.get("page"), 1),
-            page_size=_parse_page_size(qp),
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -447,27 +437,19 @@ _DATA_A_PARAM = OpenApiParameter(
     name="data_a", type=str, location=OpenApiParameter.QUERY,
     required=False, description="Accodati fino a (YYYY-MM-DD, inclusiva).",
 )
-_LIMIT_PARAM = OpenApiParameter(
-    name="limit", type=int, location=OpenApiParameter.QUERY,
-    required=False, description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-)
-_OFFSET_PARAM = OpenApiParameter(
-    name="offset", type=int, location=OpenApiParameter.QUERY,
-    required=False, description="Offset paginazione (default 0).",
-)
 _SORT_BY_PARAM = OpenApiParameter(
-    name="sort_by", type=str, location=OpenApiParameter.QUERY,
+    name="order_by", type=str, location=OpenApiParameter.QUERY,
     required=False, description=(
         "Colonna di ordinamento. Coda lavori: id, job_type, stato, "
         "proprietario, started_at, ended_at, archiviato_il (default "
         "started_at). Coda stampa: id, fattura_numero, emittente_codice, "
         "operatore, stato, lotto_id, data_update, archiviato_il (default "
-        "data_update)."
+        "data_update). Fino al 2026-10-20 si chiamava `sort_by`."
     ),
 )
 _SORT_DIR_PARAM = OpenApiParameter(
-    name="sort_dir", type=str, location=OpenApiParameter.QUERY,
-    required=False, description="Direzione: ASC | DESC (default DESC).",
+    name="order_dir", type=str, location=OpenApiParameter.QUERY,
+    required=False, description="Direzione: asc | desc, maiuscole ammesse (default desc). Fino al 2026-10-20 si chiamava `sort_dir`.",
 )
 _ARCHIVIATE_PARAM = OpenApiParameter(
     name="archiviate", type=bool, location=OpenApiParameter.QUERY,
@@ -502,6 +484,7 @@ _LISTA_CODE_RESPONSE = inline_serializer(
 #        limit (cap MAX_LIMIT, fonte unica coi repo)/offset. Ritorna un
 #        dict di kwargs per il service.
 def _parse_code_list_params(qp) -> dict:
+    limit, offset = pagina_da_query(qp)
     ambito = (qp_str_upper(qp.get("ambito")) or "MIEI")
     return {
         "tutti": ambito == "TUTTI",
@@ -514,12 +497,15 @@ def _parse_code_list_params(qp) -> dict:
         "includi_archiviate": (
             qp_bool_optional(qp.get("archiviate"), "archiviate") or False
         ),
-        "limit": min(qp_int(qp.get("limit"), DEFAULT_LIMIT), MAX_LIMIT),
-        "offset": qp_int(qp.get("offset"), 0),
+        "limit": limit,
+        "offset": offset,
         # Whitelist e default vivono nel service (differiscono per coda):
         # qui solo il pass-through delle stringhe grezze.
-        "sort_by": qp_str(qp.get("sort_by")),
-        "sort_dir": qp_str_upper(qp.get("sort_dir")),
+        # ⛔ In query si chiamano `order_by`/`order_dir` come in ogni altra
+        #    lista (decisione Tid 2026-10-20, brief-be-verifica-documentazione-
+        #    api §A4): fino a quel giorno le due code usavano `sort_by`/`sort_dir`.
+        "sort_by": qp_str(qp.get("order_by")),
+        "sort_dir": qp_str(qp.get("order_dir")),
     }
 
 
@@ -572,7 +558,7 @@ class ApiCodaLavoriList(DomainAPIView):
                 required=False, description="Filtra per job_type (es. FATTURAZIONE_GIRO).",
             ),
             _DATA_DA_PARAM, _DATA_A_PARAM, _ARCHIVIATE_PARAM,
-            _LIMIT_PARAM, _OFFSET_PARAM, _SORT_BY_PARAM, _SORT_DIR_PARAM,
+            *parametri_finestra(), _SORT_BY_PARAM, _SORT_DIR_PARAM,
         ],
         responses={200: _LISTA_CODE_RESPONSE},
     )
@@ -607,7 +593,7 @@ class ApiCodaStampaList(DomainAPIView):
                 required=False, description="Filtra per lotto di fatturazione.",
             ),
             _DATA_DA_PARAM, _DATA_A_PARAM, _ARCHIVIATE_PARAM,
-            _LIMIT_PARAM, _OFFSET_PARAM, _SORT_BY_PARAM, _SORT_DIR_PARAM,
+            *parametri_finestra(), _SORT_BY_PARAM, _SORT_DIR_PARAM,
         ],
         responses={200: _LISTA_CODE_RESPONSE},
     )

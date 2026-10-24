@@ -1,6 +1,8 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/vw_indirizzi_dettaglio.md" %}
 # 🔍 View `vw_indirizzi_dettaglio`
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_dettaglio AS
 SELECT idd.id AS indirizzo_dettaglio_id,
@@ -31,6 +33,8 @@ SELECT idd.id AS indirizzo_dettaglio_id,
      JOIN config.stradario s ON ((s.id = idd.stradario_id)))
      JOIN script.vw_indirizzo_completo ic ON ((ic.id_stradario = idd.stradario_id)));
 ```
+
+</div>
 
 
 ---

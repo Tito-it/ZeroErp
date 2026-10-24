@@ -2,13 +2,15 @@
 # ⚙️ Funzione `fn_job_run_end`
 
 ```sql
-CREATE FUNCTION fn_job_run_end(p_id bigint, p_ok boolean, p_message text, p_rows_affected bigint, p_error_code text, p_error_detail text, p_meta jsonb, p_lock_key text)
+CREATE FUNCTION fn_job_run_end(p_id bigint, p_ok boolean, p_message text, p_rows_affected bigint, p_error_code text, p_error_detail text, p_meta jsonb, p_lock_key text, p_sqlstate text)
 ```
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_job_run_end(p_id bigint, p_ok boolean, p_message text DEFAULT NULL::text, p_rows_affected bigint DEFAULT NULL::bigint, p_error_code text DEFAULT NULL::text, p_error_detail text DEFAULT NULL::text, p_meta jsonb DEFAULT NULL::jsonb, p_lock_key text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION script.fn_job_run_end(p_id bigint, p_ok boolean, p_message text DEFAULT NULL::text, p_rows_affected bigint DEFAULT NULL::bigint, p_error_code text DEFAULT NULL::text, p_error_detail text DEFAULT NULL::text, p_meta jsonb DEFAULT NULL::jsonb, p_lock_key text DEFAULT NULL::text, p_sqlstate text DEFAULT NULL::text)
  RETURNS void
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -53,6 +55,10 @@ BEGIN
          rows_affected = COALESCE(p_rows_affected, rows_affected),
          error_code    = p_error_code,
          error_detail  = p_error_detail,
+         -- ⭐ Rev 2026-10-16: lo SQLSTATE, quando l'errore e' passato dal
+         --   database; error_code resta il codice del backend (D5).
+         --   brief-db-presidio-job-run-a-chi-tocca §4.2.
+         sqlstate      = p_sqlstate,
          meta          = COALESCE(p_meta, meta)
    WHERE id = p_id;
 
@@ -66,9 +72,11 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_job_run_end(p_id bigint, p_ok boolean, p_message text, p_rows_affected bigint, p_error_code text, p_error_detail text, p_meta jsonb, p_lock_key text)
-IS 'Chiude una corsa aperta da script.fn_job_run_start: esito, messaggio, righe toccate, errore e meta; rilascia l''advisory lock della corsia solo se questo flusso lo possiede (la riga era ancora aperta). SECURITY DEFINER con search_path fisso: e'' la porta di scrittura del giornale per chi non ha UPDATE su maintenance.job_run_log. ⛔ Rev 2026-10-10: rifiuta una corsa SALTATA (E_JOB_RUN_SALTATA_NON_CHIUDIBILE, TECNICO). Non ha fatto lavoro e nasce chiusa senza esito: chiuderla le scriverebbe un esito e la farebbe passare per una corsa vera. Chi riceve acquired = false salta il lavoro e non chiama questa funzione. Brief: brief-db-corsa-saltata-non-e-una-corsa §8.';
+COMMENT ON FUNCTION script.fn_job_run_end(p_id bigint, p_ok boolean, p_message text, p_rows_affected bigint, p_error_code text, p_error_detail text, p_meta jsonb, p_lock_key text, p_sqlstate text)
+IS 'Chiude una corsa aperta da script.fn_job_run_start: esito, messaggio, righe toccate, errore e meta; rilascia l''advisory lock della corsia solo se questo flusso lo possiede (la riga era ancora aperta). SECURITY DEFINER con search_path fisso: e'' la porta di scrittura del giornale per chi non ha UPDATE su maintenance.job_run_log. ⛔ Rev 2026-10-10: rifiuta una corsa SALTATA (E_JOB_RUN_SALTATA_NON_CHIUDIBILE, TECNICO). Non ha fatto lavoro e nasce chiusa senza esito: chiuderla le scriverebbe un esito e la farebbe passare per una corsa vera. Chi riceve acquired = false salta il lavoro e non chiama questa funzione. Brief: brief-db-corsa-saltata-non-e-una-corsa §8. ⭐ Rev 2026-10-16: parametro p_sqlstate in coda (DEFAULT NULL), scritto in job_run_log.sqlstate: lo SQLSTATE di un errore passato dal database, che il backend prima perdeva. error_code resta il codice del backend. Brief: brief-db-presidio-job-run-a-chi-tocca §4.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

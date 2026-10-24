@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_listini_versioni_guard_date_chiusa()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_listini_versioni_guard_date_chiusa()
  RETURNS trigger
@@ -45,6 +47,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_listini_versioni_guard_date_chiusa()
 IS 'Guard: le date di validita'' (valido_dal, valido_al) di una versione di listino CHIUSA non si modificano piu'' (E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI). Una versione chiusa e'' la storia dei prezzi di un periodo: spostarne le date riscriverebbe quale versione valeva in quelle date, e allungarne la fine la farebbe tornare valida accanto all''ATTIVA. Rifiuta solo un cambio vero (IS DISTINCT FROM); la chiusura stessa (ATTIVA -> CHIUSA) non e'' toccata. Con ex_listini_versioni_no_overlap esteso a CHIUSA garantisce che per ogni data la versione in vigore sia al piu'' una (vendite.fn_listino_versione_in_vigore). Decisione di Tid del 2026-09-28, brief-db-liste-righe-documento §8.15.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

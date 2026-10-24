@@ -2,19 +2,21 @@
 # ⚙️ Funzione `fn_pgtap_crea_fattura`
 
 ```sql
-CREATE FUNCTION fn_pgtap_crea_fattura(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint)
+CREATE FUNCTION fn_pgtap_crea_fattura(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_spoglia_indirizzi boolean, p_spoglia_intestazione boolean, p_minimo boolean, p_totale_a_pagare numeric, p_termine_pagamento_id bigint, p_senza_utility boolean)
 ```
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_fattura(p_etichetta text DEFAULT 'pgTAP'::text, p_stato_codice_interno character varying DEFAULT 'DRAFT'::character varying, p_billing_account_id bigint DEFAULT NULL::bigint)
+CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_fattura(p_etichetta text DEFAULT 'pgTAP'::text, p_stato_codice_interno character varying DEFAULT 'DRAFT'::character varying, p_billing_account_id bigint DEFAULT NULL::bigint, p_spoglia_indirizzi boolean DEFAULT false, p_spoglia_intestazione boolean DEFAULT false, p_minimo boolean DEFAULT false, p_totale_a_pagare numeric DEFAULT NULL::numeric, p_termine_pagamento_id bigint DEFAULT NULL::bigint, p_senza_utility boolean DEFAULT false)
  RETURNS TABLE(fattura_id bigint, registro_id bigint, emittente_fiscale_id bigint, emittente_soggetto_ruolo_id bigint, auth_user_id integer, billing_account_id bigint, istanza_utility_id bigint, cliente_soggetto_ruolo_id bigint, utility_id integer, tipo_doc_fiscale_id bigint, stato_doc_fiscale_id bigint, valuta_id integer)
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: dare a una fixture pgTAP una FATTURA del mondo in una
---   chiamata — azienda, operatore, cliente, configurazione della
---   coppia (emittente, utility), registro coerente e testata —
+--   chiamata — azienda, operatore, cliente, registro coerente e
+--   testata —
 --   con l'ordine obbligato dentro l'oggetto invece che nel file.
 -- Uso:
 --   CREATE TEMP TABLE tmp_f AS
@@ -23,8 +25,25 @@ AS $function$
 --   SELECT * FROM dbops.fn_pgtap_crea_fattura(
 --              'sistemazioni 2', 'DRAFT',
 --              (SELECT billing_account_id FROM tmp_f));
+--   -- fuori bozza, ma senza indirizzi ne' intestazione:
+--   SELECT * FROM dbops.fn_pgtap_crea_fattura(
+--              'nuda', 'DEFINITIVA', NULL, true, true);
 -- ⛔ Righe, scadenze, contabili e movimenti NON li scrive: sono il
 --   caso del test.
+-- ⭐ rev 2026-10-24 (20261024-25, brief-modello-documento-vendita N-1):
+--   la fattura NASCE nello stato iniziale (trigger della nascita); uno
+--   stato diverso si raggiunge con dbops.fn_pgtap_porta_a_stato, sotto
+--   i guard veri. Un passaggio che pretende cio' che il builder non
+--   scrive (righe, indirizzi…) qui fallisce: il test lo scrive e porta
+--   avanti da se'.
+-- ⭐ rev 2026-10-24 (20261024-27, Q-2): p_spoglia_indirizzi e
+--   p_spoglia_intestazione. La spoliazione si fa nell'ultimo stato
+--   non congelato del percorso (congela_fiscale = false), letto dal
+--   vocabolario: li' i guard di congelamento non scattano.
+-- ⭐ rev 2026-10-24 (20261024-36, R-5): minimo, totale a pagare e
+--   termine di pagamento alla nascita, nell'INSERT.
+-- ⭐ rev 2026-10-24 (20261024-42): p_senza_utility, la fattura senza
+--   utility (la colonna e' nullable: e' il caso dei fondi).
 -- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.
 DECLARE
     v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
@@ -36,60 +55,16 @@ DECLARE
     v_utility   anagrafiche.billing_account.utility_id%TYPE;
     v_tipo_id   config.tipi_doc_fiscale.id%TYPE;
     v_stato_id  config.stati_doc_fiscale.id%TYPE;
+    v_ordine    config.stati_doc_fiscale.ordine%TYPE;
+    v_sosta     config.stati_doc_fiscale.codice_interno%TYPE;
     v_valuta_id config.valute.id%TYPE;
     v_registro  vendite.registri_fatturazione.id%TYPE;
     v_fattura   vendite.fatture.id%TYPE;
-    v_link_sr   anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+    v_spoglia   boolean := COALESCE(p_spoglia_indirizzi, false)
+                           OR COALESCE(p_spoglia_intestazione, false);
 BEGIN
-    -- 1. Il mondo. Senza p_billing_account_id costruisce anche il
-    --    cliente; con, riusa quello e prende solo l'azienda di chi
-    --    agisce (il mondo la riusa quando un contesto c'e').
-    SELECT m.emittente_fiscale_id, m.emittente_soggetto_ruolo_id,
-           m.auth_user_id, m.billing_account_id, m.istanza_utility_id,
-           m.cliente_soggetto_ruolo_id, m.utility_id
-      INTO v_ef_id, v_ef_sr_id, v_user_id, v_ba_id, v_ist_id,
-           v_cli_sr_id, v_utility
-      FROM dbops.fn_pgtap_crea_mondo_cliente(p_etichetta) m;
-
-    IF p_billing_account_id IS NOT NULL THEN
-        -- ⚠️ Il BA chiesto si VERIFICA prima di usarlo: uno di
-        --   un'altra azienda produrrebbe una testata che il guard
-        --   emittente/BA rifiuta piu' avanti, con un messaggio che
-        --   non nomina la fixture.
-        SELECT efba.emittente_soggetto_ruolo_id INTO v_link_sr
-          FROM anagrafiche.emittenti_fiscali_billing_account efba
-         WHERE efba.billing_account_id = p_billing_account_id;
-
-        IF v_link_sr IS DISTINCT FROM v_ef_sr_id THEN
-            RAISE EXCEPTION
-                'fn_pgtap_crea_fattura: il billing account % e'' legato all''emittente sr = % e non a % (l''azienda di chi agisce): la seconda fattura si chiede su un BA costruito dallo stesso mondo',
-                p_billing_account_id, v_link_sr, v_ef_sr_id;
-        END IF;
-
-        SELECT ba.id, ba.istanza_utility_id, ba.soggetto_ruolo_id, ba.utility_id
-          INTO v_ba_id, v_ist_id, v_cli_sr_id, v_utility
-          FROM anagrafiche.billing_account ba
-         WHERE ba.id = p_billing_account_id;
-    END IF;
-
-    -- 2. La coppia (emittente, utility): una testata fiscale la
-    --    pretende. Si scrive una volta sola — la seconda fattura
-    --    dello stesso mondo la trova gia' fatta.
-    INSERT INTO anagrafiche.emittenti_fiscali_utilities
-        (emittente_soggetto_ruolo_id, utility_id,
-         arrotondamento_importi_dec, metodo_arrotondamento_importi, attivo)
-    SELECT v_ef_sr_id, v_utility, 2, 'HALF_UP', TRUE
-     WHERE NOT EXISTS (
-        SELECT 1 FROM anagrafiche.emittenti_fiscali_utilities efu
-         WHERE efu.emittente_soggetto_ruolo_id = v_ef_sr_id
-           AND efu.utility_id = v_utility);
-
-    -- 3. Il catalogo si SCEGLIE, e ogni scelta ha il suo ORDER BY.
-    SELECT t.id INTO v_tipo_id
-      FROM config.tipi_doc_fiscale t
-     WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1;
-
-    SELECT s.id INTO v_stato_id
+    -- 0. Lo stato si giudica PRIMA di costruire.
+    SELECT s.id, s.ordine INTO v_stato_id, v_ordine
       FROM config.stati_doc_fiscale s
      WHERE s.codice_interno = p_stato_codice_interno;
 
@@ -98,6 +73,55 @@ BEGIN
             'fn_pgtap_crea_fattura: nessuno stato documento fiscale con codice_interno = %',
             p_stato_codice_interno;
     END IF;
+
+    IF v_spoglia THEN
+        IF v_stato_id = script.fn_stato_iniziale_id('config.stati_doc_fiscale'::regclass) THEN
+            RAISE EXCEPTION
+                'fn_pgtap_crea_fattura: % e'' lo stato iniziale, e una fattura che resta in bozza nasce gia'' senza indirizzi e intestazione: non c''e'' niente da spogliare',
+                p_stato_codice_interno;
+        END IF;
+
+        -- La sosta: l'ultimo stato non congelato prima di quello
+        -- chiesto (o lui stesso), dal vocabolario.
+        SELECT s.codice_interno INTO v_sosta
+          FROM config.stati_doc_fiscale s
+         WHERE s.attivo IS TRUE
+           AND s.iniziale IS FALSE
+           AND s.congela_fiscale IS FALSE
+           AND s.ordine <= v_ordine
+         ORDER BY s.ordine DESC, s.id
+         LIMIT 1;
+
+        IF v_sosta IS NULL THEN
+            RAISE EXCEPTION
+                'fn_pgtap_crea_fattura: nessuno stato non congelato (congela_fiscale = false) prima di % in cui spogliare la fattura',
+                p_stato_codice_interno;
+        END IF;
+    END IF;
+
+    -- 1. Il mondo. Senza p_billing_account_id costruisce anche il
+    --    cliente; con, riusa quello e prende solo l'azienda di chi
+    --    agisce, senza costruire un cliente in piu'
+    --    (dbops.fn_pgtap_cliente_del_builder, rev 20261024-40).
+    SELECT c.emittente_fiscale_id, c.emittente_soggetto_ruolo_id,
+           c.auth_user_id, c.billing_account_id, c.istanza_utility_id,
+           c.cliente_soggetto_ruolo_id, c.utility_id
+      INTO v_ef_id, v_ef_sr_id, v_user_id, v_ba_id, v_ist_id,
+           v_cli_sr_id, v_utility
+      FROM dbops.fn_pgtap_cliente_del_builder(
+               p_etichetta, p_billing_account_id, 'fn_pgtap_crea_fattura') c;
+
+    -- 2. La coppia (emittente, utility) NON si scrive piu' (rev
+    --    20261021-17, brief-db-modelli-documento-standard §10.7 R-4):
+    --    senza la riga valgono i parametri di sistema dell'utility
+    --    (anagrafiche.fn_parametri_importo_utility), e una testata
+    --    fiscale non la pretende piu'. Scriverla nascondeva ai test
+    --    proprio il caso dell'emittente nuovo.
+
+    -- 3. Il catalogo si SCEGLIE, e ogni scelta ha il suo ORDER BY.
+    SELECT t.id INTO v_tipo_id
+      FROM config.tipi_doc_fiscale t
+     WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1;
 
     SELECT v.id INTO v_valuta_id
       FROM config.valute v ORDER BY v.id LIMIT 1;
@@ -109,25 +133,65 @@ BEGIN
 
     INSERT INTO vendite.fatture (
         registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-        tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, utility_id, meta)
+        tipo_doc_fiscale_id, valuta_id, utility_id, meta,
+        minimo, totale_a_pagare, termine_pagamento_id)
     VALUES (v_registro, (SELECT script.fn_data_operativa()), v_ef_sr_id, v_ba_id,
-            v_tipo_id, v_stato_id, v_valuta_id, v_utility,
-            jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
+            v_tipo_id, v_valuta_id,
+            CASE WHEN COALESCE(p_senza_utility, false) THEN NULL ELSE v_utility END,
+            jsonb_build_object('test_scope', 'pgtap_' || p_etichetta),
+            COALESCE(p_minimo, false), p_totale_a_pagare, p_termine_pagamento_id)
     RETURNING id INTO v_fattura;
+
+    -- Lo stato chiesto (rev 20261024-25): il documento e' nato nello stato
+    -- iniziale; se il test ne vuole un altro, ci arriva per la matrice.
+    -- Per uscire dalla bozza la fattura vuole indirizzi e
+    -- intestazione congelati: li scrive, come la pipeline prima
+    -- di emettere, coi suoi building block. Righe con IVA,
+    -- scadenze e numero restano del test.
+    IF v_stato_id IS DISTINCT FROM script.fn_stato_iniziale_id('config.stati_doc_fiscale'::regclass) THEN
+        PERFORM vendite.fn_snapshot_indirizzi_fattura(v_fattura);
+        PERFORM vendite.fn_snapshot_intestazione_fattura(v_fattura);
+
+        -- La spoliazione (rev 20261024-27): nella sosta i guard di
+        -- congelamento non scattano; poi il resto del percorso.
+        IF v_spoglia THEN
+            PERFORM dbops.fn_pgtap_porta_a_stato('vendite.fatture'::regclass, v_fattura, v_sosta);
+
+            IF COALESCE(p_spoglia_indirizzi, false) THEN
+                DELETE FROM vendite.fatture_indirizzi fi
+                 WHERE fi.fattura_id = v_fattura;
+            END IF;
+
+            IF COALESCE(p_spoglia_intestazione, false) THEN
+                UPDATE vendite.fatture f
+                   SET emittente_snapshot = NULL,
+                       cliente_snapshot   = NULL
+                 WHERE f.id = v_fattura;
+            END IF;
+        END IF;
+
+        IF NOT v_spoglia OR v_sosta IS DISTINCT FROM p_stato_codice_interno THEN
+            PERFORM dbops.fn_pgtap_porta_a_stato('vendite.fatture'::regclass, v_fattura, p_stato_codice_interno);
+        END IF;
+    END IF;
 
     -- Contratto dichiarato, non fiducia nel chiamato.
     SET CONSTRAINTS ALL IMMEDIATE;
 
+    -- utility_id: quella scritta sulla testata (NULL con p_senza_utility).
     RETURN QUERY
     SELECT v_fattura, v_registro, v_ef_id, v_ef_sr_id, v_user_id,
-           v_ba_id, v_ist_id, v_cli_sr_id, v_utility,
+           v_ba_id, v_ist_id, v_cli_sr_id,
+           CASE WHEN COALESCE(p_senza_utility, false) THEN NULL ELSE v_utility END,
            v_tipo_id, v_stato_id, v_valuta_id;
 END;
 $function$
 
-COMMENT ON FUNCTION dbops.fn_pgtap_crea_fattura(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint)
-IS 'Fixture pgTAP: una FATTURA del mondo in una chiamata — azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente), la coppia (emittente, utility) configurata, il registro coerente con l''emittente di chi agisce (script.fn_pgtap_registro_fattura) e la testata nello stato scelto. ⭐ Esiste per la CATENA D''ORDINE: cliente legato a chi agisce, coppia configurata, registro dell''azienda giusta, valuta risolvibile — quattro anelli che su un database ricostruito non esistono e che ogni file riscriveva a mano. ⚠️ Terzo parametro: un billing account gia'' costruito, per la SECONDA fattura dello stesso cliente; viene verificato, e un BA di un''altra azienda solleva. ⛔ NON scrive righe, scadenze, contabili ne'' movimenti: sono il caso del test. ⛔ E non cambia stato: quello si sceglie alla nascita, perche'' vendite.fatture ha un guard di transizione. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-fixture-che-costruiscono-giro-2.';
+COMMENT ON FUNCTION dbops.fn_pgtap_crea_fattura(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_spoglia_indirizzi boolean, p_spoglia_intestazione boolean, p_minimo boolean, p_totale_a_pagare numeric, p_termine_pagamento_id bigint, p_senza_utility boolean)
+IS 'Fixture pgTAP: una FATTURA del mondo in una chiamata — azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente), il registro coerente con l''emittente di chi agisce (script.fn_pgtap_registro_fattura) e la testata nello stato scelto. ⭐ Esiste per la CATENA D''ORDINE: cliente legato a chi agisce, registro dell''azienda giusta, valuta risolvibile — tre anelli che su un database ricostruito non esistono e che ogni file riscriveva a mano. ⭐ Lo stato: la fattura nasce nello stato iniziale (trigger della nascita) e, se il test ne chiede un altro, ci arriva per la matrice (dbops.fn_pgtap_porta_a_stato) sotto i guard veri, con indirizzi e intestazione scritti dai building block come fa la pipeline. ⚠️ Terzo parametro: un billing account gia'' costruito, per la SECONDA fattura dello stesso cliente; viene verificato (dbops.fn_pgtap_cliente_ba_del_mondo), e un BA di un''altra azienda solleva. Quarto e quinto parametro: la fattura arriva nello stato chiesto SENZA indirizzi e/o SENZA intestazione congelata; si spoglia nell''ultimo stato non congelato del percorso (congela_fiscale = false, letto dal vocabolario). Spogliare una fattura che resta in bozza solleva. Dal sesto all''ottavo parametro (rev 20261024-36, R-5): minimo, totale a pagare e termine di pagamento, scritti alla nascita nell''INSERT della testata. ⛔ NON scrive righe, scadenze, contabili ne'' movimenti: sono il caso del test. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-fixture-che-costruiscono-giro-2. Rev 2026-10-21 (20261021-17): la coppia (emittente, utility) non si scrive piu''. Rev 2026-10-22: il BA lo verifica il building block. Rev 2026-10-24 (20261024-25, -27, brief-modello-documento-vendita N-1 e Q-2): nascita in bozza e spoliazione, DROP + CREATE; 20261024-36 (R-5): minimo, totale a pagare, termine. Rev 2026-10-24 (20261024-40, §4-octies): col billing account del test non costruisce piu'' un cliente in piu'' (dbops.fn_pgtap_cliente_del_builder). Nono parametro (rev 20261024-42, §4-octies): p_senza_utility, la fattura nasce senza utility (la colonna e'' nullable; i pgTAP dei fondi la ricopiavano a mano). DROP + CREATE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

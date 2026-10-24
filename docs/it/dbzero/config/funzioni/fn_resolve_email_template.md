@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_email_template(p_codice character varying, p_unita_or
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_resolve_email_template(p_codice character varying, p_unita_organizzativa_id integer DEFAULT NULL::integer, p_tipo_prestazione_id integer DEFAULT NULL::integer, p_lingua character varying DEFAULT 'it'::character varying)
  RETURNS jsonb
@@ -164,6 +166,8 @@ $function$
 COMMENT ON FUNCTION config.fn_resolve_email_template(p_codice character varying, p_unita_organizzativa_id integer, p_tipo_prestazione_id integer, p_lingua character varying)
 IS 'Risolve template email. Fallback a 5 livelli: reparto+tipo_prestazione+lingua -> reparto+lingua -> sistema+tipo_prestazione+lingua -> sistema+lingua -> sistema+it.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

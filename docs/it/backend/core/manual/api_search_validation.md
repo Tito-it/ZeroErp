@@ -38,4 +38,4 @@ Helper condiviso in `apps/core/api/search_validators.py`.
 
 ## Note di migrazione
 - Usare il validator core invece di controlli locali nelle view.
-- Esempio applicativo: `apps/core/api/examples/domain_search_example.py`.
+- Esempio applicativo: `SearchUniversaleView` in `apps/core/api/search_view.py` (`is_search_endpoint`, `SearchBurstRateThrottle`, `require_min_search_length`). L'esempio `domain_search_example.py` è stato rimosso il 2026-10-21.

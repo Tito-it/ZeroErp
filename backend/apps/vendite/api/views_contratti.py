@@ -28,6 +28,7 @@ from apps.core.api.payload_validators import (
     qp_int_optional,
     qp_iso_date_optional,
     qp_str,
+    qp_bool_optional,
 )
 from apps.core.api.request_parsers import parse_iso_date
 from apps.core.api.success_responses import success_response
@@ -71,6 +72,7 @@ _UTILITY_UPDATE_REQUEST = schema_da_contratto(
 # La classe, non l'istanza: una per uso (l'istanza legata a un campo non si
 # riusa, e due classi con lo stesso nome fanno uno schema sbagliato).
 _UTILITY_CREATE_CLS = type(_UTILITY_CREATE_REQUEST)
+_UTILITY_UPDATE_CLS = type(_UTILITY_UPDATE_REQUEST)
 _CONTRATTO_CREATE_REQUEST = schema_da_contratto(
     "VenditeContrattoCreateReq", contratti_service.CREATE_KEYS_TESTATA,
     obbligatorie=("billing_account_id", "istanza_utility_id", "utility_id", "valido_dal"),
@@ -79,7 +81,9 @@ _CONTRATTO_CREATE_REQUEST = schema_da_contratto(
 
 
 _CONTRATTO_PATCH_REQUEST = schema_da_contratto(
-    "VenditeContrattoPatchReq", contratti_service.UPDATE_KEYS_TESTATA,
+    "VenditeContrattoPatchReq", contratti_service.UPDATE_KEYS_CONTRATTO,
+    # La scheda inline: le sole chiavi del form, la coppia e' della testata.
+    speciali={"utility": _UTILITY_UPDATE_CLS(required=False, allow_null=True)},
 )
 
 
@@ -241,7 +245,13 @@ class ApiContrattiList(DomainAPIView):
     )
     # Scopo: Crea nuovo contratto. Numero generato dal service; stato DRAFT.
     def post(self, request: Request) -> JsonResponse:
-        return handle_post_json(request, handler=ContrattiService().create_contratto)
+        auth_user_id = get_actor_user_id(request)
+        return handle_post_json(
+            request,
+            handler=lambda payload: ContrattiService().create_contratto(
+                payload, auth_user_id=auth_user_id,
+            ),
+        )
 
 
 class ApiContrattoDetail(DomainAPIView):
@@ -292,6 +302,10 @@ _CONTRATTO_STATO_REQUEST = inline_serializer(
             required=False, allow_null=True,
             help_text="Opzionale: data fine validita' (cessazione contestuale al cambio stato).",
         ),
+        "legami_confermati": serializers.IntegerField(
+            required=False, allow_null=True,
+            help_text="Verso ANNULLATO: quanti legami si sono visti nella finestra di conferma.",
+        ),
     },
 )
 
@@ -323,6 +337,7 @@ class ApiContrattoCambiaStato(DomainAPIView):
                 codice_interno=codice,
                 valido_al=valido_al,
                 user=request.user,
+                legami_confermati=body.get("legami_confermati"),
             )
         )
 
@@ -464,11 +479,10 @@ class ApiContrattoRigaDetail(DomainAPIView):
     # Scopo: Aggiorna una riga (articolo_id immutabile). `auth_user_id`
     # serve al workflow L3 (gate L1+L2+L3 quando PATCH tocca prezzo_unitario).
     def patch(self, request: Request, contratto_id: int, riga_id: int) -> JsonResponse:
-        del contratto_id  # riga_id e' identificatore globale; contratto_id solo per coerenza URL.
         auth_user_id = get_actor_user_id(request)
         return success_response(
             ContrattiService().update_riga(
-                riga_id, corpo_oggetto(request), auth_user_id=auth_user_id,
+                contratto_id, riga_id, corpo_oggetto(request), auth_user_id=auth_user_id,
             )
         )
 
@@ -480,8 +494,8 @@ class ApiContrattoRigaDetail(DomainAPIView):
     )
     # Scopo: Cancella una riga (FK note_contratto blocca via trigger).
     def delete(self, request: Request, contratto_id: int, riga_id: int) -> JsonResponse:
-        del request, contratto_id
-        ContrattiService().delete_riga(riga_id)
+        del request
+        ContrattiService().delete_riga(contratto_id, riga_id)
         return success_response({"deleted": True, "id": riga_id})
 
 
@@ -561,6 +575,9 @@ class ApiContrattoRigaPreviewComponenti(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "contratto")
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -610,8 +627,8 @@ class ApiContrattoRigaComponentiList(DomainAPIView):
     def get(
         self, request: Request, contratto_id: int, riga_id: int,
     ) -> JsonResponse:
-        solo_attivi_raw = request.query_params.get("solo_attivi", "true")
-        solo_attivi = str(solo_attivi_raw).lower() not in ("false", "0", "no", "off")
+        # Il BB dei flag di trasporto (§A6), come i gemelli DDT e ordini.
+        solo_attivi = qp_bool_optional(request.query_params.get("solo_attivi"), "solo_attivi", default=True)
         return success_response(
             ContrattiService().list_componenti_riga(
                 contratto_id, riga_id, solo_attivi=solo_attivi,
@@ -647,6 +664,7 @@ class ApiContrattoRigaComponenteDetail(DomainAPIView):
         return success_response(
             ContrattiService().update_componente_riga(
                 contratto_id, riga_id, componente_id, dict(corpo_oggetto(request)),
+                auth_user_id=get_actor_user_id(request),
             )
         )
 

@@ -17,7 +17,6 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
-import { generateIdempotencyKey } from '../../core/utils/idempotency'
 import {
   createAdminPreset,
   deleteAdminPreset,
@@ -77,8 +76,7 @@ export const useUiPresetAdminStore = defineStore('ui-preset-admin', () => {
 
   // Scopo: Crea un preset (testata). lista_id viene dal path.
   async function create(listaId, payload) {
-    const idempotencyKey = generateIdempotencyKey()
-    const res = await createAdminPreset(listaId, payload, idempotencyKey)
+    const res = await createAdminPreset(listaId, payload)
     emitDataChanged(TAB_ENTITIES.UI_PRESET, res.data.data.id)
     return res.data.data
   }

@@ -98,7 +98,6 @@ def _riga_aggiunta(mondo: dict) -> dict:
         "tipo_erogazione": "UNA_TANTUM",
         "fonte_quantita_attesa": "FISSA",
         "prezzo_unitario": Decimal("10.00"),
-        "quantita": Decimal("1"),
         "qta_operativa": Decimal("1"),
         "uom_operativa_id": mondo["uom_id"],
         "factor_to_base": Decimal("1"),
@@ -143,9 +142,6 @@ class ScrittureDinamicheVenditeDbTests(unittest.TestCase):
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 m = _apri_mondo(cur)
-                bozza = repo.get_stato_id_by_codice("BOZZA")
-                self.assertIsNotNone(bozza)
-
                 offerta = repo.create_offerta({
                     "emittente_fiscale_id": m["emittente_fiscale_id"],
                     "billing_account_id": m["billing_account_id"],
@@ -153,7 +149,6 @@ class ScrittureDinamicheVenditeDbTests(unittest.TestCase):
                     "utility_id": m["utility_id"],
                     "listino_id": m["listino_id"],
                     "validita_dal": oggi_aziendale(),
-                    "stato_doc_offerta_id": bozza,
                     # ⭐ Regola Tid 2026-09-26: una STRINGA su una colonna jsonb
                     #    dichiarata e' TESTO JSON. Prima `to_write_param` la
                     #    serializzava di nuovo: uno scalare stringa jsonb.
@@ -252,8 +247,10 @@ class ScrittureDinamicheVenditeDbTests(unittest.TestCase):
                 self.assertEqual(riga["contratto_id"], contratto)
                 self.assertEqual(riga["tipo"], "AGGIUNTA")
                 self.assertEqual(riga["tipo_meta"], "object")
+                # `quantita` non e' scrivibile (dal 2026-10-21): la calcola il DB
+                # da `qta_operativa` (`trgfn_qta_from_operativa`).
                 self.assertTrue(repo.update_riga(riga_id, {
-                    "quantita": Decimal("3"), "meta": {"v": 2},
+                    "qta_operativa": Decimal("3"), "meta": {"v": 2},
                 }))
                 self.assertEqual(_riga(cur, (
                     "SELECT quantita FROM vendite.contratti_righe WHERE id = %s"

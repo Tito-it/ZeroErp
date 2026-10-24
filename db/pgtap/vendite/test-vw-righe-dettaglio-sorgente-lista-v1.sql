@@ -89,8 +89,11 @@ SELECT columns_are('vendite', 'vw_ordini_righe_dettaglio', ARRAY[
     'importo_riga', 'imponibile_riga_full', 'qta_evasa_operativa',
     'qta_residua_operativa', 'meta', 'data_insert', 'data_update',
     'data_consegna_richiesta_cliente', 'data_consegna_confermata',
-    'is_composito_caso_a'],
-    '6) righe ordine: le colonne del repository, evaso e residuo compresi');
+    'is_composito_caso_a', 'data_consegna_confermata_blocco'],
+    -- rev 2026-10-11 (20261012-07, brief-db-date-consegna-righe-in-blocco D-7):
+    --   + data_consegna_confermata_blocco, il motivo per cui la data
+    --   confermata della riga non si cambia (NULL = si cambia).
+    '6) righe ordine: le colonne del repository, evaso e residuo compresi, piu'' il blocco della data confermata');
 
 SELECT columns_are('vendite', 'vw_ddt_righe_dettaglio', ARRAY[
     'id', 'ddt_id', 'riga_nr', 'attivo', 'articolo_id', 'articolo_codice',
@@ -98,7 +101,10 @@ SELECT columns_are('vendite', 'vw_ddt_righe_dettaglio', ARRAY[
     'factor_to_base', 'uom_operativa_id', 'uom_codice', 'prezzo_unitario',
     'sconto_percentuale', 'iva_id', 'iva_codice', 'iva_descrizione', 'iva_aliquota',
     'importo_riga', 'imponibile_riga_full', 'meta', 'data_insert', 'data_update',
-    'is_composito_caso_a'],
+    'is_composito_caso_a',
+    -- rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, 20261011-19): la riga
+    -- evasa e il motivo per cui la sua quantita' evasa non si corregge ora.
+    'evasa', 'correggi_qta_evasa_blocco'],
     '7) righe DDT: le colonne del repository');
 
 -- ---- 8..9: la distinta base -------------------------------------------------

@@ -28,6 +28,8 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+# Indirizzo, tipo privato e soggetto nuovo: un BB, condiviso col contratto.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_soggetto.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -128,8 +130,9 @@ log_info "Soggetti trovati con search: $EXTRACTED"
 
 # --- 3. Lista soggetti con filtro tipo ---
 echo ""
-echo "-- 3. Lista soggetti filtro tipo PF (id=1) --"
-do_curl GET "/api/v1/anagrafiche/soggetti/?tipo_soggetto_dettaglio_id=1&limit=5"
+echo "-- 3. Lista soggetti filtro tipo PF privato --"
+smoke_tipo_privato
+do_curl GET "/api/v1/anagrafiche/soggetti/?tipo_soggetto_dettaglio_id=${TIPO_PRIVATO_ID}&limit=5"
 check "Filtro tipo PF" "200" ".data.count"
 log_info "Soggetti PF: $EXTRACTED"
 
@@ -137,34 +140,8 @@ log_info "Soggetti PF: $EXTRACTED"
 echo ""
 echo "-- 3b. Cerca/crea indirizzo dettaglio --"
 IND_DET_ID=""
-
-# Prima cerca un indirizzo esistente
-do_curl GET "/api/v1/anagrafiche/indirizzi/?limit=1"
-if [[ "$LAST_STATUS" == "200" ]]; then
-    IND_DET_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
-fi
-
-# Se non c'e', cerca un comune, poi stradario per quel comune, e crea un indirizzo
-if [[ -z "$IND_DET_ID" || "$IND_DET_ID" == "" ]]; then
-    log_info "Nessun indirizzo esistente, cerco comune + stradario per crearne uno..."
-    # Cerca un comune grande (Milano — ha stradario sicuro)
-    do_curl GET "/api/v1/core/lookup/comuni/?search=MILANO&limit=1"
-    SMOKE_COMUNE_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
-    if [[ -n "$SMOKE_COMUNE_ID" && "$SMOKE_COMUNE_ID" != "" ]]; then
-        do_curl GET "/api/v1/core/search/stradario/?comune_id=${SMOKE_COMUNE_ID}&search=via&limit=1"
-        STRAD_ID=$(json_get "$LAST_BODY" ".data.results.0.stradario_id")
-        if [[ -n "$STRAD_ID" && "$STRAD_ID" != "" ]]; then
-            CIVICO_RND=$((RANDOM % 900 + 100))
-            do_curl POST "/api/v1/anagrafiche/indirizzi/" \
-                "{\"stradario_id\":${STRAD_ID},\"civico\":${CIVICO_RND}}"
-            if [[ "$LAST_STATUS" == "200" ]]; then
-                IND_DET_ID=$(json_get "$LAST_BODY" ".data.indirizzo_dettaglio_id")
-            fi
-        fi
-    fi
-fi
-
-if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
+smoke_indirizzo_dettaglio   # BB _smoke_soggetto.sh: esistente, o nuovo a Milano
+if [[ -n "$IND_DET_ID" ]]; then
     log_ok "Indirizzo dettaglio id=$IND_DET_ID"
 else
     log_fail "Nessun indirizzo disponibile — test creazione soggetto non eseguibile"
@@ -173,76 +150,24 @@ fi
 # --- 4. Crea soggetto PF ---
 echo ""
 echo "-- 4. Crea soggetto PF --"
-SMOKE_TS=$(date +%s)
-# Genera CF valido via API: data nascita unica per ottenere CF diverso ad ogni run.
-# Anno 1950-2049, mese 01-12, giorno 01-28 derivati dal timestamp.
-SMOKE_YEAR=$((1950 + SMOKE_TS % 100))
-SMOKE_MONTH=$(printf '%02d' $((SMOKE_TS / 100 % 12 + 1)))
-SMOKE_DAY=$(printf '%02d' $((SMOKE_TS / 1200 % 28 + 1)))
-SMOKE_BDATE="${SMOKE_YEAR}-${SMOKE_MONTH}-${SMOKE_DAY}"
-
-# Cerca comune Corridonia per ottenere l'id
-do_curl GET "/api/v1/core/lookup/comuni/?search=CORRIDONIA&limit=1"
-CORRIDONIA_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
-if [[ -z "$CORRIDONIA_ID" || "$CORRIDONIA_ID" == "" ]]; then
-    echo -e "${RED}ERRORE: comune Corridonia non trovato${NC}"
-    exit 1
-fi
-do_curl POST "/api/v1/anagrafiche/soggetti/genera-cf/" \
-    "{\"cognome\":\"SmokeTest\",\"nome\":\"Soggetto\",\"data_nascita\":\"${SMOKE_BDATE}\",\"sesso\":\"M\",\"comune_nascita_id\":${CORRIDONIA_ID}}"
-SMOKE_CF=$(json_get "$LAST_BODY" ".data.codice_fiscale")
-if [[ -z "$SMOKE_CF" || "$SMOKE_CF" == "" ]]; then
-    echo -e "${RED}ERRORE: generazione CF fallita${NC}"
-    echo "       Body: $(echo "$LAST_BODY" | head -c 300)"
-    exit 1
-fi
-log_info "CF generato: $SMOKE_CF (data nascita: $SMOKE_BDATE)"
-
-# Tipo contatto: il contatto del soggetto lo pretende (`E_CONTATTO_INCOMPLETO`);
-# il primo della lista, come fa il drawer in creazione.
-do_curl GET "/api/v1/core/lookup/codici/?rel=config.tipi_contatti&limit=2"
-TIPO_CONTATTO_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
-# Il contatto aggiuntivo (passo 8) vuole un tipo DIVERSO: (soggetto, tipo) e' unico.
-TIPO_CONTATTO_2_ID=$(json_get "$LAST_BODY" ".data.results.1.id")
-if [[ -z "$TIPO_CONTATTO_ID" ]]; then
-    echo -e "${RED}ERRORE: nessun tipo contatto${NC}"
-    exit 1
-fi
-
-# Payload con indirizzi obbligatori per PF/PR: RES + DOMFISC (FATT coperto da fallback DOMFISC)
-IND_ARRAY=""
-if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
-    IND_ARRAY=",\"indirizzi\": [
-        {\"tipo_indirizzo_codice\": \"RES\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}},
-        {\"tipo_indirizzo_codice\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}
-    ]"
-fi
-
-if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
-    do_curl POST "/api/v1/anagrafiche/soggetti/" \
-        "{
-            \"tipo_soggetto_dettaglio_id\": 1,
-            \"cognome\": \"SmokeTest\",
-            \"nome\": \"Soggetto${SMOKE_TS}\",
-            \"codice_fiscale\": \"${SMOKE_CF}\",
-            \"sesso\": \"M\",
-            \"contatto\": {\"tipo_contatto_id\": ${TIPO_CONTATTO_ID}, 
-                \"nominativo\": \"SmokeTest Soggetto\",
-                \"email\": \"smoke${SMOKE_TS}@test.it\",
-                \"telefono\": \"0123456789\"
-            },
-            \"indirizzi\": [
-                {\"tipo_indirizzo_codice\": \"RES\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}},
-                {\"tipo_indirizzo_codice\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}
-            ],
-            \"auto_clone\": true
-        }"
+# Il BB genera il CF (data di nascita dal timestamp), il contatto e gli
+# indirizzi RES + DOMFISC; qui si prova la sua POST col `check` di sempre.
+SOGG_ID=""
+if [[ -n "$IND_DET_ID" ]]; then
+    smoke_soggetto_privato "Soggetto"
+    if [[ -z "$SOGG_CF" ]]; then
+        echo -e "${RED}ERRORE: preparazione del soggetto fallita (motivo sopra)${NC}"
+        exit 1
+    fi
+    SMOKE_CF="$SOGG_CF"
+    CORRIDONIA_ID="$COMUNE_NASCITA_ID"
+    log_info "CF generato: $SMOKE_CF (data nascita: $SMOKE_BDATE)"
+    LAST_STATUS="$SOGG_LAST_STATUS"; LAST_BODY="$SOGG_LAST_BODY"
     check "Crea soggetto PF" "200" ".data.id"
-    SOGG_ID="$EXTRACTED"
+    SOGG_ID="${SOGG_ID:-}"
     log_info "Soggetto creato id=$SOGG_ID"
 else
     log_info "Skipped — nessun indirizzo disponibile"
-    SOGG_ID=""
 fi
 
 # --- 5. Dettaglio soggetto ---
@@ -406,7 +331,7 @@ echo "-- 14. Crea soggetto PF duplicato --"
 if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
     do_curl POST "/api/v1/anagrafiche/soggetti/" \
         "{
-            \"tipo_soggetto_dettaglio_id\": 1,
+            \"tipo_soggetto_dettaglio_id\": ${TIPO_PRIVATO_ID},
             \"cognome\": \"Duplicato\",
             \"nome\": \"Test\",
             \"codice_fiscale\": \"${SMOKE_CF}\",
@@ -442,7 +367,7 @@ if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
     CF_SENZA=$(genera_cf_smoke "Senzasesso")
     do_curl POST "/api/v1/anagrafiche/soggetti/" \
         "{
-            \"tipo_soggetto_dettaglio_id\": 1,
+            \"tipo_soggetto_dettaglio_id\": ${TIPO_PRIVATO_ID},
             \"cognome\": \"SmokeTest\",
             \"nome\": \"Senzasesso\",
             \"codice_fiscale\": \"${CF_SENZA}\",

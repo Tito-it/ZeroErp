@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_soggetti_guard_titoli_iva_ammessi()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_titoli_iva_ammessi()
  RETURNS trigger
@@ -73,6 +75,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_titoli_iva_ammessi()
 IS 'Guard BEFORE UPDATE OF tipo_soggetto_dettaglio_id su anagrafiche.soggetti: chi cambia natura non lascia titoli IVA VIGENTI che la natura nuova non ammette (E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI, CONFLITTO_STATO, campo tipo_soggetto_dettaglio_id); natura tolta con titoli vigenti: E_DATO_FISCALE_SENZA_TIPO_SOGGETTO. I titoli si leggono da anagrafiche.fn_titolo_iva_non_ammesso_del_soggetto, SECURITY DEFINER, perche'' la RLS per emittente nasconderebbe quelli degli altri emittenti. Si esce chiudendo il titolo (valido_al). L''altro lato e'' trgfn_soggetti_titoli_iva_guard_tipo_soggetto. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte D).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_documenti_generati_file_protect_file()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_file_protect_file()
  RETURNS trigger
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION documenti.trgfn_documenti_generati_file_protect_file()
 IS 'Guard A7-bis: blocca UPDATE su file. File generato = istantanea immutabile di salvataggio. Solo meta/ordinamento modificabili.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

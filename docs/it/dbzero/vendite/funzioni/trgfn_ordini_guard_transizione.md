@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ordini_guard_transizione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_guard_transizione()
  RETURNS trigger
@@ -203,6 +205,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_ordini_guard_transizione()
 IS 'Trigger function: enforcement del grafo transizioni stato ordine (matrice config.transizioni_stati_ordini), riga attiva obbligatoria su DRAFT->CONFERMATO, controlli sull''annullamento delegati a script.fn_check_ordine_annullabile (2026-08-04) e, dal 2026-08-29, controlli sulla CONFERMA delegati a script.fn_check_ordine_confermabile — le stesse funzioni lette da fn_available_actions_ordine, cosi'' bottone e guard non divergono. ⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I9): Regola 4, una riga attiva che porta un PREZZO deve portare anche l''ALIQUOTA, altrimenti l''ordine non si conferma. Chiude su ordini il difetto silenzioso gia'' sanato sul DDT il 2026-08-28: vw_ordini_righe_iva_base filtra solo attivo e quantita > 0, quindi la riga entra nel riepilogo con imponibile pieno e imposta zero. ⚠️ Il perimetro della Regola 4 e'' QUALUNQUE transizione verso CONFERMATO e non il solo DRAFT->CONFERMATO della Regola 2: la matrice ammette il rientro da PARZIALMENTE_EVASO e da EVASO, e la vista del riepilogo non sa da dove si arriva. ⛔ Non e'' un NOT NULL di colonna e non poteva esserlo: ordini_righe.iva_id e'' nullable e la bozza deve restare libera — il vincolo e'' alla conferma, non al salvataggio. rev 2026-09-24: Regola 5 — su DRAFT -> CONFERMATO solleva il primo motivo di script.fn_check_prezzi_autorizzati (componenti BoM attivi con prezzo PENDING o REJECTED, E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO); prima l''''ordine non guardava il prezzo. ⛔ Solo dalla bozza, e non dentro fn_check_ordine_confermabile: la matrice fa rientrare l''''ordine in CONFERMATO da EVASO/PARZIALMENTE_EVASO in automatico, e bloccare quel rientro fermerebbe l''''annullamento a valle. La capability fn_available_actions_ordine legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-5, D-6).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

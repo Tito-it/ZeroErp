@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AMBIENTE PER CHI DECIDE
+#   script.fn_ambiente_installazione(): SVILUPPO o PRODUZIONE, oppure
+#   E_CONFIG_MANCANTE. Il building block da cui ogni attivita' chiede in che
+#   ambiente si trova: oggi la sveglia dei processi, domani il provisioning di
+#   sviluppo (R-4).
+#   Brief: brief-db-processi-accensione-per-ambiente (A-1, R-1)
+#
+# -- LA FORMA (R-1, richiesta del BE) -------------------------------
+#   Come script.fn_fuso_operativo(): niente cascata di override (un ambiente
+#   per utente o per emittente non ha senso), niente ripiego. Valore assente
+#   -> E_CONFIG_MANCANTE (gia' a catalogo, TECNICO). Un valore diverso da
+#   SVILUPPO/PRODUZIONE non puo' esserci (chk_installazione_ambiente): il
+#   controllo nel corpo resta lo stesso, per una riga nata prima del CHECK.
+#   Compone script.fn_ambiente_dichiarato() (20261016-18): la lettura sta in
+#   un posto solo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261016-19-create-fn-ambiente-installazione-mctit.yaml
+
+  - changeSet:
+      id: 20261016-19-create-fn-ambiente-installazione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea script.fn_ambiente_installazione(): l'ambiente dell'installazione per chi decide,
+        senza ripiego (E_CONFIG_MANCANTE se manca). Brief: brief-db-processi-accensione-per-ambiente (R-1).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_ambiente_installazione()
+              RETURNS dbops.installazione.ambiente%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_ambiente dbops.installazione.ambiente%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   L'ambiente di questa installazione, per chi DECIDE in
+                  --   base a lui. Sede unica: chi deve sapere se gira in
+                  --   sviluppo o in produzione lo chiede qui.
+                  --
+                  -- Regole (R-1):
+                  --   - niente override, niente ripiego;
+                  --   - assente o fuori vocabolario -> E_CONFIG_MANCANTE:
+                  --     l'installazione va dichiarata (fase post del
+                  --     provisioning, -v ambiente=SVILUPPO|PRODUZIONE).
+                  -- =========================================================
+                  v_ambiente := script.fn_ambiente_dichiarato();
+
+                  IF v_ambiente IS NULL
+                     OR v_ambiente NOT IN ('SVILUPPO', 'PRODUZIONE') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_ambiente_installazione', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('configurazione', 'dbops.installazione.ambiente',
+                                             'valore',         v_ambiente),
+                          NULL::uuid,
+                          'l''ambiente dell''installazione (SVILUPPO o PRODUZIONE)');
+                  END IF;
+
+                  RETURN v_ambiente;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_ambiente_installazione()
+              IS 'L''ambiente di questa installazione, SVILUPPO o PRODUZIONE, per chi DECIDE in base a lui (la sveglia dei processi, il provisioning di sviluppo). Sede unica: chi deve saperlo lo chiede qui. Come script.fn_fuso_operativo(): niente cascata di override, niente ripiego. Valore assente o fuori vocabolario: E_CONFIG_MANCANTE — l''installazione va dichiarata dalla fase post di scripts/sql/provision_zeroerp.sql (-v ambiente=...). Chi DESCRIVE senza decidere usa script.fn_ambiente_dichiarato(), che torna NULL. Brief: brief-db-processi-accensione-per-ambiente (A-1, R-1).';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_ambiente_installazione();

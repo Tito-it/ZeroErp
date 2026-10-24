@@ -7,6 +7,8 @@ CREATE FUNCTION fn_cliente_dal_billing_account(p_billing_account_id bigint, p_so
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_cliente_dal_billing_account(p_billing_account_id bigint, p_soggetto_ruolo_id bigint, p_utility_id integer, p_documento text, p_colonna_ruolo text DEFAULT 'soggetto_ruolo_id'::text, p_tx_id uuid DEFAULT NULL::uuid, OUT soggetto_ruolo_id bigint, OUT utility_id integer)
  RETURNS record
@@ -101,6 +103,8 @@ $function$
 COMMENT ON FUNCTION script.fn_cliente_dal_billing_account(p_billing_account_id bigint, p_soggetto_ruolo_id bigint, p_utility_id integer, p_documento text, p_colonna_ruolo text, p_tx_id uuid, OUT soggetto_ruolo_id bigint, OUT utility_id integer)
 IS 'Building block (2026-10-10, brief-db-esecutivi-ba-coppia §10.2 domanda 2): il ruolo del cliente e la utility di un documento sono COPIE di cio'' che il suo billing account dice. Dato il BA e le due copie proposte (NULL = non detta), rende (soggetto_ruolo_id, utility_id) del BA: le scrive se mancano, E_DOC_CLIENTE_DIVERSO_DA_BA se dissentono (VARIADIC: documento, «il cliente» | «la utility», codice del BA; nel contesto campo = p_colonna_ruolo o utility_id). BA NULL: rende le copie come sono (documento senza cliente). BA non trovato o invisibile sotto RLS: E_CODICE. QUANDO chiamarlo lo decide il chiamante (solo INSERT, o anche il cambio di BA in bozza). Volatile: solleva. Regola del 2: ritira le tre copie in anagrafiche.trgfn_clienti_sync_utility_from_ba, vendite.trgfn_ordini_normalize, vendite.trgfn_ddt_normalize. Rete sotto: le FK composte verso anagrafiche.billing_account (id, soggetto_ruolo_id, utility_id).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

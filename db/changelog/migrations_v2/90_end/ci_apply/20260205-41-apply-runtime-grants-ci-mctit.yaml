@@ -165,6 +165,22 @@
 #   chiamano fn_crea_soggetto_pg, il backend in modifica e le fixture pgTAP).
 #   Forward su dev `90_end/20261011-04`; terza sede il blocco del
 #   provisioning; pgTAP `db/pgtap/anagrafiche/test-fn-scrivi-dati-societari-v1.sql`.
+#
+# ── ⭐ L'AMBIENTE DELL'INSTALLAZIONE (dal 2026-10-16) ──────────────────────
+#   Brief: brief-db-processi-accensione-per-ambiente, R-3
+#   `dbops.installazione` entra in `v_tabelle_sola_lettura_app`: l'ambiente lo
+#   scrive solo la fase post del provisioning, una volta. Se l'app lo potesse
+#   cambiare, il controllo «il provisioning di sviluppo parte solo in
+#   SVILUPPO» non reggerebbe. Forward su dev `90_end/20261016-32`; terza sede il
+#   blocco del provisioning; pgTAP `db/pgtap/dbops/test-installazione-ambiente-v1.sql`.
+#
+# ── ⭐ LE ETICHETTE DI PROVA (dal 2026-10-18) ──────────────────────────────
+#   Brief: brief-db-processi-accensione-per-ambiente, R-4 (2b-3)
+#   `dbops.credenziali_di_prova` e `dbops.soggetti_di_prova` entrano in
+#   `v_tabelle_sola_lettura_app`: le scrive solo il verbo dei dati di sviluppo
+#   (anagrafiche.fn_provisiona_dati_di_sviluppo, DEFINER). Forward su dev
+#   `90_end/20261018-61`; terza sede il blocco del provisioning; pgTAP
+#   `db/pgtap/dbops/test-etichette-di-prova-v1.sql`.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -282,7 +298,15 @@ databaseChangeLog:
                   -- ⭐ Dal 2026-10-11 i DATI SOCIETARI: li scrive solo il verbo
                   --   anagrafiche.fn_scrivi_dati_societari
                   --   (brief-db-dati-fiscali-e-societari-del-soggetto, B-5).
-                  'anagrafiche.dati_societari'
+                  'anagrafiche.dati_societari',
+                  -- ⭐ Dal 2026-10-16 l'AMBIENTE DELL'INSTALLAZIONE: lo scrive solo la
+                  --   fase post del provisioning, una volta
+                  --   (brief-db-processi-accensione-per-ambiente, R-3).
+                  'dbops.installazione',
+                  -- ⭐ Dal 2026-10-18 le ETICHETTE DI PROVA: le scrive solo il verbo
+                  --   dei dati di sviluppo (brief-db-processi-accensione-per-ambiente, R-4).
+                  'dbops.credenziali_di_prova',
+                  'dbops.soggetti_di_prova'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude

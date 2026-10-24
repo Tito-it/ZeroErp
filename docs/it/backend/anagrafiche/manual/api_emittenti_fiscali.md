@@ -14,13 +14,13 @@ consente la gestione **multi-emittente** (piu' soggetti emittenti nella stessa i
 Tutti gli endpoint risiedono sotto `/api/v1/anagrafiche/emittenti-fiscali/`.
 
 L'autenticazione avviene tramite token JWT (`Authorization: Bearer <token>`).
-Le risposte seguono l'envelope standard `{"data": ...}` per il successo
-e `{"error": {"code": "...", "message": "..."}}` per gli errori.
+Le risposte seguono l'envelope standard `{"data": ..., "meta": {...}}` per il
+successo e `{"error": {"code": "...", "message": "..."}, "meta": {...}}` per gli errori.
 
 **Accesso riservato agli amministratori**: tutte le view ereditano da `AdminAPIView`
-(`apps.core.api.base_views`), che applica `IsAdminZeroERP` (controllo diretto su
-`ruolo_sistema = "ADMIN"` con bypass del resolver aree). Un utente non admin
-riceve `403 Forbidden`.
+(`apps.core.api.base_views`), che applica `IsAdminZeroERP` (superuser Django o
+binding `SUPER_ADMIN`, con bypass del resolver aree). Un utente non admin
+riceve `403 E_ACCESSO_RISERVATO_ADMIN`.
 
 ## Base URL
 
@@ -32,7 +32,7 @@ riceve `403 Forbidden`.
 
 | Header | Valore | Note |
 | --- | --- | --- |
-| `Authorization` | `Bearer <jwt>` | Token di accesso valido (utente con `ruolo_sistema = ADMIN`) |
+| `Authorization` | `Bearer <jwt>` | Token di accesso valido (superuser o utente `SUPER_ADMIN`) |
 | `Content-Type` | `application/json` | Richiesto per POST/PATCH |
 | `Accept` | `application/json` | Opzionale, default JSON |
 
@@ -52,13 +52,15 @@ riceve `403 Forbidden`.
 | 6.2 | `POST` | `/emittenti-fiscali/<id>/utilities/` | Crea record utility |
 | 6.3 | `PATCH` | `/emittenti-fiscali/<id>/utilities/<record_id>/` | Aggiorna record utility |
 | 6.4 | `DELETE` | `/emittenti-fiscali/<id>/utilities/<record_id>/` | Elimina record utility |
+| 7 | `GET` | `/api/v1/anagrafiche/billing-account/<id>/utilities/` | Utility guidate dall'emittente per un billing account (non admin, vedi §7) |
 
 ## Codici errore (envelope `{"error": {"code", "message"}}`)
 
 | Codice | HTTP | Descrizione |
 | --- | --- | --- |
-| `E_AUTH_REQUIRED` | 401 | Token JWT mancante o non valido |
-| `E_FORBIDDEN_ROLE` | 403 | Utente autenticato ma non admin |
+| `E_NOT_AUTHENTICATED` | 401 | Token JWT mancante |
+| `E_AUTHENTICATION_FAILED` | 401 | Token JWT non valido o scaduto |
+| `E_ACCESSO_RISERVATO_ADMIN` | 403 | Utente autenticato ma non admin |
 | `E_ANAG_VALIDAZIONE` | 400 | Campi obbligatori mancanti o non validi |
 | `E_ANAG_NOT_FOUND` | 404 | Risorsa non trovata o non appartenente al padre |
 | `E_ANAG_DUPLICATO` | 409 | Vincolo univocita' violato (codice, soggetto, default) |
@@ -108,14 +110,14 @@ filtro opzionale per stato attivo.
 
 | Parametro | Tipo | Obbligatorio | Default | Descrizione |
 | --- | --- | --- | --- | --- |
-| `search` | string | No | — | Ricerca ILIKE su `codice`, `descrizione`, `ragione_sociale_completa`, `P.IVA`, `CF` |
+| `search` | string | No | — | Ricerca ILIKE sulle colonne (fra `codice`, `ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`) che il catalogo della lista `anagrafiche.emittenti_fiscali` accende; sotto soglia non filtra (nessun 400) |
 | `attivo` | bool | No | — | Filtra per flag attivo (`true`/`false`). Se omesso: nessun filtro |
 | `limit` | int | No | 25 | Risultati per pagina (max: 200) |
 | `offset` | int | No | 0 | Offset per paginazione |
-| `order_by` | string | No | `descrizione` | Campo di ordinamento (vedi sotto) |
-| `order_dir` | string | No | `asc` | Direzione: `asc` / `desc` |
+| `order_by` | string | No | `ragione_sociale_completa` | Campo di ordinamento (vedi sotto); fuori elenco → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
+| `order_dir` | string | No | `asc` (`desc` per `data_insert`) | Direzione: `asc` / `desc` |
 
-**Colonne ordinabili:** `codice`, `descrizione`, `ragione_sociale_completa`,
+**Colonne ordinabili:** `codice`, `ragione_sociale_completa`, `partita_iva`,
 `attivo`, `data_insert`.
 
 ### 1.2 Esempio cURL
@@ -140,11 +142,8 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/?searc
         "uid": "019bac81-3f96-7ce8-a086-7e0bd0a2fec1",
         "soggetto_ruolo_id": 50,
         "codice": "EF-001",
-        "descrizione": "Sede principale",
         "attivo": true,
         "regime_fiscale_rf": "RF01",
-        "esigibilita_iva_default": "I",
-        "split_payment_default": false,
         "bollo_auto": true,
         "bollo_soglia": 77.47,
         "rounding_policy": "HALF_UP",
@@ -154,11 +153,13 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/?searc
         "ragione_sociale_completa": "ACME S.p.A.",
         "codice_fiscale": "01234567890",
         "partita_iva": "01234567890",
+        "id_fiscale_univoco_cf_piva": "01234567890",
         "data_insert": "2026-04-07T10:00:00Z",
         "data_update": "2026-04-07T10:00:00Z"
       }
     ]
-  }
+  },
+  "meta": {"request_id": "..."}
 }
 ```
 
@@ -171,7 +172,7 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/?searc
 | **Metodo** | `GET` |
 | **URL** | `/api/v1/anagrafiche/emittenti-fiscali/<emittente_id>/` |
 
-Restituisce lo stesso oggetto della lista, con in piu' `valuta_descrizione`,
+Restituisce lo stesso oggetto della lista (senza `id_fiscale_univoco_cf_piva`), con in piu' `valuta_descrizione`,
 `brand_meta` (jsonb opzionale per branding/metadati emittente) e, dal
 2026-10-01, `regime_fiscale_descrizione` (dal catalogo `config.regimi_fiscali`)
 con `regime_fiscale_confermato_il` / `regime_fiscale_confermato_da` (entrambi
@@ -210,7 +211,6 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/" \
 | --- | --- | --- | --- |
 | `soggetto_id` | uuid | Si | UUID di un `anagrafiche.soggetti` esistente con **P.IVA valorizzata** |
 | `codice` | string | Si | Univoco; **immutabile** dopo la creazione (lock_columns trigger) |
-| `descrizione` | string | Si | Etichetta visibile |
 | `attivo` | bool | No | Default DB `true` |
 | `regime_fiscale_rf` | string | No | Codice del catalogo `config.regimi_fiscali` (FK, es. `RF01`, `RF17`). **Presente** = regime dichiarato e **confermato**: la INSERT non conferma mai, quindi il service la fa seguire da un UPDATE del regime nella stessa transazione, e data e autore li deriva il DB. **Omesso** = default DB `RF01`, non confermato: l'emittente entra nel presidio `dbops.vw_emittenti_regime_non_confermato`. Vuoto o `null` → 400 |
 | `bollo_auto` | bool | No | Calcolo bollo automatico |
@@ -220,7 +220,11 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/" \
 
 ### 3.2 Comportamento
 
-1. Validazione campi obbligatori (`soggetto_id`, `codice`, `descrizione`).
+1. Validazione campi obbligatori (`soggetto_id`, `codice`). Il nome dell'emittente
+   e' la ragione sociale del soggetto: `descrizione` non esiste piu' (colonna
+   eliminata). In creazione una chiave fuori tabella, `descrizione` compresa, è un
+   **400** `E_ANAG_VALIDAZIONE` (dal 2026-10-21: prima era ignorata, mentre la
+   PATCH la rifiutava già).
 2. Validazione **P.IVA del soggetto**: query su `anagrafiche.soggetti.partita_iva`;
    se NULL/empty -> `E_ANAG_VALIDAZIONE 400`. Requisito legale per emissione fattura SDI.
 3. Apertura transazione atomica.
@@ -242,7 +246,6 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/" \
      -d '{
        "soggetto_id": "019bac81-3f96-7ce8-a086-7e0bd0a2fec0",
        "codice": "EF-001",
-       "descrizione": "Sede principale",
        "regime_fiscale_rf": "RF01",
        "bollo_auto": true,
        "bollo_soglia": 77.47
@@ -264,7 +267,7 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/" \
 
 | Codice | HTTP | Descrizione |
 | --- | --- | --- |
-| `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id`, `codice` o `descrizione` mancanti, oppure soggetto senza P.IVA; `regime_fiscale_rf` vuoto/`null` o fuori catalogo (`error.fields` = `regime_fiscale_rf`) |
+| `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id` o `codice` mancanti, oppure soggetto senza P.IVA; `regime_fiscale_rf` vuoto/`null` o fuori catalogo (`error.fields` = `regime_fiscale_rf`) |
 | `E_ANAG_DUPLICATO` | 409 | Esiste gia' un emittente per questo soggetto o codice |
 
 ---
@@ -278,12 +281,13 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/" \
 
 ### 4.1 Campi editabili
 
-`descrizione`, `attivo`, `regime_fiscale_rf`, `bollo_auto`, `bollo_soglia`,
-`rounding_policy`, `valuta_id`.
+`attivo`, `regime_fiscale_rf`, `bollo_auto`, `bollo_soglia`,
+`rounding_policy`, `valuta_id`. Qualsiasi altra chiave (anche `codice`,
+`descrizione`, `soggetto_id`) → `400 E_ANAG_VALIDAZIONE`; un corpo senza campi →
+`400 E_ANAG_VALIDAZIONE`.
 
-> **Nota:** il campo `codice` e' bloccato dal trigger DB `lock_columns` (errore
-> `CODICE_NON_MODIFICABILE`). Il backend lo ignora se incluso nel payload
-> tramite whitelist `_UPDATE_ALLOWED`.
+> **Nota:** `codice` e' immutabile (trigger DB `lock_columns`); il service lo
+> rifiuta prima, con 400.
 
 ### 4.2 Regole
 
@@ -312,7 +316,7 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/" \
 curl -X PATCH "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/" \
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
-     -d '{ "descrizione": "Sede principale 2026", "split_payment_default": true }'
+     -d '{ "bollo_auto": true, "bollo_soglia": 77.47 }'
 ```
 
 ### 4.4 Risposta (200)
@@ -325,7 +329,8 @@ curl -X PATCH "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/" 
 
 | Codice | HTTP | Descrizione |
 | --- | --- | --- |
-| `E_ANAG_NOT_FOUND` | 404 | Emittente non trovato o nessun campo modificato |
+| `E_ANAG_VALIDAZIONE` | 400 | Chiave fuori elenco (compreso `codice`), corpo vuoto, regime vuoto/`null`/fuori catalogo |
+| `E_ANAG_NOT_FOUND` | 404 | Emittente non trovato |
 
 ---
 
@@ -363,6 +368,16 @@ mapping specifico).
 | **Metodo** | `GET` |
 | **URL** | `/api/v1/anagrafiche/emittenti-fiscali/<emittente_id>/billing-account/` |
 
+#### Parametri query
+
+| Parametro | Tipo | Default | Descrizione |
+| --- | --- | --- | --- |
+| `search` | string | — | Ricerca ILIKE sulle colonne (fra `billing_account_codice`, `billing_account_ragione_sociale`, `id_fiscale_univoco`) accese dal catalogo della lista `anagrafiche.emittente_billing_account`; sotto soglia non filtra |
+| `limit` | int | 25 | Righe per pagina (max 200) |
+| `offset` | int | 0 | Offset |
+| `order_by` | string | `billing_account_codice` | `billing_account_codice`, `billing_account_ragione_sociale`, `id_fiscale_univoco`, `is_default`, `data_insert`; fuori elenco → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
+| `order_dir` | string | `asc` (`desc` per `data_insert`) | `asc` / `desc` |
+
 #### Esempio cURL
 
 ```bash
@@ -372,9 +387,15 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/bill
 
 #### Risposta (200)
 
+Envelope paginato standard:
+
 ```json
 {
   "data": {
+    "count": 2,
+    "page": 1,
+    "page_size": 25,
+    "total_pages": 1,
     "results": [
       {
         "id": 10,
@@ -382,11 +403,13 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/bill
         "is_default": true,
         "billing_account_codice": null,
         "billing_account_ragione_sociale": null,
+        "id_fiscale_univoco": null,
         "data_insert": "2026-04-07T10:00:00Z",
         "data_update": "2026-04-07T10:00:00Z",
         "can_remove": false,
         "rimozione_blocco_reason": "DEFAULT_SINGLETON",
-        "rimozione_blocco_reason_key": "amministrazione.emittenti_fiscali.ba_blocco.default_singleton"
+        "rimozione_blocco_reason_key": "amministrazione.emittenti_fiscali.ba_blocco.default_singleton",
+        "rimozione_blocco_storia": null
       },
       {
         "id": 11,
@@ -394,28 +417,39 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/bill
         "is_default": false,
         "billing_account_codice": "BA-005",
         "billing_account_ragione_sociale": "Acme Energia Srl",
+        "id_fiscale_univoco": "01234567890",
         "data_insert": "2026-04-07T10:05:00Z",
         "data_update": "2026-04-07T10:05:00Z",
         "can_remove": true,
         "rimozione_blocco_reason": null,
-        "rimozione_blocco_reason_key": null
+        "rimozione_blocco_reason_key": null,
+        "rimozione_blocco_storia": null
       }
     ]
-  }
+  },
+  "meta": {"request_id": "..."}
 }
 ```
 
-Ordinamento: default per primo, poi per codice BA crescente.
+Ordinamento: la riga default sempre per prima, poi la colonna scelta (default
+codice BA crescente). Con `order_by=is_default` conta solo quella colonna, col
+suo verso.
+
+`id_fiscale_univoco` = `soggetti.id_fiscale_univoco_cf_piva` del soggetto del BA.
+`rimozione_blocco_storia` = l'elenco per famiglia dei documenti che bloccano la
+rimozione (dal `dettaglio` di `fn_check_ba_cambio_emittente`), solo col motivo
+`BA_CON_STORIA`; `null` altrimenti. Il testo lo compone il client.
 
 #### Capability di riga — `can_remove` e il motivo del blocco
 
-Ogni riga porta **tre** campi che riguardano la sola azione «rimuovi»:
+Ogni riga porta **quattro** campi che riguardano la sola azione «rimuovi»:
 
 | Campo | Tipo | Significato |
 | --- | --- | --- |
 | `can_remove` | bool | `false` quando la riga **non** si puo' togliere |
 | `rimozione_blocco_reason` | string \| null | codice macchina del **primo** motivo. `null` = ammesso |
 | `rimozione_blocco_reason_key` | string \| null | chiave i18n del tooltip. Il testo **non** viaggia mai nel payload |
+| `rimozione_blocco_storia` | json \| null | conteggi per famiglia documentale (solo `BA_CON_STORIA`) |
 
 ⚠️ **`can_remove` NON e' piu' `true` per costruzione**, ed e' il cambiamento del
 2026-08-27: prima era scritto a mano nel service, e da quando un billing account
@@ -423,7 +457,7 @@ con storia non cambia piu' emittente era diventato una **promessa falsa** —
 l'operatore scopriva il divieto premendo, dopo aver confermato un dialog. Chi
 consuma questa lista non deve piu' presumerlo.
 
-⭐ **I tre campi vengono dalla stessa funzione che il database usa per
+⭐ **I campi del motivo vengono dalla stessa funzione che il database usa per
 rifiutare** — `script.fn_check_ba_cambio_emittente`, chiamata in `LATERAL` sulla
 riga e chiamata dalla madre `fn_guard_ba_cambio_emittente` per sollevare
 l'errore. ⇒ Tooltip e rifiuto non «coincidono oggi»: **non possono divergere**,
@@ -601,11 +635,11 @@ arrotondamento).
 
 > **Nota lookup utility (UI)**: la combo di scelta utility nel frontend usa il
 > componente core riusabile `UtilityPerRuoloSelect`, che chiama l'endpoint
-> `GET /api/v1/core/lookup/tipi-ruolo/EF/utilities/`. L'endpoint applica
-> filtro **strict** sulla matrice `config.utilities_tipi_ruolo`: ritorna solo
-> utility con riga ATTIVA per il `tipo_ruolo_codice` indicato e nel periodo
-> di validita' corrente. Coerente con il trigger DB `script.fn_guard_utility_tipo_ruolo`,
-> evitando errori `E_UTILITY_RUOLO_NON_AMMESSO` lato UI.
+> `GET /api/v1/core/lookup/utilities-per-emittente/?ruolo=<codice>`: le utility
+> ammesse per il ruolo `EF` nella matrice `config.utilities_tipi_ruolo`,
+> intersecate con quelle del ruolo indicato in `ruolo` (se presente). Coerente
+> con il trigger DB `script.fn_guard_utility_tipo_ruolo`, evitando errori
+> `E_UTILITY_RUOLO_NON_AMMESSO` lato UI.
 
 ### 6.1 Lista matrice utility per emittente
 
@@ -682,8 +716,8 @@ nel `RowActionsMenu`) invece di derivare da `record_id`. **L'autorita' resta il
 trigger DB** (`child_requires_active_parent`, `guard_utility_tipo_ruolo`): le
 capability sono preview UX, non garanzia (race tra sessioni).
 
-Il campo `utility_attiva: bool` proietta `config.utilities.attivo` (fonte primaria
-del flag globale di disattivazione utility).
+Il campo `utility_attiva` e' oggi la costante `TRUE`: `config.utilities` non ha
+una colonna `attivo`. Resta nel contratto per il calcolo di `can_configure`.
 
 ### 6.2 Crea record
 
@@ -700,8 +734,13 @@ del flag globale di disattivazione utility).
 | `arrotondamento_importi_dec` | int | Si | Decimali per arrotondamento (0..6, vincolo CHECK DB) |
 | `metodo_arrotondamento_importi` | string | Si | Uno tra: `HALF_UP`, `HALF_DOWN`, `UP`, `DOWN` (CHECK constraint DB) |
 | `minimo_soglia_min` | numeric | No | Soglia minima |
-| `minimo_soglia_max` | numeric | No | Soglia massima (se valorizzata: `>= minimo_soglia_min`) |
+| `minimo_soglia_max` | numeric | No | Soglia massima (`>= minimo_soglia_min`) |
 | `attivo` | bool | No | Default `true` |
+
+Le due soglie si dichiarano **insieme**: entrambe valorizzate (fondo fattura
+attivo sulla banda) o entrambe vuote (non attivo). Una sola →
+`400 E_FONDO_SOGLIE_INCOMPLETE` (CHECK `chk_emittenti_fiscali_utilities_soglie_coppia`);
+la regola vale anche in PATCH, sull'unione di payload e riga a database.
 
 #### Esempio cURL — POST utility
 
@@ -713,7 +752,8 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/uti
        "utility_id": 1,
        "arrotondamento_importi_dec": 2,
        "metodo_arrotondamento_importi": "HALF_UP",
-       "minimo_soglia_min": 0.50
+       "minimo_soglia_min": 0.50,
+       "minimo_soglia_max": 5.00
      }'
 ```
 
@@ -727,7 +767,8 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/uti
 
 | Codice | HTTP | Descrizione |
 | --- | --- | --- |
-| `E_ANAG_VALIDAZIONE` | 400 | `utility_id`, `arrotondamento_importi_dec` o `metodo_arrotondamento_importi` mancanti |
+| `E_ANAG_VALIDAZIONE` | 400 | `utility_id`, `arrotondamento_importi_dec` o `metodo_arrotondamento_importi` mancanti; soglia minima > massima |
+| `E_FONDO_SOGLIE_INCOMPLETE` | 400 | Una sola delle due soglie valorizzata |
 | `E_ANAG_DUPLICATO` | 409 | Coppia (emittente, utility) gia' presente |
 | `E_ANAG_NOT_FOUND` | 404 | Emittente padre non trovato |
 
@@ -781,6 +822,51 @@ curl -X DELETE "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/u
 
 ---
 
+## 7. Utility di un billing account guidate dall'emittente
+
+| | |
+| --- | --- |
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/anagrafiche/billing-account/<billing_account_id>/utilities/` |
+| **View** | `BillingAccountUtilitiesView` (`views_billing_account.py`), `DomainAPIView` — **non** admin |
+| **Permesso** | oggetto `("anagrafiche", "cliente")`, area `anagrafiche`; in piu' scope emittente sul BA (superuser e operatori senza emittente di lavoro lo saltano) |
+
+Query: `ruolo` **obbligatorio**, `CL` \| `FO` \| `GE` (ruolo del soggetto del BA;
+case-insensitive).
+
+Le utility ammesse per il ruolo del soggetto, intersecate con quelle ammesse per
+il ruolo `EF` dell'emittente del BA (mapping specifico, altrimenti gestore
+globale), con i parametri di `emittenti_fiscali_utilities` quando esistono
+(`anagrafiche.fn_lookup_utilities_per_ba`). Ordine per `descrizione`.
+
+```json
+{
+  "data": {
+    "results": [
+      {
+        "utility_id": 1,
+        "codice": "EE",
+        "descrizione": "Energia Elettrica",
+        "is_personalizzata_per_ef": true,
+        "minimo_soglia_min": 0.50,
+        "minimo_soglia_max": 5.00,
+        "arrotondamento_importi_dec": 2,
+        "metodo_arrotondamento_importi": "HALF_UP"
+      }
+    ]
+  },
+  "meta": {"request_id": "..."}
+}
+```
+
+| Codice | HTTP | Quando |
+| --- | --- | --- |
+| `E_ANAG_VALIDAZIONE` | 400 | `ruolo` assente o diverso da `CL`/`FO`/`GE` |
+| `E_ANAG_NOT_FOUND` | 404 | Billing account inesistente |
+| `E_PERMESSO_NEGATO` | 403 | Billing account di un emittente diverso da quello dell'operatore |
+
+---
+
 ## File del modulo
 
 | Layer | File |
@@ -796,10 +882,7 @@ curl -X DELETE "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/u
 - Le rotte sono registrate in `apps/anagrafiche/api/urls.py`.
 - Le view ereditano da `AdminAPIView`: `skip_area_check = True`, nessun
   `area_funzionale` necessario; il check di autorizzazione si limita a
-  `IsAdminZeroERP` (ruolo sistema `ADMIN` o superuser Django).
-- Il sub-resource `utilities/lookup/` deve restare registrato **prima**
-  delle rotte `<int:emittente_id>/utilities/` in `urls.py`, altrimenti
-  Django risolverebbe `lookup` come `emittente_id` letterale.
+  `IsAdminZeroERP` (binding `SUPER_ADMIN` o superuser Django).
 - Helper di service `_verify_record_ownership` (modulo
   `emittenti_fiscali_service`) e' condiviso da `EmittentiFiscaliBillingAccountService`
   e `EmittentiFiscaliUtilitiesService` per evitare duplicazione del pattern

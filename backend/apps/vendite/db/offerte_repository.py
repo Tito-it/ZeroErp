@@ -26,6 +26,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.catalogo.db.catalogo_repository import CatalogoRepository
 from apps.core.db._helpers import (
@@ -44,6 +45,7 @@ from apps.core.db.righe_lista_mixin import RigheListaMixin
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
+from apps.vendite.db._lineage_sintesi import unisci_sintesi_lineage
 
 
 # Colonne jsonb delle tre tabelle scritte qui (testata, eccezioni, utility):
@@ -213,11 +215,15 @@ _FROM_JOINS_OFFERTA = """
     LEFT JOIN vendite.listini l ON l.id = o.listino_id
     LEFT JOIN vendite.listini_versioni lv ON lv.id = o.listino_versione_id
     LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
-    -- LEFT JOIN col contratto generato dal push (idempotenza Pattern A
-    -- garantita da UNIQUE uq_contratti_offerta_id). 0 o 1 riga: nessun
-    -- rischio di duplicazione. Il FE usa contratto_id/numero per il dialog
-    -- "gia' generato" e per il deep-link a ContrattoDrawer post-push.
-    LEFT JOIN vendite.contratti c ON c.offerta_id = o.id
+    -- LEFT JOIN col contratto VIVO generato dal push. Il FE usa
+    -- contratto_id/numero per il dialog "gia' generato" e per il deep-link a
+    -- ContrattoDrawer post-push.
+    -- ⛔ Il filtro sui vivi NON e' facoltativo (brief-db-annullo-documento-con-
+    --    legami R-5, 2026-10-11): `uq_contratti_offerta_id` vale sui soli
+    --    contratti non abortiti, quindi un'offerta puo' avere un contratto
+    --    annullato e uno vivo. Senza il filtro la riga dell'offerta si DUPLICA;
+    --    con il filtro resta «0 o 1», ed e' lo stesso predicato dell'indice.
+    LEFT JOIN vendite.contratti c ON c.offerta_id = o.id AND NOT c.is_abortito_snapshot
     -- Decode emittente fiscale: codice + ragione sociale del soggetto
     -- (nessun fallback a `emittenti_fiscali.descrizione`, rimosso col brief
     -- emittente-ragione-sociale-dal-soggetto). Pattern allineato a
@@ -345,10 +351,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     # Configurazione mixin indirizzi documento.
     _indirizzi_table = "vendite.offerte_commerciali_indirizzi"
     _indirizzi_fk_documento = "offerta_id"
-    _indirizzi_ambito = "OFFERTE"
-    _indirizzi_documento_table = "vendite.offerte_commerciali"
-    # Precontrattuale: istanza congelata in testata (vedi preventivi).
-    _indirizzi_doc_istanza_column = "istanza_utility_id"
+    _indirizzi_documento = SORGENTE_OFFERTA_COMMERCIALE
 
     # =================================================================
     # Lista e dettaglio testata
@@ -446,13 +449,13 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         #    DESC anche ordinando ASC. Ora: direzione estranea = `ValueError`,
         #    NULL come valore minimo, spareggio allineato al verso. Il service
         #    ha gia' validato colonna e direzione col codice di dominio
-        #    (`validate_order_by`), quindi un `order_by` fuori whitelist qui e'
-        #    un errore di programmazione: `rifiuta_fuori_whitelist`.
+        #    (`validate_order_by`); il BB rifiuta comunque un `order_by` fuori
+        #    whitelist (`colonna_ordinamento`).
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=_ORDER_COLS_OFFERTE, default="v.data_insert",
             default_desc=True, colonne_desc=_ORDER_COLS_OFFERTE_DATA,
-            tiebreak="v.id", rifiuta_fuori_whitelist=True,
+            tiebreak="v.id",
         )
         where_clause, params = self._build_offerte_filters(
             billing_account_id=billing_account_id,
@@ -465,9 +468,6 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             solo_ultima_revisione=solo_ultima_revisione,
             auth_user_id=auth_user_id,
         )
-        # ⭐ Nessuna decodifica qui: `frontiera_tipo_codice_interno` e
-        #    `frontiera_natura_doc_codice_interno` arrivano dalla vista
-        #    (20260829-01/02) e passano con `v.*`.
         sql = f"""
             SELECT v.*
               {_FROM_LISTA_OFFERTE}
@@ -478,7 +478,12 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         params.extend([limit, offset])
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            return rows_to_list(cursor)
+            results = rows_to_list(cursor)
+
+        # Le colonne del grafo dalla sintesi, per le chiavi della pagina
+        # (brief-db-lineage-seminata-per-chiave B1): la vista non le porta piu'.
+        unisci_sintesi_lineage(results, tipo_codice_interno=SORGENTE_OFFERTA_COMMERCIALE)
+        return results
 
     # Scopo: Conteggio totale per paginazione, stessi filtri di list_offerte.
     def count_offerte(
@@ -566,8 +571,9 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     def get_available_actions(self, offerta_id: int) -> dict[str, Any]:
         return call_jsonb_fn("script.fn_available_actions_offerta", offerta_id)
 
-    # Scopo: Crea una testata offerta (stato iniziale BOZZA gestito dal
-    #        service che risolve l'id stato via get_stato_id_by_codice).
+    # Scopo: Crea una testata offerta. Lo stato non si scrive (non e' in
+    #        whitelist): lo mette il DB, lo stato iniziale del vocabolario
+    #        (`script.trgfn_doc_stato_iniziale`).
     #        Il `codice` arriva dal payload: la generazione automatica via
     #        sistema_codici (step 5 brief DB) non e' ancora cablata.
     # Colonne scrivibili in create (whitelist). Le immutabili (`uid`, audit,
@@ -587,7 +593,6 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         "tipo_variazione_globale",
         "validita_dal",
         "validita_al",
-        "stato_doc_offerta_id",
         "revisione_numero",
         "revisione_padre_id",
         "meta",
@@ -684,22 +689,6 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             )
             return rows_to_list(cursor)
 
-    # Scopo: Righe effettive «ordine-ready» dell'offerta = listino base risolto
-    #        + variazione globale + eccezioni (OVERRIDE/ESCLUSIONE/AGGIUNTA),
-    #        con BoM per i compositi. Wrapper sottile su
-    #        `vendite.fn_offerta_righe_espanse` (DB-ORD: espansione, core condiviso
-    #        con la preview contratti). Usato dalla conversione offerta → ordine
-    #        (`ordini_service.crea_ordine_da_offerta`): ritorna già IVA/uom/prezzo
-    #        netto, copiabili in `ordini_righe` senza arricchimenti BE (DB-first).
-    #        `componenti` è jsonb (lista) per le righe composite.
-    def list_righe_espanse(self, offerta_id: int) -> list[dict[str, Any]]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT * FROM vendite.fn_offerta_righe_espanse(%s)",
-                [offerta_id],
-            )
-            return rows_to_list(cursor)
-
     # Scopo: Dettaglio singola eccezione (read-after-write).
     def get_eccezione(self, eccezione_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
@@ -726,7 +715,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         "generazione_canone",
         "competenza_canone",
         "prezzo_unitario",
-        "quantita",
+        # ⛔ Niente `quantita`: la calcola il DB (`trgfn_qta_from_operativa`).
         "qta_operativa",
         "uom_operativa_id",
         "factor_to_base",
@@ -745,7 +734,6 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         "generazione_canone",
         "competenza_canone",
         "prezzo_unitario",
-        "quantita",
         "qta_operativa",
         "uom_operativa_id",
         "factor_to_base",
@@ -999,6 +987,20 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             row = cursor.fetchone()
             return None if row is None else int(row[0])
 
+    # Scopo: La COPPIA della fornitura sulla testata (cliente, istanza,
+    #        utility): serve a sapere se un aggiornamento la cambia, perche'
+    #        allora la scheda di fornitura la rifa' il DB (D-5 di
+    #        brief-db-indirizzi-documento-seguono-il-cliente). None se
+    #        l'offerta non e' visibile.
+    def get_coppia(self, offerta_id: int) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT o.billing_account_id, o.istanza_utility_id, o.utility_id"
+                "  FROM vendite.offerte_commerciali o WHERE o.id = %s",
+                [offerta_id],
+            )
+            return row_to_dict(cursor)
+
     # Scopo: Legge il `codice_interno` dello stato corrente di un'offerta.
     #        Usato dal service per validare le pre-condizioni dei cambi stato
     #        (emetti SOLO da BOZZA, registra_esito SOLO da EMESSA, ecc.).
@@ -1072,6 +1074,22 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             cursor.execute(
                 "SELECT vendite.fn_push_offerta_a_contratto(%s, %s, %s)",
                 [offerta_id, pratica_id, chiudi_esistente],
+            )
+            row = cursor.fetchone()
+            assert row is not None and row[0] is not None
+            return int(row[0])
+
+    # Scopo: Genera un ordine DRAFT dall'offerta ACCETTATA col verbo DB
+    #        `vendite.fn_genera_ordine_da_offerta` (gemello del push al
+    #        contratto, brief-db-offerta-emissione-ed-erogazione I-D2): stato,
+    #        documenti vivi, righe, testata con la provenienza, indirizzo di
+    #        default e righe espanse coi prezzi negoziati, in una transazione.
+    #        Ritorna l'id dell'ordine.
+    def genera_ordine(self, offerta_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_genera_ordine_da_offerta(%s)",
+                [int(offerta_id)],
             )
             row = cursor.fetchone()
             assert row is not None and row[0] is not None

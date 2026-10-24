@@ -291,6 +291,9 @@ def _lavora_item(
             sorgente_tipo_id=int(item["sorgente_tipo_id"]),
             sorgente_id=fattura_id,
             sorgente_uid=str(item["sorgente_uid"]),
+            # Il tipo lo porta la riga (§9): senza, su una sorgente con piu'
+            # tipi la risoluzione si fermerebbe con AMBIGUO.
+            tipo_documento_output_id=item.get("tipo_documento_output_id"),
             template_documento_id=item.get("template_documento_id"),
             emittente_scope=[emittente_fiscale_id],
         )

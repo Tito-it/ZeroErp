@@ -28,7 +28,7 @@ ieri e un avviso di oggi deve mostrare il critico, non l'avviso.
 | `errore_quando` | quando: un errore vecchio su una riga già rilavorata si riconosce solo dalla data |
 | `errore_livello` | `C`/`W`/`I` — **fuori dal seed**, ma nel payload: senza, il frontend mostrerebbe l'icona rossa anche su un avviso. Stesso ruolo di `natura_doc_codice` |
 
-Tutti e tre `null` quando non c'è errore.
+Tutti `null` (con `errore_bersagli`) quando non c'è errore.
 
 ⚠️ **Il `LATERAL` sta fuori dal `COUNT`**: il conteggio delle righe del lotto non
 ha bisogno del messaggio, e cercarlo lì sarebbe lavoro per niente a ogni pagina.
@@ -83,12 +83,25 @@ cancella il documento dal lotto, «non lo so» non può voler dire «vai».
 - Path param:
   - `lotto_id` (int) — id del lotto; obbligatorio
 - Query param (tutti opzionali; assente o vuoto = nessun filtro):
-  - `stato_esecuzione` (string) — filtro esito tecnico fattura nel lotto (`OK` | `ERRORE`)
-  - `esclusa` (bool) — filtro fatture escluse (`true` | `false`); assente = tutte
-  - `sort_by` (string) — colonna ordinamento: `fattura_id` (default), `nominativo`, `totale_doc`
-  - `sort_dir` (string) — direzione: `asc` (default) | `desc`
-  - `page` (int) — numero pagina, default `1`
-  - `page_size` (int) — righe per pagina, default `50`, max `200`
+  - `stato_esecuzione` (string) — esito tecnico della fattura nel lotto,
+    vocabolario `PENDING` · `RUNNING` · `COMPLETED` · `ERRORE`
+    (`STATI_ESECUZIONE_LOTTO`). Fuori vocabolario → `400 E_VENDITE_VALIDATION`
+    col campo (2026-10-20: prima lista vuota; `OK` non è mai esistito)
+  - `order_by` (string) — colonna ordinamento da whitelist
+    `LOTTO_FATTURE_SORT_COLUMNS` (`backend/apps/vendite/db/vendite_repository.py`):
+    `fattura_id` (default), `numero`, `serie`, `data`,
+    `ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`,
+    `natura_doc_descrizione`, `stato_doc_fiscale_descrizione`,
+    `stato_esecuzione`, `totale_doc`, `totale_a_pagare`
+  - `order_dir` (string) — direzione: `asc` | `desc`; assente, la decide la
+    lista (le date partono DESC). ⚠️ Fino al 2026-10-20 i due parametri si
+    chiamavano `sort_by`/`sort_dir`, unica lista del prodotto (brief-be-verifica-
+    documentazione-api §A4): i vecchi nomi oggi sono ignorati
+  - `limit` (int) — righe per pagina, default `25`, max `200`; fuori da 1..200 → 400 `E_VALIDATION_INPUT` (`limit_fuori_limiti_1_200`)
+  - `offset` (int) — righe da saltare, default `0`; negativo → 400 (`offset_negativo`)
+  - ⛔ `page`/`page_size` sono un **400** `E_VALIDATION_INPUT` (dal 2026-10-21:
+    fino a quel giorno erano il contratto di questa lista). La risposta porta
+    ancora `page`/`page_size`, ricavati da `limit`/`offset`
 
 ## Output
 
@@ -98,7 +111,7 @@ cancella il documento dal lotto, «non lo so» non può voler dire «vai».
   "data": {
     "count": 1,
     "page": 1,
-    "page_size": 50,
+    "page_size": 25,
     "total_pages": 1,
     "results": [
       {
@@ -110,23 +123,24 @@ cancella il documento dal lotto, «non lo so» non può voler dire «vai».
         "stato_doc_fiscale_id": 3,
         "stato_doc_fiscale_descrizione": "Fattura emessa",
         "stato_doc_fiscale_codice": "EMESSA",
-        "stato_esecuzione": "OK",
-        "esclusa": false,
+        "stato_esecuzione": "COMPLETED",
         "numero": 234,
         "serie": null,
         "data": "2026-02-01",
+        "numero_documento": "234",
         "billing_account_id": 8,
         "totale_doc": "1234.560000",
         "totale_a_pagare": "1234.560000",
         "soggetto_id": 55,
         "ragione_sociale_completa": "Mario Rossi Srl",
         "id_fiscale_univoco_cf_piva": "01234567890",
-        "natura_doc_codice": "NOTA_CREDITO",
+        "natura_doc_codice_interno": "NOTA_CREDITO",
         "natura_doc_descrizione": "Nota di credito",
         "errore_messaggio": "Non si può numerare il documento: rettifica righe di altri documenti che non risultano ancora numerati. Documenti da numerare prima: 1.",
         "errore_codice": "E_FATTURA_RETTIFICATA_SENZA_NUMERO",
         "errore_quando": "2026-08-21T17:39:39.675+02:00",
         "errore_livello": "C",
+        "errore_bersagli": [{"type": "fattura", "id": "99"}],
         "can_reset_fattura": false,
         "can_reset_fattura_reason": "il lotto e' oltre la soglia di congelamento fiscale",
         "can_reset_fattura_reason_key": "vendite.lotti.azione_reason.lotto_congelato"
@@ -136,17 +150,27 @@ cancella il documento dal lotto, «non lo so» non può voler dire «vai».
   "meta": { "request_id": "..." }
 }
 ```
-- `400`: parametri non validi (`E_VENDITE_VALIDATION`)
+- `400`: parametri non validi (`E_VENDITE_VALIDATION`: `order_by` fuori
+  whitelist, `order_dir`, `stato_esecuzione` fuori vocabolario;
+  `E_VALIDATION_INPUT` per un intero non leggibile — `limit`/`offset` compresi —,
+  per `limit` fuori da 1..200 o `offset` negativo e per `page`/`page_size`
+  presenti)
 - `401`: JWT mancante o non valido
+- `403`: permesso modello `("vendite", "fattura")` mancante
+- `404`: `E_LOTTO_NON_TROVATO` — lotto inesistente **o fuori perimetro**: la
+  testata si legge prima dell'elenco (`lotto_visibile`). ⚠️ 2026-10-20: prima
+  rispondeva `200` con zero righe
 
 ## Regole
 
 - `lotto_id` proviene dal path URL; il WHERE `fllf.lotto_id = :lotto_id` e' sempre presente.
-- Filtri opzionali: assenza equivale a nessun filtro; `esclusa` accetta `true`/`false`.
-- `sort_by` accetta solo valori nella whitelist (`fattura_id`, `nominativo`, `totale_doc`); valore non valido → 400.
-- `sort_dir` accetta solo `asc` o `desc`; valore non valido → 400.
-- Quando `sort_by != fattura_id` viene aggiunto `fllf.fattura_id ASC` come tiebreaker deterministico.
-- `page` deve essere >= 1; `page_size` deve essere compreso tra 1 e 200.
+- Filtri opzionali: assenza equivale a nessun filtro.
+- `order_by` accetta solo valori nella whitelist `LOTTO_FATTURE_SORT_COLUMNS`; valore non valido → 400.
+- `order_dir` accetta `asc`/`desc` (maiuscole e spazi ammessi); valore non valido → 400.
+- Tiebreaker deterministico su `fllf.fattura_id` (`sql_order_clause`).
+- Finestra `limit`/`offset` letta da `pagina_da_query`: non intera o fuori
+  limiti è un 400 `E_VALIDATION_INPUT` (dal 2026-10-21; prima si riportava nei
+  limiti in silenzio).
 - `is_search_endpoint = True` sulla view: attiva throttling `SearchBurstRateThrottle`.
 - `stato_doc_fiscale_codice` = `config.stati_doc_fiscale.codice_interno` (chiave
   stabile) — mai la `descrizione`, che e' display e puo' cambiare. Serve a
@@ -182,4 +206,16 @@ cancella il documento dal lotto, «non lo so» non può voler dire «vai».
 
 - Query raw nel repository (`VenditeRepository.list_lotto_fatture`); nessuna funzione SQL dedicata.
 - Due query per request: `COUNT(*)` + dati con `LIMIT/OFFSET` (pattern offset pagination).
-- L'ordinamento per colonne diverse da `fattura_id` usa la whitelist `_SORT_COLUMNS` nel repository; mai interpolazione diretta di input utente nel SQL.
+- L'ordinamento usa la whitelist `LOTTO_FATTURE_SORT_COLUMNS` nel repository; mai interpolazione diretta di input utente nel SQL.
+- 2026-10-21: la finestra passa da `page`/`page_size` a `limit`/`offset`
+  (`pagina_da_query`); `page`/`page_size` in query diventano un 400. Envelope
+  di risposta invariato.
+
+## Export
+
+- `GET /api/v1/vendite/lotti/{lotto_id}/fatture/export/?formato=csv|xlsx`
+- Stessi filtri e ordinamento della lista (`stato_esecuzione`, `order_by`,
+  `order_dir`), senza paginazione; stesso permesso `("vendite", "fattura")` e
+  stesso `404` sul lotto non visibile.
+- Colonne dal catalogo `vendite.lotto_fatture`; oltre `EXPORT_MAX_ROWS` →
+  `422 E_UI_EXPORT_LIMIT_EXCEEDED`.

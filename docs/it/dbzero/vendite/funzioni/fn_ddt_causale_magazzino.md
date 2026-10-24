@@ -6,6 +6,8 @@ CREATE FUNCTION fn_ddt_causale_magazzino(p_ddt vendite.ddt)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ddt_causale_magazzino(p_ddt vendite.ddt)
  RETURNS character varying
@@ -29,6 +31,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ddt_causale_magazzino(p_ddt vendite.ddt)
 IS 'Con quale causale di magazzino si muove la merce di una bolla: config.causali_trasporto.causale_magazzino della sua causale di trasporto (D-L3-g). NULL = non muove merce. Prende la RIGA della bolla, non l''id: il guard BEFORE UPDATE deve vedere la causale nuova. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

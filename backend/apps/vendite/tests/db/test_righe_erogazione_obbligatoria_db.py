@@ -54,9 +54,8 @@ _FIXTURE = (
     " INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)"
     " SELECT listino_id, 'EROGOBB_V2', '2021-01-01'::date, 'BOZZA' FROM _l RETURNING id"
     ") SELECT id FROM ins",
-    "CREATE TEMP TABLE _a AS SELECT dbops.fn_pgtap_crea_articolo('EROGOBB-ART') AS id",
-    "UPDATE catalogo.articoli SET listino_tipologia_id = (SELECT tipologia_id FROM _l)"
-    " WHERE id = (SELECT id FROM _a)",
+    "CREATE TEMP TABLE _a AS SELECT dbops.fn_pgtap_crea_articolo('EROGOBB-ART',"
+    " p_listino_tipologia_id => (SELECT tipologia_id FROM _l)) AS id",
     "INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)"
     " SELECT (SELECT id FROM _v), ar.id, ar.uom_id, 100.00"
     " FROM catalogo.articoli ar WHERE ar.id = (SELECT id FROM _a)",
@@ -191,7 +190,6 @@ class RigheErogazioneObbligatoriaDbTests(unittest.TestCase):
             "utility_id": utility,
             "listino_id": cur.fetchone()[0],
             "validita_dal": oggi_aziendale(),
-            "stato_doc_offerta_id": repo.get_stato_id_by_codice("BOZZA"),
         })
 
     # 1. Contratto, create: l'OVERRIDE senza erogazione la eredita dall'articolo.
@@ -206,8 +204,11 @@ class RigheErogazioneObbligatoriaDbTests(unittest.TestCase):
     # 2. Contratto, PATCH: togliere l'erogazione a un OVERRIDE e' rifiutato.
     def test_contratto_patch_che_toglie_l_erogazione(self):
         def azione(cur):
-            cur.execute(_RIGA_CONTRATTO, [self._contratto(cur)])
-            ContrattiService().update_riga(cur.fetchone()[0], {"tipo_erogazione": None})
+            contratto_id = self._contratto(cur)
+            cur.execute(_RIGA_CONTRATTO, [contratto_id])
+            ContrattiService().update_riga(
+                contratto_id, cur.fetchone()[0], {"tipo_erogazione": None},
+            )
         self._assert_codice_e_campo(self._errore(azione))
 
     # 3. Offerta, create: la stessa regola (il push la ricopia nel contratto).

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_data_minima_numerabile_lotto(p_lotto_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_data_minima_numerabile_lotto(p_lotto_id bigint)
  RETURNS date
@@ -41,6 +43,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_data_minima_numerabile_lotto(p_lotto_id bigint)
 IS 'La sola DATA del pavimento di un lotto: da quale data in poi tutte le sue fatture non numerate possono prendere un numero. NULL = nessun pavimento. ⭐ E'' la TARGA del cancello, non un secondo controllo: serve al frontend per aprire il DatePicker con minDate gia'' giusta, cosi'' il rifiuto diventa l''eccezione invece della norma. Se targa e cancello divergessero, comanda il cancello. ⭐ rev 2026-08-26: e'' diventata una LETTURA SOTTILE su vendite.fn_get_pavimento_lotto, che compone i due pavimenti (sequenza e limite di emissione) e dice anche QUALE ha deciso. Qui l''origine si butta via, e la ragione e'' che questa firma e'' un CONTRATTO: il backend la chiama in tre punti aspettandosi uno scalare e per il frontend e'' la minDate del dialog — cambiarla per aggiungere un''informazione che serve a un solo chiamante avrebbe fatto pagare a tutti il bisogno di uno. ⛔ Chi ha bisogno anche dell''origine (la porta di dichiarazione, per scegliere fra i due codici errore) chiama fn_get_pavimento_lotto direttamente. ℹ️ I guard — parametro non valido, lotto inesistente o non visibile — stanno nella funzione letta: qui sarebbero una seconda copia. ⚠️ Vale anche qui il FAIL-OPEN sotto RLS descritto in fn_get_pavimento_lotto. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-8.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,0 +1,223 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# EMAIL E FORNITORE: LE DUE FUNZIONI DELLA REGOLA DIVENTANO COMPOSIZIONI
+#   script.fn_scope_email_ambito(integer, varchar, bigint, integer, integer, text)
+#   script.fn_scope_fornitore_ownership(bigint, bigint)
+#   Brief: brief-db-perimetro-una-volta-famiglie-residue §9 (giro 5).
+#
+# Le policy passano alla forma col perimetro (-43). Queste due RESTANO, per
+# la domanda su UNA riga:
+#   - fn_scope_email_ambito: la citano come sede della regola i commenti del
+#     backend (email_views.py) e la usano come sonda i test Django delle email
+#     (richiedi_db_provvisto);
+#   - fn_scope_fornitore_ownership: e' la funzione di FORNITORE_OWNERSHIP nel
+#     catalogo config.scope_policy.
+# Diventano la composizione dei building block, cosi' la regola resta scritta
+# una volta (regola del 2): l'ambito in fn_scope_email_ambito_perimetro (-41),
+# il fornitore nel perimetro di controparte (20261021-29).
+# Stesse risposte: stessi rami; l'emittente con fn_scope_ef_perimetro sul
+# perimetro dell'utente, come la canonica (che col solo emittente attivo
+# in piu' da' la stessa risposta: il perimetro lo interseca gia').
+# Firme %TYPE (l'utente django esplicito), COST 5000, INVOKER.
+# Rollback: corpi e COMMENT vivi (dbdev = scratch, 2026-10-21).
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261021-42-update-fn-scope-email-e-fornitore-su-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261021-42-update-fn-scope-email-e-fornitore-su-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_scope_email_ambito e fn_scope_fornitore_ownership diventano la composizione dei building block col perimetro. Giro 5 di brief-db-perimetro-una-volta-famiglie-residue.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('script.fn_scope_email_ambito_perimetro(boolean,integer,boolean,bigint[],integer,character varying,bigint,integer,integer)'),
+                             to_regprocedure('script.fn_get_identita_sr_perimetro(bigint,config.ruolo_applicativo[])'),
+                             to_regprocedure('script.fn_scope_sr_perimetro(bigint,bigint)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_email_ambito(
+                  -- ⚠️ `integer` esplicito: django.auth_user.id, a cui il DB non si lega.
+                  p_auth_user_id           integer,
+                  p_ambito                 config.email_outbox.ambito%TYPE,
+                  p_emittente_fiscale_id   config.email_outbox.emittente_fiscale_id%TYPE,
+                  p_unita_organizzativa_id config.email_outbox.unita_organizzativa_id%TYPE,
+                  p_creato_da_user_id      config.email_outbox.creato_da_user_id%TYPE,
+                  p_processo_codice        dbops.processi.codice%TYPE DEFAULT NULL)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- =====================================================
+                  -- Scopo:
+                  --   «Chi guarda (p_auth_user_id) puo' vedere una mail con
+                  --   questo ambito, questa azienda, questo reparto e questo
+                  --   autore?» La domanda su UNA mail.
+                  --
+                  -- ⭐ Rev 2026-10-21 (20261021-42, giro 5 di brief-db-perimetro-
+                  --   una-volta-famiglie-residue): la regola e' scritta UNA volta,
+                  --   in script.fn_scope_email_ambito_perimetro, e questa la
+                  --   compone calcolando qui le quattro risposte su chi guarda.
+                  --   Le policy di email_log e email_outbox non passano piu' di
+                  --   qui: le calcolano una volta per istruzione (20261021-43).
+                  --   Resta la sede della regola per chi chiede di una mail sola
+                  --   (e la sonda dei test Django delle email).
+                  -- ⚠️ p_processo_codice NULL = nessun processo ammesso
+                  --   (l'outbox). Il log passa 'send_pending_emails':
+                  --   portare e' leggere.
+                  -- ⛔ Con p_auth_user_id NULL ogni ramo e' false.
+                  -- =====================================================
+                  SELECT script.fn_scope_email_ambito_perimetro(
+                      script.fn_is_super_admin(p_auth_user_id),
+                      script.fn_get_uo_id_for_user(p_auth_user_id),
+                      p_processo_codice IS NOT NULL
+                          AND script.fn_scope_identita_processo(p_auth_user_id, p_processo_codice),
+                      script.fn_get_emittenti_scope_pk_ids(p_auth_user_id),
+                      p_auth_user_id,
+                      p_ambito,
+                      p_emittente_fiscale_id,
+                      p_unita_organizzativa_id,
+                      p_creato_da_user_id)
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_email_ambito(integer, config.email_outbox.ambito%TYPE, config.email_outbox.emittente_fiscale_id%TYPE, config.email_outbox.unita_organizzativa_id%TYPE, config.email_outbox.creato_da_user_id%TYPE, dbops.processi.codice%TYPE) IS
+              'Chi vede una mail secondo il suo AMBITO. SISTEMA: super admin (piu'' il processo, se nominato). REPARTO: super admin, chi e'' nello stesso reparto (script.fn_get_uo_id_for_user) o il processo, E l''emittente nel perimetro di chi guarda. OPERATORE: super admin, chi l''ha creata (creato_da_user_id) o il processo, E l''emittente nel perimetro. Qualunque altro ambito: false. ⭐ Sede unica della regola per rls_email_log_ambito e rls_email_outbox_ambito, in USING e WITH CHECK: quattro sedi che non possono divergere. ⭐ p_processo_codice: il log passa send_pending_emails (portare e'' leggere: senza, una mail REPARTO o OPERATORE fallita non verrebbe ritentata); l''outbox passa NULL, perche'' nessun processo la apre. ⚠️ D-1: l''emittente resta in AND anche per l''autore e per il processo. ⛔ Utente NULL: sempre false, anche se il cancello emittente per NULL dice true. La regola della scheda pratica (D-3) non e'' qui. Brief: brief-db-email-visibilita-per-ambito. rev 2026-09-25. Rev 2026-10-21 (20261021-42, giro 5 di brief-db-perimetro-una-volta-famiglie-residue): la regola sta in script.fn_scope_email_ambito_perimetro, e questa la compone calcolando le quattro risposte su chi guarda; le policy le calcolano una volta per istruzione e non passano piu'' di qui.';
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_fornitore_ownership(
+                  p_identita_id     anagrafiche.identita_digitali.id%TYPE,
+                  p_fornitore_sr_id anagrafiche.soggetti_ruoli.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- Scopo: l'identita' (veste FORNITORE_PORTALE, utilizzabile oggi) e' il
+                  --   soggetto p_fornitore_sr_id? Fail-closed: identita' NULL, inesistente,
+                  --   in altra veste o non utilizzabile -> false.
+                  -- ⭐ Rev 2026-10-21 (20261021-42, giro 5 di brief-db-perimetro-una-volta-
+                  --   famiglie-residue): la composizione dei building block delle policy di
+                  --   controparte (script.fn_get_identita_sr_perimetro nella veste
+                  --   FORNITORE_PORTALE, confrontato da script.fn_scope_sr_perimetro). Resta
+                  --   la funzione della regola FORNITORE_OWNERSHIP nel catalogo
+                  --   config.scope_policy; le policy di acquisti non passano piu' di qui
+                  --   (20261021-43).
+                  SELECT script.fn_scope_sr_perimetro(
+                      script.fn_get_identita_sr_perimetro(
+                          p_identita_id,
+                          ARRAY['FORNITORE_PORTALE']::config.ruolo_applicativo[]),
+                      p_fornitore_sr_id)
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_fornitore_ownership(anagrafiche.identita_digitali.id%TYPE, anagrafiche.soggetti_ruoli.id%TYPE) IS
+              'Scope policy FORNITORE_OWNERSHIP: ritorna true se il soggetto_ruolo del fornitore target coincide con il soggetto_ruolo dell''identita e l''identita e'' in veste FORNITORE_PORTALE attiva. STABLE, inlineable. Rev 2026-10-07 (brief-db-veste-utilizzabile): l''identita'' deve essere utilizzabile oggi (script.fn_veste_utilizzabile), non solo accesa: una veste scaduta non vede piu'' i suoi dati. Rev 2026-10-21 (20261021-42, giro 5 di brief-db-perimetro-una-volta-famiglie-residue): composizione dei building block delle policy di controparte (script.fn_get_identita_sr_perimetro nella veste FORNITORE_PORTALE, script.fn_scope_sr_perimetro); le policy di acquisti non passano piu'' di qui.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_email_ambito(
+                  -- ⚠️ `integer` esplicito: django.auth_user.id, a cui il DB non si lega.
+                  p_auth_user_id           integer,
+                  p_ambito                 config.email_outbox.ambito%TYPE,
+                  p_emittente_fiscale_id   config.email_outbox.emittente_fiscale_id%TYPE,
+                  p_unita_organizzativa_id config.email_outbox.unita_organizzativa_id%TYPE,
+                  p_creato_da_user_id      config.email_outbox.creato_da_user_id%TYPE,
+                  p_processo_codice        dbops.processi.codice%TYPE DEFAULT NULL)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- =====================================================
+                  -- Scopo:
+                  --   «Chi guarda (p_auth_user_id) puo' vedere una mail con
+                  --   questo ambito, questa azienda, questo reparto e questo
+                  --   autore?» Sede unica per le policy di email_log e
+                  --   email_outbox, in lettura e in scrittura.
+                  --
+                  --   SISTEMA   -> super admin | processo
+                  --   REPARTO   -> (super admin | stesso reparto | processo)
+                  --                AND emittente in scope
+                  --   OPERATORE -> (super admin | autore | processo)
+                  --                AND emittente in scope
+                  --
+                  -- ⚠️ p_processo_codice NULL = nessun processo ammesso
+                  --   (l'outbox). Il log passa 'send_pending_emails':
+                  --   portare e' leggere.
+                  -- ⛔ Con p_auth_user_id NULL ogni ramo e' false: il
+                  --   cancello emittente (che per NULL dice true) e'
+                  --   sempre in AND con una condizione falsa.
+                  -- =====================================================
+                  SELECT COALESCE(
+                      CASE p_ambito
+                          WHEN 'SISTEMA' THEN
+                              script.fn_is_super_admin(p_auth_user_id)
+                              OR (p_processo_codice IS NOT NULL
+                                  AND script.fn_scope_identita_processo(
+                                          p_auth_user_id, p_processo_codice))
+                          WHEN 'REPARTO' THEN
+                              (   script.fn_is_super_admin(p_auth_user_id)
+                               -- ⚠️ Utente senza reparto: la funzione rende
+                               --   NULL, il confronto non e' vero, la riga
+                               --   non si vede. Fail-closed, voluto.
+                               OR p_unita_organizzativa_id
+                                  = script.fn_get_uo_id_for_user(p_auth_user_id)
+                               OR (p_processo_codice IS NOT NULL
+                                   AND script.fn_scope_identita_processo(
+                                           p_auth_user_id, p_processo_codice)))
+                              AND script.fn_scope_ef_whitelist(
+                                      p_auth_user_id, p_emittente_fiscale_id)
+                          WHEN 'OPERATORE' THEN
+                              (   script.fn_is_super_admin(p_auth_user_id)
+                               OR p_creato_da_user_id = p_auth_user_id
+                               OR (p_processo_codice IS NOT NULL
+                                   AND script.fn_scope_identita_processo(
+                                           p_auth_user_id, p_processo_codice)))
+                              AND script.fn_scope_ef_whitelist(
+                                      p_auth_user_id, p_emittente_fiscale_id)
+                          ELSE false
+                      END,
+                      false);
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_email_ambito(integer, config.email_outbox.ambito%TYPE, config.email_outbox.emittente_fiscale_id%TYPE, config.email_outbox.unita_organizzativa_id%TYPE, config.email_outbox.creato_da_user_id%TYPE, dbops.processi.codice%TYPE) IS
+              'Chi vede una mail secondo il suo AMBITO. SISTEMA: super admin (piu'' il processo, se nominato). REPARTO: super admin, chi e'' nello stesso reparto (script.fn_get_uo_id_for_user) o il processo, E l''emittente nel perimetro di chi guarda. OPERATORE: super admin, chi l''ha creata (creato_da_user_id) o il processo, E l''emittente nel perimetro. Qualunque altro ambito: false. ⭐ Sede unica della regola per rls_email_log_ambito e rls_email_outbox_ambito, in USING e WITH CHECK: quattro sedi che non possono divergere. ⭐ p_processo_codice: il log passa send_pending_emails (portare e'' leggere: senza, una mail REPARTO o OPERATORE fallita non verrebbe ritentata); l''outbox passa NULL, perche'' nessun processo la apre. ⚠️ D-1: l''emittente resta in AND anche per l''autore e per il processo. ⛔ Utente NULL: sempre false, anche se il cancello emittente per NULL dice true. La regola della scheda pratica (D-3) non e'' qui. Brief: brief-db-email-visibilita-per-ambito. rev 2026-09-25.';
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_fornitore_ownership(
+                  p_identita_id     anagrafiche.identita_digitali.id%TYPE,
+                  p_fornitore_sr_id anagrafiche.soggetti_ruoli.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- Match diretto: il target soggetto_ruolo e' quello dell'identita,
+                  -- e l'identita stessa e' in veste FORNITORE_PORTALE. Evita
+                  -- false positive su altre identita (es. cliente con stesso sr).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                       WHERE id.id                = p_identita_id
+                         AND id.soggetto_ruolo_id = p_fornitore_sr_id
+                         AND id.ruolo_applicativo = 'FORNITORE_PORTALE'
+                         -- Rev 2026-10-07: utilizzabile oggi, non solo accesa.
+                         AND script.fn_veste_utilizzabile(id.id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_fornitore_ownership(anagrafiche.identita_digitali.id%TYPE, anagrafiche.soggetti_ruoli.id%TYPE) IS
+              'Scope policy FORNITORE_OWNERSHIP: ritorna true se il soggetto_ruolo del fornitore target coincide con il soggetto_ruolo dell''identita e l''identita e'' in veste FORNITORE_PORTALE attiva. STABLE, inlineable. Rev 2026-10-07 (brief-db-veste-utilizzabile): l''identita'' deve essere utilizzabile oggi (script.fn_veste_utilizzabile), non solo accesa: una veste scaduta non vede piu'' i suoi dati.';

@@ -18,13 +18,20 @@
 --   VENDITA da MAG, emessa e consegnata: SEMPLICE 4 (prelievo automatico),
 --   A_LOTTI 8 (A 5, B 3), NON_GESTITO 2.
 --
--- Elenco test (plan 25):
+-- Elenco test (plan 29):
 --    1) il reso nasce col magazzino della bolla d'origine (default, D-3b-a)
 --    2) le voci: SEMPLICE automatica, A_LOTTI no (due prelievi), NON_GESTITO nessuna
 --    3) senza rientri sulla riga a lotti -> fn_check_reso_merce: E_RESO_RIENTRI_INCOMPLETI
 --    4) ...e la capability spegne «Conferma» con lo stesso motivo
+--   4a) ...e porta `reasons`: l'array della check, intero (una sede)
+--   4b) ...coi `valori` della frase: riga 2, 0 indicati su 4
+--       (brief-db-reso-motivi-conferma-con-valori)
 --    5) un rientro che nomina il prelievo di un'altra riga -> E_RESO_RIENTRO_INCOERENTE
 --    6) rientri completi (A 3, B 1) -> nessun motivo
+--   6a) ...e la «Conferma» e' accesa, con `reasons` null
+--   6b) PRESIDIO: un reso senza righe -> DOCUMENTO_SENZA_RIGHE e `reasons` null.
+--       Oggi verde anche senza la precedenza scritta (la check della merce con
+--       zero righe non parla): diventa rosso il giorno che l'incastro si rompe
 --    7) UPDATE diretto a CONFERMATO di un reso che muove merce -> E_RESO_STATO_SOLO_DA_VERBO
 --    8) senza l'azione conferma_reso il verbo rifiuta -> E_PERMESSO_NEGATO
 --    9) il verbo conferma: tre carichi CARICO_RESO_VEN (SEMPLICE 2, lotto A 3, lotto B 1)
@@ -49,7 +56,7 @@ BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(25);
+SELECT plan(29);
 
 -- Il mondo: un'azienda NUOVA (su dbdev quella dell'operatore ha gia' magazzini).
 CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
@@ -166,6 +173,18 @@ SELECT is(
       WHERE a ->> 'target_state' = 'CONFERMATO'),
     'RIENTRI_INCOMPLETI',
     '4) ...e la capability spegne «Conferma» con lo stesso motivo (una sede)');
+SELECT is(
+    (SELECT a -> 'reasons'
+       FROM jsonb_array_elements(script.fn_available_actions_reso((SELECT reso FROM _r1)) -> 'available_actions') a
+      WHERE a ->> 'target_state' = 'CONFERMATO'),
+    (SELECT script.fn_check_reso_merce(r) FROM vendite.resi r WHERE r.id = (SELECT reso FROM _r1)),
+    '4a) ...e porta `reasons`: l''array della check, intero (la forma della bolla)');
+SELECT is(
+    (SELECT a -> 'reasons' -> 0 -> 'valori'
+       FROM jsonb_array_elements(script.fn_available_actions_reso((SELECT reso FROM _r1)) -> 'available_actions') a
+      WHERE a ->> 'target_state' = 'CONFERMATO'),
+    '["2", "0", "4"]'::jsonb,
+    '4b) ...coi valori della frase «Riga {0} del reso: indicati {1} pezzi su {2}»: riga 2, 0 su 4');
 
 -- 5) il prelievo di un'altra riga
 SELECT throws_like(
@@ -181,6 +200,30 @@ SELECT is(
     (SELECT script.fn_check_reso_merce(r) FROM vendite.resi r WHERE r.id = (SELECT reso FROM _r1)),
     '[]'::jsonb,
     '6) rientri completi: nessun motivo (la SEMPLICE rientra da se'')');
+SELECT is(
+    (SELECT (a ->> 'enabled') || ':' || jsonb_typeof(a -> 'reasons')
+       FROM jsonb_array_elements(script.fn_available_actions_reso((SELECT reso FROM _r1)) -> 'available_actions') a
+      WHERE a ->> 'target_state' = 'CONFERMATO'),
+    'true:null',
+    '6a) ...e la «Conferma» e'' accesa, con `reasons` presente e null');
+
+-- 6b) PRESIDIO della precedenza: un reso senza righe sulla stessa bolla.
+CREATE TEMP TABLE _r0 (reso bigint);
+DO $r0$
+DECLARE v_reso bigint;
+BEGIN
+    INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza)
+    SELECT (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno = 'DRAFT'),
+           f.sorgente_ddt, (SELECT dd.uid FROM vendite.ddt dd WHERE dd.id = (SELECT ddt FROM _d)), false
+      FROM _fix f RETURNING id INTO v_reso;
+    INSERT INTO _r0 VALUES (v_reso);
+END $r0$;
+SELECT is(
+    (SELECT (a ->> 'reason') || ':' || jsonb_typeof(a -> 'reasons')
+       FROM jsonb_array_elements(script.fn_available_actions_reso((SELECT reso FROM _r0)) -> 'available_actions') a
+      WHERE a ->> 'target_state' = 'CONFERMATO'),
+    'DOCUMENTO_SENZA_RIGHE:null',
+    '6b) PRESIDIO: reso senza righe -> DOCUMENTO_SENZA_RIGHE, e `reasons` null (la merce non parla prima delle righe)');
 
 -- 7) la porta
 SELECT throws_like(

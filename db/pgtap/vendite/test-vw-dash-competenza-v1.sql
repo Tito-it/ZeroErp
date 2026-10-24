@@ -182,7 +182,8 @@ WITH ins AS (
          r.articolo_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
          DATE '2080-01-01', DATE '2080-01-01', DATE '2080-01-31',
          r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
-         'BOZZA', 'NON_EMESSA', NULL, NULL
+         'BOZZA', 'NON_EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+         ((SELECT id FROM tmp_dc_commessa))::text
     FROM tmp_dc_refs r
   RETURNING id)
 INSERT INTO tmp_dc_att SELECT 'A1_DA_APPROVARE', id FROM ins;
@@ -192,13 +193,19 @@ WITH ins AS (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
     uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
     tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid,
+    tipo_movimento)
   SELECT (SELECT id FROM tmp_dc_commessa),
          'PGTAP-DC-A2-' || substr(md5(clock_timestamp()::text), 1, 8),
          r.articolo_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
          DATE '2080-01-01', DATE '2080-01-01', DATE '2080-01-31',
          r.tipo_doc_fiscale_id, r.valuta_id, 20.000000, 'FIXED',
-         'APPROVATA', 'NON_EMESSA', NULL, NULL
+         -- ⭐ SENZA sorgente, di proposito: e' il gruppo sourceless del test 15
+         --   ('MAN:<commessa>'). Sul modello una riga senza sorgente e' una
+         --   RETTIFICA o un ONERE (vincolo 20261012-27): RETTIFICA, perche'
+         --   l'ONERE vorrebbe una causale e un articolo d'onere dal catalogo.
+         'APPROVATA', 'NON_EMESSA', NULL, NULL,
+         'RETTIFICA'
     FROM tmp_dc_refs r
   RETURNING id)
 INSERT INTO tmp_dc_att SELECT 'A2_DA_EMETTERE', id FROM ins;
@@ -214,7 +221,8 @@ WITH ins AS (
          r.articolo_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
          DATE '2080-01-01', DATE '2080-01-01', DATE '2080-01-31',
          r.tipo_doc_fiscale_id, r.valuta_id, 30.000000, 'FIXED',
-         'APPROVATA', 'EMESSA', NULL, NULL
+         'APPROVATA', 'EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+         ((SELECT id FROM tmp_dc_commessa))::text
     FROM tmp_dc_refs r
   RETURNING id)
 INSERT INTO tmp_dc_att SELECT 'A3_EMESSA', id FROM ins;
@@ -230,7 +238,8 @@ WITH ins AS (
          r.articolo_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
          DATE '2080-01-01', DATE '2080-01-01', DATE '2080-01-31',
          r.tipo_doc_fiscale_id, r.valuta_id, 40.000000, 'FIXED',
-         'APPROVATA', 'EMESSA', NULL, NULL
+         'APPROVATA', 'EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+         ((SELECT id FROM tmp_dc_commessa))::text
     FROM tmp_dc_refs r
   RETURNING id)
 INSERT INTO tmp_dc_att SELECT 'A4_FATTURATA', id FROM ins;
@@ -246,7 +255,8 @@ WITH ins AS (
          r.articolo_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
          DATE '2080-01-01', DATE '2080-01-01', DATE '2080-01-31',
          r.tipo_doc_fiscale_id, r.valuta_id, 999.000000, 'FIXED',
-         'APPROVATA', 'ANNULLATA', NULL, NULL
+         'APPROVATA', 'ANNULLATA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+         ((SELECT id FROM tmp_dc_commessa))::text
     FROM tmp_dc_refs r
   RETURNING id)
 INSERT INTO tmp_dc_att SELECT 'A5_VOID', id FROM ins;
@@ -256,9 +266,11 @@ CREATE TEMP TABLE tmp_dc_fattura AS
 WITH ins AS (
   INSERT INTO vendite.fatture (
     registro_id, data, tipo_doc_fiscale_id, stato_doc_fiscale_id,
-    emittente_soggetto_ruolo_id, billing_account_id, meta)
+    emittente_soggetto_ruolo_id, billing_account_id, utility_id, meta)
   SELECT r.registro_id, DATE '2080-03-15', r.tipo_doc_fiscale_id, r.stato_fiscale_id,
          r.ef_a_sr, r.billing_account_id,
+         -- utility dal BA, come la testata vera (R-3, 20261021-15)
+         (SELECT ba.utility_id FROM anagrafiche.billing_account ba WHERE ba.id = r.billing_account_id),
          jsonb_build_object('test_scope','pgtap_dash_competenza')
     FROM tmp_dc_refs r
   RETURNING id)
@@ -520,8 +532,8 @@ SELECT ok(
   '14. Dettaglio: commessa_stato_descrizione decodificata accanto al codice interno'
 );
 
--- ⚠️ Il gruppo della fixture e' SOURCELESS (le attivita' hanno sorgente NULL ->
---   chiave 'MAN:<commessa>'), quindi `documento_id` e' NULL, ed e' il
+-- ⚠️ Il gruppo DA_EMETTERE della fixture e' SOURCELESS (A2, una RETTIFICA con
+--   sorgente NULL -> chiave 'MAN:<commessa>'), quindi `documento_id` e' NULL, ed e' il
 --   comportamento voluto: quei gruppi un documento non ce l'hanno e il FE
 --   offre la sola commessa. Il ramo con documento valorizzato ha bisogno di un
 --   documento sorgente vero nella vista dei documenti: si verifica quando c'e',

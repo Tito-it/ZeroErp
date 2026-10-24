@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_commessa_stato(p_commessa_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_commessa_stato(p_commessa_id bigint)
  RETURNS TABLE(commessa_id bigint, stato_commessa_id bigint, stato_commessa character varying, chiude_commessa boolean, emittibile boolean, modificabile boolean, policy_fatturazione character varying, fatturazione_immediata boolean, priorita_operativa character varying, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, total_attivita bigint, total_approvate bigint, total_non_approvate bigint, total_emesse bigint, total_non_emesse bigint, total_prezzo_da_riallineare bigint, last_update timestamp with time zone, commessa_codice character varying, cliente_display text)
@@ -92,6 +94,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_commessa_stato(p_commessa_id bigint)
 IS 'Stato testata commessa con flag operativi e contatori attivita in singolo round-trip. rev 2026-07-24 (brief-db-guard-uscita-commessa-e-capabilities D6): + commessa_codice (c.codice — da non confondere con stato_commessa, che e'' il codice dello STATO) e + cliente_display (anagrafiche.soggetti.ragione_sociale_completa via billing_account->soggetti_ruoli->soggetti, STESSA espressione di vw_dash_competenza_attivita). LEFT JOIN sulla catena cliente: un BA senza soggetto non fa sparire la riga. rev 2026-07-28 (brief-annullamento-righe-manuali-commessa §3-ter): i contatori del FUNNEL (total_approvate, total_non_approvate, total_non_emesse, total_prezzo_da_riallineare) escludono le righe con stato_emissione=ANNULLATA, coerentemente con tutte le altre porte del dominio; total_attivita resta invece il conteggio FISICO delle righe -- una riga annullata esiste, e il totale e'' l''unico numero da cui si vede che qualcosa e'' stato annullato. Serve il filtro esplicito perche'' stato_approvazione di una riga annullata resta APPROVATA (assi distinti). total_emesse invariato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

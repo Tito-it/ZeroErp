@@ -7,8 +7,16 @@
 --
 -- Indice test (1..5):
 --   Struttura:
---   1)  Funzione script.trgfn_righe_guard_esclusione_figlio_bundle presente (rev 2026-10-04)
---   2)  Trigger trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd presente, sulla funzione generica
+--   1)  La check per tipo di riga compone la regola: i suoi motivi
+--       (script.fn_check_articolo_riga_su_contesto dal 2026-10-14, Lotto 4) chiamano
+--       script.fn_check_esclusione_articolo_documento (rev 2026-10-13, Lotto 3b)
+--   2)  Trigger trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd presente, sul guard di
+--       tabella script.trgfn_righe_guard_articolo_ammesso
+--
+--   ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b): il guard
+--   dedicato (script.trgfn_righe_guard_esclusione_figlio_bundle) e' ritirato; il figlio
+--   di bundle e' il primo motivo dell'ESCLUSIONE nella check per tipo di riga, che il
+--   guard di tabella solleva. Codice e messaggio invariati: i test 3-5 non cambiano.
 --
 --   rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): la funzione e'
 --   generica per contratto e offerta (script); le esclusioni nascono VUOTE
@@ -114,16 +122,16 @@ SELECT plan(5);
 -- ============================================================
 
 -- ============================================================
--- 1) script.trgfn_righe_guard_esclusione_figlio_bundle presente
+-- 1) la check per tipo di riga compone la regola (rev 2026-10-13, Lotto 3b)
+--    rev 2026-10-14 (Lotto 4, 20261014-02): i motivi stanno in
+--    script.fn_check_articolo_riga_su_contesto, che la firma di sempre compone
+--    col contesto del documento.
 -- ============================================================
 SELECT ok(
-    EXISTS (
-        SELECT 1 FROM pg_proc p
-          JOIN pg_namespace n ON n.oid = p.pronamespace
-         WHERE n.nspname = 'script'
-           AND p.proname = 'trgfn_righe_guard_esclusione_figlio_bundle'
-    ),
-    '1) Funzione script.trgfn_righe_guard_esclusione_figlio_bundle presente'
+    (SELECT regexp_replace(prosrc, '--[^\n]*', '', 'g') ~ 'fn_check_esclusione_articolo_documento\s*\('
+       FROM pg_proc
+      WHERE oid = 'script.fn_check_articolo_riga_su_contesto(jsonb,uuid,bigint)'::regprocedure),
+    '1) script.fn_check_articolo_riga_su_contesto compone script.fn_check_esclusione_articolo_documento'
 );
 
 -- ============================================================
@@ -137,11 +145,11 @@ SELECT ok(
           JOIN pg_namespace n ON n.oid = c.relnamespace
          WHERE n.nspname = 'vendite'
            AND c.relname = 'contratti_righe'
-           AND t.tgname  = 'trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd'
-           AND t.tgfoid  = 'script.trgfn_righe_guard_esclusione_figlio_bundle()'::regprocedure
+           AND t.tgname  = 'trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd'
+           AND t.tgfoid  = 'script.trgfn_righe_guard_articolo_ammesso()'::regprocedure
            AND NOT t.tgisinternal
     ),
-    '2) Trigger trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd presente'
+    '2) Trigger trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd presente'
 );
 
 -- ============================================================

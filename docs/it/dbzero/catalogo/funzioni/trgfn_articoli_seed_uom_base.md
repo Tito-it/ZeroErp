@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_articoli_seed_uom_base()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_seed_uom_base()
  RETURNS trigger
@@ -36,6 +38,8 @@ $function$
 COMMENT ON FUNCTION catalogo.trgfn_articoli_seed_uom_base()
 IS 'Trigger AFTER INSERT su catalogo.articoli: crea automaticamente la riga is_base=true in articoli_uom_operativa con factor_to_base=1. Idempotente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

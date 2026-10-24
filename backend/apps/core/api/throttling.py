@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import math
 
+from django.conf import settings
 from rest_framework.throttling import AnonRateThrottle, SimpleRateThrottle
 
 from apps.core.services.request_context import get_client_ip
@@ -96,9 +97,13 @@ class _CustomRateAnonThrottle(_ClientIpIdentMixin, AnonRateThrottle):
 
 
 class LoginRateThrottle(_CustomRateAnonThrottle):
-    """Limita tentativi login per IP: 5 ogni 5 minuti."""
+    """Limita tentativi login per IP: 5 ogni 5 minuti (default).
+
+    Il ritmo e' `settings.API_LOGIN_THROTTLE_RATE` (env
+    `DJANGO_API_LOGIN_THROTTLE_RATE`): si alza solo in sviluppo, per gli smoke.
+    """
     scope = "login"
-    rate = "5/5m"
+    rate = settings.API_LOGIN_THROTTLE_RATE
 
 
 class SecondoFattoreRateThrottle(_CustomRateAnonThrottle):
@@ -115,7 +120,7 @@ class SecondoFattoreRateThrottle(_CustomRateAnonThrottle):
     scelta, non per copia: i due limiti possono divergere.
     """
     scope = "login_secondo_fattore"
-    rate = "5/5m"
+    rate = settings.API_SECONDO_FATTORE_THROTTLE_RATE   # default "5/5m"
 
 
 class PasswordResetRateThrottle(_CustomRateAnonThrottle):

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_search_stradario_generale(p_search text, p_toponomastica_id i
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_search_stradario_generale(p_search text DEFAULT NULL::text, p_toponomastica_id integer DEFAULT NULL::integer, p_limit integer DEFAULT 30)
  RETURNS TABLE(stradario_generale_id integer, toponomastica_id integer, toponimo character varying, denominazione character varying, indirizzo_normalizzato text)
@@ -101,6 +103,8 @@ $function$
 COMMENT ON FUNCTION script.fn_search_stradario_generale(p_search text, p_toponomastica_id integer, p_limit integer)
 IS 'Ricerca vie su stradario_generale per autocomplete via nuova. Filtra per testo fuzzy su indirizzo_normalizzato e opzionalmente per tipo strada. JOIN stradario_generale -> toponomastica. STABLE, PARALLEL SAFE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

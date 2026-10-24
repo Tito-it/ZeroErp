@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_resi_guard_cliente_ddt()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_cliente_ddt()
  RETURNS trigger
@@ -81,6 +83,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_resi_guard_cliente_ddt()
 IS 'Guard BEFORE INSERT OR UPDATE su vendite.resi, fascia _z10_ (dopo trgfn_resi_normalize): il reso ha il billing account del DDT sorgente (DDT_VENDITA), NULL compreso (D-3, D-6 di brief-db-esecutivi-ba-coppia). E_DOC_CLIENTE_DIVERSO_DA_SORGENTE, come DDT e fulfillment. In qualunque stato: il BA del DDT sorgente e'' bloccato fuori bozza e il DDT di un reso e'' consegnato, quindi il BA del reso non cambia mai — per questo il reso non ha un lock fuori bozza sul cliente. DDT letto come INVOKER, come il normalize. rev 2026-10-10 (§10.2 domanda 3, Tid): DDT sorgente dichiarato e non trovato — inesistente o invisibile sotto RLS — e'' E_DOC_SORGENTE_NON_TROVATA (fail-closed; su INSERT parla prima vendite.trgfn_resi_guard_ddt_consegnato, su un UPDATE della sorgente solo questo guard).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

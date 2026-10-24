@@ -1,0 +1,152 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA D'ORDINE DICE SE LA SUA DATA DI CONSEGNA CONFERMATA SI CAMBIA
+#   vendite.vw_ordini_righe_dettaglio: + data_consegna_confermata_blocco
+#   Brief: brief-db-date-consegna-righe-in-blocco (D-7, §4.3, §5)
+#
+# -- LA COLONNA (in coda: CREATE OR REPLACE VIEW non sposta le altre) ------
+#   data_consegna_confermata_blocco (text) = il `reason` del primo motivo di
+#   script.fn_check_ordine_riga_data_consegna_confermata; NULL = la data si
+#   cambia. Un verbo, una colonna (linee-guida-sql §12.5.4). La reason_key il
+#   FE la ricava dal reason (vendite.ordini.data_consegna_confermata_reason.
+#   <reason minuscolo>), come per le altre colonne di blocco per riga.
+#   Due consumatori: il verbo per riga del backend (cambia_data_consegna_confermata)
+#   spegne il pulsante, l'utility in blocco salta le righe che lo portano.
+#   ⚠️ In DRAFT la colonna e' NULL: la check di riga ammette (in bozza la riga si
+#   modifica tutta). Che in bozza il gesto giusto sia la modifica della riga lo
+#   dice la capability di documento (can_edit_data_consegna_confermata), non
+#   questa colonna.
+#   ⚠️ Una colonna per riga che chiama una check costa qualche query per riga:
+#   la vista serve il dettaglio di UN documento (le righe di un ordine) — la
+#   stessa scelta di vendite.vw_ddt_righe_dettaglio e vw_resi_righe_dettaglio.
+#
+#   Corpo dalla doc auto-generata (20260928-18, nessuna revisione dopo);
+#   security_invoker ri-specificata (si azzera su CREATE OR REPLACE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-07-update-vw-ordini-righe-dettaglio-data-consegna-blocco-mctit.yaml
+
+  - changeSet:
+      id: 20261012-07-update-vw-ordini-righe-dettaglio-data-consegna-blocco
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_ordini_righe_dettaglio: + data_consegna_confermata_blocco (motivo per cui la data di
+        consegna confermata della riga non si cambia, NULL = si cambia). Brief:
+        brief-db-date-consegna-righe-in-blocco (D-7).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_ordine_riga_data_consegna_confermata';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_ordini_righe_dettaglio
+              WITH (security_invoker=true) AS
+              SELECT r.id,
+                  r.ordine_id,
+                  r.riga_nr,
+                  r.attivo,
+                  r.articolo_id,
+                  a.codice AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  r.descrizione,
+                  r.quantita,
+                  r.qta_operativa,
+                  r.factor_to_base,
+                  r.uom_operativa_id,
+                  um.codice AS uom_codice,
+                  r.prezzo_unitario,
+                  r.sconto_percentuale,
+                  r.iva_id,
+                  iva.codice AS iva_codice,
+                  iva.descrizione AS iva_descrizione,
+                  iva.aliquota_iva AS iva_aliquota,
+                  round(script.fn_imponibile_riga(r.quantita, r.prezzo_unitario, r.sconto_percentuale), 2) AS importo_riga,
+                  script.fn_imponibile_riga(r.quantita, r.prezzo_unitario, r.sconto_percentuale) AS imponibile_riga_full,
+                  round((COALESCE(ful.qta_evasa_base, (0)::numeric) / NULLIF(r.factor_to_base, (0)::numeric)), 6) AS qta_evasa_operativa,
+                  round((GREATEST((r.quantita - COALESCE(ful.qta_evasa_base, (0)::numeric)), (0)::numeric) / NULLIF(r.factor_to_base, (0)::numeric)), 6) AS qta_residua_operativa,
+                  r.meta,
+                  r.data_insert,
+                  r.data_update,
+                  r.data_consegna_richiesta_cliente,
+                  r.data_consegna_confermata,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.ordini_righe_componenti rc
+                        WHERE ((rc.riga_ordine_id = r.id) AND (rc.attivo IS TRUE)))) AS is_composito_caso_a,
+                  (script.fn_check_ordine_riga_data_consegna_confermata(r.id) -> 0) ->> 'reason' AS data_consegna_confermata_blocco
+                 FROM ((((vendite.ordini_righe r
+                   LEFT JOIN catalogo.articoli a ON ((a.id = r.articolo_id)))
+                   LEFT JOIN catalogo.unita_misura um ON ((um.id = r.uom_operativa_id)))
+                   LEFT JOIN config.iva iva ON ((iva.id = r.iva_id)))
+                   LEFT JOIN LATERAL ( SELECT sum(f.qta_evasa) AS qta_evasa_base
+                         FROM vendite.ordini_righe_fulfillment f
+                        WHERE (f.ordine_riga_id = r.id)) ful ON (true));
+
+              COMMENT ON COLUMN vendite.vw_ordini_righe_dettaglio.data_consegna_confermata_blocco IS
+                  'Il reason del primo motivo per cui la data di consegna confermata della riga NON si cambia ora (script.fn_check_ordine_riga_data_consegna_confermata, la stessa check del guard): STATO_NON_AMMETTE (lo stato dell''ordine) o RIGA_SPEDITA (la riga e'' gia'' partita con un DDT, anche in parte). NULL = si cambia; in DRAFT e'' sempre NULL (in bozza la riga si modifica tutta). reason_key vendite.ordini.data_consegna_confermata_reason.<reason minuscolo>. Consumatori: il verbo per riga e l''utility che aggiorna le date in blocco (salta le righe con un motivo). Brief: brief-db-date-consegna-righe-in-blocco.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Togliere una colonna da una vista e' un DROP + CREATE, e il DROP
+              --   perderebbe i grant che da' il loop di ci_apply (app e ruolo batch).
+              --   Il rollback quindi tiene la colonna a NULL e toglie la chiamata alla
+              --   check: basta perche' il rollback del -05 (DROP della check) passi.
+              CREATE OR REPLACE VIEW vendite.vw_ordini_righe_dettaglio
+              WITH (security_invoker=true) AS
+              SELECT r.id,
+                  r.ordine_id,
+                  r.riga_nr,
+                  r.attivo,
+                  r.articolo_id,
+                  a.codice AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  r.descrizione,
+                  r.quantita,
+                  r.qta_operativa,
+                  r.factor_to_base,
+                  r.uom_operativa_id,
+                  um.codice AS uom_codice,
+                  r.prezzo_unitario,
+                  r.sconto_percentuale,
+                  r.iva_id,
+                  iva.codice AS iva_codice,
+                  iva.descrizione AS iva_descrizione,
+                  iva.aliquota_iva AS iva_aliquota,
+                  round(script.fn_imponibile_riga(r.quantita, r.prezzo_unitario, r.sconto_percentuale), 2) AS importo_riga,
+                  script.fn_imponibile_riga(r.quantita, r.prezzo_unitario, r.sconto_percentuale) AS imponibile_riga_full,
+                  round((COALESCE(ful.qta_evasa_base, (0)::numeric) / NULLIF(r.factor_to_base, (0)::numeric)), 6) AS qta_evasa_operativa,
+                  round((GREATEST((r.quantita - COALESCE(ful.qta_evasa_base, (0)::numeric)), (0)::numeric) / NULLIF(r.factor_to_base, (0)::numeric)), 6) AS qta_residua_operativa,
+                  r.meta,
+                  r.data_insert,
+                  r.data_update,
+                  r.data_consegna_richiesta_cliente,
+                  r.data_consegna_confermata,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.ordini_righe_componenti rc
+                        WHERE ((rc.riga_ordine_id = r.id) AND (rc.attivo IS TRUE)))) AS is_composito_caso_a,
+                  NULL::text AS data_consegna_confermata_blocco
+                 FROM ((((vendite.ordini_righe r
+                   LEFT JOIN catalogo.articoli a ON ((a.id = r.articolo_id)))
+                   LEFT JOIN catalogo.unita_misura um ON ((um.id = r.uom_operativa_id)))
+                   LEFT JOIN config.iva iva ON ((iva.id = r.iva_id)))
+                   LEFT JOIN LATERAL ( SELECT sum(f.qta_evasa) AS qta_evasa_base
+                         FROM vendite.ordini_righe_fulfillment f
+                        WHERE (f.ordine_riga_id = r.id)) ful ON (true));

@@ -72,23 +72,24 @@ SELECT plan(9);
 --   del planner e il test passerebbe a giorni alterni. E il BA si sceglie UNA
 --   volta in una CTE: due sotto-select indipendenti potrebbero pescarne due
 --   diversi, e id ed emittente non apparterrebbero allo stesso.
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti): il cliente fatturabile nasce qui, legato all'azienda
+--   di chi agisce, e l'articolo e' merce non gestita a magazzino. Dal DB si
+--   legge solo il seed; l'emittente resta DERIVATO dal BA costruito.
+CREATE TEMP TABLE tmp_oi_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP conferma ordine IVA');
+CREATE TEMP TABLE tmp_oi_art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-OCI-V1', false) AS id;
+
 CREATE TEMP TABLE tmp_oi_refs AS
 WITH ba AS (
-  SELECT b.id, b.soggetto_ruolo_id
-    FROM anagrafiche.billing_account b
-   WHERE b.utility_id IS NOT NULL
-     AND b.istanza_utility_id IS NOT NULL
-     AND anagrafiche.fn_get_emittente_fiscale_pk(b.id) IS NOT NULL
-   ORDER BY b.id
-   LIMIT 1
+  SELECT m.billing_account_id AS id, m.cliente_soggetto_ruolo_id AS soggetto_ruolo_id
+    FROM tmp_oi_mondo m
 )
 SELECT (SELECT id FROM ba)                                    AS billing_account_id,
        (SELECT soggetto_ruolo_id FROM ba)                     AS soggetto_ruolo_id,
        anagrafiche.fn_get_emittente_fiscale_pk((SELECT id FROM ba)) AS emittente_fiscale_id,
-       (SELECT a.id FROM catalogo.articoli a
-         WHERE a.attivo IS TRUE
-           AND COALESCE(a.is_composito, FALSE) IS FALSE
-         ORDER BY a.id LIMIT 1)                               AS articolo_id,
+       (SELECT t.id FROM tmp_oi_art t)                        AS articolo_id,
        (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
        (SELECT i.id FROM config.iva i
          WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)        AS iva_id,

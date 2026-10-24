@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_famiglia_documento_struttura_modificabile(p_famiglia_id
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_famiglia_documento_struttura_modificabile(p_famiglia_id integer)
  RETURNS jsonb
@@ -105,6 +107,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_famiglia_documento_struttura_modificabile(p_famiglia_id integer)
 IS 'Pure check (§12.5.1): i motivi che impediscono di cambiare le colonne che dicono DOVE VIVE IL DOCUMENTO di una famiglia (schema_tabella, nome_tabella, colonna_numero, colonna_billing_account, colonna_serie). Torna [] se si puo'', altrimenti il motivo HA_REGISTRI con E_FAMIGLIA_DOCUMENTO_CHIAVE_IMMUTABILE. ⛔ PERCHE'': quelle colonne non descrivono la famiglia, la fanno funzionare — le legge in SQL dinamico il presidio sul cambio emittente del billing account, e le legge script.fn_check_registro_serie_ammessa a ogni scrittura su un registro. Il caso peggiore e'' colonna_serie portata a NULL: da quel momento la serie risulta non ammessa e i registri che ce l''hanno restano con un secchio del contatore che il documento non sa piu'' distinguere, senza che nessun vincolo se ne accorga. ⭐ IL PREDICATO E'' «ESISTE UN REGISTRO» e non «esiste un numero», deliberatamente piu'' largo di quello sulla forma del numero: un registro appena nato ha gia'' copiato dentro di se'' i default della famiglia, quindi la divergenza comincia prima del primo documento; e i registri SPENTI contano, perche'' uno spento si riaccende con la forma che aveva. ⛔ codice_interno NON e'' fra le colonne protette da qui: lo presidia il lock automatico (script.trgfn_lock_columns, E_CODICE_NON_MODIFICABILE), e due presidi sulla stessa colonna con due messaggi diversi sono la cosa da non fare. ⚠️ SECURITY INVOKER motivato: legge solo famiglie_documento e registri_fatturazione, nessuna delle due con RLS — a differenza della gemella sulla disattivazione, che conta documenti sotto RLS ed e'' per questo DEFINER. Un privilegio si chiede quando serve, non per simmetria. ⚠️ Il nome della colonna toccata NON e'' nella frase: viaggia nel context ->> campo, il canale con cui il frontend accende l''input giusto. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.5 (DB-3).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

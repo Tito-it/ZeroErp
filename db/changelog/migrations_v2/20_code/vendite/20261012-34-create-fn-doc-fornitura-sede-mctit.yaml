@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.fn_doc_fornitura_sede(p_documento)
+#   Dove sta la scheda di fornitura di un documento, e la sua testata.
+#   Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4, D-5, D-6)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Contratto e offerta hanno la loro scheda di fornitura (1:1) in una
+#   tabella propria, con una copia della coppia (istanza, utility) della
+#   testata. Tre oggetti nuovi devono sapere dove stanno testata e scheda:
+#   il building block che la rifa' dall'anagrafica, il guard sulla coppia e
+#   il trigger del cambio di cliente. Una mappa sola, come
+#   script.fn_doc_indirizzi_sede per gli indirizzi (regola del 2).
+#   In vendite e non in script: la scheda di fornitura esiste solo sui
+#   documenti di vendita precontrattuali.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-34-create-fn-doc-fornitura-sede-mctit.yaml
+
+  - changeSet:
+      id: 20261012-34-create-fn-doc-fornitura-sede
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova mappa vendite.fn_doc_fornitura_sede: testata e scheda di fornitura di contratto e
+        offerta. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_doc_fornitura_sede(
+                  p_documento text
+              )
+              RETURNS TABLE (
+                  schema_tabella    pg_catalog.pg_namespace.nspname%TYPE,
+                  testata           pg_catalog.pg_class.relname%TYPE,
+                  colonna_etichetta pg_catalog.pg_attribute.attname%TYPE,
+                  tabella           pg_catalog.pg_class.relname%TYPE,
+                  colonna_fk        pg_catalog.pg_attribute.attname%TYPE,
+                  etichetta         text
+              )
+              LANGUAGE plpgsql
+              IMMUTABLE
+              AS $function$
+              -- ⚠️ Tipi nudi DICHIARATI: p_documento e' un selettore senza colonna
+              --   di vocabolario (lo stesso di script.fn_get_stato_testata_documento);
+              --   etichetta e' la parola che l'operatore legge, senza colonna.
+              --   Schema, tabelle e colonne sono nomi del catalogo: ancorati li'.
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dove stanno la testata e la scheda di fornitura di un
+                  --   documento. Zero righe = selettore ignoto (o documento
+                  --   senza scheda di fornitura): decide il chiamante.
+                  -- ⭐ IMMUTABLE: e' una mappa scritta qui, non legge tabelle.
+                  -- =========================================================
+                  RETURN QUERY
+                  SELECT v.s::name, v.te::name, v.et::name, v.t::name, v.fk::name, v.lbl
+                    FROM (VALUES
+                        ('CONTRATTO', 'vendite', 'contratti',           'numero', 'contratti_utilities',           'contratto_id', 'Contratto'),
+                        ('OFFERTA',   'vendite', 'offerte_commerciali', 'codice', 'offerte_commerciali_utilities', 'offerta_id',   'Offerta')
+                    ) AS v(doc, s, te, et, t, fk, lbl)
+                   WHERE v.doc = p_documento;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_doc_fornitura_sede(text)
+              IS 'Dove sta la scheda di fornitura (1:1) di un documento: lo schema, la testata e la sua colonna leggibile (numero o codice), la tabella della scheda e la sua colonna verso la testata, e la parola che l''operatore legge (Contratto, Offerta). Selettore: CONTRATTO, OFFERTA (il vocabolario di script.fn_get_stato_testata_documento); il preventivo non ha scheda di fornitura. Zero righe = selettore ignoto, decide il chiamante. Schema e nomi separati, non regclass: finiscono in un format(%I), e il testo di un regclass dipende dal search_path. La usano vendite.fn_doc_fornitura_da_anagrafica, il guard vendite.trgfn_doc_fornitura_guard_coppia e il trigger vendite.trgfn_doc_fornitura_segue_cliente. Gemella di script.fn_doc_indirizzi_sede. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4).';

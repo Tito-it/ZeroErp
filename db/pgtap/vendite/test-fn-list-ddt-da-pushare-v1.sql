@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-4): il mondo (azienda, operatore, contesto, cliente con BA) si costruisce con dbops.fn_pgtap_crea_mondo_cliente; prima BA, emittente e ruolo del cliente erano «il primo BA del database con un emittente», assente su un database ricostruito da zero.
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_ddt_da_pushare (Caso A: da ordine, Caso B: autonomo)
 --       + trgfn_ddt_normalize (ereditarieta` billing fields)
@@ -14,7 +16,7 @@
 -- 7) Caso B: DDT autonomo SPEDITO con billing_account restituito
 -- 8) Caso B: prezzo da ddt_righe.prezzo_unitario
 -- 9) Caso B: DDT autonomo VENDITA senza billing_account non si emette (rev 2026-10-09)
--- 10) Segment key formato corretto (DDT:<uid>:R:<riga_id>)
+-- 10) Segment key formato corretto (DDT_VENDITA:<uid>:R:<riga_id>)
 -- 11) prezzo_bloccato = TRUE se prezzo presente
 -- 12) Filtro p_billing_account_id rispettato
 -- ------------------------------------------------------------
@@ -33,7 +35,12 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⭐ rev 2026-10-24 (Q-4): il mondo si COSTRUISCE — azienda, operatore,
+--   contesto aperto su di lui e un cliente fatturabile legato a quella
+--   azienda — al posto del contesto nudo e del «primo BA del database».
+-- pgtap-contesto: escluso — il contesto lo apre dbops.fn_pgtap_crea_mondo_cliente
+CREATE TEMP TABLE tmp_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('PGTAP-LDDT');
 
 SELECT plan(12);
 
@@ -56,36 +63,17 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_refs_ddt AS
 SELECT
-  -- BA vincolato a emittente fiscale risolvibile: dal lavoro emittente
-  -- (2026-07-13) trgfn_ordini_default_emittente pretende un emittente esplicito
-  -- nel payload quando la GUC app.current_user_id non risolve (contesto pgTAP).
-  (SELECT ba.id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS billing_account_id,
+  -- rev 2026-10-24 (Q-4): BA, emittente e ruolo del cliente dal mondo
+  --   costruito, non pescati. Il BA e' legato all'azienda di chi agisce,
+  --   quindi trgfn_ordini_guard_emittente_ba trova la coppia coerente.
+  m.billing_account_id AS billing_account_id,
   -- NB: fn_get_emittente_fiscale_pk (PK), non _id: e' la funzione con cui
   -- trgfn_ordini_guard_emittente_ba verifica la coerenza emittente<->BA.
-  (SELECT anagrafiche.fn_get_emittente_fiscale_pk(ba.id)
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS emittente_fiscale_id,
+  anagrafiche.fn_get_emittente_fiscale_pk(m.billing_account_id) AS emittente_fiscale_id,
   -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del
-  --   cliente e' quello del BA scelto sopra. Prima era «il primo ruolo del
-  --   database», scollegato dal BA: le FK composte fk_ordini_ba_cliente e
-  --   fk_ddt_ba_cliente lo rifiutano.
-  (SELECT ba.soggetto_ruolo_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS soggetto_ruolo_id,
+  --   cliente e' quello del BA: le FK composte fk_ordini_ba_cliente e
+  --   fk_ddt_ba_cliente rifiutano un ruolo scollegato.
+  m.cliente_soggetto_ruolo_id AS soggetto_ruolo_id,
   -- ⭐ Articolo COSTRUITO e NON gestito a magazzino (rev 2026-10-02). Prima era
   --   «l'ultimo articolo attivo del catalogo»: se quello era gestito, la bolla
   --   muoveva merce, e la porta del registro (trgfn_ddt_guard_transizione,
@@ -153,7 +141,8 @@ SELECT
      FROM config.sorgenti s
     WHERE s.codice = 'ORDINE_VENDITA' AND s.attivo IS TRUE
     LIMIT 1
-  ) AS sorgente_ordine_tipo_id;
+  ) AS sorgente_ordine_tipo_id
+FROM tmp_mondo m;
 
 -- Porta un DDT nato in DRAFT fino a SPEDITO nel verso vero: indirizzo CON,
 -- poi le transizioni contigue (EMESSO, SPEDITO). rev 2026-09-22.
@@ -560,10 +549,10 @@ SELECT ok(
     SELECT 1
     FROM vendite.fn_list_ddt_da_pushare(NULL, NULL, NULL) rd
     WHERE rd.ddt_id = (SELECT id FROM tmp_ddt_b)
-      AND rd.segment_key = 'DDT:' || (SELECT uid FROM tmp_ddt_b)::text
+      AND rd.segment_key = 'DDT_VENDITA:' || (SELECT uid FROM tmp_ddt_b)::text
                             || ':R:' || (SELECT id FROM tmp_ddt_b_riga)::text
   ),
-  'Segment key formato corretto (DDT:<uid>:R:<riga_id>)'
+  'Segment key formato corretto (DDT_VENDITA:<uid>:R:<riga_id>)'
 );
 
 -- ============================================================

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.config.sorgenti import SORGENTE_CONTRATTO
 from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.documenti.services.context_builders._number_formatting import (
@@ -45,11 +46,11 @@ E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
 class ContrattoDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti CONTRATTO."""
 
-    CODE = "CONTRATTO"
+    CODE = SORGENTE_CONTRATTO
     # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
     CONTEXT_VERSION = 2
 
-    # Tipi indirizzo ammessi nell'ambito CONTRATTI
+    # Tipi indirizzo ammessi nell'ambito CONTRATTO
     # (`config.tipi_indirizzi_allowed`). Dichiarati qui e non letti a runtime:
     # il context deve essere deterministico a parita' di documento (il
     # `context_hash` governa il dedup), e una modifica di configurazione non

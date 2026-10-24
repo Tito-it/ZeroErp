@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ricalcola_totali_preventivo(p_preventivo_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_totali_preventivo(p_preventivo_id bigint)
  RETURNS TABLE(preventivo_id bigint, totale_imponibile numeric, totale_iva numeric, totale_documento numeric)
@@ -67,6 +69,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ricalcola_totali_preventivo(p_preventivo_id bigint)
 IS 'Wrapper sopra fn_ricalcola_riepilogo_iva_preventivo. Ricalcola riepilogo IVA aggregato (fiscalmente corretto), poi somma le righe del riepilogo per i totali testata. Pattern allineato a fatture, garantisce coerenza preventivo <-> fattura emessa. Firma e RETURNS TABLE usano %TYPE su vendite.preventivi.* (tipi concreti risolti a bigint/numeric).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -149,6 +149,6 @@ export const SORGENTE_CLIENT_MAP = Object.freeze({
   [SORGENTE_CODES.CONTRATTO]: contrattoDocumenti,
   [SORGENTE_CODES.OFFERTA_COMMERCIALE]: offertaDocumenti,
   [SORGENTE_CODES.ORDINE_VENDITA]: ordineDocumenti,
-  [SORGENTE_CODES.DDT]: ddtDocumenti,
+  [SORGENTE_CODES.DDT_VENDITA]: ddtDocumenti,
   [SORGENTE_CODES.FATTURA]: fattureDocumenti,
 })

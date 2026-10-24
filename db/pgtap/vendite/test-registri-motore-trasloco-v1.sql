@@ -14,6 +14,7 @@
 --       vendite.fn_lookup_registro_documento   (20260831-01)
 --       vendite.fn_get_registro_documento      (20260831-02)
 --       Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §3.6 e §2.3
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): la famiglia della bolla e' DDT_VENDITA.
 -- ------------------------------------------------------------
 -- Elenco test (plan 9):
 -- 1) Fixture: due emittenti, un registro DDT per ciascuno
@@ -71,49 +72,23 @@ SELECT 'pgtap_motore_trasloco'::text AS test_scope,
        2101::smallint AS anno_a,
        2102::smallint AS anno_b;
 
--- ⚠️ `codice_interno = 'EF'` e non `codice`: quest'ultimo e' modificabile
---   dall'utente e un confronto logico su di esso si sgancia al primo rename.
--- ⚠️ La natura del soggetto non e' libera: senza il join su
---   config.tipi_ruoli_nature_ammesse la fixture morirebbe su un errore di
---   dominio che sembrerebbe un difetto del cantiere.
-CREATE TEMP TABLE tmp_mot_sogg AS
-SELECT s.id, row_number() OVER (ORDER BY s.id) AS n
-  FROM anagrafiche.soggetti s
-  JOIN config.tipi_soggetto_dettaglio tsd ON tsd.id = s.tipo_soggetto_dettaglio_id
-  JOIN config.tipi_ruoli_nature_ammesse na ON na.tipo_soggetto_id = tsd.tipo_soggetto_id
-  JOIN config.tipi_ruoli tr ON tr.id = na.tipo_ruolo_id AND tr.codice_interno = 'EF'
- WHERE s.attivo IS TRUE
-   AND NOT EXISTS (SELECT 1 FROM anagrafiche.soggetti_ruoli sr
-                    WHERE sr.soggetto_id = s.id AND sr.tipo_ruolo_id = tr.id)
- ORDER BY s.id
- LIMIT 3;
-
--- ⚠️ TRE ruoli e non due: il terzo serve al 6)/7), che hanno bisogno di un
+-- ⭐ Gli emittenti si FABBRICANO (rev 2026-10-18): soggetto, ruolo EF e
+--   emittente dal builder dbops.fn_pgtap_crea_emittente, che scrive l'emittente
+--   col verbo anagrafiche.fn_crea_emittente_fiscale — il percorso reale, quello
+--   che fa nascere anche i registri. Prima si pescavano tre soggetti esistenti
+--   «che potevano diventare EF»: su un database ricostruito da zero non ce n'e'
+--   nessuno, e la fixture moriva su fn_get_next_progressivo(NULL).
+-- ⚠️ TRE emittenti e non due: il terzo serve al 6)/7), che hanno bisogno di un
 --   emittente SENZA registro — e un emittente a cui il provisioning ha gia'
 --   dato i registri non serve a niente li'.
-CREATE TEMP TABLE tmp_mot_ruoli AS
-WITH ins AS (
-  INSERT INTO anagrafiche.soggetti_ruoli (soggetto_id, tipo_ruolo_id)
-  SELECT g.id, (SELECT id FROM config.tipi_ruoli WHERE codice_interno = 'EF')
-    FROM tmp_mot_sogg g
-  RETURNING id AS soggetto_ruolo_id, soggetto_id
-)
-SELECT i.soggetto_ruolo_id, g.n
-  FROM ins i JOIN tmp_mot_sogg g ON g.id = i.soggetto_id;
-
 -- ⚠️ Le sigle rispettano chk_emittenti_fiscali_codice_forma (maiuscole e cifre,
 --   2..10): dal 2026-08-31 una sigla col trattino non si scrive piu'.
 CREATE TEMP TABLE tmp_mot_emittenti AS
-WITH ins AS (
-  INSERT INTO anagrafiche.emittenti_fiscali (soggetto_ruolo_id, codice, brand_meta)
-  SELECT r.soggetto_ruolo_id,
-         'PGTMOT' || r.n,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_mot_costanti))
-    FROM tmp_mot_ruoli r
-  RETURNING soggetto_ruolo_id, codice
-)
-SELECT i.soggetto_ruolo_id, i.codice, r.n
-  FROM ins i JOIN tmp_mot_ruoli r ON r.soggetto_ruolo_id = i.soggetto_ruolo_id;
+SELECT e.soggetto_ruolo_id, e.emittente_codice AS codice, g.n
+  FROM generate_series(1, 3) AS g(n)
+  CROSS JOIN LATERAL dbops.fn_pgtap_crea_emittente(('PGTMOT' || g.n)::varchar) AS e;
+
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- ⭐ I REGISTRI NON SI CREANO A MANO: si usano quelli che
 --   vendite.fn_provision_registri_emittente ha appena fatto nascere insieme
@@ -131,7 +106,7 @@ SELECT r.id AS registro_id, r.emittente_soggetto_ruolo_id, e.n
   FROM tmp_mot_emittenti e
   JOIN vendite.registri_fatturazione r
     ON r.emittente_soggetto_ruolo_id = e.soggetto_ruolo_id
-   AND r.famiglia_documento          = 'DDT'
+   AND r.famiglia_documento          = 'DDT_VENDITA'
    AND r.utility_id IS NULL
    AND r.attivo
  WHERE e.n IN (1, 2);
@@ -139,11 +114,18 @@ SELECT r.id AS registro_id, r.emittente_soggetto_ruolo_id, e.n
 -- ⚠️ Il TERZO emittente deve restare senza registro DDT VISIBILE: qui si spegne
 --   e non si cancella, e va bene — il lettore filtra gia' su `attivo`, e lo
 --   slot occupato non da' fastidio perche' qui non si inserisce niente.
+-- ⚠️ Rev 2026-10-18 (R-BE-14, 20261019-08): SOLO il registro DDT, quello che il
+--   6)/7) chiedono. Dal provisioning del registro delle fatture standard
+--   l'emittente nasce anche col registro FAT-, collegato alle coppie (tipo
+--   documento, natura), e un registro con collegamenti non si spegne
+--   (dbops.trgfn_prevent_deactivate_if_children): spegnere «tutto» fermava la
+--   fixture su un registro che il test non guarda.
 UPDATE vendite.registri_fatturazione r
    SET attivo = false
   FROM tmp_mot_emittenti e
  WHERE e.n = 3
-   AND r.emittente_soggetto_ruolo_id = e.soggetto_ruolo_id;
+   AND r.emittente_soggetto_ruolo_id = e.soggetto_ruolo_id
+   AND r.famiglia_documento = 'DDT_VENDITA';
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_mot_registri),
@@ -160,7 +142,7 @@ SELECT r.n,
        vendite.fn_get_next_progressivo(
            r.registro_id,
            make_date((SELECT anno_a FROM tmp_mot_costanti)::int, 3, 15),
-           NULL, '', NULL, 'DDT') AS numero
+           NULL, '', NULL, 'DDT_VENDITA') AS numero
   FROM tmp_mot_registri r
  ORDER BY r.n;
 
@@ -179,7 +161,7 @@ SELECT r.n,
        vendite.fn_get_next_progressivo(
            r.registro_id,
            make_date((SELECT anno_a FROM tmp_mot_costanti)::int, 4, 20),
-           NULL, '', NULL, 'DDT') AS numero
+           NULL, '', NULL, 'DDT_VENDITA') AS numero
   FROM tmp_mot_registri r
  ORDER BY r.n;
 
@@ -206,7 +188,7 @@ CREATE TEMP TABLE tmp_mot_capodanno AS
 SELECT vendite.fn_get_next_progressivo(
            (SELECT registro_id FROM tmp_mot_registri WHERE n = 1),
            make_date((SELECT anno_b FROM tmp_mot_costanti)::int, 1, 2),
-           NULL, '', NULL, 'DDT') AS numero;
+           NULL, '', NULL, 'DDT_VENDITA') AS numero;
 
 SELECT is(
     (SELECT numero FROM tmp_mot_capodanno),
@@ -231,7 +213,7 @@ SELECT is(
 SELECT is(
     (SELECT k.registro_id
        FROM vendite.fn_lookup_registro_documento(
-                'DDT',
+                'DDT_VENDITA',
                 (SELECT soggetto_ruolo_id FROM tmp_mot_emittenti WHERE n = 3),
                 NULL) k),
     NULL::bigint,
@@ -240,7 +222,7 @@ SELECT is(
 PREPARE mot_involucro_muto AS
 SELECT k.registro_id
   FROM vendite.fn_get_registro_documento(
-           'DDT',
+           'DDT_VENDITA',
            (SELECT soggetto_ruolo_id FROM tmp_mot_emittenti WHERE n = 3),
            NULL) k;
 
@@ -278,7 +260,7 @@ INSERT INTO vendite.registri_fatturazione (
     codice, descrizione, emittente_soggetto_ruolo_id,
     famiglia_documento, reset_policy, attivo, utility_id)
 SELECT 'MOTU1', 'Registro DDT utility', r.emittente_soggetto_ruolo_id,
-       'DDT', 'ANNUALE', true,
+       'DDT_VENDITA', 'ANNUALE', true,
        (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1)
   FROM tmp_mot_registri r
  WHERE r.n = 1;
@@ -286,7 +268,7 @@ SELECT 'MOTU1', 'Registro DDT utility', r.emittente_soggetto_ruolo_id,
 SELECT is(
     (SELECT reg.codice::text
        FROM vendite.fn_lookup_registro_documento(
-                'DDT',
+                'DDT_VENDITA',
                 (SELECT emittente_soggetto_ruolo_id FROM tmp_mot_registri WHERE n = 1),
                 (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1)) k
        JOIN vendite.registri_fatturazione reg ON reg.id = k.registro_id),

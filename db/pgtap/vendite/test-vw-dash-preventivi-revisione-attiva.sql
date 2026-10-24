@@ -1,5 +1,23 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d): l'area della dashboard e' il codice della sorgente.
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima le
+--   revisioni nascevano gia' EMESSO/RIFIUTATO/ANNULLATO).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-4): cliente ed emittente
+--   dal mondo costruito (dbops.fn_pgtap_crea_mondo_cliente), l'operatore e'
+--   quello del contesto: prima si pescavano dal database il primo billing
+--   account, il primo emittente e il primo operatore, che su un database
+--   ricostruito non ci sono.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-6/Q-4): le revisioni
+--   nascono per la strada del dominio. Ogni numero e' un preventivo di
+--   dbops.fn_pgtap_crea_preventivo (numero assegnato dal dominio), portato
+--   allo stato dal builder; la rev 1 nasce da vendite.fn_crea_revisione_preventivo
+--   sulla rev 0 EMESSO e poi si porta allo stato del caso. Prima erano INSERT
+--   diretti in vendite.preventivi con numero e rev fissati (PGTAP-REVATT-*).
+--   Le asserzioni sul numero letterale (4, 8, 10, 11, 12) leggono ora il
+--   numero COSTRUITO (tmp_ra_numeri, da vendite.preventivi): provano le stesse
+--   cose (sola revisione attiva nei cruscotti).
 -- pgTAP test per Zero ERP
 --
 -- Test: regressione bug di vista "la vecchia revisione EMESSO riemerge come
@@ -16,19 +34,20 @@
 --       "revisione annullata rifluisce al predecessore" (gestione-preventivi
 --       §4.3), testato dallo scenario B.
 --
---       Fixture (numeri multi-rev inseriti diretti, stato scelto):
---         A) PGTAP-REVATT-A: rev0 EMESSO + rev1 RIFIUTATO
+--       Fixture (rev 2026-10-24, R-6: preventivi del builder, numero dal
+--       dominio, rev 1 da vendite.fn_crea_revisione_preventivo):
+--         A) numero A: rev0 EMESSO + rev1 RIFIUTATO
 --            -> attiva = rev1 (negativa) -> 0 righe backlog/aperto, 1 sola riga
 --               (RIFIUTATO) nella union; la rev0 EMESSO NON deve comparire.
---         B) PGTAP-REVATT-B: rev0 EMESSO + rev1 ANNULLATO
+--         B) numero B: rev0 EMESSO + rev1 ANNULLATO
 --            -> ANNULLATO e' abortito -> attiva = rev0 EMESSO (revert-on-abandon)
 --               -> 1 riga = rev0 EMESSO; la rev1 ANNULLATO NON deve comparire.
---         C) PGTAP-REVATT-C: rev0 EMESSO singola -> compare 1 volta (no regressione).
+--         C) numero C: rev0 EMESSO singola -> compare 1 volta (no regressione).
 --
 -- Indice test (0..11):
 --   0)  Precondizioni: refs minimi (BA, emittente, valuta, stati)
 --   1)  Vista vw_dash_fatturazione_preventivi + derivazione vw_preventivi.is_attiva
---   2)  Setup scope operatore (GUC per il ramo commesse della union)
+--   2)  Scope operatore: quello del contesto vede l'emittente dei fixture
 --   3)  A: vw_preventivi.is_attiva canonico (rev1 attiva, rev0 no)
 --   4)  A: union espone SOLO la rev attiva (1 riga, stato RIFIUTATO, no EMESSO)
 --   5)  A: backlog = 0 righe per il numero
@@ -64,26 +83,35 @@ SELECT plan(13);
 -- ============================================================
 -- 0) Riferimenti minimi
 -- ============================================================
+-- ⭐ rev 2026-10-24 (Q-4, R-6): il cliente e l'emittente si COSTRUISCONO,
+--   e con loro i preventivi. Ogni numero del test e' un preventivo di
+--   dbops.fn_pgtap_crea_preventivo, che col contesto gia' aperto riusa
+--   l'azienda di chi agisce e le lega un cliente nuovo: emittente e BA vanno
+--   d'accordo per costruzione. Il builder porta la rev 0 allo stato del caso
+--   (EMESSO, o ANNULLATO per D) per la matrice: l'emissione oggi non pretende
+--   righe, e il test non ne ha bisogno. ⛔ Cio' che il builder scrive si legge
+--   in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_ra_a AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('dash revisione attiva A', 'EMESSO');
+CREATE TEMP TABLE tmp_ra_b AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('dash revisione attiva B', 'EMESSO');
+CREATE TEMP TABLE tmp_ra_c AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('dash revisione attiva C', 'EMESSO');
+CREATE TEMP TABLE tmp_ra_d AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('dash revisione attiva D', 'ANNULLATO');
+
 CREATE TEMP TABLE tmp_ra_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  a.billing_account_id,
+  a.valuta_id,
+  a.emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE LIMIT 1) AS st_emesso_id,
+    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE) AS st_emesso_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice_interno = 'RIFIUTATO' AND s.attivo IS TRUE LIMIT 1) AS st_rifiutato_id,
+    WHERE s.codice_interno = 'RIFIUTATO' AND s.attivo IS TRUE) AS st_rifiutato_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice_interno = 'ANNULLATO' AND s.attivo IS TRUE LIMIT 1) AS st_annullato_id;
+    WHERE s.codice_interno = 'ANNULLATO' AND s.attivo IS TRUE) AS st_annullato_id
+FROM tmp_ra_a a;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND emittente_fiscale_id IS NOT NULL
@@ -110,137 +138,67 @@ SELECT ok(
 -- ============================================================
 -- 2) Setup scope operatore: la union include il ramo commesse che scopa per
 --    current_setting(app.current_user_id) -> serve una GUC valida.
+-- ⭐ rev 2026-10-24 (Q-4): l'operatore e' quello del CONTESTO, la cui azienda
+--   e' l'emittente del mondo costruito: e' gia' nel suo scope. Prima si
+--   pescava «il primo OPERATORE non super admin» delle identita' e gli si
+--   riscriveva config.user_emittenti_fiscali sul primo emittente del
+--   database: su un database ricostruito non c'era nessuno dei due.
 -- ============================================================
 CREATE TEMP TABLE tmp_ra_op AS
-SELECT id.auth_user_id AS user_id
-  FROM anagrafiche.identita_digitali id
- WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-   AND id.attivo = true
-   AND NOT EXISTS (
-       SELECT 1 FROM config.profili_accesso_bindings pab
-       JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
-       WHERE pab.identita_digitale_id = id.id
-         AND pab.attivo = true
-         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso)
- ORDER BY id.id LIMIT 1;
+SELECT nullif(current_setting('app.current_user_id', true), '')::integer AS user_id;
 
 SELECT ok(
-  (SELECT user_id IS NOT NULL FROM tmp_ra_op),
-  '2. Trovato un operatore OPERATORE non-super per lo scope'
+  (SELECT o.user_id IS NOT NULL
+      AND script.fn_has_identita_attiva(o.user_id, 'OPERATORE'::config.ruolo_applicativo)
+      AND NOT script.fn_is_super_admin(o.user_id)
+      AND (SELECT bool_and(x.emittente_fiscale_id = script.fn_pgtap_emittente_operatore())
+             FROM (SELECT emittente_fiscale_id FROM tmp_ra_a
+                   UNION ALL SELECT emittente_fiscale_id FROM tmp_ra_b
+                   UNION ALL SELECT emittente_fiscale_id FROM tmp_ra_c
+                   UNION ALL SELECT emittente_fiscale_id FROM tmp_ra_d) x)
+     FROM tmp_ra_op o),
+  '2. L''operatore del contesto e'' un OPERATORE non-super con l''emittente dei fixture nello scope'
 );
 
--- Garantisce che l'emittente dei fixture sia nello scope dell'operatore
--- (robustezza indipendente dal ruolo di sessione: le viste sono security_invoker).
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_ra_op);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
-
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id, meta)
-SELECT o.user_id, r.emittente_fiscale_id,
-       '{"test_scope":"pgtap_dash_revisione_attiva"}'::jsonb
-  FROM tmp_ra_op o, tmp_ra_refs r
- WHERE o.user_id IS NOT NULL;
-
-SELECT set_config('app.current_user_id',
-    (SELECT user_id::text FROM tmp_ra_op), true);
-
 -- ============================================================
--- Fixture A) PGTAP-REVATT-A: rev0 EMESSO + rev1 RIFIUTATO (attiva = rev1)
+-- Fixture (rev 2026-10-24, R-6: la strada del dominio). Le rev 0 sono i
+--   preventivi del builder, gia' nello stato del caso. La rev 1 di A e di B
+--   nasce da vendite.fn_crea_revisione_preventivo sulla rev 0 EMESSO (stesso
+--   numero, rev 1, in bozza) e si porta allo stato del caso per la matrice:
+--   RIFIUTATO passa da EMESSO; ANNULLATO esce direttamente dalla bozza.
+--   A) rev0 EMESSO + rev1 RIFIUTATO (attiva = rev1)
+--   B) rev0 EMESSO + rev1 ANNULLATO (attiva = rev0)
+--   C) rev0 EMESSO singola (no regressione)
+--   D) rev0 ANNULLATO singola (annullato = non attivo, fuori dai cruscotti)
 -- ============================================================
-CREATE TEMP TABLE tmp_ra_a_rev0 AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
-    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-REVATT-A', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.st_emesso_id,
-         DATE '2080-01-01', false, false,
-         jsonb_build_object('test_scope','pgtap_dash_revisione_attiva'), r.emittente_fiscale_id
-    FROM tmp_ra_refs r
-  RETURNING id)
-SELECT id FROM ins;
+CREATE TEMP TABLE tmp_ra_a_rev0 AS SELECT preventivo_id AS id FROM tmp_ra_a;
+CREATE TEMP TABLE tmp_ra_b_rev0 AS SELECT preventivo_id AS id FROM tmp_ra_b;
+CREATE TEMP TABLE tmp_ra_c_rev0 AS SELECT preventivo_id AS id FROM tmp_ra_c;
+CREATE TEMP TABLE tmp_ra_d_rev0 AS SELECT preventivo_id AS id FROM tmp_ra_d;
 
 CREATE TEMP TABLE tmp_ra_a_rev1 AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
-    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-REVATT-A', 1, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.st_rifiutato_id,
-         DATE '2080-01-01', false, false,
-         jsonb_build_object('test_scope','pgtap_dash_revisione_attiva'), r.emittente_fiscale_id
-    FROM tmp_ra_refs r
-  RETURNING id)
-SELECT id FROM ins;
-
--- ============================================================
--- Fixture B) PGTAP-REVATT-B: rev0 EMESSO + rev1 ANNULLATO (attiva = rev0)
--- ============================================================
-CREATE TEMP TABLE tmp_ra_b_rev0 AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
-    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-REVATT-B', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.st_emesso_id,
-         DATE '2080-01-01', false, false,
-         jsonb_build_object('test_scope','pgtap_dash_revisione_attiva'), r.emittente_fiscale_id
-    FROM tmp_ra_refs r
-  RETURNING id)
-SELECT id FROM ins;
-
+SELECT nuovo_preventivo_id AS id
+  FROM vendite.fn_crea_revisione_preventivo((SELECT id FROM tmp_ra_a_rev0), 'pgtap');
 CREATE TEMP TABLE tmp_ra_b_rev1 AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
-    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-REVATT-B', 1, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.st_annullato_id,
-         DATE '2080-01-01', false, false,
-         jsonb_build_object('test_scope','pgtap_dash_revisione_attiva'), r.emittente_fiscale_id
-    FROM tmp_ra_refs r
-  RETURNING id)
-SELECT id FROM ins;
+SELECT nuovo_preventivo_id AS id
+  FROM vendite.fn_crea_revisione_preventivo((SELECT id FROM tmp_ra_b_rev0), 'pgtap');
 
--- ============================================================
--- Fixture C) PGTAP-REVATT-C: rev0 EMESSO singola (no regressione)
--- ============================================================
-CREATE TEMP TABLE tmp_ra_c_rev0 AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
-    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-REVATT-C', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.st_emesso_id,
-         DATE '2080-01-01', false, false,
-         jsonb_build_object('test_scope','pgtap_dash_revisione_attiva'), r.emittente_fiscale_id
-    FROM tmp_ra_refs r
-  RETURNING id)
-SELECT id FROM ins;
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_ra_a_rev1), 'RIFIUTATO');
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_ra_b_rev1), 'ANNULLATO');
+END $porta$;
 
--- ============================================================
--- Fixture D) PGTAP-REVATT-D: rev0 ANNULLATO singola (comportamento voluto:
--- annullato = non attivo, fuori dai cruscotti).
--- ============================================================
-CREATE TEMP TABLE tmp_ra_d_rev0 AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
-    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-REVATT-D', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.st_annullato_id,
-         DATE '2080-01-01', false, false,
-         jsonb_build_object('test_scope','pgtap_dash_revisione_attiva'), r.emittente_fiscale_id
-    FROM tmp_ra_refs r
-  RETURNING id)
-SELECT id FROM ins;
+-- Il numero di ogni caso, COSTRUITO dal dominio e letto da vendite.preventivi:
+--   e' cio' che la union espone come codice. Prima era il letterale
+--   PGTAP-REVATT-<caso>.
+CREATE TEMP TABLE tmp_ra_numeri AS
+SELECT 'A'::text AS caso, p.numero FROM vendite.preventivi p WHERE p.id = (SELECT id FROM tmp_ra_a_rev0)
+UNION ALL
+SELECT 'B', p.numero FROM vendite.preventivi p WHERE p.id = (SELECT id FROM tmp_ra_b_rev0)
+UNION ALL
+SELECT 'C', p.numero FROM vendite.preventivi p WHERE p.id = (SELECT id FROM tmp_ra_c_rev0)
+UNION ALL
+SELECT 'D', p.numero FROM vendite.preventivi p WHERE p.id = (SELECT id FROM tmp_ra_d_rev0);
 
 -- ============================================================
 -- 3) A: derivazione canonica corretta (rev1 attiva, rev0 no)
@@ -260,7 +218,7 @@ SELECT ok(
       AND bool_and(d.stato_codice_interno = 'RIFIUTATO')
       AND count(*) FILTER (WHERE d.stato_codice_interno = 'EMESSO') = 0
      FROM vendite.vw_dash_fatturazione_documenti d
-    WHERE d.area = 'PREVENTIVI' AND d.codice = 'PGTAP-REVATT-A'),
+    WHERE d.area = 'PREVENTIVO' AND d.codice = (SELECT numero FROM tmp_ra_numeri WHERE caso = 'A')),
   '4. A: la union mostra 1 sola riga = rev attiva RIFIUTATO; la rev0 EMESSO superata NON compare (no fantasma)'
 );
 
@@ -269,7 +227,7 @@ SELECT ok(
 -- ============================================================
 SELECT is(
   (SELECT count(*)::integer FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area = 'PREVENTIVI'
+    WHERE b.area = 'PREVENTIVO'
       AND b.documento_id IN ((SELECT id FROM tmp_ra_a_rev0), (SELECT id FROM tmp_ra_a_rev1))),
   0,
   '5. A: Backlog = 0 righe per il numero (rev attiva RIFIUTATA esclusa, rev0 EMESSO non piu'' fantasma)'
@@ -280,7 +238,7 @@ SELECT is(
 -- ============================================================
 SELECT is(
   (SELECT count(*)::integer FROM vendite.vw_dash_aperto_documenti a
-    WHERE a.area = 'PREVENTIVI'
+    WHERE a.area = 'PREVENTIVO'
       AND a.documento_id IN ((SELECT id FROM tmp_ra_a_rev0), (SELECT id FROM tmp_ra_a_rev1))),
   0,
   '6. A: Situazione aperta = 0 righe per il numero (nessuna riga fantasma)'
@@ -308,7 +266,7 @@ SELECT ok(
       AND bool_and(d.stato_codice_interno = 'EMESSO')
       AND bool_and(d.documento_id = (SELECT id FROM tmp_ra_b_rev0))
      FROM vendite.vw_dash_fatturazione_documenti d
-    WHERE d.area = 'PREVENTIVI' AND d.codice = 'PGTAP-REVATT-B'),
+    WHERE d.area = 'PREVENTIVO' AND d.codice = (SELECT numero FROM tmp_ra_numeri WHERE caso = 'B')),
   '8. B: la union mostra 1 sola riga = rev0 EMESSO (predecessore vivo); la rev1 ANNULLATO NON compare'
 );
 
@@ -318,11 +276,11 @@ SELECT ok(
 SELECT ok(
   (SELECT b.motivo_fermo = 'IN_ATTESA_ACCETTAZIONE'
      FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area = 'PREVENTIVI'
+    WHERE b.area = 'PREVENTIVO'
       AND b.documento_id = (SELECT id FROM tmp_ra_b_rev0))
   AND NOT EXISTS (
     SELECT 1 FROM vendite.vw_dash_backlog_documenti b
-     WHERE b.area = 'PREVENTIVI'
+     WHERE b.area = 'PREVENTIVO'
        AND b.documento_id = (SELECT id FROM tmp_ra_b_rev1)),
   '9. B: Backlog espone rev0 EMESSO (IN_ATTESA_ACCETTAZIONE); la rev1 ANNULLATO assente'
 );
@@ -332,7 +290,7 @@ SELECT ok(
 -- ============================================================
 SELECT is(
   (SELECT count(*)::integer FROM vendite.vw_dash_fatturazione_documenti d
-    WHERE d.area = 'PREVENTIVI' AND d.codice = 'PGTAP-REVATT-C'),
+    WHERE d.area = 'PREVENTIVO' AND d.codice = (SELECT numero FROM tmp_ra_numeri WHERE caso = 'C')),
   1,
   '10. C: preventivo singola-rev EMESSO compare esattamente 1 volta (nessuna regressione sul caso normale)'
 );
@@ -346,7 +304,7 @@ SELECT ok(
     WHERE id = (SELECT id FROM tmp_ra_d_rev0)) IS FALSE
   AND
   (SELECT count(*)::integer FROM vendite.vw_dash_fatturazione_documenti d
-    WHERE d.area = 'PREVENTIVI' AND d.codice = 'PGTAP-REVATT-D') = 0,
+    WHERE d.area = 'PREVENTIVO' AND d.codice = (SELECT numero FROM tmp_ra_numeri WHERE caso = 'D')) = 0,
   '11. D: annullato singola-rev is_attiva=FALSE e fuori dalla union (annullato = non attivo)'
 );
 
@@ -358,8 +316,8 @@ SELECT is(
   (SELECT count(*)::integer
      FROM vendite.vw_dash_fatturazione_documenti d
      JOIN vendite.vw_preventivi p ON p.id = d.documento_id
-    WHERE d.area = 'PREVENTIVI'
-      AND d.codice LIKE 'PGTAP-REVATT-%'
+    WHERE d.area = 'PREVENTIVO'
+      AND d.codice IN (SELECT numero FROM tmp_ra_numeri)
       AND p.is_attiva IS FALSE),
   0,
   '12. Invariante: nessuna revisione non-attiva compare nella union dashboard'

@@ -14,7 +14,7 @@ Indice test eseguiti:
 5) CommesseServiceTests.test_fn_get_commessa_stato_ok
 6) CommesseServiceTests.test_fn_get_commessa_stato_not_found
 7) CommesseServiceTests.test_fn_list_commessa_attivita_ok
-8) CommesseServiceTests.test_fn_list_commessa_attivita_invalid_limit
+8) (ritirato 2026-10-21: la finestra la valida la view, vedi test_commesse_api)
 8a) CommesseServiceTests.test_fn_list_commessa_attivita_order_by_ok
 8b) CommesseServiceTests.test_fn_list_commessa_attivita_order_by_fuori_whitelist
 8c) CommesseServiceTests.test_fn_list_commessa_attivita_order_dir_invalido
@@ -28,7 +28,7 @@ Indice test eseguiti:
 13c) CommesseServiceTests.test_pr_run_commesse_push_one_skipped_passa_dritto
 13d) CommesseServiceTests.test_pr_run_commesse_push_one_dry_run_parziale_non_solleva
 13e) CommesseServiceTests.test_pr_run_commesse_push_one_ponte_emittibilita
-13f) CommesseServiceTests.test_pr_run_commesse_push_one_ponte_skip_se_gia_pronta
+13f) (ritirato 2026-10-12: lo skip «gia' pronta» e' della madre DB, pgTAP test-annullo-commessa-v1)
 13g) CommesseServiceTests.test_pr_run_commesse_push_one_dry_run_non_attiva_ponte
 13h) CommesseServiceTests.test_pr_run_commesse_push_batch_ponte_best_effort
 13i) CommesseServiceTests.test_pr_run_commesse_push_one_ponte_non_approva_righe_di_terzi
@@ -53,6 +53,10 @@ Azioni di stato commessa (#7 — fn_available_actions_commessa + cambia stato):
 22-bis) CommesseServiceTests.test_cambia_stato_commessa_azione_disabilitata_rifiutata (§6.1 enabled)
 23) CommesseServiceTests.test_cambia_stato_commessa_not_found
 24) CommesseServiceTests.test_cambia_stato_commessa_validation
+24a) CommesseServiceTests.test_annullo_passa_dal_verbo (brief-db-annullo-a-valle-riapre-a-monte D-2)
+24b) CommesseServiceTests.test_annullo_dichiarazione_non_numerica — 400 col campo, il verbo non parte
+24c) CommesseServiceTests.test_annullo_con_legami_codice_del_db — E_DOC_ANNULLO_CON_LEGAMI, confirm_and_retry
+24d) CommesseServiceTests.test_get_legami_dopo_la_testata — 404 prima, poi il BB col codice COMMESSA
 
 CommesseApprovazioneServiceTests (A-1/A-2 cockpit):
 - test_approva_commessa_attivita_tutte / _selezione / _righe_ids_invalido
@@ -248,8 +252,10 @@ class CommesseServiceTests(TestCase):
         mock_orch_cls.return_value.run.return_value = report
 
     # Scopo: push singolo COMPLETATO → ogni commessa toccata viene resa
-    # emittibile (righe APPROVATA + testata PRONTA_FATTURAZIONE) nella stessa
-    # transazione, e le commesse sono esposte nel payload di ritorno.
+    # emittibile dalla madre DB `vendite.fn_rendi_commessa_emittibile` (righe
+    # dell'invio APPROVATA + testata PRONTA_FATTURAZIONE, D-10 di
+    # brief-db-annullo-a-valle-riapre-a-monte) nella stessa transazione, e le
+    # commesse sono esposte nel payload di ritorno.
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     @patch("apps.vendite.services.commesse_service._build_handlers")
@@ -258,27 +264,28 @@ class CommesseServiceTests(TestCase):
 
         mock_repo = MagicMock()
         mock_repo_cls.return_value = mock_repo
-        mock_repo.get_commessa_stato_codice.return_value = "BOZZA"
         self._push_one_con_commesse(mock_build, mock_orch_cls, commesse_ids={7701})
 
         result = pr_run_commesse_push_one(
             sorgente_codice="PREVENTIVO", sorgente_uid=42, user="alice",
         )
 
-        # Il ponte approva SOLO le righe upsertate da questo push (T1): mai
+        # Il ponte passa SOLO le righe upsertate da questo push (T1): mai
         # righe_ids=None, che spazzerebbe ad APPROVATA le BOZZA di terzi.
-        mock_repo.approva_commessa_attivita.assert_called_once_with(
+        mock_repo.rendi_commessa_emittibile.assert_called_once_with(
             commessa_id=7701, righe_ids=[77010], user="alice",
         )
-        mock_repo.cambia_stato_commessa.assert_called_once_with(
-            commessa_id=7701, nuovo_stato="PRONTA_FATTURAZIONE", user="alice",
-        )
+        # ⛔ I due passi di prima non li fa piu' il backend.
+        mock_repo.approva_commessa_attivita.assert_not_called()
+        mock_repo.cambia_stato_commessa.assert_not_called()
         self.assertEqual(result["commesse_ids"], [7701])
 
     # Scopo (T1 — il cuore del fix): il push NON approva righe che non ha
     # generato. Se sulla commessa non e' atterrata nessuna riga di questo push,
-    # l'approvazione non parte affatto (una riga BOZZA di terzi — es. un onere
-    # in attesa — resta intatta), ma la testata va comunque a PRONTA.
+    # alla madre arriva la lista VUOTA, non None: vuota = niente approvazione
+    # (una riga BOZZA di terzi — es. un onere in attesa — resta intatta) ma la
+    # testata va comunque a PRONTA; None = approva tutto. Che la madre faccia
+    # cosi' lo prova il pgTAP; qui si prova che il backend non confonde le due.
     @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     @patch("apps.vendite.services.commesse_service._build_handlers")
@@ -289,7 +296,6 @@ class CommesseServiceTests(TestCase):
 
         mock_repo = MagicMock()
         mock_repo_cls.return_value = mock_repo
-        mock_repo.get_commessa_stato_codice.return_value = "BOZZA"
         self._push_one_con_commesse(
             mock_build, mock_orch_cls,
             commesse_ids={7701},
@@ -298,28 +304,9 @@ class CommesseServiceTests(TestCase):
 
         pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=42)
 
-        mock_repo.approva_commessa_attivita.assert_not_called()
-        mock_repo.cambia_stato_commessa.assert_called_once_with(
-            commessa_id=7701, nuovo_stato="PRONTA_FATTURAZIONE", user=None,
+        mock_repo.rendi_commessa_emittibile.assert_called_once_with(
+            commessa_id=7701, righe_ids=[], user=None,
         )
-
-    # Scopo: commessa multi-sorgente GIA' PRONTA → approva comunque le nuove
-    # righe ma NON ri-transita PRONTA→PRONTA (fn_cambia_stato non ammette da=a).
-    @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
-    @patch("apps.vendite.services.commesse_service._build_handlers")
-    def test_pr_run_commesse_push_one_ponte_skip_se_gia_pronta(self, mock_build, mock_repo_cls, mock_orch_cls):
-        from apps.vendite.services.commesse_service import pr_run_commesse_push_one
-
-        mock_repo = MagicMock()
-        mock_repo_cls.return_value = mock_repo
-        mock_repo.get_commessa_stato_codice.return_value = "PRONTA_FATTURAZIONE"
-        self._push_one_con_commesse(mock_build, mock_orch_cls, commesse_ids={7701})
-
-        pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=42)
-
-        mock_repo.approva_commessa_attivita.assert_called_once()
-        mock_repo.cambia_stato_commessa.assert_not_called()
 
     # Scopo: dry-run non scrive → ponte NON attivato (nessuna approvazione,
     # nessuna transizione), ma le commesse simulate restano nel report.
@@ -339,8 +326,7 @@ class CommesseServiceTests(TestCase):
             sorgente_codice="PREVENTIVO", sorgente_uid=42, dry_run=True,
         )
 
-        mock_repo.approva_commessa_attivita.assert_not_called()
-        mock_repo.cambia_stato_commessa.assert_not_called()
+        mock_repo.rendi_commessa_emittibile.assert_not_called()
         self.assertEqual(result["commesse_ids"], [7701])
 
     # Scopo: batch best-effort — una commessa che fallisce il ponte finisce in
@@ -353,9 +339,8 @@ class CommesseServiceTests(TestCase):
 
         mock_repo = MagicMock()
         mock_repo_cls.return_value = mock_repo
-        mock_repo.get_commessa_stato_codice.return_value = "BOZZA"
-        # La commessa 1 fallisce l'approvazione, la 2 passa.
-        mock_repo.approva_commessa_attivita.side_effect = [
+        # La commessa 1 fallisce il ponte, la 2 passa.
+        mock_repo.rendi_commessa_emittibile.side_effect = [
             RuntimeError("guard DB"), 1,
         ]
         mock_build.return_value = []
@@ -376,9 +361,10 @@ class CommesseServiceTests(TestCase):
         self.assertEqual(result["commesse_ids"], [1, 2])
         self.assertEqual(len(result["emittibilita_errors"]), 1)
         self.assertIn("commessa_id=1", result["emittibilita_errors"][0])
-        # La commessa 2 e' stata comunque portata a PRONTA.
-        mock_repo.cambia_stato_commessa.assert_called_once_with(
-            commessa_id=2, nuovo_stato="PRONTA_FATTURAZIONE", user=None,
+        # La commessa 2 e' stata comunque resa emittibile.
+        self.assertEqual(mock_repo.rendi_commessa_emittibile.call_count, 2)
+        mock_repo.rendi_commessa_emittibile.assert_called_with(
+            commessa_id=2, righe_ids=[201], user=None,
         )
 
     # Scopo (osservabilita' guard tipo_doc): un fallimento del ponte col codice
@@ -394,10 +380,9 @@ class CommesseServiceTests(TestCase):
 
         mock_repo = MagicMock()
         mock_repo_cls.return_value = mock_repo
-        mock_repo.get_commessa_stato_codice.return_value = "BOZZA"
         # Commessa 1: guard tipo_doc (codice nel messaggio, come da fn_log_and_raise_error).
         # Commessa 2: errore generico. Commessa 3: ok.
-        mock_repo.approva_commessa_attivita.side_effect = [
+        mock_repo.rendi_commessa_emittibile.side_effect = [
             RuntimeError("E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO: Tipo documento fiscale obbligatorio..."),
             RuntimeError("guard DB generico"),
             1,
@@ -503,7 +488,7 @@ class CommesseServiceTests(TestCase):
             handlers=[HandlerResult(
                 handler_name="HandlerPreventivi",
                 created=3,
-                errors=["Errore riga segment_key=PREV:abc:R:4: ServiceError: ..."],
+                errors=["Errore riga segment_key=PREVENTIVO:abc:R:4: ServiceError: ..."],
             )],
             push_log_id=99,
             durata_ms=42,
@@ -513,7 +498,7 @@ class CommesseServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=7)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_PUSH_PARZIALE_VIETATO")
-        self.assertIn("segment_key=PREV:abc:R:4", ctx.exception.detail or "")
+        self.assertIn("segment_key=PREVENTIVO:abc:R:4", ctx.exception.detail or "")
 
     # Scopo: all-or-nothing su ERRORE — stesso pattern del PARZIALE
     # (ogni handler con errors → rollback totale + raise).
@@ -809,6 +794,89 @@ class CommesseServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
         mock_repo_cls.return_value.cambia_stato_commessa.assert_not_called()
 
+    # Capability con l'annullo abilitato (righe NON_EMESSA: non e' un blocco,
+    # e' una conferma — §1.1 del brief).
+    _CAPS_ANNULLA = {
+        "available_actions": [{"key": "annulla", "target_state": "ANNULLATA"}],
+        "stato_codice": "PRONTA_FATTURAZIONE",
+    }
+
+    # Scopo: ANNULLATA passa SEMPRE dal verbo `vendite.fn_annulla_commessa`,
+    #        mai dal cambio di stato generico; la dichiarazione arriva intera.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annullo_passa_dal_verbo(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import cambia_stato_commessa
+
+        repo = mock_repo_cls.return_value
+        repo.get_capabilities.return_value = self._CAPS_ANNULLA
+
+        out = cambia_stato_commessa(commessa_id=5, nuovo_stato="ANNULLATA", user="op1")
+        repo.annulla.assert_called_once_with(5, None)
+        repo.cambia_stato_commessa.assert_not_called()
+        self.assertEqual(out, {
+            "commessa_id": 5, "stato_da": "PRONTA_FATTURAZIONE", "stato_a": "ANNULLATA",
+        })
+
+        cambia_stato_commessa(
+            commessa_id=5, nuovo_stato="ANNULLATA", legami_confermati="3",
+        )
+        repo.annulla.assert_called_with(5, 3)
+
+    # Scopo: una dichiarazione che non e' un intero e' un 400 col campo, non un
+    #        500 dal cast del DB; il verbo non parte.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annullo_dichiarazione_non_numerica(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import cambia_stato_commessa
+
+        repo = mock_repo_cls.return_value
+        repo.get_capabilities.return_value = self._CAPS_ANNULLA
+        with self.assertRaises(ServiceError) as ctx:
+            cambia_stato_commessa(
+                commessa_id=5, nuovo_stato="ANNULLATA", legami_confermati="tre",
+            )
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "legami_confermati")
+        repo.annulla.assert_not_called()
+
+    # ⭐ Il rifiuto del verbo arriva col SUO codice: e' il comportamento che la
+    #    finestra di conferma riconosce (`confirm_and_retry`).
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annullo_con_legami_codice_del_db(self, mock_repo_cls):
+        from django.db import DatabaseError
+
+        from apps.core.services.error_policies import ErrorPolicyRegistry
+        from apps.vendite.services.commesse_service import cambia_stato_commessa
+
+        repo = mock_repo_cls.return_value
+        repo.get_capabilities.return_value = self._CAPS_ANNULLA
+        repo.annulla.side_effect = DatabaseError(
+            "E_DOC_ANNULLO_CON_LEGAMI: annullando Commessa CM-5 si riaprono 2 legami",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            cambia_stato_commessa(commessa_id=5, nuovo_stato="ANNULLATA")
+        self.assertEqual(ctx.exception.code, "E_DOC_ANNULLO_CON_LEGAMI")
+        policy = ErrorPolicyRegistry.resolve("E_DOC_ANNULLO_CON_LEGAMI")
+        self.assertEqual(policy.ui_action, "confirm_and_retry")
+
+    # Scopo: «leggi prima la testata»: il lettore dei legami e' SECURITY
+    #        DEFINER, quindi una commessa inesistente o fuori perimetro e' un
+    #        404 PRIMA di chiamarlo.
+    @patch("apps.vendite.services.commesse_service.legami_del_documento")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_get_legami_dopo_la_testata(self, mock_repo_cls, bb_legami):
+        from apps.vendite.services import commesse_service
+
+        repo = mock_repo_cls.return_value
+        repo.get_commessa_stato_codice.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            commesse_service.get_legami(99)
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_NOT_FOUND")
+        bb_legami.assert_not_called()
+
+        repo.get_commessa_stato_codice.return_value = "PRONTA_FATTURAZIONE"
+        commesse_service.get_legami(7)
+        bb_legami.assert_called_once_with("COMMESSA", 7)
+
     # --- fn_list_commessa_attivita ---
 
     # Scopo: lista attivita → restituisce dict con commessa_id e dati paginati.
@@ -825,14 +893,6 @@ class CommesseServiceTests(TestCase):
 
         self.assertEqual(result["commessa_id"], 1)
         self.assertEqual(result["count"], 0)
-
-    # Scopo: limit fuori range → ServiceError validazione.
-    def test_fn_list_commessa_attivita_invalid_limit(self):
-        from apps.vendite.services.commesse_service import fn_list_commessa_attivita
-
-        with self.assertRaises(ServiceError) as ctx:
-            fn_list_commessa_attivita(commessa_id=1, limit=500, offset=0)
-        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
 
     # Scopo: order_by in whitelist → normalizzato e propagato al repository.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
@@ -920,15 +980,6 @@ class CommesseServiceTests(TestCase):
     # Scopo: ⚠️ E il tetto di pagina resta vivo sul percorso PAGINATO: senza
     #        `max_rows` un limit fuori range e' ancora un 400 parlante, non una
     #        pagina da diecimila righe.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
-    def test_fn_list_commessa_attivita_limit_fuori_range_resta_400(self, mock_repo_cls):
-        from apps.vendite.services.commesse_service import fn_list_commessa_attivita
-
-        with self.assertRaises(ServiceError) as ctx:
-            fn_list_commessa_attivita(commessa_id=1, limit=5000)
-        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
-        mock_repo_cls.return_value.list_commessa_attivita.assert_not_called()
-
     # Scopo: order_by fuori whitelist → ServiceError, repo mai chiamato.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_fn_list_commessa_attivita_order_by_fuori_whitelist(self, mock_repo_cls):

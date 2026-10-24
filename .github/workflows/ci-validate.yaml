@@ -38,8 +38,9 @@ on:
     paths:
       - db/**
       - backend/**
-      - requirements/**
       - requirements.txt
+      - .python-version
+      - .pre-commit-config.yaml
       - scripts/**
       - .github/workflows/ci-validate.yaml
   pull_request:
@@ -47,8 +48,9 @@ on:
     paths:
       - db/**
       - backend/**
-      - requirements/**
       - requirements.txt
+      - .python-version
+      - .pre-commit-config.yaml
       - scripts/**
       - .github/workflows/ci-validate.yaml
 
@@ -81,15 +83,12 @@ jobs:
       #   Quindi: impedisce che nasca la PRIMA forma, non copre la seconda.
       LIQUIBASE_ALLOW_PARENT_DIRECTORY_REFERENCES: "false"
 
-      # requirements runtime backend
-      REQ_FILE: backbase.txt
-
       # Django / DB
       DB_HOST: localhost
       DB_PORT: "5432"
       DB_NAME: zeroerp
-      DB_USER: zeroerp
-      DB_PASSWORD: secret
+      DB_USER: zeroerp_owner
+      DB_PASSWORD: secret-owner
       DJANGO_SECRET_KEY: ci-placeholder
       # Chiave Fernet dei campi cifrati; obbligatoria (settings.py). E' la
       # base64 di «ci-placeholder-fernet-key-32byte»: un segnaposto leggibile,
@@ -409,10 +408,22 @@ jobs:
         env:
           PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
         run: |
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "CREATE ROLE zeroerp LOGIN CREATEDB PASSWORD 'secret';"
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "GRANT USAGE, CREATE ON SCHEMA public TO zeroerp; GRANT CREATE ON DATABASE zeroerp TO zeroerp;"
+          # ⭐ I RUOLI DI SISTEMA (brief-db-ruoli-di-sistema, fase 2). Li crea lo
+          #   stesso script dello scratch e di un'installazione:
+          #   scripts/sql/provision_zeroerp.sql, fase `ruoli` — zeroerp_owner
+          #   (proprietario di tutto e migratore), zeroerp_job (pgAgent: solo le
+          #   procedure dei job), zeroerp_app (il backend) — e il database
+          #   `zeroerp`, che il container crea di `postgres`, passa a zeroerp_owner.
+          #   Le password sono letterali, come prima: il database vive dentro il
+          #   runner per la durata del job (D-3).
+          #   ⚠️ zeroerp_owner e' NOCREATEDB: il vecchio `zeroerp` aveva CREATEDB, ma
+          #   nessuno lo usa — i test Django girano sul database configurato
+          #   (backend/zeroerp_backend/test_runner.py), non ne creano uno.
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -v fase=ruoli -v db_name=zeroerp \
+            -v owner_password=secret-owner -v job_password=secret-job -v app_password=secret-app \
+            -v log_password=secret-log \
+            -f scripts/sql/provision_zeroerp.sql
           # ⚠️ Il ruolo applicativo va creato ORA, PRIMA di Liquibase, e non dopo.
           # Molti changeSet di GRANT sono scritti «idempotenti e difensivi: skip
           # se il ruolo manca» — e finora in CI il ruolo mancava sempre, quindi
@@ -425,22 +436,15 @@ jobs:
           # sviluppo — usare un ruolo con un NOME diverso sarebbe peggio, perche'
           # ogni GRANT del repo e' scritto sul nome letterale `zeroerp_app` e la
           # CI finirebbe per collaudare una matrice che non esiste altrove.
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "CREATE ROLE zeroerp_app LOGIN PASSWORD 'secret-app';"
+          # (zeroerp_app lo crea ora la fase `ruoli` qui sopra.)
 
           # ── Il ruolo del canale di log fuori transazione (dblink) ──────
-          # ⭐ STESSA RAGIONE del commento qui sopra, e vale la pena dirla due
-          # volte: `90_end/20260905-38` concede a `zeroerp_log` USAGE su
-          # `maintenance` e INSERT sul giornale dei job, ma e' scritto
-          # «skip se il ruolo manca» — e in CI mancava sempre. Quindi quel GRANT
-          # non e' mai stato applicato, e i test 3, 4 e 5 di
-          # `db/pgtap/maintenance/test-job-run-log-failure-out-of-tx.sql`
-          # facevano `skip()`: tre asserzioni che sembravano coperte e non lo
-          # erano. Creandolo QUI — prima di Liquibase — diventano verdi veri.
-          # ⛔ Il ruolo deve nascere PRIMA del migrate: i GRANT stanno in
-          # `90_end`, cioe' dentro la corsa di Liquibase.
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "CREATE ROLE zeroerp_log LOGIN PASSWORD 'secret-log';"
+          # ⭐ zeroerp_log lo crea la fase `ruoli` qui sopra (-v log_password), PRIMA
+          #   di Liquibase: `90_end/20260905-38` gli concede USAGE su `maintenance`
+          #   e INSERT sul giornale dei job, ma e' scritto «skip se il ruolo manca».
+          #   Senza il ruolo i test 3, 4 e 5 di
+          #   `db/pgtap/maintenance/test-job-run-log-failure-out-of-tx.sql` farebbero
+          #   `skip()`: tre asserzioni che sembrerebbero coperte e non lo sono.
           # ⚠️ DSN ESPLICITO, non `service=zeroerp_log` come sul database di
           # sviluppo: la forma `service=` si risolve da `pg_service.conf` sul
           # SERVER, e nel container della CI quel file non esiste — il canale
@@ -448,7 +452,7 @@ jobs:
           # ⚠️ E l'utente del DSN e' `zeroerp_log`, non il migratore: e' l'unico
           # con i privilegi minimi giusti (scrive il giornale, non lo legge).
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "ALTER ROLE zeroerp     IN DATABASE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp_log password=secret-log';
+            "ALTER ROLE zeroerp_owner IN DATABASE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp_log password=secret-log';
              ALTER ROLE zeroerp_app IN DATABASE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp_log password=secret-log';"
 
       - name: Installa plpgsql_check nel container Postgres
@@ -495,13 +499,16 @@ jobs:
             --changeLogFile=db/changelog/changelog-provision-pre.yaml \
             update --contexts=provision
 
-      - name: Grant Liquibase tables to zeroerp
+      - name: Proprieta' a zeroerp_owner (provision_zeroerp.sql, fase pre)
         env:
           PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        # ⭐ Al posto dei GRANT sulle tabelle di Liquibase e di pg_maintain: cio' che
+        #   il provision-pre ha creato da superuser passa a zeroerp_owner, che da
+        #   proprietario non ha bisogno d'altro. Come in ci.yaml e ci-local.sh.
+        #   Brief: brief-db-ruoli-di-sistema, fase 2.
         run: |
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.databasechangelog TO zeroerp; \
-             GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.databasechangeloglock TO zeroerp;"
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -v fase=pre -f scripts/sql/provision_zeroerp.sql
 
       - name: Liquibase update (standard, no provision)
         # NIENTE bypass_tx_id_check qui, ed e' voluto: questo step deve esercitare
@@ -515,8 +522,8 @@ jobs:
         run: |
           liquibase \
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff" \
-            --username=zeroerp \
-            --password=secret \
+            --username=zeroerp_owner \
+            --password=secret-owner \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts="!provision and !dati_macchina"
 
@@ -540,34 +547,10 @@ jobs:
         run: |
           liquibase \
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff%20-c%20myapp.env%3Dci" \
-            --username=zeroerp \
-            --password=secret \
+            --username=zeroerp_owner \
+            --password=secret-owner \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts=ci_apply
-
-      # Ruolo batch per-job zeroerp_batch_fatturazione: BYPASSRLS richiede superuser
-      # -> provisioning come 'postgres' (non Liquibase), DOPO le migrazioni, con lo
-      # stesso script admin di dbdev/prod e di ci.yaml (DRY).
-      #
-      # ⭐ Aggiunto il 2026-09-12 perche' QUI gira la suite pgTAP, e
-      # db/pgtap/rls/test-role-batch-fatturazione-postura.sql collauda proprio la
-      # postura che questo script produce: senza il passo, in questo workflow il
-      # ruolo non esisteva e il file era rosso «noto» nella baseline della CI —
-      # cioe' la postura del batch non era misurata da nessuna parte fuori da
-      # dbdev. ⭐ Dal 2026-09-14 lo e' anche sullo scratch di scripts/ci-local.sh:
-      # il ponte «DML su tutto» che serve a superare 20260729-05 durante il
-      # migrate viene ritirato in coda, e lo stesso script di provisioning gira
-      # la' SENZA password (il ruolo esiste nel cluster: i GRANT sono per
-      # database, la password no).
-      - name: Provision ruolo batch fatturazione (BYPASSRLS, superuser)
-        env:
-          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
-        run: |
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
-            -v batch_role=zeroerp_batch_fatturazione \
-            -v batch_password=secret \
-            -v migrator_role=zeroerp \
-            -f scripts/sql/provision_db_role_batch_fatturazione.sql
 
       - name: Guardrail naming codice_interno/codice (definizioni live)
         env:
@@ -720,35 +703,23 @@ jobs:
           python manage.py migrate token_blacklist --fake
           python manage.py migrate --noinput
 
-      - name: Privilegi del ruolo applicativo (provision_db_roles)
-        # DOPO ENTRAMBI i migratori, e non prima: lo script fa GRANT ... ON ALL
-        # TABLES IN SCHEMA, quindi vuole gli schemi gia' popolati. Il ruolo
-        # invece esiste da prima (passo "DB bootstrap"), perche' i changeSet di
-        # GRANT difensivi lo cercano mentre girano.
-        #
-        # ⭐ «Entrambi» e' la parola che conta, dal 2026-09-13. Fino a quel
-        # giorno questo passo stava subito dopo `ci_apply`, cioe' PRIMA di
-        # «Django migrate»: lo schema `django` — che il provisioning nemmeno
-        # nominava — nasceva dopo, e `zeroerp_app` restava senza un solo
-        # privilegio su `django.auth_user`. Ogni pgTAP che crea un operatore
-        # (fn_crea_auth_user, fn_crea_utente_tecnico: SECURITY INVOKER) moriva
-        # nel fixture con «permission denied for table auth_user» — 47 volte nel
-        # log Postgres della corsa 34723456630 — e stava in baseline come
-        # ERRORE_FIXTURE senza che nessuno ne leggesse la causa. Su dev il GRANT
-        # c'era, dato a mano; lo scratch di ci-local.sh lo COPIAVA con lo schema.
-        # Il posto giusto e' dopo l'ULTIMO migrate, che qui e' quello di Django.
-        #
-        # ⚠️ migrator_role=zeroerp e non titodb: in CI l'owner degli oggetti e'
-        # l'utente con cui gira Liquibase E con cui gira `manage.py migrate`
-        # (DB_USER), non quello del server di sviluppo. L'ALTER DEFAULT
-        # PRIVILEGES per quel ruolo copre anche le tabelle che una migration
-        # Django futura creera'.
+      # ⭐ La fase post del modello, DOPO ENTRAMBI i migratori: Liquibase (con
+      #   `ci_apply`) e `manage.py migrate`. Da' la postura di zeroerp_app (era il
+      #   passo «provision_db_roles», unificato qui il 2026-10-15: fase 4), EXECUTE
+      #   di zeroerp_job sulle procedure dei job, e la VERIFICA «un owner solo».
+      # ⛔ «Entrambi» e' la parola che conta (2026-09-13): i `GRANT … ON ALL
+      #   TABLES IN SCHEMA` sono una fotografia. Stava prima di «Django migrate»,
+      #   e `zeroerp_app` restava senza un privilegio su `django.auth_user`: 47
+      #   «permission denied» nel log della corsa 34723456630.
+      #   Brief: brief-db-ruoli-di-sistema, fasi 2 e 4.
+      - name: Ruoli di sistema - fase post e verifica «un owner solo»
         env:
           PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
         run: |
+          # ⭐ L'ambiente della CI e' SVILUPPO (brief-db-processi-accensione-per-ambiente,
+          #   R-2): si dichiara qui, una volta, e non cambia.
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
-            -v app_role=zeroerp_app -v app_password=secret-app -v migrator_role=zeroerp \
-            -f scripts/sql/provision_db_roles.sql
+            -v fase=post -v ambiente=SVILUPPO -f scripts/sql/provision_zeroerp.sql
 
       - name: Guardrail riferimenti morti (funzioni plpgsql + dati di config)
         env:
@@ -1028,8 +999,8 @@ jobs:
           # gitignored e in CI non esiste). Qui dentro l'OWNER degli oggetti e'
           # `zeroerp`, l'utente con cui gira Liquibase — non `titodb`.
           cat > db/internal.env <<'ENVEOF'
-          PGUSER=zeroerp
-          PGPASSWORD=secret
+          PGUSER=zeroerp_owner
+          PGPASSWORD=secret-owner
           PGHOST=localhost
           PGPORT=5432
           PGDATABASE=zeroerp

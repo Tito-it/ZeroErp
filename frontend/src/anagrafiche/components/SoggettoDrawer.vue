@@ -582,7 +582,6 @@ async function handleSave() {
         :show-capitale-sociale="datiSocietari.showCapitaleSociale.value"
         :require-capitale-sociale="datiSocietari.requireCapitaleSociale.value"
         :required="soggetto.requireDatiSocietari.value"
-        :show-data-costituzione="isEdit"
         :disabled="false"
       />
     </template>

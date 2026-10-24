@@ -75,6 +75,14 @@ service `get_fattura_dettaglio` (`apps.vendite.services.vendite_service`).
     "scadenze": [
       { "numero_rata": 1, "data_scadenza": "2026-08-31", "importo": "1220.00" }
     ],
+    "rettifiche": {
+      "rettifica": [],
+      "rettificata_da": [
+        { "verso": "rettificata_da", "id": 9, "numero": 15, "serie": "A", "anno": 2026,
+          "data": "2026-07-20", "numero_documento": "15 - A",
+          "natura_doc_codice_interno": "NOTA_CREDITO" }
+      ]
+    },
     "errore_vivo": null,
     "contatori": { "note": 3 }
   },
@@ -129,8 +137,13 @@ Nessuna modifica applicativa è stata necessaria: il percorso operatore legge gl
 [brief-db-rls-satelliti-fattura-portale](../../../dev/work-done/brief-db-rls-satelliti-fattura-portale.md).
 
 > ⚠️ **Vincolo da non violare** (team DB): le policy sui satelliti devono
-> continuare a passare dalle funzioni di scope **della testata**
-> (`fn_scope_ef_whitelist_via_fattura`, `fn_scope_ba_ownership_via_fattura`).
+> continuare a decidere **dalla testata**: la chiave è `fattura_id`, risolta
+> col modo `fattura` dei risolutori — `script.fn_resolve_emittente_fiscale_id`
+> sotto `script.fn_scope_ef_perimetro` (operatore) e
+> `script.fn_resolve_controparte_sr_id` sotto `script.fn_scope_sr_perimetro`
+> (portale). Forma in vigore dal 2026-10-21; fino ad allora erano gli
+> adattatori `fn_scope_ef_whitelist_via_fattura` e
+> `fn_scope_ba_ownership_via_fattura` (quest'ultimo ritirato con 20261021-40).
 > È ciò che rende il filtro **tutto-o-niente per fattura** e tiene completi il
 > `count` di `fn_assign_numero_fattura` e la `SUM` di
 > `fn_ricalcola_riepilogo_iva_fattura`. Un criterio proprio o una colonna
@@ -188,6 +201,17 @@ Nessuna modifica applicativa è stata necessaria: il percorso operatore legge gl
   funzione sua — `D34` l'ha riassorbita nella generica dei satelliti, che
   riceve il codice errore come secondo argomento del trigger: stesso rifiuto,
   stesso messaggio, stesso bypass.
+
+### `rettifiche` — il legame documentale, nei due versi
+
+`{ "rettifica": [...], "rettificata_da": [...] }`: le chiavi sono **sempre** tutte
+e due (liste vuote se non c'è legame). `rettifica` = i documenti che **questo**
+rettifica (su una nota di credito); `rettificata_da` = i documenti che rettificano
+questo. Ogni elemento: `verso`, `id`, `numero`, `serie`, `anno`, `data`,
+`numero_documento` (`vendite.fn_numero_documento_fattura`),
+`natura_doc_codice_interno`; ordine `anno, numero`. Sorgente
+`vendite.fatture_rettifiche`, popolata **dopo** la numerazione (vedi sotto). ⚠️
+Letto dopo il cancello della testata: `fatture_rettifiche` non ha RLS.
 
 ### `errore_vivo` — il banner d'errore, con una fonte sua *(dal 2026-09-27)*
 
@@ -277,7 +301,8 @@ Due punti di merito:
   `stati_doc_fiscale`, `valute`, `modalita_pagamento`, `termini_pagamento`,
   `utilities`)
 - `vendite.fatture_indirizzi` (riga `FATT` → `cliente_indirizzo`)
-- `vendite.vw_fattura_righe_esposte`
+- `vendite.vw_fattura_righe_lista` (via `FattureRepository.list_righe`)
+- `vendite.fatture_rettifiche`
 - `vendite.fatture_riepiloghi_iva`
 - `vendite.fatture_scadenze`
 

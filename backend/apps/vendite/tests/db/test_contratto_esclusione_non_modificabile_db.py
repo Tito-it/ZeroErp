@@ -138,8 +138,9 @@ class EsclusioneSoloNonSiVendeDbTests(unittest.TestCase):
     #    del CHECK sul prezzo e senza il vecchio 400 del service.
     def test_contratto_patch_del_prezzo_dell_esclusione_rifiutato(self):
         def azione(cur):
-            riga = ContrattiService().create_riga(_contratto(cur), _escludi(cur))
-            ContrattiService().update_riga(riga["id"], {"prezzo_unitario": "10"})
+            contratto_id = _contratto(cur)
+            riga = ContrattiService().create_riga(contratto_id, _escludi(cur))
+            ContrattiService().update_riga(contratto_id, riga["id"], {"prezzo_unitario": "10"})
         self.assertEqual(self._errore(azione).code, _CODICE_NON_MODIFICABILE)
 
     # ── offerta: le stesse tre regole ──────────────────────────

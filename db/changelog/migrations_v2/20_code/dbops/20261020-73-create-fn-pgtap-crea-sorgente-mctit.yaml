@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2c: il builder pgTAP di una
+#   sorgente di prova.
+#   Brief: brief-db-grammatica-unica-documenti §13.
+#
+#   Dal 20261020-32 una famiglia di numerazione E' una sorgente (FK). I pgTAP delle famiglie
+#   (codice, CRUD, guard dei riferimenti) costruiscono famiglie di prova che il catalogo non
+#   ha: prima bastava inventare un codice, ora serve la sua sorgente. Tre file, una
+#   INSERT con un id calcolato a mano: alla seconda copia un BB (regola del 2), qui, e nessuna
+#   copia nei test. Stessa forma dei builder dbops.fn_pgtap_crea_*: INVOKER (zeroerp_app
+#   scrive su config.sorgenti), EXECUTE a zeroerp_app.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261020-73-create-fn-pgtap-crea-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261020-73-create-fn-pgtap-crea-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_sorgente: una sorgente di prova per i pgTAP (la famiglia di numerazione
+        e' una sorgente dal 2c). Grammatica unica, 2c (G-5).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_pgtap_crea_sorgente(
+                  p_codice_interno config.sorgenti.codice_interno%TYPE,
+                  p_target_table   config.sorgenti.target_table%TYPE DEFAULT NULL)
+              RETURNS config.sorgenti.id%TYPE
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: una sorgente di PROVA per un pgTAP, costruita e non
+              --   pescata: un tipo di documento che il catalogo non ha.
+              --   Serve dal 2026-10-20 a chi costruisce una famiglia di
+              --   numerazione di prova (la famiglia E' una sorgente, FK
+              --   fk_famiglie_documento_sorgenti, G-5) o un ambito di prova.
+              -- Parametri: p_codice_interno, il codice; p_target_table, la
+              --   tabella dei documenti (NULL = nessuna: e' il caso del
+              --   riferimento che manca).
+              -- Ritorna: l'id della sorgente.
+              -- ⚠️ config.sorgenti.id non ha default (gli id li dà il CSV di
+              --   80_data): qui il primo libero, dentro la transazione del test.
+              -- ⚠️ Spenta come documento: apribile falso, scope CATALOGO,
+              --   etichetta = codice. Il test la vede, nessuna lista sì.
+              -- Uso: PERFORM dbops.fn_pgtap_crea_sorgente('PGTAP_FAM_X');
+              -- Brief: brief-db-grammatica-unica-documenti §13 (2c).
+              -- =========================================================
+              DECLARE
+                  v_id config.sorgenti.id%TYPE;
+              BEGIN
+                  SELECT COALESCE(max(s.id), 0) + 1 INTO v_id FROM config.sorgenti s;
+
+                  INSERT INTO config.sorgenti (
+                      id, codice_interno, codice, categoria, descrizione, attivo, meta,
+                      target_table, key_selector, scope, apribile, etichetta)
+                  VALUES (
+                      v_id, p_codice_interno, p_codice_interno, 'DOCUMENTO',
+                      'Sorgente di prova pgTAP', true, jsonb_build_object('pgtap', true),
+                      p_target_table, 'id', 'CATALOGO', false, p_codice_interno);
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_sorgente(config.sorgenti.codice_interno%TYPE, config.sorgenti.target_table%TYPE) IS
+                'Builder pgTAP: una sorgente di PROVA (codice, tabella dei documenti opzionale), costruita e non pescata; ritorna l''id, il primo libero (config.sorgenti.id non ha default). Spenta come documento: apribile falso, scope CATALOGO. Serve a chi costruisce una famiglia di numerazione di prova, che dal 2026-10-20 e'' una sorgente (G-5). Brief: brief-db-grammatica-unica-documenti §13.';
+
+              GRANT EXECUTE ON FUNCTION dbops.fn_pgtap_crea_sorgente(config.sorgenti.codice_interno%TYPE, config.sorgenti.target_table%TYPE) TO zeroerp_app;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION dbops.fn_pgtap_crea_sorgente(config.sorgenti.codice_interno%TYPE, config.sorgenti.target_table%TYPE);

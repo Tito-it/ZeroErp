@@ -105,7 +105,8 @@ class PipelineServiceTests(SimpleTestCase):
             "apps.vendite.services.lotto_segnalazioni_service.VenditePipelineRepository"
         ) as repo_cls:
             repo_cls.return_value.get_lotto_segnalazioni_summary.return_value = riepilogo
-            data = fn_get_lotto_segnalazioni_summary(lotto_id=80)
+            with patch("apps.vendite.services.pipeline_service.lotto_visibile"):
+                data = fn_get_lotto_segnalazioni_summary(lotto_id=80, auth_user_id=1)
 
         self.assertEqual(data["summary"]["esiti_stato_esecuzione_errore_count"], 2)
         # Il verdetto con ZERO critiche: e' il caso D2, e il client deve

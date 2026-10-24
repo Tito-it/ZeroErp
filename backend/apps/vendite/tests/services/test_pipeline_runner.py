@@ -72,6 +72,7 @@ from unittest.mock import MagicMock, patch
 from django.test import SimpleTestCase
 
 from apps.core.services.db_error_fields import Bersaglio
+from apps.core.tests.db_error_fakes import make_db_error
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.lotto_segnalazioni_service import LottoSignalStatus
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
@@ -361,6 +362,41 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(exc.exception.code, "E_TASK_NOT_IMPLEMENTED")
         self.assertEqual(repo.last_stato, "ERRORE")
+
+    # Scopo: BE-2 (brief-modello-documento-vendita §4-octies) — un codice del
+    #        catalogo sollevato dal DB dentro lo step resta QUEL codice, come se
+    #        l'avesse sollevato il runner. Prima il ramo generico lo appiattiva
+    #        in `E_PIPELINE`. Il caso: il guard del lotto (R-1) rifiuta l'UPDATE
+    #        dello stato perche' il lotto e' fermo.
+    def test_runner_preserva_il_codice_del_database(self):
+        class _RepoGuardFermo(self._RepoMock):
+            def update_lotto_stato_doc(self, lotto_id, stato_doc_fiscale_id):
+                raise make_db_error(
+                    "Lotto bloccato: segnalazioni critiche o documenti in errore.",
+                    codice="E_PIPELINE_LOTTO_CRITICAL",
+                )
+
+        repo = _RepoGuardFermo()
+        runner = LottoPipelineRunner(repository=repo, step_executor=self._StepExecutorMock())
+        with _fake_tx():
+            with self.assertRaises(ServiceError) as exc:
+                runner.run_pipeline(LottoPipelineParams(dry_run=False))
+        self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_CRITICAL")
+        self.assertEqual(repo.last_stato, "ERRORE")
+
+    # Scopo: BE-2, il rovescio — un errore DB SENZA codice del catalogo resta
+    #        un guasto tecnico (`E_PIPELINE`): un `E_...` nel solo testo non e'
+    #        una prova di dominio.
+    def test_runner_errore_db_senza_codice_resta_tecnico(self):
+        class _RepoGuasto(self._RepoMock):
+            def update_lotto_stato_doc(self, lotto_id, stato_doc_fiscale_id):
+                raise make_db_error("E_PIPELINE_LOTTO_CRITICAL nel testo e basta")
+
+        runner = LottoPipelineRunner(repository=_RepoGuasto(), step_executor=self._StepExecutorMock())
+        with _fake_tx():
+            with self.assertRaises(ServiceError) as exc:
+                runner.run_pipeline(LottoPipelineParams(dry_run=False))
+        self.assertEqual(exc.exception.code, "E_PIPELINE")
 
     # Scopo: 🔴 LA BANDIERA SI ABBASSA PRIMA DEL VERDETTO — il presidio della
     #        porta a senso unico.
@@ -1371,6 +1407,22 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(len(step_executor.calls), 0)
         # Run vero (dry_run=False): il driver non marca MAI il rollback.
         self.assertEqual(rollback_calls, [])
+
+    # Scopo: BE-2 — il lotto diventa fermo FRA il controllo del runner e
+    #        l'UPDATE: lo ferma il guard del DB, e il driver esce con
+    #        BLOCCATO_CRITICITA come quando lo ferma il runner (prima: ERRORE).
+    def test_until_done_bloccato_dal_guard_del_database(self):
+        class _GuardRepo(self._StatefulRepo):
+            def update_lotto_stato_doc(self, lotto_id, stato_doc_fiscale_id):
+                raise make_db_error(
+                    "Lotto bloccato: segnalazioni critiche o documenti in errore.",
+                    codice="E_PIPELINE_LOTTO_CRITICAL",
+                )
+
+        runner = LottoPipelineRunner(repository=_GuardRepo(), step_executor=self._StepExecutorMock())
+        with _fake_tx():
+            esito = runner.run_lotto_until_done(LottoPipelineParams(lotto_id=10, dry_run=False))
+        self.assertEqual(esito["motivo_stop"], "BLOCCATO_CRITICITA")
 
     # Scopo: D-Q — lo step si completa ma alcune fatture restano in errore
     #        (marcate dal task senza fermare il giro): il driver NON itera sullo

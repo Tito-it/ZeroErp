@@ -96,9 +96,10 @@ function creaStoreFamiglia(f) {
         return res.data.data
       }
 
-      // Il posting: `{movimenti, n_movimenti, documento}`.
-      async function registra(id) {
-        const res = await registraDocumento(f.codice, id)
+      // Il posting: `{movimenti, n_movimenti, documento}`. `config` porta la
+      // key del GESTO (`useChiaveGesto`, nel drawer): lo store la passa e basta.
+      async function registra(id, config = {}) {
+        const res = await registraDocumento(f.codice, id, config)
         emitDataChanged(f.tabEntity, id)
         return res.data.data
       }

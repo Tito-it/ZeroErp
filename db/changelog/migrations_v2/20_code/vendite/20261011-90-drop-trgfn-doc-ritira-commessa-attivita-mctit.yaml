@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL RITIRO DALLA COMMESSA NON E' PIU' SILENZIOSO: SI RITIRA L'AUTOMATICO
+#   DROP vendite.trgfn_doc_ritira_commessa_attivita() e i suoi quattro
+#   trigger trg_{ddt,ordini,preventivi,contratti}_z90_ritira_commessa_attivita_upd
+#   Brief: brief-db-annullo-documento-con-legami (§7.2, caso 5; D-5 di Tid)
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Il trigger (brief-db-lavoro-che-non-torna-indietro, L7/Q-10) ritirava
+#   le righe di commessa NON_EMESSA all'ingresso in uno stato abortito,
+#   AFTER, in silenzio: «chi chiude l'ordine non vede che sta annullando
+#   anche righe di commessa» (era il prezzo dichiarato nel suo COMMENT).
+#   D-5: stesso stampo degli altri legami. Le righe NON_EMESSA sono legami
+#   di CONSUMO (vendite.fn_documento_legami): il guard _m10_ (20261011-82)
+#   rifiuta l'annullo che le ha davanti, e il ritiro lo fa il verbo, dopo
+#   la conferma, con la stessa primitiva e lo stesso registro
+#   (vendite.fn_ritira_commessa_attivita_da_sorgente, dal BB
+#   vendite.fn_documento_ritira_legami).
+#   ⇒ Il trigger AFTER non troverebbe piu' una riga: ogni ingresso in uno
+#   stato abortito con righe NON_EMESSA e' gia' stato rifiutato BEFORE.
+#   Un oggetto che non puo' piu' agire si toglie, non si lascia «per
+#   sicurezza»: sembrerebbe ancora lui a ritirare.
+#
+# ── COSA RESTA ──────────────────────────────────────────────────────
+#   L'argomento di Q-10 regge, cambiando sede: la regola non vive nei
+#   servizi, vive nel guard sulla tabella, che vale per ogni strada che
+#   cambia lo stato. Restano la primitiva del ritiro, il freno sulle righe
+#   EMESSA (_a10_, trgfn_doc_guard_chiusura_sorgente) e il codice
+#   E_RITIRO_SORGENTE_PARAMETRO_MANCANTE, che le due funzioni usano.
+#   DROP TRIGGER IF EXISTS: i trigger li scrive un changeSet, non ci_apply,
+#   ma la forma condizionale non costa niente (§11.5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-90-drop-trgfn-doc-ritira-commessa-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20261011-90-drop-trgfn-doc-ritira-commessa-attivita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritirato il ritiro automatico (e silenzioso) dalla commessa alla chiusura del documento:
+        vendite.trgfn_doc_ritira_commessa_attivita e i suoi quattro trigger _z90_. Le righe
+        NON_EMESSA sono legami, e le ritira il verbo di annullo dopo la conferma (D-5).
+        Brief: brief-db-annullo-documento-con-legami.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "4"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                    JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'vendite'
+                     AND t.tgname IN ('trg_ddt_m10_guard_annullo_con_legami_upd',
+                                      'trg_ordini_m10_guard_annullo_con_legami_upd',
+                                      'trg_preventivi_m10_guard_annullo_con_legami_upd',
+                                      'trg_contratti_m10_guard_annullo_con_legami_upd');
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname IN ('vendite', 'script')
+                     AND p.proname <> 'trgfn_doc_ritira_commessa_attivita'
+                     AND p.prokind = 'f'
+                     AND p.prosrc LIKE '%trgfn_doc_ritira_commessa_attivita%';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_z90_ritira_commessa_attivita_upd ON vendite.ddt;
+              DROP TRIGGER IF EXISTS trg_ordini_z90_ritira_commessa_attivita_upd ON vendite.ordini;
+              DROP TRIGGER IF EXISTS trg_preventivi_z90_ritira_commessa_attivita_upd ON vendite.preventivi;
+              DROP TRIGGER IF EXISTS trg_contratti_z90_ritira_commessa_attivita_upd ON vendite.contratti;
+
+              DROP FUNCTION vendite.trgfn_doc_ritira_commessa_attivita();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ritorno: rieseguire i changeSet del lotto L7 che creano funzione e trigger.
+              SELECT 'ripristino rieseguendo i changeSet L7 di brief-db-lavoro-che-non-torna-indietro' AS note;

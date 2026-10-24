@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_calcoli_tempo_guard_immutabili()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_calcoli_tempo_guard_immutabili()
  RETURNS trigger
@@ -65,6 +67,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_calcoli_tempo_guard_immutabili()
 IS 'Guard: blocca modifica campi immutabili su calcoli_tempo.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

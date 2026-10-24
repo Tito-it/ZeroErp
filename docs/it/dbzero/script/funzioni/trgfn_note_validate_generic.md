@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_note_validate_generic()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_note_validate_generic()
  RETURNS trigger
@@ -83,6 +85,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_note_validate_generic()
 IS 'Validazione generica per note ancorate a RIGA: verifica appartenenza target_riga_id→target_id via tabella righe (schema.qualificata) e FK passate in TG_ARGV.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

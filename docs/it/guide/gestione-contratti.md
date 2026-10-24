@@ -1,6 +1,6 @@
 # Guida — Gestione Contratti vendita
 
-> **Ultimo aggiornamento**: 20 settembre 2026
+> **Ultimo aggiornamento**: 11 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -17,7 +17,7 @@
 > * [vendite.trgfn_contratti_freeze_listino_versione](/dbzero/vendite/manual/trgfn_contratti_freeze_listino_versione) — snapshot versione listino a DRAFT→ATTIVO
 > * [vendite.trgfn_doc_testata_lock_fuori_bozza](/dbzero/vendite/funzioni/trgfn_doc_testata_lock_fuori_bozza) — che cosa della testata si cambia ancora dopo la bozza
 > * [vendite.trgfn_doc_righe_lock_fuori_bozza](/dbzero/vendite/manual/trgfn_doc_righe_lock_fuori_bozza) — righe solo in bozza (building block condiviso con DDT e ordini)
-> * [script.trgfn_righe_guard_aggiunta_fuori_listino](/dbzero/script/funzioni/trgfn_righe_guard_aggiunta_fuori_listino) — guard AGGIUNTA già in listino (contratto e offerta)
+> * [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga) — quali articoli ammette una riga (contratto e offerta): AGGIUNTA già in listino, OVERRIDE ed ESCLUSIONE solo su un articolo del listino, solo componente, kit senza componenti, figlio di bundle
 > * [vendite.fn_contratto_riga_componenti_init](/dbzero/vendite/manual/fn_contratto_riga_componenti_init) — popola componenti BoM su riga padre composito
 > * [vendite.fn_contratto_riga_componenti_preview](/dbzero/vendite/manual/fn_contratto_riga_componenti_preview) — suggerimento prezzi pre-save
 >
@@ -111,6 +111,9 @@ Constraint DB:
 * Guard: una ESCLUSIONE è bloccata se l'articolo è un **componente** (figlio) di un
   bundle del listino del contratto — l'esclusione va applicata al **padre bundle**,
   non al singolo componente (`E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA`)
+* Nella ricerca dell'articolo di una riga nuova compaiono prima gli articoli che la riga può
+  usare; gli altri sono in grigio, col motivo sotto, e non si scelgono. È la stessa regola dei
+  guard qui sopra
 
 Per gli **articoli compositi** (distinta base): una riga ESCLUSIONE **non genera
 componenti**. L'esclusione toglie l'articolo per intero, quindi non ha prezzo né
@@ -178,6 +181,15 @@ La transizione `DRAFT → ANNULLATO` è sempre ammessa: una bozza non ancora
 attivata può essere annullata in qualsiasi momento. Un contratto ANNULLATO non
 partecipa al controllo di overlap temporale: dopo l'annullamento è possibile
 creare un nuovo contratto sulla stessa quadrupla senza conflitti.
+
+**Annullare un contratto nato da un'offerta.** L'offerta torna trasformabile, in
+un contratto o in un ordine: conta solo il contratto **vivo**, quello annullato
+conserva la provenienza. Se il contratto ha spinto righe in commessa ancora da
+emettere, si annullano anche quelle. Non succede in silenzio: «Annulla
+contratto» apre una **finestra di conferma** che elenca che cosa si riapre, con
+l'offerta e la commessa apribili con un clic, e l'operatore dichiara quanti
+legami ha visto. Le righe di commessa **già emesse** non si riaprono: bloccano
+l'annullo.
 
 Non esiste revisione come nei preventivi: se le condizioni cambiano, si cessa il
 contratto corrente e se ne crea uno nuovo.
@@ -329,16 +341,19 @@ Dopo l'attivazione il contratto è un documento firmato: quasi tutto resta com'e
 | Che cosa | In ATTIVO | In CESSATO e ANNULLATO |
 | --- | --- | --- |
 | data, valuta | fermi | fermi |
-| cliente (billing account, istanza, utility) | fermo | fermo |
+| cliente (billing account, istanza) | fermo | fermo |
+| utility, azienda che emette | ferme (già in bozza) | ferme |
 | listino, versione, variazioni globali, ambito, decorrenza, contratto padre, categoria cliente | fermi | fermi |
 | offerta e sorgente da cui nasce | ferme | ferme |
 | fine validità (`valido_al`), CIG, CUP, codice commessa, note | **si cambiano** | fermi |
 
 La fine validità si sposta per programmare la cessazione; CIG, CUP e codice
 commessa arrivano spesso dopo la firma. A contratto cessato o annullato si ferma
-tutto. Il rifiuto dice quale famiglia di dati si è toccata
-(`E_DOC_IDENTITA_FUORI_BOZZA`, `E_DOC_CONDIZIONI_FUORI_BOZZA`,
-`E_DOC_CLIENTE_FUORI_BOZZA`, `E_DOC_SORGENTE_FUORI_BOZZA`, `E_DOC_CHIUSO`). La
+tutto. Utility e azienda che emette non si cambiano nemmeno in bozza: in bozza
+si cambia il cliente, dentro la stessa utility. Il rifiuto dice quale famiglia
+di dati si è toccata (`E_DOC_IDENTITA_FUORI_BOZZA`, `E_DOC_CONDIZIONI_FUORI_BOZZA`,
+`E_DOC_CLIENTE_FUORI_BOZZA`, `E_DOC_SORGENTE_FUORI_BOZZA`, `E_DOC_CHIUSO`,
+`E_DOC_UTILITY_IMMUTABILE`, `E_DOC_EMITTENTE_IMMUTABILE`). La
 regola sta nel montaggio del lock di testata, e da lì la legge anche la
 capability del contratto per spegnere i campi nel form. Fino al 10 ottobre 2026 i
 quattro dati di pricing li fermava un controllo a parte, solo in ATTIVO
@@ -362,9 +377,12 @@ condizioni aggiornate.
 
 Se in DRAFT l'operatore tenta di rimuovere il `listino_id` da un contratto che
 ha eccezioni OVERRIDE o ESCLUSIONE, l'API risponde 422 con
-`E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`. Gli OVERRIDE e ESCLUSIONE perdono
+`E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI`. Gli OVERRIDE e ESCLUSIONE perdono
 significato senza un listino di riferimento. Le AGGIUNTA non bloccano (sono
-articoli fuori listino, compatibili con entrambe le forme).
+articoli fuori listino, compatibili con entrambe le forme). Mettere o sostituire
+il listino quando ci sono già righe risponde 422 con
+`E_DOC_LISTINO_CAMBIO_CON_RIGHE`: le righe sono state caricate contro il listino di
+prima. Le due regole le dice il database, e valgono anche per l'offerta.
 
 ---
 
@@ -440,7 +458,11 @@ L'attivazione fallisce (oltre alle guard trigger) se:
   is_draft`). I contratti **DRAFT** (oltre agli ANNULLATO) **non** partecipano al
   vincolo: l'esclusività scatta **solo all'attivazione**, quindi due DRAFT
   sovrapposti — e un DRAFT sovrapposto a un ATTIVO — sono ammessi (abilita la
-  preparazione delle bozze di successione)
+  preparazione delle bozze di successione). Sulla bozza sovrapposta il pulsante
+  «Attiva» è **spento** e dice quale contratto è in conflitto; chi prova comunque
+  riceve `E_CONTRATTO_OVERLAP_ESISTENTE`, col numero di quel contratto. La regola
+  sta in [`script.fn_check_contratto_sovrapposto`](/dbzero/script/funzioni/fn_check_contratto_sovrapposto),
+  e il vincolo di esclusione resta la difesa dura
 * il contratto è "negoziato puro" (senza listino) e non ha **almeno una riga
   AGGIUNTA con prezzo valorizzato**
 * ci sono approvazioni prezzo PENDING non risolte
@@ -517,7 +539,7 @@ Codici sollevati dal dominio contratti (registrati in `config.messaggi_errore`):
 | `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE`       | 451 | 422  | Attivazione contratto senza listino e senza almeno una riga AGGIUNTA con prezzo valorizzato                              |
 | `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`  | 452 | 422  | ⛔ Ritirato il 2026-10-10: il pricing di un contratto fuori bozza lo ferma `E_DOC_CONDIZIONI_FUORI_BOZZA` (§6.1)         |
 | `E_ARTICOLO_ESCLUSO_DA_CONTRATTO`              | 453 | 422  | Resolver chiede prezzo per articolo con ESCLUSIONE attiva                                                                |
-| `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`  | 454 | 422  | Tentativo rimozione listino con OVERRIDE/ESCLUSIONE presenti                                                             |
+| `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`  | 454 | 422  | ⛔ Ritirato il 2026-10-11: ora `E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI` (§6.3), comune a contratto e offerta              |
 | `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 455 | 422  | ESCLUSIONE su un articolo che è componente (figlio) di un bundle del listino — escludere il padre bundle                 |
 | `E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO` | 1201 | 409 | Attivazione di un contratto con listino che non ha una versione in vigore oggi (il DB congela la versione all'attivazione). In DRAFT il listino si sceglie comunque |
 | `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C`      | —   | 422  | Contratto senza listino e nessuna eccezione per l'articolo                                                               |

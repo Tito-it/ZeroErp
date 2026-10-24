@@ -5,7 +5,7 @@
 -- Test: la PORTA del device del secondo fattore e la FORMA che la regge.
 --   Brief: brief-db-secondo-fattore-totp, sezioni 3 e 4.
 --   ChangeSet: 90_end/20260929-24 (forward), 90_end/ci_apply/20260205-41
---   (v_tabelle_sola_lettura_app), scripts/sql/provision_db_roles.sql (POSTURA
+--   (v_tabelle_sola_lettura_app), scripts/sql/provision_zeroerp.sql (fase post) (POSTURA
 --   DICHIARATA); 00_schema/config/20260929-07 (forma), 90_end/20260929-23
 --   (il CHECK sul SUPER_ADMIN); 20_code/script/20260929-12 → -22,
 --   20261001-35 (fn_totp_ricifra_segreto, brief-db-totp-ricifra-segreto §3.5).

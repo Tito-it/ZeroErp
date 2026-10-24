@@ -6,6 +6,8 @@ CREATE FUNCTION fn_pgtap_crea_indirizzo_dettaglio(p_etichetta text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_indirizzo_dettaglio(p_etichetta text DEFAULT 'pgTAP'::text)
  RETURNS bigint
@@ -51,6 +53,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_indirizzo_dettaglio(p_etichetta text)
 IS 'Helper di fixture pgTAP: fabbrica un anagrafiche.indirizzi_dettaglio (civico 99999 sul primo stradario di seed, interno = etichetta) e ne ritorna l''id; etichette diverse danno indirizzi diversi, la stessa etichetta lo stesso id. Esiste perche'' indirizzi_dettaglio e'' DATO DI MACCHINA: su un database ricostruito da zero non ce n''e'' nessuno, e una fixture che ne cerca uno «attivo» muore in ERRORE_FIXTURE senza eseguire un''asserzione — misurato il 2026-09-15 su quattro pgTAP di magazzino (magazzini.indirizzo_dettaglio_id e'' NOT NULL). ⚠️ Non e'' un indirizzo vero: un test che verifichi la normalizzazione o la geolocalizzazione si costruisce il suo.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

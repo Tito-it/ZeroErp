@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2d (G-6): vw_dash_aperto_documenti: l'area COMMESSE diventa COMMESSA
+#   Brief: brief-db-grammatica-unica-documenti §7.9 G-6, §10.4.
+#
+#   La dashboard raggruppa per codice della sorgente (G-6): il valore della colonna area passa
+#   dal plurale (COMMESSE) al codice (COMMESSA). Stesso tipo, stessa colonna: CREATE OR REPLACE,
+#   le viste sopra (vw_dash_fatturazione_documenti, i riepiloghi) restano in piedi.
+#   ⚠️ CAMBIA UN VALORE nelle risposte della dashboard: le costanti DASH_*_AREE del backend e
+#   il frontend della dashboard seguono nello stesso giro.
+#
+#   Corpo e COMMENT dal catalogo vivo di dbdev (2026-10-20), non da uno YAML; sostituzioni
+#   contate. %TYPE in firma, DECLARE e RETURNS TABLE dove c'e' una colonna; nudi, col
+#   motivo accanto, i valori che una colonna non ha (conteggi, jsonb di lavoro, array).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261020-72-update-vw-dash-aperto-documenti-area-codice-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261020-72-update-vw-dash-aperto-documenti-area-codice-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_dash_aperto_documenti: l'area COMMESSE diventa COMMESSA, il codice della sorgente. Grammatica unica, 2d (G-6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- security_invoker si AZZERA a ogni CREATE OR REPLACE VIEW: si ripete dal catalogo.
+              CREATE OR REPLACE VIEW vendite.vw_dash_aperto_documenti WITH (security_invoker=on) AS
+              SELECT area,
+                  documento_id,
+                  documento_uid,
+                  codice,
+                  emittente_fiscale_id,
+                  emittente_soggetto_ruolo_id,
+                  cliente_display,
+                  fase,
+                  stato_codice_interno,
+                  stato_codice,
+                  valore_totale,
+                  unita_totali,
+                  motivo_fermo,
+                  data_riferimento,
+                  emittente_ragione_sociale
+                 FROM vendite.vw_dash_fatturazione_documenti d
+                WHERE (((area)::text <> 'COMMESSA'::text) AND (NOT is_abortito) AND (is_transitato IS DISTINCT FROM true) AND ((fase)::text <> 'CHIUSO'::text));
+
+              COMMENT ON VIEW vendite.vw_dash_aperto_documenti IS
+                'Situazione aperta v2 (serbatoio pre-commessa): stock dei documenti APERTI E NON CONCLUSI delle 4 aree (PREVENTIVI/ORDINI/OFFERTE/CONTRATTI — no COMMESSE, coperte dalla Lente 1), SENZA asse temporale. Perimetro (DL-15): area<>COMMESSE AND NOT is_abortito AND is_transitato IS DISTINCT FROM true AND fase<>CHIUSO. Eliminato il concetto "transitato" (DL-14): via is_transitato/is_aperto(col)/valore_transitato/unita_transitate dalla proiezione. Perimetro unico per vw_dash_aperto_riepilogo e per il drill-down BE (il filtro "aperti da oltre N giorni" e'' BE-side su data_riferimento). security_invoker=on (scope emittente RLS). ⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`, che arriva gia'' risolta da vw_dash_fatturazione_documenti. ⚠️ Andava ELENCATA: la proiezione e'' a colonne esplicite e non eredita nulla dalla vista a monte — il brief dava questa lista per «eredita» e sarebbe uscita una colonna vuota senza nessun errore a segnalarlo. Rev 2026-10-20 (20261020-72, brief-db-grammatica-unica-documenti 2d, G-6): l''area COMMESSE diventa COMMESSA, il codice della sorgente (il plurale e'' ritirato).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_aperto_documenti WITH (security_invoker=on) AS
+              SELECT area,
+                  documento_id,
+                  documento_uid,
+                  codice,
+                  emittente_fiscale_id,
+                  emittente_soggetto_ruolo_id,
+                  cliente_display,
+                  fase,
+                  stato_codice_interno,
+                  stato_codice,
+                  valore_totale,
+                  unita_totali,
+                  motivo_fermo,
+                  data_riferimento,
+                  emittente_ragione_sociale
+                 FROM vendite.vw_dash_fatturazione_documenti d
+                WHERE (((area)::text <> 'COMMESSE'::text) AND (NOT is_abortito) AND (is_transitato IS DISTINCT FROM true) AND ((fase)::text <> 'CHIUSO'::text));
+
+
+              COMMENT ON VIEW vendite.vw_dash_aperto_documenti IS
+                'Situazione aperta v2 (serbatoio pre-commessa): stock dei documenti APERTI E NON CONCLUSI delle 4 aree (PREVENTIVI/ORDINI/OFFERTE/CONTRATTI — no COMMESSE, coperte dalla Lente 1), SENZA asse temporale. Perimetro (DL-15): area<>COMMESSE AND NOT is_abortito AND is_transitato IS DISTINCT FROM true AND fase<>CHIUSO. Eliminato il concetto "transitato" (DL-14): via is_transitato/is_aperto(col)/valore_transitato/unita_transitate dalla proiezione. Perimetro unico per vw_dash_aperto_riepilogo e per il drill-down BE (il filtro "aperti da oltre N giorni" e'' BE-side su data_riferimento). security_invoker=on (scope emittente RLS). ⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`, che arriva gia'' risolta da vw_dash_fatturazione_documenti. ⚠️ Andava ELENCATA: la proiezione e'' a colonne esplicite e non eredita nulla dalla vista a monte — il brief dava questa lista per «eredita» e sarebbe uscita una colonna vuota senza nessun errore a segnalarlo.';

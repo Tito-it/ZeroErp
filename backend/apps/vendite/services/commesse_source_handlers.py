@@ -33,6 +33,13 @@ from typing import Any
 
 from django.db import connection, transaction
 
+from apps.config.sorgenti import (
+    SORGENTE_ATTIVITA_CONSUMI,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+)
 from apps.core.services.fan_out import run_fan_out
 from apps.vendite.db.commesse_repository import (
     POLICY_FATTURAZIONE_DA_DOCUMENTO,
@@ -418,7 +425,10 @@ class BaseSourceHandler(ABC):
         sorgente_uid: int | None = None,
         righe_ids: list[int] | None = None,
     ) -> HandlerResult:
-        """Ciclo principale: fetch → get_or_create_commessa → link → upsert.
+        """Ciclo principale: fetch → get_or_create_commessa → upsert.
+
+        Il link documento → commessa (`vendite.commesse_sorgenti`) non si
+        scrive qui: lo scrive la madre DB delle righe, vedi `_lavora_riga`.
 
         Usa cache locale per evitare chiamate DB ridondanti a get_or_create_commessa
         quando piu` righe appartengono alla stessa commessa (stessi parametri chiave).
@@ -438,7 +448,7 @@ class BaseSourceHandler(ABC):
         pending_inputs: list[CommessaAttivitaInput] = []
 
         # Scopo: Lavora UNA riga sorgente — hook, espansione BoM, risoluzione o
-        #        creazione della commessa, link della sorgente — e restituisce
+        #        creazione della commessa — e restituisce
         #        cio' che va registrato SOLO SE la riga e' atterrata: chiave di
         #        cache, id commessa e input attivita' da accodare al batch.
         #        Gira dentro il savepoint aperto dal fan-out, quindi NON tocca
@@ -516,11 +526,14 @@ class BaseSourceHandler(ABC):
             else:
                 commessa_id = self._repo.get_or_create_commessa(**dimensioni_commessa)
 
-            self._repo.link_sorgente(
-                commessa_id=commessa_id,
-                sorgente_tipo_id=row.sorgente_tipo_id,
-                sorgente_uid=row.sorgente_uid,
-            )
+            # ⛔ Il LINK della sorgente non si scrive qui. Dal 2026-10-12 lo
+            # scrive la madre DB `vendite.fn_upsert_commessa_attivita`, per
+            # ogni riga con una sorgente di scope PUSH_COMMESSA, prima di
+            # scriverla (D-13 di brief-db-annullo-a-valle-riapre-a-monte): la
+            # regola «un documento in una sola commessa APERTA» (D-12) la
+            # attraversa ogni invio, non solo quelli che si ricordano di
+            # chiamarla. Il rifiuto (`E_COMMESSA_SORGENTE_ALTRA_COMMESSA`)
+            # arriva quindi dal batch, come errore della riga.
 
             return cache_key, commessa_id, [
                 self._build_attivita_input(commessa_id, exp) for exp in expanded
@@ -704,7 +717,6 @@ class BaseSourceHandler(ABC):
             prezzo_bloccato=row.prezzo_bloccato,
             pricing_mode=row.pricing_mode,
             tipo_movimento=row.tipo_movimento,
-            tipo_consumo=row.tipo_consumo,
             istanza_utility_id=row.istanza_utility_id,
             data_attivita=row.data_attivita,
             competenza_dal=row.competenza_dal,
@@ -752,7 +764,7 @@ class HandlerPreventivi(BaseSourceHandler):
     """
 
     name = "HandlerPreventivi"
-    sorgente_codice = "PREVENTIVO"
+    sorgente_codice = SORGENTE_PREVENTIVO
 
     @staticmethod
     def _componenti_repo_factory():
@@ -771,7 +783,7 @@ class HandlerOrdini(BaseSourceHandler):
     """
 
     name = "HandlerOrdini"
-    sorgente_codice = "ORDINE_VENDITA"
+    sorgente_codice = SORGENTE_ORDINE_VENDITA
 
     @staticmethod
     def _componenti_repo_factory():
@@ -788,7 +800,7 @@ class HandlerContratti(BaseSourceHandler):
     """
 
     name = "HandlerContratti"
-    sorgente_codice = "CONTRATTO"
+    sorgente_codice = SORGENTE_CONTRATTO
 
     @staticmethod
     def _componenti_repo_factory():
@@ -805,7 +817,7 @@ class HandlerDdt(BaseSourceHandler):
     """
 
     name = "HandlerDdt"
-    sorgente_codice = "DDT_VENDITA"
+    sorgente_codice = SORGENTE_DDT_VENDITA
 
     @staticmethod
     def _componenti_repo_factory():
@@ -840,7 +852,7 @@ class HandlerConsumi(BaseSourceHandler):
     """
 
     name = "HandlerConsumi"
-    sorgente_codice = "ATTIVITA_CONSUMI"
+    sorgente_codice = SORGENTE_ATTIVITA_CONSUMI
 
     def _expand_rows(self, row: PushableRow) -> list[PushableRow]:
         """Fan-out: espande una riga consumo base in N righe componente."""

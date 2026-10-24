@@ -19,7 +19,9 @@
 -- Elenco test (plan 13):
 --   STRUTTURA
 --    1) le cinque colonne data esistono, con i nomi di D-16 (attore non marcato = nostro)
---    2) ⛔ nessun CHECK fra le due date ne' contro la data documento: e' una SCELTA (brief 2.3)
+--    2) ⛔ nessun CHECK sulle date di consegna: fra le due e' una SCELTA (brief 2.3); contro la
+--       data del documento la regola c'e' dal 2026-10-13, ma e' un GUARD con un codice
+--       (test-data-consegna-vs-data-documento-v1), non un CHECK muto
 --   PRIMA DEL PUSH
 --    3) la vista-predicato dei smistabili espone la data della riga di preventivo, dalla sorgente
 --   IL PUSH — percorso reale, vendite.fn_push_preventivo_a_ordine
@@ -70,6 +72,18 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(13);
 
+-- ⚠️ rev 2026-10-13 (collaudo date di consegna, 20261013-66): le date sono
+--   RELATIVE A OGGI. Il preventivo e l'ordine del push nascono con la data di
+--   oggi, e una consegna anteriore al documento ora si rifiuta (righe) o non si
+--   copia (push e revisione): con le date fisse di prima (2026-11-11, …) il file
+--   sarebbe diventato rosso da solo, passata quella data. «bassa» e' la data
+--   piu' bassa del test 8, comunque non anteriore a oggi.
+CREATE TEMP TABLE _d AS
+SELECT script.fn_data_operativa() + 29 AS richiesta,
+       script.fn_data_operativa() + 23 AS confermata,
+       script.fn_data_operativa() + 5  AS bassa,
+       script.fn_data_operativa() + 51 AS rev;
+
 -- ============================================================
 -- STRUTTURA (prima della fixture: non dipende da nessun dato)
 -- ============================================================
@@ -90,9 +104,15 @@ SELECT is(
 );
 
 -- ⛔ Un CHECK «confermata >= richiesta» sarebbe FALSO (si puo' confermare
---   prima), e uno contro ordini.data negherebbe la retrodatazione. Il test
---   pinna la scelta: un vincolo aggiunto domani fa rosso qui, e chi lo
---   aggiunge legge perche' non c'era.
+--   prima). Il test pinna la scelta: un vincolo aggiunto domani fa rosso qui, e
+--   chi lo aggiunge legge perche' non c'era.
+-- ⚠️ rev 2026-10-13 (collaudo date di consegna, 20261013-62…-68): contro la data
+--   del documento la regola ora c'e' — una consegna non viene prima del
+--   documento — ma e' un GUARD (script.trgfn_doc_righe_guard_data_consegna, col
+--   lato testata), con un codice e una frase: un CHECK risponderebbe 23514 muto.
+--   La retrodatazione resta possibile: si retrodata il documento, e le
+--   consegne seguono. Il comportamento si prova in
+--   test-data-consegna-vs-data-documento-v1.
 SELECT is(
     (SELECT count(*)::int
        FROM pg_constraint k
@@ -101,7 +121,7 @@ SELECT is(
                            'acquisti.ordini_righe'::regclass)
         AND pg_get_constraintdef(k.oid) ILIKE '%data_consegna%'),
     0,
-    '2) nessun CHECK sulle date di consegna: ne'' fra le due ne'' contro la data documento (brief 2.3)'
+    '2) nessun CHECK sulle date di consegna (brief 2.3): fra le due non c''e'' regola, contro la data documento la regola e'' un guard'
 );
 
 -- ============================================================
@@ -171,7 +191,7 @@ WITH r AS (
     SELECT p.preventivo_id, a.articolo_id, 10.00, 2, i.iva_id, x.ordine, x.data_richiesta
       FROM _preventivo p, _articolo a,
            (SELECT i.id AS iva_id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) i,
-           (VALUES (1, DATE '2026-11-11'), (2, NULL::date)) AS x(ordine, data_richiesta)
+           (VALUES (1, (SELECT richiesta FROM _d)), (2, NULL::date)) AS x(ordine, data_richiesta)
     RETURNING id, ordine, data_consegna_richiesta_cliente
 )
 SELECT id AS riga_prev_id, ordine, data_consegna_richiesta_cliente FROM r;
@@ -188,7 +208,7 @@ SELECT is(
     (SELECT string_agg(COALESCE(v.data_consegna_richiesta_cliente::text, 'NULL'), ',' ORDER BY v.ordine)
        FROM vendite.vw_preventivi_righe_smistabili_ordine v
       WHERE v.preventivo_id = (SELECT preventivo_id FROM _preventivo)),
-    '2026-11-11,NULL',
+    (SELECT richiesta::text || ',NULL' FROM _d),
     '3) vw_preventivi_righe_smistabili_ordine espone la data della riga di preventivo tale e quale'
 );
 
@@ -209,7 +229,7 @@ SELECT is(
        FROM _righe_ord o
        JOIN _righe_prev p ON p.riga_prev_id = o.preventivo_riga_id
       WHERE p.ordine = 1),
-    DATE '2026-11-11',
+    (SELECT richiesta FROM _d),
     '4) la data richiesta dal cliente SOPRAVVIVE al push: sulla riga d''ordine c''e'' la stessa del preventivo'
 );
 
@@ -236,14 +256,14 @@ SELECT is(
     (SELECT v.data_consegna_richiesta_cliente_min
        FROM vendite.vw_ordini_lista v
       WHERE v.id = (SELECT ordine_id FROM _ordine)),
-    DATE '2026-11-11',
+    (SELECT richiesta FROM _d),
     '7) vw_ordini_lista.data_consegna_richiesta_cliente_min = la sola data presente (la riga NULL non conta)'
 );
 
 -- La riga 2 prende una data PIU' BASSA e poi viene spenta: il min deve
 -- scendere e poi risalire. Cosi' si prova sia il min sia il filtro «attive».
 UPDATE vendite.ordini_righe
-   SET data_consegna_richiesta_cliente = DATE '2026-10-05'
+   SET data_consegna_richiesta_cliente = (SELECT bassa FROM _d)
  WHERE id = (SELECT o.riga_ord_id FROM _righe_ord o JOIN _righe_prev p ON p.riga_prev_id = o.preventivo_riga_id WHERE p.ordine = 2);
 
 UPDATE vendite.ordini_righe
@@ -254,17 +274,17 @@ SELECT is(
     (SELECT v.data_consegna_richiesta_cliente_min
        FROM vendite.vw_ordini_lista v
       WHERE v.id = (SELECT ordine_id FROM _ordine)),
-    DATE '2026-11-11',
+    (SELECT richiesta FROM _d),
     '8) una riga spenta con una data piu'' bassa NON abbassa il min della testata: contano solo le righe attive'
 );
 
 -- ============================================================
 -- LE DATE SI SCRIVONO E SI RILEGGONO
 -- ============================================================
--- Conferma PRIMA di quanto chiesto (11-11 -> 11-05): nessun vincolo la ferma.
+-- Conferma PRIMA di quanto chiesto (+29 -> +23): nessun vincolo fra le due la ferma.
 SELECT lives_ok(
     $$UPDATE vendite.ordini_righe
-         SET data_consegna_confermata = DATE '2026-11-05'
+         SET data_consegna_confermata = (SELECT confermata FROM _d)
        WHERE id = (SELECT o.riga_ord_id FROM _righe_ord o
                     JOIN _righe_prev p ON p.riga_prev_id = o.preventivo_riga_id
                    WHERE p.ordine = 1)$$,
@@ -277,7 +297,7 @@ SELECT is(
       WHERE orr.id = (SELECT o.riga_ord_id FROM _righe_ord o
                        JOIN _righe_prev p ON p.riga_prev_id = o.preventivo_riga_id
                       WHERE p.ordine = 1)),
-    '2026-11-11 -> 2026-11-05',
+    (SELECT richiesta::text || ' -> ' || confermata::text FROM _d),
     '10) le due date si rileggono dalla riga tali e quali: richiesta dal cliente e confermata da noi'
 );
 
@@ -314,7 +334,7 @@ INSERT INTO vendite.preventivi_righe
 SELECT p.preventivo_id, a.articolo_id, 10.00, 2, i.iva_id, x.ordine, x.data_richiesta
   FROM _preventivo_rev p, _articolo a,
        (SELECT i.id AS iva_id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) i,
-       (VALUES (1, DATE '2026-12-03'), (2, NULL::date)) AS x(ordine, data_richiesta);
+       (VALUES (1, (SELECT rev FROM _d)), (2, NULL::date)) AS x(ordine, data_richiesta);
 
 DO $x$ BEGIN
     PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi',
@@ -334,7 +354,7 @@ SELECT is(
        FROM vendite.preventivi_righe pr
       WHERE pr.preventivo_id = (SELECT nuovo_preventivo_id FROM _rev)
         AND pr.ordine = 1),
-    DATE '2026-12-03',
+    (SELECT rev FROM _d),
     '11) la data richiesta dal cliente SOPRAVVIVE alla revisione: sulla riga della rev N+1 c''e'' la stessa del preventivo'
 );
 
@@ -354,7 +374,7 @@ SELECT is(
             string_agg(pr.ordine || ':' || COALESCE(pr.data_consegna_richiesta_cliente::text, 'NULL'), ',' ORDER BY pr.ordine)
        FROM vendite.preventivi_righe pr
       WHERE pr.preventivo_id = (SELECT preventivo_id FROM _preventivo_rev)),
-    '1 | 1:2026-12-03,2:NULL',
+    (SELECT '1 | 1:' || rev::text || ',2:NULL' FROM _d),
     '13) la rev N+1 e'' nata (rev 1) e la rev N conserva le sue date tali e quali: la revisione COPIA, non sposta'
 );
 

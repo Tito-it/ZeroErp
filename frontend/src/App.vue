@@ -12,12 +12,23 @@ import Toast from 'primevue/toast'
 import Button from 'primevue/button'
 import ConfirmDialog from 'primevue/confirmdialog'
 import DocumentoDrawerHost from './core/components/DocumentoDrawerHost.vue'
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { DIALOG_CHROME } from './core/constants'
+import { TASTO, nomeTasto } from './core/utils/scorciatoie'
+import { useUiStore } from './stores/ui'
 
 // Scopo: ESC sulla radice della ConfirmDialog — ferma la risalita e chiude la
 //        sola conferma (`instance.close()` = la via di PrimeVue: `onHide`).
 //        Dentro una conferma non ci sono tendine: nessun controllo da fare.
-const confirmDialogPt = {
+// ⭐ E il tasto DETTO in testa (2026-10-11, Tid), come in `AppDialog`:
+//    l'etichetta «Esc» in alto a destra, senza X. La ConfirmDialog non inoltra
+//    lo slot `#header` al suo Dialog: l'etichetta e' il `::before` delle azioni
+//    di testa (`data-tasto`, main.css `.app-dialog-tasto-css`), che un figlio
+//    non lo possono ricevere da un `pt`. Assente su `ui.isCompatto`.
+const { t, te } = useI18n()
+const ui = useUiStore()
+const confirmDialogPt = computed(() => ({
   root: ({ instance }) => ({
     onKeydown: (event) => {
       if (event.code !== 'Escape') return
@@ -25,7 +36,11 @@ const confirmDialogPt = {
       if (DIALOG_CHROME.closeOnEscape) instance.close()
     },
   }),
-}
+  headerActions:
+    DIALOG_CHROME.closeOnEscape && !ui.isCompatto
+      ? { class: 'app-dialog-tasto-css', 'data-tasto': nomeTasto(t, te, TASTO.ESC) }
+      : {},
+}))
 import {
   bersaglioDrawerVisible,
   bersaglioDrawerTipo,

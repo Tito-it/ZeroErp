@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGIO: catalogo.trgfn_articoli_guard_onere_natura su catalogo.articoli
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-9, §9.1)
+#
+#   BEFORE INSERT OR UPDATE OF natura_vendita_id, causale_onere_id: nessun
+#   trigger BEFORE di catalogo.articoli scrive le due colonne, quindi UPDATE OF
+#   e' la forma giusta (linee-guida-trigger). Fascia _a10_: un guard.
+#   I require_attivo della natura e della causale sono AFTER: una natura o una
+#   causale spenta la rifiutano loro, dopo; qui si giudica la coppia.
+#   ⛔ Nome sotto i 63 caratteri (43).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261013-06-create-trigger-articoli-guard-onere-natura-mctit.yaml
+
+  - changeSet:
+      id: 20261013-06-create-trigger-articoli-guard-onere-natura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta catalogo.trgfn_articoli_guard_onere_natura su catalogo.articoli (BEFORE INSERT OR UPDATE
+        OF natura_vendita_id, causale_onere_id). Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-9).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'catalogo'
+                 AND c.relname = 'articoli'
+                 AND t.tgname = 'trg_articoli_a10_guard_onere_natura_ins_upd'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_articoli_a10_guard_onere_natura_ins_upd
+                  BEFORE INSERT OR UPDATE OF natura_vendita_id, causale_onere_id
+                  ON catalogo.articoli
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_articoli_guard_onere_natura();

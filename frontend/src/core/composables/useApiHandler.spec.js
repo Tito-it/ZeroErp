@@ -151,6 +151,24 @@ describe('useApiHandler — il contratto dell’envelope d’errore', () => {
     expect(soluzione.value).toBeNull()
   })
 
+  it('⭐ `show_retry_dialog` senza `hint`: la soluzione di ripiego dice di riprovare', async () => {
+    // Il 409 `E_IDEMPOTENCY_IN_PROGRESS` (il reinvio di un gesto ancora in
+    // corso) arriva senza `hint`: senza ripiego l'operatore leggerebbe solo
+    // «gia' in elaborazione», senza sapere che riprovare non raddoppia.
+    const { execute, soluzione } = useApiHandler()
+    await execute(() => Promise.reject(errore(409, envelope({ code: 'E_IDEMPOTENCY_IN_PROGRESS', ui_action: 'show_retry_dialog' }))))
+    expect(soluzione.value).toBe('t:errors.soluzione_riprova_fra_poco')
+    expect(notifiche.error).toHaveBeenCalledWith('Messaggio dal backend', 't:errors.soluzione_riprova_fra_poco')
+  })
+
+  it('⚠️ l’`hint` del backend vince sul ripiego, e un’azione ignota non ne ha', async () => {
+    const { execute, soluzione } = useApiHandler()
+    await execute(() => Promise.reject(errore(409, envelope({ ui_action: 'show_retry_dialog', hint: 'dal catalogo' }))))
+    expect(soluzione.value).toBe('dal catalogo')
+    await execute(() => Promise.reject(errore(409, envelope({ ui_action: 'toString' }))))
+    expect(soluzione.value).toBeNull()
+  })
+
   it('⚠️ ogni `execute` AZZERA: i campi descrivono l’ultimo errore, non la storia', async () => {
     const { execute, campiErrati, azioneUi, bersagli, messaggioErrore, soluzione } = useApiHandler()
     await execute(() =>

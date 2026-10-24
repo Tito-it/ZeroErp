@@ -7,6 +7,8 @@ CREATE FUNCTION fn_available_actions_reso(p_reso_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_available_actions_reso(p_reso_id bigint)
  RETURNS jsonb
@@ -64,6 +66,12 @@ AS $function$
 --   STESSA funzione che solleva vendite.fn_conferma_reso. E' uno stato che
 --   cambia (si sceglie il magazzino, si scrivono i rientri): disabilita,
 --   non nasconde.
+--   ⭐ rev 2026-10-14 (brief-db-reso-motivi-conferma-con-valori): la
+--   CONFERMATO porta anche `reasons`, l'array intero dei motivi della
+--   merce coi loro `valori` (i segnaposti {0}, {1}, {2} delle frasi),
+--   come la EMESSO della bolla. Il primo motivo si deriva dall'array.
+--   La precedenza fra i motivi sta UNA volta nelle LATERAL `p`/`m`, e
+--   la leggono enabled, reason, reason_key e reasons.
 DECLARE
     -- Tipi nudi solo per valori CALCOLATI (azioni e motivi jsonb, flag,
     -- motivi e chiavi i18n composti): nessuna colonna di cui siano il riflesso.
@@ -75,6 +83,7 @@ DECLARE
     v_ha_righe   boolean := false;
     v_ha_accrediti boolean := false;
     v_reso         vendite.resi%ROWTYPE;
+    v_motivi_merce jsonb := '[]'::jsonb;
     v_motivo_merce jsonb;
     c_non_edit_draft CONSTANT jsonb :=
         '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id","emittente_fiscale_id"]'::jsonb;
@@ -97,7 +106,10 @@ BEGIN
     -- bozza, l'unico stato da cui si conferma. NULL = nessun motivo.
     IF v_stato_cod = 'DRAFT' THEN
         SELECT r.* INTO v_reso FROM vendite.resi r WHERE r.id = p_reso_id;
-        v_motivo_merce := script.fn_check_reso_merce(v_reso) -> 0;
+        -- L'array intero va in `reasons`; il primo motivo si deriva da
+        -- lui, cosi' le due letture non si separano (rev 2026-10-14).
+        v_motivi_merce := script.fn_check_reso_merce(v_reso);
+        v_motivo_merce := v_motivi_merce -> 0;
     END IF;
 
     -- Precondizione "documento non vuoto" per le transizioni che la
@@ -142,45 +154,25 @@ BEGIN
                 'label_key',        t.meta->>'label_key',
                 'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
                 'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
-                -- ⚠️ PRECEDENZA DICHIARATA fra due motivi: il
-                -- SPECIFICO batte il generico. Oggi non si
-                -- incontrano (le transizioni `annulla` non
-                -- dichiarano requires_righe, e un reso con
-                -- accrediti ha per forza righe), ma un ordine non
-                -- scritto e' un ordine che il prossimo cambia
-                -- senza accorgersene.
-                --   1. ANNULLATO + accrediti  -> RESO_CON_ACCREDITI
-                --   2. requires_righe + vuoto -> DOCUMENTO_SENZA_RIGHE
-                --   3. CONFERMATO + merce     -> il motivo fisico
-                --      (rev 2026-09-28; con zero righe non ci sono
-                --      voci, quindi il 2 e il 3 non si incontrano)
-                -- ⚠️ Il match e' su `codice_interno`, la colonna
-                -- IMMUTABILE: su `codice` si romperebbe al primo
-                -- rename fatto dall'utente, e in silenzio.
-                'enabled',          NOT (
-                                        (COALESCE((t.meta->>'requires_righe')::boolean, false)
-                                         AND NOT v_ha_righe)
-                                     OR (sa.codice_interno = 'ANNULLATO' AND v_ha_accrediti)
-                                     OR (sa.codice_interno = 'CONFERMATO' AND v_motivo_merce IS NOT NULL)
-                                    ),
+                -- I tre motivi e la loro PRECEDENZA stanno nelle
+                -- LATERAL `p`/`m` qui sotto: i quattro campi li
+                -- leggono e basta, cosi' non possono dissentire.
+                'enabled',          NOT (m.con_accrediti OR m.senza_righe OR m.merce),
                 'reason',           CASE
-                                      WHEN sa.codice_interno = 'ANNULLATO' AND v_ha_accrediti
-                                           THEN 'RESO_CON_ACCREDITI'
-                                      WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
-                                           AND NOT v_ha_righe
-                                           THEN 'DOCUMENTO_SENZA_RIGHE'
-                                      WHEN sa.codice_interno = 'CONFERMATO' AND v_motivo_merce IS NOT NULL
-                                           THEN v_motivo_merce ->> 'reason'
+                                      WHEN m.con_accrediti THEN 'RESO_CON_ACCREDITI'
+                                      WHEN m.senza_righe   THEN 'DOCUMENTO_SENZA_RIGHE'
+                                      WHEN m.merce         THEN v_motivo_merce ->> 'reason'
                                     END,
                 'reason_key',       CASE
-                                      WHEN sa.codice_interno = 'ANNULLATO' AND v_ha_accrediti
-                                           THEN 'vendite.reso.annulla_reason.con_accrediti'
-                                      WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
-                                           AND NOT v_ha_righe
-                                           THEN 'common.azione_reason.senza_righe'
-                                      WHEN sa.codice_interno = 'CONFERMATO' AND v_motivo_merce IS NOT NULL
-                                           THEN v_motivo_merce ->> 'reason_key'
-                                    END
+                                      WHEN m.con_accrediti THEN 'vendite.reso.annulla_reason.con_accrediti'
+                                      WHEN m.senza_righe   THEN 'common.azione_reason.senza_righe'
+                                      WHEN m.merce         THEN v_motivo_merce ->> 'reason_key'
+                                    END,
+                -- Elenco completo dei motivi della merce, coi loro
+                -- `valori` (rev 2026-10-14): la forma della EMESSO
+                -- della bolla. La chiave c'e' sempre, null quando a
+                -- spegnere l'azione non e' la merce.
+                'reasons',          CASE WHEN m.merce THEN v_motivi_merce END
             )
             ORDER BY sa.ordine
         ),
@@ -189,6 +181,30 @@ BEGIN
     INTO v_actions
     FROM config.transizioni_stati_reso t
     JOIN config.stati_doc_reso sa ON sa.id = t.stato_a_id
+    -- ⚠️ PRECEDENZA DICHIARATA fra i motivi, scritta UNA volta:
+    -- lo SPECIFICO batte il generico.
+    --   1. ANNULLATO + accrediti  -> RESO_CON_ACCREDITI
+    --   2. requires_righe + vuoto -> DOCUMENTO_SENZA_RIGHE
+    --   3. CONFERMATO + merce     -> il motivo fisico (e `reasons`)
+    -- Oggi l'1 e il 2 non si incontrano (le `annulla` non dichiarano
+    -- requires_righe, e un reso con accrediti ha righe), e nemmeno il
+    -- 2 e il 3 (fn_check_reso_merce con zero righe non ha voci). Ma
+    -- e' un incastro fra funzioni, non una regola: `m.merce` esclude
+    -- i due che lo precedono, o il giorno che la check guardasse il
+    -- magazzino prima delle righe `reasons` porterebbe un motivo
+    -- accanto a reason = DOCUMENTO_SENZA_RIGHE.
+    -- ⚠️ Il match e' su `codice_interno`, la colonna IMMUTABILE: su
+    -- `codice` si romperebbe al primo rename fatto dall'utente.
+    CROSS JOIN LATERAL (
+        SELECT (sa.codice_interno = 'ANNULLATO' AND v_ha_accrediti) AS con_accrediti,
+               (COALESCE((t.meta->>'requires_righe')::boolean, false)
+                AND NOT v_ha_righe)                                AS senza_righe
+    ) p
+    CROSS JOIN LATERAL (
+        SELECT p.con_accrediti, p.senza_righe,
+               (sa.codice_interno = 'CONFERMATO' AND v_motivo_merce IS NOT NULL
+                AND NOT p.con_accrediti AND NOT p.senza_righe)     AS merce
+    ) m
     WHERE t.stato_da_id = v_stato_id
       AND t.attivo IS TRUE
       AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
@@ -217,8 +233,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_reso(p_reso_id bigint)
-IS 'Capability reso per detail API: available_actions (matrice transizioni_stati_reso, filtro manuale) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror ridotto di fn_available_actions_ddt (no push/pdf). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il reso non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard E_RESO_SENZA_RIGHE). rev 2026-08-06: + target_state_descrizione accanto a target_state. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari. ⭐ rev 2026-08-20 (segnalazione BE): la transizione ad ANNULLATO si DISABILITA COL MOTIVO quando il reso ha un accredito registrato -> enabled=false, reason RESO_CON_ACCREDITI, reason_key vendite.reso.annulla_reason.con_accrediti. Applica la regola di frontend-standards, ora scritta anche per il DB in linee-guida-sql §12: «permesso => nascondi, STATO => disabilita col motivo». Avere un accredito e'' uno stato che CAMBIA — si disfa l''accredito e l''annullo torna possibile — quindi il bottone non va nascosto ne'' lasciato acceso e muto: resta a video e spiega. Cambia la decisione del §38.6 del brief nota di credito. ⭐ NIENTE flag di testata `ha_accrediti`, che il BE aveva chiesto: la terna enabled/reason/reason_key esiste gia'' PER AZIONE ed e'' gia'' letta dal FE, mentre un flag di documento spegnerebbe anche le transizioni che non c''entrano e vorrebbe cablaggio nuovo. Modello: fn_available_actions_ddt, che disabilita la sola transizione EMESSO con un motivo suo. ⚠️ Il predicato e'' lo STESSO EXISTS della guardia di vendite.fn_annulla_reso (933): capability e guard devono dire la stessa cosa, o il bottone e'' grigio quando l''annullo passerebbe — o peggio il contrario. ⚠️ vendite.resi_righe_accrediti NON ha RLS (verificato): se un domani ce l''avesse, chi non vede il ponte leggerebbe «nessun accredito» e si troverebbe il bottone acceso e il 409 in faccia, e servirebbe una SECURITY DEFINER. ⚠️ PRECEDENZA fra motivi dichiarata nel corpo: lo SPECIFICO (accrediti) batte il generico (senza righe). ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key. 🔴 Richiede la chiave i18n vendite.reso.annulla_reason.con_accrediti in it.json e en.json: senza, check_i18n_keys.py diventa rosso e il tooltip resta vuoto. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3; brief-design-note-credito-resi §43. rev 2026-09-27 (20260927-15): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-12): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9). ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, P-6): la transizione a CONFERMATO si disabilita col PRIMO MOTIVO FISICO di script.fn_check_reso_merce (magazzino di rientro mancante, rientri incompleti, merce non ricollocabile, rientro oltre l''uscito), la stessa funzione che solleva vendite.fn_conferma_reso: reason e reason_key del motivo, chiavi vendite.reso.azione_reason.*. Precedenza: accrediti, poi righe, poi merce. rev 2026-10-10 (brief-db-testata-dopo-emissione fase 2): non_editable_fields e can_edit_testata si leggono dal montaggio del lock di testata con script.fn_doc_testata_in_stato: le colonne «sempre» della capability seguite da quelle che il lock blocca nello stato, e can_edit_testata vero se nello stato almeno una colonna nominata si cambia. Ritirate le liste scritte a mano dei campi bloccati fuori bozza (la terza copia della regola, accanto a lock e backend): con D-8/D-10 le colonne aperte dopo l''emissione (note, trasporto, valido_al e CIG/CUP del contratto…) si cambiano negli stati del montaggio e si fermano a documento chiuso.';
+IS 'Capability reso per detail API: available_actions (matrice transizioni_stati_reso, filtro manuale) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror ridotto di fn_available_actions_ddt (no push/pdf). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il reso non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard E_RESO_SENZA_RIGHE). rev 2026-08-06: + target_state_descrizione accanto a target_state. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari. ⭐ rev 2026-08-20 (segnalazione BE): la transizione ad ANNULLATO si DISABILITA COL MOTIVO quando il reso ha un accredito registrato -> enabled=false, reason RESO_CON_ACCREDITI, reason_key vendite.reso.annulla_reason.con_accrediti. Applica la regola di frontend-standards, ora scritta anche per il DB in linee-guida-sql §12: «permesso => nascondi, STATO => disabilita col motivo». Avere un accredito e'' uno stato che CAMBIA — si disfa l''accredito e l''annullo torna possibile — quindi il bottone non va nascosto ne'' lasciato acceso e muto: resta a video e spiega. Cambia la decisione del §38.6 del brief nota di credito. ⭐ NIENTE flag di testata `ha_accrediti`, che il BE aveva chiesto: la terna enabled/reason/reason_key esiste gia'' PER AZIONE ed e'' gia'' letta dal FE, mentre un flag di documento spegnerebbe anche le transizioni che non c''entrano e vorrebbe cablaggio nuovo. Modello: fn_available_actions_ddt, che disabilita la sola transizione EMESSO con un motivo suo. ⚠️ Il predicato e'' lo STESSO EXISTS della guardia di vendite.fn_annulla_reso (933): capability e guard devono dire la stessa cosa, o il bottone e'' grigio quando l''annullo passerebbe — o peggio il contrario. ⚠️ vendite.resi_righe_accrediti NON ha RLS (verificato): se un domani ce l''avesse, chi non vede il ponte leggerebbe «nessun accredito» e si troverebbe il bottone acceso e il 409 in faccia, e servirebbe una SECURITY DEFINER. ⚠️ PRECEDENZA fra motivi dichiarata nel corpo: lo SPECIFICO (accrediti) batte il generico (senza righe). ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key. 🔴 Richiede la chiave i18n vendite.reso.annulla_reason.con_accrediti in it.json e en.json: senza, check_i18n_keys.py diventa rosso e il tooltip resta vuoto. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3; brief-design-note-credito-resi §43. rev 2026-09-27 (20260927-15): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-12): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9). ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, P-6): la transizione a CONFERMATO si disabilita col PRIMO MOTIVO FISICO di script.fn_check_reso_merce (magazzino di rientro mancante, rientri incompleti, merce non ricollocabile, rientro oltre l''uscito), la stessa funzione che solleva vendite.fn_conferma_reso: reason e reason_key del motivo, chiavi vendite.reso.azione_reason.*. Precedenza: accrediti, poi righe, poi merce. rev 2026-10-10 (brief-db-testata-dopo-emissione fase 2): non_editable_fields e can_edit_testata si leggono dal montaggio del lock di testata con script.fn_doc_testata_in_stato: le colonne «sempre» della capability seguite da quelle che il lock blocca nello stato, e can_edit_testata vero se nello stato almeno una colonna nominata si cambia. Ritirate le liste scritte a mano dei campi bloccati fuori bozza (la terza copia della regola, accanto a lock e backend): con D-8/D-10 le colonne aperte dopo l''emissione (note, trasporto, valido_al e CIG/CUP del contratto…) si cambiano negli stati del montaggio e si fermano a documento chiuso. ⭐ rev 2026-10-14 (brief-db-reso-motivi-conferma-con-valori): l''azione CONFERMATO porta anche reasons, l''array intero di script.fn_check_reso_merce coi valori dei motivi (i segnaposti delle frasi vendite.reso.azione_reason.*), con la forma della EMESSO di fn_available_actions_ddt; null quando a spegnere l''azione non e'' la merce. Il primo motivo (reason, reason_key) si deriva dallo stesso array. La precedenza fra i tre motivi sta una volta nelle LATERAL delle condizioni, letta da enabled, reason, reason_key e reasons.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

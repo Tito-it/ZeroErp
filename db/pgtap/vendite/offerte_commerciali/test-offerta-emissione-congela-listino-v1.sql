@@ -8,6 +8,9 @@
 --       predicato.
 --       Brief: brief-db-offerta-emissione-ed-erogazione §A, §C.1 (decisioni
 --       A-D2, A-D3 di Tid del 2026-10-07). ChangeSet 20261007-40 … -47.
+--       ⚠️ rev 2026-10-19 (20261019-22, brief-db-grammatica-unica-documenti
+--       lotto 1): p_documento ancorato a config.sorgenti.codice_interno, la
+--       firma passa da text a character varying (test 2).
 --
 --       ⭐ Il test 8 e' il difetto del collaudo: un'offerta in BOZZA senza
 --       versione fissata, su un listino che una versione in vigore ce l'ha,
@@ -160,7 +163,7 @@ SELECT is(
 
 SELECT is(
     (SELECT format('%s/%s/%s', p.provolatile, p.proisstrict, p.prosecdef) FROM pg_proc p
-      WHERE p.oid = 'script.fn_check_listino_congelabile(text,bigint,bigint)'::regprocedure),
+      WHERE p.oid = 'script.fn_check_listino_congelabile(character varying,bigint,bigint)'::regprocedure),
     's/f/f',
     '2) script.fn_check_listino_congelabile: STABLE, non STRICT, SECURITY INVOKER');
 

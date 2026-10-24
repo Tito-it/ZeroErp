@@ -58,7 +58,10 @@ dell'offerta la usa anche il messaggio dell'aggiunta fuori listino, che nomina
 il documento. Dal 2026-10-08, per i componenti del preventivo, `PREVENTIVO`
 (`vendite.preventivi` → `config.stati_doc_preventivi`, etichetta «Preventivo
 <numero> rev. <rev>»: le revisioni hanno lo stesso numero, e senza la revisione
-la frase non dice quale documento è fermo). Qualunque altro valore non è un dato sbagliato,
+la frase non dice quale documento è fermo). Dal 2026-10-12, per l'annullo con
+legami della commessa (brief-db-annullo-a-valle-riapre-a-monte), `COMMESSA`
+(`vendite.commesse` → `vendite.stati_commessa`, etichetta «Commessa <codice>»):
+senza, l'avviso e la conferma dicevano «COMMESSA #id». Qualunque altro valore non è un dato sbagliato,
 è un **chiamante rotto**: `E_DOC_TIPO_NON_GESTITO`, classe `TECNICO`.
 
 ---
@@ -114,3 +117,11 @@ che si affidasse al solo numero sarebbe vuota proprio nel caso più frequente.
 
 > 📎 changeSet `20260826-20`. Decisione di Tid del 2026-08-26 (la regola «solo
 > bozza» scende nel DB); presidio in `db/pgtap/vendite/test-delete-righe-documento-bozza-v1.sql`.
+
+### 🔄 rev 2026-10-11 — la nascita del documento (brief-db-testata-dopo-emissione §11.6, D-13)
+
+Una terza colonna, `nata_in_transazione`: vero se la testata è stata creata nella transazione
+corrente. Lo dice `data_insert`, che il default scrive all'inserimento e che nessuna modifica
+tocca (un cambio di stato, invece, cambierebbe `xmin`). La legge il lock delle righe e dei
+satelliti per lasciar passare ciò che un trigger scrive alla nascita di un documento nato già
+fuori bozza.

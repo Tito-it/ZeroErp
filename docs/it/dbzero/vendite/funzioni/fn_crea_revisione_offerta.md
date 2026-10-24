@@ -7,11 +7,16 @@ CREATE FUNCTION fn_crea_revisione_offerta(p_offerta_id bigint, p_user text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_crea_revisione_offerta(p_offerta_id bigint, p_user text)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-24 (20261024-18, brief-modello-documento-vendita N-1/P-2):
+--   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+--   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
 -- Scopo:
 --   Creare una nuova revisione (rev.N+1) in stato BOZZA a partire
 --   da un'offerta in stato EMESSA. Copia testata, eccezioni attive
@@ -33,6 +38,8 @@ AS $function$
 --     stato e pratica di approvazione 1:1 come sulle eccezioni
 --     (rev 2026-10-05: prima non si copiavano)
 --   - utility: copia 1:1 (un record per offerta)
+--   - indirizzi: copia 1:1 di tutti gli slot, come la revisione del
+--     preventivo (rev 2026-10-11, D-4 di Tid)
 --   - timestamp transizione (data_emissione, ...) restano NULL
 --   - listino_versione_id NULL: la revisione congela alla sua emissione
 --     (rev 2026-10-07, A-D3, brief-db-offerta-emissione-ed-erogazione)
@@ -42,7 +49,6 @@ AS $function$
 --   p_user       : utente che esegue l'operazione (audit)
 DECLARE
     v_stato_corrente_cod  config.stati_doc_offerte.codice_interno%TYPE;
-    v_stato_bozza_id      config.stati_doc_offerte.id%TYPE;
     v_new_id              vendite.offerte_commerciali.id%TYPE;
     v_ecc                 vendite.offerte_commerciali_eccezioni%ROWTYPE;
     v_new_ecc_id          vendite.offerte_commerciali_eccezioni.id%TYPE;
@@ -108,24 +114,6 @@ BEGIN
         NULL::uuid,
         jsonb_build_object('offerta_id', p_offerta_id));
 
-    -- Recupera id stato BOZZA (config-driven, no hardcode).
-    SELECT id INTO v_stato_bozza_id
-      FROM config.stati_doc_offerte
-     WHERE codice_interno = 'BOZZA';
-
-    IF v_stato_bozza_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite', 'fn_crea_revisione_offerta',
-            'E_CONFIG_MANCANTE',
-            jsonb_build_object(
-                'tabella', 'config.stati_doc_offerte',
-                'codice',  'BOZZA'
-            ),
-            NULL::uuid,
-            'stato BOZZA non trovato in config.stati_doc_offerte'
-        );
-    END IF;
-
     -- INSERT testata rev.N+1.
     -- uid: generato da default (uuidv7()) — non incluso nella lista colonne.
     -- codice: generato dal trigger trgfn_offerte_commerciali_gen_codice
@@ -145,7 +133,6 @@ BEGIN
         tipo_variazione_globale,
         validita_dal,
         validita_al,
-        stato_doc_offerta_id,
         revisione_numero,
         revisione_padre_id,
         meta,
@@ -168,7 +155,6 @@ BEGIN
         oc.tipo_variazione_globale,
         oc.validita_dal,
         oc.validita_al,
-        v_stato_bozza_id,
         oc.revisione_numero + 1,
         p_offerta_id,
         oc.meta,
@@ -341,13 +327,35 @@ BEGIN
     FROM vendite.offerte_commerciali_utilities ocu
     WHERE ocu.offerta_id = p_offerta_id;
 
+    -- Copia indirizzi rev.N -> rev.N+1 (rev 2026-10-11, D-4 di Tid,
+    -- brief-db-indirizzi-documento-seguono-il-cliente). La revisione e' lo
+    -- stesso documento: senza, nasceva senza indirizzi e perdeva Fatturazione,
+    -- Fornitura e Residenza scelte sulla rev.N. Stessa forma della gemella
+    -- vendite.fn_crea_revisione_preventivo: tutti gli slot, snapshot e
+    -- origini 1:1. La testata ha lo stesso cliente (BA, istanza copiati),
+    -- quindi il guard d'origine li trova del cliente; la rev.N+1 e' in BOZZA
+    -- e il lock dei satelliti lascia scrivere.
+    INSERT INTO vendite.offerte_commerciali_indirizzi (
+        offerta_id, tipo_indirizzo_id, snapshot,
+        origine_indirizzo_id, origine_soggetto_ruolo_id,
+        user_insert, user_update
+    )
+    SELECT
+        v_new_id, oi.tipo_indirizzo_id, oi.snapshot,
+        oi.origine_indirizzo_id, oi.origine_soggetto_ruolo_id,
+        COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+    FROM vendite.offerte_commerciali_indirizzi oi
+    WHERE oi.offerta_id = p_offerta_id;
+
     RETURN v_new_id;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_offerta(p_offerta_id bigint, p_user text)
-IS 'Crea rev.N+1 di un''offerta EMESSA: copia testata + eccezioni attive coi loro componenti + utility (1:1). Rev2 (2026-06-01): carry-forward 1:1 di stato_approvazione_prezzo + pratica_approvazione_prezzo_id sulle eccezioni (preserva l''invariante "prezzo fuori-policy sempre marcato"). uid e codice OFC-* generati ex novo. Il trigger z90 revisione (Step 6) marca automaticamente il padre SUPERATA. Guard: stato EMESSA obbligatorio. Parametri: p_offerta_id, p_user. rev 2026-09-24 (20260924-35, decisione di Tid): nessuna revisione con un prezzo IN ATTESA — guard sul primo motivo di script.fn_check_prezzi_in_attesa (eccezioni e loro componenti attivi PENDING), lo stesso con cui la capability spegne «Crea revisione»: un''eccezione in attesa ricopiata restava legata alla pratica della rev N. Approvato e rifiutato continuano a ricopiarsi. Firma e RETURNS ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-preventivi-congelamento-pricing §10. rev 2026-10-05 (20261005-19, decisione di Tid): la revisione copia anche i COMPONENTI delle eccezioni copiate (vendite.offerte_commerciali_eccezioni_componenti), tutti, rimappati sull''eccezione nuova riga per riga con RETURNING, con stato e pratica di approvazione 1:1. Prima una revisione di un''offerta con un bundle nasceva senza componenti e il push la portava cosi'' nel contratto. Brief: brief-db-righe-esclusione-solo-non-si-vende §8.2 B1. rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.1, decisione A-D3 di Tid): la revisione nasce con listino_versione_id NULL e congela la versione alla sua emissione (trgfn_offerte_commerciali_guard_transizione). Prima ricopiava la versione congelata del padre, e una revisione su una versione nel frattempo chiusa non si emetteva più. Il listino e la variazione globale si ricopiano come prima. rev 2026-10-08 (20261008-88, brief-db-righe-e-componenti-debiti-residui §3, D-3 di Tid): un componente SPENTO in PENDING di un''eccezione copiata si copia con stato_approvazione_prezzo e pratica_approvazione_prezzo_id a NULL. La pratica e'' della rev N e sulla rev N+1 non si esiterebbe mai; un attivo in attesa continua a fermare la revisione, approvato e rifiutato si copiano 1:1. La richiesta nuova alla riaccensione e'' dell''L3 dei componenti, che non esiste ancora (debito dichiarato). Gemella: fn_crea_revisione_preventivo (20261008-87).';
+IS 'Crea rev.N+1 di un''offerta EMESSA: copia testata + eccezioni attive coi loro componenti + utility (1:1). Rev2 (2026-06-01): carry-forward 1:1 di stato_approvazione_prezzo + pratica_approvazione_prezzo_id sulle eccezioni (preserva l''invariante "prezzo fuori-policy sempre marcato"). uid e codice OFC-* generati ex novo. Il trigger z90 revisione (Step 6) marca automaticamente il padre SUPERATA. Guard: stato EMESSA obbligatorio. Parametri: p_offerta_id, p_user. rev 2026-09-24 (20260924-35, decisione di Tid): nessuna revisione con un prezzo IN ATTESA — guard sul primo motivo di script.fn_check_prezzi_in_attesa (eccezioni e loro componenti attivi PENDING), lo stesso con cui la capability spegne «Crea revisione»: un''eccezione in attesa ricopiata restava legata alla pratica della rev N. Approvato e rifiutato continuano a ricopiarsi. Firma e RETURNS ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-preventivi-congelamento-pricing §10. rev 2026-10-05 (20261005-19, decisione di Tid): la revisione copia anche i COMPONENTI delle eccezioni copiate (vendite.offerte_commerciali_eccezioni_componenti), tutti, rimappati sull''eccezione nuova riga per riga con RETURNING, con stato e pratica di approvazione 1:1. Prima una revisione di un''offerta con un bundle nasceva senza componenti e il push la portava cosi'' nel contratto. Brief: brief-db-righe-esclusione-solo-non-si-vende §8.2 B1. rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.1, decisione A-D3 di Tid): la revisione nasce con listino_versione_id NULL e congela la versione alla sua emissione (trgfn_offerte_commerciali_guard_transizione). Prima ricopiava la versione congelata del padre, e una revisione su una versione nel frattempo chiusa non si emetteva più. Il listino e la variazione globale si ricopiano come prima. rev 2026-10-08 (20261008-88, brief-db-righe-e-componenti-debiti-residui §3, D-3 di Tid): un componente SPENTO in PENDING di un''eccezione copiata si copia con stato_approvazione_prezzo e pratica_approvazione_prezzo_id a NULL. La pratica e'' della rev N e sulla rev N+1 non si esiterebbe mai; un attivo in attesa continua a fermare la revisione, approvato e rifiutato si copiano 1:1. La richiesta nuova alla riaccensione e'' dell''L3 dei componenti, che non esiste ancora (debito dichiarato). Gemella: fn_crea_revisione_preventivo (20261008-87). rev 2026-10-11 (brief-db-indirizzi-documento-seguono-il-cliente, D-4 di Tid): la revisione copia anche gli INDIRIZZI (vendite.offerte_commerciali_indirizzi), tutti gli slot con snapshot e origini 1:1, come fn_crea_revisione_preventivo. Prima la rev.N+1 nasceva senza indirizzi. Stesso cliente sulla testata: il guard d''origine li trova del cliente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

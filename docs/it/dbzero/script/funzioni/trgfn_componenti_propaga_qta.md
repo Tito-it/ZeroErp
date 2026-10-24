@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_componenti_propaga_qta()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_componenti_propaga_qta()
  RETURNS trigger
@@ -54,6 +56,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_componenti_propaga_qta()
 IS 'Trigger function AFTER UPDATE su riga padre, WHEN (OLD.quantita IS DISTINCT FROM NEW.quantita): propaga quantita ai figli attivi come coeff_qta_snapshot * NEW.quantita. TG_ARGV[0]=schema [1]=tab_figli [2]=col_fk_figli->padre. Usata su 5 tabelle sorgente CASO A (preventivi, ordini, DDT, contratti, eccezioni d''offerta). Rev 2026-10-04 (brief-db-esclusioni-implicite): i trigger erano AFTER UPDATE OF quantita, che non scatta quando quantita la riscrive un trigger BEFORE (trgfn_qta_from_operativa da qta_operativa): cambiare solo qta_operativa lasciava i componenti con la quantita'' vecchia.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -5,7 +5,7 @@
 > Approfondimento:
 >
 > [vendite.vw_documento_lineage_nodi](/dbzero/vendite/views/vw_documento_lineage_nodi)
-> [vendite.vw_documento_lineage](/dbzero/vendite/views/vw_documento_lineage)
+> [vendite.fn_documento_lineage_sintesi](/dbzero/vendite/funzioni/fn_documento_lineage_sintesi) (era `vw_documento_lineage`, ritirata nel giro B)
 > [vendite.fn_documento_lineage](/dbzero/vendite/funzioni/fn_documento_lineage)
 > [config/manual/sorgenti.md — Convenzione chiave sorgente](/dbzero/config/manual/sorgenti)
 
@@ -319,5 +319,12 @@ righe, la vista da ~380 a ~90 ms (misura come applicazione su dbdev,
 ancora dalle tabelle dei documenti, con i loro permessi.
 
 ---
+
+### 🔄 rev 2026-10-11 — la vista è la proiezione di [`fn_documento_lineage_archi`](fn_documento_lineage_archi.md)
+
+Changeset `20261011-66`. Il corpo sta nella funzione, che
+si può chiamare **per i soli documenti che servono**; la vista ne è la lettura
+«senza seme», con le stesse colonne e gli stessi tipi. Brief:
+`brief-db-lineage-seminata-per-chiave` §8.3.
 
 {% include-markdown "signature-core.md" %}

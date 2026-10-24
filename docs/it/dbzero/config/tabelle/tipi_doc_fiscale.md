@@ -50,6 +50,8 @@
 | trg_tipi_doc_fiscale_a10_tipi_doc_fiscale_registri_block_482259 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'tipi_doc_fiscale_registri', 'tipo_doc_fiscale_id', 'id', 'attivo')` |
 | trg_tipi_doc_fiscale_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_tipi_doc_fiscale_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_tipi_doc_fiscale_z90_provision_registri_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_coppie_fattura_provision_registri()` |
+| trg_tipi_doc_fiscale_z90_provision_registri_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_coppie_fattura_provision_registri()` |
 
 ---
 {% include-markdown "signature-core.md" %}

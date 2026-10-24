@@ -103,6 +103,44 @@ Vale per DB, backend e frontend. È il criterio con cui nascono i building block
 Esempi applicati: `frontend-standards.md` §«Dove vive il NOME di un'icona»
 (la regola applicata al significato) e le voci «regola del 2» dei due cataloghi.
 
+## ⏭️ Ogni brief dice in cima chi riparte
+
+Vale per ogni brief e piano in `docs/it/dev/work-in-progress/` (DB, BE, FE).
+Chi lo apre deve sapere **a chi tocca** senza leggerlo tutto.
+
+* Subito sotto il titolo c'è il blocco **«⏭️ Chi riparte — aggiornato al
+  AAAA-MM-GG»**: una riga che risponde da sola («Riparte: …»), poi una tabella
+  `# | Chi | Che cosa | Dove | Aspetta`, un passo per riga, fino
+  all'archiviazione. In fondo: le **decisioni aperte di Tid** (o «nessuna») e
+  se il lavoro fatto è ancora da committare.
+* **Si aggiorna nello stesso momento** in cui si chiude un giro o Tid prende
+  una decisione, insieme alla data. Un blocco con la data vecchia è peggio di
+  nessun blocco: dice a qualcuno che tocca a lui quando non è vero.
+* Il blocco dice **chi** e **dove**: il dettaglio resta nella sua sezione, non
+  si ricopia qui.
+
+Esempio:
+[brief-db-indirizzi-documento-seguono-il-cliente](../docs/it/dev/work-done/brief-db-indirizzi-documento-seguono-il-cliente.md).
+
+## ⛔ Un tema, un brief — prima di aprirne uno si cercano i vicini
+
+Vale per DB, backend e frontend (Tid, 2026-10-21). Due brief aperti sullo stesso tema, o sugli
+stessi oggetti, si pestano i piedi: riscrivono la stessa funzione per ragioni diverse, a pochi
+giorni di distanza, e ognuno lascia all'altro un pezzo da rifare.
+
+* **Prima di aprire un brief** si cercano in `docs/it/dev/work-in-progress/` (brief, piani,
+  analisi) quelli che toccano **lo stesso tema** o **gli stessi oggetti** (tabelle, funzioni,
+  documenti, endpoint), anche se il titolo parla d'altro.
+* Se uno copre il tema, o un lavoro **complementare** sugli stessi oggetti, il lavoro nuovo va
+  **lì**, come sezione o giro in più, e non in un brief nuovo. Se i due vanno fusi, lo decide Tid.
+* Un brief nuovo dichiara in testata **«Brief vicini verificati»**: quelli trovati e perché non
+  bastano, oppure «nessuno».
+* Un tema che tocca **tutti i documenti di una famiglia** (tutti i documenti di vendita, tutti
+  quelli di magazzino…) non si apre senza l'ok esplicito di Tid.
+* Prima di proporre un cambio di **modello**, si cerca la decisione esistente (brief in
+  `work-done/`, guide, `git log -S`): la proposta dice se è nuova, se completa una decisione
+  presa o se ne **revoca** una, citandola con la data.
+
 ## Dove sta cosa
 
 AGENTS.md tiene solo le regole **trasversali**. Il dettaglio di ogni materia sta
@@ -115,10 +153,12 @@ sede al primo aggiornamento, e allora questo file diventa fuorviante.
 | Metodo di sviluppo (anelli, ordine di costruzione) | `docs/it/sviluppo-concentrico.md`, `docs/it/mappa-concentrica.md` |
 | Backend: view, service, repository, errori, **test Django e smoke** | [api.md](../docs/it/dev/api.md), [catalogo BB backend](../docs/it/dev/backend/catalogo-building-block-backend.md) |
 | Frontend: componenti, liste, CSS, i18n, build | [frontend-standards.md](../docs/it/dev/frontend/frontend-standards.md), [catalogo BB frontend](../docs/it/dev/frontend/catalogo-building-block-frontend.md) |
-| SQL: naming, chiavi, audit, indici, RLS, divieti dei changeSet (§11) | [linee-guida-sql.md](../docs/it/linee-guida-sql.md) |
+| SQL: naming, chiavi, audit, indici, RLS, divieti dei changeSet (§11), prestazioni (§13) | [linee-guida-sql.md](../docs/it/linee-guida-sql.md); il metodo in [Un database che resta veloce](../docs/it/guide/database-che-resta-veloce.md) |
 | Trigger | [linee-guida-trigger.md](../docs/it/linee-guida-trigger.md) |
 | Liquibase: struttura, master, naming dei file | [liquibase-setup-workflow.md](../docs/it/liquibase-setup-workflow.md) |
 | Sicurezza e qualità statica: strumenti (ruff, mypy, gitleaks, audit, `check --deploy`), segreti e `.env`, mappa dei presidi a runtime | [sicurezza-e-qualita-statica.md](../docs/it/dev/sicurezza-e-qualita-statica.md) |
+| Qualità BE/FE nel tempo: lezioni, indicatori (`scripts/indicatori-qualita-be-fe.sh`), scorecard pesata | [qualita-be-fe-indicatori.md](../docs/it/dev/qualita-be-fe-indicatori.md); il punto d'incontro con il DB è la mappa concentrica §4 |
+| Qualità del database nel tempo: lezioni, indicatori (`scripts/indicatori-qualita-db.sh`, `--catalogo` per dbdev), scorecard pesata | [qualita-db-indicatori.md](../docs/it/dev/qualita-db-indicatori.md); il gemello applicativo è qualita-be-fe-indicatori |
 | Codici e messaggi di errore | [Messaggi di Errore e Generazione Log](../docs/it/guide/Messaggi-di-Errore-e-Generazione-Log.md) |
 | pgTAP: template, preambolo, baseline, CI | [pgtap-come-si-scrive-un-test](../docs/it/guide/pgtap-come-si-scrive-un-test.md) |
 | Guide, pagine `manual/`, build della doc | [standard-guide.md](../docs/it/dev/standard-guide.md) |

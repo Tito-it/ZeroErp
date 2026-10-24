@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PERIODO DEL CLIENTE SI DERIVA, E BASTA
+#   UPDATE anagrafiche.trgfn_clienti_set_periodo (corpo dalla doc auto-gen).
+#   Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility (C-6)
+#
+# -- PERCHE' --------------------------------------------------------
+#   La funzione derivava il periodo e controllava due pezzi della regola
+#   «ogni stato pretende la sua data»: l'attivazione di AT (E_DATA_APERTURA)
+#   e la chiusura di CH non prima dell'attivazione (E_DATA_CHIUSURA). La
+#   regola intera sta ora in anagrafiche.trgfn_clienti_guard_stato_date
+#   (20261014-15), per tutti gli stati: le copie si tolgono nello stesso
+#   giro. Qui resta la derivazione: AN azzera date e periodo, gli altri
+#   hanno [data_attivazione, data_chiusura).
+#   Nessun cambio di trigger: stesso nome, stessi eventi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261014-16-update-trgfn-clienti-set-periodo-mctit.yaml
+
+  - changeSet:
+      id: 20261014-16-update-trgfn-clienti-set-periodo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        trgfn_clienti_set_periodo deriva soltanto il periodo: i controlli sulle date passano a
+        trgfn_clienti_guard_stato_date. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_set_periodo()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_codice_stato config.stati_cliente.codice_interno%TYPE;
+              BEGIN
+                  -- Scopo: deriva periodo = [data_attivazione, data_chiusura).
+                  --   La data di chiusura e' l'estremo escluso; senza chiusura
+                  --   il periodo e' aperto.
+                  -- ⚠️ rev 2026-10-14 (brief-db-cliente-manuale-uno-per-soggetto-e-utility):
+                  --   i controlli sulle date (E_DATA_APERTURA per AT,
+                  --   E_DATA_CHIUSURA per CH) sono passati, per tutti gli
+                  --   stati, ad anagrafiche.trgfn_clienti_guard_stato_date.
+                  SELECT sc.codice_interno
+                    INTO v_codice_stato
+                    FROM config.stati_cliente sc
+                   WHERE sc.id = NEW.stato_cliente_id;
+
+                  -- Annullato: nessuna data, nessun periodo.
+                  IF v_codice_stato = 'AN' THEN
+                      NEW.data_attivazione := NULL;
+                      NEW.data_chiusura    := NULL;
+                      NEW.periodo          := NULL;
+                      RETURN NEW;
+                  END IF;
+
+                  IF NEW.data_attivazione IS NOT NULL THEN
+                      NEW.periodo := daterange(
+                          NEW.data_attivazione,
+                          COALESCE(NEW.data_chiusura, 'infinity'::date),
+                          '[)');
+                  ELSE
+                      NEW.periodo := NULL;
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_clienti_set_periodo()
+              IS 'Trigger BEFORE INSERT OR UPDATE su anagrafiche.clienti: deriva periodo = [data_attivazione, data_chiusura) (chiusura esclusa, aperto senza chiusura; NULL senza attivazione). Lo stato AN azzera date e periodo. Il periodo e'' la misura di «cliente attivo» del modello (ex_clienti_no_overlap_stesso_pdp, anagrafiche.fn_clienti_stessa_chiave). rev 2026-10-14: i controlli sulle date stanno in anagrafiche.trgfn_clienti_guard_stato_date. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_set_periodo()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+              fine_esclusiva DATE;
+              v_codice_stato config.stati_cliente.codice_interno%TYPE;
+              BEGIN
+                  SELECT sc.codice_interno
+                  INTO v_codice_stato
+                  FROM config.stati_cliente sc
+                  WHERE sc.id = NEW.stato_cliente_id;
+
+                  IF v_codice_stato = 'AN' THEN
+                      NEW.data_attivazione := NULL;
+                      NEW.data_chiusura    := NULL;
+                      NEW.periodo          := NULL;
+                      RETURN NEW;
+                  END IF;
+
+                  IF v_codice_stato = 'CH' and NEW.data_attivazione IS NOT NULL THEN
+                      IF NEW.data_chiusura < NEW.data_attivazione THEN
+                          PERFORM script.fn_log_and_raise_error(
+                                        'CLIENTI',
+                                        'anagrafiche.trgfn_clienti_set_periodo',
+                                        'E_DATA_CHIUSURA',
+                                        jsonb_build_object(
+                                            'campo', 'data_chiusura',
+                                            'data_chiusura', NEW.data_chiusura,
+                                            'data_attivazione', NEW.data_attivazione,
+                                            'cliente_id', NEW.id
+                                        ),
+                                        new.tx_id,
+                                        NEW.data_chiusura::text, NEW.data_attivazione::text,
+                                        NEW.id::text
+                                    );
+                      END IF;
+                  END IF;
+
+                  IF v_codice_stato = 'AT' and NEW.data_attivazione IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                                        'CLIENTI',
+                                        'anagrafiche.trgfn_clienti_set_periodo',
+                                        'E_DATA_APERTURA',
+                                        jsonb_build_object(
+                                            'campo', 'data_attivazione',
+                                            'cliente_id', NEW.id
+                                        ),
+                                        new.tx_id,
+                                        NEW.id::text
+                                    );
+                  END IF;
+
+              fine_esclusiva := CASE
+                  WHEN NEW.data_chiusura IS NULL THEN 'infinity'::date
+                  ELSE NEW.data_chiusura
+              END;
+
+              IF NEW.data_attivazione IS NOT NULL THEN
+                  NEW.periodo := daterange(NEW.data_attivazione, fine_esclusiva, '[)');
+              ELSE
+                  NEW.periodo := NULL;
+              END IF;
+
+              RETURN NEW;
+              END
+              $function$;

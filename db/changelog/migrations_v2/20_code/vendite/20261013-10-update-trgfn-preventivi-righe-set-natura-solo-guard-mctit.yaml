@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# AGGIORNATO: vendite.trgfn_preventivi_righe_set_natura_vendita()
+#   Non scrive piu' la natura: e' solo il guard della ricorrenza (MODALITA' A).
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-4, §9.2)
+#
+#   La natura della riga la scrive script.trgfn_righe_natura_vendita
+#   (20261013-08), montato _a10_natura_vendita_ins_upd (20261013-09): viene
+#   PRIMA di questo trigger nell'ordine dei nomi ('n' < 's'), quindi qui
+#   NEW.natura_vendita_id e' gia' quella giusta. Il guard ne legge la
+#   destinazione invece di rileggere l'articolo: giudica la natura della riga,
+#   che e' quella che conta da quando la riga la porta.
+#   Montaggio invariato (BEFORE INSERT OR UPDATE OF articolo_id, 20260609-02):
+#   il guard scatta quando cambia la natura, cioe' quando nasce la riga o
+#   cambia l'articolo.
+#   ⚠️ Nome rimasto «set_natura» per non toccare il montaggio: il Lotto 3
+#   ritira questo guard nella check delle righe di preventivo (A-2), e il nome
+#   se ne va con lui.
+#   Corpo base: doc auto-gen (vendite/funzioni/trgfn_preventivi_righe_set_natura_vendita),
+#   ultima revisione 20260609-02. Codice e contesto dell'errore invariati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261013-10-update-trgfn-preventivi-righe-set-natura-solo-guard-mctit.yaml
+
+  - changeSet:
+      id: 20261013-10-update-trgfn-preventivi-righe-set-natura-solo-guard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_preventivi_righe_set_natura_vendita: non scrive piu' la natura (la scrive
+        script.trgfn_righe_natura_vendita), resta il guard della ricorrenza sulla natura della riga.
+        Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-4).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_righe_set_natura_vendita()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_destinazione    config.nature_vendita.destinazione_tipo%TYPE;
+                  v_articolo_codice catalogo.articoli.codice%TYPE;
+              BEGIN
+                  -- La natura della riga la scrive script.trgfn_righe_natura_vendita
+                  -- (trigger _a10_natura_vendita_ins_upd, che viene PRIMA di questo):
+                  -- qui si legge soltanto. Rev 20261013-10.
+                  SELECT nv.destinazione_tipo
+                    INTO v_destinazione
+                    FROM config.nature_vendita nv
+                   WHERE nv.id = NEW.natura_vendita_id;
+
+                  -- GUARD MODALITA' A (brief-preventivi-ordini.md D9): la
+                  -- ricorrenza (destinazione_tipo = 'CONTRATTO') non puo' stare
+                  -- su un preventivo. Blocco fail-fast all'inserimento riga.
+                  -- Data-driven: qualunque natura mappata a CONTRATTO e' bloccata,
+                  -- senza hardcodare il codice della natura.
+                  IF v_destinazione = 'CONTRATTO' THEN
+                      SELECT a.codice INTO v_articolo_codice
+                        FROM catalogo.articoli a
+                       WHERE a.id = NEW.articolo_id;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA',
+                          jsonb_build_object(
+                              'articolo_id',       NEW.articolo_id,
+                              'articolo_codice',   v_articolo_codice,
+                              'natura_vendita_id', NEW.natura_vendita_id,
+                              'destinazione_tipo', v_destinazione
+                          ),
+                          NEW.tx_id,
+                          coalesce(v_articolo_codice, NEW.articolo_id::text)
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_preventivi_righe_set_natura_vendita()
+              IS 'Guard BEFORE INSERT OR UPDATE OF articolo_id su vendite.preventivi_righe (MODALITA'' A, brief-preventivi-ordini D9): una riga con natura che va in contratto (destinazione_tipo CONTRATTO) non sta su un preventivo, E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA. ⚠️ Rev 20261013-10 (brief-db-articoli-ammessi-per-documento A-4): non scrive piu'' la natura, nonostante il nome; la scrive script.trgfn_righe_natura_vendita (_a10_natura_vendita_ins_upd), che viene prima nell''ordine dei nomi, e questo guard ne legge la destinazione. Il Lotto 3 lo ritira nella check delle righe di preventivo.';

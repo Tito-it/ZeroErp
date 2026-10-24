@@ -5,3 +5,4 @@ id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_u
 4,2,4,t,"{""action_key"":""rifiuta"",""label_key"":""vendite.offerte.azione_rifiuta"",""requires_confirm"":true,""requires_motivazione"":true,""manuale"":true}",2026-05-24 00:00:00+02,SEED,2026-05-24 00:00:00+02,SEED
 5,2,5,t,"{""manuale"":false}",2026-05-24 00:00:00+02,SEED,2026-05-24 00:00:00+02,SEED
 6,5,2,t,"{""manuale"":false}",2026-08-28 00:00:00+02,mctit,2026-08-28 00:00:00+02,mctit
+7,3,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.offerte.azione_annulla"",""requires_confirm"":true,""requires_motivazione"":true,""outlined"":true,""manuale"":true}",2026-10-21 00:00:00+02,mctit,2026-10-21 00:00:00+02,mctit

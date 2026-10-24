@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D7 — UNA KEY E' DI CHI L'HA PRENOTATA, SU QUELL'ENDPOINT
+#   Brief: brief-be-verifica-documentazione-api, tabella «Aperto per il team DB», D7.
+#
+#   La chiave primaria e' la sola idempotency_key: chi rimanda la key di un altro
+#   utente, o la stessa key su un altro endpoint, riceve la risposta salvata
+#   dell'altro. Due colonne, scritte alla prenotazione da dbops.fn_idempotency_prenota
+#   (20261023-05), e il replay solo se coincidono (altrimenti E_IDEMPOTENCY_KEY_RIUSATA).
+#
+#   - auth_user_id: l'utente Django della richiesta; NULL = richiesta anonima
+#     (il login chiede la key). ⛔ Nessuna FK verso django.auth_user: in CI quelle
+#     tabelle non sono dei changelog (due mondi), come dbops.request_log.auth_user_id.
+#   - endpoint: metodo e percorso della richiesta («POST /api/…/»), senza query string.
+#     ⚠️ NULLABLE solo per le righe nate prima di questo changeSet: non sanno chi
+#     le ha prenotate. La funzione di prenotazione lo pretende, e NULL vale «riga
+#     senza legame» (la si lega alla prima ripresa). Con la scadenza di un giorno
+#     (D5, regola 24) quelle righe spariscono al primo purge: il NOT NULL e' un
+#     changeSet successivo, dichiarato qui.
+#
+#   ⭐ D6 — prenotata_at: l'ora della prenotazione (o della ripresa), da cui si
+#   misura se una key in_progress e' abbandonata. NON data_update: quella la
+#   riscrive trgfn_audit_data_user_generic a ogni UPDATE (CURRENT_TIMESTAMP,
+#   senza guardare il valore scritto), ed e' montato su dbdev e, con lo scope di
+#   D5, anche da zero. Stessa regola dei registri: la scadenza si misura da un
+#   orario reale, non da una colonna di audit. Le righe esistenti prendono
+#   data_update (per una in_progress e' l'ora della sua prenotazione o ripresa);
+#   poi DEFAULT now() e NOT NULL.
+#
+#   ⭐ In piu': la risposta salvata c'e' SE E SOLO SE la key e' completed. Lo
+#   dicono gia' gli scrittori (IdempotencyStore.mark_completed scrive sempre il
+#   JSON della risposta; mark_failed e la prenotazione la azzerano), ma il modello
+#   ammetteva una completed vuota — che non si puo' ne' rimandare ne' riprendere e
+#   resterebbe «in corso» per sempre, il difetto che D6 chiude — e una failed con
+#   una risposta da rimandare. Il CHECK lo rende contratto, nei due versi, e
+#   dbops.fn_idempotency_prenota decide il replay dalla risposta: non nomina gli
+#   esiti che scrive il backend (presidio C1, dbops.vw_stati_check_scrittori, e'
+#   testuale). Su dbdev 0 righe lo violano (fatto datato 2026-10-23: 669
+#   completed tutte con risposta, 263 failed tutte senza).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261023-03-alter-idempotency-keys-utente-endpoint-mctit.yaml
+
+  - changeSet:
+      id: 20261023-03-alter-idempotency-keys-utente-endpoint
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.idempotency_keys: colonne auth_user_id ed endpoint (la key e' legata a chi l'ha
+        prenotata, D7), prenotata_at (da quando una key e' in corso, D6); CHECK endpoint non
+        vuoto e CHECK «la risposta c'e' se e solo se la key e' completed».
+        Brief: brief-be-verifica-documentazione-api D7.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: idempotency_keys }
+            - not:
+                - columnExists:
+                    { schemaName: dbops, tableName: idempotency_keys, columnName: endpoint }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.idempotency_keys
+                  ADD COLUMN auth_user_id integer,
+                  ADD COLUMN endpoint     text,
+                  ADD COLUMN prenotata_at timestamptz;
+
+              -- le righe esistenti: per una in_progress data_update e' l'ora
+              -- della sua prenotazione o ripresa (nessun altro la tocca prima
+              -- dell'esito); per le altre e' solo storia
+              UPDATE dbops.idempotency_keys
+                 SET prenotata_at = data_update
+               WHERE prenotata_at IS NULL;
+
+              ALTER TABLE dbops.idempotency_keys
+                  ALTER COLUMN prenotata_at SET DEFAULT now(),
+                  ALTER COLUMN prenotata_at SET NOT NULL;
+
+              ALTER TABLE dbops.idempotency_keys
+                  ADD CONSTRAINT chk_idempotency_keys_endpoint_non_vuoto
+                      CHECK (endpoint IS NULL OR btrim(endpoint) <> ''),
+                  ADD CONSTRAINT chk_idempotency_keys_risposta_solo_completed
+                      CHECK ((status = 'completed') = (response_payload IS NOT NULL));
+
+              COMMENT ON COLUMN dbops.idempotency_keys.auth_user_id IS
+                'Utente Django che ha prenotato la key (NULL = richiesta anonima, o riga nata prima del 2026-10-23 se anche endpoint e'' NULL). Il replay avviene solo per lo stesso utente sullo stesso endpoint (dbops.fn_idempotency_prenota, E_IDEMPOTENCY_KEY_RIUSATA). Nessuna FK verso django.auth_user: due mondi, come dbops.request_log.';
+              COMMENT ON COLUMN dbops.idempotency_keys.endpoint IS
+                'Metodo e percorso della richiesta che ha prenotato la key, senza query string. NULL solo sulle righe nate prima del 2026-10-23 (nessun legame: si lega alla prima ripresa); il NOT NULL arriva quando la scadenza di un giorno le ha purgate. Brief: brief-be-verifica-documentazione-api D7.';
+              COMMENT ON COLUMN dbops.idempotency_keys.prenotata_at IS
+                'Ora della prenotazione della key, o della sua ultima ripresa (dbops.fn_idempotency_prenota). Una key in_progress piu'' vecchia di SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI conta come abbandonata e si riprende (D6). Non data_update: quella la riscrive il trigger di audit a ogni UPDATE. Brief: brief-be-verifica-documentazione-api D6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.idempotency_keys
+                  DROP CONSTRAINT IF EXISTS chk_idempotency_keys_risposta_solo_completed,
+                  DROP CONSTRAINT IF EXISTS chk_idempotency_keys_endpoint_non_vuoto,
+                  DROP COLUMN IF EXISTS prenotata_at,
+                  DROP COLUMN IF EXISTS endpoint,
+                  DROP COLUMN IF EXISTS auth_user_id;

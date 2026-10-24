@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_guard_emittente_scope()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_guard_emittente_scope()
  RETURNS trigger
@@ -85,7 +87,12 @@ BEGIN
       --   dentro una SECURITY DEFINER e' il proprietario della
       --   funzione, non chi ha chiamato. Fuori da una DEFINER
       --   (current_user = session_user) la risposta vale e si passa.
-      IF current_user = session_user THEN
+      -- ⭐ Rev 2026-10-15: si confronta col ruolo di SESSIONE, non col
+      --   login. Un utente personale che lavora come proprietario
+      --   (`SET role`) ha session_user <> current_user anche fuori
+      --   da una DEFINER; una DEFINER cambia current_user ma non il
+      --   parametro `role`. Brief: brief-db-ruoli-di-sistema §19.
+      IF current_user = coalesce(nullif(current_setting('role'), 'none'), session_user) THEN
         RETURN NEW;
       END IF;
 
@@ -118,7 +125,7 @@ BEGIN
         'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
         'db_user', current_user,
         'session_user', session_user,
-        'dentro_definer', current_user <> session_user,
+        'dentro_definer', current_user <> coalesce(nullif(current_setting('role'), 'none'), session_user),
         'emittente_fiscale_id', v_emittente_fiscale_id,
         'operazione', TG_OP
       ),
@@ -181,8 +188,10 @@ END
 $function$
 
 COMMENT ON FUNCTION script.trgfn_guard_emittente_scope()
-IS 'Guard di scrittura del perimetro emittente (BB, montato BEFORE INSERT OR UPDATE su 24+ tabelle con TG_ARGV = modo, colonna): risolve l''emittente della riga con script.fn_resolve_emittente_fiscale_id (DEFINER: legge fuori dalla row security) e chiede a script.fn_check_user_emittente_scope se l''utente in sessione (app.current_user_id) puo'' scriverci — E_SCOPE_EMITTENTE altrimenti. Nessun padrone: passa. Senza utente in sessione passa solo chi la RLS non filtrerebbe comunque (row_security_active: proprietario, superuser, BYPASSRLS), altrimenti E_SCOPE_SENZA_UTENTE (rev 04-09). ⛔ Rev 2026-09-18 (magazzino Lotto 2, C1): dentro una SECURITY DEFINER row_security_active risponde per il proprietario, non per chi chiama — se current_user <> session_user e la riga HA un padrone, senza identita'' si ferma comunque; senza padrone (email di sistema) passa. Provato con fn_accoda_email_sistema. E'' il perimetro della primitiva DEFINER di magazzino, rimesso da una sede sola.';
+IS 'Guard di scrittura del perimetro emittente (BB, montato BEFORE INSERT OR UPDATE su 24+ tabelle con TG_ARGV = modo, colonna): risolve l''emittente della riga con script.fn_resolve_emittente_fiscale_id (DEFINER: legge fuori dalla row security) e chiede a script.fn_check_user_emittente_scope se l''utente in sessione (app.current_user_id) puo'' scriverci — E_SCOPE_EMITTENTE altrimenti. Nessun padrone: passa. Senza utente in sessione passa solo chi la RLS non filtrerebbe comunque (row_security_active: proprietario, superuser, BYPASSRLS), altrimenti E_SCOPE_SENZA_UTENTE (rev 04-09). ⛔ Rev 2026-09-18 (magazzino Lotto 2, C1): dentro una SECURITY DEFINER row_security_active risponde per il proprietario, non per chi chiama — se current_user e'' diverso dal ruolo di sessione (parametro role, o session_user se none: rev 2026-10-15, un utente personale che lavora come proprietario non e'' una DEFINER) e la riga HA un padrone, senza identita'' si ferma comunque; senza padrone (email di sistema) passa. Provato con fn_accoda_email_sistema. E'' il perimetro della primitiva DEFINER di magazzino, rimesso da una sede sola.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

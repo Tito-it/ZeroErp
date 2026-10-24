@@ -49,19 +49,15 @@ def _cursore_vuoto(conn: MagicMock) -> MagicMock:
 
 
 class ErrorLogRepositoryComposizioneTests(SimpleTestCase):
-    # 1. Fuori whitelist -> il ripiego, e il nome NON entra nell'SQL.
+    # 1. Fuori whitelist -> 400 (`order_by_invalid`), e nessuna query: dal
+    #    2026-10-20 nessuna lista ripiega in silenzio sul default (brief-be-verifica-documentazione-api §A1).
     @patch(_CONN)
-    def test_order_by_fuori_whitelist_ripiega(self, conn) -> None:
+    def test_order_by_fuori_whitelist_e_rifiutato(self, conn) -> None:
         cursor = _cursore_vuoto(conn)
-        DbopsRepository().list_error_logs(order_by="1; DROP TABLE x", order_dir=None)
-        sql = cursor.execute.call_args.args[0]
-        self.assertIn("ORDER BY e.occurred_at DESC NULLS LAST, e.id DESC", sql)
-        self.assertNotIn("DROP", sql)
-        # Con un verso esplicito il ripiego resta sulla colonna di default, ma
-        # il verso e' quello chiesto: l'operatore puo' sempre invertire.
-        DbopsRepository().list_error_logs(order_by="1; DROP TABLE x", order_dir="asc")
-        self.assertIn("ORDER BY e.occurred_at ASC NULLS FIRST, e.id ASC",
-                      cursor.execute.call_args.args[0])
+        for verso in (None, "asc"):
+            with self.subTest(verso=verso), self.assertRaisesRegex(ValueError, "order_by_invalid"):
+                DbopsRepository().list_error_logs(order_by="1; DROP TABLE x", order_dir=verso)
+        cursor.execute.assert_not_called()
 
     # 2. In whitelist e senza verso: la data ripiega DESC (regola di Tid).
     @patch(_CONN)

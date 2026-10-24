@@ -9,7 +9,8 @@
 #          + trigger DB A1 protect_pubblicata)
 #        - delete_versione (hard DELETE — trigger DB A2 block_delete
 #          rifiuta non-BOZZA o gia' usate da documenti generati)
-#        - clone_versione (SELECT source + INSERT nuova BOZZA con override)
+#        - clone_versione (la copia la fa il DB, `fn_crea_bozza_da_versione`,
+#          con le sostituzioni del payload)
 #        - pubblica_versione (transizione atomica BOZZA -> PUBBLICATA con
 #          valido_dal NOT NULL guard; EXCLUDE GiST DB blocca overlap con
 #          altre PUBBLICATE attive — errore parlante via mapper; la forma
@@ -259,10 +260,8 @@ class TemplateVersioniAdminService:
             message="Payload versione template non valido.",
         )
         data = self._build_update_data(payload)
-        ErrorManager.require(
-            bool(data),
-            code=E_VALIDATION,
-            message="Nessun campo aggiornabile presente nel payload.",
+        self._v.require_campi_da_aggiornare(
+            data,
             detail=f"allowed_keys={sorted(_UPDATE_KEYS)!r}",
         )
 
@@ -336,8 +335,16 @@ class TemplateVersioniAdminService:
 
     # Scopo: Clona una versione esistente (qualunque stato) in una nuova
     #        versione BOZZA. Utile per editare partendo da una PUBBLICATA
-    #        senza modificarla (immutabile). Il payload puo' overridare
+    #        senza modificarla (immutabile). Il payload puo' sostituire
     #        titolo, valido_dal/al, attivo, meta.
+    #        La copia la fa il DB (`repo.crea_bozza_da_versione` ->
+    #        `documenti.fn_crea_bozza_da_versione`, §10.3 K-6): elenco dei campi
+    #        copiati e numero della versione sono suoi. Qui la forma del payload
+    #        e il perimetro (la versione d'origine si legge dentro lo scope,
+    #        legata al suo template).
+    # ⛔ Fino al 2026-10-21 l'elenco dei campi stava qui (`dati_bozza_copiata`,
+    #    usato anche da «personalizza») e il numero lo calcolava
+    #    `next_versione_num`: con «personalizza» nel DB, sarebbero stati due.
     def clone_versione(
         self,
         user: AbstractBaseUser | AnonymousUser | None,
@@ -347,7 +354,7 @@ class TemplateVersioniAdminService:
     ) -> dict[str, Any]:
         self._v.guard_positive_int(source_versione_id, field="versione_id")
         # 404 se source assente o template fuori scope.
-        source = self._reader.get_versione(user, template_id, source_versione_id)
+        self._reader.get_versione(user, template_id, source_versione_id)
 
         self._v.validate_allowed_keys(
             payload,
@@ -355,43 +362,18 @@ class TemplateVersioniAdminService:
             message="Payload clone versione non valido.",
         )
 
-        # Compone il nuovo dict copiando il source e applicando override.
-        new_data: dict[str, Any] = {
-            "template_documento_id": int(template_id),
-            "stato": "BOZZA",
-            "titolo": source["titolo"],
-            "formato_template": source["formato_template"],
-            "html_template": source["html_template"],
-            "css_template": source.get("css_template"),
-            "markdown_template": source.get("markdown_template"),
-            "render_engine_id": source["render_engine_id"],
-            "page_format": source["page_format"],
-            "page_orientation": source["page_orientation"],
-            "margin_top_mm": source["margin_top_mm"],
-            "margin_right_mm": source["margin_right_mm"],
-            "margin_bottom_mm": source["margin_bottom_mm"],
-            "margin_left_mm": source["margin_left_mm"],
-            "valido_dal": None,  # default: clone parte senza date,
-            "valido_al": None,   # le date nuove si fissano alla pubblicazione
-            # La forma letta si copia: il corpo e' lo stesso, quindi legge le
-            # stesse chiavi. Per prepararne una nuova (D-C4) si cambia in BOZZA.
-            "versione_contesto": source["versione_contesto"],
-            "context_schema": source.get("context_schema") or {},
-            "meta": source.get("meta") or {},
-            "attivo": True,
-        }
-        # Override da payload (titolo, valido_*, attivo, meta).
-        if "titolo" in payload:
-            new_data["titolo"] = self._v.require_string(
-                payload, "titolo", max_len=500
-            )
-        if "valido_dal" in payload:
-            new_data["valido_dal"] = self._v.optional_date(payload, "valido_dal")
-        if "valido_al" in payload:
-            new_data["valido_al"] = self._v.optional_date(payload, "valido_al")
+        # Sostituzioni dal payload; una chiave assente vale «come l'origine»
+        # (per le date: senza data, si fissano alla pubblicazione).
+        titolo = (
+            self._v.require_string(payload, "titolo", max_len=500)
+            if "titolo" in payload else None
+        )
+        valido_dal = self._v.optional_date(payload, "valido_dal") if "valido_dal" in payload else None
+        valido_al = self._v.optional_date(payload, "valido_al") if "valido_al" in payload else None
         # L'ordine delle date lo giudica il DB: guard comune
         # `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL col campo
         # `valido_al` (dal 2026-09-23).
+        attivo: bool | None = None
         if "attivo" in payload:
             v = self._v.optional_bool(payload, "attivo")
             ErrorManager.require(
@@ -400,17 +382,19 @@ class TemplateVersioniAdminService:
                 message="Il campo 'attivo' non puo' essere NULL.",
                 detail="field=attivo",
             )
-            new_data["attivo"] = bool(v)
-        if "meta" in payload:
-            m = self._v.optional_meta(payload)
-            if m is not None:
-                new_data["meta"] = m
-
-        # Numero versione e' MAX+1 sul template.
-        new_data["versione"] = self._repo.next_versione_num(template_id)
+            attivo = bool(v)
+        meta = self._v.optional_meta(payload) if "meta" in payload else None
 
         try:
-            new_id = self._repo.create_versione(new_data)
+            new_id = self._repo.crea_bozza_da_versione(
+                source_versione_id,
+                template_documento_id=int(template_id),
+                titolo=titolo,
+                valido_dal=valido_dal,
+                valido_al=valido_al,
+                attivo=attivo,
+                meta=meta,
+            )
         except IntegrityError as exc:
             map_integrity_error(
                 exc,

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente (ORDINE_VENDITA).
 -- pgTAP test per Zero ERP
 -- Test: vw_dash_fatturazione_ordini trigger-aware (IN_ATTESA_DDT) — step 7,
 --       brief-db-fatturazione-ddt-resi §4b / DL-20.
@@ -29,36 +30,30 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (in CI l'utente 1 non esiste;
+--   anagrafiche e articoli sono vuoti). fn_pgtap_crea_mondo_cliente fa azienda,
+--   operatore, cliente BA legato a quell'azienda e APRE il contesto da se'.
+CREATE TEMP TABLE _m AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP dash trigger');
+-- Il mondo ha gia' aperto il contesto sul suo operatore: la riga lo
+--   dichiara (e il guardrail del preambolo la cerca).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m)); END $ctx$;
 
 SELECT plan(5);
-
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
 
 -- ============================================================
 -- Riferimenti + helper
 -- ============================================================
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
+  -- ⛔ rev 2026-10-13: BA, ruolo del cliente ed emittente dal mondo costruito;
+  --   l'articolo si costruisce (merce, non gestito: il test non misura il magazzino).
+  (SELECT billing_account_id FROM _m)                                    AS billing_account_id,
+  (SELECT cliente_soggetto_ruolo_id FROM _m)                             AS soggetto_ruolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-DASH-TRIGGER', false)                  AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
+  (SELECT emittente_fiscale_id FROM _m)                                  AS emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id;
 
 -- Ordine CONFERMATO (stato) con una riga, trigger parametrico, nessun push.
@@ -108,7 +103,7 @@ SELECT is(
 -- 3) FISIOLOGICO -> fuori dal backlog per la regola di classe, da solo
 SELECT is(
   (SELECT COUNT(*)::int FROM vendite.vw_dash_backlog_documenti
-    WHERE area='ORDINI' AND documento_id=(SELECT ordine_id FROM tmp_ddt_trg)),
+    WHERE area='ORDINE_VENDITA' AND documento_id=(SELECT ordine_id FROM tmp_ddt_trg)),
   0, '3) IN_ATTESA_DDT e'' FISIOLOGICO: l''ordine sparisce dal backlog (resta nel serbatoio)');
 
 -- 4-5) trigger CONFERMATO: tutto come prima
@@ -120,7 +115,7 @@ SELECT is(
 
 SELECT is(
   (SELECT b.classe FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area='ORDINI' AND b.documento_id=(SELECT ordine_id FROM tmp_conf_trg)),
+    WHERE b.area='ORDINE_VENDITA' AND b.documento_id=(SELECT ordine_id FROM tmp_conf_trg)),
   'RECUPERABILE'::varchar,
   '5) e resta nel backlog come RECUPERABILE (invariato)');
 

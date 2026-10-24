@@ -165,7 +165,8 @@ class RigaContabileRow(TypedDict):
     meta: Any
     # ── Il verbo «elimina» e il suo motivo (D17, linee-guida-sql §12.5) ──────
     # La terna del PRIMO motivo di `script.fn_check_riga_contabile_eliminabile`
-    # piu' il flag derivato (`reason IS NULL`). NULL/True = si puo' eliminare.
+    # (in lista la sua meta' `_su_distinta`, sulla testata) piu' il flag
+    # derivato (`reason IS NULL`). NULL/True = si puo' eliminare.
     # ⛔ Il nome dice QUALE verbo: `abbina` e `sospendi` hanno i loro blocchi,
     #    e una colonna generica li confonderebbe (api.md §capability).
     elimina_blocco_reason: str | None

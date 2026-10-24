@@ -1,7 +1,7 @@
 # Analisi — Accessi: una credenziale, più vesti, un ciclo di vita solo
 
 > **Origine:** difetto M-4 di
-> [analisi-be-difetti-emersi-verifica-doc-api-core.md](../work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)
+> [analisi-be-difetti-emersi-verifica-doc-api-core.md](../work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)
 > («il blocco login vale solo per la veste OPERATORE»), 2026-09-24. Alla
 > domanda «per veste o per credenziale?» Tid ha risposto:
 > *«non dovrebbe essere per veste ma per credenziali e dovrebbe essere tutto

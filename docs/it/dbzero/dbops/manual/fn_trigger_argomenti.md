@@ -19,7 +19,8 @@ da quello che gli viene passato, e non dal nome: il nome può essere hashato
 oltre i 63 caratteri o scritto a mano, gli argomenti no.
 
 **Building block** (regola del 2), dal 2026-09-26. Lo usano
-`dbops.fn_lock_columns_divergenze`, `dbops.fn_ritira_attivo_eccezioni`, il pgTAP
+`dbops.fn_lock_columns_divergenze`, `dbops.fn_ritira_attivo_eccezioni`,
+`dbops.fn_trigger_attivo_orfani`, il pgTAP
 `catalogo/test-articoli-seed-uom-base-lock` e il guardrail
 `scripts/sql/guardrail_codice_errore_strutturato.sql`. Chi deve leggere
 `tgargs` passa da qui.

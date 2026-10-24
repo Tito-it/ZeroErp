@@ -18,10 +18,10 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
-from apps.core.api.constants import DEFAULT_LIMIT
+from apps.core.api.openapi_params import parametri_finestra
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_actor_user_id, handle_post_json
-from apps.core.api.payload_validators import corpo_oggetto, qp_bool, qp_int_strict, qp_str
+from apps.core.api.payload_validators import envelope_da_offset, pagina_da_query, corpo_oggetto, qp_bool_optional, qp_int_strict, qp_str
 from apps.core.api.success_responses import success_response
 from apps.core.services.partitioned_note_service import PartitionedNoteService
 
@@ -139,8 +139,7 @@ def make_note_views(
                     location=OpenApiParameter.QUERY, required=False,
                     description="Default True; passare False per filtrare visibile=TRUE.",
                 ),
-                OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
-                OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
+                *parametri_finestra(),
             ],
             responses={200: list_response},
         )
@@ -153,24 +152,19 @@ def make_note_views(
                 qp_int_strict(raw_riga, "target_riga_id", default=0)
                 if raw_riga is not None else None
             )
-            include_invisible = qp_bool(qp.get("include_invisible"), default=True)
-            page = qp_int_strict(qp.get("page"), "page", default=1)
-            page_size = qp_int_strict(qp.get("page_size"), "page_size", default=DEFAULT_LIMIT)
+            include_invisible = qp_bool_optional(qp.get("include_invisible"), "include_invisible", default=True)
+            # La finestra dal BB: dal 2026-10-21 un dialetto solo, `limit`/`offset`.
+            limit, offset = pagina_da_query(qp)
 
             svc = service_factory()
             results, total = svc.list_note(
                 target_id=target_id,
                 target_riga_id=target_riga_id,
                 include_invisible=include_invisible,
-                page=page,
-                page_size=page_size,
+                limit=limit,
+                offset=offset,
             )
-            return success_response({
-                "count": total,
-                "page": page,
-                "page_size": page_size,
-                "results": results,
-            })
+            return success_response(envelope_da_offset(results, total, limit=limit, offset=offset))
 
         @extend_schema(request=create_request, responses={200: detail_response})
         # Scopo: Crea una nuova nota sul documento padre. Idempotency-Key obbligatoria.

@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO: ANNULLARE UN PREVENTIVO CHE HA SPINTO IN COMMESSA, CON CONFERMA
+#   vendite.fn_annulla_preventivo(p_preventivo_id, p_legami_confermati) -> integer
+#   Brief: brief-db-annullo-documento-con-legami (§7, caso 5; D-1, D-4, D-5)
+#
+# ── I LEGAMI DI UN PREVENTIVO ───────────────────────────────────────
+#   Le righe di commessa NON_EMESSA che il preventivo ha spinto: CONSUMO,
+#   si ritirano col registro (D-5). Fino a qui le ritirava in silenzio il
+#   trigger automatico alla chiusura (vendite.trgfn_doc_ritira_commessa_
+#   attivita, che si ritira in 20261011-90). Un ordine vivo nato dal
+#   preventivo non e' un legame: blocca l'annullo
+#   (script.fn_check_preventivo_annullabile), come le righe gia' EMESSA.
+#
+# ── COSA FA, IN ORDINE ──────────────────────────────────────────────
+#   1. guard di parametro; 2. testata FOR UPDATE nel perimetro (fuori:
+#   E_PREV_NOT_FOUND); 3. conferma e ritiro dal BB
+#   vendite.fn_documento_ritira_legami; 4. lo stato dal verbo di stato del
+#   preventivo, vendite.fn_cambia_stato_preventivo (matrice, motivi di
+#   script.fn_check_preventivo_annullabile), lo stesso che chiama il
+#   backend; 5. porta chiusa. UNA transazione.
+#   SECURITY DEFINER con search_path bloccato. EXECUTE solo all'app.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-87-create-fn-annulla-preventivo-mctit.yaml
+
+  - changeSet:
+      id: 20261011-87-create-fn-annulla-preventivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Verbo vendite.fn_annulla_preventivo: annulla un preventivo con conferma; se porta legami (righe di commessa NON_EMESSA), chi
+        conferma dichiara quanti ne ha visti, i consumi si ritirano (BB vendite.fn_documento_ritira_legami)
+        e poi lo stato passa ad ANNULLATO. SECURITY DEFINER.
+        Brief: brief-db-annullo-documento-con-legami (D-1, D-4).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_documento_ritira_legami';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_annulla_preventivo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_annulla_preventivo(
+                  p_preventivo_id                 vendite.preventivi.id%TYPE,
+                  p_legami_confermati  integer DEFAULT NULL)
+              RETURNS integer
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- =========================================================
+              -- Scopo: annullare un preventivo. Con legami: conferma e ritiro
+              --   dal BB vendite.fn_documento_ritira_legami, poi lo stato.
+              --   p_legami_confermati e' un CONTEGGIO: tipo nudo. Vedi
+              --   l'intestazione del changeSet.
+              -- Ritorna: i legami confermati (0 se non ce n'erano).
+              -- =========================================================
+              DECLARE
+                  v_utente  config.user_override_azioni.auth_user_id%TYPE;
+                  v_trovato boolean;
+                  -- CONTEGGIO dei legami confermati.
+                  v_legami  integer;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametri.
+                  IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_annulla_preventivo',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_preventivo_id', p_preventivo_id),
+                          NULL::uuid, 'vendite.fn_annulla_preventivo',
+                          'p_preventivo_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- 2. La testata FOR UPDATE, nel perimetro (predicato della
+                  --    policy: DEFINER). Fuori perimetro come inesistente.
+                  SELECT true
+                    INTO v_trovato
+                    FROM vendite.preventivi t
+                   WHERE t.id = p_preventivo_id
+                     AND script.fn_scope_ef_whitelist_via_preventivo(v_utente, t.id)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_annulla_preventivo',
+                          'E_PREV_NOT_FOUND', jsonb_build_object('id', p_preventivo_id), NULL::uuid,
+                          p_preventivo_id::text);
+                  END IF;
+
+                  -- 3. Conferma e ritiro: il BB apre la porta e la lascia aperta.
+                  v_legami := vendite.fn_documento_ritira_legami('PREVENTIVO', p_preventivo_id, p_legami_confermati);
+
+                  -- 4. Lo stato. I guard della tabella fanno il resto: matrice,
+                  --    freni (righe di commessa EMESSA, figli vivi), avviso.
+                  PERFORM vendite.fn_cambia_stato_preventivo(p_preventivo_id, 'ANNULLATO', NULL);
+
+                  -- 5. Porta chiusa.
+                  PERFORM set_config('zeroerp.doc_ritira_legami', '', true);
+
+                  RETURN v_legami;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_annulla_preventivo(vendite.preventivi.id%TYPE, integer) IS
+                  'VERBO (2026-10-11, brief-db-annullo-documento-con-legami D-1/D-4): annulla un preventivo. Testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_preventivo; fuori perimetro E_PREV_NOT_FOUND). Conferma e ritiro dal BB vendite.fn_documento_ritira_legami: chi conferma DICHIARA quanti legami ha visto (p_legami_confermati, le righe di vendite.fn_documento_legami(''PREVENTIVO'', id): righe di commessa NON_EMESSA); se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI. Poi lo stato passa ad ANNULLATO (i guard della tabella applicano matrice e freni) e la porta del ritiro si chiude. UNA transazione. Senza legami non c''e'' niente da confermare. Ritorna i legami confermati. SECURITY DEFINER con search_path bloccato: la porta del ritiro vuole il proprietario. EXECUTE solo all''app.';
+
+              REVOKE EXECUTE ON FUNCTION vendite.fn_annulla_preventivo(vendite.preventivi.id%TYPE, integer) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_annulla_preventivo(vendite.preventivi.id%TYPE, integer) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_annulla_preventivo(bigint, integer);

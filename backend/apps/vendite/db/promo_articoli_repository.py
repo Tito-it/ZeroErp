@@ -128,6 +128,9 @@ class PromoArticoliRepository:
             colonne=_ORDER_COLS,
             default=_ORDER_COLS["valido_dal"],
             tiebreak="p.id",
+            # Il default e' una DATA: parte dalla piu' recente (regola di Tid
+            # 2026-09-02). Fino al 2026-10-20 mancava, e la lista partiva ASC.
+            default_desc=True,
         )
         safe_limit, safe_offset = limiti_pagina(limit, offset)
 

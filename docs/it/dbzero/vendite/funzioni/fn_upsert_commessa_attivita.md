@@ -2,13 +2,15 @@
 # ⚙️ Funzione `fn_upsert_commessa_attivita`
 
 ```sql
-CREATE FUNCTION fn_upsert_commessa_attivita(p_commessa_id bigint, p_segment_key character varying, p_articolo_id uuid, p_istanza_utility_id bigint, p_data_attivita date, p_uom_id bigint, p_quantita numeric, p_competenza_mese date, p_competenza_dal date, p_competenza_al date, p_prezzo_snapshot numeric, p_prezzo_base_snapshot numeric, p_origine_prezzo character varying, p_tipo_variazione_applicata character varying, p_valore_variazione_applicata numeric, p_promo_id bigint, p_contratto_id bigint, p_categoria_cliente_id_snapshot smallint, p_classe_utenza_id_snapshot integer, p_qta_operativa numeric, p_uom_operativa_id bigint, p_factor_to_base numeric, p_posticipa_al date, p_tipo_doc_fiscale_id bigint, p_valuta_id integer, p_area_geografica_id bigint, p_listino_versione_id bigint, p_prezzo_bloccato boolean, p_pricing_mode character varying, p_prezzo_da_riallineare boolean, p_stato_approvazione character varying, p_stato_emissione character varying, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_tipo_movimento character varying, p_tipo_consumo character varying, p_meta jsonb, p_causale_onere_id bigint, p_natura_doc_id bigint, p_fattura_riga_rettificata_id bigint, p_listino_riga_id bigint)
+CREATE FUNCTION fn_upsert_commessa_attivita(p_commessa_id bigint, p_segment_key character varying, p_articolo_id uuid, p_istanza_utility_id bigint, p_data_attivita date, p_uom_id bigint, p_quantita numeric, p_competenza_mese date, p_competenza_dal date, p_competenza_al date, p_prezzo_snapshot numeric, p_prezzo_base_snapshot numeric, p_origine_prezzo character varying, p_tipo_variazione_applicata character varying, p_valore_variazione_applicata numeric, p_promo_id bigint, p_contratto_id bigint, p_categoria_cliente_id_snapshot smallint, p_classe_utenza_id_snapshot integer, p_qta_operativa numeric, p_uom_operativa_id bigint, p_factor_to_base numeric, p_posticipa_al date, p_tipo_doc_fiscale_id bigint, p_valuta_id integer, p_area_geografica_id bigint, p_listino_versione_id bigint, p_prezzo_bloccato boolean, p_pricing_mode character varying, p_prezzo_da_riallineare boolean, p_stato_approvazione character varying, p_stato_emissione character varying, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_tipo_movimento character varying, p_meta jsonb, p_causale_onere_id bigint, p_natura_doc_id bigint, p_fattura_riga_rettificata_id bigint, p_listino_riga_id bigint)
 ```
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_upsert_commessa_attivita(p_commessa_id bigint, p_segment_key character varying, p_articolo_id uuid, p_istanza_utility_id bigint, p_data_attivita date, p_uom_id bigint, p_quantita numeric, p_competenza_mese date, p_competenza_dal date, p_competenza_al date, p_prezzo_snapshot numeric, p_prezzo_base_snapshot numeric, p_origine_prezzo character varying, p_tipo_variazione_applicata character varying, p_valore_variazione_applicata numeric, p_promo_id bigint, p_contratto_id bigint, p_categoria_cliente_id_snapshot smallint, p_classe_utenza_id_snapshot integer, p_qta_operativa numeric DEFAULT NULL::numeric, p_uom_operativa_id bigint DEFAULT NULL::bigint, p_factor_to_base numeric DEFAULT 1, p_posticipa_al date DEFAULT NULL::date, p_tipo_doc_fiscale_id bigint DEFAULT NULL::bigint, p_valuta_id integer DEFAULT NULL::integer, p_area_geografica_id bigint DEFAULT NULL::bigint, p_listino_versione_id bigint DEFAULT NULL::bigint, p_prezzo_bloccato boolean DEFAULT false, p_pricing_mode character varying DEFAULT 'FIXED'::character varying, p_prezzo_da_riallineare boolean DEFAULT false, p_stato_approvazione character varying DEFAULT 'BOZZA'::character varying, p_stato_emissione character varying DEFAULT 'NON_EMESSA'::character varying, p_sorgente_tipo_id bigint DEFAULT NULL::bigint, p_sorgente_uid text DEFAULT NULL::text, p_tipo_movimento character varying DEFAULT 'NORMALE'::character varying, p_tipo_consumo character varying DEFAULT 'CONGUAGLIO'::character varying, p_meta jsonb DEFAULT '{}'::jsonb, p_causale_onere_id bigint DEFAULT NULL::bigint, p_natura_doc_id bigint DEFAULT NULL::bigint, p_fattura_riga_rettificata_id bigint DEFAULT NULL::bigint, p_listino_riga_id bigint DEFAULT NULL::bigint)
+CREATE OR REPLACE FUNCTION vendite.fn_upsert_commessa_attivita(p_commessa_id bigint, p_segment_key character varying, p_articolo_id uuid, p_istanza_utility_id bigint, p_data_attivita date, p_uom_id bigint, p_quantita numeric, p_competenza_mese date, p_competenza_dal date, p_competenza_al date, p_prezzo_snapshot numeric, p_prezzo_base_snapshot numeric, p_origine_prezzo character varying, p_tipo_variazione_applicata character varying, p_valore_variazione_applicata numeric, p_promo_id bigint, p_contratto_id bigint, p_categoria_cliente_id_snapshot smallint, p_classe_utenza_id_snapshot integer, p_qta_operativa numeric DEFAULT NULL::numeric, p_uom_operativa_id bigint DEFAULT NULL::bigint, p_factor_to_base numeric DEFAULT 1, p_posticipa_al date DEFAULT NULL::date, p_tipo_doc_fiscale_id bigint DEFAULT NULL::bigint, p_valuta_id integer DEFAULT NULL::integer, p_area_geografica_id bigint DEFAULT NULL::bigint, p_listino_versione_id bigint DEFAULT NULL::bigint, p_prezzo_bloccato boolean DEFAULT false, p_pricing_mode character varying DEFAULT 'FIXED'::character varying, p_prezzo_da_riallineare boolean DEFAULT false, p_stato_approvazione character varying DEFAULT 'BOZZA'::character varying, p_stato_emissione character varying DEFAULT 'NON_EMESSA'::character varying, p_sorgente_tipo_id bigint DEFAULT NULL::bigint, p_sorgente_uid text DEFAULT NULL::text, p_tipo_movimento character varying DEFAULT 'NORMALE'::character varying, p_meta jsonb DEFAULT '{}'::jsonb, p_causale_onere_id bigint DEFAULT NULL::bigint, p_natura_doc_id bigint DEFAULT NULL::bigint, p_fattura_riga_rettificata_id bigint DEFAULT NULL::bigint, p_listino_riga_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(attivita_id bigint, is_new boolean)
  LANGUAGE plpgsql
 AS $function$
@@ -21,7 +23,6 @@ DECLARE
   v_tipo_doc_fiscale_id      vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE;
   v_tipo_movimento           vendite.commesse_attivita.tipo_movimento%TYPE;
   v_natura_doc_id            vendite.commesse_attivita.natura_doc_id%TYPE;
-  v_tipo_consumo             varchar(32);
   v_meta_effective           jsonb;
 BEGIN
   -- =========================================================
@@ -118,8 +119,7 @@ BEGIN
     );
   END IF;
 
-  -- Normalizzazione tipo_movimento (COLONNA dal 2026-07-17) e
-  -- tipo_consumo (resta in meta).
+  -- Normalizzazione tipo_movimento (COLONNA dal 2026-07-17).
   -- Dominio tipo_movimento: NORMALE (push, specchio dell'origine) |
   -- ONERE (porta voce manuale, qta=1) | RETTIFICA (accrediti e
   -- conguagli). Il CHECK chk_commesse_attivita_tipo_movimento e'
@@ -178,21 +178,16 @@ BEGIN
     );
   END IF;
 
-  v_tipo_consumo := upper(COALESCE(NULLIF(btrim(p_tipo_consumo), ''), 'CONGUAGLIO'));
-  IF v_tipo_consumo NOT IN ('ACCONTO', 'CONGUAGLIO', 'STORNO') THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite','fn_upsert_commessa_attivita','E_PARAMETRO_INVALIDO',
-      jsonb_build_object('parametro','tipo_consumo','valore',v_tipo_consumo),
-      NULL::uuid, concat('tipo_consumo non valido: ', v_tipo_consumo)
-    );
-  END IF;
-
   v_competenza_mese := date_trunc('month', p_competenza_mese)::date;
   -- tipo_movimento NON entra piu' in meta: vive sulla colonna
-  -- (una casa sola). tipo_consumo resta qui.
-  v_meta_effective  := COALESCE(p_meta, '{}'::jsonb) || jsonb_build_object(
-    'tipo_consumo', v_tipo_consumo
-  );
+  -- (una casa sola).
+  -- ⛔ rev 2026-10-13: tipo_consumo e' RITIRATO. La chiave si TOGLIE dal
+  --    meta in ingresso: il reso (fn_accredita_riga_reso) ricopia il meta
+  --    della riga d'origine, e le righe scritte prima di oggi la portano
+  --    ancora. Senza questa sottrazione un valore che nessuno scrive piu'
+  --    continuerebbe a nascere sulle rettifiche. Le righe gia' scritte
+  --    restano come sono: sono la fotografia di quell'invio.
+  v_meta_effective  := COALESCE(p_meta, '{}'::jsonb) - 'tipo_consumo';
 
   -- Normalize tipo_doc_fiscale_id (NO derivazione di business).
   -- Se non passato esplicitamente, applica il default OPZIONALE
@@ -256,6 +251,36 @@ BEGIN
       p_segment_key::text,
       v_existing_stato_emissione::text
     );
+  END IF;
+
+  -- =========================================================
+  -- ⭐ rev 2026-10-12 (20261012-46, brief-db-annullo-a-valle-
+  --   riapre-a-monte D-13 di Tid): IL LINK DOCUMENTO -> COMMESSA
+  --   NASCE CON LA RIGA. Una riga che viene da un documento
+  --   (sorgente di scope PUSH_COMMESSA: preventivo, ordine,
+  --   contratto, bolla, consumi) aggancia il documento alla
+  --   commessa dalla porta unica, vendite.fn_link_commessa_sorgente:
+  --   idempotente sulla stessa commessa, rifiutata se il documento
+  --   sta gia' in un'altra commessa APERTA (D-12). Prima il link lo
+  --   scriveva il backend, a parte, prima di questa funzione: la
+  --   regola «una sola commessa aperta» valeva solo se chi scriveva
+  --   la riga si ricordava di chiamarlo, e i pgTAP che mandano in
+  --   commessa dalla madre non la attraversavano mai.
+  --   Fuori: le righe senza sorgente (ONERE, RETTIFICA) e le sorgenti
+  --   che non sono documenti spinti in commessa (la COMMESSA stessa,
+  --   PIPELINE_MARKER, che usano le fixture e gli smoke).
+  --   La sorgente si legge per scope, lo stesso vocabolario dichiarato
+  --   in config.sorgenti (chk_sorgenti_scope).
+  -- =========================================================
+  IF p_sorgente_tipo_id IS NOT NULL
+     AND EXISTS (SELECT 1
+                   FROM config.sorgenti s
+                  WHERE s.id = p_sorgente_tipo_id
+                    AND s.scope = 'PUSH_COMMESSA') THEN
+    PERFORM vendite.fn_link_commessa_sorgente(
+      p_commessa_id      => p_commessa_id,
+      p_sorgente_tipo_id => p_sorgente_tipo_id,
+      p_sorgente_uid     => p_sorgente_uid);
   END IF;
 
   -- Upsert idempotente su (commessa_id, segment_key).
@@ -356,9 +381,11 @@ BEGIN
 END
 $function$
 
-COMMENT ON FUNCTION vendite.fn_upsert_commessa_attivita(p_commessa_id bigint, p_segment_key character varying, p_articolo_id uuid, p_istanza_utility_id bigint, p_data_attivita date, p_uom_id bigint, p_quantita numeric, p_competenza_mese date, p_competenza_dal date, p_competenza_al date, p_prezzo_snapshot numeric, p_prezzo_base_snapshot numeric, p_origine_prezzo character varying, p_tipo_variazione_applicata character varying, p_valore_variazione_applicata numeric, p_promo_id bigint, p_contratto_id bigint, p_categoria_cliente_id_snapshot smallint, p_classe_utenza_id_snapshot integer, p_qta_operativa numeric, p_uom_operativa_id bigint, p_factor_to_base numeric, p_posticipa_al date, p_tipo_doc_fiscale_id bigint, p_valuta_id integer, p_area_geografica_id bigint, p_listino_versione_id bigint, p_prezzo_bloccato boolean, p_pricing_mode character varying, p_prezzo_da_riallineare boolean, p_stato_approvazione character varying, p_stato_emissione character varying, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_tipo_movimento character varying, p_tipo_consumo character varying, p_meta jsonb, p_causale_onere_id bigint, p_natura_doc_id bigint, p_fattura_riga_rettificata_id bigint, p_listino_riga_id bigint)
-IS 'Upsert idempotente di una riga operativa di commessa su (commessa_id, segment_key), con snapshot pricing v5 obbligatorio. Ritorna (attivita_id, is_new). rev 2026-08-18 (brief-design-note-credito-resi N1b+N5): due parametri nuovi in coda — p_natura_doc_id (FATTURA / NOTA_CREDITO / ..., default risolto per chiave naturale e non cablato nella firma) e p_fattura_riga_rettificata_id (la riga di fattura che una RETTIFICA corregge). ⚠️ L''aggiunta ha richiesto DROP + CREATE e non CREATE OR REPLACE: con 38 parametri di cui 19 con DEFAULT, una firma nuova avrebbe creato un OVERLOAD e reso ambigua ogni chiamata esistente. Tutti i chiamanti (4 DB, commesse_repository.upsert_attivita, 6 smoke-test) usano argomenti nominali, quindi nessuno e'' stato toccato. ⚠️ p_quantita ammette valori NEGATIVI (il predicato e'' « = 0 », non « <= 0 »): e'' la porta da cui la nota di credito entra senza una seconda pipeline (D-NC-2). rev 2026-10-09 (brief-db-riga-listino-propagata-dalla-commessa R-1): p_listino_riga_id in coda, DEFAULT NULL — la riga di listino che ha dato il prezzo. E'' il legame che vendite.trgfn_listini_righe_guard_stato legge per dire «propagata» (E_RIGA_LISTINO_PROPAGATA): fino a questa revisione nessun percorso lo scriveva. Segue il chiamante anche nel ramo ON CONFLICT, come listino_versione_id: «propagata» vuol dire citata ADESSO. Di nuovo DROP + CREATE, e di nuovo nessun chiamante toccato: tutti nominali.';
+COMMENT ON FUNCTION vendite.fn_upsert_commessa_attivita(p_commessa_id bigint, p_segment_key character varying, p_articolo_id uuid, p_istanza_utility_id bigint, p_data_attivita date, p_uom_id bigint, p_quantita numeric, p_competenza_mese date, p_competenza_dal date, p_competenza_al date, p_prezzo_snapshot numeric, p_prezzo_base_snapshot numeric, p_origine_prezzo character varying, p_tipo_variazione_applicata character varying, p_valore_variazione_applicata numeric, p_promo_id bigint, p_contratto_id bigint, p_categoria_cliente_id_snapshot smallint, p_classe_utenza_id_snapshot integer, p_qta_operativa numeric, p_uom_operativa_id bigint, p_factor_to_base numeric, p_posticipa_al date, p_tipo_doc_fiscale_id bigint, p_valuta_id integer, p_area_geografica_id bigint, p_listino_versione_id bigint, p_prezzo_bloccato boolean, p_pricing_mode character varying, p_prezzo_da_riallineare boolean, p_stato_approvazione character varying, p_stato_emissione character varying, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_tipo_movimento character varying, p_meta jsonb, p_causale_onere_id bigint, p_natura_doc_id bigint, p_fattura_riga_rettificata_id bigint, p_listino_riga_id bigint)
+IS 'Upsert idempotente di una riga operativa di commessa su (commessa_id, segment_key), con snapshot pricing v5 obbligatorio. Ritorna (attivita_id, is_new). rev 2026-08-18 (brief-design-note-credito-resi N1b+N5): due parametri nuovi in coda — p_natura_doc_id (FATTURA / NOTA_CREDITO / ..., default risolto per chiave naturale e non cablato nella firma) e p_fattura_riga_rettificata_id (la riga di fattura che una RETTIFICA corregge). ⚠️ L''aggiunta ha richiesto DROP + CREATE e non CREATE OR REPLACE: con 38 parametri di cui 19 con DEFAULT, una firma nuova avrebbe creato un OVERLOAD e reso ambigua ogni chiamata esistente. Tutti i chiamanti (4 DB, commesse_repository.upsert_attivita, 6 smoke-test) usano argomenti nominali, quindi nessuno e'' stato toccato. ⚠️ p_quantita ammette valori NEGATIVI (il predicato e'' « = 0 », non « <= 0 »): e'' la porta da cui la nota di credito entra senza una seconda pipeline (D-NC-2). rev 2026-10-09 (brief-db-riga-listino-propagata-dalla-commessa R-1): p_listino_riga_id in coda, DEFAULT NULL — la riga di listino che ha dato il prezzo. E'' il legame che vendite.trgfn_listini_righe_guard_stato legge per dire «propagata» (E_RIGA_LISTINO_PROPAGATA): fino a questa revisione nessun percorso lo scriveva. Segue il chiamante anche nel ramo ON CONFLICT, come listino_versione_id: «propagata» vuol dire citata ADESSO. Di nuovo DROP + CREATE, e di nuovo nessun chiamante toccato: tutti nominali. ⭐ rev 2026-10-12 (20261012-46, brief-db-annullo-a-valle-riapre-a-monte D-13 di Tid): una riga con una sorgente di scope PUSH_COMMESSA (preventivo, ordine, contratto, bolla, consumi) chiama vendite.fn_link_commessa_sorgente prima di scriversi: il link documento -> commessa nasce con la riga, e la regola «un documento in una sola commessa aperta» (D-12) la attraversa ogni invio. Prima lo scriveva il backend a parte. Fuori le righe senza sorgente e la sorgente COMMESSA. Firma invariata. rev 2026-10-13 (20261013-16): tipo_consumo RITIRATO in tutta la catena del push (madre, batch, cinque lister, builder pgTAP). Non aveva un lettore, e il vocabolario della madre (ACCONTO/CONGUAGLIO/STORNO) non lo produceva nessuna sorgente con un significato: preventivi, ordini e DDT scrivevano la costante CONGUAGLIO, contratti (l''erogazione della riga) e consumi (CONSUMO) un valore che la madre rifiutava, quindi il loro push falliva sempre (E_PARAMETRO_INVALIDO). L''erogazione resta dove gia'' stava, in meta.tipo_erogazione. Decisione A di Tid, 2026-10-13. Firma: p_tipo_consumo tolto (DROP + CREATE: era in mezzo alla firma, e un CREATE OR REPLACE avrebbe creato un overload). La chiave tipo_consumo si toglie anche dal meta in ingresso.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

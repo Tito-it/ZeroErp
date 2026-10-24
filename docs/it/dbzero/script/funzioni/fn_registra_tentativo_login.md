@@ -7,6 +7,8 @@ CREATE FUNCTION fn_registra_tentativo_login(p_auth_user_id integer, p_nome_diges
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_registra_tentativo_login(p_auth_user_id integer, p_nome_digest bytea, p_provenienza inet, p_successo boolean)
  RETURNS jsonb
@@ -157,6 +159,8 @@ $function$
 COMMENT ON FUNCTION script.fn_registra_tentativo_login(p_auth_user_id integer, p_nome_digest bytea, p_provenienza inet, p_successo boolean)
 IS 'Registra l''esito di un tentativo di login per NOME TENTATO e PROVENIENZA (R-7). La chiave e'' la credenziale quando p_auth_user_id e'' valorizzato (M-4: ogni credenziale conta, nessun filtro su veste), il nome tentato (config.nomi_tentati, per digest) quando e'' NULL: stessa regola e stesso ritorno per le due, cosi'' la risposta non dice se il nome esiste. Successo (solo con la credenziale) -> script.fn_azzera_tentativi_credenziale(uid, provenienza). Fallimento, in upsert e in ordine fisso: (1) fallimenti consecutivi della chiave + ultimo_fallimento_at, base dell''attesa crescente; (2) la coppia chiave + provenienza col passo di script.fn_login_freno_passo (regola del 2): freno fino a now() + login_blocco_minuti alla soglia login_max_tentativi_falliti, un freno scaduto riparte da 1. cleanup_at delle righe che scadono ricalcolato dalle regole CLEANUP_AT (dbops.fn_cleanup_at_params). Ritorna jsonb {bloccato, minuti_rimanenti, tentativi (della coppia), attesa_secondi (del prossimo tentativo)}. Credenziale data e inesistente -> E_CREDENZIALE_NON_TROVATA; provenienza, esito o digest (32 byte) mancanti, credenziale <= 0, successo senza credenziale -> E_AUTH_CHIAMATA_NON_VALIDA. SECURITY DEFINER del PROPRIETARIO, search_path bloccato; nessun guard di permesso, dichiarato. Brief: brief-db-blocco-login-per-credenziale §2.4-2.5, §3.1, §13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

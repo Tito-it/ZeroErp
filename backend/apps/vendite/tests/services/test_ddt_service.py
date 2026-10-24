@@ -20,11 +20,16 @@ DdtServiceGuardsTests
  2) test_cambia_stato_ddt_not_found        — E_DDT_NOT_FOUND se stato None (guard leggero)
  3) test_aggiorna_ddt_stato_non_draft      — E_DDT_STATO_TRANSIZIONE se != DRAFT
  4) test_gestisci_riga_stato_non_draft     — E_RIGA_DOC_NON_BOZZA se != DRAFT (il codice del DB, frase a catalogo)
+ 4b) test_gestisci_riga_chiave_ignota_rifiutata — fuori whitelist: 400 prima di leggere (2026-10-19)
+ 4c) test_gestisci_riga_ammette_componenti_overrides — la mappa degli override non e' una colonna, ma e' ammessa
+ 4d) test_aggiorna_riga_chiave_ignota_rifiutata — fuori whitelist: 400 prima di leggere (2026-10-19)
  5) test_elimina_riga_stato_non_draft      — E_RIGA_DOC_NON_BOZZA se != DRAFT
  5b) test_update_componente_stato_non_draft — E_RIGA_DOC_NON_BOZZA; l'etichetta prende `numero` dallo scope del componente
 
 DdtCreaTests
- 6) test_crea_ddt_col_ba_lascia_le_copie_al_db — col BA destinatario None, utility scartata + DRAFT
+ 6) test_crea_ddt_col_ba_lascia_le_copie_al_db — col BA destinatario None + DRAFT
+ 6a) test_crea_ddt_utility_rifiutata         — utility fuori whitelist: 400, non piu' scartata (2026-10-19)
+ 6b) test_crea_ddt_errore_del_default_sale   — slot di default dal DB: l'errore non si ingoia
  7) test_crea_ddt_destinatario_esplicito    — destinatario passato arriva al repo
  8) test_crea_ddt_senza_destinatario_ne_ba  — nessun guard Python: il NOT NULL lo dice il DB
  8b) test_crea_ddt_senza_ba_ammesso         — bolla senza cliente (terzista, deposito): BA None
@@ -34,7 +39,7 @@ DdtCreaTests
 
 DdtAggiornaTests
  9) test_aggiorna_ddt_cambio_ba_in_bozza    — il BA arriva al DB (D-2: si sceglie in bozza)
-10) test_aggiorna_ddt_utility_scartata      — utility fuori whitelist: e' copia del BA
+10) test_aggiorna_ddt_utility_rifiutata     — utility fuori whitelist: 400, non piu' scartata (2026-10-19)
 10b) test_aggiorna_ddt_ba_tolto             — BA a None arriva al DB, destinatario intatto
 11) test_aggiorna_ddt_ba_non_numerico       — E_DDT_VALIDAZIONE (no 500)
 
@@ -43,14 +48,15 @@ DdtEliminaTests
 13) test_elimina_ddt_bozza_orfana_ok        — hard-delete ammesso (0 righe)
 
 DdtCambiaStatoTests
-14) test_cambia_stato_ok                    — risolve id + update_stato
+14) test_cambia_stato_ok                    — valida il codice, poi il verbo col codice
 15) test_cambia_stato_codice_vuoto          — E_DDT_VALIDAZIONE
 16) test_cambia_stato_codice_inesistente    — E_DDT_VALIDAZIONE
 17) test_emetti_transita_a_emesso_light      — cambia_stato(EMESSO), ritorno light (no reload)
 
 DdtCreaDaOrdineTests
 18) test_crea_ddt_da_ordine_delega_e_ritorna — push_da_ordine + ritorno mappato
-19) test_crea_ddt_da_ordine_no_atomic_extra  — nessun transaction.atomic extra
+19) test_crea_ddt_da_ordine_default_dopo_la_cascata — slot di default chiesto dopo il verbo
+19b) test_crea_ddt_da_ordine_errore_del_default_sale — verbo e default in una transazione
 
 DdtPushCommessaTests
 20) test_push_nessuna_riga_pushable          — E_DDT_NESSUNA_RIGA
@@ -67,15 +73,31 @@ DdtSatellitiTestataTests (2026-09-21, «leggi prima la testata»)
 26) test_list_riepilogo_iva_ddt_non_trovato_e_404 — idem sul riepilogo IVA
 27) test_list_componenti_riga_di_altro_ddt_e_404 — riga di un altro DDT: id incrociato → 404
 28) test_list_righe_con_testata_delega_al_repo    — caso felice: delega invariata
+
+DdtRigheEvaseTests (2026-10-11, brief-db-ddt-righe-evase-dall-ordine)
+29) test_annullo_passa_dal_verbo_senza_dichiarazione — ANNULLATO → repo.annulla(id, None), mai cambia_stato
+30) test_annullo_con_dichiarazione                    — legami_confermati arriva al verbo come int
+31) test_annullo_dichiarazione_non_numerica           — E_DDT_VALIDAZIONE col campo (no 500)
+32) test_annullo_con_legami_codice_del_db             — E_DOC_ANNULLO_CON_LEGAMI tradotto, confirm_and_retry
+33) test_correggi_qta_evasa_delega_al_verbo           — Decimal al repo, qta_evasa nella risposta
+34) test_correggi_qta_evasa_qta_mancante              — E_DDT_VALIDAZIONE, verbo non chiamato
+35) test_correggi_qta_evasa_riga_di_altro_ddt_e_404   — E_DDT_NOT_FOUND, verbo non chiamato
+36) test_get_legami_delega_al_bb                       — testata, poi il BB comune col codice DDT
+37) test_get_legami_ddt_non_trovato_e_404             — E_DDT_NOT_FOUND, legami non letti
+38) test_get_prelievi_raggruppa_per_voce              — prelievi sotto riga o componente giusti (B1)
+39) test_crea_prelievo_porta_la_riga_e_coerce         — riga dall'URL, id interi, qta decimale
+40) test_prelievo_di_altra_riga_e_404                 — E_DDT_NOT_FOUND, niente scrittura
 """
 
 from contextlib import nullcontext
+from decimal import Decimal
 from unittest.mock import patch
 
 from django.db import DatabaseError, IntegrityError
 from django.test import SimpleTestCase
 
 from apps.core.services.error_manager import ServiceError
+from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.vendite.services import ddt_service
 from apps.vendite.services.ddt_service import _db_errors
 
@@ -156,6 +178,40 @@ class DdtServiceGuardsTests(SimpleTestCase):
         )
         repo.create_riga.assert_not_called()
 
+    # Scopo: dal 2026-10-19 (scelta di Tid, la regola della testata) una chiave
+    #        fuori whitelist della riga e' un 400 con le chiavi ignote, prima di
+    #        qualunque lettura; fino ad allora si scartava in silenzio.
+    @patch(_REPO)
+    def test_gestisci_riga_chiave_ignota_rifiutata(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.gestisci_riga(7, {"articolo_id": "ART1", "iva_id": 3})
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("unknown_keys"), ["iva_id"])
+        repo.get_ddt.assert_not_called()
+        repo.create_riga.assert_not_called()
+
+    # Scopo: `componenti_overrides` non e' una colonna (si legge a parte) ma e'
+    #        ammessa: la validazione la lascia passare, e la chiamata arriva al
+    #        guard della bozza.
+    @patch(_REPO)
+    def test_gestisci_riga_ammette_componenti_overrides(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = {"numero": "2026/00007", "stato_codice_interno": "EMESSO"}
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.gestisci_riga(7, {"articolo_id": "KIT1", "componenti_overrides": {}})
+        self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
+
+    @patch(_REPO)
+    def test_aggiorna_riga_chiave_ignota_rifiutata(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.aggiorna_riga(7, 3, {"quantita": 2, "articolo_id": "ART2"})
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("unknown_keys"), ["articolo_id"])
+        repo.get_ddt.assert_not_called()
+        repo.update_riga.assert_not_called()
+
     @patch(_REPO)
     def test_elimina_riga_stato_non_draft(self, repo_cls) -> None:
         repo = repo_cls.return_value
@@ -190,32 +246,63 @@ class DdtServiceGuardsTests(SimpleTestCase):
 class DdtCreaTests(SimpleTestCase):
     """crea_ddt standalone: BA facoltativo, copie del BA lasciate al DB, DRAFT."""
 
+    def setUp(self) -> None:
+        # transaction.atomic() a no-op (SimpleTestCase senza DB): la creazione
+        # e il riempimento dello slot di default stanno in una transazione.
+        patcher = patch(_ATOMIC, return_value=nullcontext())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     @patch(_REPO)
     def test_crea_ddt_col_ba_lascia_le_copie_al_db(self, repo_cls) -> None:
         # Col BA, destinatario e utility li scrive `trgfn_ddt_normalize` (BB
         # `fn_cliente_dal_billing_account`): il service non li deriva e non
         # inoltra una utility, che e' una copia del BA.
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 7, "uid": "u", "numero": None}
 
-        out = ddt_service.crea_ddt({"billing_account_id": 3, "utility_id": 1})
+        out = ddt_service.crea_ddt({"billing_account_id": 3})
 
         self.assertEqual(out["id"], 7)
         kwargs = repo.create_ddt.call_args.kwargs
         self.assertEqual(kwargs["billing_account_id"], 3)
         self.assertIsNone(kwargs["destinatario_soggetto_ruolo_id"])
         self.assertNotIn("utility_id", kwargs)
-        # stato risolto via codice interno DRAFT.
-        repo.get_stato_id_by_codice.assert_called_once_with("DRAFT")
-        self.assertEqual(kwargs["stato_doc_ddt_id"], 1)
+        # Lo stato non si passa: lo mette il DB, lo stato iniziale del
+        # vocabolario (brief-modello-documento-vendita P-2).
+        self.assertNotIn("stato_doc_ddt_id", kwargs)
+        repo.get_stato_id_by_codice.assert_not_called()
+        # Lo slot di default lo riempie il DB, sul DDT appena nato (R-BE-1).
+        repo.riempi_indirizzo_default.assert_called_once_with(7)
+
+    @patch(_REPO)
+    def test_crea_ddt_utility_rifiutata(self, repo_cls) -> None:
+        # La utility e' una copia del BA (la scrive il DB): fuori whitelist. Dal
+        # 2026-10-19 e' un 400 con le chiavi ignote, prima di qualunque lettura;
+        # fino ad allora si scartava in silenzio.
+        repo = repo_cls.return_value
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.crea_ddt({"billing_account_id": 3, "utility_id": 1})
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("unknown_keys"), ["utility_id"])
+        repo.get_stato_id_by_codice.assert_not_called()
+        repo.create_ddt.assert_not_called()
+
+    @patch(_REPO)
+    def test_crea_ddt_errore_del_default_sale(self, repo_cls) -> None:
+        # Non e' piu' best-effort: l'errore sale, e la transaction.atomic()
+        # annulla anche la testata.
+        repo = repo_cls.return_value
+        repo.create_ddt.return_value = {"id": 7, "uid": "u", "numero": None}
+        repo.riempi_indirizzo_default.side_effect = RuntimeError("DB")
+        with self.assertRaises(RuntimeError):
+            ddt_service.crea_ddt({"billing_account_id": 3})
 
     @patch(_REPO)
     def test_crea_ddt_destinatario_esplicito(self, repo_cls) -> None:
         # destinatario passato esplicito: arriva al repo (col BA il DB lo
         # confronta con quello del BA, senza BA e' il terzista o il deposito).
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 8, "uid": "u", "numero": None}
 
         ddt_service.crea_ddt(
@@ -230,7 +317,6 @@ class DdtCreaTests(SimpleTestCase):
         # Ne' destinatario ne' BA: nessun guard Python ricopia il NOT NULL del
         # destinatario. Lo dice il DB (23502), e la traduzione porta il campo.
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 8, "uid": "u", "numero": None}
         ddt_service.crea_ddt({"causale_trasporto_id": 5})
         kwargs = repo.create_ddt.call_args.kwargs
@@ -243,7 +329,6 @@ class DdtCreaTests(SimpleTestCase):
         # La bolla nasce senza BA; se la causale lo vuole, lo dira' l'emissione
         # (E_DDT_CLIENTE_OBBLIGATORIO, capability CLIENTE_MANCANTE).
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 8, "uid": "u", "numero": None}
         ddt_service.crea_ddt({"destinatario_soggetto_ruolo_id": 777})
         kwargs = repo.create_ddt.call_args.kwargs
@@ -267,7 +352,6 @@ class DdtCreaTests(SimpleTestCase):
         # Emittente dallo USER (uniformazione 2026-07-13, mirror ordini): il
         # payload create lo porta (prefill FE dal profilo) e arriva al repo.
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 9, "uid": "u", "numero": None}
 
         ddt_service.crea_ddt({"billing_account_id": 3, "emittente_fiscale_id": 32})
@@ -280,7 +364,6 @@ class DdtCreaTests(SimpleTestCase):
         # Emittente assente dal payload (es. admin globale che non sceglie):
         # None al repo, che omette la colonna -> fallback dal BA nel trigger.
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 10, "uid": "u", "numero": None}
 
         ddt_service.crea_ddt({"billing_account_id": 3})
@@ -302,13 +385,17 @@ class DdtAggiornaTests(SimpleTestCase):
         self.assertEqual(repo.update_ddt.call_args.kwargs, {"billing_account_id": 99})
 
     @patch(_REPO)
-    def test_aggiorna_ddt_utility_scartata(self, repo_cls) -> None:
-        # La utility e' una copia del BA: fuori whitelist, si scarta.
+    def test_aggiorna_ddt_utility_rifiutata(self, repo_cls) -> None:
+        # La utility e' una copia del BA (la scrive il DB): fuori whitelist. Dal
+        # 2026-10-19 una chiave fuori whitelist e' un 400 con le chiavi ignote,
+        # prima di leggere la testata; fino ad allora si scartava in silenzio.
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
-        ddt_service.aggiorna_ddt(7, {"billing_account_id": 3, "utility_id": 9})
-        kwargs = repo.update_ddt.call_args.kwargs
-        self.assertEqual(kwargs, {"billing_account_id": 3})
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.aggiorna_ddt(7, {"billing_account_id": 3, "utility_id": 9})
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("unknown_keys"), ["utility_id"])
+        repo.get_stato_codice.assert_not_called()
+        repo.update_ddt.assert_not_called()
 
     @patch(_REPO)
     def test_aggiorna_ddt_ba_tolto(self, repo_cls) -> None:
@@ -368,12 +455,15 @@ class DdtCambiaStatoTests(SimpleTestCase):
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
         repo.get_stato_id_by_codice.return_value = 6
+        repo.cambia_stato.return_value = []
         out = ddt_service.cambia_stato(7, "SPEDITO")
         self.assertEqual(out["stato"], "SPEDITO")
         self.assertEqual(out["stato_precedente"], "DRAFT")
+        self.assertEqual(out["movimenti_scritti"], 0)
         repo.get_ddt.assert_not_called()
         repo.get_stato_id_by_codice.assert_called_once_with("SPEDITO")
-        repo.update_stato.assert_called_once_with(7, 6)
+        # Il verbo prende il CODICE dello stato (Lotto 3 R-1), non l'id.
+        repo.cambia_stato.assert_called_once_with(7, "SPEDITO")
 
     # Un numero nel JSON al posto del codice e' un 400, non un 500 (2026-10-09).
     @patch(_REPO)
@@ -383,7 +473,7 @@ class DdtCambiaStatoTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(7, 5)  # type: ignore[arg-type]
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
-        repo.update_stato.assert_not_called()
+        repo.cambia_stato.assert_not_called()
 
     @patch(_REPO)
     def test_cambia_stato_codice_vuoto(self, repo_cls) -> None:
@@ -392,7 +482,7 @@ class DdtCambiaStatoTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(7, "   ")
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
-        repo.update_stato.assert_not_called()
+        repo.cambia_stato.assert_not_called()
 
     @patch(_REPO)
     def test_cambia_stato_codice_inesistente(self, repo_cls) -> None:
@@ -402,7 +492,7 @@ class DdtCambiaStatoTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(7, "INESISTENTE")
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
-        repo.update_stato.assert_not_called()
+        repo.cambia_stato.assert_not_called()
 
     @patch(_REPO)
     def test_emetti_transita_a_emesso_light(self, repo_cls) -> None:
@@ -414,11 +504,16 @@ class DdtCambiaStatoTests(SimpleTestCase):
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
         repo.get_stato_id_by_codice.return_value = 2
+        # Una bolla che muove merce: il verbo ritorna le uscite scritte.
+        repo.cambia_stato.return_value = [
+            {"movimento_id": 501, "prelievo_id": 11, "qta": 3},
+        ]
 
         out = ddt_service.emetti(7)
 
         repo.get_stato_id_by_codice.assert_called_once_with("EMESSO")
-        repo.update_stato.assert_called_once_with(7, 2)
+        repo.cambia_stato.assert_called_once_with(7, "EMESSO")
+        self.assertEqual(out["movimenti_scritti"], 1)
         repo.get_ddt.assert_not_called()
         repo.get_capabilities.assert_not_called()
         self.assertEqual(out["ddt_id"], 7)
@@ -428,6 +523,13 @@ class DdtCambiaStatoTests(SimpleTestCase):
 
 class DdtCreaDaOrdineTests(SimpleTestCase):
     """crea_ddt_da_ordine: delega alla primitiva DB madre (evasione)."""
+
+    def setUp(self) -> None:
+        # transaction.atomic() a no-op (SimpleTestCase senza DB): la creazione
+        # e il riempimento dello slot di default stanno in una transazione.
+        patcher = patch(_ATOMIC, return_value=nullcontext())
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     @patch(_REPO)
     def test_crea_ddt_da_ordine_delega_e_ritorna(self, repo_cls) -> None:
@@ -442,15 +544,30 @@ class DdtCreaDaOrdineTests(SimpleTestCase):
         repo.get_ddt.assert_not_called()
         self.assertEqual(out, {"ddt_id": 42, "numero": None, "ordine_id": 99})
 
-    @patch(f"{_SVC}.transaction")
     @patch(_REPO)
-    def test_crea_ddt_da_ordine_no_atomic_extra(self, repo_cls, mock_tx) -> None:
-        # L'atomicita' vive DENTRO la fn madre DB: il service NON deve aprire un
-        # transaction.atomic() extra (gemello crea_ordine_da_preventivo).
+    def test_crea_ddt_da_ordine_default_dopo_la_cascata(self, repo_cls) -> None:
+        # Il default si chiede DOPO il verbo (la cascata dall'ordine vince: il
+        # DB riempie lo slot solo se e' rimasto vuoto), sul DDT appena nato
+        # (brief-db-indirizzi-documento-seguono-il-cliente, R-BE-1).
         repo = repo_cls.return_value
         repo.push_da_ordine.return_value = 42
         ddt_service.crea_ddt_da_ordine(99)
-        mock_tx.atomic.assert_not_called()
+        self.assertEqual(
+            [c[0] for c in repo.method_calls if c[0] != "push_da_ordine"],
+            ["riempi_indirizzo_default"],
+        )
+        repo.riempi_indirizzo_default.assert_called_once_with(42)
+        self.assertEqual(repo.method_calls[0][0], "push_da_ordine")
+
+    @patch(_REPO)
+    def test_crea_ddt_da_ordine_errore_del_default_sale(self, repo_cls) -> None:
+        # Non e' piu' best-effort: l'errore sale, e la transaction.atomic()
+        # annulla anche il DDT appena creato.
+        repo = repo_cls.return_value
+        repo.push_da_ordine.return_value = 42
+        repo.riempi_indirizzo_default.side_effect = RuntimeError("DB")
+        with self.assertRaises(RuntimeError):
+            ddt_service.crea_ddt_da_ordine(99)
 
 
 class DdtPushCommessaTests(SimpleTestCase):
@@ -549,13 +666,19 @@ class DdtFatturazioneImmediataTests(SimpleTestCase):
     fosse identico sui tre domini.
     """
 
+    def setUp(self) -> None:
+        # transaction.atomic() a no-op (SimpleTestCase senza DB): la creazione
+        # e il riempimento dello slot di default stanno in una transazione.
+        patcher = patch(_ATOMIC, return_value=nullcontext())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     @patch(_REPO)
     def test_crea_ddt_porta_il_flag(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 9, "uid": "u", "numero": None}
         ddt_service.crea_ddt({
-            "billing_account_id": 3, "utility_id": 1, "fatturazione_immediata": True,
+            "billing_account_id": 3, "fatturazione_immediata": True,
         })
         self.assertIs(
             repo.create_ddt.call_args.kwargs["fatturazione_immediata"], True,
@@ -653,20 +776,19 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         self.assertEqual(scritta["meta"]["iva_origine"], "TITOLO")
 
 
-    # Scopo: ⛔ `I6` — LA CASELLA E' CHIUSA. Un client che manda ancora
-    #        `iva_id` nel payload deve vederlo IGNORATO: a decidere l'aliquota
-    #        e' il risolutore, e la scelta manuale non esiste piu'.
-    # ⚠️ E il valore non viene RESPINTO, viene SCARTATO: una chiave fuori
-    #        whitelist non solleva. Senza questo caso la rimozione della chiave
-    #        sarebbe invisibile — la suite e' restata verde quando e' stata
-    #        fatta, perche' nessun presidio copriva «il payload vince».
+    # Scopo: ⛔ `I6` — LA CASELLA E' CHIUSA. A decidere l'aliquota e' il
+    #        risolutore, e la scelta manuale non esiste piu'. Un client che manda
+    #        ancora `iva_id` nel payload riceve un 400 con la chiave ignota (dal
+    #        2026-10-19, scelta di Tid: la whitelist della riga respinge, come
+    #        quella della testata). Fino ad allora la chiave si SCARTAVA in
+    #        silenzio.
     # ⛔ E il risolutore va interrogato con `payload_iva_id=None`: passargli il
     #        valore del client lo farebbe scendere sul ramo di AUDIT, dove gli
     #        errori sono best-effort — cioe' una riga si salverebbe anche
     #        quando l'IVA non e' determinabile.
     @patch(_PRICING)
     @patch(_REPO)
-    def test_i6_iva_del_payload_ignorata(self, repo_cls, pricing_cls) -> None:
+    def test_i6_iva_del_payload_respinta(self, repo_cls, pricing_cls) -> None:
         repo = repo_cls.return_value
         repo.get_ddt.return_value = self._testata()
         repo.is_articolo_composito.return_value = False
@@ -675,18 +797,19 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         repo.get_emittente_sr_id_by_fiscale_id.return_value = 42
         self.iva.return_value = (9, {"iva_origine": "TITOLO", "iva_titolo_id": 4})
 
-        ddt_service.gestisci_riga(7, {
-            "articolo_id": "ART1", "uom_operativa_id": 5, "prezzo_unitario": "10",
-            "iva_id": 999,
-        })
-
-        # ⭐ E' la WHITELIST il cancello vero: `iva_id` non e' in
-        #    `CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
-        #    asserzione morde ANCHE se qualcuno rimettesse la chiave, perche'
-        #    allora `payload_iva_id` tornerebbe 999.
-        self.assertIsNone(self.iva.call_args.kwargs["payload_iva_id"])
-        self.assertNotIn("iva_id", ddt_service.CREATE_KEYS_RIGA)
+        riga = {"articolo_id": "ART1", "uom_operativa_id": 5, "prezzo_unitario": "10"}
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.gestisci_riga(7, {**riga, "iva_id": 999})
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("unknown_keys"), ["iva_id"])
+        self.iva.assert_not_called()
+        repo.create_riga.assert_not_called()
+        self.assertNotIn("iva_id", ddt_service.CREATE_PAYLOAD_RIGA)
         self.assertNotIn("iva_id", ddt_service.UPDATE_KEYS_RIGA)
+
+        # Senza la chiave la riga si salva, e l'aliquota e' del risolutore.
+        ddt_service.gestisci_riga(7, riga)
+        self.assertIsNone(self.iva.call_args.kwargs["payload_iva_id"])
         self.assertEqual(repo.create_riga.call_args.kwargs["iva_id"], 9)
 
 
@@ -840,3 +963,167 @@ class DdtSatellitiTestataTests(SimpleTestCase):
         repo.list_righe.return_value = [{"id": 31}]
         self.assertEqual(ddt_service.list_righe(7), [{"id": 31}])
         repo.list_righe.assert_called_once_with(7)
+
+
+# Le righe evase dall'ordine o dal reso (brief-db-ddt-righe-evase-dall-ordine,
+# 2026-10-11): il verbo della quantita' evasa, l'annullo con conferma (D-8) e la
+# lettura dei legami per la finestra. ⚠️ Le regole (bozza, riga evasa, residuo,
+# conteggio della conferma) sono del DB e qui sono mockate: questi test provano
+# il trasporto, non la regola.
+class DdtRigheEvaseTests(SimpleTestCase):
+    @patch(_REPO)
+    def test_annullo_passa_dal_verbo_senza_dichiarazione(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "EMESSO"
+        repo.get_stato_id_by_codice.return_value = 9
+        out = ddt_service.cambia_stato(7, "ANNULLATO")
+        repo.annulla.assert_called_once_with(7, None)
+        repo.cambia_stato.assert_not_called()
+        self.assertEqual(out["stato"], "ANNULLATO")
+        self.assertEqual(out["stato_precedente"], "EMESSO")
+
+    @patch(_REPO)
+    def test_annullo_con_dichiarazione(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_stato_id_by_codice.return_value = 9
+        ddt_service.cambia_stato(7, "ANNULLATO", legami_confermati="2")
+        repo.annulla.assert_called_once_with(7, 2)
+
+    @patch(_REPO)
+    def test_annullo_dichiarazione_non_numerica(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_stato_id_by_codice.return_value = 9
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.cambia_stato(7, "ANNULLATO", legami_confermati="due")
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("field"), "legami_confermati")
+        repo.annulla.assert_not_called()
+
+    @patch(_REPO)
+    def test_annullo_con_legami_codice_del_db(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "EMESSO"
+        repo.get_stato_id_by_codice.return_value = 9
+        repo.annulla.side_effect = DatabaseError(
+            "E_DOC_ANNULLO_CON_LEGAMI: annullando DDT 12 si riaprono 2 legami",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.cambia_stato(7, "ANNULLATO")
+        self.assertEqual(cm.exception.code, "E_DOC_ANNULLO_CON_LEGAMI")
+        # Il comportamento che la finestra riconosce (`useForzaturaConfermata`).
+        policy = ErrorPolicyRegistry.resolve("E_DOC_ANNULLO_CON_LEGAMI")
+        self.assertEqual(policy.http_status, 409)
+        self.assertEqual(policy.ui_action, "confirm_and_retry")
+
+    @patch(_REPO)
+    def test_correggi_qta_evasa_delega_al_verbo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_riga.return_value = {"id": 31, "ddt_id": 7}
+        repo.correggi_qta_evasa.return_value = Decimal("6")
+        out = ddt_service.correggi_qta_evasa(7, 31, {"qta_operativa": "6"})
+        repo.correggi_qta_evasa.assert_called_once_with(31, Decimal("6"))
+        self.assertEqual(out, {"ddt_id": 7, "riga_id": 31, "qta_evasa": Decimal("6")})
+
+    @patch(_REPO)
+    def test_correggi_qta_evasa_qta_mancante(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_riga.return_value = {"id": 31, "ddt_id": 7}
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.correggi_qta_evasa(7, 31, {})
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        repo.correggi_qta_evasa.assert_not_called()
+
+    @patch(_REPO)
+    def test_correggi_qta_evasa_riga_di_altro_ddt_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_riga.return_value = {"id": 31, "ddt_id": 8}
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.correggi_qta_evasa(7, 31, {"qta_operativa": "6"})
+        self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+        repo.correggi_qta_evasa.assert_not_called()
+
+    @patch(f"{_SVC}.legami_del_documento")
+    @patch(_REPO)
+    def test_get_legami_delega_al_bb(self, repo_cls, bb) -> None:
+        # Il conteggio e i nomi sono del BB comune (test_annullo_con_legami):
+        # qui la testata prima, poi la delega col codice del documento.
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "EMESSO"
+        bb.return_value = {"documento": "DDT_VENDITA", "id": 7, "legami": 2, "righe": []}
+        self.assertEqual(ddt_service.get_legami(7)["legami"], 2)
+        bb.assert_called_once_with("DDT_VENDITA", 7)
+
+    @patch(f"{_SVC}.legami_del_documento")
+    @patch(_REPO)
+    def test_get_legami_ddt_non_trovato_e_404(self, repo_cls, bb) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.get_legami(99)
+        self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+        bb.assert_not_called()
+
+
+# B1 (Lotto 3 R-2b, piano-be-fe-magazzino-lotto-3): il trasporto dei prelievi.
+# ⚠️ Le regole (bozza, kit, ubicazioni, somma) sono dei trigger DB e qui sono
+# assenti: lo prova `tests/db/test_ddt_cambia_stato_db`.
+class DdtPrelieviTests(SimpleTestCase):
+    @patch(_REPO)
+    def test_get_prelievi_raggruppa_per_voce(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_testata_prelievi.return_value = {"ddt_id": 7, "muove_merce": True}
+        # Un kit composto al momento: due componenti della stessa riga.
+        repo.list_merce_da_movimentare.return_value = [
+            {"ddt_riga_id": 1, "ddt_riga_componente_id": 10, "qta": 2},
+            {"ddt_riga_id": 1, "ddt_riga_componente_id": 11, "qta": 3},
+            {"ddt_riga_id": 2, "ddt_riga_componente_id": None, "qta": 1},
+        ]
+        repo.list_prelievi.return_value = [
+            {"id": 100, "ddt_riga_id": 1, "ddt_riga_componente_id": 11},
+            {"id": 101, "ddt_riga_id": 2, "ddt_riga_componente_id": None},
+            {"id": 102, "ddt_riga_id": 1, "ddt_riga_componente_id": 11},
+        ]
+        out = ddt_service.get_prelievi(7)
+        self.assertTrue(out["muove_merce"])
+        self.assertEqual(
+            [[p["id"] for p in v["prelievi"]] for v in out["voci"]],
+            [[], [100, 102], [101]],
+        )
+
+    @patch(_REPO)
+    def test_crea_prelievo_porta_la_riga_e_coerce(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_riga.return_value = {"id": 5, "ddt_id": 7}
+        repo.create_prelievo.return_value = {"id": 99}
+        out = ddt_service.crea_prelievo(
+            7, 5, {"qta": "2.5", "lotto_id": "3", "ubicazione_id": ""},
+        )
+        self.assertEqual(out["prelievo_id"], 99)
+        valori = repo.create_prelievo.call_args[0][0]
+        self.assertEqual(
+            valori,
+            {"ddt_riga_id": 5, "qta": Decimal("2.5"), "lotto_id": 3, "ubicazione_id": None},
+        )
+        # ⛔ Una chiave estranea e' un 400 (2026-10-20), non uno scarto.
+        repo.create_prelievo.reset_mock()
+        with self.assertRaises(ServiceError) as ctx:
+            ddt_service.crea_prelievo(7, 5, {"qta": "2.5", "estranea": 1})
+        self.assertEqual(ctx.exception.code, "E_DDT_VALIDAZIONE")
+        repo.create_prelievo.assert_not_called()
+
+    @patch(_REPO)
+    def test_prelievo_di_altra_riga_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_riga.return_value = {"id": 5, "ddt_id": 7}
+        repo.get_prelievo.return_value = {"id": 9, "ddt_riga_id": 6}
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.aggiorna_prelievo(7, 5, 9, {"qta": "1"})
+        self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+        repo.update_prelievo.assert_not_called()

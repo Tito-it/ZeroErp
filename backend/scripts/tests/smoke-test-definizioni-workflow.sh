@@ -19,8 +19,11 @@ set -uo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
-DEF_ID="${DEF_ID:-419}"
-PUB_ID="${PUB_ID:-418}"
+# Gli id si TROVANO nella lista (passo 1), non si cablano: fino al 2026-10-13
+# erano 419 (BOZZA) e 418 (PUBBLICATA), e quel giorno il team DB ha pubblicato
+# la 419 e ritirato la 418 — lo smoke si fermava al passo 2. Override da env.
+DEF_ID="${DEF_ID:-}"
+PUB_ID="${PUB_ID:-}"
 TS="$(date +%s)"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -57,7 +60,7 @@ extract() { echo "$LAST_BODY" | py "$1"; }
 
 echo ""; echo "========================================="
 echo " Smoke E2E — Definizioni Workflow (editor Fase 3)"
-echo " Base: $BASE_URL · DEF_ID(BOZZA)=$DEF_ID · PUB_ID=$PUB_ID"
+echo " Base: $BASE_URL · definizioni: risolte dalla lista (passo 1)"
 echo "========================================="
 
 # --- 0. Auth ---
@@ -71,6 +74,19 @@ D="/api/v1/pratiche/definizioni"
 echo ""; echo "-- 1. Lista --"
 do_curl GET "$D/"; check "GET lista definizioni" 200 && \
     { N="$(extract "len(d['data']['results'])")"; log_info "edizioni: $N"; }
+# La bozza da modificare: la prima di un emittente (le edizioni del preset non
+# hanno emittente). La pubblicata per il guard «congelata»: di un emittente se
+# c'e', altrimenti del preset.
+[[ -z "$DEF_ID" ]] && DEF_ID="$(extract "next((r['id'] for r in d['data']['results'] if r.get('stato')=='BOZZA' and r.get('emittente_fiscale_id')), '')")"
+[[ -z "$PUB_ID" ]] && PUB_ID="$(extract "next((r['id'] for r in sorted(d['data']['results'], key=lambda r: r.get('emittente_fiscale_id') is None) if r.get('stato')=='PUBBLICATA'), '')")"
+if [[ -z "$DEF_ID" && -n "$PUB_ID" ]]; then
+    # Nessuna bozza: se ne apre una dalla pubblicata (nuova versione). Resta
+    # bozza (lo smoke toglie i suoi step alla fine) e il giro dopo la riusa.
+    do_curl POST "$D/$PUB_ID/nuova-versione/" '{}'
+    check "POST nuova versione (bozza da modificare)" 200 && DEF_ID="$(extract "d['data'].get('id') or d['data'].get('definizione_id') or ''")"
+fi
+log_info "bozza DEF_ID=${DEF_ID:-?} · pubblicata PUB_ID=${PUB_ID:-?}"
+[[ -z "$DEF_ID" ]] && { echo -e "${RED}Nessuna bozza di definizione disponibile ne' creabile. Stop.${NC}"; exit 1; }
 
 # --- 2. Dettaglio BOZZA target ---
 echo ""; echo "-- 2. Dettaglio (BOZZA $DEF_ID) --"
@@ -95,7 +111,7 @@ do_curl GET "/api/v1/core/lookup/codici/?rel=pratiche.handler_flussi"
 HANDLER_ID="$(extract "d['data']['results'][0]['id']")"; log_info "handler_id=$HANDLER_ID"
 do_curl GET "/api/v1/core/lookup/codici/?rel=config.unita_organizzative"
 UNITA_ID="$(extract "d['data']['results'][0]['id']")"; log_info "unita_id=$UNITA_ID"
-do_curl GET "/api/v1/amm-software/operatori/?page_size=200"
+do_curl GET "/api/v1/amm-software/operatori/?limit=200"
 RISORSA_ID="$(extract "next((o['risorsa_umana_id'] for o in d['data']['results'] if o.get('risorsa_umana_id')), '')")"
 log_info "risorsa_umana_id=$RISORSA_ID"
 

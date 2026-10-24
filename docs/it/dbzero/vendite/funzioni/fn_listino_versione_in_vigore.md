@@ -7,6 +7,8 @@ CREATE FUNCTION fn_listino_versione_in_vigore(p_listino_id bigint, p_data date)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_listino_versione_in_vigore(p_listino_id bigint, p_data date)
  RETURNS bigint
@@ -38,6 +40,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_listino_versione_in_vigore(p_listino_id bigint, p_data date)
 IS 'La versione di un listino in vigore a una data: ATTIVA o CHIUSA (la BOZZA non e'' operativa), attiva, la cui validita'' contiene la data; NULL se non ce n''e''. Sede UNICA dal 2026-09-28 (brief-db-liste-righe-documento §8.15): la regola era scritta sette volte in sei funzioni, cinque che ne sceglievano una e due che le guardavano tutte. Decisione di Tid: «le versioni valide oggi», e il buco chiuso — ex_listini_versioni_no_overlap vale per ATTIVA e CHIUSA, e le date di una CHIUSA non si modificano (trgfn_listini_versioni_guard_date_chiusa) — quindi la versione valida e'' al piu'' una per costruzione e la funzione non ordina ne'' limita. STABLE, SECURITY INVOKER.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -511,7 +511,10 @@ a {
   align-items: center;
   gap: 0.25rem;
 }
-.app-kbd {
+/* `.app-dialog-tasto-css::before`: lo stesso tasto dove un elemento non si
+ * puo' mettere — la testa della ConfirmDialog (App.vue), testo da `data-tasto`. */
+.app-kbd,
+.app-dialog-tasto-css::before {
   display: inline-block;
   padding: 0 0.35rem;
   border: 1px solid var(--app-border-color);
@@ -524,6 +527,20 @@ a {
   line-height: 1.4;
   white-space: nowrap;
   user-select: none;
+}
+
+/* Il tasto «Esc» in testa a un `AppDialog` (2026-10-11): in alto a destra,
+ * dove nel drawer sta accanto alla X — il dialog la X non ce l'ha, e
+ * l'etichetta non la sostituisce. `margin-inline-start: auto` la spinge a
+ * destra anche se la testa (`space-between`) ha un terzo figlio vuoto, le
+ * azioni di PrimeVue. */
+.app-dialog-tasto {
+  margin-inline-start: auto;
+  margin-inline-end: 0.5rem;
+}
+.app-dialog-tasto-css::before {
+  content: attr(data-tasto);
+  margin-inline-end: 0.5rem;
 }
 
 /* ===== Classe utility contenuto drawer =====
@@ -611,6 +628,45 @@ a {
 .app-riepilogo-empty {
   color: var(--app-text-muted);
   font-size: 0.85rem;
+}
+
+/* ===== Una voce di merce di un documento (prelievo, rientro) =====
+ * Il blocco di UNA voce che muove merce nella sezione di un documento: la
+ * testa (riga, articolo | quanto e' coperto + stato), la lista compatta dei
+ * dettagli fisici scritti (lotto, seriale, scaffale) e il form per
+ * aggiungerne uno. Due consumatori dal 2026-10-13 (piano-be-fe-magazzino-
+ * lotto-3, B1/B2): `DdtPrelievoVoce` (da dove esce la merce della bolla) e
+ * `ResoRientroVoce` (dove rientra quella del reso) — lo stesso blocco,
+ * scritto una volta invece di due `<style scoped>` uguali.
+ * Uso:
+ *   <div class="app-voce-merce">
+ *     <div class="app-voce-merce-testa"><span>…</span><span class="app-voce-merce-stato">… <Tag/></span></div>
+ *     <ul class="app-voce-merce-lista"><li>… <Button/></li></ul>
+ *     <div class="app-voce-merce-form">campi… <Button/></div>
+ *   </div> */
+.app-voce-merce {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--app-border-color);
+}
+.app-voce-merce-testa,
+.app-voce-merce-stato,
+.app-voce-merce-lista li,
+.app-voce-merce-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.app-voce-merce-testa {
+  justify-content: space-between;
+}
+.app-voce-merce-lista {
+  list-style: none;
+  margin: 0.25rem 0 0 0;
+  padding: 0;
+}
+.app-voce-merce-form {
+  margin-top: 0.5rem;
 }
 
 /* ===== Header informativo drawer (DrawerEntityHeader) =====
@@ -1378,6 +1434,30 @@ a {
  * porta `.app-menu-item-*`).
  */
 
+/* Segno «questa voce contiene altre voci» (`MANAGE_ICONS.SOTTOMENU*`): sidebar
+ * chiusa e aperta, sottomenu dei TieredMenu. ⭐ Il colore e' quello dell'ICONA
+ * della sua voce (`inherit` dal link nei menu, `--app-icon-color` nella
+ * sidebar, dove lo assegna SidebarItem): un segno grigio accanto a un'icona
+ * colorata sembrava un'altra cosa (Tid 2026-10-24). */
+.app-sottomenu-icon {
+  font-size: 0.7rem;
+  color: inherit;
+}
+/* ⚠️ Nel TieredMenu il segno porta anche `.p-tieredmenu-submenu-icon`, che il
+ * tema colora grigio: serve la stessa forza delle regole `.app-menu-item-*
+ * .p-tieredmenu-item-icon` qui sotto, cosi' segue la voce come la sua icona. */
+.p-tieredmenu-item-link .p-tieredmenu-submenu-icon.app-sottomenu-icon {
+  color: inherit;
+}
+
+/* Popup delle voci di un gruppo a sidebar chiusa (SidebarDomain): sono voci di
+ * navigazione, e le icone hanno il colore standard come nella sidebar. Col
+ * grigio del tema PrimeVue sembravano disattivate (Tid 2026-10-24). Il
+ * popup sta in un portale fuori dal componente: la regola e' globale. */
+.app-sidebar-gruppo-popup .p-menu-item-icon {
+  color: var(--app-icon-color);
+}
+
 /* Motivo di un'azione DISABILITATA nel popup kebab di RowActionsMenu: il
  * kebab e' la variante touch e su touch non c'e' hover, quindi il perche'
  * si rende invece di stare in un tooltip. Riga secondaria sotto la label,
@@ -1645,6 +1725,13 @@ a {
   cursor: pointer;
 }
 
+/* La radice di un `AppDialog` prende il fuoco all'apertura (`tabindex=-1`,
+ * perche' ESC si senta: vedi AppDialog.vue). E' un contenitore, non un
+ * controllo: niente anello di fuoco intorno a tutto il dialog. */
+.p-dialog[tabindex='-1']:focus {
+  outline: none;
+}
+
 /* Lettura: ricerca/filtri/paginazione/sort restano interattivi in protect.
  * Sono operazioni di lettura (non modificano dati) e bloccarle rende
  * l'UI inutilizzabile su liste lunghe. La protezione resta attiva sui
@@ -1761,14 +1848,21 @@ a {
    l'apertura. Il font non ha un foglio «aperto» senza simbolo proprio: lo si
    ricava da `pi-file` ritagliando l'angolo, cosi' il simbolo non si
    sovrappone al tratto del foglio. */
+/* ⭐ La geometria dell'ANGOLO APERTO, una regola per tutte le famiglie che la
+   usano (documenti di vendita, diari, processi automatici): base ritagliata in
+   basso a destra, simbolo grande dentro l'apertura. Ogni famiglia dichiara
+   solo il glifo della base e quello del simbolo. */
 .app-nav-icon-preventivi::before,
 .app-nav-icon-offerte::before,
 .app-nav-icon-ordini::before,
 .app-nav-icon-ddt::before,
 .app-nav-icon-resi::before,
 .app-nav-icon-contratti::before,
-.app-nav-icon-fatture::before {
-  content: "\e958"; /* pi-file — base: la famiglia documento */
+.app-nav-icon-fatture::before,
+.app-nav-icon-log-audit::before,
+.app-nav-icon-log-errori::before,
+.app-nav-icon-log-email::before,
+.app-nav-icon-processi::before {
   top: 0.02rem;
   left: 0.12rem;
   font-size: 0.86rem;
@@ -1781,10 +1875,24 @@ a {
 .app-nav-icon-ddt::after,
 .app-nav-icon-resi::after,
 .app-nav-icon-contratti::after,
-.app-nav-icon-fatture::after {
+.app-nav-icon-fatture::after,
+.app-nav-icon-log-audit::after,
+.app-nav-icon-log-errori::after,
+.app-nav-icon-log-email::after,
+.app-nav-icon-processi::after {
   left: 0.52rem;
   top: 0.4rem;
   font-size: 0.74rem;
+}
+
+.app-nav-icon-preventivi::before,
+.app-nav-icon-offerte::before,
+.app-nav-icon-ordini::before,
+.app-nav-icon-ddt::before,
+.app-nav-icon-resi::before,
+.app-nav-icon-contratti::before,
+.app-nav-icon-fatture::before {
+  content: "\e958"; /* pi-file — base: la famiglia documento */
 }
 
 .app-nav-icon-preventivi::after {
@@ -1809,6 +1917,39 @@ a {
 
 .app-nav-icon-resi::after {
   content: "\e91f"; /* pi-arrow-circle-left */
+}
+
+/* Famiglia dei diari di Diagnostica (Tid 2026-10-24): righe di testo
+   (pi-align-left, base: «un registro») + il simbolo di che cosa registra.
+   Geometria dell'angolo aperto: la regola comune sopra. */
+.app-nav-icon-log-audit::before,
+.app-nav-icon-log-errori::before,
+.app-nav-icon-log-email::before {
+  content: "\e947"; /* pi-align-left — base: la famiglia log */
+}
+
+.app-nav-icon-log-audit::after {
+  content: "\e942"; /* pi-pencil — chi ha cambiato cosa */
+}
+
+.app-nav-icon-log-errori::after {
+  content: "\e922"; /* pi-exclamation-triangle — gli errori tecnici */
+}
+
+.app-nav-icon-log-email::after {
+  content: "\e979"; /* pi-envelope — le email inviate */
+}
+
+/* Processi automatici (Tid 2026-10-24): il server che lavora da solo, a
+   ciclo — server (base) + frecce circolari (simbolo). ⛔ Non piu' `pi-cog`,
+   che e' il dominio Configurazione e l'azione Personalizza. Il server nudo e'
+   `NAV_ICONS.LOTTI`: il simbolo nell'angolo li distingue. */
+.app-nav-icon-processi::before {
+  content: "\e9e4"; /* pi-server */
+}
+
+.app-nav-icon-processi::after {
+  content: "\e9e6"; /* pi-sync */
 }
 
 /* Invia a commessa (MANAGE_ICONS.INVIA_A_COMMESSA, Tid 2026-09-27): la

@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Schema `anagrafiche`
 
 ## 📚 Tabelle (manuale)
@@ -19,7 +24,7 @@
 - [gestori_utilities](manual/gestori_utilities.md) — La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori e le utilities disponibili nel sistema Zero ERP. Ogni gestore, identificato dal suo ruolo, può gestire una o più utilities specifiche.
 - [identita_digitali](manual/identita_digitali.md) — (latest revision 20-04-2026 — modello SSO multi-veste)
 - [indirizzi](manual/indirizzi.md) — (latest review 25-03-26) * **Associazione soggetto/ruolo/istanza → indirizzo**   Ogni soggetto può avere più indirizzi distinti in base al ruolo (es. cliente, fornitore), al tipo di indirizzo (es. sede legale, spedizione, residenza) e all'istanza di servizio (es. GAS Corridonia vs GAS Civitanova).
-- [indirizzi_dettaglio](manual/indirizzi_dettaglio.md) — (latest review 10-01-26) * **Dettagliare lo stradario**     Associare a ciascuna via (memorizzata in `config.stradario`) le singole unità civiche (numeri civici, estensioni, palazzine, interni, piani), ottenendo così l’indirizzo completo e navigabile.   * **Geolocalizzazione precisa**     Il campo `civic_geoloc` memorizza il punto geografico corrispondente al singolo civico, mentre `street_geoloc` rappresenta la posizione media della via. Questi dati consentono ricerche spaziali e visualizzazioni GIS a livello di civico.     Per le ricerche spaziali sul civico e' previsto un indice **GiST** su `civic_geoloc`.   * **Indirizzo normalizzato**     Il campo calcolato `indirizzo_normalizzato` combina via, civico, palazzina, scala, piano e interno in un’unica stringa formattata in modo coerente, facilitando confronti testuali e ricerche full-text.
+- [indirizzi_dettaglio](manual/indirizzi_dettaglio.md) — * **Dettagliare lo stradario**   Associare a ciascuna via (`config.stradario`) le singole unità civiche (numero civico, estensione, palazzina, scala, piano, interno), ottenendo l'indirizzo completo. * **Geolocalizzazione**   `civic_geoloc` memorizza il punto del singolo civico, `street_geoloc` la posizione media della via. Per le ricerche spaziali sul civico c'è un indice **GiST** su `civic_geoloc`. * **Indirizzo normalizzato**   Un trigger `BEFORE INSERT OR UPDATE` delega a `fn_build_indirizzo_normalizzato` e scrive:   * le colonne strutturali normalizzate (`UPPER` + `BTRIM`); l'estensione prende il prefisso `/` (`A` → `/A`);   * `via_norm`: tipo toponimo + nome della via, in maiuscolo;   * `civico_norm`: numero + estensione, oppure **`SNC`** (senza numero civico) quando il civico è `NULL` o `0`;   * `indirizzo_normalizzato`: la stringa completa (via, civico, palazzina, scala, piano, interno), usata per i confronti testuali e per la ricerca con l'indice GIN trigram.
 - [indirizzi_soggetti](manual/indirizzi_soggetti.md) — (latest review 16-12-25) * **Associazione soggetto → indirizzo**   Ogni soggetto può avere uno o più indirizzi, distinti per **tipo indirizzo** (RES, DOMFISC, SEDELEG, …), indipendentemente dai ruoli operativi che assumerà nel sistema.
 - [istanze_dati_precontrattuali](manual/istanze_dati_precontrattuali.md) — (latest review 09-01-26) La tabella `anagrafiche.istanze_dati_precontrattuali` raccoglie **tutte le informazioni pre‑contrattuali** relative ad una specifica **istanza utility** (fornitura/utenza). Il campo **`meta` (JSONB)** consente di archiviare attributi **specifici per tipo di utility** (es. potenza impegnata, pressione, soglie tecniche, parametri di profilazione).
 - [istanze_utilities](manual/istanze_utilities.md) — (latest review 15-02-26) * Registrare ogni **attivazione** di servizio (volta) per un soggetto su un punto di erogazione. * Gestire la **gerarchia** delle attivazioni successive (subentri/volture) tramite `parent_istanza_id`. * Supportare record **fittizi**, ossia senza indirizzo obbligatorio.
@@ -38,19 +43,30 @@
 - [vettori](manual/vettori.md) — (rev 2026-08-21)
 
 ## ⚙️ Funzioni (manuale)
+- [fn_accendi_veste](manual/fn_accendi_veste.md)
 - [fn_annulla_movimento_titolo_iva](manual/fn_annulla_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
 - [fn_ba_ha_storia_emittente](manual/fn_ba_ha_storia_emittente.md) — (latest review 31-08-2026)
 - [fn_build_indirizzo_normalizzato](manual/fn_build_indirizzo_normalizzato.md) — Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici. E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize` la chiama e assegna i risultati (zero logica nel trigger). Il backend Python la usa per check duplicato via GIN index.
 - [fn_check_ba_coppia_emittente_omogenea](manual/fn_check_ba_coppia_emittente_omogenea.md) — (latest review 18-08-26)
 - [fn_check_fornitore_attivo](manual/fn_check_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_check_fornitore_attivo()`** verifica in modo puramente booleano se un fornitore puo' essere usato nei flussi operativi del ciclo passivo, in particolare per ordini e DDT.
 - [fn_check_titolo_iva_ambito](manual/fn_check_titolo_iva_ambito.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [fn_clienti_stessa_chiave](manual/fn_clienti_stessa_chiave.md) — (latest review 14-10-26)
 - [fn_consuma_plafond_titolo_iva_righe](manual/fn_consuma_plafond_titolo_iva_righe.md) — (funzione nata il 2026-10-03, `20261003-07`; rev 2026-10-04, `20261004-06`)
 - [fn_crea_auth_user](manual/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
-- [fn_crea_indirizzo_soggetto](manual/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
+- [fn_crea_billing_account](manual/fn_crea_billing_account.md)
+- [fn_crea_cliente](manual/fn_crea_cliente.md)
+- [fn_crea_contatto](manual/fn_crea_contatto.md)
+- [fn_crea_emittente_fiscale](manual/fn_crea_emittente_fiscale.md)
+- [fn_crea_fornitore](manual/fn_crea_fornitore.md)
+- [fn_crea_indirizzi_ruolo](manual/fn_crea_indirizzi_ruolo.md)
+- [fn_crea_indirizzi_soggetto](manual/fn_crea_indirizzi_soggetto.md) — (19-10-2026 — R-BE-12 del backend, decisione D-16a di Tid, `brief-db-processi-accensione-per-ambiente` §6.16)
+- [fn_crea_indirizzo_ruolo](manual/fn_crea_indirizzo_ruolo.md) — (19-10-2026 — R-BE-6 del backend, decisione D-16a di Tid, `brief-db-processi-accensione-per-ambiente` §6.16)
+- [fn_crea_indirizzo_soggetto](manual/fn_crea_indirizzo_soggetto.md) — (latest review 18-10-2026)
 - [fn_crea_operatore_v2](manual/fn_crea_operatore_v2.md)
 - [fn_crea_risorsa_umana_v2](manual/fn_crea_risorsa_umana_v2.md)
-- [fn_crea_soggetto_pf](manual/fn_crea_soggetto_pf.md) — (latest review 09-10-2026) Building block atomico per la creazione di un soggetto **persona fisica** — privato (PR) o ditta individuale (DI) — con contatto default obbligatorio.
-- [fn_crea_soggetto_pg](manual/fn_crea_soggetto_pg.md) — (latest review 14-03-2026) Building block atomico per la creazione di un soggetto Persona Giuridica con contatto default obbligatorio e dati societari (condizionali alla `dati_societari_policy` del tipo soggetto).
+- [fn_crea_soggetto_pf](manual/fn_crea_soggetto_pf.md) — (latest review 20-10-2026) Building block atomico per la creazione di un soggetto **persona fisica** — privato (PR) o ditta individuale (DI) — con contatto default obbligatorio e, per la ditta individuale, i suoi **dati societari** nella stessa chiamata.
+- [fn_crea_soggetto_pg](manual/fn_crea_soggetto_pg.md) — (latest review 20-10-2026) Building block atomico per la creazione di un soggetto Persona Giuridica con contatto default obbligatorio e dati societari (se la natura li pretende o se passati: lo decide [fn_scrivi_dati_societari_alla_nascita](/dbzero/anagrafiche/manual/fn_scrivi_dati_societari_alla_nascita), lo stesso BB della porta delle persone fisiche).
+- [fn_crea_veste_portale](manual/fn_crea_veste_portale.md)
 - [fn_create_indirizzo](manual/fn_create_indirizzo.md) — (latest review 08-07-2026)
 - [fn_get_emittente_fiscale_id](manual/fn_get_emittente_fiscale_id.md) — (last review 07-04-2026)
 - [fn_get_emittente_fiscale_pk](manual/fn_get_emittente_fiscale_pk.md) — (creata 07-04-2026 · latest review 13-09-2026)
@@ -61,12 +77,20 @@
 - [fn_guard_albero_ba_gestore_globale](manual/fn_guard_albero_ba_gestore_globale.md) — (latest review 18-08-26)
 - [fn_guard_ba_cambio_emittente](manual/fn_guard_ba_cambio_emittente.md) — (latest review 26-08-26)
 - [fn_guard_ba_gestore_globale_storia](manual/fn_guard_ba_gestore_globale_storia.md) — (latest review 26-08-26)
+- [fn_guard_cliente_chiave_unica](manual/fn_guard_cliente_chiave_unica.md) — (latest review 14-10-26)
 - [fn_guard_fornitore_attivo](manual/fn_guard_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_guard_fornitore_attivo()`** applica una verifica fail-fast sul fornitore prima di consentirne l'uso nei flussi operativi del ciclo passivo, in particolare ordini e DDT.
 - [fn_guard_istanza_ba_emittente](manual/fn_guard_istanza_ba_emittente.md) — (latest review 08-10-26)
 - [fn_guard_istanza_ba_gestore_globale](manual/fn_guard_istanza_ba_gestore_globale.md) — (latest review 08-10-26)
 - [fn_guard_istanza_ha_ba](manual/fn_guard_istanza_ha_ba.md) — (latest review 08-10-26)
+- [fn_indirizzo_elemento](manual/fn_indirizzo_elemento.md) — (18-10-2026 — decisione D-4 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
+- [fn_indirizzo_elemento_dettaglio](manual/fn_indirizzo_elemento_dettaglio.md) — (18-10-2026 — decisione D-4 di Tid)
+- [fn_istanza_di_altro_soggetto](manual/fn_istanza_di_altro_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a … D-17d di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [fn_lookup_utilities_per_ba](manual/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:
 - [fn_notify_cambio_reparto](manual/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
+- [fn_parametri_importo_utility](manual/fn_parametri_importo_utility.md)
+- [fn_provisiona_dati_di_sviluppo](manual/fn_provisiona_dati_di_sviluppo.md)
+- [fn_ruolo_di_altro_soggetto](manual/fn_ruolo_di_altro_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a e D-17b di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
+- [fn_scrivi_dati_societari_alla_nascita](manual/fn_scrivi_dati_societari_alla_nascita.md)
 - [fn_search_indirizzi_dettaglio](manual/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
 - [fn_sync_auth_user_expired](manual/fn_sync_auth_user_expired.md) — (latest review 18-04-2026)
 - [fn_sync_auth_user_is_active](manual/fn_sync_auth_user_is_active.md) — (latest review 20-04-2026 — semantica OR multi-veste)
@@ -80,12 +104,15 @@
 - [trgfn_billing_account_guard_soggetto_coerenza_istanza](manual/trgfn_billing_account_guard_soggetto_coerenza_istanza.md) — (latest review 02-05-2026)
 - [trgfn_billing_account_link_ef](manual/trgfn_billing_account_link_ef.md)
 - [trgfn_billing_account_require_istanza_ha_ba](manual/trgfn_billing_account_require_istanza_ha_ba.md) — (latest review 08-10-26)
+- [trgfn_categorie_clienti_listini_guard_listino](manual/trgfn_categorie_clienti_listini_guard_listino.md) — (rev 2026-10-16, brief `brief-db-coerenza-listino-della-riga-di-commessa` §7.4, opzione B di Tid)
 - [trgfn_clienti_guard_ruolo_cliente](manual/trgfn_clienti_guard_ruolo_cliente.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “cliente”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
+- [trgfn_clienti_guard_stato_date](manual/trgfn_clienti_guard_stato_date.md) — (latest review 14-10-26)
 - [trgfn_clienti_set_parent_istanza](manual/trgfn_clienti_set_parent_istanza.md) — (latest update 09-12-25) La funzione `anagrafiche.trgfn_clienti_set_parent_istanza()` ha il compito di **mantenere la catena lineare delle istanze** (`istanze_utilities.parent_istanza_id`) per ciascun **PDP** quando viene inserito o attivato un nuovo cliente.
 - [trgfn_clienti_set_periodo](manual/trgfn_clienti_set_periodo.md) — (latest review 09-12-25) La funzione `anagrafiche.trgfn_clienti_set_periodo()` è una **trigger function di dominio** che ha il compito di:
 - [trgfn_clienti_sync_pdp](manual/trgfn_clienti_sync_pdp.md) — (latest review 09-12-25) La funzione `anagrafiche.trgfn_clienti_sync_pdp()` è una **trigger function di sincronizzazione** che ha il compito di mantenere allineato il campo `pdp_id` della tabella `anagrafiche.clienti` con il valore presente sull’istanza collegata (`anagrafiche.istanze_utilities`).
 - [trgfn_clienti_sync_stato_pdp](manual/trgfn_clienti_sync_stato_pdp.md) — (latest review 09-12-25) La funzione `anagrafiche.trgfn_clienti_sync_stato_pdp()` è una **trigger function di dominio** che sincronizza lo **stato tecnico del PDP** (`anagrafiche.pdp.stato_pdp_id`) in base al cambio di **stato commerciale** del cliente (`anagrafiche.clienti.stato_cliente_id`).
 - [trgfn_clienti_sync_utility_from_ba](manual/trgfn_clienti_sync_utility_from_ba.md) — (latest review 15-02-26) La trigger function **`anagrafiche.trgfn_clienti_sync_utility_from_ba()`** garantisce la **coerenza** tra:
+- [trgfn_contatti_guard_contesto_soggetto](manual/trgfn_contatti_guard_contesto_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a e D-17c di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [trgfn_contatti_set_default_contatto](manual/trgfn_contatti_set_default_contatto.md) — (latest review 03-12-25) * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 - [trgfn_conti_bancari_normalize](manual/trgfn_conti_bancari_normalize.md) — (latest review 15-12-26) La trigger function **`anagrafiche.trgfn_conti_bancari_normalize()`** normalizza i campi bancari principali prima della persistenza, applicando regole semplici e deterministicamente ripetibili:
 - [trgfn_dati_societari_guard_forma_giuridica](manual/trgfn_dati_societari_guard_forma_giuridica.md)
@@ -104,13 +131,15 @@
 - [trgfn_fornitori_guard_ruolo_fornitore](manual/trgfn_fornitori_guard_ruolo_fornitore.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_fornitori_guard_ruolo_fornitore()`** assicura che ogni record di `anagrafiche.fornitori` punti a un `soggetto_ruolo_id` coerente con il ruolo **fornitore** (`codice_interno = 'FO'`).
 - [trgfn_gestori_guard](manual/trgfn_gestori_guard.md) — (latest review 03-12-25) La funzione **`anagrafiche.trgfn_gestori_guard()`** è una **funzione trigger di guardia di dominio** per la tabella `anagrafiche.gestori`.
 - [trgfn_gestori_guard_ruolo_gestore](manual/trgfn_gestori_guard_ruolo_gestore.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
+- [trgfn_guard_istanza_del_ruolo](manual/trgfn_guard_istanza_del_ruolo.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a … D-17d di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [trgfn_identita_digitali_guard_coerenza](manual/trgfn_identita_digitali_guard_coerenza.md) — (latest review 04-09-2026 — biforcazione sul flag `tecnica`; prima: 18-04-2026) La trigger function **`anagrafiche.trgfn_identita_digitali_guard_coerenza()`** verifica la coerenza tra il **ruolo applicativo** di una identità digitale e il **tipo di soggetto_ruolo** a cui è collegata.
 - [trgfn_identita_digitali_guard_natura_credenziale](manual/trgfn_identita_digitali_guard_natura_credenziale.md)
 - [trgfn_identita_digitali_guard_ultimo_super_admin](manual/trgfn_identita_digitali_guard_ultimo_super_admin.md) — (latest review 19-04-2026)
 - [trgfn_identita_digitali_sync_auth_user_active](manual/trgfn_identita_digitali_sync_auth_user_active.md) — (latest review 18-04-2026)
-- [trgfn_indirizzi_base_normalize](manual/trgfn_indirizzi_base_normalize.md) — (latest review 28-12-25) Normalizzare i campi base di `anagrafiche.indirizzi` in base alla presenza del collegamento a `indirizzi_dettaglio`.
+- [trgfn_indirizzi_base_normalize](manual/trgfn_indirizzi_base_normalize.md) — (latest review 18-10-26) Normalizzare i campi base di `anagrafiche.indirizzi` in base alla presenza del collegamento a `indirizzi_dettaglio`.
 - [trgfn_indirizzi_dettaglio_normalize](manual/trgfn_indirizzi_dettaglio_normalize.md) — (latest review 28-12-25) Normalizzare i campi dell'indirizzo dettaglio per garantire coerenza su via, civico e indirizzo completo prima di INSERT/UPDATE.
 - [trgfn_indirizzi_dettaglio_protect_update](manual/trgfn_indirizzi_dettaglio_protect_update.md) — (latest review 02-02-26) Impedire la modifica manuale di `stradario_id` su `anagrafiche.indirizzi_dettaglio` per garantire una riclassificazione coerente e tracciata.
+- [trgfn_indirizzi_guard_forma_libera](manual/trgfn_indirizzi_guard_forma_libera.md) — (18-10-2026 — richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11, decisioni D-2 e D-3 di Tid)
 - [trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo](manual/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo.md) — (latest review 30-11-25) La funzione **`anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`** è una **trigger function di tipo “guard”** che:
 - [trgfn_indirizzi_soggetti_guard_tipo_indirizzo](manual/trgfn_indirizzi_soggetti_guard_tipo_indirizzo.md) — (latest review 28-12-25) Garantire che il **tipo indirizzo** associato a un soggetto sia coerente con la **matrice di abilitazione** definita per il suo tipo soggetto dettaglio.
 - [trgfn_indirizzi_sync_geoloc](manual/trgfn_indirizzi_sync_geoloc.md) — Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi` o `anagrafiche.indirizzi_soggetti`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`. In questo modo il dato di geolocalizzazione rimane sempre allineato con la fonte di verità civica.

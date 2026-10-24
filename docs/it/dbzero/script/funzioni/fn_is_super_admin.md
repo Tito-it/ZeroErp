@@ -7,6 +7,8 @@ CREATE FUNCTION fn_is_super_admin(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_is_super_admin(p_auth_user_id integer)
  RETURNS boolean
@@ -45,6 +47,8 @@ $function$
 COMMENT ON FUNCTION script.fn_is_super_admin(p_auth_user_id integer)
 IS 'SUPER_ADMIN check context-aware (post PR-B 21-04-2026). Se GUC app.ruolo_applicativo e'' popolata e diversa da OPERATORE ritorna false (fail-closed su contesti portale/shop). Altrimenti risponde script.fn_is_super_admin_account: EXISTS identita OPERATORE attiva con binding SUPER_ADMIN attivo (rev 2026-09-29, regola del 2: quella domanda la fa anche l''obbligo del secondo fattore, senza il cancello della veste). STABLE, inlineable, fail-soft su GUC mancante (chiamate test/psql OK).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

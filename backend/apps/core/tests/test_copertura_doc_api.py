@@ -64,6 +64,17 @@
    La quinta forma, `.../{titolo_id}/ambiti/`: copre la rotta della SUA
    area qualunque sia il prefisso, e non una rotta di un'altra area che
    finisce allo stesso modo.
+
+10. test_un_codice_al_posto_del_segnaposto_non_e_un_fantasma (2026-10-21)
+   `ruoli/cl/config-resolver` e' un'istanza di `ruoli/{}/config-resolver`:
+   servita, ma NON copre la rotta (un esempio non la documenta).
+
+11. test_la_riga_che_dichiara_di_non_documentare_non_copre (2026-10-21)
+   «queste rotte non sono documentate» nomina i path apposta: contarla
+   come copertura era il verso permissivo.
+
+12. test_le_lapidi_scritte_bene_si_riconoscono (2026-10-21)
+   Titolo barrato, «ritirato», «esistevano»: lapidi, non fantasmi.
 """
 
 from __future__ import annotations
@@ -213,3 +224,44 @@ class CoperturaDocApiTests(SimpleTestCase):
         coperta = cmd.matcher_copertura(tutte, {})
         self.assertTrue(coperta("/api/v1/vendite/resi/da-accreditare/export"))
         self.assertFalse(coperta("/api/v1/vendite/lotti/{}/fatture/export"))
+
+    # Scopo: test 10 — l'esempio con un codice concreto.
+    def test_un_codice_al_posto_del_segnaposto_non_e_un_fantasma(self):
+        rotte = {"/api/v1/anagrafiche/ruoli/{}/config-resolver": ("", ["GET"])}
+        servita = cmd.matcher_servita(rotte)
+        self.assertTrue(servita("/api/v1/anagrafiche/ruoli/cl/config-resolver"))
+        self.assertFalse(servita("/api/v1/anagrafiche/ruoli/cl/altro"))
+        # ⛔ Ma solo col valore del CONVERTER: un nome letterale al posto di un
+        #    `<int:pk>` resta un fantasma (un endpoint ritirato col suo nome).
+        rotte = {"/api/v1/vendite/ordini/{}": ("/api/v1/vendite/ordini/<int:pk>/", ["GET"])}
+        servita = cmd.matcher_servita(rotte)
+        self.assertTrue(servita("/api/v1/vendite/ordini/42"))
+        self.assertFalse(servita("/api/v1/vendite/ordini/esporta"))
+        tutte, assolute = _citazioni_da("Esempio: `/api/v1/anagrafiche/ruoli/CL/config-resolver/`.\n")
+        self.assertFalse(
+            cmd.matcher_copertura(tutte, assolute)("/api/v1/anagrafiche/ruoli/{}/config-resolver"),
+        )
+
+    # Scopo: test 11 — la nota che dichiara di non documentare.
+    def test_la_riga_che_dichiara_di_non_documentare_non_copre(self):
+        tutte, assolute = _citazioni_da(
+            "Queste rotte non sono documentate: `/api/v1/amm-software/processi/{codice}/run/`.\n"
+            "Documentata: `/api/v1/amm-software/processi/{codice}/accensione/`.\n"
+        )
+        coperta = cmd.matcher_copertura(tutte, assolute)
+        self.assertFalse(coperta("/api/v1/amm-software/processi/{}/run"))
+        self.assertTrue(coperta("/api/v1/amm-software/processi/{}/accensione"))
+        # Non e' nemmeno un fantasma: la citazione resta fra le assolute, e la
+        # rotta esiste.
+        self.assertIn("/api/v1/amm-software/processi/{}/run", assolute)
+
+    # Scopo: test 12 — le lapidi come la doc le scrive davvero.
+    def test_le_lapidi_scritte_bene_si_riconoscono(self):
+        _, assolute = _citazioni_da(
+            "### 1.6 ~~POST /api/v1/amm-software/operatori/{id}/riattiva/~~ -- Ritirato\n"
+            "Il lookup `/api/v1/amm-software/lookup/email-log-stati/` e' ritirato.\n"
+            "Pre-§8.3: esistevano solo `POST /api/v1/auth/token/` e `/refresh/`.\n"
+            "Vivo: `/api/v1/admin/token/`.\n"
+        )
+        self.assertEqual(sorted(assolute), ["/api/v1/admin/token"])
+

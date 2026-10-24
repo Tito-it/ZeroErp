@@ -1,8 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
--- Test: l'AGGANCIO del ritiro — freno e motore sulla chiusura del documento
---       (brief-db-lavoro-che-non-torna-indietro, lotto L7b / Q-9 e Q-10)
+-- Test: l'AGGANCIO del ritiro — freno e ritiro sulla chiusura del documento
+--       (brief-db-lavoro-che-non-torna-indietro, lotto L7b / Q-9 e Q-10;
+--        rev 2026-10-11, brief-db-annullo-documento-con-legami D-5)
 -- ------------------------------------------------------------
 -- A cosa serve, in una frase
 --   Chiudere un documento deve ritirare il lavoro che aveva spinto e che
@@ -10,11 +12,17 @@
 --   emesso. Sono due meta' della stessa regola, e da sole non valgono.
 --
 -- ⭐ IL VERO SOGGETTO E' CHE NESSUNO DEVE RICORDARSELO (Q-10)
---   Il ritiro non e' una chiamata che i servizi fanno: e' un trigger. Lo stato
---   di una testata si cambia da molti posti, e con la chiamata esplicita basta
---   UNO distratto perche' il buco torni. Il test 4 non passa da nessuna
---   funzione di dominio — fa un UPDATE nudo sulla testata, che e' proprio il
---   percorso che una chiamata esplicita non coprirebbe.
+--   La regola sta sulla tabella, non nei servizi: lo stato di una testata si
+--   cambia da molti posti, e con la chiamata esplicita basta UNO distratto
+--   perche' il buco torni. Il test 4 fa un UPDATE nudo sulla testata.
+-- ⭐ rev 2026-10-11 (brief-db-annullo-documento-con-legami D-5): il ritiro
+--   NON e' piu' silenzioso. Fino a qui un trigger _z90_ ritirava le righe
+--   NON_EMESSA all'annullo, senza che chi annullava lo vedesse. Ora le righe
+--   NON_EMESSA sono LEGAMI: l'UPDATE nudo e' rifiutato con
+--   E_DOC_ANNULLO_CON_LEGAMI (l'avviso, guard _m10_ sulla tabella: vale per
+--   ogni strada, che e' l'argomento di Q-10), e il ritiro lo fa il verbo
+--   vendite.fn_annulla_ordine dopo la conferma, con la stessa primitiva e lo
+--   stesso registro. Il freno sulle righe EMESSA resta, e parla PRIMA.
 --
 -- ⛔ E QUESTO FILE E' ANCHE IL PRESIDIO DI Q-9
 --   I due divieti «ha gia' spinto in commessa» sono stati RITIRATI
@@ -22,19 +30,24 @@
 --   che un ordine con sole righe NON_EMESSA adesso si annulli: prima veniva
 --   rifiutato, e se qualcuno rimettesse quel motivo tornerebbe rosso.
 --
--- ⚠️ FIXTURE COSTRUITE: commessa, righe di commessa e ordine sono INSERITI da
---   questo file, con una chiave sorgente che e' l'`uid` dell'ordine vero —
---   perche' e' cio' che le fn_list_*_da_pushare scrivono, e usare l'altra
---   chiave (quella di commesse_sorgenti) darebbe un ritiro che non ritira.
+-- ⚠️ FIXTURE COSTRUITE: cliente e articolo dai builder (rev 2026-10-11: prima
+--   il billing account e l'articolo si pescavano dai dati, e da zero il file
+--   si fermava al primo INSERT); commessa, righe di commessa e ordine sono
+--   INSERITI da questo file, con una chiave sorgente che e' l'`uid` dell'ordine
+--   vero — perche' e' cio' che le fn_list_*_da_pushare scrivono, e usare
+--   l'altra chiave (quella di commesse_sorgenti) darebbe un ritiro che non
+--   ritira.
 --
 -- Indice test
 -- 1) Fixture: un ordine con due righe di commessa spinte (NON_EMESSA + EMESSA)
 -- 2) ⛔ Il freno: con una riga EMESSA l annullamento e RIFIUTATO, col suo codice
 -- 3) La check di dominio nomina lo stesso motivo (le due meta non si separano)
--- 4) 🔴 Tolta la riga emessa, l annullamento passa e RITIRA la NON_EMESSA
--- 5) 🔴 La riga ritirata e ANNULLATA, e la traccia c e col motivo
+-- 4) 🔴 Tolta la riga emessa, l'UPDATE nudo e' rifiutato: le NON_EMESSA sono
+--    legami e chiedono conferma (E_DOC_ANNULLO_CON_LEGAMI)
+-- 5) 🔴 Il verbo confermato annulla e RITIRA: righe ANNULLATA, traccia col motivo
 -- 6) ⛔ Le righe di ALTRI documenti non sono state toccate
 -- 7) Un secondo UPDATE sullo stesso stato non ritira niente (nessun doppione)
+-- 8) la conferma era di due legami: il verbo li restituisce
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -43,23 +56,22 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(7);
+SELECT plan(8);
 
 -- ============================================================
 -- Fixture
 -- ============================================================
+CREATE TEMP TABLE tmp_rc_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('ritiro alla chiusura');
+
 CREATE TEMP TABLE tmp_rc_refs AS
 WITH ba AS (
-  SELECT b.id, b.utility_id, b.istanza_utility_id
-    FROM anagrafiche.billing_account b
-   WHERE b.utility_id IS NOT NULL AND b.istanza_utility_id IS NOT NULL
-     AND b.soggetto_ruolo_id IS NOT NULL
-   ORDER BY b.id LIMIT 1)
+  SELECT c.billing_account_id AS id, c.utility_id, c.istanza_utility_id
+    FROM tmp_rc_cli c)
 SELECT (SELECT id FROM ba)                 AS billing_account_id,
        (SELECT utility_id FROM ba)         AS utility_id,
        (SELECT istanza_utility_id FROM ba) AS istanza_utility_id,
-       (SELECT a.id FROM catalogo.articoli a
-         WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS articolo_id,
+       dbops.fn_pgtap_crea_articolo('PGT-RC-RITIRO', false) AS articolo_id,
        (SELECT u.id FROM catalogo.unita_misura u
          WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)  AS uom_id,
        (SELECT t.id FROM config.tipi_doc_fiscale t
@@ -68,8 +80,7 @@ SELECT (SELECT id FROM ba)                 AS billing_account_id,
        (SELECT sc.id FROM vendite.stati_commessa sc
          WHERE sc.attivo IS TRUE AND sc.codice_interno <> 'ANNULLATA'
          ORDER BY sc.id LIMIT 1)           AS stato_commessa_id,
-       (SELECT b.soggetto_ruolo_id FROM ba JOIN anagrafiche.billing_account b ON b.id = ba.id)
-                                           AS soggetto_ruolo_id,
+       (SELECT c.soggetto_ruolo_id FROM tmp_rc_cli c) AS soggetto_ruolo_id,
        -- ⚠️ L'ordine vuole l'emittente FISCALE, non il soggetto_ruolo: la
        --   funzione del contesto restituisce il secondo, e l'INSERT sul primo
        --   fallirebbe sul guard di scope con un messaggio che parla d'altro.
@@ -125,7 +136,7 @@ BEGIN
         tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
         stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
       SELECT (SELECT id FROM tmp_rc_commessa),
-             'ORD:' || (SELECT uid FROM tmp_rc_ordine)::text || ':R:' || s,
+             'ORDINE_VENDITA:' || (SELECT uid FROM tmp_rc_ordine)::text || ':R:' || s,
              r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
              date_trunc('month', script.fn_data_operativa())::date,
              date_trunc('month', script.fn_data_operativa())::date,
@@ -151,7 +162,7 @@ WITH ins AS (
     tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
     stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
   SELECT (SELECT id FROM tmp_rc_commessa),
-         'ORD:PGTAP-RC-ESTRANEA:' || substr(md5(clock_timestamp()::text), 1, 10),
+         'ORDINE_VENDITA:PGTAP-RC-ESTRANEA:' || substr(md5(clock_timestamp()::text), 1, 10),
          r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
          date_trunc('month', script.fn_data_operativa())::date,
          date_trunc('month', script.fn_data_operativa())::date,
@@ -206,7 +217,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 4-5) 🔴 Tolta la riga emessa, la chiusura passa e RITIRA
+-- 4) 🔴 Tolta la riga emessa, l'UPDATE nudo e' rifiutato: conferma
 -- ============================================================
 -- ⭐ E' cio' che «Riporta da emettere» fa nella vita vera: riporta la riga a
 --   NON_EMESSA, e da li' il ritiro la prende. Qui si simula quello stato.
@@ -215,15 +226,20 @@ UPDATE vendite.commesse_attivita
  WHERE id = (SELECT attivita_id FROM tmp_rc_ca WHERE slot = 'EMESSA');
 
 -- ⚠️ UPDATE NUDO sulla testata: nessuna funzione di dominio, nessun servizio.
---   E' il percorso che una chiamata esplicita nei servizi NON coprirebbe, ed e'
---   il motivo per cui il ritiro e' un trigger (Q-10).
-CREATE TEMP TABLE tmp_rc_esito AS SELECT pg_temp.rc_chiudi() AS esito;
-
+--   ⭐ rev 2026-10-11 (D-5): le due righe NON_EMESSA sono legami, e annullare
+--   senza conferma e' rifiutato. Il freno sulle EMESSA (test 2) ha parlato
+--   prima: questo e' il secondo rifiuto, quello che chiede conferma.
 SELECT is(
-  (SELECT esito FROM tmp_rc_esito),
-  'NESSUN ERRORE',
-  '4) senza righe emesse la chiusura passa (e i divieti «gia in commessa» sono ritirati)'
+  pg_temp.rc_chiudi(),
+  'E_DOC_ANNULLO_CON_LEGAMI',
+  '4) senza righe emesse l''UPDATE nudo e'' rifiutato: le NON_EMESSA sono legami e chiedono conferma'
 );
+
+-- ============================================================
+-- 5) 🔴 Il verbo confermato annulla e RITIRA
+-- ============================================================
+CREATE TEMP TABLE tmp_rc_esito AS
+SELECT vendite.fn_annulla_ordine((SELECT id FROM tmp_rc_ordine), 2) AS legami;
 
 SELECT ok(
   (SELECT count(*) = 2
@@ -234,9 +250,11 @@ SELECT ok(
          FROM vendite.commesse_attivita_log l
          JOIN tmp_rc_ca t ON t.attivita_id = l.commessa_attivita_id
         WHERE l.evento = 'RIGA_RITIRATA_DA_SORGENTE'
-          AND l.dettaglio ->> 'motivo' LIKE 'Ritiro automatico alla chiusura%'
-          AND l.dettaglio ->> 'stato_precedente' = 'NON_EMESSA'),
-  '5) le due righe sono state ritirate, e la traccia c e col motivo e lo stato precedente'
+          AND l.dettaglio ->> 'motivo' LIKE 'Ritiro all''annullo confermato%'
+          AND l.dettaglio ->> 'stato_precedente' = 'NON_EMESSA')
+  AND (SELECT o.stato_doc_ordine_id = r.stato_abortito_id
+         FROM vendite.ordini o, tmp_rc_refs r WHERE o.id = (SELECT id FROM tmp_rc_ordine)),
+  '5) confermato: l''ordine e'' annullato, le due righe ritirate, la traccia col motivo e lo stato precedente'
 );
 
 -- ============================================================
@@ -267,6 +285,15 @@ SELECT is(
     WHERE l.evento = 'RIGA_RITIRATA_DA_SORGENTE'),
   2::bigint,
   '7) riscrivere lo stesso stato non ritira di nuovo: nessun doppione nel registro'
+);
+
+-- ============================================================
+-- 8) La conferma era di due legami
+-- ============================================================
+SELECT is(
+  (SELECT legami FROM tmp_rc_esito),
+  2,
+  '8) il verbo restituisce i legami confermati: le due righe di commessa'
 );
 
 SELECT * FROM finish();

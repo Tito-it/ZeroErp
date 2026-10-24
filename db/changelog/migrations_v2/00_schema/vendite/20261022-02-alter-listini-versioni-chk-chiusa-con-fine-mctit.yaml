@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA VERSIONE CHIUSA HA SEMPRE LA FINE VALIDITA'
+#   vendite.listini_versioni: CHECK chk_listini_versioni_chiusa_con_fine
+#   Richiesta BE del 2026-10-21 (§9.8 di brief-be-utenti-di-sviluppo); via di
+#   Tid, 2026-10-22.
+#
+# -- LA REGOLA ----------------------------------------------------
+#   Una versione CHIUSA e' un periodo di prezzi FINITO: porta valido_al. Da
+#   quando un listino con storia si chiude solo con la fine validita' (decisione
+#   di Tid del 2026-10-21), la data di fine della versione e' il fatto su cui
+#   poggia la chiusura del listino.
+#   Chi la teneva finora, e dove non arrivava:
+#   * vendite.trgfn_listini_versioni_guard_transizione_stato pretende valido_al
+#     sull'UPDATE ATTIVA -> CHIUSA;
+#   * vendite.trgfn_listini_versioni_guard_date_chiusa vieta di toglierla dopo;
+#   * ⛔ nessuno la pretendeva su una versione INSERITA gia' CHIUSA (la
+#     transizione si giudica solo in UPDATE). Il CHECK chiude anche quella
+#     strada, ed e' struttura della riga, non un passaggio di stato.
+#
+# -- PRECONDITION -------------------------------------------------
+#   HALT se c'e' gia' una versione che il vincolo rifiuterebbe. Su un DB da
+#   zero la tabella e' vuota. Su dbdev il 2026-10-22 ce n'era una (id 59,
+#   listino test1, del 2026-04-06, precedente ai guard): corretta da Tid a mano
+#   con valido_al = 2026-10-22 (D-2). Fatto datato, non motivo.
+#   ⚠️ preCondition su dati di esercizio, non su un seed di 80_data: non e' il
+#   divieto di linee-guida-sql 11.4 (precedente: 20261016-01).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261022-02-alter-listini-versioni-chk-chiusa-con-fine-mctit.yaml
+
+  - changeSet:
+      id: 20261022-02-alter-listini-versioni-chk-chiusa-con-fine
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.listini_versioni: CHECK che vuole valido_al su ogni versione CHIUSA, anche inserita
+        gia' chiusa. Richiesta BE §9.8 di brief-be-utenti-di-sviluppo.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            Ci sono versioni di listino CHIUSE senza valido_al: vanno corrette a mano prima del CHECK
+            chk_listini_versioni_chiusa_con_fine (SELECT id, listino_id, codice_versione FROM
+            vendite.listini_versioni WHERE stato = 'CHIUSA' AND valido_al IS NULL).
+        - and:
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                   WHERE c.conrelid = 'vendite.listini_versioni'::regclass
+                     AND c.conname = 'chk_listini_versioni_chiusa_con_fine'
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM vendite.listini_versioni v
+                   WHERE v.stato = 'CHIUSA'
+                     AND v.valido_al IS NULL
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                ADD CONSTRAINT chk_listini_versioni_chiusa_con_fine
+                CHECK (stato <> 'CHIUSA' OR valido_al IS NOT NULL);
+
+              COMMENT ON CONSTRAINT chk_listini_versioni_chiusa_con_fine
+                ON vendite.listini_versioni IS
+                'Una versione CHIUSA porta la fine validita'' (valido_al): e'' un periodo di prezzi finito, e su quella data poggia la chiusura di un listino con storia (decisione di Tid del 2026-10-21). Tiene anche la versione INSERITA gia'' chiusa, che il guard di transizione (solo UPDATE) non vede. Richiesta BE §9.8 di brief-be-utenti-di-sviluppo (2026-10-22).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                DROP CONSTRAINT IF EXISTS chk_listini_versioni_chiusa_con_fine;

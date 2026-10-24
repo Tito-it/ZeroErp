@@ -15,6 +15,10 @@
 --   6)  Utility copiata 1:1 (1 record per rev.2)
 --   7)  Da stato ACCETTATA -> throws E_OFFERTA_REVISIONE_STATO_NON_AMMESSO
 --   (test 8 da BOZZA è incluso in test 7 come verifica analoga)
+--
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): l'offerta del test 7
+--   nasce in bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima
+--   nasceva gia' ACCETTATA).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -66,6 +70,13 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
 CREATE TEMP TABLE tmp_rev_fn_listino AS
 SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_rev_fn_cli), 'crea revisione offerta');
 
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b, A-5): le
+--   due OVERRIDE (a1, a3) modificano una riga del listino, quindi i loro articoli
+--   ci stanno. Prima si scrivevano fuori listino e non comparivano nel drawer.
+SELECT dbops.fn_pgtap_listino_aggiungi_articoli(
+    (SELECT listino_versione_id FROM tmp_rev_fn_listino),
+    ARRAY[(SELECT a1 FROM tmp_rev_fn_art), (SELECT a3 FROM tmp_rev_fn_art)]);
+
 CREATE TEMP TABLE tmp_rev_fn_ctx AS
 SELECT
     (SELECT billing_account_id FROM tmp_rev_fn_cli) AS billing_account_id,
@@ -116,8 +127,13 @@ INSERT INTO vendite.offerte_commerciali_eccezioni (
     tipo_erogazione, fonte_quantita_attesa,
     prezzo_unitario, attivo, qta_operativa
 )
+-- ⛔ rev 2026-10-13 (Lotto 3b): l'articolo sta nel listino e ne prende la
+--   tipologia, che dipende dalla utility: erogazione e fonte le eredita il DB
+--   (NULL), la quantita' c'e' solo se la fonte ereditata e' FISSA.
 SELECT r1.id, ctx.articolo_id_1, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto",
-       'UNA_TANTUM', 'FISSA', 100.00, TRUE, 1.00
+       NULL, NULL, 100.00, TRUE,
+       (SELECT 1.00 FROM vendite.fn_articolo_erogazioni(ctx.articolo_id_1) e
+         WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA' LIMIT 1)
   FROM tmp_rev_fn_rev1 r1, tmp_rev_fn_ctx ctx
  WHERE ctx.articolo_id_1 IS NOT NULL;
 
@@ -137,8 +153,13 @@ INSERT INTO vendite.offerte_commerciali_eccezioni (
     tipo_erogazione, fonte_quantita_attesa,
     prezzo_unitario, attivo, qta_operativa
 )
+-- ⛔ rev 2026-10-13 (Lotto 3b): l'articolo sta nel listino e ne prende la
+--   tipologia, che dipende dalla utility: erogazione e fonte le eredita il DB
+--   (NULL), la quantita' c'e' solo se la fonte ereditata e' FISSA.
 SELECT r1.id, ctx.articolo_id_3, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto",
-       'UNA_TANTUM', 'FISSA', 75.00, FALSE, 1.00
+       NULL, NULL, 75.00, FALSE,
+       (SELECT 1.00 FROM vendite.fn_articolo_erogazioni(ctx.articolo_id_3) e
+         WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA' LIMIT 1)
   FROM tmp_rev_fn_rev1 r1, tmp_rev_fn_ctx ctx
  WHERE ctx.articolo_id_3 IS NOT NULL
    AND ctx.articolo_id_3 <> ctx.articolo_id_1
@@ -147,16 +168,19 @@ SELECT r1.id, ctx.articolo_id_3, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto
 -- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): le righe
 --   dell'offerta si scrivono solo in BOZZA. L'emissione viene quindi DOPO le
 --   eccezioni, come in un'offerta vera; prima le si aggiungeva a rev.1 gia' EMESSA.
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_rev_fn_ctx)
- WHERE id = (SELECT id FROM tmp_rev_fn_rev1);
-
+-- ⚠️ rev 2026-10-11 (brief-db-testata-dopo-emissione §11, R-DB-3): anche la
+--   fornitura si scrive solo in BOZZA (trg_offerte_commerciali_utilities_a05_
+--   doc_bozza_ins_upd_dlt). Nasce quindi prima dell'emissione, come le eccezioni.
 -- Utility rev.1 (1:1)
 INSERT INTO vendite.offerte_commerciali_utilities (
     offerta_id, istanza_utility_id, utility_id
 )
 SELECT r1.id, ctx.istanza_utility_id, ctx.utility_id
   FROM tmp_rev_fn_rev1 r1, tmp_rev_fn_ctx ctx;
+
+UPDATE vendite.offerte_commerciali
+   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_rev_fn_ctx)
+ WHERE id = (SELECT id FROM tmp_rev_fn_rev1);
 
 -- ============================================================
 -- 2) Setup OK
@@ -222,7 +246,8 @@ SELECT ok(
 -- ============================================================
 -- 7) Da stato ACCETTATA -> throws E_OFFERTA_REVISIONE_STATO_NON_AMMESSO
 -- ============================================================
--- Crea offerta direttamente in ACCETTATA (bypass trigger UPDATE)
+-- L'offerta nasce in BOZZA e arriva ad ACCETTATA per la matrice
+-- (BOZZA -> EMESSA -> ACCETTATA), sotto i guard veri (rev 2026-10-24).
 CREATE TEMP TABLE tmp_rev_fn_accettata AS
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
@@ -231,11 +256,14 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva, DATE '2097-01-01',
-           ctx.stato_accettata_id
+           ctx.stato_bozza_id
       FROM tmp_rev_fn_ctx ctx
     RETURNING id
 )
 SELECT id FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', a.id, 'ACCETTATA')
+  FROM tmp_rev_fn_accettata a;
 
 SELECT throws_ok(
     format(

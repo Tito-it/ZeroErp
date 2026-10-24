@@ -7,13 +7,20 @@ CREATE FUNCTION trgfn_tipi_indirizzi_only_allowed()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-20 (20261020-52, brief-db-grammatica-unica-documenti, 2d G-6):
+--   l'ambito degli indirizzi e' il codice della sorgente del
+--   documento; il ripiego senza argomento e' FATTURA.
  DECLARE
-   v_ambito         text := COALESCE(TG_ARGV[0], 'FATTURE'); -- 'FATTURE'|'DDT'|'ORDINI'|'PREVENTIVI'|'OFFERTE'|'CONTRATTI'|'ACQUISTI_DDT'
+   -- rev 2026-10-20 (G-6): il codice della sorgente del documento (FATTURA, DDT_VENDITA,
+  --   ORDINE_VENDITA, PREVENTIVO, OFFERTA_COMMERCIALE, CONTRATTO, DDT_ACQUISTO)
+  v_ambito         config.tipi_indirizzi_allowed.ambito%TYPE := COALESCE(TG_ARGV[0], 'FATTURA');
    v_codice         text;
    v_allowed_ids    integer[];
    v_allowed_codes  text[];
@@ -59,7 +66,12 @@ AS $function$
    RETURN NEW;
  END
  $function$
+
+COMMENT ON FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed()
+IS 'Rev 2026-10-20 (20261020-52, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi e'' il codice della sorgente del documento (l''argomento del montaggio); ripiego FATTURA.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

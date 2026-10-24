@@ -10,6 +10,7 @@ from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIM
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import (
+    UnitaDiLavoro,
     get_scope_user_id,
     handle_detail_patch,
     handle_post_json,
@@ -30,6 +31,7 @@ from apps.ui.api.export_helpers import build_export_response, parse_export_forma
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.db.vendite_repository import VenditeRepository
 from apps.core.api.payload_validators import (
+    pagina_da_query,
     optional_bool,
     optional_int,
     optional_iso_date,
@@ -42,7 +44,7 @@ from apps.core.api.payload_validators import (
     qp_str,
     qp_str_upper,
 )
-from apps.core.api.openapi_params import descrizione_order_by
+from apps.core.api.openapi_params import parametri_finestra, descrizione_order_by
 from apps.vendite.db.vendite_repository import (
     GIORNALE_GRAVITA,
     GIORNALE_ORDINE_DEFAULT,
@@ -54,7 +56,6 @@ from apps.vendite.api._giornale_params import (
     parametri_lista_giornale_entita,
 )
 from apps.core.api.success_responses import success_response
-from apps.core.services.value_normalizer import as_bool
 from apps.core.services.service_errors import E_VALIDATION_INPUT
 from apps.vendite.services._fatturazione_job_helpers import (
     JOB_TYPE_FATTURAZIONE_GIRO,
@@ -81,8 +82,8 @@ from apps.vendite.services.commesse_service import (
     fn_variazione_prezzo_eccezionale,
     pr_run_commesse_push,
 )
+from apps.vendite.db.pipeline_repository import LOTTO_LISTE_PAGINA_MAX
 from apps.vendite.services.pipeline_service import (
-    LOTTO_LISTE_PAGINA_MAX,
     finestra_numerazione,
     esiti_fatturazione,
     fn_get_lotto_segnalazioni_summary,
@@ -219,7 +220,12 @@ class ApiRunLottoPipeline(DomainAPIView):
             return {"lotto_id": lotto_id, "status": "ok"}
 
         # Pattern condiviso: JSON parse + envelope errori centralizzato.
-        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+        # ⭐ A_PASSI (brief-be-verifica-documentazione-api §I.7.2): il lotto nasce in una transazione sua e l'errore si scrive fuori dall'atomic dello step (D-12).
+        #    Una key orfana non si riprende, e niente `atomic` esterno.
+        return handle_post_json(
+            request, handler=_handler, require_idempotency_key=True,
+            unita_di_lavoro=UnitaDiLavoro.A_PASSI,
+        )
 
 
 class ApiRunLottoPipelineUntilDone(DomainAPIView):
@@ -273,7 +279,12 @@ class ApiRunLottoPipelineUntilDone(DomainAPIView):
             return run_lotto_pipeline_until_done(**_run_lotto_kwargs(payload))
 
         # Pattern condiviso: JSON parse + envelope errori centralizzato.
-        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+        # ⭐ A_PASSI (brief-be-verifica-documentazione-api §I.7.2): concatena gli step, ognuno col suo commit; risponde 200 anche con lavoro parziale.
+        #    Una key orfana non si riprende, e niente `atomic` esterno.
+        return handle_post_json(
+            request, handler=_handler, require_idempotency_key=True,
+            unita_di_lavoro=UnitaDiLavoro.A_PASSI,
+        )
 
 
 class ApiLottoSegnalazioniSummary(DomainAPIView):
@@ -306,7 +317,9 @@ class ApiLottoSegnalazioniSummary(DomainAPIView):
     #    chiede il drawer a ogni apertura, e portarsi dietro l'elenco per
     #    mostrarne un numero sarebbe lavoro a ogni giro.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
-        return success_response(fn_get_lotto_segnalazioni_summary(lotto_id=lotto_id))
+        return success_response(fn_get_lotto_segnalazioni_summary(
+            lotto_id=lotto_id, auth_user_id=get_scope_user_id(request),
+        ))
 
 
 
@@ -332,8 +345,7 @@ class ApiLottoSegnalazioniRows(DomainAPIView):
             OpenApiParameter(name="origine", type=str, location=OpenApiParameter.QUERY),
             OpenApiParameter(name="solo_attive", type=bool, location=OpenApiParameter.QUERY),
             OpenApiParameter(name="solo_job_corrente", type=bool, location=OpenApiParameter.QUERY),
-            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY),
+            *parametri_finestra(max_limit=LOTTO_LISTE_PAGINA_MAX),
             OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY),
             OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY),
         ],
@@ -345,14 +357,16 @@ class ApiLottoSegnalazioniRows(DomainAPIView):
     # Scopo: elenco paginato delle segnalazioni del lotto.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
         q = request.query_params
+        limit, offset = pagina_da_query(q, max_limit=LOTTO_LISTE_PAGINA_MAX)
         data = fn_list_lotto_segnalazioni(
             lotto_id=lotto_id,
+            auth_user_id=get_scope_user_id(request),
             livello=(q.get("livello") or None),
             origine=(q.get("origine") or None),
-            solo_attive=as_bool(q.get("solo_attive"), default=True),
-            solo_job_corrente=as_bool(q.get("solo_job_corrente"), default=False),
-            page=optional_int({"page": q.get("page", "1")}, "page") or 1,
-            page_size=optional_int({"page_size": q.get("page_size")}, "page_size") or DEFAULT_LIMIT,
+            solo_attive=qp_bool_optional(q.get("solo_attive"), "solo_attive", default=True),
+            solo_job_corrente=qp_bool_optional(q.get("solo_job_corrente"), "solo_job_corrente", default=False),
+            limit=limit,
+            offset=offset,
             order_by=(q.get("order_by") or None),
             order_dir=(q.get("order_dir") or "desc"),
         )
@@ -395,9 +409,10 @@ class ApiLottoSegnalazioniExport(DomainAPIView):
         filtri: dict[str, Any] = {"livello": q.get("livello") or None, "origine": q.get("origine") or None}
         data = fn_list_lotto_segnalazioni(
             lotto_id=lotto_id,
+            auth_user_id=get_scope_user_id(request),
             **filtri,
-            solo_attive=as_bool(q.get("solo_attive"), default=True),
-            solo_job_corrente=as_bool(q.get("solo_job_corrente"), default=False),
+            solo_attive=qp_bool_optional(q.get("solo_attive"), "solo_attive", default=True),
+            solo_job_corrente=qp_bool_optional(q.get("solo_job_corrente"), "solo_job_corrente", default=False),
             order_by=(q.get("order_by") or None),
             order_dir=(q.get("order_dir") or "desc"),
             # ⚠️ `max_rows` e non `page_size`: l'export salta la paginazione
@@ -467,9 +482,10 @@ class ApiLottoTaskRunsExport(DomainAPIView):
         fmt = parse_export_format(request)
         q = request.query_params
         task_stato = _qp_task_stato(q)
-        solo_giro_corrente = as_bool(q.get("solo_giro_corrente"), default=False)
+        solo_giro_corrente = qp_bool_optional(q.get("solo_giro_corrente"), "solo_giro_corrente", default=False)
         data = fn_get_lotto_task_runs(
             lotto_id=lotto_id,
+            auth_user_id=get_scope_user_id(request),
             order_by=(q.get("order_by") or None),
             order_dir=(q.get("order_dir") or "desc"),
             task_stato=task_stato,
@@ -505,6 +521,10 @@ class ApiLottoTaskRuns(DomainAPIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description=f"Numero massimo task run restituiti (default {DEFAULT_LIMIT_EVENTI}, max {LOTTO_LISTE_PAGINA_MAX}).",
+            ),
+            OpenApiParameter(
+                name="offset", type=int, location=OpenApiParameter.QUERY, required=False,
+                description="Righe da saltare (default 0).",
             ),
             OpenApiParameter(
                 name="task_stato",
@@ -554,21 +574,20 @@ class ApiLottoTaskRuns(DomainAPIView):
     # Scopo: Restituisce via GET i task run del lotto — elenco PAGINATO e
     #        ordinabile (BE-2, 2026-08-22): la sorgente e'
     #        `vendite.fn_list_lotto_task_runs`, che porta anche il totale.
-    # ⚠️ `limit` resta accettato come sinonimo di `page_size`: e' il nome che
-    #    il client attuale manda, e cambiarlo di soppiatto avrebbe rotto il
-    #    drawer prima che la lista configurabile lo sostituisse (FE-2).
+    # ⛔ `limit`/`offset` come ogni lista offset-based (decisione Tid
+    #    2026-10-21, §A4: nomi allineati, BE e FE nello stesso giro, senza
+    #    alias). Fino a quel giorno si leggeva `page_size` con `limit` come
+    #    sinonimo, accanto a un `offset`: un dialetto ibrido che nessun'altra
+    #    lista parlava. `page`/`page_size` ora sono un 400.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
         q = request.query_params
-        page_size = optional_int(
-            {"page_size": q.get("page_size") or q.get("limit") or str(DEFAULT_LIMIT_EVENTI)}, "page_size"
+        limit, offset = pagina_da_query(
+            q, default_limit=DEFAULT_LIMIT_EVENTI, max_limit=LOTTO_LISTE_PAGINA_MAX,
         )
-        offset = optional_int({"offset": q.get("offset", "0")}, "offset")
-        # Col default il parametro non manca mai, e un valore non intero e' gia'
-        # un 400 di `optional_int`: None qui non puo' arrivare.
-        assert page_size is not None and offset is not None
         data = fn_get_lotto_task_runs(
             lotto_id=lotto_id,
-            page_size=page_size,
+            auth_user_id=get_scope_user_id(request),
+            limit=limit,
             offset=offset,
             order_by=(q.get("order_by") or None),
             order_dir=(q.get("order_dir") or "desc"),
@@ -577,7 +596,7 @@ class ApiLottoTaskRuns(DomainAPIView):
             #    prima. La scelta di quale fetta mostrare all'apertura e' del
             #    client, non dell'endpoint.
             task_stato=_qp_task_stato(q),
-            solo_giro_corrente=as_bool(q.get("solo_giro_corrente"), default=False),
+            solo_giro_corrente=qp_bool_optional(q.get("solo_giro_corrente"), "solo_giro_corrente", default=False),
         )
         return success_response(data)
 
@@ -887,12 +906,16 @@ def _parse_lotti_query(qp, *, function_name: str) -> dict:
     order_by = raw_order_by.strip() or None if raw_order_by is not None else None
     order_dir = qp.get("order_dir")
     if order_by is not None:
+        # `nullable`: la direzione assente resta assente, e la decide il BB
+        # della lista (date DESC). Fino al 2026-10-20 qui si scriveva
+        # `order_dir or "asc"`, e la regola non arrivava al repository (§6.1).
         order_by, order_dir = validate_order_params(
             order_by,
-            order_dir or "asc",
+            order_dir,
             allowed_columns=_ORDER_BY_LOTTI,
             error_code="E_SEARCH_VALIDATION",
             function_name=function_name,
+            nullable=True,
         )
 
     return {
@@ -914,11 +937,11 @@ def _parse_lotti_query(qp, *, function_name: str) -> dict:
         #    un insieme DISGIUNTO da quello a video. Niente falliva.
         # ⚠️ E' la specie «campo dichiarato e non letto»: sembrava presidiato
         #    perche' il parametro partiva davvero.
-        "solo_recuperi_mese": as_bool(qp.get("recuperi_mese"), default=False),
+        "solo_recuperi_mese": qp_bool_optional(qp.get("recuperi_mese"), "recuperi_mese", default=False),
         # ⭐ `?annullati=1` mostra anche i lotti col fiscale ABORTITO (2026-09-12).
         #    Di default restano fuori — da lista, chip ed export insieme, perche'
         #    il parser e' uno — e la risposta dice quanti sono (`annullati_count`).
-        "includi_annullati": as_bool(qp.get("annullati"), default=False),
+        "includi_annullati": qp_bool_optional(qp.get("annullati"), "annullati", default=False),
     }
 
 
@@ -938,8 +961,7 @@ class ApiLottiList(DomainAPIView):
             OpenApiParameter(name="annullati", type=bool, location=OpenApiParameter.QUERY, required=False, description="`1` mostra anche i lotti col fiscale ABORTITO (`config.stati_doc_fiscale.is_abortito`, oggi ANNULLATA). Default: nascosti — lista, chip per stato ed export insieme — e la risposta dichiara quanti sono in `annullati_count`."),
             OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento: `campo_sorgente` del catalogo lista `vendite.lotti`. Whitelist autoritativa: `VenditeRepository.LOTTI_SORT_COLUMNS` — codice, competenza_mese, data_documento, tipo_lotto, tipo_doc_fiscale_descrizione, utility_descrizione, area_geografica_descrizione, emittente_ragione_sociale, stato_lotto, stato_operativo, stato_doc_fiscale_descrizione, n_fatture, totale_documenti, data_insert, user_insert."),
             OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc | desc (default asc)."),
-            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
+            *parametri_finestra(),
         ],
         responses={
             200: inline_serializer(
@@ -976,17 +998,14 @@ class ApiLottiList(DomainAPIView):
             request.query_params, function_name="vendite.views.ApiLottiList.get",
         )
 
-        page = optional_int({"page": request.query_params.get("page", "1")}, "page")
-        page_size = optional_int({"page_size": request.query_params.get("page_size", str(DEFAULT_LIMIT))}, "page_size")
-        # Col default il parametro non manca mai, e un valore non intero e' gia'
-        # un 400 di `optional_int`: None qui non puo' arrivare.
-        assert page is not None and page_size is not None
+        # La finestra dal BB: dal 2026-10-21 un dialetto solo, `limit`/`offset`.
+        limit, offset = pagina_da_query(request.query_params)
 
         data = fn_list_lotti(
             **filtri,
             auth_user_id=get_scope_user_id(request),
-            page=page,
-            page_size=page_size,
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -1129,7 +1148,7 @@ class ApiLottiMensile(DomainAPIView):
         data = fn_lotti_mensile(
             anno=anno,
             auth_user_id=auth_user_id,
-            includi_annullati=as_bool(request.query_params.get("annullati"), default=False),
+            includi_annullati=qp_bool_optional(request.query_params.get("annullati"), "annullati", default=False),
         )
         return success_response(data)
 
@@ -1207,8 +1226,8 @@ class ApiLottoFattureExport(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="stato_esecuzione", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="sort_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="sort_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
         ],
         responses={(200, "text/csv"): bytes},
     )
@@ -1221,8 +1240,8 @@ class ApiLottoFattureExport(DomainAPIView):
             lotto_id=lotto_id,
             stato_esecuzione=stato,
             auth_user_id=get_scope_user_id(request),
-            sort_by=(q.get("sort_by") or "fattura_id"),
-            sort_dir=(q.get("sort_dir") or "asc"),
+            order_by=qp_str(q.get("order_by")),
+            order_dir=qp_str(q.get("order_dir")),
             max_rows=EXPORT_MAX_ROWS + 1,
         )
         return build_export_response(
@@ -1248,10 +1267,9 @@ class ApiLottoFattureList(DomainAPIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(name="stato_esecuzione", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro stato esecuzione fattura."),
-            OpenApiParameter(name="sort_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento (default fattura_id)."),
-            OpenApiParameter(name="sort_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc/desc (default asc)."),
-            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento (default fattura_id). Fino al 2026-10-20 si chiamava `sort_by`."),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc/desc (assente: la decide la lista, date DESC). Fino al 2026-10-20 si chiamava `sort_dir`."),
+            *parametri_finestra(),
         ],
         responses={
             200: inline_serializer(
@@ -1277,22 +1295,24 @@ class ApiLottoFattureList(DomainAPIView):
         raw_stato_esecuzione = request.query_params.get("stato_esecuzione")
         stato_esecuzione = raw_stato_esecuzione.strip() or None if raw_stato_esecuzione is not None else None
 
-        sort_by = request.query_params.get("sort_by", "fattura_id").strip() or "fattura_id"
-        sort_dir = request.query_params.get("sort_dir", "asc").strip() or "asc"
-        page = optional_int({"page": request.query_params.get("page", "1")}, "page")
-        page_size = optional_int({"page_size": request.query_params.get("page_size", str(DEFAULT_LIMIT))}, "page_size")
+        # ⛔ `order_by`/`order_dir` come ogni altra lista (decisione Tid
+        #    2026-10-20, brief-be-verifica-documentazione-api §A4): fino a quel
+        #    giorno questa sola si ordinava con `sort_by`/`sort_dir`. Assenti
+        #    restano assenti: colonna e verso li decide la lista (§6.1).
+        order_by = qp_str(request.query_params.get("order_by"))
+        order_dir = qp_str(request.query_params.get("order_dir"))
+        limit, offset = pagina_da_query(request.query_params)
 
         auth_user_id = get_scope_user_id(request)
 
-        assert page is not None and page_size is not None  # come in fn_list_lotti
         data = fn_list_lotto_fatture(
             lotto_id=lotto_id,
             stato_esecuzione=stato_esecuzione,
             auth_user_id=auth_user_id,
-            sort_by=sort_by,
-            sort_dir=sort_dir,
-            page=page,
-            page_size=page_size,
+            order_by=order_by,
+            order_dir=order_dir,
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -1321,8 +1341,9 @@ class ApiLottoGruppiList(DomainAPIView):
     perde i documenti dichiarati e non ancora tentati.
 
     🔒 Il cancello di scope e' la TESTATA: le due tabelle figlie non hanno RLS,
-    `vendite.fatturazione_lotti` si'. Lotto fuori perimetro -> elenco vuoto,
-    mai le righe di un lotto altrui.
+    `vendite.fatturazione_lotti` si'. Lotto fuori perimetro o inesistente ->
+    404 (BB `lotto_visibile`, dal 2026-10-20: prima elenco vuoto), mai le
+    righe di un lotto altrui.
     """
 
     area_funzionale = "vendite"
@@ -1344,8 +1365,7 @@ class ApiLottoGruppiList(DomainAPIView):
                 name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False,
                 description="Verso: asc (default) o desc.",
             ),
-            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
+            *parametri_finestra(),
         ],
         responses={
             200: inline_serializer(
@@ -1370,6 +1390,7 @@ class ApiLottoGruppiList(DomainAPIView):
     #        dal lotto, con l'esito di ciascuno.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
         q = request.query_params
+        limit, offset = pagina_da_query(q)
         data = fn_list_lotto_gruppi(
             lotto_id=lotto_id,
             auth_user_id=get_scope_user_id(request),
@@ -1379,8 +1400,8 @@ class ApiLottoGruppiList(DomainAPIView):
             #    repository ha un ordine di default suo — i falliti in cima —
             #    e un verso dichiarato lo annullerebbe (api.md §parse_list_params).
             order_dir=qp_str(q.get("order_dir")),
-            page=qp_int_strict(q.get("page"), "page", 1),
-            page_size=qp_int_strict(q.get("page_size"), "page_size", DEFAULT_LIMIT),
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -1771,7 +1792,12 @@ class ApiRunCommessePush(DomainAPIView):
                 dry_run=optional_bool(payload, "dry_run", default=False),
             )
 
-        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+        # ⭐ A_PASSI (brief-be-verifica-documentazione-api §I.7.2): il registro del giro (`commesse_push_log`) e l'`except` sull'handler senza savepoint.
+        #    Una key orfana non si riprende, e niente `atomic` esterno.
+        return handle_post_json(
+            request, handler=_handler, require_idempotency_key=True,
+            unita_di_lavoro=UnitaDiLavoro.A_PASSI,
+        )
 
 
 
@@ -1864,7 +1890,12 @@ class ApiCommessaStato(DomainAPIView):
         ],
         request=inline_serializer(
             name="VenditeCommessaStatoRequest",
-            fields={"nuovo_stato": serializers.CharField()},
+            fields={
+                "nuovo_stato": serializers.CharField(),
+                # Solo verso ANNULLATA, alla conferma: quanti legami
+                # l'operatore ha visto (`GET .../legami/`).
+                "legami_confermati": serializers.IntegerField(required=False),
+            },
         ),
         responses={
             200: inline_serializer(
@@ -1884,6 +1915,8 @@ class ApiCommessaStato(DomainAPIView):
         },
     )
     # Scopo: Azione di stato utente (chiudi/riapri/annulla) sulla commessa.
+    #        L'annullo con righe NON_EMESSA si conferma: la seconda richiesta
+    #        porta `legami_confermati` (brief-db-annullo-a-valle-riapre-a-monte).
     def post(self, request: Request, commessa_id: int) -> JsonResponse:
         # Scopo: applica la transizione richiesta con difesa applicativa nel service.
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1892,6 +1925,7 @@ class ApiCommessaStato(DomainAPIView):
                 commessa_id=commessa_id,
                 nuovo_stato=str(payload.get("nuovo_stato", "")),
                 user=user,
+                legami_confermati=payload.get("legami_confermati"),
             )
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -1992,11 +2026,7 @@ class ApiCommessaRegistro(DomainAPIView):
     # Scopo: Restituisce via GET il registro paginato di una commessa.
     def get(self, request: Request, commessa_id: int) -> JsonResponse:
         qp = request.query_params
-        limit = optional_int({"limit": qp.get("limit", str(DEFAULT_LIMIT_EVENTI))}, "limit")
-        offset = optional_int({"offset": qp.get("offset", "0")}, "offset")
-        # Col default il parametro non manca mai, e un valore non intero e' gia'
-        # un 400 di `optional_int`: None qui non puo' arrivare.
-        assert limit is not None and offset is not None
+        limit, offset = pagina_da_query(qp, default_limit=DEFAULT_LIMIT_EVENTI)
         return success_response(
             fn_commessa_registro(
                 commessa_id=commessa_id,
@@ -2047,11 +2077,7 @@ class ApiCommessaAttivita(DomainAPIView):
         stato_emissione = request.query_params.get("stato_emissione") or None
         stato_approvazione = request.query_params.get("stato_approvazione") or None
         competenza_mese = request.query_params.get("competenza_mese") or None
-        limit = optional_int({"limit": request.query_params.get("limit", str(DEFAULT_LIMIT))}, "limit")
-        offset = optional_int({"offset": request.query_params.get("offset", "0")}, "offset")
-        # Col default il parametro non manca mai, e un valore non intero e' gia'
-        # un 400 di `optional_int`: None qui non puo' arrivare.
-        assert limit is not None and offset is not None
+        limit, offset = pagina_da_query(request.query_params)
         # order_by/order_dir passano al service, che li valida contro la
         # whitelist ATTIVITA_SORT_COLUMNS (specchio della fn DB).
         data = fn_list_commessa_attivita(
@@ -2399,7 +2425,12 @@ class ApiFatturazioneNumeraLotto(DomainAPIView):
                 data_documento=optional_iso_date(payload, "data_documento"),
             )
 
-        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+        # ⭐ A_PASSI (brief-be-verifica-documentazione-api §I.7.2): `numera_lotto` committa per passi: non si avvolge in un atomic (pipeline_service).
+        #    Una key orfana non si riprende, e niente `atomic` esterno.
+        return handle_post_json(
+            request, handler=_handler, require_idempotency_key=True,
+            unita_di_lavoro=UnitaDiLavoro.A_PASSI,
+        )
 
 
 class ApiFatturazioneRistampaLotto(DomainAPIView):

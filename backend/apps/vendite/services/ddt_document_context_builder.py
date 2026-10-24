@@ -38,6 +38,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.config.sorgenti import SORGENTE_DDT_VENDITA
 from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.documenti.services.context_builders._number_formatting import (
@@ -64,7 +65,7 @@ E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
 class DdtDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti DDT_VENDITA (DDT accompagnatorio)."""
 
-    CODE = "DDT_VENDITA"
+    CODE = SORGENTE_DDT_VENDITA
     # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
     CONTEXT_VERSION = 2
 
@@ -187,8 +188,8 @@ class DdtDocumentContextBuilder(DocumentContextBuilder):
             "ba_codice": testata.get("ba_codice"),
         }
 
-    # Tipi indirizzo ammessi nell'ambito DDT (`config.tipi_indirizzi_allowed`,
-    # ambito DDT = solo `CON`, obbligatorio). Dichiarati qui e non letti a
+    # Tipi indirizzo ammessi nell'ambito DDT_VENDITA (`config.tipi_indirizzi_allowed`,
+    # ambito DDT_VENDITA = solo `CON`, obbligatorio). Dichiarati qui e non letti a
     # runtime: il context deve essere deterministico a parita' di documento.
     _INDIRIZZI_CODICI: tuple[str, ...] = ("CON",)
 

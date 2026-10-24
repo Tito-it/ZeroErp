@@ -4,7 +4,7 @@
 >
 > **Consumatori:**
 >
-> • [script.trgfn_righe_guard_esclusione_figlio_bundle](/dbzero/script/funzioni/trgfn_righe_guard_esclusione_figlio_bundle) — il guard, che solleva il **primo** motivo
+> • [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga) — la check per tipo di riga, che la **compone** come primo motivo dell'ESCLUSIONE (dal 2026-10-13); il guard di tabella [script.trgfn_righe_guard_articolo_ammesso](/dbzero/script/manual/trgfn_righe_guard_articolo_ammesso) ne solleva il primo motivo
 > • [vendite.fn_documento_righe_preview](/dbzero/vendite/funzioni/fn_documento_righe_preview) — la lista delle righe, che **spegne «Escludi»** (`escludi_blocco_codice`)
 >
 > **Sorgenti:** [vendite.fn_documento_listino_operativo](/dbzero/vendite/funzioni/fn_documento_listino_operativo) · [vendite.listini_righe_componenti](/dbzero/vendite/tabelle/listini_righe_componenti)

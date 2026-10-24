@@ -13,11 +13,13 @@
 //        brief-db-testata-dopo-emissione fase 1): la promessa si cambia anche
 //        dopo la conferma, quando la riga non si modifica piu'. Accesa o spenta
 //        col motivo dalla capability di documento
-//        `can_edit_data_consegna_confermata`: qui non si decide niente.
+//        `can_edit_data_consegna_confermata` e, per riga, dal motivo della
+//        riga (`data_consegna_confermata_blocco`): qui non si decide niente.
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MANAGE_ICONS } from '../../../core/constants'
 import { labelOrCode } from '../../../core/utils/i18nLabel'
+import { motivoDaCodiceBlocco } from '../../../core/utils/bloccoMotivo'
 import { useOrdiniStore } from '../stores/ordini'
 import { useOrdineRigheStore } from '../stores/ordineRighe'
 import { exportRigheLista } from '../api/ordiniApi'
@@ -44,6 +46,8 @@ const props = defineProps({
   // Readonly PURO (permessi / split): nasconde l'azione. Lo stato non la
   // nasconde, la spegne col motivo.
   readonly: { type: Boolean, default: false },
+  // La data dell'ordine: minimo del calendario delle date di consegna.
+  dataDocumento: { type: String, default: null },
 })
 const emit = defineEmits(['changed', 'form-aperto'])
 
@@ -51,27 +55,43 @@ const emit = defineEmits(['changed', 'form-aperto'])
 //    aperta, inoltrata al drawer per le sue uscite. La tiene il form di riga,
 //    che si registra presso la tabella (`registra` dello slot).
 const tabella = ref(null)
-defineExpose({ ...unisciFotografie(() => tabella.value) })
+defineExpose({
+  ...unisciFotografie(() => tabella.value),
+  // Il drawer padre rilegge le righe dopo un gesto fatto altrove (un documento
+  // collegato chiuso dalla barra collegamenti).
+  loadRighe: () => tabella.value?.loadRighe(),
+})
 
 const dataConsegnaVisible = ref(false)
 const dataConsegnaRiga = ref(null)
 
 // Scopo: le azioni di dominio della riga. Permesso ⇒ nascondi, stato ⇒
 //        spegni col motivo (chiave i18n dal DB, ripiego sul codice).
+// ⭐ Due risposte, nell'ordine in cui le dice il DB: prima il DOCUMENTO (la
+//    capability, dallo stato), poi la RIGA (`data_consegna_confermata_blocco`
+//    della vista, il primo motivo di
+//    `script.fn_check_ordine_riga_data_consegna_confermata`: oggi la riga gia'
+//    spedita, D-7 di brief-db-date-consegna-righe-in-blocco).
 function azioniRiga(riga) {
   if (props.readonly) return []
   const capabilities = props.capabilities || {}
-  const ammessa = capabilities.can_edit_data_consegna_confermata === true
+  const ammessaDocumento = capabilities.can_edit_data_consegna_confermata === true
+  const motivoRiga = motivoDaCodiceBlocco(
+    t, te, riga?.data_consegna_confermata_blocco,
+    'vendite.ordini.data_consegna_confermata_reason',
+  )
   return [{
     key: 'data-consegna-confermata',
     label: t('vendite.ordini.azione_data_consegna_confermata'),
     icon: MANAGE_ICONS.PROMESSA_CONSEGNA,
-    disabled: !ammessa,
-    tooltip: ammessa ? undefined : labelOrCode(
-      t, te,
-      capabilities.can_edit_data_consegna_confermata_reason_key,
-      capabilities.can_edit_data_consegna_confermata_reason,
-    ),
+    disabled: !ammessaDocumento || Boolean(motivoRiga),
+    tooltip: !ammessaDocumento
+      ? labelOrCode(
+          t, te,
+          capabilities.can_edit_data_consegna_confermata_reason_key,
+          capabilities.can_edit_data_consegna_confermata_reason,
+        )
+      : (motivoRiga || undefined),
     command: () => {
       dataConsegnaRiga.value = riga
       dataConsegnaVisible.value = true
@@ -105,6 +125,7 @@ function azioniRiga(riga) {
         :ref="registra"
         :ordine-id="ordineId"
         :riga="riga"
+        :data-documento="dataDocumento"
         @saved="onSaved"
         @componenti-changed="onComponentiChanged"
         @cancel="onCancel"
@@ -116,6 +137,7 @@ function azioniRiga(riga) {
     v-model:visible="dataConsegnaVisible"
     :ordine-id="ordineId"
     :riga="dataConsegnaRiga"
+    :data-documento="dataDocumento"
     :readonly="readonly"
     @salvata="tabella?.loadRighe(); emit('changed')"
   />

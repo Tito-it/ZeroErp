@@ -64,22 +64,14 @@ from decimal import Decimal
 from django.db import connection, transaction
 
 from apps.vendite.services.fatture_righe_service import FattureRigheService
+from scripts.tests._smoke_contesto import apri_contesto_smoke
+from scripts.tests._smoke_fatturazione import (
+    costruisci_base_fatturazione,
+    crea_attivita_di_commessa,
+    crea_commessa_di_prova,
+    crea_lotto_di_prova,
+)
 
-# Attivita' gia' esistente usata come TEMPLATE: da lei si ereditano billing
-# account, istanza utility, uom, valuta e tipo documento, cosi' il fixture
-# resta coerente con la configurazione reale dell'ambiente invece di inventare
-# identificativi. Stesso criterio degli altri smoke di fatturazione.
-SQL_TEMPLATE = """
-    SELECT a.commessa_id, a.articolo_id, a.istanza_utility_id,
-           a.billing_account_id, a.uom_id, a.valuta_id, a.tipo_doc_fiscale_id,
-           a.sorgente_tipo_id, a.sorgente_origine_tipo_id, a.competenza_mese,
-           c.emittente_soggetto_ruolo_id, c.utility_id
-      FROM vendite.attivita_fatturabili a
-      JOIN vendite.commesse c ON c.id = a.commessa_id
-     WHERE a.commessa_id IS NOT NULL
-     ORDER BY a.id DESC
-     LIMIT 1
-"""
 
 FAIL: list[str] = []
 
@@ -89,77 +81,6 @@ def check(label, cond, detail=""):
     print(("  OK   " if cond else "  FAIL ") + label + (f" — {detail}" if detail else ""))
     if not cond:
         FAIL.append(label)
-
-
-# Scopo: Crea (o riusa) una commessa che PORTA un termine di pagamento. E' il
-#        punto in cui D-R entra nel fixture: `p_force_new` garantisce commesse
-#        distinte anche quando il termine coincide, cosi' il test 2 puo'
-#        dimostrare che a discriminare e' il termine e non la commessa.
-def crea_commessa(cur, t, *, termine_id, marker):
-    cur.execute(
-        """
-        SELECT vendite.fn_get_or_create_commessa(
-            p_billing_account_id => %s, p_utility_id => %s,
-            p_competenza_dal => %s, p_competenza_al => %s,
-            p_meta => %s::jsonb, p_force_new => true,
-            p_termine_pagamento_id => %s
-        )
-        """,
-        [t["billing_account_id"], t["utility_id"],
-         t["competenza_mese"], t["competenza_mese"],
-         f'{{"smoke": "{marker}"}}', termine_id],
-    )
-    return cur.fetchone()[0]
-
-
-# Scopo: Riga di commessa + attivita' fatturabile gia' lockata sul lotto: e'
-#        lo stato in cui il task `select_attivita` le consegna al generatore.
-def crea_attivita(cur, t, *, commessa_id, segment_key, lock_batch_id, prezzo):
-    cur.execute(
-        """
-        SELECT attivita_id FROM vendite.fn_upsert_commessa_attivita(
-            p_commessa_id => %s, p_segment_key => %s, p_articolo_id => %s,
-            p_istanza_utility_id => %s, p_data_attivita => %s, p_uom_id => %s,
-            p_quantita => 1, p_competenza_mese => %s, p_competenza_dal => %s,
-            p_competenza_al => %s, p_prezzo_snapshot => %s,
-            p_prezzo_base_snapshot => NULL, p_origine_prezzo => NULL,
-            p_tipo_variazione_applicata => NULL,
-            p_valore_variazione_applicata => NULL, p_promo_id => NULL,
-            p_contratto_id => NULL, p_categoria_cliente_id_snapshot => NULL,
-            p_classe_utenza_id_snapshot => NULL,
-            p_tipo_doc_fiscale_id => %s, p_valuta_id => %s,
-            p_prezzo_bloccato => true, p_meta => '{}'::jsonb
-        )
-        """,
-        [commessa_id, segment_key, t["articolo_id"], t["istanza_utility_id"],
-         t["data"], t["uom_id"], t["competenza_mese"], t["data"], t["data"],
-         prezzo, t["tipo_doc_fiscale_id"], t["valuta_id"]],
-    )
-    ca_id = cur.fetchone()[0]
-    cur.execute(
-        """
-        INSERT INTO vendite.attivita_fatturabili (
-            articolo_id, istanza_utility_id, billing_account_id, data_attivita,
-            quantita, uom_id, qta_operativa, uom_operativa_id, factor_to_base,
-            prezzo_unitario, valuta_id, tipo_doc_fiscale_id,
-            competenza_mese, competenza_dal, competenza_al,
-            commessa_id, commessa_attivita_id,
-            sorgente_tipo_id, sorgente_uid, sorgente_origine_tipo_id,
-            lock_batch_id, lock_in_fatturazione, approvato,
-            stato_esecuzione, prezzo_bloccato, meta
-        ) VALUES (
-            %s, %s, %s, %s, 1, %s, 1, %s, 1, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, TRUE, TRUE, 'PENDING', TRUE, '{}'::jsonb
-        ) RETURNING id
-        """,
-        [t["articolo_id"], t["istanza_utility_id"], t["billing_account_id"],
-         t["data"], t["uom_id"], t["uom_id"], prezzo, t["valuta_id"],
-         t["tipo_doc_fiscale_id"], t["competenza_mese"], t["data"], t["data"],
-         commessa_id, ca_id, t["sorgente_tipo_id"], str(uuid.uuid4()),
-         t["sorgente_origine_tipo_id"], lock_batch_id],
-    )
-    return cur.fetchone()[0]
 
 
 # Scopo: Fatture del lotto con il loro termine di testata, ordinate.
@@ -183,24 +104,13 @@ with transaction.atomic():
         # `vendite.fatturazione_lotti` e `vendite.fatture` sono RLS: senza GUC
         # le query tornano 0 righe e lo smoke mentirebbe (trappola gia' pagata:
         # un conteggio fail-closed somiglia a un dato).
-        cur.execute(
-            "SELECT set_config('app.ruolo_applicativo','OPERATORE',false),"
-            "       set_config('app.current_user_id', (SELECT auth_user_id::text"
-            "         FROM config.user_emittenti_fiscali LIMIT 1), false)"
-        )
+        apri_contesto_smoke(cur)
 
-        cur.execute(SQL_TEMPLATE)
-        row = cur.fetchone()
-        if not row:
-            raise SystemExit("Nessuna attivita' fatturabile da usare come template.")
-        t = {
-            "commessa_id": row[0], "articolo_id": row[1], "istanza_utility_id": row[2],
-            "billing_account_id": row[3], "uom_id": row[4], "valuta_id": row[5],
-            "tipo_doc_fiscale_id": row[6], "sorgente_tipo_id": row[7],
-            "sorgente_origine_tipo_id": row[8], "competenza_mese": row[9],
-            "emittente_sr_id": row[10], "utility_id": row[11],
-        }
-        t["data"] = t["competenza_mese"]
+        # La base della fixture si COSTRUISCE dalle radici di prova
+        # (brief-be-utenti-di-sviluppo T-7b): niente attivita' esistente da
+        # copiare, che su un database nuovo non c'e'.
+        marker = uuid.uuid4().hex[:8]
+        t = costruisci_base_fatturazione(cur, marker=marker)
 
         # Due termini REALI del catalogo riformato (3a.1 + 3a.3 ne hanno seminati
         # 9): la fixture che il piano §3.3-b temeva di dover creare non serve.
@@ -216,42 +126,25 @@ with transaction.atomic():
             )
         (term_a, cod_a), (term_b, cod_b) = termini
 
-        marker = uuid.uuid4().hex[:8]
         lock_batch_id = str(uuid.uuid4())
-        cur.execute(
-            """
-            INSERT INTO vendite.fatturazione_lotti (
-                codice, competenza_mese, utility_id, tipo_doc_fiscale_id,
-                stato_doc_fiscale_id, emittente_soggetto_ruolo_id, tipo_lotto,
-                stato_lotto, stato_operativo, lock_batch_id, meta
-            )
-            SELECT %s, %s, %s, %s,
-                   (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno='DRAFT'),
-                   %s, 'MASSIVO', 'IN_ESECUZIONE', 'APERTO', %s,
-                   '{"smoke": true}'::jsonb
-            RETURNING id
-            """,
-            [f"SMOKE-D7-{marker}", t["competenza_mese"], t["utility_id"],
-             t["tipo_doc_fiscale_id"], t["emittente_sr_id"], lock_batch_id],
-        )
-        lotto_id = cur.fetchone()[0]
+        lotto_id = crea_lotto_di_prova(cur, t, codice=f"SMOKE-D7-{marker}", lock_batch_id=lock_batch_id)
 
         # Tre commesse, STESSO cliente / utility / emittente:
         #   C1 termine A  ·  C2 termine B  ·  C3 termine A (commessa diversa da C1)
         # Attesa: C1 e C3 confluiscono, C2 si separa -> 2 fatture, non 3.
-        c1 = crea_commessa(cur, t, termine_id=term_a, marker=f"{marker}-1")
-        c2 = crea_commessa(cur, t, termine_id=term_b, marker=f"{marker}-2")
-        c3 = crea_commessa(cur, t, termine_id=term_a, marker=f"{marker}-3")
+        c1 = crea_commessa_di_prova(cur, t, termine_id=term_a, marker=f"{marker}-1")
+        c2 = crea_commessa_di_prova(cur, t, termine_id=term_b, marker=f"{marker}-2")
+        c3 = crea_commessa_di_prova(cur, t, termine_id=term_a, marker=f"{marker}-3")
         print(f"lotto {lotto_id} · commesse {c1} ({cod_a}), {c2} ({cod_b}), "
               f"{c3} ({cod_a}) · stesso BA {t['billing_account_id']}\n")
 
         af = {
-            "A1": crea_attivita(cur, t, commessa_id=c1, lock_batch_id=lock_batch_id,
-                                segment_key=f"SMOKE:{marker}:A1", prezzo=Decimal("10.00")),
-            "A2": crea_attivita(cur, t, commessa_id=c2, lock_batch_id=lock_batch_id,
-                                segment_key=f"SMOKE:{marker}:A2", prezzo=Decimal("20.00")),
-            "A3": crea_attivita(cur, t, commessa_id=c3, lock_batch_id=lock_batch_id,
-                                segment_key=f"SMOKE:{marker}:A3", prezzo=Decimal("30.00")),
+            "A1": crea_attivita_di_commessa(cur, t, commessa_id=c1, lock_batch_id=lock_batch_id,
+                                segment_key=f"SMOKE:{marker}:A1", prezzo=Decimal("10.00"))[1],
+            "A2": crea_attivita_di_commessa(cur, t, commessa_id=c2, lock_batch_id=lock_batch_id,
+                                segment_key=f"SMOKE:{marker}:A2", prezzo=Decimal("20.00"))[1],
+            "A3": crea_attivita_di_commessa(cur, t, commessa_id=c3, lock_batch_id=lock_batch_id,
+                                segment_key=f"SMOKE:{marker}:A3", prezzo=Decimal("30.00"))[1],
         }
 
         # 0) Controprova a monte, ASSERITA e non solo stampata (una controprova

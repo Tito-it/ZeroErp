@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ fn_job_run_start SCRIVE IL RUOLO DELLA CORSA.
+#   Brief: brief-db-ruoli-di-sistema §7 D-5, §17
+#
+#   E' il TERZO scrittore del giornale (le corse headless: management command,
+#   cron, systemd — origine CRON), che la D-5 non aveva censito: le sue righe
+#   nascevano con ruolo_sessione NULL (trovato sul giornale di dbdev il
+#   2026-10-15, dopo l'apply della D-5). Ora le due INSERT (la corsa e la riga
+#   saltata) scrivono ruolo_sessione = session_user, come fn_run_and_log
+#   (20261015-02). ⚠️ session_user e non current_user: la funzione e'
+#   SECURITY DEFINER, e dentro current_user e' il proprietario.
+#   La chiusura (script.fn_job_run_end) aggiorna la stessa riga: niente da fare.
+#
+# ⚠️ Firma, RETURNS TABLE e ACL invariati: corpo dal 20261010-21, identico al
+#   vivo (prosrc confrontato su dbdev, 2026-10-15). `SET search_path` e
+#   SECURITY DEFINER ripetuti: un CREATE OR REPLACE senza li azzererebbe.
+#   Funzione del proprietario, non del registro sec_functions_owner: passata
+#   principale.
+#
+# Verifica: db/pgtap/maintenance/test-job-run-ruolo-sessione-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261015-05-update-fn-job-run-start-ruolo-sessione-mctit.yaml
+
+  - changeSet:
+      id: 20261015-05-update-fn-job-run-start-ruolo-sessione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_job_run_start: le due INSERT nel giornale scrivono
+        ruolo_sessione = session_user. Firma invariata.
+        Brief: brief-db-ruoli-di-sistema D-5, §17.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                { schemaName: maintenance, tableName: job_run_log, columnName: ruolo_sessione }
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_job_run_start';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_job_run_start(
+                  p_jobname         maintenance.job_run_log.jobname%TYPE,
+                  p_origine         maintenance.job_run_log.origine%TYPE
+                                        DEFAULT 'CRON',
+                  p_stepname        maintenance.job_run_log.stepname%TYPE
+                                        DEFAULT NULL,
+                  -- `text` esplicito: e' il nome della corsia del lock, che
+                  -- nessuna colonna conserva (si scrive solo hashtext()).
+                  p_lock_key        text DEFAULT NULL,
+                  p_agent_host      maintenance.job_run_log.agent_host%TYPE
+                                        DEFAULT NULL,
+                  p_processo_codice maintenance.job_run_log.processo_codice%TYPE
+                                        DEFAULT NULL,
+                  p_auth_user_id    maintenance.job_run_log.auth_user_id%TYPE
+                                        DEFAULT NULL)
+               RETURNS TABLE(id       maintenance.job_run_log.id%TYPE,
+                             run_uuid maintenance.job_run_log.run_uuid%TYPE,
+                             -- `boolean` esplicito: e' l'esito del lock, che
+                             -- non e' una colonna (sulla riga c'e' `saltata`,
+                             -- il suo contrario, ma il contratto e' questo).
+                             acquired boolean)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                c_lock_class constant int := hashtext('zeroerp:job_run_log');  -- namespace lock headless
+                v_acquired boolean := true;
+                v_id   maintenance.job_run_log.id%TYPE;
+                v_uuid maintenance.job_run_log.run_uuid%TYPE;
+              BEGIN
+                -- origine e' validata dal CHECK colonna (chk_job_run_log_origine) all'INSERT.
+                -- p_processo_codice e' validato dalla FK fk_job_run_log_processi: un
+                -- codice non registrato in dbops.processi fa fallire l'INSERT (fail-loud
+                -- voluto). ⚠️ NULL resta ammesso finche' dura la transizione dei chiamanti.
+                IF p_lock_key IS NOT NULL THEN
+                  v_acquired := pg_try_advisory_lock(c_lock_class, hashtext(p_lock_key));
+                  IF NOT v_acquired THEN
+                    -- ⚠️ L'attore va scritto ANCHE sulla riga di skip: senza, ogni
+                    --   sovrapposizione lascerebbe un run senza attore e terrebbe
+                    --   accesa la vista di presidio per un caso che non e' un difetto.
+                    -- ⭐ Rev 2026-10-10: la riga si dichiara SALTATA, chiusa e
+                    --   senza esito (ok NULL). Con ok = TRUE ogni lettore la
+                    --   contava come una corsa riuscita: brief-db-corsa-saltata-
+                    --   non-e-una-corsa. Il message resta, ma e' solo testo.
+                    INSERT INTO maintenance.job_run_log
+                        (jobname, stepname, origine, saltata, ended_at, message, agent_host,
+                         processo_codice, auth_user_id, ruolo_sessione)
+                    VALUES (p_jobname, p_stepname, p_origine, TRUE, clock_timestamp(),
+                            'skip: another run in progress',
+                            COALESCE(p_agent_host, inet_client_addr()::text),
+                            p_processo_codice, p_auth_user_id, session_user)
+                    RETURNING job_run_log.id, job_run_log.run_uuid INTO v_id, v_uuid;
+                    RETURN QUERY SELECT v_id, v_uuid, FALSE;
+                    RETURN;
+                  END IF;
+                END IF;
+
+                INSERT INTO maintenance.job_run_log
+                    (jobname, stepname, origine, agent_host,
+                     processo_codice, auth_user_id, ruolo_sessione)
+                VALUES (p_jobname, p_stepname, p_origine,
+                        COALESCE(p_agent_host, inet_client_addr()::text),
+                        p_processo_codice, p_auth_user_id,
+                        -- ⭐ Rev 2026-10-15: chi si e' collegato (D-5).
+                        session_user)
+                RETURNING job_run_log.id, job_run_log.run_uuid INTO v_id, v_uuid;
+                RETURN QUERY SELECT v_id, v_uuid, TRUE;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_job_run_start(
+                  maintenance.job_run_log.jobname%TYPE,
+                  maintenance.job_run_log.origine%TYPE,
+                  maintenance.job_run_log.stepname%TYPE,
+                  text,
+                  maintenance.job_run_log.agent_host%TYPE,
+                  maintenance.job_run_log.processo_codice%TYPE,
+                  maintenance.job_run_log.auth_user_id%TYPE)
+              IS 'Apre una riga su maintenance.job_run_log per un processo HEADLESS (management command / cron / systemd), con advisory lock anti-overlap opzionale. Rev 2026-09-04: prende p_processo_codice (l''ATTORE, hard FK verso dbops.processi) e p_auth_user_id (utente tecnico dei soli processi DOMINIO), e li scrive su ENTRAMBI i rami — anche sulla riga di «skip», altrimenti ogni sovrapposizione lascerebbe un run senza attore. Brief: brief-db-processi-automatici-identita-e-perimetro §3.2. ⭐ Rev 2026-10-10: col lock occupato la riga nasce SALTATA (saltata = TRUE), chiusa e con ok NULL, e la funzione torna acquired = false. Prima nasceva con ok = TRUE, e ogni lettore la contava come una corsa riuscita: una sveglia calendariale saltava il periodo, una corsa appesa spariva dal presidio. Il chiamante che riceve acquired = false salta il lavoro e NON chiude la corsa (script.fn_job_run_end la rifiuta). Brief: brief-db-corsa-saltata-non-e-una-corsa §8. ⭐ Rev 2026-10-15: entrambe le righe scrivono ruolo_sessione = session_user (chi si e'' collegato; session_user perche'' la funzione e'' DEFINER). Brief: brief-db-ruoli-di-sistema D-5.';
+
+              -- Il commento della colonna nominava due scrittori: sono tre.
+              COMMENT ON COLUMN maintenance.job_run_log.ruolo_sessione IS
+                  'Il ruolo che si e'' COLLEGATO per la corsa (session_user): pgAgent (zeroerp_job), il migratore in ci_apply, il backend per le corse headless, una persona. Non quello con cui il lavoro gira: le funzioni del giornale e le procedure dei job sono SECURITY DEFINER. Lo valorizzano maintenance.fn_run_and_log (la corsa), script.fn_job_run_start (le corse headless: management command, cron, systemd) e maintenance.fn_job_run_log_failure (il verbale di un fallimento, che via dblink gira in un''altra sessione: per questo la colonna non ha default). NULL sulle corse registrate prima del 2026-10-15. Lo legge maintenance.vw_job_run_da_superuser. Brief: brief-db-ruoli-di-sistema D-5, §17.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (corpo del 20261010-21).
+              SELECT 1;

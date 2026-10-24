@@ -6,6 +6,8 @@ CREATE FUNCTION fn_posta_reso(p_reso_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_posta_reso(p_reso_id bigint)
  RETURNS TABLE(movimento_id bigint, rientro_id bigint, qta numeric)
@@ -99,6 +101,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_posta_reso(p_reso_id bigint)
 IS 'Il posting di un reso: un carico per rientro (sorgente RESO_VENDITA_RIENTRO, D-3b-d), righe attive, in ordine di riga e di rientro. Nel magazzino del reso, causale CARICO_RESO_VEN, quantita'' positiva, articolo, lotto e seriale dal prelievo d''origine, ubicazione del rientro, data del reso. Il costo e'' quello dell''USCITA del prelievo d''origine (sorgente DDT_VENDITA_PRELIEVO, non uno storno: D-3b-e), passato alla primitiva come p_costo_unitario: la merce rientra al valore al quale era uscita; uscita senza costo -> NULL, e vale la media. Non ricontrolla (la primitiva e'' la rete, la check della merce ha gia'' parlato), non crea rientri, non guarda lo stato: QUANDO lo decide il verbo. SECURITY DEFINER, RISERVATA: ci si arriva solo da vendite.fn_conferma_reso. Ritorna (movimento_id, rientro_id, qta). Sta in vendite e non in magazzino: chi muove merce scrive il proprio posting e chiama la primitiva, il registro non legge le tabelle di un documento (D-2). Fino al 2026-10-01 era magazzino.fn_posta_reso. Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso (P-7), brief-db-magazzino-registro-anello-interno (P-2).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

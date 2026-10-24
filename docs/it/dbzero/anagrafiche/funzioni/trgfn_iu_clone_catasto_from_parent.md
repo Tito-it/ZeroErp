@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_iu_clone_catasto_from_parent()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_iu_clone_catasto_from_parent()
  RETURNS trigger
@@ -19,6 +21,8 @@ BEGIN
 END;
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

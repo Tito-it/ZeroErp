@@ -16,6 +16,8 @@ Funzioni esposte:
 - approva_attivita_competenza — approvazione massiva per mese (write, A-2)
 - aggiungi_onere_commessa   — porta oneri: riga di puro valore (write)
 - annulla_attivita_manuale  — annullamento di una riga manuale di commessa (write)
+- cambia_stato_commessa     — azione di stato utente; ANNULLATA dal verbo DB (write)
+- get_legami                — legami per la finestra di conferma dell'annullo (read)
 """
 
 from datetime import date, datetime, timezone
@@ -25,12 +27,24 @@ from uuid import UUID
 
 from django.db import DatabaseError, transaction
 
-from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
+from apps.config.sorgenti import (
+    SORGENTE_ATTIVITA_CONSUMI,
+    SORGENTE_COMMESSA,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+)
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI
+from apps.core.db._helpers import (
+    colonne_identita,
+    sql_order_direction_lista,
+    sql_tiebreak_direction,
+)
 from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_order_params
+from apps.core.services.list_helpers import validate_enum_param, validate_order_params
 from apps.core.services.payload_helpers import (
-    MissingType as _MissingType,
     PayloadValidator,
     translate_db_errors,
 )
@@ -39,8 +53,15 @@ from apps.anagrafiche.services.billing_account_service import istanza_del_billin
 from apps.vendite.db.commesse_repository import (
     ATTIVITA_SORT_COLUMNS,
     TIPO_MOVIMENTO_RETTIFICA,
+    STATI_APPROVAZIONE_ATTIVITA,
+    STATI_EMISSIONE_ATTIVITA,
     TIPO_MOVIMENTO_VALUES,
     CommesseRepository,
+)
+from apps.vendite.services._annullo_con_legami import (
+    STATO_ANNULLATA,
+    legami_del_documento,
+    legami_confermati as dichiarazione_legami,
 )
 from apps.vendite.services.commesse_push_orchestrator import (
     CommessaPushOrchestrator,
@@ -64,11 +85,11 @@ from apps.vendite.services.pricing_service import PricingService
 # Registry: codice config.sorgenti → handler class.
 # Permette costruzione dinamica basata sulle sorgenti attive in DB.
 _HANDLER_REGISTRY: dict[str, type[BaseSourceHandler]] = {
-    "PREVENTIVO": HandlerPreventivi,
-    "ORDINE_VENDITA": HandlerOrdini,
-    "CONTRATTO": HandlerContratti,
-    "DDT_VENDITA": HandlerDdt,
-    "ATTIVITA_CONSUMI": HandlerConsumi,
+    SORGENTE_PREVENTIVO: HandlerPreventivi,
+    SORGENTE_ORDINE_VENDITA: HandlerOrdini,
+    SORGENTE_CONTRATTO: HandlerContratti,
+    SORGENTE_DDT_VENDITA: HandlerDdt,
+    SORGENTE_ATTIVITA_CONSUMI: HandlerConsumi,
 }
 
 # Stati `PushReport.stato` che richiedono rollback all-or-nothing nel push
@@ -80,8 +101,6 @@ _HANDLER_REGISTRY: dict[str, type[BaseSourceHandler]] = {
 _STATI_PUSH_FALLIMENTO = frozenset({"PARZIALE", "ERRORE"})
 
 _STATO_PUSH_COMPLETATO = "COMPLETATO"
-
-_STATO_COMMESSA_PRONTA = "PRONTA_FATTURAZIONE"
 
 # Codice del guard DB (497) che blocca l'approvazione di righe emittibili senza
 # tipo_doc_fiscale_id. fn_log_and_raise_error lo include nel messaggio RAISE → lo
@@ -107,8 +126,13 @@ def _attivita_ids_da_report(report: PushReport) -> dict[int, list[int]]:
     return {cid: sorted(set(ids)) for cid, ids in out.items()}
 
 
-# Scopo: Ponte di emittibilita` post-push — righe APPROVATA + testata
-#        PRONTA_FATTURAZIONE per una commessa toccata da un push riuscito.
+# Scopo: Ponte di emittibilita` post-push — righe dell'invio APPROVATA +
+#        testata PRONTA_FATTURAZIONE per una commessa toccata da un push
+#        riuscito. Lo fa il DB, in una madre (`vendite.fn_rendi_commessa_emittibile`,
+#        D-10 / R-9 di brief-db-annullo-a-valle-riapre-a-monte): il verso in
+#        avanti verso la commessa sta nello stesso posto del ritorno. Qui si
+#        passano le sole cose che sa chi orchestra: la commessa e le righe
+#        di QUESTO invio.
 def _rendi_commessa_emittibile(
     repo: CommesseRepository,
     *,
@@ -124,12 +148,11 @@ def _rendi_commessa_emittibile(
     il ramo commessa→fattura e` dormiente (fn_list_commesse_emittibili non
     la vede mai).
 
-    Idempotente sulle righe (fn_approva approva solo le NON_EMESSA in BOZZA)
-    e skip-idempotente sulla testata: una commessa multi-sorgente puo` essere
-    GIA` PRONTA_FATTURAZIONE da un push precedente e fn_cambia_stato_commessa
-    non ammette transizioni `da=a`. Stati anomali (CHIUSA/ANNULLATA) NON sono
-    silenziati di proposito: la transizione viene tentata e il guard DB
-    fallisce forte — non si pusha su una commessa chiusa/annullata.
+    ⭐ Fino al 2026-10-12 erano due passi Python (approvazione + cambio di
+    stato con lo skip «gia` pronta»): ora e` una madre DB, con la stessa
+    semantica. Idempotente sulle righe e sulla testata gia` pronta; CHIUSA o
+    ANNULLATA non sono silenziate di proposito: la matrice rifiuta forte —
+    non si pusha su una commessa chiusa/annullata.
 
     Granularita` singola deliberata: il batch deve poter isolare il fallimento
     di una commessa senza perdere il ponte sulle altre (best-effort), il push
@@ -140,20 +163,12 @@ def _rendi_commessa_emittibile(
     il filtro approverebbe tutte le BOZZA+NON_EMESSA della commessa, spazzando
     ad APPROVATA righe di terzi in attesa (brief-db-immutabilita-quantita-e-
     porta-oneri §4b, trappola T1). Lista vuota = nessuna riga nostra atterrata:
-    si salta l'approvazione (l'array vuoto a DB significherebbe comunque zero)
-    ma la testata va comunque portata PRONTA_FATTURAZIONE, come prima.
-    `None` = nessun filtro (retro-compatibile, usato dai chiamanti diretti).
+    niente approvazione, ma la testata va comunque portata PRONTA_FATTURAZIONE.
+    `None` = nessun filtro.
     """
-    if righe_ids is None or righe_ids:
-        repo.approva_commessa_attivita(
-            commessa_id=commessa_id, righe_ids=righe_ids, user=user,
-        )
-    if repo.get_commessa_stato_codice(commessa_id) != _STATO_COMMESSA_PRONTA:
-        repo.cambia_stato_commessa(
-            commessa_id=commessa_id,
-            nuovo_stato=_STATO_COMMESSA_PRONTA,
-            user=user,
-        )
+    repo.rendi_commessa_emittibile(
+        commessa_id=commessa_id, righe_ids=righe_ids, user=user,
+    )
 
 
 def _build_handlers(repo: CommesseRepository) -> list[BaseSourceHandler]:
@@ -503,7 +518,7 @@ def fn_get_commessa_stato(*, commessa_id: int) -> dict:
 _TESTATA_KEYS: frozenset[str] = frozenset({
     "descrizione", "responsabile_risorsa_umana_id",
 })
-_DESCRIZIONE_MAX = 255  # varchar(255) a DB: anticipato con messaggio parlante.
+_DESCRIZIONE_MAX = 255  # varchar(255) a DB: anticipato col tetto del BB (400 col campo).
 _V_TESTATA = PayloadValidator(validation_code="E_COMMESSA_VALIDATION", log_to_db=True)
 # Il vincolo DB che nomina il responsabile: tradotto col campo, cosi' l'input
 # si accende (`campiErrati`) invece di un «FK violata» anonimo.
@@ -531,57 +546,36 @@ _TESTATA_FK_CONSTRAINTS: dict[str, tuple] = {
 def aggiorna_commessa_testata(commessa_id: int, payload: dict[str, Any]) -> dict:
     function_name = "vendite.commesse_service.aggiorna_commessa_testata"
     _guard_commessa_id(commessa_id, function_name=function_name)
-    _V_TESTATA.validate_allowed_keys(
-        payload, allowed=_TESTATA_KEYS,
-        message="Payload commessa non valido.", function_name=function_name,
+    # Il payload per presenza (BB): chiave fuori contratto e PATCH senza campi
+    # sono un 400; `null` sul responsabile lo toglie.
+    dati = _V_TESTATA.campi_per_presenza(
+        payload, ammesse=_TESTATA_KEYS,
+        testi={"descrizione": (True, _DESCRIZIONE_MAX)},
+        interi={"responsabile_risorsa_umana_id": True},
+        message="Payload commessa non valido.",
+        message_vuoto="Nessun campo aggiornabile nel payload commessa.",
+        context_vuoto={"commessa_id": commessa_id, "allowed_keys": sorted(_TESTATA_KEYS)},
+        function_name=function_name,
     )
-    dati: dict[str, Any] = {}
 
-    descrizione = _V_TESTATA.extract_optional_string(
-        payload, "descrizione", nullable=True, function_name=function_name,
-    )
-    if not isinstance(descrizione, _MissingType):
+    responsabile_id = dati.get("responsabile_risorsa_umana_id")
+    if responsabile_id is not None:
+        persona = AnagraficheService().get_risorsa_umana_lookup(responsabile_id)
         ErrorManager.require(
-            descrizione is None or len(descrizione) <= _DESCRIZIONE_MAX,
+            persona is not None and bool(persona.get("attivo")),
             code="E_COMMESSA_VALIDATION",
-            message=f"La descrizione non puo' superare {_DESCRIZIONE_MAX} caratteri.",
-            context={"field": "descrizione", "commessa_id": commessa_id},
+            message=(
+                "Il responsabile deve essere una risorsa umana attiva."
+                if persona is not None else "Responsabile non trovato."
+            ),
+            context={
+                "field": "responsabile_risorsa_umana_id",
+                "commessa_id": commessa_id,
+                "responsabile_risorsa_umana_id": responsabile_id,
+            },
             function_name=function_name,
             log_to_db=True,
         )
-        dati["descrizione"] = descrizione
-
-    if "responsabile_risorsa_umana_id" in payload:
-        responsabile_id = _V_TESTATA.optional_positive_int(
-            payload, "responsabile_risorsa_umana_id", function_name=function_name,
-        )
-        if responsabile_id is not None:
-            persona = AnagraficheService().get_risorsa_umana_lookup(responsabile_id)
-            ErrorManager.require(
-                persona is not None and bool(persona.get("attivo")),
-                code="E_COMMESSA_VALIDATION",
-                message=(
-                    "Il responsabile deve essere una risorsa umana attiva."
-                    if persona is not None else "Responsabile non trovato."
-                ),
-                context={
-                    "field": "responsabile_risorsa_umana_id",
-                    "commessa_id": commessa_id,
-                    "responsabile_risorsa_umana_id": responsabile_id,
-                },
-                function_name=function_name,
-                log_to_db=True,
-            )
-        dati["responsabile_risorsa_umana_id"] = responsabile_id
-
-    ErrorManager.require(
-        bool(dati),
-        code="E_COMMESSA_VALIDATION",
-        message="Nessun campo aggiornabile nel payload commessa.",
-        context={"commessa_id": commessa_id, "allowed_keys": sorted(_TESTATA_KEYS)},
-        function_name=function_name,
-        log_to_db=True,
-    )
 
     repo = CommesseRepository()
     with translate_db_errors(
@@ -613,7 +607,16 @@ def aggiorna_commessa_testata(commessa_id: int, payload: dict[str, Any]) -> dict
 #        push/emittibilita', es. →PRONTA_FATTURAZIONE) che il guard DB
 #        accetterebbe (valida la coppia, non il flag `manuale`). L'UPDATE
 #        effettivo + le precondizioni di matrice restano a `fn_cambia_stato_commessa`.
-def cambia_stato_commessa(*, commessa_id: int, nuovo_stato: str, user: str | None = None) -> dict:
+#        ⭐ ANNULLATA passa SEMPRE dal verbo `vendite.fn_annulla_commessa`
+#        (brief-db-annullo-a-valle-riapre-a-monte D-2): con righe NON_EMESSA
+#        il DB rifiuta (E_DOC_ANNULLO_CON_LEGAMI, `confirm_and_retry`) finche'
+#        la richiesta non dichiara `legami_confermati`, il numero letto da
+#        `get_legami`; il verbo ritira i legami (riapre a monte) e cambia lo
+#        stato. Stessa forma di bolla, ordine, preventivo e contratto.
+def cambia_stato_commessa(
+    *, commessa_id: int, nuovo_stato: str, user: str | None = None,
+    legami_confermati: Any = None,
+) -> dict:
     _guard_commessa_id(commessa_id, function_name="vendite.commesse_service.cambia_stato_commessa")
     nuovo_stato = (nuovo_stato or "").strip()
     ErrorManager.require(
@@ -660,9 +663,49 @@ def cambia_stato_commessa(*, commessa_id: int, nuovo_stato: str, user: str | Non
         log_to_db=True,
     )
 
+    if nuovo_stato == STATO_ANNULLATA:
+        confermati = dichiarazione_legami(
+            legami_confermati, validation_code="E_COMMESSA_VALIDATION",
+            function_name="vendite.commesse_service.cambia_stato_commessa",
+        )
+        with translate_db_errors(
+            context={"op": "annulla_commessa", "commessa_id": commessa_id},
+            fallback_code="E_COMMESSA_VALIDATION",
+            fallback_message="Commessa non annullata.",
+        ):
+            repo.annulla(commessa_id, confermati)
+        # Stessa forma della risposta del cambio di stato: chi chiama non sa
+        # (e non deve sapere) che l'annullo e' passato da un verbo.
+        return {
+            "commessa_id": commessa_id,
+            "stato_da": capabilities.get("stato_codice"),
+            "stato_a": STATO_ANNULLATA,
+        }
+
     return repo.cambia_stato_commessa(
         commessa_id=commessa_id, nuovo_stato=nuovo_stato, user=user,
     )
+
+
+# Scopo: I legami della commessa per la finestra di conferma dell'annullo (BB
+#        `legami_del_documento`): le righe NON_EMESSA, ciascuna col documento
+#        (o il consumo, il reso) da cui viene, o l'onere che si annulla. Prima
+#        la testata: il lettore del DB e' SECURITY DEFINER e non applica il
+#        perimetro (fuori perimetro = 404, come ogni dettaglio by-id).
+def get_legami(commessa_id: int) -> dict[str, Any]:
+    function_name = "vendite.commesse_service.get_legami"
+    _guard_commessa_id(commessa_id, function_name=function_name)
+    repo = CommesseRepository()
+    if repo.get_commessa_stato_codice(commessa_id) is None:
+        ErrorManager.raise_error(
+            code="E_COMMESSA_NOT_FOUND",
+            message="Commessa non trovata.",
+            detail=f"Nessuna commessa con id={commessa_id}",
+            context={"commessa_id": commessa_id},
+            function_name=function_name,
+            log_to_db=True,
+        )
+    return legami_del_documento(SORGENTE_COMMESSA, commessa_id)
 
 
 # Scopo: Helper — valida una lista opzionale di id dal payload (righe_ids,
@@ -972,6 +1015,19 @@ def aggiungi_onere_commessa(
     }
 
 
+# Scopo: il verso dell'elenco attivita' (`asc`/`desc`) da passare alla fn DB,
+#        che senza direzione parte crescente (`COALESCE(p_order_dir,'asc')`).
+# ⛔ Lo decide il BB delle liste (`sql_order_direction_lista`), non un default
+#    scritto qui: una colonna data senza direzione parte DESC come in ogni altra
+#    lista. Fino al 2026-10-20 il service passava `order_dir or "asc"`, e la
+#    regola non arrivava mai alla query (brief-be-verifica-documentazione-api §6.1).
+def _verso_attivita(order_by: str | None, order_dir: str | None) -> str:
+    direzione = sql_order_direction_lista(
+        order_by, order_dir, colonne=colonne_identita(*ATTIVITA_SORT_COLUMNS),
+    )
+    return sql_tiebreak_direction(direzione).lower()
+
+
 # Scopo: Restituisce la lista paginata delle attività di una commessa.
 def fn_list_commessa_attivita(
     *,
@@ -992,18 +1048,9 @@ def fn_list_commessa_attivita(
     tetto di pagina qui sotto), fino al tetto della fn DB.
     """
     _guard_commessa_id(commessa_id, function_name="vendite.commesse_service.fn_list_commessa_attivita")
-    # ⚠️ Il tetto di PAGINA vale solo sul percorso paginato: l'export chiede di
-    # proposito piu' righe di una pagina, e la sua misura la governa
-    # `build_export_response` col `count` esatto.
-    ErrorManager.require(
-        max_rows is not None or 1 <= int(limit) <= MAX_LIMIT,
-        code="E_COMMESSA_VALIDATION",
-        message="Parametri non validi.",
-        detail=f"limit deve essere compreso tra 1 e {MAX_LIMIT}",
-        context={"commessa_id": commessa_id, "limit": limit},
-        function_name="vendite.commesse_service.fn_list_commessa_attivita",
-        log_to_db=True,
-    )
+    # ⛔ La finestra (`limit` fra 1 e il tetto, `offset` non negativo) la
+    #    valida la view con `pagina_da_query`, che dal 2026-10-21 risponde 400
+    #    sul fuori limite (Tid): qui era una seconda copia, irraggiungibile.
     # Ordinamento validato PRIMA di toccare il DB (un parametro sbagliato non
     # deve costare un round-trip): whitelist ATTIVITA_SORT_COLUMNS, specchio
     # della mappa chiusa dentro la fn. None = ordine storico ca.id.
@@ -1019,6 +1066,17 @@ def fn_list_commessa_attivita(
         function_name="vendite.commesse_service.fn_list_commessa_attivita",
         nullable=True,
     )
+    # I due stati della riga nel loro vocabolario (specchi dei CHECK), o un 400
+    # sul campo: prima un valore sbagliato rispondeva lista vuota (2026-10-20).
+    for nome, valore, ammessi in (
+        ("stato_emissione", stato_emissione, STATI_EMISSIONE_ATTIVITA),
+        ("stato_approvazione", stato_approvazione, STATI_APPROVAZIONE_ATTIVITA),
+    ):
+        validate_enum_param(
+            valore, allowed=ammessi, param_name=nome,
+            error_code="E_COMMESSA_VALIDATION",
+            function_name="vendite.commesse_service.fn_list_commessa_attivita",
+        )
     # Filtro movimento: vocabolario chiuso, validato PRIMA del round-trip come
     # l'ordinamento. ⚠️ Vuoto e None sono la STESSA cosa — «tutti i movimenti» —
     # e non un valore da validare: un filtro azzerato dal frontend arriva come
@@ -1050,7 +1108,7 @@ def fn_list_commessa_attivita(
         limit=limit,
         offset=offset,
         order_by=order_by,
-        order_dir=order_dir or "asc",
+        order_dir=_verso_attivita(order_by, order_dir),
         tipo_movimento=tipo_movimento,
         max_rows=max_rows,
     )
@@ -1293,7 +1351,12 @@ def fn_riallinea_prezzo(
     versione_attuale = provenienza["listino_versione_id"]
     versione_cambiata = versione_originale is not None and versione_attuale != versione_originale
 
-    if versione_cambiata and not payload.get("conferma_versione_diversa"):
+    # ⛔ Dal BB: col test di verita' la stringa "false" valeva una conferma.
+    #    Col codice del dominio e senza log a DB, come le altre validazioni qui.
+    conferma = _V_TESTATA.optional_bool(
+        payload, "conferma_versione_diversa", log_to_db=False,
+    ) is True
+    if versione_cambiata and not conferma:
         return {
             "versione_cambiata": True,
             "versione_originale_id": versione_originale,
@@ -1561,11 +1624,6 @@ def _assert_annullabile(
     )
 
 
-# Tetto di pagina del registro. ⚠️ Non e' il tetto della query (500, nel
-# repository): questo risponde 400 e DICE il limite, quello clampa in silenzio
-# — due regole diverse, e la seconda esiste solo perche' un chiamante interno
-# non possa chiedere tutto il log di una commessa grande.
-_REGISTRO_MAX_LIMIT = MAX_LIMIT
 
 
 # Scopo: Il REGISTRO di una commessa — gli eventi scritti dal database sulle sue
@@ -1588,22 +1646,9 @@ def fn_commessa_registro(
     limit: int = DEFAULT_LIMIT_EVENTI,
     offset: int = 0,
 ) -> dict[str, Any]:
-    ErrorManager.require(
-        1 <= int(limit) <= _REGISTRO_MAX_LIMIT,
-        code="E_COMMESSA_VALIDATION",
-        message="Parametro limit non valido.",
-        detail=f"limit deve essere fra 1 e {_REGISTRO_MAX_LIMIT}.",
-        context={"limit": limit},
-        function_name="vendite.commesse_service.fn_commessa_registro",
-    )
-    ErrorManager.require(
-        int(offset) >= 0,
-        code="E_COMMESSA_VALIDATION",
-        message="Parametro offset non valido.",
-        detail="offset deve essere >= 0.",
-        context={"offset": offset},
-        function_name="vendite.commesse_service.fn_commessa_registro",
-    )
+    # ⛔ La finestra (`limit` fra 1 e il tetto, `offset` non negativo) la
+    #    valida la view con `pagina_da_query`, che dal 2026-10-21 risponde 400
+    #    sul fuori limite (Tid): qui era una seconda copia, irraggiungibile.
     rows, total = CommesseRepository().list_registro_attivita(
         commessa_id,
         commessa_attivita_id=commessa_attivita_id,

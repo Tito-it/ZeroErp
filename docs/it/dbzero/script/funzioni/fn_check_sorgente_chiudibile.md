@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_sorgente_chiudibile(p_sorgente_tipo_id bigint, p_sorgen
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_sorgente_chiudibile(p_sorgente_tipo_id bigint, p_sorgente_uid text)
  RETURNS jsonb
@@ -89,6 +91,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_sorgente_chiudibile(p_sorgente_tipo_id bigint, p_sorgente_uid text)
 IS 'Elenca i motivi che impediscono di CHIUDERE (annullare) un documento che ha spinto righe in commessa. Funzione PURA: nessuna scrittura e nessun raise di dominio — chi ferma solleva il primo motivo, e chi disegna l''interfaccia li mostra tutti. ⭐ Oggi il motivo e'' UNO: ci sono righe di commessa gia'' EMESSA. Quelle non si ritirano — sono in volo verso una fattura — e finche'' ci sono la testata non si chiude. ⭐ E dal lotto L5 quel rifiuto ha una VIA D''USCITA, che il messaggio nomina: «Riporta da emettere» riporta la riga a NON_EMESSA, e da li'' il ritiro la prende. Prima di L5 non ce n''era una, ed e'' il motivo per cui E_PREV_ANNULLA_COMMESSA_EMESSA era un vicolo cieco. ⭐ UNA primitiva per tutte le sorgenti, non una per documento: la sorgente e'' polimorfa e la coppia (sorgente_tipo_id, sorgente_uid) e'' gia'' la chiave che tutto il dominio usa; sei copie divergerebbero. ⛔ LA CHIAVE, e non e'' un dettaglio: si legge vendite.commesse_attivita, dove sorgente_uid porta <testata>.uid::text per TUTTE le sorgenti — verificato sul contratto, cioe'' sul corpo di fn_list_ordini_da_pushare, fn_list_preventivi_da_pushare, fn_list_ddt_da_pushare, fn_list_contratti_da_pushare e fn_list_consumi_da_pushare, che compongono tutte x.uid::text. ⚠️ NON e'' la chiave di vendite.commesse_sorgenti, che VARIA per sorgente (uid per il preventivo, id::text per l''ordine): e'' la ragione per cui fn_check_preventivo_annullabile confronta v_uid::text mentre fn_check_ordine_annullabile confronta p_ordine_id::text — le due non sono in disaccordo, ognuna segue la chiave della propria sorgente. Chi chiama QUESTA funzione deve passare <testata>.uid::text, perche'' sbagliare la chiave non produce un errore: produce ZERO motivi, cioe'' un freno che lascia passare tutto. ℹ️ Non conta le righe gia'' ANNULLATA (sono uscite di proposito) ne'' le NON_EMESSA (sono proprio quelle che il ritiro portera'' via). ⚠️ E non raggiunge le righe SOURCELESS — ONERE e RETTIFICA — perche'' non hanno sorgente: e'' corretto, e va detto invece che lasciato dedurre. Piano: brief-db-lavoro-che-non-torna-indietro, L7 / Q-5'' strada A.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

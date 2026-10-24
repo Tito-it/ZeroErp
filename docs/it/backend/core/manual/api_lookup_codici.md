@@ -37,8 +37,12 @@ Query string:
 | `order_dir`  | string  | No           | `asc`         | Valori ammessi: `asc`, `desc`                     |
 | `attivo_only`| bool    | No           | `true`        | Se `false`, include anche record non attivi       |
 | `includi_obsoleti`| bool | No        | `true`        | Se `false`, esclude le voci obsolete (`obsoleto_dal <= oggi`) |
-| `page`       | int     | No           | `1`           | Pagina (>= 1)                                     |
-| `page_size`  | int     | No           | `50`          | Righe per pagina (1-200)                          |
+| `limit`      | int     | No           | `25`          | Righe per pagina, max 200                         |
+| `offset`     | int     | No           | `0`           | Righe da saltare                                  |
+
+⛔ `page`/`page_size` in query sono un 400 `E_VALIDATION_INPUT` dal 2026-10-21
+(prima erano il contratto di questa lookup). La risposta porta ancora `page` e
+`page_size`, ricavati dall'offset (`envelope_da_offset`).
 
 ### Validazione Python dei parametri
 
@@ -47,15 +51,15 @@ valida i seguenti parametri con `ErrorManager.require`:
 
 - **`order_col`**: deve appartenere al set `{"codice", "descrizione"}`.
 - **`order_dir`**: deve appartenere al set `{"asc", "desc"}`.
-- **`page`**: deve essere >= 1.
-- **`page_size`**: deve essere compreso tra 1 e 200.
 
 La lista di **`rel`** (`config.tabelle_gestibili`, colonna `lookup`) la controlla invece il
 repository (`DbopsRepository.list_lookup_codici`), prima di qualunque query sulla tabella.
 
-Qualsiasi valore fuori range genera errore `E_CORE_VALIDATION` (HTTP 400) prima che la query
-raggiunga il database. Un `page` o `page_size` **non numerico** e' rifiutato gia' dalla view,
-con `E_VALIDATION_INPUT` (HTTP 400).
+Un ordinamento fuori whitelist genera errore `E_CORE_VALIDATION` (HTTP 400) prima che la
+query raggiunga il database. La finestra la legge la view con `pagina_da_query`: un `limit` o
+`offset` **non intero** e' un `E_VALIDATION_INPUT` (HTTP 400), e dal 2026-10-21 anche un
+valore fuori limiti (`limit` fuori da 1..200: `limit_fuori_limiti_1_200`; `offset` negativo:
+`offset_negativo`), che prima si riportava nei limiti in silenzio.
 
 ## Output
 
@@ -64,7 +68,7 @@ con `E_VALIDATION_INPUT` (HTTP 400).
   "data": {
     "count": 3,
     "page": 1,
-    "page_size": 50,
+    "page_size": 25,
     "total_pages": 1,
     "results": [
       {"id": 1, "codice": "SDI_OK",  "codice_interno": "001", "descrizione": "Consegnato"},
@@ -94,7 +98,7 @@ Una pagina oltre l'ultima risponde `results: []` col **`count` vero**: la pagina
 passa dal BB `fetch_paged_with_total`, e quando è vuota il totale lo ricalcola il
 conteggio di ripiego sullo stesso frammento FROM+WHERE. Vale per il ramo generico e
 per gli specializzati. Fino al 2026-09-28 rispondeva `count: 0` e `total_pages: 0`
-(F-8 dell'[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+(F-8 dell'[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 ## Lookup specializzati (colonna extra)
 
@@ -209,7 +213,7 @@ endpoint dedicato.
 | Codice              | HTTP | Causa                                          |
 |---------------------|------|------------------------------------------------|
 | `E_CORE_VALIDATION` | 400  | `rel` fuori lista, parametri non validi        |
-| `E_VALIDATION_INPUT` | 400 | `page` / `page_size` non numerici              |
+| `E_VALIDATION_INPUT` | 400 | `limit` / `offset` non interi o fuori limiti, `page` / `page_size` presenti, flag non booleani |
 | `E_LOOKUP_STRUTTURA_TABELLA_INVALIDA` | 500 | `fn_get_lookup_codici` rifiuta la struttura della tabella (colonne mancanti) |
 | codice del DB / `E_DATABASE` | secondo il catalogo | altri rifiuti della funzione DB: passa il codice applicativo se il DB lo dichiara, altrimenti `E_DATABASE` (400) o `E_DATABASE_RETRYABLE` (409) |
 | `E_GENERICO`        | 500  | Errore imprevisto non di database              |

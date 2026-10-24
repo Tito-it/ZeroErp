@@ -1,5 +1,15 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
+--   l'ordine nato dall'offerta porta documento_origine_tipo = OFFERTA_COMMERCIALE, il
+--   codice della sorgente (era OFFERTA: ora la FK verso config.sorgenti lo rifiuta).
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le offerte nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano
+--   gia' ACCETTATA o RIFIUTATA).
+-- ⚠️ rev 2026-10-21 (brief-db-offerta-emissione-ed-erogazione §H.3 H-R3, 20261021-58):
+--   da ACCETTATA si esce anche annullando (transizione ACCETTATA->ANNULLATA). I test 8
+--   e 12 non vedono piu' available_actions=[]: c'e' «annulla», SPENTA col motivo
+--   DOCUMENTI_VIVI perche' l'offerta vive nel contratto o nell'ordine generato.
 -- pgTAP test per Zero ERP
 -- Test: script.fn_available_actions_offerta — capability layer offerte commerciali
 -- ------------------------------------------------------------
@@ -13,16 +23,18 @@
 --  7) ACCETTATA senza contratto ne' ordine: can_push_contratto=true, push_contratto presente
 --  8) ACCETTATA con contratto generato (mutua esclusivita'): can_push_contratto=false
 --     E can_genera_ordine=false, entrambi reason='OFFERTA_CONTRATTO_GIA_GENERATO',
---     push_contratto E genera_ordine assenti -> available_actions=[]
+--     push_contratto E genera_ordine assenti; available_actions = [annulla SPENTA,
+--     reason DOCUMENTI_VIVI] (rev 2026-10-21)
 --  9) Terminale (RIFIUTATA): available_actions=[], can_edit_testata=false,
 --     can_push_contratto=false, non_editable_fields lista lunga
 -- 10) Tutte le label_key in available_actions iniziano per 'vendite.offerte.'
 -- 11) ACCETTATA senza ordine ne' contratto: can_genera_ordine=true, reason null, genera_ordine presente
 -- 12) ACCETTATA con ordine generato (mutua esclusivita'): can_genera_ordine=false
 --     E can_push_contratto=false, entrambi reason='OFFERTA_ORDINE_GIA_GENERATO',
---     genera_ordine E push_contratto assenti -> available_actions=[]
+--     genera_ordine E push_contratto assenti; available_actions = [annulla SPENTA,
+--     reason DOCUMENTI_VIVI] (rev 2026-10-21)
 -- 13) non ACCETTATA (BOZZA): can_genera_ordine=false, reason='OFFERTA_NON_ACCETTATA'
--- 14) Indice: secondo ordine ('OFFERTA', X) viola uq_ordini_v_documento_origine_offerta
+-- 14) Indice: secondo ordine ('OFFERTA_COMMERCIALE', X) viola uq_ordini_v_documento_origine_offerta
 -- 15) Indice: due ordini ('PREVENTIVO', Y) consentiti (indice non li vincola)
 -- 16a/16b) BOZZA senza listino_versione_id su un listino con una versione in
 --     vigore: azione verso EMESSA ACCESA, nessun motivo. ⚠️ Rev 2026-10-07
@@ -165,8 +177,8 @@ UPDATE vendite.offerte_commerciali
    SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_aa_ctx)
  WHERE id = (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'EMESSA');
 
--- Slot ACCT-1: INSERT diretto in ACCETTATA, senza contratto (test 7)
--- INSERT bypass il trigger BEFORE UPDATE: stato direttamente terminale.
+-- Slot ACCT-1: ACCETTATA senza contratto (test 7). Nasce in BOZZA e
+-- arriva ad ACCETTATA per la matrice (rev 2026-10-24).
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
@@ -174,13 +186,17 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva,
-           DATE '2084-01-01', ctx.stato_accettata_id
+           DATE '2084-01-01', ctx.stato_bozza_id
       FROM tmp_aa_ctx ctx
     RETURNING id
 )
 INSERT INTO tmp_aa_ids SELECT 'ACCT-1', id FROM ins;
 
--- Slot ACCT-2: INSERT diretto in ACCETTATA, poi fn_push genera il contratto (test 8)
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id, 'ACCETTATA')
+  FROM tmp_aa_ids i
+ WHERE i.slot = 'ACCT-1';
+
+-- Slot ACCT-2: ACCETTATA per la matrice, poi fn_push genera il contratto (test 8)
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
@@ -188,11 +204,15 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva,
-           DATE '2085-01-01', ctx.stato_accettata_id
+           DATE '2085-01-01', ctx.stato_bozza_id
       FROM tmp_aa_ctx ctx
     RETURNING id
 )
 INSERT INTO tmp_aa_ids SELECT 'ACCT-2', id FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id, 'ACCETTATA')
+  FROM tmp_aa_ids i
+ WHERE i.slot = 'ACCT-2';
 
 -- Genera il contratto da ACCT-2 tramite fn_push (p_pratica_id = NULL).
 SELECT vendite.fn_push_offerta_a_contratto(
@@ -200,7 +220,7 @@ SELECT vendite.fn_push_offerta_a_contratto(
     NULL
 );
 
--- Slot RIFIUTATA: INSERT diretto in RIFIUTATA (terminale, test 9)
+-- Slot RIFIUTATA: RIFIUTATA per la matrice (terminale, test 9)
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
@@ -208,14 +228,18 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva,
-           DATE '2086-01-01', ctx.stato_rifiutata_id
+           DATE '2086-01-01', ctx.stato_bozza_id
       FROM tmp_aa_ctx ctx
     RETURNING id
 )
 INSERT INTO tmp_aa_ids SELECT 'RIFIUTATA', id FROM ins;
 
--- Slot ACCT-ORD: ACCETTATA con un ordine gia' generato
--- (documento_origine = ('OFFERTA', id)) -> genera_ordine NON disponibile
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id, 'RIFIUTATA')
+  FROM tmp_aa_ids i
+ WHERE i.slot = 'RIFIUTATA';
+
+-- Slot ACCT-ORD: ACCETTATA (per la matrice) con un ordine gia' generato
+-- (documento_origine = ('OFFERTA_COMMERCIALE', id)) -> genera_ordine NON disponibile
 -- (test 12) e secondo ordine bloccato dall'indice (test 14).
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
@@ -224,11 +248,15 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva,
-           DATE '2087-01-01', ctx.stato_accettata_id
+           DATE '2087-01-01', ctx.stato_bozza_id
       FROM tmp_aa_ctx ctx
     RETURNING id
 )
 INSERT INTO tmp_aa_ids SELECT 'ACCT-ORD', id FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id, 'ACCETTATA')
+  FROM tmp_aa_ids i
+ WHERE i.slot = 'ACCT-ORD';
 
 -- Ordine collegato all'offerta ACCT-ORD (documento_origine OFFERTA).
 -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1/D-6): col BA del cliente, quello
@@ -240,7 +268,7 @@ INSERT INTO vendite.ordini (
 )
 SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
        od.stato_draft_ordine_id, od.valuta_id, DATE '2087-01-02', false,
-       'OFFERTA', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
+       'OFFERTA_COMMERCIALE', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
   FROM tmp_aa_ord od;
 
 -- ============================================================
@@ -354,8 +382,9 @@ SELECT ok(
 -- TEST 8) ACCETTATA con contratto generato (mutua esclusivita'):
 --         contratto presente, NESSUN ordine. push_contratto bloccato dal proprio
 --         contratto; genera_ordine ANCHE bloccato (own-doc first -> reason del
---         contratto). Entrambe le azioni speciali assenti e ACCETTATA non ha
---         transizioni manuali -> available_actions=[].
+--         contratto). Entrambe le azioni speciali assenti; l'unica transizione
+--         manuale da ACCETTATA (annulla, rev 2026-10-21) e' SPENTA col motivo
+--         DOCUMENTI_VIVI: l'offerta vive nel contratto.
 -- ============================================================
 SELECT ok(
     (SELECT
@@ -367,13 +396,14 @@ SELECT ok(
          AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_genera_ordine')::boolean IS FALSE
          AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_genera_ordine_reason')
              = 'OFFERTA_CONTRATTO_GIA_GENERATO'
-         -- entrambe le azioni speciali assenti -> available_actions vuoto
-         AND jsonb_array_length(
-                 script.fn_available_actions_offerta(o.offerta_id)->'available_actions'
-             ) = 0
+         -- entrambe le azioni speciali assenti: resta solo annulla, SPENTA
+         AND (SELECT jsonb_agg(jsonb_build_array(a->>'key', a->>'enabled', a->>'reason'))
+                FROM jsonb_array_elements(
+                         script.fn_available_actions_offerta(o.offerta_id)->'available_actions') a)
+             = '[["annulla", "false", "DOCUMENTI_VIVI"]]'::jsonb
        FROM tmp_aa_ids o WHERE o.slot = 'ACCT-2'
     ),
-    '8) ACCETTATA con contratto (mutua esclusivita): push E ordine bloccati, reason=OFFERTA_CONTRATTO_GIA_GENERATO, available_actions=[]'
+    '8) ACCETTATA con contratto (mutua esclusivita): push E ordine bloccati, reason=OFFERTA_CONTRATTO_GIA_GENERATO, resta solo annulla spenta (DOCUMENTI_VIVI)'
 );
 
 -- ============================================================
@@ -437,8 +467,9 @@ SELECT ok(
 -- TEST 12) ACCETTATA con ordine generato (mutua esclusivita'):
 --          ordine presente, NESSUN contratto. genera_ordine bloccato dal proprio
 --          ordine; push_contratto ANCHE bloccato (own-doc first -> reason
---          dell'ordine). Entrambe le azioni speciali assenti e ACCETTATA non ha
---          transizioni manuali -> available_actions=[].
+--          dell'ordine). Entrambe le azioni speciali assenti; l'unica transizione
+--          manuale da ACCETTATA (annulla, rev 2026-10-21) e' SPENTA col motivo
+--          DOCUMENTI_VIVI: l'offerta vive nell'ordine.
 -- ============================================================
 SELECT ok(
     (SELECT
@@ -450,13 +481,14 @@ SELECT ok(
          AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_push_contratto')::boolean IS FALSE
          AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_push_contratto_reason')
              = 'OFFERTA_ORDINE_GIA_GENERATO'
-         -- entrambe le azioni speciali assenti -> available_actions vuoto
-         AND jsonb_array_length(
-                 script.fn_available_actions_offerta(o.offerta_id)->'available_actions'
-             ) = 0
+         -- entrambe le azioni speciali assenti: resta solo annulla, SPENTA
+         AND (SELECT jsonb_agg(jsonb_build_array(a->>'key', a->>'enabled', a->>'reason'))
+                FROM jsonb_array_elements(
+                         script.fn_available_actions_offerta(o.offerta_id)->'available_actions') a)
+             = '[["annulla", "false", "DOCUMENTI_VIVI"]]'::jsonb
        FROM tmp_aa_ids o WHERE o.slot = 'ACCT-ORD'
     ),
-    '12) ACCETTATA con ordine (mutua esclusivita): ordine E push bloccati, reason=OFFERTA_ORDINE_GIA_GENERATO, available_actions=[]'
+    '12) ACCETTATA con ordine (mutua esclusivita): ordine E push bloccati, reason=OFFERTA_ORDINE_GIA_GENERATO, resta solo annulla spenta (DOCUMENTI_VIVI)'
 );
 
 -- ============================================================
@@ -474,7 +506,7 @@ SELECT ok(
 );
 
 -- ============================================================
--- TEST 14) Indice: secondo ordine ('OFFERTA', X) sull'offerta ACCT-ORD
+-- TEST 14) Indice: secondo ordine ('OFFERTA_COMMERCIALE', X) sull'offerta ACCT-ORD
 --          (che ne ha gia' uno) viola uq_ordini_v_documento_origine_offerta.
 -- ============================================================
 SELECT throws_ok(
@@ -486,7 +518,7 @@ SELECT throws_ok(
         )
         SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
                od.stato_draft_ordine_id, od.valuta_id, DATE '2087-01-03', false,
-               'OFFERTA', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
+               'OFFERTA_COMMERCIALE', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
           FROM tmp_aa_ord od
     $sql$,
     '23505',

@@ -13,7 +13,8 @@ determinato dai campi nullable: `soggetto_id` (sempre presente),
 `soggetto_ruolo_id` (se livello ruolo), `istanza_utility_id` (se specifico istanza).
 
 L'autenticazione avviene tramite token JWT. Le risposte seguono l'envelope
-standard `{"data": ...}`.
+standard `{"data": ..., "meta": {...}}`. Permesso: area `anagrafiche`
+(`DomainAPIView`).
 
 ## Base URL
 
@@ -46,6 +47,9 @@ Restituisce i contatti del ruolo con cascata per `tipo_contatto_id`.
 | 2 | Ruolo generico | `istanza_utility_id IS NULL`, tipo non coperto da L1 | `ruolo` | Si` |
 | 3 | Soggetto | `soggetto_ruolo_id IS NULL`, tipo non coperto da L1+L2 | `soggetto` | No |
 
+Ai livelli 2 e 3 i contatti con `tipo_contatto_id` NULL sono scartati (non
+possono "coprire" un tipo); al livello 1 restano tutti.
+
 ### Risposta (200)
 
 ```json
@@ -64,6 +68,7 @@ Restituisce i contatti del ruolo con cascata per `tipo_contatto_id`.
         "tipo_contatto_descrizione": "Referente commerciale",
         "unita_organizzativa_id": null,
         "istanza_utility_id": 100,
+        "utility_codice": "ELE",
         "fonte": "istanza"
       }
     ],
@@ -120,6 +125,14 @@ era scritta nella view).
 
 Ownership check su `soggetto_ruolo_id`.
 
+Chiavi ammesse nel corpo: `nominativo`, `email`, `telefono`, `cellulare`, `pec`,
+`tipo_contatto_id`, `unita_organizzativa_id`, `note`. Una chiave fuori elenco
+(compreso `istanza_utility_id`) → `400 E_ANAG_VALIDAZIONE`; un corpo vuoto pure
+(dal 2026-10-20: prima 404).
+
+Risposta (200): `{"data": {"updated": true}}`. Contatto inesistente o di un
+altro ruolo → `404 E_ANAG_NOT_FOUND`.
+
 ---
 
 ## 4. Elimina contatto ruolo
@@ -129,7 +142,8 @@ Ownership check su `soggetto_ruolo_id`.
 | **Metodo** | `DELETE` |
 | **URL** | `/api/v1/anagrafiche/ruoli/{soggetto_ruolo_id}/contatti/{contatto_id}/` |
 
-Ownership check su `soggetto_ruolo_id`.
+Ownership check su `soggetto_ruolo_id`. Risposta (200): `{"data": {"deleted": true}}`.
+Contatto inesistente o di un altro ruolo → `404 E_ANAG_NOT_FOUND`.
 
 ---
 
@@ -146,5 +160,6 @@ Ownership check su `soggetto_ruolo_id`.
 - Changeset DB: `20260325-01-replace-utility-with-istanza-contatti-mctit.yaml` (schema)
 - Changeset DB: `20260325-06-recreate-contatti-chain-istanza-mctit.yaml` (funzioni)
 - 3 partial unique index sostituiscono il vecchio `uq_contatti_multilevel`
-- Il JOIN a `config.utilities` e` stato rimosso — `utility_codice` non e` piu` esposto
+- `utility_codice` e` esposto: si ricava dall'istanza del contatto (dati
+  precontrattuali, altrimenti billing account); NULL per i contatti senza istanza
 - Il pattern cascata e` condiviso con indirizzi ruolo e conti bancari ruolo

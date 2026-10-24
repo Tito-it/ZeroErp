@@ -6,6 +6,8 @@ CREATE FUNCTION fn_cleanup_triggers_suffix_2(p_dry_run boolean, p_schema text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_cleanup_triggers_suffix_2(p_dry_run boolean DEFAULT true, p_schema text DEFAULT NULL::text)
  RETURNS TABLE(schema_name text, table_name text, old_name text, new_name text, action text, notes text, sql text)
@@ -119,6 +121,8 @@ AS $function$
   END;
   $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

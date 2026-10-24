@@ -1,6 +1,6 @@
 # Guida Tecnica – API Commesse (DB layer)
 
-> **Ultimo aggiornamento**: 14 settembre 2026
+> **Ultimo aggiornamento**: 12 ottobre 2026
 >
 > Destinatari: sviluppatori backend e database di Zero ERP
 >
@@ -12,7 +12,7 @@
 > * [vendite.stati_commessa](/dbzero/vendite/tabelle/stati_commessa)
 > * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)
 > * [vendite.commesse_sorgenti](/dbzero/vendite/tabelle/commesse_sorgenti)
-> * [API stato commessa](/backend/vendite/manual/api_commessa_stato) — `GET/POST …/stato/` e `PATCH /commesse/<id>/`
+> * [API stato commessa](/backend/vendite/manual/api_commessa_stato) — `GET/POST …/stato/`, `GET …/legami/` e `PATCH /commesse/<id>/`
 > * [API lookup risorse umane](/backend/anagrafiche/manual/api_risorse_umane_lookup) — il picker del responsabile
 > * [BoMComponentExpander (catalogo BB backend)](/dev/backend/catalogo-building-block-backend) — espansione compositi nella pipeline push
 
@@ -103,6 +103,74 @@ non la legge prende il rifiuto del guard, e ha ragione lui.
 
 > Le righe (`commesse_attivita`) hanno due assi indipendenti: `stato_approvazione`
 > (BOZZA→APPROVATA) e `stato_emissione` (NON_EMESSA→EMESSA).
+
+### Annullare una commessa
+
+Fra due documenti collegati c'è un verso **in avanti** (a monte → a valle) e un verso
+**all'indietro**. La commessa sta a valle di tutto ciò che la riempie: preventivi,
+ordini, contratti, bolle, consumi, le rettifiche dei resi, gli oneri.
+
+* **In avanti è bloccato.** Una commessa con righe già **emesse** (in volo verso una
+  fattura) non si annulla: `E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE`
+  ([script.fn_check_commessa_annullabile](/dbzero/script/funzioni/fn_check_commessa_annullabile)),
+  e l'azione «Annulla commessa» è spenta col motivo. Si sistema prima il documento a
+  valle.
+* **All'indietro riapre, con la segnalazione.** Una commessa con righe **non ancora
+  emesse** si annulla con la **conferma**: chi annulla vede che cosa si riapre e dove,
+  e conferma.
+
+Che cosa succede a ogni riga non emessa (un **legame** per riga, letto da
+[vendite.fn_documento_legami](/dbzero/vendite/funzioni/fn_documento_legami)`('COMMESSA', id)`):
+
+| La riga viene da | Annullando la commessa |
+| --- | --- |
+| un preventivo, un ordine, un contratto, una bolla | la riga esce dalla commessa (`ANNULLATA`, col registro) e il documento torna **da mandare in commessa**. Il preventivo `EVASO` torna `ACCETTATO` |
+| un consumo | il consumo torna da mandare in commessa |
+| la rettifica di un reso | l'accredito si annulla: il reso torna **da accreditare** |
+| un onere | non c'è niente a monte: l'onere **si annulla** con la commessa |
+
+⚠️ **L'ordine non cambia stato.** `EVASO` vuol dire «la merce è partita», e lo dicono
+solo le bolle: né l'invio in commessa né il suo annullo lo toccano. Le righe dell'ordine
+tornano semplicemente da mandare.
+
+⭐ **Si torna indietro di un passo alla volta.** Nella catena preventivo → ordine →
+commessa, annullare la commessa riapre solo l'ordine: il preventivo non si muove, le
+sue righe le usa ancora l'ordine.
+
+La strada è una sola, il verbo
+[vendite.fn_annulla_commessa](/dbzero/vendite/funzioni/fn_annulla_commessa)`(id, legami_confermati)`:
+prima ciò che vieta (righe emesse), poi la conferma — chi conferma **dichiara quanti
+legami ha visto**; se nel frattempo sono cambiati, il DB chiede di nuovo — poi il
+ritiro e lo stato `ANNULLATA`, in una transazione. Ogni altra strada che porta la
+commessa ad `ANNULLATA` con righe non emesse è rifiutata dall'avviso
+`E_DOC_ANNULLO_CON_LEGAMI` (guard `trg_commesse_m10_guard_annullo_con_legami_upd`): è
+lo stesso meccanismo di bolla, ordine, preventivo e contratto, e a video la stessa
+finestra di conferma. Per questo una commessa annullata non ha mai righe `NON_EMESSA`.
+
+⭐ **Una riga ritirata non occupa il documento.** Una riga di commessa `ANNULLATA` non
+conta come «già mandata» ([script.fn_get_stato_push_segment](/dbzero/script/funzioni/fn_get_stato_push_segment),
+la sede unica letta dai lister e dal pannello di smistamento): è ciò che fa tornare il
+documento da mandare.
+
+⭐ **Il documento si rimanda in un'altra commessa.** Il legame documento → commessa
+([vendite.commesse_sorgenti](/dbzero/vendite/tabelle/commesse_sorgenti)) **resta come
+storia** anche dopo l'annullo o la chiusura: il lineage del documento mostra tutte le sue
+commesse. La regola è che un documento sta in **una sola commessa aperta alla volta**
+(`E_COMMESSA_SORGENTE_ALTRA_COMMESSA`); quale sia la dice
+[vendite.fn_commessa_viva_di_sorgente](/dbzero/vendite/funzioni/fn_commessa_viva_di_sorgente).
+Il legame nasce insieme alla riga, dentro
+[vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita):
+nessun invio può dimenticarlo.
+
+#### L'eccezione: il documento con righe in una commessa viva
+
+L'inverso — annullare un **preventivo, un ordine o una bolla** che hanno righe in una
+commessa viva, non ancora emesse — **non è bloccato**: si annulla con la conferma, e le
+sue righe escono dalla commessa; le righe degli altri documenti restano. È voluto: la
+commessa raccoglie righe di più documenti dello stesso cliente, e il blocco
+costringerebbe ad annullare l'intera commessa o a togliere le righe una a una, che il
+modello vieta (`vendite.fn_annulla_commessa_attivita` rifiuta le righe con sorgente).
+Il blocco resta dove la riga è già emessa.
 
 ---
 
@@ -278,8 +346,7 @@ SELECT vendite.fn_get_or_create_commessa(
 | `p_competenza_mese`    |      no      | Normalizzato al primo del mese                      |
 | `p_stato_approvazione` |      no      | Default `BOZZA`                                     |
 | `p_stato_emissione`    |      no      | Default `NON_EMESSA`                                |
-| `p_tipo_movimento`     |      no      | `NORMALE` o `RETTIFICA` (salvato in meta)           |
-| `p_tipo_consumo`       |      no      | `ACCONTO`, `CONGUAGLIO`, `STORNO` (salvato in meta) |
+| `p_tipo_movimento`     |      no      | `NORMALE`, `RETTIFICA` o `ONERE` (colonna)          |
 
 **Ritorna**: `commessa_attivita_id`.
 
@@ -457,7 +524,8 @@ FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
 
 | Funzione                                                                            | Scopo                                                                                 |
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| [`fn_link_commessa_sorgente`](/dbzero/vendite/funzioni/fn_link_commessa_sorgente)   | Collega una sorgente alla commessa. **Ruolo auto-deciso a DB** `ROOT`/`COLLEGATO`     |
+| [`fn_link_commessa_sorgente`](/dbzero/vendite/funzioni/fn_link_commessa_sorgente)   | Collega una sorgente alla commessa. **Ruolo auto-deciso a DB** `ROOT`/`COLLEGATO`. La chiama la madre delle righe, non chi invia |
+| [`fn_commessa_viva_di_sorgente`](/dbzero/vendite/funzioni/fn_commessa_viva_di_sorgente) | La commessa **aperta** di un documento, o `NULL` (i legami verso commesse chiuse o annullate restano come storia) |
 | [`fn_start_commessa_push_run`](/dbzero/vendite/funzioni/fn_start_commessa_push_run) | **Apre** il giro di push: la riga nasce in testa alla corsa, in stato `IN_ESECUZIONE` |
 | [`fn_close_commessa_push_run`](/dbzero/vendite/funzioni/fn_close_commessa_push_run) | **Chiude** lo stesso giro con il suo esito, il risultato per handler e la durata      |
 
@@ -525,15 +593,9 @@ commessa_id = db.call_fn("vendite.fn_get_or_create_commessa",
     p_competenza_al=al
 )
 
-# 2. Collega sorgente (se primo push)
-db.call_fn("vendite.fn_link_commessa_sorgente",
-    p_commessa_id=commessa_id,
-    p_sorgente_tipo_id=sorgente_id,
-    p_sorgente_uid=doc_uid,
-    p_ruolo_link='ROOT'
-)
-
-# 3. Upsert righe
+# 2. Upsert righe: per una riga con sorgente documento la madre scrive anche
+#    il legame documento -> commessa (fn_link_commessa_sorgente), e rifiuta se
+#    il documento sta gia' in un'altra commessa aperta
 for riga in righe_documento:
     db.call_fn("vendite.fn_upsert_commessa_attivita",
         p_commessa_id=commessa_id,
@@ -542,14 +604,29 @@ for riga in righe_documento:
         ...
     )
 
-# 4. Chiusura del giro (aperto PRIMA del punto 1 con fn_start_commessa_push_run)
+# 3. Chiusura del giro (aperto PRIMA del punto 1 con fn_start_commessa_push_run)
 db.call_fn("vendite.fn_close_commessa_push_run",
     p_id=push_log_id,          # l'id restituito dall'apertura
     p_stato="COMPLETATO",      # oppure PARZIALE / ERRORE
     p_risultato=esiti_per_handler,
     p_durata_ms=durata,
 )
+
+# 4. Giro COMPLETATO: per ogni commessa toccata, le righe di QUESTO invio
+#    approvate e la testata a PRONTA_FATTURAZIONE (gia' pronta: non si ritenta)
+db.call_fn("vendite.fn_rendi_commessa_emittibile",
+    p_commessa_id=commessa_id,
+    p_righe_ids=righe_di_questo_invio,   # mai le righe di terzi in attesa
+    p_user=utente,
+)
 ```
+
+> ⭐ **Il verso in avanti verso la commessa sta nel DB, come il ritorno.** Il passo 4 è
+> una madre DB: «le righe di questo invio» le conosce solo chi orchestra, quindi la
+> chiama il backend. Il preventivo passa da `ACCETTATO` a `EVASO` da solo: il trigger
+> delle righe di commessa lo riproietta dal residuo sulle due strade (merce da ordinare,
+> servizi da mandare: `vendite.fn_preventivo_proietta_stato_smistamento`), lo stesso che
+> lo riporta ad `ACCETTATO` quando una riga esce. L'ordine non cambia stato.
 
 > ⚠️ **Il giro si apre prima, non si registra dopo.** L'esempio sopra mostra solo
 > la chiusura: l'apertura (`fn_start_commessa_push_run`) è la prima cosa che fa

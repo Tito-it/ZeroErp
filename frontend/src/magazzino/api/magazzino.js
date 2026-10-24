@@ -20,16 +20,10 @@
 // ------------------------------------------------------------
 
 import api from '../../core/api'
-import { generateIdempotencyKey } from '../../core/utils/idempotency'
 import { FAMIGLIA } from '../vocabolari'
 
 const BASE = '/magazzino'
 
-// Scopo: header di una scrittura. Il backend dichiara `require_idempotency_key`
-//        su tutte le POST/DELETE che muovono stato: senza, rispondono 400.
-function idem() {
-  return { headers: { 'Idempotency-Key': generateIdempotencyKey() } }
-}
 
 // Scopo: il prefisso di una famiglia: `/magazzino/inventari` | `/magazzino/rettifiche`.
 function base(famiglia) {
@@ -61,7 +55,7 @@ export function exportDocumenti(famiglia, params = {}) {
 //    PATCH non lo accetta. Payload: `magazzino_id` (obbligatorio), `data`
 //    (default oggi, a DB), `descrizione` (solo inventario), `meta`.
 export function creaDocumento(famiglia, payload) {
-  return api.post(`${base(famiglia)}/`, payload, idem())
+  return api.post(`${base(famiglia)}/`, payload)
 }
 
 // Dettaglio: testata + magazzino (`magazzino_codice`, `_descrizione`,
@@ -86,13 +80,13 @@ export function aggiornaDocumento(famiglia, docId, payload) {
 // fuori da `DRAFT`). ⚠️ Il metodo dice il verbo: niente `/elimina/` nel path.
 // E' una scrittura, quindi porta l'`Idempotency-Key` come le POST.
 export function eliminaDocumento(famiglia, docId) {
-  return api.delete(`${base(famiglia)}/${docId}/`, idem())
+  return api.delete(`${base(famiglia)}/${docId}/`)
 }
 
 // Chiede un cambio di stato fra i RICHIEDIBILI (`CONFIRM` · `CANCEL` · `DRAFT`);
 // la matrice la applica il guard (`E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA`).
 export function cambiaStatoDocumento(famiglia, docId, stato) {
-  return api.post(`${base(famiglia)}/${docId}/stato/`, { stato }, idem())
+  return api.post(`${base(famiglia)}/${docId}/stato/`, { stato })
 }
 
 // ⛔ IL POSTING, l'unico gesto irreversibile del dominio: una `SELECT` sulla
@@ -100,8 +94,8 @@ export function cambiaStatoDocumento(famiglia, docId, stato) {
 //    righe, righe non postabili — TUTTO, lo stato resta `CONFIRM`. Risposta:
 //    `{movimenti: [{movimento_id, riga_id, qta}], n_movimenti, documento}`.
 //    Gate: azione di processo `registra_magazzino` (R-3, fail-closed).
-export function registraDocumento(famiglia, docId) {
-  return api.post(`${base(famiglia)}/${docId}/registra/`, {}, idem())
+export function registraDocumento(famiglia, docId, config = {}) {
+  return api.post(`${base(famiglia)}/${docId}/registra/`, {}, config)
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -129,7 +123,7 @@ export function exportRighe(famiglia, docId, params = {}) {
 //    `DRAFT`, il piano la dichiara `NON_POSTABILE`, il form la MOSTRA con
 //    `motiviRiga`. Solo in `DRAFT`: fuori, `E_MAG_DOCUMENTO_RIGHE_CONGELATE`.
 export function creaRiga(famiglia, docId, payload) {
-  return api.post(`${base(famiglia)}/${docId}/righe/`, payload, idem())
+  return api.post(`${base(famiglia)}/${docId}/righe/`, payload)
 }
 
 // PATCH parziale della riga; `null` esplicito AZZERA un nullable (togliere il lotto).
@@ -138,7 +132,7 @@ export function aggiornaRiga(famiglia, docId, rigaId, payload) {
 }
 
 export function eliminaRiga(famiglia, docId, rigaId) {
-  return api.delete(`${base(famiglia)}/${docId}/righe/${rigaId}/`, idem())
+  return api.delete(`${base(famiglia)}/${docId}/righe/${rigaId}/`)
 }
 
 // ⭐ IL PIANO dell'inventario (solo `inventari`): che cosa il posting scrivera',
@@ -223,6 +217,19 @@ export function listBlocchi(articoloId, magazzinoId) {
   })
 }
 
+// APRE un blocco manuale (Lotto 3 R-5, verbo `magazzino.fn_apri_blocco`):
+// { magazzino_id, articolo_id, qta (positiva), soggetto_ruolo_id?, nota?,
+// lotto_id?, asset_id?, ubicazione_id? }. Per chi (soggetto) o perche' (nota):
+// lo pretende il DB. Azione `blocca_merce`.
+export function apriBlocco(payload) {
+  return api.post(`${BASE}/disponibilita/blocchi/`, payload)
+}
+
+// LIBERA un blocco manuale (autore, momento e nota li scrive il verbo).
+export function liberaBlocco(bloccoId, nota = null) {
+  return api.post(`${BASE}/disponibilita/blocchi/${bloccoId}/libera/`, { nota })
+}
+
 // IL REGISTRO dei movimenti — lista `magazzino.movimenti`, sola lettura per
 // costruzione. Filtri: `magazzino_id`, `articolo_id`, `causale_id`, `data_da`/
 // `data_a` (su `data_mov`), `sorgente_tipo` (`config.sorgenti.codice_interno`),
@@ -268,7 +275,7 @@ export function getMagazzino(magazzinoId) {
 //    `usa_ubicazioni`, `predefinito`. ⛔ NON `emittente_fiscale_id`: lo mette il
 //    DB dall'emittente della sessione.
 export function creaMagazzino(payload) {
-  return api.post(`${BASE}/magazzini/`, payload, idem())
+  return api.post(`${BASE}/magazzini/`, payload)
 }
 
 // PATCH per DELTA: solo le chiavi che cambiano — il lock su `codice` scatta
@@ -296,7 +303,7 @@ export function getUbicazione(magazzinoId, ubicazioneId) {
 // (dello stesso magazzino, senza cicli: lo decide il DB), `descrizione`,
 // `area`/`corsia`/`scaffale`/`piano`/`posizione`.
 export function creaUbicazione(magazzinoId, payload) {
-  return api.post(`${BASE}/magazzini/${magazzinoId}/ubicazioni/`, payload, idem())
+  return api.post(`${BASE}/magazzini/${magazzinoId}/ubicazioni/`, payload)
 }
 
 // PATCH per delta. ⛔ Non `magazzino_id`: un'ubicazione nasce nel suo magazzino.
@@ -324,7 +331,7 @@ export function getLotto(lottoId) {
 // Crea: `articolo_id`, `codice`, `data_arrivo` (obbligatori), `data_scadenza`
 // (>= arrivo: lo dice il CHECK, il BE traduce).
 export function creaLotto(payload) {
-  return api.post(`${BASE}/lotti/`, payload, idem())
+  return api.post(`${BASE}/lotti/`, payload)
 }
 
 // PATCH per delta. ⛔ Non `articolo_id`: un lotto nasce del suo articolo.

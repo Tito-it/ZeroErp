@@ -15,6 +15,7 @@ from typing import Any, cast
 
 from django.db import connection
 
+from apps.config.sorgenti import SORGENTE_PREVENTIVO
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
@@ -30,6 +31,7 @@ from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
+from apps.vendite.db._lineage_sintesi import unisci_sintesi_lineage
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
 from apps.vendite.db._righe_repo_mixin import (
     COLONNE_RIGHE_COMMERCIALI,
@@ -124,6 +126,8 @@ PREVENTIVO_REVISIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data"})
 # gratis da is_attiva). Nessun UPDATE del link, nessun trigger: risoluzione a
 # read-time (Fase 4 uniformità pratica preventivi). Interpolato come costante
 # (nessun input utente) → S608 ok.
+# ⚠️ Il frammento porta UN parametro, il codice della sorgente
+# (`SORGENTE_PREVENTIVO`): va PRIMO nella lista, prima di quelli del chiamante.
 _ROOT_PREVENTIVO_ATTIVO_FROM = """
     FROM pratiche.pratiche_sorgenti ps
     JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
@@ -132,7 +136,7 @@ _ROOT_PREVENTIVO_ATTIVO_FROM = """
       ON p_attivo.numero = p_link.numero
      AND p_attivo.emittente_fiscale_id = p_link.emittente_fiscale_id
      AND p_attivo.is_attiva
-    WHERE s.codice_interno = 'PREVENTIVO'
+    WHERE s.codice_interno = %s
       AND ps.ruolo_link = 'ROOT'
 """
 
@@ -178,6 +182,9 @@ class PreventiviRepository(
     _righe_ordinamento = _ORDER_COLS_RIGHE
     _righe_ricerca = _RICERCA_RIGHE
     _righe_colonne_desc = ("data_consegna_richiesta_cliente",)
+    # Le date di consegna in blocco (BB `scrivi_data_consegna`): la sola
+    # richiesta, che segue il lock delle righe (solo bozza).
+    _righe_date_consegna = {"data_consegna_richiesta_cliente": None}
 
     # Configurazione mixin componenti.
     _componenti_table_name = "vendite.preventivi_righe_componenti"
@@ -192,12 +199,7 @@ class PreventiviRepository(
     # Configurazione mixin indirizzi documento.
     _indirizzi_table = "vendite.preventivi_indirizzi"
     _indirizzi_fk_documento = "preventivo_id"
-    _indirizzi_ambito = "PREVENTIVI"
-    _indirizzi_documento_table = "vendite.preventivi"
-    # Precontrattuale: l'istanza si sceglie prima che esista un BA ed e'
-    # congelata in testata → e' quella che dà la precedenza nella risoluzione
-    # indirizzi (fallback `ba.istanza_utility_id`).
-    _indirizzi_doc_istanza_column = "istanza_utility_id"
+    _indirizzi_documento = SORGENTE_PREVENTIVO
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_preventivi_lista)
@@ -311,9 +313,10 @@ class PreventiviRepository(
         # (frontend-standards "REGOLA CRITICA: Paginazione deterministica").
         # Senza id, righe con stessa data/numero (es. revisioni) possono
         # comparire duplicate o sparire fra pagine consecutive.
-        # ⭐ Il chip transito legge `frontiera_tipo_codice_interno` dalla vista
-        # (20260829-02): mai id numerici verso il FE, e mai una decodifica
-        # ricopiata per lista (memoria feedback_no_hardcoded_ids).
+        # ⭐ Il chip transito legge `frontiera_tipo_codice_interno` dalla
+        # sintesi lineage (unita dopo la paginazione, sotto): mai id numerici
+        # verso il FE, e mai una decodifica ricopiata per lista (memoria
+        # feedback_no_hardcoded_ids).
         data_sql = f"""
             SELECT v.*
             FROM vendite.vw_preventivi_lista v
@@ -330,6 +333,9 @@ class PreventiviRepository(
             cursor.execute(data_sql, [*params, safe_limit, safe_offset])
             results = rows_to_list(cursor)
 
+        # Le colonne del grafo dalla sintesi, per le chiavi della pagina
+        # (brief-db-lineage-seminata-per-chiave B1): la vista non le porta piu'.
+        unisci_sintesi_lineage(results, tipo_codice_interno=SORGENTE_PREVENTIVO)
         return cast("list[PreventivoListRow]", results), total_count
 
     # Scopo: Restituisce dettaglio singolo preventivo con tutte le decodifiche.
@@ -481,6 +487,8 @@ class PreventiviRepository(
     #        script.fn_resolve_emittente_for_user. Va passato esplicito solo
     #        per il caso admin globale (utente senza emittente assegnato che
     #        sceglie l'emittente del documento).
+    #        Lo stato non si scrive: lo mette il DB, lo stato iniziale del
+    #        vocabolario (`script.trgfn_doc_stato_iniziale`).
     def create_preventivo(
         self,
         *,
@@ -494,7 +502,6 @@ class PreventiviRepository(
         validita_al: date | None = None,
         competenza_mese: date | None = None,
         fatturazione_immediata: bool = False,
-        stato_doc_preventivo_id: int,
         meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         sql = """
@@ -503,9 +510,9 @@ class PreventiviRepository(
                 emittente_fiscale_id,
                 valuta_id, termine_pagamento_id,
                 validita_dal, validita_al, competenza_mese,
-                fatturazione_immediata, stato_doc_preventivo_id, meta
+                fatturazione_immediata, meta
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
             )
             RETURNING id, uid::text AS uid, numero
         """
@@ -515,7 +522,7 @@ class PreventiviRepository(
                 emittente_fiscale_id,
                 valuta_id, termine_pagamento_id,
                 validita_dal, validita_al, competenza_mese,
-                fatturazione_immediata, stato_doc_preventivo_id,
+                fatturazione_immediata,
                 json.dumps(meta or {}),
             ])
             result = row_to_dict(cursor)
@@ -565,7 +572,7 @@ class PreventiviRepository(
     def get_preventivo_id_by_pratica_root(self, pratica_id: int) -> int | None:
         sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.pratica_id = %s LIMIT 1"
         with connection.cursor() as cursor:
-            cursor.execute(sql, [pratica_id])
+            cursor.execute(sql, [SORGENTE_PREVENTIVO, pratica_id])
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
@@ -578,7 +585,7 @@ class PreventiviRepository(
     def get_preventivo_id_by_flusso_root(self, flusso_id: int) -> int | None:
         sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.flusso_id = %s LIMIT 1"
         with connection.cursor() as cursor:
-            cursor.execute(sql, [flusso_id])
+            cursor.execute(sql, [SORGENTE_PREVENTIVO, flusso_id])
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
@@ -598,14 +605,14 @@ class PreventiviRepository(
               JOIN vendite.preventivi p_in
                 ON p_in.numero = p_link.numero
                AND p_in.emittente_fiscale_id = p_link.emittente_fiscale_id
-             WHERE s.codice_interno = 'PREVENTIVO'
+             WHERE s.codice_interno = %s
                AND ps.ruolo_link = 'ROOT'
                AND ps.flusso_id IS NOT NULL
                AND p_in.id = %s
              LIMIT 1
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [preventivo_id])
+            cursor.execute(sql, [SORGENTE_PREVENTIVO, preventivo_id])
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
@@ -626,14 +633,14 @@ class PreventiviRepository(
               JOIN vendite.preventivi p_in
                 ON p_in.numero = p_link.numero
                AND p_in.emittente_fiscale_id = p_link.emittente_fiscale_id
-             WHERE s.codice_interno = 'PREVENTIVO'
+             WHERE s.codice_interno = %s
                AND ps.ruolo_link = 'ROOT'
                AND p_in.id = %s
              ORDER BY ps.id DESC
              LIMIT 1
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [preventivo_id])
+            cursor.execute(sql, [SORGENTE_PREVENTIVO, preventivo_id])
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
@@ -666,6 +673,22 @@ class PreventiviRepository(
             result = row_to_dict(cursor)
             assert result is not None
             return result
+
+    # Scopo: Annulla il preventivo via il verbo DB `vendite.fn_annulla_preventivo`
+    #        (brief-db-annullo-documento-con-legami): con legami (righe di
+    #        commessa da emettere) `legami_confermati` dichiara quanti
+    #        l'operatore ne ha visti; se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI.
+    #        Lo stato passa ad ANNULLATO coi guard della tabella (matrice e
+    #        `script.fn_check_preventivo_annullabile`).
+    # Ritorna: i legami confermati (0 se non ce n'erano).
+    def annulla(self, preventivo_id: int, legami_confermati: int | None) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_annulla_preventivo(%s, %s)",
+                [int(preventivo_id), legami_confermati],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
 
     # Scopo: Crea nuova revisione invocando la funzione DB.
     # Copia testata + righe attive + indirizzi, disattiva revisione precedente.
@@ -762,10 +785,12 @@ class PreventiviRepository(
                    c.riga_preventivo_id,
                    r.preventivo_id,
                    sdp.codice_interno AS stato_codice_interno,
-                   -- L'etichetta del rifiuto di stato («Preventivo 2026/00012»,
-                   -- o «Preventivo #131» se NULL): senza, il guard delle righe
-                   -- in bozza ripiega sull'id anche su un preventivo emesso.
-                   p.numero
+                   -- L'etichetta del rifiuto di stato («Preventivo 2026/00012
+                   -- rev. 1», o «Preventivo #131 rev. 0» se NULL): senza, il
+                   -- guard delle righe in bozza ripiega sull'id anche su un
+                   -- preventivo emesso, e senza `rev` non dice quale revisione.
+                   p.numero,
+                   p.rev
               FROM vendite.preventivi_righe_componenti c
               JOIN vendite.preventivi_righe r ON r.id = c.riga_preventivo_id
               JOIN vendite.preventivi p       ON p.id = r.preventivo_id
@@ -1043,7 +1068,7 @@ class PreventiviRepository(
 
     # Scopo: Ramo MERCE dello split preventivo (brief-preventivi-ordini.md D8):
     #        delega a vendite.fn_push_preventivo_a_ordine. Copia le righe con
-    #        natura destinazione_tipo='ORDINE' ancora residue verso un nuovo
+    #        natura destinazione_tipo='ORDINE_VENDITA' ancora residue verso un nuovo
     #        ordine DRAFT (snapshot prezzi + BoM), con idempotenza A LIVELLO RIGA
     #        (ordini_righe.preventivo_riga_id). Se `pratica_id` e' valorizzato la
     #        fn DB aggancia anche pratiche_sorgenti (preventivo ROOT + ordine
@@ -1110,7 +1135,7 @@ class PreventiviRepository(
             return rows_to_list(cursor)
 
     # Scopo: Predicato residuo MERCE (D6) — TRUE se restano righe natura
-    #        destinazione_tipo='ORDINE' non ancora allocate a un ordine.
+    #        destinazione_tipo='ORDINE_VENDITA' non ancora allocate a un ordine.
     #        Condiviso tra il dispatch del ramo ordine (decide se invocare
     #        push_a_ordine) e il gate EVASO (evadi solo a residuo nullo).
     def preventivo_ha_residuo_ordine(self, preventivo_id: int) -> bool:
@@ -1379,21 +1404,4 @@ class PreventiviRepository(
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
             return cast("list[PreventivoPraticaRow]", rows_to_list(cursor))
-
-    # ══════════════════════════════════════════════════════════
-    #  LOOKUP — Risoluzione config per creazione
-    # ══════════════════════════════════════════════════════════
-
-    # Scopo: Restituisce l'id dello stato DRAFT (bozza) da config.stati_doc_preventivi.
-    # Usa codice_interno (immutabile) per lookup applicativi.
-    def get_stato_bozza_id(self) -> int | None:
-        sql = """
-            SELECT id FROM config.stati_doc_preventivi
-            WHERE codice_interno = 'DRAFT' AND attivo = true
-            LIMIT 1
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql)
-            row = cursor.fetchone()
-            return row[0] if row else None
 

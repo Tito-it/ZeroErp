@@ -1,0 +1,518 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# TIPO_CONSUMO SI RITIRA — 1/8: LA MADRE DEL PUSH
+#   vendite.fn_upsert_commessa_attivita: via p_tipo_consumo, il suo controllo
+#   (ACCONTO / CONGUAGLIO / STORNO) e la chiave in meta.
+#   Decisione A di Tid (2026-10-13), dalla segnalazione BE sugli smoke del
+#   2026-10-13 (push batch CONTRATTO in ERRORE: «tipo_consumo non valido»).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   tipo_consumo non e' una colonna: la madre lo scriveva solo in meta, e
+#   nessuna funzione, vista, servizio o componente lo legge. Il vocabolario
+#   che la madre pretendeva non lo produce nessuna sorgente con un
+#   significato: preventivi, ordini e DDT mandano la costante CONGUAGLIO, i
+#   contratti l'erogazione della riga (dal 2026-02-25: prima CANONE, dal
+#   2026-10-04 il valore della riga) e i consumi 'CONSUMO', che la madre
+#   rifiuta. Il push dei contratti e dei consumi non e' mai arrivato in
+#   commessa da questa porta. Due significati nella stessa colonna, e
+#   nessuno dei due letto: l'erogazione ha gia' la sua casa,
+#   meta.tipo_erogazione (la scrive il lister dei contratti).
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   DROP + CREATE: p_tipo_consumo sta IN MEZZO alla firma, e una firma
+#   diversa con CREATE OR REPLACE sarebbe un overload. Il DROP nomina i tipi
+#   risolti (regprocedure del vivo). Firma con i %TYPE e corpo dal 20261012-46,
+#   confrontato identico al vivo su zeroerp_ci il 2026-10-13. COMMENT: il vivo
+#   + la rev.
+#   ⭐ La chiave si toglie anche dal meta in ingresso: il reso ricopia il meta
+#   della riga d'origine. Le righe gia' scritte NON si bonificano: sono la
+#   fotografia di quell'invio, e un UPDATE di massa su commesse_attivita fa
+#   scattare i trigger «padre attivo», lo storico e l'audit.
+#
+# ── CHIAMANTI ───────────────────────────────────────────────────────
+#   Censiti sul nome il 2026-10-13. Passano p_tipo_consumo (nominale) e vanno
+#   ritoccati: vendite.fn_batch_upsert_commessa_attivita (-17), il builder
+#   dbops.fn_pgtap_crea_commessa_attivita (-18), 33 pgTAP, e il backend
+#   (CommesseRepository.upsert_attivita + smoke): richiesta al team BE.
+#   ⚠️ Fino al rilascio BE il push dal backend risponde «la funzione non
+#   esiste»: DB e BE vanno applicati insieme.
+#   Non lo passano (nessun ritocco): fn_accredita_riga_reso,
+#   fn_aggiungi_onere_commessa.
+#
+# Verifica: db/pgtap/vendite/test-push-contratto-dalla-madre-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261013-16-update-fn-upsert-commessa-attivita-senza-tipo-consumo-mctit.yaml
+
+  - changeSet:
+      id: 20261013-16-update-fn-upsert-commessa-attivita-senza-tipo-consumo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_upsert_commessa_attivita: ritirato p_tipo_consumo (DROP + CREATE), col suo
+        controllo e la chiave in meta, che si toglie anche dal meta in ingresso. Decisione A di Tid,
+        2026-10-13: il push di contratti e consumi era rifiutato dalla madre.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_catalog.pg_proc p WHERE p.oid::regprocedure::text = 'vendite.fn_upsert_commessa_attivita(bigint,character varying,uuid,bigint,date,bigint,numeric,date,date,date,numeric,numeric,character varying,character varying,numeric,bigint,bigint,smallint,integer,numeric,bigint,numeric,date,bigint,integer,bigint,bigint,boolean,character varying,boolean,character varying,character varying,bigint,text,character varying,character varying,jsonb,bigint,bigint,bigint,bigint)'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ MAI con CASCADE: niente dipende da questa firma in pg_depend (tutti i
+              --    chiamanti sono plpgsql), e un CASCADE farebbe sparire in silenzio
+              --    l'oggetto che un giorno ne dipendera'.
+              DROP FUNCTION IF EXISTS vendite.fn_upsert_commessa_attivita(bigint,character varying,uuid,bigint,date,bigint,numeric,date,date,date,numeric,numeric,character varying,character varying,numeric,bigint,bigint,smallint,integer,numeric,bigint,numeric,date,bigint,integer,bigint,bigint,boolean,character varying,boolean,character varying,character varying,bigint,text,character varying,character varying,jsonb,bigint,bigint,bigint,bigint);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_upsert_commessa_attivita(
+                  -- ⚠️ Tipi ANCORATI con %TYPE (linee-guida-sql §5b): parametri,
+                  --    RETURNS TABLE, DECLARE e COMMENT. Un tipo scritto a mano
+                  --    smette di seguire la colonna il giorno in cui la colonna
+                  --    cambia, e il disallineamento non solleva nulla: fa un cast
+                  --    implicito. ⚠️ Il %TYPE in FIRMA e' pero' una FOTOGRAFIA:
+                  --    si risolve al CREATE e non si riaggancia da solo — chi
+                  --    cambia una di queste colonne deve ricreare la funzione.
+                  --    ⚠️ I typmod non sopravvivono nella firma (PostgreSQL li
+                  --    scarta sugli argomenti): numeric(18,6)%TYPE diventa
+                  --    `numeric`, ed e' il motivo per cui il DROP qui sopra
+                  --    nomina i tipi RISOLTI.
+                  p_commessa_id                   vendite.commesse_attivita.commessa_id%TYPE,
+                  p_segment_key                   vendite.commesse_attivita.segment_key%TYPE,
+                  p_articolo_id                   vendite.commesse_attivita.articolo_id%TYPE,
+                  p_istanza_utility_id            vendite.commesse_attivita.istanza_utility_id%TYPE,
+                  p_data_attivita                 vendite.commesse_attivita.data_attivita%TYPE,
+                  p_uom_id                        vendite.commesse_attivita.uom_id%TYPE,
+                  p_quantita                      vendite.commesse_attivita.quantita%TYPE,
+                  p_competenza_mese               vendite.commesse_attivita.competenza_mese%TYPE,
+                  p_competenza_dal                vendite.commesse_attivita.competenza_dal%TYPE,
+                  p_competenza_al                 vendite.commesse_attivita.competenza_al%TYPE,
+                  p_prezzo_snapshot               vendite.commesse_attivita.prezzo_snapshot%TYPE,
+                  p_prezzo_base_snapshot          vendite.commesse_attivita.prezzo_base_snapshot%TYPE,
+                  p_origine_prezzo                vendite.commesse_attivita.origine_prezzo%TYPE,
+                  p_tipo_variazione_applicata     vendite.commesse_attivita.tipo_variazione_applicata%TYPE,
+                  p_valore_variazione_applicata   vendite.commesse_attivita.valore_variazione_applicata%TYPE,
+                  p_promo_id                      vendite.commesse_attivita.promo_id%TYPE,
+                  p_contratto_id                  vendite.commesse_attivita.contratto_id%TYPE,
+                  p_categoria_cliente_id_snapshot vendite.commesse_attivita.categoria_cliente_id_snapshot%TYPE,
+                  p_classe_utenza_id_snapshot     vendite.commesse_attivita.classe_utenza_id_snapshot%TYPE,
+                  p_qta_operativa                 vendite.commesse_attivita.qta_operativa%TYPE               DEFAULT NULL,
+                  p_uom_operativa_id              vendite.commesse_attivita.uom_operativa_id%TYPE            DEFAULT NULL,
+                  p_factor_to_base                vendite.commesse_attivita.factor_to_base%TYPE              DEFAULT 1,
+                  p_posticipa_al                  vendite.commesse_attivita.posticipa_al%TYPE                DEFAULT NULL,
+                  p_tipo_doc_fiscale_id           vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE         DEFAULT NULL,
+                  p_valuta_id                     vendite.commesse_attivita.valuta_id%TYPE                   DEFAULT NULL,
+                  p_area_geografica_id            vendite.commesse_attivita.area_geografica_id%TYPE          DEFAULT NULL,
+                  p_listino_versione_id           vendite.commesse_attivita.listino_versione_id%TYPE         DEFAULT NULL,
+                  p_prezzo_bloccato               vendite.commesse_attivita.prezzo_bloccato%TYPE             DEFAULT false,
+                  p_pricing_mode                  vendite.commesse_attivita.pricing_mode%TYPE                DEFAULT 'FIXED',
+                  p_prezzo_da_riallineare         vendite.commesse_attivita.prezzo_da_riallineare%TYPE       DEFAULT false,
+                  p_stato_approvazione            vendite.commesse_attivita.stato_approvazione%TYPE          DEFAULT 'BOZZA',
+                  p_stato_emissione               vendite.commesse_attivita.stato_emissione%TYPE             DEFAULT 'NON_EMESSA',
+                  p_sorgente_tipo_id              vendite.commesse_attivita.sorgente_tipo_id%TYPE            DEFAULT NULL,
+                  p_sorgente_uid                  vendite.commesse_attivita.sorgente_uid%TYPE                DEFAULT NULL,
+                  p_tipo_movimento                vendite.commesse_attivita.tipo_movimento%TYPE              DEFAULT 'NORMALE',
+                  p_meta                          vendite.commesse_attivita.meta%TYPE                        DEFAULT '{}'::jsonb,
+                  p_causale_onere_id              vendite.commesse_attivita.causale_onere_id%TYPE            DEFAULT NULL,
+                  p_natura_doc_id                 vendite.commesse_attivita.natura_doc_id%TYPE               DEFAULT NULL,
+                  p_fattura_riga_rettificata_id   vendite.commesse_attivita.fattura_riga_rettificata_id%TYPE DEFAULT NULL,
+                  -- rev 2026-10-09: la riga di listino che ha dato il prezzo. In CODA e con
+                  --    DEFAULT NULL: i chiamanti esistenti non cambiano (brief-db-riga-listino-
+                  --    propagata-dalla-commessa R-1).
+                  p_listino_riga_id               vendite.commesse_attivita.listino_riga_id%TYPE             DEFAULT NULL
+              )
+               RETURNS TABLE(attivita_id vendite.commesse_attivita.id%TYPE, is_new boolean)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_attivita_id              vendite.commesse_attivita.id%TYPE;
+                v_is_new                   boolean;
+                v_existing_stato_emissione vendite.commesse_attivita.stato_emissione%TYPE;
+                v_modificabile             vendite.stati_commessa.modificabile%TYPE;
+                v_competenza_mese          vendite.commesse_attivita.competenza_mese%TYPE;
+                v_tipo_doc_fiscale_id      vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE;
+                v_tipo_movimento           vendite.commesse_attivita.tipo_movimento%TYPE;
+                v_natura_doc_id            vendite.commesse_attivita.natura_doc_id%TYPE;
+                v_meta_effective           jsonb;
+              BEGIN
+                -- =========================================================
+                -- Upsert idempotente su (commessa_id, segment_key) con
+                -- snapshot pricing v5 obbligatorio.
+                -- Return: (attivita_id, is_new) tramite xmax=0.
+                -- rev 2026-08-18 (brief nota di credito, N1b+N5): la riga
+                -- porta anche la NATURA del documento che produrra'
+                -- (FATTURA / NOTA_CREDITO / ...) e, per una rettifica, la
+                -- riga di fattura che sta correggendo.
+                -- rev 2026-10-09 (brief-db-riga-listino-propagata-dalla-commessa,
+                -- R-1): la riga porta anche la RIGA DI LISTINO da cui viene il
+                -- prezzo. E' il legame che vendite.trgfn_listini_righe_guard_stato
+                -- guarda per dire «propagata»: senza, nessuna riga di listino
+                -- usata da una commessa risultava tale, e la rettifica N6 la
+                -- lasciava modificare.
+                -- =========================================================
+
+                -- Validazione parametri obbligatori "core".
+                -- E_PARAMETRO_INVALIDO ha 1 %s (descrizione del parametro);
+                -- il jsonb context conserva il dettaglio strutturato.
+                IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','commessa_id','valore',p_commessa_id),
+                    NULL::uuid, 'commessa_id obbligatorio (>0)'
+                  );
+                END IF;
+
+                IF p_segment_key IS NULL OR btrim(p_segment_key) = '' OR length(btrim(p_segment_key)) > 128 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','segment_key','valore',p_segment_key),
+                    NULL::uuid, 'segment_key non valida (vuota o > 128 char)'
+                  );
+                END IF;
+
+                IF p_uom_id IS NULL OR p_uom_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','uom_id','valore',p_uom_id),
+                    NULL::uuid, 'uom_id obbligatorio (>0)'
+                  );
+                END IF;
+
+                IF p_istanza_utility_id IS NULL OR p_istanza_utility_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','istanza_utility_id','valore',p_istanza_utility_id),
+                    NULL::uuid, 'istanza_utility_id obbligatoria (>0)'
+                  );
+                END IF;
+
+                -- ⚠️ La quantita' puo' essere NEGATIVA (rettifica di accredito,
+                --    D-NC-2): il predicato e' « = 0 », non « <= 0 ». Non e' una
+                --    svista storica da correggere — e' la porta da cui la nota
+                --    di credito entra senza una seconda pipeline.
+                IF p_quantita IS NULL OR p_quantita = 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','quantita','valore',p_quantita),
+                    NULL::uuid, 'quantita obbligatoria e diversa da 0'
+                  );
+                END IF;
+
+                IF p_prezzo_snapshot IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','prezzo_snapshot'),
+                    NULL::uuid, 'prezzo_snapshot obbligatorio'
+                  );
+                END IF;
+
+                -- Validazione dominio enum snapshot pricing v5: i CHECK DB
+                -- (chk_commesse_attivita_origine_prezzo,
+                --  chk_commesse_attivita_tipo_variazione_applicata) li
+                -- garantirebbero comunque, ma qui la fail-fast e' piu'
+                -- chiara come messaggio.
+                IF p_origine_prezzo IS NOT NULL
+                   AND p_origine_prezzo NOT IN ('PROMO','CONTRATTO_OVERRIDE','CONTRATTO_LISTINO','CATEGORIA','MANUALE') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','origine_prezzo','valore',p_origine_prezzo),
+                    NULL::uuid, concat('origine_prezzo non valida: ', p_origine_prezzo)
+                  );
+                END IF;
+
+                IF p_tipo_variazione_applicata IS NOT NULL
+                   AND p_tipo_variazione_applicata NOT IN ('PERCENTUALE','VALORE_FISSO','PREZZO_FISSO','NESSUNA') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','tipo_variazione_applicata','valore',p_tipo_variazione_applicata),
+                    NULL::uuid, concat('tipo_variazione_applicata non valido: ', p_tipo_variazione_applicata)
+                  );
+                END IF;
+
+                -- Normalizzazione tipo_movimento (COLONNA dal 2026-07-17).
+                -- Dominio tipo_movimento: NORMALE (push, specchio dell'origine) |
+                -- ONERE (porta voce manuale, qta=1) | RETTIFICA (accrediti e
+                -- conguagli). Il CHECK chk_commesse_attivita_tipo_movimento e'
+                -- la difesa finale.
+                v_tipo_movimento := upper(COALESCE(NULLIF(btrim(p_tipo_movimento), ''), 'NORMALE'));
+                IF v_tipo_movimento NOT IN ('NORMALE', 'RETTIFICA', 'ONERE') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','tipo_movimento','valore',v_tipo_movimento),
+                    NULL::uuid, concat('tipo_movimento non valido: ', v_tipo_movimento)
+                  );
+                END IF;
+
+                -- Coerenza causale <-> registro (difesa fail-fast; il CHECK
+                -- chk_commesse_attivita_causale_onere e' la rete finale sul DB).
+                -- La causale appartiene SOLO alle righe ONERE (porta oneri): una
+                -- riga ONERE deve averla, una NORMALE/RETTIFICA non puo'.
+                IF (v_tipo_movimento = 'ONERE') <> (p_causale_onere_id IS NOT NULL) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','causale_onere_id','valore',p_causale_onere_id,'tipo_movimento',v_tipo_movimento),
+                    NULL::uuid, 'causale_onere_id ammessa se e solo se tipo_movimento=ONERE'
+                  );
+                END IF;
+
+                -- NATURA del documento (rev 2026-08-18, D-NC-3). Default
+                -- risolto QUI e non nella firma: un id cablato fra i DEFAULT
+                -- sarebbe una fotografia del catalogo di oggi, e resterebbe
+                -- valido — cioe' sbagliato in silenzio — dopo un reseed.
+                v_natura_doc_id := COALESCE(
+                    p_natura_doc_id,
+                    config.fn_get_natura_doc_fiscale_id('FATTURA'));
+
+                IF v_natura_doc_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_CONFIG_MANCANTE',
+                    jsonb_build_object('parametro','natura_doc_id','valore',p_natura_doc_id),
+                    NULL::uuid, 'natura documento non risolta (config.nature_doc_fiscale)'
+                  );
+                END IF;
+
+                -- Coerenza rettifica <-> riga rettificata (rev 2026-08-18,
+                -- D-NC-9). IMPLICAZIONE, non equivalenza: chi porta la riga
+                -- rettificata E' una rettifica, ma una rettifica puo' non
+                -- nascere da una riga di fattura (conguagli). Il CHECK
+                -- chk_commesse_attivita_rettificata_e_rettifica e' la rete
+                -- finale; qui il messaggio dice QUALE parametro e' incoerente.
+                IF p_fattura_riga_rettificata_id IS NOT NULL
+                   AND v_tipo_movimento <> 'RETTIFICA' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','fattura_riga_rettificata_id',
+                                       'valore',p_fattura_riga_rettificata_id,
+                                       'tipo_movimento',v_tipo_movimento),
+                    NULL::uuid, 'fattura_riga_rettificata_id ammessa solo con tipo_movimento=RETTIFICA'
+                  );
+                END IF;
+
+                v_competenza_mese := date_trunc('month', p_competenza_mese)::date;
+                -- tipo_movimento NON entra piu' in meta: vive sulla colonna
+                -- (una casa sola).
+                -- ⛔ rev 2026-10-13: tipo_consumo e' RITIRATO. La chiave si TOGLIE dal
+                --    meta in ingresso: il reso (fn_accredita_riga_reso) ricopia il meta
+                --    della riga d'origine, e le righe scritte prima di oggi la portano
+                --    ancora. Senza questa sottrazione un valore che nessuno scrive piu'
+                --    continuerebbe a nascere sulle rettifiche. Le righe gia' scritte
+                --    restano come sono: sono la fotografia di quell'invio.
+                v_meta_effective  := COALESCE(p_meta, '{}'::jsonb) - 'tipo_consumo';
+
+                -- Normalize tipo_doc_fiscale_id (NO derivazione di business).
+                -- Se non passato esplicitamente, applica il default OPZIONALE
+                -- configurato sulla sorgente (config.sorgenti.tipo_doc_fiscale_id).
+                -- Single source of truth lato DB. Se la sorgente non ha default,
+                -- resta NULL: l'obbligo di valorizzazione sullo stato emittibile
+                -- (APPROVATA+NON_EMESSA) e' imposto dal guard
+                -- trg_commesse_attivita_a10_guard_tipo_doc_emittibile, non qui.
+                v_tipo_doc_fiscale_id := p_tipo_doc_fiscale_id;
+                IF v_tipo_doc_fiscale_id IS NULL AND p_sorgente_tipo_id IS NOT NULL THEN
+                  SELECT s.tipo_doc_fiscale_id
+                    INTO v_tipo_doc_fiscale_id
+                    FROM config.sorgenti s
+                   WHERE s.id = p_sorgente_tipo_id;
+                END IF;
+
+                -- Guard: commessa esistente e in stato modificabile.
+                SELECT sc.modificabile
+                INTO v_modificabile
+                FROM vendite.commesse c
+                JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id
+                WHERE c.id = p_commessa_id;
+
+                IF NOT FOUND THEN
+                  -- E_COMMESSA_NON_TROVATA: 1 %s = commessa_id.
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_COMMESSA_NON_TROVATA',
+                    jsonb_build_object('commessa_id',p_commessa_id),
+                    NULL::uuid, p_commessa_id::text
+                  );
+                END IF;
+
+                IF NOT v_modificabile THEN
+                  -- E_COMMESSA_NON_MODIFICABILE: 1 %s = commessa_id.
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_COMMESSA_NON_MODIFICABILE',
+                    jsonb_build_object('commessa_id',p_commessa_id),
+                    NULL::uuid, p_commessa_id::text
+                  );
+                END IF;
+
+                -- Guard: riga esistente non gia' emessa.
+                SELECT ca.stato_emissione INTO v_existing_stato_emissione
+                FROM vendite.commesse_attivita ca
+                WHERE ca.commessa_id = p_commessa_id
+                  AND ca.segment_key = btrim(p_segment_key)
+                FOR UPDATE;
+
+                IF v_existing_stato_emissione IS NOT NULL
+                   AND v_existing_stato_emissione <> 'NON_EMESSA' THEN
+                  -- E_COMMESSA_ATTIVITA_GIA_EMESSA: 3 %s = commessa, segment, stato.
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_upsert_commessa_attivita','E_COMMESSA_ATTIVITA_GIA_EMESSA',
+                    jsonb_build_object(
+                      'commessa_id', p_commessa_id,
+                      'segment_key', p_segment_key,
+                      'stato_emissione', v_existing_stato_emissione
+                    ),
+                    NULL::uuid,
+                    p_commessa_id::text,
+                    p_segment_key::text,
+                    v_existing_stato_emissione::text
+                  );
+                END IF;
+
+                -- =========================================================
+                -- ⭐ rev 2026-10-12 (20261012-46, brief-db-annullo-a-valle-
+                --   riapre-a-monte D-13 di Tid): IL LINK DOCUMENTO -> COMMESSA
+                --   NASCE CON LA RIGA. Una riga che viene da un documento
+                --   (sorgente di scope PUSH_COMMESSA: preventivo, ordine,
+                --   contratto, bolla, consumi) aggancia il documento alla
+                --   commessa dalla porta unica, vendite.fn_link_commessa_sorgente:
+                --   idempotente sulla stessa commessa, rifiutata se il documento
+                --   sta gia' in un'altra commessa APERTA (D-12). Prima il link lo
+                --   scriveva il backend, a parte, prima di questa funzione: la
+                --   regola «una sola commessa aperta» valeva solo se chi scriveva
+                --   la riga si ricordava di chiamarlo, e i pgTAP che mandano in
+                --   commessa dalla madre non la attraversavano mai.
+                --   Fuori: le righe senza sorgente (ONERE, RETTIFICA) e le sorgenti
+                --   che non sono documenti spinti in commessa (la COMMESSA stessa,
+                --   PIPELINE_MARKER, che usano le fixture e gli smoke).
+                --   La sorgente si legge per scope, lo stesso vocabolario dichiarato
+                --   in config.sorgenti (chk_sorgenti_scope).
+                -- =========================================================
+                IF p_sorgente_tipo_id IS NOT NULL
+                   AND EXISTS (SELECT 1
+                                 FROM config.sorgenti s
+                                WHERE s.id = p_sorgente_tipo_id
+                                  AND s.scope = 'PUSH_COMMESSA') THEN
+                  PERFORM vendite.fn_link_commessa_sorgente(
+                    p_commessa_id      => p_commessa_id,
+                    p_sorgente_tipo_id => p_sorgente_tipo_id,
+                    p_sorgente_uid     => p_sorgente_uid);
+                END IF;
+
+                -- Upsert idempotente su (commessa_id, segment_key).
+                INSERT INTO vendite.commesse_attivita (
+                  commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
+                  uom_id, quantita, qta_operativa, uom_operativa_id, factor_to_base,
+                  competenza_mese, competenza_dal, competenza_al, posticipa_al,
+                  tipo_doc_fiscale_id, valuta_id, area_geografica_id, listino_versione_id,
+                  listino_riga_id,
+                  prezzo_snapshot, prezzo_bloccato, pricing_mode, prezzo_da_riallineare,
+                  stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid,
+                  tipo_movimento, causale_onere_id, meta,
+                  -- Natura del documento e riga di fattura rettificata (2026-08-18)
+                  natura_doc_id, fattura_riga_rettificata_id,
+                  -- Snapshot pricing v5
+                  prezzo_base_snapshot, origine_prezzo,
+                  tipo_variazione_applicata, valore_variazione_applicata,
+                  promo_id, contratto_id,
+                  categoria_cliente_id_snapshot, classe_utenza_id_snapshot
+                )
+                VALUES (
+                  p_commessa_id, btrim(p_segment_key), p_articolo_id, p_istanza_utility_id, p_data_attivita,
+                  p_uom_id, p_quantita, p_qta_operativa, p_uom_operativa_id, COALESCE(p_factor_to_base, 1::numeric),
+                  v_competenza_mese, p_competenza_dal, p_competenza_al, p_posticipa_al,
+                  v_tipo_doc_fiscale_id, p_valuta_id, p_area_geografica_id, p_listino_versione_id,
+                  p_listino_riga_id,
+                  p_prezzo_snapshot, COALESCE(p_prezzo_bloccato, false), COALESCE(p_pricing_mode, 'FIXED'::varchar), COALESCE(p_prezzo_da_riallineare, false),
+                  COALESCE(p_stato_approvazione, 'BOZZA'::varchar), COALESCE(p_stato_emissione, 'NON_EMESSA'::varchar), p_sorgente_tipo_id, NULLIF(btrim(p_sorgente_uid), ''),
+                  v_tipo_movimento, p_causale_onere_id, v_meta_effective,
+                  v_natura_doc_id, p_fattura_riga_rettificata_id,
+                  p_prezzo_base_snapshot, p_origine_prezzo,
+                  p_tipo_variazione_applicata, p_valore_variazione_applicata,
+                  p_promo_id, p_contratto_id,
+                  p_categoria_cliente_id_snapshot, p_classe_utenza_id_snapshot
+                )
+                ON CONFLICT (commessa_id, segment_key) DO UPDATE
+                SET articolo_id                    = EXCLUDED.articolo_id,
+                    istanza_utility_id             = EXCLUDED.istanza_utility_id,
+                    data_attivita                  = EXCLUDED.data_attivita,
+                    uom_id                         = EXCLUDED.uom_id,
+                    quantita                       = EXCLUDED.quantita,
+                    qta_operativa                  = EXCLUDED.qta_operativa,
+                    uom_operativa_id               = EXCLUDED.uom_operativa_id,
+                    factor_to_base                 = EXCLUDED.factor_to_base,
+                    competenza_mese                = EXCLUDED.competenza_mese,
+                    competenza_dal                 = EXCLUDED.competenza_dal,
+                    competenza_al                  = EXCLUDED.competenza_al,
+                    posticipa_al                   = EXCLUDED.posticipa_al,
+                    -- No-regressione: un re-push con tipo_doc in arrivo NULL non
+                    -- azzera un valore gia' risolto (brief-db-guard-tipo-doc-attivita).
+                    tipo_doc_fiscale_id            = COALESCE(EXCLUDED.tipo_doc_fiscale_id, vendite.commesse_attivita.tipo_doc_fiscale_id),
+                    valuta_id                      = EXCLUDED.valuta_id,
+                    area_geografica_id             = EXCLUDED.area_geografica_id,
+                    listino_versione_id            = EXCLUDED.listino_versione_id,
+                    -- La riga di listino segue il chiamante come la versione: e'
+                    -- la provenienza del prezzo CORRENTE. «Propagata» vuol dire
+                    -- citata ADESSO (decisione D-1 del brief): un re-push che
+                    -- cambia prezzo libera la riga vecchia, a meno che una AF gia'
+                    -- emessa la citi ancora.
+                    listino_riga_id                = EXCLUDED.listino_riga_id,
+                    prezzo_snapshot                = EXCLUDED.prezzo_snapshot,
+                    prezzo_bloccato                = EXCLUDED.prezzo_bloccato,
+                    pricing_mode                   = EXCLUDED.pricing_mode,
+                    prezzo_da_riallineare          = EXCLUDED.prezzo_da_riallineare,
+                    stato_approvazione             = EXCLUDED.stato_approvazione,
+                    stato_emissione                = EXCLUDED.stato_emissione,
+                    sorgente_tipo_id               = EXCLUDED.sorgente_tipo_id,
+                    sorgente_uid                   = EXCLUDED.sorgente_uid,
+                    -- Il registro della riga lo dichiara il chiamante (mai NULL:
+                    -- normalizzato a NORMALE). I segment_key non si incrociano fra
+                    -- push (ORD:/DDT:) e porta manuale (MAN:), quindi un push
+                    -- non puo' declassare una riga ONERE.
+                    tipo_movimento                 = EXCLUDED.tipo_movimento,
+                    -- La causale segue il registro (coerente col CHECK
+                    -- biconditional): NULL per NORMALE, valorizzata per ONERE.
+                    causale_onere_id               = EXCLUDED.causale_onere_id,
+                    -- Natura e riga rettificata seguono il chiamante, come
+                    -- tipo_movimento: nessun COALESCE difensivo, perche' non
+                    -- esiste un percorso in cui un push atterri sul segmento di
+                    -- una rettifica (i suffissi #RET: non si incrociano con
+                    -- ORD:/DDT:/MAN:).
+                    natura_doc_id                  = EXCLUDED.natura_doc_id,
+                    fattura_riga_rettificata_id    = EXCLUDED.fattura_riga_rettificata_id,
+                    meta                           = COALESCE(vendite.commesse_attivita.meta, '{}'::jsonb) || COALESCE(EXCLUDED.meta, '{}'::jsonb),
+                    -- Snapshot pricing v5: sovrascrive sempre (rappresenta
+                    -- lo snapshot del calcolo corrente).
+                    prezzo_base_snapshot           = EXCLUDED.prezzo_base_snapshot,
+                    origine_prezzo                 = EXCLUDED.origine_prezzo,
+                    tipo_variazione_applicata      = EXCLUDED.tipo_variazione_applicata,
+                    valore_variazione_applicata    = EXCLUDED.valore_variazione_applicata,
+                    promo_id                       = EXCLUDED.promo_id,
+                    contratto_id                   = EXCLUDED.contratto_id,
+                    categoria_cliente_id_snapshot  = EXCLUDED.categoria_cliente_id_snapshot,
+                    classe_utenza_id_snapshot      = EXCLUDED.classe_utenza_id_snapshot
+                RETURNING id, (xmax = 0) INTO v_attivita_id, v_is_new;
+
+                RETURN QUERY SELECT v_attivita_id, v_is_new;
+              END
+              $function$
+              ;
+
+              COMMENT ON FUNCTION vendite.fn_upsert_commessa_attivita(bigint,character varying,uuid,bigint,date,bigint,numeric,date,date,date,numeric,numeric,character varying,character varying,numeric,bigint,bigint,smallint,integer,numeric,bigint,numeric,date,bigint,integer,bigint,bigint,boolean,character varying,boolean,character varying,character varying,bigint,text,character varying,jsonb,bigint,bigint,bigint,bigint)
+              IS 'Upsert idempotente di una riga operativa di commessa su (commessa_id, segment_key), con snapshot pricing v5 obbligatorio. Ritorna (attivita_id, is_new). rev 2026-08-18 (brief-design-note-credito-resi N1b+N5): due parametri nuovi in coda — p_natura_doc_id (FATTURA / NOTA_CREDITO / ..., default risolto per chiave naturale e non cablato nella firma) e p_fattura_riga_rettificata_id (la riga di fattura che una RETTIFICA corregge). ⚠️ L''aggiunta ha richiesto DROP + CREATE e non CREATE OR REPLACE: con 38 parametri di cui 19 con DEFAULT, una firma nuova avrebbe creato un OVERLOAD e reso ambigua ogni chiamata esistente. Tutti i chiamanti (4 DB, commesse_repository.upsert_attivita, 6 smoke-test) usano argomenti nominali, quindi nessuno e'' stato toccato. ⚠️ p_quantita ammette valori NEGATIVI (il predicato e'' « = 0 », non « <= 0 »): e'' la porta da cui la nota di credito entra senza una seconda pipeline (D-NC-2). rev 2026-10-09 (brief-db-riga-listino-propagata-dalla-commessa R-1): p_listino_riga_id in coda, DEFAULT NULL — la riga di listino che ha dato il prezzo. E'' il legame che vendite.trgfn_listini_righe_guard_stato legge per dire «propagata» (E_RIGA_LISTINO_PROPAGATA): fino a questa revisione nessun percorso lo scriveva. Segue il chiamante anche nel ramo ON CONFLICT, come listino_versione_id: «propagata» vuol dire citata ADESSO. Di nuovo DROP + CREATE, e di nuovo nessun chiamante toccato: tutti nominali. ⭐ rev 2026-10-12 (20261012-46, brief-db-annullo-a-valle-riapre-a-monte D-13 di Tid): una riga con una sorgente di scope PUSH_COMMESSA (preventivo, ordine, contratto, bolla, consumi) chiama vendite.fn_link_commessa_sorgente prima di scriversi: il link documento -> commessa nasce con la riga, e la regola «un documento in una sola commessa aperta» (D-12) la attraversa ogni invio. Prima lo scriveva il backend a parte. Fuori le righe senza sorgente e la sorgente COMMESSA. Firma invariata. rev 2026-10-13 (20261013-16): tipo_consumo RITIRATO in tutta la catena del push (madre, batch, cinque lister, builder pgTAP). Non aveva un lettore, e il vocabolario della madre (ACCONTO/CONGUAGLIO/STORNO) non lo produceva nessuna sorgente con un significato: preventivi, ordini e DDT scrivevano la costante CONGUAGLIO, contratti (l''erogazione della riga) e consumi (CONSUMO) un valore che la madre rifiutava, quindi il loro push falliva sempre (E_PARAMETRO_INVALIDO). L''erogazione resta dove gia'' stava, in meta.tipo_erogazione. Decisione A di Tid, 2026-10-13. Firma: p_tipo_consumo tolto (DROP + CREATE: era in mezzo alla firma, e un CREATE OR REPLACE avrebbe creato un overload). La chiave tipo_consumo si toglie anche dal meta in ingresso.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Il rollback NON ricrea la versione precedente: va ri-applicato il
+              --    20261012-46 (dopo aver tolto questa firma). Un DROP secco qui
+              --    lascerebbe il push senza la sua porta.
+              SELECT 1;

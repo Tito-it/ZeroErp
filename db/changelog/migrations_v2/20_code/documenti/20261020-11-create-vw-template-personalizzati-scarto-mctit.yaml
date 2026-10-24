@@ -1,0 +1,152 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# QUANTO UNA COPIA PERSONALIZZATA E' RIMASTA INDIETRO: documenti.vw_template_personalizzati_scarto
+#   Brief: brief-db-modelli-documento-standard, §4.1 Q-5 (aggiunta di Tid, 2026-10-19)
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   Una copia personalizzata non riceve le evoluzioni dello standard. Chi l'ha
+#   fatta deve VEDERE che lo standard e' andato avanti, e soprattutto che la sua
+#   copia legge una forma dei dati superata: quel caso (2026-08-16) alla stampa
+#   lo ferma gia' il guard di versione_contesto, la vista lo fa vedere PRIMA.
+#
+# -- UNA RIGA PER COPIA ----------------------------------------------------------
+#   Ogni modello d'emittente ATTIVO con una versione pubblicata, per cui esiste
+#   uno standard predefinito attivo della stessa coppia (tipo, sorgente) con una
+#   versione pubblicata. «Pubblicata in uso» = la PUBBLICATA col numero di
+#   versione piu' alto.
+#   L'origine e' quella EREDITATA: la versione piu' recente della copia, fino a
+#   quella in uso, che dichiara derivata_da_versione_id (le versioni successive
+#   alla «personalizza» non la ricopiano).
+#
+# -- LO STATO, in quest'ordine ---------------------------------------------------
+#   CONTESTO_SUPERATO       la versione in uso legge una forma dei dati
+#                           (versione_contesto) piu' vecchia di quella dell'ultima
+#                           versione standard pubblicata. ⚠️ Il DB non conosce la
+#                           costante del builder del BE: il riferimento e' lo
+#                           standard, che i changeSet di evoluzione tengono al
+#                           passo col builder. Precede gli altri: e' il caso che
+#                           si rompe alla stampa.
+#   ORIGINE_NON_DICHIARATA  nessuna versione della copia dichiara l'origine (le
+#                           copie nate prima dello standard, i modelli scritti da
+#                           zero): si confronta solo la forma dei dati.
+#   ALLINEATA               deriva dall'ultima versione standard pubblicata.
+#   STANDARD_AVANTI         deriva da una versione standard precedente: funziona,
+#                           ma non ha l'evoluzione.
+#
+#   security_invoker: la vista legge come chi la interroga (le tabelle non hanno
+#   RLS oggi; quando l'avranno, la vista non deve scavalcarla).
+#
+# Dipendenze: 20261020-04, 20261020-05. Verifica:
+#   db/pgtap/documenti/test-documenti-template-standard-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261020-11-create-vw-template-personalizzati-scarto-mctit.yaml
+
+  - changeSet:
+      id: 20261020-11-create-vw-template-personalizzati-scarto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.vw_template_personalizzati_scarto: per ogni modello d'emittente attivo che ha uno standard
+        sulla stessa coppia, lo scarto dalla versione standard (ALLINEATA, STANDARD_AVANTI,
+        CONTESTO_SUPERATO, ORIGINE_NON_DICHIARATA). Brief: brief-db-modelli-documento-standard §4.1 Q-5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: documenti
+                tableName: template_documenti_versioni
+                columnName: derivata_da_versione_id
+            - not:
+                - viewExists:
+                    schemaName: documenti
+                    viewName: vw_template_personalizzati_scarto
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW documenti.vw_template_personalizzati_scarto
+                  WITH (security_invoker = true)
+              AS
+              SELECT
+                  c.id                          AS template_documento_id,
+                  c.emittente_fiscale_id,
+                  c.tipo_documento_output_id,
+                  c.sorgente_tipo_id,
+                  c.codice,
+                  c.is_default,
+                  cv.id                         AS versione_id,
+                  cv.versione,
+                  cv.versione_contesto,
+                  orig.derivata_da_versione_id,
+                  ov.versione                   AS standard_versione_origine,
+                  s.id                          AS standard_template_documento_id,
+                  sv.id                         AS standard_versione_id,
+                  sv.versione                   AS standard_versione,
+                  sv.versione_contesto          AS standard_versione_contesto,
+                  CASE
+                      WHEN cv.versione_contesto < sv.versione_contesto THEN 'CONTESTO_SUPERATO'
+                      WHEN orig.derivata_da_versione_id IS NULL        THEN 'ORIGINE_NON_DICHIARATA'
+                      WHEN orig.derivata_da_versione_id = sv.id        THEN 'ALLINEATA'
+                      ELSE 'STANDARD_AVANTI'
+                  END                           AS stato
+                FROM documenti.template_documenti c
+                -- la versione in uso della copia
+                JOIN LATERAL (
+                      SELECT v.id, v.versione, v.versione_contesto
+                        FROM documenti.template_documenti_versioni v
+                       WHERE v.template_documento_id = c.id
+                         AND v.stato = 'PUBBLICATA'
+                       ORDER BY v.versione DESC
+                       LIMIT 1
+                     ) cv ON true
+                -- lo standard in uso per la stessa coppia (al massimo uno:
+                -- uq_template_documenti_default_attivo, NULLS NOT DISTINCT)
+                JOIN documenti.template_documenti s
+                  ON s.standard
+                 AND s.attivo
+                 AND s.is_default
+                 AND s.tipo_documento_output_id = c.tipo_documento_output_id
+                 AND s.sorgente_tipo_id = c.sorgente_tipo_id
+                JOIN LATERAL (
+                      SELECT v.id, v.versione, v.versione_contesto
+                        FROM documenti.template_documenti_versioni v
+                       WHERE v.template_documento_id = s.id
+                         AND v.stato = 'PUBBLICATA'
+                       ORDER BY v.versione DESC
+                       LIMIT 1
+                     ) sv ON true
+                -- l'origine ereditata: la versione piu' recente, fino a quella in
+                -- uso, che la dichiara
+                LEFT JOIN LATERAL (
+                      SELECT v.derivata_da_versione_id
+                        FROM documenti.template_documenti_versioni v
+                       WHERE v.template_documento_id = c.id
+                         AND v.versione <= cv.versione
+                         AND v.derivata_da_versione_id IS NOT NULL
+                       ORDER BY v.versione DESC
+                       LIMIT 1
+                     ) orig ON true
+                LEFT JOIN documenti.template_documenti_versioni ov
+                  ON ov.id = orig.derivata_da_versione_id
+               WHERE NOT c.standard
+                 AND c.attivo;
+
+              COMMENT ON VIEW documenti.vw_template_personalizzati_scarto IS
+                  'Per ogni modello d''emittente attivo con una versione pubblicata, che ha uno standard predefinito attivo della stessa coppia (tipo, sorgente): quanto la sua versione in uso (la PUBBLICATA piu'' alta) e'' rimasta indietro rispetto all''ultima versione standard pubblicata. stato: CONTESTO_SUPERATO (legge una forma dei dati piu'' vecchia di quella dello standard, che i changeSet tengono al passo col builder: si rompera'' alla stampa), ORIGINE_NON_DICHIARATA (nessuna versione dichiara derivata_da_versione_id), ALLINEATA, STANDARD_AVANTI. L''origine si eredita dalla versione piu'' recente che la dichiara. La legge la lista Modelli documento per il badge. Brief: brief-db-modelli-documento-standard §4.1 Q-5.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS documenti.vw_template_personalizzati_scarto;

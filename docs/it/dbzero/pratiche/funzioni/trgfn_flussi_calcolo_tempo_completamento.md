@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_flussi_calcolo_tempo_completamento()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_calcolo_tempo_completamento()
  RETURNS trigger
@@ -155,6 +157,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_flussi_calcolo_tempo_completamento()
 IS 'AFTER UPDATE stato_id -> COMPLETATO: crea e/o chiude calcoli_tempo modello da/a.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

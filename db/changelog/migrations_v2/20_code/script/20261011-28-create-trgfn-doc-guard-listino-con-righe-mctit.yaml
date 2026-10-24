@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: script.trgfn_doc_guard_listino_con_righe() e il suo montaggio su
+#   vendite.contratti e vendite.offerte_commerciali.
+#   Brief: brief-db-testata-dopo-emissione (§11, R-DB-4 e D-11 di Tid)
+#
+# -- PERCHE' ------------------------------------------------------------
+#   Le due regole del listino (un listino nuovo sotto righe gia' caricate;
+#   il listino tolto sotto eccezioni che ne dipendono) vivevano solo nel
+#   backend del contratto. Ora le dice la check
+#   script.fn_check_listino_cambiabile (20261011-27) e questo guard le
+#   solleva, per contratto e offerta (D-11).
+#
+# -- DOVE PARLA ------------------------------------------------------------
+#   BEFORE UPDATE WHEN il listino cambia, fascia _a10_. Il nome lo mette
+#   prima di a10_guard_listino_documento («listino di un'altra utility o
+#   emittente»): prima l'immutabilita', poi la validita' del valore nuovo.
+#   Fuori bozza parla prima il lock di testata (_a05_,
+#   E_DOC_CONDIZIONI_FUORI_BOZZA), come voleva il §5 del brief.
+#   Il WHEN guarda la riga dopo i BEFORE che vengono prima: nessuno di
+#   loro scrive listino_id (lo scrive solo chi fa l'UPDATE).
+#   ⛔ Nomi dei trigger sotto i 63 caratteri (asserito al generare).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261011-28-create-trgfn-doc-guard-listino-con-righe-mctit.yaml
+
+  - changeSet:
+      id: 20261011-28-create-trgfn-doc-guard-listino-con-righe
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo guard script.trgfn_doc_guard_listino_con_righe, montato su contratti e offerte: il listino
+        non cambia sotto righe gia' caricate e non si toglie sotto eccezioni. Brief: brief-db-testata-dopo-emissione (R-DB-4, D-11).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_doc_guard_listino_con_righe()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il listino di un contratto o di un'offerta non cambia
+              --   sotto righe gia' caricate, e non si toglie sotto eccezioni
+              --   OVERRIDE/ESCLUSIONE (R-DB-4 e D-11 di
+              --   brief-db-testata-dopo-emissione): solleva il primo motivo di
+              --   script.fn_check_listino_cambiabile, col campo listino_id. Il
+              --   predicato sta nella check: qui si solleva soltanto
+              --   (linee-guida-sql §12.5.2).
+              -- Uso:   BEFORE UPDATE WHEN il listino cambia, fascia _a10_, su
+              --        vendite.contratti e vendite.offerte_commerciali. Il nome
+              --        (guard_listino_con_righe) lo fa parlare prima di
+              --        guard_listino_documento: se il listino non si puo'
+              --        cambiare, non serve dire se quello nuovo era buono. Fuori
+              --        bozza parla prima il lock di testata (_a05_).
+              -- TG_ARGV[0]: documento (CONTRATTO | OFFERTA), che decide le righe.
+              DECLARE
+                  -- Tipo nudo DICHIARATO: un selettore del trigger, nessuna colonna.
+                  v_documento text := TG_ARGV[0];
+                  v_motivi    jsonb;
+              BEGIN
+                  v_motivi := script.fn_check_listino_cambiabile(
+                      v_documento, NEW.id, OLD.listino_id, NEW.listino_id);
+
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', TG_NAME::text,
+                      v_motivi,
+                      v_motivi -> 0 -> 'dettaglio' ->> 'campo',
+                      NEW.tx_id,
+                      jsonb_build_object('documento', v_documento,
+                                         'documento_id', NEW.id,
+                                         'listino_da', OLD.listino_id,
+                                         'listino_a', NEW.listino_id));
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_doc_guard_listino_con_righe()
+              IS 'Guard generico (2026-10-11, brief-db-testata-dopo-emissione §11, R-DB-4 e D-11 di Tid; vendite.contratti, vendite.offerte_commerciali): solleva il primo motivo di script.fn_check_listino_cambiabile — E_DOC_LISTINO_CAMBIO_CON_RIGHE (un listino nuovo sotto righe gia'' caricate) o E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI (il listino tolto sotto eccezioni OVERRIDE/ESCLUSIONE) — col campo listino_id (canale COLUMN). TG_ARGV[0] = documento (CONTRATTO | OFFERTA). Montato BEFORE UPDATE WHEN (OLD.listino_id IS DISTINCT FROM NEW.listino_id), fascia _a10_, prima di a10_guard_listino_documento (prima l''immutabilita'', poi la validita'' del valore nuovo); fuori bozza parla prima il lock di testata (_a05_), che il listino lo ferma comunque. Porta a DB le due regole che vivevano solo in contratti_service.update_contratto (E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE, E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI, ritirati) e le estende all''offerta, che ha le stesse righe.';
+
+              CREATE TRIGGER trg_contratti_a10_guard_listino_con_righe_upd
+                  BEFORE UPDATE ON vendite.contratti
+                  FOR EACH ROW
+                  WHEN (OLD.listino_id IS DISTINCT FROM NEW.listino_id)
+                  EXECUTE FUNCTION script.trgfn_doc_guard_listino_con_righe('CONTRATTO');
+
+              CREATE TRIGGER trg_offerte_commerciali_a10_guard_listino_con_righe_upd
+                  BEFORE UPDATE ON vendite.offerte_commerciali
+                  FOR EACH ROW
+                  WHEN (OLD.listino_id IS DISTINCT FROM NEW.listino_id)
+                  EXECUTE FUNCTION script.trgfn_doc_guard_listino_con_righe('OFFERTA');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_a10_guard_listino_con_righe_upd ON vendite.contratti;
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_a10_guard_listino_con_righe_upd ON vendite.offerte_commerciali;
+              DROP FUNCTION IF EXISTS script.trgfn_doc_guard_listino_con_righe();

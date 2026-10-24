@@ -51,6 +51,7 @@ markdown_extensions:
         - toc:
                   permalink: true
         - admonition
+        - md_in_html
         - codehilite
         - pymdownx.superfences:
                   custom_fences:
@@ -162,6 +163,7 @@ nav:
                             - Implementazione Transaction ID: it/guide/tx_id_implementation_guide.md
                             - Storicizzazione Tabelle: it/guide/storicizzazione-tabelle.md
                             - Audit e tracciabilità: it/guide/audit-e-tracciabilita.md
+                            - Le operazioni che non si ripetono (Idempotency-Key): it/guide/operazioni-che-non-si-ripetono.md
                             - Automazione DB: it/guide/automazione-db.md
                             - Presidi e registri del debito: it/guide/presidi-e-registri-del-debito.md
                             - Sorgente polimorfa: it/guide/sorgente-polimorfa.md
@@ -171,6 +173,8 @@ nav:
                             - I lavori automatici (natura e identità): it/guide/processi-automatici-classe-e-identita.md
                             - Gestione code di lavoro: it/guide/gestione-code-di-lavoro.md
                             - Processi-pgagent: it/guide/processi-pgagent-funzionali.md
+                            - Statistiche del planner: it/guide/statistiche-del-planner.md
+                            - Un database che resta veloce: it/guide/database-che-resta-veloce.md
                             - Log:
                                       - Messaggi di Errore: it/guide/Messaggi-di-Errore-e-Generazione-Log.md
                                       - Messaggi di Audit: it/guide/messaggi-audit.md
@@ -180,7 +184,10 @@ nav:
 
         - Strumenti:
                   - Generatore Documentazione: it/dbzero/tools/gen_db_docs.md
-                  - Sicurezza e qualità statica: it/dev/sicurezza-e-qualita-statica.md
+        - Qualità:
+                  - Sicurezza e qualità statica (gli strumenti): it/dev/sicurezza-e-qualita-statica.md
+                  - Qualità BE/FE (indicatori e lezioni): it/dev/qualita-be-fe-indicatori.md
+                  - Qualità del database (indicatori e lezioni): it/dev/qualita-db-indicatori.md
         - Sviluppatori:
                   - API: it/dev/api.md
                   - Ricette (dove intervenire): it/dev/ricette-dove-intervenire.md

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_valida_codice_fiscale(cf text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_valida_codice_fiscale(cf text)
  RETURNS boolean
@@ -83,6 +85,8 @@ IS 'Controlla la validità formale del Codice Fiscale calcolando il carattere di
   Tali controlli vengono demandati al backend (Django/FastAPI) per maggiore flessibilità e
   semplicità di manutenzione. Eventuali validazioni approfondite saranno gestite da servizi esterni.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

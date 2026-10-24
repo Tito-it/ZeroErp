@@ -7,6 +7,8 @@ CREATE FUNCTION fn_apply_chiusura_scadenze(p_classe text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_apply_chiusura_scadenze(p_classe text DEFAULT NULL::text)
  RETURNS jsonb
@@ -288,6 +290,8 @@ AS $function$
 COMMENT ON FUNCTION dbops.fn_apply_chiusura_scadenze(p_classe text)
 IS 'Framework di chiusura per scadenza: chiude lo stato gestionale (CHIUSA/CESSATO) sulle tabelle configurate in dbops.automazione_chiusura_scadenze quando valido_al < CURRENT_DATE. ⭐ Rev 2026-09-04: prende p_classe e lavora SOLO i bersagli di quella classe. p_classe NULL = tutte, che e'' il comportamento storico — il job pgAgent chiama senza argomenti e non e'' stato toccato. ⛔ Il filtro NON e'' il cancello: il cancello e'' il NOT NULL su automazione_chiusura_scadenze.classe, che obbliga ogni riga nuova a dichiarare la propria natura. Il filtro serve quando i bersagli di DOMINIO migreranno sulla coda (lavoro di backend): da li'' il worker chiamera'' con DOMINIO e pgAgent con AMMINISTRAZIONE, e i due mondi smetteranno di mescolarsi. Brief: brief-db-processi-automatici-identita-e-perimetro §6.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

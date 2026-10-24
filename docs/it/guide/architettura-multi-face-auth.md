@@ -399,8 +399,10 @@ policy va dichiarata **`FOR ALL` con `WITH CHECK`** (di norma identico alla
 **deny-all** ogni `INSERT`/`UPDATE` (`new row violates row-level security policy`).
 È quanto accaduto nell'Ondata 2 operatore e risolto estendendo le `ef_whitelist` a
 `FOR ALL` (vedi `dev/work-done/db-brief-rls-ondata2-insert-bloccati.md`). I
-job batch non sono toccati: girano come `postgres` (superuser) e — non essendoci
-`FORCE` — bypassano la RLS.
+lavori automatici che toccano i dati di un'azienda sono filtrati come gli
+operatori: girano come l'applicazione, con l'utente tecnico di quell'azienda. Fuori
+dalla RLS resta solo il proprietario delle tabelle (migrazioni e manutenzione),
+perché non c'è `FORCE`.
 
 **E c'e' una seconda meta', meno nota** *(misurata il 2026-08-22, cantiere
 incassi)*: **`INSERT ... RETURNING` passa dalla clausola `USING`**, non solo dal
@@ -492,8 +494,10 @@ CREATE POLICY rls_ordini_shop_silo ON vendite.ordini
     USING (
         current_setting('app.ruolo_applicativo', true) = 'SHOP_CUSTOMER'
         AND canale_origine = 'SHOP'
-        AND script.fn_scope_cliente_ownership(
-                NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+        AND script.fn_scope_sr_perimetro(
+                (SELECT script.fn_get_identita_sr_perimetro(
+                    NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                    ARRAY['SHOP_CUSTOMER'::config.ruolo_applicativo])),
                 soggetto_ruolo_id
             )
     );

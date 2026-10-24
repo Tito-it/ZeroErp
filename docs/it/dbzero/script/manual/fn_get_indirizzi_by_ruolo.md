@@ -99,7 +99,7 @@ STABLE;
 | `locality`           | varchar    | Località (uso internazionale).                                                       |
 | `administrative_area`| varchar    | Area amministrativa (uso internazionale).                                            |
 | `sublocality`        | varchar    | Sublocalità (uso internazionale).                                                    |
-| `postal_box`         | varchar    | Casella postale (uso internazionale).                                                |
+| `postal_code`        | varchar    | Codice postale libero della forma estera (facoltativo; era `postal_box` fino al 18-10-2026). |
 
 ---
 

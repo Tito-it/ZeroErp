@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA VERSIONE SI COPIA IN BOZZA IN UN PUNTO SOLO
+#   documenti.fn_crea_bozza_da_versione (BB nuovo)
+#   Brief: brief-db-modelli-documento-standard §10.3 K-6
+#
+# Copia una versione (qualunque stato) in una BOZZA nuova del modello
+#   p_template_documento_id, con il numero successivo di quel modello, e ne
+#   restituisce l'id. Si copiano il corpo, il motore, la pagina, la forma dei dati
+#   letta, lo schema del contesto e i meta; NON le date (si fissano alla
+#   pubblicazione) e non l'origine, che dichiara il chiamante.
+#   Sostituzioni facoltative: titolo, date, attivo, meta (NULL = si copia; per le
+#   date NULL = senza data, come la copia di oggi).
+#
+# Due chiamanti:
+#   * documenti.fn_personalizza_template_standard (20261021-11), che copia la
+#     versione dello standard nel modello nuovo dell'emittente e ne dichiara
+#     l'origine;
+#   * il clone di una versione del BE (TemplateVersioniAdminService.clone_versione),
+#     dopo l'apply. Oggi i campi da copiare li elenca il BE (dati_bozza_copiata),
+#     e con «personalizza» nel DB sarebbero stati scritti in due posti.
+#
+# Il numero: MAX(versione) + 1 del modello di destinazione. Due chiamate concorrenti
+#   sullo stesso modello le separa uq_template_documenti_versioni_template_versione.
+# I guard della versione restano quelli della tabella: sola lettura dello
+#   standard (a05), origine coerente (guard della derivazione), date (a10).
+# Forma: plpgsql (scrive), VOLATILE, SECURITY INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261021-10-create-fn-crea-bozza-da-versione-mctit.yaml
+
+  - changeSet:
+      id: 20261021-10-create-fn-crea-bozza-da-versione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.fn_crea_bozza_da_versione: copia una versione in una BOZZA nuova di un modello, col
+        numero successivo; sede unica dei campi che una copia riprende. Brief:
+        brief-db-modelli-documento-standard §10.3 K-6.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: documenti
+            tableName: template_documenti_versioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION documenti.fn_crea_bozza_da_versione(
+                  p_versione_origine_id       documenti.template_documenti_versioni.id%TYPE,
+                  p_template_documento_id     documenti.template_documenti_versioni.template_documento_id%TYPE,
+                  p_derivata_da_versione_id   documenti.template_documenti_versioni.derivata_da_versione_id%TYPE DEFAULT NULL,
+                  p_titolo                    documenti.template_documenti_versioni.titolo%TYPE DEFAULT NULL,
+                  p_valido_dal                documenti.template_documenti_versioni.valido_dal%TYPE DEFAULT NULL,
+                  p_valido_al                 documenti.template_documenti_versioni.valido_al%TYPE DEFAULT NULL,
+                  p_attivo                    documenti.template_documenti_versioni.attivo%TYPE DEFAULT true,
+                  p_meta                      documenti.template_documenti_versioni.meta%TYPE DEFAULT NULL
+              )
+               RETURNS documenti.template_documenti_versioni.id%TYPE
+               LANGUAGE plpgsql
+               VOLATILE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: copia la versione p_versione_origine_id in una BOZZA
+              --   nuova del modello p_template_documento_id, col numero
+              --   successivo, e ne restituisce l'id (brief-db-modelli-
+              --   documento-standard §10.3 K-6). Sede unica dei campi che una
+              --   copia riprende.
+              DECLARE
+                  v_origine   documenti.template_documenti_versioni%ROWTYPE;
+                  v_versione  documenti.template_documenti_versioni.versione%TYPE;
+                  v_id        documenti.template_documenti_versioni.id%TYPE;
+              BEGIN
+                  IF p_versione_origine_id IS NULL OR p_versione_origine_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_crea_bozza_da_versione', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_versione_origine_id', 'valore', p_versione_origine_id),
+                          NULL::uuid, 'p_versione_origine_id obbligatorio e > 0');
+                  END IF;
+                  IF p_template_documento_id IS NULL OR p_template_documento_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_crea_bozza_da_versione', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_template_documento_id', 'valore', p_template_documento_id),
+                          NULL::uuid, 'p_template_documento_id obbligatorio e > 0');
+                  END IF;
+
+                  SELECT * INTO v_origine
+                    FROM documenti.template_documenti_versioni v
+                   WHERE v.id = p_versione_origine_id;
+
+                  IF v_origine.id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_crea_bozza_da_versione', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_versione_origine_id', 'valore', p_versione_origine_id),
+                          NULL::uuid, 'p_versione_origine_id: la versione non esiste');
+                  END IF;
+
+                  SELECT COALESCE(max(v.versione), 0) + 1 INTO v_versione
+                    FROM documenti.template_documenti_versioni v
+                   WHERE v.template_documento_id = p_template_documento_id;
+
+                  INSERT INTO documenti.template_documenti_versioni (
+                      template_documento_id, versione, stato, titolo,
+                      formato_template, html_template, css_template, markdown_template,
+                      render_engine_id, page_format, page_orientation,
+                      margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm,
+                      valido_dal, valido_al, versione_contesto, context_schema, meta,
+                      attivo, derivata_da_versione_id)
+                  VALUES (
+                      p_template_documento_id, v_versione, 'BOZZA',
+                      COALESCE(p_titolo, v_origine.titolo),
+                      v_origine.formato_template, v_origine.html_template,
+                      v_origine.css_template, v_origine.markdown_template,
+                      v_origine.render_engine_id, v_origine.page_format, v_origine.page_orientation,
+                      v_origine.margin_top_mm, v_origine.margin_right_mm,
+                      v_origine.margin_bottom_mm, v_origine.margin_left_mm,
+                      p_valido_dal, p_valido_al, v_origine.versione_contesto,
+                      v_origine.context_schema, COALESCE(p_meta, v_origine.meta),
+                      COALESCE(p_attivo, true), p_derivata_da_versione_id)
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.fn_crea_bozza_da_versione(
+                  documenti.template_documenti_versioni.id%TYPE,
+                  documenti.template_documenti_versioni.template_documento_id%TYPE,
+                  documenti.template_documenti_versioni.derivata_da_versione_id%TYPE,
+                  documenti.template_documenti_versioni.titolo%TYPE,
+                  documenti.template_documenti_versioni.valido_dal%TYPE,
+                  documenti.template_documenti_versioni.valido_al%TYPE,
+                  documenti.template_documenti_versioni.attivo%TYPE,
+                  documenti.template_documenti_versioni.meta%TYPE) IS
+                  'Copia una versione (qualunque stato) in una BOZZA nuova del modello indicato, col numero successivo di quel modello, e ne restituisce l''id (2026-10-21, brief-db-modelli-documento-standard §10.3 K-6). Copia corpo, motore, pagina, versione_contesto, context_schema e meta; non le date (si fissano alla pubblicazione) e non l''origine, che dichiara il chiamante (p_derivata_da_versione_id). Sostituzioni facoltative: titolo, date, attivo, meta. Sede unica dei campi di una copia: la usano fn_personalizza_template_standard e il clone di una versione del BE.';

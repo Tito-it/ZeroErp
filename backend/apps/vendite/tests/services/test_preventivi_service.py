@@ -11,6 +11,8 @@ Indice test eseguiti:
 2) test_crea_preventivo_utility_mancante — validazione utility obbligatoria
 3) test_aggiorna_preventivo_ok — aggiornamento in BOZZA
 4) test_aggiorna_preventivo_fuori_bozza_decide_il_db — EMESSO: nessun guard Python, decide il lock DB
+4b) test_aggiorna_preventivo_colonne_ferme_sul_campo — utility ed emittente: 400 sul campo (R-BE-10)
+4c) test_aggiorna_preventivo_chiave_ignota_rifiutata — una chiave fuori whitelist e' un 400, non uno scarto
 5) test_gestisci_riga_ok — aggiunta riga in BOZZA con ricalcolo totali
 5b) test_gestisci_riga_padre_composito_prezzo_default_zero — composito senza prezzo → 0 placeholder
 5c) test_gestisci_riga_non_composito_senza_prezzo_solleva — non composito + prezzo None → E_PREV_VALIDAZIONE
@@ -20,12 +22,13 @@ Indice test eseguiti:
 7) test_gestisci_riga_articolo_mancante — validazione articolo_id obbligatorio
 8) test_elimina_riga_ok — soft delete riga
 9) test_elimina_riga_not_found — riga inesistente
-10) test_push_a_commessa_ok — push preventivo ACCETTATO con righe eleggibili + transizione EVASO
+9b) test_riga_di_un_altro_preventivo_rifiutata — aggiorna/elimina_riga di una riga di un altro preventivo: 404, il repository non e' toccato
+10) test_push_a_commessa_ok — push preventivo ACCETTATO con righe eleggibili; lo stato lo proietta il DB (D-10)
 10b) test_push_a_commessa_propaga_fatturazione_immediata — flag testata nel payload
 10c) test_push_a_commessa_parziale_propaga_e_non_evade — all-or-nothing: ServiceError, niente transizione
-10d) test_push_a_commessa_transizione_db_error_logged_no_raise — fallimento transizione e' soft (warning)
-10e) test_push_a_commessa_non_evade_con_residuo_merce — gate EVASO D6: residuo merce → resta ACCETTATO
-10f) test_push_a_commessa_selettivo_non_evade_con_residuo_commessa — push righe_ids parziale: resta ACCETTATO
+10d) (ritirato 2026-10-12: la transizione EVASO non e' piu' del backend)
+10e) (ritirato 2026-10-12: il gate EVASO bi-ramo e' del DB, pgTAP test-annullo-commessa-v1)
+10f) test_push_a_commessa_selettivo_propaga_righe_ids — push righe_ids parziale: il sottoinsieme arriva all'orchestratore
 10g) test_smistamento_ok — aggregato + righe dalle viste smistamento
 10h) test_smistamento_senza_righe_aggregato_none — aggregato None senza fallback
 10i) test_smistamento_not_found — 404 semantico
@@ -83,6 +86,12 @@ Indice test eseguiti:
 52) test_list_riepilogo_iva_preventivo_non_trovato_e_404 — idem sul riepilogo IVA
 53) test_list_revisioni_preventivo_non_trovato_e_404 — idem sulle revisioni
 54) test_list_righe_con_testata_delega_al_repo — caso felice: delega invariata
+55) test_annullo_passa_dal_verbo — ANNULLATO via fn_annulla_preventivo, con e senza dichiarazione
+56) test_annullo_dichiarazione_non_numerica — legami_confermati non intero → E_PREV_VALIDAZIONE col campo
+57) test_annullo_preventivo_inesistente — E_PREV_NOT_FOUND prima del verbo
+58) test_annullo_con_legami_codice_del_db — il rifiuto del verbo esce col suo codice (confirm_and_retry)
+59) test_cambia_stato_errore_db_senza_codice — errore DB senza codice → 400 del dominio
+60) test_get_legami_dopo_la_testata — «leggi prima la testata», poi il BB legami_del_documento
 
 TestNormalizeComponentiOverrides:
 - test_none_ritorna_none, test_dict_vuoto_ritorna_none
@@ -150,11 +159,6 @@ class TestPreventiviService(unittest.TestCase):
         # ramo aggancio-commessa di push_a_commessa (rev.3) resta no-op — i test
         # pratica-aware lo sovrascrivono esplicitamente.
         self.mock_repo.get_pratica_id_by_preventivo_root.return_value = None
-        # Ancora indirizzi (Fase 0 satelliti, 2026-07-31): la coppia
-        # (soggetto_ruolo, istanza) va restituita come TUPLA — un MagicMock nudo
-        # non si spacchetta e l'auto-assegnazione best-effort loggherebbe un
-        # warning rumoroso a ogni crea_*. (None, None) = nessuna assegnazione.
-        self.mock_repo.get_ancora_indirizzi_documento.return_value = (None, None)
 
         # ⭐ Risolutore IVA (I3, 2026-08-31): collaboratore nuovo di
         # `gestisci_riga`. Mockato come il repository, e per la stessa ragione —
@@ -172,12 +176,12 @@ class TestPreventiviService(unittest.TestCase):
         self.MockIva.return_value = (None, {})
         self.addCleanup(self.iva_patcher.stop)
 
-        # Mock del repository BA usato da `_risolvi_cliente_preventivo`: il
+        # Mock del repository BA usato dal BB `risolvi_cliente_coppia`: il
         # cliente del preventivo e' la coppia (istanza, utility) col suo BA
         # (brief-db-istanza-nasce-col-ba, R-2). Default: BA → istanza id=100,
         # la coppia ha il BA id=42.
         self.ba_repo_patcher = patch(
-            "apps.vendite.services.preventivi_service.BillingAccountRepository"
+            "apps.vendite.services._cliente_coppia_documento.BillingAccountRepository"
         )
         self.MockBaRepoClass = self.ba_repo_patcher.start()
         self.mock_ba_repo = MagicMock()
@@ -192,8 +196,6 @@ class TestPreventiviService(unittest.TestCase):
         )
         self.ba_bb_patcher.start()
 
-        # Default: lookup config
-        self.mock_repo.get_stato_bozza_id.return_value = 1
         # Default: capabilities vuote per i test che non si interessano del blob
         # (Fase 1 refactor frontend vendite: get_preventivo invoca la fn DB).
         self.mock_repo.get_capabilities.return_value = {}
@@ -264,6 +266,12 @@ class TestPreventiviService(unittest.TestCase):
         kwargs = self.mock_repo.create_preventivo.call_args.kwargs
         self.assertEqual(kwargs["billing_account_id"], 42)
         self.assertEqual(kwargs["istanza_utility_id"], 100)
+        # Lo stato non si passa: lo mette il DB, lo stato iniziale del
+        # vocabolario (brief-modello-documento-vendita P-2).
+        self.assertNotIn("stato_doc_preventivo_id", kwargs)
+        # Lo slot di default lo riempie il DB, nella transazione della
+        # creazione (brief-db-indirizzi-documento-seguono-il-cliente, R-BE-1).
+        self.mock_repo.riempi_indirizzo_default.assert_called_once_with(1)
 
     # Scopo: Verifica errore se utility_id mancante.
     def test_crea_preventivo_utility_mancante(self):
@@ -514,6 +522,89 @@ class TestPreventiviService(unittest.TestCase):
         # Nessuna chiamata al repo: il guard scatta prima di qualsiasi I/O.
         self.mock_repo.cambia_stato.assert_not_called()
 
+    # brief-db-annullo-documento-con-legami: ANNULLATO passa SEMPRE dal verbo,
+    # con la dichiarazione della conferma (assente al primo tentativo), e la
+    # risposta ha la forma di `fn_cambia_stato_preventivo`.
+    def test_annullo_passa_dal_verbo(self):
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.get_stato_codice.return_value = "EMESSO"
+        out = cambia_stato(7, "ANNULLATO")
+        self.mock_repo.annulla.assert_called_once_with(7, None)
+        self.mock_repo.cambia_stato.assert_not_called()
+        self.assertEqual(out, {
+            "preventivo_id": 7,
+            "stato_precedente": "EMESSO",
+            "stato_nuovo": "ANNULLATO",
+        })
+        cambia_stato(7, "ANNULLATO", legami_confermati="3")
+        self.mock_repo.annulla.assert_called_with(7, 3)
+
+    def test_annullo_dichiarazione_non_numerica(self):
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.get_stato_codice.return_value = "EMESSO"
+        with self.assertRaises(ServiceError) as cm:
+            cambia_stato(7, "ANNULLATO", legami_confermati="tre")
+        self.assertEqual(cm.exception.code, "E_PREV_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("field"), "legami_confermati")
+        self.mock_repo.annulla.assert_not_called()
+
+    def test_annullo_preventivo_inesistente(self):
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.get_stato_codice.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            cambia_stato(99, "ANNULLATO")
+        self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
+        self.mock_repo.annulla.assert_not_called()
+
+    # ⭐ Il rifiuto del verbo arriva col SUO codice, tradotto dal BB del
+    #    dominio: e' il comportamento che la finestra riconosce.
+    def test_annullo_con_legami_codice_del_db(self):
+        from django.db import DatabaseError
+
+        from apps.core.services.error_policies import ErrorPolicyRegistry
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.get_stato_codice.return_value = "ACCETTATO"
+        self.mock_repo.annulla.side_effect = DatabaseError(
+            "E_DOC_ANNULLO_CON_LEGAMI: annullando Preventivo 12 si riaprono 2 legami",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            cambia_stato(7, "ANNULLATO")
+        self.assertEqual(cm.exception.code, "E_DOC_ANNULLO_CON_LEGAMI")
+        self.assertEqual(cm.exception.context.get("op"), "vendite.preventivi_service.cambia_stato")
+        policy = ErrorPolicyRegistry.resolve("E_DOC_ANNULLO_CON_LEGAMI")
+        self.assertEqual(policy.ui_action, "confirm_and_retry")
+
+    # Le altre transizioni passano dallo stesso traduttore: un errore DB senza
+    # codice e' il 400 del dominio, non un 500 generico.
+    def test_cambia_stato_errore_db_senza_codice(self):
+        from django.db import DatabaseError
+
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.cambia_stato.side_effect = DatabaseError("qualcosa e' andato storto")
+        with self.assertRaises(ServiceError) as cm:
+            cambia_stato(7, "RIFIUTATO")
+        self.assertEqual(cm.exception.code, "E_PREV_VALIDAZIONE")
+
+    def test_get_legami_dopo_la_testata(self):
+        from apps.vendite.services import preventivi_service
+
+        with patch.object(
+            preventivi_service, "legami_del_documento", return_value={"legami": 0},
+        ) as bb:
+            self.mock_repo.get_stato_codice.return_value = None
+            with self.assertRaises(ServiceError) as cm:
+                preventivi_service.get_legami(99)
+            self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
+            bb.assert_not_called()
+            self.mock_repo.get_stato_codice.return_value = "EMESSO"
+            preventivi_service.get_legami(7)
+            bb.assert_called_once_with("PREVENTIVO", 7)
+
     # Scopo: `emetti()` e' un thin wrapper sul repo che bypassa il guard
     # di cambia_stato (l'orchestrazione atomic state+genera_documento+
     # allegati vive nella view ApiPreventivoEmetti).
@@ -699,11 +790,9 @@ class TestPreventiviService(unittest.TestCase):
             "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
         }
         self.mock_repo.count_righe_pushable.return_value = 2
-        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
-        self.mock_repo.preventivo_ha_residuo_commessa.return_value = False
         # preventivo in una pratica → aggancio commessa attivo.
         self.mock_repo.get_pratica_id_by_preventivo_root.return_value = 290
-        MockCommRepo.return_value.get_commessa_id_by_sorgente.return_value = 77
+        MockCommRepo.return_value.get_commessa_viva_by_sorgente.return_value = 77
         mock_push_one.return_value = {
             "stato": "COMPLETATO", "dry_run": False, "push_log_id": 42,
             "durata_ms": 5, "handlers": [],
@@ -714,6 +803,10 @@ class TestPreventiviService(unittest.TestCase):
         MockPratRepo.return_value.upsert_pratica_sorgente.assert_called_once_with(
             pratica_id=290, sorgente_codice="COMMESSA",
             sorgente_uid="77", ruolo_link="COLLEGATO",
+        )
+        # La commessa si cerca APERTA, con l'uid del preventivo come chiave.
+        MockCommRepo.return_value.get_commessa_viva_by_sorgente.assert_called_once_with(
+            sorgente_codice="PREVENTIVO", sorgente_chiave="abc",
         )
 
     # ── Eliminazione bozza (abbandono drawer) ──
@@ -778,6 +871,36 @@ class TestPreventiviService(unittest.TestCase):
             aggiorna_preventivo(1, {"billing_account_id": 42})
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
         self.assertEqual(ctx.exception.context.get("field"), "billing_account_id")
+        self.mock_repo.update_preventivo.assert_not_called()
+
+    # Scopo: utility ed emittente non si cambiano in modifica (R-BE-10,
+    #        2026-10-19): un 400 sul campo, con la frase del lock del DB, prima
+    #        di leggere la testata. Fino ad allora si SCARTAVANO in silenzio.
+    def test_aggiorna_preventivo_colonne_ferme_sul_campo(self):
+        from apps.core.services.error_policies import ErrorPolicyRegistry
+        from apps.vendite.services.preventivi_service import aggiorna_preventivo
+
+        for chiave, codice_db in (
+            ("utility_id", "E_DOC_UTILITY_IMMUTABILE"),
+            ("emittente_fiscale_id", "E_DOC_EMITTENTE_IMMUTABILE"),
+        ):
+            with self.subTest(chiave=chiave), self.assertRaises(ServiceError) as ctx:
+                aggiorna_preventivo(1, {chiave: 7, "validita_dal": "2026-04-01"})
+            self.assertEqual(
+                (ctx.exception.code, ctx.exception.context.get("field"), ctx.exception.message),
+                ("E_PREV_VALIDAZIONE", chiave, ErrorPolicyRegistry.resolve(codice_db).user_message),
+            )
+        self.mock_repo.update_preventivo.assert_not_called()
+
+    # Scopo: una chiave fuori dalla whitelist e' un 400 (R-BE-10, 2026-10-19):
+    #        prima si scartava e la risposta era ok.
+    def test_aggiorna_preventivo_chiave_ignota_rifiutata(self):
+        from apps.vendite.services.preventivi_service import aggiorna_preventivo
+
+        with self.assertRaises(ServiceError) as ctx:
+            aggiorna_preventivo(1, {"numero": "X"})
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.assertEqual(ctx.exception.context.get("unknown_keys"), ["numero"])
         self.mock_repo.update_preventivo.assert_not_called()
 
     # Scopo: Preventivo EMESSO: quali colonne si cambiano lo dice il lock di
@@ -852,8 +975,13 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.create_riga.return_value = {"id": 10}
         self.MockIva.return_value = (9, {"iva_origine": "TITOLO"})
 
-        gestisci_riga(1, {"articolo_id": "uuid-art-1", "iva_id": 999})
+        # ⛔ Dal 2026-10-20 `iva_id` nel payload e' un 400, non uno scarto.
+        with self.assertRaises(ServiceError) as ctx:
+            gestisci_riga(1, {"articolo_id": "uuid-art-1", "iva_id": 999})
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.create_riga.assert_not_called()
 
+        gestisci_riga(1, {"articolo_id": "uuid-art-1"})
         self.assertIsNone(self.MockIva.call_args.kwargs["payload_iva_id"])
         self.assertEqual(self.mock_repo.create_riga.call_args.kwargs["iva_id"], 9)
 
@@ -869,7 +997,13 @@ class TestPreventiviService(unittest.TestCase):
         }
         self.mock_repo.update_riga.return_value = {"id": 10}
 
-        aggiorna_riga(1, 10, {"descrizione": "nuova", "iva_id": 999})
+        # ⛔ Dal 2026-10-20 `iva_id` e' un 400, non uno scarto.
+        with self.assertRaises(ServiceError) as ctx:
+            aggiorna_riga(1, 10, {"descrizione": "nuova", "iva_id": 999})
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.update_riga.assert_not_called()
+
+        aggiorna_riga(1, 10, {"descrizione": "nuova"})
 
         # ⛔ I campi arrivano come **kwargs sparsi** (`update_riga(id, **campi)`),
         #    non dentro una chiave `update_fields`: la prima stesura di questo
@@ -884,7 +1018,7 @@ class TestPreventiviService(unittest.TestCase):
         from apps.vendite.services.preventivi_service import gestisci_riga
 
         self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "EMESSO", "uid": "abc",
+            "id": 1, "stato_codice_interno": "EMESSO", "uid": "abc", "rev": 0,
         }
         with self.assertRaises(ServiceError) as ctx:
             gestisci_riga(1, {"articolo_id": "uuid-art-1"})
@@ -1028,6 +1162,29 @@ class TestPreventiviService(unittest.TestCase):
         with self.assertRaises(ServiceError) as ctx:
             elimina_riga(1, 999)
         self.assertEqual(ctx.exception.code, "E_PREV_RIGA_NOT_FOUND")
+
+    # Scopo: ⛔ una riga di UN ALTRO preventivo, chiesta con l'URL di questo,
+    #        e' un 404 e non arriva al repository. La bozza si verifica sul
+    #        preventivo dell'URL, l'UPDATE e il DELETE vanno per il solo
+    #        `riga_id`: senza il guard di appartenenza la riga di B si
+    #        modificava (o cancellava) col controllo di stato fatto su A.
+    def test_riga_di_un_altro_preventivo_rifiutata(self):
+        from apps.vendite.services.preventivi_service import aggiorna_riga, elimina_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        }
+        self.mock_repo.get_riga.return_value = {"id": 10, "preventivo_id": 2}
+
+        for nome, chiamata in (
+            ("aggiorna_riga", lambda: aggiorna_riga(1, 10, {"descrizione": "nuova"})),
+            ("elimina_riga", lambda: elimina_riga(1, 10)),
+        ):
+            with self.subTest(nome), self.assertRaises(ServiceError) as ctx:
+                chiamata()
+            self.assertEqual(ctx.exception.code, "E_PREV_RIGA_NOT_FOUND")
+        self.mock_repo.update_riga.assert_not_called()
+        self.mock_repo.delete_riga.assert_not_called()
 
     # ── Componenti BoM CASO A ──
 
@@ -1277,9 +1434,9 @@ class TestPreventiviService(unittest.TestCase):
     # Scopo: `aggiorna_riga` NON ammette cambio articolo (whitelist update
     # exclude `articolo_id`). I componenti CASO A iniziali dell'init
     # restano stabili: nessun purge/re-init scatta dal flusso update.
-    # Verifica defense-in-depth: anche se il caller passa `articolo_id`
-    # nel payload, viene ignorato dalla whitelist e i componenti non
-    # vengono toccati.
+    # Verifica defense-in-depth: se il caller passa `articolo_id` nel
+    # payload e' un 400 (dal 2026-10-20; prima veniva scartato in silenzio),
+    # e i componenti non vengono toccati.
     def test_aggiorna_riga_non_tocca_componenti(self):
         from apps.vendite.services.preventivi_service import aggiorna_riga
 
@@ -1290,12 +1447,15 @@ class TestPreventiviService(unittest.TestCase):
         }
         self.mock_repo.update_riga.return_value = True
 
-        # Payload con articolo_id (ignorato) + descrizione (ammessa)
-        aggiorna_riga(
-            1, 10,
-            {"articolo_id": "uuid-new-art", "descrizione": "nuova"},
-            auth_user_id=100,
-        )
+        # Payload con articolo_id (rifiutato) + descrizione (ammessa)
+        with self.assertRaises(ServiceError) as ctx:
+            aggiorna_riga(
+                1, 10,
+                {"articolo_id": "uuid-new-art", "descrizione": "nuova"},
+                auth_user_id=100,
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.update_riga.assert_not_called()
         self.mock_repo.purge_componenti_riga.assert_not_called()
         self.mock_repo.init_componenti_riga.assert_not_called()
 
@@ -1389,7 +1549,13 @@ class TestPreventiviService(unittest.TestCase):
         }
         self.mock_repo.update_componente.return_value = True
 
-        result = update_componente(1, 10, 50, {"prezzo_unitario": "150.00"})
+        # Un prezzo scritto passa dal gate L1 con l'utente (2026-10-20).
+        with patch(
+            "apps.vendite.services._componenti_service_helpers.check_permesso_override_prezzo",
+        ) as gate:
+            result = update_componente(1, 10, 50, {"prezzo_unitario": "150.00"}, auth_user_id=42)
+        gate.assert_called_once()
+        self.assertEqual(gate.call_args.args[0], 42)
         self.assertEqual(result["componente_id"], 50)
         # `origine_prezzo` la scrive il server: un prezzo dell'operatore e'
         # MANUALE per definizione (contratto PATCH, 2026-09-26).
@@ -1492,6 +1658,7 @@ class TestPreventiviService(unittest.TestCase):
             "riga_preventivo_id": 10,
             "preventivo_id": 1,
             "stato_codice_interno": "EMESSO",  # non modificabile
+            "rev": 0,  # l'etichetta del rifiuto porta la revisione
         }
         with self.assertRaises(ServiceError) as ctx:
             update_componente(1, 10, 50, {"prezzo_unitario": "100"})
@@ -1535,10 +1702,6 @@ class TestPreventiviService(unittest.TestCase):
             "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
         }
         self.mock_repo.count_righe_pushable.return_value = 3
-        # Gate EVASO bi-ramo (D6 + §5b): nessun residuo su nessun ramo →
-        # la transizione scatta.
-        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
-        self.mock_repo.preventivo_ha_residuo_commessa.return_value = False
         mock_push_one.return_value = {
             "stato": "COMPLETATO",
             "dry_run": False,
@@ -1566,8 +1729,12 @@ class TestPreventiviService(unittest.TestCase):
         self.assertEqual(len(result["handlers"]), 1)
         # testata mock non ha "fatturazione_immediata" -> default False (no hint UX).
         self.assertFalse(result["fatturazione_immediata"])
-        # Stato="COMPLETATO" -> transizione automatica a EVASO via fn DB.
-        self.mock_repo.cambia_stato.assert_called_once_with(1, "EVASO", "django_api")
+        # ⭐ ACCETTATO → EVASO lo proietta il DB (trigger delle righe di
+        #    commessa, D-10 / R-8 di brief-db-annullo-a-valle-riapre-a-monte):
+        #    il backend non tocca lo stato, ne' legge i residui.
+        self.mock_repo.cambia_stato.assert_not_called()
+        self.mock_repo.preventivo_ha_residuo_ordine.assert_not_called()
+        self.mock_repo.preventivo_ha_residuo_commessa.assert_not_called()
 
     # Scopo: post all-or-nothing, pr_run_commesse_push_one solleva
     # E_COMMESSA_PUSH_PARZIALE_VIETATO su PARZIALE/ERRORE rollando ogni
@@ -1584,7 +1751,7 @@ class TestPreventiviService(unittest.TestCase):
         mock_push_one.side_effect = ServiceError(
             code="E_COMMESSA_PUSH_PARZIALE_VIETATO",
             message="Push fallito: nessuna riga inviata.",
-            detail="Errore riga segment_key=PREV:abc:R:3: ...",
+            detail="Errore riga segment_key=PREVENTIVO:abc:R:3: ...",
         )
 
         with self.assertRaises(ServiceError) as ctx:
@@ -1593,35 +1760,6 @@ class TestPreventiviService(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "E_COMMESSA_PUSH_PARZIALE_VIETATO")
         # All-or-nothing: nessuna transizione stato, nessuna chiamata DB.
         self.mock_repo.cambia_stato.assert_not_called()
-
-    # Scopo: se la fn DB cambia_stato rifiuta la transizione (es. seed
-    # EVASO non ancora atterrato in DB), il push e' gia' avvenuto e
-    # ritorna comunque con stato COMPLETATO. La transizione fallita
-    # viene loggata come warning, non fa fallire la richiesta utente.
-    @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
-    def test_push_a_commessa_transizione_db_error_logged_no_raise(self, mock_push_one):
-        from django.db import DatabaseError
-        from apps.vendite.services.preventivi_service import push_a_commessa
-
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
-        }
-        self.mock_repo.count_righe_pushable.return_value = 1
-        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
-        self.mock_repo.preventivo_ha_residuo_commessa.return_value = False
-        self.mock_repo.cambia_stato.side_effect = DatabaseError(
-            "transizione ACCETTATO->EVASO non ammessa"
-        )
-        mock_push_one.return_value = {
-            "stato": "COMPLETATO", "dry_run": False,
-            "push_log_id": 44, "durata_ms": 10, "handlers": [],
-        }
-
-        # Non deve sollevare: il push e' atterrato, lo stato e' un effetto
-        # collaterale che puo' restare disallineato finche' il deploy DB
-        # non e' completo.
-        result = push_a_commessa(1)
-        self.assertEqual(result["stato"], "COMPLETATO")
 
     # Scopo: payload include flag `fatturazione_immediata=True` se settato in
     # testata: serve al FE per mostrare hint warn "emit AF al prossimo lotto"
@@ -1637,8 +1775,6 @@ class TestPreventiviService(unittest.TestCase):
             "fatturazione_immediata": True,
         }
         self.mock_repo.count_righe_pushable.return_value = 1
-        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
-        self.mock_repo.preventivo_ha_residuo_commessa.return_value = False
         mock_push_one.return_value = {
             "stato": "COMPLETATO", "dry_run": False,
             "push_log_id": 7, "durata_ms": 5, "handlers": [],
@@ -1648,42 +1784,19 @@ class TestPreventiviService(unittest.TestCase):
 
         self.assertTrue(result["fatturazione_immediata"])
 
-    # Scopo: Gate EVASO (D6). Preventivo misto: il push commessa (natura-aware)
-    # invia i soli servizi, ma resta residuo MERCE da portare a ordine →
-    # NON evadere. Il preventivo resta ACCETTATO, push comunque COMPLETATO.
+    # Scopo: push SELETTIVO (righe_ids sottoinsieme, Pannello Smistamento): il
+    # sottoinsieme arriva all'orchestratore. Che il preventivo resti ACCETTATO
+    # finche' resta un residuo (sottoinsieme parziale, o merce da ordinare nel
+    # preventivo misto) lo decide il DB (`fn_preventivo_proietta_stato_smistamento`):
+    # il backend non tocca lo stato.
     @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
-    def test_push_a_commessa_non_evade_con_residuo_merce(self, mock_push_one):
-        from apps.vendite.services.preventivi_service import push_a_commessa
-
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
-        }
-        self.mock_repo.count_righe_pushable.return_value = 2
-        self.mock_repo.preventivo_ha_residuo_ordine.return_value = True
-        mock_push_one.return_value = {
-            "stato": "COMPLETATO", "dry_run": False,
-            "push_log_id": 8, "durata_ms": 6, "handlers": [],
-        }
-
-        result = push_a_commessa(1)
-
-        self.assertEqual(result["stato"], "COMPLETATO")
-        # Residuo merce presente → niente transizione a EVASO.
-        self.mock_repo.cambia_stato.assert_not_called()
-
-    # Scopo: Gate EVASO bi-ramo (§5b brief smistamento). Push SELETTIVO
-    # (righe_ids sottoinsieme): COMPLETATO si riferisce al solo sottoinsieme,
-    # restano servizi non pushati → residuo commessa True → NON evadere.
-    @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
-    def test_push_a_commessa_selettivo_non_evade_con_residuo_commessa(self, mock_push_one):
+    def test_push_a_commessa_selettivo_propaga_righe_ids(self, mock_push_one):
         from apps.vendite.services.preventivi_service import push_a_commessa
 
         self.mock_repo.get_preventivo.return_value = {
             "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
         }
         self.mock_repo.count_righe_pushable.return_value = 3
-        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
-        self.mock_repo.preventivo_ha_residuo_commessa.return_value = True
         mock_push_one.return_value = {
             "stato": "COMPLETATO", "dry_run": False,
             "push_log_id": 9, "durata_ms": 4, "handlers": [],
@@ -1691,14 +1804,12 @@ class TestPreventiviService(unittest.TestCase):
 
         result = push_a_commessa(1, righe_ids=[10, 11])
 
-        # righe_ids propagato all'orchestrator.
         mock_push_one.assert_called_once_with(
             sorgente_codice="PREVENTIVO",
             sorgente_uid=1,
             righe_ids=[10, 11],
         )
         self.assertEqual(result["stato"], "COMPLETATO")
-        # Residuo commessa presente (sottoinsieme parziale) → resta ACCETTATO.
         self.mock_repo.cambia_stato.assert_not_called()
 
     # ── Smistamento (pannello) ──
@@ -1715,8 +1826,8 @@ class TestPreventiviService(unittest.TestCase):
             "righe_emesse_af": 0, "righe_fatturate": 0, "righe_residue": 2,
         }
         self.mock_repo.list_righe_smistamento.return_value = [
-            {"riga_id": 10, "destinazione_tipo": "ORDINE", "stato_smistamento": "A_ORDINE"},
-            {"riga_id": 11, "destinazione_tipo": "ORDINE", "stato_smistamento": "RESIDUA"},
+            {"riga_id": 10, "destinazione_tipo": "ORDINE_VENDITA", "stato_smistamento": "A_ORDINE"},
+            {"riga_id": 11, "destinazione_tipo": "ORDINE_VENDITA", "stato_smistamento": "RESIDUA"},
             {"riga_id": 12, "destinazione_tipo": "COMMESSA", "stato_smistamento": "RESIDUA"},
         ]
 
@@ -1913,9 +2024,10 @@ class TestPreventiviService(unittest.TestCase):
     def test_list_preventivi_paginazione_invalida(self):
         from apps.vendite.services.preventivi_service import list_preventivi
 
-        with self.assertRaises(ServiceError) as ctx:
-            list_preventivi(page=0, page_size=50)
-        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        for finestra in ({"limit": 0}, {"limit": 201}, {"offset": -1}):
+            with self.subTest(**finestra), self.assertRaises(ServiceError) as ctx:
+                list_preventivi(**finestra)
+            self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
     # ── Sprint 2: wiring pricing v5 + L1 override ──
 
@@ -2453,7 +2565,7 @@ class TestPreventiviService(unittest.TestCase):
 
         self.mock_repo.list_preventivi.return_value = ([], 0)
 
-        list_preventivi(page=1, page_size=10)
+        list_preventivi(limit=10)
 
         kwargs = self.mock_repo.list_preventivi.call_args.kwargs
         self.assertTrue(kwargs["solo_ultima_revisione"])
@@ -2465,7 +2577,7 @@ class TestPreventiviService(unittest.TestCase):
 
         self.mock_repo.list_preventivi.return_value = ([], 0)
 
-        list_preventivi(page=1, page_size=10, solo_ultima_revisione=False)
+        list_preventivi(limit=10, solo_ultima_revisione=False)
 
         kwargs = self.mock_repo.list_preventivi.call_args.kwargs
         self.assertFalse(kwargs["solo_ultima_revisione"])
@@ -2596,7 +2708,7 @@ class TestPreventiviService(unittest.TestCase):
             "billing_account_id": 10, "utility_id": 3,
         }
         riga_esistente = {
-            "id": 50, "articolo_id": "art-uuid", "uom_operativa_id": 7,
+            "id": 50, "preventivo_id": 1, "articolo_id": "art-uuid", "uom_operativa_id": 7,
             "stato_approvazione_prezzo": "REJECTED",
             "pratica_approvazione_prezzo_id": 99,
             "meta": {
@@ -2631,7 +2743,7 @@ class TestPreventiviService(unittest.TestCase):
             "billing_account_id": 10, "utility_id": 3,
         }
         self.mock_repo.get_riga.return_value = {
-            "id": 50, "articolo_id": "art-uuid", "uom_operativa_id": 7,
+            "id": 50, "preventivo_id": 1, "articolo_id": "art-uuid", "uom_operativa_id": 7,
             "stato_approvazione_prezzo": "REJECTED",
             "pratica_approvazione_prezzo_id": 99,
             "meta": {},

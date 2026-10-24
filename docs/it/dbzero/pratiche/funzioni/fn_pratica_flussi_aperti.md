@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pratica_flussi_aperti(p_pratica_id bigint, p_escludi_flusso_i
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_pratica_flussi_aperti(p_pratica_id bigint, p_escludi_flusso_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(flusso_id bigint, template_flusso_id integer, codice character varying, stato_codice_interno character varying)
@@ -36,6 +38,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_pratica_flussi_aperti(p_pratica_id bigint, p_escludi_flusso_id bigint)
 IS 'Pure check (D1): flussi istanziati in stato NON terminale (lavoro pendente) della pratica. Terminale = stato senza transizione di stato in uscita attiva (config.transizioni_stati_flussi_pratiche), auto-mantenuto. p_escludi_flusso_id ignora un''istanza (il flusso che sta completando). Consumata da fn_check_pratica_chiudibile e dal guard di chiusura pratica.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

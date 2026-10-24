@@ -24,7 +24,7 @@
 #   5. `tolleranza_minuti` nel JSON è RIFIUTATO: il contratto vive a catalogo
 #   6. una forma non ammessa fa fallire il caricamento, non lo degrada
 #   7. un timer senza cadenza fa fallire il caricamento
-#   8. `abilita` è obbligatorio: il silenzio non vale «spento»
+#   8. `abilita` è RIFIUTATO (dal 2026-10-16): l'accensione sta nel DB
 #   9. i worker del badge code hanno un contratto nel seed del catalogo
 #  10. un nome di unit con una barra è rifiutato (finisce in un percorso)
 #  11. `comando` è obbligatorio, per ogni forma, ed è una lista non vuota
@@ -38,10 +38,15 @@
 #  17. `dovuto` si valida: vocabolario, orario, giorno, jobname, solo sui timer
 #  18. l'inizio del periodo dovuto, nel fuso dell'azienda (giorno, settimana,
 #      mese; prima delle `dalle` niente; il periodo precedente non si recupera)
-#  19. un template porta l'`ExecCondition` della SUA unit sse la voce ha
-#      `dovuto` — e nessun `comando` contiene il controllo                  ⭐
+#  19. OGNI template porta l'`ExecCondition` della SUA unit (accensione dal
+#      DB, e il periodo per le calendariali) — e nessun `comando` contiene
+#      il controllo                                                         ⭐
 #  20. il `jobname` dichiarato è quello che il comando scrive
 #  21. almeno le tre sveglie calendariali dichiarano `dovuto` (anti vuoto)
+#  22. ogni sveglia `oneshot` ha il suo `TimeoutStartSec`: sotto la tolleranza
+#      del processo, se ha un contratto, e sotto l'ora dopo cui il giornale
+#      dice «presa e mai chiusa»; e sopra il tetto di «Esegui ora» per il
+#      drenatore che lo aspetta                                            ⭐
 #
 #  ⭐ Dal 2026-10-09 il JSON porta `dovuto` sulle sveglie calendariali (brief
 #     un-solo-fuso-aziendale T-4/T-9): il timer si sveglia ogni ora e
@@ -49,7 +54,8 @@
 #
 #  ⭐ Dal 2026-09-15 il JSON porta `avvio_manuale`: la sede in cui si dice
 #     quali sveglie hanno il pulsante «Esegui ora» (solo comandi brevi —
-#     decisione 2a del brief §8.5, piano §3.2). Non è `abilita`.
+#     decisione 2a del brief §8.5, piano §3.2). Non è l'accensione del
+#     processo, che dal 2026-10-16 sta nel DB.
 #
 #  ⭐ Dal 2026-09-14 il JSON porta anche il `comando` (l'argv dopo
 #     `run-command.sh`), reso nel template come `__COMANDO__`: è la riga che
@@ -101,7 +107,7 @@ _ASSENTE = object()
 def _voce(**override: object) -> dict:
     base: dict = {
         "unit": "x", "processo_codice": "p", "forma": "timer",
-        "comando": ["p"], "oncalendar": "*:0/1", "abilita": True,
+        "comando": ["p"], "oncalendar": "*:0/1",
         "avvio_manuale": True,
     }
     base.update(override)
@@ -241,14 +247,14 @@ class SveglieDichiarateTests(SimpleTestCase):
             "oncalendar",
         )
 
-    # 8. ⛔ `abilita` omesso NON vale «spento». Con un default il silenzio
-    #    produrrebbe un processo che non parte — il guasto-per-assenza che
-    #    questo file esiste per togliere, reintrodotto dalla porta di servizio.
-    def test_abilita_omesso_solleva(self) -> None:
-        self._assert_dichiarato_rifiutato(
-            _voce(forma="servizio", oncalendar=None, abilita=_ASSENTE, avvio_manuale=False),
-            "abilita",
-        )
+    # 8. ⛔ `abilita` non e' piu' un campo (dal 2026-10-16): se un processo
+    #    lavora lo decide il DB (`maintenance.fn_sveglia_accesa`). Riscritto
+    #    qui farebbe credere a chi lo scrive di aver spento un processo che
+    #    invece parte: si rifiuta, con tutti e due i valori.
+    def test_abilita_e_rifiutato(self) -> None:
+        for valore in (True, False):
+            with self.subTest(abilita=valore):
+                self._assert_dichiarato_rifiutato(_voce(abilita=valore), "abilita")
 
     # 9. I due worker che alimentano il badge code DEVONO avere un contratto a
     #    catalogo: senza, `_liveness_worker` cade sul ripiego e il pallino verde
@@ -400,6 +406,7 @@ class SveglieDichiarateTests(SimpleTestCase):
             ({**buono, "ogni": "mese", "giorno": 29}, "'giorno' del mese"),
             ({**buono, "ogni": "mese", "giorno": True}, "'giorno' del mese"),
             ({**buono, "jobname": "senza_corsia"}, "'jobname'"),
+            ({**buono, "basta_una_corsa": "si"}, "'basta_una_corsa'"),
             ("ogni giorno", "oggetto"),
         )
         for dovuto, atteso in casi:
@@ -450,20 +457,19 @@ class SveglieDichiarateTests(SimpleTestCase):
         il_15 = sveglie.Dovuto("mese", time(0, 0), 15, "p:c")
         self.assertIsNone(sveglie.inizio_periodo_dovuto(il_15, utc(2026, 10, 10, 9, 0), roma))
 
-    # 19. ⭐ L'`ExecCondition` sta nel template della sveglia calendariale, con
-    #     la SUA unit — e solo li'. E il controllo non sta nel `comando`, che e'
-    #     la riga di «Esegui ora» (T-9).
-    def test_execcondition_sse_dovuto(self) -> None:
+    # 19. ⭐ L'`ExecCondition` sta in OGNI template, con la SUA unit: dal
+    #     2026-10-16 `e_dovuto` chiede prima al DB se il processo e' acceso
+    #     (l'installer accende tutto), poi il periodo per le calendariali. Una
+    #     sveglia senza cancello lavorerebbe a processo spento. E il controllo
+    #     non sta nel `comando`, che e' la riga di «Esegui ora» (T-9).
+    def test_ogni_template_porta_il_suo_execcondition(self) -> None:
         for s in sveglie.carica_sveglie():
             with self.subTest(unit=s.unit):
                 testo = (_TEMPLATE_DIR / f"{s.unit}.service").read_text(encoding="utf-8")
                 righe = [r for r in testo.splitlines() if r.startswith("ExecCondition=")]
-                if s.dovuto is None:
-                    self.assertEqual(righe, [], f"{s.unit}: ExecCondition senza 'dovuto'")
-                else:
-                    self.assertEqual(
-                        righe, [f"ExecCondition=__APP_DIR__/bin/run-command.sh e_dovuto {s.unit}"],
-                    )
+                self.assertEqual(
+                    righe, [f"ExecCondition=__APP_DIR__/bin/run-command.sh e_dovuto {s.unit}"],
+                )
                 self.assertNotIn("e_dovuto", s.comando)
 
     # 20. Il `jobname` dichiarato e' la corsia che il comando SCRIVE: se
@@ -471,6 +477,7 @@ class SveglieDichiarateTests(SimpleTestCase):
     #     ripartirebbe a ogni sveglia.
     def test_il_jobname_dichiarato_e_quello_che_il_comando_scrive(self) -> None:
         from apps.core.services.presidi_digest import jobname_corsia as corsia_digest
+        from apps.core.management.commands.smoke_notturno import JOB_NAME as jobname_smoke
         from apps.vendite.management.commands.run_fatturazione_batch import (
             jobname_corsia as corsia_fatturazione,
         )
@@ -483,6 +490,7 @@ class SveglieDichiarateTests(SimpleTestCase):
         corsia_per_processo = {
             processi.PROCESSO_DIGEST_PRESIDI: lambda c: corsia_digest(opzione(c, "--cadenza")),
             processi.PROCESSO_RUN_FATTURAZIONE_BATCH: lambda c: corsia_fatturazione(opzione(c, "--modalita")),
+            processi.PROCESSO_SMOKE_NOTTURNO: lambda c: jobname_smoke,   # una corsia sola
         }
         for s in sveglie.carica_sveglie():
             if s.dovuto is None:
@@ -496,3 +504,37 @@ class SveglieDichiarateTests(SimpleTestCase):
     def test_le_sveglie_calendariali_dichiarano_dovuto(self) -> None:
         calendariali = {s.unit for s in sveglie.carica_sveglie() if s.dovuto is not None}
         self.assertGreaterEqual(len(calendariali), 3)
+
+    # 22. ⭐ Il TETTO della corsa (dal 2026-10-17). Un `oneshot` senza
+    #     `TimeoutStartSec` resta «in avvio» per sempre se si appende, e il
+    #     timer non ne lancia un'altra: il 2026-10-16 due sveglie sono rimaste
+    #     ferme oltre un'ora su una connessione al DB caduta a meta'. Il tetto
+    #     sta SOTTO la tolleranza del processo (la corsa appesa libera il timer
+    #     prima che il panorama dica MUTO) e sotto l'ora dopo cui la corsa
+    #     risulta «presa e mai chiusa» (lo stesso limite di
+    #     `smoke_notturno.TIMEOUT_GIRO_S`). Il drenatore della coda lavori
+    #     aspetta il sottoprocesso di «Esegui ora»: il suo tetto sta sopra.
+    def test_ogni_oneshot_ha_il_suo_tetto(self) -> None:
+        import re
+
+        from apps.core.services.avvio_manuale import TETTO_SOTTOPROCESSO_SECONDI
+
+        ora_della_corsa_aperta = 60
+        contratti = leggi_contratti_dal_seed()
+        controllate = 0
+        for s in sveglie.carica_sveglie():
+            testo = (_TEMPLATE_DIR / f"{s.unit}.service").read_text(encoding="utf-8")
+            if "Type=oneshot" not in testo.splitlines():
+                continue
+            controllate += 1
+            with self.subTest(unit=s.unit):
+                tetti = re.findall(r"^TimeoutStartSec=(\d+)min$", testo, re.MULTILINE)
+                self.assertEqual(len(tetti), 1, f"{s.unit}: un TimeoutStartSec=<N>min, uno solo")
+                minuti = int(tetti[0])
+                self.assertLess(minuti, ora_della_corsa_aperta)
+                contratto = contratti.get(s.processo_codice)
+                if contratto is not None and contratto["tolleranza_minuti"] is not None:
+                    self.assertLess(minuti, contratto["tolleranza_minuti"])
+                if s.processo_codice == processi.PROCESSO_DRAINA_CODA_LAVORI:
+                    self.assertGreater(minuti * 60, TETTO_SOTTOPROCESSO_SECONDI)
+        self.assertGreater(controllate, 0, "nessuna sveglia oneshot: la prova non prova niente")

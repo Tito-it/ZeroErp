@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO STATO DI UN PROCESSO, LETTO DAI DATI DI QUI
+#   dbops.fn_processo_acceso_dichiarato(codice): legge il catalogo, la scelta
+#   a mano e l'ambiente dichiarato, e chiede la regola a
+#   dbops.fn_processo_acceso_su_valori (20261016-24).
+#   Brief: brief-db-processi-accensione-per-ambiente (§5.3)
+#
+# -- PER CHI DESCRIVE -------------------------------------------------
+#   Non solleva: NULL quando il processo non ha sveglia, quando non esiste, o
+#   quando l'ambiente non e' dichiarato. E' la lettura del panorama
+#   (dbops.vw_processi_programmazione), che su un'installazione non
+#   dichiarata deve mostrare, non morire. Chi DECIDE passa da
+#   maintenance.fn_sveglia_accesa (20261016-26), che trasforma quei NULL in
+#   errori.
+#
+#   INVOKER: l'app legge le tre tabelle. La composizione (quali righe) sta
+#   qui sola: la sveglia e il panorama chiamano questa, nessuno rifa' il JOIN.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261016-25-create-fn-processo-acceso-dichiarato-mctit.yaml
+
+  - changeSet:
+      id: 20261016-25-create-fn-processo-acceso-dichiarato
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea dbops.fn_processo_acceso_dichiarato: lo stato della sveglia di un processo dai dati di
+        questa installazione, senza sollevare. Brief: brief-db-processi-accensione-per-ambiente.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_processo_acceso_dichiarato(
+                  p_processo_codice dbops.processi.codice%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Scopo: la sveglia del processo e' accesa, su questa
+                  --   installazione? NULL = senza sveglia, inesistente, o
+                  --   ambiente non dichiarato. Non solleva: e' per chi
+                  --   descrive. La regola e' in fn_processo_acceso_su_valori.
+                  SELECT dbops.fn_processo_acceso_su_valori(
+                             p.canale,
+                             p.obsoleto_dal,
+                             p.spegnibile,
+                             p.acceso_in_sviluppo,
+                             p.acceso_in_produzione,
+                             a.acceso,
+                             script.fn_ambiente_dichiarato())
+                    FROM dbops.processi p
+                    LEFT JOIN dbops.processi_accensione a
+                      ON a.processo_id = p.id
+                   WHERE p.codice = p_processo_codice;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_processo_acceso_dichiarato(dbops.processi.codice%TYPE)
+              IS 'Lo stato della sveglia di un processo su questa installazione: legge dbops.processi (default per ambiente, spegnibile), dbops.processi_accensione (la scelta a mano) e script.fn_ambiente_dichiarato(), e chiede la regola a dbops.fn_processo_acceso_su_valori. Non solleva: NULL per un processo senza sveglia (CODA, ritirato), inesistente, o con l''ambiente non dichiarato. E'' la lettura di chi descrive (il panorama dbops.vw_processi_programmazione); chi decide usa maintenance.fn_sveglia_accesa, che rende quei NULL errori. RETURNS boolean nudo: e'' una risposta, non il riflesso di una colonna. Brief: brief-db-processi-accensione-per-ambiente (§5.3).';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_processo_acceso_dichiarato(text);

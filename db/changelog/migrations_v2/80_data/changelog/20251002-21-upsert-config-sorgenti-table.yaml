@@ -69,7 +69,10 @@ databaseChangeLog:
               #   Loader esteso IN PLACE: e' runOnChange + validCheckSums ANY,
               #   quindi mirror vivo del CSV. Nessun loader nuovo.
               #   NULL (token) = sorgente non sfogliabile come documento.
-              - column: { name: area, type: STRING }
+              # ⛔ area RITIRATA il 2026-10-20 (20261020-48, brief-db-grammatica-unica-documenti
+              #    2d, G-6 e L2d-1): al suo posto apribile (boolean NOT NULL), vero quando la
+              #    sorgente e' un documento con una sua pagina. Nasce uguale a «area valorizzata».
+              - column: { name: apribile, type: BOOLEAN }
 
               # label_selector: quale colonna della target_table porta il NUMERO
               #   LEGGIBILE del documento, aggiunta 2026-08-20 (colonna da
@@ -84,3 +87,12 @@ databaseChangeLog:
               #   CSV: loadUpdateData non le tocca e restano a NULL, che per
               #   loro e' il valore giusto.
               - column: { name: label_selector, type: STRING }
+
+              # etichetta: il nome del tipo di documento come lo legge una
+              #   persona, sulla carta («Offerta», «Ordine», «DDT»), aggiunta
+              #   2026-10-20 (colonna da 20261020-22, NOT NULL da 20261020-23;
+              #   brief-db-grammatica-unica-documenti §12.9, L2b-1).
+              #   Loader esteso IN PLACE, come per `area` e `label_selector`.
+              #   Nessun NULL: ogni riga del CSV ha la sua etichetta, e il
+              #   NOT NULL di 90_end lo pretende.
+              - column: { name: etichetta, type: STRING }

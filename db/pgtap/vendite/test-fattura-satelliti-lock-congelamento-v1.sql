@@ -18,13 +18,24 @@
 -- 10) fatture_scadenze: stessa regola, il guard e' montato su entrambe
 -- 11) CASCADE dalla testata: i satelliti cadono senza errore (stato NULL)
 -- ------------------------------------------------------------
--- PERCHE' LE DUE FATTURE NASCONO GIA' NELLO STATO CHE SERVE. Il guard di
--- transizione trgfn_fatture_guard_stato e' montato solo su UPDATE
--- (trg_fatture_a10_guard_stato_upd), quindi una fattura puo' essere inserita
--- direttamente in DEFINITIVA. Si evita cosi' di attraversare la matrice degli
--- stati (1->2->8) per arrivare al punto, che qui non c'entra nulla: un test
--- che passa da mezza macchina a stati per esercitare un trigger su un'altra
--- tabella fallisce per ragioni che non sta testando.
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): azienda, cliente e
+--   fatture li costruiscono i builder; la «definitiva» arriva in DEFINITIVA
+--   senza indirizzi dal builder (p_spoglia_indirizzi) invece dell'intestazione
+--   finta e dell'indirizzo scritto e tolto a mano. Niente piu' BA, registro,
+--   tipo e valuta pescati. Il 2 conta le fatture vere.
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le fatture nascono in
+--   bozza e la «definitiva» si porta avanti con dbops.fn_pgtap_porta_a_stato
+--   (prima nasceva gia' DEFINITIVA). Il paragrafo sotto e' superato.
+-- (superato) PERCHE' LE DUE FATTURE NASCONO GIA' NELLO STATO CHE SERVE. Il
+-- guard di transizione trgfn_fatture_guard_stato era montato solo su UPDATE,
+-- quindi una fattura si poteva inserire direttamente in DEFINITIVA, senza
+-- attraversare la matrice (1->2->8). Dal 2026-10-24 un documento nasce solo
+-- nello stato iniziale (script.trgfn_doc_stato_iniziale): la matrice si
+-- attraversa, e cio' che l'uscita dalla bozza pretende (indirizzo FATT,
+-- intestazione) lo scrive la fixture. ⚠️ L'indirizzo FATT si toglie di nuovo
+-- in EMESSA (sotto soglia, si puo'): la DEFINITIVA deve arrivare SENZA
+-- indirizzi, o l'INSERT dei test 5 e 6 urterebbe l'unicita' per tipo
+-- (uq_fatture_indirizzi_uno_per_tipo_) invece del guard.
 --
 -- PERCHE' IL PRIMO INSERT SULLA DEFINITIVA USA IL BYPASS. Per provare UPDATE e
 -- DELETE oltre soglia serve una riga satellite gia' esistente su una fattura
@@ -50,7 +61,15 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ L'AZIENDA SI COSTRUISCE (rev 2026-10-24, Q-4), e il contesto e' quello del
+--   SUO operatore: prima si apriva sul primo operatore del database e si
+--   pescava il primo BA con un emittente, che su un database ricostruito non
+--   c'e' (il file era rosso dal 2 in poi).
+CREATE TEMP TABLE tmp_mondo_lock AS
+SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM tmp_mondo_lock)); END $ctx$;
 
 SELECT plan(11);
 
@@ -74,57 +93,43 @@ SELECT is(
 );
 
 -- ============================================================
--- Riferimenti e fixture
+-- Riferimenti e fixture: le due fatture dal builder, sullo stesso cliente
 -- ============================================================
+-- La «definitiva» arriva in DEFINITIVA SENZA indirizzi (p_spoglia_indirizzi):
+-- il builder la completa coi building block, la porta per la matrice e toglie
+-- gli indirizzi in EMESSA, sotto soglia. L'intestazione resta: qui non serve
+-- toglierla, e la DEFINITIVA senza indirizzi e' quella che i test 5 e 6 vogliono
+-- (vedi in testa).
+CREATE TEMP TABLE tmp_f_draft_lock AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('lock satelliti draft');
+
+CREATE TEMP TABLE tmp_f_def_lock AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+    'lock satelliti definitiva', 'DEFINITIVA',
+    (SELECT billing_account_id FROM tmp_f_draft_lock), true, false);
+
+CREATE TEMP TABLE tmp_fatture_lock AS
+SELECT fattura_id AS id, 'draft'::text AS caso FROM tmp_f_draft_lock
+UNION ALL SELECT fattura_id, 'definitiva' FROM tmp_f_def_lock;
+
 CREATE TEMP TABLE tmp_refs_lock AS
 SELECT
-  ba.id                                          AS billing_account_id,
-  anagrafiche.fn_get_emittente_fiscale_id(ba.id) AS emittente_soggetto_ruolo_id,
-  (SELECT m.registro_id
-     FROM vendite.tipi_doc_fiscale_registri m
-     JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
-    WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS registro_id,
-  (SELECT m.tipo_doc_fiscale_id
-     FROM vendite.tipi_doc_fiscale_registri m
-     JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
-    WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS tipo_doc_fiscale_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT s.id FROM config.stati_doc_fiscale s
     WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE)      AS stato_draft_id,
   (SELECT s.id FROM config.stati_doc_fiscale s
     WHERE s.codice_interno = 'DEFINITIVA' AND s.attivo IS TRUE) AS stato_def_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'FATT') AS fatt_id
-FROM anagrafiche.billing_account ba
-WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-ORDER BY ba.id
-LIMIT 1;
+  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'FATT') AS fatt_id;
 
-
--- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva.
---   La riga sopra sceglieva «un registro qualunque» accanto a un emittente che
---   viene da un'altra parte: che i due coincidessero era un CASO, e dal
---   2026-08-30 vendite.trgfn_fatture_guard_registro_emittente non lo ammette
---   piu'. L'helper risponde con il registro di QUESTO emittente, creandolo se
---   non ce n'e' uno — la riga vive nella transazione del test.
-UPDATE tmp_refs_lock SET registro_id = script.fn_pgtap_registro_fattura(emittente_soggetto_ruolo_id);
-CREATE TEMP TABLE tmp_fatture_lock AS
-WITH ins AS (
-  INSERT INTO vendite.fatture (
-    registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-    tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, meta
-  )
-  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id,
-         r.billing_account_id, r.tipo_doc_fiscale_id, v.stato_id, r.valuta_id,
-         jsonb_build_object('test', 'pgtap_lock_satelliti', 'caso', v.caso)
-    FROM tmp_refs_lock r
-   CROSS JOIN LATERAL (VALUES ('draft', r.stato_draft_id),
-                              ('definitiva', r.stato_def_id)) AS v(caso, stato_id)
-  RETURNING id, meta ->> 'caso' AS caso
-)
-SELECT id, caso FROM ins;
-
+-- ⚠️ Il 2 conta le fatture VERE nello stato dichiarato e senza indirizzi, non
+--   le righe della temp table (vere per costruzione).
 SELECT is(
-  (SELECT count(*)::int FROM tmp_fatture_lock), 2,
+  (SELECT count(*)::int
+     FROM tmp_fatture_lock t
+     JOIN vendite.fatture f          ON f.id = t.id
+     JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
+    WHERE s.codice_interno = CASE t.caso WHEN 'draft' THEN 'DRAFT' ELSE 'DEFINITIVA' END
+      AND NOT EXISTS (SELECT 1 FROM vendite.fatture_indirizzi i WHERE i.fattura_id = f.id)),
+  2,
   '2) fixture: due fatture create (DRAFT e DEFINITIVA)'
 );
 

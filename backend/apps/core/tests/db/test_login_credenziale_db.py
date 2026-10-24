@@ -541,7 +541,9 @@ class CicloOperatoreDbTests(_ViewVere):
 
     # Scopo: Una chiamata dell'amministratore attraverso la view vera.
     def _admin(self, metodo: str, url: str, dati: dict | None = None):
-        client = APIClient()
+        # La key come dal frontend: ogni POST che scrive la porta (§A5 del
+        # brief-be-verifica-documentazione-api, 2026-10-21).
+        client = APIClient(HTTP_IDEMPOTENCY_KEY=f"test-{uuid.uuid4()}")
         client.force_authenticate(User.objects.get(id=self.admin_id))
         sid = transaction.savepoint_create()
         risposta = getattr(client, metodo)(url, dati or {}, format="json")

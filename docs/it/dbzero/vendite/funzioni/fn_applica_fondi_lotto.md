@@ -7,6 +7,8 @@ CREATE FUNCTION fn_applica_fondi_lotto(p_lotto_id bigint, p_tipo_fondo_codice_in
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_applica_fondi_lotto(p_lotto_id bigint, p_tipo_fondo_codice_interno character varying)
  RETURNS TABLE(fatture_count integer, fondi_applicati integer)
@@ -82,6 +84,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_applica_fondi_lotto(p_lotto_id bigint, p_tipo_fondo_codice_interno character varying)
 IS 'Madre DB del giro di applicazione dei fondi per un lotto: legge lo scope da vendite.fn_get_scope_fatture_lotto e chiama fn_applica_fondi_fattura una volta per FATTURA. Ritorna fatture_count e fondi_applicati. ⚠️ Itera sulle fatture e non sulle chiavi come la sorella di generazione, e non e'' un''asimmetria da correggere: le sorgenti si trovano per chiave e non appartengono al lotto, mentre ogni figlia riceve i SUOI fondi e cambia il proprio totale — deduplicare per chiave qui vorrebbe dire assegnare tutto a una figlia sola e lasciare le altre senza. ⭐ Qui il parziale costa piu'' che altrove: ogni chiamata riuscita ha gia'' portato una source ad ASSEGNATO e cambiato il totale di una fattura, e un lotto in cui alcune figlie hanno il fondo e altre no non ha nessuna meta'' sbagliata di per se'', quindi niente lo segnala. Una funzione = uno statement = una transazione chiude il caso per costruzione, comunque il chiamante scriva la query. ℹ️ Chiave a nove elementi, guard di capienza e FOR UPDATE SKIP LOCKED restano dentro fn_applica_fondi_fattura, che e'' l''unico posto in cui il fondo muove denaro: questa e'' orchestrazione. R-3 di brief-db-fondo-fattura-ricalcolo-e-governo §8.3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -35,13 +35,18 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(9);
 
--- Precondizioni: serve un articolo attivo e una uom attiva (qualsiasi).
+-- Precondizioni: un articolo COSTRUITO (nasce merce, non solo componente) e
+-- la sua UoM base. ⚠️ Rev 2026-10-14 (20261014-05, D-6 di
+-- brief-db-articoli-ammessi-per-documento): una promo su un articolo solo
+-- componente e' rifiutata, e «il primo articolo attivo per id» poteva
+-- esserlo. In due istruzioni: la riga nata dal builder non e' visibile a una
+-- JOIN della stessa istruzione.
 CREATE TEMP TABLE tmp_ctx_articolo AS
-SELECT id AS articolo_id, uom_id
-  FROM catalogo.articoli
- WHERE attivo IS TRUE
- ORDER BY id
- LIMIT 1;
+SELECT dbops.fn_pgtap_crea_articolo('PGTAP-PROMO-T3', false) AS articolo_id,
+       NULL::bigint AS uom_id;
+UPDATE tmp_ctx_articolo t SET uom_id = a.uom_id
+  FROM catalogo.articoli a
+ WHERE a.id = t.articolo_id;
 
 -- 1) PERCENTUALE positivo ammesso
 SELECT lives_ok(

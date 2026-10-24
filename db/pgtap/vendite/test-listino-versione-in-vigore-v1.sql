@@ -205,7 +205,13 @@ SELECT is(
              AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_listino_versione_operativa\s*\(')
          OR ((n.nspname, p.proname) IN (
               ('script',  'fn_check_esclusione_articolo_documento'),
-              ('script',  'trgfn_righe_guard_aggiunta_fuori_listino'),
+              -- rev 2026-10-13 (sera): al posto del guard ritirato
+              --   trgfn_righe_guard_aggiunta_fuori_listino (20261013-57), la check
+              --   per tipo di riga che ne ha preso la regola.
+              -- rev 2026-10-14 (Lotto 4, 20261014-01): la check legge il
+              --   documento una volta, nel suo contesto: il consumatore e'
+              --   script.fn_articolo_riga_contesto, non piu' la check.
+              ('script',  'fn_articolo_riga_contesto'),
               ('vendite', 'fn_documento_righe_preview'),
               ('vendite', 'fn_offerta_righe_espanse'))
              AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_documento_listino_operativo\s*\(')),

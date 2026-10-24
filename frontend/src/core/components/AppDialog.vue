@@ -10,6 +10,13 @@
 //     ConfirmDialog globale. Un cambio di layout e' una riga la', non un giro
 //     sui 48 dialog. ⛔ Niente X in alto: il footer di un dialog e' sempre
 //     visibile, ogni dialog ha gia' Annulla/Chiudi (decisione Tid, 2026-09-18).
+//   - ⭐ il tasto DETTO in alto a destra (2026-10-11, Tid): l'etichetta «Esc»
+//     (`app-kbd`), come accanto alla X del drawer — ma qui SENZA X (la regola
+//     qui sopra resta). Non e' un pulsante: dice che ESC chiude, come Annulla.
+//     Non c'e' dove ESC e' spento (`closeOnEscape=false`: dirlo sarebbe
+//     falso) ne' su un dispositivo senza tastiera fisica (`ui.isCompatto`).
+//     Il titolo lo rende lo slot `#header` (PrimeVue lo sostituisce intero):
+//     l'id per `aria-labelledby` lo diamo noi (`useId`), via `pt.root`.
 //   - `header` OBBLIGATORIO: un Dialog PrimeVue senza titolo rende comunque la
 //     riga di testa, e l'unico figlio (le azioni) finisce a sinistra — era la
 //     «X a sinistra» vista in-app, non un secondo chrome.
@@ -48,11 +55,14 @@
 //
 // Override di chrome sul tag = una decisione, e si commenta sopra al tag
 // (unico oggi: EmittenteAttivoDialog, `:close-on-escape="false"`).
-import { computed, provide } from 'vue'
+import { computed, provide, ref, useId } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Dialog from 'primevue/dialog'
 import FormFooter from './FormFooter.vue'
 import { DIALOG_CHROME, DIALOG_WIDTH } from '../constants'
 import { READONLY_KEY, useInjectReadonly } from '../composables/useReadonlyMode'
+import { TASTO, nomeTasto } from '../utils/scorciatoie'
+import { useUiStore } from '../../stores/ui'
 
 const props = defineProps({
   visible: { type: Boolean, required: true },
@@ -93,6 +103,10 @@ const props = defineProps({
 
 const emit = defineEmits(['update:visible', 'save', 'cancel'])
 
+const { t, te } = useI18n()
+const ui = useUiStore()
+const titoloId = useId()
+
 // Scopo: risolve la larghezza dalla scala; fallback 'md' se taglia ignota.
 const resolvedWidth = computed(() => DIALOG_WIDTH[props.width] || DIALOG_WIDTH.md)
 
@@ -123,12 +137,29 @@ function onRootKeydown(event) {
   if (event.code === 'Escape') event.stopPropagation()
 }
 
+// ⭐ IL FUOCO ENTRA NEL DIALOG ALL'APERTURA (2026-10-11, rilievo di Tid: «ESC
+//    funziona su qualcuno, non su tutti»). L'ESC qui sopra si sente solo se
+//    il fuoco e' DENTRO il dialog. PrimeVue lo porta dentro da se' solo verso
+//    un `[autofocus]` o, in mancanza, verso la SUA X — che con `closable:
+//    false` non c'e'. Senza un campo `autofocus` il fuoco restava fuori (sul
+//    pulsante del drawer sotto, o sul body): l'ESC arrivava a `document`,
+//    `escapeSoloInCima` lo ingoiava, e il dialog non si chiudeva. Funzionava
+//    quindi solo nei dialog che un `autofocus` ce l'avevano, per caso.
+//    Qui il fuoco va sulla RADICE (`tabindex=-1`, non e' una tappa del Tab),
+//    se non e' gia' dentro: un `[autofocus]` lo sposta poi PrimeVue a fine
+//    animazione, e vince lui.
+const dialogRef = ref(null)
+function onShow() {
+  const radice = dialogRef.value?.container
+  if (radice && !radice.contains(document.activeElement)) radice.focus({ preventScroll: true })
+}
+
 // Le sezioni pass-through di PrimeVue: la radice `.p-dialog` — testa, corpo e
 // footer compresi — riceve il keydown, in discesa e in risalita.
 // `app-riquadro` sul contenuto: le soglie dei form dentro la dialog si
 // misurano sulla dialog, non sulla finestra (main.css, «I riquadri»).
 const pt = {
-  root: { onKeydownCapture: onRootKeydownCapture, onKeydown: onRootKeydown },
+  root: { 'aria-labelledby': titoloId, tabindex: '-1', onKeydownCapture: onRootKeydownCapture, onKeydown: onRootKeydown },
   content: { class: 'app-riquadro' },
 }
 
@@ -169,6 +200,7 @@ function onSave() {
 
 <template>
   <Dialog
+    ref="dialogRef"
     :visible="visible"
     :header="header"
     :modal="modal"
@@ -178,7 +210,15 @@ function onSave() {
     :style="{ width: resolvedWidth }"
     :pt="pt"
     @update:visible="onDialogVisible"
+    @show="onShow"
   >
+    <template #header="{ class: classeTitolo }">
+      <span :id="titoloId" :class="classeTitolo">{{ header }}</span>
+      <kbd v-if="closeOnEscape && !ui.isCompatto" class="app-kbd app-dialog-tasto" aria-hidden="true">
+        {{ nomeTasto(t, te, TASTO.ESC) }}
+      </kbd>
+    </template>
+
     <slot />
 
     <template #footer>

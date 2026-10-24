@@ -42,7 +42,7 @@ from apps.vendite.services.vendite_service import (
 _ROWS_RIEPILOGO = [
     {
         "classe": "RECUPERABILE",
-        "area": "PREVENTIVI",
+        "area": "PREVENTIVO",
         "n_documenti": 3,
         "valore_fermo_tot": "1500.00",
         "unita_ferme_tot": 5,
@@ -50,7 +50,7 @@ _ROWS_RIEPILOGO = [
     },
     {
         "classe": "RECUPERABILE",
-        "area": "ORDINI",
+        "area": "ORDINE_VENDITA",
         "n_documenti": 2,
         "valore_fermo_tot": "500.50",
         "unita_ferme_tot": 2,
@@ -58,7 +58,7 @@ _ROWS_RIEPILOGO = [
     },
     {
         "classe": "ANOMALIA",
-        "area": "OFFERTE",
+        "area": "OFFERTA_COMMERCIALE",
         "n_documenti": 1,
         "valore_fermo_tot": None,
         "unita_ferme_tot": 1,
@@ -104,7 +104,7 @@ class DashBacklogRiepilogoServiceTests(TestCase):
         self.assertEqual(rec["unita_ferme_tot"], 7)
         self.assertEqual(rec["anzianita_max_giorni"], 90)
         self.assertEqual(len(rec["aree"]), 2)
-        self.assertEqual(rec["aree"][0]["area"], "PREVENTIVI")
+        self.assertEqual(rec["aree"][0]["area"], "PREVENTIVO")
         # Classe con valore NULL (aree a conteggi): il totale resta "0".
         anomalia = classi["ANOMALIA"]
         self.assertEqual(anomalia["n_documenti"], 1)
@@ -120,7 +120,7 @@ class DashBacklogRiepilogoServiceTests(TestCase):
         return_value=[
             {
                 "classe": "NUOVA_CLASSE",
-                "area": "ORDINI",
+                "area": "ORDINE_VENDITA",
                 "n_documenti": 1,
                 "valore_fermo_tot": "10.00",
                 "unita_ferme_tot": 1,
@@ -147,14 +147,14 @@ class DashBacklogDocumentiServiceTests(TestCase):
         return_value=([{"documento_id": 1}], 1),
     )
     def test_documenti_ok_envelope_paginato(self, mock_repo):
-        data = fn_dash_backlog_documenti(classe="RECUPERABILE", area="PREVENTIVI")
+        data = fn_dash_backlog_documenti(classe="RECUPERABILE", area="PREVENTIVO")
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["page"], 1)
         self.assertEqual(data["total_pages"], 1)
         self.assertEqual(data["results"], [{"documento_id": 1}])
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["classe"], "RECUPERABILE")
-        self.assertEqual(kwargs["area"], "PREVENTIVI")
+        self.assertEqual(kwargs["area"], "PREVENTIVO")
         self.assertNotIn("auth_user_id", kwargs)
 
     # Scopo: Il filtro classe NON e' whitellistato (coerenza fail-visible col
@@ -186,7 +186,7 @@ class DashBacklogDocumentiServiceTests(TestCase):
         return_value=([], 0),
     )
     def test_documenti_aree_ddt_resi_valide(self, mock_repo):
-        for area in ("DDT", "RESI"):
+        for area in ("DDT_VENDITA", "RESO_VENDITA"):
             with self.subTest(area=area):
                 fn_dash_backlog_documenti(area=area)
                 self.assertEqual(mock_repo.call_args.kwargs["area"], area)
@@ -260,11 +260,13 @@ class DashBacklogDocumentiServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         mock_repo.assert_not_called()
 
-    # Scopo: Paginazione invalida -> E_VENDITE_VALIDATION (validate_pagination).
-    def test_documenti_page_invalida(self):
-        with self.assertRaises(ServiceError) as ctx:
-            fn_dash_backlog_documenti(page=0)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+    # Scopo: la finestra arriva al repository come `limit`/`offset` (dal
+    #        2026-10-21 un dialetto solo: la valida `pagina_da_query`, nella view).
+    @patch.object(vendite_service.VenditeRepository, "list_dash_backlog_documenti", return_value=([], 0))
+    def test_documenti_page_invalida(self, mock_repo):
+        fn_dash_backlog_documenti(limit=10, offset=30)
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual((kwargs["limit"], kwargs["offset"]), (10, 30))
 
     # Scopo: order_by/order_dir (whitelist) inoltrati al repository per
     #        l'ordinamento server-side su tutte le pagine.

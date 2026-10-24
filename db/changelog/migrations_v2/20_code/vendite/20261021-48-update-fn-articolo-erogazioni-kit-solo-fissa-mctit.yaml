@@ -1,0 +1,255 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO DI DERIVATA_COMPONENTI — vendite.fn_articolo_erogazioni
+#   Brief: brief-db-offerta-emissione-ed-erogazione §I.1, decisione I-D1 di Tid
+#   (2026-10-21), che supera B-D5.
+#
+#   Tolto il ramo «distinta»: il composito non ammette piu' DERIVATA_COMPONENTI
+#   accanto alle erogazioni della tipologia o della natura; l'ordine perde il
+#   criterio «DERIVATA per ultima». La colonna `origine` resta: TIPOLOGIA |
+#   NATURA.
+#
+#   Decisione I-D6 di Tid (2026-10-21, emersa scrivendo): un kit si vende solo a
+#   quantita' fissa. Sul composito il perimetro tiene le sole combinazioni FISSA
+#   (i componenti si calcolano dalla quantita' della riga: un kit a consumo
+#   nasceva senza componenti e con prezzo 0); se il default della base non e'
+#   FISSA, il default del kit e' la prima FISSA. Un kit di una tipologia solo a
+#   consumo non ha combinazioni, e non entra in offerte e contratti
+#   (SENZA_EROGAZIONE di script.fn_check_articolo_riga).
+#
+#   CREATE OR REPLACE: firma e RETURNS TABLE invariati (stessi nomi, stessi tipi,
+#   stesso ordine), presi ancorati dall'ultimo YAML (20261007-66, identico al vivo).
+#
+# Ritorno indietro: il corpo e il COMMENT di 20261007-66 (con CREATE OR REPLACE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261021-48-update-fn-articolo-erogazioni-kit-solo-fissa-mctit.yaml
+
+  - changeSet:
+      id: 20261021-48-update-fn-articolo-erogazioni-kit-solo-fissa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_articolo_erogazioni: il composito non ammette piu' DERIVATA_COMPONENTI e si eroga solo con la FISSA (brief §I.1, I-D1, I-D6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_articolo_erogazioni(
+                  p_articolo_id catalogo.articoli.id%TYPE)
+              RETURNS TABLE(
+                  tipo_erogazione       config.erogazioni_fonti.tipo_erogazione%TYPE,
+                  fonte_quantita_attesa config.erogazioni_fonti.fonte_quantita_attesa%TYPE,
+                  e_default             config.erogazioni_fonti.e_default%TYPE,
+                  generazione_canone    config.listini_tipologie_erogazioni.generazione_canone%TYPE,
+                  -- Nudo DICHIARATO: da dove viene la combinazione (TIPOLOGIA | NATURA),
+                  -- un valore calcolato senza colonna di cui sia il riflesso.
+                  origine               text,
+                  -- Nudo DICHIARATO: il rango calcolato della combinazione (1 = la
+                  -- prima), nessuna colonna di cui sia il riflesso.
+                  ordine                integer)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: come si puo' erogare un articolo su una riga di contratto o di
+              --   offerta — le combinazioni (erogazione, fonte) ammesse, quella di
+              --   default, e la generazione_canone da proporre sulle CANONE.
+              -- Regola (decisioni di Tid del 2026-10-07, brief-db-offerta-emissione-ed-
+              --   erogazione §C.5):
+              --   · l'articolo con una tipologia di listino: le combinazioni della
+              --     tipologia (config.listini_tipologie_erogazioni) — B-R1, B-D4;
+              --   · senza tipologia: quelle della natura di vendita
+              --     (config.nature_vendita_erogazioni), che e' NOT NULL — B-D1. Vince la
+              --     tipologia: le due non si sommano.
+              --   · ⛔ rev 2026-10-21 (§I.1, I-D1 e I-D6 di Tid): il composito non ammette
+              --     piu' DERIVATA_COMPONENTI (B-D5 superata), e delle combinazioni della
+              --     base tiene le sole FISSA. I componenti si calcolano dalla quantita'
+              --     del padre (coeff_qta x quantita'): un kit senza quantita' sulla riga
+              --     nascerebbe senza componenti e con prezzo 0. Un kit si vende in N
+              --     pezzi. Se il default della base non e' FISSA, sul composito diventa
+              --     default la prima FISSA nell'ordine qui sotto; un composito di una
+              --     tipologia solo a consumo non ha nessuna combinazione (il motivo
+              --     SENZA_EROGAZIONE di script.fn_check_articolo_riga lo dice).
+              -- Ordine (`ordine`, §D.4 punto 1): il default per primo, poi per
+              --   erogazione, poi per fonte. Chi deve scegliere UNA combinazione (l'eredita') prende la
+              --   prima che gli serve; il form mostra la lista in quest'ordine. Cosi'
+              --   la prima fonte che il form propone per un'erogazione e' quella che
+              --   il DB scriverebbe.
+              -- Zero righe se l'articolo non c'e'.
+              -- ⭐ Sede UNICA del perimetro e del suo ordine: la leggono il trigger
+              --   d'eredita', la check del guard e la lettura per il form. Il default e
+              --   il perimetro non possono dissentire, perche' sono la stessa riga.
+              DECLARE
+                  v_tipologia catalogo.articoli.listino_tipologia_id%TYPE;
+                  v_natura    catalogo.articoli.natura_vendita_id%TYPE;
+                  v_composito catalogo.articoli.is_composito%TYPE;
+              BEGIN
+                  SELECT a.listino_tipologia_id, a.natura_vendita_id, a.is_composito
+                    INTO v_tipologia, v_natura, v_composito
+                    FROM catalogo.articoli a
+                   WHERE a.id = p_articolo_id;
+
+                  IF NOT FOUND THEN
+                      RETURN;
+                  END IF;
+
+                  RETURN QUERY
+                  WITH base AS (
+                      SELECT te.tipo_erogazione, te.fonte_quantita_attesa, te.e_default,
+                             te.generazione_canone, 'TIPOLOGIA'::text AS origine
+                        FROM config.listini_tipologie_erogazioni te
+                       WHERE v_tipologia IS NOT NULL
+                         AND te.tipologia_id = v_tipologia
+                      UNION ALL
+                      SELECT ne.tipo_erogazione, ne.fonte_quantita_attesa, ne.e_default,
+                             ne.generazione_canone, 'NATURA'::text
+                        FROM config.nature_vendita_erogazioni ne
+                       WHERE v_tipologia IS NULL
+                         AND ne.natura_vendita_id = v_natura
+                  ), perimetro AS (
+                      -- I-D6 (2026-10-21): il composito si vende solo con la FISSA, perche'
+                      --   i suoi componenti si calcolano dalla quantita' della riga.
+                      SELECT b.*
+                        FROM base b
+                       WHERE v_composito IS NOT TRUE
+                          OR b.fonte_quantita_attesa = 'FISSA'
+                  )
+                  SELECT t.tipo_erogazione, t.fonte_quantita_attesa,
+                         -- Il default della base; sul composito, se quello e' stato
+                         --   filtrato, la prima FISSA nell'ordine: uno e uno solo.
+                         CASE WHEN v_composito IS TRUE
+                              THEN row_number() OVER (
+                                       ORDER BY t.e_default DESC,
+                                                t.tipo_erogazione,
+                                                t.fonte_quantita_attesa) = 1
+                              ELSE t.e_default
+                         END,
+                         t.generazione_canone, t.origine,
+                         (row_number() OVER (
+                             ORDER BY t.e_default DESC,
+                                      t.tipo_erogazione,
+                                      t.fonte_quantita_attesa))::integer
+                    FROM perimetro t;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_articolo_erogazioni(catalogo.articoli.id%TYPE)
+              IS 'Building block: come si può erogare un articolo su una riga di contratto o di offerta. Restituisce le combinazioni (tipo_erogazione, fonte_quantita_attesa) ammesse, e_default su quella che la riga eredita quando non la indica, la generazione_canone da proporre sulle CANONE, l''origine (TIPOLOGIA | NATURA) e l''ordine (1 = la prima: il default, poi per erogazione, poi per fonte). Regola (decisioni di Tid del 2026-10-07): con una tipologia di listino, le combinazioni della tipologia (config.listini_tipologie_erogazioni); senza, quelle della natura di vendita (config.nature_vendita_erogazioni) — vince la tipologia, le due non si sommano; il composito tiene le sole combinazioni FISSA (un kit si vende in N pezzi: i componenti si calcolano dalla quantita'' della riga), e se il default della base non e'' FISSA il suo default e'' la prima FISSA nell''ordine; senza FISSA, zero righe. Zero righe se l''articolo non c''è. Sede unica del perimetro e del suo ordine: la leggono script.trgfn_righe_default_erogazione_da_articolo (eredità, prende la prima combinazione che le serve), script.fn_check_riga_erogazione (guard) e vendite.fn_documento_riga_erogazioni (form, ordina su ordine): la prima fonte che il form propone per un''erogazione è quella che il DB scriverebbe. STABLE, SECURITY INVOKER. Nasce il 2026-10-07, brief-db-offerta-emissione-ed-erogazione §C.7 (B3); ordine dal 20261007-66 (§D.4 punto 1). Rev 2026-10-21 (20261021-48, §I.1, I-D1 di Tid): ritirata DERIVATA_COMPONENTI sul composito (origine DISTINTA), B-D5 superata; I-D6: il composito si eroga solo con la FISSA.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_articolo_erogazioni(
+                  p_articolo_id catalogo.articoli.id%TYPE)
+              RETURNS TABLE(
+                  tipo_erogazione       config.erogazioni_fonti.tipo_erogazione%TYPE,
+                  fonte_quantita_attesa config.erogazioni_fonti.fonte_quantita_attesa%TYPE,
+                  e_default             config.erogazioni_fonti.e_default%TYPE,
+                  generazione_canone    config.listini_tipologie_erogazioni.generazione_canone%TYPE,
+                  -- Nudo DICHIARATO: da dove viene la combinazione (TIPOLOGIA | NATURA |
+                  -- DISTINTA), un valore calcolato senza colonna di cui sia il riflesso.
+                  origine               text,
+                  -- Nudo DICHIARATO: il rango calcolato della combinazione (1 = la
+                  -- prima), nessuna colonna di cui sia il riflesso.
+                  ordine                integer)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: come si puo' erogare un articolo su una riga di contratto o di
+              --   offerta — le combinazioni (erogazione, fonte) ammesse, quella di
+              --   default, e la generazione_canone da proporre sulle CANONE.
+              -- Regola (decisioni di Tid del 2026-10-07, brief-db-offerta-emissione-ed-
+              --   erogazione §C.5):
+              --   · l'articolo con una tipologia di listino: le combinazioni della
+              --     tipologia (config.listini_tipologie_erogazioni) — B-R1, B-D4;
+              --   · senza tipologia: quelle della natura di vendita
+              --     (config.nature_vendita_erogazioni), che e' NOT NULL — B-D1. Vince la
+              --     tipologia: le due non si sommano;
+              --   · l'articolo composito ammette in piu' DERIVATA_COMPONENTI, accanto a
+              --     ogni erogazione ammessa, se il vocabolario la dichiara coerente
+              --     (config.erogazioni_fonti) — B-D5: e' un fatto della distinta, non della
+              --     tipologia. Mai di default.
+              -- Ordine (`ordine`, §D.4 punto 1): il default per primo, poi per
+              --   erogazione; dentro un'erogazione DERIVATA_COMPONENTI per ultima, poi
+              --   per fonte. Chi deve scegliere UNA combinazione (l'eredita') prende la
+              --   prima che gli serve; il form mostra la lista in quest'ordine. Cosi'
+              --   la prima fonte che il form propone per un'erogazione e' quella che
+              --   il DB scriverebbe.
+              -- Zero righe se l'articolo non c'e'.
+              -- ⭐ Sede UNICA del perimetro e del suo ordine: la leggono il trigger
+              --   d'eredita', la check del guard e la lettura per il form. Il default e
+              --   il perimetro non possono dissentire, perche' sono la stessa riga.
+              DECLARE
+                  v_tipologia catalogo.articoli.listino_tipologia_id%TYPE;
+                  v_natura    catalogo.articoli.natura_vendita_id%TYPE;
+                  v_composito catalogo.articoli.is_composito%TYPE;
+              BEGIN
+                  SELECT a.listino_tipologia_id, a.natura_vendita_id, a.is_composito
+                    INTO v_tipologia, v_natura, v_composito
+                    FROM catalogo.articoli a
+                   WHERE a.id = p_articolo_id;
+
+                  IF NOT FOUND THEN
+                      RETURN;
+                  END IF;
+
+                  RETURN QUERY
+                  WITH base AS (
+                      SELECT te.tipo_erogazione, te.fonte_quantita_attesa, te.e_default,
+                             te.generazione_canone, 'TIPOLOGIA'::text AS origine
+                        FROM config.listini_tipologie_erogazioni te
+                       WHERE v_tipologia IS NOT NULL
+                         AND te.tipologia_id = v_tipologia
+                      UNION ALL
+                      SELECT ne.tipo_erogazione, ne.fonte_quantita_attesa, ne.e_default,
+                             ne.generazione_canone, 'NATURA'::text
+                        FROM config.nature_vendita_erogazioni ne
+                       WHERE v_tipologia IS NULL
+                         AND ne.natura_vendita_id = v_natura
+                  ), distinta AS (
+                      -- B-D5: il composito ammette la quantita' derivata dai componenti,
+                      --   per ogni erogazione che la base ammette, se coerente.
+                      SELECT DISTINCT ON (b.tipo_erogazione)
+                             b.tipo_erogazione, ef.fonte_quantita_attesa, false AS e_default,
+                             b.generazione_canone, 'DISTINTA'::text AS origine
+                        FROM base b
+                        JOIN config.erogazioni_fonti ef
+                          ON ef.tipo_erogazione = b.tipo_erogazione
+                         AND ef.fonte_quantita_attesa = 'DERIVATA_COMPONENTI'
+                       WHERE v_composito IS TRUE
+                         AND NOT EXISTS (SELECT 1 FROM base b2
+                                          WHERE b2.tipo_erogazione = b.tipo_erogazione
+                                            AND b2.fonte_quantita_attesa = 'DERIVATA_COMPONENTI')
+                       ORDER BY b.tipo_erogazione, b.e_default DESC
+                  ), tutte AS (
+                      SELECT * FROM base
+                      UNION ALL
+                      SELECT * FROM distinta
+                  )
+                  SELECT t.tipo_erogazione, t.fonte_quantita_attesa, t.e_default,
+                         t.generazione_canone, t.origine,
+                         (row_number() OVER (
+                             ORDER BY t.e_default DESC,
+                                      t.tipo_erogazione,
+                                      (t.fonte_quantita_attesa = 'DERIVATA_COMPONENTI'),
+                                      t.fonte_quantita_attesa))::integer
+                    FROM tutte t;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_articolo_erogazioni(catalogo.articoli.id%TYPE)
+              IS 'Building block: come si può erogare un articolo su una riga di contratto o di offerta. Restituisce le combinazioni (tipo_erogazione, fonte_quantita_attesa) ammesse, e_default su quella che la riga eredita quando non la indica, la generazione_canone da proporre sulle CANONE, l''origine (TIPOLOGIA | NATURA | DISTINTA) e l''ordine (1 = la prima: il default, poi per erogazione; dentro un''erogazione DERIVATA_COMPONENTI per ultima, poi per fonte). Regola (decisioni di Tid del 2026-10-07): con una tipologia di listino, le combinazioni della tipologia (config.listini_tipologie_erogazioni); senza, quelle della natura di vendita (config.nature_vendita_erogazioni) — vince la tipologia, le due non si sommano; un articolo composito ammette in più DERIVATA_COMPONENTI accanto a ogni erogazione ammessa, se il vocabolario config.erogazioni_fonti la dichiara coerente, mai di default. Zero righe se l''articolo non c''è. Sede unica del perimetro e del suo ordine: la leggono script.trgfn_righe_default_erogazione_da_articolo (eredità, prende la prima combinazione che le serve), script.fn_check_riga_erogazione (guard) e vendite.fn_documento_riga_erogazioni (form, ordina su ordine): la prima fonte che il form propone per un''erogazione è quella che il DB scriverebbe. STABLE, SECURITY INVOKER. Nasce il 2026-10-07, brief-db-offerta-emissione-ed-erogazione §C.7 (B3); ordine dal 20261007-66 (§D.4 punto 1).';

@@ -7,9 +7,13 @@ CREATE PROCEDURE proc_automations_audit_update_job()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_automations_audit_update_job()
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'topology', 'pg_temp'
 AS $procedure$
 BEGIN
   PERFORM maintenance.fn_run_and_log(
@@ -21,6 +25,8 @@ BEGIN
 END;
 $procedure$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

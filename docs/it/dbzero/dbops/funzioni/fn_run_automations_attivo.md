@@ -7,12 +7,17 @@ CREATE FUNCTION fn_run_automations_attivo(p_exec_mode text, p_schemas text[], p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_run_automations_attivo(p_exec_mode text, p_schemas text[], p_dry_run boolean)
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
 DECLARE
+  -- ⭐ Rev 2026-10-16: il contesto dell'errore, costruito una volta e usato
+  --   dalle due chiamate del gestore (registro e involucro).
+  v_ctx_errore dbops.error_log.context%TYPE;
   v_schemas text[];
   rrule record;
   rfk   record;
@@ -75,6 +80,10 @@ BEGIN
   --   un'eccezione) si tolgono qui, a ogni giro. Non in dry run.
   IF NOT p_dry_run THEN
     PERFORM dbops.fn_ritira_attivo_eccezioni();
+    -- ⭐ Rev 20261021-23: e quelli che nominano una tabella o una colonna che
+    --   non esiste piu' (un DROP TABLE della figlia lascia il block sul
+    --   padre: E_ATTIVO_BLOCK_FKCOL_NOT_FOUND a ogni disattivazione).
+    PERFORM dbops.fn_ritira_attivo_orfani();
   END IF;
 
   FOR rrule IN
@@ -304,11 +313,12 @@ BEGIN
             );
 
           EXCEPTION WHEN others THEN
-            PERFORM script.fn_log_and_raise_error(
-              'dbops',
-              'run_automations',
-              'E_ATTIVO_REQUIRE',
-              jsonb_build_object(
+            -- ⭐ Rev 2026-10-16 (brief-db-presidio-job-run-a-chi-tocca D8, D10, D11):
+            --   un guasto dell'AMBIENTE (script.fn_sqlstate_di_ambiente: connessione,
+            --   risorse, arresto, sistema, privilegio, lock) si rilancia COM'E', col suo
+            --   SQLSTATE: l'involucro lo faceva diventare P0001, e il presidio dei job lo
+            --   mandava allo sviluppo. Prima si scrive nel registro errori, col contesto.
+            v_ctx_errore := jsonb_build_object(
                 'where',      'ATTIVO_REQUIRE_CREATE',
                 'parent',     rfk.parent_schema||'.'||rfk.parent_table,
                 'child',      rfk.child_schema||'.'||rfk.child_table,
@@ -317,10 +327,16 @@ BEGIN
                 'ref_col',    v_parent_ref_col,
                 'trigger',    tname_child_require,
                 'error',      SQLERRM
-              ),
-              NULL::uuid,
-              SQLERRM
-            );
+              );
+            IF script.fn_sqlstate_di_ambiente(SQLSTATE) THEN
+              PERFORM script.fn_log_error_only(
+                  'dbops', 'run_automations', 'E_ATTIVO_REQUIRE',
+                  v_ctx_errore, NULL::uuid, SQLERRM);
+              RAISE;
+            END IF;
+            PERFORM script.fn_log_and_raise_error(
+                'dbops', 'run_automations', 'E_ATTIVO_REQUIRE',
+                v_ctx_errore, NULL::uuid, SQLERRM);
           END;
         END IF;
       ELSE
@@ -419,11 +435,12 @@ BEGIN
             );
 
           EXCEPTION WHEN others THEN
-            PERFORM script.fn_log_and_raise_error(
-              'dbops',
-              'run_automations',
-              'E_ATTIVO_BLOCK',
-              jsonb_build_object(
+            -- ⭐ Rev 2026-10-16 (brief-db-presidio-job-run-a-chi-tocca D8, D10, D11):
+            --   un guasto dell'AMBIENTE (script.fn_sqlstate_di_ambiente: connessione,
+            --   risorse, arresto, sistema, privilegio, lock) si rilancia COM'E', col suo
+            --   SQLSTATE: l'involucro lo faceva diventare P0001, e il presidio dei job lo
+            --   mandava allo sviluppo. Prima si scrive nel registro errori, col contesto.
+            v_ctx_errore := jsonb_build_object(
                 'where',      'ATTIVO_BLOCK_CREATE',
                 'parent',     rfk.parent_schema||'.'||rfk.parent_table,
                 'child',      rfk.child_schema||'.'||rfk.child_table,
@@ -432,10 +449,16 @@ BEGIN
                 'ref_col',    v_parent_ref_col,
                 'trigger',    tname_parent_block,
                 'error',      SQLERRM
-              ),
-              NULL::uuid,
-              SQLERRM
-            );
+              );
+            IF script.fn_sqlstate_di_ambiente(SQLSTATE) THEN
+              PERFORM script.fn_log_error_only(
+                  'dbops', 'run_automations', 'E_ATTIVO_BLOCK',
+                  v_ctx_errore, NULL::uuid, SQLERRM);
+              RAISE;
+            END IF;
+            PERFORM script.fn_log_and_raise_error(
+                'dbops', 'run_automations', 'E_ATTIVO_BLOCK',
+                v_ctx_errore, NULL::uuid, SQLERRM);
           END;
         END IF;
       ELSE
@@ -470,8 +493,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_attivo(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Automazione ATTIVO (BLOCK + REQUIRE): crea trigger BLOCK sul padre e REQUIRE sul figlio quando il padre ha colonna attivo. Usa la colonna del padre realmente referenziata dalla FK (confkey[1]), non la PK, per supportare FK su colonne UNIQUE non-PK. ⭐ Rev 20260925-48: salta le FK dichiarate in dbops.automazione_attivo_eccezioni (ognuna col suo motivo) e, fuori dal dry run, in testa a ogni giro chiama dbops.fn_ritira_attivo_eccezioni, che toglie i trigger gia'' generati per quelle coppie: chi genera ritira. Prima eccezione: config.profili_accesso_bindings.identita_digitale_id (porta e profili si sganciano, brief-db-blocco-login-per-credenziale §12.3).';
+IS 'Automazione ATTIVO (BLOCK + REQUIRE): crea trigger BLOCK sul padre e REQUIRE sul figlio quando il padre ha colonna attivo. Usa la colonna del padre realmente referenziata dalla FK (confkey[1]), non la PK, per supportare FK su colonne UNIQUE non-PK. ⭐ Rev 20260925-48: salta le FK dichiarate in dbops.automazione_attivo_eccezioni (ognuna col suo motivo) e, fuori dal dry run, in testa a ogni giro chiama dbops.fn_ritira_attivo_eccezioni, che toglie i trigger gia'' generati per quelle coppie: chi genera ritira. Prima eccezione: config.profili_accesso_bindings.identita_digitale_id (porta e profili si sganciano, brief-db-blocco-login-per-credenziale §12.3). ⭐ Rev 2026-10-16: nel gestore WHEN others, un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia COM''E'', col suo SQLSTATE, dopo averlo scritto nel registro errori con lo stesso codice e contesto (fn_log_error_only). Prima diventava P0001 col codice dell''involucro, e il presidio dei job (maintenance.vw_job_run_da_guardare) lo mandava allo sviluppo. I difetti di struttura escono come prima. Brief: brief-db-presidio-job-run-a-chi-tocca D8, D11. ⭐ Rev 20261021-23: nello stesso punto chiama anche dbops.fn_ritira_attivo_orfani, che toglie i trigger ATTIVO che nominano una tabella o una colonna che non esiste piu'' (lettore unico dbops.fn_trigger_attivo_orfani): un DROP TABLE della figlia lasciava il block sul padre, e ogni disattivazione del padre rispondeva E_ATTIVO_BLOCK_FKCOL_NOT_FOUND (vendite.listini dopo listini_associazioni). Brief: brief-be-utenti-di-sviluppo §9.5.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

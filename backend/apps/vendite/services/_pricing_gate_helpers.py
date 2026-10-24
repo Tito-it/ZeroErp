@@ -38,7 +38,6 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
-from apps.vendite.services._componenti_service_helpers import ORIGINE_PREZZO_MANUALE
 from apps.vendite.services.pricing_service import (
     PARAM_MAX_MAGGIORAZIONE_PCT,
     PARAM_MAX_SCONTO_PCT,
@@ -50,6 +49,12 @@ from apps.vendite.services.pricing_service import (
 # evitare cicli di import (questo modulo e' importato sia da preventivi che
 # da contratti, mentre il modulo originale dipendeva da `apps.vendite.services`).
 AZIONE_OVERRIDE_PREZZO = "prezzo_override_manuale"
+
+# L'origine di un prezzo scritto a mano: la scrivono il gate prezzi di riga
+# (qui) e la PATCH dei componenti (`_componenti_service_helpers`), una sede.
+# ⚠️ Sta QUI e non nel modulo dei componenti: quello importa il gate L1 da
+#    questo modulo, e la costante nell'altro verso faceva un ciclo.
+ORIGINE_PREZZO_MANUALE = "MANUALE"
 
 
 # Scopo: Guard generico su uom_id intero positivo, riusato dagli entry point
@@ -116,33 +121,19 @@ def check_permesso_override_prezzo(
 #        richiede l'azione di processo `prezzo_override_manuale`, come il gate
 #        L1 sul prezzo riga (`check_permesso_override_prezzo`).
 #
-#        Semantica preservata 1:1 dall'originale preventivi (nessun bypass
-#        superuser esplicito: `PermissionResolver.check_azione` gestisce gia'
-#        l'eventuale superuser internamente).
+# ⛔ Il gate L1 e' UNO: questa funzione delega a `check_permesso_override_prezzo`
+#    (2026-10-20, regola del 2). Fino a quel giorno ne era una seconda copia,
+#    col messaggio suo e il superuser trattato in un altro modo: due risposte
+#    alla stessa domanda «puo' scrivere un prezzo a mano?».
 def validate_componenti_overrides_authorization(
     payload: dict[str, Any],
     auth_user_id: int | None,
     *,
     function_name: str,
 ) -> None:
-    overrides = payload.get("componenti_overrides")
-    if not overrides:
+    if not payload.get("componenti_overrides"):
         return
-    user = _get_user_or_none(auth_user_id) if auth_user_id is not None else None
-    authorized = (
-        user is not None
-        and PermissionResolver.check_azione(user, AZIONE_OVERRIDE_PREZZO)
-    )
-    ErrorManager.require(
-        authorized,
-        code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
-        message="Override prezzo componenti richiede autorizzazione 'prezzo_override_manuale'.",
-        detail=(
-            "L'operatore non ha l'azione `prezzo_override_manuale` necessaria "
-            "per inserire prezzi manuali sui componenti."
-        ),
-        function_name=function_name,
-    )
+    check_permesso_override_prezzo(auth_user_id, function_name=function_name)
 
 
 # Scopo: Helper privato. Risolve la soglia % di variazione applicabile a

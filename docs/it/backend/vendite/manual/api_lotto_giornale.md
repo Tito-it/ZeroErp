@@ -46,7 +46,10 @@ risolvere: qui c'è anche ciò che è andato bene e i tentativi poi superati.
   `apps/vendite/api/_giornale_params.py`. Il vecchio contratto
   (`page`/`page_size`/`sort_by`/`sort_dir`) non è più letto.
 - Query param (tutti opzionali):
-  - `limit` (int, default `25`, max `200`) · `offset` (int, default `0`)
+  - `limit` (int, default `25`, max `200`) · `offset` (int, default `0`).
+    Fuori limiti è un `400 E_VALIDATION_INPUT` (`limit` fuori da 1..200,
+    `offset` negativo; `parse_list_params` → `pagina_da_query`, dal 2026-10-21:
+    prima si riportava nei limiti)
   - `order_by` — `quando` (default, il preset) | `gravita`. Fuori whitelist → **400**
   - `order_dir` — assente = `desc` | `asc`
   - `emittente_soggetto_ruolo_id` — l'emittente del lotto, `lista_emittente_param`

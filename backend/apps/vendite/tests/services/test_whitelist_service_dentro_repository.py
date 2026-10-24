@@ -110,7 +110,8 @@ class WhitelistServiceDentroRepositoryTests(TestCase):
     #    `execute_dynamic_insert` dal 2026-09-26, whitelist rigida anche li').
     #    Si tolgono le chiavi che il service consuma (`componenti_overrides`,
     #    `richiesta_approvazione`, `utility`) e si aggiungono quelle che deriva
-    #    (lo stato BOZZA, gli id utility dalla testata, i campi del gate L3).
+    #    (gli id utility dalla testata, i campi del gate L3). Lo stato no: lo
+    #    mette il DB alla nascita (brief-modello-documento-vendita P-2).
     def test_whitelist_create_dentro_repository(self) -> None:
         consumate = {"componenti_overrides", "richiesta_approvazione", "utility"}
         coppie = {
@@ -123,7 +124,7 @@ class WhitelistServiceDentroRepositoryTests(TestCase):
                 ContrattiRepository.UTILITY_CREATE_COLUMNS,
             ),
             "offerte testata": (
-                (offerte_service.CREATE_KEYS_OFFERTA - consumate) | {"stato_doc_offerta_id"},
+                offerte_service.CREATE_KEYS_OFFERTA - consumate,
                 OfferteRepository.TESTATA_CREATE_COLUMNS,
             ),
             "offerte eccezione": (

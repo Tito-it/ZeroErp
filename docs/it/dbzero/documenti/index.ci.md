@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Schema `documenti`
 
 ## 📚 Tabelle (manuale)
@@ -13,8 +18,13 @@
 - [tipi_file_documento](manual/tipi_file_documento.md) — (latest review 29-04-2026) `documenti.tipi_file_documento` definisce il catalogo dei **tipi di file persistiti** a valle della generazione di un documento.
 
 ## ⚙️ Funzioni (manuale)
+- [fn_crea_bozza_da_versione](manual/fn_crea_bozza_da_versione.md)
 - [fn_guard_versione_contesto](manual/fn_guard_versione_contesto.md)
+- [fn_personalizza_template_standard](manual/fn_personalizza_template_standard.md)
 - [fn_pubblica_template_documento_versione](manual/fn_pubblica_template_documento_versione.md) — (latest review 30-09-2026 — il patto versione/forma dei dati: brief-db-documenti-versione-contesto-template)
+- [fn_risolvi_template_applicabile](manual/fn_risolvi_template_applicabile.md)
+- [fn_template_esito_risoluzione](manual/fn_template_esito_risoluzione.md)
+- [fn_template_motivo_non_coerente](manual/fn_template_motivo_non_coerente.md)
 - [trgfn_documenti_generati_block_delete](manual/trgfn_documenti_generati_block_delete.md)
 - [trgfn_documenti_generati_check_coerenza](manual/trgfn_documenti_generati_check_coerenza.md)
 - [trgfn_documenti_generati_eventi_block_delete](manual/trgfn_documenti_generati_eventi_block_delete.md)
@@ -26,3 +36,8 @@
 - [trgfn_template_asset_protect_file](manual/trgfn_template_asset_protect_file.md)
 - [trgfn_template_documenti_versioni_block_delete](manual/trgfn_template_documenti_versioni_block_delete.md)
 - [trgfn_template_documenti_versioni_protect_pubblicata](manual/trgfn_template_documenti_versioni_protect_pubblicata.md)
+
+## 🔍 Views (manuale)
+- [vw_template_personalizzati_scarto](manual/vw_template_personalizzati_scarto.md)
+- [vw_template_risoluzione_emittente](manual/vw_template_risoluzione_emittente.md)
+- [vw_template_versioni_stampabili](manual/vw_template_versioni_stampabili.md)

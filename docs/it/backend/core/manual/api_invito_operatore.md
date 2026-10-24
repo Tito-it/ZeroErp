@@ -64,7 +64,7 @@ sezione «Invito e attivazione di una veste»).
 ## Endpoint Admin
 
 Base path: `/api/v1/amm-software/`
-Autenticazione: JWT + ruolo ADMIN
+Autenticazione: JWT + ruolo `SUPER_ADMIN` (`AdminAPIView`)
 
 ### Invia invito
 
@@ -115,7 +115,7 @@ e' stato emesso e resta valido, l'invito si recupera col reinvio — ma il falli
 logga (logger `security`, il motivo e' nel giornale email) e `invito_inviato_at` non si
 aggiorna. In console mode (`DEBUG`) la mail e' stampata e vale come partita. Fino al
 2026-09-28 la risposta era `inviato: true` anche a email fallita (F-3 dell'
-[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 Dal 2026-09-25 anche `invita`, come `reinvia-invito`, invalida i token pendenti della
 veste nella transazione del nuovo — vale un link solo.
 
@@ -174,7 +174,8 @@ oppure:
 POST /api/v1/auth/attivazione/
 ```
 
-**Non autenticato** (`AllowAny`). Rate limiting: 3 richieste / 15 minuti per IP.
+**Non autenticato** (`AllowAny`). Rate limiting: `ConfermaTokenRateThrottle`, 10 richieste / 15 minuti per IP
+(contatore proprio delle conferme con link; fino al 2026-10-02 era il 3/15m della richiesta).
 
 ### Input
 
@@ -192,12 +193,12 @@ payload si **ignora**.
 ### Validazioni (ordine critico)
 
 1. `token` non vuoto
-2. `new_password` non vuota (dopo aver tolto gli spazi iniziali e finali)
-3. `new_password == new_password_confirm`
-4. Token valido di uno dei due tipi della porta — **validato senza consumare**
-5. `identita_id` nel meta del token (obbligatorio: un token senza non attiva niente)
-6. (con password) i validators di `AUTH_PASSWORD_VALIDATORS`
-7. **Solo dopo**: il token viene consumato
+2. Token valido di uno dei due tipi della porta — **validato senza consumare**
+3. utente del token esistente
+4. `identita_id` (la veste) nel meta del token (obbligatorio: un token senza non attiva niente)
+5. (solo con password) `new_password` non vuota, `new_password == new_password_confirm`,
+   poi i validators di `AUTH_PASSWORD_VALIDATORS`
+6. **Solo dopo**: il token viene consumato
 
 > Se la password e' troppo debole (es. "12345678"), il token resta valido
 > e l'operatore puo' riprovare con una password piu' forte.
@@ -218,10 +219,15 @@ salva la password digitata, e il login non la ripulisce (S-5, 2026-09-27).
 ```json
 {
   "data": {
-    "message": "Account attivato con successo. Effettua il login con la nuova password."
+    "message": "Account attivato con successo. Effettua il login con la nuova password.",
+    "token_type": "INVITO_OPERATORE"
   }
 }
 ```
+
+Nel flusso cross (`token_type` `ATTIVAZIONE_OPERATORE_CROSS`, o credenziale che ha
+gia' una password) il messaggio e' «Accesso operatore attivato. Effettua il login
+con le tue credenziali esistenti.».
 
 > L'operatore deve fare login manualmente dopo l'attivazione.
 
@@ -242,7 +248,7 @@ salva la password digitata, e il login non la ripulisce (S-5, 2026-09-27).
 - **Scadenza 72 ore**: l'operatore ha 3 giorni per attivare
 - **Invalidazione**: ogni invito (primo o reinvio) invalida i token pendenti della veste nella stessa transazione del nuovo
 - **Validate-before-consume**: la password viene validata PRIMA di consumare il token — password debole non brucia il token
-- **Rate limiting**: 3/15min per IP sull'endpoint attivazione
+- **Rate limiting**: 10/15min per IP sull'endpoint attivazione (`ConfermaTokenRateThrottle`)
 - **IP tracking**: l'attivazione registra l'IP di chi consuma il token
 - **Operazioni atomiche**: consumo + password + veste in `transaction.atomic()`, email invito fuori transazione (non blocca il flusso)
 - **Email mascherata**: la response all'admin mostra solo `m***@dominio`

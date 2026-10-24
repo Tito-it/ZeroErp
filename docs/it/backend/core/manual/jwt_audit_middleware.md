@@ -10,7 +10,7 @@ Middleware Django per le request `/api/*`. Responsabilita':
    gira su un ruolo PostgreSQL che bypassa la RLS.
 
 > ⛔ **Il rifiuto dei `DISABILITATO` non sta qui** (ritirato il 2026-09-28, S-2 dell'
-> [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+> [analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 > Stava in `process_view`, dove `request.user` e' l'utente di **sessione** di Django: per un
 > client Bearer JWT e' ancora `AnonymousUser` (l'autenticazione DRF gira dopo, nel dispatch
 > della view), quindi il ramo non scattava mai. Dal 2026-10-02 `DISABILITATO` non è più un
@@ -75,7 +75,7 @@ connessione web non bypassi la RLS:
 > `E_GUC_RESET_FAILED` ed `E_DB_ROLE_UNSAFE` sono a catalogo come `TECNICO` dal
 > 2026-10-07 (classe, frase di ripiego, causa e soluzione per chi gestisce la
 > macchina): prima mancavano, e chi leggeva `dbops.error_log` trovava un codice
-> che il catalogo non conosceva (E-1 dell'[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+> che il catalogo non conosceva (E-1 dell'[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 > La risposta resta costruita qui (`_json_error`, 500), non dal traduttore.
 
 ### 3. Path non API

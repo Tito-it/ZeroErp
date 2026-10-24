@@ -137,6 +137,11 @@ _CHECK_CONSTRAINTS: dict[str, tuple] = {
     "chk_mag_rettifiche_righe_asset_qta_unitaria": (
         E_VALIDAZIONE, "Con un seriale la quantita' e' uno (in valore assoluto).", "qta_delta",
     ),
+    # Il blocco manuale dice PER CHI e': il soggetto o una nota (un'attesa senza
+    # sorgente, soggetto ne' nota e' una riga muta — manual movimenti_attesi).
+    "chk_mag_movimenti_attesi_per_chi": (
+        E_VALIDAZIONE, "Un blocco dice per chi e': indica il soggetto o scrivi una nota.", "nota",
+    ),
 }
 
 _db_errors = make_db_errors_translator(
@@ -331,10 +336,8 @@ def aggiorna_documento(codice_famiglia: str, doc_id: int, payload: dict[str, Any
             campi["descrizione"] = descrizione
     if "meta" in payload:
         campi["meta"] = _PAYLOAD.optional_meta(payload, "meta") or {}
-    ErrorManager.require(
-        bool(campi),
-        code=E_VALIDAZIONE,
-        message="Nessun campo da aggiornare.",
+    _PAYLOAD.require_campi_da_aggiornare(
+        campi,
         function_name=f"{_FN}.aggiorna_documento",
     )
     repository = MagazzinoRepository()
@@ -389,6 +392,36 @@ def registra_documento(codice_famiglia: str, doc_id: int) -> dict[str, Any]:
         "n_movimenti": len(movimenti),
         "documento": get_documento(codice_famiglia, doc_id),
     }
+
+
+# Scopo: Apre un BLOCCO manuale (Lotto 3 D-L3-j, R-5): pezzi di (articolo,
+#        magazzino) riservati a qualcuno — una promessa che ferma gli scarichi
+#        degli altri (M-3). Permesso (`blocca_merce`), perimetro, posizione
+#        coerente con l'articolo e il magazzino: li giudica il verbo DB.
+def apri_blocco(payload: dict[str, Any]) -> dict[str, Any]:
+    fn = f"{_FN}.apri_blocco"
+    repository = MagazzinoRepository()
+    with _db_errors("apri_blocco"):
+        blocco_id = repository.apri_blocco(
+            magazzino_id=_PAYLOAD.require_positive_int(payload, "magazzino_id", function_name=fn),
+            articolo_id=str(_PAYLOAD.require_uuid(payload, "articolo_id", function_name=fn)),
+            qta=_PAYLOAD.require_decimal(payload, "qta", function_name=fn),
+            soggetto_ruolo_id=_PAYLOAD.optional_positive_int(payload, "soggetto_ruolo_id", function_name=fn),
+            nota=_PAYLOAD.optional_string(payload, "nota", function_name=fn),
+            lotto_id=_PAYLOAD.optional_positive_int(payload, "lotto_id", function_name=fn),
+            asset_id=_PAYLOAD.optional_positive_int(payload, "asset_id", function_name=fn),
+            ubicazione_id=_PAYLOAD.optional_positive_int(payload, "ubicazione_id", function_name=fn),
+        )
+    return {"blocco_id": blocco_id}
+
+
+# Scopo: Libera un blocco: il verbo scrive chi, quando e perche' (la nota).
+#        Blocco inesistente o gia' liberato: il codice del DB.
+def libera_blocco(blocco_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    nota = _PAYLOAD.optional_string(payload, "nota", function_name=f"{_FN}.libera_blocco")
+    with _db_errors("libera_blocco"):
+        MagazzinoRepository().libera_blocco(blocco_id, nota)
+    return {"blocco_id": blocco_id, "liberato": True}
 
 
 # Scopo: Il piano di un inventario, paginato: che cosa il posting scrivera'.
@@ -498,10 +531,8 @@ def crea_riga(codice_famiglia: str, doc_id: int, payload: dict[str, Any]) -> dic
 def aggiorna_riga(codice_famiglia: str, doc_id: int, riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     f = famiglia(codice_famiglia)
     campi = _campi_riga(f, payload, parziale=True)
-    ErrorManager.require(
-        bool(campi),
-        code=E_VALIDAZIONE,
-        message="Nessun campo da aggiornare.",
+    _PAYLOAD.require_campi_da_aggiornare(
+        campi,
         function_name=f"{_FN}.aggiorna_riga",
     )
     repository = MagazzinoRepository()

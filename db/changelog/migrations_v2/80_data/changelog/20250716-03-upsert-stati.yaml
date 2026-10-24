@@ -49,6 +49,11 @@ databaseChangeLog:
               type: JSON
               # se il CSV ha valore vuoto, usa {} come JSON valido
               defaultValue: "{}"
+          # 2026-10-18 (D-2 di Tid): lo stato dichiara se il suo catalogo di
+          # comuni e CAP e' completo. Acceso, l'indirizzo libero usa comune e
+          # CAP del catalogo (guard anagrafiche.trgfn_indirizzi_guard_forma_libera).
+          # Colonna NOT NULL creata da 20261018-80: ogni riga del CSV porta t o f.
+          - column: { name: catalogo_comuni_completo, type: BOOLEAN }
   
   - changeSet:
       id: 20250716-90-upsert-stati

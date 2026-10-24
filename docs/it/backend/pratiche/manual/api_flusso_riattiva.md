@@ -25,7 +25,7 @@ Endpoint di scrittura che delega a `pratiche_service.riattiva_flusso`. Il serviz
 - `400`: ID non validi (`E_INVALID_ID`), flusso non della pratica (`E_FLUSSO_OWNERSHIP`), nessuna sospensione attiva (`E_FLUSSO_VALIDATION`)
 - `401`: JWT mancante o non valido
 - `404`: flusso non trovato (`E_FLUSSO_NOT_FOUND`), sospensione non trovata (`E_SOSPENSIONE_NOT_FOUND`)
-- `409`: transizione di stato non ammessa (`FLUSSI_TRANSIZIONE_NON_AMMESSA`)
+- `409`: transizione di stato non ammessa (`E_FLUSSI_TRANSIZIONE_NON_AMMESSA`)
 
 ## Regole
 

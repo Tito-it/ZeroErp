@@ -208,11 +208,22 @@ Le 8 colonne snapshot pricing presenti su [`vendite.commesse_attivita`](/dbzero/
 | `tipo_variazione_applicata`      | varchar(16)   | `PERCENTUALE` \| `VALORE_FISSO` \| `PREZZO_FISSO` \| `NESSUNA`                          |
 | `valore_variazione_applicata`    | numeric(10,4) | Valore della variazione effettivamente applicata                                        |
 | `promo_id`                       | bigint        | FK a `vendite.promo_articoli`                                                           |
-| `contratto_id`                   | bigint        | FK a `vendite.contratti`                                                                |
+| `contratto_id`                   | bigint        | FK a `vendite.contratti`; il contratto è del conto di fatturazione della commessa (guard `trgfn_attivita_guard_contratto`) |
 | `categoria_cliente_id_snapshot`  | smallint      | FK a `anagrafiche.categorie_clienti`                                                    |
 | `classe_utenza_id_snapshot`      | integer       | FK a `config.classi_utenze`                                                             |
 
 CHECK sui domini di `origine_prezzo` e `tipo_variazione_applicata`. Indice dedicato su `origine_prezzo` per filtri dashboard.
+
+---
+
+### Riga di listino coerente (15-10-2026)
+
+`listino_riga_id` (copiata dall'emissione, aggiornata dal riallineamento del prezzo) deve essere
+una riga di listino dello stesso articolo e della stessa unità di misura dell'attività, di un
+listino dell'azienda della commessa e di una versione non in bozza (dal 16-10-2026). Questa
+tabella non porta la versione: conta quella della riga di listino. Lo tiene
+[vendite.trgfn_attivita_guard_listino_riga](/dbzero/vendite/manual/trgfn_attivita_guard_listino_riga)
+(`E_ATTIVITA_LISTINO_RIGA_INCOERENTE`), lo stesso guard della commessa.
 
 ---
 

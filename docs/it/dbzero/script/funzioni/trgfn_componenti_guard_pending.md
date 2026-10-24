@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_componenti_guard_pending()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_componenti_guard_pending()
  RETURNS trigger
@@ -92,6 +94,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_componenti_guard_pending()
 IS 'Guard L3 BEFORE UPDATE generico per tabelle *_componenti BoM CASO A. Blocca modifiche ai campi struttura quando stato_approvazione_prezzo=PENDING. TG_ARGV[0] = nome colonna FK padre (es. ''riga_contratto_id'', ''eccezione_offerta_id''). Raise E_COMPONENTE_PREZZO_PENDENTE. Rev 2026-05-26 — generalizzazione di trgfn_*_componenti_guard_pending.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

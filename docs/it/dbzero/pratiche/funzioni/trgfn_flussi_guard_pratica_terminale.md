@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_flussi_guard_pratica_terminale()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_pratica_terminale()
  RETURNS trigger
@@ -82,6 +84,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_flussi_guard_pratica_terminale()
 IS 'BEFORE INSERT OR UPDATE su flussi: blocca creazione/modifica di flussi se la pratica padre e'' in stato terminale (stato senza transizioni di stato in uscita attive). Non blocca la transizione della pratica a terminale (guard su flussi, non su pratiche).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

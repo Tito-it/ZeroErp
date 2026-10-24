@@ -125,39 +125,43 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_attivita_fatturabili_a10_area_geografica_fatturazion_dce856 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id', 'id')` |
 | trg_attivita_fatturabili_a10_area_geografica_fatturazion_dce856 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id', 'id')` |
+| trg_attivita_fatturabili_a10_area_geografica_fatturazion_dce856 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id', 'id')` |
 | trg_attivita_fatturabili_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_attivita_fatturabili_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()` |
 | trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()` |
 | trg_attivita_fatturabili_a10_guard_commessa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()` |
 | trg_attivita_fatturabili_a10_guard_commessa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()` |
+| trg_attivita_fatturabili_a10_guard_contratto_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_guard_contratto()` |
+| trg_attivita_fatturabili_a10_guard_contratto_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_guard_contratto()` |
 | trg_attivita_fatturabili_a10_guard_fatturato_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()` |
 | trg_attivita_fatturabili_a10_guard_fatturato_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()` |
+| trg_attivita_fatturabili_a10_guard_listino_riga_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_guard_listino_riga()` |
+| trg_attivita_fatturabili_a10_guard_listino_riga_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_guard_listino_riga()` |
 | trg_attivita_fatturabili_a10_guard_quantita_immutabile_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile()` |
-| trg_attivita_fatturabili_a10_listini_righe_require_attiv_48a055 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_righe', 'attivo', 'listino_riga_id', 'id')` |
 | trg_attivita_fatturabili_a10_listini_righe_require_attiv_48a055 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_righe', 'attivo', 'listino_riga_id', 'id')` |
-| trg_attivita_fatturabili_a10_nature_doc_fiscale_require__13c8b1 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'nature_doc_fiscale', 'attivo', 'natura_doc_id', 'id')` |
+| trg_attivita_fatturabili_a10_listini_righe_require_attiv_48a055 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_righe', 'attivo', 'listino_riga_id', 'id')` |
 | trg_attivita_fatturabili_a10_nature_doc_fiscale_require__13c8b1 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'nature_doc_fiscale', 'attivo', 'natura_doc_id', 'id')` |
-| trg_attivita_fatturabili_a10_promo_articoli_require_atti_1e76a9 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'promo_articoli', 'attivo', 'promo_id', 'id')` |
+| trg_attivita_fatturabili_a10_nature_doc_fiscale_require__13c8b1 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'nature_doc_fiscale', 'attivo', 'natura_doc_id', 'id')` |
 | trg_attivita_fatturabili_a10_promo_articoli_require_atti_1e76a9 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'promo_articoli', 'attivo', 'promo_id', 'id')` |
-| trg_attivita_fatturabili_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_origine_tipo_id', 'id')` |
+| trg_attivita_fatturabili_a10_promo_articoli_require_atti_1e76a9 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'promo_articoli', 'attivo', 'promo_id', 'id')` |
 | trg_attivita_fatturabili_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_origine_tipo_id', 'id')` |
-| trg_attivita_fatturabili_a10_tipi_doc_fiscale_require_at_ecad50 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
+| trg_attivita_fatturabili_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_origine_tipo_id', 'id')` |
 | trg_attivita_fatturabili_a10_tipi_doc_fiscale_require_at_ecad50 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
+| trg_attivita_fatturabili_a10_tipi_doc_fiscale_require_at_ecad50 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
 | trg_attivita_fatturabili_a10_unita_misura_require_attivo_a573b4 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id', 'id')` |
 | trg_attivita_fatturabili_a10_unita_misura_require_attivo_a573b4 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id', 'id')` |
 | trg_attivita_fatturabili_a10_unita_misura_require_attivo_d45cbd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_attivita_fatturabili_a10_unita_misura_require_attivo_d45cbd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
-| trg_attivita_fatturabili_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_attivita_fatturabili_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_attivita_fatturabili_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_attivita_fatturabili_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_attivita_fatturabili_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_attivita_fatturabili_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_normalize()` |
 | trg_attivita_fatturabili_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_normalize()` |
-| trg_attivita_fatturabili_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('attivita_fatturabili_id')` |
+| trg_attivita_fatturabili_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_normalize()` |
 | trg_attivita_fatturabili_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('attivita_fatturabili_id')` |
+| trg_attivita_fatturabili_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('attivita_fatturabili_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

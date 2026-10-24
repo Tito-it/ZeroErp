@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_vendite_contabili_righe_guard_stato_dati()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati()
  RETURNS trigger
@@ -88,6 +90,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati()
 IS 'Guard stato <-> dati della riga contabile: uno stato con richiede_abbinamento pretende fattura_id e billing_account_id. Meta'' «bagaglio» di D14-a, di cui pagamenti.trgfn_vendite_contabili_righe_guard_transizione e'' la meta'' «percorso». ⚠️ La RATA resta facoltativa di proposito (la riga del fondo fattura non ne ha una): quando arrivera'' scadenza_id questa funzione NON va toccata. La lista degli stati che pretendono l''abbinamento sta nel CATALOGO, non qui.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -171,17 +171,17 @@ class TestDistintaRigheExportApi(JwtMockedApiTest):
             scartate=False,
         )
 
-    # Scopo: ⭐ `scartate=1` arriva al service come `True` (BE-2, D20-c) e
+    # Scopo: ⭐ `scartate=true` arriva al service come `True` (BE-2, D20-c) e
     #        l'EXPORT lo legge dallo stesso parametro della lista: il file segue
     #        la videata, interruttore compreso. Assente = nascoste.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_LIST)
     def test_scartate_arriva_al_service_su_lista_ed_export(self, mock_list, _auth) -> None:
         mock_list.return_value = {"results": [], "count": 0, "scartate_count": 0}
-        self.client.get(f"{_URL_LISTA}?scartate=1")
+        self.client.get(f"{_URL_LISTA}?scartate=true")
         self.assertIs(mock_list.call_args.kwargs["scartate"], True)
         mock_list.reset_mock()
-        self.client.get(f"{_URL_LISTA}?scartate=0")
+        self.client.get(f"{_URL_LISTA}?scartate=false")
         self.assertIs(mock_list.call_args.kwargs["scartate"], False)
 
     # Scopo: senza `order_by` al service arriva `None` (non `"descrizione"`, il

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_parameter_overrides_fk_surrogate_dispatch()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_parameter_overrides_fk_surrogate_dispatch()
  RETURNS trigger
@@ -85,6 +87,8 @@ $function$
 COMMENT ON FUNCTION config.trgfn_parameter_overrides_fk_surrogate_dispatch()
 IS 'Dispatcher framework FK-surrogata su config.parameter_overrides. Lookup code via parameter_id e delega a script.fn_check_parameter_fk_surrogate. Raise E_PARAMETER_OVERRIDE_VALUE_INVALID. Chiude la lacuna del guard ad-hoc precedente che non scattava sugli override.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

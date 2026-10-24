@@ -74,7 +74,7 @@
 * **Note**: `note_target_tipo` è vincolato a `ARTICOLI` quando valorizzato.
 * **Solo componente**: se `is_solo_componente=true` l’articolo non può essere usato come prodotto in `articoli_componenti`.
 * **`uom_id` obbligatorio**: dalla revisione del 07-04-2026 la colonna è `NOT NULL`. L'unità di misura principale è anagrafica e necessaria per il seed automatico della UoM operativa base.
-* **Tipologia listino (pricing v5, 14-04-2026)**: `listino_tipologia_id` nullable, FK a `config.listini_tipologie`. Un articolo senza tipologia non puo' essere inserito in un listino tipizzato (guard `trgfn_listini_righe_guard_tipologia`, codice errore `E_ARTICOLO_TIPOLOGIA_MANCANTE`). Un articolo con tipologia diversa dalla tipologia del listino genera `E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE`. Backfill iniziale (14-04-2026): articoli con `voce_utility = false` mappati automaticamente a `PRODOTTI`; articoli voce utility lasciati NULL per mapping manuale alle 4 tipologie tecniche (`CONSUMO`, `QUOTA_FISSA`, `IMPOSTA`, `ONERE_SISTEMA`).
+* **Tipologia listino (pricing v5, 14-04-2026)**: `listino_tipologia_id` nullable, FK a `config.listini_tipologie`. Un articolo senza tipologia non puo' essere inserito in un listino tipizzato (motivo di `script.fn_check_articolo_riga` per la versione di listino, sollevato dal guard `trg_listini_righe_a10_guard_articolo_ammesso_ins_upd`; codice errore `E_ARTICOLO_TIPOLOGIA_MANCANTE`). Un articolo con tipologia diversa dalla tipologia del listino genera `E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE`. Backfill iniziale (14-04-2026): articoli con `voce_utility = false` mappati automaticamente a `PRODOTTI`; articoli voce utility lasciati NULL per mapping manuale alle 4 tipologie tecniche (`CONSUMO`, `QUOTA_FISSA`, `IMPOSTA`, `ONERE_SISTEMA`).
 
 > Consigliato: proteggere l’**immutabilità** del `codice` con un trigger `BEFORE UPDATE` dedicato (se è business‑key) e con GRANT mirati.
 
@@ -207,6 +207,38 @@ WHERE a.uom_id IS NOT NULL
 
 ---
 
+### 🔒 Un articolo usato non cambia la sua struttura (A-10, 2026-10-13)
+
+Un articolo **usato** non cambia più i campi che decidono **come si vende** e **come sta a
+magazzino**. A valle ci sono listini, ordini, bolle, giacenze: costruiti su quelle
+caratteristiche, non le rincorrono se cambiano.
+
+| Bloccate se usato | Libere |
+| --- | --- |
+| `is_composito`, `is_solo_componente`, `natura_vendita_id`, `causale_onere_id`, `listino_tipologia_id`, `gestito_a_magazzino`, `requires_lotto`, `requires_serial` | `iva_id` (l'aliquota cambia per legge, e ogni riga ha la sua), descrizioni, gruppi, conti, tempi di consegna, modo di approvvigionamento |
+
+`codice` e `uom_id` sono immutabili sempre (sezione sotto).
+
+* **Usato** = compare in una tabella che lo punta con una FK — righe di documento di vendita e
+  d'acquisto, fatture, resi, offerte, listini e promo, commesse, magazzino — **in qualunque
+  stato**, anche chiusa o annullata: lo dice
+  [`catalogo.fn_articolo_usato`](/dbzero/catalogo/manual/fn_articolo_usato). Non contano le
+  tabelle di anagrafica dell'articolo stesso (distinta, UoM operative, descrizioni, note, regole
+  di fatturazione, ambiti IVA).
+* **Tutte le aziende**: gli articoli sono unici per tutte le aziende, i documenti no. L'uso conta
+  anche se sta in un documento che chi modifica non vede; il messaggio non dice dove.
+* **Chi lo fa rispettare**: il guard
+  [`trgfn_articoli_guard_struttura_se_usato`](/dbzero/catalogo/manual/trgfn_articoli_guard_struttura_se_usato)
+  (`E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE`) e, nel form, le regole gemelle in
+  `dbops.lock_columns_conditional`, che spengono il campo con lo stesso predicato.
+* **La via d'uscita** è un articolo nuovo (il vecchio non va per forza ritirato). Un errore di
+  caricamento lo corregge un amministratore col verbo
+  [`catalogo.fn_articolo_correggi_struttura`](/dbzero/catalogo/manual/fn_articolo_correggi_struttura)
+  (solo SUPER_ADMIN).
+
+Le regole della distinta sugli stessi campi (`trgfn_articoli_guard_flags_struttura_bom_attiva`)
+restano: valgono anche per un articolo non ancora usato.
+
 ### Articolo-onere (porta oneri)
 
 Un articolo **è un onere** quando ha `causale_onere_id` valorizzato (FK verso
@@ -217,6 +249,12 @@ penale fuori campo art.15), mentre la causale ne è la classificazione business.
 [`vendite.fn_aggiungi_onere_commessa`](/dbzero/vendite/funzioni/fn_aggiungi_onere_commessa)
 riceve l'articolo-onere e ne deriva causale, `uom` e IVA. Riferimento:
 `brief-db-immutabilita-quantita-e-porta-oneri` §4c.8.
+
+**Un onere non è merce** (dal 2026-10-13): la natura di un articolo-onere non ha
+destinazione `ORDINE` (guard [`trgfn_articoli_guard_onere_natura`](/dbzero/catalogo/manual/trgfn_articoli_guard_onere_natura),
+`E_ARTICOLO_ONERE_NATURA_MERCE`). `natura_vendita_id` ha come default la merce: un onere creato
+senza dire la natura sarebbe stato un bene da evadere in ordine e in bolla, e una cessione di beni.
+Gli oneri del seed hanno la natura del servizio una tantum (destinazione commessa).
 
 ---
 

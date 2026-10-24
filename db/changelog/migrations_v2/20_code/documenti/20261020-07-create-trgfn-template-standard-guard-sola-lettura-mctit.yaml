@@ -1,0 +1,186 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL MODELLO STANDARD SI SCRIVE SOLO DAL SEED E DAI CHANGESET (D-2)
+#   documenti.trgfn_template_standard_guard_sola_lettura()
+#   trg_template_documenti_a05_guard_standard_ins_upd_dlt
+#   trg_template_documenti_versioni_a05_guard_standard_ins_upd_dlt
+#   Brief: brief-db-modelli-documento-standard, D-2 e §4.1 Q-1
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   D-2 (Tid, 2026-10-19): lo standard lo cambiano solo i changeSet, come ogni
+#   seed di sistema; dall'applicazione si vede in sola lettura, e chi vuole un
+#   modello diverso lo «personalizza» per il suo emittente. Il rifiuto sta nel
+#   DB perche' il BE non scriva un controllo suo: traduce il codice e basta.
+#
+# -- LA FORMA -------------------------------------------------------------------
+#   * Chi scrive lo standard: il proprietario della tabella, cioe' il migrate
+#     (script.fn_is_proprietario_tabella, lo stesso BB del guard di
+#     ui.lista_definizione.multi_emittente, che ha la stessa natura: una cosa
+#     che si dichiara nel seed). Mai un nome di ruolo scritto qui.
+#   * UNA funzione per le due tabelle: la regola e' una («lo standard si
+#     legge»); cambia solo DOVE si legge che la riga e' standard — sulla riga
+#     stessa per template_documenti, sul modello padre per le versioni.
+#   * Su UPDATE conta la riga di prima E quella di dopo: un modello standard
+#     non si trasforma in uno d'emittente, e una versione non si sposta da
+#     uno standard (lo vieta gia' il CHECK di -04 insieme al lock della colonna,
+#     ma il guard non deve dipenderne).
+#   * Fase a05: e' un rifiuto «questa cosa non si tocca», e deve parlare prima
+#     dei guard che giudicano il valore nuovo (linee-guida-trigger §a05) — per
+#     esempio prima del default dell'emittente, che su uno standard senza
+#     sessione solleverebbe E_EMITTENTE_NON_RISOLTO al posto di questa frase.
+#
+# Dipendenze: 20261020-04 (colonna standard), codice in 80_data
+#   (E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA). Verifica:
+#   db/pgtap/documenti/test-documenti-template-standard-v1.sql (owner),
+#   db/pgtap/documenti/test-documenti-template-standard-app-v1.sql (app)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261020-07-create-trgfn-template-standard-guard-sola-lettura-mctit.yaml
+
+  - changeSet:
+      id: 20261020-07-create-trgfn-template-standard-guard-sola-lettura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.trgfn_template_standard_guard_sola_lettura e i due trigger a05 su template_documenti e
+        template_documenti_versioni: il modello standard e le sue versioni si scrivono solo dal proprietario
+        della tabella (seed e changeSet) -> E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA.
+        Brief: brief-db-modelli-documento-standard D-2, §4.1 Q-1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: documenti
+                tableName: template_documenti
+                columnName: standard
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_is_proprietario_tabella';
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgname IN ('trg_template_documenti_a05_guard_standard_ins_upd_dlt',
+                                    'trg_template_documenti_versioni_a05_guard_standard_ins_upd_dlt');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION documenti.trgfn_template_standard_guard_sola_lettura()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: il modello standard (template_documenti.standard) e le sue
+              --   versioni si scrivono solo dal proprietario della tabella, cioe'
+              --   dal seed e dai changeSet. Dall'applicazione: sola lettura.
+              -- Montaggio: BEFORE INSERT OR UPDATE OR DELETE, FOR EACH ROW, su
+              --   documenti.template_documenti e documenti.template_documenti_versioni.
+              DECLARE
+                  v_template_id  documenti.template_documenti.id%TYPE;
+                  v_standard     documenti.template_documenti.standard%TYPE := false;
+                  v_codice       documenti.template_documenti.codice%TYPE;
+              BEGIN
+                  IF TG_TABLE_NAME = 'template_documenti' THEN
+                      -- La riga stessa: quella di prima (UPDATE, DELETE) e quella
+                      -- di dopo (INSERT, UPDATE). IF annidati: OLD e NEW si
+                      -- leggono solo dove l'operazione li ha.
+                      IF TG_OP IN ('UPDATE', 'DELETE') THEN
+                          IF OLD.standard THEN
+                              v_standard := true;
+                              v_template_id := OLD.id;
+                              v_codice := OLD.codice;
+                          END IF;
+                      END IF;
+                      IF TG_OP IN ('INSERT', 'UPDATE') THEN
+                          IF NEW.standard THEN
+                              v_standard := true;
+                              v_template_id := NEW.id;
+                              v_codice := NEW.codice;
+                          END IF;
+                      END IF;
+                  ELSE
+                      -- Una versione: lo dice il modello a cui appartiene, prima
+                      -- e dopo (una versione non si sposta da uno standard).
+                      IF TG_OP IN ('UPDATE', 'DELETE') THEN
+                          SELECT t.id, t.codice
+                            INTO v_template_id, v_codice
+                            FROM documenti.template_documenti t
+                           WHERE t.id = OLD.template_documento_id
+                             AND t.standard;
+                          v_standard := FOUND;
+                      END IF;
+                      IF NOT v_standard AND TG_OP IN ('INSERT', 'UPDATE') THEN
+                          SELECT t.id, t.codice
+                            INTO v_template_id, v_codice
+                            FROM documenti.template_documenti t
+                           WHERE t.id = NEW.template_documento_id
+                             AND t.standard;
+                          v_standard := FOUND;
+                      END IF;
+                  END IF;
+
+                  IF v_standard AND NOT script.fn_is_proprietario_tabella(TG_RELID) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti',
+                          'trgfn_template_standard_guard_sola_lettura',
+                          'E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA',
+                          jsonb_build_object(
+                              'template_documento_id', v_template_id,
+                              'operazione',            TG_OP,
+                              'tabella',               TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'current_user',          current_user,
+                              'detail',                'Il modello standard si scrive dal seed e dai changeSet; dall''applicazione si personalizza per un emittente'
+                          ),
+                          NULL::uuid,
+                          v_codice::text
+                      );
+                  END IF;
+
+                  IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.trgfn_template_standard_guard_sola_lettura() IS
+                  'Guard BEFORE INSERT/UPDATE/DELETE su documenti.template_documenti e documenti.template_documenti_versioni (2026-10-20, brief-db-modelli-documento-standard D-2): il modello standard (colonna standard) e le sue versioni si scrivono solo dal proprietario della tabella (script.fn_is_proprietario_tabella: il seed e i changeSet). Dall''applicazione si leggono, e chi vuole un modello diverso lo personalizza per il suo emittente. Su UPDATE conta la riga di prima e quella di dopo; sulle versioni conta il modello padre di prima e di dopo. Rifiuto E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA (NON_PERMESSO; valori: codice del modello). Fase a05: parla prima degli altri guard e del default dell''emittente.';
+
+              CREATE TRIGGER trg_template_documenti_a05_guard_standard_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE
+                  ON documenti.template_documenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_template_standard_guard_sola_lettura();
+
+              CREATE TRIGGER trg_template_documenti_versioni_a05_guard_standard_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE
+                  ON documenti.template_documenti_versioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_template_standard_guard_sola_lettura();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_template_documenti_versioni_a05_guard_standard_ins_upd_dlt
+                  ON documenti.template_documenti_versioni;
+              DROP TRIGGER IF EXISTS trg_template_documenti_a05_guard_standard_ins_upd_dlt
+                  ON documenti.template_documenti;
+              DROP FUNCTION IF EXISTS documenti.trgfn_template_standard_guard_sola_lettura();

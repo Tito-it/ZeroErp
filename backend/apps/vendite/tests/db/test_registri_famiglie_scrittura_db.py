@@ -38,6 +38,7 @@ import unittest
 
 from django.db import connection, transaction
 
+from apps.config.sorgenti import SORGENTE_DDT_VENDITA
 from apps.core.tests.db_e2e import Annulla, apri_contesto_operatore, richiedi_db_provvisto
 from apps.vendite.db.famiglie_repository import FamiglieDocumentoRepository
 from apps.vendite.db.registri_repository import RegistriRepository
@@ -87,7 +88,7 @@ class ScritturaRegistriFamiglieDbTests(unittest.TestCase):
                 registro = svc.create_registro(emittente_sr, {
                     "codice": "  SCRREG1  ",
                     "descrizione": "  Registro scrittura BB  ",
-                    "famiglia_documento": "DDT",
+                    "famiglia_documento": SORGENTE_DDT_VENDITA,
                     "utility_id": utility_id,
                     "prefisso": "DDT ",
                     "suffisso": " /A",

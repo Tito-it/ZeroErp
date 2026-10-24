@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_record_id_as_of(p_schema text, p_table text, p_id text, p
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_record_id_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp with time zone)
  RETURNS text
@@ -104,6 +106,8 @@ IS 'Restituisce l''ID TEXT di un record valido a p_as_of esclusivamente dallo st
   chiamante (gemella di fn_get_snapshot_as_of, 20260920-05). Documento
   valutazione-modello-di-dominio-db, V-3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -82,13 +82,13 @@ Le tabelle `pratiche.note_pratiche` e `config.tipi_nota` supportano le note. Il 
 
 ### Errori
 
-- `400`: validazione (contenuto vuoto, tipo_nota non trovato)
+- `400`: validazione (`E_PRATICA_VALIDATION`, col campo: contenuto vuoto, `tipo_nota_codice` assente o non trovato)
 - `401`: JWT mancante
 - `404`: nota non trovata o non appartiene alla pratica
 
 ## Regole
 
-- `tipo_nota_codice` risolto a ID via lookup su `config.tipi_nota` (codice_interno). Se non trovato o non attivo: errore `E_CONFIG_MANCANTE`.
+- `tipo_nota_codice` risolto a ID via lookup su `config.tipi_nota` (codice_interno). Se non trovato o non attivo: `400 E_PRATICA_VALIDATION` sul campo `tipo_nota_codice` (fino al 2026-10-20 era un `500 E_CONFIG_MANCANTE`).
 - Ownership check: PATCH e DELETE verificano che la nota appartenga alla pratica.
 - Il trigger DB registra automaticamente `NOTA_AGGIUNTA` nel giornale all'INSERT.
 - Ordinamento GET: `data_insert DESC, id DESC`.

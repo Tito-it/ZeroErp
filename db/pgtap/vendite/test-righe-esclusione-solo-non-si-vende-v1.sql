@@ -7,6 +7,11 @@
 --   2026-10-04. Brief: brief-db-righe-esclusione-solo-non-si-vende (R1-R5, R8,
 --   R9). changeSet: 20261004-40 e -76 (CHECK, bonifica), -41…-47 (funzioni), -48/-49 (trigger),
 --   -70…-75 (lista, ritiri, commenti) + CSV codici e lock.
+--   ⚠️ rev 2026-10-19 (20261019-20, brief-db-grammatica-unica-documenti lotto 1):
+--   il documento dell'offerta e' OFFERTA_COMMERCIALE (test 25).
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): l'offerta EMESSA nasce
+--   in bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima nasceva
+--   gia' EMESSA).
 --
 -- ⭐ TUTTO COSTRUITO: azienda, cliente, listino con un bundle, articoli,
 --   contratto, offerte e righe nascono qui (builder dbops.fn_pgtap_crea_*).
@@ -16,7 +21,7 @@
 --   X fuori listino. Sullo stesso listino:
 --   contratto in DRAFT: B OVERRIDE, C ESCLUSIONE, X AGGIUNTA
 --   offerta in BOZZA:   B OVERRIDE, C ESCLUSIONE, X AGGIUNTA
---   offerta EMESSA (nata gia' emessa, senza righe): per il rifiuto «fuori bozza»
+--   offerta EMESSA (emessa senza righe): per il rifiuto «fuori bozza»
 --
 -- ⛔ COSA PRESIDIA:
 --   · R1: le due tabelle vietano i dati di vendita sull'esclusione (CHECK) e la
@@ -90,8 +95,11 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
+-- Tutti della tipologia del listino; P nasce composito (il bundle).
 CREATE TEMP TABLE tmp_rsv_art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-RSV-' || v.sigla) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-RSV-' || v.sigla,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_rsv_listino),
+           p_is_composito         => v.sigla = 'P') AS id
   FROM (VALUES ('A'), ('B'), ('C'), ('F'), ('P'), ('X')) AS v(sigla);
 
 -- Scopo: id di un articolo della fixture per sigla.
@@ -100,12 +108,7 @@ RETURNS uuid LANGUAGE sql STABLE AS $fx$
   SELECT id FROM tmp_rsv_art WHERE sigla = p_sigla;
 $fx$;
 
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM tmp_rsv_listino)
- WHERE id IN (SELECT id FROM tmp_rsv_art);
-
--- Il bundle: P composito, con F come componente in distinta.
-UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.art('P');
+-- Il bundle: P, con F come componente in distinta.
 INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
 VALUES (pg_temp.art('P'), pg_temp.art('F'), 1, '2020-01-01');
 
@@ -137,23 +140,42 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
--- Due offerte sullo stesso listino: una in BOZZA (le righe), una nata EMESSA
--- (per il rifiuto «fuori bozza»: nasce cosi' con un INSERT, senza passare dalla
--- transizione, che qui non e' in esame).
-CREATE TEMP TABLE tmp_rsv_offerta AS
+-- Due offerte sullo stesso listino: una in BOZZA (le righe), una EMESSA senza
+-- righe (per il rifiuto «fuori bozza»).
+-- ⛔ rev 2026-10-24 (brief-modello-documento-vendita N-1): l'EMESSA nasceva cosi'
+--   con un INSERT, senza passare dalla transizione. Ora nascono entrambe in
+--   BOZZA (trg_offerte_commerciali_a05_stato_iniziale_ins) e l'EMESSA ci arriva
+--   per la matrice, sotto il guard di emissione (senza righe non ha niente da
+--   rifiutare). La colonna stato e' lo stato VOLUTO, che fa da etichetta.
+CREATE TEMP TABLE tmp_rsv_offerta (id bigint, stato text);
+
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali
            (codice, emittente_fiscale_id, billing_account_id, istanza_utility_id,
-            utility_id, listino_id, validita_dal, stato_doc_offerta_id)
-    SELECT 'PGTAP-RSV-O-' || v.stato || '-' || substr(gen_random_uuid()::text, 1, 8),
+            utility_id, listino_id, validita_dal)
+    SELECT 'PGTAP-RSV-O-BOZZA-' || substr(gen_random_uuid()::text, 1, 8),
            m.emittente_fiscale_id, m.billing_account_id, m.istanza_utility_id,
-           m.utility_id, l.listino_id, script.fn_data_operativa(),
-           (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = v.stato)
-      FROM tmp_rsv_mondo m, tmp_rsv_listino l, (VALUES ('BOZZA'), ('EMESSA')) AS v(stato)
-    RETURNING id, stato_doc_offerta_id
+           m.utility_id, l.listino_id, script.fn_data_operativa()
+      FROM tmp_rsv_mondo m, tmp_rsv_listino l
+    RETURNING id
 )
-SELECT ins.id, s.codice_interno AS stato
-  FROM ins JOIN config.stati_doc_offerte s ON s.id = ins.stato_doc_offerta_id;
+INSERT INTO tmp_rsv_offerta SELECT id, 'BOZZA' FROM ins;
+
+WITH ins AS (
+    INSERT INTO vendite.offerte_commerciali
+           (codice, emittente_fiscale_id, billing_account_id, istanza_utility_id,
+            utility_id, listino_id, validita_dal)
+    SELECT 'PGTAP-RSV-O-EMESSA-' || substr(gen_random_uuid()::text, 1, 8),
+           m.emittente_fiscale_id, m.billing_account_id, m.istanza_utility_id,
+           m.utility_id, l.listino_id, script.fn_data_operativa()
+      FROM tmp_rsv_mondo m, tmp_rsv_listino l
+    RETURNING id
+)
+INSERT INTO tmp_rsv_offerta SELECT id, 'EMESSA' FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', o.id, o.stato)
+  FROM tmp_rsv_offerta o
+ WHERE o.stato = 'EMESSA';
 
 -- Scopo: id del documento: 'contratto', 'offerta' (BOZZA), 'emessa'.
 CREATE OR REPLACE FUNCTION pg_temp.doc(p_doc text)
@@ -266,33 +288,36 @@ SELECT ok(
         = 'fonte_quantita_attesa,tipo_eccezione',
     '3) fonte nullable sulle due tabelle, obbligatoria per CHECK sulle righe che non sono esclusioni');
 
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b): i guard
+--   «aggiunta fuori listino» ed «esclusione figlio di bundle» sono ritirati
+--   (20261013-57); le loro regole sono motivi di script.fn_check_articolo_riga,
+--   che solleva il guard di tabella script.trgfn_righe_guard_articolo_ammesso.
 SELECT is(
     (SELECT string_agg(t.tgname || '>' || p.proname, ' ' ORDER BY t.tgname)
        FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
       WHERE t.tgrelid = 'vendite.offerte_commerciali_eccezioni'::regclass
         AND t.tgname IN ('trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt',
                          'trg_offerte_commerciali_eccezioni_a05_guard_escl_immut_upd',
-                         'trg_offerte_eccezioni_a10_guard_aggiunta_fuori_listino_ins_upd',
-                         'trg_offerte_eccezioni_a10_guard_escl_figlio_bundle_ins_upd',
+                         'trg_offerte_eccezioni_a10_guard_articolo_ammesso_ins_upd',
                          'trg_offerte_eccezioni_a10_guard_esclusione_senza_dati_ins')),
     'trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt>trgfn_doc_righe_lock_fuori_bozza '
     'trg_offerte_commerciali_eccezioni_a05_guard_escl_immut_upd>trgfn_righe_guard_esclusione_immutabile '
-    'trg_offerte_eccezioni_a10_guard_aggiunta_fuori_listino_ins_upd>trgfn_righe_guard_aggiunta_fuori_listino '
-    'trg_offerte_eccezioni_a10_guard_escl_figlio_bundle_ins_upd>trgfn_righe_guard_esclusione_figlio_bundle '
+    'trg_offerte_eccezioni_a10_guard_articolo_ammesso_ins_upd>trgfn_righe_guard_articolo_ammesso '
     'trg_offerte_eccezioni_a10_guard_esclusione_senza_dati_ins>trgfn_righe_guard_esclusione_senza_dati',
-    '4) offerta: i cinque trigger nuovi, ciascuno sulla sua funzione');
+    '4) offerta: i quattro trigger, ciascuno sulla sua funzione (dal Lotto 3b il guard di articolo)');
 
 SELECT ok(
-    (SELECT count(*) = 4
+    (SELECT count(*) = 3
        FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
        JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE t.tgrelid = 'vendite.contratti_righe'::regclass
         AND n.nspname = 'script'
         AND (t.tgname, p.proname) IN (
             ('trg_contratti_righe_a05_guard_esclusione_immutabile_upd', 'trgfn_righe_guard_esclusione_immutabile'),
-            ('trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd', 'trgfn_righe_guard_aggiunta_fuori_listino'),
-            ('trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd', 'trgfn_righe_guard_esclusione_figlio_bundle'),
+            ('trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd', 'trgfn_righe_guard_articolo_ammesso'),
             ('trg_contratti_righe_a10_guard_esclusione_senza_dati_ins', 'trgfn_righe_guard_esclusione_senza_dati')))
+    AND to_regproc('script.trgfn_righe_guard_aggiunta_fuori_listino') IS NULL
+    AND to_regproc('script.trgfn_righe_guard_esclusione_figlio_bundle') IS NULL
     AND to_regproc('vendite.trgfn_contratti_righe_guard_esclusione_immutabile') IS NULL
     AND to_regproc('vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino') IS NULL
     AND to_regproc('vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle') IS NULL
@@ -482,9 +507,9 @@ SELECT ok(
         AND m -> 0 ->> 'reason_key' = 'vendite.contratti.escludi_blocco.figlio_di_bundle'
         AND jsonb_array_length(m) = 1
         AND script.fn_check_esclusione_articolo_documento(
-                'OFFERTA', pg_temp.doc('offerta'), pg_temp.art('A')) = '[]'::jsonb
+                'OFFERTA_COMMERCIALE', pg_temp.doc('offerta'), pg_temp.art('A')) = '[]'::jsonb
        FROM (SELECT script.fn_check_esclusione_articolo_documento(
-                 'OFFERTA', pg_temp.doc('offerta'), pg_temp.art('F')) AS m) x),
+                 'OFFERTA_COMMERCIALE', pg_temp.doc('offerta'), pg_temp.art('F')) AS m) x),
     '25) la check generica sull''offerta: F un motivo a catalogo, A nessuno');
 
 -- ============================================================

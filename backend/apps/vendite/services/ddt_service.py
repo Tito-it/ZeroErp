@@ -39,10 +39,17 @@ from typing import Any, NamedTuple
 
 from django.db import transaction
 
+from apps.config.sorgenti import SORGENTE_DDT_VENDITA
+from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
+from apps.vendite.services._annullo_con_legami import (
+    STATO_ANNULLATO,
+    legami_del_documento,
+    legami_confermati as dichiarazione_legami,
+)
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.payload_helpers import PayloadValidator, make_db_errors_translator
@@ -59,7 +66,6 @@ from apps.vendite.services._componenti_service_helpers import (
 )
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
-    auto_assegna_indirizzo_default,
     delete_indirizzo_documento,
     list_indirizzi_documento,
     upsert_indirizzo_documento,
@@ -81,7 +87,14 @@ E_VENDITE_FK = "E_VENDITE_FK"
 # nome vincolo). Minime: i casi non mappati cadono su E_VENDITE_VALIDATION.
 # `vendite.ddt`/`vendite.ddt_righe` non hanno UNIQUE di dominio (numerazione
 # gestita dal trigger a EMESSO, fuori da sistema_codici) -> solo FK.
-_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {}
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+    # Lo stesso lotto / seriale / ubicazione due volte sotto la stessa voce: si
+    # aumenta la quantita' del prelievo che c'e' (Lotto 3 D-L3-b).
+    "uq_ddt_righe_prelievi_posizione": (
+        E_VENDITE_DUPLICATO,
+        "Questa voce ha gia' un prelievo da questa posizione: aumentane la quantita'.",
+    ),
+}
 _FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "fk_ddt_vendita_r_articolo": (E_VENDITE_FK, "Articolo non valido."),
     "fk_ddt_v_billing_account": (E_VENDITE_FK, "Cliente (billing account) non valido."),
@@ -99,6 +112,17 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
         "La utility della bolla e' quella del suo billing account: senza billing account non c'e'.",
         "billing_account_id",
     ),
+    # I prelievi (Lotto 3 D-L3-b): la quantita' e' positiva (il verso lo mette
+    # il movimento), e un seriale e' un pezzo.
+    "chk_ddt_righe_prelievi_qta_positiva": (
+        E_VENDITE_VALIDATION, "La quantita' prelevata deve essere maggiore di zero.", "qta",
+    ),
+    "chk_ddt_righe_prelievi_qta_finito": (
+        E_VENDITE_VALIDATION, "La quantita' prelevata non e' un numero valido.", "qta",
+    ),
+    "chk_ddt_righe_prelievi_asset_qta_unitaria": (
+        E_VENDITE_VALIDATION, "Un seriale e' un pezzo solo: la quantita' deve essere 1.", "qta",
+    ),
 }
 
 # ── Costanti di dominio ──
@@ -107,7 +131,6 @@ _V = PayloadValidator(validation_code="E_DDT_VALIDAZIONE")
 # Gli id della controparte che il payload puo' portare: si coerciscono a
 # intero (un valore non numerico e' un 400 col campo, non un 500 da `int()`).
 _ID_CONTROPARTE: tuple[str, ...] = ("billing_account_id", "destinatario_soggetto_ruolo_id")
-_STATO_BOZZA = "DRAFT"
 _STATO_EMESSO = "EMESSO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 
@@ -115,7 +138,8 @@ _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 # Col BA il destinatario lo scrive il DB (e rifiuta un valore diverso); senza
 # BA e' obbligatorio (NOT NULL: il 23502 arriva col campo). ⛔ `utility_id`
 # NON c'e': e' una copia del BA (CHECK «tutti e due o nessuno»), la scrive il
-# DB — un client vecchio che la manda la vede scartata.
+# DB. ⛔ Una chiave fuori whitelist e' un 400, come in modifica (2026-10-19,
+# scelta di Tid): fino ad allora la creazione la SCARTAVA in silenzio.
 CREATE_KEYS_DDT: frozenset[str] = frozenset({
     "billing_account_id", "destinatario_soggetto_ruolo_id",
     "emittente_fiscale_id",
@@ -123,11 +147,17 @@ CREATE_KEYS_DDT: frozenset[str] = frozenset({
     "causale_trasporto_id", "aspetto_bene_id", "modalita_addebito_trasporto_id",
     "num_colli", "peso_lordo", "peso_netto", "volume", "targa", "autista",
     "tracking_code", "data", "meta",
+    # Magazzino di partenza e, per la bolla di trasferimento, di arrivo (Lotto 3
+    # D-L3-a). Senza partenza la propone il DB (il predefinito dell'emittente,
+    # `trgfn_ddt_default_magazzino`); le regole — stesso emittente, arrivo solo
+    # per il trasferimento e diverso dalla partenza, fermi fuori bozza — sono
+    # dei guard DB, qui non si ricopiano.
+    "magazzino_id", "magazzino_arrivo_id",
     # Corsia di instradamento della fatturazione (simmetria del flag, Fase B
     # del brief emissione mirata): si decide PRIMA del push in commessa, dove
     # il flag entra nella chiave di dedup; dopo e' inerte e il guard DB
-    # `trgfn_guard_fatturazione_immediata_immutabile` respinge l'UPDATE. La
-    # testata DDT e' editabile solo in DRAFT: le due finestre non si toccano.
+    # `trgfn_guard_fatturazione_immediata_immutabile` respinge l'UPDATE. Il
+    # lock di testata fuori bozza non lo nomina: decide quel guard, non lo stato.
     "fatturazione_immediata",
 })
 # Cliente e destinatario si cambiano in BOZZA (D-2: la bolla puo' nascere senza
@@ -136,26 +166,35 @@ CREATE_KEYS_DDT: frozenset[str] = frozenset({
 # BA il destinatario non toccato segue il BA nuovo; un BA tolto toglie la
 # utility e lascia il destinatario (`trgfn_ddt_normalize`). ⛔ `utility_id`
 # fuori, come in create.
+# ⛔ Una chiave fuori whitelist e' un 400, in modifica come in creazione (dal
+#    2026-10-19, scelta di Tid, come preventivo, offerta e contratto). Fino ad
+#    allora si SCARTAVA in silenzio, per tollerare un client vecchio: la
+#    risposta era ok e il valore non arrivava, senza che nessuno lo sapesse.
 UPDATE_KEYS_DDT: frozenset[str] = frozenset({
     "billing_account_id", "destinatario_soggetto_ruolo_id",
     "valuta_id", "mittente_soggetto_ruolo_id",
     "vettore_soggetto_ruolo_id", "causale_trasporto_id", "aspetto_bene_id",
     "modalita_addebito_trasporto_id", "num_colli", "peso_lordo", "peso_netto",
     "volume", "targa", "autista", "tracking_code", "data", "meta",
-    "fatturazione_immediata",
+    "fatturazione_immediata", "magazzino_id", "magazzino_arrivo_id",
 })
     # ⛔ `iva_id` NON C'E' PIU' (`I6`, 2026-08-31): l'aliquota della riga la
     # decide il risolutore, e la casella a video e' spenta. Rimetterla qui
     # riaprirebbe la seconda risposta alla stessa domanda che tutto questo
     # cantiere e' servito a togliere.
-    # ⚠️ Una chiave fuori whitelist viene SCARTATA, non respinta: un client
-    # vecchio che la manda ancora non riceve un errore — il valore semplicemente
-    # non arriva. E' voluto, ed e' il motivo per cui BE e FE vanno insieme.
+    # ⛔ Una chiave fuori whitelist e' un 400 anche sulle RIGHE (2026-10-19,
+    #    scelta di Tid: la stessa regola della testata, come il contratto).
+    #    Fino ad allora `gestisci_riga` e `aggiorna_riga` la SCARTAVANO in
+    #    silenzio.
 CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id", "descrizione", "quantita", "qta_operativa",
     "uom_operativa_id", "factor_to_base", "prezzo_unitario", "sconto_percentuale",
     "meta",
 })
+# Le chiavi AMMESSE nella creazione di una riga: le colonne qui sopra piu' la
+# mappa degli override dei prezzi dei componenti, che non e' una colonna e si
+# legge a parte (`normalize_componenti_overrides`).
+CREATE_PAYLOAD_RIGA: frozenset[str] = CREATE_KEYS_RIGA | {"componenti_overrides"}
 UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
     "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
@@ -183,6 +222,13 @@ def list_ddt_rows(
     order_dir: str = "desc",
     max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
+    # ⛔ Il filtro di stato esiste nel vocabolario, o e' un 400 sul campo: un
+    #    valore sbagliato finiva nel WHERE e la lista rispondeva vuota con un
+    #    200 (2026-10-20). Codici dismessi ammessi: i documenti vecchi li portano.
+    richiedi_codice_a_vocabolario(
+        "config.stati_doc_ddt", "codice_interno", stato_codice,
+        codice_errore="E_DDT_VALIDAZIONE", parametro="stato_codice_interno",
+    )
     repo = DdtRepository()
     return repo.list_ddt(
         stato_codice=stato_codice,
@@ -266,15 +312,14 @@ def list_righe_pagina(ddt_id: int, **opzioni: Any) -> tuple[list[dict[str, Any]]
 
 # ── Indirizzi documento (BB condiviso _indirizzi_documento_helpers) ──
 
-# Configurazione unica del BB per il dominio DDT: guard esistenza/stato,
-# ownership picker e traduzione errori DB vivono nel helper condiviso.
+# Configurazione unica del BB per il dominio DDT: guard di esistenza e
+# traduzione errori DB vivono nel helper condiviso (l'appartenenza al cliente
+# la giudica il DB).
 _INDIRIZZI_CFG = IndirizziDocumentoConfig(
     # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
-    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    # dei test unit raggiungono il repository.
     repo_factory=lambda: DdtRepository(),
-    stati_modificabili=_STATI_MODIFICABILI,
     not_found_code="E_DDT_NOT_FOUND",
-    stato_error_code="E_DDT_STATO_TRANSIZIONE",
     error_code="E_DDT_VALIDAZIONE",
     fn_prefix=_FN,
 )
@@ -288,7 +333,8 @@ def list_indirizzi(ddt_id: int) -> dict[str, Any]:
 
 # Scopo: Upsert slot indirizzo (uno-per-tipo, solo DRAFT: dopo l'emissione lo
 #        snapshot e' congelato col documento). Picker: snapshot server-side da
-#        fn_snapshot_indirizzo + guard ownership; una-tantum: dal payload.
+#        fn_snapshot_indirizzo; una-tantum: dal payload. Che sia del cliente
+#        lo giudica il guard DB.
 def upsert_indirizzo(ddt_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     return upsert_indirizzo_documento(_INDIRIZZI_CFG, ddt_id, payload)
 
@@ -316,29 +362,29 @@ def list_riepilogo_iva(ddt_id: int) -> list[dict[str, Any]]:
 #  SCRITTURE — Testata
 # ══════════════════════════════════════════════════════════
 
-# Scopo: Crea un nuovo DDT standalone in stato DRAFT (BOZZA). `numero` NON
-#        assegnato in DRAFT: lo valorizza il trigger DB a EMESSO (C6).
-#        Cliente (BA) facoltativo: col BA il destinatario lo scrive il DB,
-#        senza va indicato (terzista, deposito). Vedi la NOTA cliente in testa.
+# Scopo: Crea un nuovo DDT standalone. Lo stato non si passa: il DDT nasce
+#        nello stato iniziale del suo vocabolario, e lo mette il DB (BB
+#        `script.trgfn_doc_stato_iniziale`, brief-modello-documento-vendita
+#        P-2). `numero` NON assegnato in bozza: lo valorizza il trigger DB a
+#        EMESSO (C6). Cliente (BA) facoltativo: col BA il destinatario lo
+#        scrive il DB, senza va indicato (terzista, deposito). Vedi la NOTA
+#        cliente in testa.
 def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
     repo = DdtRepository()
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_DDT}
+    # Una chiave fuori whitelist e' un 400 (vedi CREATE_KEYS_DDT).
+    _V.validate_allowed_keys(
+        payload, allowed=CREATE_KEYS_DDT, function_name=f"{_FN}.crea_ddt",
+    )
+    data = {k: empty_to_none(v) for k, v in payload.items()}
     _coerci_id_controparte(data, op="crea_ddt")
 
-    stato_bozza_id = repo.get_stato_id_by_codice(_STATO_BOZZA)
-    ErrorManager.require(
-        stato_bozza_id is not None,
-        code="E_DDT_VALIDAZIONE",
-        message="Stato DRAFT non configurato in config.stati_doc_ddt.",
-        function_name=f"{_FN}.crea_ddt",
-    )
-    assert stato_bozza_id is not None
-
     meta = data.get("meta")
-    with _db_errors("crea_ddt"):
+    # Creazione e slot di default in UNA transazione: il riempimento non e'
+    # best-effort, e un suo errore non deve lasciare la bozza senza chi l'ha
+    # chiesta (ATOMIC_REQUESTS e' spento, api.md §Atomicita').
+    with _db_errors("crea_ddt"), transaction.atomic():
         creato = repo.create_ddt(
             destinatario_soggetto_ruolo_id=data.get("destinatario_soggetto_ruolo_id"),
-            stato_doc_ddt_id=int(stato_bozza_id),
             billing_account_id=data.get("billing_account_id"),
             # Emittente dallo user (prefill FE dal profilo, mirror ordini).
             # Se None: fallback DB dal BA in trgfn_ddt_normalize.
@@ -359,10 +405,12 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
             data=data.get("data"),
             meta=meta if isinstance(meta, dict) else None,
             fatturazione_immediata=data.get("fatturazione_immediata"),
+            magazzino_id=data.get("magazzino_id"),
+            magazzino_arrivo_id=data.get("magazzino_arrivo_id"),
         )
-    # UX v2: auto-assegnazione best-effort dell'indirizzo di consegna default
-    # (indirizzo di ruolo CON del cliente, fallback FATT). Mai bloccante.
-    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(creato["id"]))
+        # Slot di default dall'anagrafica del cliente: lo decide il DB
+        # (`vendite.fn_doc_indirizzo_default`, slot e ripiego sono dati).
+        repo.riempi_indirizzo_default(int(creato["id"]))
     return creato
 
 
@@ -380,16 +428,19 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
 # senza BA non l'avrebbe mai ricevuto (brief-db-esecutivi-ba-coppia §9.6).
 def aggiorna_ddt(ddt_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = DdtRepository()
-    # Prima la testata: fuori perimetro o inesistente e' un 404. Basta sapere
+    # Una chiave fuori whitelist e' un 400, prima di qualunque lettura (vedi
+    # UPDATE_KEYS_DDT): da qui in giu' il payload contiene solo chiavi ammesse.
+    _V.validate_allowed_keys(
+        payload, allowed=UPDATE_KEYS_DDT, function_name=f"{_FN}.aggiorna_ddt",
+    )
+    # Poi la testata: fuori perimetro o inesistente e' un 404. Basta sapere
     # che esiste: il lettore leggero, non la testata intera.
     _get_testata_or_raise(repo, ddt_id, op="aggiorna_ddt", getter=repo.get_stato_codice)
 
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_DDT}
+    data = {k: empty_to_none(v) for k, v in payload.items()}
     _coerci_id_controparte(data, op="aggiorna_ddt")
-    ErrorManager.require(
-        len(data) > 0,
-        code="E_DDT_VALIDAZIONE",
-        message="Nessun campo aggiornabile nel payload.",
+    _V.require_campi_da_aggiornare(
+        data,
         function_name=f"{_FN}.aggiorna_ddt",
     )
     with _db_errors("aggiorna_ddt"):
@@ -426,12 +477,25 @@ def elimina_ddt(ddt_id: int) -> dict[str, Any]:
 # Scopo: Esegue una transizione di stato data-driven del DDT (es. EMESSO,
 #        SPEDITO, CONSEGNATO, RESO, ANNULLATO). Generico: lo stato destinazione
 #        arriva dal codice interno (`available_actions[].target_state` della fn
-#        capabilities). L'ammissibilita' e' validata dal trigger DB
-#        `trgfn_ddt_guard_transizione` (matrice config.transizioni_stati_ddt):
-#        il service non duplica il grafo. Alla transizione a EMESSO il DB
-#        assegna il `numero` (trgfn_ddt_gen_numero_emesso) e scatta il guard
-#        approvazione componenti BoM.
-def cambia_stato(ddt_id: int, stato_codice: str | None) -> dict[str, Any]:
+#        capabilities). Ogni passaggio va al DB per un verbo
+#        (`vendite.fn_cambia_stato_ddt`, Lotto 3 R-1): l'ammissibilita' la
+#        valida `trgfn_ddt_guard_transizione` (matrice
+#        config.transizioni_stati_ddt), il service non duplica il grafo. Alla
+#        transizione a EMESSO il DB assegna il `numero`, scatta il guard
+#        approvazione componenti BoM e, se la bolla muove merce, scarica il
+#        magazzino. Lo stato richiesto si valida qui solo per dare un 400 a un
+#        codice inesistente (il verbo lo tratterebbe da chiamante rotto).
+#        ⭐ ANNULLATO passa SEMPRE dal verbo `vendite.fn_annulla_ddt`
+#        (brief-db-annullo-documento-con-legami): una bolla con legami si
+#        annulla solo se chi conferma DICHIARA quanti legami ha visto
+#        (`legami_confermati`, letto da `get_legami`); senza la dichiarazione
+#        il DB risponde E_DOC_ANNULLO_CON_LEGAMI (`confirm_and_retry`). Una
+#        bolla senza legami si annulla senza dichiarazione. Il verbo ritira i
+#        legami e passa da `fn_cambia_stato_ddt` (matrice, permesso, storno).
+def cambia_stato(
+    ddt_id: int, stato_codice: str | None,
+    *, legami_confermati: Any = None,
+) -> dict[str, Any]:
     repo = DdtRepository()
     # Guard esistenza leggero: serve solo lo stato corrente, non la testata
     # completa (vista + JOIN); la validazione della coppia e' del trigger DB.
@@ -458,13 +522,24 @@ def cambia_stato(ddt_id: int, stato_codice: str | None) -> dict[str, Any]:
         function_name=f"{_FN}.cambia_stato",
     )
     assert stato_id is not None
-    # La transizione (stato_prec -> target) e' validata dal trigger guard DB;
-    # eventuale errore tradotto da _db_errors (E_STATO_DDT_TRANSIZIONE_NON_VALIDA
-    # / E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO alla transizione a
-    # EMESSO, dal 2026-09-24 via script.fn_check_prezzi_autorizzati).
+    if target == STATO_ANNULLATO:
+        confermati = dichiarazione_legami(
+            legami_confermati, validation_code="E_DDT_VALIDAZIONE",
+            function_name=f"{_FN}.cambia_stato",
+        )
+        with _db_errors("cambia_stato"):
+            repo.annulla(ddt_id, confermati)
+        return {"ddt_id": ddt_id, "stato_precedente": stato_prec, "stato": target}
+    # Ogni altro passaggio dal verbo (Lotto 3 R-1): permesso, matrice, guard
+    # di sempre e, se la bolla muove merce, i movimenti di magazzino. I rifiuti
+    # li traduce _db_errors (E_STATO_DDT_TRANSIZIONE_NON_VALIDA, i motivi della
+    # merce all'emissione, E_PERMESSO_NEGATO, i prezzi da autorizzare).
     with _db_errors("cambia_stato"):
-        repo.update_stato(ddt_id, int(stato_id))
-    return {"ddt_id": ddt_id, "stato_precedente": stato_prec, "stato": target}
+        movimenti = repo.cambia_stato(ddt_id, target)
+    return {
+        "ddt_id": ddt_id, "stato_precedente": stato_prec, "stato": target,
+        "movimenti_scritti": len(movimenti),
+    }
 
 
 # Scopo: Emette il DDT (DRAFT -> EMESSO). Alla transizione il DB assegna il
@@ -492,10 +567,16 @@ def emetti(ddt_id: int) -> dict[str, Any]:
 def gestisci_riga(
     ddt_id: int, payload: dict[str, Any], *, auth_user_id: int | None = None,
 ) -> dict[str, Any]:
+    # Una chiave fuori whitelist e' un 400, prima di qualunque lettura; il dict
+    # tiene le sole colonne, senza la mappa dei componenti (letta a parte).
+    data = _V.solo_chiavi_ammesse(
+        payload, ammesse=CREATE_PAYLOAD_RIGA, colonne=CREATE_KEYS_RIGA,
+        function_name=f"{_FN}.gestisci_riga",
+    )
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="gestisci_riga")
     richiedi_righe_in_bozza(
-        testata, documento="DDT", documento_id=ddt_id, verbo="aggiungere",
+        testata, documento=SORGENTE_DDT_VENDITA, documento_id=ddt_id, verbo="aggiungere",
         function_name=f"{_FN}.gestisci_riga",
     )
 
@@ -512,7 +593,6 @@ def gestisci_riga(
         error_code="E_DDT_VALIDAZIONE",
     )
 
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RIGA}
     articolo_id = data.get("articolo_id")
     ErrorManager.require(
         articolo_id is not None and str(articolo_id).strip() != "",
@@ -627,17 +707,21 @@ def aggiorna_riga(
     ddt_id: int, riga_id: int, payload: dict[str, Any],
     *, auth_user_id: int | None = None,
 ) -> dict[str, Any]:
+    # Una chiave fuori whitelist e' un 400, prima di qualunque lettura (vedi
+    # CREATE_KEYS_RIGA): da qui in giu' il payload contiene solo chiavi ammesse.
+    _V.validate_allowed_keys(
+        payload, allowed=UPDATE_KEYS_RIGA, function_name=f"{_FN}.aggiorna_riga",
+    )
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="aggiorna_riga")
     richiedi_righe_in_bozza(
-        testata, documento="DDT", documento_id=ddt_id, verbo="modificare",
+        testata, documento=SORGENTE_DDT_VENDITA, documento_id=ddt_id, verbo="modificare",
         function_name=f"{_FN}.aggiorna_riga",
     )
     _get_riga_or_raise(repo, ddt_id, riga_id, op="aggiorna_riga")
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RIGA}
-    ErrorManager.require(
-        len(data) > 0,
-        code="E_DDT_VALIDAZIONE",
+    data = {k: empty_to_none(v) for k, v in payload.items()}
+    _V.require_campi_da_aggiornare(
+        data,
         message="Nessun campo aggiornabile nel payload riga.",
         function_name=f"{_FN}.aggiorna_riga",
     )
@@ -654,10 +738,14 @@ def aggiorna_riga(
 #        se il documento non e' piu' in bozza -> E_RIGA_DOC_NON_BOZZA (fino a
 #        quel giorno era il ramo 1 di `trgfn_dlt_block_ordrig_ddtrig`, codice
 #        E_DELETE_RIGA_DOC_NON_BOZZA, ritirato); poi
-#        `trgfn_dlt_block_ordrig_ddtrig`, ridotto ai soli legami: riga legata
-#        a un fulfillment -> E_DELETE_BLOCKED_FUL; riga usata in un reso o in
-#        una riconsegna -> E_DELETE_RIGA_DOC_REFERENZIATA; altrimenti la
-#        cancellazione RIESCE.
+#        `trgfn_dlt_block_ordrig_ddtrig`, ridotto ai soli legami: riga usata
+#        come origine di un reso -> E_DELETE_RIGA_DOC_REFERENZIATA; altrimenti
+#        la cancellazione RIESCE.
+#        ⭐ Dal 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine D-3, D-7) la
+#        riga legata a un fulfillment o a un ponte di ri-consegna in bozza si
+#        CANCELLA, e i legami si ritirano con lei (l'ordine si riproietta, il
+#        reso torna da ri-consegnare): E_DELETE_BLOCKED_FUL dalla riga di DDT
+#        non arriva piu' (fino a quel giorno era il ramo della riga evasa).
 #        ⚠️ Il terzo esito non esisteva fino al 2026-08-26: la funzione
 #        sollevava su OGNI ramo e il `RETURN OLD` era irraggiungibile, quindi
 #        questo verbo NON ha mai potuto riuscire. Il commento che stava qui
@@ -671,13 +759,159 @@ def elimina_riga(ddt_id: int, riga_id: int) -> dict[str, Any]:
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="elimina_riga")
     richiedi_righe_in_bozza(
-        testata, documento="DDT", documento_id=ddt_id, verbo="togliere",
+        testata, documento=SORGENTE_DDT_VENDITA, documento_id=ddt_id, verbo="togliere",
         function_name=f"{_FN}.elimina_riga",
     )
     _get_riga_or_raise(repo, ddt_id, riga_id, op="elimina_riga")
     with _db_errors("elimina_riga"):
         deleted = repo.delete_riga(riga_id)
     return {"ddt_id": ddt_id, "riga_id": riga_id, "deleted": deleted}
+
+
+# Scopo: Corregge la quantita' evasa di una riga (D-2 di
+#        brief-db-ddt-righe-evase-dall-ordine): la riga evasa da un ordine o
+#        da un reso ha articolo, UoM e quantita' fermi, e la quantita' cambia
+#        solo da qui. Il verbo DB fa riga, componenti, legami e stato
+#        dell'ordine insieme. ⛔ Nessuna regola ricopiata: bozza, riga evasa,
+#        origine, residuo, quantita' positiva li giudica il DB
+#        (`script.fn_check_ddt_riga_correggi_qta_evasa` e i guard dei
+#        legami), il backend controlla solo che il valore sia un numero.
+def correggi_qta_evasa(
+    ddt_id: int, riga_id: int, payload: dict[str, Any],
+) -> dict[str, Any]:
+    repo = DdtRepository()
+    _get_testata_or_raise(
+        repo, ddt_id, op="correggi_qta_evasa", getter=repo.get_stato_codice,
+    )
+    _get_riga_or_raise(repo, ddt_id, riga_id, op="correggi_qta_evasa")
+    qta_operativa = _V.require_decimal(
+        payload, "qta_operativa", function_name=f"{_FN}.correggi_qta_evasa",
+    )
+    with _db_errors("correggi_qta_evasa"):
+        qta_evasa = repo.correggi_qta_evasa(riga_id, qta_operativa)
+    return {"ddt_id": ddt_id, "riga_id": riga_id, "qta_evasa": qta_evasa}
+
+
+# ══════════════════════════════════════════════════════════
+#  PRELIEVI — da dove esce la merce (Lotto 3 R-2b, piano-be-fe-magazzino-
+#  lotto-3 B1). ⛔ Nessuna regola ricopiata: bozza (e l'ubicazione di arrivo
+#  fino al CONSEGNATO), regola del kit, `usa_ubicazioni`, lotto e seriale
+#  dell'articolo, somma rispetto alla riga li giudicano i trigger DB e, alla
+#  emissione, `script.fn_check_ddt_merce`. Il backend porta e traduce.
+# ══════════════════════════════════════════════════════════
+
+# La voce si sceglie alla creazione (riga, o componente del kit) e non cambia.
+CREATE_KEYS_PRELIEVO: frozenset[str] = frozenset({
+    "ddt_riga_componente_id", "qta", "lotto_id", "asset_id",
+    "ubicazione_id", "ubicazione_arrivo_id",
+})
+UPDATE_KEYS_PRELIEVO: frozenset[str] = frozenset({
+    "qta", "lotto_id", "asset_id", "ubicazione_id", "ubicazione_arrivo_id",
+})
+_ID_PRELIEVO: tuple[str, ...] = (
+    "ddt_riga_componente_id", "lotto_id", "asset_id", "ubicazione_id", "ubicazione_arrivo_id",
+)
+
+
+# Scopo: I prelievi della bolla per la griglia: la testata (muove merce?,
+#        i magazzini e se usano ubicazioni) e le VOCI da movimentare (riga o
+#        componente, quantita' e gia' prelevata in UoM base, automatico), ognuna
+#        coi suoi prelievi. Una voce automatica non chiede niente: il prelievo
+#        lo crea il DB all'emissione. Prima la testata: fuori perimetro e' 404.
+def get_prelievi(ddt_id: int) -> dict[str, Any]:
+    repo = DdtRepository()
+    testata = _get_testata_or_raise(
+        repo, ddt_id, op="get_prelievi", getter=repo.get_testata_prelievi,
+    )
+    per_voce: dict[tuple[int, int | None], list[dict[str, Any]]] = {}
+    for prelievo in repo.list_prelievi(ddt_id):
+        chiave = (prelievo["ddt_riga_id"], prelievo["ddt_riga_componente_id"])
+        per_voce.setdefault(chiave, []).append(prelievo)
+    voci = [
+        {**voce, "prelievi": per_voce.get((voce["ddt_riga_id"], voce["ddt_riga_componente_id"]), [])}
+        for voce in repo.list_merce_da_movimentare(ddt_id)
+    ]
+    return {**testata, "voci": voci}
+
+
+# Scopo: Normalizza il payload di un prelievo: chiavi del contratto, vuoti a
+#        None, id interi positivi, `qta` decimale (obbligatoria in creazione).
+def _payload_prelievo(
+    payload: dict[str, Any], chiavi: frozenset[str], *, op: str, qta_obbligatoria: bool,
+) -> dict[str, Any]:
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _V.solo_chiavi_ammesse(payload, ammesse=chiavi, function_name=f"{_FN}.{op}")
+    for chiave in _ID_PRELIEVO:
+        if chiave in data:
+            data[chiave] = _V.optional_positive_int(data, chiave, function_name=f"{_FN}.{op}")
+    if qta_obbligatoria or "qta" in data:
+        data["qta"] = _V.require_decimal(data, "qta", function_name=f"{_FN}.{op}")
+    return data
+
+
+# Scopo: Il prelievo, se e' di questa riga; altrimenti E_DDT_NOT_FOUND.
+def _get_prelievo_or_raise(
+    repo: DdtRepository, riga_id: int, prelievo_id: int, *, op: str,
+) -> dict[str, Any]:
+    return riga_del_padre_o_not_found(
+        repo.get_prelievo, prelievo_id, padre_id=riga_id, chiave_padre="ddt_riga_id",
+        code="E_DDT_NOT_FOUND", message="Prelievo non trovato per questa riga.",
+        function_name=f"{_FN}.{op}",
+    )
+
+
+# Scopo: Nuovo prelievo sotto una riga (o un suo componente del kit).
+def crea_prelievo(ddt_id: int, riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    repo = DdtRepository()
+    _get_testata_or_raise(repo, ddt_id, op="crea_prelievo", getter=repo.get_stato_codice)
+    _get_riga_or_raise(repo, ddt_id, riga_id, op="crea_prelievo")
+    data = _payload_prelievo(
+        payload, CREATE_KEYS_PRELIEVO, op="crea_prelievo", qta_obbligatoria=True,
+    )
+    with _db_errors("crea_prelievo"):
+        creato = repo.create_prelievo({**data, "ddt_riga_id": riga_id})
+    return {"ddt_id": ddt_id, "riga_id": riga_id, "prelievo_id": int(creato["id"])}
+
+
+# Scopo: Cambia quantita', lotto, seriale o ubicazioni di un prelievo.
+def aggiorna_prelievo(
+    ddt_id: int, riga_id: int, prelievo_id: int, payload: dict[str, Any],
+) -> dict[str, Any]:
+    repo = DdtRepository()
+    _get_testata_or_raise(repo, ddt_id, op="aggiorna_prelievo", getter=repo.get_stato_codice)
+    _get_riga_or_raise(repo, ddt_id, riga_id, op="aggiorna_prelievo")
+    _get_prelievo_or_raise(repo, riga_id, prelievo_id, op="aggiorna_prelievo")
+    data = _payload_prelievo(
+        payload, UPDATE_KEYS_PRELIEVO, op="aggiorna_prelievo", qta_obbligatoria=False,
+    )
+    _V.require_campi_da_aggiornare(
+        data,
+        function_name=f"{_FN}.aggiorna_prelievo",
+    )
+    with _db_errors("aggiorna_prelievo"):
+        repo.update_prelievo(prelievo_id, **data)
+    return {"ddt_id": ddt_id, "riga_id": riga_id, "prelievo_id": prelievo_id, "updated": True}
+
+
+# Scopo: Toglie un prelievo.
+def elimina_prelievo(ddt_id: int, riga_id: int, prelievo_id: int) -> dict[str, Any]:
+    repo = DdtRepository()
+    _get_testata_or_raise(repo, ddt_id, op="elimina_prelievo", getter=repo.get_stato_codice)
+    _get_riga_or_raise(repo, ddt_id, riga_id, op="elimina_prelievo")
+    _get_prelievo_or_raise(repo, riga_id, prelievo_id, op="elimina_prelievo")
+    with _db_errors("elimina_prelievo"):
+        deleted = repo.delete_prelievo(prelievo_id)
+    return {"ddt_id": ddt_id, "riga_id": riga_id, "prelievo_id": prelievo_id, "deleted": deleted}
+
+
+# Scopo: I legami della bolla per la finestra di conferma dell'annullo (BB
+#        `legami_del_documento`, comune a bolla, ordine, preventivo e
+#        contratto): legami con ordini e resi, righe di commessa da emettere.
+#        Prima la testata: il lettore del DB non applica il perimetro.
+def get_legami(ddt_id: int) -> dict[str, Any]:
+    repo = DdtRepository()
+    _get_testata_or_raise(repo, ddt_id, op="get_legami", getter=repo.get_stato_codice)
+    return legami_del_documento(SORGENTE_DDT_VENDITA, ddt_id)
 
 
 # ══════════════════════════════════════════════════════════
@@ -719,6 +953,7 @@ def list_componenti_riga(
 # Scopo: Aggiorna un componente BoM (solo DRAFT, scope componente->riga->ddt).
 def update_componente(
     ddt_id: int, riga_id: int, componente_id: int, payload: dict[str, Any],
+    *, auth_user_id: int | None = None,
 ) -> dict[str, Any]:
     repo = DdtRepository()
     scope = repo.load_componente_with_scope(componente_id)
@@ -731,7 +966,7 @@ def update_componente(
     )
     assert scope is not None
     richiedi_righe_in_bozza(
-        scope, documento="DDT", documento_id=ddt_id, verbo="modificare",
+        scope, documento=SORGENTE_DDT_VENDITA, documento_id=ddt_id, verbo="modificare",
         function_name=f"{_FN}.update_componente",
     )
     # Contratto dell'operatore unico per i cinque documenti (BB): chiavi
@@ -740,7 +975,7 @@ def update_componente(
     # estranee, compresa l'`origine_prezzo` mandata dal pannello: l'origine
     # manuale non veniva mai scritta.
     data = dati_patch_componente(
-        payload, function_name=f"{_FN}.update_componente",
+        payload, auth_user_id=auth_user_id, function_name=f"{_FN}.update_componente",
         error_code="E_DDT_VALIDAZIONE",
     )
     with _db_errors("update_componente"):
@@ -763,7 +998,7 @@ def delete_componente(
     )
     assert scope is not None
     richiedi_righe_in_bozza(
-        scope, documento="DDT", documento_id=ddt_id, verbo="togliere",
+        scope, documento=SORGENTE_DDT_VENDITA, documento_id=ddt_id, verbo="togliere",
         function_name=f"{_FN}.delete_componente",
     )
     with _db_errors("delete_componente"):
@@ -779,9 +1014,9 @@ def delete_componente(
 #        `vendite.fn_genera_ddt_da_ordine` (via DdtRepository.push_da_ordine),
 #        atomica DB-first: crea testata DRAFT + righe (snapshot A-2) + componenti
 #        + fulfillment riga<->riga e proietta lo stato ordine (CONFERMATO/
-#        PARZIALMENTE_EVASO/EVASO). NIENTE transaction.atomic() extra (come
-#        crea_ordine_da_preventivo). `righe` = [{ordine_riga_id, qta_da_evadere}]
-#        in UNITA' OPERATIVA; None = tutto il residuo. Ritorna
+#        PARZIALMENTE_EVASO/EVASO). La transaction.atomic() tiene insieme il
+#        verbo e il riempimento dello slot di default. `righe` =
+#        [{ordine_riga_id, qta_da_evadere}] in UNITA' OPERATIVA; None = tutto il residuo. Ritorna
 #        {ddt_id, numero(None in DRAFT), ordine_id}.
 def crea_ddt_da_ordine(
     ordine_id: int, righe: list[dict[str, Any]] | None = None,
@@ -790,12 +1025,12 @@ def crea_ddt_da_ordine(
     # Errori del guard fulfillment/evasione (E_DDT_ORDINE_NOT_FOUND,
     # E_DDT_ORDINE_STATO_NON_EVADIBILE, E_DDT_NIENTE_DA_EVADERE,
     # E_QTA_SUPERA_RESIDUO) sollevati dalla fn DB -> tradotti da _db_errors.
-    with _db_errors("crea_ddt_da_ordine"):
+    # Il verbo e il default nella stessa transazione: la cascata DB copia
+    # gli indirizzi dell'ordine, e il default riempie lo slot SOLO se e'
+    # rimasto vuoto (la sorgente vince).
+    with _db_errors("crea_ddt_da_ordine"), transaction.atomic():
         ddt_id = repo.push_da_ordine(int(ordine_id), righe)
-    # UX v2: la cascata DB copia gli indirizzi dell'ordine; se l'ordine non
-    # aveva la consegna, fallback best-effort dall'anagrafica di ruolo
-    # (l'helper salta se lo slot default e' gia' valorizzato).
-    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(ddt_id))
+        repo.riempi_indirizzo_default(int(ddt_id))
     # Il DDT nasce sempre in DRAFT: il `numero` e' assegnato solo a EMESSO dal
     # trigger DB -> qui e' deterministicamente None (nessun re-read).
     return {"ddt_id": ddt_id, "numero": None, "ordine_id": int(ordine_id)}
@@ -830,7 +1065,7 @@ def push_a_commessa(ddt_id: int, *, user: str | None = None) -> dict[str, Any]:
     # pr_run_commesse_push_one diventa un savepoint annidato).
     with transaction.atomic():
         report = pr_run_commesse_push_one(
-            sorgente_codice="DDT_VENDITA",
+            sorgente_codice=SORGENTE_DDT_VENDITA,
             sorgente_uid=ddt_id,
             user=user,
         )

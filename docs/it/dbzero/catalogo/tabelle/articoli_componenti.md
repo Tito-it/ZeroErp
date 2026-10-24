@@ -61,18 +61,18 @@
 |------|--------|--------|--------|
 | trg_articoli_componenti_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'componente_id', 'id')` |
 | trg_articoli_componenti_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'componente_id', 'id')` |
-| trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura()` |
 | trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura()` |
+| trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura()` |
 | trg_articoli_componenti_a10_block_solo_componente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_solo_componente()` |
 | trg_articoli_componenti_a10_block_solo_componente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_solo_componente()` |
 | trg_articoli_componenti_a10_contratti_righe_componenti_b_a08565 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'contratti_righe_componenti', 'articolo_componente_id', 'id', 'attivo')` |
-| trg_articoli_componenti_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_articoli_componenti_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
+| trg_articoli_componenti_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_articoli_componenti_a10_ddt_righe_componenti_block_d_910186 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt_righe_componenti', 'articolo_componente_id', 'id', 'attivo')` |
 | trg_articoli_componenti_a10_guard_is_composito_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_is_composito()` |
 | trg_articoli_componenti_a10_guard_is_composito_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_is_composito()` |
-| trg_articoli_componenti_a10_guard_iva_bom_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_iva()` |
-| trg_articoli_componenti_a10_guard_iva_bom_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_iva()` |
+| trg_articoli_componenti_a10_guard_riga_componente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_componente()` |
+| trg_articoli_componenti_a10_guard_riga_componente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_componente()` |
 | trg_articoli_componenti_a10_listini_righe_componenti_blo_da0ba1 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'listini_righe_componenti', 'articolo_componente_id', 'id', 'attivo')` |
 | trg_articoli_componenti_a10_note_articoli_componenti_blo_a2749a | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('catalogo', 'note_articoli_componenti', 'target_id', 'id', 'attivo')` |
 | trg_articoli_componenti_a10_offerte_commerciali_eccezion_1e1bf7 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali_eccezioni_componenti', 'articolo_componente_id', 'id', 'attivo')` |

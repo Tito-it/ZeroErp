@@ -184,6 +184,11 @@ ignore = ["S101"]
 #    gia' il suo `noqa` motivato).
 "scripts/**" = ["T201", "T203", "S603", "S607"]
 "backend/scripts/**" = ["T201", "T203", "S603", "S607"]
+# Stessa natura: gli script allegati ai brief (collaudi da lanciare a mano con
+# `manage-env.sh shell <`) parlano a chi li lancia con `print`. Solo T201/T203:
+# non lanciano processi. Aggiunto il 2026-10-18
+# (`work-done/allegati/collaudo-presidio-job-run-be.py`).
+"docs/it/dev/*/allegati/*.py" = ["T201", "T203"]
 #
 # ⛔ Nei test le regole di sicurezza non si applicano per NATURA: `assert` e'
 #    il linguaggio del test, le password sono finte per costruzione, e l'SQL

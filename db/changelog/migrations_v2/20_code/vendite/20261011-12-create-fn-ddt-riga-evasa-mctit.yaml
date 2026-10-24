@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHE COSA E' UNA RIGA EVASA, IN UN POSTO SOLO
+#   vendite.fn_ddt_riga_evasa(p_ddt_riga_id) -> boolean
+#   Brief: brief-db-ddt-righe-evase-dall-ordine (D-1, D-7, §5.5)
+#
+# -- LA DEFINIZIONE ----------------------------------------------------
+#   Una riga di DDT e' EVASA quando spedisce merce DOVUTA da un documento a
+#   monte, cioe' porta un LEGAME:
+#     * con una riga d'ordine  -> vendite.ordini_righe_fulfillment;
+#     * con una riga di reso da ri-consegnare -> vendite.resi_righe_riconsegne
+#       (la ri-consegna legata a un ordine ha tutti e due).
+#   Il legame porta la quantita' della riga (qta_evasa, qta del ponte): la
+#   riga che cambia senza il suo legame fa dire al DDT una cosa e all'ordine,
+#   o al reso, un'altra. Una riga senza legame e' una riga a mano (D-5).
+#   ⭐ La ri-consegna e' entrata il 2026-10-11 (D-7, decisione di Tid): prima
+#   il brief la lasciava fuori (§5.1), ma ha lo stesso difetto per la stessa
+#   ragione, e la stessa regola la copre.
+#
+# -- I TRE CONSUMATORI ------------------------------------------------------
+#   * il guard della riga evasa (20261011-13): articolo, UoM e quantita' fermi;
+#   * la check della correzione della quantita' evasa (20261011-17), e quindi
+#     il verbo (20261011-18);
+#   * la vista del dettaglio righe (20261011-19), colonna `evasa`, che il
+#     form legge per spegnere articolo e UoM e far passare la quantita' dal
+#     verbo.
+#   Tre posti che devono dire la stessa cosa: la regola del 2 la vuole qui.
+#
+# -- SICUREZZA ------------------------------------------------------------------
+#   LANGUAGE sql, STABLE, SECURITY INVOKER: legge sotto la RLS di chi chiede.
+#   I legami hanno lo stesso perimetro della riga di DDT (stesso billing
+#   account e quindi stesso emittente: guard 5-bis di
+#   trgfn_ordini_ful_guard_consistenza, guard cliente del reso), quindi chi
+#   vede la riga vede anche i suoi legami.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-12-create-fn-ddt-riga-evasa-mctit.yaml
+
+  - changeSet:
+      id: 20261011-12-create-fn-ddt-riga-evasa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_ddt_riga_evasa: la riga di DDT porta un legame con il documento a monte (riga
+        d'ordine o riga di reso da ri-consegnare). Predicato unico di guard, check e vista. Brief:
+        brief-db-ddt-righe-evase-dall-ordine.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_ddt_riga_evasa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_ddt_riga_evasa(p_ddt_riga_id vendite.ddt_righe.id%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                  SELECT EXISTS (SELECT 1
+                                   FROM vendite.ordini_righe_fulfillment f
+                                  WHERE f.ddt_riga_id = p_ddt_riga_id)
+                      OR EXISTS (SELECT 1
+                                   FROM vendite.resi_righe_riconsegne rr
+                                  WHERE rr.ddt_riga_id = p_ddt_riga_id);
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ddt_riga_evasa(vendite.ddt_righe.id%TYPE) IS
+                  'Predicato (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-1, D-7): TRUE se la riga di DDT e'' EVASA, cioe'' spedisce merce dovuta da un documento a monte e porta il LEGAME che ne fotografa la quantita'': con una riga d''ordine (vendite.ordini_righe_fulfillment) o con una riga di reso da ri-consegnare (vendite.resi_righe_riconsegne; la ri-consegna legata a un ordine ha tutti e due). FALSE: riga a mano. Sede unica della definizione, letta da: vendite.trgfn_ddt_righe_guard_riga_evasa (articolo, UoM e quantita'' fermi), script.fn_check_ddt_riga_correggi_qta_evasa (e quindi il verbo vendite.fn_ddt_riga_correggi_qta_evasa) e la colonna evasa di vendite.vw_ddt_righe_dettaglio. SECURITY INVOKER: legge sotto la RLS di chi chiede, e i legami hanno il perimetro della riga.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_ddt_riga_evasa(bigint);

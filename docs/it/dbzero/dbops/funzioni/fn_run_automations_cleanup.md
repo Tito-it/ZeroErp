@@ -7,6 +7,8 @@ CREATE FUNCTION fn_run_automations_cleanup(p_exec_mode text, p_schemas text[], p
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_run_automations_cleanup(p_exec_mode text, p_schemas text[], p_dry_run boolean)
  RETURNS void
@@ -307,6 +309,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_run_automations_cleanup(p_exec_mode text, p_schemas text[], p_dry_run boolean)
 IS 'Orchestratore cleanup_at con regole in dbops.automation_rules_tbl. Regole supportate: CLEANUP_AT (calcola cleanup_at con TTL fisso) e CLEANUP_PURGE (elimina i record scaduti, a batch). Parametri: p_exec_mode (AUTO/CI/SCHEDULED), p_schemas (scope schemi, NULL -> resolve da automation_scope), p_dry_run. ⭐ rev 2026-08-23: una tabella che RIFIUTA di essere pulita non fa piu'' morire il giro. Prima non c''era nessun EXCEPTION nel doppio ciclo, quindi un solo veto — un trigger append-only, il guard sul DELETE dei log — fermava l''intera passata e le tabelle successive non venivano piu'' pulite, senza che nessuno lo sapesse. Adesso la tabella viene saltata e il rifiuto lascia una riga ERROR in dbops.audit_log con SQLSTATE e contesto (skip_reason = BLOCKED_BY_TABLE): e'' il quarto membro della famiglia di salti che la funzione aveva gia'' (EXCLUDED, NO_CLEANUP_COLUMN, MISSING_TTL_DAYS, MISSING_BASE_TS_COLUMN). ⚠️ status ERROR e non WARN di proposito: i WARN sono salti DICHIARATI, questo e'' una tabella che si e'' opposta. ⛔ query_canceled si ri-solleva: un annullamento resta un annullamento. ⚠️ Ogni regola gira ora in una sottotransazione, che e'' cio'' che un blocco EXCEPTION implica.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -10,7 +10,7 @@
 > corse pgTAP verdi. ✅ **Lato BE/FE fatto** il 2026-10-10 (§6.1). ✅ **Collaudo a video superato** (R-2,
 > Tid, 2026-10-10). ✅ **Chiuso e archiviato il 2026-10-10.** Il seguito (verbo di scrittura dei dati
 > societari, forma giuridica non legata alla natura) sta in
-> `work-in-progress/brief-db-dati-fiscali-e-societari-del-soggetto.md` (§8).
+> `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md` (§8).
 > **Da leggere per primo:** §6 (richieste a BE/FE), poi §7 per cosa è cambiato a DB.
 
 ## 1. Il difetto, sul modello
@@ -414,7 +414,7 @@ Nessuna. (D-6 decisa; la provincia `TEST` cancellata a mano da Tid il 2026-10-10
 
 Tre difetti emersi chiudendo questo brief riguardano lo stesso oggetto, i dati fiscali e societari
 del soggetto. Su indicazione di Tid stanno in **un** brief,
-`work-in-progress/brief-db-dati-fiscali-e-societari-del-soggetto.md`:
+`work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`:
 
 - **A** — «Cliente PA» e «Split payment» valgono per ogni natura, anche per un privato;
 - **B** — in modifica i dati societari non si salvano (§6.2): il verbo di scrittura, deciso da Tid
@@ -433,3 +433,4 @@ del soggetto. Su indicazione di Tid stanno in **un** brief,
 | 2026-10-10 | Lato BE/FE (§6.1): policy rigenerate e ripieghi per i quattro codici, commenti TRIM, form del canale FE (maiuscolo, campi accesi). Provato con chiamate reali sul DB, 1508 test verdi. Trovato il salvataggio mancante dei dati societari in modifica (§6.2, domanda a Tid). Resta la verifica a video (R-2). |
 | 2026-10-10 | Tid decide D-7: il verbo di scrittura dei dati societari, a DB, con BE e FE dietro. Lato FE estratto il BB `InputMaiuscolo` (regola del 2, ok Tid): codice SDI ed estensione del civico. |
 | 2026-10-10 | Collaudo a video di Tid superato (R-2). D-7 spostata, con PA/split e la forma giuridica fuori matrice, in `brief-db-dati-fiscali-e-societari-del-soggetto` (§8). **Brief chiuso e archiviato in `work-done/`.** |
+| 2026-10-11 | CI da zero rossa al seed delle province: `province.csv` (sigla, descrizione) e `stati_cliente.csv` (descrizione_breve) erano ancora l'export da `character(n)`, con gli spazi di riempimento. Su dbdev non si vedeva (il `btrim` del `-26` aveva pulito le righe, i CSV non erano cambiati e i loader `runOnChange` non ripartivano); da zero il CSV arriva dopo la conversione, e il guard del `-36` rifiuta `'AO        '`. Tolti gli spazi dalle sole colonne convertite (diff vuoto a meno degli spazi). Il `[MESSAGGIO NON DEFINITO]` dell'errore è solo l'ordine dei seed: `messaggi_errore.csv` si carica dopo le province. Su richiesta di Tid tolti anche gli spazi delle 20 descrizioni di `regioni.csv`: la colonna era già `varchar` senza vincolo, quindi il riempimento finiva nel dato senza che nessuno lo rifiutasse. |

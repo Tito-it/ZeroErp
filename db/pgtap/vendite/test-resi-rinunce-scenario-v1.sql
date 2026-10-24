@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano il reso per ri-consegna (giro 2) e la commessa con l'attivita' fatturata, che sono il caso del test.
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): la bolla consegnata non si pesca piu' dal database: ordine dal builder, riga di un articolo costruito, bolla generata dall'ordine e portata a CONSEGNATO per la matrice; il tipo reso si legge per codice.
 -- pgTAP test per Zero ERP
 -- Test: SCENARIO end-to-end della chiusura ri-consegna (Fase 2)
 --   fn_chiudi_riconsegna_reso + fn_riapri_riconsegna_reso e i loro effetti
@@ -24,7 +27,7 @@
 -- 22-09-2026 il conto era vw_contatore_merce, ritirata), cioe' tenuti < fatturati:
 --   tenuti    = evaso - reso            (dai fulfillment e dai resi)
 --   fatturati = somma delle attivita_fatturabili NORMALE con segment_key
---               'DDT:<uid>:R:<ddt_riga_id>' (o 'ORD:...'), ricondotte alla riga
+--               'DDT_VENDITA:<uid>:R:<ddt_riga_id>' (o 'ORDINE_VENDITA:...'), ricondotte alla riga
 --               ordine via ordini_righe_fulfillment.
 -- Quindi servono: una riga DDT consegnata order-backed, una commessa con una
 -- commessa_attivita che porti quel segment_key, l'AF corrispondente, e il reso.
@@ -52,11 +55,17 @@ BEGIN;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
--- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
--- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
--- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ rev 2026-10-24: il mondo si COSTRUISCE (su un DB ricostruito non c'e'
+--   nessuna bolla consegnata da pescare): azienda + operatore + cliente +
+--   la partita dal builder, e il contesto si apre sul suo operatore. Gira come
+--   l'applicazione (ruolo OPERATORE + RLS attiva), non come owner.
+-- La partita: un ordine di 5 pezzi a 10 di un articolo merce costruito (non
+--   gestito: il test non misura il magazzino), confermato, e la bolla generata
+--   dall'ordine (order-backed: ha il fulfillment), CONSEGNATA.
+CREATE TEMP TABLE tmp_o AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgTAP rinunce scenario',
+                  p_quantita => 5, p_prezzo => 10);
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_o)); END $ctx$;
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
 -- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
@@ -82,41 +91,31 @@ SELECT ok(
 -- ============================================================
 -- FIXTURE
 -- ============================================================
--- Riga DDT consegnata, order-backed (ha fulfillment), con capienza di reso.
+-- Riga DDT consegnata, order-backed (ha fulfillment): quella costruita qui sopra.
 CREATE TEMP TABLE tmp_r AS
 SELECT dr.id AS ddt_riga_id, dr.quantita AS consegnato, dr.articolo_id,
        dr.descrizione, dr.uom_operativa_id, dr.factor_to_base,
        d.id AS ddt_id, d.uid AS ddt_uid,
        f.ordine_riga_id, orr.ordine_id,
        (SELECT s.id FROM config.sorgenti s
-         WHERE s.codice_interno = 'DDT_VENDITA' AND s.attivo LIMIT 1) AS sorg_ddt,
+         WHERE s.codice_interno = 'DDT_VENDITA' AND s.attivo)          AS sorg_ddt,
        (SELECT s.id FROM config.stati_doc_reso s
-         WHERE s.codice_interno = 'DRAFT' AND s.attivo LIMIT 1)       AS st_reso_draft,
+         WHERE s.codice_interno = 'DRAFT' AND s.attivo)                AS st_reso_draft,
+       -- Il reso per ri-consegna (riapre_residuo = true), per codice.
        (SELECT tr.id FROM config.tipi_reso tr
-         WHERE tr.riapre_residuo IS TRUE AND tr.attivo
-         ORDER BY tr.id LIMIT 1)                                      AS tipo_ric,
+         WHERE tr.codice_interno = 'RESO_PER_RICONSEGNA' AND tr.attivo) AS tipo_ric,
        d.billing_account_id, d.utility_id
   FROM vendite.ddt_righe dr
   JOIN vendite.ddt d ON d.id = dr.ddt_id
   JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
   JOIN vendite.ordini_righe_fulfillment f ON f.ddt_riga_id = dr.id
   JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id
- WHERE dr.attivo IS TRUE
-   AND s.codice_interno = 'CONSEGNATO'
-   -- Capienza di reso >= 2: trgfn_resi_righe_guard_quantita limita il reso al
-   -- consegnato meno il gia' reso. Resi pregressi sulla riga sono ammessi (i
-   -- dati di dev ne hanno): l'accredito si distribuisce sulle righe reso in
-   -- ordine di id, e alla nostra resta comunque quota - vedi test 3, che
-   -- fallirebbe in modo leggibile se cosi' non fosse.
-   AND dr.quantita - COALESCE((SELECT SUM(rr.quantita) FROM vendite.resi_righe rr
-                                WHERE rr.ddt_riga_id = dr.id AND rr.attivo IS TRUE), 0) >= 2
- ORDER BY dr.quantita - COALESCE((SELECT SUM(rr.quantita) FROM vendite.resi_righe rr
-                                   WHERE rr.ddt_riga_id = dr.id AND rr.attivo IS TRUE), 0) DESC,
-          dr.id
- LIMIT 1;
+ WHERE orr.ordine_id = (SELECT ordine_id FROM tmp_o)
+   AND dr.attivo IS TRUE
+   AND s.codice_interno = 'CONSEGNATO';
 
 -- Commessa + attivita' con il segment_key che il conto della merce riconosce
--- come "fatturato": 'DDT:<uid>:R:<ddt_riga_id>' (la corsia DDT di
+-- come "fatturato": 'DDT_VENDITA:<uid>:R:<ddt_riga_id>' (la corsia DDT di
 -- fn_af_merce_per_riga, letta dalla partita per chiave).
 CREATE TEMP TABLE tmp_com AS
 SELECT vendite.fn_get_or_create_commessa(
@@ -135,7 +134,10 @@ SELECT u.attivita_id
   FROM tmp_r r,
        vendite.fn_upsert_commessa_attivita(
          p_commessa_id                   => (SELECT commessa_id FROM tmp_com),
-         p_segment_key                   => ('DDT:' || r.ddt_uid || ':R:' || r.ddt_riga_id)::varchar,
+         -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+         p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+         p_sorgente_uid => ((SELECT commessa_id FROM tmp_com))::text,
+         p_segment_key                   => ('DDT_VENDITA:' || r.ddt_uid || ':R:' || r.ddt_riga_id)::varchar,
          p_articolo_id                   => r.articolo_id,
          p_istanza_utility_id            => (SELECT ba.istanza_utility_id
                                                FROM anagrafiche.billing_account ba
@@ -161,7 +163,6 @@ SELECT u.attivita_id
          p_stato_approvazione            => 'APPROVATA',
          p_stato_emissione               => 'EMESSA',
          p_tipo_movimento                => 'NORMALE',
-         p_tipo_consumo                  => 'CONGUAGLIO',
          p_meta                          => jsonb_build_object('case','RIN_SCEN')
        ) u;
 

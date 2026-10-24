@@ -249,7 +249,7 @@ def _attivita_kit(
 ):
     meta = {
         kit_meta.META_KEY_SEGMENT_KEY: kit_meta.segment_key_componente(
-            f"ORD:019f7c7b-c434-735e-98b7-9564eb6a9626:R:{kit_riga}", articolo_id
+            f"ORDINE_VENDITA:019f7c7b-c434-735e-98b7-9564eb6a9626:R:{kit_riga}", articolo_id
         ),
     }
     # `None` = chiave assente: il meta di un'attivita' scritta prima del push
@@ -467,7 +467,7 @@ class FattureRigheServiceKitTests(SimpleTestCase):
         kw = repo.last_kwargs
         self.assertEqual(
             kw["righe_kit_keys"],
-            ["ORD:019f7c7b-c434-735e-98b7-9564eb6a9626:R:608"],
+            ["ORDINE_VENDITA:019f7c7b-c434-735e-98b7-9564eb6a9626:R:608"],
         )
         self.assertEqual(kw["righe_kit_articolo_padre_ids"], [ART_PADRE])
         self.assertEqual(kw["righe_kit_esposizioni"], ["DESCRITTIVO"])

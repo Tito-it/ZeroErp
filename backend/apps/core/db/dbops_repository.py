@@ -189,6 +189,26 @@ _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
         "has_obsoleto": False,
         "has_attivo": False,
     },
+    # emittente_fiscale_id: il magazzino di un documento (bolla, reso) e'
+    # dell'emittente del documento (M-6; guard DB `script.fn_magazzino_dell_emittente`).
+    # Il FE filtra la tendina sull'emittente del documento (`filterField` di
+    # LookupSelect), invece di far scegliere un magazzino che il DB rifiuterebbe
+    # al salvataggio con E_DDT_/E_RESO_MAGAZZINO_INCOERENTE (piano-be-fe-
+    # magazzino-lotto-3, A2, decisione di Tid del 2026-10-12).
+    "magazzino.magazzini": {
+        "extra_col": "emittente_fiscale_id",
+        "has_codice_interno": False,
+        "has_obsoleto": False,
+    },
+    # causale_magazzino: il codice_interno della causale di magazzino che la
+    # causale di trasporto muove (D-L3-g), NULL se non muove merce. Il FE ne
+    # ricava se la bolla vuole il magazzino di ARRIVO (`TRASF_OUT`, la stessa
+    # regola di `vendite.trgfn_ddt_guard_magazzino` e `script.fn_check_ddt_merce`).
+    "config.causali_trasporto": {
+        "extra_col": "causale_magazzino",
+        "has_codice_interno": False,
+        "has_obsoleto": False,
+    },
 }
 
 
@@ -272,7 +292,6 @@ class DbopsRepository:
         ordinamento = sql_order_clause(
             order_col, order_dir,
             colonne=order_map, default="t.descrizione", tiebreak="t.id",
-            rifiuta_fuori_whitelist=True,
         )
 
         codice_interno_sql = (
@@ -390,7 +409,7 @@ class DbopsRepository:
         ordinamento = sql_order_clause(
             order_col, order_dir,
             colonne=colonne_identita(*LOOKUP_ORDER_COLONNE),
-            default="descrizione", tiebreak="id", rifiuta_fuori_whitelist=True,
+            default="descrizione", tiebreak="id",
         )
         # ⭐ Un frammento (CTE + WHERE) per la pagina e per il conteggio di
         #    ripiego: il perimetro del totale e' quello della lista.

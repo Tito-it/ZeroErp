@@ -21,7 +21,8 @@
 #   4) le aziende senza utente tecnico finiscono a video, non nel silenzio
 #   5) registrazione run-level: attore, lock per corsia, meta
 #   6) skip anti-overlap: lock occupato → non si accoda niente
-#   7) un accodamento fallito non ferma gli altri
+#   7) un accodamento fallito non ferma gli altri, e la corsa chiude rossa
+#      con E_JOB_ELEMENTI_NON_COMPLETATI (D9) dopo aver scritto il meta
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -32,6 +33,8 @@ from unittest.mock import MagicMock, patch
 
 from django.core.management import call_command
 
+from apps.core.services.job_run import E_JOB_ELEMENTI_NON_COMPLETATI
+from apps.core.services.service_errors import ServiceError
 from apps.core.tests.job_run_fakes import fake_registered_job
 
 _CMD = "apps.vendite.management.commands.run_fatturazione_batch"
@@ -195,7 +198,7 @@ class RunFatturazioneBatchProduttoreTests(TestCase):
                 raise RuntimeError("coda irraggiungibile")
             return 99
 
-        cm, _h, _catturato = fake_registered_job()
+        cm, handle, _catturato = fake_registered_job()
         p_proc, p_coda, _proc, coda = _patch_produttore(
             [
                 _badge("ACME", auth_user_id=7, emittente_id=3),
@@ -205,10 +208,18 @@ class RunFatturazioneBatchProduttoreTests(TestCase):
         )
         err = StringIO()
         with p_proc, p_coda, patch(f"{_CMD}.registered_job", cm):
-            call_command(
-                "run_fatturazione_batch", "--modalita", "differita",
-                stdout=StringIO(), stderr=err,
-            )
+            # ⭐ D9: l'azienda non accodata non lascia una riga in coda, quindi
+            #    la corsa chiude rossa — DOPO aver accodato l'altra.
+            with self.assertRaises(ServiceError) as ctx:
+                call_command(
+                    "run_fatturazione_batch", "--modalita", "differita",
+                    stdout=StringIO(), stderr=err,
+                )
 
+        self.assertEqual(ctx.exception.code, E_JOB_ELEMENTI_NON_COMPLETATI)
+        self.assertIn("ACME", ctx.exception.detail or "")
         self.assertEqual(coda.accoda.call_count, 2)
         self.assertIn("ACME", err.getvalue())
+        # Il meta col dettaglio e' scritto PRIMA del rosso: arriva al giornale.
+        meta = handle.set_meta.call_args.args[0]
+        self.assertEqual([f["emittente_codice"] for f in meta["falliti"]], ["ACME"])

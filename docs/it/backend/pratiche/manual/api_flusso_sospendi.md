@@ -27,7 +27,7 @@ Endpoint di scrittura che delega a `pratiche_service.sospendi_flusso`. Il serviz
 - `400`: motivo vuoto (`E_FLUSSO_VALIDATION`), flusso gia' sospeso (`E_FLUSSO_VALIDATION`), flusso non della pratica (`E_FLUSSO_OWNERSHIP`), ID non validi (`E_INVALID_ID`)
 - `401`: JWT mancante o non valido
 - `404`: flusso non trovato (`E_FLUSSO_NOT_FOUND`)
-- `409`: transizione di stato non ammessa (`FLUSSI_TRANSIZIONE_NON_AMMESSA`)
+- `409`: transizione di stato non ammessa (`E_FLUSSI_TRANSIZIONE_NON_AMMESSA`)
 
 ## Regole
 

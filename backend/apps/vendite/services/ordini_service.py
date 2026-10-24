@@ -15,20 +15,29 @@
 # APERTA (analisi §8.bis): qui si usa il pricing stile preventivo (resolve +
 # prezzo passato dal caller), passando comunque dai BB condivisi.
 
-import json
 import logging
-from decimal import Decimal, InvalidOperation
 from datetime import date
 from collections.abc import Callable
 from typing import Any
 
-from django.db import DatabaseError, transaction
+from django.db import transaction
 
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
-from apps.core.api.payload_validators import paginated_envelope
+from apps.config.sorgenti import (
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+)
+from apps.core.db._helpers import richiedi_codice_a_vocabolario
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
+from apps.vendite.services._date_consegna_righe import aggiorna_date_consegna_righe
+from apps.vendite.services._annullo_con_legami import (
+    STATO_ANNULLATO,
+    legami_del_documento,
+    legami_confermati as dichiarazione_legami,
+)
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.payload_helpers import PayloadValidator, make_db_errors_translator
 from apps.core.services.testata_guard import (
@@ -44,7 +53,6 @@ from apps.vendite.services._componenti_service_helpers import (
 )
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
-    auto_assegna_indirizzo_default,
     delete_indirizzo_documento,
     list_indirizzi_documento,
     upsert_indirizzo_documento,
@@ -66,9 +74,10 @@ E_VENDITE_FK = "E_VENDITE_FK"
 _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "uq_ordrig_riga_nr": (E_VENDITE_DUPLICATO, "Numero riga duplicato sull'ordine."),
     "uq_ordini_v_anno_serie_numero": (E_VENDITE_DUPLICATO, "Numero ordine duplicato."),
-    # Univocità 1:1 offerta→ordine: la violazione dell'indice parziale (race con
-    # un'altra generazione concorrente) diventa lo stesso errore parlante del
-    # guard fail-fast in crea_ordine_da_offerta.
+    # Univocità 1:1 offerta→ordine: la violazione dell'indice parziale diventa
+    # lo stesso errore parlante del verbo `fn_genera_ordine_da_offerta`. Il
+    # verbo blocca l'offerta `FOR UPDATE`, quindi due generazioni si mettono in
+    # fila: l'indice resta la rete.
     "uq_ordini_v_documento_origine_offerta": (
         "E_ORD_OFFERTA_GIA_CONVERTITA",
         "Un ordine è già stato generato da questa offerta.",
@@ -100,7 +109,6 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
 
 # ── Costanti di dominio ──
 _FN = "vendite.ordini_service"
-_STATO_BOZZA = "DRAFT"
 _STATO_CONFERMATO = "CONFERMATO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 # Stati che ammettono il push a commessa (fix orfano 2026-07-10, brief DB §16:
@@ -117,13 +125,15 @@ _STATI_PUSHABILI: frozenset[str] = frozenset(
 # mirata): instradamento di CORSIA deciso PRIMA del push in commessa — dopo il
 # push il flag e' inerte (fa parte della chiave di dedup della commessa) e il
 # guard DB `trgfn_guard_fatturazione_immediata_immutabile` respinge l'UPDATE.
-# Qui non serve una difesa applicativa aggiuntiva: la testata dell'ordine e'
-# editabile solo in DRAFT (`can_edit_testata`), e il push avviene da CONFERMATO
-# in poi — le due finestre non si sovrappongono.
+# Qui non serve una difesa applicativa: dopo il push lo respinge quel guard,
+# che guarda la commessa viva e non lo stato (il lock di testata fuori bozza
+# non nomina il flag: resta modificabile da confermato finche' non c'e' una
+# commessa, D-14 di brief-db-annullo-a-valle-riapre-a-monte).
 # ⛔ `soggetto_ruolo_id` e `utility_id` NON ci sono (2026-10-10): sono copie
 # del BA, le scrive `trgfn_ordini_normalize` col BB
 # `script.fn_cliente_dal_billing_account` (brief-db-esecutivi-ba-coppia D-1,
-# D-5, §10.2 domanda 2). Un client che le manda le vede scartate.
+# D-5, §10.2 domanda 2). Un client che le manda riceve un 400 (chiave fuori
+# contratto, dal 2026-10-20; prima le vedeva scartate).
 CREATE_KEYS_ORDINE: frozenset[str] = frozenset({
     "billing_account_id",
     "emittente_fiscale_id", "valuta_id", "modalita_pagamento_id",
@@ -142,15 +152,19 @@ UPDATE_KEYS_ORDINE: frozenset[str] = frozenset({
     # decide il risolutore, e la casella a video e' spenta. Rimetterla qui
     # riaprirebbe la seconda risposta alla stessa domanda che tutto questo
     # cantiere e' servito a togliere.
-    # ⚠️ Una chiave fuori whitelist viene SCARTATA, non respinta: un client
-    # vecchio che la manda ancora non riceve un errore — il valore semplicemente
-    # non arriva. E' voluto, ed e' il motivo per cui BE e FE vanno insieme.
+    # ⛔ Una chiave fuori whitelist e' un 400 (dal 2026-10-20): prima veniva
+    # scartata in silenzio, e un client vecchio non sapeva che il valore non
+    # arrivava.
 CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id", "descrizione", "quantita", "qta_operativa",
     "uom_operativa_id", "factor_to_base", "prezzo_unitario", "sconto_percentuale",
     "meta",
     "data_consegna_richiesta_cliente", "data_consegna_confermata",
 })
+# Le chiavi AMMESSE nella creazione di una riga: le colonne qui sopra piu' la
+# mappa degli override dei prezzi dei componenti, che non e' una colonna e si
+# legge a parte (`normalize_componenti_overrides`). Come il gemello DDT.
+CREATE_PAYLOAD_RIGA: frozenset[str] = CREATE_KEYS_RIGA | {"componenti_overrides"}
 UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
     "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
@@ -203,6 +217,13 @@ def list_ordini_rows(
     order_dir: str = "desc",
     max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
+    # ⛔ Il filtro di stato esiste nel vocabolario, o e' un 400 sul campo: un
+    #    valore sbagliato finiva nel WHERE e la lista rispondeva vuota con un
+    #    200 (2026-10-20). Codici dismessi ammessi: i documenti vecchi li portano.
+    richiedi_codice_a_vocabolario(
+        "config.stati_doc_ordini", "codice_interno", stato_codice,
+        codice_errore="E_ORD_VALIDAZIONE", parametro="stato_codice_interno",
+    )
     repo = OrdiniRepository()
     return repo.list_ordini(
         stato_codice=stato_codice,
@@ -218,40 +239,6 @@ def list_ordini_rows(
         order_dir=order_dir,
         max_limit=max_limit,
     )
-
-
-# Scopo: Lista ordini paginata (envelope standard).
-def list_ordini(
-    *,
-    stato_codice: str | None = None,
-    billing_account_id: int | None = None,
-    utility_id: int | None = None,
-    data_da: date | None = None,
-    data_al: date | None = None,
-    search: str | None = None,
-    auth_user_id: int | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
-    order_by: str = "data",
-    order_dir: str = "desc",
-) -> dict[str, Any]:
-    safe_page = max(1, int(page))
-    safe_size = max(1, min(int(page_size), MAX_LIMIT))
-    offset = (safe_page - 1) * safe_size
-    rows, total = list_ordini_rows(
-        stato_codice=stato_codice,
-        billing_account_id=billing_account_id,
-        utility_id=utility_id,
-        data_da=data_da,
-        data_al=data_al,
-        search=search,
-        auth_user_id=auth_user_id,
-        limit=safe_size,
-        offset=offset,
-        order_by=order_by,
-        order_dir=order_dir,
-    )
-    return paginated_envelope(rows, total, page=safe_page, page_size=safe_size)
 
 
 # Scopo: Etichette leggibili dei filtri applicati per il metadato del file
@@ -357,7 +344,7 @@ def _completa_flusso_ordine_pratica(
     from apps.pratiche.services import pratiche_service
 
     pratica_id = PraticheRepository().get_pratica_id_by_sorgente(
-        sorgente_codice="ORDINE_VENDITA", sorgente_uid=str(ordine_id),
+        sorgente_codice=SORGENTE_ORDINE_VENDITA, sorgente_uid=str(ordine_id),
         ruolo_link="COLLEGATO",
     )
     if pratica_id is None:
@@ -385,17 +372,15 @@ def list_riepilogo_iva(ordine_id: int) -> list[dict[str, Any]]:
 
 _INDIRIZZI_CFG = IndirizziDocumentoConfig(
     # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
-    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    # dei test unit raggiungono il repository.
     repo_factory=lambda: OrdiniRepository(),
-    stati_modificabili=_STATI_MODIFICABILI,
     not_found_code="E_ORD_NOT_FOUND",
-    stato_error_code="E_ORD_STATO_TRANSIZIONE",
     error_code="E_ORD_VALIDAZIONE",
     fn_prefix=_FN,
 )
 
 
-# Scopo: Pannello indirizzi dell'ordine (ambito ORDINI). Guard, ownership e
+# Scopo: Pannello indirizzi dell'ordine (ambito ORDINI). Guard di esistenza e
 #        traduzione errori DB nel BB condiviso.
 def list_indirizzi(ordine_id: int) -> dict[str, Any]:
     return list_indirizzi_documento(_INDIRIZZI_CFG, ordine_id)
@@ -415,12 +400,15 @@ def delete_indirizzo(ordine_id: int, indirizzo_id: int) -> dict[str, Any]:
 #  SCRITTURE — Testata
 # ══════════════════════════════════════════════════════════
 
-# Scopo: Crea un nuovo ordine in stato DRAFT (BOZZA). `numero` generato dal
-#        trigger DB. Il cliente e' il BA (obbligatorio, D-1): ruolo e utility
-#        li scrive il DB dal BA.
+# Scopo: Crea un nuovo ordine. `numero` generato dal trigger DB. Il cliente e'
+#        il BA (obbligatorio, D-1): ruolo e utility li scrive il DB dal BA.
+#        Lo stato non si passa: l'ordine nasce nello stato iniziale del suo
+#        vocabolario, e lo mette il DB (BB `script.trgfn_doc_stato_iniziale`,
+#        brief-modello-documento-vendita P-2).
 def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
     repo = OrdiniRepository()
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_ORDINE}
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _V.solo_chiavi_ammesse(payload, ammesse=CREATE_KEYS_ORDINE, function_name=f"{_FN}.crea_ordine")
 
     billing_account_id = _V.require_positive_int(
         data, "billing_account_id",
@@ -428,16 +416,9 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
         function_name=f"{_FN}.crea_ordine",
     )
 
-    stato_bozza_id = repo.get_stato_id_by_codice(_STATO_BOZZA)
-    ErrorManager.require(
-        stato_bozza_id is not None,
-        code="E_ORD_VALIDAZIONE",
-        message="Stato DRAFT non configurato in config.stati_doc_ordini.",
-        function_name=f"{_FN}.crea_ordine",
-    )
-    assert stato_bozza_id is not None
-
-    with _db_errors("crea_ordine"):
+    # Creazione e slot di default in UNA transazione (il riempimento non e'
+    # best-effort: api.md §Atomicita').
+    with _db_errors("crea_ordine"), transaction.atomic():
         creato = repo.create_ordine(
             billing_account_id=billing_account_id,
             emittente_fiscale_id=data.get("emittente_fiscale_id"),
@@ -447,14 +428,13 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
             fatturazione_trigger=data.get("fatturazione_trigger"),
             agente_soggetto_ruolo_id=data.get("agente_soggetto_ruolo_id"),
             data=data.get("data"),
-            stato_doc_ordine_id=int(stato_bozza_id),
             meta=data.get("meta") if isinstance(data.get("meta"), dict) else None,
             fatturazione_immediata=data.get("fatturazione_immediata"),
         )
-    # UX v2: auto-assegnazione best-effort dell'indirizzo default (indirizzo
-    # di ruolo CON del cliente, fallback FATT). Mai bloccante. Copre anche le
-    # conversioni da offerta (passano da _crea_testata_ordine_da_origine).
-    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(creato["id"]))
+        # Slot di default dall'anagrafica del cliente: lo decide il DB
+        # (`vendite.fn_doc_indirizzo_default`). La conversione da offerta non
+        # passa da qui: il verbo DB lo chiama da se'.
+        repo.riempi_indirizzo_default(int(creato["id"]))
     return creato
 
 
@@ -475,16 +455,15 @@ def aggiorna_ordine(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     # che esiste: il lettore leggero, non la testata intera.
     _get_testata_or_raise(repo, ordine_id, op="aggiorna_ordine", getter=repo.get_stato_codice)
 
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_ORDINE}
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _V.solo_chiavi_ammesse(payload, ammesse=UPDATE_KEYS_ORDINE, function_name=f"{_FN}.aggiorna_ordine")
     if "billing_account_id" in data:
         # Un id non numerico e' un 400 col campo, non un 500 dal driver.
         data["billing_account_id"] = _V.optional_positive_int(
             data, "billing_account_id", function_name=f"{_FN}.aggiorna_ordine",
         )
-    ErrorManager.require(
-        len(data) > 0,
-        code="E_ORD_VALIDAZIONE",
-        message="Nessun campo aggiornabile nel payload.",
+    _V.require_campi_da_aggiornare(
+        data,
         function_name=f"{_FN}.aggiorna_ordine",
     )
     with _db_errors("aggiorna_ordine"):
@@ -496,36 +475,16 @@ def aggiorna_ordine(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
 #  CONVERSIONE UPSTREAM — preventivo/offerta → ordine (§7.4)
 # ══════════════════════════════════════════════════════════
 
-# Stati del documento di origine che ammettono la generazione di un ordine.
-# Il preventivo NON usa più una whitelist Python: stato ammesso e "nessuna riga
-# merce" sono validati dalla fn DB fn_push_preventivo_a_ordine (modello split).
-_STATI_OFFERTA_CONVERTIBILI: frozenset[str] = frozenset({"ACCETTATA"})
-
-
-# Scopo: Crea la testata ordine DRAFT da un documento upstream + valorizza la
-#        provenienza `documento_origine`. Condiviso da preventivo/offerta →
-#        ordine (regola del 2). Ritorna (ordine_id, numero). Da chiamare DENTRO
-#        una transaction.atomic del caller (che orchestra anche la copia righe).
-def _crea_testata_ordine_da_origine(
-    header: dict[str, Any], tipo_origine: str, origine_id: int,
-) -> tuple[int, str | None]:
-    creato = crea_ordine(header)
-    ordine_id = int(creato["id"])
-    # Coerenza con le altre scritture del modulo: errori DB tradotti in
-    # ServiceError parlante (CHECK vocabolario/co-presenza documento origine)
-    # invece di propagare un 500 grezzo.
-    with _db_errors(f"crea_ordine_da_{tipo_origine.lower()}"):
-        OrdiniRepository().set_documento_origine(
-            ordine_id, tipo_origine, int(origine_id),
-        )
-    return ordine_id, creato.get("numero")
+# Nessuna whitelist Python degli stati d'origine: lo stato ammesso lo dicono i
+# verbi DB, `fn_push_preventivo_a_ordine` (con «nessuna riga merce», modello
+# split) e `fn_genera_ordine_da_offerta`.
 
 
 # Scopo: Smistamento MERCE → ordine da un preventivo ACCETTATO (modello split,
 #        brief-preventivi-ordini.md D8). NON più copia-tutto 1:1: delega alla
 #        primitiva DB vendite.fn_push_preventivo_a_ordine (via
 #        PreventiviRepository.push_a_ordine), che:
-#          - copia SOLO le righe con natura destinazione_tipo='ORDINE' (i servizi
+#          - copia SOLO le righe con natura destinazione_tipo='ORDINE_VENDITA' (i servizi
 #            una-tantum vanno a commessa via push_a_commessa; il ricorrente è
 #            bloccato a monte, D9);
 #          - mantiene lo snapshot prezzi + componenti BoM;
@@ -554,14 +513,19 @@ def crea_ordine_da_preventivo(
     # chiamata separata best-effort (swallow_db_error): su errore l'ordine restava
     # creato ma il preventivo ACCETTATO (stato parziale, merce gia' su ordine). Ora
     # e' tutto-o-niente: niente piu' transiziona_a_evaso_se_smistato qui (il gate
-    # bi-ramo vive dentro la fn). L'helper resta usato dal push a commessa (#5).
-    ordine_id = prev_repo.push_a_ordine(
-        preventivo_id, righe_ids=righe_ids, pratica_id=None,
-    )
-    # UX v2: la cascata DB copia gli indirizzi del preventivo; se il
-    # preventivo non aveva slot compatibili, fallback best-effort
-    # dall'anagrafica di ruolo (l'helper salta se il default e' valorizzato).
-    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(ordine_id))
+    # bi-ramo vive dentro la fn). Dal 2026-10-12 la regola ha una sede sola, il
+    # BB DB `vendite.fn_preventivo_proietta_stato_smistamento`, letto anche
+    # dall'invio in commessa: l'helper Python e' ritirato.
+    # Il verbo e il default nella stessa transazione: la cascata DB copia gli
+    # indirizzi del preventivo, e il default riempie lo slot SOLO se e'
+    # rimasto vuoto (la sorgente vince). `_db_errors` fuori dall'atomic, come
+    # `crea_ddt_da_ordine`: i guard della fn (stato, nessuna riga merce) e gli
+    # errori del default arrivano al client col loro codice, non come 500.
+    with _db_errors("crea_ordine_da_preventivo"), transaction.atomic():
+        ordine_id = prev_repo.push_a_ordine(
+            preventivo_id, righe_ids=righe_ids, pratica_id=None,
+        )
+        OrdiniRepository().riempi_indirizzo_default(int(ordine_id))
 
     # Numero ordine per il messaggio FE (lettura leggera post-creazione).
     testata = OrdiniRepository().get_ordine(ordine_id)
@@ -569,184 +533,40 @@ def crea_ordine_da_preventivo(
     return {
         "ordine_id": ordine_id,
         "numero": numero,
-        "documento_origine": {"tipo": "PREVENTIVO", "id": int(preventivo_id)},
+        "documento_origine": {"tipo": SORGENTE_PREVENTIVO, "id": int(preventivo_id)},
     }
 
 
-def _as_str(value: Any) -> str | None:
-    return None if value is None else str(value)
-
-
-# Scopo: Costruisce la mappa override prezzi componenti {componente_id: prezzo}
-#        dal jsonb `componenti` della fn `fn_offerta_righe_espanse`. psycopg può
-#        restituire il jsonb già parsato (list) o come stringa → coerce difensivo
-#        (pattern speculare al FE `coerceJsonbToArray`). Chiave = uuid articolo
-#        componente (allineata al keying di `fn_ordine_riga_componenti_init`).
-def _overrides_da_componenti(componenti: Any) -> dict[str, str]:
-    if isinstance(componenti, str):
-        try:
-            componenti = json.loads(componenti)
-        except (ValueError, TypeError):
-            return {}
-    if not isinstance(componenti, list):
-        return {}
-    out: dict[str, str] = {}
-    for c in componenti:
-        if not isinstance(c, dict):
-            continue
-        cid = c.get("componente_id")
-        prezzo = c.get("prezzo")
-        if cid is None or prezzo is None:
-            continue
-        # La fn DB `fn_ordine_riga_componenti_init` RIFIUTA un override prezzo 0
-        # (E_PARAMETRO_INVALIDO "prezzo override deve essere diverso da zero"):
-        # un componente negoziato a 0 viene escluso dagli override → ricade sul
-        # resolver (prezzo corrente). Limitazione nota del vincolo override DB.
-        try:
-            if Decimal(str(prezzo)) == 0:
-                continue
-        except InvalidOperation:
-            continue
-        out[str(cid)] = str(prezzo)
-    return out
-
-
-# Scopo: Copia una riga «espansa» dell'offerta in una riga ordine PRESERVANDO i
-#        prezzi NEGOZIATI (l'offerta è ACCETTATA → niente ri-prezzatura, a
-#        differenza del preventivo). Non-composito: `prezzo_unitario` congelato.
-#        Composito: il prezzo padre è ricalcolato dal trigger DB
-#        (`trgfn_componenti_ricalcola_padre`) sui componenti, i cui prezzi
-#        negoziati sono passati come `componenti_overrides` (dal jsonb della fn).
-def _copia_riga_offerta_espansa(
-    repo: OrdiniRepository, ordine_id: int, r: dict[str, Any],
-    *, emittente_sr_id: int, data_rif: date,
-) -> None:
-    is_composito = bool(r.get("is_composito"))
-    riga_nr = repo.next_riga_nr(ordine_id)
-    created = repo.create_riga(
-        ordine_id=ordine_id,
-        riga_nr=riga_nr,
-        articolo_id=str(r["articolo_id"]),
-        descrizione=r.get("descrizione"),
-        quantita=_as_str(r.get("quantita")),
-        qta_operativa=_as_str(r.get("qta_operativa")),
-        uom_operativa_id=r.get("uom_operativa_id"),
-        factor_to_base=_as_str(r.get("factor_to_base")),
-        # Padre composito: 0 placeholder, il trigger ricalcola da SUM(componenti).
-        prezzo_unitario="0" if is_composito else _as_str(r.get("prezzo_unitario")),
-        sconto_percentuale=_as_str(r.get("sconto_percentuale")),
-        iva_id=r.get("iva_id"),
-    )
-    if not is_composito:
-        return
-    repo.init_componenti_riga(
-        riga_id=int(created["id"]),
-        emittente_soggetto_ruolo_id=emittente_sr_id,
-        data_riferimento=data_rif,
-        componenti_overrides=_overrides_da_componenti(r.get("componenti")) or None,
-    )
-
-
-# Scopo: Genera un ordine DRAFT da un'offerta ACCETTATA. A differenza del
-#        preventivo (righe già piatte), l'offerta non ha righe materializzate: le
-#        righe «effettive» (listino + variazione + eccezioni, con BoM) sono
-#        prodotte dalla fn DB `fn_offerta_righe_espanse` (ordine-ready). Copia
-#        testata (cliente/utility/valuta/emittente) + righe espanse PRESERVANDO i
-#        prezzi negoziati (anche componenti) + documento_origine = (OFFERTA, id).
+# Scopo: Genera un ordine DRAFT da un'offerta ACCETTATA. Lo fa il DB, in UNA
+#        transazione: il verbo `vendite.fn_genera_ordine_da_offerta` (gemello
+#        del push al contratto) blocca l'offerta, verifica lo stato e i
+#        documenti vivi, giudica le righe con la stessa check che spegne
+#        «Genera ordine» nella capability, scrive testata e provenienza, riempie
+#        l'indirizzo di default e copia le righe espanse coi prezzi negoziati
+#        (componenti compresi). Ritorna l'id dell'ordine.
+#        ⛔ Fino al 2026-10-21 (brief-db-offerta-emissione-ed-erogazione I-D2)
+#        l'orchestrazione era qui, in Python: stato, documenti vivi, testata,
+#        provenienza e copia delle righe erano specchi di regole del DB, e le
+#        righe dell'ordine non le giudicava nessuno prima di scrivere. I rifiuti
+#        arrivano ora col codice del verbo (`E_OFFERTA_NON_TROVATA`,
+#        `E_ORD_ORIGINE_NON_CONVERTIBILE`, `E_ORD_OFFERTA_GIA_CONVERTITA`,
+#        `E_OFFERTA_CONTRATTO_GIA_GENERATO` col bersaglio,
+#        `E_DOC_RIGA_NON_AMMESSA` col campo `articolo_id`).
 def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
     from apps.vendite.db.offerte_repository import OfferteRepository
 
-    off_repo = OfferteRepository()
-    testata = testata_o_not_found(
-        off_repo.get_offerta, offerta_id,
-        code="E_VENDITE_NOT_FOUND", message="Offerta non trovata.",
-        id_name="offerta_id", function_name=f"{_FN}.crea_ordine_da_offerta",
-    )
-    ErrorManager.require(
-        testata.get("stato_codice_interno") in _STATI_OFFERTA_CONVERTIBILI,
-        code="E_ORD_ORIGINE_NON_CONVERTIBILE",
-        message="L'offerta deve essere ACCETTATA per generare un ordine.",
-        detail=f"stato={testata.get('stato_codice_interno')}",
-        function_name=f"{_FN}.crea_ordine_da_offerta",
-    )
+    # `_db_errors` fuori dall'atomic, come `crea_ordine_da_preventivo`: i
+    # rifiuti del verbo arrivano al client col loro codice, non come 500.
+    with _db_errors("crea_ordine_da_offerta"), transaction.atomic():
+        ordine_id = OfferteRepository().genera_ordine(offerta_id)
 
-    repo = OrdiniRepository()
-
-    # Idempotenza 1:1 (univocità offerta→ordine): un'offerta genera al massimo un
-    # ordine (specchio applicativo dell'UNIQUE parziale
-    # uq_ordini_v_documento_origine_offerta + della guard data-driven
-    # can_genera_ordine). Fail-fast PARLANTE prima di lavorare; l'UNIQUE resta la
-    # rete sulla race concorrente (mappata in _UNIQUE_CONSTRAINTS).
-    ordine_esistente = repo.get_ordine_by_documento_origine(
-        "OFFERTA", int(offerta_id),
-    )
-    ErrorManager.require(
-        ordine_esistente is None,
-        code="E_ORD_OFFERTA_GIA_CONVERTITA",
-        message="Un ordine è già stato generato da questa offerta.",
-        detail=(
-            f"offerta_id={offerta_id}, "
-            f"ordine_id={ordine_esistente.get('id') if ordine_esistente else None}"
-        ),
-        function_name=f"{_FN}.crea_ordine_da_offerta",
-    )
-
-    # Mutua esclusività offerta → (contratto XOR ordine): se l'offerta ha già
-    # generato un CONTRATTO non può generare anche un ordine (e viceversa, lato
-    # DB in fn_push_offerta_a_contratto → E_OFFERTA_ORDINE_GIA_GENERATO). Specchio
-    # applicativo della capability `can_genera_ordine` (reason
-    # OFFERTA_CONTRATTO_GIA_GENERATO) + guard BE di questa direzione, lasciato
-    # qui dal team DB perché crea_ordine_da_offerta è orchestrato in BE, non in una
-    # singola fn DB. `contratto_id` è già nel dettaglio (LEFT JOIN), niente query.
-    ErrorManager.require(
-        testata.get("contratto_id") is None,
-        code="E_OFFERTA_CONTRATTO_GIA_GENERATO",
-        message=(
-            "Questa offerta ha già generato un contratto: "
-            "non può generare anche un ordine."
-        ),
-        detail=(
-            f"offerta_id={offerta_id}, "
-            f"contratto_id={testata.get('contratto_id')}"
-        ),
-        function_name=f"{_FN}.crea_ordine_da_offerta",
-    )
-
-    righe = off_repo.list_righe_espanse(offerta_id)
-
-    header = {
-        # La utility (e il ruolo) li scrive il DB dal BA: non si ricopiano.
-        "billing_account_id": testata.get("billing_account_id"),
-        "emittente_fiscale_id": testata.get("emittente_fiscale_id"),
-        "valuta_id": testata.get("valuta_id"),
-        # ⭐ Niente `data`: la decide il DEFAULT della colonna,
-        #    `script.fn_data_operativa()` (l'oggi dell'azienda). Fino al
-        #    2026-10-09 qui c'era `date.today()`, il giorno del processo.
-    }
-
-    with transaction.atomic():
-        ordine_id, numero = _crea_testata_ordine_da_origine(
-            header, "OFFERTA", offerta_id,
-        )
-        # emittente SR + data riferimento dalla testata ordine creata (per il
-        # pricing/data-snapshot dei componenti BoM).
-        testata_ord = _get_testata_or_raise(
-            repo, ordine_id, op="crea_ordine_da_offerta",
-        )
-        emittente_sr_id = _resolve_emittente_sr_id(repo, testata_ord)
-        data_rif = _data_riferimento(testata_ord)
-        with _db_errors("crea_ordine_da_offerta"):
-            for r in righe:
-                _copia_riga_offerta_espansa(
-                    repo, ordine_id, r,
-                    emittente_sr_id=emittente_sr_id, data_rif=data_rif,
-                )
-
+    # Numero ordine per il messaggio FE (lettura leggera post-creazione).
+    testata = OrdiniRepository().get_ordine(ordine_id)
+    numero = testata.get("numero") if testata else None
     return {
         "ordine_id": ordine_id,
         "numero": numero,
-        "righe_create": len(righe),
-        "documento_origine": {"tipo": "OFFERTA", "id": int(offerta_id)},
+        "documento_origine": {"tipo": SORGENTE_OFFERTA_COMMERCIALE, "id": int(offerta_id)},
     }
 
 
@@ -822,7 +642,13 @@ def conferma(ordine_id: int, *, user: str | None = None) -> dict[str, Any]:
 #        il service non duplica il grafo. La conferma (DRAFT->CONFERMATO) ha un
 #        endpoint dedicato (`conferma`) per le sue precondizioni; questa copre le
 #        altre transizioni manuali esposte.
-def cambia_stato(ordine_id: int, stato_codice: str | None) -> dict[str, Any]:
+#        ⭐ ANNULLATO passa SEMPRE dal verbo `vendite.fn_annulla_ordine`
+#        (brief-db-annullo-documento-con-legami): con legami il DB rifiuta
+#        (E_DOC_ANNULLO_CON_LEGAMI, `confirm_and_retry`) finche' la richiesta
+#        non dichiara `legami_confermati`, il numero letto da `get_legami`.
+def cambia_stato(
+    ordine_id: int, stato_codice: str | None, *, legami_confermati: Any = None,
+) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="cambia_stato")
     stato_prec = testata.get("stato_codice_interno")
@@ -843,11 +669,29 @@ def cambia_stato(ordine_id: int, stato_codice: str | None) -> dict[str, Any]:
         function_name=f"{_FN}.cambia_stato",
     )
     assert stato_id is not None
+    if target == STATO_ANNULLATO:
+        confermati = dichiarazione_legami(
+            legami_confermati, validation_code="E_ORD_VALIDAZIONE",
+            function_name=f"{_FN}.cambia_stato",
+        )
+        with _db_errors("cambia_stato"):
+            repo.annulla(ordine_id, confermati)
+        return {"ordine_id": ordine_id, "stato_precedente": stato_prec, "stato": target}
     # La transizione (stato_prec -> target) e' validata dal trigger guard DB;
     # eventuale errore tradotto da _db_errors (E_ORDINE_TRANSIZIONE_NON_AMMESSA).
     with _db_errors("cambia_stato"):
         repo.update_stato(ordine_id, int(stato_id))
     return {"ordine_id": ordine_id, "stato_precedente": stato_prec, "stato": target}
+
+
+# Scopo: I legami dell'ordine per la finestra di conferma dell'annullo (BB
+#        `legami_del_documento`): righe di preventivo, offerta d'origine, righe
+#        di commessa da emettere. Prima la testata: il lettore del DB non
+#        applica il perimetro.
+def get_legami(ordine_id: int) -> dict[str, Any]:
+    repo = OrdiniRepository()
+    _get_testata_or_raise(repo, ordine_id, op="get_legami", getter=repo.get_stato_codice)
+    return legami_del_documento(SORGENTE_ORDINE_VENDITA, ordine_id)
 
 
 # ══════════════════════════════════════════════════════════
@@ -861,10 +705,17 @@ def cambia_stato(ordine_id: int, stato_codice: str | None) -> dict[str, Any]:
 def gestisci_riga(
     ordine_id: int, payload: dict[str, Any], *, auth_user_id: int | None = None,
 ) -> dict[str, Any]:
+    # ⛔ Una chiave fuori whitelist e' un 400, prima di qualunque lettura
+    #    (2026-10-20; prima veniva scartata in silenzio). Come il gemello DDT:
+    #    il dict tiene le sole colonne, la mappa dei componenti si legge a parte.
+    data = _V.solo_chiavi_ammesse(
+        payload, ammesse=CREATE_PAYLOAD_RIGA, colonne=CREATE_KEYS_RIGA,
+        function_name=f"{_FN}.gestisci_riga",
+    )
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="gestisci_riga")
     richiedi_righe_in_bozza(
-        testata, documento="Ordine", documento_id=ordine_id, verbo="aggiungere",
+        testata, documento=SORGENTE_ORDINE_VENDITA, documento_id=ordine_id, verbo="aggiungere",
         function_name=f"{_FN}.gestisci_riga",
     )
 
@@ -881,7 +732,6 @@ def gestisci_riga(
         error_code="E_ORD_VALIDAZIONE",
     )
 
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RIGA}
     _parse_date_riga(data, function_name=f"{_FN}.gestisci_riga")
     articolo_id = data.get("articolo_id")
     ErrorManager.require(
@@ -966,14 +816,14 @@ def aggiorna_riga(
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="aggiorna_riga")
     richiedi_righe_in_bozza(
-        testata, documento="Ordine", documento_id=ordine_id, verbo="modificare",
+        testata, documento=SORGENTE_ORDINE_VENDITA, documento_id=ordine_id, verbo="modificare",
         function_name=f"{_FN}.aggiorna_riga",
     )
     _get_riga_or_raise(repo, ordine_id, riga_id, op="aggiorna_riga")
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RIGA}
-    ErrorManager.require(
-        len(data) > 0,
-        code="E_ORD_VALIDAZIONE",
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _V.solo_chiavi_ammesse(payload, ammesse=UPDATE_KEYS_RIGA, function_name=f"{_FN}.aggiorna_riga")
+    _V.require_campi_da_aggiornare(
+        data,
         message="Nessun campo aggiornabile nel payload riga.",
         function_name=f"{_FN}.aggiorna_riga",
     )
@@ -1017,13 +867,38 @@ def cambia_data_consegna_confermata(
     )
     data = {_DATA_CONSEGNA_CONFERMATA: empty_to_none(payload[_DATA_CONSEGNA_CONFERMATA])}
     _parse_date_riga(data, function_name=fn)
+    # ⭐ La stessa scrittura dell'utility in blocco (BB `scrivi_data_consegna`,
+    #    regola del 2), ristretta a questa riga: qui non si salta nulla, e una
+    #    riga gia' spedita e' un 409 `E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA` del
+    #    guard di riga (brief-db-date-consegna-righe-in-blocco, D-7).
     with _db_errors("cambia_data_consegna_confermata"):
-        repo.update_riga(riga_id, **data)
+        repo.scrivi_data_consegna(
+            ordine_id, _DATA_CONSEGNA_CONFERMATA, data[_DATA_CONSEGNA_CONFERMATA],
+            riga_id=riga_id,
+        )
     return {
         "ordine_id": ordine_id,
         "riga_id": riga_id,
         _DATA_CONSEGNA_CONFERMATA: data[_DATA_CONSEGNA_CONFERMATA],
     }
+
+
+# Scopo: «Aggiorna date di consegna» dell'ordine: una data su piu' righe, per
+#        la richiesta dal cliente o per la confermata, in modalita' TUTTE o
+#        SOLO_VUOTE (brief-db-date-consegna-righe-in-blocco, D-2). Le righe gia'
+#        spedite si saltano e si contano. Regola e forma nel BB
+#        `_date_consegna_righe`; qui solo la testata e il codice del dominio.
+def aggiorna_date_consegna(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    repo = OrdiniRepository()
+    _get_testata_or_raise(
+        repo, ordine_id, op="aggiorna_date_consegna", getter=repo.get_stato_codice,
+    )
+    with _db_errors("aggiorna_date_consegna"):
+        return aggiorna_date_consegna_righe(
+            repo, ordine_id, payload,
+            error_code="E_ORD_VALIDAZIONE",
+            function_name=f"{_FN}.aggiorna_date_consegna",
+        )
 
 
 # Scopo: Elimina riga ordine (HARD DELETE, solo DRAFT). I componenti BoM hanno
@@ -1032,7 +907,7 @@ def elimina_riga(ordine_id: int, riga_id: int) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="elimina_riga")
     richiedi_righe_in_bozza(
-        testata, documento="Ordine", documento_id=ordine_id, verbo="togliere",
+        testata, documento=SORGENTE_ORDINE_VENDITA, documento_id=ordine_id, verbo="togliere",
         function_name=f"{_FN}.elimina_riga",
     )
     _get_riga_or_raise(repo, ordine_id, riga_id, op="elimina_riga")
@@ -1078,6 +953,7 @@ def list_componenti_riga(
 # Scopo: Aggiorna un componente BoM (solo DRAFT, scope componente→riga→ordine).
 def update_componente(
     ordine_id: int, riga_id: int, componente_id: int, payload: dict[str, Any],
+    *, auth_user_id: int | None = None,
 ) -> dict[str, Any]:
     repo = OrdiniRepository()
     scope = repo.load_componente_with_scope(componente_id)
@@ -1090,7 +966,7 @@ def update_componente(
     )
     assert scope is not None
     richiedi_righe_in_bozza(
-        scope, documento="Ordine", documento_id=ordine_id, verbo="modificare",
+        scope, documento=SORGENTE_ORDINE_VENDITA, documento_id=ordine_id, verbo="modificare",
         function_name=f"{_FN}.update_componente",
     )
     # Contratto dell'operatore unico per i cinque documenti (BB): chiavi
@@ -1099,7 +975,7 @@ def update_componente(
     # estranee, compresa l'`origine_prezzo` mandata dal pannello: l'origine
     # manuale non veniva mai scritta.
     data = dati_patch_componente(
-        payload, function_name=f"{_FN}.update_componente",
+        payload, auth_user_id=auth_user_id, function_name=f"{_FN}.update_componente",
         error_code="E_ORD_VALIDAZIONE",
     )
     with _db_errors("update_componente"):
@@ -1122,7 +998,7 @@ def delete_componente(
     )
     assert scope is not None
     richiedi_righe_in_bozza(
-        scope, documento="Ordine", documento_id=ordine_id, verbo="togliere",
+        scope, documento=SORGENTE_ORDINE_VENDITA, documento_id=ordine_id, verbo="togliere",
         function_name=f"{_FN}.delete_componente",
     )
     with _db_errors("delete_componente"):
@@ -1164,51 +1040,28 @@ def push_a_commessa(ordine_id: int, *, user: str | None = None) -> dict[str, Any
     # Import locale per evitare cicli.
     from apps.vendite.services.commesse_service import pr_run_commesse_push_one
 
-    # Fix analisi-fix-transazioni #4 (Classe B): push + transizione EVASO +
-    # chiusura step pratica in UN solo transaction.atomic(). Prima erano scritture
-    # autocommit separate: se `_completa_flusso_ordine_pratica` falliva DOPO il
-    # push, le commesse (+ ponte emittibilita') restavano committate ma la pratica
-    # non riconciliata (orfano). Ora un fallimento della chiusura-step rolla TUTTO
-    # il push, che e' idempotente/ri-eseguibile (advisory lock + dedup segment_key
-    # → retry sicuro). L'atomic interno di `pr_run_commesse_push_one` diventa un
+    # Fix analisi-fix-transazioni #4 (Classe B): push + chiusura step pratica in
+    # UN solo transaction.atomic(). Prima erano scritture autocommit separate: se
+    # `_completa_flusso_ordine_pratica` falliva DOPO il push, le commesse (+ ponte
+    # emittibilita') restavano committate ma la pratica non riconciliata
+    # (orfano). Ora un fallimento della chiusura-step rolla TUTTO il push, che e'
+    # idempotente/ri-eseguibile (advisory lock + dedup segment_key → retry
+    # sicuro). L'atomic interno di `pr_run_commesse_push_one` diventa un
     # savepoint annidato.
+    # ⛔ L'invio in commessa NON cambia lo stato dell'ordine (D-6 di
+    #    brief-db-annullo-a-valle-riapre-a-monte, 2026-10-12): «Evaso» vuol dire
+    #    «la merce e' partita», e lo dicono solo le bolle
+    #    (`vendite.fn_ordine_proietta_stato_evasione`). Fino a quel giorno qui
+    #    l'ordine passava a EVASO «best-effort», e un PARZIALMENTE_EVASO mandato
+    #    in commessa diventava EVASO con meta' merce in magazzino. Che l'ordine
+    #    sia gia' in commessa lo dicono la lista «da mandare» e le capability.
     with transaction.atomic():
         report = pr_run_commesse_push_one(
-            sorgente_codice="ORDINE_VENDITA",
+            sorgente_codice=SORGENTE_ORDINE_VENDITA,
             sorgente_uid=ordine_id,
         )
 
-        # Transizione automatica → EVASO se il push è COMPLETATO (specchio di
-        # preventivi_service.push_a_commessa). L'anti-doppione NON è più il
-        # guard di stato (fix orfano: EVASO resta pushabile) ma è data-driven:
-        # `fn_list_ordini_da_pushare` esclude le righe con attività già EMESSA
-        # (capability reason ORDINE_GIA_FATTURATO) e il dedup per segment_key
-        # dell'orchestratore rende comunque idempotente un re-push. Se l'ordine
-        # è già EVASO la transizione fallisce nel savepoint best-effort (no-op).
-        # Se PARZIALE/ERRORE/SKIPPED lo stato resta invariato: serve un ri-push.
         if report["stato"] == "COMPLETATO":
-            # Transizione EVASO best-effort su SAVEPOINT dedicato: swalloware un
-            # DatabaseError direttamente nell'atomic esterno lo corromperebbe
-            # (needs_rollback → ogni query successiva TransactionManagementError).
-            # Isolandola, un suo fallimento (o seed EVASO non ancora atterrato,
-            # robustezza al deploy parziale) rolla solo se stessa: push+chiusura
-            # proseguono e lo stato si allineerà al run successivo.
-            try:
-                with transaction.atomic():
-                    stato_evaso_id = repo.get_stato_id_by_codice("EVASO")
-                    if stato_evaso_id is not None:
-                        repo.update_stato(ordine_id, int(stato_evaso_id))
-                    else:
-                        logging.getLogger(__name__).warning(
-                            "ordini.push.transizione_evaso_skipped ordine_id=%s "
-                            "reason=stato_evaso_assente", ordine_id,
-                        )
-            except DatabaseError as exc:
-                logging.getLogger(__name__).warning(
-                    "ordini.push.transizione_evaso_skipped ordine_id=%s reason=%s",
-                    ordine_id, str(exc),
-                )
-
             # Percorso pratica: il push a commessa E' il successo dello step
             # INVIO_COMMESSA → lo completa POSITIVO. E' lo step TERMINALE del ramo
             # merce: completandolo (nessun altro flusso aperto, obbligatori fatti)

@@ -77,6 +77,13 @@ Le righe DDT sono utilizzate in molteplici processi del ciclo vendite:
   una riga con legami a valle (fulfillment, resi, riconsegne); a rifiutare sono le
   FK ([`trgfn_dlt_block_ordrig_ddtrig`](/dbzero/vendite/funzioni/trgfn_dlt_block_ordrig_ddtrig)).
 
+* **Natura di vendita** (dal 2026-10-13, brief-db-articoli-ammessi-per-documento A-4):
+  `natura_vendita_id` (NOT NULL) è la natura con cui la riga è stata venduta. La scrive
+  [`script.trgfn_righe_natura_vendita`](/dbzero/script/manual/trgfn_righe_natura_vendita) (`…_a10_natura_vendita_ins_upd`, modo CHIAMANTE): quella portata dal verbo che
+  copia la riga, `fn_genera_ddt_da_ordine` quella della riga d'ordine che evade e `fn_genera_ddt_riconsegna` quella della riga di bolla resa, altrimenti quella dell'articolo; si riscrive solo quando cambia
+  l'articolo. A mano non si cambia (`…_a10_lock_columns_upd`, generato da
+  `dbops.automation_lock_columns`, `E_RIGA_NATURA_VENDITA_IMMUTABILE`).
+
 * `trg_a10_ins_upd_ddt_righe_qta_from_operativa`
 
 Chiama script.trgfn_qta_from_operativa('true','false').

@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW config.vw_codici_errore
 WITH (security_invoker=true) AS
@@ -21,6 +23,8 @@ SELECT c.codice,
    FROM (config.codici_errore c
      LEFT JOIN config.messaggi_errore m ON ((m.codice = c.codice)));
 ```
+
+</div>
 
 
 ---

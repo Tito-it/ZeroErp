@@ -1,6 +1,6 @@
 # Guida — Gestione Listini e Pricing
 
-> **Ultimo aggiornamento**: 20 settembre 2026
+> **Ultimo aggiornamento**: 14 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA
 >
@@ -61,6 +61,17 @@ Un listino contiene:
 * **Versioni** (`listini_versioni`) — finestre temporali con stato BOZZA → ATTIVA → CHIUSA. Solo una versione ATTIVA per listino nel periodo (vincolo `EXCLUDE`).
 * **Righe** (`listini_righe`) — per ogni versione: (articolo, uom) → prezzo. Forma pura, senza dimensioni di scope.
 
+⭐ **Come finisce un listino.** Dipende dalla sua **storia**: un listino ha storia se ha
+almeno una versione che è stata attivata (oggi ATTIVA o CHIUSA, anche spenta); una bozza
+non conta ([vendite.fn_listino_ha_storia](/dbzero/vendite/funzioni/fn_listino_ha_storia)).
+
+* **Senza storia** (nessuna versione, o solo bozze) si spegne con l'interruttore «Attivo».
+* **Con storia** non si spegne: ha dato prezzi ai documenti, e quei prezzi devono restare
+  riproducibili. Si chiude mettendo la **fine validità** alla versione in vigore: alla
+  scadenza la versione passa CHIUSA. Chi prova a spegnerlo riceve
+  `E_LISTINO_CON_STORIA_NON_SPEGNIBILE`, con questo rimedio.
+* Una versione CHIUSA ha **sempre** la fine validità: è un periodo di prezzi finito.
+
 ### 2.2 Categoria cliente
 
 Rappresenta la **politica commerciale trasversale** (STANDARD, BASE, SILVER, GOLD, PLATINUM).
@@ -108,6 +119,10 @@ Tabella `vendite.promo_articoli`. È un **overlay temporale** indipendente:
 * (articolo, uom, validità) → tipo e valore variazione
 * batte qualsiasi altro stadio se il cliente appartiene a una categoria con `partecipa_promo = true`
 * ammette `PREZZO_FISSO` (prezzo assoluto sostitutivo) — vietato negli altri stadi
+* non si crea su un articolo **solo componente**: un articolo che si vende solo dentro un kit non
+  ha un prezzo suo, e dentro un kit le promo non si applicano. Il kit invece la promo la può
+  avere: la riceve quando il contratto gli dà un prezzo suo. Nella ricerca dell'articolo della
+  promo un solo componente compare in grigio, col motivo, e non si sceglie
 
 ---
 
@@ -201,7 +216,13 @@ PREZZO_FISSO: prezzo_finale = valore
 
 ### 5.1 Tipologia articolo
 
-Ogni articolo ha `listino_tipologia_id` (FK a `config.listini_tipologie`). Un articolo può essere inserito solo in listini con la **stessa tipologia** (guard DB trigger `trgfn_listini_righe_guard_tipologia`).
+Ogni articolo ha `listino_tipologia_id` (FK a `config.listini_tipologie`). Un articolo può essere inserito solo in listini con la **stessa tipologia** (lo dice la check per tipo di riga `script.fn_check_articolo_riga`, che il guard `trg_listini_righe_a10_guard_articolo_ammesso_ins_upd` solleva; dal 2026-10-13 anche: niente articoli «solo componente», e un kit entra coi suoi componenti).
+
+Nella ricerca dell'articolo di una riga di versione trovi prima gli articoli che la versione
+può usare; gli altri compaiono in grigio, col motivo sotto, e non si scelgono. Un **kit**
+compare col suo avviso («entra come bundle») ma si sceglie: apre i prezzi dei suoi componenti.
+Anche il componente di una distinta si cerca così: un componente con un'IVA diversa da quella
+del kit, o il kit stesso, compaiono in grigio col motivo.
 
 Esempi:
 
@@ -211,6 +232,8 @@ Esempi:
 ### 5.2 Distinta base (BoM) — componenti di un kit
 
 Un articolo composito (`is_composito = true`) ha una distinta base in `articoli_componenti`. Dal modello unificato del 2026-05-13 **ogni articolo composito è CASO A**: ogni componente attivo della distinta diventa una **riga negoziabile a se' stante** dentro il documento sorgente — vedi §5.2.1 sotto — e il prezzo del kit è la somma dei componenti. Al push, la pipeline espande l'articolo composito in N righe `commesse_attivita` separate. CASO B resta il nome dell'articolo **non** composito, con il suo prezzo unico.
+
+**Una distinta contiene solo articoli semplici.** Un kit non può contenere un altro kit: vendita, magazzino e fattura leggono i componenti diretti, e i componenti di un kit interno resterebbero invisibili. Se serve, si mettono nella distinta direttamente i componenti del kit interno. Per la stessa ragione un articolo che è componente di una distinta, in vigore o che entrerà in vigore, non si può marcare composito: nel form il campo è spento.
 
 **Come si vede il componente in fattura** è un'altra scelta della distinta, per singolo componente: l'**esposizione in fattura**. Non cambia né il prezzo né le righe del documento, solo cosa legge il cliente:
 
@@ -509,8 +532,9 @@ Il database rafforza la determinismo con vincoli espliciti (non è "responsabili
 | `ex_promo_articoli_no_overlap`                | `promo_articoli`            | Una sola promo attiva per (articolo, uom) nel periodo                         |
 | `ex_listini_versioni_no_overlap`              | `listini_versioni`          | Una sola versione ATTIVA per listino nel periodo                              |
 | `uq_listini_righe_key_attiva`                 | `listini_righe`             | Una sola riga attiva per (versione, articolo, uom)                            |
-| `trgfn_listini_righe_guard_tipologia`         | trigger                     | Articolo e listino devono avere la stessa tipologia                           |
+| `script.fn_check_articolo_riga` (guard `script.trgfn_righe_guard_articolo_ammesso`) | check + trigger | Articolo e listino della stessa tipologia; niente solo componente; il kit coi componenti (dal 2026-10-13) |
 | `trgfn_contratti_modalita_c_righe_complete`   | trigger                     | Modalità C: attivazione blocca se righe incomplete                            |
+| `script.fn_check_articolo_riga` (guard su `promo_articoli`) | check + trigger | Nessuna promo su un articolo solo componente (dal 2026-10-14) |
 | `trgfn_contratti_utilities_guard_tipo_classe` | trigger                     | Tipo/classe utenza coerenti con ambito (NULL per COMMERCIO)                   |
 
 Il resolver poggia su queste invarianti — il codice Python non deve duplicarle.

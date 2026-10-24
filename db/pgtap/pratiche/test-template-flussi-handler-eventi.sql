@@ -4,18 +4,21 @@
 --
 -- Test: pratiche.template_flussi_handler_eventi — legame data-driven
 --       template -> handler per evento (IN_CORSO/COMPLETATO) esito-aware.
---       + seed handler vendita.accetta_preventivo e binding APPROVAZIONE_CLIENTE.
+--       + handler vendita.accetta_preventivo RITIRATO dal backend (GUIDA D4):
+--         i suoi collegamenti del seed restano, spenti.
 --
--- Indice test (1..9):
+-- Indice test (1..10):
 --    1. tabella template_flussi_handler_eventi esiste
 --    2. FK template_flusso_id -> template_flussi
 --    3. FK handler_id -> handler_flussi
---    4. seed handler vendita.accetta_preventivo presente e attivo
---    5. binding 9003 (APPROVAZIONE_CLIENTE imm.) -> COMPLETATO/POSITIVO/accetta_preventivo
---    6. binding 9007 (APPROVAZIONE_CLIENTE diff.) -> COMPLETATO/POSITIVO/accetta_preventivo
+--    4. nessun collegamento ATTIVO verso vendita.accetta_preventivo nelle
+--       edizioni preset (emittente NULL)
+--    5. binding 9003 (APPROVAZIONE_CLIENTE imm.) -> accetta_preventivo, spento
+--    6. binding 9007 (APPROVAZIONE_CLIENTE diff.) -> accetta_preventivo, spento
 --    7. evento fuori vocabolario -> viola CHECK (23514)
 --    8. esito_richiesto fuori vocabolario -> viola FK (23503)
 --    9. handler_id inesistente -> viola FK (23503)
+--   10. handler vendita.accetta_preventivo presente e SPENTO nel registro
 --
 -- BEGIN; + ROLLBACK finale: nessuna manipolazione persiste.
 -- ------------------------------------------------------------
@@ -37,7 +40,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(9);
+SELECT plan(10);
 
 -- ============================================================
 -- 1) tabella esiste
@@ -66,46 +69,54 @@ SELECT fk_ok(
 );
 
 -- ============================================================
--- 4) seed handler accetta_preventivo presente e attivo
+-- 4) nessun collegamento attivo verso l'handler ritirato (preset)
+-- ============================================================
+-- Il backend non registra piu' vendita.accetta_preventivo in HANDLER_MAP:
+-- un collegamento attivo farebbe fallire il completamento dello step
+-- (E_HANDLER_NON_REGISTRATO). Perimetro: le edizioni preset, le sole che
+-- nascono dal seed; le edizioni di un emittente sono dati e, se pubblicate,
+-- immutabili (si correggono con una nuova versione).
+SELECT is(
+    (SELECT count(*)::integer
+       FROM pratiche.template_flussi_handler_eventi e
+       JOIN pratiche.handler_flussi h        ON h.id  = e.handler_id
+       JOIN pratiche.template_flussi tf      ON tf.id = e.template_flusso_id
+       JOIN pratiche.workflow_definizioni wd ON wd.id = tf.definizione_id
+      WHERE h.handler_key = 'vendita.accetta_preventivo'
+        AND e.attivo
+        AND wd.emittente_fiscale_id IS NULL),
+    0,
+    '4. nessun collegamento attivo verso vendita.accetta_preventivo nei preset'
+);
+
+-- ============================================================
+-- 5) binding 9003 -> COMPLETATO / POSITIVO / accetta_preventivo, spento
 -- ============================================================
 SELECT is(
-    (SELECT attivo
-       FROM pratiche.handler_flussi
-      WHERE handler_key = 'vendita.accetta_preventivo'),
-    true,
-    '4. handler vendita.accetta_preventivo presente e attivo'
+    (SELECT e.attivo
+       FROM pratiche.template_flussi_handler_eventi e
+       JOIN pratiche.handler_flussi h ON h.id = e.handler_id
+      WHERE e.template_flusso_id = 9003
+        AND e.evento             = 'COMPLETATO'
+        AND e.esito_richiesto    = 'POSITIVO'
+        AND h.handler_key        = 'vendita.accetta_preventivo'),
+    false,
+    '5. binding 9003 (APPROVAZIONE_CLIENTE imm.) -> accetta_preventivo, presente e spento'
 );
 
 -- ============================================================
--- 5) binding 9003 -> COMPLETATO / POSITIVO / accetta_preventivo
+-- 6) binding 9007 -> COMPLETATO / POSITIVO / accetta_preventivo, spento
 -- ============================================================
-SELECT ok(
-    EXISTS (
-        SELECT 1
-          FROM pratiche.template_flussi_handler_eventi e
-          JOIN pratiche.handler_flussi h ON h.id = e.handler_id
-         WHERE e.template_flusso_id = 9003
-           AND e.evento             = 'COMPLETATO'
-           AND e.esito_richiesto    = 'POSITIVO'
-           AND h.handler_key        = 'vendita.accetta_preventivo'
-    ),
-    '5. binding 9003 (APPROVAZIONE_CLIENTE imm.) -> COMPLETATO/POSITIVO/accetta_preventivo'
-);
-
--- ============================================================
--- 6) binding 9007 -> COMPLETATO / POSITIVO / accetta_preventivo
--- ============================================================
-SELECT ok(
-    EXISTS (
-        SELECT 1
-          FROM pratiche.template_flussi_handler_eventi e
-          JOIN pratiche.handler_flussi h ON h.id = e.handler_id
-         WHERE e.template_flusso_id = 9007
-           AND e.evento             = 'COMPLETATO'
-           AND e.esito_richiesto    = 'POSITIVO'
-           AND h.handler_key        = 'vendita.accetta_preventivo'
-    ),
-    '6. binding 9007 (APPROVAZIONE_CLIENTE diff.) -> COMPLETATO/POSITIVO/accetta_preventivo'
+SELECT is(
+    (SELECT e.attivo
+       FROM pratiche.template_flussi_handler_eventi e
+       JOIN pratiche.handler_flussi h ON h.id = e.handler_id
+      WHERE e.template_flusso_id = 9007
+        AND e.evento             = 'COMPLETATO'
+        AND e.esito_richiesto    = 'POSITIVO'
+        AND h.handler_key        = 'vendita.accetta_preventivo'),
+    false,
+    '6. binding 9007 (APPROVAZIONE_CLIENTE diff.) -> accetta_preventivo, presente e spento'
 );
 
 -- ============================================================
@@ -144,6 +155,21 @@ SELECT throws_ok(
     '23503',
     NULL,
     '9. handler_id inesistente -> viola FK (23503)'
+);
+
+-- ============================================================
+-- 10) handler ritirato: presente nel registro, spento
+-- ============================================================
+-- Il registro DB e HANDLER_MAP devono dire la stessa cosa: il backend non
+-- registra piu' vendita.accetta_preventivo, quindi a DB e' spento (e un
+-- collegamento attivo verso di lui e' rifiutato da
+-- trgfn_child_requires_active_parent).
+SELECT is(
+    (SELECT attivo
+       FROM pratiche.handler_flussi
+      WHERE handler_key = 'vendita.accetta_preventivo'),
+    false,
+    '10. handler vendita.accetta_preventivo presente e spento'
 );
 
 SELECT * FROM finish();

@@ -1,0 +1,344 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GLI ARCHI DELLA LINEAGE: LA VISTA E' LA PROIEZIONE DECORATA DELLA FUNZIONE
+#   Brief: brief-db-lineage-seminata-per-chiave §8.2; giro 1.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   La vista diventa la proiezione di vendite.fn_documento_lineage_archi(NULL, NULL): un corpo
+#   solo (regola del 2). Stesse colonne, stessi tipi, stesse righe; i
+#   lettori (vw_documento_lineage, fn_documento_lineage,
+#   script.fn_check_preventivo_annullabile, vendite.fn_ddt_legami) non
+#   cambiano in questo giro.
+#   La decorazione (codice, stato, fase, natura dei due capi) resta qui:
+#   i nodi si leggono una volta da vw_documento_lineage_nodi in una CTE
+#   MATERIALIZED, come prima (20261005-20).
+#   ⚠️ Fatto datato: la lettura intera costa ~+30 ms fissi di
+#   pianificazione (il corpo della funzione e' piu' grande della vista di
+#   prima); l'esecuzione e' uguale. Non cresce coi dati, e al giro 5 le liste
+#   smettono di leggere il grafo intero.
+#
+# ── PERCHE' NON `SELECT *` (20260921-22, provato) ───────────────────
+#   Un tipo di risultato non porta typmod: `SELECT * FROM fn()` passerebbe
+#   (PostgreSQL ammette di PERDERE un typmod) e la vista cambierebbe
+#   contratto in silenzio, a senso unico. Le colonne si proiettano per nome
+#   e i typmod si ricastano.
+#
+# ── PERCHE' security_invoker VA RI-SPECIFICATO ──────────────────────
+#   La reloption non si vede in pg_get_viewdef e un CREATE OR REPLACE la
+#   azzera: qui vorrebbe dire leggere sopra la RLS.
+#
+# ── IL COMMENT ──────────────────────────────────────────────────────
+#   Quello vivo resta, ed e' ancora vero: gli si premette la nota di
+#   revisione leggendolo da obj_description, cosi' non si ricopia (e non
+#   diverge) un testo lungo.
+#
+# ── PROVE (2026-10-11, dbdev come app, vista TEMP sopra le copie pg_temp) ──
+#   Tipi delle colonne identici (pg_attribute, con typmod); righe identiche,
+#   EXCEPT ALL a zero nei due versi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-66-update-vw-documento-lineage-archi-proiezione-mctit.yaml
+
+  - changeSet:
+      id: 20261011-66-update-vw-documento-lineage-archi-proiezione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.vw_documento_lineage_archi diventa la proiezione di vendite.fn_documento_lineage_archi(NULL, NULL): stesse
+        colonne, stessi tipi (typmod ricastati per nome), stesse righe. security_invoker=on
+        ri-specificato; COMMENT vivo conservato, con la nota di revisione premessa.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_documento_lineage_archi
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_documento_lineage_archi'
+                     AND pronamespace = 'vendite'::regnamespace
+                     AND prosqlbody IS NOT NULL
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage_archi
+              WITH (security_invoker=on) AS
+              WITH nodi AS MATERIALIZED (
+                  -- La decorazione: i nodi si leggono una volta, e il recinto tiene il
+                  -- piano della lettura intera (20261005-20).
+                  SELECT n.tipo_id, n.uid, n.codice, n.stato_codice_interno, n.fase,
+                         n.is_abortito, n.natura_doc_codice_interno
+                    FROM vendite.vw_documento_lineage_nodi n
+              )
+              SELECT a.from_tipo_id,
+                     a.from_uid,
+                     nf.codice                    AS from_codice,
+                     a.to_tipo_id,
+                     a.to_uid,
+                     nt.codice                    AS to_codice,
+                     nt.stato_codice_interno      AS to_stato_codice_interno,
+                     nt.fase                      AS to_fase,
+                     nt.is_abortito               AS to_is_abortito,
+                     a.ruolo,
+                     a.arco,
+                     a.is_ramo_inverso,
+                     nf.natura_doc_codice_interno AS from_natura_doc_codice_interno,
+                     nt.natura_doc_codice_interno AS to_natura_doc_codice_interno,
+                     a.rango_origine
+                FROM vendite.fn_documento_lineage_archi(NULL::bigint[], NULL::text[]) a
+                LEFT JOIN nodi nf ON nf.tipo_id = a.from_tipo_id AND nf.uid = a.from_uid
+                LEFT JOIN nodi nt ON nt.tipo_id = a.to_tipo_id   AND nt.uid = a.to_uid;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $c$
+              BEGIN
+                  EXECUTE format('COMMENT ON VIEW vendite.vw_documento_lineage_archi IS %L',
+                      '⭐ rev 2026-10-11 (brief-db-lineage-seminata-per-chiave, giro 1): la vista e'' la '
+                      'PROIEZIONE di vendite.fn_documento_lineage_archi(NULL, NULL), un corpo solo; chi vuole una '
+                      'parte del grafo chiama la funzione col seme. Stesse colonne, stessi tipi. '
+                      || coalesce(obj_description('vendite.vw_documento_lineage_archi'::regclass, 'pg_class'), ''));
+              END
+              $c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La definizione di prima, dalla doc auto-generata (2026-10-11).
+              -- Il COMMENT resta quello con la nota premessa.
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage_archi
+              WITH (security_invoker=on) AS
+              WITH prev_k AS MATERIALIZED (
+                       SELECT (p.uid)::text AS uid
+                         FROM vendite.preventivi p
+                      ), ord_k AS MATERIALIZED (
+                       SELECT (o.id)::text AS id
+                         FROM vendite.ordini o
+                      ), nodi AS MATERIALIZED (
+                       SELECT vw_documento_lineage_nodi.tipo_id,
+                          vw_documento_lineage_nodi.uid,
+                          vw_documento_lineage_nodi.codice,
+                          vw_documento_lineage_nodi.stato_codice_interno,
+                          vw_documento_lineage_nodi.stato_codice,
+                          vw_documento_lineage_nodi.stato_descrizione,
+                          vw_documento_lineage_nodi.fase,
+                          vw_documento_lineage_nodi.is_abortito,
+                          vw_documento_lineage_nodi.pipeline_rank,
+                          vw_documento_lineage_nodi.natura_doc_codice_interno,
+                          vw_documento_lineage_nodi.natura_doc_descrizione,
+                          vw_documento_lineage_nodi.tipo_codice_interno
+                         FROM vendite.vw_documento_lineage_nodi
+                      ), archi AS (
+                       SELECT s_from.id AS from_tipo_id,
+                          (p.uid)::text AS from_uid,
+                          s_to.id AS to_tipo_id,
+                          (o.id)::text AS to_uid,
+                          NULL::character varying AS ruolo,
+                          'A'::text AS arco
+                         FROM (((vendite.ordini o
+                           JOIN vendite.preventivi p ON ((p.id = o.documento_origine_id)))
+                           JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'PREVENTIVO'::text) AND (s_from.attivo IS TRUE))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'ORDINE_VENDITA'::text) AND (s_to.attivo IS TRUE))))
+                        WHERE ((o.documento_origine_tipo)::text = 'PREVENTIVO'::text)
+                      UNION ALL
+                       SELECT s_from.id,
+                          p.uid,
+                          s_to.id,
+                          (cm.id)::text AS id,
+                          cs.ruolo_link,
+                          'B'::text AS text
+                         FROM ((((vendite.commesse_sorgenti cs
+                           JOIN prev_k p ON ((p.uid = cs.sorgente_uid)))
+                           JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
+                           JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'PREVENTIVO'::text))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
+                      UNION ALL
+                       SELECT s_from.id,
+                          (oc.uid)::text AS uid,
+                          s_to.id,
+                          (c.id)::text AS id,
+                          NULL::character varying AS "varchar",
+                          'C'::text AS text
+                         FROM (((vendite.contratti c
+                           JOIN vendite.offerte_commerciali oc ON ((oc.id = c.offerta_id)))
+                           JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_from.attivo IS TRUE))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'CONTRATTO'::text) AND (s_to.attivo IS TRUE))))
+                        WHERE (c.offerta_id IS NOT NULL)
+                      UNION ALL
+                       SELECT s_from.id,
+                          (oc.uid)::text AS uid,
+                          s_to.id,
+                          (o.id)::text AS id,
+                          NULL::character varying AS "varchar",
+                          'D'::text AS text
+                         FROM (((vendite.ordini o
+                           JOIN vendite.offerte_commerciali oc ON ((oc.id = o.documento_origine_id)))
+                           JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_from.attivo IS TRUE))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'ORDINE_VENDITA'::text) AND (s_to.attivo IS TRUE))))
+                        WHERE ((o.documento_origine_tipo)::text = 'OFFERTA'::text)
+                      UNION ALL
+                       SELECT s_from.id,
+                          o.id,
+                          s_to.id,
+                          (cm.id)::text AS id,
+                          cs.ruolo_link,
+                          'E'::text AS text
+                         FROM ((((vendite.commesse_sorgenti cs
+                           JOIN ord_k o ON ((o.id = cs.sorgente_uid)))
+                           JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
+                           JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
+                      UNION ALL
+                       SELECT s_from.id,
+                          (c.id)::text AS id,
+                          s_to.id,
+                          (cm.id)::text AS id,
+                          cs.ruolo_link,
+                          'F'::text AS text
+                         FROM ((((vendite.commesse_sorgenti cs
+                           JOIN vendite.contratti c ON (((c.id)::text = cs.sorgente_uid)))
+                           JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
+                           JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'CONTRATTO'::text))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
+                      UNION ALL
+                       SELECT s_from.id,
+                          (d.id)::text AS id,
+                          s_to.id,
+                          (cm.id)::text AS id,
+                          cs.ruolo_link,
+                          'U'::text AS text
+                         FROM ((((vendite.commesse_sorgenti cs
+                           JOIN vendite.ddt d ON (((d.id)::text = cs.sorgente_uid)))
+                           JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
+                           JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
+                      UNION ALL
+                       SELECT DISTINCT s_from.id,
+                          (cm.id)::text AS id,
+                          s_to.id,
+                          (f.id)::text AS id,
+                          NULL::character varying AS "varchar",
+                          'G'::text AS text
+                         FROM (((((vendite.attivita_fatturabili af
+                           JOIN vendite.commesse cm ON ((cm.id = af.commessa_id)))
+                           JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                           JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                           JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'COMMESSA'::text) AND (s_from.attivo IS TRUE))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'FATTURA'::text) AND (s_to.attivo IS TRUE))))
+                        WHERE (af.fattura_riga_id IS NOT NULL)
+                      UNION ALL
+                       SELECT s_from.id,
+                          (o.id)::text AS id,
+                          s_to.id,
+                          (d.id)::text AS id,
+                          NULL::character varying AS "varchar",
+                          'H'::text AS text
+                         FROM (((vendite.ddt d
+                           JOIN config.sorgenti s_from ON (((s_from.id = d.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
+                           JOIN vendite.ordini o ON ((o.uid = d.sorgente_uid)))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'DDT_VENDITA'::text) AND (s_to.attivo IS TRUE))))
+                      UNION ALL
+                       SELECT s_from.id,
+                          (d.id)::text AS id,
+                          s_to.id,
+                          (r.id)::text AS id,
+                          NULL::character varying AS "varchar",
+                          'R'::text AS text
+                         FROM (((vendite.resi r
+                           JOIN config.sorgenti s_from ON (((s_from.id = r.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
+                           JOIN vendite.ddt d ON ((d.uid = r.sorgente_uid)))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_to.attivo IS TRUE))))
+                      UNION ALL
+                       SELECT DISTINCT s_fat.id,
+                          (rr.fattura_id)::text AS fattura_id,
+                          s_fat.id,
+                          (fr.fattura_id)::text AS fattura_id,
+                          NULL::character varying AS "varchar",
+                          'N'::text AS text
+                         FROM ((vendite.fatture_righe fr
+                           JOIN vendite.fatture_righe rr ON ((rr.id = fr.riga_rettificata_id)))
+                           JOIN config.sorgenti s_fat ON ((((s_fat.codice_interno)::text = 'FATTURA'::text) AND (s_fat.attivo IS TRUE))))
+                        WHERE ((fr.riga_rettificata_id IS NOT NULL) AND (rr.fattura_id <> fr.fattura_id))
+                      UNION ALL
+                       SELECT DISTINCT s_from.id,
+                          (r.id)::text AS id,
+                          s_to.id,
+                          (fr.fattura_id)::text AS fattura_id,
+                          NULL::character varying AS "varchar",
+                          'S'::text AS text
+                         FROM ((((((vendite.resi_righe_accrediti acc
+                           JOIN vendite.resi_righe rr ON ((rr.id = acc.resi_riga_id)))
+                           JOIN vendite.resi r ON ((r.id = rr.reso_id)))
+                           JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = acc.commessa_attivita_id)))
+                           JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                           JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_from.attivo IS TRUE))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'FATTURA'::text) AND (s_to.attivo IS TRUE))))
+                        WHERE (af.fattura_riga_id IS NOT NULL)
+                      UNION ALL
+                       SELECT DISTINCT s_from.id,
+                          (r.id)::text AS id,
+                          s_to.id,
+                          (d.id)::text AS id,
+                          NULL::character varying AS "varchar",
+                          'T'::text AS text
+                         FROM ((((((vendite.resi_righe_riconsegne rrr
+                           JOIN vendite.resi_righe rr ON ((rr.id = rrr.resi_riga_id)))
+                           JOIN vendite.resi r ON ((r.id = rr.reso_id)))
+                           JOIN vendite.ddt_righe dr ON ((dr.id = rrr.ddt_riga_id)))
+                           JOIN vendite.ddt d ON ((d.id = dr.ddt_id)))
+                           JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_from.attivo IS TRUE))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'DDT_VENDITA'::text) AND (s_to.attivo IS TRUE))))
+                      )
+               SELECT a.from_tipo_id,
+                  a.from_uid,
+                  nf.codice AS from_codice,
+                  a.to_tipo_id,
+                  a.to_uid,
+                  nt.codice AS to_codice,
+                  nt.stato_codice_interno AS to_stato_codice_interno,
+                  nt.fase AS to_fase,
+                  nt.is_abortito AS to_is_abortito,
+                  a.ruolo,
+                  a.arco,
+                  (a.arco = ANY (ARRAY['R'::text, 'N'::text])) AS is_ramo_inverso,
+                  nf.natura_doc_codice_interno AS from_natura_doc_codice_interno,
+                  nt.natura_doc_codice_interno AS to_natura_doc_codice_interno,
+                  (
+                      CASE a.arco
+                          WHEN 'A'::text THEN 10
+                          WHEN 'B'::text THEN 10
+                          WHEN 'C'::text THEN 10
+                          WHEN 'D'::text THEN 10
+                          WHEN 'E'::text THEN 20
+                          WHEN 'F'::text THEN 20
+                          WHEN 'H'::text THEN 20
+                          WHEN 'G'::text THEN 30
+                          WHEN 'U'::text THEN 40
+                          WHEN 'R'::text THEN 40
+                          WHEN 'S'::text THEN 50
+                          WHEN 'T'::text THEN 50
+                          WHEN 'N'::text THEN 50
+                          ELSE NULL::integer
+                      END)::smallint AS rango_origine
+                 FROM ((archi a
+                   LEFT JOIN nodi nf ON (((nf.tipo_id = a.from_tipo_id) AND (nf.uid = a.from_uid))))
+                   LEFT JOIN nodi nt ON (((nt.tipo_id = a.to_tipo_id) AND (nt.uid = a.to_uid))));

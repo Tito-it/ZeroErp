@@ -11,30 +11,40 @@
 #   - controprova: il dettaglio di un contratto IN scope torna 200
 #     (il 404 non è "tutto 404" da GUC mancante).
 #
-# READ-ONLY: nessun dato creato/modificato (solo login + GET + refresh
-# audit). Idempotente per costruzione → nessun cleanup necessario.
+# Le chiamate HTTP sono di sola lettura (login + GET + refresh audit). Il
+# setup scrive, una volta: i due contratti di prova della «materia» (sotto),
+# riusati ai giri successivi → nessun cleanup necessario.
 #
-# Uso:
-#   SMOKE_USER=<operatore_ristretto> SMOKE_PASSWORD=<pwd> \
-#     ./scripts/tests/smoke-test-rls-emittente-operatore.sh
+# Uso: ./scripts/tests/smoke-test-rls-emittente-operatore.sh
+#   L'operatore e' `dev.emittente`, l'operatore ristretto del provisioning di
+#   sviluppo (solo l'emittente di prova A in whitelist, senza secondo fattore;
+#   brief-be-utenti-di-sviluppo §4.1, run-book §11). La password e'
+#   DEV_EMITTENTE_PASSWORD di `env.sh`, che il runner carica: lo smoke non
+#   gira piu' con SMOKE_USER, che e' `dev.smoke`, senza whitelist (fino al
+#   2026-10-22 il runner lo lanciava cosi', e finiva sempre «non conclusivo»).
+#
+# ⭐ LA MATERIA SI COSTRUISCE, UNA VOLTA (brief-be-utenti-di-sviluppo §9.11):
+#   un contratto sull'emittente in whitelist (lista e controprova 200) e uno
+#   su un altro emittente di prova (il 404). Li assicura un setup in-process
+#   come `dev.smoke` col builder del DB (`dbops.fn_pgtap_crea_contratto`),
+#   cercati per cliente di prova e creati se mancano: materia STABILE, come
+#   i `SMOKE-*` di preventivi-componenti. Le chiamate HTTP restano di sola
+#   lettura. Prima il 404 voleva un id passato a mano, ed era sempre SALTATO.
 #
 # Variabili:
 #   BASE_URL                     default http://127.0.0.1:8000
-#   SMOKE_USER / SMOKE_PASSWORD  operatore CON riga in user_emittenti_fiscali
-#   OUT_OF_SCOPE_CONTRATTO_ID    (opz.) id contratto di un EF NON in whitelist
-#                                per il test 404. Se assente, il test 404 è
-#                                SALTATO con istruzioni per ricavarlo.
+#   SMOKE_RLS_USER / SMOKE_RLS_PASSWORD  (opz.) un altro operatore CON riga in
+#                                user_emittenti_fiscali
 # ------------------------------------------------------------
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
-# Utente DIVERSO dall'utente generale degli smoke (un operatore ristretto): niente
-# ripiego, SMOKE_USER va detto; la password solo da SMOKE_PASSWORD.
-USERNAME="${SMOKE_USER:-}"
-PASSWORD="${SMOKE_PASSWORD:-}"
-OUT_OF_SCOPE_ID="${OUT_OF_SCOPE_CONTRATTO_ID:-}"
+# Utente DIVERSO dall'utente generale degli smoke: l'operatore ristretto del
+# provisioning (vedi testata).
+USERNAME="${SMOKE_RLS_USER:-dev.emittente}"
+PASSWORD="${SMOKE_RLS_PASSWORD:-${DEV_EMITTENTE_PASSWORD:-}}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 PASS=0; FAIL=0; WARN=0
@@ -92,10 +102,89 @@ echo " Smoke RLS scope Emittente Fiscale — OPERATORE"
 echo " Base URL: $BASE_URL   User: ${USERNAME:-<da impostare>}"
 echo "============================================================"
 
-if [[ -z "$USERNAME" ]]; then
-    echo -e "${RED}ERRORE: SMOKE_USER non impostato (serve un operatore con whitelist EF).${NC}"
+if [[ -z "$PASSWORD" ]]; then
+    echo -e "${RED}ERRORE: password di '$USERNAME' mancante (DEV_EMITTENTE_PASSWORD in env.sh: run-book §11).${NC}"
     exit 2
 fi
+
+# ---- Materia: un contratto dentro e uno fuori dal perimetro ----------
+# In-process come `dev.smoke` (lo stesso contesto degli smoke Python), col
+# builder del DB, sull'emittente che si sta guardando (`app.current_emittente_id`).
+# ⚠️ Lo stderr del setup si tiene: un setup rotto non deve travestirsi da
+#    «manca il secondo emittente» e far SALTARE il 404 senza dire perche'.
+MATERIA_ERR=$(mktemp)
+MATERIA=$(cd "$BACKEND_DIR" && SMOKE_RLS_USER="$USERNAME" ./manage-env.sh shell 2>"$MATERIA_ERR" <<'PY' | grep '^RLS_' || true
+import os
+from django.db import connection
+from scripts.tests._smoke_contesto import apri_contesto_smoke
+
+with connection.cursor() as cur:
+    apri_contesto_smoke(cur)
+    # Dentro: l'emittente in whitelist dell'operatore ristretto. Fuori: un
+    # emittente di prova che non ha (riconosciuto dall'etichetta).
+    cur.execute(
+        """
+        SELECT ef.id, (ef.id IN (SELECT u.emittente_fiscale_id
+                                   FROM config.user_emittenti_fiscali u
+                                   JOIN auth_user au ON au.id = u.auth_user_id
+                                  WHERE au.username = %s)) AS dentro
+          FROM anagrafiche.emittenti_fiscali ef
+          JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
+          JOIN dbops.soggetti_di_prova sp ON sp.soggetto_id = sr.soggetto_id
+         WHERE ef.attivo
+         ORDER BY ef.codice
+        """,
+        [os.environ["SMOKE_RLS_USER"]],
+    )
+    scelti = {}
+    for ef_id, dentro in cur.fetchall():
+        scelti.setdefault("IN" if dentro else "OUT", ef_id)
+    for lato, ef_id in sorted(scelti.items()):
+        cur.execute("SELECT set_config('app.current_emittente_id', %s, false)", [str(ef_id)])
+        cur.execute(
+            """
+            SELECT ba.id
+              FROM anagrafiche.billing_account ba
+              JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+              JOIN dbops.soggetti_di_prova sp ON sp.soggetto_id = sr.soggetto_id
+              JOIN anagrafiche.emittenti_fiscali_billing_account efba ON efba.billing_account_id = ba.id
+              JOIN anagrafiche.emittenti_fiscali ef ON ef.soggetto_ruolo_id = efba.emittente_soggetto_ruolo_id
+             WHERE ef.id = %s
+             ORDER BY ba.codice LIMIT 1
+            """,
+            [ef_id],
+        )
+        ba = cur.fetchone()
+        if ba is None:
+            continue
+        # ⚠️ Il contratto si cerca per BA **e** emittente: un BA puo' essere
+        #    legato a piu' emittenti (emittenti_fiscali_billing_account), e un
+        #    contratto del BA preso sull'altro lato renderebbe il 404 un 200
+        #    — un «leak» falso.
+        cur.execute(
+            "SELECT id FROM vendite.contratti"
+            " WHERE billing_account_id = %s AND emittente_fiscale_id = %s"
+            " ORDER BY id LIMIT 1",
+            [ba[0], ef_id],
+        )
+        k = cur.fetchone()
+        if k is None:
+            # DRAFT: al test basta che il contratto esista. Un ATTIVO lo
+            # rifiuterebbe il modello se sullo stesso BA ce n'e' gia' uno
+            # sovrapposto (dell'altro emittente), e vorrebbe un listino.
+            cur.execute("SELECT contratto_id FROM dbops.fn_pgtap_crea_contratto('smoke rls', 'DRAFT', %s)", [ba[0]])
+            k = cur.fetchone()
+        print(f"RLS_{lato}_CONTRATTO_ID={k[0]}")
+PY
+)
+OUT_OF_SCOPE_ID=$(printf '%s\n' "$MATERIA" | sed -n 's/^RLS_OUT_CONTRATTO_ID=//p')
+if [[ -z "$MATERIA" ]] && grep -q 'Traceback' "$MATERIA_ERR"; then
+    echo -e "${RED}ERRORE: setup della materia fallito:${NC}"
+    tail -n 5 "$MATERIA_ERR" | sed 's/^/        /'
+    rm -f "$MATERIA_ERR"
+    exit 1
+fi
+rm -f "$MATERIA_ERR"
 
 # ---- 0. Login -> token + auth_user_id -------------------------------
 echo ""; echo "-- 0. Login JWT --"
@@ -158,7 +247,7 @@ fi
 # ---- 4. Dettaglio FUORI scope -> 404 (prova RLS) --------------------
 echo ""; echo "-- 4. Dettaglio contratto FUORI scope → 404 --"
 if [[ -z "$OUT_OF_SCOPE_ID" ]]; then
-    log_warn "OUT_OF_SCOPE_CONTRATTO_ID non fornito → test 404 SALTATO."
+    log_warn "nessun contratto fuori perimetro costruito (manca un secondo emittente di prova col suo cliente: rilancia il provisioning) → test 404 SALTATO."
     log_info "Per ricavarlo (come ruolo BYPASSRLS, es. titodb):"
     log_info "  SELECT id FROM vendite.contratti WHERE emittente_fiscale_id <> $OP_EF LIMIT 1;"
 else

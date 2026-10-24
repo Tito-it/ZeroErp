@@ -12,8 +12,8 @@
 
 import { reactive } from 'vue'
 import { useLookup } from '../../core/composables/useLookup'
-import { lookupCodici } from '../../core/apiCore'
 import { isEmailValid } from '../../core/utils/validators'
+import { fetchLookupCodici } from '../../core/composables/useLookupCodici'
 
 // Campi che indicano "l'utente ha iniziato a compilare il contatto".
 const TRACKED_FIELDS = ['nominativo', 'email', 'telefono', 'cellulare', 'pec', 'tipo_contatto_id']
@@ -69,13 +69,13 @@ export function useContattoForm(options = {}) {
 
   // Lookup tipi contatto (config.tipi_contatti) — caricato al mount
   const tipiContatto = useLookup(
-    () => lookupCodici('config.tipi_contatti'),
+    fetchLookupCodici('config.tipi_contatti'),
     { immediate: true }
   )
 
   // Lookup unita organizzative (config.unita_organizzative) — lazy
   const unitaOrganizzative = useLookup(
-    () => lookupCodici('config.unita_organizzative')
+    fetchLookupCodici('config.unita_organizzative')
   )
 
   // Scopo: Validazione campi contatto (presenza obbligatori + formato email/pec).

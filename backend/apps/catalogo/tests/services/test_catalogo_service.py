@@ -176,18 +176,77 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(result["results"][0]["id"], 1)
         self.assertFalse(result["troncato"])
 
-    # Scopo: il filtro natura (escludi_destinazione_tipi) è inoltrato al
-    # repository invariato (passthrough, filtro applicato in SQL).
+    # Scopo: la riga di un documento passa il suo contesto al repository della
+    # sede unica, e il `motivo` torna intero (brief-db-articoli-ammessi-per-
+    # documento §9.6, Lotto 4).
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
-    def test_fn_lookup_articoli_escludi_destinazione(self, mock_repo_cls):
-        from apps.catalogo.services.catalogo_service import fn_lookup_articoli
+    def test_fn_lookup_articoli_ammessi_passa_il_contesto(self, mock_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_lookup_articoli_ammessi
 
-        mock_repo_cls.return_value.lookup_articoli.return_value = ([], False)
+        repo = mock_repo_cls.return_value
+        repo.tipo_eccezione_valido.return_value = True
+        motivo = {"codice": "E_X", "reason": "X", "reason_key": "k.x", "valori": ["A"]}
+        repo.lookup_articoli_ammessi.return_value = (
+            [{"id": 1, "motivo": None}, {"id": 2, "motivo": motivo}], False,
+        )
 
-        fn_lookup_articoli(search="art", escludi_destinazione_tipi=["CONTRATTO"])
+        result = fn_lookup_articoli_ammessi(
+            documento="CONTRATTO", documento_id=7, search="art", tipo_eccezione="AGGIUNTA",
+        )
 
-        kwargs = mock_repo_cls.return_value.lookup_articoli.call_args.kwargs
-        self.assertEqual(kwargs["escludi_destinazione_tipi"], ["CONTRATTO"])
+        kwargs = repo.lookup_articoli_ammessi.call_args.kwargs
+        self.assertEqual(kwargs["documento"], "CONTRATTO")
+        self.assertEqual(kwargs["documento_id"], 7)
+        self.assertEqual(kwargs["tipo_eccezione"], "AGGIUNTA")
+        self.assertIsNone(kwargs["articolo_padre_id"])
+        self.assertEqual(result["results"][1]["motivo"], motivo)
+        self.assertFalse(result["troncato"])
+
+    # Scopo: un tipo d'eccezione fuori enum e' un 400 PRIMA del cast, che
+    # sarebbe un 500 (22P02): il picker non viene nemmeno chiamato.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_lookup_articoli_ammessi_tipo_eccezione_estraneo(self, mock_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_lookup_articoli_ammessi
+
+        repo = mock_repo_cls.return_value
+        repo.tipo_eccezione_valido.return_value = False
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_lookup_articoli_ammessi(documento="CONTRATTO", documento_id=7, tipo_eccezione="BANANA")
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        repo.lookup_articoli_ammessi.assert_not_called()
+
+    # Scopo: la correzione di struttura nel PATCH (R-BE-1): prima il verbo, poi
+    # l'UPDATE; `correzione_struttura` arriva al verbo com'e' (forma, permesso e
+    # colonne li giudica lui); da sola non chiede altri campi; assente, il verbo
+    # non parte. L'atomicita' e' provata su DB vero
+    # (tests/db/test_articoli_ammessi_db.py).
+    @patch("apps.catalogo.services.catalogo_service.fn_get_articolo")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_update_articolo_con_correzione_di_struttura(self, mock_repo_cls, mock_get):
+        from apps.catalogo.services.catalogo_service import fn_update_articolo
+
+        articolo_id = "00000000-0000-0000-0000-000000000001"
+        repo = mock_repo_cls.return_value
+        repo.update_articolo.return_value = True
+        mock_get.return_value = {"id": articolo_id}
+
+        fn_update_articolo(articolo_id, {"descrizione": "Nuova", "correzione_struttura": {"requires_lotto": True}})
+        chiamate = [c[0] for c in repo.method_calls]
+        self.assertEqual(chiamate, ["correggi_struttura_articolo", "update_articolo"])
+        repo.correggi_struttura_articolo.assert_called_once_with(articolo_id, {"requires_lotto": True})
+        repo.update_articolo.assert_called_once_with(articolo_id, {"descrizione": "Nuova"})
+
+        repo.reset_mock()
+        for correzione in ({}, None):
+            with self.subTest(correzione=correzione):
+                fn_update_articolo(articolo_id, {"correzione_struttura": correzione})
+                repo.correggi_struttura_articolo.assert_called_with(articolo_id, correzione)
+        repo.update_articolo.assert_not_called()
+
+        repo.reset_mock()
+        fn_update_articolo(articolo_id, {"descrizione": "Nuova"})
+        repo.correggi_struttura_articolo.assert_not_called()
 
     # Scopo: 🔴 IL CASO PER CUI D6 ESISTE — un lookup TAGLIATO lo dichiara.
     #        Prima di oggi la risposta era `{"count": 20, "results": [20 righe]}`
@@ -672,8 +731,9 @@ class CatalogoServiceTests(TestCase):
 
     # Scopo: create nota componente con target_riga_id -> anchor_tipo/posizione
     # default RIGA/AFTER applicati dal service.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    def test_fn_create_nota_componente_default_riga_after(self, mock_bom_repo_cls):
+    def test_fn_create_nota_componente_default_riga_after(self, mock_bom_repo_cls, _mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_nota_componente
 
         bom_repo = mock_bom_repo_cls.return_value
@@ -682,7 +742,7 @@ class CatalogoServiceTests(TestCase):
 
         riga_uuid = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
         fn_create_nota_componente(
-            "comp-1",
+            "art-1", "comp-1",
             {"id_stile": 1, "testo_md": "Demo", "target_riga_id": riga_uuid},
         )
 
@@ -691,6 +751,31 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(data_arg["anchor_tipo"], "RIGA")
         self.assertEqual(data_arg["posizione"], "AFTER")
         self.assertEqual(str(data_arg["target_riga_id"]), riga_uuid)
+
+    # Scopo: ⛔ un componente che non e' dell'articolo dell'URL e' un 404, e le
+    #        note non si leggono ne' si scrivono (2026-10-21, §B8 del
+    #        brief-be-verifica-documentazione-api): prima `articolo_id` del path
+    #        era ignorato.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    def test_note_componente_di_un_altro_articolo_404(self, mock_bom_repo_cls, _mock_repo_cls):
+        from apps.catalogo.services.catalogo_service import (
+            fn_create_nota_componente,
+            fn_list_note_componente,
+        )
+
+        bom_repo = mock_bom_repo_cls.return_value
+        bom_repo.get_componente.return_value = None
+        for chiamata in (
+            lambda: fn_list_note_componente("art-1", "comp-di-altro"),
+            lambda: fn_create_nota_componente("art-1", "comp-di-altro", {"id_stile": 1, "testo_md": "x"}),
+        ):
+            with self.subTest(), self.assertRaises(ServiceError) as ctx:
+                chiamata()
+            self.assertEqual(ctx.exception.code, "E_CATALOGO_COMPONENTE_NOT_FOUND")
+        bom_repo.get_componente.assert_called_with("art-1", "comp-di-altro")
+        bom_repo.list_note_componente.assert_not_called()
+        bom_repo.create_nota.assert_not_called()
 
     # Scopo: create nota con coppia incoerente anchor_tipo='DOCUMENTO' +
     # target_riga_id valorizzato -> errore E_CATALOGO_VALIDATION (guard

@@ -42,6 +42,7 @@ from apps.catalogo.services.catalogo_service import (
     fn_list_uom_tipi,
     fn_list_unita_misura,
     fn_lookup_articoli,
+    fn_lookup_articoli_ammessi,
     fn_update_componente,
     fn_update_nota,
     fn_update_articolo,
@@ -59,14 +60,15 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
+    optional_uuid,
     paginated_envelope,
     parse_list_params,
-    qp_bool,
     qp_bool_optional,
     qp_int_optional,
     qp_int_strict,
     qp_iso_date_optional,
     qp_str,
+    qp_str_upper,
 )
 from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
@@ -166,7 +168,19 @@ _ARTICOLO_CREATE_REQUEST = inline_serializer(
 
 _ARTICOLO_PATCH_REQUEST = inline_serializer(
     name="CatalogoArticoloPatchRequest",
-    fields=_articolo_write_fields(for_create=False),
+    fields={
+        **_articolo_write_fields(for_create=False),
+        # R-BE-1: la correzione di struttura nello stesso PATCH, in una
+        # transazione. La giudica il verbo del DB (SUPER_ADMIN, colonne ammesse).
+        "correzione_struttura": serializers.DictField(
+            required=False,
+            help_text=(
+                "Solo SUPER_ADMIN: {colonna: valore} delle colonne strutturali da correggere "
+                "(quelle di `struttura_correggibile`), anche su un articolo usato. Si applica "
+                "prima dell'aggiornamento, nella stessa transazione."
+            ),
+        ),
+    },
 )
 
 _UOM_CREATE_REQUEST = inline_serializer(
@@ -634,8 +648,8 @@ class ApiComponenteNoteList(DomainAPIView):
     )
     # Scopo: Lista le note di un componente articolo.
     def get(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
-        del request, articolo_id
-        return success_response(fn_list_note_componente(comp_id))
+        del request
+        return success_response(fn_list_note_componente(articolo_id, comp_id))
 
     @extend_schema(
         request=_NOTA_CREATE_REQUEST,
@@ -646,8 +660,20 @@ class ApiComponenteNoteList(DomainAPIView):
     )
     # Scopo: Crea una nota per un componente articolo.
     def post(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
-        del articolo_id
-        return handle_post_json(request, handler=lambda payload: fn_create_nota_componente(comp_id, payload))
+        return handle_post_json(
+            request, handler=lambda payload: fn_create_nota_componente(articolo_id, comp_id, payload),
+        )
+
+
+# I filtri della ricerca LIBERA (consultazioni): con `documento` non si
+# accettano, la regola della riga la dice il DB.
+_FILTRI_LIBERI_LOOKUP = ("attivo", "is_composito", "gestito_a_magazzino", "solo_oneri")
+
+# I filtri RITIRATI il 2026-10-14 (brief-db-articoli-ammessi-per-documento §9.6):
+# erano la copia dei guard per le righe di documento. Un chiamante che li manda
+# ancora crede di filtrare e riceve tutto: un 400 che li nomina, non il silenzio
+# (uno smoke e' rimasto verde cosi', senza provare niente).
+_FILTRI_RITIRATI_LOOKUP = ("is_solo_componente", "escludi_destinazione")
 
 
 class ApiArticoliLookup(DomainAPIView):
@@ -662,9 +688,45 @@ class ApiArticoliLookup(DomainAPIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="documento",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Picker di una RIGA di documento: il codice di config.tipi_entita "
+                    "(PREVENTIVO, ORDINE_VENDITA, DDT_VENDITA, OFFERTA_COMMERCIALE, "
+                    "CONTRATTO, LISTINO_VERSIONE, ARTICOLO per la distinta, "
+                    "PROMO_ARTICOLO). Con questo parametro gli articoli li sceglie "
+                    "catalogo.fn_articoli_ammessi, la stessa check dei guard: ogni "
+                    "riga porta `motivo` (null = ammesso), prima gli ammessi. Non si "
+                    "combina coi filtri liberi (attivo, is_composito, "
+                    "gestito_a_magazzino, solo_oneri)."
+                ),
+            ),
+            OpenApiParameter(
+                name="documento_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Con `documento`: l'id della testata (o della versione di listino).",
+            ),
+            OpenApiParameter(
+                name="tipo_eccezione",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Con `documento` OFFERTA_COMMERCIALE o CONTRATTO: AGGIUNTA, OVERRIDE o ESCLUSIONE.",
+            ),
+            OpenApiParameter(
+                name="articolo_padre_id",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Con `documento` ARTICOLO: il padre della distinta.",
+            ),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="is_composito", type=bool, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="is_solo_componente", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(
                 name="gestito_a_magazzino",
                 type=bool,
@@ -675,17 +737,6 @@ class ApiArticoliLookup(DomainAPIView):
                     "lo sono, se false). Assente = nessun filtro. Lo passa il "
                     "picker di riga di inventari e rettifiche: un articolo non "
                     "gestito si salva, ma il piano lo marca NON_POSTABILE."
-                ),
-            ),
-            OpenApiParameter(
-                name="escludi_destinazione",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "CSV di destinazioni natura da escludere (ORDINE/COMMESSA/"
-                    "CONTRATTO). Es. 'CONTRATTO' per non proporre articoli "
-                    "ricorrenti sulle righe di un preventivo (difesa in profondità)."
                 ),
             ),
             OpenApiParameter(
@@ -714,26 +765,39 @@ class ApiArticoliLookup(DomainAPIView):
         search = qp_str(qp.get("search"))
         require_min_search_length(search, field_name="search")
 
-        # CSV → lista di destinazioni natura da escludere (uppercase, no vuoti).
-        # Filtro data-driven sulla DESTINAZIONE (non sul codice natura).
-        escludi_raw = qp_str(qp.get("escludi_destinazione"))
-        escludi_destinazione_tipi = (
-            [t.strip().upper() for t in escludi_raw.split(",") if t.strip()]
-            if escludi_raw
-            else None
-        )
+        for ritirato in _FILTRI_RITIRATI_LOOKUP:
+            if ritirato in qp:
+                raise ValueError(f"{ritirato}_ritirato")
+        limit = qp_int_strict(qp.get("limit"), "limit", 20)
+
+        # ⭐ La riga di un documento: gli articoli li sceglie il DB
+        #    (brief-db-articoli-ammessi-per-documento §9.6, Lotto 4). Nessun
+        #    filtro libero accanto: la regola non la sceglie il chiamante, e un
+        #    filtro in piu' nasconderebbe un articolo che il guard accetta.
+        documento = qp_str_upper(qp.get("documento"))
+        if documento is not None:
+            if any(qp_str(qp.get(k)) is not None for k in _FILTRI_LIBERI_LOOKUP):
+                raise ValueError("documento_con_filtri_liberi")
+            return success_response(fn_lookup_articoli_ammessi(
+                documento=documento,
+                documento_id=qp_int_optional(qp.get("documento_id"), "documento_id"),
+                search=search,
+                tipo_eccezione=qp_str_upper(qp.get("tipo_eccezione")),
+                articolo_padre_id=optional_uuid(
+                    {"articolo_padre_id": qp.get("articolo_padre_id")}, "articolo_padre_id",
+                ),
+                limit=limit,
+            ))
 
         data = fn_lookup_articoli(
             search=search,
-            attivo=qp_bool(qp.get("attivo"), True),
-            is_composito=qp_bool_optional(request.query_params.get("is_composito"), "is_composito"),
-            is_solo_componente=qp_bool_optional(request.query_params.get("is_solo_componente"), "is_solo_componente"),
+            attivo=qp_bool_optional(qp.get("attivo"), "attivo", default=True),
+            is_composito=qp_bool_optional(qp.get("is_composito"), "is_composito"),
             gestito_a_magazzino=qp_bool_optional(qp.get("gestito_a_magazzino"), "gestito_a_magazzino"),
-            escludi_destinazione_tipi=escludi_destinazione_tipi,
             # Gli articoli-onere sono pochi (uno per causale) e si presentano
             # come tendina, non come autocomplete: il filtro vive senza `search`.
-            solo_oneri=qp_bool(qp.get("solo_oneri"), False),
-            limit=qp_int_strict(qp.get("limit"), "limit", 20),
+            solo_oneri=qp_bool_optional(qp.get("solo_oneri"), "solo_oneri", default=False),
+            limit=limit,
         )
         return success_response(data)
 

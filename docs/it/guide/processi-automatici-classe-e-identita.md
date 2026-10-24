@@ -1,6 +1,6 @@
 # Guida — I lavori automatici: che natura hanno e per conto di chi girano
 
-> (latest review 06-09-2026)
+> **Ultimo aggiornamento**: 24 ottobre 2026
 >
 > Destinatari: chiunque debba capire, aggiungere o controllare un lavoro che il
 > sistema fa da solo — sviluppatori, analisti, e chi guarda se stanotte è andato
@@ -10,6 +10,7 @@
 >
 > * [Gestione delle code di lavoro](/guide/gestione-code-di-lavoro) — come funziona la coda che esegue i lavori
 > * [Processi pgAgent funzionali](/guide/processi-pgagent-funzionali) — l'elenco dei lavori a orario
+> * [Framework automazione DB, §9-§10](/guide/automazione-db) — i giri delle automazioni (`automations_*`): la convergenza del rilascio, le notti, come si vedono in **Processi automatici**
 > * [Tracciamento processi e job](/guide/analisi-tracciamento-processi-e-job) — dove si leggono le esecuzioni
 > * [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — come funzionano i controlli che si vedono qui
 > * [dbops.processi](/dbzero/dbops/manual/processi) — il registro di cui parla tutta questa guida
@@ -140,7 +141,7 @@ mondi diversi:
 
 | Sveglia | Dove vive | Dove si dichiara | Oggi |
 | --- | --- | --- | --- |
-| **pgAgent** | dentro il **database** | un changeSet in `85_pgagent/` | 13 processi |
+| **pgAgent** | dentro il **database** | un changeSet in `85_pgagent/` | 15 processi |
 | **timer systemd** | sul **server del backend** | [`backend/deploy/sveglie.json`](../../../backend/deploy/sveglie.json) | 6 processi |
 | *(nessuna)* | il lavoro entra in `dbops.coda_lavori` e lo prende un worker | — | 3 processi |
 
@@ -192,6 +193,24 @@ il caso del listener). Con il contratto il panorama non dice piu' «non posso
 sapere»: dice **`OK`**, **`MUTO`** (era vivo ed e' taciuto) o **`MAI_PARTITO`**
 — e quest'ultimo e' proprio il timer dichiarato e mai installato, visto dal
 database. Le righe entrano da sole nel digest e nel pannello.
+
+⭐ **Per i job pgAgent il segnale e' la corsa dovuta.** Il panorama confronta la
+prossima esecuzione che pgAgent dichiara con l'ora attuale: se e' passata da piu'
+di un'ora, pgAgent doveva far partire il lavoro e non l'ha fatto. Col
+programmatore fermo quella data non si aggiorna piu', ed e' cosi' che il
+database se ne accorge.
+
+| Il job | La corsa dovuta | Stato |
+| --- | --- | --- |
+| non ha mai girato | passata da piu' di un'ora, o nessuna | `MAI_PARTITO` — il programmatore non gira |
+| non ha mai girato | ancora da venire | `IN_ATTESA` — un lavoro nuovo, non un guasto |
+| ha gia' girato | passata da piu' di un'ora | `IN_RITARDO` — il programmatore si e' fermato |
+| ha gia' girato | ancora da venire | `OK` |
+
+⚠️ Il criterio non e' «non ha mai girato»: darebbe un falso allarme su ogni
+lavoro appena creato fino alla sua prima corsa, e non vedrebbe mai il
+programmatore fermo per i lavori che hanno gia' girato una volta. Dettaglio in
+[vw_processi_programmazione](/dbzero/dbops/manual/vw_processi_programmazione).
 
 ⚠️ Non e' che il database veda systemd: vede **l'effetto** — la corsa che non
 arriva, la connessione che non c'e'. Cio' che non vede e' quali processi sono

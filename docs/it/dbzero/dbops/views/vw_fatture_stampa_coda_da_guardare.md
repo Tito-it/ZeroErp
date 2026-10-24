@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_fatture_stampa_coda_da_guardare
 WITH (security_invoker=true) AS
@@ -30,6 +32,8 @@ SELECT id,
    FROM vendite.fatture_stampa_coda c
   WHERE ((NOT archiviato) AND ((stato = 'ERRORE'::text) OR ((stato = 'IN_CORSO'::text) AND (data_update < (now() - '01:00:00'::interval))) OR ((stato = 'PENDING'::text) AND (data_update < (now() - '01:00:00'::interval)))));
 ```
+
+</div>
 
 
 ---

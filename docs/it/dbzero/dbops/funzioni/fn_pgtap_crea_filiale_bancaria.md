@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_crea_filiale_bancaria(p_etichetta text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_filiale_bancaria(p_etichetta text DEFAULT 'pgTAP'::text)
  RETURNS TABLE(bank_branch_id bigint, banca_soggetto_ruolo_id bigint, banca_soggetto_id uuid)
@@ -58,6 +60,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_filiale_bancaria(p_etichetta text)
 IS 'Fixture pgTAP: una filiale bancaria costruita — soggetto della banca, ruolo BANK_B coi suoi indirizzi obbligatori, e la filiale — dentro la finestra dei vincoli differiti, che e'' la trappola per cui questo builder esiste. ⚠️ anagrafiche.bank_branches e'' dato di MACCHINA, non seed di 80_data: su un database ricostruito e'' vuota, e i tre file di pagamenti che la pescavano morivano sul NOT NULL di bank_branch_id. ⛔ Il conto bancario NON lo scrive: IBAN e titolare sono il caso del test. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-fixture-che-costruiscono-giro-2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

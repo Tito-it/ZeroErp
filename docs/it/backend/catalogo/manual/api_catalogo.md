@@ -7,7 +7,7 @@ Esporre via HTTP il backend `catalogo` per il perimetro delle Fasi 1..8:
 - anagrafica articoli
 - lookup articoli, UoM, modi di arrotondamento
 - UoM operative articolo
-- componenti BoM con capability di chiusura riga + duplica atomica
+- componenti BoM con capability di chiusura riga
 - conversioni UoM
 - note articolo
 - metadata immutabilita' campi (`non_editable_fields`) sui detail
@@ -61,18 +61,20 @@ Tutte le risposte usano l'envelope standard:
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `search` | string | No | Ricerca libera: le colonne le decide il catalogo della lista `catalogo.articoli`. Sotto 3 caratteri: `400` `E_SEARCH_VALIDATION` |
+| `search` | string | No | Ricerca libera: colonne e soglia le decide il catalogo della lista `catalogo.articoli`. Sotto soglia il termine non filtra (nessun `400`: il `400` `E_SEARCH_VALIDATION` vale solo per il lookup, §2.1) |
 | `attivo` | bool | No | Filtro attivo/disattivo |
 | `is_composito` | bool | No | Filtro articoli composti |
-| `voce_utility` | bool | No | Filtro articoli utility |
 | `tipo_voce_id` | int | No | Filtro tipologia |
 | `gruppo_voce_id` | int | No | Filtro gruppo |
+| `listino_tipologia_id` | int | No | Filtro tipologia di listino dell'articolo |
 | `data_da` | date | No | Filtro data insert da (giorno dell'azienda: vedi sotto) |
 | `data_a` | date | No | Filtro data insert a, giorno incluso. I giorni sono giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09) (fino ad allora `data_insert::date`, il giorno della sessione e niente indice) |
-| `page` | int | No | Numero pagina, default `1` |
-| `page_size` | int | No | Righe per pagina, default `25`, max `200` |
-| `order_by` | string | No | `codice`, `descrizione`, `uom_codice`, `data_insert`, `data_update` |
-| `order_dir` | string | No | `asc` oppure `desc` |
+| `limit` | int | No | Righe per pagina, default `25`, max `200` |
+| `offset` | int | No | Righe da saltare, default `0` |
+| `order_by` | string | No | `codice`, `descrizione` (default), `uom_codice`, `attivo`, `data_insert`, `data_update` |
+| `order_dir` | string | No | `asc` oppure `desc`. Assente: `asc`, salvo le colonne data (`data_insert`, `data_update`) che partono `desc` |
+
+⚠️ La paginazione è `limit`/`offset`: `page`/`page_size` in query sono un 400 `E_VALIDATION_INPUT` (dal 2026-10-20; prima erano ignorati). In risposta `page` e `page_size` sono calcolati da `limit`/`offset`.
 
 #### Risposta (200)
 
@@ -92,7 +94,7 @@ Tutte le risposte usano l'envelope standard:
         "uom_codice": "PZ",
         "is_composito": false,
         "is_solo_componente": false,
-        "voce_utility": false,
+        "requires_lotto": false,
         "attivo": true,
         "puo_gestire_bom": false,
         "motivo_non_gestibile_bom": "ARTICOLO_NON_COMPOSITO"
@@ -130,7 +132,7 @@ il motivo via tooltip i18n (chiavi `catalogo.motivo_*`).
 | `codice` | string | Si | Codice univoco articolo |
 | `descrizione` | string | Si | Descrizione articolo |
 | `descrizione_breve` | string | No | Descrizione breve |
-| `uom_id` | int | No | UoM base |
+| `uom_id` | int | Si | UoM base, intero `> 0` (immutabile dopo la creazione). Mancante o non positivo: `400` `E_CATALOGO_VALIDATION` |
 | `tipo_voce_id` | int | No | Tipologia |
 | `gruppo_voce_id` | int | No | Gruppo |
 | `spesa_id` | int | No | Spesa |
@@ -140,12 +142,15 @@ il motivo via tooltip i18n (chiavi `catalogo.motivo_*`).
 | `is_composito` | bool | No | Articolo composto |
 | `is_solo_componente` | bool | No | Usabile solo come componente |
 | `requires_serial` | bool | No | Richiede seriale |
-| `voce_utility` | bool | No | Articolo utility |
+| `requires_lotto` | bool | No | L'articolo si movimenta per lotti. Fuori dal lock BoM: resta modificabile in PATCH |
+| `listino_tipologia_id` | int | No | Tipologia di listino |
 | `natura_vendita_id` | int | No | Natura di vendita (FK `config.nature_vendita`): decide l'instradamento post-accettazione del modello split (ORDINE/COMMESSA/CONTRATTO). Se omesso → default DB `MERCE`. **Mai null esplicito** (colonna NOT NULL): risponde `E_CATALOGO_VALIDATION` |
 | `modo_approvvigionamento_id` | int | No | **Da dove arriva** l'articolo (FK `config.modi_approvvigionamento`: `ACQUISTO` / `PRODUZIONE` / `STOCK` / `NON_APPLICABILE` — 2026-09-14, Blocco B di `brief-db-modifiche-certe-ciclo-vendita-e-articolo`). Dimensione **ortogonale** alla natura di vendita (dice dove *va* la riga, non da dove *viene*). Se omesso → default DB `ACQUISTO`. **Mai null esplicito** (NOT NULL): `E_CATALOGO_VALIDATION` col campo. Lookup: `GET /core/lookup/codici/?rel=config.modi_approvvigionamento` |
 | `gestito_a_magazzino` | bool | No | L'articolo **movimenta giacenza**. Default DB `false` (fail-safe: nessun articolo comincia a movimentare per distrazione). ⚠️ Non si deriva da natura `MERCE`: una merce può essere venduta senza passare da giacenza |
 | `lead_time_giorni` | int | No | Giorni fra richiesta e disponibilità. **Nullable per modello**: per una prestazione non significa niente, e `0` non è «non si applica». Negativo → `E_CATALOGO_VALIDATION` col campo (anticipa il CHECK) |
 | `meta` | object | No | Metadati liberi |
+
+Una chiave fuori da questo elenco è rifiutata con `400` `E_CATALOGO_VALIDATION`: anche `voce_utility`, che non esiste più (né come campo né come filtro, né in risposta). I booleani si mandano come booleani JSON.
 
 ### 1.3 Dettaglio articolo
 
@@ -171,7 +176,8 @@ immutabilita' (Fase 5):
 - Natura di vendita (2026-06-10, da `vw_articoli_dettaglio`):
   `natura_vendita_id`, `natura_vendita_codice_interno`,
   `natura_vendita_descrizione`, `natura_vendita_destinazione_tipo`
-  (`ORDINE` / `COMMESSA` / `CONTRATTO`). Il FE inizializza il Select
+  (`ORDINE_VENDITA` / `COMMESSA` / `CONTRATTO`: codici di `config.sorgenti`,
+  FK dal 2026-10-19, brief-db-grammatica-unica-documenti lotto 2b). Il FE inizializza il Select
   "Natura di vendita" del drawer da `natura_vendita_id`; gli stessi campi
   sono disponibili anche nelle righe della lista (§1.1).
 - Approvvigionamento (2026-09-14, da `vw_articoli_dettaglio`):
@@ -239,6 +245,40 @@ immutabilita' (Fase 5):
   (parent inattivo: iva/gruppo/tipologia) si propagano come
   `E_PARENT_*`.
 
+### 1.6-bis Correzione di struttura (amministratore)
+
+Non ha un endpoint suo: viaggia nel **PATCH dell'articolo** (§1.4), nella chiave
+`correzione_struttura`.
+
+| | |
+|---|---|
+| **Metodo** | `PATCH` |
+| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/` |
+| **Permesso** | solo SUPER_ADMIN: lo giudica il verbo DB |
+
+Un articolo **usato** (in un documento, un listino, una commessa o in magazzino) non cambia la
+sua struttura (`E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE`). La via normale è un articolo nuovo. Per
+un errore di caricamento l'amministratore la corregge (A-10 di
+brief-db-articoli-ammessi-per-documento).
+
+Body: i campi di sempre più `"correzione_struttura": {"natura_vendita_id": 3}`, le sole colonne
+strutturali da cambiare. Quali sono lo dice il dettaglio dell'articolo, `struttura_correggibile`
+(dalla sede `catalogo.fn_articolo_colonne_struttura`, la stessa da cui il verbo legge le colonne
+ammesse). Il backend chiama prima il verbo `catalogo.fn_articolo_correggi_struttura`, poi
+l'aggiornamento, **in una transazione**: un aggiornamento rifiutato annulla anche la correzione.
+`correzione_struttura` da sola basta (nessun altro campo richiesto). Risposta: il dettaglio
+aggiornato.
+
+* chi non è SUPER_ADMIN: `E_PERMESSO_NEGATO`; `correzione_struttura` vuota o non oggetto, o una
+  colonna fuori dalla sede: `400` `E_PARAMETRO_INVALIDO`; articolo inesistente:
+  `E_ARTICOLO_NOT_FOUND`; una correzione che renderebbe non valide righe di documenti ancora
+  aperti: `409` `E_ARTICOLO_STRUTTURA_RIGHE_APERTE` (i documenti in `dettaglio.righe`) — li solleva
+  tutti il verbo, l'unica porta (il backend non ripete nessuna di queste regole);
+* gli altri guard dell'articolo parlano lo stesso.
+
+Fino al 2026-10-18 la correzione era `POST …/articoli/{id}/struttura/`, una chiamata a parte prima
+del PATCH: un PATCH fallito lasciava la struttura già corretta (R-BE-1). L'endpoint è ritirato.
+
 ### 1.7 Defaults form articolo (Fase 8)
 
 | | |
@@ -301,31 +341,57 @@ di prima.
 | **Metodo** | `GET` |
 | **URL** | `/api/v1/catalogo/articoli/lookup/` |
 
-#### Query param
+Due usi, che non si mescolano (dal 2026-10-14, brief-db-articoli-ammessi-per-documento §9.6):
+
+* **la riga di un documento** — con `documento`: quali articoli ammette la riga lo dice il
+  database (`catalogo.fn_articoli_ammessi`, la stessa check dei guard di riga). Ogni articolo
+  porta il suo `motivo`; prima gli ammessi;
+* **le consultazioni** — senza `documento`: ricerca libera coi filtri qui sotto.
+
+#### Query param — la riga di un documento
+
+| Parametro | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `documento` | string | Sì | Codice di `config.tipi_entita`: `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`, `CONTRATTO`, `LISTINO_VERSIONE`, `ARTICOLO` (la distinta), `PROMO_ARTICOLO`. Maiuscolo non richiesto. Sconosciuto: lo rifiuta la funzione (`E_DOC_TIPO_NON_GESTITO`) |
+| `documento_id` | int | per i documenti con testata | L'id della testata salvata (o della versione di listino). Mancante: `E_PARAMETRO_INVALIDO` |
+| `tipo_eccezione` | string | offerta e contratto | `AGGIUNTA`, `OVERRIDE`, `ESCLUSIONE` (l'enum del DB). Fuori enum: `400` `E_CATALOGO_VALIDATION` |
+| `articolo_padre_id` | uuid | distinta | Il padre. Non UUID: `400` `E_VALIDATION_INPUT` |
+| `search` | string | No | Come sotto. Il «contiene» lo fa la funzione, letterale e senza distinzione fra maiuscole |
+| `limit` | int | No | Default `20`, max `50`; il tetto si applica dopo il giudizio, sull'ordine della funzione |
+
+⛔ Accanto a `documento` **nessun filtro libero** (`attivo`, `is_composito`,
+`gestito_a_magazzino`, `solo_oneri`): `400` `E_VALIDATION_INPUT`. La funzione propone solo
+articoli attivi, e un filtro in più nasconderebbe un articolo che il guard accetta.
+
+Ogni riga ha le colonne della ricerca libera più `motivo`:
+`{codice, reason, reason_key, dettaglio, valori}` — il primo motivo per cui il documento non
+ammette l'articolo, lo stesso che il guard solleverebbe — oppure `null` (ammesso). Nella
+versione di listino un composito arriva con `COMPOSITO_COME_BUNDLE`: come riga semplice non
+entra, ma entra come bundle.
+
+#### Query param — le consultazioni
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `search` | string | No | Ricerca su `codice` e `descrizione` (la lookup non e' una lista: niente catalogo). `%` e `_` sono caratteri, non jolly; spazi ai bordi ignorati. Sotto 3 caratteri: `400` `E_SEARCH_VALIDATION` |
-| `voce_utility` | bool | No | Filtro utility |
 | `attivo` | bool | No | Default API `true` |
 | `is_composito` | bool | No | Filtro composti |
-| `is_solo_componente` | bool | No | Filtro articoli usabili solo come componente BoM |
-| `escludi_destinazione` | string (CSV) | No | Esclude gli articoli la cui **natura** ha una `destinazione_tipo` tra quelle elencate (`ORDINE` / `COMMESSA` / `CONTRATTO`). Filtro **data-driven sulla destinazione**, non sul codice natura. Es. `escludi_destinazione=CONTRATTO` per non proporre articoli ricorrenti sulle righe di un **preventivo** (difesa in profondità del blocco DB D9, modello split per natura). Valori normalizzati a maiuscolo; token vuoti ignorati. |
+| `gestito_a_magazzino` | bool | No | Solo gestiti a magazzino (picker di inventari e rettifiche). Assente = nessun filtro |
+| `solo_oneri` | bool | No | Solo articoli-onere; aggiunge la causale ai risultati |
 | `limit` | int | No | Default `20`, max `50` |
 
-> **Nota natura (split per natura)**: il filtro fa `LEFT JOIN catalogo.articoli → config.nature_vendita` (`natura_vendita_id`) e applica `(destinazione_tipo IS NULL OR destinazione_tipo <> ALL(escluse))` — **NULL-tolerant**: un articolo con natura NULL non viene nascosto, è escluso solo se la sua destinazione è tra quelle vietate (coerente col "NULL = include" di `fn_list_preventivi_da_pushare`). Senza il parametro il lookup è invariato (nessun JOIN natura). Usato dal FE `ArticoloLookup` via prop `escludiDestinazione` (riga preventivo passa `['CONTRATTO']`).
+⛔ `is_solo_componente` ed `escludi_destinazione` sono **ritirati** il 2026-10-14: li usavano solo
+le righe di documento, ed erano una seconda copia della regola dei guard. Chi li manda ancora
+riceve `400` `E_VALIDATION_INPUT` (`is_solo_componente_ritirato`, `escludi_destinazione_ritirato`),
+non un elenco intero spacciato per filtrato.
 
 #### Output specifico
 
-Restituisce campi minimali per autocomplete cross-dominio:
-- `id`
-- `codice`
-- `descrizione`
-- `uom_codice`
-- `uom_descrizione`
-- `is_composito`
-- `voce_utility`
-- `attivo`
+Envelope `{"count", "results", "troncato"}` (`troncato`: il tetto ha tagliato). Campi per
+autocomplete cross-dominio: `id`, `codice`, `descrizione`, `uom_codice`, `uom_descrizione`,
+`is_composito`, `attivo`, `iva_id`, `iva_codice`, `iva_descrizione`, `iva_aliquota_iva`,
+`gestito_a_magazzino`, `requires_lotto`, `requires_serial` (più `motivo` sulla riga di un
+documento, e la causale con `solo_oneri`).
 
 ### 2.2 Lookup unita` di misura — RIMOSSO
 
@@ -428,9 +494,23 @@ Il FE usa questi campi per disabilitare l'azione "delete" della riga
 (non la nasconde, mantiene l'affordance) e mostrare il motivo via
 tooltip i18n (`catalogo.motivo_*`).
 
-Stessa proiezione su `GET /uom/{id}/` (singola riga) e su detail articolo
-nel campo `uom_operative[]`: la lista e il dettaglio leggono dalla
-stessa vista (single source of truth).
+Stessa proiezione nel dettaglio articolo (campo `uom_operative[]`) e nella
+riga restituita da create/update (§3.2-3.3): leggono dalla stessa vista.
+La singola UoM operativa non ha un `GET` suo: `…/uom/{uom_op_id}/` serve solo
+`PATCH` e `DELETE`.
+
+### 3.1-bis Lookup UoM operative (cross-dominio)
+
+| | |
+|---|---|
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/uom/lookup/` |
+| **Permesso** | JWT; `skip_area_check` (nessun permesso sull'area `catalogo`) |
+
+Stessa risposta del §3.1 (envelope `count`/`results` + `non_editable_fields`),
+nessun parametro. La usano i drawer riga di vendite (preventivi, contratti,
+listini, promo) per la combo dell'UoM, senza chiedere LETTURA sul catalogo.
+Articolo inesistente: `404` `E_CATALOGO_ARTICOLO_NOT_FOUND`.
 
 ### 3.2 Crea UoM operativa
 
@@ -608,8 +688,9 @@ sono stati ritirati con i loro due campi (`20261002-67`).
   **immutabili** per design: il trigger DB
   `trgfn_articoli_componenti_block_modifica_struttura` blocca le UPDATE.
 - L'unico campo struttura modificabile e' `valido_al` (per chiudere la
-  riga). Il pattern operativo per cambiare i valori e' "chiudi riga +
-  inserisci nuova versione" o usare 4.5 "Duplica versione".
+  riga). Il pattern operativo per cambiare i valori e' "chiudi riga
+  (`valido_al`) + inserisci nuova versione" (POST §4.2): due chiamate,
+  nessun endpoint atomico.
 
 ### 4.4 Elimina componente
 
@@ -624,15 +705,6 @@ sono stati ritirati con i loro due campi (`20261002-67`).
 - Le regole temporali e di coerenza strutturale restano governate dal DB.
 - Il delete struttura BoM e' bloccato dal trigger
   `block_modifica_struttura`: usare 4.3 chiudere la riga (`valido_al`).
-
-### ~~4.5 Duplica versione componente~~ — rimosso 2026-05-08
-
-L'endpoint `POST .../duplica-versione/` e la DB function
-`catalogo.fn_duplica_componente_versione` sono stati rimossi.
-Il flow e' ora realizzato in 2 step FE usando gli endpoint esistenti:
-
-1. PATCH `valido_al` sulla sorgente (§4.3).
-2. POST nuova riga dal form precompilato (§4.1) — l'utente puo' personalizzare i valori prima di salvare.
 
 ---
 
@@ -695,6 +767,12 @@ all'articolo: il `comp_id` in URL fa da `target_riga_id`, che quindi **non** va
 messo nel body. Il resto del contratto — campi, stile, visibilita' — e' quello
 del §5.2.
 
+⛔ Il componente dev'essere **dell'articolo dell'URL**: articolo inesistente →
+404 `E_CATALOGO_ARTICOLO_NOT_FOUND`; componente inesistente o di un altro articolo
+→ 404 `E_CATALOGO_COMPONENTE_NOT_FOUND`, prima di leggere o scrivere le note (dal
+2026-10-21: prima `articolo_id` era ignorato, e le note di un componente altrui si
+leggevano e si scrivevano dall'URL di questo).
+
 
 ## 6. Conversioni UoM
 
@@ -709,10 +787,16 @@ del §5.2.
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
+| `search` | string | No | Ricerca libera (colonne dal catalogo della lista `catalogo.conversioni_uom`) |
 | `attivo` | bool | No | Filtro attivo/disattivo |
 | `uom_id` | int | No | Filtra le conversioni con `uom_id` come from o to |
+| `limit` | int | No | Default `25`, max `200` |
+| `offset` | int | No | Default `0` |
+| `order_by` | string | No | `uom_from_codice` (default), `uom_to_codice`, `fattore`, `valido_dal`, `valido_al` (vuoto = infinito), `attivo` |
+| `order_dir` | string | No | `asc`/`desc`. Assente: `asc`, salvo `valido_dal`/`valido_al` che partono `desc` |
 
-Lista completa, no paginazione (dataset tipicamente piccolo).
+Risposta: envelope paginato standard (`count`, `page`, `page_size`,
+`total_pages`, `results`): non è la lista completa.
 
 ### 6.2 Dettaglio conversione
 
@@ -817,11 +901,16 @@ permesso di **livello oggetto** sui rispettivi modelli.
 
 - Tutti gli endpoint richiedono JWT.
 - La ricerca libera delle liste (`search`) cade sulle colonne che il catalogo
-  della lista accende. Soglia: articoli e lookup articoli `400` sotto 3 caratteri
-  (`require_min_search_length`); tipologie UoM, unita` di misura e conversioni
-  sono tabelle di configurazione e cercano da un carattere.
-- Tutte le response detail e gli envelope lista UoM operativa includono
-  `non_editable_fields: string[]` (Fase 5) — il FE pilota i `:disabled`
+  della lista accende, con la soglia del catalogo: sotto soglia il termine non
+  filtra, senza `400`. Solo il lookup articoli (§2.1) risponde `400`
+  `E_SEARCH_VALIDATION` sotto 3 caratteri (`require_min_search_length`).
+- Liste paginate (articoli, tipologie UoM, unità di misura, conversioni,
+  distinta §4.1-bis): `limit`/`offset`, default `25`, max `200`; colonne data
+  senza `order_dir` ordinano `desc`.
+- `non_editable_fields: string[]` (Fase 5) sta su: dettaglio articolo,
+  envelope lista/lookup UoM operative, riga di create/update UoM operativa,
+  dettaglio conversione. **Non** c'è su dettaglio unità di misura, dettaglio
+  tipologia UoM, create/update componente. Il FE pilota i `:disabled`
   da questa lista invece di cablare regole. Source: vista
   `dbops.vw_non_editable_fields` (alias su `dbops.automation_lock_columns`)
   + gap noti hardcoded in `_NON_EDITABLE_DB_GAPS` (`catalogo_service`).
@@ -833,7 +922,7 @@ permesso di **livello oggetto** sui rispettivi modelli.
 - `E_CATALOGO_COMPONENTE_NOT_FOUND`
 - `E_CATALOGO_NOTA_NOT_FOUND`
 - `E_CATALOGO_CONV_NOT_FOUND`
-- `E_BOM_RIGA_NOT_FOUND` (Fase 3 — duplica versione)
+- `E_CATALOGO_UOM_TIPO_NOT_FOUND` (tipologia UoM)
 
 ### Codici errore (400 VALIDATION)
 
@@ -841,28 +930,11 @@ permesso di **livello oggetto** sui rispettivi modelli.
 - `E_DATA_AL_MINORE_DAL` (propagato dal guard comune delle date
   `script.trgfn_guard_date_validita` quando `chiudi_al < valido_dal`;
   fino al 2026-09-24 rispondeva `E_BOM_VALIDO_AL_INVALIDO`, ora ritirato)
-- `E_BOM_PRODOTTO_MISMATCH` (Fase 3 — la riga sorgente non appartiene
-  all'articolo target: FE stale)
-
-### Codici errore (409 CONFLICT)
-
-- `E_BOM_SORGENTE_GIA_CHIUSA` (Fase 3 — duplica su riga gia' chiusa)
-- `E_BOM_VERSIONE_OVERLAP` (Fase 3 — overlap su EXCLUDE GIST con
-  versione futura)
-
-### Idempotency-Key
-
-- `POST /articoli/{id}/componenti/{cid}/duplica-versione/` (Fase 3)
-  richiede header `Idempotency-Key: <UUID v4>`. Senza il header il helper
-  `handle_post_json(require_idempotency_key=True)` rifiuta con 400
-  (`E_IDEMPOTENCY_KEY_REQUIRED`).
 
 ### Pattern view
 
-Le view write a regime usano `handle_post_json(...)`. Nel perimetro Fasi
-1..5 i `POST` lo usano gia' (con `require_idempotency_key=True` per le
-operazioni atomiche stato-changing); alcune `PATCH` legacy del dominio
-sono ancora dirette e vanno considerate debito tecnico noto.
+I `POST` usano `handle_post_json(...)`; nessuno richiede l'header
+`Idempotency-Key`. Le `PATCH` leggono il corpo con `corpo_oggetto(request)`.
 
 ## Dipendenze DB
 
@@ -890,7 +962,6 @@ sono ancora dirette e vanno considerate debito tecnico noto.
 - Il dettaglio articolo e' gia' pensato come payload aggregato per il frontend `catalogo`.
 - Le query lista usano viste DB per evitare join Python ripetitivi.
 - La documentazione copre il perimetro Fasi 1..5 del WIP refactor catalogo.
-- Fasi 3+4+5 (28-04-2026): endpoint atomico duplica versione BoM,
-  fallback `valido_dal=today` lato service, metadata `non_editable_fields`
-  su detail/envelope. Vedi
+- Fasi 4+5 (28-04-2026): fallback `valido_dal=today` lato service, metadata
+  `non_editable_fields` (perimetro in §Regole trasversali). Vedi
   [analisi-refactor.frontend-catalogo](/dev/work-done/analisi-refactor.frontend-catalogo).

@@ -16,7 +16,7 @@
 ---
 
 ### 🎯 Scopo Principale
-(latest review 14-04-26)
+(latest review 2026-10-14: l'articolo ammesso, D-6)
 
 `vendite.promo_articoli` e' l'**overlay promo** del sistema pricing v5: rappresenta un'offerta temporale per la coppia `(articolo, uom)` che **batte** tutto il resto nel resolver (STADIO 0). La promo si applica **sopra** il prezzo base risolto dagli stadi inferiori (contratto o categoria), mai su un prezzo gia' scontato.
 
@@ -62,6 +62,7 @@ Caratteristiche principali:
 * **Range di validita'**: `validita` e' una colonna generata, `daterange(valido_dal, valido_al, '[]')`. L'inversione delle date la rifiuta il guard comune `script.trgfn_guard_date_validita` (automazione `DATE_VALIDITA`) con `E_DATA_AL_MINORE_DAL`, prima che il costruttore del daterange arrivi al suo errore tecnico.
 * **Valore variazione**: nessun vincolo sul segno (il CHECK `chk_promo_articoli_valore` rimosso il 15-04-2026 perche' restringeva inutilmente la semantica algebrica del resolver: negativo=sconto, positivo=maggiorazione).
 * **`ex_promo_articoli_no_overlap`**: nessuna sovrapposizione temporale per la stessa coppia `(articolo_id, uom_id)` quando `attivo IS TRUE`. Implementato come `EXCLUDE USING gist` (richiede `btree_gist`, gia' attivo dalla baseline).
+* **Quale articolo** (dal 2026-10-14, D-6 di brief-db-articoli-ammessi-per-documento): una promo si crea solo se il calcolo del prezzo la può applicare. Un articolo **solo componente** non ha un prezzo suo, e dentro un kit il resolver non applica le promo: è rifiutato con `E_PROMO_ARTICOLO_SOLO_COMPONENTE`, all'INSERT e quando cambia l'articolo. Il **composito** è ammesso: riceve la promo quando il contratto gli dà un prezzo con un'eccezione. La regola sta in [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga) (documento `PROMO_ARTICOLO`), e il picker [catalogo.fn_articoli_ammessi](/dbzero/catalogo/manual/fn_articoli_ammessi) la mostra prima della scelta.
 
 ---
 
@@ -86,6 +87,12 @@ due date lo verifica il guard comune `script.trgfn_guard_date_validita`, montato
 dall'automazione `DATE_VALIDITA`.
 
 Trigger di audit e `tx_id` si applicano per policy globale del progetto (vedi `linee-guida-trigger.md`).
+
+`trg_promo_articoli_a10_guard_articolo_ammesso_ins_upd` (dal 2026-10-14): il guard di tabella
+delle righe che scelgono un articolo,
+[script.trgfn_righe_guard_articolo_ammesso](/dbzero/script/manual/trgfn_righe_guard_articolo_ammesso),
+montato con `('PROMO_ARTICOLO', 'id')`. Parla prima del guard delle date
+(`…_a10_guard_data_driven`).
 
 ---
 

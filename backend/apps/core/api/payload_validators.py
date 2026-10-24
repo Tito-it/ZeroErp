@@ -3,14 +3,14 @@ from __future__ import annotations
 import math
 import re
 from datetime import date, datetime
-from typing import Any
+from typing import Any, overload
 from uuid import UUID
 
 from rest_framework.exceptions import ParseError
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.request_parsers import oggetto_json, parse_iso_date
-from apps.core.services.payload_helpers import BIGINT_MAX, BIGINT_MIN
+from apps.core.services.payload_helpers import BIGINT_MAX, BIGINT_MIN, PayloadValidator
 from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
 
 # Validator centralizzati payload API (riusabili cross-domain).
@@ -85,39 +85,35 @@ def password_digitata(payload: dict[str, Any], key: str) -> str:
 # Helper query-params GET (riusabili da qualsiasi view GET)
 # ------------------------------------------------------------------
 
-# Scopo: Normalizza parametro booleano da query string con default configurabile.
-def qp_bool(raw: str | None, default: bool = True) -> bool:
+# Scopo: ⭐ Il flag `name` della QUERY STRING (o di un campo multipart): una
+#        stringa per natura, letta con UN vocabolario solo — `true`/`false`,
+#        maiuscole e spazi ai lati ammessi. Assente o vuoto -> `default`; ogni
+#        altro valore -> `ValueError(f"{name}_invalid")`, cioe' il 400
+#        `E_VALIDATION_INPUT` del middleware.
+# ⛔ Decisione Tid 2026-10-20 (brief-be-verifica-documentazione-api §A6). Fino a
+#    quel giorno i flag in query avevano QUATTRO letture: `qp_bool` (tutto cio'
+#    che non era `0/false/no/n/off` valeva true: `?attivo=banana` era true),
+#    `as_bool` e `_parse_optional_bool` di amm-software (tutto cio' che non era
+#    `1/true/yes/on` valeva false), e questa, rigorosa ma con `1/yes/y/on`. Lo
+#    stesso valore sbagliato era vero in un endpoint e falso in un altro,
+#    sempre in silenzio. Le tre copie sono ritirate.
+# ⚠️ Il CORPO JSON ha la sua regola (`optional_bool`: solo booleani JSON), perche'
+#    li' il tipo c'e'. Qui si legge una stringa.
+@overload
+def qp_bool_optional(raw: str | None, name: str, default: bool) -> bool: ...
+@overload
+def qp_bool_optional(raw: str | None, name: str, default: None = None) -> bool | None: ...
+def qp_bool_optional(raw: str | None, name: str, default: bool | None = None) -> bool | None:
     if raw is None:
         return default
-    return raw.strip().lower() not in {"0", "false", "no", "n", "off"}
-
-
-# Scopo: Parametro booleano OPZIONALE e RIGOROSO da query string.
-#        None se assente o vuoto; True/False sui token riconosciuti;
-#        ValueError(f"{name}_invalid") su valore non riconosciuto (no coercion
-#        silenziosa). Simmetrico a qp_int_optional. NB: `?x=` (vuoto) -> None,
-#        come chiave assente.
-def qp_bool_optional(raw: str | None, name: str) -> bool | None:
-    if raw is None:
-        return None
     val = raw.strip().lower()
     if val == "":
-        return None
-    if val in {"1", "true", "yes", "y", "on"}:
+        return default
+    if val == "true":
         return True
-    if val in {"0", "false", "no", "n", "off"}:
+    if val == "false":
         return False
     raise ValueError(f"{name}_invalid")
-
-
-# Scopo: Normalizza parametro intero da query string con default configurabile.
-def qp_int(raw: str | None, default: int) -> int:
-    if raw is None:
-        return default
-    try:
-        return int(raw.strip())
-    except (ValueError, AttributeError):
-        return default
 
 
 # Scopo: Converte parametro intero da query string; solleva ValueError se non
@@ -204,6 +200,55 @@ def qp_str_upper(raw: str | None) -> str | None:
 # ------------------------------------------------------------------
 
 
+# Scopo: ⛔ Una lista che pagina con `limit`/`offset` rifiuta `page`/`page_size`
+#        con un 400 (`page_non_ammesso_usare_limit_offset`), invece di ignorarli
+#        (decisione Tid 2026-10-20, brief-be-verifica-documentazione-api §A3).
+#        Fino a quel giorno chi li mandava riceveva sempre la prima pagina,
+#        di 25 righe, senza un errore a dirlo: la tab competenze chiedeva
+#        `page_size: 200` agli operatori e ne vedeva 25.
+#        Dal 2026-10-21 c'e' un dialetto solo: nessuna lista legge piu'
+#        `page`/`page_size` (fino a quel giorno li leggevano dashboard,
+#        tracciamento, note, lotti, pagamenti, lookup codici, ricerca).
+# ⭐ Regola del 2: lo chiama `parse_list_params` e ogni lista che legge
+#    `limit`/`offset` a mano.
+def richiedi_limit_offset(qp) -> None:
+    for estraneo in ("page", "page_size"):
+        if qp.get(estraneo) is not None:
+            raise ValueError(f"{estraneo}_non_ammesso_usare_limit_offset")
+
+
+# Scopo: `limit`/`offset` di una lista dalla query string, in UN punto:
+#        `page`/`page_size` rifiutati (`richiedi_limit_offset`), un valore
+#        illeggibile e' un 400 (`limit_invalid`/`offset_invalid`), e un valore
+#        FUORI DAI LIMITI anche: `limit` fra 1 e `max_limit`
+#        (`limit_fuori_limiti_1_<max>`), `offset` non negativo
+#        (`offset_negativo`). Ritorna `(limit, offset)`.
+# ⭐ Regola del 2 (ok Tid 2026-10-21): la stessa coppia era letta in quattro
+#    modi — ripiego muto sul default (`qp_int`, ritirato), 400 col campo
+#    sbagliato `v` (`optional_int({"v": …})`), `limit=0` che diventava 25 in
+#    una lista e 1 in un'altra. Lo usano `parse_list_params` e ogni lista che
+#    non passa da li'.
+# ⛔ `?limit=abc` e' un 400 (decisione Tid 2026-10-21): il ripiego sul default
+#    restituiva la prima pagina a chi ne aveva chiesta un'altra.
+# ⛔ E dallo stesso giorno anche il FUORI LIMITE (Tid): `limit=500` su una
+#    lista da 200 veniva ridotto a 200 in silenzio (`limiti_pagina`), e chi
+#    chiedeva «tutto» riceveva una parte credendola il tutto — una tendina
+#    troncata senza dirlo. La policy lo dichiarava gia' (rifiuto, non
+#    riduzione); il clamp di `limiti_pagina` resta la difesa dei repository,
+#    non la risposta all'utente.
+def pagina_da_query(
+    qp, *, default_limit: int = DEFAULT_LIMIT, max_limit: int = MAX_LIMIT,
+) -> tuple[int, int]:
+    richiedi_limit_offset(qp)
+    limit = qp_int_strict(qp.get("limit"), "limit", default_limit)
+    offset = qp_int_strict(qp.get("offset"), "offset", 0)
+    if not 1 <= limit <= max_limit:
+        raise ValueError(f"limit_fuori_limiti_1_{max_limit}")
+    if offset < 0:
+        raise ValueError("offset_negativo")
+    return limit, offset
+
+
 # Scopo: Parsing standard parametri lista paginata da query string.
 # Restituisce dict con search, limit, offset, order_by, order_dir, page.
 def parse_list_params(
@@ -213,13 +258,12 @@ def parse_list_params(
     default_limit: int = DEFAULT_LIMIT,
     max_limit: int = MAX_LIMIT,
 ) -> dict:
-    search = qp_str(qp.get("search"))
     # ⚠️ Il limite sta fra 1 e `max_limit`, l'offset non e' negativo: i
     #    repository li riportano gia' nei limiti, ma l'envelope si calcola da
     #    QUESTI valori — con `limit=0` usciva `page_size: 0` accanto a una
     #    pagina di righe, cioe' un paginatore che non torna.
-    limit = max(1, min(qp_int(qp.get("limit"), default_limit), max_limit))
-    offset = max(0, qp_int(qp.get("offset"), 0))
+    limit, offset = pagina_da_query(qp, default_limit=default_limit, max_limit=max_limit)
+    search = qp_str(qp.get("search"))
     order_by = qp.get("order_by") or default_order
     # ⛔ Assente = `None`, NON "asc" (2026-09-26). Il ripiego su "asc"
     #    annullava il default dei repository (`default_desc`, `colonne_desc`),
@@ -228,7 +272,7 @@ def parse_list_params(
     #    rileggeva la direzione grezza dalla query string. La direzione si
     #    VALIDA a valle (`order_dir_ammessa`, nel service o nel BB SQL).
     order_dir = qp_str(qp.get("order_dir"))
-    page = (offset // limit) + 1
+    page = pagina_di(offset, limit)
     return {
         "search": search,
         "limit": limit,
@@ -242,6 +286,25 @@ def parse_list_params(
 # ------------------------------------------------------------------
 # Envelope paginato standard (riusabile da qualsiasi service)
 # ------------------------------------------------------------------
+
+# Scopo: il numero della pagina (da 1) che una finestra `limit`/`offset` mostra.
+#        Sede unica: lo usano `parse_list_params` ed `envelope_da_offset`.
+def pagina_di(offset: int, limit: int) -> int:
+    return offset // limit + 1 if limit > 0 else 1
+
+
+# Scopo: ⭐ L'envelope paginato di una lista letta con `limit`/`offset`: lo
+#        stesso di `paginated_envelope`, con la pagina ricavata dall'offset.
+# ⛔ Dal 2026-10-21 le liste parlano un dialetto solo, `limit`/`offset`
+#    (Tid, brief-be-verifica-documentazione-api §A3, seguito): quelle che
+#    leggevano `page`/`page_size` calcolavano l'offset dalla pagina e l'envelope
+#    a mano, ognuna col suo helper (`risposta_paginata`, `_build_list_response`…).
+#    La risposta NON cambia per il client: `page` e `page_size` restano.
+def envelope_da_offset(
+    results: list, total_count: int, *, limit: int, offset: int,
+) -> dict[str, Any]:
+    return paginated_envelope(results, total_count, pagina_di(offset, limit), limit)
+
 
 # Scopo: Costruisce l'envelope paginato standard con count, page, page_size, total_pages, results.
 def paginated_envelope(
@@ -279,20 +342,19 @@ def optional_int(payload: dict[str, Any], key: str, *, zero_as_none: bool = Fals
     raise ValueError(f"{key}_invalid")
 
 
-# Scopo: Valida e converte il campo opzionale `bool` mantenendo `None` se assente.
+# Scopo: Il flag `key` del CORPO JSON: assente o `null` -> `default`.
+# ⛔ Una regola sola per il corpo, ed e' quella di `PayloadValidator.optional_bool`,
+#    a cui questa funzione delega: un flag e' un booleano JSON, e qualunque altra
+#    cosa — `"false"`, `"1"`, `0` — e' un 400 `E_VALIDATION_INPUT` col campo.
+#    JSON ha il tipo: accettare una stringa vuol dire indovinarlo. Fino al
+#    2026-10-20 qui si accettava un vocabolario di stringhe (`"off"`, `"y"`…)
+#    diverso da quello di `as_bool` e rifiutato dal BB dei service: tre letture
+#    dello stesso flag (brief-be-verifica-documentazione-api §3).
+# ⚠️ Query string e multipart NON passano di qui: li' ogni valore e' una stringa
+#    per natura, e si leggono coi loro BB (`qp_bool_optional`, …).
 def optional_bool(payload: dict[str, Any], key: str, default: bool = False) -> bool:
-    value = payload.get(key)
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"1", "true", "yes", "y", "on"}:
-            return True
-        if normalized in {"0", "false", "no", "n", "off"}:
-            return False
-    raise ValueError(f"{key}_invalid")
+    value = PayloadValidator(validation_code=E_VALIDATION_INPUT).optional_bool(payload, key)
+    return default if value is None else value
 
 
 # Scopo: Valida e converte il campo opzionale `iso_date` mantenendo `None` se assente.

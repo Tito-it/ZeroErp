@@ -36,7 +36,7 @@ l'ultimo evento per ogni `sid`.
 |---|---|---|
 | `search` | string | Ricerca libera sulle colonne accese a catalogo (`user_agent`, `ip_address`); sotto la soglia della lista non filtra |
 | `limit` / `offset` | integer | Paginazione (default 25, massimo 200) |
-| `order_by` | string | `ip_address`, `data_ultimo_evento`, `data_inizio`; fuori whitelist = default |
+| `order_by` | string | `ip_address`, `data_ultimo_evento`, `data_inizio`; fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
 | `order_dir` | string | `asc` / `desc`; assente = DESC sulle date |
 
 Senza ordinamento: `data_ultimo_evento` DESC, spareggio sul `sid`.

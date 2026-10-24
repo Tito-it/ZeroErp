@@ -7,6 +7,8 @@ CREATE FUNCTION fn_cancella_fondo_fattura(p_source_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_cancella_fondo_fattura(p_source_id bigint)
  RETURNS TABLE(deleted_righe integer, deleted_fondi integer, deleted_source integer)
@@ -238,6 +240,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_cancella_fondo_fattura(p_source_id bigint)
 IS 'Cancella un atto di fondo fattura che non e'' ancora diventato un fatto, oppure RIFIUTA dicendo perche''. ⭐ Si cancella e non si annulla: e'' la stessa scelta gia'' presa dal changeSet 20260821-54 sul reset — un atto che non e'' mai diventato un fatto non lascia una riga di registro, lascia il posto vuoto che aveva prima. Supera D-12, che proponeva il passaggio ad ANNULLATO con motivo (G-1, Tid 2026-08-29). ⭐ Il criterio NON e'' qui: sta in vendite.fn_check_fondo_cancellabile, che questa funzione legge UNA VOLTA SOLA e mappa su quattro codici — E_FONDO_NON_TROVATO (dove «non esiste» e «non e'' tuo» devono restare indistinguibili), E_FONDO_NON_CANCELLABILE per i tre motivi che parlano di denaro (con la `cause` nel contesto, come i due W_ del reset), E_FONDO_FIGLIA_CONGELATA e E_FONDO_TRATTENUTO_DA_SISTEMAZIONE. ⚠️ Leggerlo due volte sarebbe il difetto gia'' pagato in Fase C: accettare meta'' condizione e rifiutare l''altra. ⭐ E'' la sede UNICA dei tre DELETE nell''ordine che la FK NO ACTION impone (righe contabili -> fondo applicato -> atto): da qui fn_reset_fondi_fattura smette di scriverlo inline e chiama questa. ⚠️ La tabella non e'' storicizzata: il DELETE e'' definitivo, e per il riporto la traccia resta su pagamenti.sistemazioni che va ad ANNULLATA con il motivo — e'' il registro a ricordare, non la conseguenza. ⚠️ Cancellare RIAPRE la rigenerazione automatica, perche'' l''«atto unico» di fn_fondo_fattura_proponibile guarda se un atto esiste in qualunque stato: sul riporto e'' il comportamento giusto, ma va detto. ⭐ E_FONDO_FIGLIA_CONGELATA non riusa E_FATTURA_SATELLITE_CONGELATO benche'' sia la stessa regola sulla stessa soglia: quel messaggio riceve TG_TABLE_NAME nel VARIADIC, cioe'' metterebbe il nome di una tabella nella frase che l''operatore legge. Consumatori: pagamenti.fn_annulla_sistemazione (D-25) e l''endpoint DELETE /api/v1/vendite/fondi-fattura/{id}/ (BE-4). D-21 di brief-db-fondo-fattura-ricalcolo-e-governo §9.5, §9.6-b, §9.7. ⭐ Rev 2026-09-14 (D17, brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga): il DELETE delle righe contabili passa dal guard del contenuto della distinta (pagamenti.trgfn_vendite_contabili_righe_guard_contenuto), che sotto una GENERATA risponde DISTINTA_NON_MANUALE perche'' quel predicato e'' il cestino dell''OPERATORE. Qui il DELETE e'' del giro, che ha gia'' letto il SUO criterio: si dichiara con la GUC transazionale zeroerp.allow_contabile_riga_delete_override (SET LOCAL ''on'' prima, '''' dopo — richiusa, o i DELETE successivi della transazione passerebbero per sottrazione). Precedente: fn_change_user_emittenti_scope. Nessun predicato e nessun conteggio e'' cambiato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

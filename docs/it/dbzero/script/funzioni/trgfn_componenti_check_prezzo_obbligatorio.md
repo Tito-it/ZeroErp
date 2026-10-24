@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_componenti_check_prezzo_obbligatorio()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_componenti_check_prezzo_obbligatorio()
  RETURNS trigger
@@ -49,6 +51,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_componenti_check_prezzo_obbligatorio()
 IS 'Trigger BEFORE INS/UPD su *_righe_componenti: blocca prezzo_unitario=0 se articoli_componenti.obbligatorio=TRUE. Opzionali e padre ammettono 0. Raise E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO (444). rev 2026-05-13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

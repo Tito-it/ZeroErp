@@ -9,6 +9,12 @@
 -- ⚠️ Il test COSTRUISCE lo stato: spegne gestito_a_magazzino su tutti gli
 --   articoli (in transazione) per il caso NESSUNO_MARCATO, e ne costruisce
 --   uno marcato per il caso MARCATI. Non dipende dalla popolazione.
+-- ⛔ rev 2026-10-13: dal 20261013-48 un articolo USATO non cambia
+--   gestito_a_magazzino (A-10 di brief-db-articoli-ammessi-per-documento): lo
+--   spegnimento passa dalla porta amministratore, il verbo
+--   catalogo.fn_articolo_correggi_struttura, come un SUPER_ADMIN costruito.
+--   Per tutti, usati o no: una porta sola, e il test non sceglie per conto suo
+--   quali articoli sono usati.
 --
 -- Elenco test (plan 6):
 --   1) la vista ha UNA riga
@@ -26,7 +32,16 @@ SELECT plan(6);
 
 SELECT is((SELECT count(*) FROM dbops.vw_articoli_a_magazzino_prontezza), 1::bigint, '1) una riga sola');
 
-UPDATE catalogo.articoli SET gestito_a_magazzino = false WHERE gestito_a_magazzino;
+CREATE TEMP TABLE _sa AS SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP-SA-prontezza', true);
+DO $spegni$
+DECLARE v_id catalogo.articoli.id%TYPE;
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _sa));
+    FOR v_id IN SELECT a.id FROM catalogo.articoli a WHERE a.gestito_a_magazzino LOOP
+        PERFORM catalogo.fn_articolo_correggi_struttura(v_id, '{"gestito_a_magazzino": false}'::jsonb);
+    END LOOP;
+    PERFORM script.fn_pgtap_set_contesto_operatore();
+END $spegni$;
 SELECT is(
     (SELECT (stato, dbops.fn_conta_presidio('dbops.vw_articoli_a_magazzino_prontezza'))::text FROM dbops.vw_articoli_a_magazzino_prontezza),
     '(NESSUNO_MARCATO,1)',

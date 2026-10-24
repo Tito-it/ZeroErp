@@ -1,0 +1,236 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA REGOLA BA_OWNERSHIP SCRITTA UNA VOLTA
+#   script.fn_scope_ba_ownership(bigint, bigint)
+#   script.fn_scope_ba_ownership_via_fattura(bigint, bigint)
+#   script.fn_scope_ba_ownership_via_fattura_sdi(bigint, bigint)
+#   Brief: brief-db-perimetro-una-volta-famiglie-residue §6 (giro 2).
+#
+# Le policy del portale passano ai building block nuovi (-29, -30, -32).
+# Queste tre restano per la domanda su UNA riga: fn_scope_ba_ownership e'
+# la funzione della regola nel catalogo config.scope_policy, e le chiamano
+# ancora fn_scope_shop_via_ba e fn_scope_note_cliente (giri successivi).
+# Si riscrivono come COMPOSIZIONE dei building block, cosi' la regola resta
+# scritta una volta (regola del 2): nessuna lettura propria di identita',
+# billing account o fattura.
+# ⚠️ Una differenza, voluta e dichiarata: fn_scope_ba_ownership_via_fattura
+#   (e quindi via_fattura_sdi) non guardava la veste dell'identita', mentre
+#   fn_scope_ba_ownership pretende una veste di cliente. Erano due copie della
+#   stessa regola (BA_OWNERSHIP, «l'identita' cliente vede...») che dicevano
+#   due cose: da oggi pretendono entrambe la veste di cliente. Nel percorso
+#   reale non cambia niente: le chiamano policy col gate CLIENTE_PORTALE, e il
+#   middleware imposta la veste dalla stessa riga dell'identita'.
+# Firme %TYPE, COST 5000, INVOKER. Rollback: corpi e COMMENT vivi (dbdev e
+# scratch identici, 2026-10-21).
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261021-31-update-fn-scope-ba-ownership-su-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261021-31-update-fn-scope-ba-ownership-su-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_scope_ba_ownership, _via_fattura e _via_fattura_sdi diventano la composizione dei building block delle policy di controparte (perimetro, risolutore, confronto): la regola BA_OWNERSHIP scritta una volta. Giro 2 di brief-db-perimetro-una-volta-famiglie-residue.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('script.fn_get_identita_sr_perimetro(bigint,config.ruolo_applicativo[])'),
+                             to_regprocedure('script.fn_scope_sr_perimetro(bigint,bigint)'),
+                             to_regprocedure('script.fn_resolve_controparte_sr_id(text,bigint)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE,
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- Scopo: l'identita' (veste di cliente, CLIENTE_PORTALE o SHOP_CUSTOMER,
+                  --   utilizzabile oggi) e' il cliente del billing account? Fail-closed:
+                  --   identita' o BA NULL o inesistenti -> false.
+                  -- Il filtro canale_origine resta alle policy (portale senza, shop con SHOP).
+                  -- ⭐ Rev 2026-10-21 (20261021-31, giro 2 di brief-db-perimetro-una-volta-
+                  --   famiglie-residue): la regola BA_OWNERSHIP e' scritta UNA volta, nei
+                  --   building block delle policy: il perimetro dell'identita'
+                  --   (script.fn_get_identita_sr_perimetro: veste di cliente, utilizzabile
+                  --   oggi), il cliente della riga (script.fn_resolve_controparte_sr_id,
+                  --   DEFINER: niente policy del padre rieseguita) e il confronto
+                  --   (script.fn_scope_sr_perimetro). Questa resta per la domanda su UNA
+                  --   riga (catalogo config.scope_policy, adattatori che la chiamano); le
+                  --   policy del portale non passano piu' di qui (20261021-32).
+                  SELECT script.fn_scope_sr_perimetro(
+                      script.fn_get_identita_sr_perimetro(
+                          p_identita_id,
+                          ARRAY['CLIENTE_PORTALE', 'SHOP_CUSTOMER']::config.ruolo_applicativo[]),
+                      script.fn_resolve_controparte_sr_id('billing_account', p_billing_account_id))
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ba_ownership(anagrafiche.identita_digitali.id%TYPE, anagrafiche.billing_account.id%TYPE) IS
+              'Scope policy BA_OWNERSHIP ruolo-aware (post 20-04-2026): true se l''identita e'' in veste cliente (CLIENTE_PORTALE o SHOP_CUSTOMER) attiva e condivide il soggetto_ruolo col BA. Il filtro canale_origine e'' demandato alle policy RLS (portale B2B senza filtro, shop con canale=SHOP). STABLE, inlineable, fail-closed. Rev 2026-10-07 (brief-db-veste-utilizzabile): «attiva» e'' diventata «utilizzabile oggi» (script.fn_veste_utilizzabile): una veste scaduta non vede piu'' i suoi dati. Rev 2026-10-21 (20261021-31, giro 2 di brief-db-perimetro-una-volta-famiglie-residue): la regola e'' scritta una volta nei building block delle policy (script.fn_get_identita_sr_perimetro, script.fn_resolve_controparte_sr_id, script.fn_scope_sr_perimetro) e questa li compone per la domanda su una riga; le policy del portale non passano piu'' di qui. Pretende la veste di cliente (CLIENTE_PORTALE o SHOP_CUSTOMER).';
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership_via_fattura(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE,
+                  p_fattura_id vendite.fatture.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- Scopo: l'identita' e' il cliente del billing account della fattura?
+                  --   Fattura inesistente -> false (fail-closed).
+                  -- ⚠️ Rev 2026-10-21: da oggi pretende anche la veste di cliente, come
+                  --   fn_scope_ba_ownership. Prima non la guardava: due copie della stessa
+                  --   regola che dicevano due cose (regola del 2).
+                  -- ⭐ Rev 2026-10-21 (20261021-31, giro 2 di brief-db-perimetro-una-volta-
+                  --   famiglie-residue): la regola BA_OWNERSHIP e' scritta UNA volta, nei
+                  --   building block delle policy: il perimetro dell'identita'
+                  --   (script.fn_get_identita_sr_perimetro: veste di cliente, utilizzabile
+                  --   oggi), il cliente della riga (script.fn_resolve_controparte_sr_id,
+                  --   DEFINER: niente policy del padre rieseguita) e il confronto
+                  --   (script.fn_scope_sr_perimetro). Questa resta per la domanda su UNA
+                  --   riga (catalogo config.scope_policy, adattatori che la chiamano); le
+                  --   policy del portale non passano piu' di qui (20261021-32).
+                  SELECT script.fn_scope_sr_perimetro(
+                      script.fn_get_identita_sr_perimetro(
+                          p_identita_id,
+                          ARRAY['CLIENTE_PORTALE', 'SHOP_CUSTOMER']::config.ruolo_applicativo[]),
+                      script.fn_resolve_controparte_sr_id('fattura', p_fattura_id))
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ba_ownership_via_fattura(anagrafiche.identita_digitali.id%TYPE, vendite.fatture.id%TYPE) IS
+              'Scope policy BA_OWNERSHIP via fattura: ritorna true se il billing_account della fattura target appartiene al soggetto_ruolo dell''identita (via BA.soggetto_ruolo_id). Wrapper per tabelle figlie senza billing_account_id diretto (es. vendite.fatture_scadenze). STABLE, inlineable. Rev 2026-10-07 (brief-db-veste-utilizzabile): l''identita'' deve essere utilizzabile oggi (script.fn_veste_utilizzabile), non solo accesa. Rev 2026-10-21 (20261021-31, giro 2 di brief-db-perimetro-una-volta-famiglie-residue): la regola e'' scritta una volta nei building block delle policy (script.fn_get_identita_sr_perimetro, script.fn_resolve_controparte_sr_id, script.fn_scope_sr_perimetro) e questa li compone per la domanda su una riga; le policy del portale non passano piu'' di qui. Pretende la veste di cliente (CLIENTE_PORTALE o SHOP_CUSTOMER).';
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership_via_fattura_sdi(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE,
+                  p_sdi_id vendite.fatture_sdi.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- Scopo: veste CLIENTE_PORTALE per gli eventi SDI: l'identita' e' il
+                  --   cliente della fattura dell'invio?
+                  -- ⚠️ Esiste perche' i satelliti devono rispecchiare TUTTE le
+                  --   vesti della testata: `vendite.fatture` ne ha due.
+                  -- ⭐ Rev 2026-10-21 (20261021-31, giro 2 di brief-db-perimetro-una-volta-
+                  --   famiglie-residue): la regola BA_OWNERSHIP e' scritta UNA volta, nei
+                  --   building block delle policy: il perimetro dell'identita'
+                  --   (script.fn_get_identita_sr_perimetro: veste di cliente, utilizzabile
+                  --   oggi), il cliente della riga (script.fn_resolve_controparte_sr_id,
+                  --   DEFINER: niente policy del padre rieseguita) e il confronto
+                  --   (script.fn_scope_sr_perimetro). Questa resta per la domanda su UNA
+                  --   riga (catalogo config.scope_policy, adattatori che la chiamano); le
+                  --   policy del portale non passano piu' di qui (20261021-32).
+                  SELECT script.fn_scope_sr_perimetro(
+                      script.fn_get_identita_sr_perimetro(
+                          p_identita_id,
+                          ARRAY['CLIENTE_PORTALE', 'SHOP_CUSTOMER']::config.ruolo_applicativo[]),
+                      script.fn_resolve_controparte_sr_id('fattura_sdi', p_sdi_id))
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ba_ownership_via_fattura_sdi(anagrafiche.identita_digitali.id%TYPE, vendite.fatture_sdi.id%TYPE) IS
+              'Come fn_scope_ef_whitelist_via_fattura_sdi ma per la veste CLIENTE_PORTALE. ⚠️ Esiste perche'' vendite.fatture ha DUE vesti e ogni satellite le rispecchia entrambe: con la sola veste operatore un cliente del portale smetterebbe di vedere gli eventi SDI delle proprie fatture. Rev 2026-10-21 (20261021-31, giro 2 di brief-db-perimetro-una-volta-famiglie-residue): la regola e'' scritta una volta nei building block delle policy (script.fn_get_identita_sr_perimetro, script.fn_resolve_controparte_sr_id, script.fn_scope_sr_perimetro) e questa li compone per la domanda su una riga; le policy del portale non passano piu'' di qui. Pretende la veste di cliente (CLIENTE_PORTALE o SHOP_CUSTOMER).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE,
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- =========================================================
+                  -- Scope policy BA_OWNERSHIP, versione ruolo-aware.
+                  -- Ritorna true se:
+                  --   1. l'identita (p_identita_id) e' utilizzabile oggi
+                  --      (script.fn_veste_utilizzabile, rev 2026-10-07)
+                  --   2. l'identita e' in veste cliente (CLIENTE_PORTALE o
+                  --      SHOP_CUSTOMER) — filtro interno alla fn
+                  --   3. il billing_account ha lo stesso soggetto_ruolo
+                  --      dell'identita
+                  -- Fail-closed: NULL o identita inesistente/inattiva -> false.
+                  -- STABLE, inlineable dal planner. Usata sia dal portale
+                  -- B2B (policy senza filtro canale) sia dallo shop (policy
+                  -- con filtro canale_origine='SHOP' aggiuntivo).
+                  -- =========================================================
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                        JOIN anagrafiche.billing_account  ba
+                          ON ba.soggetto_ruolo_id = id.soggetto_ruolo_id
+                       WHERE id.id                = p_identita_id
+                         -- Rev 2026-10-07: utilizzabile oggi, non solo accesa.
+                         AND script.fn_veste_utilizzabile(id.id)
+                         AND id.ruolo_applicativo IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                         AND ba.id                = p_billing_account_id
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ba_ownership(anagrafiche.identita_digitali.id%TYPE, anagrafiche.billing_account.id%TYPE) IS
+              'Scope policy BA_OWNERSHIP ruolo-aware (post 20-04-2026): true se l''identita e'' in veste cliente (CLIENTE_PORTALE o SHOP_CUSTOMER) attiva e condivide il soggetto_ruolo col BA. Il filtro canale_origine e'' demandato alle policy RLS (portale B2B senza filtro, shop con canale=SHOP). STABLE, inlineable, fail-closed. Rev 2026-10-07 (brief-db-veste-utilizzabile): «attiva» e'' diventata «utilizzabile oggi» (script.fn_veste_utilizzabile): una veste scaduta non vede piu'' i suoi dati.';
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership_via_fattura(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE,
+                  p_fattura_id vendite.fatture.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- Join fattura -> billing_account -> identita: il cliente
+                  -- dell'identita e quello del BA della fattura devono
+                  -- coincidere. Fattura inesistente -> false (fail-closed).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.fatture              f
+                        JOIN anagrafiche.billing_account  ba
+                          ON ba.id = f.billing_account_id
+                        JOIN anagrafiche.identita_digitali id
+                          ON id.soggetto_ruolo_id = ba.soggetto_ruolo_id
+                       WHERE f.id      = p_fattura_id
+                         AND id.id     = p_identita_id
+                         -- Rev 2026-10-07: utilizzabile oggi, non solo accesa.
+                         AND script.fn_veste_utilizzabile(id.id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ba_ownership_via_fattura(anagrafiche.identita_digitali.id%TYPE, vendite.fatture.id%TYPE) IS
+              'Scope policy BA_OWNERSHIP via fattura: ritorna true se il billing_account della fattura target appartiene al soggetto_ruolo dell''identita (via BA.soggetto_ruolo_id). Wrapper per tabelle figlie senza billing_account_id diretto (es. vendite.fatture_scadenze). STABLE, inlineable. Rev 2026-10-07 (brief-db-veste-utilizzabile): l''identita'' deve essere utilizzabile oggi (script.fn_veste_utilizzabile), non solo accesa.';
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership_via_fattura_sdi(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE,
+                  p_sdi_id vendite.fatture_sdi.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- Scopo: veste CLIENTE_PORTALE per gli eventi SDI.
+                  -- ⚠️ Esiste perche' i satelliti devono rispecchiare TUTTE le
+                  --   vesti della testata: `vendite.fatture` ne ha due.
+                  SELECT script.fn_scope_ba_ownership_via_fattura(
+                      p_identita_id,
+                      (SELECT s.fattura_id
+                         FROM vendite.fatture_sdi s
+                        WHERE s.id = p_sdi_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ba_ownership_via_fattura_sdi(anagrafiche.identita_digitali.id%TYPE, vendite.fatture_sdi.id%TYPE) IS
+              'Come fn_scope_ef_whitelist_via_fattura_sdi ma per la veste CLIENTE_PORTALE. ⚠️ Esiste perche'' vendite.fatture ha DUE vesti e ogni satellite le rispecchia entrambe: con la sola veste operatore un cliente del portale smetterebbe di vedere gli eventi SDI delle proprie fatture.';

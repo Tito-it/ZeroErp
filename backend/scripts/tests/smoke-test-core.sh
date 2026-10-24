@@ -202,8 +202,13 @@ except Exception as e:
 echo ""
 echo "-- 4. Permessi utente inesistente --"
 
+# Un utente che non esiste e' un 404 col suo codice (E_AMM_UTENTE_NOT_FOUND):
+# fino al 2026-10-12 lo smoke si aspettava un 400 generico.
 do_curl GET "/api/v1/core/users/999999/permessi-effettivi/"
-check "GET permessi user 999999 → errore" 400
+if check "GET permessi user 999999 → 404" 404 ".error.code"; then
+    [[ "$EXTRACTED" == "E_AMM_UTENTE_NOT_FOUND" ]] && log_ok "codice E_AMM_UTENTE_NOT_FOUND" \
+        || log_fail "codice atteso E_AMM_UTENTE_NOT_FOUND, ricevuto '${EXTRACTED:-<vuoto>}'"
+fi
 
 # ================================================================
 # PERMESSI AUDIT

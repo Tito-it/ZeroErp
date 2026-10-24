@@ -6,13 +6,13 @@
 #
 annotated-types==0.8.0
     # via pydantic
-anthropic==1.12.1
+anthropic==2.3.0
     # via -r ../requirements.in
 anyio==4.15.1
     # via
     #   anthropic
     #   httpx2
-asgiref==3.12.1
+asgiref==3.13.0
     # via
     #   -r ../requirements.in
     #   django
@@ -22,7 +22,7 @@ attrs==26.1.0
     #   referencing
 bleach==6.4.0
     # via -r ../requirements.in
-brotli==1.2.0
+brotli==1.2.1
     # via fonttools
 cffi==2.1.1
     # via
@@ -54,15 +54,15 @@ drf-spectacular==0.30.0
     # via -r ../requirements.in
 et-xmlfile==2.0.0
     # via openpyxl
-fonttools[woff]==4.66.1
+fonttools[woff]==4.67.0
     # via weasyprint
 gunicorn==26.2.0
     # via -r ../requirements.in
 h11==0.16.0
     # via httpcore2
-httpcore2==2.13.1
+httpcore2==2.16.0
     # via httpx2
-httpx2==2.13.1
+httpx2==2.16.0
     # via anthropic
 idna==3.20
     # via
@@ -72,7 +72,7 @@ inflection==0.5.1
     # via drf-spectacular
 jinja2==3.1.6
     # via -r ../requirements.in
-jiter==0.17.0
+jiter==0.18.0
     # via anthropic
 jsonschema==4.26.0
     # via drf-spectacular
@@ -82,6 +82,8 @@ markupsafe==3.0.4
     # via jinja2
 openpyxl==3.1.5
     # via -r ../requirements.in
+opentelemetry-api==1.45.1
+    # via anthropic
 packaging==26.3
     # via -r ../requirements.in
 pillow==12.3.0
@@ -92,15 +94,15 @@ psycopg==3.3.6
     # via -r ../requirements.in
 psycopg-binary==3.3.6
     # via -r ../requirements.in
-pycparser==3.1
+pycparser==3.12
     # via cffi
-pydantic==2.14.0
+pydantic==2.14.1
     # via
     #   -r ../requirements.in
     #   anthropic
-pydantic-core==2.50.0
+pydantic-core==2.50.1
     # via pydantic
-pydyf==0.12.1
+pydyf==0.13.0
     # via weasyprint
 pyjwt==2.15.1
     # via
@@ -138,7 +140,7 @@ tinycss2==1.5.1
     #   weasyprint
 tinyhtml5==2.1.0
     # via weasyprint
-truststore==0.10.4
+truststore==0.10.5
     # via
     #   httpcore2
     #   httpx2
@@ -146,6 +148,7 @@ typing-extensions==4.16.0
     # via
     #   anthropic
     #   anyio
+    #   opentelemetry-api
     #   pydantic
     #   pydantic-core
     #   typing-inspection

@@ -40,7 +40,8 @@ import json
 from unittest.mock import Mock, patch
 
 from django.core.cache import cache
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
@@ -57,7 +58,7 @@ class TestEmittentiFiscaliGetApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
         # ⚠️ La cache del throttle e' CONDIVISA da tutta la suite: senza
         #    questa riga il budget consumato dai test che girano prima
         #    arriva qui, e le richieste rispondono 429 invece del loro
@@ -108,7 +109,7 @@ class TestEmittentiFiscaliPostApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
         # ⚠️ La cache del throttle e' CONDIVISA da tutta la suite: senza
         #    questa riga il budget consumato dai test che girano prima
         #    arriva qui, e le richieste rispondono 429 invece del loro
@@ -182,7 +183,7 @@ class TestEmittentiFiscaliPatchApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
         # ⚠️ La cache del throttle e' CONDIVISA da tutta la suite: senza
         #    questa riga il budget consumato dai test che girano prima
         #    arriva qui, e le richieste rispondono 429 invece del loro
@@ -228,7 +229,7 @@ class TestEmittentiFiscaliAdminRequired(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
         # ⚠️ La cache del throttle e' CONDIVISA da tutta la suite: senza
         #    questa riga il budget consumato dai test che girano prima
         #    arriva qui, e le richieste rispondono 429 invece del loro
@@ -277,7 +278,7 @@ class TestEmittentiFiscaliBillingAccountApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
         # ⚠️ La cache del throttle e' CONDIVISA da tutta la suite: senza
         #    questa riga il budget consumato dai test che girano prima
         #    arriva qui, e le richieste rispondono 429 invece del loro
@@ -395,7 +396,7 @@ class TestEmittentiFiscaliUtilitiesApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
         # ⚠️ La cache del throttle e' CONDIVISA da tutta la suite: senza
         #    questa riga il budget consumato dai test che girano prima
         #    arriva qui, e le richieste rispondono 429 invece del loro

@@ -316,6 +316,9 @@ class RegistriService:
     ) -> dict[str, Any]:
         self._verifica_chiavi(payload, ammesse=_CAMPI_UPDATE, verbo="modifica")
         dati = self._normalizza(payload)
+        # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+        #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+        self._v.require_campi_da_aggiornare(dati)
         try:
             with transaction.atomic():
                 toccate = self.repo.update_registro(
@@ -323,12 +326,9 @@ class RegistriService:
                 )
         except IntegrityError as exc:
             self._traduci(exc, dati)
-        # ⚠️ `toccate == 0` NON e' un errore da solo, e ha due cause diverse: il
-        #    registro non esiste / e' fuori perimetro, oppure il payload non
-        #    conteneva nessuna colonna scrivibile. A distinguerle e' la
-        #    rilettura, che solleva 404 nel primo caso — ed e' anche cio' che si
-        #    deve restituire nel secondo. Un ramo esplicito qui direbbe la stessa
-        #    cosa due volte.
+        # ⚠️ `toccate == 0` vuol dire che il registro non esiste o e' fuori
+        #    perimetro (il payload vuoto e' gia' un 400, qui sopra): lo dice la
+        #    rilettura, che solleva 404.
         logger.debug("update_registro id=%s righe=%s", registro_id, toccate)
         return self.get_registro(registro_id, emittenti_sr_ids)
 

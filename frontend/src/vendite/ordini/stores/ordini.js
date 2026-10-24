@@ -14,7 +14,11 @@ import { defineStore } from 'pinia'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { useListaStoreCore } from '../../../core/composables/useListaStoreCore'
 import { TAB_ENTITIES } from '../../../core/constants'
+import { STATO_ORDINE } from '../constants'
+import { avvisaDocumentiCollegati } from '../../_shared/annullo/avvisoDocumentiCollegati'
 import {
+  aggiornaDateConsegna as postDateConsegna,
+  cambiaDataConsegnaConfermata as postDataConsegnaConfermata,
   cambiaStatoOrdine,
   confermaOrdine,
   createOrdine,
@@ -118,9 +122,12 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
 
   // Transizione di stato generica data-driven (es. annulla). `statoCodice` =
   // target_state dell'azione; il trigger DB valida l'ammissibilita'.
-  async function cambiaStato(id, statoCodice) {
-    const res = await cambiaStatoOrdine(id, statoCodice)
+  // `dichiarazione`: la conferma dell'annullo con legami; l'annullo riapre i
+  // documenti dall'altra parte, e se ne avvisano i tab.
+  async function cambiaStato(id, statoCodice, dichiarazione = {}) {
+    const res = await cambiaStatoOrdine(id, statoCodice, dichiarazione)
     emitDataChanged(TAB_ENTITIES.ORDINE, id)
+    if (statoCodice === STATO_ORDINE.ANNULLATO) avvisaDocumentiCollegati(emitDataChanged)
     return res.data.data
   }
 
@@ -147,6 +154,28 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
     const res = await deleteRiga(ordineId, rigaId)
     emitDataChanged(TAB_ENTITIES.ORDINE, ordineId)
     return res.data.data
+  }
+
+  // --- Date di consegna (brief-db-date-consegna-righe-in-blocco) ---
+
+  // Scopo: la data di consegna confermata di UNA riga, anche dopo la
+  //        conferma. Scrive sull'ordine, quindi avvisa come ogni scrittura
+  //        (frontend-standards §«Producer cross-tab»).
+  async function cambiaDataConsegnaConfermata(ordineId, rigaId, data) {
+    const res = await postDataConsegnaConfermata(ordineId, rigaId, data)
+    emitDataChanged(TAB_ENTITIES.ORDINE, ordineId)
+    return res.data.data
+  }
+
+  // Scopo: «Aggiorna date di consegna»: una data su piu' righe. Si avvisa
+  //        solo quando si scrive: l'anteprima conta e basta.
+  // ⚠️ Ritorna la RESPONSE, non l'esito: l'esito ha una chiave `data` (la data
+  //    scritta) e `useApiHandler.execute` lo scambierebbe per un envelope,
+  //    restituendo la sola data.
+  async function aggiornaDateConsegna(ordineId, payload) {
+    const res = await postDateConsegna(ordineId, payload)
+    if (!payload.anteprima) emitDataChanged(TAB_ENTITIES.ORDINE, ordineId)
+    return res
   }
 
   // --- Evasione ---
@@ -183,6 +212,8 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
     conferma, emetti, push, cambiaStato,
     // righe
     loadRighe, addRiga, aggiornaRiga, eliminaRiga,
+    // date di consegna
+    cambiaDataConsegnaConfermata, aggiornaDateConsegna,
     // evasione
     generaDdt,
     // riepilogo IVA

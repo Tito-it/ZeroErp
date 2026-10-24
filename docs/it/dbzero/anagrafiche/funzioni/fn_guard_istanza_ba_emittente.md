@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_istanza_ba_emittente(p_billing_account_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_istanza_ba_emittente(p_billing_account_id bigint)
  RETURNS void
@@ -74,6 +76,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_guard_istanza_ba_emittente(p_billing_account_id bigint)
 IS 'Guard fail-fast: il billing account indicato risolve allo stesso emittente fiscale di TUTTI gli altri BA della sua istanza (D-4 di Tid del 2026-10-08: un''istanza ha billing account di un solo emittente, cosi'' la regola di scope «un''istanza e'' dell''emittente del suo BA» ha una risposta sola). Solleva E_ISTANZA_EMITTENTI_DIVERSI coi codici dei due BA e dell''istanza. Gemello di anagrafiche.fn_guard_albero_ba_emittente (padre/figli), stessa check: anagrafiche.fn_check_ba_coppia_emittente_omogenea, emittente RISOLTO e fail-closed. BA inesistente: niente da presidiare. SECURITY DEFINER perche'' legge billing_account, che ha la RLS. Chiamanti: trgfn_billing_account_guard_istanza_emittente, trgfn_efba_guard_istanza_emittente, fn_guard_istanza_ba_gestore_globale. Brief: brief-db-istanza-nasce-col-ba (R-7).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

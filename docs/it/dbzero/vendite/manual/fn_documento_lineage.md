@@ -5,7 +5,7 @@
 > Approfondimento:
 >
 > [vendite.vw_documento_lineage_archi](/dbzero/vendite/views/vw_documento_lineage_archi)
-> [vendite.vw_documento_lineage](/dbzero/vendite/views/vw_documento_lineage)
+> [vendite.fn_documento_lineage_sintesi](/dbzero/vendite/funzioni/fn_documento_lineage_sintesi) (era `vw_documento_lineage`, ritirata nel giro B)
 > [vendite.vw_documento_lineage_nodi](/dbzero/vendite/views/vw_documento_lineage_nodi)
 
 ---
@@ -43,6 +43,10 @@ I guard sui parametri usano `script.fn_log_and_raise_error` con codice registrat
 * `is_ramo_inverso` — `true` per l'arco **R** (DDT→Reso): il reso compare nei "Passaggi"
   come **ramo di ritorno**; il FE lo rende in modo distinto. La frontiera forward della
   summary lo esclude già.
+* `is_legame_ritirato` — (rev 2026-10-13) il **legame** dell'arco, non il nodo:
+  `true` quando quello che il documento ha portato dall'altra parte non c'è più,
+  anche se i due documenti sono vivi. Vedi
+  [`fn_documento_lineage_legami`](fn_documento_lineage_legami.md).
 
 ---
 
@@ -122,5 +126,29 @@ ed è un lavoro a parte. Dettaglio:
 `brief-db-plancache-funzioni-con-query-incorporate` §5.
 
 ---
+
+---
+
+### 🔄 rev 2026-10-11 — la catena si risale un livello alla volta
+
+Changeset `20261011-93`. Il pannello non legge più l'intero grafo: parte dal
+documento, chiede a [`fn_documento_lineage_archi`](fn_documento_lineage_archi.md)
+i passaggi dei soli documenti raggiunti, livello per livello, e alla fine legge i
+dettagli dei soli documenti toccati da
+[`fn_documento_lineage_nodi`](fn_documento_lineage_nodi.md). Il risultato è lo
+stesso di prima, riga per riga; il costo segue la lunghezza della catena e non il
+numero dei documenti del sistema (su dbdev, 2026-10-11: ~154 → ~16 ms).
+
+### 🔄 rev 2026-10-13 — il legame, oltre al nodo
+
+`20261013-70`, R-17 del backend, dal collaudo. Un preventivo annullato mostrava
+nel pannello la sua commessa «pronta da fatturare», come se ci fosse ancora
+dentro. Lo stato del nodo diceva il vero (la commessa è viva, porta righe di
+altri documenti), ma rispondeva a un'altra domanda. La colonna nuova
+`is_legame_ritirato` risponde a quella giusta: *quello che questo documento ha
+portato nella commessa è ancora lì?* Viene da
+[`fn_documento_lineage_legami`](fn_documento_lineage_legami.md), letta una volta
+alla fine come i nodi, e vale nei due versi (è dell'arco). Il link resta come
+storia: si ritira il legame, non il passaggio.
 
 {% include-markdown "signature-core.md" %}

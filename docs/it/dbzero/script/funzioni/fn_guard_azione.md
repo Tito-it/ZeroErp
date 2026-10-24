@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_azione(p_auth_user_id integer, p_permission_codename ch
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_guard_azione(p_auth_user_id integer, p_permission_codename character varying)
  RETURNS void
@@ -54,6 +56,8 @@ $function$
 COMMENT ON FUNCTION script.fn_guard_azione(p_auth_user_id integer, p_permission_codename character varying)
 IS 'Guard dei verbi di scrittura (modello «una scrittura = un verbo», D-1/D-2 di brief-db-permesso-nel-verbo-di-scrittura): applica un''azione di processo nella prima riga del verbo. La regola NON e'' qui: la decide script.fn_check_azione_processo, la stessa funzione che usa il backend (gate di contesto, identita'' OPERATORE attiva, super admin, override utente, profili). Risposta no -> E_PERMESSO_NEGATO (NON_PERMESSO, lo stesso codice del backend), anche a utente NULL: fail-closed, con senza_utente nel contesto. Azione inesistente -> E_CONFIG_MANCANTE: e'' un chiamante rotto, non un rifiuto (si controlla l''esistenza, non attivo, come fa la regola). L''utente arriva come parametro: il chiamante legge app.current_user_id con l''espressione delle policy (linee-guida-sql §10.4). INVOKER. Brief: brief-db-magazzino-verbi-con-permesso §2.1.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

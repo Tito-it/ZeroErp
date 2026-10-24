@@ -56,33 +56,20 @@ SELECT plan(8);
 -- ============================================================
 -- 0) Fixture: due soggetti liberi, e i loro ruoli di emittente
 -- ============================================================
--- ⚠️ `codice_interno = 'EF'` e non `codice`: quest'ultimo e' modificabile
---   dall'utente e un confronto logico su di esso si sgancia in silenzio al
---   primo rename.
--- ⚠️ La natura del soggetto non e' libera: senza il join su
---   config.tipi_ruoli_nature_ammesse la fixture morirebbe su un errore di
---   dominio che sembrerebbe un difetto del cantiere.
-CREATE TEMP TABLE tmp_ecf_sogg AS
-SELECT s.id, row_number() OVER (ORDER BY s.id) AS n
-  FROM anagrafiche.soggetti s
-  JOIN config.tipi_soggetto_dettaglio tsd ON tsd.id = s.tipo_soggetto_dettaglio_id
-  JOIN config.tipi_ruoli_nature_ammesse na ON na.tipo_soggetto_id = tsd.tipo_soggetto_id
-  JOIN config.tipi_ruoli tr ON tr.id = na.tipo_ruolo_id AND tr.codice_interno = 'EF'
- WHERE s.attivo IS TRUE
-   AND NOT EXISTS (SELECT 1 FROM anagrafiche.soggetti_ruoli sr
-                    WHERE sr.soggetto_id = s.id AND sr.tipo_ruolo_id = tr.id)
- ORDER BY s.id
- LIMIT 2;
-
+-- ⭐ Soggetti e ruoli si FABBRICANO (rev 2026-10-18): due persone giuridiche
+--   complete e il loro ruolo EF, dai builder dbops.fn_pgtap_crea_soggetto_pg e
+--   fn_pgtap_crea_soggetto_ruolo (gli stessi di dbops.fn_pgtap_crea_emittente,
+--   che pero' scrive anche l'emittente: qui l'emittente lo scrivono i test).
+--   Prima si pescavano due soggetti esistenti «che potevano diventare EF»: su un
+--   database ricostruito da zero non ce n'e' nessuno, i test 3-7 scrivevano
+--   zero righe e l'8 trovava il catalogo vuoto.
 CREATE TEMP TABLE tmp_ecf_ruoli AS
-WITH ins AS (
-  INSERT INTO anagrafiche.soggetti_ruoli (soggetto_id, tipo_ruolo_id)
-  SELECT g.id, (SELECT id FROM config.tipi_ruoli WHERE codice_interno = 'EF')
-    FROM tmp_ecf_sogg g
-  RETURNING id AS soggetto_ruolo_id, soggetto_id
-)
-SELECT i.soggetto_ruolo_id, g.n
-  FROM ins i JOIN tmp_ecf_sogg g ON g.id = i.soggetto_id;
+SELECT dbops.fn_pgtap_crea_soggetto_ruolo(
+           dbops.fn_pgtap_crea_soggetto_pg('pgTAP sigla emittente ' || g.n), 'EF') AS soggetto_ruolo_id,
+       g.n
+  FROM generate_series(1, 2) AS g(n);
+
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- ============================================================
 -- 1) Il vincolo strutturale esiste

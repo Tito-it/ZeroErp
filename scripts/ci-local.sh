@@ -23,19 +23,16 @@
 #   * i test Django e la build della documentazione: non c'entrano col migrate.
 #   ⇒ Copre la passata `--contexts="!provision and !dati_macchina"`, che e' dove il migrate si
 #   ferma ogni volta.
-#   ⭐ Il provisioning del ruolo batch (`provision_db_role_batch_*.sql`) fino al
-#   2026-09-14 stava in questo elenco: fa `ALTER ROLE … PASSWORD`, i ruoli sono
-#   di CLUSTER, e una password inventata avrebbe rotto il worker di sviluppo.
-#   Da quel giorno lo script accetta di girare SENZA password quando il ruolo
-#   esiste (i GRANT sono per database, la password no), e il passo 4 in fondo
-#   lo lancia davvero: la postura del batch qui e' quella della CI, e
-#   `rls/test-role-batch-fatturazione-postura.sql` si misura anche qui.
+#   ⭐ Il ruolo batch `zeroerp_batch_fatturazione` (BYPASSRLS), il suo
+#   provisioning e il ponte che lo teneva in piedi qui sono stati ritirati il
+#   2026-10-15 (brief-db-ruoli-di-sistema, fase 4): il backend non lo usa dal
+#   2026-09-05.
 #
 # ── ⭐ LE PASSATE, E SONO QUATTRO — nello stesso ordine di ci-validate.yaml ──
 #     1. provision PRE   (superuser) · changelog-provision-pre.yaml
-#     2. principale      (zeroerp)   · `!provision and !dati_macchina`
-#     3. provision POST  (superuser) · changelog-provision-post.yaml
-#     4. automazioni     (zeroerp)   · `ci_apply` — solo con `--ci-apply`
+#     2. principale      (zeroerp_owner) · `!provision and !dati_macchina`
+#     3. provision POST  (superuser)     · changelog-provision-post.yaml
+#     4. automazioni     (zeroerp_owner) · `ci_apply` — solo con `--ci-apply`
 #   ⚠️ La 3 e' arrivata il 2026-09-09, e mancava: contiene i changeSet
 #   `context: provision` che la passata principale (`!provision`) non vede MAI
 #   — fra cui quello che da a `postgres` l'owner delle sei funzioni dichiarate
@@ -47,8 +44,9 @@
 #
 # ── ⚠️ ISOLAMENTO DAL DATABASE DI SVILUPPO ────────────────────────────
 #   I ruoli PostgreSQL sono di cluster, i database no. Percio' qui:
-#     * il ruolo `zeroerp` NON si ricrea se esiste;
-#     * le sue GUC si impostano con `ALTER ROLE … IN DATABASE <scratch>`, mai
+#     * i ruoli di sistema NON si ricreano se esistono, e la loro password non
+#       si tocca (provision_zeroerp.sql);
+#     * le loro GUC si impostano con `ALTER ROLE … IN DATABASE <scratch>`, mai
 #       globalmente — altrimenti si riscriverebbe la configurazione con cui
 #       lavora il database di sviluppo;
 #     * lo script RIFIUTA di operare sul database nominato in `db/internal.env`.
@@ -76,7 +74,7 @@
 #        erano verdi qui e «permission denied for table auth_user» la' —
 #        47 volte nel log Postgres della corsa 34723456630 (12-09), tutti in
 #        baseline come ERRORE_FIXTURE senza che la causa fosse letta;
-#     3. i privilegi di `zeroerp_app` (`scripts/sql/provision_db_roles.sql`) —
+#     3. i privilegi di `zeroerp_app` (la fase post di provision_zeroerp.sql) —
 #        senza, ogni rosso e' un permesso e non un difetto. DOPO la copia di
 #        `django`, come in ci-validate.yaml sta dopo `manage.py migrate`: il
 #        `GRANT … ON ALL TABLES` e' una fotografia, e deve vedere anche le
@@ -110,7 +108,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$REPO_ROOT"
 
-CI_DB="${CI_DB:-zeroerp_ci}"
+# ⭐ Il MODELLO DEI RUOLI DI SISTEMA (brief-db-ruoli-di-sistema): migra
+#   `zeroerp_owner`, i ruoli e il database li crea scripts/sql/provision_zeroerp.sql,
+#   e in coda si VERIFICA che l'owner sia uno solo. Lo scratch curato e'
+#   `zeroerp_ruoli`, le password in $ZEROERP_RUOLI_ENV (sotto).
+#   ⚠️ Il modo vecchio (`--classico`: migratore `zeroerp`/`secret`, database
+#   `zeroerp_ci`) e' stato ritirato il 2026-10-15, dopo la prima corsa della CI
+#   di GitHub sul modello con i pgTAP verdi (fase 4).
+CI_DB="${CI_DB:-zeroerp_ruoli}"
 FRESH=false
 CI_APPLY=false
 for a in "$@"; do
@@ -125,6 +130,32 @@ for a in "$@"; do
     *) echo "Opzione sconosciuta: $a" >&2; exit 1 ;;
   esac
 done
+
+# --- Chi migra: `zeroerp_owner`, con la password presa da un file FUORI dal
+#     repo (D-3: nessun default). Il file contiene, una per riga:
+#       ZEROERP_OWNER_PASSWORD=…
+#       ZEROERP_JOB_PASSWORD=…
+#     ⚠️ Servono solo a CREARE i due ruoli la prima volta: i ruoli sono di
+#     cluster, e di un ruolo che esiste lo script non tocca la password. Dalla
+#     seconda corsa in poi la password di zeroerp_owner serve a Liquibase per
+#     collegarsi, quindi deve restare quella.
+ZEROERP_RUOLI_ENV="${ZEROERP_RUOLI_ENV:-$HOME/.config/zeroerp/ruoli-sviluppo.env}"
+if [[ ! -f "$ZEROERP_RUOLI_ENV" ]]; then
+  cat >&2 <<MSG
+⛔ Manca il file delle password dei ruoli di sistema: $ZEROERP_RUOLI_ENV
+   Va creato a mano, fuori dal repo, con permessi 600:
+     mkdir -p "$(dirname "$ZEROERP_RUOLI_ENV")"
+     printf 'ZEROERP_OWNER_PASSWORD=%s\nZEROERP_JOB_PASSWORD=%s\n' '<pwd owner>' '<pwd job>' > "$ZEROERP_RUOLI_ENV"
+     chmod 600 "$ZEROERP_RUOLI_ENV"
+MSG
+  exit 1
+fi
+# shellcheck disable=SC1090
+set -a; . "$ZEROERP_RUOLI_ENV"; set +a
+: "${ZEROERP_OWNER_PASSWORD:?manca ZEROERP_OWNER_PASSWORD in $ZEROERP_RUOLI_ENV}"
+: "${ZEROERP_JOB_PASSWORD:?manca ZEROERP_JOB_PASSWORD in $ZEROERP_RUOLI_ENV}"
+MIGR=zeroerp_owner
+MIGR_PWD="$ZEROERP_OWNER_PASSWORD"
 
 # --- Host/porta dal file env del progetto (NON il nome del database)
 [[ -f db/internal.env ]] || { echo "Manca db/internal.env" >&2; exit 1; }
@@ -178,6 +209,17 @@ MSG
 fi
 echo "── admin per il provisioning: $ADMIN_USER (connessione TCP verificata)"
 
+# ⛔ Il ruolo batch ritirato (2026-10-15) non deve esistere nel cluster: la
+#   preCondition di 20260729-05 conta i ruoli batch con la postura sbagliata, e
+#   il ponte che la aggirava qui e' stato tolto con lui. Meglio dirlo adesso che
+#   a meta' migrate. Solo con --fresh: sullo scratch esistente quel changeSet e'
+#   gia' passato.
+if $FRESH && psql_admin -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='zeroerp_batch_fatturazione'" | grep -q 1; then
+  echo "⛔ Il ruolo zeroerp_batch_fatturazione esiste ancora nel cluster: va ritirato prima." >&2
+  echo "   scripts/ritira_ruoli_dismessi.sh zeroerp_batch_fatturazione   (prova a vuoto, poi --esegui)" >&2
+  exit 1
+fi
+
 echo "── database scratch: $CI_DB   (sviluppo: $DEV_DB, intoccato)"
 
 if $FRESH; then
@@ -185,70 +227,23 @@ if $FRESH; then
   psql_admin -d postgres -c "DROP DATABASE IF EXISTS \"$CI_DB\" WITH (FORCE);"
 fi
 
-if ! psql_admin -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$CI_DB'" | grep -q 1; then
-  echo "── creo $CI_DB"
-  psql_admin -d postgres -c "CREATE DATABASE \"$CI_DB\" OWNER postgres;"
-fi
-
-# --- Ruolo applicativo: si crea SOLO se manca (i ruoli sono di cluster).
-#     Le GUC si impostano PER DATABASE, mai globalmente.
+# ⭐ I ruoli di sistema e il database con owner zeroerp_owner: li crea lo
+#   script del modello (fase ruoli), sul database `postgres`. Dallo STDIN,
+#   come le altre fasi: `postgres` non attraversa /home/tid.
+APP_PWD_MODELLO="$(awk -F: -v db="$DEV_DB" '$3==db && $4=="zeroerp_app" {print $5; exit}' ~/.pgpass 2>/dev/null || true)"
+echo "── ruoli di sistema e database $CI_DB (provision_zeroerp.sql, fase ruoli)"
+psql_admin -d postgres -v fase=ruoli -v db_name="$CI_DB" \
+  -v owner_password="$ZEROERP_OWNER_PASSWORD" -v job_password="$ZEROERP_JOB_PASSWORD" \
+  -v app_password="$APP_PWD_MODELLO" \
+  < scripts/sql/provision_zeroerp.sql >/dev/null
+# ⚠️ Il canale dblink del migratore resta VUOTO, come in CI: la stringa di
+#   connessione con la password finirebbe in pg_db_role_setting, che ogni
+#   ruolo puo' leggere. fn_get_or_create_session_tx_id prende il ramo della
+#   sentinella, avvisa e prosegue.
 psql_admin -d "$CI_DB" <<SQL
-DO \$\$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='zeroerp') THEN
-    CREATE ROLE zeroerp LOGIN PASSWORD 'secret';
-  END IF;
-END \$\$;
-ALTER ROLE zeroerp IN DATABASE "$CI_DB" SET myapp.user_language = 'it';
-ALTER ROLE zeroerp IN DATABASE "$CI_DB" SET myapp.dblink_log_connection =
-  'hostaddr=127.0.0.1 port=$PGPORT dbname=$CI_DB user=zeroerp password=secret';
-GRANT USAGE, CREATE ON SCHEMA public TO zeroerp;
-GRANT CREATE ON DATABASE "$CI_DB" TO zeroerp;
+ALTER ROLE zeroerp_owner IN DATABASE "$CI_DB" SET myapp.user_language = 'it';
+ALTER ROLE zeroerp_owner IN DATABASE "$CI_DB" SET myapp.dblink_log_connection = '';
 SQL
-
-# ── ⛔ LA DIVERGENZA CHE QUESTA REPLICA NON PUO' EVITARE, E COME SI CHIUDE ──
-#
-#   I database sono per-database, i RUOLI sono di CLUSTER. In GitHub il
-#   container e' vergine, quindi durante la passata principale
-#   `zeroerp_batch_fatturazione` NON ESISTE (lo provisiona il passo dopo).
-#   Qui esiste sempre: lo usa il database di sviluppo.
-#
-#   ⚠️ E c'e' una guardia che distingue proprio quei due mondi —
-#   `20260729-05-enable-rls-fatture-satelliti`, la cui preCondition conta
-#   «ruoli batch con la postura SBAGLIATA»:
-#     (a) ruolo assente        -> 0, niente da proteggere  ← GitHub
-#     (b) ruolo presente senza BYPASSRLS o senza i GRANT -> 1, HALT
-#   Sul database scratch cadiamo in (b) per un motivo che non e' un difetto:
-#   il ruolo c'e' (cluster) ma i GRANT no, perche' i GRANT sono per-database e
-#   questo database e' nuovo.
-#
-#   ⭐ Si chiude con ALTER DEFAULT PRIVILEGES, lo stesso meccanismo che il
-#   provisioning usa per gli oggetti futuri: ogni tabella creata da `zeroerp`
-#   durante la passata nasce gia' con il DML per il ruolo batch. E' per
-#   DATABASE (vive in pg_default_acl di questo database), quindi non tocca
-#   sviluppo.
-#
-#   🔴 E VA DICHIARATO: cosi', DURANTE il migrate, il database scratch da al
-#   ruolo batch PIU' di quanto il provisioning vero gli darebbe — li' il DML e'
-#   un perimetro esplicito di 28 tabelle, qui e' tutto. E' un PONTE per
-#   superare il cancello, non la postura: il passo 4 in fondo lo RITIRA
-#   (revoca il DML largo e i due default) e lancia il provisioning vero. Fino
-#   al 2026-09-14 il ponte restava, e `rls/test-role-batch-fatturazione-postura`
-#   era rosso qui per costruzione — «lo scratch non e' un metro per quel file»
-#   scritto in tre posti, e trentuno giorni di un rosso che nessuno poteva
-#   leggere come un fatto.
-#   ⚠️ SENZA `IN SCHEMA`, e non e' pigrizia: la forma con lo schema pretende
-#   che lo schema ESISTA, e qui gli schemi li crea la passata principale, dopo.
-#   Crearli in anticipo sarebbe peggio del problema: un changeSet con
-#   `CREATE SCHEMA` senza `IF NOT EXISTS` morirebbe. La forma senza schema vale
-#   per l'intero database, compresi quelli che nasceranno.
-if psql_admin -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='zeroerp_batch_fatturazione'" | grep -q 1; then
-  echo "── il ruolo batch esiste nel cluster: gli do il DML sugli oggetti futuri di $CI_DB"
-  psql_admin -d "$CI_DB" -c "
-    ALTER DEFAULT PRIVILEGES FOR ROLE zeroerp
-      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO zeroerp_batch_fatturazione;
-    ALTER DEFAULT PRIVILEGES FOR ROLE postgres
-      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO zeroerp_batch_fatturazione;" >/dev/null
-fi
 
 # --- L'autogen, come in CI: l'ordine dei changeSet e' generato, non versionato
 echo "── rigenero changelog-autogen.yaml (--strict)"
@@ -290,76 +285,30 @@ echo "── provision pre"
 "$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_CI" --username="$ADMIN_USER" --password="$ADMIN_PWD" \
   --changeLogFile=db/changelog/changelog-provision-pre.yaml update --contexts=provision
 
-# ⛔ LE GRANT VANNO QUI, DOPO IL PROVISION-PRE — e l'ordine e' tutto.
+# ⛔ LA FASE PRE VA QUI, DOPO IL PROVISION-PRE — e l'ordine e' tutto.
 #   Il provision-pre gira come SUPERUSER e crea `public.databasechangelog`; la
-#   passata principale gira come `zeroerp`, che su una tabella creata da un
-#   altro ruolo non ha nessun diritto. `GRANT … ON ALL TABLES` fotografa le
-#   tabelle CHE ESISTONO nel momento in cui lo si esegue: darlo prima non
-#   copre una tabella che nascera' dopo.
+#   passata principale gira come zeroerp_owner, che su una tabella creata da un
+#   altro ruolo non ha nessun diritto. Il passaggio di proprieta' fotografa le
+#   tabelle CHE ESISTONO: farlo prima non copre una tabella che nascera' dopo.
 #   ⚠️ Il sintomo, se lo si mette prima, non parla di permessi in modo
 #   riconoscibile: Liquibase muore su una sua query interna di checksum —
 #   «Error executing SQL SELECT MD5SUM FROM public.databasechangelog … :
 #   permesso negato» — e sembra un problema di MD5.
-#   ⭐ E' esattamente il passo «Grant CREATE on public (CI bootstrap)» di
-#   ci.yaml, che sta anch'esso DOPO il provision-pre: qui si copia la sua
-#   posizione, non solo il suo contenuto.
-echo "── grant post-provision (come il passo 'CI bootstrap' di ci.yaml)"
-psql_admin -d "$CI_DB" <<SQL
-GRANT USAGE, CREATE ON SCHEMA public TO zeroerp;
-GRANT CREATE ON DATABASE "$CI_DB" TO zeroerp;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO zeroerp;
-GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO zeroerp;
-SQL
-
-# ── ⚠️ E LE TABELLE CHE ESISTONO GIA' ─────────────────────────────────
-#   `ALTER DEFAULT PRIVILEGES` copre solo cio' che NASCE dopo. Su una corsa
-#   incrementale — cioe' la seconda in poi — meta' schema esiste gia', creato
-#   prima che quella riga ci fosse: quelle tabelle restano senza i grant, e la
-#   guardia di 20260729-05 continua a vedere la postura sbagliata.
-#   ⇒ Le due cose servono entrambe: il default per il futuro, il GRANT per il
-#   passato. E' idempotente, quindi si rifa' a ogni corsa.
-if psql_admin -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='zeroerp_batch_fatturazione'" | grep -q 1; then
-  echo "── grant al ruolo batch sulle tabelle GIA' create (corsa incrementale)"
-  psql_admin -d "$CI_DB" <<'SQL' >/dev/null
-DO $$
-DECLARE s text;
-BEGIN
-  FOR s IN SELECT nspname FROM pg_namespace
-            WHERE nspname NOT LIKE 'pg\_%' AND nspname <> 'information_schema'
-  LOOP
-    EXECUTE format('GRANT USAGE ON SCHEMA %I TO zeroerp_batch_fatturazione', s);
-    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA %I TO zeroerp_batch_fatturazione', s);
-    EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %I TO zeroerp_batch_fatturazione', s);
-  END LOOP;
-END $$;
-SQL
-fi
+# ⭐ Niente GRANT di raccordo: cio' che il provision-pre ha creato da superuser
+#   (tabelle di Liquibase, `internal`) passa a zeroerp_owner, e `pgagent` riceve
+#   i diritti per owner e job. E' la fase pre dello script del modello.
+echo "── proprieta' a zeroerp_owner e diritti su pgagent (provision_zeroerp.sql, fase pre)"
+psql_admin -d "$CI_DB" -v fase=pre < scripts/sql/provision_zeroerp.sql >/dev/null
 
 # ── ⚠️ pgAgent: qui la fase 85_pgagent GIRA DAVVERO, in CI no ─────────
-#   I nove changeSet di `85_pgagent` sono protetti da
-#   `onFail: MARK_RAN` + «esiste l'estensione pgagent». Sull'immagine della CI
-#   l'estensione non e' disponibile, quindi vengono saltati tutti e quella fase
-#   non e' mai stata eseguita da nessuna parte. Qui l'estensione c'e', quindi
-#   girano — ed e' un guadagno: si collauda codice che GitHub non puo' provare.
-#   ⚠️ Ma il migratore ha bisogno dei diritti sullo schema `pgagent`, che
-#   appartiene a chi ha creato l'estensione (postgres). Su dbdev il problema non
-#   si vede perche' pgAgent fu installato a mano dallo stesso utente.
-#   🔵 Domanda aperta per il deploy vero: in produzione, chi lancia Liquibase ha
-#   USAGE su `pgagent`? Se no, quei nove changeSet falliranno li' come qui.
-if psql_admin -d "$CI_DB" -tAc "SELECT 1 FROM pg_namespace WHERE nspname='pgagent'" | grep -q 1; then
-  echo "── grant su schema pgagent a zeroerp (la fase 85 qui gira davvero)"
-  psql_admin -d "$CI_DB" <<'SQL' >/dev/null
-GRANT USAGE ON SCHEMA pgagent TO zeroerp;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA pgagent TO zeroerp;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA pgagent TO zeroerp;
-ALTER DEFAULT PRIVILEGES IN SCHEMA pgagent
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO zeroerp;
-SQL
-fi
+#   I changeSet di `85_pgagent` sono protetti da `onFail: MARK_RAN` + «esiste
+#   l'estensione pgagent»: sull'immagine della CI l'estensione non c'e' e
+#   vengono saltati, qui girano. I diritti di zeroerp_owner sullo schema
+#   `pgagent` li da' la fase pre (sopra).
 
 echo "── passata principale  (--contexts=\"!provision and !dati_macchina\")"
 echo "   ⭐ e' qui che il migrate si ferma: guarda il numero 'Run:' salire"
-"$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_APP" --username=zeroerp --password=secret \
+"$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_APP" --username="$MIGR" --password="$MIGR_PWD" \
   --changeLogFile=db/changelog/changelog-master-v2.yaml update --contexts="!provision and !dati_macchina"
 
 # ⛔ PROVISION *POST*, e mancava. Il passo gemello di ci-validate.yaml
@@ -371,7 +320,7 @@ echo "   ⭐ e' qui che il migrate si ferma: guarda il numero 'Run:' salire"
 #   funzioni dichiarate in `dbops.sec_functions_owner`.
 #   ⚠️ Quel changeSet dichiara `context: provision`: la passata principale gira
 #   con `!provision` e quindi NON lo vede mai. Senza questo passo le sei
-#   funzioni restano di `zeroerp`, che non e' superuser — e `dblink` rifiuta la
+#   funzioni restano del migratore, che non e' superuser — e `dblink` rifiuta la
 #   connessione a un non-superuser senza password.
 #   🔴 Il sintomo, misurato il 2026-09-09: `maintenance/test-job-run-log-failure-out-of-tx.sql`
 #   rosso al test 2 («l'owner della funzione e' un superuser») sullo scratch e
@@ -385,8 +334,7 @@ echo "── provision post  (come il passo 'Liquibase admin (provision - post)'
 
 if $CI_APPLY; then
   echo "── automazioni  (--contexts=ci_apply)"
-  echo "   ⚠️ senza il ruolo batch provisionato, i grant runtime possono fallire"
-  "$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_CI" --username=zeroerp --password=secret \
+  "$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_CI" --username="$MIGR" --password="$MIGR_PWD" \
     --changeLogFile=db/changelog/changelog-master-v2.yaml update --contexts=ci_apply
 fi
 
@@ -410,9 +358,8 @@ fi
 #    ⭐ Svuotarlo e' cio' che rende lo scratch simile alla CI, dove quella GUC
 #    non e' impostata affatto: `fn_get_or_create_session_tx_id` prende il ramo
 #    della sentinella, avvisa e prosegue.
-#    ⚠️ Il ruolo `zeroerp` non e' toccato: ha un `ALTER ROLE ... IN DATABASE`
-#    suo, impostato piu' sopra, che ha la precedenza. Il migratore continua a
-#    registrare i propri tx_id.
+#    ⚠️ zeroerp_owner ha un `ALTER ROLE ... IN DATABASE` suo, impostato piu'
+#    sopra, che ha la precedenza: anche lui vuoto, come in CI.
 psql_admin -d postgres -c \
   "ALTER DATABASE \"$CI_DB\" SET myapp.dblink_log_connection = '';" >/dev/null
 
@@ -424,7 +371,7 @@ fi
 
 # 2. Lo schema django, copiato da $DEV_DB. ⚠️ E' una COPIA, non un migrate: il
 #    DDL e' quello che Django ha prodotto la', quindi fedele oggi. Si carica
-#    come `zeroerp` cosi' le tabelle le possiede lui — i pgTAP marcati
+#    come il migratore cosi' le tabelle le possiede lui — i pgTAP marcati
 #    `pgtap-runner: owner` girano con quel ruolo e ci scrivono dentro.
 #    ⚠️ `django_migrations` resta vuota: e' dichiarato in intestazione.
 #    ⛔ `--no-acl`: il DDL si', i privilegi NO. Su dev quelle tabelle hanno
@@ -446,7 +393,7 @@ if ! psql_admin -d "$CI_DB" -tAc \
     sudo -u postgres pg_dump -d "$DEV_DB" --schema-only --no-owner --no-acl \
          -n django -T 'django.token_blacklist_*' \
       | sed -e '/^CREATE SCHEMA django;$/d' \
-      | PGPASSWORD=secret psql --no-psqlrc -h "$PGHOST" -p "$PGPORT" -U zeroerp -d "$CI_DB" \
+      | PGPASSWORD="$MIGR_PWD" psql --no-psqlrc -h "$PGHOST" -p "$PGPORT" -U "$MIGR" -d "$CI_DB" \
           -X -q -v ON_ERROR_STOP=1 >/dev/null
     # ⛔ Il dump porta con se' anche gli indici che su dev ha creato LIQUIBASE
     #    sulle tabelle di Django (`ix_*`, 90_end con onFail CONTINUE). In CI non
@@ -456,7 +403,7 @@ if ! psql_admin -d "$CI_DB" -tAc \
     #    finiva in ERRORE_FIXTURE (2026-09-26, test-credenziale-email-unica-v1:
     #    ix_auth_user_email_lower_unique). Si tolgono: lo scratch torna com'e'
     #    in CI.
-    PGPASSWORD=secret psql --no-psqlrc -h "$PGHOST" -p "$PGPORT" -U zeroerp -d "$CI_DB" \
+    PGPASSWORD="$MIGR_PWD" psql --no-psqlrc -h "$PGHOST" -p "$PGPORT" -U "$MIGR" -d "$CI_DB" \
         -X -q -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
 DO $$
 DECLARE r record;
@@ -475,87 +422,26 @@ SQL
   fi
 fi
 
-# 3. I privilegi del ruolo applicativo, come il passo `provision_db_roles` della
-#    CI — DOPO la copia di `django`, perche' il `GRANT … ON ALL TABLES` e' una
-#    fotografia e deve vedere anche le tabelle del secondo migratore (in
-#    ci-validate.yaml il passo sta dopo `manage.py migrate` dal 2026-09-13).
-#    ⛔ La password si LEGGE da ~/.pgpass e non si inventa: lo script fa
-#    `ALTER ROLE ... PASSWORD` e i ruoli sono di CLUSTER, quindi un valore nuovo
-#    spaccherebbe l'accesso di zeroerp_app al database di sviluppo. Con la
-#    password che ha gia', quella riga e' un non-evento.
-#
-# ⛔ E SI RILANCIA SEMPRE, non «solo se mancano i grant». `GRANT ... ON ALL
-#   TABLES IN SCHEMA` e' una FOTOGRAFIA: copre le tabelle che esistono
-#   nell'istante in cui gira, non quelle che nascono dopo. E dopo ne nascono
-#   eccome — le tabelle `storico.*` le genera il framework delle automazioni
-#   nella passata `ci_apply`, cioe' piu' tardi.
-#   ⚠️ Successo il 2026-09-09 su questo script, con un guard «salta se i grant
-#   ci sono gia'» che sembrava innocuo: quattro tabelle (`storico.user_override_*`,
-#   `storico.user_emittenti_fiscali`) sono rimaste senza `SELECT` per
-#   `zeroerp_app`, e `db/pgtap/dbops/test-audit-sources-seed.sql` e' diventato
-#   rosso — perche' `information_schema.columns` mostra solo le colonne su cui
-#   il ruolo ha privilegi, quindi quelle quattro «non esistevano».
-#   ⭐ E' la ragione per cui in `ci-validate.yaml` il passo `provision_db_roles`
-#   sta DOPO `--contexts=ci_apply` e non prima: qui si copia quell'ordine.
-APP_PWD="$(awk -F: -v db="$DEV_DB" '$3==db && $4=="zeroerp_app" {print $5; exit}' ~/.pgpass 2>/dev/null || true)"
-if [ -n "$APP_PWD" ]; then
-  echo "── privilegi di zeroerp_app su $CI_DB (provision_db_roles)"
-  # ⚠️ Dallo STDIN e non con `-f`: `/home/tid` e' `drwx------`, quindi l'utente
-  #   `postgres` non puo' attraversarlo e un percorso non lo aprirebbe mai. Cosi'
-  #   il file lo apre la shell, che gira come l'utente giusto, e a psql arriva
-  #   gia' un descrittore.
-  psql_admin -d "$CI_DB" \
-    -v app_role=zeroerp_app -v app_password="$APP_PWD" -v migrator_role=zeroerp \
-    < scripts/sql/provision_db_roles.sql >/dev/null
-else
-  echo "⚠️  password di zeroerp_app non trovata in ~/.pgpass: salto i privilegi." >&2
-  echo "    (riga attesa: $PGHOST:$PGPORT:$DEV_DB:zeroerp_app:<password>)" >&2
-  echo "    NON la invento: un ALTER ROLE con un valore nuovo e' di CLUSTER e" >&2
-  echo "    romperebbe l'accesso al database di sviluppo. I pgTAP falliranno" >&2
-  echo "    tutti per permessi finche' non la aggiungi." >&2
-fi
+# 3. I privilegi del ruolo applicativo: li da' la fase post (passo 5), che
+#    gira DOPO tutto — come in ci-validate.yaml, dove sta dopo `ci_apply` e
+#    dopo `manage.py migrate`. ⛔ E si rilancia SEMPRE: `GRANT … ON ALL TABLES
+#    IN SCHEMA` e' una FOTOGRAFIA, e le shadow `storico.*` nascono con
+#    `ci_apply`, cioe' piu' tardi (successo il 2026-09-09 con un guard «salta se
+#    i grant ci sono gia'»: quattro shadow senza SELECT e
+#    db/pgtap/dbops/test-audit-sources-seed.sql rosso).
+#    Era scripts/sql/provision_db_roles.sql, unificato in provision_zeroerp.sql
+#    il 2026-10-15: niente piu' password di zeroerp_app da ~/.pgpass, qui.
 
-# 4. Il ruolo batch, con il provisioning VERO — come il passo «Provision ruolo
-#    batch fatturazione» di ci-validate.yaml, DOPO le automazioni (le shadow
-#    storico del perimetro nascono li') e dopo i privilegi dell'app.
-#    ⛔ Prima si RITIRA il ponte: i due ALTER DEFAULT PRIVILEGES senza schema
-#    dati in testa (per superare il cancello di 20260729-05 durante il migrate)
-#    e il DML largo del blocco «tabelle GIA' create». Il provisioning e'
-#    additivo — non revoca niente — quindi senza questo passo il DML su tutto
-#    resterebbe e la postura sarebbe quella del ponte, non quella dello script.
-#    Si azzera TUTTO (tabelle, sequenze, USAGE sugli schemi) e si lascia allo
-#    script ridare la sua postura: cosi' anche sugli schemi fuori whitelist —
-#    maintenance, django, pgagent — il batch resta a zero, come in CI.
-#    ⚠️ Senza password: il ruolo esiste nel cluster (e' quello di sviluppo) e
-#    lo script, dal 2026-09-14, in quel caso non la tocca. I GRANT sono per
-#    database: sviluppo non vede niente di tutto questo.
-#    ⚠️ Nella corsa INCREMENTALE il ponte torna in testa e questo passo lo
-#    ritira di nuovo: a regime e' un no-op che rifa' la stessa postura.
-if psql_admin -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='zeroerp_batch_fatturazione'" | grep -q 1; then
-  echo "── ruolo batch: ritiro il DML largo del ponte e lancio il provisioning vero (senza password)"
-  psql_admin -d "$CI_DB" <<'SQL' >/dev/null
-ALTER DEFAULT PRIVILEGES FOR ROLE zeroerp
-  REVOKE INSERT, UPDATE, DELETE ON TABLES FROM zeroerp_batch_fatturazione;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres
-  REVOKE INSERT, UPDATE, DELETE ON TABLES FROM zeroerp_batch_fatturazione;
-DO $$
-DECLARE s text;
-BEGIN
-  FOR s IN SELECT nspname FROM pg_namespace
-            WHERE nspname NOT LIKE 'pg\_%' AND nspname <> 'information_schema'
-  LOOP
-    EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA %I FROM zeroerp_batch_fatturazione', s);
-    EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA %I FROM zeroerp_batch_fatturazione', s);
-    EXECUTE format('REVOKE ALL ON SCHEMA %I FROM zeroerp_batch_fatturazione', s);
-  END LOOP;
-END $$;
-SQL
-  psql_admin -d "$CI_DB" \
-    -v batch_role=zeroerp_batch_fatturazione -v migrator_role=zeroerp \
-    < scripts/sql/provision_db_role_batch_fatturazione.sql >/dev/null
-else
-  echo "ℹ️  ruolo batch assente nel cluster: niente postura da collaudare qui (in CI lo crea il suo passo)."
-fi
+# 5. ⭐ Il modello dei ruoli: la postura di zeroerp_app (passo 3), EXECUTE di
+#    zeroerp_job sulle procedure dei job, la
+#    proprieta' ripassata a zeroerp_owner (cio' che e' nato dopo la fase pre), e
+#    la VERIFICA «un owner solo»: se un oggetto del progetto non e' suo — fuori
+#    da dbops.sec_functions_owner — lo script si ferma e lo nomina.
+#    ⭐ E l'AMBIENTE (dal 2026-10-16, brief-db-processi-accensione-per-ambiente
+#    R-2): lo scratch e' SVILUPPO. Si scrive una volta e non cambia; nelle
+#    corse dopo la prima il parametro deve solo coincidere.
+echo "── ruoli di sistema: fase post — postura di zeroerp_app, zeroerp_job, ambiente SVILUPPO, «un owner solo» (provision_zeroerp.sql)"
+psql_admin -d "$CI_DB" -v fase=post -v ambiente=SVILUPPO < scripts/sql/provision_zeroerp.sql
 
 DEV_DOPO="$(testimone_dev)"
 echo "── testimone su $DEV_DB (dopo):  $DEV_DOPO"

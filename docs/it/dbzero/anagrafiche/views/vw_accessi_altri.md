@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_accessi_altri
 WITH (security_invoker=true) AS
@@ -54,6 +56,8 @@ SELECT c.auth_user_id,
      CROSS JOIN LATERAL script.fn_totp_obbligatorio(c.auth_user_id) tob(obbligatorio, motivo))
   WHERE (script.fn_categoria_accesso(c.auth_user_id) = 'ALTRO'::text);
 ```
+
+</div>
 
 
 ---

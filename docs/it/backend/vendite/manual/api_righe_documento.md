@@ -110,7 +110,7 @@ ed export dal factory, permesso `("vendite", "offerta_commerciale")`.
   **Assente**, l'ordine del documento (tabella sopra), poi la chiave di riga
   (`id`; `riga_key` su fattura e contratto) — lo schema OpenAPI lo legge dal
   repository (`righe_ordine_di_partenza`). Una colonna
-  fuori whitelist ripiega sull'ordine del documento. Le date di consegna
+  fuori whitelist è un **400** `E_VALIDATION_INPUT` (dal 2026-10-20). Le date di consegna
   partono DESC quando la direzione manca;
 - `limit` / `offset` — pagina (tetto `MAX_LIMIT` di `apps.core.api.constants`).
 
@@ -131,6 +131,8 @@ la pagina, la lettura completa e la riga singola (`get_riga`, usata dai
 controlli «la riga appartiene al documento») leggono **la stessa vista**, e
 tutte e tre filtrano le righe attive (`attivo IS TRUE`). Fattura e contratto
 non hanno la riga singola né il filtro (sezioni sopra). L'eliminazione di una
-riga è fisica (`DELETE`): il filtro sulla riga singola non cambia niente per le
+riga è fisica (`DELETE FROM …_righe`) su tutti i documenti, preventivo compreso
+(i componenti BoM vanno via in cascata; soft, `attivo = false`, è solo il DELETE
+di un **componente**): il filtro sulla riga singola non cambia niente per le
 righe eliminate, allinea la riga singola alle altre due letture nel caso, che il
 modello ammette, di una riga con `attivo = false`.

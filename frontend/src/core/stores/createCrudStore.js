@@ -38,7 +38,8 @@ import { useListaStoreCore } from '../composables/useListaStoreCore'
 //   - api: { list, detail?, create, update } — fn che ritornano response axios
 //   - tabEntity: chiave tab event bus per emitDataChanged (TAB_ENTITIES.X o stringa)
 //   - createIdField: campo id dell'entita creata, per emitDataChanged (default 'id')
-//   - extraActions: { nome: fn(id) } azioni extra (es. disattiva/riattiva), wrappate con emit
+//   - extraActions: { nome: fn(id, ...argomenti) } azioni extra (es. disattiva/riattiva;
+//       la correzione di struttura dell'articolo porta anche le colonne), wrappate con emit
 //   - afterWrite: (id, azione) => void — l'aggancio post-write, chiamato dopo
 //       OGNI scrittura riuscita (`create`, `update`, ogni `extraActions`) e
 //       PRIMA di `emitDataChanged`: chi ascolta l'evento e ricarica deve
@@ -127,8 +128,8 @@ export function createCrudStore(storeId, {
     // Azioni extra (es. disattiva/riattiva): stesso giro di scrittura di
     // create/update (aggancio post-write + emitDataChanged).
     for (const [name, fn] of Object.entries(extraActions)) {
-      exposed[name] = async (id) => {
-        const res = await fn(id)
+      exposed[name] = async (id, ...argomenti) => {
+        const res = await fn(id, ...argomenti)
         dopoScrittura(id, name)
         return res.data.data
       }

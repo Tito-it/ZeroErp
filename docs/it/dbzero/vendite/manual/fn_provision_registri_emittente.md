@@ -68,9 +68,11 @@ ripetibile senza doversi chiedere ogni volta «l'ho già fatto?».
 
 ### Cosa non fa, ed è voluto
 
-* **non crea registri per le fatture.** Quelli sono sezionali fiscali: hanno
-  serie, regole di reset e collegamenti al tipo di documento che una scelta
-  automatica non può indovinare. Si configurano a mano, ed è giusto così;
+* ~~non crea registri per le fatture~~ — **superato il 18-10-2026** (R-BE-14):
+  l'emittente nasce anche col registro delle fatture **standard**, collegato a
+  ogni coppia (tipo documento, natura) che non ha un registro. Serie e sezionali
+  separati si configurano poi dal CRUD dei registri. Dettaglio in
+  [`fn_provision_registri`](/dbzero/vendite/manual/fn_provision_registri);
 * **non modifica** un registro esistente. Se qualcuno ha cambiato la serie o le
   regole di reset di un registro, quella è una decisione: non viene riscritta.
 

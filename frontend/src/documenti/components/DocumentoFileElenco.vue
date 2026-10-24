@@ -22,6 +22,7 @@ import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDocumentiPerSorgenteStore } from '../stores/documentiPerSorgente'
 import { useNotify } from '../../core/composables/useNotify'
+import { useApiHandler } from '../../core/composables/useApiHandler'
 import { downloadBlob } from '../../core/utils/download'
 import { formatSize } from '../../core/utils/format'
 import { MANAGE_ICONS } from '../../core/constants'
@@ -37,22 +38,23 @@ const props = defineProps({
 
 const { t } = useI18n()
 const notify = useNotify()
+const { execute } = useApiHandler()
 const azioni = useDocumentiPerSorgenteStore()
 
 const files = ref([])
 const caricamento = ref(false)
 
 // Scopo: legge i file del documento. Un errore lascia l'elenco vuoto e lo
-//        dice in console: il toast lo mostra gia' l'interceptor axios.
+//        DICE (`execute`).
+// ⛔ Fino al 2026-10-23 lo scriveva solo in console, «il toast lo mostra gia'
+//    l'interceptor axios»: l'interceptor di `core/api.js` non mostra toast, e
+//    l'operatore vedeva un elenco vuoto che sembrava una risposta.
 async function carica() {
   caricamento.value = true
   try {
     azioni.setSorgente(props.sorgenteCode, props.sorgenteId)
-    const data = await azioni.listFiles(props.documentoId)
+    const data = await execute(() => azioni.listFiles(props.documentoId))
     files.value = data?.results || []
-  } catch (err) {
-    console.error('listFiles', err)
-    files.value = []
   } finally {
     caricamento.value = false
   }

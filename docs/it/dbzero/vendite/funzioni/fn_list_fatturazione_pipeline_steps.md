@@ -7,6 +7,8 @@ CREATE FUNCTION fn_list_fatturazione_pipeline_steps(p_tipo_lotto text, p_utility
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_fatturazione_pipeline_steps(p_tipo_lotto text, p_utility_id integer DEFAULT NULL::integer, p_tipo_doc_fiscale_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(stato_doc_fiscale_id bigint, descrizione text, ordine smallint)
@@ -38,6 +40,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_list_fatturazione_pipeline_steps(p_tipo_lotto text, p_utility_id integer, p_tipo_doc_fiscale_id bigint)
 IS 'Step pipeline fatturazione risolti per tipo_lotto con fallback utility/tipo_doc.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

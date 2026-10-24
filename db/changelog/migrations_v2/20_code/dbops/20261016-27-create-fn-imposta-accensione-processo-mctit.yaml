@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO DELLA SCELTA A MANO
+#   dbops.fn_imposta_accensione_processo(codice, acceso, motivo): accende o
+#   spegne a mano la sveglia di un processo su questa installazione, oppure
+#   (acceso NULL) toglie la scelta e torna al default per ambiente.
+#   Restituisce lo stato effettivo dopo il gesto.
+#   Brief: brief-db-processi-accensione-per-ambiente (A-2, §5.2)
+#
+# -- CHI LA CHIAMA ----------------------------------------------------
+#   Il drawer dei processi (giro BE/FE): l'interruttore, assente sui non
+#   spegnibili. Il permesso resta al backend, con la stessa autorizzazione
+#   del drawer, come per «Esegui ora». INVOKER: l'app scrive
+#   dbops.processi_accensione, e i limiti li dice il guard
+#   dbops.trgfn_processi_accensione_guard, che qui non si ripetono.
+#
+# -- TORNARE AL DEFAULT --------------------------------------------------
+#   acceso NULL cancella la riga: «vale di nuovo il catalogo». Il motivo in
+#   quel caso non si salva (non c'e' una riga che lo tenga), e la scelta tolta
+#   non lascia traccia nella tabella: la tiene il registro delle operazioni del
+#   backend.
+#
+# -- L'AUDIT DELL'AGGIORNAMENTO ----------------------------------------
+#   Le automazioni non coprono dbops: data_update e user_update li scrive il
+#   ramo ON CONFLICT, qui.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261016-27-create-fn-imposta-accensione-processo-mctit.yaml
+
+  - changeSet:
+      id: 20261016-27-create-fn-imposta-accensione-processo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea dbops.fn_imposta_accensione_processo: accende, spegne o rimette al default la sveglia
+        di un processo su questa installazione. Brief: brief-db-processi-accensione-per-ambiente.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_imposta_accensione_processo(
+                  p_processo_codice dbops.processi.codice%TYPE,
+                  p_acceso          dbops.processi_accensione.acceso%TYPE,
+                  p_motivo          dbops.processi_accensione.motivo%TYPE)
+              RETURNS boolean
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_processo_id dbops.processi.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La scelta a mano di questa installazione sulla
+                  --   sveglia di un processo. acceso true/false la scrive,
+                  --   acceso NULL la toglie (torna il default per ambiente).
+                  --   Restituisce lo stato effettivo dopo il gesto (NULL se
+                  --   l'ambiente non e' dichiarato e la riga e' stata tolta).
+                  --
+                  -- Regole:
+                  --   - i limiti (senza sveglia, non spegnibile, motivo) li
+                  --     dice il guard della tabella: qui non si ripetono;
+                  --   - il permesso e' del backend.
+                  -- =========================================================
+                  SELECT p.id
+                    INTO v_processo_id
+                    FROM dbops.processi p
+                   WHERE p.codice = p_processo_codice;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'dbops', 'fn_imposta_accensione_processo', 'E_PROCESSO_NON_TROVATO',
+                          jsonb_build_object('processo_codice', p_processo_codice),
+                          NULL::uuid,
+                          COALESCE(p_processo_codice, '-'));
+                  END IF;
+
+                  IF p_acceso IS NULL THEN
+                      DELETE FROM dbops.processi_accensione a
+                       WHERE a.processo_id = v_processo_id;
+                  ELSE
+                      INSERT INTO dbops.processi_accensione (processo_id, acceso, motivo)
+                      VALUES (v_processo_id, p_acceso, p_motivo)
+                      ON CONFLICT (processo_id) DO UPDATE
+                         SET acceso      = EXCLUDED.acceso,
+                             motivo      = EXCLUDED.motivo,
+                             -- Le automazioni non coprono dbops: l'audit
+                             -- dell'aggiornamento si scrive qui.
+                             data_update = now(),
+                             user_update = CURRENT_USER;
+                  END IF;
+
+                  RETURN dbops.fn_processo_acceso_dichiarato(p_processo_codice);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_imposta_accensione_processo(
+                  dbops.processi.codice%TYPE,
+                  dbops.processi_accensione.acceso%TYPE,
+                  dbops.processi_accensione.motivo%TYPE)
+              IS 'Il verbo della scelta a mano: accende (true) o spegne (false) la sveglia di un processo su questa installazione, col motivo; acceso NULL toglie la scelta e torna il default per ambiente del catalogo (nessuna traccia nella tabella: la tiene il registro delle operazioni del backend). data_update e user_update li scrive il verbo: le automazioni non coprono dbops. Restituisce lo stato effettivo dopo il gesto (dbops.fn_processo_acceso_dichiarato). I limiti li dice il guard della tabella (E_PROCESSO_SENZA_SVEGLIA, E_PROCESSO_NON_SPEGNIBILE, E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO); codice inesistente: E_PROCESSO_NON_TROVATO. INVOKER: il permesso e'' del backend, come per Esegui ora. Brief: brief-db-processi-accensione-per-ambiente (A-2).';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_imposta_accensione_processo(text, boolean, text);

@@ -4,7 +4,7 @@
 # Doc: Python
 # Scopo: Presidi sul DATABASE PROVVISTO per il seguito del collaudo del
 #        2026-09-14 (D16/D17/D18): le colonne del blocco «elimina» esistono
-#        davvero, la check che le alimenta esiste con la sua arita', l'INSERT
+#        davvero, la check che le alimenta esiste con la sua firma, l'INSERT
 #        con la destinazione e l'UPDATE di eliminazione si pianificano, le
 #        due matrici si leggono e ogni stato richiedibile e' raggiungibile.
 #        ⭐ E il SECONDO TEMPO in modifica (Q-H, 2026-09-15), provato PER
@@ -24,7 +24,7 @@ Indice test eseguiti:
 1) ColonneTests.test_la_riga_porta_le_quattro_colonne_del_blocco_elimina
 2) ColonneTests.test_anche_la_coda_le_porta
 3) ColonneTests.test_la_testata_porta_stato_info_key
-4) ColonneTests.test_la_check_esiste_con_arita_1
+4) ColonneTests.test_la_check_esiste_con_la_firma_della_lateral
 5) ScrittureTests.test_l_insert_con_la_destinazione_si_pianifica
 6) ScrittureTests.test_l_update_di_eliminazione_si_pianifica
 7) LettureTests.test_get_riga_e_list_righe_eseguono_con_la_lateral
@@ -44,6 +44,8 @@ Indice test eseguiti:
 21) SaldoPrimaDiSeTests.test_il_documento_esclude_la_riga_come_la_rata
 22) SaldoPrimaDiSeTests.test_un_id_di_esclusione_non_positivo_e_un_guasto_dichiarato
 23) LettureTests.test_ogni_ordinamento_delle_righe_della_distinta_esegue_con_la_lateral
+24) LettureTests.test_la_lista_dice_lo_stesso_motivo_della_firma_per_id
+25) LettureTests.test_la_check_della_coda_sta_sopra_la_window
 """
 
 from __future__ import annotations
@@ -130,15 +132,20 @@ class _DbTestCase(unittest.TestCase):
 
 class ColonneTests(_DbTestCase):
     # Scopo: BE-4 — la terna + il flag sulla riga «nuda» (dettaglio e righe di
-    #        una distinta).
+    #        una distinta). Dal 2026-10-21 le aggiunge `_sql_con_elimina` SOPRA
+    #        la lettura: si prova la composizione che le letture eseguono.
     def test_la_riga_porta_le_quattro_colonne_del_blocco_elimina(self):
-        colonne = self._colonne(f"{repo_mod._RIGA_SELECT} WHERE r.id = %s", [-1])
+        colonne = self._colonne(
+            repo_mod._sql_con_elimina(f"{repo_mod._RIGA_SELECT} WHERE r.id = %s"), [-1]
+        )
         for nome in _COLONNE_ELIMINA:
             self.assertIn(nome, colonne)
 
-    # Scopo: ...e sulla coda, che condivide il frammento per costruzione.
+    # Scopo: ...e sulla coda, con lo stesso frammento.
     def test_anche_la_coda_le_porta(self):
-        colonne = self._colonne(f"{repo_mod._RIGA_CODA_SELECT} WHERE r.id = %s", [-1])
+        colonne = self._colonne(
+            repo_mod._sql_con_elimina(f"{repo_mod._RIGA_CODA_SELECT} WHERE r.id = %s"), [-1]
+        )
         for nome in _COLONNE_ELIMINA:
             self.assertIn(nome, colonne)
 
@@ -217,22 +224,23 @@ class ColonneTests(_DbTestCase):
             return cur.fetchall()
         self.assertTrue(self._con_operatore(_pianifica))
 
-    # Scopo: La check che alimenta la LATERAL esiste, con UN parametro. Se
+    # Scopo: La check che alimenta la LATERAL esiste, con la firma che la
+    #        LATERAL chiama: dal 2026-10-21 la meta' sulla TESTATA. Se
     #        cambiasse firma, la lista delle righe risponderebbe 500.
-    def test_la_check_esiste_con_arita_1(self):
+    def test_la_check_esiste_con_la_firma_della_lateral(self):
         def _leggi(cur):
             cur.execute(
                 """
-                SELECT p.pronargs
-                  FROM pg_proc p
-                  JOIN pg_namespace n ON n.oid = p.pronamespace
-                 WHERE n.nspname = 'script'
-                   AND p.proname = 'fn_check_riga_contabile_eliminabile'
+                SELECT to_regprocedure(
+                    'script.fn_check_riga_contabile_eliminabile_su_distinta(pagamenti.vendite_contabili)'
+                ) IS NOT NULL
                 """
             )
-            return [r[0] for r in cur.fetchall()]
-        arita = self._con_operatore(_leggi)
-        self.assertEqual(arita, [1], "script.fn_check_riga_contabile_eliminabile(bigint) assente o con altra arita'")
+            return cur.fetchone()[0]
+        self.assertTrue(
+            self._con_operatore(_leggi),
+            "script.fn_check_riga_contabile_eliminabile_su_distinta(pagamenti.vendite_contabili) assente",
+        )
 
 
 class ScrittureTests(_DbTestCase):
@@ -308,6 +316,82 @@ class LettureTests(_DbTestCase):
                         self.assertEqual((rows, total), ([], 0))
             return True
         self.assertTrue(self._con_operatore(_leggi))
+
+    # Scopo: ⭐ La meta' sulla testata e la firma per id (quella del guard)
+    #        danno lo STESSO primo motivo nel percorso reale del frammento
+    #        (`_sql_con_elimina`, lo stesso delle quattro letture), su OGNI ramo
+    #        del predicato: una riga per ramo, sotto una distinta costruita in
+    #        quello stato (`_monta_righe_per_ramo`). Il cestino spento e il 409
+    #        non devono divergere: e' la promessa della check, e cambiare la
+    #        firma chiamata non deve romperla in silenzio.
+    # ⭐ Si asserisce anche il motivo ATTESO: due risposte uguali e sbagliate
+    #    (per esempio entrambe NULL) non sono una prova.
+    # ⛔ Fino al 2026-10-22 confrontava le righe attive che il DB conteneva, e
+    #    su un database ricostruito da zero si saltava: provava solo i rami che
+    #    i dati di quel giorno, per caso, avevano.
+    def test_la_lista_dice_lo_stesso_motivo_della_firma_per_id(self):
+        def _leggi(cur):
+            righe = _monta_righe_per_ramo(cur)
+            lista = repo_mod._sql_con_elimina(f"{repo_mod._RIGA_SELECT} WHERE r.id = ANY(%s)")
+            cur.execute(
+                f"""
+                SELECT l.id, l.elimina_blocco_reason,
+                       script.fn_check_riga_contabile_eliminabile(l.id) -> 0 ->> 'reason'
+                  FROM ({lista}) l
+                """,
+                [list(righe.values())],
+            )
+            letti = {riga_id: (in_lista, per_id) for riga_id, in_lista, per_id in cur.fetchall()}
+            return righe, letti
+
+        righe, letti = self._con_operatore(_leggi)
+        self.assertEqual(set(letti), set(righe.values()), "la lista non restituisce le righe del mondo")
+        for (ramo, atteso), riga_id in righe.items():
+            in_lista, per_id = letti[riga_id]
+            with self.subTest(ramo=ramo):
+                self.assertEqual(in_lista, per_id)
+                self.assertEqual(in_lista, atteso)
+
+    # Scopo: ⭐ La check gira sulle righe MOSTRATE: nel piano della coda la
+    #        sua chiamata non sta sotto la `WindowAgg` della `COUNT(*) OVER ()`
+    #        (cioe' non per riga filtrata). Si legge il piano, non i tempi:
+    #        e' la forma che si presidia, e vale anche a DB quasi vuoto.
+    def test_la_check_della_coda_sta_sopra_la_window(self):
+        catturata: dict = {}
+
+        def _cattura(data_sql, params, **_kw):
+            catturata["sql"], catturata["params"] = data_sql, params
+            return [], 0
+
+        def _piano(cur):
+            originale = repo_mod.fetch_paged_with_total
+            repo_mod.fetch_paged_with_total = _cattura
+            try:
+                PagamentiRepository().list_righe_coda(
+                    stati=pagamenti_service.CODE_RIGHE["TUTTE"],
+                    order_by="data_pagamento", order_dir="desc", limit=25, offset=0,
+                )
+            finally:
+                repo_mod.fetch_paged_with_total = originale
+            cur.execute("EXPLAIN (FORMAT JSON, VERBOSE) " + catturata["sql"], catturata["params"])
+            return cur.fetchone()[0]
+
+        piano = self._con_operatore(_piano)
+
+        def _sotto_window(nodo, dentro=False):
+            dentro = dentro or nodo.get("Node Type") == "WindowAgg"
+            trovati = []
+            if dentro and "fn_check_riga_contabile_eliminabile" in str(
+                {k: v for k, v in nodo.items() if k != "Plans"}
+            ):
+                trovati.append(nodo.get("Node Type"))
+            for figlio in nodo.get("Plans", []):
+                trovati += _sotto_window(figlio, dentro)
+            return trovati
+
+        radice = piano[0]["Plan"]
+        self.assertIn("fn_check_riga_contabile_eliminabile_su_distinta", str(radice))
+        self.assertEqual(_sotto_window(radice), [], "la check gira sotto la WindowAgg")
 
 
 class MatriciTests(_DbTestCase):
@@ -451,6 +535,65 @@ def _monta_riga_piena(cur) -> tuple[int, int, int]:
     assert row is not None
     scadenza_id = int(row[0])
     return fattura_id, scadenza_id, riga_id
+
+
+# I rami del predicato «elimina» (`script.fn_check_riga_contabile_eliminabile_su_distinta`):
+# (nome, origine della distinta, stati per cui passa dopo la BOZZA, primo motivo atteso).
+# ⭐ I motivi stanno tutti sulla TESTATA, quindi un ramo e' una distinta.
+# ⚠️ La riga nasce SCARTATA: una riga gia' lavorata, perche' una distinta con
+#    righe da guardare non si valida (e senza VALIDATA non si arriva a CHIUSA).
+_RAMI_ELIMINA: tuple[tuple[str, str, tuple[str, ...], str | None], ...] = (
+    ("manuale_in_bozza", "MANUALE", (), None),
+    ("manuale_validata", "MANUALE", ("VALIDATA",), "DISTINTA_VALIDATA"),
+    ("generata", "GENERATA", (), "DISTINTA_NON_MANUALE"),
+    ("chiusa", "MANUALE", ("VALIDATA", "CHIUSA"), "DISTINTA_FINALE"),
+    ("annullata", "MANUALE", ("ANNULLATA",), "DISTINTA_ANNULLATA"),
+)
+
+_DISTINTA_IN_BOZZA = """
+    INSERT INTO pagamenti.vendite_contabili
+        (centro_riscossione_id, data_contabile, data_registrazione, stato_id, origine, meta)
+    SELECT (SELECT c.id FROM pagamenti.centri_riscossione c
+             WHERE c.attivo IS TRUE AND c.codice_interno = 'BANCA' ORDER BY c.id LIMIT 1),
+           script.fn_data_operativa(), script.fn_data_operativa(),
+           (SELECT s.id FROM pagamenti.vendite_contabili_stati s WHERE s.codice_interno = 'BOZZA'),
+           %s, '{"test_scope": "be_rami_elimina"}'::jsonb
+    RETURNING id
+"""
+
+_RIGA_SCARTATA = """
+    INSERT INTO pagamenti.vendite_contabili_righe
+        (contabile_id, riferimento_ente, data_pagamento, importo, stato_id)
+    SELECT %s, 'BE_RAMI_ELIMINA', script.fn_data_operativa(), 10.00,
+           (SELECT s.id FROM pagamenti.vendite_contabili_righe_stati s
+             WHERE s.codice_interno = 'SCARTATA')
+    RETURNING id
+"""
+
+_DISTINTA_IN_STATO = """
+    UPDATE pagamenti.vendite_contabili
+       SET stato_id = (SELECT s.id FROM pagamenti.vendite_contabili_stati s
+                        WHERE s.codice_interno = %s)
+     WHERE id = %s
+"""
+
+
+# Scopo: monta il mondo (`_FIXTURE_MONDO`) e, per ogni ramo di `_RAMI_ELIMINA`,
+#        una distinta con UNA riga, portata nel suo stato passando dai guard
+#        veri (transizioni, «ogni riga guardata»). Consegna
+#        `{(ramo, motivo atteso): riga_id}`. Tutto muore col rollback.
+def _monta_righe_per_ramo(cur) -> dict[tuple[str, str | None], int]:
+    for passo in _FIXTURE_MONDO:
+        cur.execute(passo)
+    righe: dict[tuple[str, str | None], int] = {}
+    for ramo, origine, percorso, atteso in _RAMI_ELIMINA:
+        cur.execute(_DISTINTA_IN_BOZZA, [origine])
+        contabile_id = int(cur.fetchone()[0])
+        cur.execute(_RIGA_SCARTATA, [contabile_id])
+        righe[(ramo, atteso)] = int(cur.fetchone()[0])
+        for stato in percorso:
+            cur.execute(_DISTINTA_IN_STATO, [stato, contabile_id])
+    return righe
 
 
 class ModificaSecondoTempoTests(_DbTestCase):

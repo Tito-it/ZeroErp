@@ -22,6 +22,8 @@ Indice test eseguiti:
 8) PraticheServiceTests.test_aggiorna_pratica_ok
 9) PraticheServiceTests.test_aggiorna_pratica_non_trovata
 10) PraticheServiceTests.test_aggiorna_pratica_errore_id_zero
+10b) PraticheServiceTests.test_aggiorna_pratica_valori_dal_bb
+10c) PraticheServiceTests.test_aggiorna_pratica_letture_coincidono_con_whitelist
 11) PraticheServiceTests.test_cambia_stato_pratica_ok
 12) PraticheServiceTests.test_cambia_stato_pratica_errore_id_zero
 13) PraticheServiceTests.test_cambia_stato_pratica_errore_stato_vuoto
@@ -338,6 +340,32 @@ class PraticheServiceTests(SimpleTestCase):
             pratiche_service.aggiorna_pratica(0, {"descrizione": "x"})
         self.assertEqual(ctx.exception.code, "E_INVALID_ID")
 
+    # Scopo: i VALORI della PATCH passano dal BB: illeggibile -> 400 sul campo
+    #        senza scrivere, `""` -> NULL, `meta` solo oggetto.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_aggiorna_pratica_valori_dal_bb(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_pratica.return_value = _mock_pratica_row(1)
+        for campo, valore in (
+            ("data_scadenza", "banana"), ("soggetto_id", "non-uuid"),
+            ("risorsa_umana_id", "x"), ("meta", "x"), ("descrizione", 5),
+        ):
+            with self.subTest(campo=campo), self.assertRaises(ServiceError) as ctx:
+                pratiche_service.aggiorna_pratica(1, {campo: valore})
+            self.assertEqual(ctx.exception.code, "E_PRATICA_VALIDATION")
+            self.assertEqual(ctx.exception.context.get("field"), campo)
+        repo.update_pratica.assert_not_called()
+
+        pratiche_service.aggiorna_pratica(1, {"descrizione": "  ", "data_scadenza": None})
+        repo.update_pratica.assert_called_once_with(1, {"descrizione": None, "data_scadenza": None})
+
+    # Scopo: ⛔ un campo ammesso dalla whitelist ma senza lettura sparirebbe
+    #        dalla PATCH in silenzio: le due mappe devono coincidere.
+    def test_aggiorna_pratica_letture_coincidono_con_whitelist(self):
+        from apps.pratiche.db.pratiche_repository import PRATICA_UPDATE_SET
+
+        self.assertEqual(set(pratiche_service._LETTURE_PATCH_PRATICA), set(PRATICA_UPDATE_SET))
+
     # Scopo: Verifica cambio stato pratica con esito positivo.
     @patch(f"{_SVC}.PraticheRepository")
     def test_cambia_stato_pratica_ok(self, MockRepo):
@@ -345,7 +373,10 @@ class PraticheServiceTests(SimpleTestCase):
 
         pratiche_service.cambia_stato_pratica(1, "APERTA")
 
-        repo.update_stato_pratica.assert_called_once_with(1, "APERTA")
+        # Lo stato l'ha scelto il client: se non esiste e' un 400 sul campo.
+        repo.update_stato_pratica.assert_called_once_with(
+            1, "APERTA", codice_errore="E_PRATICA_VALIDATION", campo="nuovo_stato",
+        )
 
     # Scopo: D1 — al massimo UNA lente di contesto (ruolo/istanza/interne):
     # due lenti insieme → ServiceError col codice catalogo DB 484.
@@ -356,8 +387,11 @@ class PraticheServiceTests(SimpleTestCase):
                 soggetto_ruolo_id=10,
                 istanza_utility_id=20,
             )
+        # Il codice VIVO, lo stesso del guard DB `fn_lista_pratiche_per_contesto`:
+        # fino al 2026-10-21 qui si sollevava la forma senza `E_`, ritirata il
+        # 2026-08-05 (brief-be-verifica-documentazione-api §B7).
         self.assertEqual(
-            ctx.exception.code, "PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI",
+            ctx.exception.code, "E_PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI",
         )
 
     # Scopo: D1 — la lente ruolo viene inoltrata al repository (la verita' del

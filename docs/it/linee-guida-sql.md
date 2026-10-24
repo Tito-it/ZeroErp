@@ -1,9 +1,13 @@
 **Best Practice e Convenzioni**
 
+> **Ultimo aggiornamento**: 25 ottobre 2026
+>
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
 > 
 > * [Liquibase Setup & Workflow](liquibase-setup-workflow.md)   
+> * [Linee guida Trigger](linee-guida-trigger.md) — trigger e funzioni trigger: nomi, ordine, eventi
+> * [Un database che resta veloce](/guide/database-che-resta-veloce) — il racconto e il metodo delle prestazioni; le regole sono al §13
 > * [Storicizzazione Tabelle](/guide/storicizzazione-tabelle)   
 > * [Transaction ID](/guide/tx_id_implementation_guide) 
 > * [Configurazione e Gestione Parametri](/guide/configurazione-e-gestione-parametri)   
@@ -119,31 +123,11 @@ lo riceverà in questa forma (D8 del documento di valutazione).
 
 ### 5. Trigger e Funzioni
 
-* **Trigger Functions** :
+**Trigger e funzioni trigger** — nomi, fasi e ordine di esecuzione, `UPDATE OF` contro `WHEN`, che
+cosa vede un `BEFORE ROW`, trigger differiti, rapporto coi trigger generati — hanno una sede sola:
+[Linee guida Trigger](linee-guida-trigger.md). Qui restano le regole che valgono per **tutte** le
+funzioni, trigger compresi.
 
->
-> Vedi il documento:
->
-> * [Linee Guida Trigger](linee-guida-trigger.md)   
->
-
-**Naming delle trigger function:**
-
-Qui la scelta migliore è NON mettere né fase né eventi nel nome della funzione.
-
-Quindi:
-
-**trgfn_<schema_opzionale>_<tabella>_<descrizione_breve>**
-```
-Esempi:
-
-trgfn_anagrafiche_soggetti_tx_id_managed
-
-trgfn_vendite_ddt_righe_qta_from_operativa
-
-trgfn_config_stati_prevent_delete_if_used
-
-```
 **Utilizzo di check o guard**
 
 * A. Usa check per funzioni “pure” che verificano
@@ -364,6 +348,45 @@ delle scritture precedenti sopravviva).
 
 ---
 
+### 5c. Funzioni SQL `BEGIN ATOMIC`: perché, come si cambiano, come si cercano
+
+Una funzione `LANGUAGE sql` si scrive col corpo **`BEGIN ATOMIC … END`**, non come stringa,
+quando legge tabelle che altri possono rinominare o mettere sotto RLS. Così le sue dipendenze
+stanno in `pg_depend`: una rinomina a monte viene **rifiutata** (il presidio dei riferimenti morti
+compila solo il plpgsql), e la catena vista → funzione → tabelle resta leggibile dal criterio di
+`rls/test-rls-viste-security-invoker`. Nasce col `20260921-21` (`fn_partite_merce`,
+[brief-db-partita-merce-per-documento](/dev/work-done/brief-db-partita-merce-per-documento) §2-bis.3);
+oggi la usano la partita e la situazione merce, la lineage, la diagnosi del push, i lettori delle
+vesti.
+
+**Restano `BEGIN ATOMIC` anche quando si cambiano.** Il prezzo della scelta sono tre regole:
+
+* **Come si scrive il changeSet.** pgjdbc esegue un `BEGIN ATOMIC` solo se sta **da solo** nel suo
+  `sql:`: il `COMMENT ON FUNCTION` e il `GRANT` vanno in un secondo `sql:` dello stesso changeSet
+  (`20260921-21`, `20261011-92`). Le clausole `SET` (`plan_cache_mode`, `jit`) si ripetono, §13.7.
+* **⛔ Blocca `ALTER COLUMN … TYPE`, come una vista.** Una colonna letta da una `BEGIN ATOMIC` è una
+  dipendenza, e `ALTER TYPE` la rifiuta. Per cambiare il tipo di quella colonna la funzione si
+  **toglie** nel changeSet di `00_schema` (con le viste che la leggono) e si **ricrea**, sempre
+  `BEGIN ATOMIC`, in un changeSet di `20_code` con numero più alto, nella stessa corsa. Il COMMENT
+  va riscritto per intero: il `DROP` lo porta via. Caso: `fn_documento_lineage_archi`,
+  `20261019-87` → `-89`. Chi dipende da cosa si legge da `pg_depend` (classid `pg_proc` e
+  `pg_rewrite`), non dagli YAML. Per una modifica che non tocca il tipo di una colonna basta
+  `CREATE OR REPLACE`, come per ogni funzione.
+* **⛔ Il corpo NON sta in `prosrc`.** Per una `BEGIN ATOMIC` `pg_proc.prosrc` è vuoto: il corpo è
+  in `prosqlbody`, un albero e non un testo. Un censimento di letterali o di colonne fatto su
+  `prosrc` **non vede queste funzioni** e risponde «zero occorrenze». Si cerca nel testo di
+  `pg_get_functiondef(oid)`, che le copre tutte. Successo al censimento del lotto 2a della
+  grammatica unica: quattro funzioni mai viste
+  ([brief-db-grammatica-unica-documenti](/dev/work-in-progress/brief-db-grammatica-unica-documenti)
+  §12.3).
+
+⚠️ `pg_get_functiondef` di una `BEGIN ATOMIC` stampa i nomi relativi al `search_path` della sessione
+(`sorgenti`, non `config.sorgenti`). Per ricopiarne il corpo in un changeSet si prende l'ultimo YAML
+che l'ha scritta e lo si **verifica uguale al vivo**, oppure si legge il vivo con
+`SET search_path = pg_catalog`, che qualifica tutto.
+
+---
+
 ### 6. Viste (Views)
 
 * **Applicative**: `vw_<descrittivo>` in schema `script`, es. `vw_clienti_attivi`
@@ -394,8 +417,7 @@ delle scritture precedenti sopravviva).
 | --- | --- | --- |
 | `DEFAULT_TIPO_SOGGETTO_DETTAGLIO_<RUOLO>` (es. `_CL`, `_FO`) | LIKE `DEFAULT_TIPO_SOGGETTO_DETTAGLIO_%` | `config.tipi_soggetto_dettaglio.codice_interno` |
 | `DEFAULT_UTILITY` | EXACT | `config.utilities.codice_interno` |
-| `state_code_iso3` (default ISO3 stati) | — (parametro single-shot, no pattern) | `config.stati.code_iso3` (chiave naturale ISO) |
-| `soggetto_default_stato_iso2` | — | `config.stati.code_iso2` |
+| `STATO_PROPOSTO_ISO2` (lo stato proposto; dal 18-10-2026 prende il posto di `state_code_iso3` e `soggetto_default_stato_iso2`) | EXACT | `config.stati.codice_iso2` — ⚠️ non univoco (righe storiche ISTAT): l'unicità la controlla il lettore `script.fn_stato_id_da_iso2` |
 | `DEFAULT_IVA` | EXACT | `config.iva.codice_interno` |
 
 **Tech debt riconosciuto**: parametri legacy che oggi stoccano id numerici a tabelle di catalogo che **non espongono ancora** una chiave naturale stabile. Restano fuori scope del framework finche' la tabella target non viene dotata della chiave (aggiungere `codice_interno` -> il lock automatico viene provisionato dal runner -> rinominare il parametro -> aggiungere riga al registry). Migrazione tracciata caso per caso, non bulk.
@@ -815,62 +837,6 @@ Brief: `brief-db-character-n-spazi-di-riempimento`.
 
 ---
 
-### 8. Indici
-
-* **Naming**: `ix_<table>_<column>`
-* **Tipologia**: B-Tree per default; GIN/GIST per JSONB/Geometrie.
-* **Parziali**: `CREATE UNIQUE INDEX ix_contatti_default ON contatti(soggetto_id) WHERE is_default;` per default logic
-* **Indici `upper(...)`**: non usarli in modo generico; introdurli solo per query case‑insensitive specifiche e con beneficio prestazionale misurabile.
-* **Ricerche case‑insensitive**: usare `ILIKE` lato query; l’indice serve solo se compatibile con la forma del predicato.
-
----
-
-### 9. Automazione Indici FK
-
-All’interno della cartella **`90_end/`** delle migrazioni Liquibase, inserire sempre per ultimi uno script YAML con `runAlways` o `runAlways: false` per richiamare la procedura che crea/rimuove indici sulle foreign key:
-
-```yaml
-- changeSet:
-    id: 90-end-apply-fk-policy
-    author: mctit
-    runAlways: true
-    sql:
-      splitStatements: false
-      sql: |
-        CALL dbops.apply_fk_index_policy();
-```
-
-* La tabella `dbops.fk_index_policy` deve essere mantenuta aggiornata:
-
-  * individuare nuove FK senza indice con `dbops.vw_fk_senza_indice`
-  * popolare policy con `SELECT dbops.fn_populate_fk_index_policy();`
-* La policy consente di generare o eliminare indici non necessari.
-
-**La policy è OPT-IN**: `fn_populate_fk_index_policy()` registra le FK nuove con `consentito=false`. Perché l'indice nasca serve un seed esplicito che porti il flag a `true` — senza, l'automazione non crea nulla.
-
-**Non creare né droppare a mano un indice governato dalla policy.** Si agisce sul flag e ci pensa `apply_fk_index_policy()` in `90_end`. Dettagli e casistica in §8.7.
-
----
-
-### 10. Gestione Indici Ridondanti
-
-Un indice può essere superfluo in **due modi diversi**, e servono due viste perché nessuna delle due può vedere l'altro caso.
-
-```sql
--- 1. duplicati esatti: stessa firma completa, sono intercambiabili
-SELECT * FROM dbops.vw_duplicate_indexes;
-
--- 2. ridondanti per prefisso: le colonne di uno sono la testa di un altro
-SELECT * FROM dbops.vw_indici_ridondanti_prefisso;
-```
-
-**`vw_duplicate_indexes`** raggruppa per firma normalizzata — metodo di accesso, colonne ed espressioni, classe di operatori, collation, ordinamento, `INCLUDE`, predicato. Usare `indice_da_tenere` e `indici_da_droppare`, che il gruppo espone già pronti.
-
-**`vw_indici_ridondanti_prefisso`** trova i btree le cui colonne chiave sono la testa di quelle di un altro btree: PostgreSQL usa già il più largo per ogni ricerca sulle colonne del più stretto. La colonna **`origine`** dice come si rimuove — vedi §8.6.
-
-> ⚠️ Due indici sulla stessa colonna **non** sono duplicati se differiscono per metodo (un GIN `trgm` e un btree servono query diverse) o per predicato (due UNIQUE parziali disgiunte convivono legittimamente). Le viste tengono conto di entrambi: se una coppia compare, è ridondante davvero.
-
-
 ## 8. Indici
 
 Gli indici rappresentano uno strumento fondamentale per garantire performance, scalabilità e prevedibilità delle query in Zero ERP.
@@ -1072,6 +1038,35 @@ WHERE is_default;
 
 ---
 
+### 8.4-bis ⛔ Indici UNIQUE con colonne nullable
+
+Per lo standard SQL un `NULL` non è uguale a un altro `NULL`, e un indice `UNIQUE` di default **non impedisce due righe con gli stessi campi a `NULL`**. Quando una colonna opzionale concorre all'**identità** della riga (un indirizzo fisico, l'ambito di un parametro, una chiave di raggruppamento), le righe che dovevano essere una convivono in silenzio, senza nessun errore.
+
+**La domanda la decide il modello, non i dati**: se la colonna è nullable e fa parte dell'identità, il `NULL` è un valore della chiave, anche quando oggi non ce n'è nemmeno uno.
+
+| Il campo… | Regola |
+| --- | --- |
+| è facoltativo e **non definisce l'identità** | resta fuori dall'indice `UNIQUE` |
+| è facoltativo e **definisce l'identità** | entra nell'indice, e l'indice si dichiara `NULLS NOT DISTINCT` |
+| è sempre valorizzato | si dichiara `NOT NULL` ed entra normalmente nell'indice |
+
+**Le due forme.** ⭐ Un indice nuovo si scrive `NULLS NOT DISTINCT`: due `NULL` nella stessa colonna collidono, l'indice resta sulle colonne nude, lo usano le query normali e un `ON CONFLICT (col_a, col_b)`, e vale per qualsiasi tipo. Alcuni indici più vecchi usano la forma storica `COALESCE(col, '')` su espressione, che ha tre limiti: equipara il `NULL` alla sentinella (un `''` scritto davvero collide col `NULL`); la sentinella dipende dal tipo (`''` non vale per un `integer`, e una colonna lasciata fuori dal `COALESCE` resta scoperta); la query o l'`ON CONFLICT` devono ripetere la stessa espressione per servirsi dell'indice.
+
+**Lo specchio nel lookup.** La stessa trappola ha un gemello opposto: nel `WHERE` di un «trova o crea» `col = param` **non combacia mai** quando entrambi sono `NULL`, e si crea un duplicato a ogni giro. Il confronto si scrive `col IS NOT DISTINCT FROM param`.
+
+**I punti in cui la chiave è scritta**, e la regola va applicata a tutti:
+
+* l'indice `UNIQUE`;
+* il `WHERE` del lookup (e la ri-lettura dopo un `unique_violation`);
+* l'eventuale `ON CONFLICT`;
+* l'hash di un `pg_advisory_xact_lock`, se la chiave serializza le scritture.
+
+⚠️ **Il lookup confronta i valori come sono SALVATI.** Se un trigger normalizza le colonne della chiave (maiuscolo, `BTRIM`, prefissi), il lookup deve confrontare con i parametri **passati per la stessa normalizzazione**, non con quelli grezzi. Altrimenti il lookup manca la riga esistente, l'`INSERT` normalizzato urta l'indice, e la ri-lettura dopo il `unique_violation` manca di nuovo: il «trova o crea» restituisce `NULL`.
+
+⚠️ Quando un brief dice «l'unicità è sull'insieme», si legge la definizione dell'indice nella doc auto-generata (o `pg_index.indnullsnotdistinct`) prima di crederci, e il pgTAP che presidia il vincolo asserisce la **clausola** e il caso col `NULL`, non solo il nome dell'indice.
+
+---
+
 ### 8.5 Case-Insensitive
 
 Evitare indici su `upper()` o `lower()` se non motivati.
@@ -1166,6 +1161,8 @@ Il confronto pretende identici opclass, collation, ordinamento **e predicato**; 
 | --- | --- |
 | `AUTOMAZIONE_FK` | `consentito=false` in `dbops.fk_index_policy` **e** `DROP` esplicito. Il solo `DROP` verrebbe annullato da `apply_fk_index_policy()` al primo `migrate` |
 | `MANUALE` | `DROP INDEX` in un changeSet dedicato |
+
+> ⚠️ Due indici sulla stessa colonna **non** sono ridondanti se differiscono per metodo (un GIN `trgm` e un btree servono query diverse) o per predicato (due UNIQUE parziali disgiunte convivono legittimamente). Le due viste tengono conto di entrambi: se una coppia compare, è ridondante davvero.
 
 #### Un `idx_scan` alto non è una controindicazione
 
@@ -1377,6 +1374,88 @@ CREATE POLICY rls_fatture_ba_ownership ON vendite.fatture
     );
 ```
 
+⭐ **Il perimetro dell'utente si calcola una volta per istruzione, non per riga**
+(rev 2026-10-18, `20261018-16…-21`). Ciò che dipende solo da **chi** guarda
+(super admin, veste, whitelist, emittente attivo) non va calcolato dentro la
+funzione chiamata per riga: una funzione di scope che lo fa lo ricalcola a ogni
+riga letta, perché una plpgsql è opaca e una SQL con una sottoquery nel corpo
+non si incorpora. Si passa alla funzione di scope **già calcolato**, in una
+sottoquery scalare **non correlata**: PostgreSQL la valuta una volta
+(`InitPlan`). La forma per lo scope emittente:
+
+```sql
+USING ((current_setting('app.ruolo_applicativo', true) = 'OPERATORE')
+       AND script.fn_scope_ef_perimetro(
+               (SELECT script.fn_get_emittenti_scope_pk_ids(
+                   NULLIF(current_setting('app.current_user_id', true), '')::integer)),
+               emittente_fiscale_id))
+```
+
+Resta una `fn_scope_*` (questa sezione) e i GUC li passa la policy (§10.4). Per
+riga resta la funzione di scope, pura (~1,5 µs).
+⛔ **Una sottoquery per il perimetro, non due.** Spezzarlo in due argomenti per
+far incorporare la funzione di scope (rev del mattino del 2026-10-18) lo
+calcola due volte per istruzione: le letture di una riga, la maggior parte nei
+verbi e nei trigger, pagano il doppio (0,24-0,27 contro 0,084-0,088 ms per una
+lettura per chiave). Il guadagno dell'incorporazione si vede solo sopra le ~40
+righe per istruzione (`20261018-24…-29`, D-3b-2c).
+Presidio: `script/test-scope-ef-perimetro-una-volta-per-istruzione-v1` (dal
+piano). Pagina: [`fn_scope_ef_perimetro`](/dbzero/script/manual/fn_scope_ef_perimetro).
+Per le tabelle **senza** colonna emittente l'emittente della riga lo dà
+`script.fn_resolve_emittente_fiscale_id('<modo>', chiave)`, `SECURITY DEFINER`:
+una lettura per chiave, senza rieseguire la policy del padre (rev 2026-10-18,
+`20261018-31…-33`):
+`script.fn_scope_ef_perimetro((SELECT …perimetro…), script.fn_resolve_emittente_fiscale_id('ddt', ddt_id))`.
+Il billing account ha un emittente che **non** è un fatto della riga
+(`script.fn_get_ba_emittente_sr_id`: legame, altrimenti l'emittente dell'utente in
+sessione, altrimenti il default): lì il perimetro va in convenzione soggetto_ruolo,
+`fn_scope_ef_perimetro((SELECT script.fn_get_emittenti_scope_sr_ids(…)), script.fn_get_ba_emittente_sr_id(billing_account_id))`
+(ondata 2, `20261018-48…-51`).
+Una riga che nomina il BA con una **coppia** di colonne (istanza, utility) lo
+trova con `script.fn_get_ba_id_da_coppia`, `SECURITY DEFINER` come il risolutore,
+e poi segue la forma del BA (rev 2026-10-21, `20261021-24…-26`).
+Il padre partizionato delle note, che non eredita le policy delle partizioni,
+smista su `target_tipo` con una funzione di scope che riceve lo stesso perimetro
+come primo argomento: [`fn_scope_note_ef_perimetro`](/dbzero/script/funzioni/fn_scope_note_ef_perimetro)
+e [`fn_scope_note_magazzino_ef_perimetro`](/dbzero/script/manual/fn_scope_note_magazzino_ef_perimetro).
+⚠️ Gli adattatori `fn_scope_ef_whitelist_via_*` restano per la domanda su **un**
+emittente (verbi, guard, backend), non nelle policy: il presidio (test 5) non ne
+ammette nessuno, e nemmeno uno smistatore che li chiami.
+
+⭐ **La stessa forma per le vesti di controparte** (cliente portale, shop, fornitore;
+rev 2026-10-21, `20261021-29…-32`). Il perimetro è il soggetto dell'identità, se è
+nella veste della policy ed è utilizzabile oggi; per riga, il soggetto della riga:
+
+```sql
+USING ((current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE')
+       AND script.fn_scope_sr_perimetro(
+               (SELECT script.fn_get_identita_sr_perimetro(
+                   NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                   ARRAY['CLIENTE_PORTALE'::config.ruolo_applicativo])),
+               script.fn_resolve_controparte_sr_id('fattura', fattura_id)))
+```
+
+Il soggetto lo dà `script.fn_resolve_controparte_sr_id('<modo>', chiave)`,
+`SECURITY DEFINER` come il risolutore dell'emittente; se la riga lo porta già (il
+billing account), si passa la colonna. ⚠️ Qui il perimetro `NULL` vuol dire
+**nessuno**, non tutti. Pagine:
+[`fn_get_identita_sr_perimetro`](/dbzero/script/manual/fn_get_identita_sr_perimetro),
+[`fn_resolve_controparte_sr_id`](/dbzero/script/manual/fn_resolve_controparte_sr_id).
+
+⭐ **Quando chi guarda è più di un perimetro** (rev 2026-10-21, `20261021-41…-43`).
+La regola delle email dipende dall'ambito della riga e chiede quattro cose di chi
+guarda: super admin, reparto, identità di processo, perimetro emittenti. Si passano
+in **quattro** sottoquery non correlate, una per domanda, a una funzione pura che
+decide per riga
+([`fn_scope_email_ambito_perimetro`](/dbzero/script/manual/fn_scope_email_ambito_perimetro)).
+Non contraddice «una sottoquery, non due»: quella regola vieta di calcolare due volte
+la **stessa** cosa.
+
+⛔ Dal 2026-10-21 nessuna policy calcola per riga ciò che dipende solo da chi guarda.
+Il presidio `script/test-scope-ef-perimetro-una-volta-per-istruzione-v1` non ammette
+eccezioni: il suo elenco del debito (test 4 e 6) è vuoto, e chi ci aggiunge una voce
+la scrive con la sua ragione.
+
 #### 10.4 Input: sempre dai GUC `app.*`
 
 Le funzioni `fn_scope_*` non devono mai dedurre l'utente corrente da `session_user` o
@@ -1524,10 +1603,11 @@ Prima di attivare RLS su una tabella esistente:
 * Backend popola tutti i GUC necessari in tutte le auth class
 * La FK della colonna emittente ha una **decisione dichiarata** in
   `dbops.fk_index_policy` — un seed CSV con `true` o `false` **e il perché**
-  (§8.7). ⛔ **Il predicato RLS non rende la colonna indicizzabile**: la
-  canonica `script.fn_check_user_emittente_scope` è plpgsql, quindi la policy
-  è una **chiamata di funzione per riga**, opaca al planner, non un confronto.
-  Un indice sull'emittente si decide sulla **query dell'applicazione che entra
+  (§8.7). ⛔ **Il predicato RLS non rende la colonna indicizzabile**: fino al
+  2026-10-18 la policy era una **chiamata di funzione per riga** (la canonica
+  plpgsql); nella forma di §10.3 per riga resta un confronto
+  (`fn_scope_ef_perimetro` col perimetro già calcolato), ma l'indice non si decide sulla
+  policy. Un indice sull'emittente si decide sulla **query dell'applicazione che entra
   da quella colonna** (una lista per emittente + data, come
   `ix_fatture_emitt_data`), non sulla policy — è il criterio già scritto nei
   seed `20260822-39`, `20260822-41` e `20260829-33`.
@@ -1895,6 +1975,13 @@ spento è peggio di uno assente*.
 
 Presidiato da `scripts/guardrail_grant_ruolo_batch.py` in CI.
 
+> ⭐ **Dal 2026-10-15 i ruoli batch non esistono più** (brief-db-ruoli-di-sistema,
+> fase 4): `zeroerp_batch_fatturazione`, il suo provisioning, il suo controllo e il
+> suo pgTAP di postura sono ritirati. Un processo automatico gira come
+> `zeroerp_app` con un utente tecnico per azienda. Il cancello resta: un `GRANT`
+> a un ruolo che non esiste ferma comunque il migrate, e un ruolo `BYPASSRLS`
+> nuovo non si crea. Il resto della sezione racconta perché la regola è nata.
+
 **Il meccanismo.** I ruoli batch headless (`zeroerp_batch_*`) hanno `BYPASSRLS`,
 che richiede **superuser**: Liquibase gira come `zeroerp` e quindi non può
 crearli. Li crea `scripts/sql/provision_db_role_batch_<job>.sql`, lanciato come
@@ -2085,13 +2172,13 @@ secondo file che rincorre il primo.
 
 ⚠️ **Servono comunque TRE sedi, non due** — fino al 2026-09-18 questa riga
 diceva «due file», e la terza era scritta solo nell'intestazione del loop
-(riga «🔴») e in `provision_db_roles.sql` stesso:
+(riga «🔴») e in `provision_zeroerp.sql` (fase post) stesso:
 
 | Sede | Perché |
 | --- | --- |
 | il changeSet `90_end` **forward** che revoca subito | su dev `ci_apply` non gira da solo: senza, la postura arriva solo quando qualcuno digita `db-ci-apply` |
 | il **loop** `90_end/ci_apply/20260205-41`, negli elenchi in testa | a ogni passata `ci_apply` rifà i `GRANT`: senza l'eccezione dichiarata lì, il REVOKE muore nello stesso build |
-| **`scripts/sql/provision_db_roles.sql`** | 🔴 **è l'ULTIMA parola**: in `ci-validate.yaml` (passo «Privilegi del ruolo applicativo») e in `ci-local.sh` gira **dopo** `--contexts=ci_apply` e fa `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA …` all'app — riapre in silenzio ciò che il loop ha appena chiuso. Su dev non si vede: il provisioning non si rilancia dopo ogni migrate. Le eccezioni stanno nel blocco «POSTURA DICHIARATA» in coda allo script |
+| **`scripts/sql/provision_zeroerp.sql`, fase `post`** | 🔴 **è l'ULTIMA parola**: in `ci-validate.yaml` (passo «Ruoli di sistema - fase post») e in `ci-local.sh` gira **dopo** `--contexts=ci_apply` e fa `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA …` all'app — riapre in silenzio ciò che il loop ha appena chiuso. Su dev non si vede: il provisioning non si rilancia dopo ogni migrate. Le eccezioni stanno nel blocco «POSTURA DICHIARATA» in coda allo script |
 
 Trovato il 2026-09-11 da `test-registri-append-only-postura-v1.sql` — verde su
 dev, rosso sul database ricostruito da zero — che è il presidio che tiene
@@ -2141,7 +2228,7 @@ non è dichiarato.
 
 **Il meccanismo.** Le tabelle di `django` (`auth_user`, `django_session`, …) le
 crea `manage.py migrate`, il **secondo** migratore, che gira **dopo** Liquibase.
-Per questo lo schema era escluso da `scripts/sql/provision_db_roles.sql` con la
+Per questo lo schema era escluso da `scripts/sql/provision_db_roles.sql` (oggi la fase `post` di `provision_zeroerp.sql`) con la
 dicitura *«gestito da Django»* — e Django gestisce il **DDL**, non i privilegi:
 nessun changeSet, nessun passo di Django e nessuno script concedeva a
 `zeroerp_app` un solo privilegio su `django.auth_user`. Eppure quello schema è
@@ -2179,7 +2266,7 @@ restava su dev, qui viaggiava.
 
 | Sede | Cosa |
 | --- | --- |
-| `scripts/sql/provision_db_roles.sql` | `django` **entra nella whitelist** `_app_schemas`: `SELECT, INSERT, UPDATE, DELETE` su tutte le tabelle, `USAGE` sulle sequenze, e l'`ALTER DEFAULT PRIVILEGES` per chi migra — che copre le tabelle che una migration Django **futura** creerà. Anche `check_db_role_access.sql` smette di escluderlo |
+| `scripts/sql/provision_zeroerp.sql`, fase `post` | `django` **entra nella whitelist** `_app_schemas`: `SELECT, INSERT, UPDATE, DELETE` su tutte le tabelle, `USAGE` sulle sequenze, e l'`ALTER DEFAULT PRIVILEGES` per chi migra — che copre le tabelle che una migration Django **futura** creerà. Anche `check_db_role_access.sql` smette di escluderlo |
 | `ci-validate.yaml` | il passo del provisioning si sposta **dopo `manage.py migrate`**: un `GRANT … ON ALL TABLES` è una fotografia, e deve vedere le tabelle di **entrambi** i migratori |
 | `scripts/ci-local.sh` | la copia di `django` diventa `--no-acl` e passa **prima** del provisioning: lo scratch riceve i privilegi dalla stessa sede della CI, non da dev |
 
@@ -2188,7 +2275,7 @@ postura con `has_*_privilege('zeroerp_app', …)`, il default di chi possiede
 `auth_user` letto da `pg_default_acl`, e il **comportamento**: come app,
 `anagrafiche.fn_crea_auth_user` deve scrivere. ⚠️ Il test del default è rosso su
 una macchina il cui provisioning è girato **prima** che `django` fosse in
-whitelist (dev, 13-09): il rimedio è rilanciare `provision_db_roles.sql`, non
+whitelist (dev, 13-09): il rimedio è rilanciare `provision_zeroerp.sql` (fase post), non
 il test.
 
 ⛔ **La regola generale**, ed è la terza volta che si scrive (§11.6, il blocco
@@ -2607,6 +2694,185 @@ dimostra che le altre siano sbagliate; dice che **nessuno ha ancora guardato**.
 Il censimento vero — azione per azione, con accanto la sua sede — è il lavoro che
 chiude questa sezione, e va fatto **prima** del prossimo collaudo che lo trovi da
 solo.
+
+### 12.6 ⭐ Un picker propone ciò che il guard accetta — leggendo la stessa check
+
+Un **picker** (la tendina o la ricerca che propone i valori di un campo) è la
+stessa domanda del guard che giudicherà quel campo, fatta **prima** della
+scrittura. Se le regole le sceglie la maschera che apre il picker, ogni maschera
+ne tiene una copia, e le copie divergono dal guard: il picker propone un valore
+che poi viene rifiutato, o nasconde un valore che il database accetterebbe.
+
+**La regola**: il picker di un campo giudicato da un guard è una **funzione di
+lettura nel database** che chiama la **stessa** `fn_check_*` del guard. Il
+chiamante passa il contesto (il documento, il tipo di riga), mai i filtri.
+
+* Un valore escluso **resta** nell'elenco col suo motivo (il primo, quello che il
+  guard solleverebbe), dopo gli ammessi: chi lo cerca sa perché non può usarlo.
+  Come mostrarlo lo decide il frontend (§12.1: uno stato si disabilita col
+  motivo).
+* Il contesto è **quello che giudica il guard**: per una riga, la testata
+  **salvata** (il suo id), non i valori del form. Valori del form solo quando la
+  cosa giudicata non esiste ancora (la testata in creazione).
+* ⚠️ **Molti candidati, un documento.** Il guard giudica una riga; il picker
+  giudica tutti i candidati della ricerca. Se la check rilegge il documento per
+  ogni candidato, il costo cresce col prodotto. Si divide la check in due metà —
+  il **contesto** del documento (letto una volta) e i **motivi** di un candidato su
+  quel contesto — e la firma di sempre le compone, per i guard. Le regole restano
+  in un posto solo: si sposta la lettura, non il giudizio.
+
+Precedenti: `vendite.fn_listini_selezionabili` (il listino della testata, sui
+valori del form) e `catalogo.fn_articoli_ammessi` (gli articoli di una riga,
+sull'id della testata, con la check divisa in `script.fn_articolo_riga_contesto`
+e `script.fn_check_articolo_riga_su_contesto`; brief-db-articoli-ammessi-per-documento).
+
+---
+
+## 13. Prestazioni: la forma di funzioni e query
+
+Le regole di questo capitolo valgono per **ogni** funzione e vista, non solo per
+le funzioni di scope (§10.3) o per gli indici (§8). Il racconto, il metodo
+d'indagine e la mappa di ciò che il database fa da solo stanno nella guida
+[Un database che resta veloce](/guide/database-che-resta-veloce); le statistiche
+in [Le statistiche del planner](/guide/statistiche-del-planner).
+
+⛔ **La regola zero vale qui più che altrove.** Il lavoro sulle prestazioni è
+fatto di misure, e la tentazione è lasciare che decidano. Una misura **trova** il
+difetto e **conferma** la cura; la cura si scrive sulla **forma** — «si ricalcola
+per riga», «la policy gira su tutta la tabella», «il piano tiene i rami di due
+modi» — e regge a qualunque volume. ⛔ Mai «oggi sono 300 righe, basta così»; mai
+una soglia di tempo come criterio di accettazione. Nei documenti e nei pgTAP un
+tempo si scrive come **fatto datato**: data, macchina, ruolo.
+
+### 13.1 ⛔ Si prova come applicazione, mai da owner
+
+L'owner non passa dalle policy: il planner gli costruisce un altro piano, spesso
+migliore — il `LIKE 'k%'` che da owner diventa un range sull'indice e sotto
+policy no (§8.5-bis), il join che da owner è un hash e come app un nested loop
+(§13.3). **La prova da owner mente.** Si misura col ruolo `zeroerp_app` e il
+contesto GUC di un utente vero, in `BEGIN … ROLLBACK`.
+
+⚠️ E si misura **il chiamante reale**, non solo la funzione: lo stesso corpo
+chiamato con un letterale e chiamato con una colonna o un parametro produce piani
+diversi (§13.4, §13.5). Il JIT della lineage (2026-10-11) si è visto dal pgTAP
+lento, non dalla funzione misurata da sola.
+
+### 13.2 ⛔ Ciò che non dipende dalla riga si calcola una volta
+
+Il difetto più frequente, e il più caro, è un calcolo che **si ripete per ogni
+riga** con la stessa risposta. Tre forme:
+
+| Forma | Perché si ripete | Cura |
+| --- | --- | --- |
+| `LEFT JOIN` a una vista che calcola tutto (es. la lineage di tutti i documenti), filtrata per chiave | il filtro non scende dentro la ricorsione; sotto policy il planner stima poche righe e sceglie un nested loop | seminare la funzione con le chiavi che servono, oppure leggere la vista **una volta** in una CTE `MATERIALIZED` |
+| `LEFT JOIN` a una tabella sotto policy, o a una funzione che restituisce righe, dentro una funzione SQL incorporata | sopra una CTE non ci sono statistiche; come app finisce lato interno di un nested loop e la policy si rivaluta per riga × righe | CTE `MATERIALIZED` letta una volta, e il join su quella |
+| un valore che dipende solo da **chi** guarda (perimetro, veste, emittente) calcolato dentro la funzione chiamata per riga | una plpgsql è opaca; una SQL con una sottoquery nel corpo non si incorpora | sottoquery scalare **non correlata** (`InitPlan`), passata come argomento — la forma è in §10.3 |
+
+Precedenti: `brief-db-liste-documento-lineage-lenta` (la prima),
+`fn_ddt_push_diagnosi` → `fn_partite_merce` (la seconda),
+`fn_scope_ef_perimetro` (la terza).
+
+⛔ **La terza forma arriva anche per la strada della RLS.** Una `fn_check_*`
+`SECURITY INVOKER` che legge tabelle sotto policy, chiamata in `LATERAL` su una
+lista, ricalcola il perimetro **a ogni chiamata**: ogni sua istruzione interna è
+un'istruzione a sé, con i suoi `InitPlan`. §10.3 resta rispettata alla lettera, e
+il perimetro torna lo stesso a essere calcolato per riga. Nessun presidio sulle
+policy lo vede. **Cura**: lettura e giudizio in due metà. La metà di giudizio
+riceve ciò che la lista ha già letto (la riga della testata, `p_x schema.tabella`)
+e non legge niente sotto perimetro. La firma per id legge sotto RLS, tiene il 404
+no-leak e delega: la usano il guard e il dettaglio, mentre la lista chiama la
+metà. Le regole restano in un posto solo. Precedente:
+[`fn_check_riga_contabile_eliminabile_su_distinta`](/dbzero/script/manual/fn_check_riga_contabile_eliminabile_su_distinta)
+(`20261021-62/-63`, nota del BE del 2026-10-21).
+
+### 13.3 ⛔ Un cast o una funzione nel join verso una tabella sotto policy
+
+Sotto RLS una condizione di join entra nell'indice solo se è **leakproof**
+(§8.5-bis vale anche per i join, non solo per i `WHERE`). `p.uid =
+cs.sorgente_uid::uuid` non lo è: il cast resta un filtro sopra la policy, e la
+tabella si legge tutta. La chiave si converte **prima**, in una CTE
+`MATERIALIZED`, e il join confronta tipi uguali. Caso:
+`vendite.fn_documento_lineage_archi` (`20261011-92`).
+
+### 13.4 Il piano generico: `plan_cache_mode` sulla funzione
+
+Una funzione plpgsql tiene in cache il piano di ogni istruzione. In modo `auto`,
+dopo cinque esecuzioni, confronta il costo **stimato** del piano generico (che
+non conosce il valore del parametro) con quello dei piani su misura, e se il
+generico le sembra più caro **ripianifica a ogni chiamata**. Con una query grande
+— tipicamente una plpgsql che chiama con un parametro una funzione SQL
+`BEGIN ATOMIC` che si incorpora — la sola pianificazione costa decine di
+millisecondi, e il piano su misura spesso non è nemmeno più veloce.
+
+**Cura**: `ALTER FUNCTION … SET plan_cache_mode = force_generic_plan` sulla
+funzione **chiamante**. Su una funzione `LANGUAGE sql` la clausola `SET` la rende
+**non incorporabile**: si pianifica dentro di sé, una volta per sessione.
+
+⛔ Il piano generico non conosce i valori: una forma che regge solo coi valori
+noti (un range con bordi calcolati) lì crolla — §8.5-bis, rev 2026-10-10, e la
+forma che regge (uguaglianza su una colonna di base).
+
+⛔ **Non si mette «per igiene».** La clausola è la cura di una forma precisa
+(query grande, chiamata con un parametro, generico stabile), verificata come app
+confrontando `auto` e `force_generic_plan` di sessione su un ciclo di chiamate.
+Dove le due modalità costano uguale, il difetto non c'è e la clausola non serve.
+
+### 13.5 Il JIT: `jit = off` dove il piano tiene i rami di più modi
+
+Sopra `jit_above_cost` PostgreSQL compila le espressioni del piano in codice
+macchina. Ripaga su una query lunga; su una chiamata breve la **compilazione
+costa più della query**, e la paga a ogni esecuzione. Il caso tipico è una
+funzione SQL con più modi in `UNION ALL` (per seme / tutti): con un seme
+letterale il planner pota i rami dell'altro modo, con un seme **non costante**
+(una colonna esterna, un parametro) li tiene tutti, il costo stimato supera la
+soglia e la compilazione costa secondi — **anche a database vuoto**, perché
+dipende dalla stima, non dalle righe.
+
+Due cure, secondo l'oggetto:
+
+* **sulla funzione**: `SET jit = off` (con `plan_cache_mode`, §13.4) —
+  `fn_documento_lineage_nodi`/`_archi`, `20261011-67`;
+* **sulla stima**: se il costo stimato è gonfiato da una cardinalità sbagliata
+  (§13.6), si corregge quella, e la vista torna sotto soglia da sola —
+  `dbops.vw_funzioni_check_codici`, `20261010-43`. Il presidio asserisce il
+  costo stimato sotto la soglia di default, non il testo del filtro.
+
+### 13.6 Dichiarare costo e cardinalità: `COST` e `ROWS`
+
+Il planner non guarda dentro una funzione: per il suo costo usa `COST` (default
+100) e per le righe che restituisce `ROWS` (default 1.000 per una funzione che
+restituisce un insieme). `ANALYZE` non li tocca mai.
+
+* **`COST`**: una funzione che legge tabelle ed è chiamata per riga dichiara il
+  suo prezzo vero — le funzioni di scope e quelle che chiamano, §10.3.
+* **`ROWS`**: una funzione che restituisce righe dichiara l'ordine di grandezza
+  vero. Le funzioni di sistema sbagliano anche loro (`regexp_matches` dichiara
+  10, `regexp_split_to_table` 1.000): dentro una vista che le moltiplica la stima
+  esplode. Cura: un wrapper che dichiara la cardinalità vera —
+  `dbops.fn_regexp_occorrenze` (`ROWS 1`).
+
+Conta l'ordine di grandezza, non la cifra: `COST` e `ROWS` non forzano un piano,
+danno al planner il prezzo vero.
+
+### 13.7 ⛔ Le proprietà invisibili nel corpo si ripetono a ogni `CREATE OR REPLACE`
+
+`COST`, `ROWS` e le clausole `SET` (`plan_cache_mode`, `jit`, `search_path`)
+non stanno nel corpo della funzione. Un `CREATE OR REPLACE FUNCTION` che non le
+ripete le **riporta al default**, con risultati identici: nessun test di
+comportamento se ne accorge, se ne accorge solo il tempo. Per questo:
+
+* il changeSet nuovo di una funzione le prende dalla **doc auto-generata**
+  insieme al corpo (AGENTS.md: mai da uno YAML), e le ripete tutte;
+* ognuna ha il suo **presidio pgTAP**, che la pretende per nome:
+  `script/test-plan-cache-mode-piano-generico-v1` (`plan_cache_mode` e `jit`),
+  `script/test-policy-funzioni-cost-v1` (`COST` delle funzioni di policy),
+  `dbops/test-vw-funzioni-check-codici-sotto-jit-v1` (la stima sotto il JIT).
+  Una funzione che riceve la clausola si aggiunge al suo presidio nello stesso
+  giro.
+
+Lo stesso vale per `security_invoker` sulle viste: un `CREATE OR REPLACE VIEW`
+che non lo ripete lo perde, e la vista esce dal perimetro RLS. Presidio:
+`rls/test-rls-viste-security-invoker`.
 
 ---
 

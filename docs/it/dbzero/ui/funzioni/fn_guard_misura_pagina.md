@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_misura_pagina(p_valore jsonb)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION ui.fn_guard_misura_pagina(p_valore jsonb)
  RETURNS void
@@ -42,6 +44,8 @@ $function$
 COMMENT ON FUNCTION ui.fn_guard_misura_pagina(p_valore jsonb)
 IS 'Rifiuta un valore «righe per pagina» che non e'' un numero intero del catalogo ui.misure_pagina: E_UI_MISURA_PAGINA_NON_AMMESSA (DATO_ERRATO), con il valore e l''elenco delle misure ammesse nella frase, campo = pagina_dimensione. NULL e null jsonb passano (sono il default). Riceve il valore com''e'' scritto (jsonb): nella preferenza utente puo'' non essere un numero, e il rifiuto parte da un punto solo; il preset gli passa to_jsonb(pagina_dimensione). Lo chiamano i trigger di ui.lista_preset (dove la FK resta come rete) e di ui.lista_preferenza_utente. INVOKER. Brief: brief-db-misure-pagina-catalogo §2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

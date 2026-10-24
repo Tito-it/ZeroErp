@@ -18,7 +18,7 @@ Indice test eseguiti:
 9) VenditeCommesseApiTests.test_get_commessa_stato_not_found
 10) VenditeCommesseApiTests.test_get_commessa_attivita_ok
 11) VenditeCommesseApiTests.test_get_commessa_attivita_v1_requires_jwt
-12) VenditeCommesseApiTests.test_get_commessa_attivita_invalid_limit
+12) VenditeCommesseApiTests.test_finestra_fuori_limite_e_400
 13) VenditeCommesseApiTests.test_get_commessa_attivita_con_filtri
 14) VenditeCommesseApiTests.test_run_commesse_push_post_permission_allowed
 15) VenditeCommesseApiTests.test_run_commesse_push_post_permission_denied
@@ -50,14 +50,13 @@ import json
 
 from unittest.mock import ANY, Mock, patch
 
-from django.test import Client, override_settings
+from django.test import Client
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.api.constants import DEFAULT_LIMIT
 
 
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class VenditeCommesseApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
@@ -266,19 +265,22 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
             tipo_movimento=None,
         )
 
-    # Scopo: limit fuori range → 400.
+    # Scopo: ⛔ la finestra fuori limite e' un 400 della view (`pagina_da_query`,
+    #        Tid 2026-10-21), e il service non parte. Fino a quel giorno la view
+    #        la riduceva in silenzio e i due service avevano un loro guard,
+    #        che via HTTP non scattava piu'.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.fn_commessa_registro")
     @patch("apps.vendite.api.views.fn_list_commessa_attivita")
-    def test_get_commessa_attivita_invalid_limit(self, mocked_list, _mock_auth):
-        mocked_list.side_effect = ServiceError(
-            code="E_COMMESSA_VALIDATION",
-            message="Parametri non validi.",
-            detail="limit deve essere compreso tra 1 e 200",
-        )
-        response = self.client.get("/api/v1/vendite/commesse/1/attivita/?limit=500")
-        self.assertEqual(response.status_code, 400)
-        body = response.json()["error"]
-        self.assertEqual(body["code"], "E_COMMESSA_VALIDATION")
+    def test_finestra_fuori_limite_e_400(self, mocked_list, mocked_registro, _mock_auth):
+        for rotta in ("attivita", "registro"):
+            for qs in ("limit=500", "limit=0", "offset=-1"):
+                with self.subTest(rotta=rotta, qs=qs):
+                    response = self.client.get(f"/api/v1/vendite/commesse/1/{rotta}/?{qs}")
+                    self.assertEqual(response.status_code, 400)
+                    self.assertEqual(response.json()["error"]["code"], "E_VALIDATION_INPUT")
+        mocked_list.assert_not_called()
+        mocked_registro.assert_not_called()
 
     # ------------------------------------------------------------------ #
     # POST /api/v1/vendite/commesse/push/run/ — post_permission          #
@@ -561,7 +563,6 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
         self.assertEqual(mock_azione.call_args.args[1], "approva_attivita_commessa")
 
 
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class VenditeCommessaOneriApiTests(JwtMockedApiTest):
     """POST /api/v1/vendite/commesse/<id>/oneri/ — porta oneri (§A1) e gate
     `prezzo_override_manuale` sugli endpoint prezzo N5/N7 (§C1)."""
@@ -735,7 +736,6 @@ class VenditeCommessaOneriApiTests(JwtMockedApiTest):
 #        responsabile). Contratto HTTP: il payload arriva al service per
 #        posizione (id, payload), la risposta e' il dettaglio, gli errori del
 #        service diventano envelope con `fields` (il campo si accende).
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class VenditeCommessaTestataApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()

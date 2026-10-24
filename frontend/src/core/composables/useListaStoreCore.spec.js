@@ -55,11 +55,12 @@
 // 31. pagina piena: nessuna rilettura
 // 32. prima pagina vuota: e' la lista vuota, nessuna rilettura
 // 33. una rilettura sola, anche se la seconda risposta e' ancora vuota
+// 34. `PADRE_SENZA_EMITTENTE`: la lista legge, e l'emittente non viaggia
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi } from 'vitest'
 
-import { useListaStoreCore } from './useListaStoreCore'
+import { useListaStoreCore, PADRE_SENZA_EMITTENTE } from './useListaStoreCore'
 import { USO_MISURA, misuraDefault } from '../misurePagina'
 
 // Le misure le fabbrica il setup di Vitest; qui si legge l'USO, e i due usi
@@ -350,6 +351,24 @@ describe('useListaStoreCore — il padre composto', () => {
     expect(s.attesaPadre.value).toBe(true)
     expect(await s.fetchList()).toBe(false)
     expect(fetchPage).not.toHaveBeenCalled()
+  })
+
+  // ⭐ Il padre che un emittente suo non ce l'ha (il modello standard): con
+  //    `null` resterebbe in attesa per sempre (il difetto del 2026-10-20).
+  it('`PADRE_SENZA_EMITTENTE`: la lista legge, e l\'emittente non viaggia', async () => {
+    const fetchPage = spiaFetch()
+    const s = useListaStoreCore({
+      fetchPage, startsEmpty: false, parentField: 'templateId',
+      emittenteParam: 'emittente_fiscale_id',
+    })
+    s.templateId.value = 2728
+    s.emittenteId.value = PADRE_SENZA_EMITTENTE
+    expect(s.attesaPadre.value).toBe(false)
+    expect(s.paramsEmittente()).toEqual({})
+    await s.fetchList()
+    const [templateId, params] = fetchPage.mock.calls[0]
+    expect(templateId).toBe(2728)
+    expect(params).not.toHaveProperty('emittente_fiscale_id')
   })
 
   it('l\'emittente viaggia in query col nome del backend, non nel path', async () => {

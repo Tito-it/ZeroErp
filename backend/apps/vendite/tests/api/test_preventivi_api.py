@@ -41,7 +41,7 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _PREV_SVC = "apps.vendite.api.preventivi_documenti_views.preventivi_service"
 _DOC_GEN_SVC = "apps.vendite.api.preventivi_documenti_views.DocumentGenerationService"
-_DOC_REPO = "apps.documenti.api.contesto_helpers.DocumentiRepository"
+_SORGENTI_REPO = "apps.documenti.api.contesto_helpers.SorgentiRepository"
 _PREV_REPO = "apps.vendite.api.preventivi_documenti_views.PreventiviRepository"
 _VIEW_ATOMIC = "apps.documenti.api.sorgente_documenti_views.transaction.atomic"
 _BASE = "/api/v1/vendite/preventivi/"
@@ -254,11 +254,11 @@ class TestPreventivoEmissioneAllegati(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_VIEW_ATOMIC)
     @patch(_DOC_GEN_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_PREV_REPO)
     @patch(_PREV_SVC)
     def test_emetti_integration_atomic_state_genera_allegati(
-        self, svc_mod, repo_cls, doc_repo_cls, doc_svc_cls, _atomic, _auth,
+        self, svc_mod, repo_cls, sorgenti_repo_cls, doc_svc_cls, _atomic, _auth,
     ):
         svc_mod.emetti.return_value = {
             "id": 7, "stato_codice_interno": "EMESSO",
@@ -268,8 +268,8 @@ class TestPreventivoEmissioneAllegati(JwtMockedApiTest):
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 5, "codice": "PREVENTIVO", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 5, "codice": "PREVENTIVO",
         }
         doc_svc_cls.return_value.genera_documento.return_value = {
             "id": 100, "uid": "doc-uid-100", "nome_file": "preventivo.pdf",
@@ -302,18 +302,18 @@ class TestPreventivoEmissioneAllegati(JwtMockedApiTest):
     # esistente. Verifica route e delega a list_documento_files.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_PREV_REPO)
     def test_get_documento_allegati_list_ok(
-        self, repo_cls, doc_repo_cls, doc_svc_cls, _auth,
+        self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ):
         repo_cls.return_value.get_for_documento_generation.return_value = {
             "id": 7,
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 5, "codice": "PREVENTIVO", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 5, "codice": "PREVENTIVO",
         }
         doc_svc_cls.return_value.list_documento_files.return_value = {
             "files": [
@@ -335,18 +335,18 @@ class TestPreventivoEmissioneAllegati(JwtMockedApiTest):
     # aggiungi_allegati.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_GEN_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_PREV_REPO)
     def test_post_documento_allegati_upload_ok(
-        self, repo_cls, doc_repo_cls, doc_svc_cls, _auth,
+        self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ):
         repo_cls.return_value.get_for_documento_generation.return_value = {
             "id": 7,
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 5, "codice": "PREVENTIVO", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 5, "codice": "PREVENTIVO",
         }
         doc_svc_cls.return_value.aggiungi_allegati.return_value = {
             "allegati": [{"id": 200, "file_name": "extra.pdf"}],

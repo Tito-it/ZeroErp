@@ -22,9 +22,11 @@
 import { lookupCodici } from '../apiCore'
 import { useGlobalLookup } from './useGlobalLookup'
 
-// Il cap del lookup generico (api.md §Paginazione: `page_size` max 200): una
+// Il cap del lookup generico (api.md §Paginazione: `limit` max 200): una
 // tabella di configurazione si legge intera, in una pagina.
-export const LOOKUP_CODICI_PAGE_SIZE = 200
+// ⭐ `limit` e non `page_size` dal 2026-10-21 (un dialetto solo): il backend
+//    rifiuta `page_size` con un 400.
+export const LOOKUP_CODICI_LIMIT = 200
 
 // Scopo: la chiave di cache di un `rel` del lookup generico. Con gli obsoleti
 //        esclusi e' un altro insieme, quindi un'altra chiave.
@@ -35,9 +37,9 @@ export function chiaveLookupCodici(rel, { includiObsoleti = true } = {}) {
 // Scopo: la fetch di un `rel` del lookup generico. `includi_obsoleti` viaggia
 //        solo quando e' `false`: il default del backend e' «tutto», e non si
 //        manda un parametro per dire il default.
-export function fetchLookupCodici(rel, { includiObsoleti = true, pageSize = LOOKUP_CODICI_PAGE_SIZE } = {}) {
+export function fetchLookupCodici(rel, { includiObsoleti = true, limit = LOOKUP_CODICI_LIMIT } = {}) {
   return () => lookupCodici(rel, {
-    page_size: pageSize,
+    limit,
     ...(includiObsoleti ? {} : { includi_obsoleti: false }),
   })
 }
@@ -49,19 +51,19 @@ export function fetchLookupCodici(rel, { includiObsoleti = true, pageSize = LOOK
  * @param {Object} opzioni
  * @param {boolean} opzioni.includiObsoleti - default true (tutto); `false` =
  *   la «selezione per il nuovo», senza le voci con `obsoleto_dal <= oggi`
- * @param {number} opzioni.pageSize - default `LOOKUP_CODICI_PAGE_SIZE`
+ * @param {number} opzioni.limit - default `LOOKUP_CODICI_LIMIT`
  * @param {boolean} opzioni.immediate - carica al mount (default false, come
  *   `useGlobalLookup`)
  * @param {Function} opzioni.transform - trasforma la risposta (default:
  *   envelope `r.data.data.results`)
  * @returns lo stesso oggetto di `useGlobalLookup`
  */
-export function useLookupCodici(rel, { includiObsoleti = true, pageSize, immediate = false, transform } = {}) {
+export function useLookupCodici(rel, { includiObsoleti = true, limit, immediate = false, transform } = {}) {
   const lookupOptions = { immediate }
   if (transform) lookupOptions.transform = transform
   return useGlobalLookup(
     chiaveLookupCodici(rel, { includiObsoleti }),
-    fetchLookupCodici(rel, { includiObsoleti, pageSize }),
+    fetchLookupCodici(rel, { includiObsoleti, limit }),
     lookupOptions,
   )
 }

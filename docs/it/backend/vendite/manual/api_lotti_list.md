@@ -16,7 +16,10 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
 - Query param (tutti opzionali; assente o vuoto = nessun filtro):
   - `competenza_mese` (date `YYYY-MM-DD`) — filtro mese di competenza
   - `utility_id` (int) — filtro per utility
-  - `stato_lotto` (string) — filtro stato lotto (es. `DRAFT`, `COMPLETATO`)
+  - `stato_lotto` (string) — filtro stato del job del lotto, vocabolario
+    `IN_ESECUZIONE` · `COMPLETATO` · `ERRORE` (specchio del CHECK
+    `chk_fatturazione_lotti_stato_job`). Fuori vocabolario → `400`
+    `E_VENDITE_VALIDATION` col campo (2026-10-20: prima rispondeva lista vuota)
   - `area_geografica_id` (int) — filtro per area geografica fatturazione
   - `tipo_doc_fiscale_id` (int) — filtro per tipo documento fiscale
   - `emittente_soggetto_ruolo_id` (int) — filtro per emittente fiscale
@@ -26,12 +29,20 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
     perché il parser dei filtri è uno — e la risposta dichiara quanti sono
     (`annullati_count`, sotto). Stesso parametro su `lotti/export/` e
     `lotti/mensile/`
-  - `page` (int) — numero pagina, default `1`
-  - `page_size` (int) — righe per pagina, default `50`, max `200`
+  - `recuperi_mese` (bool) — scheda «Recuperi del mese»: lotti con competenza
+    precedente a `competenza_mese`. Richiede `competenza_mese` (senza → `400`
+    `E_VENDITE_VALIDATION`, `context.field = "competenza_mese"`). Stesso parametro
+    su `lotti/export/`
+  - `limit` (int) — righe per pagina, default `25`, max `200`; fuori da 1..200 → 400 `E_VALIDATION_INPUT` (`limit_fuori_limiti_1_200`)
+  - `offset` (int) — righe da saltare, default `0`; negativo → 400 (`offset_negativo`)
+  - ⛔ `page`/`page_size` sono un **400** `E_VALIDATION_INPUT` (dal 2026-10-21:
+    fino a quel giorno erano il contratto di questa lista). La risposta porta
+    ancora `page`/`page_size`, ricavati da `limit`/`offset`
   - `order_by` (string) — colonna di ordinamento, da **whitelist**
     (`VenditeRepository.LOTTI_SORT_COLUMNS`); la chiave è il `campo_sorgente` del
     catalogo liste, non il `codice` logico
-  - `order_dir` (`asc` | `desc`)
+  - `order_dir` (`asc` | `desc`) — con `order_by` presente e `order_dir` assente
+    la direzione è `asc`
 
 ## Output
 
@@ -41,7 +52,7 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
   "data": {
     "count": 1,
     "page": 1,
-    "page_size": 50,
+    "page_size": 25,
     "total_pages": 1,
     "stati": [{"stato_lotto": "COMPLETATO", "n_lotti": 1}],
     "annullati_count": 3,
@@ -53,7 +64,7 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
         "tipo_lotto": "MASSIVO",
         "utility_id": 1,
         "utility_descrizione": "Energia Elettrica",
-        "stato_lotto": "DRAFT",
+        "stato_lotto": "COMPLETATO",
         "stato_operativo": "APERTO",
         "stato_doc_fiscale_id": 3,
         "stato_doc_fiscale_descrizione": "Fattura emessa",
@@ -78,7 +89,14 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
   "meta": { "request_id": "..." }
 }
 ```
-- `400`: parametri paginazione non validi (`E_PIPELINE_VALIDATION`)
+- `400`:
+  - `E_VENDITE_VALIDATION` — `stato_lotto` fuori vocabolario, `recuperi_mese`
+    senza `competenza_mese`
+  - `E_VALIDATION_INPUT` — un intero o una data non leggibili (`limit=abc`:
+    `limit_invalid`), `limit` fuori da 1..200, `offset` negativo,
+    `page`/`page_size` presenti
+    (`page_non_ammesso_usare_limit_offset`)
+  - `E_SEARCH_VALIDATION` — `order_by` fuori whitelist o `order_dir` non ammessa
 - `401`: JWT mancante o non valido
 
 ## Regole
@@ -99,13 +117,15 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
   perimetro suo, l'anno — nello **stesso frammento** `_LOTTI_COND_NON_ABORTITO`
   con la stessa `JOIN` su `sdf`. Non spariscono in silenzio: `annullati_count`
   è «quante righe **questo** filtro lascia fuori» (BB `conta_con_perimetro`,
-  stato compreso — pattern `archiviate_count` delle code), e `?annullati=1` li
+  stato compreso — pattern `archiviate_count` delle code), e `?annullati=true` li
   rimette dentro ovunque. Presidio:
   `apps/vendite/tests/services/test_lotti_annullati_fuori_perimetro.py`
   (i tre valori sotto `EXPLAIN` sul DB provvisto, e la quadratura mostrati +
   nascosti = tutti).
 - Tutti i filtri sono opzionali; assenza o valore vuoto equivale a nessun filtro.
-- `page` deve essere >= 1; `page_size` deve essere compreso tra 1 e 200.
+- Finestra `limit`/`offset` letta da `pagina_da_query`: non intera o fuori
+  limiti è un 400 `E_VALIDATION_INPUT` (dal 2026-10-21; prima si riportava nei
+  limiti in silenzio).
 - Ordinamento: **`data_insert DESC, id DESC` è il DEFAULT**, non un vincolo — la
   lista accetta `order_by`/`order_dir` su whitelist, con tiebreak deterministico.
   ⚠️ La riga precedente diceva «ordinamento fisso»: era falsa, corretta il
@@ -164,6 +184,9 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
 
 - Query raw nel repository (`VenditeRepository.list_lotti`); nessuna funzione SQL dedicata.
 - Due query per request: `COUNT(*)` + dati con `LIMIT/OFFSET` (pattern offset pagination).
+- 2026-10-21: la finestra passa da `page`/`page_size` a `limit`/`offset`
+  (`pagina_da_query`, un dialetto solo per tutte le liste); `page`/`page_size`
+  in query diventano un 400. Envelope di risposta invariato.
 - ⛔ **Il payload lo compone `_LOTTO_SELECT_COLS`, non una vista**: `vendite.lotti`
   è l'unica delle liste documento **senza `vista_sql`**. Chi aggiunge una colonna
   al catalogo (`ui.lista_colonna`) deve quindi aggiungerla **prima** qui, o la
@@ -206,7 +229,12 @@ colonna nuova); le sotto-risorse restano endpoint separati (`fatture/`,
 
 ### Output
 
-- `200`: `{ "data": { ...testata lotto (stessi campi di una riga della lista)... } }`
+- `200`: `{ "data": { ...testata lotto (stessi campi di una riga della lista)...,
+  "capabilities": { "available_actions": [...], "can_change_state": ..., "stato_codice": ..., "tipo_lotto": ... } } }`
+  — `capabilities` è il blob di `script.fn_available_actions_lotto` (verbi di
+  governo disponibili, abilitati e, se no, perché), **sotto la sua chiave** e non
+  fuso nella testata. Se il capability layer fallisce la chiave c'è comunque,
+  vuota (il FE degrada a sola consultazione).
 - `400`: `E_LOTTO_PARAMETRO_NON_COERENTE` — `lotto_id` non valido (≤ 0)
 - `401`: JWT mancante
 - `404`: `E_LOTTO_NON_TROVATO` — lotto inesistente **o fuori scope emittente**
@@ -214,7 +242,10 @@ colonna nuova); le sotto-risorse restano endpoint separati (`fatture/`,
 
 ### Regole
 
-- View `ApiLottoDetail` → service `fn_get_lotto` → `VenditeRepository.get_lotto`.
+- View `ApiLottoDetail` → service `fn_get_lotto` → `lotto_visibile`
+  (`services/_lotto_perimetro.py`, su `VenditeRepository.get_lotto`) → poi il
+  blob capability. ⚠️ Ordine vincolante: `fn_available_actions_lotto` non filtra
+  per emittente, il cancello di scope è la testata.
 - Scope emittente applicato in repository (`_add_scope_emittente` su
   `emittente_soggetto_ruolo_id`, con `get_scope_user_id` dalla view): un lotto
   fuori scope torna 404, identico a un id inesistente.
@@ -225,3 +256,28 @@ colonna nuova); le sotto-risorse restano endpoint separati (`fatture/`,
 ### Dipendenze DB
 
 - `vendite.fatturazione_lotti` + le stesse LEFT JOIN di decodifica della lista.
+
+---
+
+## Export lotti
+
+- `GET /api/v1/vendite/lotti/export/?formato=csv|xlsx` (default `csv`; il
+  parametro è `formato`, non `format`).
+- Stessi filtri e stesso ordinamento della lista (`competenza_mese`,
+  `utility_id`, `stato_lotto`, `area_geografica_id`, `tipo_doc_fiscale_id`,
+  `emittente_soggetto_ruolo_id`, `recuperi_mese`, `annullati`, `order_by`,
+  `order_dir`); niente paginazione.
+- Colonne dal catalogo `vendite.lotti` (`UiService.get_lista_config`).
+- Oltre `EXPORT_MAX_ROWS` → `422 E_UI_EXPORT_LIMIT_EXCEEDED`.
+
+## Conteggio lotti per mese
+
+- `GET /api/v1/vendite/lotti/mensile/?anno=YYYY[&annullati=true]`
+- `anno` default l'anno corrente; ammesso `2000`–`2100`, fuori → `400`
+  `E_VENDITE_VALIDATION`.
+- Nessun filtro stato; gli annullati restano fuori come nella lista.
+- `200`:
+```json
+{ "data": { "anno": 2026, "mesi": [ { "competenza_mese": "2026-01-01", "n_lotti": 4 } ] } }
+```
+  `mesi` ha sempre i 12 mesi in ordine, a zero quelli senza lotti.

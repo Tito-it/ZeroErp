@@ -19,8 +19,14 @@
 -- Setup: 3 righe BoM con validita' / couple disgiunti per evitare
 -- overlap su ex_articoli_componenti_no_overlap. Le 2 righe con
 -- valido_al NULL (aperta + futura) usano couple (prodotto, componente)
--- distinti: forziamo is_composito=true su ART_TEST_BASE e
--- ART_TEST_FALLBACK e li scambiamo. ROLLBACK finale.
+-- distinti: la futura ha un padre suo (PGT-BOMCAP-C), con lo stesso
+-- componente. ROLLBACK finale.
+-- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-4): prima la
+--   riga futura SCAMBIAVA padre e componente (B dentro A, A dentro B: entrambi
+--   compositi). Era un ciclo, e una distinta a due livelli: il guard
+--   catalogo.trgfn_articoli_componenti_guard_un_livello (20261013-01) lo
+--   rifiuta, perche' la distinta ha un livello solo. Il test misura le
+--   capability della riga, non la coppia: basta un terzo padre.
 --
 -- Indice test (1..12):
 --   Riga APERTA (BASE/FALLBACK, [oggi-30, +inf)):
@@ -67,16 +73,13 @@ SELECT plan(12);
 --   changelog: sono due righe messe a mano su questa macchina (UUID …101 e
 --   …102). Su un database ricostruito non esistono, e il file moriva nella
 --   fixture — copertura zero, non parziale.
+-- I due PADRI nascono is_composito=true per ammettere INSERT in
+-- articoli_componenti come prodotto; il componente resta semplice.
 CREATE TEMP TABLE _t_bomcap AS
 SELECT
-    dbops.fn_pgtap_crea_articolo('PGT-BOMCAP-A') AS art_base,
-    dbops.fn_pgtap_crea_articolo('PGT-BOMCAP-B') AS art_fallback;
-
--- Entrambi devono essere is_composito=true per ammettere INSERT
--- in articoli_componenti come prodotto. ROLLBACK ripristina seed.
-UPDATE catalogo.articoli
-   SET is_composito = true
- WHERE id IN ((SELECT art_base FROM _t_bomcap), (SELECT art_fallback FROM _t_bomcap));
+    dbops.fn_pgtap_crea_articolo('PGT-BOMCAP-A', p_is_composito => true) AS art_base,
+    dbops.fn_pgtap_crea_articolo('PGT-BOMCAP-B')                         AS art_fallback,
+    dbops.fn_pgtap_crea_articolo('PGT-BOMCAP-C', p_is_composito => true) AS art_padre_futura;
 
 CREATE TEMP TABLE _t_righe (scenario text, riga_id uuid);
 
@@ -111,14 +114,14 @@ WITH ins AS (
 )
 INSERT INTO _t_righe (scenario, riga_id) SELECT 'aperta', id FROM ins;
 
--- Riga FUTURA: couple invertito FALLBACK/BASE per evitare overlap
--- con la riga aperta sullo stesso couple, [oggi+10, +inf).
+-- Riga FUTURA: padre C, componente FALLBACK (couple distinto dalla riga
+-- aperta, quindi nessun overlap), [oggi+10, +inf).
 WITH ins AS (
     INSERT INTO catalogo.articoli_componenti (
         prodotto_id, componente_id, coeff_qta, obbligatorio,
         esposizione_in_fattura, valido_dal, valido_al, attivo
     )
-    SELECT art_fallback, art_base, 1, true, 'NASCOSTO',
+    SELECT art_padre_futura, art_fallback, 1, true, 'NASCOSTO',
            (script.fn_data_operativa() + INTERVAL '10 days')::date,
            NULL,
            true

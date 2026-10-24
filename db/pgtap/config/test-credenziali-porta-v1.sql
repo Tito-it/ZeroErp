@@ -5,7 +5,7 @@
 -- Test: la PORTA delle tabelle della credenziale e la struttura che resta.
 --   Brief: brief-db-blocco-login-per-credenziale, sezioni 2.2 e 4.
 --   ChangeSet: 90_end/20260925-24 (forward), 90_end/ci_apply/20260205-41
---   (v_tabelle_sola_lettura_app), scripts/sql/provision_db_roles.sql (POSTURA
+--   (v_tabelle_sola_lettura_app), scripts/sql/provision_zeroerp.sql (fase post) (POSTURA
 --   DICHIARATA); 90_end/20260925-22 (FK con CASCADE), -25 (DROP colonne).
 --   R-7 (sezione 13): 90_end/20260925-62 e le stesse due sedi per le gemelle del
 --   nome tentato; 20260925-57/-58 (retention alla nascita), -59 (passo del freno).

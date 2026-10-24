@@ -174,7 +174,8 @@ WITH ins AS (
          date_trunc('month', script.fn_data_operativa())::date,
          (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
          r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
-         'BOZZA', 'EMESSA', NULL, NULL
+         'BOZZA', 'EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+         ((SELECT id FROM tmp_commessa_ef))::text
     FROM tmp_refs_ef r
   RETURNING id)
 INSERT INTO tmp_ca_ef SELECT 'A', id FROM ins;
@@ -192,7 +193,8 @@ WITH ins AS (
          date_trunc('month', script.fn_data_operativa())::date,
          (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
          r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
-         'BOZZA', 'EMESSA', NULL, NULL
+         'BOZZA', 'EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+         ((SELECT id FROM tmp_commessa_ef))::text
     FROM tmp_refs_ef r
   RETURNING id)
 INSERT INTO tmp_ca_ef SELECT 'B', id FROM ins;

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: predicato "gia' inviato" delle push-list + reason capability
 --       (brief-db-push-commessa-gia-inviato, rilievo ORD0000227;
@@ -59,36 +60,27 @@ SELECT plan(10);
 -- ============================================================
 -- Riferimenti minimi
 -- ============================================================
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti): cliente fatturabile legato all'azienda di chi agisce,
+--   articolo merce non gestito a magazzino (il test non misura il magazzino).
+--   Dal DB si legge solo il seed.
+CREATE TEMP TABLE tmp_gi_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP push gia inviato');
+CREATE TEMP TABLE tmp_gi_art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-PGI-V1', false) AS id;
+
 CREATE TEMP TABLE tmp_gi_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS istanza_utility_id,
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
+  (SELECT m.billing_account_id FROM tmp_gi_mondo m)                      AS billing_account_id,
+  (SELECT m.utility_id FROM tmp_gi_mondo m)                              AS utility_id,
+  (SELECT m.istanza_utility_id FROM tmp_gi_mondo m)                      AS istanza_utility_id,
+  (SELECT m.cliente_soggetto_ruolo_id FROM tmp_gi_mondo m)               AS soggetto_ruolo_id,
+  (SELECT t.id FROM tmp_gi_art t)                                        AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
+  (SELECT m.emittente_fiscale_id FROM tmp_gi_mondo m)                   AS emittente_fiscale_id,  -- rev 2026-10-13: l'azienda del mondo
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)      AS stato_ord_draft_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='ORDINE_VENDITA' AND s.attivo LIMIT 1) AS src_ordine_id;
@@ -209,7 +201,7 @@ SELECT is(
 -- Insert separata dall'assert (stessa ragione di visibilita' dei test 3-4).
 DO $$
 BEGIN
-  PERFORM pg_temp.mk_attivita('ORD:' || (SELECT uid_a::text FROM tmp_gi_ord)
+  PERFORM pg_temp.mk_attivita('ORDINE_VENDITA:' || (SELECT uid_a::text FROM tmp_gi_ord)
                                || ':R:' || (SELECT riga_a::text FROM tmp_gi_ord)
                                || '#CMP:comp-1', 'NON_EMESSA');
 END $$;
@@ -230,7 +222,7 @@ SELECT is(
 
 UPDATE vendite.commesse_attivita
    SET stato_emissione = 'EMESSA'
- WHERE segment_key LIKE 'ORD:' || (SELECT uid_a::text FROM tmp_gi_ord) || ':%';
+ WHERE segment_key LIKE 'ORDINE_VENDITA:' || (SELECT uid_a::text FROM tmp_gi_ord) || ':%';
 
 SELECT is(
   (SELECT (j->>'can_push_commessa') || '|' || (j->>'can_push_commessa_reason')

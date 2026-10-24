@@ -8,11 +8,11 @@
 # Espone fn_list_lookup_codici come punto unico di accesso per tutte le lookup config.
 
 from typing import Any
-import math
 
 from django.db import DatabaseError
 
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.api.payload_validators import envelope_da_offset
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db.dbops_repository import LOOKUP_ORDER_COLONNE, DbopsRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
@@ -48,27 +48,11 @@ def fn_list_lookup_codici(
     order_dir: str = "asc",
     attivo_only: bool = True,
     includi_obsoleti: bool = True,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
-    ErrorManager.require(
-        page >= 1,
-        code="E_CORE_VALIDATION",
-        message="Parametri paginazione non validi.",
-        detail="page deve essere >= 1",
-        context={"page": page},
-        function_name="core.lookup_service.fn_list_lookup_codici",
-        log_to_db=True,
-    )
-    ErrorManager.require(
-        1 <= page_size <= MAX_LIMIT,
-        code="E_CORE_VALIDATION",
-        message="Parametri paginazione non validi.",
-        detail=f"page_size deve essere compreso tra 1 e {MAX_LIMIT}",
-        context={"page_size": page_size},
-        function_name="core.lookup_service.fn_list_lookup_codici",
-        log_to_db=True,
-    )
+    # La finestra arriva gia' nei limiti (`pagina_da_query`, nella view): dal
+    # 2026-10-21 la lookup pagina con `limit`/`offset` come ogni lista.
     # ⛔ Colonna e direzione dal BB `validate_order_params` (2026-09-26): qui
     #    c'era un secondo insieme `{asc, desc}` confrontato case-sensitive, per
     #    cui `DESC` era un 400 sulla lookup e passava sulle liste. La direzione
@@ -83,7 +67,6 @@ def fn_list_lookup_codici(
     # Senza `nullable` il BB rifiuta (require) la direzione assente.
     assert direzione is not None
 
-    offset = (page - 1) * page_size
     repository = DbopsRepository()
     try:
         results, total_count = repository.list_lookup_codici(
@@ -93,7 +76,7 @@ def fn_list_lookup_codici(
             order_dir=direzione.upper(),
             attivo_only=attivo_only,
             includi_obsoleti=includi_obsoleti,
-            limit=page_size,
+            limit=limit,
             offset=offset,
         )
     except DatabaseError as exc:
@@ -108,13 +91,6 @@ def fn_list_lookup_codici(
             function_name="core.lookup_service.fn_list_lookup_codici",
         )
 
-    total_pages = math.ceil(total_count / page_size) if page_size > 0 else 0
-    return {
-        "count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "results": results,
-    }
+    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
 
 

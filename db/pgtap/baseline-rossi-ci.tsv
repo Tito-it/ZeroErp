@@ -187,7 +187,6 @@ db/pgtap/vendite/test-commesse-stati-commessa-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-commesse-transizioni-stati-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-contratti-guard-transizione-stato-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-modalita-pricing-v1.sql	ASSERZIONE
-db/pgtap/vendite/test-contratti-overlap-draft-escluso-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-righe-coerenza-fonte-erogazione.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-schema-step22-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-step23-v1.sql	ASSERZIONE

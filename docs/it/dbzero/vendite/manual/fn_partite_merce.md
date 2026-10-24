@@ -131,6 +131,43 @@ con `PREPARE` e piano generico forzato. E in modo «tutte» le scansioni sono le
 
 ---
 
+### Quando la merce di un DDT è «partita»
+
+Una riga di DDT entra nella partita solo se il suo documento ha fatto partire
+la merce: uscito dalla bozza e non abortito. Dal 2026-10-12 (`20261012-32`)
+questa regola non è scritta qui: la funzione la legge dal building block
+[`script.vw_stati_doc_ddt_merce_partita`](/dbzero/script/views/vw_stati_doc_ddt_merce_partita),
+in due punti:
+
+* in `riga`, come filtro: le righe dei DDT in bozza o annullati non sono partite;
+* in `ponte_riga`, per distinguere una ri-consegna **già emessa**
+  (`riconsegnato`) da una **in corso** (`in_riconsegna`).
+
+Prima c'era una CTE `soglia` con l'ordine di `EMESSO`, e la stessa regola era
+ricopiata in `vendite.fn_ordine_riga_spedita` e in
+`dbops.vw_ddt_emessi_senza_scarico` (lì come elenco di codici). Uscita
+identica: provata su dbdev come app, nei tre modi (tutte, per DDT, per ordine).
+
+---
+
+### L'origine della partita
+
+(rev 20-10-2026, `20261020-24`, brief `brief-db-grammatica-unica-documenti` §12.8)
+
+`origine` dice da dove parte la merce della riga di DDT:
+
+| Valore | Quando |
+|---|---|
+| `ORDINE_VENDITA` | la riga evade **una** riga d'ordine: è il codice della sorgente, la grammatica di `config.sorgenti` (fino al 19-10-2026 era il codice corto `ORDINE`) |
+| `MULTIPLA` | la riga evade **più** righe d'ordine |
+| `NESSUNA` | la riga non evade nessuna riga d'ordine (aggiunta a mano) |
+
+`MULTIPLA` e `NESSUNA` **non sono sorgenti**: dicono l'ambiguità e l'assenza
+dell'origine, come `ONERE` nei legami di `fn_documento_legami`. Il tipo resta
+`character varying`, ancorato a `config.sorgenti.codice_interno`.
+
+---
+
 ### Chi la chiama
 
 | Lettore | Come |
@@ -152,7 +189,8 @@ SELECT ddt_riga_id, consegnato, reso, tenuti, fatturato, stato
   FROM vendite.fn_partite_merce(ARRAY[15854])
  ORDER BY ddt_riga_id;
 
--- Tutte le spedizioni di un ordine, comprese le righe aggiunte a mano ai suoi DDT.
+-- Tutte le spedizioni di un ordine, comprese le righe aggiunte a mano ai suoi DDT
+-- (origine ORDINE_VENDITA, MULTIPLA o NESSUNA).
 SELECT ddt_id, ddt_riga_id, origine, stato, differenza
   FROM vendite.fn_partite_merce(NULL, ARRAY[18586]);
 ```
@@ -161,7 +199,7 @@ SELECT ddt_id, ddt_riga_id, origine, stato, differenza
 
 ### Presidio
 
-`db/pgtap/vendite/test-fn-partite-merce-chiusura-v1.sql` (14 test). I casi
+`db/pgtap/vendite/test-fn-partite-merce-chiusura-v1.sql` (16 test). I casi
 che contano sono costruiti, non letti dai dati:
 
 * un ordine spedito su **tre DDT** e fatturato dall'ordine per metà: il DDT di
@@ -170,6 +208,8 @@ che contano sono costruiti, non letti dai dati:
   chiesta da sola deve sapere che la prima ha preso l'unico pezzo accreditato
   (le sorelle, O);
 * una riga che evade **due ordini**: esce sotto uno solo, come dalla vista;
+* una riga che evade **una** riga d'ordine: `origine` è `ORDINE_VENDITA`, un
+  codice di `config.sorgenti` (test 16);
 * più i pin di forma: la vista nomina la funzione e nessuna tabella (un corpo
   solo), le 23 colonne coi loro tipi (`consegnato` resta `numeric(18,6)`: un
   `SELECT *` dalla funzione lo perderebbe in silenzio), lo scope.

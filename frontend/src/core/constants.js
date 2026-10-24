@@ -155,15 +155,19 @@ export const FIELD_LENGTH = {
   //    diventa un 400 parlante — diventa un `DataError`, che NON e' un
   //    `IntegrityError` e quindi non passa da `map_integrity_error`: arriva
   //    all'operatore come errore generico di database.
-  REGISTRO_CODICE_MAX: 16,
+  // `varchar(80)` dal 2026-10-20 (era 16): il codice di un registro provvisionato
+  // e' il codice della famiglia piu' l'id dell'emittente (`ORDINE_VENDITA-31848`),
+  // L2c-1 di brief-db-grammatica-unica-documenti.
+  REGISTRO_CODICE_MAX: 80,
   REGISTRO_DESCRIZIONE_MAX: 120,
-  // Famiglie di documento: le tre `varchar` della tabella, verificate sul
+  // Famiglie di documento: le `varchar` della tabella, verificate sul
   // database il 2026-09-02. ⛔ Stanno qui e non nel template per la ragione di
   // sempre — un `maxlength` scritto a mano non e' un limite dichiarato, e' un
   // numero che nessuno ricontrolla il giorno che la colonna cambia.
-  FAMIGLIA_CODICE_MAX: 16,
+  // ⭐ Il `codice_interno` non ha piu' un limite qui: dal 2026-10-20 si SCEGLIE
+  //    fra le sorgenti (G-5 di brief-db-grammatica-unica-documenti), non si scrive.
   // Il `codice` dell'operatore (dal 2026-09-24): `varchar(32)`, come i codici
-  // di `config.*` (changeSet `20260924-03`) — il `codice_interno` resta 16.
+  // di `config.*` (changeSet `20260924-03`).
   FAMIGLIA_CODICE_OPERATORE_MAX: 32,
   FAMIGLIA_DESCRIZIONE_MAX: 120,
   FAMIGLIA_PREFISSO_MAX: 8,
@@ -538,6 +542,12 @@ export const MANAGE_ICONS = {
   // D20-b), e due lettori vogliono un nome (frontend-standards §«dove vive il
   // nome di un'icona»).
   REGISTRA: 'pi pi-lock',
+  // RISERVARE merce a qualcuno: il blocco manuale di magazzino (Lotto 3 R-5,
+  // «Blocca merce» sulla disponibilita'), che FERMA gli scarichi degli altri
+  // finche' non lo si libera — la pausa. ⛔ Non il lucchetto, che e' gia' CLOSE
+  // e REGISTRA (un blocco e' una promessa che si libera, non un atto chiuso),
+  // ne' il segnalibro, che e' IMPOSTA_CONTESTO.
+  BLOCCA_MERCE: 'pi pi-pause-circle',
   // ⛔ ANNULLA — si DISFA un atto che resta e viene dichiarato nullo: annulla
   //    il lotto, annulla la riga manuale, annulla la pratica.
   // 🔴 NON È UN ERRORE (`STATUS_ICONS.ERRORE`, il triangolo), ed è la
@@ -610,12 +620,19 @@ export const MANAGE_ICONS = {
   // Toggle delle EXPANSION ROW di una DataTable: la stessa coppia del toggler
   // di riga PrimeVue (chevron-right = chiusa, chevron-down = aperta), cosi'
   // «espandi tutte» nella barra della lista porta lo stesso segno della riga.
-  // Stessa coppia per i gruppi annidati della sidebar (SidebarDomain); a
-  // sidebar CHIUSA `ROW_EXPAND` sta accanto all'icona del gruppo e dice «qui
-  // dentro ci sono altre voci» (SidebarItem, prop `gruppo`, 2026-10-06).
   // Usare dinamicamente: `icon: isExpanded ? ROW_COLLAPSE : ROW_EXPAND`.
   ROW_EXPAND: 'pi pi-chevron-right',
   ROW_COLLAPSE: 'pi pi-chevron-down',
+  // Il segno «questa voce di menu contiene altre voci» (Tid 2026-10-24): il
+  // gruppo a sidebar chiusa (SidebarItem, prop `gruppo`), il gruppo a sidebar
+  // aperta (SidebarDomain: chiuso / aperto) e le voci con sottomenu di un
+  // TieredMenu (slot `#submenuicon`, kebab utente della topbar). Sempre con
+  // la classe `app-sottomenu-icon` (main.css): prende il colore dell'icona
+  // della sua voce. Caret PIENO: piccolo com'e', un chevron filiforme non si
+  // vedeva. ⛔ Non `ROW_EXPAND`: e' il toggle delle righe di tabella, fino a
+  // quel giorno prestato alla sidebar.
+  SOTTOMENU: 'pi pi-caret-right',
+  SOTTOMENU_APERTO: 'pi pi-caret-down',
   // Workflow approvazione prezzi (Sprint E listini v5).
   APPROVE: 'pi pi-check',
   REJECT: 'pi pi-times',
@@ -656,7 +673,8 @@ export const MANAGE_ICONS = {
   // Maniglia di trascinamento per riordinare una voce. ⛔ Non `pi-bars`, che
   // e' `MENU`; ne' `SPOSTA_SU`/`SPOSTA_GIU`, che sono i pulsanti a scatto.
   TRASCINA: 'pi pi-arrows-v',
-  // L'operatore super-amministratore (chip in topbar). ⛔ Non `pi-shield`,
+  // L'operatore super-amministratore (scheda utente; in topbar, dal
+  // 2026-10-18, solo su mobile accanto alle iniziali). ⛔ Non `pi-shield`,
   // che e' `PERMISSIONS`: il chip dice CHI sei, non che cosa puoi fare.
   SUPER_ADMIN: 'pi pi-crown',
   //
@@ -1143,6 +1161,16 @@ export const TAB_ENTITIES = {
 export const CODE_TABS = Object.freeze({
   LAVORI: 'lavori',
   STAMPA: 'stampa',
+})
+
+// Scopo: le schede della vista «Processi automatici» (`ProcessiAutomaticiListView`).
+// ⚠️ Stesso contratto di `CODE_TABS`: il pallino dei presidi in topbar
+//    (`AppTopbar`, producer del deep-link `?tab=`) apre la vista GIÀ sui
+//    presidi. Scritto come literal, un refuso non fallirebbe: il click sul
+//    pallino rosso porterebbe in silenzio sulla lista dei processi.
+export const PROCESSI_TABS = Object.freeze({
+  PROCESSI: 'processi',
+  PRESIDI: 'presidi',
 })
 
 // Keyboard shortcuts

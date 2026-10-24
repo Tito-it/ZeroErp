@@ -1,10 +1,14 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla d'origine ORD dal builder dbops.fn_pgtap_crea_ddt_da_ordine (p_ordine_id, in bozza, poi CONSEGNATO per la matrice); l'ordine resta scritto a mano (sconto 5 sulla riga: il builder non lo sa fare), come i blocchi «relazione»/«viaggio» e l'origine dell'indirizzo scritti sulla bolla in bozza (sono il caso dei test 1, 2 e 7); il reso resta a mano (giro 2); la bolla STD e' standalone e va a CONSEGNATO per la matrice; le emissioni di 9, 13, 14, 16 sono il caso.
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
+--   la natura NON merce si cerca diversa da ORDINE_VENDITA, il codice della sorgente (era
+--   ORDINE: dopo il giro il filtro avrebbe preso anche la merce).
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_genera_ddt_riconsegna — eredita' di testata e di riga
 -- Brief: brief-db-ddt-riconsegna-eredita-testata, Fase B (+ Fase C, C-1)
 -- ------------------------------------------------------------
--- Indice test (plan 17):
+-- Indice test (plan 18):
 --  0) oggetti presenti (madre, gemello, check di emittibilita')
 --  1) ORDER-BACKED, testata: causale/aspetto/addebito/mittente/vettore/
 --     fatturazione_immediata uguali al DDT d'origine
@@ -28,6 +32,9 @@
 -- 15) C-1: fn_available_actions_ddt espone «Emetti» disabilitato COL MOTIVO
 -- 16) C-1: ⭐ causale NON fatturabile ma riga con prezzo senza aliquota ->
 --     rifiuta LO STESSO — il discrimine e' il prezzo, non la causale
+-- 17) STANDALONE, riga: la natura di vendita e' quella della riga di DDT
+--     d'origine, anche se l'articolo nel frattempo ha cambiato natura
+--     (brief-db-articoli-ammessi-per-documento A-4 e A-6, 20261013-13)
 --
 -- Scopo:
 --  - il documento generato dal database non nasce piu' nudo: eredita cio' che
@@ -51,12 +58,14 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 -- Contesto applicativo: il test gira come gira l'applicazione (OPERATORE +
 -- RLS attiva), non come owner.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (in CI l'utente 1 non esiste;
+--   anagrafiche e articoli sono vuoti). Prima il mondo — azienda, operatore,
+--   cliente legato a quell'azienda — poi il contesto, sul SUO operatore.
+CREATE TEMP TABLE _m AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP riconsegna eredita');
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m)); END $ctx$;
 
-SELECT plan(17);
-
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
+SELECT plan(18);
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
 -- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
@@ -86,24 +95,25 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_ref AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                                AS billing_account_id,
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
+  -- ⛔ rev 2026-10-13: cliente dal mondo costruito, non il primo BA del database.
+  (SELECT billing_account_id FROM _m)                                      AS billing_account_id,
+  (SELECT cliente_soggetto_ruolo_id FROM _m)                               AS soggetto_ruolo_id,
   -- ⭐ Mittente e vettore DEVONO essere due soggetti DIVERSI fra loro e dal
   --   destinatario: se coincidessero, il test 1) e il 3) passerebbero anche
   --   con una funzione che copia la colonna sbagliata.
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id OFFSET 1 LIMIT 1) AS mittente_sr_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id OFFSET 2 LIMIT 1) AS vettore_sr_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                        AS articolo_id,
+  --   ⛔ rev 2026-10-13: costruiti, non «il secondo e il terzo ruolo del
+  --   database»: mittente = l'azienda del mondo, vettore = un soggetto nuovo
+  --   col ruolo VETTORE.
+  (SELECT emittente_soggetto_ruolo_id FROM _m)                             AS mittente_sr_id,
+  dbops.fn_pgtap_crea_soggetto_ruolo(
+      dbops.fn_pgtap_crea_soggetto_pg('Vettore pgTAP riconsegna'), 'VT')   AS vettore_sr_id,
+  -- ⛔ rev 2026-10-13: gli articoli si COSTRUISCONO (nascono merce, non solo
+  --   componente: ordine e bolla li ammettono — brief-db-articoli-ammessi-per-
+  --   documento, Lotto 3a). Due, non uno: il test 17 cambia la natura
+  --   dell'articolo della bolla STANDALONE, e la fixture C-1 che viene dopo
+  --   non puo' piu' metterlo in una bolla.
+  dbops.fn_pgtap_crea_articolo('PGTAP-RIC-EREDITA', false)                 AS articolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-RIC-EREDITA-STD', false)             AS articolo_std_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                 AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   script.fn_pgtap_emittente_operatore()                                    AS emittente_fiscale_id,
@@ -111,8 +121,6 @@ SELECT
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'       AND s.attivo LIMIT 1) AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='DRAFT'        AND s.attivo LIMIT 1) AS stato_ddt_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='EMESSO'       AND s.attivo LIMIT 1) AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='SPEDITO'      AND s.attivo LIMIT 1) AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='CONSEGNATO'   AND s.attivo LIMIT 1) AS stato_ddt_conseg_id,
   (SELECT s.id FROM config.sorgenti        s WHERE s.codice_interno='DDT_VENDITA'  AND s.attivo LIMIT 1) AS sorgente_ddt_id,
   (SELECT s.id FROM config.stati_doc_reso  s WHERE s.codice_interno='DRAFT'        AND s.attivo LIMIT 1) AS stato_reso_draft_id,
   (SELECT t.id FROM config.tipi_reso       t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
@@ -133,7 +141,7 @@ SELECT
      WHERE ma.attivo IS TRUE ORDER BY ma.id LIMIT 1)                        AS modalita_addebito_id;
 
 -- ============================================================
--- FIXTURE ORD — ordine -> DDT (gemello) -> CONSEGNATO -> reso order-backed
+-- FIXTURE ORD — ordine -> DDT (gemello, dal builder) -> CONSEGNATO -> reso order-backed
 -- ============================================================
 CREATE TEMP TABLE tmp_ord AS
 WITH ins AS (
@@ -162,14 +170,15 @@ DO $x$ BEGIN
   PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord), 'CONFERMATO');
 END $x$;
 
+-- La bolla dal builder, in bozza: causale VENDITA e indirizzo CON li scrive lui.
 CREATE TEMP TABLE tmp_ddt_ord AS
-SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord)) AS ddt_id;
+SELECT ddt_id FROM dbops.fn_pgtap_crea_ddt_da_ordine('riconsegna eredita', 'DRAFT',
+    p_ordine_id => (SELECT id FROM tmp_ord), p_causale_codice => 'VENDITA');
 
 -- Il DDT d'origine porta il blocco «relazione» E il blocco «viaggio»: e' cio'
 -- che rende distinguibili i test 1) e 7).
 UPDATE vendite.ddt d
-   SET causale_trasporto_id           = r.causale_vendita_id,
-       aspetto_bene_id                = r.aspetto_id,
+   SET aspetto_bene_id                = r.aspetto_id,
        modalita_addebito_trasporto_id = r.modalita_addebito_id,
        mittente_soggetto_ruolo_id     = r.mittente_sr_id,
        vettore_soggetto_ruolo_id      = r.vettore_sr_id,
@@ -180,16 +189,16 @@ UPDATE vendite.ddt d
   FROM tmp_ref r
  WHERE d.id = (SELECT ddt_id FROM tmp_ddt_ord);
 
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot,
-                                   origine_soggetto_ruolo_id)
-SELECT (SELECT ddt_id FROM tmp_ddt_ord), r.tipo_ind_con_id,
-       '{"display":"CON eredita ORD"}'::jsonb, r.soggetto_ruolo_id
+-- L'indirizzo di consegna porta la sua origine: e' cio' che il test 2 vede
+-- propagato (con origine_* a NULL su entrambe le bolle passerebbe a vuoto).
+UPDATE vendite.ddt_indirizzi di
+   SET snapshot = '{"display":"CON eredita ORD"}'::jsonb,
+       origine_soggetto_ruolo_id = r.soggetto_ruolo_id
   FROM tmp_ref r
-ON CONFLICT DO NOTHING;
+ WHERE di.ddt_id = (SELECT ddt_id FROM tmp_ddt_ord)
+   AND di.tipo_indirizzo_id = r.tipo_ind_con_id;
 
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id  FROM tmp_ref) WHERE id=(SELECT ddt_id FROM tmp_ddt_ord);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_ref) WHERE id=(SELECT ddt_id FROM tmp_ddt_ord);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_conseg_id  FROM tmp_ref) WHERE id=(SELECT ddt_id FROM tmp_ddt_ord);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_ddt_ord), 'CONSEGNATO');
 
 CREATE TEMP TABLE tmp_ddt_ord_riga AS
 SELECT dr.id, dr.articolo_id, dr.descrizione, dr.uom_operativa_id, dr.factor_to_base,
@@ -289,7 +298,7 @@ WITH ins AS (
   INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
     qta_operativa, factor_to_base, prezzo_unitario, sconto_percentuale, iva_id,
     attivo, storicizza, meta)
-  SELECT (SELECT id FROM tmp_ddt_std), 1, r.articolo_id, 'Riga eredita STD',
+  SELECT (SELECT id FROM tmp_ddt_std), 1, r.articolo_std_id, 'Riga eredita STD',
          6, 1, 42.50, 12.5, r.iva_id, true, false,
          jsonb_build_object('test_scope','pgtap_riconsegna_eredita')
     FROM tmp_ref r
@@ -303,9 +312,7 @@ SELECT (SELECT id FROM tmp_ddt_std), r.tipo_ind_con_id,
        '{"display":"CON eredita STD"}'::jsonb, r.soggetto_ruolo_id
   FROM tmp_ref r;
 
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id  FROM tmp_ref) WHERE id=(SELECT id FROM tmp_ddt_std);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_ref) WHERE id=(SELECT id FROM tmp_ddt_std);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_conseg_id  FROM tmp_ref) WHERE id=(SELECT id FROM tmp_ddt_std);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT id FROM tmp_ddt_std), 'CONSEGNATO');
 
 CREATE TEMP TABLE tmp_reso_std AS
 WITH ins AS (
@@ -327,6 +334,25 @@ SELECT (SELECT id FROM tmp_reso_std), 1, dr.id, NULL,
   FROM tmp_ddt_std_riga dr;
 
 SELECT vendite.fn_conferma_reso((SELECT id FROM tmp_reso_std));
+
+-- Per il test 17: dopo la bolla d'origine l'articolo cambia natura. La nuova
+-- si sceglie fra quelle che non vanno in ordine: un articolo-onere non puo'
+-- avere natura merce (catalogo.trgfn_articoli_guard_onere_natura).
+CREATE TEMP TABLE tmp_nat_orig AS
+SELECT dr.natura_vendita_id FROM vendite.ddt_righe dr
+ WHERE dr.id = (SELECT id FROM tmp_ddt_std_riga);
+-- ⛔ rev 2026-10-13 (A-10): l'articolo e' gia' usato, e un articolo usato non
+--   cambia natura (catalogo.trgfn_articoli_guard_struttura_se_usato). Il caso
+--   resta vero dalla porta amministratore: il builder passa dal verbo.
+SELECT dbops.fn_pgtap_articolo_correggi_struttura(
+    a.id,
+    jsonb_build_object('natura_vendita_id',
+        (SELECT nv.id FROM config.nature_vendita nv
+          WHERE nv.attivo AND nv.destinazione_tipo <> 'ORDINE_VENDITA'
+            AND nv.id <> a.natura_vendita_id
+          ORDER BY nv.id LIMIT 1)))
+  FROM catalogo.articoli a
+ WHERE a.id = (SELECT articolo_id FROM tmp_ddt_std_riga);
 
 CREATE TEMP TABLE tmp_ric_std AS
 SELECT vendite.fn_genera_ddt_riconsegna((SELECT id FROM tmp_reso_std)) AS ddt_id;
@@ -529,6 +555,16 @@ SELECT lives_ok(
   format($q$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$q$,
          (SELECT stato_ddt_emesso_id FROM tmp_ref), (SELECT id FROM tmp_ddt_iva)),
   '14) C-1: causale non fatturabile e riga senza prezzo -> emette (solo trasporto)');
+
+-- ============================================================
+-- 17) STANDALONE, riga: la natura e' quella della riga d'origine (A-4, A-6)
+-- ============================================================
+SELECT ok(
+    (SELECT r.natura_vendita_id = o.natura_vendita_id
+            AND r.natura_vendita_id <> a.natura_vendita_id
+       FROM tmp_ric_std_riga r, tmp_nat_orig o, catalogo.articoli a
+      WHERE a.id = r.articolo_id),
+    '17) STANDALONE, riga: natura della riga d''origine, non quella che l''articolo ha oggi');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -16,6 +16,7 @@
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useChiaveGesto } from '../../core/composables/useChiaveGesto'
 import { bloccoAttivo, bloccoDaRiga, componiBloccoMotivo } from '../../core/utils/bloccoMotivo'
 import { eliminaCredenziale } from '../api/amministrazione'
 
@@ -25,6 +26,10 @@ export function useEliminaCredenziale() {
   const { t, te } = useI18n()
   const { execute, loading } = useApiHandler()
   const { confirmAction } = useConfirmAction()
+  // ⭐ La key del GESTO (`useChiaveGesto`): l'eliminazione e' irreversibile e
+  //    la conferma si chiude al clic, quindi il reinvio dopo un timeout passa
+  //    da una conferma nuova e deve rimandare la stessa key.
+  const gesto = useChiaveGesto()
 
   // Scopo: il gesto e' spento? Lo dice il flag del backend.
   function eliminaSpenta(riga) {
@@ -54,7 +59,7 @@ export function useEliminaCredenziale() {
       danger: true,
       onAccept: async () => {
         const res = await execute(
-          () => eliminaCredenziale(id),
+          () => gesto.invia({ authUserId: id }, (config) => eliminaCredenziale(id, config)),
           { successMessage: t('amministrazione.accessi.eliminata_ok') },
         )
         if (res !== null) onEliminata?.(id)

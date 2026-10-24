@@ -21,9 +21,9 @@ from drf_spectacular.utils import (
 from rest_framework import serializers
 from rest_framework.request import Request
 
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.api.openapi_params import parametri_finestra
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.payload_validators import qp_int_optional, qp_int_strict, qp_str, qp_str_upper
+from apps.core.api.payload_validators import pagina_da_query, qp_int_optional, qp_str, qp_str_upper
 from apps.core.api.success_responses import success_response
 from apps.core.services.payload_helpers import INTEGER_MAX, INTEGER_MIN
 from apps.vendite.api.dash_export_helpers import build_dash_export_response
@@ -91,8 +91,9 @@ class ApiDashboardBacklogDocumenti(DomainAPIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "Filtro area funnel: PREVENTIVI | ORDINI | DDT | OFFERTE | "
-                    "CONTRATTI | COMMESSE | RESI (default: tutte)."
+                    "Filtro area funnel, col codice della sorgente: PREVENTIVO | "
+                    "ORDINE_VENDITA | DDT_VENDITA | OFFERTA_COMMERCIALE | CONTRATTO | "
+                    "COMMESSA | RESO_VENDITA (default: tutte)."
                 ),
             ),
             OpenApiParameter(
@@ -132,20 +133,7 @@ class ApiDashboardBacklogDocumenti(DomainAPIView):
                     "diverso -> 400 (E_VENDITE_VALIDATION)."
                 ),
             ),
-            OpenApiParameter(
-                name="page",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Numero pagina (default 1).",
-            ),
-            OpenApiParameter(
-                name="page_size",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
+            *parametri_finestra(),
         ],
         responses={
             200: inline_serializer(
@@ -182,8 +170,7 @@ class ApiDashboardBacklogDocumenti(DomainAPIView):
         # validate nel service (unica definizione, fail-fast 400).
         order_by = qp_str(qp.get("order_by"))
         order_dir = qp_str(qp.get("order_dir"))
-        page = qp_int_strict(qp.get("page"), "page", 1)
-        page_size = qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT)
+        limit, offset = pagina_da_query(qp)
 
         # Scope emittente interamente DB-side (RLS invoker + GUC commesse):
         # la view non passa alcun auth_user_id.
@@ -193,8 +180,8 @@ class ApiDashboardBacklogDocumenti(DomainAPIView):
             ritardo_giorni=ritardo_giorni,
             order_by=order_by,
             order_dir=order_dir,
-            page=page,
-            page_size=page_size,
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 

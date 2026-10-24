@@ -5,7 +5,7 @@
 -- Test: il blocco manuale diventa un atto con un verbo (D-L3-j) e la
 --   postura del Lotto 3 — cio' che l'app esegue e cio' che non puo'
 --   eseguire. Le TRE sedi della postura (loop ci_apply 20260205-41,
---   forward 90_end, provision_db_roles.sql) le tiene allineate questo file:
+--   forward 90_end, provision_zeroerp.sql (fase post)) le tiene allineate questo file:
 --   su un database ricostruito da zero, se una sede manca, qui e' rosso.
 --   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezioni 3 (D-L3-j) e 4 (P-12).
 --
