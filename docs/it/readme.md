@@ -275,6 +275,7 @@ sono le sue trappole. **44 guide**, raggruppate per area:
   [risorse umane e accessi](./guide/risorse-umane-e-accessi.md) ·
   [contratto GUC](./guide/contratto-guc-app.md)
 - **Dati, audit e storicizzazione** — [audit e tracciabilità](./guide/audit-e-tracciabilita.md) ·
+  [operazioni che non si ripetono](./guide/operazioni-che-non-si-ripetono.md) ·
   [storicizzazione tabelle](./guide/storicizzazione-tabelle.md) ·
   [`tx_id`](./guide/tx_id_implementation_guide.md) ·
   [sorgente polimorfa](./guide/sorgente-polimorfa.md) ·

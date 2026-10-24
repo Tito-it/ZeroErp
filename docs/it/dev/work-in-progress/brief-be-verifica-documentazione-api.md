@@ -417,6 +417,22 @@ righe vere):
 * Gli altri pgTAP che nominano `idempotency_keys` non ci inseriscono righe (censiti il
   2026-10-24).
 
+### I.9 La guida del meccanismo (2026-10-24, richiesta di Tid) — ✅ scritta
+
+Fino a oggi il meccanismo della Idempotency-Key era descritto in quattro pezzi, per tre pubblici
+diversi (api.md, `api_endpoint_helpers.md`, il catalogo BB frontend, il manual di
+`idempotency_keys`), e nessuna guida lo raccontava intero. Nuova guida
+[Le operazioni che non si ripetono](../../guide/operazioni-che-non-si-ripetono.md), in linguaggio
+per non tecnici: il gesto e la chiave, i tre esiti, il legame con l'utente, la ripresa (in un
+passo / a passi, e perché la soglia sta sopra il timeout del server web), la scadenza. Il
+contratto non si ricopia: rimanda alle quattro pagine.
+
+* Registrata in `mkdocs.yml` e `mkdocs.zensical.yml` (Approfondimenti tecnici, accanto ad
+  «Audit e tracciabilità») e in `docs/it/readme.md`; il manual di `idempotency_keys` la linka.
+* ⚠️ Descrive il comportamento **dopo** BE-1/BE-2 (la prenotazione dal DB, le operazioni in un
+  passo e a passi). Va riletta con BE-6 (§I.7.4): se il BE chiude in modo diverso, si corregge.
+* Build della doc non lanciata (a cura del manutentore).
+
 ---
 
 ## 🔴 I PUNTI APERTI IL 2026-10-20 — e come si sono chiusi

@@ -2,6 +2,7 @@
 
 > 👀 **Vedi anche**
 >
+> [Le operazioni che non si ripetono](/guide/operazioni-che-non-si-ripetono) — la guida: il meccanismo intero, dal gesto alla scadenza
 > [dbops.fn_idempotency_prenota](/dbzero/dbops/funzioni/fn_idempotency_prenota) — la prenotazione di una key
 > [dbops.request_log](/dbzero/dbops/manual/request_log) — correlazione via `idempotency_key`
 > [dbops.error_log](/dbzero/dbops/tabelle/error_log)
