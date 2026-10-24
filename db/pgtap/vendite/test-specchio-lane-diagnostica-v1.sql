@@ -50,6 +50,9 @@
 --
 -- ChangeSet: 20260909-59 · -60 · -63
 -- Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L3, §9.2)
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
+--   portano avanti con dbops.fn_pgtap_porta_a_stato (prima le commesse nascevano gia'
+--   in stato_ok / stato_ko).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -131,12 +134,14 @@ BEGIN
             ('trattenuto', true)    -- riga pronta, ma un lotto la tiene
         ) AS v(caso, testata_ok)
     LOOP
+        -- rev 2026-10-24: la commessa nasce BOZZA (trigger della nascita) e passa
+        --   allo stato voluto (stato_ok / stato_ko) DOPO la sua riga APPROVATA,
+        --   che il passaggio a PRONTA_FATTURAZIONE pretende.
         INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                      emittente_soggetto_ruolo_id, stato_commessa_id)
+                                      emittente_soggetto_ruolo_id)
         VALUES ('PGTAP-SP-' || upper(r.caso) || '-'
                             || substr(md5(clock_timestamp()::text), 1, 6),
-                v_rif.billing_account_id, v_rif.utility_id, v_rif.emittente_sr,
-                CASE WHEN r.testata_ok THEN v_rif.stato_ok ELSE v_rif.stato_ko END)
+                v_rif.billing_account_id, v_rif.utility_id, v_rif.emittente_sr)
         RETURNING id INTO v_comm;
 
         INSERT INTO vendite.commesse_attivita (
@@ -152,6 +157,10 @@ BEGIN
                 v_rif.tipo_doc_fiscale_id, v_rif.valuta_id, 10.000000, 'FIXED',
                 'APPROVATA', 'NON_EMESSA', -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
                 (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text);
+
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.commesse', v_comm,
+            (SELECT sc.codice_interno FROM vendite.stati_commessa sc
+              WHERE sc.id = CASE WHEN r.testata_ok THEN v_rif.stato_ok ELSE v_rif.stato_ko END));
 
         INSERT INTO tmp_sp VALUES (r.caso, v_comm,
             vendite.fn_build_gruppo_fatturabile_key(

@@ -3,6 +3,14 @@
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): l'area della dashboard e' il codice della sorgente; le chiavi del push col prefisso lungo.
 -- pgTAP test per Zero ERP
 --
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima le
+--   offerte nascevano gia' EMESSA e ACCETTATA, i contratti gia' ANNULLATO e
+--   ATTIVO). Il contratto ATTIVO prende il listino della fixture: senza, non si
+--   attiva (trgfn_contratti_freeze_listino_versione). Il figlio ANNULLATO si
+--   annulla col verbo vendite.fn_annulla_contratto (conferma del legame con
+--   l'offerta).
+--
 -- Test: Lente 2 Backlog (20260706-01..02 lookup+seed, -03..08 colonna
 --       data_riferimento su resolver/union, -12..13 viste backlog):
 --       config.motivi_fermo (10 codici, 4 classi), vw_dash_backlog_documenti
@@ -312,51 +320,77 @@ WITH ins AS (
     emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
     listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id)
   SELECT r.emittente_fiscale_id, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         r.listino_id, r.listino_versione_id, DATE '2080-03-01', r.off_emessa_id
+         r.listino_id, r.listino_versione_id, DATE '2080-03-01', r.off_bozza_id
     FROM tmp_bl_refs r
   RETURNING id)
 INSERT INTO tmp_bl_offerte SELECT 'EMESSA', id FROM ins;
+
+-- rev 2026-10-24: nata in BOZZA, emessa per la matrice.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', o.offerta_id, 'EMESSA')
+  FROM tmp_bl_offerte o
+ WHERE o.slot = 'EMESSA';
 
 WITH ins AS (
   INSERT INTO vendite.offerte_commerciali (
     emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
     listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id)
   SELECT r.emittente_fiscale_id, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         r.listino_id, r.listino_versione_id, DATE '2080-03-01', r.off_accettata_id
+         r.listino_id, r.listino_versione_id, DATE '2080-03-01', r.off_bozza_id
     FROM tmp_bl_refs r
   RETURNING id)
 INSERT INTO tmp_bl_offerte SELECT 'ACC_FIGLIO_ABORTITO', id FROM ins;
 
-INSERT INTO vendite.contratti (
-  numero, billing_account_id, istanza_utility_id, utility_id,
-  valido_dal, valido_al, stato_doc_contratto_id, data, offerta_id,
-  emittente_fiscale_id, meta)
-SELECT 'PGTAP-BL-CA-' || substr(md5(clock_timestamp()::text), 1, 8),
-       r.billing_account_id, r.istanza_utility_id, r.utility_id,
-       script.fn_data_operativa(), NULL, r.contr_annullato_id, script.fn_data_operativa(),
-       (SELECT offerta_id FROM tmp_bl_offerte WHERE slot = 'ACC_FIGLIO_ABORTITO'),
-       COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
-                r.emittente_fiscale_id),
-       jsonb_build_object('test_scope','pgtap_dash_backlog')
-  FROM tmp_bl_refs r;
+-- rev 2026-10-24: nata in BOZZA, accettata per la matrice (BOZZA -> EMESSA -> ACCETTATA).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', o.offerta_id, 'ACCETTATA')
+  FROM tmp_bl_offerte o
+ WHERE o.slot = 'ACC_FIGLIO_ABORTITO';
 
--- Fixture CONTRATTO ATTIVO senza canone (verde: CANONE_NON_GENERATO).
-CREATE TEMP TABLE tmp_bl_contratto AS
+-- Il figlio ANNULLATO: nasce DRAFT e si annulla col verbo (rev 2026-10-24).
+-- ⚠️ Non con fn_pgtap_porta_a_stato: annullare un contratto nato da
+--   un'offerta riapre un legame (l'offerta da cui nasce), e il guard
+--   trg_contratti_m10_guard_annullo_con_legami_upd vuole la conferma. Il verbo
+--   vendite.fn_annulla_contratto la riceve come conteggio: 1, l'offerta.
+CREATE TEMP TABLE tmp_bl_contratto_annullato AS
 WITH ins AS (
   INSERT INTO vendite.contratti (
     numero, billing_account_id, istanza_utility_id, utility_id,
-    valido_dal, valido_al, stato_doc_contratto_id, data,
+    valido_dal, valido_al, data, offerta_id,
     emittente_fiscale_id, meta)
-  SELECT 'PGTAP-BL-CT-' || substr(md5(clock_timestamp()::text), 1, 8),
+  SELECT 'PGTAP-BL-CA-' || substr(md5(clock_timestamp()::text), 1, 8),
          r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         date_trunc('month', script.fn_data_operativa())::date, NULL,
-         r.contr_attivo_id, date_trunc('month', script.fn_data_operativa())::date,
+         script.fn_data_operativa(), NULL, script.fn_data_operativa(),
+         (SELECT offerta_id FROM tmp_bl_offerte WHERE slot = 'ACC_FIGLIO_ABORTITO'),
          COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
                   r.emittente_fiscale_id),
          jsonb_build_object('test_scope','pgtap_dash_backlog')
     FROM tmp_bl_refs r
   RETURNING id)
 SELECT * FROM ins;
+
+SELECT vendite.fn_annulla_contratto(c.id, 1)
+  FROM tmp_bl_contratto_annullato c;
+
+-- Fixture CONTRATTO ATTIVO senza canone (verde: CANONE_NON_GENERATO).
+-- rev 2026-10-24: nasce DRAFT sul listino della fixture e si attiva per la matrice.
+CREATE TEMP TABLE tmp_bl_contratto AS
+WITH ins AS (
+  INSERT INTO vendite.contratti (
+    numero, billing_account_id, istanza_utility_id, utility_id,
+    valido_dal, valido_al, data, listino_id,
+    emittente_fiscale_id, meta)
+  SELECT 'PGTAP-BL-CT-' || substr(md5(clock_timestamp()::text), 1, 8),
+         r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         date_trunc('month', script.fn_data_operativa())::date, NULL,
+         date_trunc('month', script.fn_data_operativa())::date, r.listino_id,
+         COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
+                  r.emittente_fiscale_id),
+         jsonb_build_object('test_scope','pgtap_dash_backlog')
+    FROM tmp_bl_refs r
+  RETURNING id)
+SELECT * FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', c.id, 'ATTIVO')
+  FROM tmp_bl_contratto c;
 
 -- ============================================================
 -- 4) Coerenza vocabolario: ogni motivo emesso dalla union e' in lookup.

@@ -4,6 +4,9 @@
 -- Test: le madri DB per lotto del fondo fattura — scope, chiavi, atomicita'
 --       R-3 di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.3
 --       (changeSet 20260815-33 .. 20260815-35)
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le sorgenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima
+--   nascevano gia' DEFINITIVA).
 -- ------------------------------------------------------------
 -- Indice test
 --  1) Riferimenti minimi presenti
@@ -90,6 +93,10 @@ SELECT ok(
 
 -- Il lotto «buono». Nessuno stato fiscale: le figlie nascono senza stato, e
 -- il guard di coerenza del ponte vuole che i due lati combacino.
+-- ⚠️ rev 2026-10-24: le figlie non nascono piu' «senza stato» ma in DRAFT
+--    (lo stato iniziale, che il trigger della nascita scrive). Provato sullo
+--    scratch con un mondo costruito: il ponte verso il lotto senza stato
+--    resta accettato dal guard di coerenza.
 CREATE TEMP TABLE tmp_lotto_ffl AS WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti (
       competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id, meta)
@@ -128,10 +135,10 @@ SELECT (SELECT id FROM tmp_lotto_ffl), g.id,
 CREATE TEMP TABLE tmp_sorgenti_ffl AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
+      tipo_doc_fiscale_id, valuta_id, utility_id,
       minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
+         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
          TRUE, v.totale,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffl),
                             'ruolo', v.ruolo)
@@ -142,6 +149,16 @@ CREATE TEMP TABLE tmp_sorgenti_ffl AS WITH ins AS (
     ) AS v(totale, ruolo)
   RETURNING id, meta->>'ruolo' AS ruolo
 ) SELECT * FROM ins;
+
+-- ⛔ Nate in bozza come ogni documento (rev 2026-10-24): si portano in
+--    DEFINITIVA per la matrice, con indirizzi e intestazione scritti dai
+--    building block della pipeline, come prima di emettere.
+SELECT i.inserted_rows, t.scritta
+  FROM (SELECT id FROM tmp_sorgenti_ffl) s
+ CROSS JOIN LATERAL vendite.fn_snapshot_indirizzi_fattura(s.id) i
+ CROSS JOIN LATERAL vendite.fn_snapshot_intestazione_fattura(s.id) t;
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', s.id, 'DEFINITIVA')
+  FROM (SELECT id FROM tmp_sorgenti_ffl) s;
 
 -- Un lotto VUOTO: esiste, non ha fatture. Non e' un errore — e' un giro che
 -- non ha niente da fare, e va distinto dal lotto inesistente.

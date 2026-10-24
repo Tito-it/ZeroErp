@@ -2,6 +2,12 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): gli ambiti degli indirizzi col codice della sorgente (ORDINE_VENDITA, PREVENTIVO, CONTRATTO); 'DDT' in pg_temp.righe e' un argomento della grammatica dei montaggi e resta.
 -- pgTAP test per Zero ERP
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima l'offerta
+--   OFF_RIFIUTATA nasceva gia' RIFIUTATA e il contratto del test 35 gia' ATTIVO).
+--   Il 35 prova lo snapshot della nascita sul contratto nato in DRAFT e attivato;
+--   il 37 (nuovo, piano 37) che l'INSERT diretto in ATTIVO ora e' rifiutato alla
+--   nascita (E_DOC_STATO_INIZIALE_NON_VALIDO).
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
 --   il documento passato ai lettori delle testate, ai legami e ai montaggi del
 --   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
@@ -14,7 +20,7 @@
 --   E_DOC_LISTINO_CAMBIO_CON_RIGHE, E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI).
 -- Brief: brief-db-testata-dopo-emissione (§10.1, §11; D-11 e D-12 di Tid)
 --
--- Elenco test (plan 36):
+-- Elenco test (plan 37):
 --  La grammatica e i montaggi (R-DB-3, D-12)
 --   1) RIGHE: il codice e' il settimo argomento, default E_RIGA_DOC_NON_BOZZA; oltre sette e' un montaggio sbagliato
 --   2) i sette satelliti hanno il lock delle righe, col codice dei satelliti e senza eccezioni (scritto dal test)
@@ -57,8 +63,9 @@
 --      il guard non legge piu' il fulfillment da se', la capability non scrive il cliente fra le costanti
 --  34) i codici nuovi sono a catalogo con la loro classe e il messaggio; i due del contratto ritirati
 --  La nascita (D-13 di Tid, 20261011-40, -41)
---  35) un contratto inserito gia' ATTIVO riceve dal trigger lo snapshot della fornitura (la nascita)
+--  35) un contratto nato (in DRAFT) e attivato porta lo snapshot della fornitura scritto dal trigger alla nascita
 --  36) ... ma una fornitura scritta DIRETTAMENTE su un contratto attivo nato in questa transazione e' rifiutata
+--  37) un contratto non nasce gia' ATTIVO: E_DOC_STATO_INIZIALE_NON_VALIDO (rev 2026-10-24)
 --
 -- Scopo:
 --  - ⭐ i casi si COSTRUISCONO: mondo, listino, articoli, documenti nati in
@@ -81,7 +88,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(36);
+SELECT plan(37);
 
 -- Il codice di dominio di un errore, dal canale CONSTRAINT (P0001); per gli
 -- altri, SQLSTATE e vincolo. 'PASSA' se non solleva.
@@ -351,8 +358,10 @@ SELECT is(
 -- 12-17) L'offerta e il congelamento del listino
 -- =========================================================
 -- Tre offerte sul listino del mondo, senza versione fissata: due in BOZZA
--- (una si emette, una prende le righe), una nata RIFIUTATA (il documento
--- chiuso, per la capability).
+-- (una si emette, una prende le righe), una RIFIUTATA (il documento chiuso,
+-- per la capability).
+-- rev 2026-10-24: nascono tutte in BOZZA (trigger della nascita); la RIFIUTATA
+--   ci arriva per la matrice (BOZZA -> EMESSA -> RIFIUTATA), sotto i guard veri.
 
 DO $off$
 DECLARE
@@ -363,14 +372,16 @@ BEGIN
                                    ('OFF_RIFIUTATA', 'RIFIUTATA')) AS x(k, s) LOOP
         INSERT INTO vendite.offerte_commerciali
                (codice, emittente_fiscale_id, billing_account_id, istanza_utility_id,
-                utility_id, listino_id, validita_dal, stato_doc_offerta_id)
+                utility_id, listino_id, validita_dal)
         SELECT 'PGTAP-RDB-O-' || r.k || '-' || substr(gen_random_uuid()::text, 1, 8),
                m.emittente_fiscale_id, m.billing_account_id, m.istanza_utility_id,
-               m.utility_id, l.listino_id, script.fn_data_operativa(),
-               (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = r.s)
+               m.utility_id, l.listino_id, script.fn_data_operativa()
           FROM _m m, _l l
         RETURNING id INTO v_id;
         INSERT INTO _doc VALUES (r.k, v_id);
+        IF r.s <> 'BOZZA' THEN
+            PERFORM dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', v_id, r.s);
+        END IF;
     END LOOP;
 END
 $off$;
@@ -672,23 +683,33 @@ SELECT m.istanza_utility_id, m.utility_id FROM _m m;
 -- ⚠️ L'esito si scrive in una tabella, e lo snapshot si conta DOPO, in
 --    un'istruzione sua: nella stessa istruzione la sotto-select vedrebbe la
 --    fotografia di prima dell'INSERT.
+-- ⛔ rev 2026-10-24 (brief-modello-documento-vendita N-1): fino a oggi il
+--    contratto si INSERIVA gia' ATTIVO. Ora nasce in DRAFT (trigger della
+--    nascita) e si attiva per la matrice, in un'istruzione sua: lo snapshot
+--    resta quello scritto alla nascita, e lo stato si legge nell'asserzione.
 CREATE TEMP TABLE _nato AS
 SELECT pg_temp.esito(format(
         $$INSERT INTO vendite.contratti (numero, billing_account_id, istanza_utility_id, utility_id,
-               stato_doc_contratto_id, listino_id, valido_dal, valido_al)
+               listino_id, valido_dal, valido_al)
           SELECT 'PGT-RDB-NATO-ATTIVO', m.billing_account_id, m.istanza_utility_id, m.utility_id,
-                 (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO'),
                  l.listino_id, %L::date, %L::date
             FROM _m m, _l l$$,
         script.fn_data_operativa() + 2000, script.fn_data_operativa() + 2365)) AS esito;
 
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', c.id, 'ATTIVO')
+  FROM vendite.contratti c
+ WHERE c.numero = 'PGT-RDB-NATO-ATTIVO';
+
 SELECT is(
     (SELECT esito FROM _nato)
+      || '|' || (SELECT s.codice_interno::text FROM vendite.contratti c
+                   JOIN config.stati_doc_contratti s ON s.id = c.stato_doc_contratto_id
+                  WHERE c.numero = 'PGT-RDB-NATO-ATTIVO')
       || '|' || (SELECT count(*)::text FROM vendite.contratti_utilities cu
                    JOIN vendite.contratti c ON c.id = cu.contratto_id
                   WHERE c.numero = 'PGT-RDB-NATO-ATTIVO'),
-    'PASSA|1',
-    '35) un contratto inserito gia'' ATTIVO riceve dal trigger lo snapshot della fornitura: e'' parte della sua nascita'
+    'PASSA|ATTIVO|1',
+    '35) un contratto nato in DRAFT e attivato porta lo snapshot della fornitura scritto dal trigger: e'' parte della sua nascita'
 );
 
 SELECT is(
@@ -698,6 +719,21 @@ SELECT is(
         pg_temp.doc('CON_ATTIVA'))),
     'E_DOC_DATI_COLLEGATI_NON_BOZZA',
     '36) ... ma la fornitura scritta DIRETTAMENTE su un contratto attivo, nato in questa stessa transazione, e'' rifiutata'
+);
+
+-- 37) La strada di prima del 35 non c'e' piu': un INSERT che dice ATTIVO lo
+--     rifiuta il trigger della nascita (trg_contratti_a05_stato_iniziale_ins).
+SELECT is(
+    pg_temp.esito(format(
+        $$INSERT INTO vendite.contratti (numero, billing_account_id, istanza_utility_id, utility_id,
+               stato_doc_contratto_id, listino_id, valido_dal, valido_al)
+          SELECT 'PGT-RDB-NATO-ATTIVO-2', m.billing_account_id, m.istanza_utility_id, m.utility_id,
+                 (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO'),
+                 l.listino_id, %L::date, %L::date
+            FROM _m m, _l l$$,
+        script.fn_data_operativa() + 3000, script.fn_data_operativa() + 3365)),
+    'E_DOC_STATO_INIZIALE_NON_VALIDO',
+    '37) un contratto non nasce gia'' ATTIVO: lo rifiuta il trigger della nascita (E_DOC_STATO_INIZIALE_NON_VALIDO)'
 );
 
 SELECT * FROM finish();

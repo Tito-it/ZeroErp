@@ -27,6 +27,12 @@ AS $function$
 --              (SELECT billing_account_id FROM tmp_f));
 -- ⛔ Righe, scadenze, contabili e movimenti NON li scrive: sono il
 --   caso del test.
+-- ⭐ rev 2026-10-24 (20261024-25, brief-modello-documento-vendita N-1):
+--   la fattura NASCE nello stato iniziale (trigger della nascita); uno
+--   stato diverso si raggiunge con dbops.fn_pgtap_porta_a_stato, sotto
+--   i guard veri. Un passaggio che pretende cio' che il builder non
+--   scrive (righe, indirizzi…) qui fallisce: il test lo scrive e porta
+--   avanti da se'.
 -- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.
 DECLARE
     v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
@@ -96,11 +102,23 @@ BEGIN
 
     INSERT INTO vendite.fatture (
         registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-        tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, utility_id, meta)
+        tipo_doc_fiscale_id, valuta_id, utility_id, meta)
     VALUES (v_registro, (SELECT script.fn_data_operativa()), v_ef_sr_id, v_ba_id,
-            v_tipo_id, v_stato_id, v_valuta_id, v_utility,
+            v_tipo_id, v_valuta_id, v_utility,
             jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
     RETURNING id INTO v_fattura;
+
+    -- Lo stato chiesto (rev 20261024-25): il documento e' nato nello stato
+    -- iniziale; se il test ne vuole un altro, ci arriva per la matrice.
+    -- Per uscire dalla bozza la fattura vuole indirizzi e
+    -- intestazione congelati: li scrive, come la pipeline prima
+    -- di emettere, coi suoi building block. Righe con IVA,
+    -- scadenze e numero restano del test.
+    IF v_stato_id IS DISTINCT FROM script.fn_stato_iniziale_id('config.stati_doc_fiscale'::regclass) THEN
+        PERFORM vendite.fn_snapshot_indirizzi_fattura(v_fattura);
+        PERFORM vendite.fn_snapshot_intestazione_fattura(v_fattura);
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.fatture'::regclass, v_fattura, p_stato_codice_interno);
+    END IF;
 
     -- Contratto dichiarato, non fiducia nel chiamato.
     SET CONSTRAINTS ALL IMMEDIATE;

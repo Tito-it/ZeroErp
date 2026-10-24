@@ -24,6 +24,11 @@
 --   11) fn_chiudi su contratto ATTIVO -> accorciamento consentito (regressione lock)
 --   12) fn_chiudi su contratto ATTIVO -> valido_al aggiornato
 --
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i contratti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano
+--   gia' ATTIVO o abortiti). Un contratto si attiva su un listino con una
+--   versione in vigore: gli ATTIVO lo prendono da dbops.fn_pgtap_crea_listino.
+--
 -- Fixture: un solo billing_account, finestre temporali disgiunte (nessun
 -- conflitto con ex_contratti_no_overlap), emittente coerente con il BA.
 -- ------------------------------------------------------------
@@ -45,12 +50,21 @@ SELECT
     ba.utility_id         AS utility_id,
     anagrafiche.fn_get_emittente_fiscale_pk(ba.id) AS emittente_id,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'  LIMIT 1) AS id_draft,
-    (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO' LIMIT 1) AS id_attivo,
-    (SELECT id FROM config.stati_doc_contratti WHERE is_abortito IS TRUE ORDER BY id LIMIT 1) AS id_abortito
+    -- lo stato abortito si raggiunge per la matrice: il codice, non l'id
+    (SELECT codice_interno FROM config.stati_doc_contratti WHERE is_abortito IS TRUE ORDER BY id LIMIT 1) AS cod_abortito
   FROM anagrafiche.billing_account ba
  WHERE anagrafiche.fn_get_emittente_fiscale_pk(ba.id) IS NOT NULL
  ORDER BY ba.id
  LIMIT 1;
+
+-- Il listino dei contratti ATTIVO: DRAFT->ATTIVO congela la versione in
+-- vigore (trgfn_contratti_freeze_listino_versione); senza listino il
+-- contratto vorrebbe righe AGGIUNTA con prezzo. LATERAL: con il contesto
+-- vuoto il builder non si chiama.
+CREATE TEMP TABLE tmp_succ_listino AS
+SELECT l.listino_id
+  FROM tmp_succ_ctx c,
+       LATERAL dbops.fn_pgtap_crea_listino(c.utility_id, 'successione contratti') l;
 
 -- C_A: ATTIVO, finestra 2080 (incumbent per il test di overlap)
 -- ⭐ ATTIVO e non DRAFT, ed e' la correzione del 2026-08-24: dal changeSet
@@ -59,22 +73,30 @@ SELECT
 --    `partecipa_overlap_snapshot = NOT is_abortito AND NOT is_draft`. Un
 --    incumbent in bozza non blocca nessuno — di proposito — e il test 3
 --    misurava quindi il caso sbagliato: NULL invece dell'id.
---    ⚠️ Lo stato si mette all'INSERT e non con un UPDATE perche' il guard di
---    transizione (trg_contratti_a10_guard_transizione_stato_upd) e' sul solo
---    UPDATE: nascere ATTIVO e' lecito, ed evita di far dipendere un fixture
---    dalla matrice delle transizioni.
+--    ⛔ rev 2026-10-24: fino a oggi lo stato si metteva all'INSERT («nascere
+--    ATTIVO e' lecito»). Non lo e' piu': un contratto nasce in DRAFT
+--    (trg_contratti_a05_stato_iniziale_ins) e si attiva per la matrice, sotto
+--    il guard di transizione.
 INSERT INTO vendite.contratti(numero, billing_account_id, istanza_utility_id,
-    utility_id, emittente_fiscale_id, stato_doc_contratto_id, valido_dal, valido_al)
+    utility_id, emittente_fiscale_id, listino_id, valido_dal, valido_al)
 SELECT 'PGTAP_SUCC_A', c.ba_id, c.istanza_utility_id, c.utility_id, c.emittente_id,
-       c.id_attivo, '2080-01-01'::date, '2080-12-31'::date
-  FROM tmp_succ_ctx c;
+       l.listino_id, '2080-01-01'::date, '2080-12-31'::date
+  FROM tmp_succ_ctx c, tmp_succ_listino l;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', k.id, 'ATTIVO')
+  FROM vendite.contratti k
+ WHERE k.numero = 'PGTAP_SUCC_A';
 
 -- C_ABORT: stato abortito, finestra 2082 (deve essere ignorato dal rilevamento)
 INSERT INTO vendite.contratti(numero, billing_account_id, istanza_utility_id,
-    utility_id, emittente_fiscale_id, stato_doc_contratto_id, valido_dal, valido_al)
+    utility_id, emittente_fiscale_id, valido_dal, valido_al)
 SELECT 'PGTAP_SUCC_ABORT', c.ba_id, c.istanza_utility_id, c.utility_id, c.emittente_id,
-       c.id_abortito, '2082-01-01'::date, '2082-12-31'::date
+       '2082-01-01'::date, '2082-12-31'::date
   FROM tmp_succ_ctx c;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', k.id, c.cod_abortito)
+  FROM vendite.contratti k, tmp_succ_ctx c
+ WHERE k.numero = 'PGTAP_SUCC_ABORT';
 
 -- C_SUCC: DRAFT, finestra 2100 (per fn_chiudi date valide)
 INSERT INTO vendite.contratti(numero, billing_account_id, istanza_utility_id,
@@ -92,19 +114,27 @@ SELECT 'PGTAP_SUCC_BAD', c.ba_id, c.istanza_utility_id, c.utility_id, c.emittent
 
 -- C_ATT: ATTIVO, finestra 2104 (regressione lock post-attivazione)
 INSERT INTO vendite.contratti(numero, billing_account_id, istanza_utility_id,
-    utility_id, emittente_fiscale_id, stato_doc_contratto_id, valido_dal, valido_al)
+    utility_id, emittente_fiscale_id, listino_id, valido_dal, valido_al)
 SELECT 'PGTAP_SUCC_ATT', c.ba_id, c.istanza_utility_id, c.utility_id, c.emittente_id,
-       c.id_attivo, '2104-01-01'::date, '2104-12-31'::date
-  FROM tmp_succ_ctx c;
+       l.listino_id, '2104-01-01'::date, '2104-12-31'::date
+  FROM tmp_succ_ctx c, tmp_succ_listino l;
 
--- C_PERP: DRAFT, perpetuo 2110.. (valido_al NULL)
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', k.id, 'ATTIVO')
+  FROM vendite.contratti k
+ WHERE k.numero = 'PGTAP_SUCC_ATT';
+
+-- C_PERP: ATTIVO, perpetuo 2110.. (valido_al NULL)
 INSERT INTO vendite.contratti(numero, billing_account_id, istanza_utility_id,
-    utility_id, emittente_fiscale_id, stato_doc_contratto_id, valido_dal, valido_al)
+    utility_id, emittente_fiscale_id, listino_id, valido_dal, valido_al)
 -- ⭐ ATTIVO per la stessa ragione di C_A: un perpetuo in bozza non partecipa
 --    all'overlap, e il test 6 misurerebbe il caso sbagliato.
 SELECT 'PGTAP_SUCC_PERP', c.ba_id, c.istanza_utility_id, c.utility_id, c.emittente_id,
-       c.id_attivo, '2110-01-01'::date, NULL::date
-  FROM tmp_succ_ctx c;
+       l.listino_id, '2110-01-01'::date, NULL::date
+  FROM tmp_succ_ctx c, tmp_succ_listino l;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', k.id, 'ATTIVO')
+  FROM vendite.contratti k
+ WHERE k.numero = 'PGTAP_SUCC_PERP';
 
 -- ============================================================
 -- 1) fn_contratto_sovrapposto presente

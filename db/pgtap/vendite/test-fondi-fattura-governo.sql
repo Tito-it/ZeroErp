@@ -4,6 +4,15 @@
 -- Test: governo del fondo fattura — banda, atto unico, corrispondenza, chiave
 --       Fase A di brief-db-fondo-fattura-ricalcolo-e-governo.md §8.2
 --       (changeSet 20260815-03 .. 20260815-09)
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le sorgenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima
+--   nascevano gia' DEFINITIVA o ANNULLATA). La sorgente ANNULLATA dei test 8 e
+--   20 diventa una sorgente EMESSA: una fattura singola non ha nessun passaggio
+--   verso ANNULLATA (DRAFT -> ANNULLATA c'e' solo per il lotto, e l'annullo del
+--   lotto cancella le fatture), e la regola provata e' «genera e propone SOLO
+--   una fattura DEFINITIVA». EMESSA e' il caso piu' stretto: uscita dalla bozza,
+--   completa, lo stato subito prima di DEFINITIVA (decisione di Tid, 2026-10-24,
+--   Q-1 opzione B).
 -- ------------------------------------------------------------
 -- Indice test
 --  1) Riferimenti minimi presenti
@@ -14,7 +23,7 @@
 --  5) D-3a: fondo di segno opposto al totale della sorgente rifiutato
 --  6) D-3a: fondo piu' grande della sorgente rifiutato
 --  7) ⭐ Banda: fondo NEGATIVO su sorgente a credito AMMESSO
---  8) D-1: sorgente ANNULLATA non genera alcun fondo
+--  8) D-1: sorgente EMESSA (non ancora DEFINITIVA) non genera alcun fondo
 --  9) D-1: sorgente DEFINITIVA genera il fondo
 -- 10) D-1: il secondo giro NON riscrive un fondo esistente (atto unico)
 -- 11) D-4: il fondo non passa a una figlia con termine di pagamento diverso
@@ -26,7 +35,7 @@
 -- 17) D-8: due atti automatici vivi sulla stessa sorgente rifiutati
 -- 18) D-9: la proposta vale l'importo che l'automatismo scriverebbe
 -- 19) D-9: nessuna proposta dove un atto esiste gia'
--- 20) D-9: nessuna proposta su sorgente ANNULLATA
+-- 20) D-9: nessuna proposta su sorgente EMESSA (non ancora DEFINITIVA)
 -- 21) D-9: nessuna proposta su sorgente senza utility
 -- 22) D-9: parametro invalido rifiutato
 -- 23) D-10: PROPOSTA_SENZA_ATTO, con l'importo proposto
@@ -68,7 +77,7 @@ SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(
   (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id,
   (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DEFINITIVA' AND attivo IS TRUE ORDER BY id LIMIT 1) AS stato_definitiva_id,
-  (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'ANNULLATA'  AND attivo IS TRUE ORDER BY id LIMIT 1) AS stato_annullata_id,
+  (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'EMESSA'     AND attivo IS TRUE ORDER BY id LIMIT 1) AS stato_emessa_id,
   (SELECT id FROM vendite.tipi_fondi_fattura WHERE attivo IS TRUE AND codice_interno = 'F_F_ADD_ACC' ORDER BY id LIMIT 1) AS tipo_fondo_id,
   (SELECT id FROM config.termini_pagamento WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS termine_pagamento_id,
   (
@@ -87,7 +96,7 @@ SELECT ok(
         AND tipo_doc_fiscale_id IS NOT NULL
         AND valuta_id IS NOT NULL
         AND stato_definitiva_id IS NOT NULL
-        AND stato_annullata_id IS NOT NULL
+        AND stato_emessa_id IS NOT NULL
         AND tipo_fondo_id IS NOT NULL
         AND termine_pagamento_id IS NOT NULL
         AND emittente_soggetto_ruolo_id IS NOT NULL
@@ -116,19 +125,22 @@ SELECT throws_ok(
 -- ============================================================
 -- Fixture: quattro sorgenti + una figlia
 -- ============================================================
--- ⚠️ Tutte create GIA' nello stato e con i valori definitivi: nessun test
---    aggiorna una fattura DEFINITIVA, che i guard di intestazione congelata
---    rifiuterebbero. Le differenze fra i casi stanno nella fixture, non in
---    una mutazione successiva.
+-- ⚠️ Tutte create GIA' con i valori definitivi: nessun test aggiorna una
+--    fattura DEFINITIVA, che i guard di intestazione congelata rifiuterebbero.
+--    Le differenze fra i casi stanno nella fixture, non in una mutazione
+--    successiva. ⛔ Lo STATO no (rev 2026-10-24): nascono in bozza e si
+--    portano in DEFINITIVA (o EMESSA) subito dopo, prima di ogni fondo,
+--    con dbops.fn_pgtap_porta_a_stato — gli snapshot che l'uscita dalla bozza
+--    pretende li scrivono i building block della pipeline.
 
 -- SRC_POS: definitiva, a minimo, totale +100 -> fondo a debito
 CREATE TEMP TABLE tmp_src_pos AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
+      tipo_doc_fiscale_id, valuta_id, utility_id,
       minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
+         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
          TRUE, 100.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
     FROM tmp_refs_ffg r
@@ -142,26 +154,29 @@ CREATE TEMP TABLE tmp_src_pos AS WITH ins AS (
 CREATE TEMP TABLE tmp_src_neg AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
+      tipo_doc_fiscale_id, valuta_id, utility_id,
       minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
+         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
          TRUE, -80.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
     FROM tmp_refs_ffg r
   RETURNING id
 ) SELECT * FROM ins;
 
--- SRC_ANN: ANNULLATA, ma con minimo = true e un totale positivo. Prima del
---          filtro di stato generava un fondo, perche' fn_get_saldo_fattura
---          non guarda lo stato e restituisce il totale intero.
-CREATE TEMP TABLE tmp_src_ann AS WITH ins AS (
+-- SRC_EME: EMESSA, con minimo = true e un totale positivo: tutto come una
+--          sorgente che genera, tranne lo stato. Prima del filtro di stato
+--          avrebbe generato un fondo, perche' fn_get_saldo_fattura non guarda
+--          lo stato e restituisce il totale intero. (Fino al 2026-10-24 era una
+--          sorgente ANNULLATA, che nasceva gia' annullata: il modello non ha un
+--          passaggio che porti una fattura singola in ANNULLATA.)
+CREATE TEMP TABLE tmp_src_eme AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
+      tipo_doc_fiscale_id, valuta_id, utility_id,
       minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_annullata_id,
+         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
          TRUE, 50.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
     FROM tmp_refs_ffg r
@@ -174,10 +189,10 @@ CREATE TEMP TABLE tmp_src_ann AS WITH ins AS (
 CREATE TEMP TABLE tmp_src_term AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
+      tipo_doc_fiscale_id, valuta_id, utility_id,
       termine_pagamento_id, minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
+         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
          r.termine_pagamento_id, TRUE, 40.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
     FROM tmp_refs_ffg r
@@ -192,15 +207,35 @@ CREATE TEMP TABLE tmp_src_term AS WITH ins AS (
 CREATE TEMP TABLE tmp_src_zero AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
+      tipo_doc_fiscale_id, valuta_id, utility_id,
       minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
+         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
          FALSE, 0.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
     FROM tmp_refs_ffg r
   RETURNING id
 ) SELECT * FROM ins;
+
+-- Le sorgenti nate in bozza vanno nello stato del loro caso (rev 2026-10-24):
+-- DEFINITIVA per la matrice (DRAFT -> EMESSA -> DEFINITIVA), SRC_EME si ferma
+-- a EMESSA. Indirizzi e intestazione li scrivono i building block della
+-- pipeline, come prima di emettere.
+SELECT i.inserted_rows, t.scritta
+  FROM (SELECT id FROM tmp_src_pos
+ UNION ALL SELECT id FROM tmp_src_neg
+ UNION ALL SELECT id FROM tmp_src_term
+ UNION ALL SELECT id FROM tmp_src_zero
+ UNION ALL SELECT id FROM tmp_src_eme) s
+ CROSS JOIN LATERAL vendite.fn_snapshot_indirizzi_fattura(s.id) i
+ CROSS JOIN LATERAL vendite.fn_snapshot_intestazione_fattura(s.id) t;
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', s.id, 'DEFINITIVA')
+  FROM (SELECT id FROM tmp_src_pos
+ UNION ALL SELECT id FROM tmp_src_neg
+ UNION ALL SELECT id FROM tmp_src_term
+ UNION ALL SELECT id FROM tmp_src_zero) s;
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', s.id, 'EMESSA')
+  FROM (SELECT id FROM tmp_src_eme) s;
 
 -- FIGLIA: nessun termine di pagamento, non a minimo.
 CREATE TEMP TABLE tmp_figlia AS WITH ins AS (
@@ -374,14 +409,14 @@ SELECT vendite.fn_genera_fondi_fattura_source(
     );
 
 -- ============================================================
--- 7) D-1 — la sorgente ANNULLATA non genera niente
+-- 7) D-1 — la sorgente EMESSA (non ancora DEFINITIVA) non genera niente
 -- ============================================================
 SELECT is(
     (SELECT count(*)::INTEGER
        FROM vendite.fatture_fondi_fattura_source s
-      WHERE s.fattura_sorgente_id = (SELECT id FROM tmp_src_ann)),
+      WHERE s.fattura_sorgente_id = (SELECT id FROM tmp_src_eme)),
     0,
-    'D-1: sorgente ANNULLATA non genera alcun fondo'
+    'D-1: sorgente EMESSA (non ancora DEFINITIVA) non genera alcun fondo'
   );
 
 -- ============================================================
@@ -573,10 +608,10 @@ SELECT throws_ok(
 CREATE TEMP TABLE tmp_src_c_prop AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
+      tipo_doc_fiscale_id, valuta_id, utility_id,
       minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
+         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
          TRUE, 120.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
     FROM tmp_refs_ffg r
@@ -590,10 +625,10 @@ CREATE TEMP TABLE tmp_src_c_prop AS WITH ins AS (
 CREATE TEMP TABLE tmp_src_c_nc AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
+      tipo_doc_fiscale_id, valuta_id, utility_id,
       minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
+         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
          TRUE, 50.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
     FROM tmp_refs_ffg r
@@ -605,10 +640,10 @@ CREATE TEMP TABLE tmp_src_c_nc AS WITH ins AS (
 CREATE TEMP TABLE tmp_src_c_noutil AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, stato_doc_fiscale_id,
+      tipo_doc_fiscale_id, valuta_id,
       minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.stato_definitiva_id,
+         r.tipo_doc_fiscale_id, r.valuta_id,
          TRUE, 90.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
     FROM tmp_refs_ffg r
@@ -621,10 +656,10 @@ CREATE TEMP TABLE tmp_src_c_noutil AS WITH ins AS (
 CREATE TEMP TABLE tmp_src_c_cap AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
+      tipo_doc_fiscale_id, valuta_id, utility_id,
       minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
+         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
          TRUE, 100.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
     FROM tmp_refs_ffg r
@@ -638,15 +673,31 @@ CREATE TEMP TABLE tmp_src_c_cap AS WITH ins AS (
 CREATE TEMP TABLE tmp_src_c_ctrl AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
+      tipo_doc_fiscale_id, valuta_id, utility_id,
       minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
+         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
          TRUE, 70.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
     FROM tmp_refs_ffg r
   RETURNING id
 ) SELECT * FROM ins;
+
+-- Nate in bozza, portate in DEFINITIVA prima dei loro atti (rev 2026-10-24).
+SELECT i.inserted_rows, t.scritta
+  FROM (SELECT id FROM tmp_src_c_prop
+ UNION ALL SELECT id FROM tmp_src_c_nc
+ UNION ALL SELECT id FROM tmp_src_c_noutil
+ UNION ALL SELECT id FROM tmp_src_c_cap
+ UNION ALL SELECT id FROM tmp_src_c_ctrl) s
+ CROSS JOIN LATERAL vendite.fn_snapshot_indirizzi_fattura(s.id) i
+ CROSS JOIN LATERAL vendite.fn_snapshot_intestazione_fattura(s.id) t;
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', s.id, 'DEFINITIVA')
+  FROM (SELECT id FROM tmp_src_c_prop
+ UNION ALL SELECT id FROM tmp_src_c_nc
+ UNION ALL SELECT id FROM tmp_src_c_noutil
+ UNION ALL SELECT id FROM tmp_src_c_cap
+ UNION ALL SELECT id FROM tmp_src_c_ctrl) s;
 
 -- Gli atti delle due sorgenti con fondo: entrambi dentro l'inviluppo (stesso
 -- segno, pari al totale), quindi il guard di corrispondenza li accetta.
@@ -724,9 +775,9 @@ SELECT is(
 
 SELECT is(
     vendite.fn_fondo_fattura_proponibile(
-      (SELECT id FROM tmp_src_ann), (SELECT tipo_fondo_id FROM tmp_refs_ffg)),
+      (SELECT id FROM tmp_src_eme), (SELECT tipo_fondo_id FROM tmp_refs_ffg)),
     NULL::NUMERIC,
-    'D-9: nessuna proposta su sorgente ANNULLATA'
+    'D-9: nessuna proposta su sorgente EMESSA (non ancora DEFINITIVA)'
   );
 
 SELECT is(
@@ -855,7 +906,7 @@ DELETE FROM vendite.fatture_fondi_fattura_source
  WHERE fattura_sorgente_id IN (
    SELECT id FROM tmp_src_pos
    UNION ALL SELECT id FROM tmp_src_neg
-   UNION ALL SELECT id FROM tmp_src_ann
+   UNION ALL SELECT id FROM tmp_src_eme
    UNION ALL SELECT id FROM tmp_src_term
    UNION ALL SELECT id FROM tmp_src_zero
    UNION ALL SELECT id FROM tmp_src_c_prop
@@ -868,7 +919,7 @@ DELETE FROM vendite.fatture
  WHERE id IN (
    SELECT id FROM tmp_src_pos
    UNION ALL SELECT id FROM tmp_src_neg
-   UNION ALL SELECT id FROM tmp_src_ann
+   UNION ALL SELECT id FROM tmp_src_eme
    UNION ALL SELECT id FROM tmp_src_term
    UNION ALL SELECT id FROM tmp_src_zero
    UNION ALL SELECT id FROM tmp_src_c_prop
@@ -887,7 +938,7 @@ SELECT is(
       WHERE s.fattura_sorgente_id IN (
         SELECT id FROM tmp_src_pos
         UNION ALL SELECT id FROM tmp_src_neg
-        UNION ALL SELECT id FROM tmp_src_ann
+        UNION ALL SELECT id FROM tmp_src_eme
         UNION ALL SELECT id FROM tmp_src_term
         UNION ALL SELECT id FROM tmp_src_zero
         UNION ALL SELECT id FROM tmp_src_c_prop

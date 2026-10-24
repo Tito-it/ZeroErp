@@ -23,11 +23,13 @@
 | pdf_allow_allegati | boolean | NO |  |
 | fase | character varying(20) | NO |  |
 | is_abortito | boolean | NO | false |
+| iniziale | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_stati_doc_ddt_fase |  |
+| CHECK | chk_stati_doc_ddt_iniziale_attivo |  |
 | CHECK | chk_stati_doc_ddt_pdf_mode |  |
 | PRIMARY KEY | pk_stati_doc_ddt | id |
 | UNIQUE | uq_stati_doc_ddt_codice | codice |
@@ -40,6 +42,7 @@
 | pk_stati_doc_ddt | `CREATE UNIQUE INDEX pk_stati_doc_ddt ON config.stati_doc_ddt USING btree (id)` |
 | uq_stati_doc_ddt_codice | `CREATE UNIQUE INDEX uq_stati_doc_ddt_codice ON config.stati_doc_ddt USING btree (codice)` |
 | uq_stati_doc_ddt_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_ddt_codice_interno ON config.stati_doc_ddt USING btree (codice_interno)` |
+| uq_stati_doc_ddt_iniziale | `CREATE UNIQUE INDEX uq_stati_doc_ddt_iniziale ON config.stati_doc_ddt USING btree (iniziale) WHERE iniziale` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

@@ -25,11 +25,13 @@
 | terminale | boolean | NO | false |
 | pdf_mode | character varying | NO |  |
 | pdf_allow_allegati | boolean | NO |  |
+| iniziale | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_stati_doc_preventivi_fase |  |
+| CHECK | chk_stati_doc_preventivi_iniziale_attivo |  |
 | CHECK | chk_stati_doc_preventivi_pdf_mode |  |
 | CHECK | chk_stati_doc_preventivi_terminale_chiuso |  |
 | FOREIGN KEY | fk_stati_doc_preventivi_esito | esito |
@@ -44,6 +46,7 @@
 | pk_stati_doc_preventivi | `CREATE UNIQUE INDEX pk_stati_doc_preventivi ON config.stati_doc_preventivi USING btree (id)` |
 | uq_stati_doc_preventivi_codice | `CREATE UNIQUE INDEX uq_stati_doc_preventivi_codice ON config.stati_doc_preventivi USING btree (codice)` |
 | uq_stati_doc_preventivi_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_preventivi_codice_interno ON config.stati_doc_preventivi USING btree (codice_interno)` |
+| uq_stati_doc_preventivi_iniziale | `CREATE UNIQUE INDEX uq_stati_doc_preventivi_iniziale ON config.stati_doc_preventivi USING btree (iniziale) WHERE iniziale` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

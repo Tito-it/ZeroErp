@@ -1,6 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d): l'ambito dei tipi d'indirizzo ammessi e' il codice della sorgente (FATTURE -> FATTURA).
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le fatture nascono in
+--   bozza e la «definitiva» si porta avanti con dbops.fn_pgtap_porta_a_stato
+--   (prima nasceva gia' DEFINITIVA). Per uscire dalla bozza le si scrivono
+--   indirizzo FATT e intestazione, che in EMESSA (sotto soglia) si TOLGONO di
+--   nuovo: arriva in DEFINITIVA nuda come prima, e il test 4 («non toccata»,
+--   zero indirizzi) misura ancora il giro del lotto e non la fixture.
 -- pgtap-differiti: escluso — la fixture non soddisfa un vincolo DIFFERITO e la
 --   ragione e' scritta per esteso piu' sotto. Debito noto (§22.4): quando la
 --   fixture viene completata, si toglie questa riga e si rimette il
@@ -186,29 +192,71 @@ SELECT vendite.fn_create_fatturazione_lotto(
 
 CREATE TEMP TABLE tmp_fatture_sil AS
 WITH casi AS (
-  SELECT 'ok'::text AS caso, b.billing_account_id, b.emittente_soggetto_ruolo_id,
-         bs.stato_draft_id AS stato_id
-    FROM tmp_ba_sil b, tmp_base_sil bs WHERE b.rn = 1
+  SELECT 'ok'::text AS caso, b.billing_account_id, b.emittente_soggetto_ruolo_id
+    FROM tmp_ba_sil b WHERE b.rn = 1
   UNION ALL
-  SELECT 'senza_indirizzo', b.billing_account_id, b.emittente_soggetto_ruolo_id,
-         bs.stato_draft_id
-    FROM tmp_ba_sil b, tmp_base_sil bs WHERE b.rn = 2
+  SELECT 'senza_indirizzo', b.billing_account_id, b.emittente_soggetto_ruolo_id
+    FROM tmp_ba_sil b WHERE b.rn = 2
   UNION ALL
-  SELECT 'definitiva', b.billing_account_id, b.emittente_soggetto_ruolo_id,
-         bs.stato_def_id
-    FROM tmp_ba_sil b, tmp_base_sil bs WHERE b.rn = 1
+  SELECT 'definitiva', b.billing_account_id, b.emittente_soggetto_ruolo_id
+    FROM tmp_ba_sil b WHERE b.rn = 1
 ), ins AS (
+  -- ⛔ Lo stato non si scrive: la fattura nasce in bozza (rev 2026-10-24).
   INSERT INTO vendite.fatture (
     registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-    tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, meta
+    tipo_doc_fiscale_id, valuta_id, meta
   )
   SELECT bs.registro_id, script.fn_data_operativa(), c.emittente_soggetto_ruolo_id,
-         c.billing_account_id, bs.tipo_doc_fiscale_id, c.stato_id, bs.valuta_id,
+         c.billing_account_id, bs.tipo_doc_fiscale_id, bs.valuta_id,
          jsonb_build_object('test', 'pgtap_snapshot_indirizzi_lotto', 'caso', c.caso)
     FROM casi c, tmp_base_sil bs
   RETURNING id, stato_doc_fiscale_id, meta ->> 'caso' AS caso
 )
 SELECT id, stato_doc_fiscale_id, caso FROM ins;
+
+-- La «definitiva»: si completa per uscire dalla bozza, si porta in EMESSA, si
+-- SPOGLIA (indirizzo e intestazione: sotto soglia e' ammesso) e si porta in
+-- DEFINITIVA, sotto i guard veri. Prima del ponte, cosi' il ponte nasce con lo
+-- stato che la fattura ha davvero.
+INSERT INTO vendite.fatture_indirizzi (fattura_id, tipo_indirizzo_id, snapshot)
+SELECT f.id, ti.fatt_id, '{"via":"Via Emissione pgTAP"}'::jsonb
+  FROM tmp_fatture_sil f, tmp_ti_sil ti
+ WHERE f.caso = 'definitiva';
+
+UPDATE vendite.fatture
+   SET emittente_snapshot = '{"denominazione":"Emittente pgTAP","id_fiscale":"00000000000","sede":{"via":"Via Cedente 1","cap":"83100"}}'::jsonb,
+       cliente_snapshot   = '{"denominazione":"Cliente pgTAP","id_fiscale":"11111111111"}'::jsonb
+ WHERE id = (SELECT id FROM tmp_fatture_sil WHERE caso = 'definitiva');
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', f.id, 'EMESSA')
+  FROM tmp_fatture_sil f WHERE f.caso = 'definitiva';
+
+DELETE FROM vendite.fatture_indirizzi
+ WHERE fattura_id = (SELECT id FROM tmp_fatture_sil WHERE caso = 'definitiva');
+
+UPDATE vendite.fatture
+   SET emittente_snapshot = NULL,
+       cliente_snapshot   = NULL
+ WHERE id = (SELECT id FROM tmp_fatture_sil WHERE caso = 'definitiva');
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', f.id, 'DEFINITIVA')
+  FROM tmp_fatture_sil f WHERE f.caso = 'definitiva';
+
+UPDATE tmp_fatture_sil t
+   SET stato_doc_fiscale_id = f.stato_doc_fiscale_id
+  FROM vendite.fatture f
+ WHERE f.id = t.id;
+
+-- ⚠️ fn_pgtap_porta_a_stato esce con SET CONSTRAINTS ALL IMMEDIATE (contratto
+--   degli helper), e il SET vale per la transazione: il guard di coerenza
+--   lotto/fatture scatterebbe gia' sul ponte qui sotto, mentre questo file e'
+--   escluso dai differiti proprio per lui (debito in testa). Si rimettono
+--   DIFFERITI quei tre soli trigger, cioe' come erano prima del cammino; il
+--   resto resta IMMEDIATE, che e' piu' severo di prima, non meno.
+SET CONSTRAINTS vendite.trg_fatture_def_guard_stato_lotto_coerente_ins_upd,
+                vendite.trg_fatturazione_lotti_def_guard_stato_fatture_coerente_upd,
+                vendite.trg_fatturazione_lotti_fatture_def_guard_stato_coerente_ins_upd
+    DEFERRED;
 
 INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id, stato_doc_fiscale_id)
 SELECT l.lotto_id, f.id, f.stato_doc_fiscale_id

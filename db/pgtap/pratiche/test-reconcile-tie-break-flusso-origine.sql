@@ -19,8 +19,9 @@
 --     GEN     = attende NULL (origine, es. PREVENTIVAZIONE), no binding;
 --     WAIT1   = attende PREVENTIVO, binding NULL (qualsiasi verdetto);
 --     WAIT2   = attende PREVENTIVO, binding NULL.
---   Preventivi inseriti DIRETTAMENTE nello stato bersaglio (il trigger reconcile
---   e' AFTER UPDATE: l'insert non lo scatena) + chiamata ESPLICITA a
+--   Preventivi portati nello stato bersaglio PRIMA di agganciarli a una
+--   pratica (il trigger reconcile e' AFTER UPDATE: scatta a ogni passaggio,
+--   ma senza aggancio non ha niente da riconciliare) + chiamata ESPLICITA a
 --   fn_reconcile_sorgente. Tutto in transazione con ROLLBACK.
 --
 -- Indice test (0..N):
@@ -36,6 +37,9 @@
 --       2b COMPLETATO
 --   C6) Nessun verdetto (preventivo EMESSO) + link d'origine ->
 --       6a return 0 · 6b WAIT invariato · 6c nessun errore
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i preventivi nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano
+--   gia' ACCETTATO/EMESSO).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -154,29 +158,46 @@ VALUES ((SELECT tf_id FROM tmp_tb_w1), NULL),
 -- (inline via INSERT ripetuti per chiarezza dei singoli scenari)
 
 -- ============================================================
--- Preventivi (uno per scenario), inseriti DIRETTAMENTE nello stato bersaglio.
+-- Preventivi (uno per scenario), portati nello stato bersaglio.
+-- ⚠️ rev 2026-10-24 (brief-modello-documento-vendita N-1): nascono in bozza
+--   (lo stato non si scrive: lo mette il trigger della nascita) e vanno allo
+--   stato bersaglio con dbops.fn_pgtap_porta_a_stato, per la matrice e sotto
+--   i guard veri, PRIMA di ogni aggancio a una pratica. Senza righe i guard di
+--   EMESSO/ACCETTATO non trovano motivi.
 -- ============================================================
 CREATE TEMP TABLE tmp_tb_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi
     (numero, rev, billing_account_id, istanza_utility_id, utility_id, validita_dal, validita_al, valuta_id,
-     stato_doc_preventivo_id, data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
+     data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT
     'PGTAP-TB-' || x.tag || '-' || substr(md5(clock_timestamp()::text || x.tag), 1, 8),
     0, r.billing_account_id, r.istanza_utility_id, r.utility_id, DATE '2026-07-01', DATE '2026-07-31', r.valuta_id,
-    x.stato_id, DATE '2026-07-01', false, false,
+    DATE '2026-07-01', false, false,
     jsonb_build_object('test_scope','pgtap_tiebreak','tag',x.tag), r.emittente_id
   FROM tmp_tb_refs r
   CROSS JOIN (
-    SELECT 'C1' AS tag, (SELECT stato_accettato_id FROM tmp_tb_refs) AS stato_id
-    UNION ALL SELECT 'C4', (SELECT stato_accettato_id FROM tmp_tb_refs)
-    UNION ALL SELECT 'C5', (SELECT stato_accettato_id FROM tmp_tb_refs)
-    UNION ALL SELECT 'C2', (SELECT stato_accettato_id FROM tmp_tb_refs)
-    UNION ALL SELECT 'C6', (SELECT stato_emesso_id    FROM tmp_tb_refs)
+    SELECT 'C1' AS tag
+    UNION ALL SELECT 'C4'
+    UNION ALL SELECT 'C5'
+    UNION ALL SELECT 'C2'
+    UNION ALL SELECT 'C6'
   ) x
   RETURNING id, (uid)::text AS uid, meta ->> 'tag' AS tag
 )
 SELECT id, uid, tag FROM ins;
+
+-- C1/C4/C5/C2 ad ACCETTATO (passando da EMESSO), C6 a EMESSO.
+DO $porta$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN SELECT p.id, p.tag FROM tmp_tb_prev p ORDER BY p.id LOOP
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', r.id,
+              CASE r.tag WHEN 'C6' THEN 'EMESSO' ELSE 'ACCETTATO' END);
+  END LOOP;
+END
+$porta$;
 
 -- ============================================================
 -- Scenario C1 — origine != attesa (bug): link->GEN, 1 milestone WAIT.

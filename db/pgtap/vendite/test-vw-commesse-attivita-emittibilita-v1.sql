@@ -54,6 +54,9 @@
 --
 -- ChangeSet: 20260909-59-create-vw-commesse-attivita-emittibilita
 -- Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L3)
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
+--   portano avanti con dbops.fn_pgtap_porta_a_stato (prima le commesse nascevano gia'
+--   in stato_ok / stato_ko).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -160,12 +163,17 @@ BEGIN
             ('mese_dopo',     'NON_EMESSA', 'APPROVATA',  true,   1)
         ) AS v(caso, emissione, approvazione, testata_ok, off_mese)
     LOOP
+        -- rev 2026-10-24: la commessa nasce BOZZA (trigger della nascita) e passa
+        --   allo stato voluto con dbops.fn_pgtap_porta_a_stato DOPO la sua riga.
+        -- ⚠️ Il passaggio a PRONTA_FATTURAZIONE pretende una riga APPROVATA e
+        --   NON_EMESSA (fn_check_commessa_pronta_fatturazione): sulle testate
+        --   emittibili la riga nasce pronta e, passata la testata, si porta alla
+        --   forma del caso. La forma finale di ogni riga e' quella di prima.
         INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                      emittente_soggetto_ruolo_id, stato_commessa_id)
+                                      emittente_soggetto_ruolo_id)
         VALUES ('PGTAP-CE-' || upper(r.caso) || '-'
                             || substr(md5(clock_timestamp()::text), 1, 6),
-                v_rif.billing_account_id, v_rif.utility_id, v_rif.emittente_sr,
-                CASE WHEN r.testata_ok THEN v_rif.stato_ok ELSE v_rif.stato_ko END)
+                v_rif.billing_account_id, v_rif.utility_id, v_rif.emittente_sr)
         RETURNING id INTO v_comm;
 
         INSERT INTO vendite.commesse_attivita (
@@ -183,9 +191,22 @@ BEGIN
                 ((v_rif.mese + (r.off_mese || ' month')::interval)
                   + INTERVAL '1 month - 1 day')::date,
                 v_rif.tipo_doc_fiscale_id, v_rif.valuta_id, 10.000000, 'FIXED',
-                r.approvazione, r.emissione, -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+                CASE WHEN r.testata_ok THEN 'APPROVATA'  ELSE r.approvazione END,
+                CASE WHEN r.testata_ok THEN 'NON_EMESSA' ELSE r.emissione END,
+                -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
                 (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text)
         RETURNING id INTO v_ca;
+
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.commesse', v_comm,
+            (SELECT sc.codice_interno FROM vendite.stati_commessa sc
+              WHERE sc.id = CASE WHEN r.testata_ok THEN v_rif.stato_ok ELSE v_rif.stato_ko END));
+
+        IF r.testata_ok AND (r.approvazione, r.emissione) IS DISTINCT FROM ('APPROVATA', 'NON_EMESSA') THEN
+            UPDATE vendite.commesse_attivita ca
+               SET stato_approvazione = r.approvazione,
+                   stato_emissione    = r.emissione
+             WHERE ca.id = v_ca;
+        END IF;
 
         INSERT INTO tmp_ce VALUES (
             r.caso, v_comm, v_ca,

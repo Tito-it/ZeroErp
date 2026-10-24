@@ -10,22 +10,27 @@
 --     prova che i guard del dominio la accettano;
 --   - l'emittente e' quello che il billing account pretende;
 --   - numero e registro li assegna il dominio, non la fixture;
---   - lo stato si sceglie alla nascita, e uno inesistente parla;
+--   - lo stato chiesto NON si scrive alla nascita: l'ordine nasce in bozza
+--     (trigger della nascita) e il builder lo porta avanti per la matrice,
+--     sotto i guard veri; uno stato inesistente parla (rev 2026-10-24,
+--     20261024-23, brief-modello-documento-vendita N-1);
 --   - una seconda chiamata riusa l'azienda di chi agisce, con un cliente nuovo;
 --   - il terzo parametro riusa un cliente gia' costruito (il secondo ordine
 --     dello stesso cliente) e RIFIUTA un billing account di un'altra azienda
 --     (rev 2026-10-22, 20261022-10, richiesta BE R-3).
 --
--- Elenco test (plan 9):
+-- Elenco test (plan 10):
 --   1) la funzione esiste con la firma dichiarata
 --   2) la testata esiste, col cliente e il billing account tornati
 --   3) l'emittente e' quello del billing account (il guard emittente/BA)
 --   4) numero e registro assegnati dal dominio
---   5) stato: quello chiesto alla nascita (CONFERMATO, non il default)
+--   5) stato: quello chiesto, raggiunto per la matrice (ANNULLATO, non il default)
 --   6) seconda chiamata: stessa azienda, cliente nuovo
 --   7) guard: uno stato che non esiste parla invece di scrivere NULL
 --   8) terzo parametro: stesso cliente, ordine nuovo
 --   9) terzo parametro: un BA di un'altra azienda parla
+--  10) un passaggio che vuole le righe (CONFERMATO) il builder non lo salta:
+--      lo rifiuta il guard vero (rev 2026-10-24)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -38,7 +43,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   viene chiamata come la chiamera' un file su un database ricostruito: senza
 --   nessuna veste in sessione. Aprirlo prima nasconderebbe meta' del contratto.
 
-SELECT plan(9);
+SELECT plan(10);
 
 -- 1) La firma
 SELECT has_function(
@@ -81,17 +86,18 @@ SELECT ok(
     'numero e registro li assegna il dominio (trgfn_ordini_gen_numero), non la fixture'
 );
 
--- 5) Lo stato si sceglie alla nascita
+-- 5) Lo stato chiesto: l'ordine nasce in bozza e ci arriva per la matrice
+--    (rev 2026-10-24). ANNULLATO dalla bozza non vuole righe.
 CREATE TEMP TABLE t_conf AS
-SELECT * FROM dbops.fn_pgtap_crea_ordine('presidio ordine confermato', 'CONFERMATO');
+SELECT * FROM dbops.fn_pgtap_crea_ordine('presidio ordine annullato', 'ANNULLATO');
 
 SELECT is(
     (SELECT s.codice_interno
        FROM vendite.ordini o
        JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
       WHERE o.id = (SELECT ordine_id FROM t_conf)),
-    'CONFERMATO'::character varying,
-    'lo stato e'' quello chiesto alla nascita, non il default'
+    'ANNULLATO'::character varying,
+    'lo stato e'' quello chiesto, raggiunto per la matrice dalla bozza'
 );
 
 -- 6) Seconda chiamata: il contesto e' ormai aperto, l'azienda si riusa
@@ -151,6 +157,16 @@ SELECT throws_like(
            (SELECT billing_account_id FROM t_ba_altrui)),
     'fn_pgtap_crea_ordine: il billing account % e'' legato all''emittente%',
     'guard: un billing account di un''altra azienda parla, nominando il builder'
+);
+
+-- 10) Un passaggio che vuole le righe il builder non lo salta (rev 2026-10-24,
+--     20261024-23): l'ordine nasce in bozza, e da li' a CONFERMATO lo ferma il
+--     guard vero (trgfn_ordini_guard_transizione). Le righe sono del test, che
+--     poi porta avanti con dbops.fn_pgtap_porta_a_stato.
+SELECT throws_like(
+    $$SELECT dbops.fn_pgtap_crea_ordine('presidio ordine senza righe', 'CONFERMATO')$$,
+    'Ordine % senza righe: impossibile confermare%',
+    'CONFERMATO senza righe: il builder passa dalla matrice, e il guard della conferma lo ferma (E_ORDINE_CONFERMA_SENZA_RIGHE)'
 );
 
 SELECT * FROM finish();

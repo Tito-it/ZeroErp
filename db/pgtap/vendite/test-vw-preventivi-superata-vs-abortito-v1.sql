@@ -16,7 +16,8 @@
 --       cerca fra i dati esistenti. Su un DB ricostruito da zero verifica le
 --       stesse cose.
 --
---       Fixture (numeri multi-rev inseriti diretti, stato scelto):
+--       Fixture (numeri multi-rev inseriti diretti, nati DRAFT e portati
+--       allo stato scelto con dbops.fn_pgtap_porta_a_stato — rev 2026-10-24):
 --         A) PGTAP-SUPABO-A: rev0 EMESSO + rev1 ANNULLATO
 --            -> rev1 e' l'ULTIMA revisione e non e' superata da nessuno, ma e'
 --               abortita: is_superata=F, is_abortito=T, is_attiva=F.
@@ -44,6 +45,9 @@
 --       righe, is_attiva ne rende 2 — e le 2 che mancano sono gli annullati
 --   11) Propagazione: vw_preventivi_lista espone le tre colonne, riga per riga
 --       uguali a vw_preventivi
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima le
+--   revisioni nascevano gia' EMESSO/ANNULLATO).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -145,24 +149,46 @@ SELECT set_config('app.current_user_id',
 
 -- ============================================================
 -- Fixture: tre numeri, cinque revisioni
+-- ⚠️ rev 2026-10-24 (brief-modello-documento-vendita N-1): le revisioni
+--   nascono DRAFT (lo stato non si scrive: lo mette il trigger della nascita)
+--   e si portano allo stato del caso per la matrice, sotto i guard veri
+--   (senza righe non hanno motivi da sollevare). Lo stato voluto sta in
+--   tmp_sa_fix, letta due volte: dall'INSERT e dal cammino.
 -- ============================================================
+CREATE TEMP TABLE tmp_sa_fix (numero, rev, stato) AS
+VALUES
+  ('PGTAP-SUPABO-A'::text, 0, 'EMESSO'::text),
+  ('PGTAP-SUPABO-A', 1, 'ANNULLATO'),
+  ('PGTAP-SUPABO-B', 0, 'ANNULLATO'),
+  ('PGTAP-SUPABO-C', 0, 'EMESSO'),
+  ('PGTAP-SUPABO-C', 1, 'EMESSO');
+
 INSERT INTO vendite.preventivi (
   numero, rev, billing_account_id, istanza_utility_id, utility_id,
-  validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+  validita_dal, validita_al, valuta_id, data,
   fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
 SELECT f.numero, f.rev, r.billing_account_id, r.istanza_utility_id, r.utility_id,
        DATE '2081-01-01', DATE '2081-12-31', r.valuta_id,
-       CASE f.stato WHEN 'EMESSO' THEN r.st_emesso_id ELSE r.st_annullato_id END,
        DATE '2081-01-01', false, false,
        jsonb_build_object('test_scope','pgtap_superata_vs_abortito'), r.emittente_fiscale_id
-  FROM tmp_sa_refs r,
-       (VALUES
-          ('PGTAP-SUPABO-A', 0, 'EMESSO'),
-          ('PGTAP-SUPABO-A', 1, 'ANNULLATO'),
-          ('PGTAP-SUPABO-B', 0, 'ANNULLATO'),
-          ('PGTAP-SUPABO-C', 0, 'EMESSO'),
-          ('PGTAP-SUPABO-C', 1, 'EMESSO')
-       ) AS f(numero, rev, stato);
+  FROM tmp_sa_refs r, tmp_sa_fix f;
+
+-- Prima la rev 0, poi la rev 1, come nel flusso vero. ANNULLATO esce
+--   direttamente dalla bozza (DRAFT -> ANNULLATO).
+DO $porta$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT p.id, f.stato
+      FROM tmp_sa_fix f
+      JOIN vendite.preventivi p ON p.numero = f.numero AND p.rev = f.rev
+     ORDER BY f.numero, f.rev
+  LOOP
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', r.id, r.stato);
+  END LOOP;
+END
+$porta$;
 
 -- ============================================================
 -- 3) A rev0 — la viva. Ha una revisione successiva, ma abortita: non la

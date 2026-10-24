@@ -46,6 +46,9 @@
 -- 30) fn_stato_sorgente: chiave malformata -> UNKNOWN senza errore (niente 22P02)
 -- 31) fn_stato_sorgente: uid di un preventivo col tipo ORDINE_VENDITA (chiave id)
 --     -> UNKNOWN
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i preventivi nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano
+--   gia' EMESSO/ACCETTATO/ANNULLATO).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -110,12 +113,17 @@ SELECT
     WHERE sd.codice_interno = 'ANNULLATO' LIMIT 1) AS stato_annullato_id;
 
 -- Tre preventivi fixture: EMESSO / ACCETTATO / ANNULLATO
+-- ⚠️ rev 2026-10-24 (brief-modello-documento-vendita N-1): nascono in bozza
+--   (lo stato non si scrive: lo mette il trigger della nascita); lo stato
+--   VOLUTO si legge dal suffisso del numero e si raggiunge subito sotto con
+--   dbops.fn_pgtap_porta_a_stato, per la matrice e sotto i guard veri (senza
+--   righe i guard di EMESSO/ACCETTATO/ANNULLATO non trovano motivi).
 CREATE TEMP TABLE tmp_prev_pss AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al, valuta_id,
-    stato_doc_preventivo_id, data, fatturazione_immediata,
+    data, fatturazione_immediata,
     storicizza, meta, emittente_fiscale_id
   )
   SELECT
@@ -123,25 +131,38 @@ WITH ins AS (
     0,
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-07-01', DATE '2026-07-31', r.valuta_id,
-    x.stato_id, DATE '2026-07-01', false,
+    DATE '2026-07-01', false,
     false, '{"test_scope":"pgtap_proiezione_stato_sorgente"}'::jsonb,
     r.emittente_fiscale_id
   FROM tmp_refs_pss r
   CROSS JOIN (
-    SELECT 'EMESSO' AS suffisso, (SELECT stato_emesso_id    FROM tmp_refs_pss) AS stato_id
+    SELECT 'EMESSO' AS suffisso
     UNION ALL
-    SELECT 'ACCETT',             (SELECT stato_accettato_id FROM tmp_refs_pss)
+    SELECT 'ACCETT'
     UNION ALL
-    SELECT 'ANNULL',             (SELECT stato_annullato_id FROM tmp_refs_pss)
+    SELECT 'ANNULL'
   ) x
-  RETURNING id, uid, stato_doc_preventivo_id
+  RETURNING id, uid, numero
 )
 SELECT
   i.id,
   (i.uid)::text AS uid,
-  sd.codice_interno AS stato_codice_interno
-FROM ins i
-JOIN config.stati_doc_preventivi sd ON sd.id = i.stato_doc_preventivo_id;
+  CASE split_part(i.numero, '-', 3)
+    WHEN 'EMESSO' THEN 'EMESSO'
+    WHEN 'ACCETT' THEN 'ACCETTATO'
+    WHEN 'ANNULL' THEN 'ANNULLATO'
+  END::text AS stato_codice_interno
+FROM ins i;
+
+DO $porta$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN SELECT p.id, p.stato_codice_interno FROM tmp_prev_pss p ORDER BY p.id LOOP
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', r.id, r.stato_codice_interno);
+  END LOOP;
+END
+$porta$;
 
 -- ============================================================
 -- 1-4) Seed D1: la mappa dichiarata dal dominio (criteri §6)

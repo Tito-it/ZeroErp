@@ -3,6 +3,9 @@
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   l'ordine nato dall'offerta porta documento_origine_tipo = OFFERTA_COMMERCIALE, il
 --   codice della sorgente (era OFFERTA: ora la FK verso config.sorgenti lo rifiuta).
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le offerte nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano
+--   gia' ACCETTATA o RIFIUTATA).
 -- ⚠️ rev 2026-10-21 (brief-db-offerta-emissione-ed-erogazione §H.3 H-R3, 20261021-58):
 --   da ACCETTATA si esce anche annullando (transizione ACCETTATA->ANNULLATA). I test 8
 --   e 12 non vedono piu' available_actions=[]: c'e' «annulla», SPENTA col motivo
@@ -174,8 +177,8 @@ UPDATE vendite.offerte_commerciali
    SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_aa_ctx)
  WHERE id = (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'EMESSA');
 
--- Slot ACCT-1: INSERT diretto in ACCETTATA, senza contratto (test 7)
--- INSERT bypass il trigger BEFORE UPDATE: stato direttamente terminale.
+-- Slot ACCT-1: ACCETTATA senza contratto (test 7). Nasce in BOZZA e
+-- arriva ad ACCETTATA per la matrice (rev 2026-10-24).
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
@@ -183,13 +186,17 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva,
-           DATE '2084-01-01', ctx.stato_accettata_id
+           DATE '2084-01-01', ctx.stato_bozza_id
       FROM tmp_aa_ctx ctx
     RETURNING id
 )
 INSERT INTO tmp_aa_ids SELECT 'ACCT-1', id FROM ins;
 
--- Slot ACCT-2: INSERT diretto in ACCETTATA, poi fn_push genera il contratto (test 8)
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id, 'ACCETTATA')
+  FROM tmp_aa_ids i
+ WHERE i.slot = 'ACCT-1';
+
+-- Slot ACCT-2: ACCETTATA per la matrice, poi fn_push genera il contratto (test 8)
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
@@ -197,11 +204,15 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva,
-           DATE '2085-01-01', ctx.stato_accettata_id
+           DATE '2085-01-01', ctx.stato_bozza_id
       FROM tmp_aa_ctx ctx
     RETURNING id
 )
 INSERT INTO tmp_aa_ids SELECT 'ACCT-2', id FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id, 'ACCETTATA')
+  FROM tmp_aa_ids i
+ WHERE i.slot = 'ACCT-2';
 
 -- Genera il contratto da ACCT-2 tramite fn_push (p_pratica_id = NULL).
 SELECT vendite.fn_push_offerta_a_contratto(
@@ -209,7 +220,7 @@ SELECT vendite.fn_push_offerta_a_contratto(
     NULL
 );
 
--- Slot RIFIUTATA: INSERT diretto in RIFIUTATA (terminale, test 9)
+-- Slot RIFIUTATA: RIFIUTATA per la matrice (terminale, test 9)
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
@@ -217,13 +228,17 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva,
-           DATE '2086-01-01', ctx.stato_rifiutata_id
+           DATE '2086-01-01', ctx.stato_bozza_id
       FROM tmp_aa_ctx ctx
     RETURNING id
 )
 INSERT INTO tmp_aa_ids SELECT 'RIFIUTATA', id FROM ins;
 
--- Slot ACCT-ORD: ACCETTATA con un ordine gia' generato
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id, 'RIFIUTATA')
+  FROM tmp_aa_ids i
+ WHERE i.slot = 'RIFIUTATA';
+
+-- Slot ACCT-ORD: ACCETTATA (per la matrice) con un ordine gia' generato
 -- (documento_origine = ('OFFERTA_COMMERCIALE', id)) -> genera_ordine NON disponibile
 -- (test 12) e secondo ordine bloccato dall'indice (test 14).
 WITH ins AS (
@@ -233,11 +248,15 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva,
-           DATE '2087-01-01', ctx.stato_accettata_id
+           DATE '2087-01-01', ctx.stato_bozza_id
       FROM tmp_aa_ctx ctx
     RETURNING id
 )
 INSERT INTO tmp_aa_ids SELECT 'ACCT-ORD', id FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id, 'ACCETTATA')
+  FROM tmp_aa_ids i
+ WHERE i.slot = 'ACCT-ORD';
 
 -- Ordine collegato all'offerta ACCT-ORD (documento_origine OFFERTA).
 -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1/D-6): col BA del cliente, quello

@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LETTORE: QUAL E' LO STATO INIZIALE DI UN VOCABOLARIO
+#   Brief: brief-modello-documento-vendita §4-ter (N-1, P-1, P-2 di Tid,
+#   2026-10-24). Primo giro del cantiere.
+#
+#   La sede del dato e' la colonna `iniziale` del vocabolario (20261024-07).
+#   Questa funzione e' l'unico modo di leggerla: la usano il trigger della
+#   nascita (script.trgfn_doc_stato_iniziale, 20261024-10) e chi deve
+#   scrivere lo stato iniziale su una riga che il trigger non copre (le righe
+#   dell'ordine in vendite.fn_push_preventivo_a_ordine, 20261024-20).
+#   ⛔ Nessuno scrive piu' 'DRAFT' o 'BOZZA' per dire «lo stato in cui si
+#   nasce»: si chiede qui.
+#
+#   Il vocabolario arriva come regclass perche' gli stati vivono in otto
+#   tabelle diverse: la funzione e' polimorfa, e l'id lo rende bigint (il
+#   tipo dell'id di tutti e otto). Un vocabolario senza la colonna e' un
+#   chiamante rotto: E_SCRIPT_CHIAMATA_NON_VALIDA. Un vocabolario che non
+#   dichiara lo stato iniziale rende NULL: decide il chiamante.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261024-09-create-fn-stato-iniziale-id-mctit.yaml
+
+  - changeSet:
+      id: 20261024-09-create-fn-stato-iniziale-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_stato_iniziale_id(regclass): l'id dello stato iniziale di un vocabolario degli
+        stati (colonna iniziale), unica sede da cui leggerlo. Brief: brief-modello-documento-vendita
+        §4-ter (N-1, P-1).
+      preConditions:
+        - onFail: HALT
+        - columnExists: { schemaName: config, tableName: stati_doc_ordini, columnName: iniziale }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_stato_iniziale_id(
+                  -- il vocabolario degli stati: gli stati vivono in otto
+                  -- tabelle, nessuna colonna a cui ancorarlo
+                  p_vocabolario regclass)
+               -- l'id di uno stato di uno qualunque degli otto vocabolari:
+               -- bigint in tutti, nessuna colonna comune a cui ancorarlo
+               RETURNS bigint
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- l'id di uno stato di uno degli otto vocabolari: bigint in
+                  -- tutti, nessuna colonna comune a cui ancorarlo
+                  v_id bigint;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   L'id dello stato in cui un documento nasce, letto dal
+                  --   suo vocabolario (colonna iniziale = true).
+                  --
+                  -- Regole:
+                  --   - vocabolario NULL o senza la colonna iniziale: il
+                  --     chiamante e' rotto, E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - nessuno stato iniziale dichiarato: NULL, decide il
+                  --     chiamante (al massimo uno lo garantisce l'indice
+                  --     unico parziale del vocabolario).
+                  -- =========================================================
+                  IF p_vocabolario IS NULL
+                     OR NOT EXISTS (SELECT 1
+                                      FROM pg_catalog.pg_attribute a
+                                     WHERE a.attrelid = p_vocabolario
+                                       AND a.attname = 'iniziale'
+                                       AND NOT a.attisdropped) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_stato_iniziale_id',
+                          'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('vocabolario', p_vocabolario::text),
+                          NULL::uuid,
+                          'script.fn_stato_iniziale_id',
+                          'il vocabolario degli stati e'' obbligatorio e deve dichiarare la colonna iniziale');
+                  END IF;
+
+                  EXECUTE format('SELECT s.id FROM %s s WHERE s.iniziale', p_vocabolario)
+                     INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_stato_iniziale_id(regclass)
+                IS 'L''id dello stato in cui un documento nasce, letto dal suo vocabolario degli stati (colonna iniziale = true). Unica sede da cui leggerlo: nessuno scrive ''DRAFT'' o ''BOZZA'' per dire «lo stato in cui si nasce». NULL se il vocabolario non lo dichiara (decide il chiamante); vocabolario NULL o senza la colonna iniziale: E_SCRIPT_CHIAMATA_NON_VALIDA. Consumatori: script.trgfn_doc_stato_iniziale (il trigger della nascita), vendite.fn_push_preventivo_a_ordine (stato delle righe dell''ordine), dbops.fn_pgtap_porta_a_stato. Brief: brief-modello-documento-vendita §4-ter (N-1, P-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_stato_iniziale_id(regclass);

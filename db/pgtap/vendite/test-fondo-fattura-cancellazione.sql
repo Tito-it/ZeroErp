@@ -3,6 +3,10 @@
 -- pgTAP test per Zero ERP
 -- Test: la CANCELLAZIONE di un atto di fondo fattura, e lo stato di NASCITA
 --
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): sorgente e figlia
+--   congelata nascono in bozza e si portano avanti con
+--   dbops.fn_pgtap_porta_a_stato (prima nascevano gia' DEFINITIVA).
+--
 -- Elenco test (plan 14):
 --  1) Riferimenti minimi presenti
 --  2) D-22: un atto non puo' NASCERE gia' ANNULLATO
@@ -119,10 +123,10 @@ CREATE TEMP TABLE tmp_src AS
 WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
+      tipo_doc_fiscale_id, valuta_id, utility_id,
       minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
+         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
          true, 100.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_refs r
@@ -152,16 +156,30 @@ CREATE TEMP TABLE tmp_figlia_ko AS
 WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
+      tipo_doc_fiscale_id, valuta_id, utility_id,
       minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
+         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
          false, 300.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_refs r
   RETURNING id
 )
 SELECT * FROM ins;
+
+-- ⛔ Sorgente e figlia congelata NASCONO in bozza (rev 2026-10-24, trigger
+--   della nascita): si portano in DEFINITIVA per la matrice, sotto i guard
+--   veri, con indirizzi e intestazione scritti dai building block della
+--   pipeline come prima di emettere. La figlia lavorabile resta in DRAFT, che
+--   e' lo stato iniziale e si puo' ancora scrivere.
+SELECT i.inserted_rows, t.scritta
+  FROM (SELECT id FROM tmp_src
+ UNION ALL SELECT id FROM tmp_figlia_ko) s
+ CROSS JOIN LATERAL vendite.fn_snapshot_indirizzi_fattura(s.id) i
+ CROSS JOIN LATERAL vendite.fn_snapshot_intestazione_fattura(s.id) t;
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', s.id, 'DEFINITIVA')
+  FROM (SELECT id FROM tmp_src
+ UNION ALL SELECT id FROM tmp_figlia_ko) s;
 
 -- ============================================================
 -- D-22 — LO STATO DI NASCITA

@@ -1,0 +1,160 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO STATO ALLA NASCITA LO METTE IL DATABASE: vendite.fn_create_contratto: il contratto nasce senza che la madre scriva lo stato DRAFT
+#   Brief: brief-modello-documento-vendita §4-ter (N-1, P-2 di Tid,
+#   2026-10-24). Primo giro del cantiere.
+#
+#   Lo stato iniziale aveva sedici copie scritte a mano; questa e' una. Da
+#   20261024-11 lo mette il trigger della nascita
+#   (script.trgfn_doc_stato_iniziale), che lo legge dal vocabolario: la
+#   funzione non lo cerca piu' e non lo scrive nell'INSERT della testata.
+#   Comportamento invariato: il documento nasce nello stesso stato.
+#
+#   Corpo dal catalogo vivo di dbdev (2026-10-24, identico alla doc
+#   auto-generata); dichiarazione dall'ultimo YAML, con i %TYPE e SECURITY
+#   INVOKER esplicito. Sostituzioni contate. Il COMMENT vivo resta: CREATE OR
+#   REPLACE non lo tocca, e resta vero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261024-14-update-fn-create-contratto-stato-iniziale-mctit.yaml
+
+  - changeSet:
+      id: 20261024-14-update-fn-create-contratto-stato-iniziale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_create_contratto: il contratto nasce senza che la madre scriva lo stato DRAFT: lo stato iniziale lo mette il trigger della nascita
+        (script.trgfn_doc_stato_iniziale). Brief: brief-modello-documento-vendita (N-1, P-2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_create_contratto(
+                  -- i payload della testata e della fornitura: jsonb filtrato per
+                  -- chiave, nessuna colonna dietro
+                  p_testata jsonb,
+                  p_utility jsonb DEFAULT NULL::jsonb)
+               RETURNS TABLE(contratto_id vendite.contratti.id%TYPE, numero vendite.contratti.numero%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- rev 2026-10-24 (20261024-14, brief-modello-documento-vendita N-1/P-2):
+              --   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+              --   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
+              DECLARE
+                  v_numero       vendite.contratti.numero%TYPE;
+                  v_contratto_id vendite.contratti.id%TYPE;
+                  v_testata      jsonb;   -- le sole chiavi ammesse, piu' il numero
+                  v_util         jsonb;   -- le sole chiavi ammesse della fornitura
+                  -- rev 2026-07-27: aggiunta 'fatturazione_immediata' (corsia di
+                  -- instradamento, Fase B brief emissione mirata). Va decisa PRIMA
+                  -- del push in commessa: in create e' il momento naturale, e senza
+                  -- questa voce la chiave veniva scartata in silenzio.
+                  -- rev 2026-08-31: aggiunti i TRE RIFERIMENTI DELL'ATTO — CIG, CUP
+                  -- e commessa. Stesso difetto della riga sopra, sulla stessa
+                  -- funzione: in PATCH il backend li scriveva gia', in CREATE la
+                  -- chiave veniva scartata e il contratto nasceva senza il CIG,
+                  -- senza nessun errore. ⚠️ A differenza di fatturazione_immediata
+                  -- le tre sono NULLABLE: un null e' un valore legittimo e vuol
+                  -- dire «non c'e' un CIG», quindi il BE puo' mandarle sempre.
+                  v_testata_allowed text[] := ARRAY[
+                      'billing_account_id', 'emittente_fiscale_id', 'istanza_utility_id',
+                      'utility_id', 'ambito', 'valido_dal', 'valido_al',
+                      'parent_contratto_id', 'data', 'listino_id',
+                      'tipo_variazione_globale', 'valore_variazione_globale',
+                      'categoria_cliente_id_snapshot', 'valuta_id',
+                      'fatturazione_immediata',
+                      'codice_cig', 'codice_cup', 'codice_commessa', 'meta'
+                  ];
+                  v_util_allowed text[] := ARRAY[
+                      'istanza_utility_id', 'utility_id', 'istanza_dati_precontrattuali_id',
+                      'tipo_utenza_id', 'classe_utenza_id', 'param_1_num',
+                      'param_2_txt', 'meta'
+                  ];
+              BEGIN
+                  -- ----------------------------------------------------
+                  -- 1) Numero contratto (consuma il contatore; rolla con
+                  --    la funzione se un qualsiasi step successivo fallisce).
+                  -- ----------------------------------------------------
+                  v_numero := script.fn_generate_codice('contratto');
+
+                  -- 2) Lo stato iniziale non si scrive: lo mette il trigger della
+                  --    nascita (trg_contratti_a05_stato_iniziale_ins), dal vocabolario.
+
+                  -- ----------------------------------------------------
+                  -- 3) INSERT testata: solo chiavi whitelisted presenti
+                  --    (le assenti ereditano default/trigger DB).
+                  -- ----------------------------------------------------
+                  --    La scrittura la fa il BB script.fn_scrivi_riga_da_jsonb (rev
+                  --    2026-10-17, regola del 2); il FILTRO delle chiavi resta qui, perche'
+                  --    lo scarto (non il rifiuto) e' una regola di questa madre.
+                  SELECT COALESCE(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
+                    INTO v_testata
+                    FROM jsonb_each(COALESCE(p_testata, '{}'::jsonb)) AS e
+                   WHERE e.key = ANY(v_testata_allowed);
+
+                  v_contratto_id := (script.fn_scrivi_riga_da_jsonb(
+                                         'vendite.contratti'::regclass,
+                                         v_testata || jsonb_build_object('numero', v_numero))
+                                     ->> 'id')::bigint;
+
+                  -- ----------------------------------------------------
+                  -- 4) La scheda di fornitura dell'operatore (opzionale).
+                  --    rev 2026-10-12 (brief-db-indirizzi-documento-seguono-il-cliente,
+                  --    D-7 di Tid): il trigger alla nascita (step 3) ha gia' scritto
+                  --    la scheda dall'anagrafica, se la coppia ha dati
+                  --    precontrattuali. Prima l'INSERT dell'operatore collideva su
+                  --    uq_contratti_utilities_contratto_id e il contratto non si
+                  --    creava. Ora VINCE L'OPERATORE, come nel push dall'offerta:
+                  --    l'anagrafica fa da base, le sue chiavi la correggono.
+                  --    ⚠️ UPDATE e non INSERT ... ON CONFLICT: i trigger BEFORE
+                  --    INSERT giudicano la riga PROPOSTA prima del conflitto, e il
+                  --    guard tipo/classe la rifiuterebbe se l'operatore manda solo
+                  --    una parte della scheda. L'UPDATE giudica la riga finale.
+                  -- ----------------------------------------------------
+                  IF p_utility IS NOT NULL AND p_utility <> '{}'::jsonb THEN
+                      SELECT COALESCE(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
+                        INTO v_util
+                        FROM jsonb_each(p_utility) AS e
+                       WHERE e.key = ANY(v_util_allowed);
+
+                      IF EXISTS (SELECT 1
+                                   FROM vendite.contratti_utilities cu
+                                  WHERE cu.contratto_id = v_contratto_id) THEN
+                          -- La scheda dall'anagrafica c'e': si correggono le sole chiavi
+                          -- mandate (nessuna chiave ammessa: nessuna scrittura).
+                          PERFORM script.fn_scrivi_riga_da_jsonb(
+                              'vendite.contratti_utilities'::regclass,
+                              v_util,
+                              jsonb_build_object('contratto_id', v_contratto_id));
+                      ELSE
+                          PERFORM script.fn_scrivi_riga_da_jsonb(
+                              'vendite.contratti_utilities'::regclass,
+                              v_util || jsonb_build_object('contratto_id', v_contratto_id));
+                      END IF;
+                  END IF;
+
+                  -- ----------------------------------------------------
+                  -- 5) Lo slot di default dall'anagrafica del cliente (rev 2026-10-11,
+                  --    brief-db-indirizzi-documento-seguono-il-cliente, D-2 e decisione di
+                  --    Tid sul «quando»: alla creazione lo fa scattare chi crea). La regola
+                  --    sta in vendite.fn_doc_indirizzo_default; prima la applicava il
+                  --    backend dopo questa funzione (auto_assegna_indirizzo_default).
+                  --    Dopo la fornitura: l'istanza del contratto c'e' gia' in testata.
+                  -- ----------------------------------------------------
+                  PERFORM vendite.fn_doc_indirizzo_default('CONTRATTO', v_contratto_id);
+
+                  RETURN QUERY
+                  SELECT v_contratto_id, v_numero;
+              END;
+              $function$;

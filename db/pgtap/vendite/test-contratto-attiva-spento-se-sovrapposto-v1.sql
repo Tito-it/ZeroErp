@@ -58,7 +58,8 @@
 --   17) D2: l'attivazione passa
 --   18) D1: ora «Attiva» e' spento, e il motivo nomina D2
 --   La difesa dura
---   19) un INSERT diretto in ATTIVO sopra INC (nessuna transizione): 23P01 dall'EXCLUDE
+--   19) un INSERT diretto in ATTIVO sopra INC (nessuna transizione): rifiutato alla
+--       nascita, E_DOC_STATO_INIZIALE_NON_VALIDO (rev 2026-10-24; era 23P01 dall'EXCLUDE)
 --   20) dopo il rifiuto B_OVL e' ancora in bozza
 --   La struttura su cui poggia la regola (dal test ritirato il 2026-10-20,
 --   test-contratti-overlap-draft-escluso-v1, che pescava la fixture dai dati)
@@ -66,6 +67,13 @@
 --   22) l'EXCLUDE ex_contratti_no_overlap la usa come predicato
 --   23) fn_contratto_sovrapposto la usa (fuori dai commenti)
 --   24) nel catalogo degli stati solo DRAFT e' bozza (is_bozza)
+--
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i contratti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano
+--   gia' ATTIVO o CESSATO: pg_temp.contratto scriveva lo stato all'INSERT). Il
+--   test 19 cambia attesa: un contratto non nasce piu' ATTIVO, e l'INSERT diretto
+--   lo ferma il trigger della nascita (E_DOC_STATO_INIZIALE_NON_VALIDO) prima
+--   dell'EXCLUDE. L'EXCLUDE resta, e la sua forma la provano i test 21-23.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -110,22 +118,32 @@ SELECT listino_id FROM dbops.fn_pgtap_crea_listino(
 
 -- Scopo: un contratto modalita' A (listino + variazione globale) nello stato,
 --   sul lato e nel periodo chiesti. Ritorna l'id.
+-- rev 2026-10-24: nasce in DRAFT (trigger della nascita) e, se lo stato chiesto
+--   e' un altro, ci arriva per la matrice sotto i guard veri.
 CREATE FUNCTION pg_temp.contratto(
     p_numero text, p_stato text, p_lato text, p_dal date, p_al date,
     p_ambito text DEFAULT 'COMMODITY')
-RETURNS bigint LANGUAGE sql AS $$
+RETURNS bigint LANGUAGE plpgsql AS $$
+DECLARE
+    v_id bigint;
+BEGIN
     INSERT INTO vendite.contratti(
         numero, billing_account_id, istanza_utility_id, utility_id, ambito,
-        stato_doc_contratto_id, valido_dal, valido_al,
+        valido_dal, valido_al,
         listino_id, tipo_variazione_globale, valore_variazione_globale)
     SELECT p_numero, ba.billing_account_id, ba.istanza_utility_id, ba.utility_id, p_ambito,
-           (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = p_stato),
            p_dal, p_al,
            l.listino_id, 'PERCENTUALE', -10
       FROM tmp_sov_ba ba, tmp_sov_listino l
      WHERE ba.lato = p_lato
-    RETURNING id
-$$;
+    RETURNING id INTO v_id;
+
+    IF p_stato <> 'DRAFT' THEN
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.contratti', v_id, p_stato);
+    END IF;
+
+    RETURN v_id;
+END $$;
 
 -- Scopo: l'azione verso ATTIVO nel blob della capability del contratto.
 CREATE FUNCTION pg_temp.azione_attiva(p_numero text)
@@ -282,13 +300,29 @@ SELECT is(pg_temp.motivo_sovrapposto('PGTAP_SOV_D1'),
 -- La difesa dura
 -- ============================================================
 
--- 19) Nessuna transizione, nessun guard: un contratto che NASCE vincolante sopra
---     INC lo ferma l'EXCLUDE, che resta.
+-- 19) Nessuna transizione, nessun guard di transizione: un contratto che
+--     vorrebbe NASCERE vincolante sopra INC.
+-- ⛔ rev 2026-10-24 (brief-modello-documento-vendita N-1): fin qui lo fermava
+--     l'EXCLUDE (23P01). Ora un contratto nasce solo in DRAFT, e l'INSERT lo
+--     rifiuta prima il trigger della nascita (trg_contratti_a05_stato_iniziale_ins,
+--     E_DOC_STATO_INIZIALE_NON_VALIDO): la strada verso ATTIVO e' una sola, la
+--     transizione, che il guard giudica (test 5). L'INSERT e' scritto qui, non con
+--     pg_temp.contratto, che nasce in bozza.
 SELECT throws_ok(
-    $$SELECT pg_temp.contratto('PGTAP_SOV_NATO_ATTIVO', 'ATTIVO', 'BA1', DATE '2080-03-01', DATE '2080-04-30')$$,
-    '23P01',
-    NULL,
-    '19) un INSERT diretto in ATTIVO sopra INC: lo ferma l''EXCLUDE (difesa dura)');
+    $$INSERT INTO vendite.contratti(
+          numero, billing_account_id, istanza_utility_id, utility_id, ambito,
+          stato_doc_contratto_id, valido_dal, valido_al,
+          listino_id, tipo_variazione_globale, valore_variazione_globale)
+      SELECT 'PGTAP_SOV_NATO_ATTIVO', ba.billing_account_id, ba.istanza_utility_id,
+             ba.utility_id, 'COMMODITY',
+             (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO'),
+             DATE '2080-03-01', DATE '2080-04-30',
+             l.listino_id, 'PERCENTUALE', -10
+        FROM tmp_sov_ba ba, tmp_sov_listino l
+       WHERE ba.lato = 'BA1'$$,
+    'P0001',
+    'Il documento Contratto non può nascere nello stato Attivo: un documento nuovo nasce in Bozza.',
+    '19) un INSERT diretto in ATTIVO sopra INC: rifiutato alla nascita (E_DOC_STATO_INIZIALE_NON_VALIDO), prima dell''EXCLUDE');
 
 SELECT is(
     (SELECT s.codice_interno::text

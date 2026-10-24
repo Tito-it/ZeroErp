@@ -47,6 +47,9 @@
 --   ChangeSet: 20260912-12 (helper classe per giro), -13 (lotto da batch),
 --   -14 (emit dall'helper), -15 (discovery con p_emit_batch_id), -16 (D2).
 --   Brief: brief-db-rilancio-step-non-rivede-le-proprie-commesse.md
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
+--   portano avanti con dbops.fn_pgtap_porta_a_stato (prima le commesse nascevano gia'
+--   nello stato emittibile, PRONTA_FATTURAZIONE).
 --
 -- ────────────────────────────────────────────────────────────────
 -- 🔴 PERCHE' QUESTO TEST ESISTE — il collaudo del 2026-09-09.
@@ -158,12 +161,14 @@ BEGIN
 
     FOR r IN SELECT * FROM (VALUES ('bloccata'), ('libera')) AS v(caso)
     LOOP
+        -- rev 2026-10-24: la commessa nasce BOZZA (trigger della nascita) e passa
+        --   allo stato emittibile DOPO la sua riga APPROVATA, che il passaggio a
+        --   PRONTA_FATTURAZIONE pretende (fn_check_commessa_pronta_fatturazione).
         INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                      emittente_soggetto_ruolo_id, stato_commessa_id)
+                                      emittente_soggetto_ruolo_id)
         VALUES ('PGTAP-PT-' || upper(r.caso) || '-'
                             || substr(md5(clock_timestamp()::text), 1, 6),
-                v_rif.billing_account_id, v_rif.utility_id, v_rif.emittente_sr,
-                v_rif.stato_ok)
+                v_rif.billing_account_id, v_rif.utility_id, v_rif.emittente_sr)
         RETURNING id INTO v_comm;
 
         -- ⚠️ Il pull PRETENDE una sorgente ROOT: senza, solleva
@@ -190,6 +195,9 @@ BEGIN
                 'APPROVATA', 'NON_EMESSA', -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
                 (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text)
         RETURNING id INTO v_ca;
+
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.commesse', v_comm,
+            (SELECT sc.codice_interno FROM vendite.stati_commessa sc WHERE sc.id = v_rif.stato_ok));
 
         INSERT INTO tmp_pt VALUES (r.caso, v_comm, v_ca,
             vendite.fn_build_gruppo_fatturabile_key(

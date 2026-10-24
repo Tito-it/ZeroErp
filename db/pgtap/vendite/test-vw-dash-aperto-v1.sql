@@ -12,6 +12,13 @@
 --   la vista di dashboard resti coerente con la RLS armata.
 -- pgTAP test per Zero ERP
 --
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
+--   contratto nasceva gia' ATTIVO, i preventivi NEGATIVO e di B gia' RIFIUTATO e
+--   ACCETTATO). Il contratto si costruisce dopo il passaggio all'operatore di A
+--   (setup 4): per attivarsi vuole un listino con una versione in vigore, e
+--   dbops.fn_pgtap_crea_listino gli da' l'emittente di chi agisce.
+--
 -- Test: viste "Situazione aperta" v2 — SERBATOIO PRE-COMMESSA
 --       (brief-db-situazione-aperta-v2, 20260708-03..04; design §6-ter
 --       DL-14..18). Perimetro ristretto agli APERTI-NON-CONCLUSI:
@@ -113,6 +120,10 @@ SELECT
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.esito = 'NEGATIVO' AND s.attivo IS TRUE
     ORDER BY s.id LIMIT 1) AS prev_negativo_id,
+  -- lo stesso stato, per codice: ci si arriva per la matrice (rev 2026-10-24)
+  (SELECT s.codice_interno FROM config.stati_doc_preventivi s
+    WHERE s.esito = 'NEGATIVO' AND s.attivo IS TRUE
+    ORDER BY s.id LIMIT 1) AS prev_negativo_cod,
   (SELECT s.id FROM config.stati_doc_contratti s
     WHERE s.codice_interno = 'ATTIVO' AND s.attivo IS TRUE LIMIT 1) AS contr_attivo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
@@ -232,6 +243,7 @@ SELECT p.id, r.articolo_id, 1.000000, 10.000000, r.iva_id, true
 DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_ap_prev_evaso), 'EVASO'); END $porta$;
 
 -- Preventivo ABORTITO (stato con esito NEGATIVO, emittente A) -> fuori stock.
+-- rev 2026-10-24: nasce DRAFT e arriva allo stato NEGATIVO per la matrice.
 CREATE TEMP TABLE tmp_ap_prev_neg AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -239,16 +251,20 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-AP-PRNEG', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.prev_negativo_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.prev_bozza_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_dash_aperto'), r.emittente_fiscale_id
     FROM tmp_ap_refs r
   RETURNING id)
 SELECT * FROM ins;
 
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', p.id, r.prev_negativo_cod)
+  FROM tmp_ap_prev_neg p, tmp_ap_refs r;
+
 -- Preventivo emittente B (per il test scope 13; solo se esiste un secondo BA
 -- con emittente derivabile DIVERSO — il guard emittente<->BA del 2026-07-13
 -- vieta di appoggiare l'emittente B sul BA di A).
+-- rev 2026-10-24: nasce DRAFT e arriva ad ACCETTATO per la matrice.
 CREATE TEMP TABLE tmp_ap_prev_b AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -256,30 +272,17 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-AP-PREVB', 0, b.ba_b_id, b.ba_b_istanza_id, b.ba_b_utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.prev_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.prev_bozza_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_dash_aperto'), b.ef_b_id
     FROM tmp_ap_refs r, tmp_ap_refs_b b
   RETURNING id)
 SELECT * FROM ins;
 
--- Contratto ATTIVO multi-mese (de-esploso: 1 riga nello stock).
-CREATE TEMP TABLE tmp_ap_contratto AS
-WITH ins AS (
-  INSERT INTO vendite.contratti (
-    numero, billing_account_id, istanza_utility_id, utility_id,
-    valido_dal, valido_al, stato_doc_contratto_id, data,
-    emittente_fiscale_id, meta)
-  SELECT 'PGTAP-AP-CT-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date, NULL,
-         r.contr_attivo_id, (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date,
-         COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
-                  r.emittente_fiscale_id),
-         jsonb_build_object('test_scope','pgtap_dash_aperto')
-    FROM tmp_ap_refs r
-  RETURNING id)
-SELECT * FROM ins;
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', p.id, 'ACCETTATO')
+  FROM tmp_ap_prev_b p;
+
+-- Il contratto ATTIVO si costruisce dopo il setup 4 (rev 2026-10-24).
 
 -- Commessa (emittente A) con 1 attivita': visibile in union, MAI nello stock.
 CREATE TEMP TABLE tmp_ap_commessa AS
@@ -342,6 +345,37 @@ SELECT o.user_id, r.emittente_fiscale_id,
 
 SELECT set_config('app.current_user_id',
     (SELECT user_id::text FROM tmp_ap_op), true);
+
+-- Contratto ATTIVO multi-mese (de-esploso: 1 riga nello stock).
+-- ⛔ rev 2026-10-24 (brief-modello-documento-vendita N-1): nasceva gia' ATTIVO,
+--   senza listino. Ora nasce in DRAFT e si attiva per la matrice, e
+--   l'attivazione vuole un listino con una versione in vigore
+--   (trgfn_contratti_freeze_listino_versione): lo costruisce il builder, che
+--   gli da' l'emittente di chi agisce — per questo il contratto nasce QUI,
+--   con l'operatore di A in sessione, e non nella fixture di sopra.
+CREATE TEMP TABLE tmp_ap_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_ap_refs), 'dash aperto');
+
+CREATE TEMP TABLE tmp_ap_contratto AS
+WITH ins AS (
+  INSERT INTO vendite.contratti (
+    numero, billing_account_id, istanza_utility_id, utility_id,
+    valido_dal, valido_al, data, listino_id,
+    emittente_fiscale_id, meta)
+  SELECT 'PGTAP-AP-CT-' || substr(md5(clock_timestamp()::text), 1, 8),
+         r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date, NULL,
+         (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date,
+         (SELECT listino_id FROM tmp_ap_listino),
+         COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
+                  r.emittente_fiscale_id),
+         jsonb_build_object('test_scope','pgtap_dash_aperto')
+    FROM tmp_ap_refs r
+  RETURNING id)
+SELECT * FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', c.id, 'ATTIVO')
+  FROM tmp_ap_contratto c;
 
 -- ============================================================
 -- 5) COMMESSE fuori dallo stock

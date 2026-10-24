@@ -14,6 +14,9 @@ CREATE OR REPLACE FUNCTION vendite.fn_crea_revisione_offerta(p_offerta_id bigint
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-24 (20261024-18, brief-modello-documento-vendita N-1/P-2):
+--   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+--   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
 -- Scopo:
 --   Creare una nuova revisione (rev.N+1) in stato BOZZA a partire
 --   da un'offerta in stato EMESSA. Copia testata, eccezioni attive
@@ -46,7 +49,6 @@ AS $function$
 --   p_user       : utente che esegue l'operazione (audit)
 DECLARE
     v_stato_corrente_cod  config.stati_doc_offerte.codice_interno%TYPE;
-    v_stato_bozza_id      config.stati_doc_offerte.id%TYPE;
     v_new_id              vendite.offerte_commerciali.id%TYPE;
     v_ecc                 vendite.offerte_commerciali_eccezioni%ROWTYPE;
     v_new_ecc_id          vendite.offerte_commerciali_eccezioni.id%TYPE;
@@ -112,24 +114,6 @@ BEGIN
         NULL::uuid,
         jsonb_build_object('offerta_id', p_offerta_id));
 
-    -- Recupera id stato BOZZA (config-driven, no hardcode).
-    SELECT id INTO v_stato_bozza_id
-      FROM config.stati_doc_offerte
-     WHERE codice_interno = 'BOZZA';
-
-    IF v_stato_bozza_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite', 'fn_crea_revisione_offerta',
-            'E_CONFIG_MANCANTE',
-            jsonb_build_object(
-                'tabella', 'config.stati_doc_offerte',
-                'codice',  'BOZZA'
-            ),
-            NULL::uuid,
-            'stato BOZZA non trovato in config.stati_doc_offerte'
-        );
-    END IF;
-
     -- INSERT testata rev.N+1.
     -- uid: generato da default (uuidv7()) — non incluso nella lista colonne.
     -- codice: generato dal trigger trgfn_offerte_commerciali_gen_codice
@@ -149,7 +133,6 @@ BEGIN
         tipo_variazione_globale,
         validita_dal,
         validita_al,
-        stato_doc_offerta_id,
         revisione_numero,
         revisione_padre_id,
         meta,
@@ -172,7 +155,6 @@ BEGIN
         oc.tipo_variazione_globale,
         oc.validita_dal,
         oc.validita_al,
-        v_stato_bozza_id,
         oc.revisione_numero + 1,
         p_offerta_id,
         oc.meta,

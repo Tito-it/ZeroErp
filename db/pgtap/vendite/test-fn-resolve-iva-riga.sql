@@ -3,6 +3,9 @@
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_resolve_iva_riga (il guscio) e fn_resolve_iva_riga_it
 --       brief-db-be-iva-risolutore-e-regime-cliente, voce `I2`
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): il contratto nasce in
+--   bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima nasceva
+--   gia' ATTIVO).
 -- ------------------------------------------------------------
 -- A cosa serve, in una frase
 --   Il risolutore decide QUALE codice IVA porta una riga di documento. Fino a
@@ -99,6 +102,7 @@ DECLARE
   v_iva_tipo    config.iva.id%TYPE;
   v_tpl         vendite.contratti.id%TYPE;
   v_new         vendite.contratti.id%TYPE;
+  v_art_riga    catalogo.articoli.id%TYPE;
   v_ba          anagrafiche.billing_account.id%TYPE;
   v_emitt       anagrafiche.emittenti_fiscali.id%TYPE;
   v_sogg        anagrafiche.soggetti.id%TYPE;
@@ -129,9 +133,14 @@ BEGIN
    ORDER BY tu.id, cl.id LIMIT 1;
 
   -- ── il contratto ATTIVO: si clona da uno esistente sulla stessa utility.
-  --    ⚠️ Si INSERISCE in stato ATTIVO invece di transitarci: la transizione ha
-  --    un guard suo (trg_contratti_a10_guard_transizione_stato_upd) che e' un
-  --    altro soggetto, e farcelo passare qui vorrebbe dire provare quello.
+  --    ⛔ rev 2026-10-24 (brief-modello-documento-vendita N-1): fino a oggi si
+  --    INSERIVA in stato ATTIVO per non passare dal guard di transizione. Un
+  --    contratto ora nasce solo in DRAFT (trg_contratti_a05_stato_iniziale_ins)
+  --    e si attiva per la matrice: il guard lo giudica come in produzione. Per
+  --    attivarsi vuole un listino con una versione operativa
+  --    (trgfn_contratti_freeze_listino_versione): si clonano anche listino e
+  --    versione del modello, e se il modello non ne ha uno il clone riceve una
+  --    riga AGGIUNTA con prezzo (contratto negoziato puro).
   IF v_utility IS NOT NULL THEN
     SELECT c.id INTO v_tpl FROM vendite.contratti c
      WHERE c.utility_id = v_utility ORDER BY c.id LIMIT 1;
@@ -139,15 +148,39 @@ BEGIN
     IF v_tpl IS NOT NULL THEN
       INSERT INTO vendite.contratti
           (numero, billing_account_id, istanza_utility_id, utility_id,
-           stato_doc_contratto_id, emittente_fiscale_id, valido_dal, valido_al, meta)
+           listino_id, listino_versione_id,
+           emittente_fiscale_id, valido_dal, valido_al, meta)
       SELECT 'PGTAPIVA-' || c.id,
              c.billing_account_id, c.istanza_utility_id, c.utility_id,
-             (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno = 'ATTIVO'),
+             c.listino_id, c.listino_versione_id,
              c.emittente_fiscale_id, DATE '2026-01-01', NULL,
              jsonb_build_object('test_scope', 'pgtap_resolve_iva')
         FROM vendite.contratti c WHERE c.id = v_tpl
       RETURNING id, billing_account_id, emittente_fiscale_id
            INTO v_new, v_ba, v_emitt;
+
+      -- Un modello senza listino da' un clone «negoziato puro»: per attivarsi
+      -- vuole almeno una riga AGGIUNTA con prezzo
+      -- (E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE, trgfn_contratti_freeze_listino_versione).
+      -- L'articolo lo propone il picker, che legge la stessa check del guard
+      -- delle righe (catalogo.fn_articoli_ammessi: motivo NULL = ammesso). Il
+      -- risolutore non legge le righe del contratto: la riga non tocca nessun
+      -- caso del test.
+      IF (SELECT k.listino_id FROM vendite.contratti k WHERE k.id = v_new) IS NULL THEN
+        SELECT a.articolo_id INTO v_art_riga
+          FROM catalogo.fn_articoli_ammessi('CONTRATTO', v_new, NULL, 50, 'AGGIUNTA') a
+         WHERE a.motivo IS NULL
+         ORDER BY a.ordine
+         LIMIT 1;
+
+        IF v_art_riga IS NOT NULL THEN
+          INSERT INTO vendite.contratti_righe
+              (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa, tipo_erogazione)
+          VALUES (v_new, v_art_riga, 'AGGIUNTA', 1.00, 1.00, 'UNA_TANTUM');
+        END IF;
+      END IF;
+
+      PERFORM dbops.fn_pgtap_porta_a_stato('vendite.contratti', v_new, 'ATTIVO');
 
       -- ⚠️ La riga la CREA un trigger sul contratto, alla nascita, dai dati
       --    precontrattuali dell'istanza: non si inserisce e non si modifica.

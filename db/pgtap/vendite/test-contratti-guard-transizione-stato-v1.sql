@@ -22,6 +22,12 @@
 --   - Crea contratti modalita' A (listino + variazione globale) con
 --     periodi disgiunti per non violare ex_contratti_no_overlap.
 --   - SOSPESO escluso dai test: non in scope per il guard attuale.
+--
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i contratti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano
+--   gia' ATTIVO o CESSATO). _D (valido_al 2019, passato) arriva a CESSATO per la
+--   strada del job notturno (GUC app.cessazione_automatica, come al test 9): la
+--   cessazione manuale retroattiva e' vietata, ed e' il caso del test 5.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -85,63 +91,78 @@ SELECT listino_id FROM dbops.fn_pgtap_crea_listino(
 
 INSERT INTO vendite.contratti(
     numero, billing_account_id, istanza_utility_id, utility_id,
-    stato_doc_contratto_id, valido_dal, valido_al,
+    valido_dal, valido_al,
     listino_id, tipo_variazione_globale, valore_variazione_globale
 )
 SELECT 'PGTAP_GUARD_A', ba.billing_account_id, ba.istanza_utility_id, ba.utility_id,
-       s.id_draft, DATE '2080-01-01', DATE '2080-12-31',
+       DATE '2080-01-01', DATE '2080-12-31',
        l.listino_id, 'PERCENTUALE', -10
-  FROM tmp_ctx_ba ba, tmp_ctx_stati s, tmp_ctx_listino l;
+  FROM tmp_ctx_ba ba, tmp_ctx_listino l;
 
 INSERT INTO vendite.contratti(
     numero, billing_account_id, istanza_utility_id, utility_id,
-    stato_doc_contratto_id, valido_dal, valido_al,
+    valido_dal, valido_al,
     listino_id, tipo_variazione_globale, valore_variazione_globale
 )
 SELECT 'PGTAP_GUARD_B', ba.billing_account_id, ba.istanza_utility_id, ba.utility_id,
-       s.id_attivo, DATE '2081-01-01', DATE '2081-12-31',
+       DATE '2081-01-01', DATE '2081-12-31',
        l.listino_id, 'PERCENTUALE', -10
-  FROM tmp_ctx_ba ba, tmp_ctx_stati s, tmp_ctx_listino l;
+  FROM tmp_ctx_ba ba, tmp_ctx_listino l;
 
 INSERT INTO vendite.contratti(
     numero, billing_account_id, istanza_utility_id, utility_id,
-    stato_doc_contratto_id, valido_dal, valido_al,
+    valido_dal, valido_al,
     listino_id, tipo_variazione_globale, valore_variazione_globale
 )
 SELECT 'PGTAP_GUARD_C', ba.billing_account_id, ba.istanza_utility_id, ba.utility_id,
-       s.id_attivo, DATE '2020-01-01', DATE '2020-12-31',
+       DATE '2020-01-01', DATE '2020-12-31',
        l.listino_id, 'PERCENTUALE', -10
-  FROM tmp_ctx_ba ba, tmp_ctx_stati s, tmp_ctx_listino l;
+  FROM tmp_ctx_ba ba, tmp_ctx_listino l;
 
 INSERT INTO vendite.contratti(
     numero, billing_account_id, istanza_utility_id, utility_id,
-    stato_doc_contratto_id, valido_dal, valido_al,
+    valido_dal, valido_al,
     listino_id, tipo_variazione_globale, valore_variazione_globale
 )
 SELECT 'PGTAP_GUARD_D', ba.billing_account_id, ba.istanza_utility_id, ba.utility_id,
-       s.id_cessato, DATE '2019-01-01', DATE '2019-12-31',
+       DATE '2019-01-01', DATE '2019-12-31',
        l.listino_id, 'PERCENTUALE', -10
-  FROM tmp_ctx_ba ba, tmp_ctx_stati s, tmp_ctx_listino l;
+  FROM tmp_ctx_ba ba, tmp_ctx_listino l;
 
 INSERT INTO vendite.contratti(
     numero, billing_account_id, istanza_utility_id, utility_id,
-    stato_doc_contratto_id, valido_dal, valido_al,
+    valido_dal, valido_al,
     listino_id, tipo_variazione_globale, valore_variazione_globale
 )
 SELECT 'PGTAP_GUARD_E', ba.billing_account_id, ba.istanza_utility_id, ba.utility_id,
-       s.id_attivo, DATE '2082-01-01', DATE '2082-12-31',
+       DATE '2082-01-01', DATE '2082-12-31',
        l.listino_id, 'PERCENTUALE', -10
-  FROM tmp_ctx_ba ba, tmp_ctx_stati s, tmp_ctx_listino l;
+  FROM tmp_ctx_ba ba, tmp_ctx_listino l;
 
 INSERT INTO vendite.contratti(
     numero, billing_account_id, istanza_utility_id, utility_id,
-    stato_doc_contratto_id, valido_dal, valido_al,
+    valido_dal, valido_al,
     listino_id, tipo_variazione_globale, valore_variazione_globale
 )
 SELECT 'PGTAP_GUARD_F', ba.billing_account_id, ba.istanza_utility_id, ba.utility_id,
-       s.id_attivo, script.fn_data_operativa() - 30, script.fn_data_operativa(),
+       script.fn_data_operativa() - 30, script.fn_data_operativa(),
        l.listino_id, 'PERCENTUALE', -10
-  FROM tmp_ctx_ba ba, tmp_ctx_stati s, tmp_ctx_listino l;
+  FROM tmp_ctx_ba ba, tmp_ctx_listino l;
+
+-- Gli stati di partenza, per la matrice e sotto i guard veri (rev 2026-10-24).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', k.id, 'ATTIVO')
+  FROM vendite.contratti k
+ WHERE k.numero IN ('PGTAP_GUARD_B', 'PGTAP_GUARD_C', 'PGTAP_GUARD_D',
+                    'PGTAP_GUARD_E', 'PGTAP_GUARD_F')
+ ORDER BY k.numero;
+
+-- _D a CESSATO col valido_al passato: la strada del job (test 9), con la GUC
+-- rimessa a vuoto subito dopo — i test 5 e successivi la vogliono spenta.
+SELECT set_config('app.cessazione_automatica', 'true', true);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', k.id, 'CESSATO')
+  FROM vendite.contratti k
+ WHERE k.numero = 'PGTAP_GUARD_D';
+SELECT set_config('app.cessazione_automatica', '', true);
 
 -- ============================================================
 -- 1) DRAFT -> ATTIVO ammesso

@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO STATO ALLA NASCITA LO METTE IL DATABASE: DUE COLONNE SI ALLINEANO
+#   Brief: brief-modello-documento-vendita §4-ter (P-2 di Tid, 2026-10-24).
+#
+# ── vendite.commesse.stato_commessa_id: via il DEFAULT 1 ─────────────
+#   Il DEFAULT era un id scritto a mano (20260226-02): una delle sedici copie
+#   dello stato iniziale, e l'unica che dipende da un id. Da 20261024-11 lo
+#   stato alla nascita lo mette il trigger BEFORE INSERT
+#   trg_commesse_a05_stato_iniziale_ins, leggendolo dal vocabolario
+#   (vendite.stati_commessa.iniziale). vendite.fn_get_or_create_commessa non
+#   nomina la colonna e continua a funzionare identica.
+#
+# ── vendite.fatture.stato_doc_fiscale_id: NOT NULL ──────────────────
+#   Era l'unica delle otto testate con lo stato facoltativo: una fattura
+#   poteva nascere senza stato. Con P-2 il database mette lo stato iniziale
+#   quando l'INSERT non ne dice uno, quindi «lo stato della fattura lo sappiamo
+#   sempre» diventa vero, e lo si dichiara. Il trigger BEFORE scatta prima
+#   del controllo NOT NULL, quindi un INSERT senza stato riceve DRAFT e passa.
+#   ⚠️ Fino a 20261024-11 il trigger non c'e': fra i due changeSet nessuno
+#   scrive fatture (sono nello stesso migrate). Fatto datato, 2026-10-24: su
+#   dbdev nessuna fattura ha lo stato NULL, quindi l'ALTER non trova righe da
+#   rifiutare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261024-08-alter-commesse-fatture-stato-alla-nascita-mctit.yaml
+
+  - changeSet:
+      id: 20261024-08-alter-commesse-fatture-stato-alla-nascita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.commesse.stato_commessa_id perde il DEFAULT 1 (id scritto a mano) e
+        vendite.fatture.stato_doc_fiscale_id diventa NOT NULL: lo stato alla nascita lo mette il
+        trigger script.trgfn_doc_stato_iniziale, letto dal vocabolario. P-2 di
+        brief-modello-documento-vendita (Tid, 2026-10-24).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists: { schemaName: vendite, tableName: commesse, columnName: stato_commessa_id }
+            - columnExists: { schemaName: vendite, tableName: fatture, columnName: stato_doc_fiscale_id }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.commesse
+                  ALTER COLUMN stato_commessa_id DROP DEFAULT;
+
+              ALTER TABLE vendite.fatture
+                  ALTER COLUMN stato_doc_fiscale_id SET NOT NULL;
+
+              COMMENT ON COLUMN vendite.commesse.stato_commessa_id IS
+                  'Stato della commessa (FK vendite.stati_commessa). Alla nascita lo mette il trigger BEFORE INSERT trg_commesse_a05_stato_iniziale_ins (BB script.trgfn_doc_stato_iniziale): lo stato iniziale del vocabolario (iniziale = true) quando l''INSERT non lo dice, rifiutato ogni altro. Gli altri stati si raggiungono dai passaggi di vendite.transizioni_stati_commessa. Senza DEFAULT dal 2026-10-24 (era l''id 1 scritto a mano). Brief: brief-modello-documento-vendita (P-2).';
+
+              COMMENT ON COLUMN vendite.fatture.stato_doc_fiscale_id IS
+                  'Stato del documento fiscale (FK config.stati_doc_fiscale), NOT NULL dal 2026-10-24. Alla nascita lo mette il trigger BEFORE INSERT trg_fatture_a05_stato_iniziale_ins (BB script.trgfn_doc_stato_iniziale): lo stato iniziale del vocabolario (iniziale = true) quando l''INSERT non lo dice, rifiutato ogni altro. Brief: brief-modello-documento-vendita (P-2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture ALTER COLUMN stato_doc_fiscale_id DROP NOT NULL;
+              ALTER TABLE vendite.commesse ALTER COLUMN stato_commessa_id SET DEFAULT 1;

@@ -1,6 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato; il preventivo
+--   «non ACCETTATO» nasce DRAFT e basta (prima, se DRAFT mancava, ripiegava su
+--   COALESCE(bozza, accettato): una nascita ACCETTATO che il trigger della
+--   nascita ora rifiuta).
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_preventivi_da_pushare — parametro p_preventivo_id (v2)
 -- ------------------------------------------------------------
@@ -169,7 +174,7 @@ WITH ins AS (
     0,
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    COALESCE(r.stato_bozza_id, r.stato_accettato_id),
+    r.stato_bozza_id,  -- nasce nello stato iniziale (rev 2026-10-24)
     DATE '2026-06-01', false,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_prev_v2', 'case', 'bozza'),
     r.emittente_fiscale_id

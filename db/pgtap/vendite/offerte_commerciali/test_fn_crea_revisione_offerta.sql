@@ -15,6 +15,10 @@
 --   6)  Utility copiata 1:1 (1 record per rev.2)
 --   7)  Da stato ACCETTATA -> throws E_OFFERTA_REVISIONE_STATO_NON_AMMESSO
 --   (test 8 da BOZZA è incluso in test 7 come verifica analoga)
+--
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): l'offerta del test 7
+--   nasce in bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima
+--   nasceva gia' ACCETTATA).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -242,7 +246,8 @@ SELECT ok(
 -- ============================================================
 -- 7) Da stato ACCETTATA -> throws E_OFFERTA_REVISIONE_STATO_NON_AMMESSO
 -- ============================================================
--- Crea offerta direttamente in ACCETTATA (bypass trigger UPDATE)
+-- L'offerta nasce in BOZZA e arriva ad ACCETTATA per la matrice
+-- (BOZZA -> EMESSA -> ACCETTATA), sotto i guard veri (rev 2026-10-24).
 CREATE TEMP TABLE tmp_rev_fn_accettata AS
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
@@ -251,11 +256,14 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva, DATE '2097-01-01',
-           ctx.stato_accettata_id
+           ctx.stato_bozza_id
       FROM tmp_rev_fn_ctx ctx
     RETURNING id
 )
 SELECT id FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', a.id, 'ACCETTATA')
+  FROM tmp_rev_fn_accettata a;
 
 SELECT throws_ok(
     format(

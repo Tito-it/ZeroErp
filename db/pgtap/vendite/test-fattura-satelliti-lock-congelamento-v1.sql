@@ -18,13 +18,19 @@
 -- 10) fatture_scadenze: stessa regola, il guard e' montato su entrambe
 -- 11) CASCADE dalla testata: i satelliti cadono senza errore (stato NULL)
 -- ------------------------------------------------------------
--- PERCHE' LE DUE FATTURE NASCONO GIA' NELLO STATO CHE SERVE. Il guard di
--- transizione trgfn_fatture_guard_stato e' montato solo su UPDATE
--- (trg_fatture_a10_guard_stato_upd), quindi una fattura puo' essere inserita
--- direttamente in DEFINITIVA. Si evita cosi' di attraversare la matrice degli
--- stati (1->2->8) per arrivare al punto, che qui non c'entra nulla: un test
--- che passa da mezza macchina a stati per esercitare un trigger su un'altra
--- tabella fallisce per ragioni che non sta testando.
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le fatture nascono in
+--   bozza e la «definitiva» si porta avanti con dbops.fn_pgtap_porta_a_stato
+--   (prima nasceva gia' DEFINITIVA). Il paragrafo sotto e' superato.
+-- (superato) PERCHE' LE DUE FATTURE NASCONO GIA' NELLO STATO CHE SERVE. Il
+-- guard di transizione trgfn_fatture_guard_stato era montato solo su UPDATE,
+-- quindi una fattura si poteva inserire direttamente in DEFINITIVA, senza
+-- attraversare la matrice (1->2->8). Dal 2026-10-24 un documento nasce solo
+-- nello stato iniziale (script.trgfn_doc_stato_iniziale): la matrice si
+-- attraversa, e cio' che l'uscita dalla bozza pretende (indirizzo FATT,
+-- intestazione) lo scrive la fixture. ⚠️ L'indirizzo FATT si toglie di nuovo
+-- in EMESSA (sotto soglia, si puo'): la DEFINITIVA deve arrivare SENZA
+-- indirizzi, o l'INSERT dei test 5 e 6 urterebbe l'unicita' per tipo
+-- (uq_fatture_indirizzi_uno_per_tipo_) invece del guard.
 --
 -- PERCHE' IL PRIMO INSERT SULLA DEFINITIVA USA IL BYPASS. Per provare UPDATE e
 -- DELETE oltre soglia serve una riga satellite gia' esistente su una fattura
@@ -111,17 +117,39 @@ CREATE TEMP TABLE tmp_fatture_lock AS
 WITH ins AS (
   INSERT INTO vendite.fatture (
     registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-    tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, meta
+    tipo_doc_fiscale_id, valuta_id, meta
   )
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id,
-         r.billing_account_id, r.tipo_doc_fiscale_id, v.stato_id, r.valuta_id,
+         r.billing_account_id, r.tipo_doc_fiscale_id, r.valuta_id,
          jsonb_build_object('test', 'pgtap_lock_satelliti', 'caso', v.caso)
     FROM tmp_refs_lock r
-   CROSS JOIN LATERAL (VALUES ('draft', r.stato_draft_id),
-                              ('definitiva', r.stato_def_id)) AS v(caso, stato_id)
+   CROSS JOIN (VALUES ('draft'), ('definitiva')) AS v(caso)
   RETURNING id, meta ->> 'caso' AS caso
 )
 SELECT id, caso FROM ins;
+
+-- La «definitiva» nasce in bozza: per uscirne vuole l'indirizzo FATT e
+-- l'intestazione congelata (trgfn_fatture_guard_uscita_draft). Si scrivono,
+-- si passa in EMESSA, si TOGLIE l'indirizzo (sotto soglia e' ammesso: vedi in
+-- testa) e si arriva in DEFINITIVA, sotto i guard veri.
+INSERT INTO vendite.fatture_indirizzi (fattura_id, tipo_indirizzo_id, snapshot)
+SELECT f.id, r.fatt_id, '{"via":"Via Emissione pgTAP"}'::jsonb
+  FROM tmp_fatture_lock f, tmp_refs_lock r
+ WHERE f.caso = 'definitiva';
+
+UPDATE vendite.fatture
+   SET emittente_snapshot = '{"denominazione":"Emittente pgTAP","id_fiscale":"00000000000","sede":{"via":"Via Cedente 1","cap":"83100"}}'::jsonb,
+       cliente_snapshot   = '{"denominazione":"Cliente pgTAP","id_fiscale":"11111111111"}'::jsonb
+ WHERE id = (SELECT id FROM tmp_fatture_lock WHERE caso = 'definitiva');
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', f.id, 'EMESSA')
+  FROM tmp_fatture_lock f WHERE f.caso = 'definitiva';
+
+DELETE FROM vendite.fatture_indirizzi
+ WHERE fattura_id = (SELECT id FROM tmp_fatture_lock WHERE caso = 'definitiva');
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', f.id, 'DEFINITIVA')
+  FROM tmp_fatture_lock f WHERE f.caso = 'definitiva';
 
 SELECT is(
   (SELECT count(*)::int FROM tmp_fatture_lock), 2,

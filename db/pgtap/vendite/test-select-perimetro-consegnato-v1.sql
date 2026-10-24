@@ -11,6 +11,9 @@
 -- pgTAP test per Zero ERP
 -- Test: la select fattura solo cio' che il PROPRIO giro ha consegnato
 -- Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezione 9 (D1+D2)
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
+--   portano avanti con dbops.fn_pgtap_porta_a_stato (prima la commessa nasceva gia'
+--   nello stato emittibile, PRONTA_FATTURAZIONE).
 -- ------------------------------------------------------------
 -- Cosa presidia questo file
 --   La chiusura della crepa D1+D2:
@@ -147,11 +150,13 @@ DECLARE
 BEGIN
     SELECT * INTO v_rif FROM tmp_sel_rif;
 
+    -- rev 2026-10-24: la commessa nasce BOZZA (trigger della nascita) e passa
+    --   allo stato emittibile DOPO la sua riga APPROVATA, che il passaggio a
+    --   PRONTA_FATTURAZIONE pretende (fn_check_commessa_pronta_fatturazione).
     INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                  emittente_soggetto_ruolo_id, stato_commessa_id)
+                                  emittente_soggetto_ruolo_id)
     VALUES ('PGTAP-SEL-' || substr(md5(clock_timestamp()::text), 1, 8),
-            v_rif.billing_account_id, v_rif.utility_id, v_rif.emittente_sr,
-            v_rif.stato_ok)
+            v_rif.billing_account_id, v_rif.utility_id, v_rif.emittente_sr)
     RETURNING id INTO v_comm;
 
     INSERT INTO vendite.commesse_sorgenti
@@ -171,6 +176,9 @@ BEGIN
             v_rif.tipo_doc_fiscale_id, v_rif.valuta_id, 10.000000, 'FIXED',
             'APPROVATA', 'NON_EMESSA', -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
             (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text);
+
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.commesse', v_comm,
+        (SELECT sc.codice_interno FROM vendite.stati_commessa sc WHERE sc.id = v_rif.stato_ok));
 
     INSERT INTO tmp_commessa_sel VALUES (v_comm);
 END

@@ -2,9 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-24
 
-**Riparte: Tid**, con le tre domande nate dal censimento (§4-ter, P-1 … P-3); poi il team DB col
-primo giro (N-2). Decise il 2026-10-24: M-1 … M-6 (§4) e N-1 … N-3 (§4-bis). Censimento fatto il
-2026-10-24; nessun codice scritto.
+**Riparte: il team BE**, con la sua richiesta (§4-quinquies); **Tid** con le domande Q-2 … Q-4.
+Primo giro chiuso lato DB il 2026-10-24: applicato, pgTAP verdi.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -12,13 +11,16 @@ primo giro (N-2). Decise il 2026-10-24: M-1 … M-6 (§4) e N-1 … N-3 (§4-bis
 | 2 | ✅ **Tid** | M-1 … M-6, decise il 2026-10-24 | §4 | 1 |
 | 2-bis | ✅ **Tid** | N-1 … N-3 (un documento nasce nel suo stato iniziale), decise il 2026-10-24 | §4-bis | 2 |
 | 2-ter | ✅ team DB | Censimento di chi crea documenti gia' avanti (DB, backend, test Django, pgTAP), 2026-10-24 | §4-ter | 2-bis |
-| 2-quater | **Tid** | P-1 … P-3: come si marca lo stato iniziale, che cosa fa la regola su uno stato NULL, il perimetro | §4-ter | 2-ter |
-| 2-quinquies | team DB | Primo giro: la funzione unica dello stato iniziale (N-1 … N-3) e i 52 pgTAP portati alla nascita in bozza | §4-ter | 2-quater e il via di Tid |
+| 2-quater | ✅ **Tid** | P-1 … P-3, decise il 2026-10-24; e il modo di procedere (§5) | §4-ter | 2-ter |
+| 2-quinquies | ✅ team DB | Primo giro scritto e provato: il BB della nascita su vendite e acquisti, 9 funzioni e 3 builder senza copie, 48 pgTAP portati, la richiesta al team BE | §4-quinquies | 2-quater |
+| 2-sexies | ✅ **Tid** | Apply di `20261024-07` … `-25` e corsa pgTAP: verdi (2026-10-24); Q-1 decisa (B) | §4-quinquies | 2-quinquies |
+| 2-sexies-bis | **Tid** | Q-2 … Q-4 | §4-quinquies | — |
+| 2-septies | team BE | Richiesta 1-5: policy degli errori, i 5 service senza lo stato iniziale, due test | §4-quinquies | 2-sexies |
 | 3 | team DB | Il §2, corretto con le decisioni, diventa la guida `docs/it/guide/modello-documento-di-vendita.md`; le guide `gestione-*.md` rimandano lì | §2 | 2 |
 | 4 | team DB + BE | Il piano: ogni documento portato al modello **tutto in una volta**, un documento per giro | §5 | 3 |
 | 5 | Tid | Fine del fermo dei temi trasversali (PROJECT_CONTEXT) | — | 3 |
 
-Decisioni aperte di Tid: P-1 … P-3 (§4-ter). Lavoro da committare: questo documento, la regola «un tema, un brief»
+Decisioni aperte di Tid: Q-2 … Q-4 (§4-quinquies). Lavoro da committare: il primo giro (changeSet, CSV, mirror, 49 pgTAP, una pagina manual/), questo documento, la regola «un tema, un brief»
 in `.codex/AGENTS.md` e il fermo in `.codex/PROJECT_CONTEXT.md`.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
@@ -251,13 +253,115 @@ vocabolario arriva con M-5).
 
 | # | Domanda | Note |
 | --- | --- | --- |
-| P-1 | Come dichiara il vocabolario qual è il suo stato iniziale? (a) colonna `iniziale boolean` su ogni vocabolario, con indice unico parziale (uno solo per vocabolario); (b) `fase = 'APERTO'` più un vincolo d'unicità; (c) lo stato senza passaggi in ingresso nella matrice | Consiglio **(a)**: dice esattamente la regola, e il vincolo la presidia. (b) dà un significato nuovo a una colonna che ne ha già uno; (c) si rompe se la matrice ammette un ritorno alla bozza (la fattura ha già EMESSA → DRAFT). Tocca 8 vocabolari (i CSV di `80_data`) |
-| P-2 | Se l'INSERT non dice lo stato (NULL), la regola (a) lo rifiuta o (b) mette lo stato iniziale? | Consiglio **(b)**: il DB mette l'iniziale quando manca e rifiuta ogni altro stato. Lo stato iniziale si scrive in un posto solo e le 16 copie si ritirano nello stesso giro (regola del 2): letterali nelle funzioni DB, i 5 service, il DEFAULT `1` della commessa. La colonna della fattura diventa NOT NULL. Con (a) le copie restano, e la fattura senza stato va trattata a parte |
-| P-3 | Il perimetro: le 8 testate di vendita più `acquisti.ordini` e `acquisti.ddt`? | Consiglio **sì, anche acquisti**: stessi vocabolari, nessuno scrittore da adeguare, e «ogni decisione su vendite vale per acquisti» (PROJECT_CONTEXT). Magazzino, sistemazioni e listino restano fuori finché non hanno un vocabolario in tabella |
+| P-1 | Come dichiara il vocabolario qual è il suo stato iniziale? (a) colonna `iniziale boolean` su ogni vocabolario, con indice unico parziale (uno solo per vocabolario); (b) `fase = 'APERTO'` più un vincolo d'unicità; (c) lo stato senza passaggi in ingresso nella matrice | ✅ **Deciso da Tid il 2026-10-24: (a)** — colonna `iniziale` con indice unico parziale. (b) darebbe un significato nuovo a una colonna che ne ha già uno; (c) si rompe se la matrice ammette un ritorno alla bozza (la fattura ha già EMESSA → DRAFT). Tocca 8 vocabolari (i CSV di `80_data`) |
+| P-2 | Se l'INSERT non dice lo stato (NULL), la regola (a) lo rifiuta o (b) mette lo stato iniziale? | ✅ **Deciso da Tid il 2026-10-24: (b)** — il DB mette l'iniziale quando manca e rifiuta ogni altro stato. Lo stato iniziale si scrive in un posto solo e le 16 copie si ritirano nello stesso giro (regola del 2): letterali nelle funzioni DB, i 5 service, il DEFAULT `1` della commessa. La colonna della fattura diventa NOT NULL. Con (a) le copie restano, e la fattura senza stato va trattata a parte |
+| P-3 | Il perimetro: le 8 testate di vendita più `acquisti.ordini` e `acquisti.ddt`? | ✅ **Deciso da Tid il 2026-10-24: sì, anche acquisti** — stessi vocabolari, nessuno scrittore da adeguare. In più (Tid): **acquisti parte con tutto ciò che vendite ha imparato**, senza rifarne gli errori (§5). Magazzino, sistemazioni e listino restano fuori finché non hanno un vocabolario in tabella |
+
+### 4-quinquies. Primo giro: applicato, test verdi (2026-10-24)
+
+**I changeSet** (`20261024-07` … `-25`, nell'ordine):
+
+| # | Cosa |
+| --- | --- |
+| `-07` | colonna `iniziale` sugli 8 vocabolari, indice unico parziale `uq_<voc>_iniziale`, CHECK `chk_<voc>_iniziale_attivo`, backfill per codice (P-1) |
+| `-08` | `vendite.commesse.stato_commessa_id` perde il DEFAULT `1`; `vendite.fatture.stato_doc_fiscale_id` diventa NOT NULL (P-2) |
+| `-09` | `script.fn_stato_iniziale_id(regclass)`: l'unico lettore dello stato iniziale |
+| `-10` | il BB `script.trgfn_doc_stato_iniziale`: stato assente → lo mette; iniziale → passa; altro → `E_DOC_STATO_INIZIALE_NON_VALIDO` (N-1, N-3) |
+| `-11`, `-12` | montaggio `trg_<tabella>_a05_stato_iniziale_ins` sulle 8 testate di vendita e sulle 2 d'acquisto (N-2, P-3) |
+| `-13` … `-21` | le 9 funzioni che scrivevano `'DRAFT'`/`'BOZZA'` non lo cercano più; `fn_push_preventivo_a_ordine` legge lo stato delle righe con `fn_stato_iniziale_id` |
+| `-22` | `dbops.fn_pgtap_porta_a_stato` vale per tutte le 8 testate (fattura compresa, solo coi passaggi che il guard della fattura singola ammette) |
+| `-23` … `-25` | i builder pgTAP di ordine, preventivo e fattura fanno nascere in bozza e portano avanti per la matrice (la fattura scrive prima gli snapshot di indirizzi e intestazione, come la pipeline) |
+
+Dati: colonna `iniziale` in coda agli 8 CSV dei vocabolari, dichiarata nei 10 mirror che li caricano;
+il codice `E_DOC_STATO_INIZIALE_NON_VALIDO` (TECNICO) in `messaggi_errore.csv` e `codici_errore.csv`.
+La frase di N-3 diventa «Il documento %s non può nascere…»: il nome viene da
+`config.sorgenti.etichetta` («Offerta», «Commessa»), e «Il Offerta» non si legge.
+Doc: `docs/it/dbzero/script/manual/trgfn_doc_stato_iniziale.md`.
+
+**Le copie ritirate nello stesso giro** (regola del 2): i letterali nelle 9 funzioni e il DEFAULT
+`1` della commessa. Restano i 5 service del backend: richiesta qui sotto.
+
+**pgTAP.** Nuovo `script/test-trgfn-doc-stato-iniziale-v1.sql` (18 test: il montaggio si ricava dal
+catalogo, quindi una testata nuova senza il trigger fa rosso). Portati alla nascita in bozza i 52 file
+del censimento più il presidio del builder dell'ordine (48 file toccati). Attese cambiate, dichiarate:
+
+* `vendite/test-contratto-attiva-spento-se-sovrapposto-v1.sql` test 19: il contratto «nato ATTIVO»
+  si aspettava 23P01 dall'EXCLUDE, ora `E_DOC_STATO_INIZIALE_NON_VALIDO`. Il 23P01 non si raggiunge
+  più per nessuna strada lecita (prima lo ferma la nascita, poi il guard di transizione): l'EXCLUDE
+  resta provato nella forma (test 21-23);
+* `vendite/test-testata-dopo-emissione-rdb-v1.sql`: test 37 nuovo (un contratto non nasce ATTIVO),
+  piano 37;
+* `dbops/test-fn-pgtap-crea-ordine-v1.sql`: il test 5 chiede ANNULLATO invece di CONFERMATO, e il
+  test 10 nuovo fissa che un CONFERMATO senza righe lo ferma il guard vero, piano 10.
+
+**Come è provato** (scratch `zeroerp_ruoli`, SQL estratto dai changeSet in transazione annullata,
+come owner):
+
+* regressione su 152 file (i 52 del censimento, gli 81 che chiamano le funzioni riscritte, 28
+  presidi trasversali, il test nuovo): **109 verdi, 43 rossi identici a prima** (stesso conteggio,
+  stesso errore: debiti di fixture preesistenti, per lo più «il primo billing account del
+  database», che sullo scratch non c'è), **nessuna regressione**;
+* per i file fermi su quei debiti il percorso nuovo è stato provato su copie con il mondo costruito
+  dai builder (nello scratchpad della sessione, non nel repo);
+* `plpgsql_check` senza errori sulle 11 funzioni; nessun doppione di firma; i guardrail statici e i
+  due SQL della CI (`codice_errore_strutturato`, `riferimenti_morti`) verdi;
+* i 10 mirror ricaricati per intero (57 righe) sopra i trigger di oggi, nella forma del loader
+  (UPDATE, poi INSERT se manca): passano;
+* ✅ applicato da Tid il 2026-10-24 su dbdev e scratch, corsa pgTAP verde (come applicazione, RLS
+  attiva). Due file che pescano dati veri, rossi solo su dbdev, corretti nella stessa giornata:
+  `test-fondi-fattura-governo` (Q-1) e `test-fn-resolve-iva-riga` (il contratto clonato senza listino
+  prende una riga AGGIUNTA, con l'articolo scelto da `catalogo.fn_articoli_ammessi`).
+
+**Aperti, per Tid:**
+
+* ✅ **Q-1. Una fattura ANNULLATA il modello non la sa costruire** — **deciso da Tid il 2026-10-24:
+  B**, il modello resta com'è. DRAFT → ANNULLATA c'è solo coi passaggi del lotto (`solo_lotto`), e
+  l'annullo del lotto cancella le fatture. `vendite/test-fondi-fattura-governo.sql` (D-1/D-9) faceva
+  nascere una sorgente ANNULLATA: ora è una sorgente **EMESSA**, perché la regola provata è «genera e
+  propone solo una fattura DEFINITIVA» ed EMESSA è il caso più stretto (uscita dalla bozza,
+  completa, lo stato subito prima). Provato su una variante col mondo costruito, sullo scratch già
+  applicato: i due test verdi, file 29/30 (il rosso è il test 2, preesistente).
+* **Q-2. Builder di fixture ripetuti** (regola del 2, proposti dal porting, non scritti): commessa
+  emittibile (6 file), fattura «fuori bozza ma senza snapshot» (4 file), contratto figlio di
+  un'offerta e contratto ATTIVO sul billing account del test (4 file).
+* **Q-3.** `vendite/test-snapshot-indirizzi-lotto-v1.sql` rimette `DEFERRED` i soli tre trigger di
+  coerenza lotto/fatture (il file era escluso dai differiti per quel guard, e
+  `fn_pgtap_porta_a_stato` esce con `IMMEDIATE`): da confermare.
+* **Q-4.** I debiti «primo billing account» (una decina di file) si curano col mondo costruito: un
+  giro a parte.
+* Fuori da questo giro: `dbops/test-automazioni-guasto-ambiente-rilanciato-v1.sql` è rosso nel
+  guardrail del preambolo già in HEAD (commit `dbb810c3d`).
+
+**Richiesta al team BE** (si accetta che qualcosa resti rotto fino al loro giro, §5):
+
+1. rigenerare `apps/core/services/error_policies_generated.py`
+   (`manage.py genera_error_policies`): codice nuovo `E_DOC_STATO_INIZIALE_NON_VALIDO`, TECNICO;
+2. i 5 service che scrivono lo stato iniziale per nome (`ordini_service`, `ddt_service`,
+   `resi_service`, `offerte_service`, `preventivi_service`, con i loro repository) smettono di
+   passarlo: il database lo mette da sé (P-2). Le cinque copie si ritirano;
+3. `apps/vendite/tests/db/test_ricerca_liste_db.py:126` inserisce un preventivo EMESSO: va creato
+   in bozza e portato avanti;
+4. `backend/scripts/tests/smoke-pratica-doc-sorgente-cross-emittente.py:331` copia lo stato di un
+   preventivo esistente: va creato in bozza;
+5. i 4 test di `apps/pagamenti/tests/db/` che creano fatture senza stato continuano a funzionare
+   (lo stato lo mette il database): nessuna modifica, da sapere.
 
 ---
 
 ## 5. Come si procede dopo le decisioni
+
+Due regole di Tid, 2026-10-24, che valgono per il piano e per ogni giro:
+
+* **Si ottimizza per la velocità.** Non c'è produzione: si sceglie la strada più corta verso il
+  modello, a colpi secchi, senza fasi di convivenza fra vecchio e nuovo. **Si accetta che qualcosa
+  non funzioni** (backend, smoke, test Django) finché il cantiere BE del giro non è chiuso. Il lato
+  DB non aspetta il BE: consegna il giro e scrive al BE cosa si è rotto e come si ripara. Restano
+  verdi i pgTAP, che sono lato DB e si portano nello stesso giro.
+* **Acquisti nasce sul modello, non lo rincorre.** Ogni volta che un documento di vendita viene
+  portato al modello, il suo gemello di acquisti (ordine, DDT) ci arriva **nello stesso giro**:
+  stesso verbo, stessa matrice, stesse azioni, stessi building block. Niente «fase due»: la
+  guida del modello (§2) è scritta per entrambi, e gli errori censiti nel §3 non si ripetono in
+  acquisti perché acquisti non ne ha una copia sua da sbagliare.
 
 * Il §2, corretto con le decisioni, diventa la guida. Da lì una proposta che non è nella guida, o
   la contraddice, si dichiara come revoca.

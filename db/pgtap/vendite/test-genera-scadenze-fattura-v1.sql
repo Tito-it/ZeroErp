@@ -50,6 +50,14 @@
 --   del creatore applicativo non gli aggiungeva niente, e lo skip del test 4
 --   sparisce — guida pgtap-come-si-scrive-un-test §«Il mondo si costruisce,
 --   non si cerca».
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima la
+--   fattura oltre la soglia nasceva gia' nel primo stato che congela). La
+--   matrice ora si attraversa: per uscire dalla bozza la fattura vuole
+--   indirizzi e intestazione, e li scrivono i building block della pipeline
+--   (vendite.fn_snapshot_indirizzi_fattura, fn_snapshot_intestazione_fattura).
+--   Il caso non cambia: il generatore legge lo stato, e la fattura ha ancora
+--   termine e base.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -112,21 +120,31 @@ WITH ins AS (
   RETURNING id)
 SELECT id FROM ins;
 
--- La fattura OLTRE la soglia, nata gia' in uno stato che congela: nessuna
--- transizione attraversata, la matrice degli stati resta al suo guard.
+-- La fattura OLTRE la soglia. ⛔ Dal 2026-10-24 nasce in bozza come ogni
+-- documento (script.trgfn_doc_stato_iniziale): si scrivono indirizzi e
+-- intestazione come la pipeline prima di emettere, e la si porta nel primo
+-- stato che congela per la matrice, sotto i guard veri.
 CREATE TEMP TABLE tmp_f_congelata_gsf AS
 WITH ins AS (
   INSERT INTO vendite.fatture (registro_id, data, emittente_soggetto_ruolo_id,
-                               billing_account_id, utility_id, stato_doc_fiscale_id,
+                               billing_account_id, utility_id,
                                tipo_doc_fiscale_id, valuta_id, totale_a_pagare,
                                termine_pagamento_id, meta)
   SELECT r.registro_id, DATE '2026-01-15', r.emittente_sr_id, r.billing_account_id,
-         r.utility_id, r.stato_congelato_id, r.tipo_doc_fiscale_id, r.valuta_id, 100.00,
+         r.utility_id, r.tipo_doc_fiscale_id, r.valuta_id, 100.00,
          (SELECT id FROM config.termini_pagamento WHERE codice_interno = 'TP_30G_1R'),
          jsonb_build_object('test_scope', 'pgtap_genera_scadenze_fattura')
     FROM tmp_refs_gsf r
   RETURNING id)
 SELECT id FROM ins;
+
+SELECT vendite.fn_snapshot_indirizzi_fattura(f.id),
+       vendite.fn_snapshot_intestazione_fattura(f.id)
+  FROM tmp_f_congelata_gsf f;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', f.id, s.codice_interno)
+  FROM tmp_f_congelata_gsf f, tmp_refs_gsf r
+  JOIN config.stati_doc_fiscale s ON s.id = r.stato_congelato_id;
 
 -- Termine di prova a 3 rate: serve alla quadratura di 100/3, che e' il caso in
 -- cui la divisione non torna. I 9 termini di catalogo hanno 1 o 2 rate.
@@ -170,9 +188,8 @@ SELECT throws_ok(
   'P0001', NULL,
   '3) Base non calcolata -> errore (passo eseguito fuori ordine)');
 
--- La soglia si prova su una fattura NATA oltre DRAFT/EMESSA, senza forzare
--- transizioni di stato: la matrice e' presidiata da un guard suo, e attraversarla
--- qui vorrebbe dire testare due cose insieme. ⚠️ throws_like sulla frase, non
+-- La soglia si prova su una fattura portata oltre DRAFT/EMESSA per la matrice
+-- (rev 2026-10-24: prima vi nasceva; ora un documento nasce solo in bozza). ⚠️ throws_like sulla frase, non
 -- throws_ok P0001: la fattura ha termine e base, quindi l'unico rifiuto
 -- possibile e' la soglia — e la frase lo dice.
 SELECT throws_like(

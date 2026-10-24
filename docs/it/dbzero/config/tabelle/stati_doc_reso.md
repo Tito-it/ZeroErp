@@ -21,11 +21,13 @@
 | user_update | text | NO | CURRENT_USER |
 | fase | character varying(20) | NO |  |
 | is_abortito | boolean | NO | false |
+| iniziale | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_stati_doc_reso_fase |  |
+| CHECK | chk_stati_doc_reso_iniziale_attivo |  |
 | PRIMARY KEY | pk_stati_doc_reso | id |
 | UNIQUE | uq_stati_doc_reso_codice | codice |
 | UNIQUE | uq_stati_doc_reso_codice_interno | codice_interno |
@@ -38,6 +40,7 @@
 | pk_stati_doc_reso | `CREATE UNIQUE INDEX pk_stati_doc_reso ON config.stati_doc_reso USING btree (id)` |
 | uq_stati_doc_reso_codice | `CREATE UNIQUE INDEX uq_stati_doc_reso_codice ON config.stati_doc_reso USING btree (codice)` |
 | uq_stati_doc_reso_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_reso_codice_interno ON config.stati_doc_reso USING btree (codice_interno)` |
+| uq_stati_doc_reso_iniziale | `CREATE UNIQUE INDEX uq_stati_doc_reso_iniziale ON config.stati_doc_reso USING btree (iniziale) WHERE iniziale` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

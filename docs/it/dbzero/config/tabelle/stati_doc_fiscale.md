@@ -21,11 +21,13 @@
 | fase | character varying(20) | NO |  |
 | is_abortito | boolean | NO | false |
 | congela_fiscale | boolean | NO | true |
+| iniziale | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_stati_doc_fiscale_fase |  |
+| CHECK | chk_stati_doc_fiscale_iniziale_attivo |  |
 | PRIMARY KEY | pk_stati_doc_fiscale | id |
 | UNIQUE | uq_stati_doc_fiscale_codice | codice |
 | UNIQUE | uq_stati_doc_fiscale_codice_interno | codice_interno |
@@ -38,6 +40,7 @@
 | uq_stati_doc_fiscale_chiude_lotto_true | `CREATE UNIQUE INDEX uq_stati_doc_fiscale_chiude_lotto_true ON config.stati_doc_fiscale USING btree ((1)) WHERE (chiude_lotto IS TRUE)` |
 | uq_stati_doc_fiscale_codice | `CREATE UNIQUE INDEX uq_stati_doc_fiscale_codice ON config.stati_doc_fiscale USING btree (codice)` |
 | uq_stati_doc_fiscale_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_fiscale_codice_interno ON config.stati_doc_fiscale USING btree (codice_interno)` |
+| uq_stati_doc_fiscale_iniziale | `CREATE UNIQUE INDEX uq_stati_doc_fiscale_iniziale ON config.stati_doc_fiscale USING btree (iniziale) WHERE iniziale` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
