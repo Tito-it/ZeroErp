@@ -1210,6 +1210,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PIPELINE_DOMINIO": "DATO_ERRATO",
     "E_PIPELINE_DOMINIO_NOT_FOUND": "NON_TROVATO",
     "E_PIPELINE_DRIVER_MAX_ITER": "TECNICO",
+    # Il lotto e' FERMO (vendite.vw_lotti_segnalazioni_summary.fermo: segnalazioni critiche, fatture o documenti in errore) e non puo' avanzare. Due punti di applicazione, una regola: il runner del backend prima di muovere il lotto (pipeline_step_executor) e, dal 2026-10-24 (20261024-35, R-1 di Tid, brief-modello-documento-vendita), il guard vendite.trgfn_fatturazione_lotti_guard_stato, che rifiuta l'ingresso in uno stato congelato e non abortito. Senza valori.
     "E_PIPELINE_LOTTO_CRITICAL": "DATO_ERRATO",
     "E_PIPELINE_LOTTO_IN_ESECUZIONE": "CONFLITTO_STATO",
     "E_PIPELINE_LOTTO_NOT_FOUND": "NON_TROVATO",

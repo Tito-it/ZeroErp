@@ -62,9 +62,17 @@ SONDA_SCHEMA_LIQUIBASE = "script.fn_log_and_raise_error(text,text,text,jsonb,uui
 #        cadrebbe addosso a chi non c'entra — tipicamente l'autore del primo
 #        test che dichiara un database, in una PR che non parla di questo.
 #        Quello che NON deve saltare e' il caso «schema c'e', ma manca
-#        l'oggetto che il test presidia»: quello e' un difetto vero e va
-#        verificato dal chiamante, dopo questa chiamata (vedi
-#        `test_error_codes_db_policy_guardrail`).
+#        l'oggetto che il test presidia»: quello e' un difetto vero.
+#
+#        ⛔ `sonda` = l'oggetto che il test presidia, e se manca FALLISCE.
+#        Lo schema si riconosce SEMPRE dalla sonda di default; la sonda del
+#        chiamante si guarda solo dopo, su uno schema presente, e la sua
+#        assenza e' un AssertionError. Fino al 2026-10-25 le due cose erano
+#        una sola: la sonda del chiamante decideva anche lo skip, quindi ogni
+#        cambio di firma di un builder spegneva in silenzio il test che lo
+#        usava (tre test, uno da un brief prima: brief-modello-documento-vendita
+#        §4-octies, BE-1). Un presidio che si spegne da solo e' «verde per
+#        sottrazione».
 def richiedi_db_provvisto(sonda: str = SONDA_SCHEMA_LIQUIBASE) -> None:
     if os.environ.get(FLAG_DB_E2E) != "1":
         raise unittest.SkipTest(
@@ -81,14 +89,25 @@ def richiedi_db_provvisto(sonda: str = SONDA_SCHEMA_LIQUIBASE) -> None:
     # ⚠️ Raggiungibile != provvisto: un database c'e', ma potrebbe essere quello
     # usa-e-getta, che ha solo le migration Django.
     with connection.cursor() as cur:
-        cur.execute("SELECT to_regprocedure(%s) IS NOT NULL", [sonda])
+        cur.execute(
+            "SELECT to_regprocedure(%s) IS NOT NULL, to_regprocedure(%s) IS NOT NULL",
+            [SONDA_SCHEMA_LIQUIBASE, sonda],
+        )
         row = cur.fetchone()
     assert row is not None
-    if not row[0]:
+    schema_presente, sonda_presente = row
+    if not schema_presente:
         raise unittest.SkipTest(
-            f"schema Liquibase assente nel database dei test ({sonda} non "
-            "trovata): il runner ne ha creato uno usa-e-getta perche' qualche "
+            f"schema Liquibase assente nel database dei test ({SONDA_SCHEMA_LIQUIBASE} "
+            "non trovata): il runner ne ha creato uno usa-e-getta perche' qualche "
             "test dichiara un database. Vedi brief-be-e2e-db-error-fields-skip-schema.md"
+        )
+    if not sonda_presente:
+        raise AssertionError(
+            f"schema Liquibase presente, ma {sonda} non esiste: la funzione che "
+            "questo test presidia manca o ha cambiato firma. Si allinea la sonda "
+            "alla firma vera (doc auto-generata, o `to_regprocedure` sul DB), "
+            "e con lei le chiamate del test."
         )
 
 

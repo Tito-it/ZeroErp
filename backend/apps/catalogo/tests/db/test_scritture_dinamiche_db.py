@@ -113,7 +113,7 @@ class RifiutoChiaviFuoriListaTests(unittest.TestCase):
 
 class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
     def setUp(self):
-        richiedi_db_provvisto("dbops.fn_pgtap_crea_articolo(character varying,boolean,boolean,boolean,bigint)")
+        richiedi_db_provvisto("dbops.fn_pgtap_crea_articolo(character varying,boolean,boolean,boolean,bigint,smallint,boolean,boolean,bigint,bigint)")
 
     # 2. Articolo: INSERT e UPDATE dal BB, con jsonb, strip e NULL.
     def test_articolo_create_e_update(self):

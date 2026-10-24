@@ -130,7 +130,7 @@ class PrezzoRigaCommessaDbTests(TestCase):
     """Riallinea, sblocca e varia: prezzo e provenienza dal resolver vero."""
 
     def setUp(self) -> None:
-        richiedi_db_provvisto("dbops.fn_pgtap_crea_commessa(text)")
+        richiedi_db_provvisto("dbops.fn_pgtap_crea_commessa(text,character varying,bigint,boolean,boolean)")
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
             for sql in _FIXTURE:

@@ -106,7 +106,7 @@ class ScrittureEmailAccountDbTests(unittest.TestCase):
 
 class ScrittureNotePartizionateDbTests(unittest.TestCase):
     def setUp(self):
-        richiedi_db_provvisto("dbops.fn_pgtap_crea_fattura(text,character varying,bigint)")
+        richiedi_db_provvisto("dbops.fn_pgtap_crea_fattura(text,character varying,bigint,boolean,boolean,boolean,numeric,bigint,boolean)")
 
     # 2. Nota di fattura con `meta`: create e update dal service.
     def test_nota_con_meta_create_e_update(self):
