@@ -12,6 +12,9 @@
 #            (`fatturazione_trigger` ereditato dal cliente da
 #            `trgfn_ordini_normalize`: NOT NULL senza DEFAULT, quindi un NULL
 #            esplicito o un'omissione devono dare lo stesso esito);
+#          · lo stato NON si passa: l'ordine nasce nello stato iniziale, e
+#            lo mette il DB (`script.trgfn_doc_stato_iniziale`, P-2 di
+#            brief-modello-documento-vendita);
 #          · il dict `meta` esce `::jsonb` e si rilegge come oggetto;
 #          · le stringhe arrivano strippate: `fatturazione_trigger` con spazi ai
 #            bordi passa il CHECK di vocabolario SOLO se il BB lo stripa (il
@@ -83,7 +86,6 @@ class CreateOrdineDbTests(unittest.TestCase):
                         fatturazione_trigger="  SPEDITO  ",
                         agente_soggetto_ruolo_id=None,
                         data=date(2083, 3, 15),
-                        stato_doc_ordine_id=stato_bozza_id,
                         meta=_META,
                         fatturazione_immediata=None,
                     )
@@ -95,6 +97,8 @@ class CreateOrdineDbTests(unittest.TestCase):
                     self.assertEqual(riga["uid"], creato["uid"])
                     self.assertEqual(riga["soggetto_ruolo_id"], mondo["cliente_soggetto_ruolo_id"])
                     self.assertEqual(riga["billing_account_id"], mondo["billing_account_id"])
+                    # Lo stato non si passa: l'ordine nasce in bozza perche'
+                    # lo mette il DB (brief-modello-documento-vendita P-2).
                     self.assertEqual(riga["stato_doc_ordine_id"], stato_bozza_id)
                     self.assertEqual(riga["utility_id"], mondo["utility_id"])
                     self.assertEqual(riga["emittente_fiscale_id"], mondo["emittente_fiscale_id"])
@@ -111,7 +115,6 @@ class CreateOrdineDbTests(unittest.TestCase):
                     #     eredita `fatturazione_trigger`, `meta` None -> {}.
                     minimo = repo.create_ordine(
                         billing_account_id=mondo["billing_account_id"],
-                        stato_doc_ordine_id=stato_bozza_id,
                     )
                     cur.execute(_RILETTURA, [minimo["id"]])
                     riga = row_to_dict(cur)

@@ -487,6 +487,8 @@ class PreventiviRepository(
     #        script.fn_resolve_emittente_for_user. Va passato esplicito solo
     #        per il caso admin globale (utente senza emittente assegnato che
     #        sceglie l'emittente del documento).
+    #        Lo stato non si scrive: lo mette il DB, lo stato iniziale del
+    #        vocabolario (`script.trgfn_doc_stato_iniziale`).
     def create_preventivo(
         self,
         *,
@@ -500,7 +502,6 @@ class PreventiviRepository(
         validita_al: date | None = None,
         competenza_mese: date | None = None,
         fatturazione_immediata: bool = False,
-        stato_doc_preventivo_id: int,
         meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         sql = """
@@ -509,9 +510,9 @@ class PreventiviRepository(
                 emittente_fiscale_id,
                 valuta_id, termine_pagamento_id,
                 validita_dal, validita_al, competenza_mese,
-                fatturazione_immediata, stato_doc_preventivo_id, meta
+                fatturazione_immediata, meta
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
             )
             RETURNING id, uid::text AS uid, numero
         """
@@ -521,7 +522,7 @@ class PreventiviRepository(
                 emittente_fiscale_id,
                 valuta_id, termine_pagamento_id,
                 validita_dal, validita_al, competenza_mese,
-                fatturazione_immediata, stato_doc_preventivo_id,
+                fatturazione_immediata,
                 json.dumps(meta or {}),
             ])
             result = row_to_dict(cursor)
@@ -1403,21 +1404,4 @@ class PreventiviRepository(
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
             return cast("list[PreventivoPraticaRow]", rows_to_list(cursor))
-
-    # ══════════════════════════════════════════════════════════
-    #  LOOKUP — Risoluzione config per creazione
-    # ══════════════════════════════════════════════════════════
-
-    # Scopo: Restituisce l'id dello stato DRAFT (bozza) da config.stati_doc_preventivi.
-    # Usa codice_interno (immutabile) per lookup applicativi.
-    def get_stato_bozza_id(self) -> int | None:
-        sql = """
-            SELECT id FROM config.stati_doc_preventivi
-            WHERE codice_interno = 'DRAFT' AND attivo = true
-            LIMIT 1
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql)
-            row = cursor.fetchone()
-            return row[0] if row else None
 

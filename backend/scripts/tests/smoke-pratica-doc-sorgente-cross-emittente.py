@@ -41,11 +41,12 @@
 # esce `SENZA_MATERIA`, non si stampa OK.
 #
 # Rollback-safe: tutto dentro `transaction.atomic()` + `set_rollback(True)`.
-# Scrive UN preventivo (`vendite.preventivi`, l'emittente estraneo) e QUATTRO
-# righe su `pratiche.pratiche_sorgenti` — due per pratica — e annulla tutto.
+# Scrive DUE preventivi (`vendite.preventivi`, uno per emittente, coi loro
+# clienti) e QUATTRO righe su `pratiche.pratiche_sorgenti` — due per pratica —
+# e annulla tutto.
 #
 # Indice test (1..7):
-#   1. Fixture: super admin, due pratiche dello stesso emittente, documento estraneo COSTRUITO
+#   1. Fixture: super admin, due pratiche dello stesso emittente, i due documenti COSTRUITI
 #   2. ⛔ Il perimetro MORDE: l'estraneo sparisce e quello di casa resta
 #   3. Costruzione: due pratiche speculari, il ROOT invertito fra le due
 #   4. Perimetro LARGO: su entrambe vince il ROOT (nessuno scope in mezzo)
@@ -106,6 +107,13 @@ def check(nome: str, ok: bool, dettaglio: str = "") -> None:
         FAIL.append(nome)
 
 
+# Scopo: un uid corto e leggibile nell'esito.
+# ⚠️ La CODA, non la testa: gli uid sono UUIDv7, i primi caratteri sono il
+#    timestamp, e due documenti costruiti nello stesso giro li hanno uguali.
+def uid_breve(uid: str) -> str:
+    return f"…{uid[-8:]}"
+
+
 # Scopo: seleziona l'emittente "attivo" della sessione. Stringa vuota = nessuna
 #        selezione, cioe' il perimetro pieno dell'utente.
 # ⚠️ `NULLIF(current_setting(...), '')` e' esattamente come lo legge
@@ -116,6 +124,52 @@ def seleziona_emittente(cur, emittente_id) -> None:
         "SELECT set_config('app.current_emittente_id', %s, true)",
         [str(emittente_id) if emittente_id is not None else ""],
     )
+
+
+# Scopo: costruisce un preventivo VERO dell'emittente dato, col suo cliente
+#        (builder `fn_pgtap_crea_cliente_ba`, terzo parametro = il
+#        soggetto_ruolo dell'emittente a cui legare il BA, letto qui), e ne
+#        restituisce (uid, utility_id).
+# ⚠️ Il BA si crea DENTRO un emittente (`trgfn_billing_account_guard_admin_globale`:
+#    con «Tutti gli emittenti» non si sa a quale associarlo): il perimetro
+#    torna largo subito dopo l'INSERT del preventivo.
+# ⭐ Lo stato non si scrive: il preventivo nasce nello stato iniziale, e lo
+#    mette il DB (`script.trgfn_doc_stato_iniziale`, brief-modello-documento-
+#    vendita P-2). Due documenti costruiti qui hanno quindi lo STESSO stato per
+#    costruzione — la condizione che rende leggibile il risultato (vedi la
+#    fixture).
+def crea_preventivo(cur, emittente_id: int, utility_id, etichetta: str):
+    cur.execute(
+        "SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali WHERE id = %s",
+        [emittente_id],
+    )
+    emittente_sr = riga_obbligatoria(
+        cur, f"emittente {emittente_id} senza soggetto_ruolo.",
+    )[0]
+    seleziona_emittente(cur, emittente_id)
+    cur.execute(
+        """
+        SELECT billing_account_id, istanza_utility_id, utility_id
+          FROM dbops.fn_pgtap_crea_cliente_ba(%s, %s, %s)
+        """,
+        [etichetta, utility_id, emittente_sr],
+    )
+    ba, istanza, utility = riga_obbligatoria(
+        cur, f"il builder non ha restituito il cliente dell'emittente {emittente_id}.",
+    )
+    cur.execute(
+        """
+        INSERT INTO vendite.preventivi
+               (billing_account_id, istanza_utility_id, utility_id,
+                emittente_fiscale_id)
+        VALUES (%s, %s, %s, %s)
+        RETURNING uid::text
+        """,
+        [ba, istanza, utility, emittente_id],
+    )
+    uid = riga_obbligatoria(cur, "l'INSERT non ha restituito l'uid.")[0]
+    seleziona_emittente(cur, None)
+    return uid, utility
 
 
 # Scopo: la riga dell'ancora per una pratica, letta dalla vista nuda.
@@ -218,7 +272,7 @@ with transaction.atomic():
             cur, "config.sorgenti non ha PREVENTIVO attivo."
         )[0]
 
-        # DUE pratiche senza link, e il preventivo "di casa" del loro emittente.
+        # DUE pratiche senza link, dello stesso emittente.
         # ⚠️ Senza sorgenti, o l'ancora la deciderebbero righe che non abbiamo
         #    costruito noi. Due perche' il caso si prova a ruoli invertiti
         #    (vedi l'intestazione): una sola dimostrerebbe troppo poco.
@@ -233,8 +287,6 @@ with transaction.atomic():
                   FROM pratiche.pratiche p
                  WHERE NOT EXISTS (SELECT 1 FROM pratiche.pratiche_sorgenti ps
                                     WHERE ps.pratica_id = p.id)
-                   AND EXISTS (SELECT 1 FROM vendite.preventivi v
-                                WHERE v.emittente_fiscale_id = p.emittente_fiscale_id)
             ), scelto AS (
                 SELECT emittente_fiscale_id
                   FROM candidate
@@ -254,21 +306,18 @@ with transaction.atomic():
         if len(pratiche) != 2:
             raise SystemExit(
                 "SENZA_MATERIA: serve un emittente con almeno DUE pratiche senza "
-                "sorgenti e almeno un preventivo; trovate "
+                "sorgenti; trovate "
                 f"{len(pratiche)} pratiche utilizzabili."
             )
         (pratica_a, emittente_casa), (pratica_b, _) = pratiche
 
-        cur.execute(
-            """
-            SELECT uid::text, utility_id, stato_doc_preventivo_id
-              FROM vendite.preventivi
-             WHERE emittente_fiscale_id = %s ORDER BY id LIMIT 1
-            """,
-            [emittente_casa],
-        )
-        uid_casa, utility_id, stato_prev_id = riga_obbligatoria(
-            cur, f"nessun preventivo sull'emittente {emittente_casa}."
+        # Il documento DI CASA si costruisce come l'estraneo (sotto): fino al
+        # 2026-10-24 si prendeva «il primo preventivo dell'emittente», in
+        # qualunque stato, e l'estraneo ne copiava lo stato. Con la regola della
+        # nascita (brief-modello-documento-vendita N-1) lo stato non si copia
+        # piu': i due documenti nascono entrambi nello stato iniziale.
+        uid_casa, utility_id = crea_preventivo(
+            cur, emittente_casa, None, "smoke ancora casa",
         )
 
         # ⛔ IL DOCUMENTO ESTRANEO SI COSTRUISCE, NON SI CERCA — ed e' la parte
@@ -281,8 +330,9 @@ with transaction.atomic():
         #    esiste, manca solo un controesempio. Un presidio che aspetta i dati
         #    giusti passa a vuoto su un database ricostruito da zero
         #    (AGENTS.md, corollario sui test).
-        # ⭐ E IL CLONE CONDIVIDE `stato_doc_preventivo_id`, che NON e' pigrizia:
-        #    e' la condizione che rende leggibile il risultato. La regola
+        # ⭐ E I DUE DOCUMENTI HANNO LO STESSO STATO, che NON e' un caso: e' la
+        #    condizione che rende leggibile il risultato (dal 2026-10-24 lo
+        #    garantisce la nascita nello stato iniziale, prima la copia). La regola
         #    d'ancora ordina su risolto → non-terminale → ROOT → id; con lo
         #    stesso stato i criteri 1 e 2 pareggiano *dal perimetro largo*, e a
         #    decidere restano solo `risolto` (che dipende da chi legge) e
@@ -294,55 +344,31 @@ with transaction.atomic():
         #    emittente/BA lo confronta con l'emittente del documento. ⇒ Il cliente
         #    si COSTRUISCE sull'emittente estraneo (builder `fn_pgtap_crea_cliente_ba`,
         #    terzo parametro = l'emittente a cui legare il BA), sulla stessa
-        #    utility del preventivo di casa. Fino al 2026-10-09 qui si clonava la
+        #    utility del preventivo di casa (`crea_preventivo`). Fino al 2026-10-09 qui si clonava la
         #    riga di casa cambiando il solo emittente, con il BA a NULL: il vincolo
         #    nuovo lo rifiuta, ed e' giusto. L'incoerenza che il test prova resta
         #    la stessa — una pratica che punta a un documento di UN ALTRO emittente.
         cur.execute(
             """
-            SELECT id, soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
+            SELECT id FROM anagrafiche.emittenti_fiscali
              WHERE attivo AND id <> %s ORDER BY id LIMIT 1
             """,
             [emittente_casa],
         )
-        emittente_estraneo, emittente_estraneo_sr = riga_obbligatoria(
+        emittente_estraneo = riga_obbligatoria(
             cur,
             "un solo emittente fiscale attivo — su un'installazione "
             "mono-emittente il caso non e' costruibile.",
-        )
+        )[0]
 
-        # ⚠️ Il BA si crea DENTRO un emittente (`trgfn_billing_account_guard_admin_globale`:
-        #    con «Tutti gli emittenti» non si sa a quale associarlo). Il perimetro
-        #    torna largo subito dopo l'INSERT del preventivo.
-        seleziona_emittente(cur, emittente_estraneo)
-        cur.execute(
-            """
-            SELECT billing_account_id, istanza_utility_id, utility_id
-              FROM dbops.fn_pgtap_crea_cliente_ba('smoke ancora cross-emittente', %s, %s)
-            """,
-            [utility_id, emittente_estraneo_sr],
+        uid_estraneo, _ = crea_preventivo(
+            cur, emittente_estraneo, utility_id,
+            "smoke ancora cross-emittente",
         )
-        ba_estraneo, istanza_estranea, utility_estranea = riga_obbligatoria(
-            cur, "il builder non ha restituito il cliente dell'emittente estraneo.",
-        )
-
-        cur.execute(
-            """
-            INSERT INTO vendite.preventivi
-                   (billing_account_id, istanza_utility_id, utility_id,
-                    stato_doc_preventivo_id, emittente_fiscale_id)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING uid::text
-            """,
-            [ba_estraneo, istanza_estranea, utility_estranea, stato_prev_id,
-             emittente_estraneo],
-        )
-        uid_estraneo = riga_obbligatoria(cur, "l'INSERT non ha restituito l'uid.")[0]
-        seleziona_emittente(cur, None)
         check(
             "materia costruita", True,
             f"pratiche {pratica_a} e {pratica_b} (emittente {emittente_casa}), "
-            f"documento estraneo creato sull'emittente {emittente_estraneo}",
+            f"documenti creati: di casa e estraneo (emittente {emittente_estraneo})",
         )
 
         # ── 2. Il perimetro morde ─────────────────────────────────────────
@@ -399,10 +425,10 @@ with transaction.atomic():
         if a_largo_a and a_largo_b:
             check("su A vince il ROOT estraneo",
                   a_largo_a["sorgente_uid"] == uid_estraneo,
-                  f"scelto {a_largo_a['sorgente_uid'][:8]}… ({a_largo_a['ruolo_link']})")
+                  f"scelto {uid_breve(a_largo_a['sorgente_uid'])} ({a_largo_a['ruolo_link']})")
             check("su B vince il ROOT di casa",
                   a_largo_b["sorgente_uid"] == uid_casa,
-                  f"scelto {a_largo_b['sorgente_uid'][:8]}… ({a_largo_b['ruolo_link']})")
+                  f"scelto {uid_breve(a_largo_b['sorgente_uid'])} ({a_largo_b['ruolo_link']})")
             check("entrambe risolte",
                   a_largo_a["risolto"] is True and a_largo_b["risolto"] is True,
                   f"stato {a_largo_a['stato_codice_interno']}")
@@ -418,7 +444,7 @@ with transaction.atomic():
             #    nascosto, ma perche' senza il suo descrittore non e' piu'
             #    `risolto` — e il criterio 1 e' risolto-first.
             check("vince il COLLEGATO di casa", a_casa["sorgente_uid"] == uid_casa,
-                  f"scelto {a_casa['sorgente_uid'][:8]}… ({a_casa['ruolo_link']})")
+                  f"scelto {uid_breve(a_casa['sorgente_uid'])} ({a_casa['ruolo_link']})")
             check("con il descrittore popolato",
                   a_casa["risolto"] is True
                   and a_casa["stato_codice_interno"] is not None,
@@ -445,7 +471,7 @@ with transaction.atomic():
         check("dal perimetro estraneo la vista NON risponde — il link stesso e' nel perimetro",
               a_estraneo is None,
               "" if a_estraneo is None
-              else f"risponde con {a_estraneo['sorgente_uid'][:8]}… ({a_estraneo['ruolo_link']})")
+              else f"risponde con {uid_breve(a_estraneo['sorgente_uid'])} ({a_estraneo['ruolo_link']})")
 
         # ── 7. Il consumatore vero ────────────────────────────────────────
         print("\n=== 7. Il consumatore vero: get_pratica() ===")

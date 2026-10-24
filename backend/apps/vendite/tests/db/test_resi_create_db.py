@@ -6,8 +6,9 @@
 #        al BB `execute_dynamic_insert` (2026-09-26): la testata nasce davvero
 #        in `vendite.resi`, eredita dal DDT sorgente cio' che il trigger le da'
 #        (destinatario, cliente, emittente), e i valori riletti sono quelli
-#        scritti. Presidia `skip_none` (`data` None -> DEFAULT fn_data_operativa()) e
-#        il dict `meta` -> `::jsonb`.
+#        scritti. Presidia `skip_none` (`data` None -> DEFAULT fn_data_operativa()),
+#        il dict `meta` -> `::jsonb` e la nascita in bozza senza che lo stato si
+#        passi (lo mette il DB, P-2 di brief-modello-documento-vendita).
 # Note: ⚠️ Il reso nasce SOLO da un DDT CONSEGNATO
 #       (`trgfn_resi_guard_ddt_consegnato`): la bolla la costruisce
 #       `_ddt_consegnato.crea_ddt_consegnato` (estratto da qui il 2026-10-19,
@@ -60,7 +61,6 @@ class CreateResoDbTests(unittest.TestCase):
                     creato = ResiRepository().create_reso(
                         sorgente_tipo_id=sorgente_tipo_id,
                         sorgente_uid=ddt["uid"],
-                        stato_doc_reso_id=stato_bozza_id,
                         data=None,
                         meta=_META,
                     )
@@ -82,6 +82,8 @@ class CreateResoDbTests(unittest.TestCase):
                     self.assertEqual(riga["uid"], creato["uid"])
                     self.assertEqual(riga["sorgente_tipo_id"], sorgente_tipo_id)
                     self.assertEqual(riga["sorgente_uid"], ddt["uid"])
+                    # Lo stato non si passa: nasce in bozza perche' lo mette
+                    # il DB (brief-modello-documento-vendita P-2).
                     self.assertEqual(riga["stato_doc_reso_id"], stato_bozza_id)
                     # skip_none: `data` omessa -> DEFAULT fn_data_operativa().
                     self.assertEqual(riga["data"], oggi)

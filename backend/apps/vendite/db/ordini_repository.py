@@ -363,7 +363,8 @@ class OrdiniRepository(
     #        `numero` e' generato dal trigger BEFORE INSERT
     #        (trgfn_ordini_gen_codice) → non si passa. `emittente_fiscale_id`
     #        opzionale: se None il trigger lo valorizza da GUC.
-    #        `stato_doc_ordine_id` obbligatorio (DRAFT in create).
+    #        Lo stato non si scrive: lo mette il DB, lo stato iniziale del
+    #        vocabolario (`script.trgfn_doc_stato_iniziale`).
     def create_ordine(
         self,
         *,
@@ -375,7 +376,6 @@ class OrdiniRepository(
         fatturazione_trigger: str | None = None,
         agente_soggetto_ruolo_id: int | None = None,
         data: date | None = None,
-        stato_doc_ordine_id: int,
         meta: dict[str, Any] | None = None,
         fatturazione_immediata: bool | None = None,
     ) -> dict[str, Any]:
@@ -388,7 +388,6 @@ class OrdiniRepository(
         #    brief-db-esecutivi-ba-coppia §10.2 domanda 2).
         valori: dict[str, Any] = {
             "billing_account_id": billing_account_id,
-            "stato_doc_ordine_id": stato_doc_ordine_id,
             "emittente_fiscale_id": emittente_fiscale_id,
             "valuta_id": valuta_id,
             "modalita_pagamento_id": modalita_pagamento_id,

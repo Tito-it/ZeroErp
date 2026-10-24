@@ -185,7 +185,6 @@ class ContrattoClienteFornituraDbTests(unittest.TestCase):
             "utility_id": c["utility_id"],
             "listino_id": listino_id,
             "validita_dal": "2061-01-01",
-            "stato_doc_offerta_id": repo.get_stato_id_by_codice("BOZZA"),
         }))
 
     # 6. R-BE-9: il cliente dell'offerta cambia dentro la utility della testata,

@@ -8,6 +8,9 @@
 #        Presidia le tre convenzioni del BB che un mock non vede:
 #          · `skip_none` — un opzionale None si OMETTE, e vale il DEFAULT del
 #            DB (`data` = fn_data_operativa(), `fatturazione_immediata` = false);
+#          · lo stato NON si passa: il DDT nasce nello stato iniziale, e lo
+#            mette il DB (`script.trgfn_doc_stato_iniziale`, P-2 di
+#            brief-modello-documento-vendita);
 #          · il dict `meta` esce `::jsonb` e si rilegge come oggetto;
 #          · le stringhe arrivano strippate (`targa`).
 # Note: ⚠️ Il mondo si COSTRUISCE, non si cerca (regola zero): azienda,
@@ -62,7 +65,6 @@ class CreateDdtDbTests(unittest.TestCase):
                     #    rilettura sotto lo prova.
                     creato = DdtRepository().create_ddt(
                         destinatario_soggetto_ruolo_id=None,
-                        stato_doc_ddt_id=stato_bozza_id,
                         billing_account_id=mondo["billing_account_id"],
                         emittente_fiscale_id=mondo["emittente_fiscale_id"],
                         valuta_id=valuta_id,
@@ -93,6 +95,8 @@ class CreateDdtDbTests(unittest.TestCase):
                     assert riga is not None
                     self.assertEqual(riga["uid"], creato["uid"])
                     self.assertEqual(riga["destinatario_soggetto_ruolo_id"], mondo["cliente_soggetto_ruolo_id"])
+                    # Lo stato non si passa: nasce in bozza perche' lo mette
+                    # il DB (brief-modello-documento-vendita P-2).
                     self.assertEqual(riga["stato_doc_ddt_id"], stato_bozza_id)
                     self.assertEqual(riga["billing_account_id"], mondo["billing_account_id"])
                     self.assertEqual(riga["emittente_fiscale_id"], mondo["emittente_fiscale_id"])

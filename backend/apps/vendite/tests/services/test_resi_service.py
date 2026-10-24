@@ -247,7 +247,6 @@ class ResiCreaTests(SimpleTestCase):
             "stato_codice_interno": "CONSEGNATO",
         }
         sorgenti_cls.return_value.get_sorgente_attiva.return_value = {"id": 8}
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_reso.return_value = {"id": 7, "uid": "u-reso", "numero": None}
 
         out = resi_service.crea_reso({"ddt_id": 30})
@@ -256,11 +255,12 @@ class ResiCreaTests(SimpleTestCase):
         self.assertEqual(out["righe_ids"], [])
         # Sorgente risolta per codice (mai id hardcoded) e uid del DDT.
         sorgenti_cls.return_value.get_sorgente_attiva.assert_called_once_with("DDT_VENDITA")
-        repo.get_stato_id_by_codice.assert_called_once_with("DRAFT")
         kwargs = repo.create_reso.call_args.kwargs
         self.assertEqual(kwargs["sorgente_tipo_id"], 8)
         self.assertEqual(kwargs["sorgente_uid"], "u-ddt-30")
-        self.assertEqual(kwargs["stato_doc_reso_id"], 1)
+        # Lo stato non si passa: lo mette il DB, lo stato iniziale del
+        # vocabolario (brief-modello-documento-vendita P-2).
+        self.assertNotIn("stato_doc_reso_id", kwargs)
 
     @patch(_REPO)
     def test_crea_reso_ddt_mancante(self, repo_cls) -> None:
@@ -313,7 +313,6 @@ class ResiCreaTests(SimpleTestCase):
             "id": 30, "uid": "u-ddt-30", "stato_codice_interno": "CONSEGNATO",
         }
         sorgenti_cls.return_value.get_sorgente_attiva.return_value = {"id": 8}
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_reso.return_value = {"id": 7, "uid": "u", "numero": None}
         repo.get_ddt_riga_snapshot.return_value = dict(_SNAPSHOT_RIGA)
         repo.create_riga.return_value = {"id": 71}
@@ -344,7 +343,6 @@ class ResiCreaTests(SimpleTestCase):
             "id": 30, "uid": "u-ddt-30", "stato_codice_interno": "CONSEGNATO",
         }
         sorgenti_cls.return_value.get_sorgente_attiva.return_value = {"id": 8}
-        repo.get_stato_id_by_codice.return_value = 1
         with self.assertRaises(ServiceError) as cm:
             resi_service.crea_reso({"ddt_id": 30, "data": "13/07/2026"})
         self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")

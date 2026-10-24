@@ -142,9 +142,6 @@ class ScrittureDinamicheVenditeDbTests(unittest.TestCase):
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 m = _apri_mondo(cur)
-                bozza = repo.get_stato_id_by_codice("BOZZA")
-                self.assertIsNotNone(bozza)
-
                 offerta = repo.create_offerta({
                     "emittente_fiscale_id": m["emittente_fiscale_id"],
                     "billing_account_id": m["billing_account_id"],
@@ -152,7 +149,6 @@ class ScrittureDinamicheVenditeDbTests(unittest.TestCase):
                     "utility_id": m["utility_id"],
                     "listino_id": m["listino_id"],
                     "validita_dal": oggi_aziendale(),
-                    "stato_doc_offerta_id": bozza,
                     # ⭐ Regola Tid 2026-09-26: una STRINGA su una colonna jsonb
                     #    dichiarata e' TESTO JSON. Prima `to_write_param` la
                     #    serializzava di nuovo: uno scalare stringa jsonb.

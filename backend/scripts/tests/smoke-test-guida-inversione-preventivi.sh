@@ -119,7 +119,6 @@ $GUC_PY
 import uuid
 with connection.cursor() as c:
     _guc(c)
-    c.execute("SELECT id FROM config.stati_doc_preventivi WHERE codice_interno='EMESSO'"); emesso=c.fetchone()[0]
     c.execute("SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno='DA_ESEGUIRE'"); da_eseg=c.fetchone()[0]
     c.execute("SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno='IN_CORSO'"); in_corso=c.fetchone()[0]
     c.execute("SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno='COMPLETATO'"); completato=c.fetchone()[0]
@@ -149,12 +148,16 @@ with connection.cursor() as c:
                  JOIN anagrafiche.soggetti_ruoli sr ON sr.id = b.soggetto_ruolo_id WHERE b.id = %s""", [ba])
     sogg = c.fetchone()[0]
     emitt = pemitt
+    # Il preventivo NASCE in bozza (lo stato lo mette il DB, BB
+    # `script.trgfn_doc_stato_iniziale`) e va a EMESSO per la matrice, sotto i
+    # guard veri: brief-modello-documento-vendita N-1.
     c.execute("""INSERT INTO vendite.preventivi (numero, rev, billing_account_id, istanza_utility_id, utility_id, validita_dal, validita_al,
-                   valuta_id, stato_doc_preventivo_id, data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-                 VALUES (%s,0,%s,%s,%s,DATE '2026-07-01',DATE '2026-07-31',%s,%s,DATE '2026-07-01',false,false,
+                   valuta_id, data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
+                 VALUES (%s,0,%s,%s,%s,DATE '2026-07-01',DATE '2026-07-31',%s,DATE '2026-07-01',false,false,
                    '{"test_scope":"smoke_guida"}'::jsonb,%s) RETURNING id,(uid)::text""",
-              [f"SMOKE_GUIDA-{uuid.uuid4().hex[:10]}", ba, istanza, utility, valuta, emesso, pemitt])
+              [f"SMOKE_GUIDA-{uuid.uuid4().hex[:10]}", ba, istanza, utility, valuta, pemitt])
     prev_id, prev_uid = c.fetchone()
+    c.execute("SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', %s, 'EMESSO')", [prev_id])
     c.execute("""INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id,
                    priorita_id, definizione_id, descrizione) VALUES (%s,%s,%s,%s,%s,%s,'SMOKE_GUIDA E2E') RETURNING id""",
               [emitt, tipo, sogg, aperta, priorita, defin])

@@ -467,7 +467,10 @@ def _vincoli_cliente_preventivo() -> Iterator[None]:
 
 
 # Scopo: Crea un nuovo preventivo in stato BOZZA.
-# Obiettivo: validazione input, risoluzione stato BOZZA, INSERT, restituisce id+uid+numero.
+# Obiettivo: validazione input, INSERT, restituisce id+uid+numero. Lo stato non
+#            si passa: il preventivo nasce nello stato iniziale del suo
+#            vocabolario, e lo mette il DB (BB `script.trgfn_doc_stato_iniziale`,
+#            brief-modello-documento-vendita P-2).
 #
 # Regole di dominio:
 #  - utility_id obbligatorio;
@@ -506,15 +509,6 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
         function_name=f"{_FN}.crea_preventivo",
     )
 
-    stato_bozza_id = repo.get_stato_bozza_id()
-    ErrorManager.require(
-        stato_bozza_id is not None,
-        code="E_CONFIG_MANCANTE",
-        message="Stato BOZZA non configurato in config.stati_doc_preventivi.",
-        function_name=f"{_FN}.crea_preventivo",
-    )
-    assert stato_bozza_id is not None
-
     # Creazione e slot di default in UNA transazione (il riempimento non e'
     # best-effort: api.md §Atomicita').
     with _vincoli_cliente_preventivo(), transaction.atomic():
@@ -530,7 +524,6 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
             competenza_mese=payload.get("competenza_mese"),
             # Un flag del corpo e' un booleano JSON (`"false"` e' un 400 sul campo).
             fatturazione_immediata=_V.optional_bool(payload, "fatturazione_immediata") or False,
-            stato_doc_preventivo_id=stato_bozza_id,
             meta=payload.get("meta"),
         )
         # Slot di default dall'anagrafica del cliente: lo decide il DB

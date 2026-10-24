@@ -510,15 +510,6 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
     assert sorgente is not None
     sorgente_tipo_id = sorgente["id"]
 
-    stato_bozza_id = repo.get_stato_id_by_codice(_STATO_BOZZA)
-    ErrorManager.require(
-        stato_bozza_id is not None,
-        code="E_RESO_VALIDAZIONE",
-        message="Stato DRAFT non configurato in config.stati_doc_reso.",
-        function_name=f"{_FN}.crea_reso",
-    )
-    assert stato_bozza_id is not None
-
     # Le righe sono FACOLTATIVE alla nascita (un reso puo' nascere vuoto): se
     # ci sono, una lista di voci, ogni voce un oggetto (BB), giudicate PRIMA di
     # scrivere la testata. I campi della riga li legge `_crea_riga`.
@@ -532,10 +523,12 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
     with _db_errors("crea_reso"), transaction.atomic():
         # transaction.atomic anche senza righe: costo nullo, e col pannello FE
         # (testata + N righe) l'unita' e' atomica per costruzione.
+        # Lo stato non si passa: il reso nasce nello stato iniziale del suo
+        # vocabolario, e lo mette il DB (BB `script.trgfn_doc_stato_iniziale`,
+        # brief-modello-documento-vendita P-2).
         creato = repo.create_reso(
             sorgente_tipo_id=int(sorgente_tipo_id),
             sorgente_uid=str(ddt["uid"]),
-            stato_doc_reso_id=int(stato_bozza_id),
             data=_parse_data_iso(data.get("data"), op="crea_reso"),
             meta=meta if isinstance(meta, dict) else None,
             magazzino_id=data.get("magazzino_id"),
