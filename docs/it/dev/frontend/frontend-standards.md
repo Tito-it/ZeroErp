@@ -3273,11 +3273,21 @@ stato espanso — invita a chiudere). Standard PrimeVue/Material allineato.
 PrimeVue usa `chevron-right` (chiusa) / `chevron-down` (aperta). Il toggle
 «espandi tutte» della lista usa la **stessa** coppia, `MANAGE_ICONS.ROW_EXPAND` /
 `MANAGE_ICONS.ROW_COLLAPSE`, così riga e lista portano lo stesso segno. Stessa
-coppia per i gruppi annidati della sidebar (a sidebar chiusa, `ROW_EXPAND`
-accanto all'icona del gruppo segnala che dentro ci sono altre voci) e per i toggler di riga scritti a mano
+coppia per i toggler di riga scritti a mano
 nei drawer (`isExpanded(data) ? ROW_COLLAPSE : ROW_EXPAND`). ⛔ Mai il glifo
 `pi pi-chevron-*` cablato per un toggle di espansione.
 `EXPAND`/`COLLAPSE` restano per accordion, pannelli e tree.
+
+**Il segno di sottomenu** (Tid, 2026-10-24): una voce di menu che contiene altre
+voci porta `MANAGE_ICONS.SOTTOMENU` (`pi-caret-right`, chiusa) /
+`SOTTOMENU_APERTO` (`pi-caret-down`, aperta), **sempre** con la classe
+`app-sottomenu-icon` (main.css), che le dà il colore dell'icona della sua voce.
+Vale per la sidebar chiusa (`SidebarItem`, prop `gruppo`), per i gruppi a sidebar
+aperta (`SidebarDomain`) e per i sottomenu di un `TieredMenu` (slot
+`#submenuicon`, al posto dell'`AngleRight` di PrimeVue). ⛔ Non `ROW_EXPAND`: è il
+toggle delle righe di tabella, e fino a quel giorno la sidebar lo prendeva in
+prestito — col grigio del testo secondario accanto a un'icona colorata, un segno
+che sembrava fuori contesto.
 
 ⛔ **Su una `<ListaConfigurabile>` il toggle «espandi tutte» NON si scrive in
 pagina** (2026-09-18): è l'azione standard di `useListaAzioni`, accanto a
@@ -3484,6 +3494,22 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
   `content` dell'overlay-tipo, e la chiave in `NAV_ICONS`. Mai una PrimeIcon
   singola generica. `icone.spec.js` fallisce se una classe composta delle
   costanti non ha le sue regole in `main.css`.
+- **Famiglia dei diari** (Tid, 2026-10-24): stesso schema, base **righe di
+  testo** (`pi-align-left` `\e947`, «un registro») con lo stesso angolo
+  ritagliato, e il simbolo di che cosa registra: Audit log matita
+  (`\e942`), Error log triangolo (`\e922`), Log email busta (`\e979`).
+  Classi `.app-nav-icon-log-*`, chiavi `NAV_ICONS.AUDIT_LOG` / `ERROR_LOG` /
+  `EMAIL_LOG`. Un registro nuovo entra nella famiglia allo stesso modo.
+  ⛔ Il Log email non porta più `NAV_ICONS.EMAIL`: è la voce accanto, nello
+  stesso menu.
+- **Processi automatici** (Tid, 2026-10-24): server (`pi-server` `\e9e4`) +
+  frecce circolari (`pi-sync` `\e9e6`), «il server che lavora da solo, a
+  ciclo». Non è un registro, quindi ha una base sua. ⛔ Non più `pi-cog`, che è il
+  dominio Configurazione e `MANAGE_ICONS.PERSONALIZZA`.
+- ⭐ La **geometria dell'angolo aperto** (ritaglio della base, posizione e
+  misura del simbolo) è **una regola sola** in `main.css`, condivisa da
+  documenti di vendita, diari e processi: una famiglia nuova aggiunge le sue
+  classi ai due selettori di quella regola e dichiara solo i due `content`.
 
 ### Regole CSS per i componenti
 

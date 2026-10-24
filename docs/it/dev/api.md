@@ -414,8 +414,9 @@ I parametri del payload si estraggono con i validator di `apps.core.api.payload_
 * ⭐ **La soglia sta sopra il timeout di gunicorn** (BE-5). La ripresa è sicura solo perché
   nessuna richiesta vive più del timeout del worker: all'avvio e a ogni `kill -HUP`
   `backend/gunicorn.conf.py` rifiuta di partire, in modalità forte, se
-  `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` non supera il
-  timeout di almeno 30 secondi, se il timeout è 0 (nessun tetto) o se il worker non è `sync`
+  `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` (chiesta a `dbops.fn_idempotency_soglia_secondi`, la
+  stessa lettura della prenotazione: il backend non ricopia la regola) non supera il timeout di
+  almeno 30 secondi, se il timeout è 0 (nessun tetto) o se il worker non è `sync`
   (in `gthread` il timeout non è il tetto di una richiesta). Le due impostazioni si cambiano
   insieme.
 * Il racconto intero, per chi non legge il codice: la guida

@@ -45,7 +45,7 @@ La logica e` implementata in `apps/core/api/endpoint_helpers.py` e viene usata d
 ## Dipendenze DB
 - `dbops.fn_idempotency_prenota` e `dbops.idempotency_keys` (solo con strong idempotency attiva)
 - `dbops.fn_get_or_create_session_tx_id()` (risoluzione `tx_id`)
-- `config.parameters.SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI`: la soglia di ripresa. La legge la funzione; il backend la confronta col timeout di gunicorn all'avvio e a ogni `kill -HUP` (`backend/gunicorn.conf.py` → `apps/core/services/soglia_idempotenza.py`)
+- `config.parameters.SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI`: la soglia di ripresa. La legge e la valida `dbops.fn_idempotency_soglia_secondi`, per la prenotazione e per il backend (`IdempotencyStore.soglia_ripresa_secondi`), che la confronta col timeout di gunicorn all'avvio e a ogni `kill -HUP` (`backend/gunicorn.conf.py` → `apps/core/services/soglia_idempotenza.py`)
 
 ## Vedi anche
 - [Le operazioni che non si ripetono](/guide/operazioni-che-non-si-ripetono) — il meccanismo intero

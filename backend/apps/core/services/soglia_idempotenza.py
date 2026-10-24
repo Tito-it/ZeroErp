@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from gunicorn.workers.sync import SyncWorker
 
-from apps.core.services.parameter_service import ParameterService
+from apps.core.services.idempotency_store import IdempotencyStore
 
 CODICE_SOGLIA = "SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI"
 
@@ -48,7 +48,10 @@ class SogliaIdempotenzaNonSicura(RuntimeError):
 
 # Scopo: Rifiuta la configurazione in cui una richiesta ancora viva potrebbe
 #        essere ripresa da un reinvio. Solleva `SogliaIdempotenzaNonSicura`
-#        col motivo, o `E_CONFIG_MANCANTE` se la soglia a DB e' rotta.
+#        col motivo, o l'errore del database (`E_CONFIG_MANCANTE`) se la
+#        soglia e' rotta.
+# ⭐ La soglia si CHIEDE al database (`IdempotencyStore.soglia_ripresa_secondi`),
+#    che la legge come la legge la prenotazione: il presidio vale solo cosi'.
 # ⛔ `timeout_secondi = 0` per gunicorn vuol dire «nessun timeout»: nessun
 #    tetto, quindi nessuna soglia e' sicura.
 def verifica_soglia_contro_timeout(*, timeout_secondi: int, worker_class: type) -> None:
@@ -63,7 +66,7 @@ def verifica_soglia_contro_timeout(*, timeout_secondi: int, worker_class: type) 
             "gunicorn senza timeout (0): nessuna richiesta ha un tetto, e la ripresa "
             f"delle Idempotency-Key ({CODICE_SOGLIA}) non e' sicura."
         )
-    soglia = ParameterService().get_default_int_positivo(CODICE_SOGLIA)
+    soglia = IdempotencyStore.soglia_ripresa_secondi()
     if soglia < timeout_secondi + MARGINE_SECONDI:
         raise SogliaIdempotenzaNonSicura(
             f"{CODICE_SOGLIA} = {soglia}s non sta sopra il timeout di gunicorn "

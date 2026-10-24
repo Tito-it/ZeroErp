@@ -620,12 +620,19 @@ export const MANAGE_ICONS = {
   // Toggle delle EXPANSION ROW di una DataTable: la stessa coppia del toggler
   // di riga PrimeVue (chevron-right = chiusa, chevron-down = aperta), cosi'
   // «espandi tutte» nella barra della lista porta lo stesso segno della riga.
-  // Stessa coppia per i gruppi annidati della sidebar (SidebarDomain); a
-  // sidebar CHIUSA `ROW_EXPAND` sta accanto all'icona del gruppo e dice «qui
-  // dentro ci sono altre voci» (SidebarItem, prop `gruppo`, 2026-10-06).
   // Usare dinamicamente: `icon: isExpanded ? ROW_COLLAPSE : ROW_EXPAND`.
   ROW_EXPAND: 'pi pi-chevron-right',
   ROW_COLLAPSE: 'pi pi-chevron-down',
+  // Il segno «questa voce di menu contiene altre voci» (Tid 2026-10-24): il
+  // gruppo a sidebar chiusa (SidebarItem, prop `gruppo`), il gruppo a sidebar
+  // aperta (SidebarDomain: chiuso / aperto) e le voci con sottomenu di un
+  // TieredMenu (slot `#submenuicon`, kebab utente della topbar). Sempre con
+  // la classe `app-sottomenu-icon` (main.css): prende il colore dell'icona
+  // della sua voce. Caret PIENO: piccolo com'e', un chevron filiforme non si
+  // vedeva. ⛔ Non `ROW_EXPAND`: e' il toggle delle righe di tabella, fino a
+  // quel giorno prestato alla sidebar.
+  SOTTOMENU: 'pi pi-caret-right',
+  SOTTOMENU_APERTO: 'pi pi-caret-down',
   // Workflow approvazione prezzi (Sprint E listini v5).
   APPROVE: 'pi pi-check',
   REJECT: 'pi pi-times',

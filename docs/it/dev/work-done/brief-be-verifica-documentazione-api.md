@@ -1,17 +1,15 @@
 # Brief BE — La documentazione API confrontata col codice
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-24 (sera)
+## ⏭️ Chi riparte — aggiornato al 2026-10-24 (sera) — ✅ CHIUSO, archiviato in `work-done/`
 
-**Riparte: il BE** con il passo 12 (§I.11.2): il presidio di BE-5 legge la soglia da
-`dbops.fn_idempotency_soglia_secondi()` e si ritira `get_default_int_positivo`. `20261024-03` …
-`-06` sono applicati e i pgTAP verdi (§I.11.3, 2026-10-24). **Il lato DB di questo brief è
-finito.** **In parallelo Tid**:
-riavvio di gunicorn su dbdev con verifica di BE-1 (passo 8-bis) e commit del giro BE (passo 9).
-Dopo l'apply di §I.11 il passo BE (12) e l'archiviazione. BE-1, BE-2, BE-5 e BE-6 sono fatti;
-del lato DB resta solo §I.11. La guida
+**Riparte: nessuno.** Il brief è chiuso: gunicorn è riavviato e la modalità forte è verificata
+in esercizio su dbdev (passo 8-bis, §I.11.4). Resta il commit del passo BE 12 (§I.11.2), di Tid.
+**Il lato DB è finito, il lato BE anche**: il presidio di BE-5 chiede la soglia a
+`dbops.fn_idempotency_soglia_secondi()` e il backend non ricopia più la regola. BE-1, BE-2, BE-5
+e BE-6 sono fatti. La guida
 [Le operazioni che non si ripetono](../../guide/operazioni-che-non-si-ripetono.md) è riletta
 dopo BE-6 (§I.9). **D2 e D3 sono usciti da questo brief**: sono il tema del
-[brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).
+[brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md) (M-1 … M-4).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -25,19 +23,18 @@ dopo BE-6 (§I.9). **D2 e D3 sono usciti da questo brief**: sono il tema del
 | 7 | ✅ **Tid** | Apply di `20261024-01` e `-02` su scratch e dbdev, `dbops/test-idempotency-prenota-v1` verde (2026-10-24) | §I.8 | 6 |
 | 7-bis | ✅ team DB | Guida «Le operazioni che non si ripetono» | §I.9 | — |
 | 8 | ✅ BE | BE-1 + BE-2 nella forma «unità dichiarata», BE-5 (soglia legata al timeout di gunicorn) e BE-6 (le due pagine di doc BE), nello stesso rilascio | §I.10 | 7 |
-| 8-bis | **Tid** | `sudo systemctl restart zeroerp-gunicorn` su dbdev — ⚠️ un restart, non un `kill -HUP`: il master tiene i moduli Python importati al suo avvio (il presidio di BE-5 gira anche al HUP, §I.10.4, ma col codice di allora) — e una POST in modalità forte: 200 | §I.10.3 | 8 |
-| 9 | **Tid** | Commit del giro BE (§I.10, compresa la revisione di §I.10.4) | — | 8-bis |
+| 8-bis | ✅ **Tid** + BE | `sudo systemctl restart zeroerp-gunicorn` su dbdev (2026-10-24, 17:51), verifica in esercizio verde (§I.11.4) — ⚠️ un restart, non un `kill -HUP`: il master tiene i moduli Python importati al suo avvio (il presidio di BE-5 gira anche al HUP, §I.10.4, ma col codice di allora) — e una POST in modalità forte: 200 | §I.10.3 | 8 |
+| 9 | ✅ **Tid** | Commit del giro BE (§I.10, compresa la revisione di §I.10.4): `c3fce45ab` | — | 8 |
 | 10 | ✅ team DB | `20261024-03` … `-06`: validatore generico, `dbops.fn_idempotency_soglia_secondi()`, prenotazione e login che lo usano; pgTAP nuovo; prova pre-apply verde | §I.11.3 | — |
 | 11 | ✅ **Tid** | Apply su scratch e dbdev; pgTAP `script/test-intero-positivo-da-testo-v1`, `dbops/test-idempotency-prenota-v1` e i quattro del login verdi (2026-10-24) | §I.11.3 | 10 |
-| 12 | BE | Il presidio di BE-5 legge la soglia dalla funzione; ritirati `get_default_int_positivo` e la sua regex | §I.11.2 | 11 |
-| 13 | **Tid** | Commit, archiviazione in `work-done/` | — | 12 |
+| 12 | ✅ BE | Il presidio di BE-5 legge la soglia dalla funzione (`IdempotencyStore.soglia_ripresa_secondi`); ritirati `get_default_int_positivo` e la sua regex (2026-10-24) | §I.11.2 | 11 |
+| 13 | **Tid** | Commit del passo 12; ✅ archiviato in `work-done/` il 2026-10-24 | — | 12 |
 
 Decisioni aperte di Tid: **nessuna**. La forma di §I.11 e il margine costante di BE-5 sono decisi
 (§I.11.0, 2026-10-24). Prima decise: (§I.5 decisa il 2026-10-23: 90 giorni, anche per
 `audit_log`; §I.7 decisa il 2026-10-23: unità di lavoro dichiarata, e i `catch` muti corretti in
-questo giro). Lavoro da committare: il giro DB di §I.11.3 (`20261024-03` … `-06`, il pgTAP
-`script/test-intero-positivo-da-testo-v1`, la guida «Configurazione e gestione parametri», questo
-brief). Il giro BE di §I.10 è nel commit `c3fce45ab`; i giri DB di §I.7.5 e §I.8 nei commit del
+questo giro). Lavoro da committare: il passo BE 12 (§I.11.2: codice, test, doc BE, questo
+brief). Il giro DB di §I.11.3 è nel commit `9b88ed8ad`; il giro BE di §I.10 è nel commit `c3fce45ab`; i giri DB di §I.7.5 e §I.8 nei commit del
 2026-10-24; quelli di §I.2/§I.6 e il giro BE/FE di §I.7.1 nei commit del 2026-10-23.
 
 ✅ Deciso da Tid col BE il 2026-10-23: `p_ripresa_ammessa` è **obbligatorio, senza un default
@@ -633,17 +630,44 @@ ON_ERROR_STOP=1`, transazione annullata, come `zeroerp_owner`):
   La misura vera è la corsa come app di Tid.
 * Dopo le corse le funzioni vive sono quelle di prima su tutti e due i database (md5 identici).
 * Guardrail statici verdi sui quattro changeSet.
-* ⚠️ La pagina auto-generata di `fn_intero_positivo_da_testo` nasce con la prossima
-  rigenerazione della doc: fino ad allora il link della guida non ha bersaglio.
+* ✅ La pagina auto-generata di `fn_intero_positivo_da_testo` c'è (commit `9b88ed8ad`): il link
+  della guida ha il suo bersaglio.
 
-#### I.11.2 Il passo BE, dopo l'apply
+#### I.11.2 Il passo BE, dopo l'apply — ✅ fatto il 2026-10-24 (da committare)
 
-* `verifica_soglia_contro_timeout` legge la soglia con `SELECT dbops.fn_idempotency_soglia_secondi()`;
-  un rifiuto della funzione risale come `E_CONFIG_MANCANTE` e ferma l'avvio come oggi.
-* Si ritirano `ParameterService.get_default_int_positivo` e `_INTERO_POSITIVO`, che non hanno altri
-  consumatori; `_default_obbligatorio` torna dentro `get_default_date` (un consumatore solo, regola
-  del 2). Voce del catalogo BB aggiornata nello stesso giro, test di `DefaultIntPositivoTests` spostato
-  sul pgTAP.
+| Dove | Che cosa |
+| --- | --- |
+| `apps/core/services/idempotency_store.py` | `IdempotencyStore.soglia_ripresa_secondi()`: `SELECT dbops.fn_idempotency_soglia_secondi()`. Sta accanto alle altre chiamate a `dbops` dell'idempotenza. Una soglia rotta è l'`E_CONFIG_MANCANTE` della funzione, che ferma l'avvio come prima |
+| `apps/core/services/soglia_idempotenza.py` | `verifica_soglia_contro_timeout` chiede la soglia allo store; via l'import di `ParameterService` |
+| `apps/core/services/parameter_service.py` | ritirati `get_default_int_positivo` e `_INTERO_POSITIVO` (nessun altro consumatore); `_default_obbligatorio` torna dentro `get_default_date`, che ne era l'unico altro consumatore |
+| `apps/core/tests/services/test_soglia_idempotenza.py` | il patch punta alla lettura nuova; via `DefaultIntPositivoTests`: le forme le prova il pgTAP `script/test-intero-positivo-da-testo-v1` |
+| `apps/core/tests/db/test_idempotency_prenota_db.py` | n. 7: la chiamata **vera** alla funzione (sonda in `setUpClass`). Un mock non vede né nome né firma |
+| doc | catalogo BB (voce nuova `soglia_ripresa_secondi`, voce `get_default_int_positivo` ritirata), api.md, manual `api_endpoint_helpers` |
+
+**Verifiche.** ruff verde; mypy col cancello: 0 nuovi; `apps.core` con `ZEROERP_TEST_DB_E2E=1`:
+1929 test, OK (1 skip); `test_idempotency_prenota_db` 7/7 sul DB vero. Il hook provato sulla
+soglia reale (120): timeout 60 e 90 partono, 91 rifiutato (90 + 30 = 120, il confine esatto).
+⚠️ Non ancora in esercizio: vale dal riavvio di gunicorn (passo 8-bis).
+
+#### I.11.4 La verifica in esercizio (2026-10-24, dopo il riavvio delle 17:51) — ✅ verde
+
+Gunicorn su dbdev con il codice di §I.10 e §I.11.2: worker `sync`, timeout 60; il presidio di
+BE-5 (`on_starting`) ha caricato Django nel master prima di `Listening`, e la soglia (120) è
+passata. Le chiamate vere, utente `dev.smoke`, endpoint ATOMICA
+`POST /api/v1/ui/liste/anagrafiche.clienti/preferenza/ignore-preset-update/` (una preferenza di
+prova creata prima e cancellata dopo):
+
+| # | Chiamata | Atteso | Avuto |
+| --- | --- | --- | --- |
+| 1 | prima esecuzione | 200, riga `completed` legata a utente ed endpoint | ✅ 200; `completed`, `POST /api/v1/ui/liste/…`, utente valorizzato |
+| 2 | stessa key, stesso endpoint | REPLAY | ✅ 200 con `X-Idempotency-Replayed: 1` |
+| 3 | stessa key, endpoint della dashboard (D7) | 400 `E_IDEMPOTENCY_KEY_RIUSATA` | ✅ |
+| 4 | lista inesistente | errore del dominio, key `failed` (scritta fuori dall'`atomic`) | ✅ 404 `E_UI_LISTA_NON_TROVATA`; riga `failed` |
+| 5 | stessa key `failed` | si riesegue, non 409 | ✅ di nuovo `idempotency_first_execution` nel log, stesso 404 |
+
+Il 500 di §I.8 è chiuso. ⚠️ Non provata in esercizio, perché vorrebbe un worker ucciso a metà:
+la ripresa di una key orfana (ATOMICA sì, A_PASSI no). La provano i test sul DB vero
+(`test_idempotency_prenota_db` n. 4) e il pgTAP `dbops/test-idempotency-prenota-v1`.
 
 ---
 
@@ -721,12 +745,12 @@ ON_ERROR_STOP=1`, transazione annullata, come `zeroerp_owner`):
 
 1. **`E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE` ha classe TECNICO** (500) per un
    errore di input dell'amministratore: dovrebbe essere DATO_ERRATO. (§3.21)
-2. ~~**Azioni di processo mancanti fra gemelli**~~ (A5, `post_permission`): ➡️ *Spostato il 2026-10-21 in [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).* emissione e
+2. ~~**Azioni di processo mancanti fra gemelli**~~ (A5, `post_permission`): ➡️ *Spostato il 2026-10-21 in [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md) (M-1 … M-4).* emissione e
    cambio stato di contratto, offerta e ordine; stato della versione di listino;
    stato di distinte e righe di pagamenti; stato di inventari e rettifiche. Il
    preventivo, la commessa, la pratica, il DDT e il reso hanno un'azione di processo,
    questi no. Il backend non la inventa.
-3. ~~**Cambio stato del DDT**~~ (aggiunto il 2026-10-21, ok Tid): ➡️ *Spostato il 2026-10-21 in [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).* l'emissione chiede
+3. ~~**Cambio stato del DDT**~~ (aggiunto il 2026-10-21, ok Tid): ➡️ *Spostato il 2026-10-21 in [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md) (M-1 … M-4).* l'emissione chiede
    `emetti_ddt` (`post_permission`), `ApiDdtCambiaStato` nessuna azione di processo,
    mentre il verbo DB applica `emetti_ddt` anche a `EMESSO → ANNULLATO`. Un solo
    `post_permission` sulla view non basta: le transizioni hanno permessi diversi. Al

@@ -13,15 +13,9 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
-import re
 
 from apps.core.db.parameter_repository import ParameterRepository
 from apps.core.services.error_manager import ErrorManager
-
-
-# La forma di un intero positivo come la legge il database
-# (`dbops.fn_idempotency_prenota`): niente zeri in testa, al piu' sei cifre.
-_INTERO_POSITIVO = re.compile(r"[1-9][0-9]{0,5}")
 
 
 # Scopo: L'esito di un upsert di override: l'id, oppure 404
@@ -131,7 +125,14 @@ class ParameterService:
     #    richiesta. A DB non c'e' un guard sul formato (D-2 del brief
     #    parametro-data-minima-ritardo-dashboard): il presidio e' qui.
     def get_default_date(self, code: str) -> date:
-        value = self._default_obbligatorio(code).strip()
+        value = self._repo.get_default_value(code)
+        ErrorManager.require(
+            value is not None and value.strip() != "",
+            code="E_CONFIG_MANCANTE",
+            message=f"Parametro '{code}' assente o senza valore.",
+        )
+        assert value is not None
+        value = value.strip()
         try:
             return date.fromisoformat(value)
         except ValueError:
@@ -140,42 +141,6 @@ class ParameterService:
                 message=f"Parametro '{code}' non e' una data ISO (YYYY-MM-DD).",
                 detail=f"Valore attuale: '{value}'",
             )
-
-    # Scopo: Il DEFAULT di un parametro intero positivo, letto nudo (come
-    #        `get_default_date`, stesse tre forme di guasto: assente, vuoto,
-    #        non intero positivo -> `E_CONFIG_MANCANTE`).
-    # ⭐ Nasce il 2026-10-24 per `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` (BE-5 di
-    #    brief-be-verifica-documentazione-api): la soglia che legge
-    #    `dbops.fn_idempotency_prenota`, default nudo e senza override. La
-    #    forma ammessa e' quella della funzione (`^[1-9][0-9]{0,5}$`): ⚠️ non
-    #    `str.isdigit`, che accetta `007` e le cifre non ASCII — una soglia che
-    #    il backend leggerebbe e la funzione rifiuterebbe.
-    # ⛔ Il valore si controlla COM'E', senza `strip`: la funzione non fa
-    #    `btrim`, e `' 120 '` passerebbe il presidio di avvio per poi rompere
-    #    ogni prenotazione a runtime.
-    def get_default_int_positivo(self, code: str) -> int:
-        value = self._default_obbligatorio(code)
-        if not _INTERO_POSITIVO.fullmatch(value):
-            ErrorManager.raise_error(
-                code="E_CONFIG_MANCANTE",
-                message=f"Parametro '{code}' non e' un intero positivo.",
-                detail=f"Valore attuale: '{value}'",
-            )
-        return int(value)
-
-    # Scopo: Il default nudo di un parametro che il modello pretende, cosi'
-    #        com'e' scritto: `E_CONFIG_MANCANTE` se manca o e' vuoto. La sede
-    #        comune dei lettori tipizzati qui sopra (regola del 2); gli spazi li
-    #        decide ogni lettore, secondo chi altro legge lo stesso valore.
-    def _default_obbligatorio(self, code: str) -> str:
-        value = self._repo.get_default_value(code)
-        ErrorManager.require(
-            value is not None and value.strip() != "",
-            code="E_CONFIG_MANCANTE",
-            message=f"Parametro '{code}' assente o senza valore.",
-        )
-        assert value is not None
-        return value
 
     # Scopo: Risolve N parametri in un colpo con override utente.
     #        Restituisce dizionario {code: valore}. I parametri non trovati

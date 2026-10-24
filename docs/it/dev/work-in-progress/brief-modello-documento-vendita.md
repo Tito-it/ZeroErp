@@ -22,7 +22,7 @@ Decisioni aperte di Tid: P-1 … P-3 (§4-ter). Lavoro da committare: questo doc
 in `.codex/AGENTS.md` e il fermo in `.codex/PROJECT_CONTEXT.md`.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
-> **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](brief-be-verifica-documentazione-api.md)
+> **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
 > (azioni di processo mancanti fra gemelli; permesso del cambio stato del DDT). Analizzandole sono
 > uscite due proposte che, senza saperlo, contraddicevano una decisione viva e ne revocavano
 > un'altra (§3.2). Tid: «non mi sto più fidando… una volta in un modo, poi in un altro, poi si torna

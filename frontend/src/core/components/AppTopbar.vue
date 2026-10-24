@@ -435,7 +435,12 @@ onMounted(async () => {
       >
         <i :class="MANAGE_ICONS.KEBAB"></i>
       </button>
-      <TieredMenu ref="userKebabMenu" :model="userKebabItems" popup />
+      <TieredMenu ref="userKebabMenu" :model="userKebabItems" popup>
+        <!-- Il segno di sottomenu standard (Preferiti), non l'AngleRight di PrimeVue -->
+        <template #submenuicon>
+          <i :class="[MANAGE_ICONS.SOTTOMENU, 'app-sottomenu-icon']"></i>
+        </template>
+      </TieredMenu>
 
       <!-- Logout -->
       <button

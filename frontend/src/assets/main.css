@@ -1434,6 +1434,30 @@ a {
  * porta `.app-menu-item-*`).
  */
 
+/* Segno «questa voce contiene altre voci» (`MANAGE_ICONS.SOTTOMENU*`): sidebar
+ * chiusa e aperta, sottomenu dei TieredMenu. ⭐ Il colore e' quello dell'ICONA
+ * della sua voce (`inherit` dal link nei menu, `--app-icon-color` nella
+ * sidebar, dove lo assegna SidebarItem): un segno grigio accanto a un'icona
+ * colorata sembrava un'altra cosa (Tid 2026-10-24). */
+.app-sottomenu-icon {
+  font-size: 0.7rem;
+  color: inherit;
+}
+/* ⚠️ Nel TieredMenu il segno porta anche `.p-tieredmenu-submenu-icon`, che il
+ * tema colora grigio: serve la stessa forza delle regole `.app-menu-item-*
+ * .p-tieredmenu-item-icon` qui sotto, cosi' segue la voce come la sua icona. */
+.p-tieredmenu-item-link .p-tieredmenu-submenu-icon.app-sottomenu-icon {
+  color: inherit;
+}
+
+/* Popup delle voci di un gruppo a sidebar chiusa (SidebarDomain): sono voci di
+ * navigazione, e le icone hanno il colore standard come nella sidebar. Col
+ * grigio del tema PrimeVue sembravano disattivate (Tid 2026-10-24). Il
+ * popup sta in un portale fuori dal componente: la regola e' globale. */
+.app-sidebar-gruppo-popup .p-menu-item-icon {
+  color: var(--app-icon-color);
+}
+
 /* Motivo di un'azione DISABILITATA nel popup kebab di RowActionsMenu: il
  * kebab e' la variante touch e su touch non c'e' hover, quindi il perche'
  * si rende invece di stare in un tooltip. Riga secondaria sotto la label,
@@ -1824,14 +1848,21 @@ a {
    l'apertura. Il font non ha un foglio «aperto» senza simbolo proprio: lo si
    ricava da `pi-file` ritagliando l'angolo, cosi' il simbolo non si
    sovrappone al tratto del foglio. */
+/* ⭐ La geometria dell'ANGOLO APERTO, una regola per tutte le famiglie che la
+   usano (documenti di vendita, diari, processi automatici): base ritagliata in
+   basso a destra, simbolo grande dentro l'apertura. Ogni famiglia dichiara
+   solo il glifo della base e quello del simbolo. */
 .app-nav-icon-preventivi::before,
 .app-nav-icon-offerte::before,
 .app-nav-icon-ordini::before,
 .app-nav-icon-ddt::before,
 .app-nav-icon-resi::before,
 .app-nav-icon-contratti::before,
-.app-nav-icon-fatture::before {
-  content: "\e958"; /* pi-file — base: la famiglia documento */
+.app-nav-icon-fatture::before,
+.app-nav-icon-log-audit::before,
+.app-nav-icon-log-errori::before,
+.app-nav-icon-log-email::before,
+.app-nav-icon-processi::before {
   top: 0.02rem;
   left: 0.12rem;
   font-size: 0.86rem;
@@ -1844,10 +1875,24 @@ a {
 .app-nav-icon-ddt::after,
 .app-nav-icon-resi::after,
 .app-nav-icon-contratti::after,
-.app-nav-icon-fatture::after {
+.app-nav-icon-fatture::after,
+.app-nav-icon-log-audit::after,
+.app-nav-icon-log-errori::after,
+.app-nav-icon-log-email::after,
+.app-nav-icon-processi::after {
   left: 0.52rem;
   top: 0.4rem;
   font-size: 0.74rem;
+}
+
+.app-nav-icon-preventivi::before,
+.app-nav-icon-offerte::before,
+.app-nav-icon-ordini::before,
+.app-nav-icon-ddt::before,
+.app-nav-icon-resi::before,
+.app-nav-icon-contratti::before,
+.app-nav-icon-fatture::before {
+  content: "\e958"; /* pi-file — base: la famiglia documento */
 }
 
 .app-nav-icon-preventivi::after {
@@ -1872,6 +1917,39 @@ a {
 
 .app-nav-icon-resi::after {
   content: "\e91f"; /* pi-arrow-circle-left */
+}
+
+/* Famiglia dei diari di Diagnostica (Tid 2026-10-24): righe di testo
+   (pi-align-left, base: «un registro») + il simbolo di che cosa registra.
+   Geometria dell'angolo aperto: la regola comune sopra. */
+.app-nav-icon-log-audit::before,
+.app-nav-icon-log-errori::before,
+.app-nav-icon-log-email::before {
+  content: "\e947"; /* pi-align-left — base: la famiglia log */
+}
+
+.app-nav-icon-log-audit::after {
+  content: "\e942"; /* pi-pencil — chi ha cambiato cosa */
+}
+
+.app-nav-icon-log-errori::after {
+  content: "\e922"; /* pi-exclamation-triangle — gli errori tecnici */
+}
+
+.app-nav-icon-log-email::after {
+  content: "\e979"; /* pi-envelope — le email inviate */
+}
+
+/* Processi automatici (Tid 2026-10-24): il server che lavora da solo, a
+   ciclo — server (base) + frecce circolari (simbolo). ⛔ Non piu' `pi-cog`,
+   che e' il dominio Configurazione e l'azione Personalizza. Il server nudo e'
+   `NAV_ICONS.LOTTI`: il simbolo nell'angolo li distingue. */
+.app-nav-icon-processi::before {
+  content: "\e9e4"; /* pi-server */
+}
+
+.app-nav-icon-processi::after {
+  content: "\e9e6"; /* pi-sync */
 }
 
 /* Invia a commessa (MANAGE_ICONS.INVIA_A_COMMESSA, Tid 2026-09-27): la
