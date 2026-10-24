@@ -16,12 +16,14 @@ Indice test eseguiti:
 3) RaiseErrorTests.test_con_log_to_db_solleva_dopo_aver_scritto
 4) RaiseErrorTests.test_dichiarato_noreturn
 5) RaiseErrorTests.test_i_traduttori_che_lo_usano_per_ultimi_sono_noreturn
+6) DiarioDopoLaTransazioneTests.test_le_righe_si_scrivono_all_uscita
+7) DiarioDopoLaTransazioneTests.test_annidato_consegna_le_righe_all_esterno
 """
 
 import typing
 from unittest.mock import patch
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
@@ -73,3 +75,26 @@ class RaiseErrorTests(SimpleTestCase):
         ):
             with self.subTest(funzione=funzione.__name__):
                 self.assertIs(typing.get_type_hints(funzione)["return"], typing.NoReturn)
+
+
+# ⭐ Il rinvio del diario a dopo la transazione (BE-2,
+#    `diario_dopo_la_transazione`): qui la regola, senza database; il caso
+#    vero della transazione abortita lo prova `tests/db/test_idempotency_prenota_db.py`.
+@override_settings(ERROR_LOG_DB_ENABLED=True)
+class DiarioDopoLaTransazioneTests(SimpleTestCase):
+
+    def test_le_righe_si_scrivono_all_uscita(self):
+        with patch.object(ErrorManager, "_scrivi_diario") as scrivi:
+            with ErrorManager.diario_dopo_la_transazione():
+                ErrorManager.log_error_only(code="E_PROVA", context={})
+                scrivi.assert_not_called()
+            self.assertEqual(scrivi.call_count, 1)
+            self.assertEqual(scrivi.call_args.args[0][2], "E_PROVA")
+
+    def test_annidato_consegna_le_righe_all_esterno(self):
+        with patch.object(ErrorManager, "_scrivi_diario") as scrivi:
+            with ErrorManager.diario_dopo_la_transazione():
+                with ErrorManager.diario_dopo_la_transazione():
+                    ErrorManager.log_error_only(code="E_PROVA", context={})
+                scrivi.assert_not_called()
+            self.assertEqual(scrivi.call_count, 1)

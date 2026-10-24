@@ -334,8 +334,9 @@ Il helper gestisce in modo centralizzato:
 
 1. Parsing JSON del body (`parse_json_body`)
 2. Validazione `Idempotency-Key` (se `require_idempotency_key=True`)
-3. Idempotency strong mode (claim/replay/in_progress su `dbops.idempotency_keys`)
-4. Esecuzione handler e wrap in `success_response`
+3. Idempotency strong mode (prenotazione con `dbops.fn_idempotency_prenota`: esegui, replay, in corso)
+4. Esecuzione handler e wrap in `success_response` — per un'operazione `ATOMICA` in modalità
+   forte, insieme all'esito `completed` in una transazione sola (§Idempotency-Key)
 5. Gestione errori con `exception_to_error_response`
 
 ```python
@@ -383,10 +384,42 @@ I parametri del payload si estraggono con i validator di `apps.core.api.payload_
 | --------------- | --------------------------------------------------------------------------------------- |
 | Header          | `Idempotency-Key` (stringa libera, tipicamente UUID)                                    |
 | Obbligatorieta` | **ogni POST che scrive**, per costruzione (`_ApiViewBase.initial`, vedi sotto)          |
-| Strong mode     | Attivabile con `DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1`                                |
-| Store           | Tabella `dbops.idempotency_keys`                                                        |
+| Strong mode     | Attivabile con `DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1`, sugli endpoint con `handle_post_json(require_idempotency_key=True)` |
+| Prenotazione    | `dbops.fn_idempotency_prenota` (key, utente, endpoint = metodo + percorso, `request_id`, ripresa ammessa), da `IdempotencyStore.claim_or_replay`; registro in `dbops.idempotency_keys` |
 | Replay          | Key gia` completata: restituisce risposta cached con header `X-Idempotency-Replayed: 1` |
 | In-progress     | Key gia` in elaborazione: `409` con codice `E_IDEMPOTENCY_IN_PROGRESS`                  |
+| Key riusata     | Key prenotata da un altro utente o su un altro endpoint: `400` `E_IDEMPOTENCY_KEY_RIUSATA` (la risposta salvata non si rimanda) |
+| Key fallita     | `failed`: si riprende sempre, l'operazione si riesegue                                  |
+| Key orfana      | `in_progress` oltre `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI`: si riprende solo se l'endpoint è **ATOMICA** |
+
+**L'unità di lavoro** (decisione di Tid del 2026-10-23, brief-be-verifica-documentazione-api
+§I.7.2). In modalità forte ogni endpoint dichiara com'è fatta la sua operazione,
+`handle_post_json(..., unita_di_lavoro=UnitaDiLavoro.…)`:
+
+| Valore | Com'è fatta | Transazione | Key orfana oltre la soglia |
+| --- | --- | --- | --- |
+| `ATOMICA` (default) | un'unità di lavoro sola, che **finisce dentro la richiesta** (niente thread, coda o job che continuano tenendo la key) | handler ed esito `completed` in un `transaction.atomic()`; `failed` scritto **fuori**, dopo il rollback | si riprende: se manca l'esito, manca anche l'operazione |
+| `A_PASSI` | committa un passo alla volta (pipeline del lotto, numerazione del lotto, push delle commesse) | nessun `atomic` esterno | resta `IN_CORSO` finché scade o il frontend genera una key nuova |
+
+* ⛔ Un endpoint nuovo che lavora a passi **lo dichiara**, e si aggiunge al registro di
+  `apps/core/tests/test_unita_di_lavoro.py`; il motivo sta nel commento `⭐ A_PASSI` accanto
+  alla chiamata, una sede sola (il presidio è a cricchetto nei due versi).
+* ⚠️ L'`atomic` esterno c'è **solo in modalità forte**: senza registro non c'è un esito da tenere
+  insieme all'operazione. Un service che compone più scritture resta responsabile del proprio
+  `atomic` (§Atomicità).
+* ⚠️ **Il diario dentro l'`atomic`.** Dopo un errore DB catturato la transazione è abortita, e una
+  riga di `dbops.error_log` scritta lì sparirebbe senza errore: per le ATOMICA
+  `ErrorManager.log_error_only` la mette in coda e la scrive a transazione chiusa
+  (`ErrorManager.diario_dopo_la_transazione`).
+* ⭐ **La soglia sta sopra il timeout di gunicorn** (BE-5). La ripresa è sicura solo perché
+  nessuna richiesta vive più del timeout del worker: all'avvio e a ogni `kill -HUP`
+  `backend/gunicorn.conf.py` rifiuta di partire, in modalità forte, se
+  `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` non supera il
+  timeout di almeno 30 secondi, se il timeout è 0 (nessun tetto) o se il worker non è `sync`
+  (in `gthread` il timeout non è il tetto di una richiesta). Le due impostazioni si cambiano
+  insieme.
+* Il racconto intero, per chi non legge il codice: la guida
+  [Le operazioni che non si ripetono](/guide/operazioni-che-non-si-ripetono).
 
 ⛔ **Una POST che scrive porta la key, e lo garantisce la classe base** (decisione
 di Tid del 2026-10-20, brief-be-verifica-documentazione-api §A5). Le quattro

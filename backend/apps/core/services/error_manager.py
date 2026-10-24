@@ -6,6 +6,9 @@
 # ------------------------------------------------------------
 
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 import json
 from typing import Any, NoReturn
 
@@ -16,6 +19,14 @@ from apps.core.services.db_error_fields import Bersaglio, diagnostica_db
 from apps.core.services.service_errors import ServiceError
 
 # Helper unico errori: validazione, raise strutturato e logging opzionale su DB.
+
+# Le righe di diario in attesa della fine della transazione dell'operazione
+# (`ErrorManager.diario_dopo_la_transazione`). None = nessuna attesa: si scrive
+# subito, come sempre. Una lista per richiesta: il ContextVar non si vede fra
+# thread ne' fra richieste.
+_diario_in_attesa: ContextVar[list[tuple[str, str, str, str]] | None] = ContextVar(
+    "diario_in_attesa", default=None,
+)
 
 
 class ErrorManager:
@@ -217,7 +228,48 @@ class ErrorManager:
     ) -> None:
         if not getattr(settings, "ERROR_LOG_DB_ENABLED", True):
             return
-        # Best-effort: non deve rompere il flusso applicativo.
+        ErrorManager._registra_diario((area, function_name, code, json.dumps(context or {})))
+
+    # Scopo: Una riga di diario va in attesa se un blocco
+    #        `diario_dopo_la_transazione` e' aperto, altrimenti si scrive subito.
+    @staticmethod
+    def _registra_diario(riga: tuple[str, str, str, str]) -> None:
+        in_attesa = _diario_in_attesa.get()
+        if in_attesa is not None:
+            in_attesa.append(riga)
+            return
+        ErrorManager._scrivi_diario(riga)
+
+    # Scopo: Rimanda le righe di diario a DOPO la transazione dell'operazione,
+    #        commit o rollback che sia: si scrivono all'uscita dal blocco.
+    # ⛔ Perche' esiste (BE-2 di brief-be-verifica-documentazione-api,
+    #    2026-10-24). `fn_log_error_only` scrive via dblink e sopravvive al
+    #    rollback, ma la SELECT che la chiama gira sulla connessione di Django:
+    #    dentro un `transaction.atomic()`, dopo un errore DB catturato senza
+    #    savepoint, la transazione e' abortita, la SELECT fallisce e il
+    #    best-effort qui sopra la inghiotte. La riga spariva senza un errore.
+    # ⚠️ Si usa FUORI dall'`atomic`, che deve chiudersi prima:
+    #    `with ErrorManager.diario_dopo_la_transazione(), transaction.atomic():`.
+    #    Lo apre `handle_post_json` per le operazioni ATOMICA.
+    # ⚠️ Annidato, il blocco interno consegna le sue righe a quello esterno:
+    #    scriverle alla sua uscita vorrebbe dire scriverle dentro la transazione
+    #    che l'esterno sta ancora aspettando.
+    @staticmethod
+    @contextmanager
+    def diario_dopo_la_transazione() -> Iterator[None]:
+        righe: list[tuple[str, str, str, str]] = []
+        token = _diario_in_attesa.set(righe)
+        try:
+            yield
+        finally:
+            _diario_in_attesa.reset(token)
+            for riga in righe:
+                ErrorManager._registra_diario(riga)
+
+    # Scopo: La scrittura vera di una riga di diario. Best-effort: non deve
+    #        rompere il flusso applicativo.
+    @staticmethod
+    def _scrivi_diario(riga: tuple[str, str, str, str]) -> None:
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -226,7 +278,7 @@ class ErrorManager:
                         %s, %s, %s, %s::jsonb, NULL::uuid, VARIADIC ARRAY[]::text[]
                     )
                     """,
-                    [area, function_name, code, json.dumps(context or {})],
+                    list(riga),
                 )
         except Exception:
             return

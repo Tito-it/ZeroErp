@@ -133,7 +133,9 @@ lo dicono i registri dell'operazione stessa (lo stato del lotto, dei suoi passi)
 server web viene alzato sopra la soglia, una richiesta ancora viva potrebbe essere ripresa da
 un reinvio, e l'operazione girerebbe due volte. Le due impostazioni vanno cambiate insieme: la
 soglia sta nei parametri di sistema (`SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI`), il tempo massimo
-nella configurazione del server web.
+nella configurazione del server web. Il backend lo controlla da sé: all'avvio, e a ogni ricarica della configurazione, rifiuta di partire
+se la soglia non supera il tempo massimo di almeno 30 secondi, o se il server web è configurato
+in un modo in cui una richiesta non ha un tempo massimo.
 
 ---
 

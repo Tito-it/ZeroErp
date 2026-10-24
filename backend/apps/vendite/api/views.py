@@ -10,6 +10,7 @@ from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIM
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import (
+    UnitaDiLavoro,
     get_scope_user_id,
     handle_detail_patch,
     handle_post_json,
@@ -219,7 +220,12 @@ class ApiRunLottoPipeline(DomainAPIView):
             return {"lotto_id": lotto_id, "status": "ok"}
 
         # Pattern condiviso: JSON parse + envelope errori centralizzato.
-        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+        # ⭐ A_PASSI (brief-be-verifica-documentazione-api §I.7.2): il lotto nasce in una transazione sua e l'errore si scrive fuori dall'atomic dello step (D-12).
+        #    Una key orfana non si riprende, e niente `atomic` esterno.
+        return handle_post_json(
+            request, handler=_handler, require_idempotency_key=True,
+            unita_di_lavoro=UnitaDiLavoro.A_PASSI,
+        )
 
 
 class ApiRunLottoPipelineUntilDone(DomainAPIView):
@@ -273,7 +279,12 @@ class ApiRunLottoPipelineUntilDone(DomainAPIView):
             return run_lotto_pipeline_until_done(**_run_lotto_kwargs(payload))
 
         # Pattern condiviso: JSON parse + envelope errori centralizzato.
-        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+        # ⭐ A_PASSI (brief-be-verifica-documentazione-api §I.7.2): concatena gli step, ognuno col suo commit; risponde 200 anche con lavoro parziale.
+        #    Una key orfana non si riprende, e niente `atomic` esterno.
+        return handle_post_json(
+            request, handler=_handler, require_idempotency_key=True,
+            unita_di_lavoro=UnitaDiLavoro.A_PASSI,
+        )
 
 
 class ApiLottoSegnalazioniSummary(DomainAPIView):
@@ -1781,7 +1792,12 @@ class ApiRunCommessePush(DomainAPIView):
                 dry_run=optional_bool(payload, "dry_run", default=False),
             )
 
-        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+        # ⭐ A_PASSI (brief-be-verifica-documentazione-api §I.7.2): il registro del giro (`commesse_push_log`) e l'`except` sull'handler senza savepoint.
+        #    Una key orfana non si riprende, e niente `atomic` esterno.
+        return handle_post_json(
+            request, handler=_handler, require_idempotency_key=True,
+            unita_di_lavoro=UnitaDiLavoro.A_PASSI,
+        )
 
 
 
@@ -2409,7 +2425,12 @@ class ApiFatturazioneNumeraLotto(DomainAPIView):
                 data_documento=optional_iso_date(payload, "data_documento"),
             )
 
-        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+        # ⭐ A_PASSI (brief-be-verifica-documentazione-api §I.7.2): `numera_lotto` committa per passi: non si avvolge in un atomic (pipeline_service).
+        #    Una key orfana non si riprende, e niente `atomic` esterno.
+        return handle_post_json(
+            request, handler=_handler, require_idempotency_key=True,
+            unita_di_lavoro=UnitaDiLavoro.A_PASSI,
+        )
 
 
 class ApiFatturazioneRistampaLotto(DomainAPIView):

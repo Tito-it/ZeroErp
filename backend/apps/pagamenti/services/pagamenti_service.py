@@ -1088,23 +1088,28 @@ def cambia_stato_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
 
     repository = PagamentiRepository()
     _riga_o_404(repository, riga_id)
-    with _db_errors("cambia_stato_riga"):
-        # Il motivo accompagna la sospensione nello stesso giro: sospendere
-        # senza dire perche' lascia la riga in una coda dove il prossimo che
-        # la guarda non sa che cosa si era gia' capito.
-        if motivo_sospeso is not None:
-            repository.update_riga(riga_id, {"motivo_sospeso": motivo_sospeso})
-        toccate = repository.set_stato_riga(riga_id, nuovo_stato)
-    # Stessa ragione della testata: la riga esiste, quindi a non risolvere e'
-    # il codice di stato — e un 200 sopra un gesto non avvenuto e' peggio di
-    # un errore.
-    ErrorManager.require(
-        toccate > 0,
-        code=E_STATO_NON_CONFIGURATO,
-        message="Stato riga contabile non configurato.",
-        detail=f"codice_interno={nuovo_stato} assente o non attivo a catalogo.",
-        function_name=f"{_FN}.cambia_stato_riga",
-    )
+    # ⛔ Un `atomic` suo (2026-10-24): motivo e stato sono due UPDATE, e senza
+    #    il motivo restava scritto anche quando lo stato veniva rifiutato. Il
+    #    brief-be-verifica-documentazione-api §I.7.2 contava sull'`atomic`
+    #    esterno di `handle_post_json`, che pero' c'e' solo in modalita' forte.
+    with transaction.atomic():
+        with _db_errors("cambia_stato_riga"):
+            # Il motivo accompagna la sospensione nello stesso giro: sospendere
+            # senza dire perche' lascia la riga in una coda dove il prossimo che
+            # la guarda non sa che cosa si era gia' capito.
+            if motivo_sospeso is not None:
+                repository.update_riga(riga_id, {"motivo_sospeso": motivo_sospeso})
+            toccate = repository.set_stato_riga(riga_id, nuovo_stato)
+        # Stessa ragione della testata: la riga esiste, quindi a non risolvere e'
+        # il codice di stato — e un 200 sopra un gesto non avvenuto e' peggio di
+        # un errore. Dentro l'`atomic`: il rifiuto si porta via anche il motivo.
+        ErrorManager.require(
+            toccate > 0,
+            code=E_STATO_NON_CONFIGURATO,
+            message="Stato riga contabile non configurato.",
+            detail=f"codice_interno={nuovo_stato} assente o non attivo a catalogo.",
+            function_name=f"{_FN}.cambia_stato_riga",
+        )
     return {"riga": _riga_o_404(repository, riga_id)}
 
 
