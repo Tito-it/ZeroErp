@@ -626,13 +626,14 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
     #        trigger `trgfn_resi_gen_numero` alla transizione a CONFERMATO.
     #        BA/destinatario/utility/valuta/emittente NON si passano: li eredita
     #        `trgfn_resi_normalize` dal DDT sorgente (BEFORE INSERT, quindi i
-    #        NOT NULL di tabella sono soddisfatti dal trigger).
+    #        NOT NULL di tabella sono soddisfatti dal trigger). Nemmeno lo
+    #        stato: lo mette il DB, lo stato iniziale del vocabolario
+    #        (`script.trgfn_doc_stato_iniziale`).
     def create_reso(
         self,
         *,
         sorgente_tipo_id: int,
         sorgente_uid: str,
-        stato_doc_reso_id: int,
         data: date | None = None,
         meta: dict[str, Any] | None = None,
         magazzino_id: int | None = None,
@@ -644,7 +645,6 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
             {
                 "sorgente_tipo_id": sorgente_tipo_id,
                 "sorgente_uid": sorgente_uid,
-                "stato_doc_reso_id": stato_doc_reso_id,
                 "data": data,
                 # None = il default del DB (il magazzino della bolla d'origine).
                 "magazzino_id": magazzino_id,
@@ -1102,15 +1102,3 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
         with connection.cursor() as cursor:
             cursor.execute(sql, [ddt_riga_id])
             return row_to_dict(cursor)
-
-    # Scopo: id di uno stato reso via codice_interno (immutabile).
-    def get_stato_id_by_codice(self, codice_interno: str) -> int | None:
-        sql = """
-            SELECT id FROM config.stati_doc_reso
-             WHERE codice_interno = %s AND attivo = true
-             LIMIT 1
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [codice_interno])
-            row = cursor.fetchone()
-            return row[0] if row else None

@@ -520,6 +520,7 @@
       "handler_key": "Chiave handler",
       "handler_params": "Parametri handler (JSON)",
       "id_iva_split": "IVA split payment",
+      "iniziale": "Stato iniziale",
       "intervallo": "Intervallo (giorni)",
       "is_abortito": "Stato di abbandono",
       "is_bozza": "Stato di bozza",

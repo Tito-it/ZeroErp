@@ -2,7 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-24
 
-**Riparte: il team BE**, con la sua richiesta (§4-quinquies); **Tid** con le domande Q-2 … Q-4.
+**Riparte: il team DB**, con Q-2 … Q-4 (decise da Tid il 2026-10-24). Il giro BE della richiesta
+(§4-quinquies) è fatto, da committare.
 Primo giro chiuso lato DB il 2026-10-24: applicato, pgTAP verdi.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -14,14 +15,15 @@ Primo giro chiuso lato DB il 2026-10-24: applicato, pgTAP verdi.
 | 2-quater | ✅ **Tid** | P-1 … P-3, decise il 2026-10-24; e il modo di procedere (§5) | §4-ter | 2-ter |
 | 2-quinquies | ✅ team DB | Primo giro scritto e provato: il BB della nascita su vendite e acquisti, 9 funzioni e 3 builder senza copie, 48 pgTAP portati, la richiesta al team BE | §4-quinquies | 2-quater |
 | 2-sexies | ✅ **Tid** | Apply di `20261024-07` … `-25` e corsa pgTAP: verdi (2026-10-24); Q-1 decisa (B) | §4-quinquies | 2-quinquies |
-| 2-sexies-bis | **Tid** | Q-2 … Q-4 | §4-quinquies | — |
-| 2-septies | team BE | Richiesta 1-5: policy degli errori, i 5 service senza lo stato iniziale, due test | §4-quinquies | 2-sexies |
+| 2-sexies-bis | ✅ **Tid** | Q-2 … Q-4, decise il 2026-10-24 | §4-quinquies | — |
+| 2-sexies-ter | team DB | Q-2 (tre builder), Q-3 (debito di coerenza lotto/fatture), Q-4 (mondo costruito al posto del «primo billing account»): solo pgTAP e builder `dbops`, nessuna ricaduta BE/FE | §4-quinquies | 2-sexies-bis |
+| 2-septies | ✅ team BE | Richiesta 1-5 fatta il 2026-10-24: policy e ripiego del codice nuovo, i 5 service e i loro repository senza lo stato iniziale, test e smoke portati alla nascita in bozza; revisione critica dello stesso giro (punto 6) | §4-quinquies | 2-sexies |
 | 3 | team DB | Il §2, corretto con le decisioni, diventa la guida `docs/it/guide/modello-documento-di-vendita.md`; le guide `gestione-*.md` rimandano lì | §2 | 2 |
 | 4 | team DB + BE | Il piano: ogni documento portato al modello **tutto in una volta**, un documento per giro | §5 | 3 |
 | 5 | Tid | Fine del fermo dei temi trasversali (PROJECT_CONTEXT) | — | 3 |
 
-Decisioni aperte di Tid: Q-2 … Q-4 (§4-quinquies). Lavoro da committare: il primo giro (changeSet, CSV, mirror, 49 pgTAP, una pagina manual/), questo documento, la regola «un tema, un brief»
-in `.codex/AGENTS.md` e il fermo in `.codex/PROJECT_CONTEXT.md`.
+Decisioni aperte di Tid: nessuna sul primo giro (Q-1 … Q-4 decise). Lavoro da committare: il giro BE
+(`dev/backend-tid`, §4-quinquies «Fatto dal team BE») e questo documento.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -321,14 +323,20 @@ come owner):
   propone solo una fattura DEFINITIVA» ed EMESSA è il caso più stretto (uscita dalla bozza,
   completa, lo stato subito prima). Provato su una variante col mondo costruito, sullo scratch già
   applicato: i due test verdi, file 29/30 (il rosso è il test 2, preesistente).
-* **Q-2. Builder di fixture ripetuti** (regola del 2, proposti dal porting, non scritti): commessa
+* ✅ **Q-2. Builder di fixture ripetuti** (regola del 2, proposti dal porting, non scritti): commessa
   emittibile (6 file), fattura «fuori bozza ma senza snapshot» (4 file), contratto figlio di
-  un'offerta e contratto ATTIVO sul billing account del test (4 file).
-* **Q-3.** `vendite/test-snapshot-indirizzi-lotto-v1.sql` rimette `DEFERRED` i soli tre trigger di
+  un'offerta e contratto ATTIVO sul billing account del test (4 file). **Deciso da Tid il
+  2026-10-24: A** — tre builder in `dbops`, e i 14 file passano a usarli nello stesso giro: le copie
+  scrivono a mano la strada d'uscita dalla bozza, la stessa che questo giro ha accentrato.
+* ✅ **Q-3.** `vendite/test-snapshot-indirizzi-lotto-v1.sql` rimette `DEFERRED` i soli tre trigger di
   coerenza lotto/fatture (il file era escluso dai differiti per quel guard, e
-  `fn_pgtap_porta_a_stato` esce con `IMMEDIATE`): da confermare.
-* **Q-4.** I debiti «primo billing account» (una decina di file) si curano col mondo costruito: un
-  giro a parte.
+  `fn_pgtap_porta_a_stato` esce con `IMMEDIATE`). **Deciso da Tid il 2026-10-24: B** — si cura il
+  debito invece di aggirarlo: la fixture allinea lo stato delle fatture a quello del lotto prima di
+  chiudere, il `SET CONSTRAINTS … DEFERRED` si toglie, il file gira tutto `IMMEDIATE` e il guard di
+  coerenza viene esercitato (la correzione è quella già scritta in testa al file, debito di
+  brief-db-pgtap-runner-rls-baseline §22).
+* ✅ **Q-4.** I debiti «primo billing account» (una decina di file) si curano col mondo costruito.
+  **Deciso da Tid il 2026-10-24: dentro questo giro**, non a parte: insieme ai builder di Q-2.
 * Fuori da questo giro: `dbops/test-automazioni-guasto-ambiente-rilanciato-v1.sql` è rosso nel
   guardrail del preambolo già in HEAD (commit `dbb810c3d`).
 
@@ -345,6 +353,51 @@ come owner):
    preventivo esistente: va creato in bozza;
 5. i 4 test di `apps/pagamenti/tests/db/` che creano fatture senza stato continuano a funzionare
    (lo stato lo mette il database): nessuna modifica, da sapere.
+
+**Fatto dal team BE** (2026-10-24, `dev/backend-tid`, da committare):
+
+1. `error_policies_generated.py` rigenerato (`--check` pulito, il codice è nel CSV in git) e la
+   frase di ripiego in `error_messages_fallback.py`, senza segnaposto;
+2. i 5 service non cercano più lo stato iniziale e i loro repository non lo scrivono: tolti il
+   parametro di `create_ordine` / `create_ddt` / `create_reso` / `create_preventivo`, la colonna
+   dalla whitelist d'inserimento delle offerte (`TESTATA_CREATE_COLUMNS`),
+   `PreventiviRepository.get_stato_bozza_id` e `ResiRepository.get_stato_id_by_codice`, che non
+   avevano altri chiamanti;
+3. `test_ricerca_liste_db`: il preventivo nasce in bozza e va a EMESSO con
+   `dbops.fn_pgtap_porta_a_stato`; contratto e offerta della stessa fixture non scrivono più lo stato;
+4. `smoke-pratica-doc-sorgente-cross-emittente.py`: oltre a non copiare lo stato, costruisce **anche**
+   il documento di casa (prima: «il primo preventivo dell'emittente», in qualunque stato). Lo smoke
+   pretende che i due documenti abbiano lo stesso stato, perché la regola dell'ancora ordina anche
+   sulla terminalità: con l'estraneo in bozza e quello di casa ANNULLATO vinceva il vivo, e il test
+   misurava la terminalità invece del perimetro. Ora pareggiano per costruzione;
+5. emersi dalla corsa e non in richiesta: tre test DB di creazione (`test_{ordini,ddt,resi}_create_db`)
+   che passavano lo stato al repository; lo smoke bash `smoke-test-guida-inversione-preventivi.sh`,
+   che faceva nascere un preventivo EMESSO (ora in bozza + `fn_pgtap_porta_a_stato`); l'etichetta
+   `config_panel.campi.iniziale` in it/en per la colonna nuova dei vocabolari (presidio
+   `test_config_panel_registro_db`);
+6. revisione critica del giro (2026-10-24), su questo stesso diff:
+   * presidio simmetrico sui 5 service: ordini e preventivi non avevano, come DDT, offerte e resi,
+     l'asserzione che lo stato **non** arrivi al repository. Col repository mockato un
+     `stato_doc_*_id` rimesso dal service sarebbe passato muto; aggiunta in `test_ordini_service` e
+     `test_preventivi_service`;
+   * `ResiRepository.get_stato_id_by_codice` ritirato (ok di Tid): l'unico chiamante era la
+     creazione del reso. Tolta con lui l'asserzione `assert_not_called()` di `test_resi_service`,
+     che senza il metodo non provava più niente;
+   * smoke cross-emittente: `crea_preventivo` legge da sé il `soggetto_ruolo` dell'emittente (prima
+     due letture diverse, una per «casa» e una per «estraneo»); l'esito stampa la **coda** dell'uid
+     (`uid_breve`) e non la testa: gli uid sono UUIDv7, i primi caratteri sono il timestamp, e i due
+     documenti nati nello stesso giro stampavano lo stesso prefisso. I `check` confrontavano già
+     l'uid intero: era la diagnostica a non distinguerli, non l'esito;
+   * `config_panel.campi.iniziale` rimessa in ordine alfabetico in it/en.
+
+   Provato: `manage-test.sh` vendite/core/config verde; con `ZEROERP_TEST_DB_E2E=1` i test DB di
+   vendite e config verdi sul DB reale (senza la variabile sono skippati: un verde senza non prova
+   niente); `genera_error_policies --check` allineato; lo smoke cross-emittente TUTTO VERDE. ⚠️ Non
+   eseguito: `smoke-test-guida-inversione-preventivi.sh` (vuole il login HTTPS col secondo fattore);
+   il suo pezzo nuovo, `fn_pgtap_porta_a_stato` dal ruolo app, è esercitato da `test_ricerca_liste_db`.
+
+Restano fixture di test che scrivono lo stato iniziale esplicito (`DRAFT`/`BOZZA`) in un INSERT: il
+trigger le fa passare, e non sono copie della regola in codice di prodotto.
 
 ---
 

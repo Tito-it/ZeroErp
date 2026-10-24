@@ -571,8 +571,9 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     def get_available_actions(self, offerta_id: int) -> dict[str, Any]:
         return call_jsonb_fn("script.fn_available_actions_offerta", offerta_id)
 
-    # Scopo: Crea una testata offerta (stato iniziale BOZZA gestito dal
-    #        service che risolve l'id stato via get_stato_id_by_codice).
+    # Scopo: Crea una testata offerta. Lo stato non si scrive (non e' in
+    #        whitelist): lo mette il DB, lo stato iniziale del vocabolario
+    #        (`script.trgfn_doc_stato_iniziale`).
     #        Il `codice` arriva dal payload: la generazione automatica via
     #        sistema_codici (step 5 brief DB) non e' ancora cablata.
     # Colonne scrivibili in create (whitelist). Le immutabili (`uid`, audit,
@@ -592,7 +593,6 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         "tipo_variazione_globale",
         "validita_dal",
         "validita_al",
-        "stato_doc_offerta_id",
         "revisione_numero",
         "revisione_padre_id",
         "meta",

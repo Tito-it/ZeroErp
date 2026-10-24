@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1127, di cui 120 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1128, di cui 120 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -637,6 +637,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOC_SORGENTE_FUORI_BOZZA": "CONFLITTO_STATO",
     # Un DDT dichiara come sorgente un ordine o un reso, o un reso dichiara un DDT, che non si trova: inesistente o invisibile sotto RLS, che rispondono uguale (fail-closed). Lo sollevano vendite.trgfn_ddt_guard_cliente_sorgente e vendite.trgfn_resi_guard_cliente_ddt (brief-db-esecutivi-ba-coppia §10.2 domanda 3, Tid 2026-10-10): prima passavano «niente da confrontare», e una bolla poteva nascere dall'ordine di un altro emittente col BA del proprio. DATO_ERRATO e non NON_TROVATO: la sorgente e' un campo della richiesta (contesto `campo` = sorgente_uid), non la risorsa che una persona chiede (api.md, tassonomia). VARIADIC: il documento, il tipo della sorgente (ordine | reso | DDT).
     "E_DOC_SORGENTE_NON_TROVATA": "DATO_ERRATO",
+    # BB script.trgfn_doc_stato_iniziale (BEFORE INSERT, fascia _a05_, montato sulle testate di vendita e d'acquisto: trg_<tabella>_a05_stato_iniziale_ins): un INSERT ha scritto uno stato diverso dallo stato iniziale del vocabolario (colonna iniziale, letta con script.fn_stato_iniziale_id). TECNICO e non DATO_ERRATO (N-3 di Tid, 2026-10-24): nessuna API accetta lo stato dal client in creazione, quindi lo commette solo chi scrive il documento. Valori: etichetta del documento (config.sorgenti.etichetta), descrizione dello stato scritto, descrizione dello stato iniziale. Brief: brief-modello-documento-vendita §4-bis/§4-ter.
+    "E_DOC_STATO_INIZIALE_NON_VALIDO": "TECNICO",
     # script.fn_get_stato_testata_documento, script.fn_get_testata_id_di_riga (dal 2026-10-05, il lettore riga -> testata), vendite.trgfn_doc_guard_delete_solo_bozza e (dal 2026-09-22, attraverso i lettori) vendite.trgfn_doc_righe_lock_fuori_bozza: · il guard ha ricevuto un tipo di documento che non gestisce, o e' stato montato · su una tabella che non conosce. Nasce il 2026-08-26. · TECNICO e non DATO_ERRATO perche' nessuna persona sceglie quel valore: e' un · chiamante rotto o un trigger montato male, e chi ha fatto la richiesta non · puo' farci niente. · ⛔ NON si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito, non una · sede (D11 di brief-db-be-classe-codici-errore). La famiglia giusta e' quella · di E_RUOLO_APPLICATIVO_NON_GESTITO e E_PROFILO_ACCESSO_TIPO_NON_GESTITO — un · valore di enum che il guard non riconosce, con il valore nel messaggio. · ⚠️ Su un TECNICO la chiave `campo` NON esce dal contesto: su un 500 non c'e' · nessun campo da accendere.
     "E_DOC_TIPO_NON_GESTITO": "TECNICO",
     # Sollevati dai trigger DB Fase A · (trgfn_template_asset_block_delete, trgfn_template_asset_protect_file).

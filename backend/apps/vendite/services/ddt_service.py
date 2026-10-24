@@ -131,7 +131,6 @@ _V = PayloadValidator(validation_code="E_DDT_VALIDAZIONE")
 # Gli id della controparte che il payload puo' portare: si coerciscono a
 # intero (un valore non numerico e' un 400 col campo, non un 500 da `int()`).
 _ID_CONTROPARTE: tuple[str, ...] = ("billing_account_id", "destinatario_soggetto_ruolo_id")
-_STATO_BOZZA = "DRAFT"
 _STATO_EMESSO = "EMESSO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 
@@ -363,10 +362,13 @@ def list_riepilogo_iva(ddt_id: int) -> list[dict[str, Any]]:
 #  SCRITTURE — Testata
 # ══════════════════════════════════════════════════════════
 
-# Scopo: Crea un nuovo DDT standalone in stato DRAFT (BOZZA). `numero` NON
-#        assegnato in DRAFT: lo valorizza il trigger DB a EMESSO (C6).
-#        Cliente (BA) facoltativo: col BA il destinatario lo scrive il DB,
-#        senza va indicato (terzista, deposito). Vedi la NOTA cliente in testa.
+# Scopo: Crea un nuovo DDT standalone. Lo stato non si passa: il DDT nasce
+#        nello stato iniziale del suo vocabolario, e lo mette il DB (BB
+#        `script.trgfn_doc_stato_iniziale`, brief-modello-documento-vendita
+#        P-2). `numero` NON assegnato in bozza: lo valorizza il trigger DB a
+#        EMESSO (C6). Cliente (BA) facoltativo: col BA il destinatario lo
+#        scrive il DB, senza va indicato (terzista, deposito). Vedi la NOTA
+#        cliente in testa.
 def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
     repo = DdtRepository()
     # Una chiave fuori whitelist e' un 400 (vedi CREATE_KEYS_DDT).
@@ -376,15 +378,6 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
     data = {k: empty_to_none(v) for k, v in payload.items()}
     _coerci_id_controparte(data, op="crea_ddt")
 
-    stato_bozza_id = repo.get_stato_id_by_codice(_STATO_BOZZA)
-    ErrorManager.require(
-        stato_bozza_id is not None,
-        code="E_DDT_VALIDAZIONE",
-        message="Stato DRAFT non configurato in config.stati_doc_ddt.",
-        function_name=f"{_FN}.crea_ddt",
-    )
-    assert stato_bozza_id is not None
-
     meta = data.get("meta")
     # Creazione e slot di default in UNA transazione: il riempimento non e'
     # best-effort, e un suo errore non deve lasciare la bozza senza chi l'ha
@@ -392,7 +385,6 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
     with _db_errors("crea_ddt"), transaction.atomic():
         creato = repo.create_ddt(
             destinatario_soggetto_ruolo_id=data.get("destinatario_soggetto_ruolo_id"),
-            stato_doc_ddt_id=int(stato_bozza_id),
             billing_account_id=data.get("billing_account_id"),
             # Emittente dallo user (prefill FE dal profilo, mirror ordini).
             # Se None: fallback DB dal BA in trgfn_ddt_normalize.

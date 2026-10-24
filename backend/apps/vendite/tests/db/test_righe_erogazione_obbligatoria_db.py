@@ -190,7 +190,6 @@ class RigheErogazioneObbligatoriaDbTests(unittest.TestCase):
             "utility_id": utility,
             "listino_id": cur.fetchone()[0],
             "validita_dal": oggi_aziendale(),
-            "stato_doc_offerta_id": repo.get_stato_id_by_codice("BOZZA"),
         })
 
     # 1. Contratto, create: l'OVERRIDE senza erogazione la eredita dall'articolo.

@@ -159,7 +159,6 @@ class ListiniSelezionabiliDbTests(unittest.TestCase):
                 "utility_id": utility,
                 "listino_id": ids[3],
                 "validita_dal": oggi_aziendale(),
-                "stato_doc_offerta_id": repo.get_stato_id_by_codice("BOZZA"),
             })
             OfferteService().aggiorna_offerta(offerta_id, {"listino_id": ids[4]})
 

@@ -193,7 +193,6 @@ class OfferteServiceTests(TestCase):
     def test_crea_offerta_codice_rifiutato_in_payload(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_id_by_codice.return_value = 1
         with self.assertRaises(ServiceError) as cm:
             OfferteService().crea_offerta({
                 "codice": "OFC-MANUALE-001",  # rifiutato: lo genera il trigger DB
@@ -211,7 +210,6 @@ class OfferteServiceTests(TestCase):
     def test_crea_offerta_richiede_validita_dal(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_id_by_codice.return_value = 1
         with self.assertRaises(ServiceError) as cm:
             OfferteService().crea_offerta({
                 "emittente_fiscale_id": 10,
@@ -226,13 +224,12 @@ class OfferteServiceTests(TestCase):
     # Step 5: `codice` NON nel payload (lo genera il trigger DB).
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_crea_offerta_ok_setta_stato_bozza(self, repo_cls, _atomic):
+    def test_crea_offerta_ok_non_passa_lo_stato(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 11
         repo.create_offerta.return_value = 1
         repo.get_offerta.return_value = _make_offerta_dict()
         repo.list_eccezioni.return_value = []
@@ -248,7 +245,10 @@ class OfferteServiceTests(TestCase):
         })
 
         call = repo.create_offerta.call_args.args[0]
-        self.assertEqual(call["stato_doc_offerta_id"], 11)
+        # Lo stato non si passa: lo mette il DB, lo stato iniziale del
+        # vocabolario (brief-modello-documento-vendita P-2).
+        self.assertNotIn("stato_doc_offerta_id", call)
+        repo.get_stato_id_by_codice.assert_not_called()
         # `revisione_numero` non viene passato (default DB = 1).
         self.assertNotIn("revisione_numero", call)
         # `codice` NON deve mai arrivare al repo (Step 5: trigger DB).
@@ -854,7 +854,6 @@ class OfferteServiceTests(TestCase):
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 11
         repo.create_offerta.return_value = 1
         repo.get_offerta.return_value = _make_offerta_dict()
         repo.list_eccezioni.return_value = []
@@ -900,7 +899,6 @@ class OfferteServiceTests(TestCase):
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 11
         repo.create_offerta.return_value = 1
         repo.get_offerta.return_value = _make_offerta_dict()
         repo.list_eccezioni.return_value = []

@@ -259,7 +259,6 @@ class DdtCreaTests(SimpleTestCase):
         # `fn_cliente_dal_billing_account`): il service non li deriva e non
         # inoltra una utility, che e' una copia del BA.
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 7, "uid": "u", "numero": None}
 
         out = ddt_service.crea_ddt({"billing_account_id": 3})
@@ -269,9 +268,10 @@ class DdtCreaTests(SimpleTestCase):
         self.assertEqual(kwargs["billing_account_id"], 3)
         self.assertIsNone(kwargs["destinatario_soggetto_ruolo_id"])
         self.assertNotIn("utility_id", kwargs)
-        # stato risolto via codice interno DRAFT.
-        repo.get_stato_id_by_codice.assert_called_once_with("DRAFT")
-        self.assertEqual(kwargs["stato_doc_ddt_id"], 1)
+        # Lo stato non si passa: lo mette il DB, lo stato iniziale del
+        # vocabolario (brief-modello-documento-vendita P-2).
+        self.assertNotIn("stato_doc_ddt_id", kwargs)
+        repo.get_stato_id_by_codice.assert_not_called()
         # Lo slot di default lo riempie il DB, sul DDT appena nato (R-BE-1).
         repo.riempi_indirizzo_default.assert_called_once_with(7)
 
@@ -293,7 +293,6 @@ class DdtCreaTests(SimpleTestCase):
         # Non e' piu' best-effort: l'errore sale, e la transaction.atomic()
         # annulla anche la testata.
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 7, "uid": "u", "numero": None}
         repo.riempi_indirizzo_default.side_effect = RuntimeError("DB")
         with self.assertRaises(RuntimeError):
@@ -304,7 +303,6 @@ class DdtCreaTests(SimpleTestCase):
         # destinatario passato esplicito: arriva al repo (col BA il DB lo
         # confronta con quello del BA, senza BA e' il terzista o il deposito).
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 8, "uid": "u", "numero": None}
 
         ddt_service.crea_ddt(
@@ -319,7 +317,6 @@ class DdtCreaTests(SimpleTestCase):
         # Ne' destinatario ne' BA: nessun guard Python ricopia il NOT NULL del
         # destinatario. Lo dice il DB (23502), e la traduzione porta il campo.
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 8, "uid": "u", "numero": None}
         ddt_service.crea_ddt({"causale_trasporto_id": 5})
         kwargs = repo.create_ddt.call_args.kwargs
@@ -332,7 +329,6 @@ class DdtCreaTests(SimpleTestCase):
         # La bolla nasce senza BA; se la causale lo vuole, lo dira' l'emissione
         # (E_DDT_CLIENTE_OBBLIGATORIO, capability CLIENTE_MANCANTE).
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 8, "uid": "u", "numero": None}
         ddt_service.crea_ddt({"destinatario_soggetto_ruolo_id": 777})
         kwargs = repo.create_ddt.call_args.kwargs
@@ -356,7 +352,6 @@ class DdtCreaTests(SimpleTestCase):
         # Emittente dallo USER (uniformazione 2026-07-13, mirror ordini): il
         # payload create lo porta (prefill FE dal profilo) e arriva al repo.
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 9, "uid": "u", "numero": None}
 
         ddt_service.crea_ddt({"billing_account_id": 3, "emittente_fiscale_id": 32})
@@ -369,7 +364,6 @@ class DdtCreaTests(SimpleTestCase):
         # Emittente assente dal payload (es. admin globale che non sceglie):
         # None al repo, che omette la colonna -> fallback dal BA nel trigger.
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 10, "uid": "u", "numero": None}
 
         ddt_service.crea_ddt({"billing_account_id": 3})
@@ -682,7 +676,6 @@ class DdtFatturazioneImmediataTests(SimpleTestCase):
     @patch(_REPO)
     def test_crea_ddt_porta_il_flag(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 9, "uid": "u", "numero": None}
         ddt_service.crea_ddt({
             "billing_account_id": 3, "fatturazione_immediata": True,

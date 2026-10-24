@@ -520,6 +520,7 @@
       "handler_key": "Handler key",
       "handler_params": "Handler parameters (JSON)",
       "id_iva_split": "Split payment VAT",
+      "iniziale": "Initial state",
       "intervallo": "Interval (days)",
       "is_abortito": "Aborted state",
       "is_bozza": "Draft state",

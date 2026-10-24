@@ -372,14 +372,14 @@ class DdtRepository(
     #        (prefill FE dal profilo, mirror ordini — uniformazione 2026-07-13);
     #        se None lo risolve `trgfn_ddt_normalize` dal billing_account (o
     #        dall'ordine sorgente per i DDT da evasione).
-    #        `stato_doc_ddt_id` (DRAFT) obbligatorio. Destinatario e utility,
+    #        Lo stato non si scrive: lo mette il DB, lo stato iniziale del
+    #        vocabolario (`script.trgfn_doc_stato_iniziale`). Destinatario e utility,
     #        col BA, li scrive `trgfn_ddt_normalize` (la utility non si passa
     #        mai: e' copia del BA); senza BA il destinatario e' del chiamante.
     def create_ddt(
         self,
         *,
         destinatario_soggetto_ruolo_id: int | None,
-        stato_doc_ddt_id: int,
         billing_account_id: int | None = None,
         emittente_fiscale_id: int | None = None,
         valuta_id: int | None = None,
@@ -406,7 +406,6 @@ class DdtRepository(
         # (`allowed=None`). `meta` e' un dict -> `::jsonb` dal BB.
         valori: dict[str, Any] = {
             "destinatario_soggetto_ruolo_id": destinatario_soggetto_ruolo_id,
-            "stato_doc_ddt_id": stato_doc_ddt_id,
             "billing_account_id": billing_account_id,
             "emittente_fiscale_id": emittente_fiscale_id,
             "valuta_id": valuta_id,

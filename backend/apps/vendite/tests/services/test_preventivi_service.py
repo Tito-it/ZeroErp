@@ -196,8 +196,6 @@ class TestPreventiviService(unittest.TestCase):
         )
         self.ba_bb_patcher.start()
 
-        # Default: lookup config
-        self.mock_repo.get_stato_bozza_id.return_value = 1
         # Default: capabilities vuote per i test che non si interessano del blob
         # (Fase 1 refactor frontend vendite: get_preventivo invoca la fn DB).
         self.mock_repo.get_capabilities.return_value = {}
@@ -268,6 +266,9 @@ class TestPreventiviService(unittest.TestCase):
         kwargs = self.mock_repo.create_preventivo.call_args.kwargs
         self.assertEqual(kwargs["billing_account_id"], 42)
         self.assertEqual(kwargs["istanza_utility_id"], 100)
+        # Lo stato non si passa: lo mette il DB, lo stato iniziale del
+        # vocabolario (brief-modello-documento-vendita P-2).
+        self.assertNotIn("stato_doc_preventivo_id", kwargs)
         # Lo slot di default lo riempie il DB, nella transazione della
         # creazione (brief-db-indirizzi-documento-seguono-il-cliente, R-BE-1).
         self.mock_repo.riempi_indirizzo_default.assert_called_once_with(1)

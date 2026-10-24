@@ -109,7 +109,6 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
 
 # ── Costanti di dominio ──
 _FN = "vendite.ordini_service"
-_STATO_BOZZA = "DRAFT"
 _STATO_CONFERMATO = "CONFERMATO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 # Stati che ammettono il push a commessa (fix orfano 2026-07-10, brief DB §16:
@@ -401,9 +400,11 @@ def delete_indirizzo(ordine_id: int, indirizzo_id: int) -> dict[str, Any]:
 #  SCRITTURE — Testata
 # ══════════════════════════════════════════════════════════
 
-# Scopo: Crea un nuovo ordine in stato DRAFT (BOZZA). `numero` generato dal
-#        trigger DB. Il cliente e' il BA (obbligatorio, D-1): ruolo e utility
-#        li scrive il DB dal BA.
+# Scopo: Crea un nuovo ordine. `numero` generato dal trigger DB. Il cliente e'
+#        il BA (obbligatorio, D-1): ruolo e utility li scrive il DB dal BA.
+#        Lo stato non si passa: l'ordine nasce nello stato iniziale del suo
+#        vocabolario, e lo mette il DB (BB `script.trgfn_doc_stato_iniziale`,
+#        brief-modello-documento-vendita P-2).
 def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
     repo = OrdiniRepository()
     # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
@@ -414,15 +415,6 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
         message="Cliente (billing account) obbligatorio.",
         function_name=f"{_FN}.crea_ordine",
     )
-
-    stato_bozza_id = repo.get_stato_id_by_codice(_STATO_BOZZA)
-    ErrorManager.require(
-        stato_bozza_id is not None,
-        code="E_ORD_VALIDAZIONE",
-        message="Stato DRAFT non configurato in config.stati_doc_ordini.",
-        function_name=f"{_FN}.crea_ordine",
-    )
-    assert stato_bozza_id is not None
 
     # Creazione e slot di default in UNA transazione (il riempimento non e'
     # best-effort: api.md §Atomicita').
@@ -436,7 +428,6 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
             fatturazione_trigger=data.get("fatturazione_trigger"),
             agente_soggetto_ruolo_id=data.get("agente_soggetto_ruolo_id"),
             data=data.get("data"),
-            stato_doc_ordine_id=int(stato_bozza_id),
             meta=data.get("meta") if isinstance(data.get("meta"), dict) else None,
             fatturazione_immediata=data.get("fatturazione_immediata"),
         )

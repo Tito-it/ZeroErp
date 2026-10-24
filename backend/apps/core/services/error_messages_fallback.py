@@ -369,6 +369,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOC_CLIENTE_FUORI_BOZZA": "Il cliente del documento si sceglie solo in bozza: se e' sbagliato, annulla il documento e creane uno nuovo.",
     "E_DOC_RIGA_DATA_CONSEGNA_ANTERIORE": "La data di consegna e' anteriore alla data del documento.",
     "E_DOC_SORGENTE_FUORI_BOZZA": "Il documento da cui nasce si sceglie solo in bozza.",
+    # brief-modello-documento-vendita §4-bis (2026-10-24): un documento nasce solo
+    # nel suo stato iniziale. TECNICO: nessuna maschera crea un documento gia' avanti.
+    "E_DOC_STATO_INIZIALE_NON_VALIDO": "Un documento nuovo nasce solo nel suo stato iniziale: segnalalo all'assistenza.",
     # brief-db-indirizzi-documento-seguono-il-cliente (2026-10-12): la scheda di
     # fornitura segue la coppia della testata. Due codici TECNICI.
     "E_DOC_FORNITURA_FUORI_TESTATA": "La scheda di fornitura indicata non e' della fornitura del documento: segnalalo all'assistenza.",

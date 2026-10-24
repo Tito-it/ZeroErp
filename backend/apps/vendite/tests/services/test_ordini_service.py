@@ -89,7 +89,6 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         # (BB `fn_cliente_dal_billing_account`), il service non li deriva ne'
         # li inoltra (brief-db-esecutivi-ba-coppia §10.2 domanda 2).
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ordine.return_value = {"id": 7, "uid": "u", "numero": "ORD0007"}
         out = ordini_service.crea_ordine({"billing_account_id": 3})
         self.assertEqual(out["numero"], "ORD0007")
@@ -97,6 +96,10 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         self.assertEqual(kwargs["billing_account_id"], 3)
         self.assertNotIn("soggetto_ruolo_id", kwargs)
         self.assertNotIn("utility_id", kwargs)
+        # Lo stato non si passa: lo mette il DB, lo stato iniziale del
+        # vocabolario (brief-modello-documento-vendita P-2).
+        self.assertNotIn("stato_doc_ordine_id", kwargs)
+        repo.get_stato_id_by_codice.assert_not_called()
         # ⛔ E chi le manda riceve un 400, non uno scarto silenzioso (2026-10-20).
         for copia in ({"utility_id": 1}, {"soggetto_ruolo_id": 555}):
             with self.subTest(copia=copia), self.assertRaises(ServiceError) as cm:

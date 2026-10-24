@@ -575,17 +575,12 @@ class OfferteService:
                 message="Campo 'utility' deve essere oggetto.",
                 context={"got": type(utility_payload).__name__},
             )
-        stato_bozza_id = self._repo.get_stato_id_by_codice(StatoOfferta.BOZZA)
-        ErrorManager.require(
-            stato_bozza_id is not None,
-            code=E_VENDITE_VALIDATION,
-            message="Stato BOZZA non configurato in config.stati_doc_offerte.",
-        )
-        assert stato_bozza_id is not None
+        # Lo stato non si passa: l'offerta nasce nello stato iniziale del suo
+        # vocabolario, e lo mette il DB (BB `script.trgfn_doc_stato_iniziale`,
+        # brief-modello-documento-vendita P-2).
         data: dict[str, Any] = self._con_meta_normalizzato(
             {k: v for k, v in payload.items() if k != "utility"},
         )
-        data["stato_doc_offerta_id"] = stato_bozza_id
         # `codice` NON in payload (vedi nota CREATE_KEYS_OFFERTA): il trigger
         # BEFORE INSERT genera OFC-NNNNNNN via `script.fn_generate_codice`.
         # `revisione_numero` ha default DB = 1.
