@@ -39,6 +39,18 @@
 -- 10) C-22: il ramo lock_batch_id libera tutte le attivita del batch
 -- 11) C-22: senza lock_batch_id le attivita degli altri restano intatte
 -- 12) C-22: il reset per-fattura passa NULL alla primitiva
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): attivita', lotto e
+--   batch si COSTRUISCONO. Prima si pescavano «la prima attivita' con commessa»,
+--   «l'ultimo lotto DRAFT» e «il batch di attivita' piu' grosso»: su un database
+--   ricostruito da zero non ci sono, il file moriva nella fixture e il 10-11 si
+--   sarebbero saltati da soli. Ora due commesse emittibili dello stesso cliente
+--   (dbops.fn_pgtap_crea_commessa), un lotto DRAFT dalla sua madre e il PULL vero
+--   col marchio del lotto: il batch del 10 e' quel marchio, con DUE attivita'.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-3/R-4): la sorgente ROOT
+--   delle due commesse la scrive il builder (p_con_sorgente_root), non piu' un
+--   INSERT del test; il lotto DRAFT nasce da dbops.fn_pgtap_crea_lotto, del
+--   cliente (p_del_cliente) e col tipo documento della riga di commessa, come
+--   prima lo faceva la madre chiamata col billing account. Asserzioni invariate.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -56,7 +68,19 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- pgtap-contesto: escluso — il contesto lo apre dbops.fn_pgtap_crea_commessa (rev
+--   2026-10-24), sull'operatore dell'azienda
+--   che costruisce (fn_pgtap_crea_mondo_cliente, ramo «nessun contesto»). La
+--   seconda commessa e' dello STESSO cliente: entra nello stesso lotto e nello
+--   stesso batch.
+CREATE TEMP TABLE tmp_comm_arr AS
+SELECT 1 AS n, c.* FROM dbops.fn_pgtap_crea_commessa('arrotondamento ambito', 'PRONTA_FATTURAZIONE',
+                                                      p_con_sorgente_root => true) c;
+
+INSERT INTO tmp_comm_arr
+SELECT 2, c.* FROM dbops.fn_pgtap_crea_commessa('arrotondamento ambito 2', 'PRONTA_FATTURAZIONE',
+                                                (SELECT billing_account_id FROM tmp_comm_arr WHERE n = 1),
+                                                p_con_sorgente_root => true) c;
 
 SELECT plan(12);
 
@@ -64,25 +88,41 @@ SELECT plan(12);
 -- 0) Fixture
 -- ============================================================
 -- Si parte da un'attivita' con commessa (serve al test 6 per far divergere il
--- termine per la via reale) e da un lotto esistente. Gli importi hanno tre
+-- termine per la via reale) e da un lotto DRAFT. Gli importi hanno tre
 -- decimali apposta: con due, il totale cade gia' tondo e l'arrotondamento
 -- sarebbe zero — cioe' la fixture non eserciterebbe nulla. Il test 2 lo
 -- verifica invece di darlo per scontato.
+-- ⚠️ Il pull PRETENDE una sorgente ROOT: la scrive il builder
+--   (p_con_sorgente_root, sorgente COMMESSA, chiave = id della commessa).
+
+-- ⚠️ Solo un lotto in DRAFT: `fn_get_or_create_fattura_header` crea la
+--    fattura in DRAFT e il guard di coerenza vuole lo stesso stato sul lotto
+--    (il 2026-08-16 un lotto EMESSA pescato fece fallire la fixture). Il lotto
+--    lo da' dbops.fn_pgtap_crea_lotto (madre sotto), nello stato iniziale, del
+--    cliente e col tipo documento della riga di commessa, che il pull confronta.
+CREATE TEMP TABLE tmp_lotto_arr AS
+SELECT l.lotto_id
+  FROM (SELECT c.billing_account_id, ca.tipo_doc_fiscale_id
+          FROM tmp_comm_arr c
+          JOIN vendite.commesse_attivita ca ON ca.id = c.attivita_id
+         WHERE c.n = 1) r,
+       dbops.fn_pgtap_crea_lotto('arrotondamento ambito', 'DRAFT', r.billing_account_id,
+                                 r.tipo_doc_fiscale_id, p_del_cliente => true) l;
+
+-- Le attivita' fatturabili nascono dal PULL vero, col marchio del lotto: e' il
+--   batch su cui il 10 misura.
+CREATE TEMP TABLE tmp_pull_arr AS
+SELECT p.*
+  FROM tmp_comm_arr c,
+       vendite.fn_emit_attivita_fatturabili_da_commessa(
+         p_commessa_id   => c.commessa_id,
+         p_emit_batch_id => (SELECT fl.lock_batch_id FROM vendite.fatturazione_lotti fl
+                              WHERE fl.id = (SELECT lotto_id FROM tmp_lotto_arr))) p;
+
 CREATE TEMP TABLE tmp_refs_arr AS
-SELECT (SELECT a.id FROM vendite.attivita_fatturabili a
-         WHERE a.commessa_id IS NOT NULL ORDER BY a.id LIMIT 1)  AS attivita_id,
-       (SELECT a.commessa_id FROM vendite.attivita_fatturabili a
-         WHERE a.commessa_id IS NOT NULL ORDER BY a.id LIMIT 1)  AS commessa_id,
-       -- ⚠️ Solo lotti in DRAFT: `fn_get_or_create_fattura_header` crea la
-       --    fattura in DRAFT e il guard DEFERRED di coerenza vuole lo stesso
-       --    stato sul lotto. Con `ORDER BY id DESC` nudo bastava che
-       --    l'applicazione creasse un lotto EMESSA — successo il 2026-08-16 —
-       --    perche' la fixture fallisse senza che il codice collaudato fosse
-       --    cambiato di una riga.
-       (SELECT fl.id FROM vendite.fatturazione_lotti fl
-          JOIN config.stati_doc_fiscale s ON s.id = fl.stato_doc_fiscale_id
-         WHERE s.codice_interno = 'DRAFT'
-         ORDER BY fl.id DESC LIMIT 1)                            AS lotto_id;
+SELECT af.id AS attivita_id, af.commessa_id, l.lotto_id
+  FROM vendite.attivita_fatturabili af, tmp_lotto_arr l
+ WHERE af.commessa_attivita_id = (SELECT attivita_id FROM tmp_comm_arr WHERE n = 1);
 
 CREATE TEMP TABLE tmp_f1_arr AS
 SELECT vendite.fn_get_or_create_fattura_header(
@@ -92,7 +132,9 @@ SELECT vendite.fn_get_or_create_fattura_header(
 INSERT INTO vendite.fatture_riepiloghi_iva (fattura_id, imponibile, imposta, arrotondamento)
 SELECT (SELECT id FROM tmp_f1_arr), 10.503, 0.712, 0;
 
-SELECT ok((SELECT id FROM tmp_f1_arr) IS NOT NULL,
+SELECT ok((SELECT id FROM tmp_f1_arr) IS NOT NULL
+          AND (SELECT count(*) FROM tmp_refs_arr) = 1
+          AND (SELECT sum(inserted_rows) FROM tmp_pull_arr) = 2,
   '1) Fixture: fattura di test creata con il suo riepilogo IVA');
 
 SELECT vendite.fn_ricalcola_totali_fattura((SELECT id FROM tmp_f1_arr));
@@ -238,22 +280,23 @@ SELECT is(
 -- nel reset GLOBALE — libera anche le attivita' agganciate al lotto che non
 -- sono mai diventate riga — ed e' esattamente il motivo per cui il reset
 -- PER-FATTURA non deve passare quel parametro.
+-- ⭐ rev 2026-10-24: il batch e' il marchio del lotto del test, e le sue attivita'
+--   sono le DUE del pull (una per commessa), nessuna ancora diventata riga. Prima
+--   era «il batch piu' grosso del database», e su un database vuoto il 10 e l'11
+--   si saltavano: ora non c'e' piu' un ramo di salto, la fixture lo garantisce.
 CREATE TEMP TABLE tmp_batch_arr AS
-SELECT a.lock_batch_id AS batch, count(*)::int AS attivita
-  FROM vendite.attivita_fatturabili a
- WHERE a.lock_batch_id IS NOT NULL
- GROUP BY a.lock_batch_id ORDER BY count(*) DESC LIMIT 1;
+SELECT fl.lock_batch_id AS batch,
+       (SELECT count(*)::int FROM vendite.attivita_fatturabili a
+         WHERE a.emit_batch_id = fl.lock_batch_id) AS attivita
+  FROM vendite.fatturazione_lotti fl
+ WHERE fl.id = (SELECT lotto_id FROM tmp_refs_arr);
 
-SELECT CASE
-  WHEN (SELECT count(*) FROM tmp_batch_arr) = 0
-    THEN skip('nessun batch di attivita su cui misurare', 2)
-  ELSE is(
+SELECT is(
     (SELECT c.updated_attivita
        FROM vendite.fn_cleanup_fatture_by_ids(
               ARRAY[(SELECT id FROM tmp_f2_arr)], (SELECT batch FROM tmp_batch_arr)) c),
     (SELECT attivita FROM tmp_batch_arr),
-    '10) C-22: con il lock_batch_id il cleanup libera TUTTE le attivita del batch')
-END;
+    '10) C-22: con il lock_batch_id il cleanup libera TUTTE le attivita del batch');
 
 -- Stessa cancellazione, senza il batch: tocca solo cio' che appartiene alla
 -- fattura. La fattura del test e' senza righe, quindi zero — ed e' il punto:
@@ -263,15 +306,11 @@ SELECT vendite.fn_get_or_create_fattura_header(
          (SELECT lotto_id FROM tmp_refs_arr),
          (SELECT attivita_id FROM tmp_refs_arr)) AS id;
 
-SELECT CASE
-  WHEN (SELECT count(*) FROM tmp_batch_arr) = 0
-    THEN skip('nessun batch di attivita su cui misurare', 1)
-  ELSE is(
+SELECT is(
     (SELECT c.updated_attivita
        FROM vendite.fn_cleanup_fatture_by_ids(ARRAY[(SELECT id FROM tmp_f4_arr)], NULL::uuid) c),
     0,
-    '11) C-22: senza lock_batch_id le attivita delle altre fatture restano intatte')
-END;
+    '11) C-22: senza lock_batch_id le attivita delle altre fatture restano intatte');
 
 -- Presidio della regressione vera e propria: che il chiamante per-fattura
 -- passi NULL. Il giro completo non e' esercitabile qui, quindi si verifica il

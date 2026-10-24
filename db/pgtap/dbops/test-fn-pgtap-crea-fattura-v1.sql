@@ -14,9 +14,15 @@
 --     pure: e' cio' che i guard del dominio pretendono;
 --   - il terzo parametro riusa un cliente gia' costruito invece di farne uno
 --     nuovo, e RIFIUTA un billing account di un'altra azienda;
---   - lo stato si sceglie alla nascita, e uno inesistente parla.
+--   - lo stato si sceglie alla nascita, e uno inesistente parla;
+--   - rev 2026-10-24 (20261024-27, brief-modello-documento-vendita Q-2): fuori
+--     bozza la fattura puo' arrivare SENZA indirizzi e/o SENZA intestazione,
+--     spogliata nell'ultimo stato non congelato del percorso;
+--   - rev 2026-10-24 (20261024-36, R-5): minimo, totale a pagare e termine
+--     di pagamento alla nascita;
+--   - rev 2026-10-24 (20261024-42): la fattura senza utility.
 --
--- Elenco test (plan 8):
+-- Elenco test (plan 15):
 --   1) la funzione esiste con la firma dichiarata
 --   2) la testata esiste davvero, e porta il registro e il BA tornati
 --   3) il registro e' dell'azienda di chi agisce
@@ -25,6 +31,13 @@
 --   6) terzo parametro: stesso cliente, stesso registro, testata NUOVA
 --   7) senza terzo parametro: cliente nuovo, stessa azienda
 --   8) guard: uno stato che non esiste parla invece di scrivere NULL
+--   9) DEFINITIVA senza spoliazione: indirizzi e intestazione ci sono
+--  10) DEFINITIVA spogliata di tutto: lo stato e' quello, gli snapshot no
+--  11) EMESSA spogliata dei soli indirizzi: l'intestazione resta
+--  12) guard: spogliare una fattura che resta in bozza parla
+--  13) senza i tre valori: minimo false, totale e termine vuoti (come prima)
+--  14) minimo, totale a pagare e termine scritti alla nascita
+--  15) p_senza_utility: la fattura nasce senza utility; senza, ha quella del cliente
 --
 -- ⚠️ La fixture apre il contesto chiamando il BB: la riga del template
 --   sarebbe ridondante, ma non dannosa. Qui si usa il BB come lo usera' un
@@ -42,15 +55,15 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   viene chiamata come la chiamera' un file su un database ricostruito: senza
 --   nessuna veste in sessione. Aprirlo prima nasconderebbe meta' del contratto.
 
-SELECT plan(8);
+SELECT plan(15);
 
 -- ============================================================
 -- 1) La firma
 -- ============================================================
 SELECT has_function(
     'dbops', 'fn_pgtap_crea_fattura',
-    ARRAY['text', 'character varying', 'bigint'],
-    'dbops.fn_pgtap_crea_fattura(text, character varying, bigint) esiste con la firma dichiarata'
+    ARRAY['text', 'character varying', 'bigint', 'boolean', 'boolean', 'boolean', 'numeric', 'bigint', 'boolean'],
+    'dbops.fn_pgtap_crea_fattura(text, character varying, bigint, boolean, boolean, boolean, numeric, bigint, boolean) esiste con la firma dichiarata'
 );
 
 -- ============================================================
@@ -156,6 +169,94 @@ SELECT throws_like($$
 $$,
     '%nessuno stato documento fiscale%',
     'guard: uno stato inesistente parla, invece di scrivere un NULL nella testata'
+);
+
+-- ============================================================
+-- 9-12) Fuori bozza, con e senza gli snapshot (rev 2026-10-24, Q-2)
+-- ============================================================
+CREATE TEMP TABLE t_f4 AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+    'presidio definitiva', 'DEFINITIVA', (SELECT billing_account_id FROM t_f1));
+CREATE TEMP TABLE t_f5 AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+    'presidio nuda', 'DEFINITIVA', (SELECT billing_account_id FROM t_f1), true, true);
+CREATE TEMP TABLE t_f6 AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+    'presidio senza indirizzi', 'EMESSA', (SELECT billing_account_id FROM t_f1), true, false);
+
+-- La forma che si legge: stato, intestazione presente, numero di indirizzi.
+CREATE TEMP TABLE t_forma AS
+SELECT t.caso, s.codice_interno::text || ' '
+           || (f.emittente_snapshot IS NOT NULL AND f.cliente_snapshot IS NOT NULL)::text || ' '
+           || (SELECT count(*) FROM vendite.fatture_indirizzi i WHERE i.fattura_id = f.id)::text AS forma
+  FROM (SELECT 'piena' AS caso, fattura_id FROM t_f4
+        UNION ALL SELECT 'nuda', fattura_id FROM t_f5
+        UNION ALL SELECT 'senza_indirizzi', fattura_id FROM t_f6) t
+  JOIN vendite.fatture f ON f.id = t.fattura_id
+  JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id;
+
+SELECT ok(
+    (SELECT forma LIKE 'DEFINITIVA true %' AND forma NOT LIKE '% 0' FROM t_forma WHERE caso = 'piena'),
+    'DEFINITIVA senza spoliazione: indirizzi e intestazione scritti dai building block, come la pipeline'
+);
+
+SELECT is(
+    (SELECT forma FROM t_forma WHERE caso = 'nuda'),
+    'DEFINITIVA false 0',
+    'DEFINITIVA spogliata: lo stato e'' quello chiesto, senza indirizzi ne'' intestazione'
+);
+
+SELECT is(
+    (SELECT forma FROM t_forma WHERE caso = 'senza_indirizzi'),
+    'EMESSA true 0',
+    'EMESSA spogliata dei soli indirizzi: l''intestazione resta'
+);
+
+SELECT throws_like($$
+    SELECT dbops.fn_pgtap_crea_fattura('presidio bozza nuda', 'DRAFT', NULL, true)
+$$,
+    'fn_pgtap_crea_fattura: DRAFT e'' lo stato iniziale%',
+    'guard: spogliare una fattura che resta in bozza parla, la bozza nasce gia'' senza'
+);
+
+-- ============================================================
+-- 13-14) Minimo, totale a pagare e termine alla nascita (rev 2026-10-24, R-5)
+-- ============================================================
+SELECT is(
+    (SELECT f.minimo::text || ' ' || (f.totale_a_pagare IS NULL)::text || ' ' || (f.termine_pagamento_id IS NULL)::text
+       FROM vendite.fatture f WHERE f.id = (SELECT fattura_id FROM t_f1)),
+    'false true true',
+    '13) senza i tre valori: minimo false, totale a pagare e termine vuoti, come prima'
+);
+
+CREATE TEMP TABLE t_f7 AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+    'presidio minimo', 'DRAFT', (SELECT billing_account_id FROM t_f1), false, false,
+    true, 123.45,
+    (SELECT tp.id FROM config.termini_pagamento tp WHERE tp.attivo IS TRUE ORDER BY tp.id LIMIT 1));
+
+SELECT is(
+    (SELECT f.minimo::text || ' ' || f.totale_a_pagare::text || ' '
+            || (f.termine_pagamento_id = (SELECT tp.id FROM config.termini_pagamento tp
+                                            WHERE tp.attivo IS TRUE ORDER BY tp.id LIMIT 1))::text
+       FROM vendite.fatture f WHERE f.id = (SELECT fattura_id FROM t_f7)),
+    'true 123.45 true',
+    '14) minimo, totale a pagare e termine di pagamento scritti alla nascita'
+);
+
+-- 15) La fattura senza utility (rev 2026-10-24, 20261024-42)
+CREATE TEMP TABLE t_f8 AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+    'presidio senza utility', 'DRAFT', (SELECT billing_account_id FROM t_f1),
+    p_senza_utility => true);
+
+SELECT is(
+    (SELECT (f8.utility_id IS NULL)::text || ' ' || ((SELECT utility_id FROM t_f8) IS NULL)::text
+            || ' ' || (f1.utility_id = (SELECT utility_id FROM t_f1))::text
+       FROM vendite.fatture f8, vendite.fatture f1
+      WHERE f8.id = (SELECT fattura_id FROM t_f8) AND f1.id = (SELECT fattura_id FROM t_f1)),
+    'true true true',
+    '15) p_senza_utility: la fattura nasce senza utility e il builder torna quella scritta (NULL); senza, ha quella del cliente'
 );
 
 SELECT * FROM finish();

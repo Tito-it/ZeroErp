@@ -7,10 +7,27 @@
 --   indirizzo FATT e intestazione, che in EMESSA (sotto soglia) si TOLGONO di
 --   nuovo: arriva in DEFINITIVA nuda come prima, e il test 4 («non toccata»,
 --   zero indirizzi) misura ancora il giro del lotto e non la fixture.
--- pgtap-differiti: escluso — la fixture non soddisfa un vincolo DIFFERITO e la
---   ragione e' scritta per esteso piu' sotto. Debito noto (§22.4): quando la
---   fixture viene completata, si toglie questa riga e si rimette il
---   SET CONSTRAINTS ALL IMMEDIATE nel punto in cui l'unita' di lavoro e' completa.
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-3/Q-4): il mondo si
+--   COSTRUISCE (azienda, cliente con due BA su istanze diverse, le tre fatture
+--   dal builder; la «definitiva» arriva in DEFINITIVA gia' spogliata) invece di
+--   pescare «un ruolo con due istanze e lo spazio indirizzi libero». Il debito
+--   del §22.4 e' curato: la fixture lascia un lotto COERENTE, il file gira tutto
+--   IMMEDIATE e il guard di coerenza lotto/fatture scatta a ogni istruzione
+--   (vedi dopo il BEGIN). I test 1 e 2 contano righe vere.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-1): esce dalla fixture la
+--   fattura DEFINITIVA resa ferma dalla segnalazione 'C' di un altro task. Con
+--   R-1 (Tid) quel mondo non esiste piu': una fattura in errore gia' congelata
+--   non sta in un lotto non congelato (E_LOTTO_FATTURE_STATO_INCOERENTE), e nel
+--   giro vero una definitiva in un lotto in bozza non si forma (dal DEFINITIVA
+--   non si torna, e il ritorno del lotto in bozza cancella le fatture).
+--   * Il 4 (definitiva non toccata) e l'8 (nota di lotto per le saltate)
+--     diventano skip(): il ramo `congela_fiscale` di fn_snapshot_fattura_lotto
+--     e' una DIFESA DICHIARATA, NON PROVATA da questo file. Resta nella
+--     funzione (Regola zero), il modello non lo costruisce piu'.
+--   * Attese cambiate, tutte per la stessa ragione (zero saltate): il 2 conta
+--     DUE fatture nel ponte (erano tre), il 3 «2/1/0/1/0/1» (era 1 saltata),
+--     il 9 «1/0/0» (era 1 saltata).
+--   * Il cliente (BA 1) lo costruisce ora la fattura «ok».
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_snapshot_fattura_lotto (Fase 2.2 + brief intestazione)
 --       comportamento D-Q: lo step si completa, la fattura difettosa resta
@@ -18,14 +35,14 @@
 -- Piano: piano-db-satelliti-fattura.md Fase 2.2 / D-F esteso / D-Q
 -- ------------------------------------------------------------
 -- Indice test (1..12):
---  1) Fixture: due BA con spazio indirizzi libero e ruoli distinti
---  2) Lotto, tre fatture e ponte creati
---  3) Primo giro: 2 lavorate, 1 indirizzo, 1 intestazione, 1 saltata, 1 fallita
---  4) La fattura DEFINITIVA non e' stata toccata
+--  1) Fixture: due BA dello stesso ruolo su istanze diverse, spazio indirizzi libero
+--  2) Lotto, due fatture e ponte creati, tutto in DRAFT
+--  3) Primo giro: 2 lavorate, 1 indirizzo, 1 intestazione, 0 saltate, 1 fallita
+--  4) [skip, R-1] La fattura DEFINITIVA non e' stata toccata
 --  5) La fattura risolvibile ha il suo snapshot
 --  6) La fattura difettosa e' marcata 'C' dal task
 --  7) ...e il ponte la porta in stato_esecuzione = ERRORE
---  8) Nota informativa di lotto per le fatture saltate
+--  8) [skip, R-1] Nota informativa di lotto per le fatture saltate
 --  9) Corretta l'anagrafica, il secondo giro non fallisce piu'
 -- 10) La segnalazione del task e' ritirata e lo stato_esecuzione si sblocca
 -- 11) Il ritiro tocca solo le PROPRIE segnalazioni
@@ -34,7 +51,8 @@
 -- COSA STA DAVVERO PROVANDO QUESTO FILE. Non «la funzione scrive gli
 -- indirizzi» -- quello lo prova gia' test-snapshot-indirizzi-fattura-v1 sulla
 -- per-fattura. Qui si prova la REGOLA DI CONVIVENZA decisa da Tid (D-Q):
---   * una fattura definitiva non ha lavoro da fare e non ferma le altre;
+--   * una fattura definitiva non ha lavoro da fare e non ferma le altre
+--     (rev 2026-10-24, R-1: difesa dichiarata, non provata -- vedi in testa);
 --   * una fattura difettosa non fa morire il giro: resta marcata, e le altre
 --     vengono lavorate lo stesso, cosi' i clienti incompleti si vedono TUTTI
 --     in una volta invece di uno per esecuzione;
@@ -59,104 +77,129 @@
 -- fallback, non un secondo indirizzo per istanza.
 -- ------------------------------------------------------------
 BEGIN;
--- ⚠️ QUESTO FILE NON USA `SET CONSTRAINTS ALL IMMEDIATE`, e la ragione e' un
---   DEBITO, non una scelta di stile.
---   vendite.fatturazione_lotti e vendite.fatture hanno due guard DEFERRABLE
---   INITIALLY DEFERRED che pretendono la coerenza fra lo stato fiscale del
---   lotto e quello delle sue fatture (E_LOTTO_FATTURE_STATO_INCOERENTE). Sono
---   differiti apposta: si aggiornano lotto e fatture in qualsiasi ordine dentro
---   la stessa transazione, e la coerenza si verifica al COMMIT.
---   ⚠️ Ma qui non e' questione di «troppo presto»: MISURATO mettendo il
---   controllo in coda, cioe' dove starebbe il COMMIT, il file esegue tutte le
---   sue asserzioni e POI fallisce lo stesso — «Lotto N: fattura/e con stato
---   fiscale diverso da quello del lotto». La fixture lascia davvero un lotto
---   incoerente: e' uno stato che l'applicazione non potrebbe committare.
---   La correzione vera e' allineare lo stato delle fatture a quello del lotto
---   prima di chiudere; allora la riga si rimette e il guard viene esercitato.
---   Brief: brief-db-pgtap-runner-rls-baseline §22.
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   vendite.fatturazione_lotti, vendite.fatture e il ponte hanno tre guard
+--   DEFERRABLE INITIALLY DEFERRED che pretendono la coerenza fra lo stato
+--   fiscale del lotto e quello delle sue fatture
+--   (E_LOTTO_FATTURE_STATO_INCOERENTE). Fino al 2026-10-24 questo file ne era
+--   escluso: la fixture metteva una fattura DEFINITIVA in un lotto in DRAFT,
+--   uno stato che un COMMIT vero rifiuta (brief-db-pgtap-runner-rls-baseline
+--   §22). Ora (R-1) il lotto contiene solo fatture DRAFT come lui, e resta
+--   coerente a ogni istruzione.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ L'AZIENDA SI COSTRUISCE (rev 2026-10-24, Q-4), e il contesto e' quello del
+--   SUO operatore.
+CREATE TEMP TABLE tmp_mondo_sil AS
+SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM tmp_mondo_sil)); END $ctx$;
 
 SELECT plan(12);
 
 -- ============================================================
--- Riferimenti e scelta dei due BA
+-- Riferimenti e costruzione dei due BA
 -- ============================================================
 CREATE TEMP TABLE tmp_ti_sil AS
 SELECT (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'FATT') AS fatt_id;
 
 CREATE TEMP TABLE tmp_base_sil AS
 SELECT
-  (SELECT m.registro_id
-     FROM vendite.tipi_doc_fiscale_registri m
-     JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
-    WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1)   AS registro_id,
-  (SELECT m.tipo_doc_fiscale_id
-     FROM vendite.tipi_doc_fiscale_registri m
-     JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
-    WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1)   AS tipo_doc_fiscale_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT s.id FROM config.stati_doc_fiscale s
     WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE)      AS stato_draft_id,
-  (SELECT s.id FROM config.stati_doc_fiscale s
-    WHERE s.codice_interno = 'DEFINITIVA' AND s.attivo IS TRUE) AS stato_def_id,
-  COALESCE((SELECT st.id FROM config.stati st WHERE st.codice_iso2 = 'IT'),
-           (SELECT st.id FROM config.stati st ORDER BY st.id LIMIT 1)) AS stato_id;
+  -- Lo stato dal risolutore (codice_iso2 non e' univoco: mai una riga a caso).
+  script.fn_stato_id_da_iso2('IT') AS stato_id;
 
+-- La fattura «ok» per prima: costruisce il cliente (BA 1). In bozza il
+-- builder non scrive ne' indirizzi ne' intestazione: li scrive il giro.
+CREATE TEMP TABLE tmp_f_ok_sil AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('snapshot indirizzi lotto ok', 'DRAFT');
 
--- Stesso criterio di test-snapshot-indirizzi-fattura-v1: spazio indirizzi
--- (ruolo + soggetto) vuoto per i tipi ammessi in ambito FATTURA, cosi' i
--- conteggi dipendono solo da cio' che inserisce il test.
-CREATE TEMP TABLE tmp_cand_sil AS
-SELECT ba.id AS billing_account_id, ba.soggetto_ruolo_id, ba.istanza_utility_id,
-       ba.utility_id,
-       anagrafiche.fn_get_emittente_fiscale_id(ba.id) AS emittente_soggetto_ruolo_id
-  FROM anagrafiche.billing_account ba
-  JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
- WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-   AND NOT EXISTS (
-         SELECT 1 FROM anagrafiche.indirizzi i
-          WHERE i.soggetto_ruolo_id = ba.soggetto_ruolo_id
-            AND i.tipo_indirizzo_id IN (SELECT a.tipo_indirizzo_id
-                                          FROM config.tipi_indirizzi_allowed a
-                                         WHERE a.ambito = 'FATTURA'
-                                           AND a.attivo IS TRUE))
-   AND NOT EXISTS (
-         SELECT 1 FROM anagrafiche.indirizzi_soggetti g
-          WHERE g.soggetto_id = sr.soggetto_id
-            AND g.tipo_indirizzo_id IN (SELECT a.tipo_indirizzo_id
-                                          FROM config.tipi_indirizzi_allowed a
-                                         WHERE a.ambito = 'FATTURA'
-                                           AND a.attivo IS TRUE));
+-- Il secondo BA: STESSO ruolo, ISTANZA nuova (vedi la nota in testa). Nessun
+-- builder lo fa: lo scrive il building block di dominio
+-- anagrafiche.fn_crea_billing_account, dentro la stessa finestra differita
+-- che usa dbops.fn_pgtap_crea_cliente_ba (l'istanza nasce un'istruzione prima
+-- del suo BA), richiusa subito: i guard differiti scattano qui, su un'unita'
+-- di lavoro completa.
+SET CONSTRAINTS ALL DEFERRED;
 
--- Due BA dello stesso ruolo, su istanze diverse: vedi la nota in testa.
+CREATE TEMP TABLE tmp_ba2_sil AS
+SELECT b.billing_account_id, b.istanza_utility_id
+  FROM tmp_f_ok_sil d
+ CROSS JOIN LATERAL anagrafiche.fn_crea_billing_account(
+         p_soggetto_ruolo_id           := d.cliente_soggetto_ruolo_id,
+         p_utility_id                  := d.utility_id,
+         p_campi                       := jsonb_build_object(
+             'codice',               'PGTAPSIL2',
+             'categoria_cliente_id', (SELECT cc.id FROM anagrafiche.categorie_clienti cc
+                                       ORDER BY cc.id LIMIT 1),
+             'valuta_id',            d.valuta_id),
+         p_istanza                     := jsonb_build_object('codice', 'PGTAPSIL2'),
+         p_emittente_soggetto_ruolo_id := d.emittente_soggetto_ruolo_id) b;
+
+SET CONSTRAINTS ALL IMMEDIATE;
+
+CREATE TEMP TABLE tmp_f_senza_sil AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+    'snapshot indirizzi lotto senza indirizzo', 'DRAFT',
+    (SELECT billing_account_id FROM tmp_ba2_sil));
+
 CREATE TEMP TABLE tmp_ba_sil AS
-SELECT c.*, row_number() OVER (ORDER BY c.billing_account_id) AS rn
-  FROM tmp_cand_sil c
- WHERE c.soggetto_ruolo_id = (
-         SELECT c2.soggetto_ruolo_id
-           FROM tmp_cand_sil c2
-          GROUP BY c2.soggetto_ruolo_id
-         HAVING count(DISTINCT c2.istanza_utility_id) >= 2
-          ORDER BY c2.soggetto_ruolo_id
-          LIMIT 1)
- ORDER BY c.billing_account_id
- LIMIT 2;
+SELECT d.billing_account_id, d.cliente_soggetto_ruolo_id AS soggetto_ruolo_id,
+       d.istanza_utility_id, d.utility_id, d.emittente_soggetto_ruolo_id,
+       d.tipo_doc_fiscale_id, 1 AS rn
+  FROM tmp_f_ok_sil d
+UNION ALL
+SELECT b.billing_account_id, d.cliente_soggetto_ruolo_id,
+       b.istanza_utility_id, d.utility_id, d.emittente_soggetto_ruolo_id,
+       d.tipo_doc_fiscale_id, 2
+  FROM tmp_ba2_sil b, tmp_f_ok_sil d;
 
+-- ⚠️ LO SPAZIO INDIRIZZI SI SVUOTA. Il ruolo CL nasce col suo FATT generico
+--   (obbligatorio, lo scrive anagrafiche.fn_crea_indirizzi_ruolo), e un
+--   generico coprirebbe per fallback anche la seconda istanza: proprio il caso
+--   che il test vuole scoperto. Si toglie, cosi' i conteggi dipendono solo da
+--   cio' che inserisce il test (lo stesso criterio di
+--   test-snapshot-indirizzi-fattura-v1, che prima si otteneva SCEGLIENDO un
+--   ruolo senza indirizzi). Il SEDELEG del soggetto non e' un tipo ammesso
+--   in ambito FATTURA: resta.
+DELETE FROM anagrafiche.indirizzi i
+ USING tmp_ba_sil b
+ WHERE b.rn = 1
+   AND i.soggetto_ruolo_id = b.soggetto_ruolo_id
+   AND i.tipo_indirizzo_id IN (SELECT a.tipo_indirizzo_id
+                                 FROM config.tipi_indirizzi_allowed a
+                                WHERE a.ambito = 'FATTURA'
+                                  AND a.attivo IS TRUE);
 
--- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva: era scelto
---   dalla mappa tipi_doc_fiscale_registri INDIPENDENTEMENTE da chi emette, e dal
---   2026-08-30 vendite.trgfn_fatture_guard_registro_emittente non ammette piu' la
---   coincidenza. ⚠️ Sta QUI e non accanto a tmp_base_sil: l'emittente nasce con
---   tmp_ba_sil, ed e' la riga rn = 1 quella che il lotto usa.
-UPDATE tmp_base_sil SET registro_id = script.fn_pgtap_registro_fattura(
-    (SELECT emittente_soggetto_ruolo_id FROM tmp_ba_sil WHERE rn = 1));
+-- ⚠️ Il 1 guarda le righe VERE: due BA dello stesso ruolo su istanze diverse,
+--   e nessun indirizzo d'ambito FATTURA ne' sul ruolo ne' sul soggetto.
 SELECT is(
-  (SELECT count(DISTINCT istanza_utility_id)::int FROM tmp_ba_sil), 2,
+  (SELECT count(DISTINCT ba.istanza_utility_id)::int
+     FROM tmp_ba_sil t
+     JOIN anagrafiche.billing_account ba ON ba.id = t.billing_account_id
+     JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = ba.soggetto_ruolo_id
+    WHERE ba.soggetto_ruolo_id = (SELECT soggetto_ruolo_id FROM tmp_ba_sil WHERE rn = 1)
+      AND NOT EXISTS (
+            SELECT 1 FROM anagrafiche.indirizzi i
+             WHERE i.soggetto_ruolo_id = ba.soggetto_ruolo_id
+               AND i.tipo_indirizzo_id IN (SELECT a.tipo_indirizzo_id
+                                             FROM config.tipi_indirizzi_allowed a
+                                            WHERE a.ambito = 'FATTURA'
+                                              AND a.attivo IS TRUE))
+      AND NOT EXISTS (
+            SELECT 1 FROM anagrafiche.indirizzi_soggetti g
+             WHERE g.soggetto_id = sr.soggetto_id
+               AND g.tipo_indirizzo_id IN (SELECT a.tipo_indirizzo_id
+                                             FROM config.tipi_indirizzi_allowed a
+                                            WHERE a.ambito = 'FATTURA'
+                                              AND a.attivo IS TRUE))),
+  2,
   '1) fixture: due BA dello stesso ruolo su istanze diverse, spazio indirizzi libero'
 );
 
@@ -181,7 +224,7 @@ SELECT b.soggetto_ruolo_id, ti.fatt_id, b.istanza_utility_id,
 CREATE TEMP TABLE tmp_lotto_sil AS
 SELECT vendite.fn_create_fatturazione_lotto(
     p_competenza_mese             => date_trunc('month', script.fn_data_operativa())::date,
-    p_tipo_doc_fiscale_id         => (SELECT tipo_doc_fiscale_id FROM tmp_base_sil),
+    p_tipo_doc_fiscale_id         => (SELECT tipo_doc_fiscale_id FROM tmp_ba_sil WHERE rn = 1),
     p_utility_id                  => (SELECT utility_id FROM tmp_ba_sil WHERE rn = 1),
     p_billing_account_id          => (SELECT billing_account_id FROM tmp_ba_sil WHERE rn = 1),
     p_lock_batch_id               => NULL,
@@ -191,89 +234,41 @@ SELECT vendite.fn_create_fatturazione_lotto(
  WHERE (SELECT ok FROM tmp_gate_sil);
 
 CREATE TEMP TABLE tmp_fatture_sil AS
-WITH casi AS (
-  SELECT 'ok'::text AS caso, b.billing_account_id, b.emittente_soggetto_ruolo_id
-    FROM tmp_ba_sil b WHERE b.rn = 1
-  UNION ALL
-  SELECT 'senza_indirizzo', b.billing_account_id, b.emittente_soggetto_ruolo_id
-    FROM tmp_ba_sil b WHERE b.rn = 2
-  UNION ALL
-  SELECT 'definitiva', b.billing_account_id, b.emittente_soggetto_ruolo_id
-    FROM tmp_ba_sil b WHERE b.rn = 1
-), ins AS (
-  -- ⛔ Lo stato non si scrive: la fattura nasce in bozza (rev 2026-10-24).
-  INSERT INTO vendite.fatture (
-    registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-    tipo_doc_fiscale_id, valuta_id, meta
-  )
-  SELECT bs.registro_id, script.fn_data_operativa(), c.emittente_soggetto_ruolo_id,
-         c.billing_account_id, bs.tipo_doc_fiscale_id, bs.valuta_id,
-         jsonb_build_object('test', 'pgtap_snapshot_indirizzi_lotto', 'caso', c.caso)
-    FROM casi c, tmp_base_sil bs
-  RETURNING id, stato_doc_fiscale_id, meta ->> 'caso' AS caso
-)
-SELECT id, stato_doc_fiscale_id, caso FROM ins;
+SELECT f.id, f.stato_doc_fiscale_id, t.caso
+  FROM (SELECT fattura_id, 'ok'::text AS caso FROM tmp_f_ok_sil
+        UNION ALL SELECT fattura_id, 'senza_indirizzo' FROM tmp_f_senza_sil) t
+  JOIN vendite.fatture f ON f.id = t.fattura_id;
 
--- La «definitiva»: si completa per uscire dalla bozza, si porta in EMESSA, si
--- SPOGLIA (indirizzo e intestazione: sotto soglia e' ammesso) e si porta in
--- DEFINITIVA, sotto i guard veri. Prima del ponte, cosi' il ponte nasce con lo
--- stato che la fattura ha davvero.
-INSERT INTO vendite.fatture_indirizzi (fattura_id, tipo_indirizzo_id, snapshot)
-SELECT f.id, ti.fatt_id, '{"via":"Via Emissione pgTAP"}'::jsonb
-  FROM tmp_fatture_sil f, tmp_ti_sil ti
- WHERE f.caso = 'definitiva';
-
-UPDATE vendite.fatture
-   SET emittente_snapshot = '{"denominazione":"Emittente pgTAP","id_fiscale":"00000000000","sede":{"via":"Via Cedente 1","cap":"83100"}}'::jsonb,
-       cliente_snapshot   = '{"denominazione":"Cliente pgTAP","id_fiscale":"11111111111"}'::jsonb
- WHERE id = (SELECT id FROM tmp_fatture_sil WHERE caso = 'definitiva');
-
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', f.id, 'EMESSA')
-  FROM tmp_fatture_sil f WHERE f.caso = 'definitiva';
-
-DELETE FROM vendite.fatture_indirizzi
- WHERE fattura_id = (SELECT id FROM tmp_fatture_sil WHERE caso = 'definitiva');
-
-UPDATE vendite.fatture
-   SET emittente_snapshot = NULL,
-       cliente_snapshot   = NULL
- WHERE id = (SELECT id FROM tmp_fatture_sil WHERE caso = 'definitiva');
-
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', f.id, 'DEFINITIVA')
-  FROM tmp_fatture_sil f WHERE f.caso = 'definitiva';
-
-UPDATE tmp_fatture_sil t
-   SET stato_doc_fiscale_id = f.stato_doc_fiscale_id
-  FROM vendite.fatture f
- WHERE f.id = t.id;
-
--- ⚠️ fn_pgtap_porta_a_stato esce con SET CONSTRAINTS ALL IMMEDIATE (contratto
---   degli helper), e il SET vale per la transazione: il guard di coerenza
---   lotto/fatture scatterebbe gia' sul ponte qui sotto, mentre questo file e'
---   escluso dai differiti proprio per lui (debito in testa). Si rimettono
---   DIFFERITI quei tre soli trigger, cioe' come erano prima del cammino; il
---   resto resta IMMEDIATE, che e' piu' severo di prima, non meno.
-SET CONSTRAINTS vendite.trg_fatture_def_guard_stato_lotto_coerente_ins_upd,
-                vendite.trg_fatturazione_lotti_def_guard_stato_fatture_coerente_upd,
-                vendite.trg_fatturazione_lotti_fatture_def_guard_stato_coerente_ins_upd
-    DEFERRED;
-
+-- ⛔ Nessuna fattura definitiva nel lotto (rev 2026-10-24, R-1): niente piu'
+--   segnalazione 'C' «di un altro task» per tenerla ferma. Vedi in testa.
 INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id, stato_doc_fiscale_id)
 SELECT l.lotto_id, f.id, f.stato_doc_fiscale_id
   FROM tmp_fatture_sil f, tmp_lotto_sil l;
 
+-- ⚠️ Il 2 conta il ponte e la forma dichiarata: lotto in DRAFT, le due
+--   lavorabili in DRAFT e non critical.
+--   ⚠️ Attesa cambiata (R-1): DUE righe, erano tre con la definitiva.
 SELECT CASE WHEN NOT (SELECT ok FROM tmp_gate_sil)
   THEN skip('fixture non disponibile: servono due BA con spazio indirizzi libero', 1)
   ELSE is(
-    (SELECT count(*)::int FROM vendite.fatturazione_lotti_fatture lf, tmp_lotto_sil l
-      WHERE lf.lotto_id = l.lotto_id),
-    3,
-    '2) lotto, tre fatture e ponte creati')
+    (SELECT count(*)::int
+       FROM vendite.fatturazione_lotti_fatture lf
+       JOIN tmp_lotto_sil l             ON l.lotto_id = lf.lotto_id
+       JOIN vendite.fatturazione_lotti lo ON lo.id = lf.lotto_id
+       JOIN vendite.fatture f           ON f.id = lf.fattura_id
+       JOIN tmp_fatture_sil t           ON t.id = f.id
+       JOIN tmp_base_sil bs             ON true
+      WHERE lo.stato_doc_fiscale_id = bs.stato_draft_id
+        AND f.stato_doc_fiscale_id = bs.stato_draft_id
+        AND f.critical IS FALSE),
+    2,
+    '2) lotto, due fatture e ponte creati')
 END;
 
 -- ============================================================
--- 3) PRIMO GIRO. E' l'asserzione centrale di D-Q: il giro non si ferma ne'
---    sulla definitiva ne' sulla difettosa.
+-- 3) PRIMO GIRO. E' l'asserzione centrale di D-Q: il giro non si ferma
+--    sulla difettosa.
+--    ⚠️ Attesa cambiata (R-1): zero saltate (era 1, la definitiva).
 -- ============================================================
 CREATE TEMP TABLE tmp_run1_sil AS
 SELECT s.*
@@ -285,19 +280,13 @@ SELECT CASE WHEN NOT (SELECT ok FROM tmp_gate_sil)
   ELSE is(
     (SELECT format('%s/%s/%s/%s/%s/%s', fatture_count, inserted_rows, updated_rows,
                    intestazioni_scritte, skipped_rows, failed_rows) FROM tmp_run1_sil),
-    '2/1/0/1/1/1',
-    '3) primo giro: 2 lavorate, 1 indirizzo, 1 intestazione, 1 saltata, 1 fallita')
+    '2/1/0/1/0/1',
+    '3) primo giro: 2 lavorate, 1 indirizzo, 1 intestazione, 0 saltate, 1 fallita')
 END;
 
 -- 4) La definitiva non e' stata toccata.
-SELECT CASE WHEN NOT (SELECT ok FROM tmp_gate_sil)
-  THEN skip('fixture non disponibile', 1)
-  ELSE is(
-    (SELECT count(*)::int FROM vendite.fatture_indirizzi fi, tmp_fatture_sil f
-      WHERE fi.fattura_id = f.id AND f.caso = 'definitiva'),
-    0,
-    '4) la fattura DEFINITIVA non e'' stata toccata')
-END;
+--    ⛔ rev 2026-10-24 (R-1): skip dichiarato, il ramo resta come difesa.
+SELECT skip('R-1 (Tid, 2026-10-24): una fattura definitiva non convive con una in errore nello stesso lotto; il ramo che la salta resta come difesa e il modello non lo costruisce piu''', 1);
 
 -- 5) La fattura risolvibile ha il suo snapshot.
 SELECT CASE WHEN NOT (SELECT ok FROM tmp_gate_sil)
@@ -334,15 +323,8 @@ END;
 
 -- 8) Una nota informativa di lotto per le saltate: non critica, altrimenti
 --    bloccherebbe proprio cio' che si vuole lasciar scorrere.
-SELECT CASE WHEN NOT (SELECT ok FROM tmp_gate_sil)
-  THEN skip('fixture non disponibile', 1)
-  ELSE is(
-    (SELECT count(*)::int FROM vendite.fatturazione_lotti_log ll, tmp_lotto_sil l
-      WHERE ll.lotto_id = l.lotto_id AND ll.status = 'I'
-        AND ll.meta ->> 'task' = 'snapshot_indirizzi_lotto'),
-    1,
-    '8) nota informativa di lotto per le fatture saltate')
-END;
+--    ⛔ rev 2026-10-24 (R-1): skip dichiarato, senza saltate la nota non nasce.
+SELECT skip('R-1 (Tid, 2026-10-24): una fattura definitiva non convive con una in errore nello stesso lotto; il ramo che la salta resta come difesa e il modello non lo costruisce piu''', 1);
 
 -- ============================================================
 -- 9-10) Si corregge l'anagrafica e si rilancia lo STESSO step: e' la via
@@ -370,7 +352,8 @@ SELECT CASE WHEN NOT (SELECT ok FROM tmp_gate_sil)
   ELSE is(
     (SELECT format('%s/%s/%s', inserted_rows, skipped_rows, failed_rows)
        FROM tmp_run2_sil),
-    '1/1/0',
+    -- ⚠️ Attesa cambiata (R-1): zero saltate (era '1/1/0').
+    '1/0/0',
     '9) secondo giro dopo la correzione: 1 inserita, nessun fallimento')
 END;
 

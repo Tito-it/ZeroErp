@@ -1,5 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-24 (brief-modello-documento-vendita R-6/Q-4): cliente ed
+--   emittente dal mondo costruito (dbops.fn_pgtap_crea_mondo_cliente), i due
+--   articoli da dbops.fn_pgtap_crea_articolo con la natura del caso (MERCE,
+--   SERVIZIO_UNA_TANTUM). Prima si pescavano il primo billing account, il
+--   primo emittente e «i primi due articoli per id», e gli si riscriveva la
+--   natura: il primo per id e' un articolo-onere (ONERE_SENZA_CONTRATTO) e il
+--   file moriva li'. Numero e stato delle testate non si scrivono piu': li
+--   assegnano il dominio e il trigger della nascita.
 -- pgTAP test per Zero ERP
 --
 -- Test: vendite.fn_list_preventivi_da_pushare natura-aware (20260609-09).
@@ -34,47 +42,40 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(4);
 
 -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): le testate nascono DRAFT, prendono le righe (e la natura NULL), poi passano ad ACCETTATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-91).
+-- ⭐ rev 2026-10-24 (Q-4): il mondo si COSTRUISCE. Il cliente e l'emittente
+--   da dbops.fn_pgtap_crea_mondo_cliente (col contesto aperto riusa l'azienda
+--   di chi agisce: emittente e BA d'accordo per costruzione); gli articoli
+--   nascono con la natura del caso, che e' la condizione del test:
+--   art_merce -> MERCE (ORDINE), art_serv -> SERVIZIO_UNA_TANTUM (COMMESSA).
+--   ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('list prev natura aware');
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1 OFFSET 0) AS art_merce_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1 OFFSET 1) AS art_serv_id,
-  (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_accettato_id,
-  (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE) AS stato_bozza_id,
+  m.billing_account_id,
+  m.utility_id,
+  m.istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo('PGT-LPPN-MERCE',
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'MERCE')) AS art_merce_id,
+  dbops.fn_pgtap_crea_articolo('PGT-LPPN-SERV', false,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'SERVIZIO_UNA_TANTUM')) AS art_serv_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE') AS natura_merce_id,
-  (SELECT id FROM config.nature_vendita WHERE codice_interno = 'SERVIZIO_UNA_TANTUM') AS natura_serv_id;
-
--- Classifica: art_merce -> MERCE (ORDINE), art_serv -> SERVIZIO_UNA_TANTUM (COMMESSA).
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tmp_refs)
- WHERE id = (SELECT art_merce_id FROM tmp_refs);
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_serv_id FROM tmp_refs)
- WHERE id = (SELECT art_serv_id FROM tmp_refs);
+  m.emittente_fiscale_id,
+  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id
+FROM tmp_mondo m;
 
 -- Preventivo MISTO ACCETTATO: riga servizio + riga merce + riga natura NULL.
 CREATE TEMP TABLE tmp_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-NATAWARE', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_bozza_id,
+  SELECT r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_list_natura_aware'), r.emittente_fiscale_id
     FROM tmp_refs r
@@ -134,11 +135,11 @@ DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SEL
 CREATE TEMP TABLE tmp_prev_merce AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-NATAWARE-MERCE', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_bozza_id,
+  SELECT r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_list_natura_aware_merce'), r.emittente_fiscale_id
     FROM tmp_refs r

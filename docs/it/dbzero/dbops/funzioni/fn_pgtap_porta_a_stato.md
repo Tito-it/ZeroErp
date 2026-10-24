@@ -25,6 +25,9 @@ AS $function$
 --   N-1): tutte le testate con una matrice, non piu' solo ordine
 --   e preventivo. Un documento nasce in bozza (trigger della
 --   nascita) e si porta avanti da qui.
+-- rev 2026-10-24 (20261024-30, R-4): anche il lotto di
+--   fatturazione, VUOTO (con fatture si muove col verbo
+--   vendite.fn_sync_lotto_fatture_stato).
 DECLARE
     v_col       text;       -- colonna di stato della testata
     v_stati     regclass;   -- catalogo degli stati
@@ -58,7 +61,8 @@ BEGIN
         ('vendite.ddt'::regclass,                 'stato_doc_ddt_id',        'config.stati_doc_ddt'::regclass,        'config.transizioni_stati_ddt'::regclass,         'stato_da_id',   'stato_a_id',  'attivo',  ''),
         ('vendite.resi'::regclass,                'stato_doc_reso_id',       'config.stati_doc_reso'::regclass,       'config.transizioni_stati_reso'::regclass,        'stato_da_id',   'stato_a_id',  'attivo',  ''),
         ('vendite.commesse'::regclass,            'stato_commessa_id',       'vendite.stati_commessa'::regclass,      'vendite.transizioni_stati_commessa'::regclass,   'stato_da_id',   'stato_a_id',  'attivo',  ''),
-        ('vendite.fatture'::regclass,             'stato_doc_fiscale_id',    'config.stati_doc_fiscale'::regclass,    'config.stati_doc_fiscale_transizioni'::regclass, 'stato_from_id', 'stato_to_id', 'ammesso', 'AND t.solo_lotto IS FALSE')
+        ('vendite.fatture'::regclass,             'stato_doc_fiscale_id',    'config.stati_doc_fiscale'::regclass,    'config.stati_doc_fiscale_transizioni'::regclass, 'stato_from_id', 'stato_to_id', 'ammesso', 'AND t.solo_lotto IS FALSE'),
+        ('vendite.fatturazione_lotti'::regclass,  'stato_doc_fiscale_id',    'config.stati_doc_fiscale'::regclass,    'config.stati_doc_fiscale_transizioni'::regclass, 'stato_from_id', 'stato_to_id', 'ammesso', 'AND t.solo_fattura IS FALSE')
       ) AS m(tab, col, voc, mat, da, a, vivo, filtro)
      WHERE m.tab = p_testata;
 
@@ -139,7 +143,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_porta_a_stato(p_testata regclass, p_id bigint, p_stato text)
-IS 'Fixture pgTAP: porta una testata di vendita dallo stato corrente allo stato p_stato (codice_interno) per il percorso piu'' corto della sua matrice dei passaggi, un UPDATE per passo, sotto i guard veri: le condizioni d''uscita dalla bozza (righe, indirizzi, prezzi…) le scrive prima il test. Testate: preventivo, offerta, contratto, ordine, DDT, reso, commessa, fattura (la fattura con la matrice config.stati_doc_fiscale_transizioni, colonne stato_from_id/stato_to_id/ammesso, e i soli passaggi con solo_lotto = false, quelli che ammette il guard della fattura singola). Restituisce il codice_interno dello stato raggiunto. Un documento nasce solo nello stato iniziale (script.trgfn_doc_stato_iniziale): una fixture che vuole un documento avanti lo crea e lo porta avanti da qui. Errori del chiamante (testata non gestita, id, stato o percorso inesistenti): RAISE EXCEPTION. rev 2026-10-24: tutte le testate (brief-modello-documento-vendita N-1).';
+IS 'Fixture pgTAP: porta una testata di vendita dallo stato corrente allo stato p_stato (codice_interno) per il percorso piu'' corto della sua matrice dei passaggi, un UPDATE per passo, sotto i guard veri: le condizioni d''uscita dalla bozza (righe, indirizzi, prezzi…) le scrive prima il test. Testate: preventivo, offerta, contratto, ordine, DDT, reso, commessa, fattura (la fattura con la matrice config.stati_doc_fiscale_transizioni, colonne stato_from_id/stato_to_id/ammesso, e i soli passaggi con solo_lotto = false, quelli che ammette il guard della fattura singola) e il lotto di fatturazione VUOTO (stessa matrice, i soli passaggi con solo_fattura = false; il filtro per tipo_lotto lo applica il guard del lotto, al passo; un lotto con fatture si muove col verbo vendite.fn_sync_lotto_fatture_stato). Restituisce il codice_interno dello stato raggiunto. Un documento nasce solo nello stato iniziale (script.trgfn_doc_stato_iniziale): una fixture che vuole un documento avanti lo crea e lo porta avanti da qui. Errori del chiamante (testata non gestita, id, stato o percorso inesistenti): RAISE EXCEPTION. rev 2026-10-24: tutte le testate (brief-modello-documento-vendita N-1); 20261024-30: il lotto di fatturazione (R-4).';
 ```
 
 </div>

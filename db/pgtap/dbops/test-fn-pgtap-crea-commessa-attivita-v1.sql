@@ -19,7 +19,9 @@
 --     sua unita' di misura e, se mancano, articolo e versione; un articolo o
 --     una riga di listino che non esistono parlano.
 --
--- Elenco test (plan 11):
+-- rev 2026-10-24 (20261024-41, brief-modello-documento-vendita §4-octies): la
+--   sorgente (la chiave dal costruttore del dominio), gli stati, la quantita' e il periodo.
+-- Elenco test (plan 14):
 --   1) la funzione esiste con la firma dichiarata (cinque argomenti)
 --   2) l'attivita' esiste sulla commessa, APPROVATA e NON_EMESSA
 --   3) istanza di utility del billing account, competenza della commessa
@@ -35,6 +37,9 @@
 --      riga di listino
 --  10) guard: un articolo che non esiste parla
 --  11) guard: una riga di listino che non esiste parla
+--  12) sorgente PREVENTIVO: la chiave la compone script.fn_segment_key, sorgente e uid quelli del documento
+--  13) quantita', stati di approvazione ed emissione e periodo dichiarati dal test
+--  14) guard: una sorgente senza la chiave del documento parla
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -46,13 +51,13 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- pgtap-contesto: escluso — il contesto lo apre il builder della commessa,
 --   chiamato come lo chiamera' un file su un database ricostruito.
 
-SELECT plan(11);
+SELECT plan(14);
 
 -- 1) La firma
 SELECT has_function(
     'dbops', 'fn_pgtap_crea_commessa_attivita',
-    ARRAY['bigint', 'numeric', 'uuid', 'bigint', 'bigint'],
-    'dbops.fn_pgtap_crea_commessa_attivita(bigint, numeric, uuid, bigint, bigint) esiste con la firma dichiarata'
+    ARRAY['bigint', 'numeric', 'uuid', 'bigint', 'bigint', 'character varying', 'text', 'bigint', 'numeric', 'character varying', 'character varying', 'date', 'date'],
+    'dbops.fn_pgtap_crea_commessa_attivita(... tredici argomenti) esiste con la firma dichiarata'
 );
 
 -- Fixture: una commessa e due attivita' (prezzo di default e prezzo scelto)
@@ -230,6 +235,49 @@ SELECT throws_like(
            (SELECT commessa_id FROM t_c2)),
     '%nessuna riga di listino con id%',
     'guard: una riga di listino che non esiste parla'
+);
+
+-- 12-14) La sorgente, gli stati, la quantita' e il periodo (rev 2026-10-24)
+-- Un preventivo vero: la tabella verifica che la chiave della sorgente esista.
+CREATE TEMP TABLE t_prev_sorg AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('presidio attivita sorgente');
+
+CREATE TEMP TABLE t_a_sorg AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+    p_commessa_id        => (SELECT commessa_id FROM t_c),
+    p_prezzo_snapshot    => 30,
+    p_sorgente_codice    => 'PREVENTIVO',
+    p_sorgente_uid       => (SELECT preventivo_uid::text FROM t_prev_sorg),
+    p_sorgente_riga_id   => 4242,
+    p_quantita           => 3,
+    p_stato_approvazione => 'BOZZA',
+    p_stato_emissione    => 'EMESSA',
+    p_competenza_dal     => DATE '2080-01-01',
+    p_competenza_al      => DATE '2080-12-31');
+
+SELECT is(
+    (SELECT (ca.segment_key = script.fn_segment_key('PREVENTIVO', (SELECT preventivo_uid::text FROM t_prev_sorg), 4242))::text
+            || ' ' || s.codice_interno::text
+            || ' ' || (ca.sorgente_uid = (SELECT preventivo_uid::text FROM t_prev_sorg))::text
+       FROM t_a_sorg a JOIN vendite.commesse_attivita ca ON ca.id = a.attivita_id
+       JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id),
+    'true PREVENTIVO true',
+    '12) sorgente PREVENTIVO: la chiave la compone script.fn_segment_key, sorgente e uid sono quelli del documento'
+);
+
+SELECT is(
+    (SELECT ca.quantita::numeric(18,2)::text || ' ' || ca.stato_approvazione || ' ' || ca.stato_emissione
+            || ' ' || ca.competenza_dal::text || ' ' || ca.competenza_al::text
+       FROM t_a_sorg a JOIN vendite.commesse_attivita ca ON ca.id = a.attivita_id),
+    '3.00 BOZZA EMESSA 2080-01-01 2080-12-31',
+    '13) quantita'', stati di approvazione ed emissione e periodo li dichiara il test'
+);
+
+SELECT throws_like(
+    format($$SELECT dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id => %s, p_sorgente_codice => 'PREVENTIVO')$$,
+           (SELECT commessa_id FROM t_c)),
+    '%vuole la chiave del documento%',
+    '14) guard: una sorgente senza la chiave del documento parla'
 );
 
 SELECT * FROM finish();

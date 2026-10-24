@@ -17,6 +17,12 @@
 --   cancellato, intestazione a NULL: in EMESSA non c'e' congelamento), cosi'
 --   l'8 prova ancora l'uscita in testa sullo stato di partenza (prima nasceva
 --   gia' EMESSA).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): le tre fatture le
+--   costruisce dbops.fn_pgtap_crea_fattura sullo stesso cliente; la «gia_fuori»
+--   arriva in EMESSA gia' spogliata dal builder (p_spoglia_indirizzi,
+--   p_spoglia_intestazione) invece degli snapshot finti scritti e tolti a mano.
+--   Il registro, il tipo e la valuta non si pescano piu'. Il 2 conta le
+--   fatture vere nella forma dichiarata, non la temp table.
 -- Indice test (plan 12; il 6-bis e' del 2026-10-21):
 --   1) Cablaggio: BEFORE UPDATE OF stato_doc_fiscale_id, FOR EACH ROW
 --   2) Fixture: tre fatture nude create (due DRAFT, una EMESSA)
@@ -85,9 +91,6 @@ SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
     (SELECT auth_user_id FROM tmp_mondo_gud)); END $ctx$;
 
-CREATE TEMP TABLE tmp_cli_gud AS
-SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('guard uscita draft') c;
-
 SELECT plan(12);
 
 -- ============================================================
@@ -116,84 +119,56 @@ SELECT is(
 );
 
 -- ============================================================
--- Riferimenti e fixture: l'azienda e il cliente costruiti sopra
+-- Riferimenti e fixture: le tre fatture dal builder, sullo STESSO cliente
 -- ============================================================
+-- ⭐ rev 2026-10-24 (Q-2/Q-4): le fatture le costruisce dbops.fn_pgtap_crea_fattura
+--   (registro dell'azienda di chi agisce, tipo e valuta col loro ORDER BY). La
+--   prima costruisce il cliente, le altre due lo riusano (terzo parametro).
+--   La «gia_fuori» arriva in EMESSA NUDA (quarto e quinto parametro): il
+--   builder la completa coi building block, la porta in EMESSA per la matrice
+--   e la spoglia li', dove congela_fiscale e' false. Senza la spoliazione l'8
+--   passerebbe perche' la fattura e' completa, non perche' il guard esce sullo
+--   stato di partenza.
+CREATE TEMP TABLE tmp_f_lav_gud AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('guard uscita draft lavorata');
+
+CREATE TEMP TABLE tmp_f_int_gud AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+    'guard uscita draft intatta', 'DRAFT', (SELECT billing_account_id FROM tmp_f_lav_gud));
+
+CREATE TEMP TABLE tmp_f_fuori_gud AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+    'guard uscita draft gia fuori', 'EMESSA', (SELECT billing_account_id FROM tmp_f_lav_gud),
+    true, true);
+
+CREATE TEMP TABLE tmp_fatture_gud AS
+SELECT fattura_id AS id, 'lavorata'::text AS caso FROM tmp_f_lav_gud
+UNION ALL SELECT fattura_id, 'intatta'   FROM tmp_f_int_gud
+UNION ALL SELECT fattura_id, 'gia_fuori' FROM tmp_f_fuori_gud;
+
 CREATE TEMP TABLE tmp_refs_gud AS
 SELECT
-  c.billing_account_id                           AS billing_account_id,
-  m.soggetto_ruolo_id                            AS emittente_soggetto_ruolo_id,
-  (SELECT m.registro_id
-     FROM vendite.tipi_doc_fiscale_registri m
-     JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
-    WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS registro_id,
-  (SELECT m.tipo_doc_fiscale_id
-     FROM vendite.tipi_doc_fiscale_registri m
-     JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
-    WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS tipo_doc_fiscale_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT s.id FROM config.stati_doc_fiscale s
     WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE)      AS stato_draft_id,
   (SELECT s.id FROM config.stati_doc_fiscale s
     WHERE s.codice_interno = 'EMESSA' AND s.attivo IS TRUE)     AS stato_emessa_id,
   (SELECT s.id FROM config.stati_doc_fiscale s
     WHERE s.codice_interno = 'DEFINITIVA' AND s.attivo IS TRUE) AS stato_def_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'FATT') AS fatt_id
-FROM tmp_mondo_gud m, tmp_cli_gud c;
+  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'FATT') AS fatt_id;
 
-
--- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva.
---   La riga sopra sceglieva «un registro qualunque» accanto a un emittente che
---   viene da un'altra parte: che i due coincidessero era un CASO, e dal
---   2026-08-30 vendite.trgfn_fatture_guard_registro_emittente non lo ammette
---   piu'. L'helper risponde con il registro di QUESTO emittente, creandolo se
---   non ce n'e' uno — la riga vive nella transazione del test.
-UPDATE tmp_refs_gud SET registro_id = script.fn_pgtap_registro_fattura(emittente_soggetto_ruolo_id);
-CREATE TEMP TABLE tmp_fatture_gud AS
-WITH ins AS (
-  INSERT INTO vendite.fatture (
-    registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-    tipo_doc_fiscale_id, valuta_id, meta
-  )
-  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id,
-         r.billing_account_id, r.tipo_doc_fiscale_id, r.valuta_id,
-         jsonb_build_object('test', 'pgtap_guard_uscita_draft', 'caso', v.caso)
-    FROM tmp_refs_gud r
-   CROSS JOIN (VALUES ('lavorata'), ('intatta'), ('gia_fuori')) AS v(caso)
-  RETURNING id, meta ->> 'caso' AS caso
-)
-SELECT id, caso FROM ins;
-
--- ⛔ La «gia_fuori» NASCE in bozza come ogni documento (rev 2026-10-24,
---   trigger della nascita). Per l'8 serve NUDA ma gia' in EMESSA: la si
---   completa (indirizzo FATT + intestazione con la sede, come il 7), la si
---   porta in EMESSA per la matrice, sotto i guard veri, e poi la si SPOGLIA di
---   nuovo. In EMESSA si puo': congela_fiscale e' false, i guard di
---   congelamento non scattano. Senza la spoliazione l'8 passerebbe perche' la
---   fattura e' completa, non perche' il guard esce sullo stato di partenza.
-INSERT INTO vendite.fatture_indirizzi (fattura_id, tipo_indirizzo_id, snapshot)
-SELECT f.id, r.fatt_id,
-       '{"intestazione":"Cliente pgTAP","via":"Via Guard 2","cap":"83100"}'::jsonb
-  FROM tmp_fatture_gud f, tmp_refs_gud r
- WHERE f.caso = 'gia_fuori';
-
-UPDATE vendite.fatture
-   SET emittente_snapshot = '{"denominazione":"Emittente pgTAP","id_fiscale":"00000000000","sede":{"via":"Via Cedente 1","cap":"83100"}}'::jsonb,
-       cliente_snapshot   = '{"denominazione":"Cliente pgTAP","id_fiscale":"11111111111"}'::jsonb
- WHERE id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'gia_fuori');
-
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', f.id, 'EMESSA')
-  FROM tmp_fatture_gud f WHERE f.caso = 'gia_fuori';
-
-DELETE FROM vendite.fatture_indirizzi
- WHERE fattura_id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'gia_fuori');
-
-UPDATE vendite.fatture
-   SET emittente_snapshot = NULL,
-       cliente_snapshot   = NULL
- WHERE id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'gia_fuori');
-
+-- ⚠️ Il 2 conta le fatture VERE nella forma dichiarata (stato, nessun
+--   indirizzo, intestazione a NULL), non le righe della temp table: con il
+--   builder quel conteggio sarebbe stato vero per costruzione.
 SELECT is(
-  (SELECT count(*)::int FROM tmp_fatture_gud), 3,
+  (SELECT count(*)::int
+     FROM tmp_fatture_gud t
+     JOIN vendite.fatture f          ON f.id = t.id
+     JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
+    WHERE s.codice_interno = CASE t.caso WHEN 'gia_fuori' THEN 'EMESSA' ELSE 'DRAFT' END
+      AND f.emittente_snapshot IS NULL
+      AND f.cliente_snapshot IS NULL
+      AND NOT EXISTS (SELECT 1 FROM vendite.fatture_indirizzi i WHERE i.fattura_id = f.id)),
+  3,
   '2) fixture: tre fatture nude create (due DRAFT, una EMESSA)'
 );
 

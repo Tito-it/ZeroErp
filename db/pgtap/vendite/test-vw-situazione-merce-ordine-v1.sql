@@ -377,7 +377,7 @@ SELECT is(
   (SELECT COUNT(*)::int FROM vendite.vw_situazione_merce_ordine
     WHERE ordine_riga_id = (SELECT ordine_riga_id FROM tmp_d)),
   0,
-  '11) scope che non vede l''ordine: la riga sparisce, non esce con dei conti a zero');
+  '11) scope che non vede l''ordine: la riga sparisce, non esce con dei conti a zero (rosso da owner, che salta la RLS; verde come app)');
 
 
 -- ============================================================

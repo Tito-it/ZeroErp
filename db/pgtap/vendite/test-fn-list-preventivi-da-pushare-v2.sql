@@ -6,6 +6,12 @@
 --   «non ACCETTATO» nasce DRAFT e basta (prima, se DRAFT mancava, ripiegava su
 --   COALESCE(bozza, accettato): una nascita ACCETTATO che il trigger della
 --   nascita ora rifiuta).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): i due preventivi
+--   vengono da dbops.fn_pgtap_crea_preventivo e la commessa del test 7 da
+--   dbops.fn_pgtap_crea_commessa sullo stesso billing account; prima billing
+--   account, emittente e stato commessa erano «il primo» del database, che su
+--   uno ricostruito non c'e'.
+-- rev 2026-10-24 (brief-modello-documento-vendita §4-octies): l'attivita' EMESSA del test 7 la scrive dbops.fn_pgtap_crea_commessa_attivita con la sorgente, invece dell'INSERT con la chiave composta a mano; valuta, tipo documento e uom non si pescano piu'.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_preventivi_da_pushare — parametro p_preventivo_id (v2)
 -- ------------------------------------------------------------
@@ -41,30 +47,22 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(10);
 
 -- ============================================================
--- Setup riferimenti minimi (estende tmp_refs_prev aggiungendo
--- uom_id, tipo_doc_fiscale_id, stato_commessa_id per i test
--- di push gia` eseguito).
+-- Setup riferimenti minimi.
 -- ============================================================
+-- ⭐ rev 2026-10-24 (Q-2/Q-4): il preventivo principale nasce qui, in bozza,
+--   da dbops.fn_pgtap_crea_preventivo, e i riferimenti ne leggono cliente ed
+--   emittente. ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_prev_p2_b AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('list prev da pushare v2');
+
 CREATE TEMP TABLE tmp_refs_p2 AS
 SELECT
-  (SELECT ba.id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS billing_account_id,
-  (SELECT ba.utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS utility_id,
-  (SELECT ba.istanza_utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS istanza_utility_id,
+  -- ⭐ rev 2026-10-24 (Q-4): billing account, utility, istanza ed emittente
+  --   sono quelli del preventivo principale, costruito qui sopra (tmp_prev_p2_b).
+  --   Prima: «il primo billing account» e «il primo emittente» del database.
+  b.billing_account_id,
+  b.utility_id,
+  b.istanza_utility_id,
   -- ⛔ rev 2026-10-13: l'articolo si COSTRUISCE. Prima era «il piu' recente
   --   del catalogo», cioe' quello che l'ultimo smoke aveva lasciato: il
   --   2026-10-13 era un composito MERCE, la riga andava all'ordine e il lister
@@ -77,70 +75,25 @@ SELECT
                              ORDER BY nv.id LIMIT 1)) AS articolo_id,
   (SELECT s.id
      FROM config.stati_doc_preventivi s
-    WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE
-    LIMIT 1
+    WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE
   ) AS stato_accettato_id,
   (SELECT s.id
      FROM config.stati_doc_preventivi s
-    WHERE s.codice = 'DRAFT' AND s.attivo IS TRUE
-    LIMIT 1
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE
   ) AS stato_bozza_id,
-  (SELECT v.id
-     FROM config.valute v
-    ORDER BY v.id LIMIT 1
-  ) AS valuta_id,
-  (SELECT u.id
-     FROM catalogo.unita_misura u
-    WHERE u.attivo IS TRUE
-    ORDER BY u.id LIMIT 1
-  ) AS uom_id,
-  (SELECT t.id
-     FROM config.tipi_doc_fiscale t
-    WHERE t.attivo IS TRUE
-    ORDER BY t.id LIMIT 1
-  ) AS tipo_doc_fiscale_id,
-  (SELECT sc.id
-     FROM vendite.stati_commessa sc
-    WHERE sc.attivo IS TRUE
-    ORDER BY sc.id LIMIT 1
-  ) AS stato_commessa_id,
-  -- Obbligatorio in contesto non-API: il trigger trgfn_preventivi_default_emittente
-  -- legge l'emittente dalla GUC app.current_user_id (vuota in pgTAP) e solleva
-  -- se non valorizzata. Passiamo emittente_fiscale_id esplicito da emittenti_fiscali.
-  (SELECT ef.id
-     FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1
-  ) AS emittente_fiscale_id,
   -- Richiesto da fn_get_aliquota_iva (trigger su preventivi_righe).
   (SELECT i.id
      FROM config.iva i
     WHERE i.attivo IS TRUE
     ORDER BY i.id LIMIT 1
-  ) AS iva_id;
+  ) AS iva_id
+FROM tmp_prev_p2_b b;
 
 -- Preventivo ACCETTATO con una riga valida (fixture principale).
 -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende le righe, poi passa ad ACCETTATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_prev_p2 AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id,
-    utility_id, validita_dal, validita_al, valuta_id,
-    stato_doc_preventivo_id, data, fatturazione_immediata,
-    storicizza, meta, emittente_fiscale_id
-  )
-  SELECT
-    'PGTAP-P2-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0,
-    r.billing_account_id, r.istanza_utility_id, r.utility_id,
-    DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_bozza_id, DATE '2026-06-01', false,
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_prev_v2'),
-    r.emittente_fiscale_id
-  FROM tmp_refs_p2 r
-  RETURNING id, uid
-)
-SELECT * FROM ins;
+SELECT b.preventivo_id AS id, b.preventivo_uid AS uid
+  FROM tmp_prev_p2_b b;
 
 CREATE TEMP TABLE tmp_riga_p2 AS
 WITH ins AS (
@@ -161,27 +114,12 @@ DO $porta$ BEGIN
 END $porta$;
 
 -- Preventivo BOZZA con riga valida (per test 4).
+CREATE TEMP TABLE tmp_prev_p2_bozza_b AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('list prev v2 bozza');
+
 CREATE TEMP TABLE tmp_prev_p2_bozza AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id,
-    utility_id, validita_dal, validita_al, valuta_id,
-    stato_doc_preventivo_id, data, fatturazione_immediata,
-    storicizza, meta, emittente_fiscale_id
-  )
-  SELECT
-    'PGTAP-P2B-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0,
-    r.billing_account_id, r.istanza_utility_id, r.utility_id,
-    DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_bozza_id,  -- nasce nello stato iniziale (rev 2026-10-24)
-    DATE '2026-06-01', false,
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_prev_v2', 'case', 'bozza'),
-    r.emittente_fiscale_id
-  FROM tmp_refs_p2 r
-  RETURNING id, uid
-)
-SELECT * FROM ins;
+SELECT b.preventivo_id AS id, b.preventivo_uid AS uid
+  FROM tmp_prev_p2_bozza_b b;
 
 INSERT INTO vendite.preventivi_righe (
   preventivo_id, articolo_id, qta_operativa, quantita, prezzo_unitario,
@@ -303,50 +241,48 @@ SELECT ok(
 -- Crea una commessa + attivita con segment_key del preventivo
 -- in stato EMESSA, poi verifica che la fn restituisca 0 righe.
 -- ============================================================
-CREATE TEMP TABLE tmp_commessa_p2 AS
-WITH ins AS (
--- 🔴 EMITTENTE, aggiunto il 2026-08-18.
---   La policy `rls_commesse_ef_whitelist` ammette, per il ruolo OPERATORE, solo gli
---   emittenti nella whitelist dell'utente — e la stessa espressione sta nel
---   `WITH CHECK`, quindi vale in scrittura. Senza
---   `emittente_soggetto_ruolo_id` l'INSERT moriva con «la nuova riga viola la
---   regola di sicurezza per riga» e il file si fermava li'.
---   L'emittente non si sceglie a mano: `script.fn_pgtap_emittente_sr_operatore()`
---   e' la compagna esatta della `fn_scope_ef_whitelist_via_sr` che la policy
---   interroga. Brief: brief-db-pgtap-runner-rls-baseline §26.
-  INSERT INTO vendite.commesse (
-    codice, billing_account_id, utility_id, stato_commessa_id, emittente_soggetto_ruolo_id
-  )
-  SELECT
-    'PGTAP-CMD-' || substr(md5(clock_timestamp()::text), 1, 8),
-    r.billing_account_id,
-    r.utility_id,
-    r.stato_commessa_id,
-    script.fn_pgtap_emittente_sr_operatore()
-  FROM tmp_refs_p2 r
-  RETURNING id
-)
-SELECT id FROM ins;
+-- ⭐ rev 2026-10-24 (Q-2/Q-4): la commessa la scrive la madre del dominio
+--   tramite dbops.fn_pgtap_crea_commessa, sul billing account del preventivo
+--   e nello stato iniziale; l'emittente e' quello del billing account. Prima:
+--   INSERT a mano col primo stato commessa per id. L'attivita' EMESSA con la
+--   chiave del preventivo resta scritta qui: e' il caso del test.
+CREATE TEMP TABLE tmp_commessa_p2_b AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa(
+  'list prev v2 pushato',
+  p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_p2));
 
-INSERT INTO vendite.commesse_attivita (
-  commessa_id, segment_key,
-  articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
-  competenza_mese, competenza_dal, competenza_al,
-  tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
-  pricing_mode, stato_approvazione, stato_emissione,
-  sorgente_tipo_id, sorgente_uid
-)
-SELECT
-  (SELECT id FROM tmp_commessa_p2),
-  -- segment_key identico a quello che produce la fn per questo preventivo/riga
-  'PREVENTIVO:' || (SELECT uid FROM tmp_prev_p2)::text || ':R:' || (SELECT id FROM tmp_riga_p2)::text,
-  r.articolo_id, r.istanza_utility_id, DATE '2026-06-01', r.uom_id, 10,
-  DATE '2026-06-01', DATE '2026-06-01', DATE '2026-06-30',
-  r.tipo_doc_fiscale_id, r.valuta_id, 25.500000,
-  'FIXED', 'BOZZA', 'EMESSA',
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1),
-  (SELECT uid FROM tmp_prev_p2)::text
-FROM tmp_refs_p2 r;
+CREATE TEMP TABLE tmp_commessa_p2 AS
+SELECT b.commessa_id AS id FROM tmp_commessa_p2_b b;
+
+-- rev 2026-10-24 (§4-octies): l'attivita' EMESSA la scrive il builder con la
+--   sorgente; la chiave (quella che il lister produce per questo
+--   preventivo/riga) la compone il dominio, script.fn_segment_key. Unita' di
+--   misura dall'articolo, tipo documento fiscale e valuta dalla madre.
+CREATE TEMP TABLE tmp_att_p2 AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+    p_commessa_id        => (SELECT id FROM tmp_commessa_p2),
+    p_prezzo_snapshot    => 25.500000,
+    p_articolo_id        => (SELECT articolo_id FROM tmp_refs_p2),
+    p_sorgente_codice    => 'PREVENTIVO',
+    p_sorgente_uid       => (SELECT uid::text FROM tmp_prev_p2),
+    p_sorgente_riga_id   => (SELECT id FROM tmp_riga_p2),
+    p_quantita           => 10,
+    p_stato_approvazione => 'BOZZA',
+    p_stato_emissione    => 'EMESSA',
+    p_competenza_dal     => DATE '2026-06-01',
+    p_competenza_al      => DATE '2026-06-30');
+
+-- La riga scritta davvero, sulla chiave della riga (controllo, non test).
+DO $chk$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM vendite.commesse_attivita ca
+                   JOIN tmp_att_p2 t ON t.attivita_id = ca.id
+                  WHERE ca.stato_emissione = 'EMESSA'
+                    AND ca.segment_key = script.fn_segment_key('PREVENTIVO',
+                                           (SELECT uid FROM tmp_prev_p2)::text,
+                                           (SELECT id FROM tmp_riga_p2))) THEN
+    RAISE EXCEPTION 'fixture: manca l''attivita'' EMESSA della riga del preventivo';
+  END IF;
+END $chk$;
 
 CREATE TEMP TABLE tmp_r2_pushed AS
 SELECT *

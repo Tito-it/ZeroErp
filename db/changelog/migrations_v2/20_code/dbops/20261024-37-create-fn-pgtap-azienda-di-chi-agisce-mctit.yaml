@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_pgtap_azienda_di_chi_agisce: L'AZIENDA DEL CONTESTO APERTO
+#   Brief: brief-modello-documento-vendita §4-octies (Tid, 2026-10-24: «procedere
+#   ai miglioramenti: pezzo comune / builder quando ripetuti»).
+#
+#   Building block estratto dal «ramo B» di dbops.fn_pgtap_crea_mondo_cliente:
+#   con un contesto aperto, l'azienda su cui scrivere e' quella di chi agisce,
+#   risolta con la regola di produzione script.fn_resolve_emittente_for_user (la
+#   stessa del trigger z90 che lega il BA). Lo usano il mondo (20261024-39, che
+#   ne ritira la copia) e dbops.fn_pgtap_cliente_del_builder (20261024-38),
+#   cioe' i builder che ricevono il cliente di un'altra fixture.
+#   Solleva, nominando il chiamante, se il contesto non c'e', se l'utente non ha
+#   un'azienda (operatore senza riga in user_emittenti_fiscali, super admin che
+#   non ne ha scelta una) o se non ha un'identita' OPERATORE attiva.
+#   Permessi: funzione di chi migra, SECURITY INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261024-37-create-fn-pgtap-azienda-di-chi-agisce-mctit.yaml
+
+  - changeSet:
+      id: 20261024-37-create-fn-pgtap-azienda-di-chi-agisce
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_azienda_di_chi_agisce: l'azienda del contesto aperto (emittente e operatore), dalla
+        regola di produzione script.fn_resolve_emittente_for_user. Estratta dal mondo dei pgTAP. Brief:
+        brief-modello-documento-vendita (§4-octies).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_pgtap_azienda_di_chi_agisce(
+                   -- il nome del builder che chiede, per i messaggi: tipo nudo.
+                   p_chiamante text DEFAULT 'dbops.fn_pgtap_azienda_di_chi_agisce'::text)
+               RETURNS TABLE(
+                   emittente_fiscale_id        anagrafiche.emittenti_fiscali.id%TYPE,
+                   emittente_codice            anagrafiche.emittenti_fiscali.codice%TYPE,
+                   emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                   auth_user_id                anagrafiche.identita_digitali.auth_user_id%TYPE,
+                   identita_id                 anagrafiche.identita_digitali.id%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: l'azienda su cui una fixture scrive quando un contesto
+              --   e' gia' aperto: quella di CHI AGISCE, con la regola di
+              --   produzione. Estratta dal «ramo B» di
+              --   dbops.fn_pgtap_crea_mondo_cliente (rev 20261024-37).
+              DECLARE
+                  v_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_identita  anagrafiche.identita_digitali.id%TYPE;
+                  v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_codice anagrafiche.emittenti_fiscali.codice%TYPE;
+                  v_ef_sr_id  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+              BEGIN
+                  -- La domanda e' «c'e' un contesto?», alla GUC che le policy
+                  -- leggono davvero.
+                  v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  IF v_user_id IS NULL THEN
+                      RAISE EXCEPTION
+                          '%: nessun contesto aperto (app.current_user_id): l''azienda di chi agisce non c''e''. Si costruisce prima il mondo (dbops.fn_pgtap_crea_mondo_cliente) o si apre il contesto (script.fn_pgtap_set_contesto_operatore)',
+                          p_chiamante;
+                  END IF;
+
+                  -- ⭐ L'azienda di chi agisce con la regola di produzione: l'emittente
+                  --   scelto in alto (app.current_emittente_id) se l'utente lo puo'
+                  --   usare, altrimenti la sua riga in config.user_emittenti_fiscali.
+                  --   E' la stessa domanda che fa il trigger z90 quando lega il BA.
+                  SELECT ef.id, ef.codice, ef.soggetto_ruolo_id
+                    INTO v_ef_id, v_ef_codice, v_ef_sr_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = script.fn_resolve_emittente_for_user(v_user_id);
+                  -- ⚠️ Guard sul RISULTATO: un operatore senza riga in
+                  --   user_emittenti_fiscali e' fail-closed dal 2026-08-18 (P-2a);
+                  --   un super admin non ha azienda finche' non ne sceglie una.
+                  IF v_ef_id IS NULL THEN
+                      RAISE EXCEPTION
+                          '%: l''utente di contesto (auth_user_id = %) non ha un''azienda su cui scrivere: ne'' una riga in config.user_emittenti_fiscali ne'' un emittente scelto (app.current_emittente_id, per il super admin). Aprire il contesto senza argomento (script.fn_pgtap_set_contesto_operatore()), scegliere l''emittente, o costruire il mondo PRIMA del contesto',
+                          p_chiamante, v_user_id;
+                  END IF;
+
+                  -- Una sola riga per costruzione: uq_identita_digitali_auth_user_ruolo_attivo
+                  -- e' UNIQUE su (auth_user_id, ruolo_applicativo) WHERE attivo.
+                  SELECT idg.id
+                    INTO v_identita
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.auth_user_id = v_user_id
+                     AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                     AND idg.attivo;
+                  IF v_identita IS NULL THEN
+                      RAISE EXCEPTION
+                          '%: nessuna identita'' OPERATORE attiva per auth_user_id = %: il contesto e'' aperto su un utente che l''applicazione non farebbe entrare',
+                          p_chiamante, v_user_id;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT v_ef_id, v_ef_codice, v_ef_sr_id, v_user_id, v_identita;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_azienda_di_chi_agisce(text)
+              IS 'Fixture pgTAP (building block): l''azienda del contesto aperto — emittente (id, codice, soggetto_ruolo) e operatore (auth_user_id, identita) — risolta con la regola di produzione script.fn_resolve_emittente_for_user, la stessa del trigger z90 che lega il billing account. Estratta dal «ramo B» di dbops.fn_pgtap_crea_mondo_cliente; la usano il mondo e dbops.fn_pgtap_cliente_del_builder. Solleva, nominando il chiamante (p_chiamante), senza contesto, senza azienda o senza identita'' OPERATORE attiva. STABLE: non scrive. Brief: brief-modello-documento-vendita (§4-octies), 2026-10-24.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_azienda_di_chi_agisce(text);

@@ -20,8 +20,17 @@ AS $function$
 --   incoerenti: con il flag morto diceva sempre false, cioe'
 --   occupava spazio nel messaggio senza informare. Resta la sola
 --   eccezione `critical`, che e' viva.
+-- rev 2026-10-24 (20261024-34, brief-modello-documento-vendita
+--   R-1): l'eccezione `critical` copre la fattura rimasta
+--   INDIETRO, non quella gia' congelata davanti a un lotto che
+--   non lo e'. Letto dal vocabolario (congela_fiscale,
+--   is_abortito), non dall'ordine degli stati. Le fatture
+--   incoerenti si LEGGONO dalla sede unica
+--   vendite.vw_lotti_fatture_incoerenti: il predicato non si
+--   ricopia qui.
 DECLARE
   v_stato_lotto vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
+  -- CONTEGGIO delle fatture incoerenti: tipo nudo.
   v_count       integer;
   v_dettaglio   jsonb;
 BEGIN
@@ -35,7 +44,6 @@ BEGIN
     INTO v_stato_lotto
     FROM vendite.fatturazione_lotti l
    WHERE l.id = p_lotto_id;
-
   IF NOT FOUND THEN
     RETURN;
   END IF;
@@ -46,15 +54,13 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Fatture disallineate, esclusa l'eccezione di semantica.
-  -- Conteggio completo: e' il numero riportato nel messaggio.
+  -- Fatture disallineate, dalla sede unica (eccezione critical
+  -- compresa, R-1). Conteggio completo: e' il numero riportato
+  -- nel messaggio.
   SELECT count(*)
     INTO v_count
-    FROM vendite.fatturazione_lotti_fatture lf
-    JOIN vendite.fatture f ON f.id = lf.fattura_id
-   WHERE lf.lotto_id = p_lotto_id
-     AND COALESCE(f.critical, FALSE) IS FALSE
-     AND f.stato_doc_fiscale_id IS DISTINCT FROM v_stato_lotto;
+    FROM vendite.vw_lotti_fatture_incoerenti i
+   WHERE i.lotto_id = p_lotto_id;
 
   IF v_count = 0 THEN
     RETURN;
@@ -63,18 +69,15 @@ BEGIN
   SELECT jsonb_agg(x.riga ORDER BY x.fattura_id)
     INTO v_dettaglio
     FROM (
-      SELECT f.id AS fattura_id,
+      SELECT i.fattura_id,
              jsonb_build_object(
-               'fattura_id',       f.id,
-               'stato_fattura_id', f.stato_doc_fiscale_id,
-               'critical',         COALESCE(f.critical, FALSE)
+               'fattura_id',       i.fattura_id,
+               'stato_fattura_id', i.stato_fattura_id,
+               'critical',         i.fattura_critical
              ) AS riga
-        FROM vendite.fatturazione_lotti_fatture lf
-        JOIN vendite.fatture f ON f.id = lf.fattura_id
-       WHERE lf.lotto_id = p_lotto_id
-         AND COALESCE(f.critical, FALSE) IS FALSE
-         AND f.stato_doc_fiscale_id IS DISTINCT FROM v_stato_lotto
-       ORDER BY f.id
+        FROM vendite.vw_lotti_fatture_incoerenti i
+       WHERE i.lotto_id = p_lotto_id
+       ORDER BY i.fattura_id
        LIMIT 20
     ) x;
 
@@ -98,7 +101,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_guard_lotto_fatture_stato_coerente(p_lotto_id bigint)
-IS 'Guard dell''invariante lotto <-> fatture: solleva E_LOTTO_FATTURE_STATO_INCOERENTE (556) se il lotto ha fatture non critical con stato_doc_fiscale_id diverso dal proprio. Pensata per essere invocata da un CONSTRAINT TRIGGER DEFERRED (valutazione al COMMIT): gli stati intermedi dentro la transazione sono leciti. No-op se il lotto non esiste piu'' o ha stato NULL. rev 2026-08-04 (D-M): via l''eccezione `esclusa` — il flag era dormiente — e via il campo omonimo dal jsonb di diagnostica, che diceva sempre false. Resta la sola eccezione `critical`, che e'' viva e valorizzata da fn_sync_fatture_log_critical_lotto.';
+IS 'Guard dell''invariante lotto <-> fatture: solleva E_LOTTO_FATTURE_STATO_INCOERENTE (556) se il lotto ha fatture con stato_doc_fiscale_id diverso dal proprio. Eccezione: la fattura critical (in errore) che resta INDIETRO; ⛔ non una fattura critical gia'' congelata e non abortita (config.stati_doc_fiscale.congela_fiscale / is_abortito) davanti a un lotto non congelato: un documento definitivo non convive con uno in errore nello stesso lotto (R-1 di Tid, 2026-10-24). Pensata per essere invocata da un CONSTRAINT TRIGGER DEFERRED (valutazione al COMMIT): gli stati intermedi dentro la transazione sono leciti. No-op se il lotto non esiste piu'' o ha stato NULL. rev 2026-08-04 (D-M): via l''eccezione `esclusa`, dormiente. rev 2026-10-24 (20261024-34, brief-modello-documento-vendita R-1): l''eccezione critical solo per chi resta indietro; le fatture incoerenti si leggono dalla sede unica vendite.vw_lotti_fatture_incoerenti.';
 ```
 
 </div>

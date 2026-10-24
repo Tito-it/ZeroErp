@@ -1,0 +1,207 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA FATTURA IN ERRORE RESTA INDIETRO, NON VA AVANTI AL SUO LOTTO
+#   Brief: brief-modello-documento-vendita §4-septies, R-1 (Tid, 2026-10-24).
+#
+# -- LA REGOLA (Tid) ------------------------------------------------------
+#   «Se un documento e' in errore o in uno stato bloccante, gli altri documenti
+#   non possono passare a uno stato definitivo: prima i documenti non conformi
+#   si tolgono dal lotto. Non puo' esistere un documento definitivo se un altro
+#   dello stesso lotto e' in errore.» Completa D-Q (2026-07-31: la fattura in
+#   errore resta marcata, il lotto non avanza, si estrae o si rilancia lo step)
+#   portandola nel database; non revoca niente.
+#
+# -- IL DIFETTO (provato il 2026-10-24 sullo scratch) ----------------------
+#   L'invariante lotto <-> fatture ammette fuori passo QUALUNQUE fattura
+#   critical, in tutte e due le direzioni. Indietro e' il caso voluto (il
+#   lotto avanza, la fattura in errore resta li'). Avanti no: una fattura
+#   critical gia' DEFINITIVA si agganciava a un lotto in DRAFT (le fixture lo
+#   facevano), cioe' un documento definitivo nello stesso lotto di uno in errore.
+#
+# -- LA CORREZIONE --------------------------------------------------------
+#   L'eccezione critical NON vale per una fattura in uno stato congelato e non
+#   abortito (config.stati_doc_fiscale: congela_fiscale = true, is_abortito =
+#   false) quando il lotto non e' in uno stato congelato. Ancorata al
+#   vocabolario, non all'`ordine` degli stati (non e' un asse del ciclo di vita).
+#   L'altra meta' della regola (il lotto non entra in uno stato congelato con
+#   fatture in errore) e' nel guard di transizione del lotto, 20261024-35.
+#   ⚠️ Chi muove i lotti, censito: fn_riporta_lotto_a_draft cancella le fatture
+#   prima di riportare il lotto (nessuna resta avanti); fn_sync_lotto_fatture_
+#   stato e fn_close_giornaliero_lotto spostano le fatture non critical (le
+#   critical restano INDIETRO); fn_annulla_lotto_da_draft va in uno stato
+#   abortito. Nessuno produce il caso vietato.
+#   ⭐ UNA SEDE SOLA (regola del 2): la vista di lavoro
+#   vendite.vw_lotti_fatture_incoerenti ripeteva lo stesso predicato
+#   («critical escluse») del guard. Cambiato solo il guard, i due avrebbero
+#   detto cose diverse. Ora la vista porta il predicato nuovo e il guard LEGGE
+#   le fatture incoerenti dalla vista: la regola sta in un posto. La vista
+#   prende una colonna in coda, fattura_critical, per la diagnostica del guard.
+#   Corpo del guard dal catalogo vivo (rev D-M, 20260804-20), stessa firma;
+#   vista dal catalogo vivo, security_invoker invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261024-34-update-fn-guard-lotto-fatture-stato-coerente-errore-non-avanti-mctit.yaml
+
+  - changeSet:
+      id: 20261024-34-update-fn-guard-lotto-fatture-stato-coerente-errore-non-avanti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_lotti_fatture_incoerenti e vendite.fn_guard_lotto_fatture_stato_coerente: l'eccezione
+        critical non vale per una fattura gia' congelata (non abortita) davanti a un lotto non congelato.
+        La vista diventa la sede unica del predicato, il guard la legge. Brief:
+        brief-modello-documento-vendita (R-1).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_lotti_fatture_incoerenti
+              WITH (security_invoker = on) AS
+               SELECT l.id AS lotto_id,
+                  l.codice AS lotto_codice,
+                  l.tipo_lotto,
+                  l.stato_operativo,
+                  l.stato_doc_fiscale_id AS stato_lotto_id,
+                  sl.codice_interno AS stato_lotto_codice_interno,
+                  sl.codice AS stato_lotto_codice,
+                  f.id AS fattura_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  f.stato_doc_fiscale_id AS stato_fattura_id,
+                  sf.codice_interno AS stato_fattura_codice_interno,
+                  sf.codice AS stato_fattura_codice,
+                  l.data_update AS lotto_data_update,
+                  f.data_update AS fattura_data_update,
+                  COALESCE(f.critical, false) AS fattura_critical
+                 FROM vendite.fatturazione_lotti l
+                   JOIN vendite.fatturazione_lotti_fatture lf ON lf.lotto_id = l.id
+                   JOIN vendite.fatture f ON f.id = lf.fattura_id
+                   LEFT JOIN config.stati_doc_fiscale sl ON sl.id = l.stato_doc_fiscale_id
+                   LEFT JOIN config.stati_doc_fiscale sf ON sf.id = f.stato_doc_fiscale_id
+                WHERE f.stato_doc_fiscale_id IS DISTINCT FROM l.stato_doc_fiscale_id
+                  -- L'eccezione: la fattura in errore (critical) che resta
+                  -- INDIETRO. Non copre una fattura gia' congelata e non
+                  -- abortita davanti a un lotto non congelato (R-1, 20261024-34).
+                  AND (COALESCE(f.critical, false) IS FALSE
+                       OR (COALESCE(sf.congela_fiscale, false) IS TRUE
+                           AND COALESCE(sf.is_abortito, false) IS FALSE
+                           AND COALESCE(sl.congela_fiscale, false) IS FALSE));
+
+              COMMENT ON VIEW vendite.vw_lotti_fatture_incoerenti
+              IS 'Vista di lavoro e SEDE UNICA dell''invariante lotto <-> fatture: una riga per fattura il cui stato fiscale diverge da quello del lotto che la contiene. Eccezione: la fattura in errore (critical) rimasta indietro; ⛔ non quella gia'' congelata e non abortita davanti a un lotto non congelato (R-1 di Tid, 2026-10-24: un documento definitivo non convive con uno in errore nello stesso lotto). La legge il guard vendite.fn_guard_lotto_fatture_stato_coerente. security_invoker: vede cio'' che vede chi interroga. rev 2026-10-24 (20261024-34): predicato R-1 e colonna fattura_critical in coda.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_guard_lotto_fatture_stato_coerente(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- rev 2026-08-04 (D-M): via i due predicati su lf.esclusa e il
+              --   campo `esclusa` dal jsonb di diagnostica. Quel campo serviva
+              --   a spiegare perche' una fattura NON compariva fra le
+              --   incoerenti: con il flag morto diceva sempre false, cioe'
+              --   occupava spazio nel messaggio senza informare. Resta la sola
+              --   eccezione `critical`, che e' viva.
+              -- rev 2026-10-24 (20261024-34, brief-modello-documento-vendita
+              --   R-1): l'eccezione `critical` copre la fattura rimasta
+              --   INDIETRO, non quella gia' congelata davanti a un lotto che
+              --   non lo e'. Letto dal vocabolario (congela_fiscale,
+              --   is_abortito), non dall'ordine degli stati. Le fatture
+              --   incoerenti si LEGGONO dalla sede unica
+              --   vendite.vw_lotti_fatture_incoerenti: il predicato non si
+              --   ricopia qui.
+              DECLARE
+                v_stato_lotto vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
+                -- CONTEGGIO delle fatture incoerenti: tipo nudo.
+                v_count       integer;
+                v_dettaglio   jsonb;
+              BEGIN
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  RETURN;
+                END IF;
+
+                -- Il lotto puo' essere stato cancellato nella stessa transazione:
+                -- essendo il check differito, qui la riga potrebbe non esserci piu'.
+                SELECT l.stato_doc_fiscale_id
+                  INTO v_stato_lotto
+                  FROM vendite.fatturazione_lotti l
+                 WHERE l.id = p_lotto_id;
+                IF NOT FOUND THEN
+                  RETURN;
+                END IF;
+
+                -- Limite documentato: senza stato lotto il confronto non e'
+                -- significativo (vedi testata del changeset).
+                IF v_stato_lotto IS NULL THEN
+                  RETURN;
+                END IF;
+
+                -- Fatture disallineate, dalla sede unica (eccezione critical
+                -- compresa, R-1). Conteggio completo: e' il numero riportato
+                -- nel messaggio.
+                SELECT count(*)
+                  INTO v_count
+                  FROM vendite.vw_lotti_fatture_incoerenti i
+                 WHERE i.lotto_id = p_lotto_id;
+
+                IF v_count = 0 THEN
+                  RETURN;
+                END IF;
+
+                SELECT jsonb_agg(x.riga ORDER BY x.fattura_id)
+                  INTO v_dettaglio
+                  FROM (
+                    SELECT i.fattura_id,
+                           jsonb_build_object(
+                             'fattura_id',       i.fattura_id,
+                             'stato_fattura_id', i.stato_fattura_id,
+                             'critical',         i.fattura_critical
+                           ) AS riga
+                      FROM vendite.vw_lotti_fatture_incoerenti i
+                     WHERE i.lotto_id = p_lotto_id
+                     ORDER BY i.fattura_id
+                     LIMIT 20
+                  ) x;
+
+                PERFORM script.fn_log_and_raise_error(
+                  'vendite',
+                  'fn_guard_lotto_fatture_stato_coerente',
+                  'E_LOTTO_FATTURE_STATO_INCOERENTE',
+                  jsonb_build_object(
+                    'detail',              'Stato fatture non allineato allo stato del lotto a fine transazione',
+                    'lotto_id',            p_lotto_id,
+                    'stato_lotto_id',      v_stato_lotto,
+                    'fatture_incoerenti',  COALESCE(v_dettaglio, '[]'::jsonb),
+                    'totale_incoerenti',   v_count,
+                    'rimedio',             'SELECT vendite.fn_sync_lotto_fatture_stato(' || p_lotto_id::text || ', <stato_target>)'
+                  ),
+                  NULL::uuid,
+                  p_lotto_id::text,
+                  v_count::text
+                );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_guard_lotto_fatture_stato_coerente(vendite.fatturazione_lotti.id%TYPE)
+              IS 'Guard dell''invariante lotto <-> fatture: solleva E_LOTTO_FATTURE_STATO_INCOERENTE (556) se il lotto ha fatture con stato_doc_fiscale_id diverso dal proprio. Eccezione: la fattura critical (in errore) che resta INDIETRO; ⛔ non una fattura critical gia'' congelata e non abortita (config.stati_doc_fiscale.congela_fiscale / is_abortito) davanti a un lotto non congelato: un documento definitivo non convive con uno in errore nello stesso lotto (R-1 di Tid, 2026-10-24). Pensata per essere invocata da un CONSTRAINT TRIGGER DEFERRED (valutazione al COMMIT): gli stati intermedi dentro la transazione sono leciti. No-op se il lotto non esiste piu'' o ha stato NULL. rev 2026-08-04 (D-M): via l''eccezione `esclusa`, dormiente. rev 2026-10-24 (20261024-34, brief-modello-documento-vendita R-1): l''eccezione critical solo per chi resta indietro; le fatture incoerenti si leggono dalla sede unica vendite.vw_lotti_fatture_incoerenti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il rollback non ricrea la versione precedente: va ri-applicato il
+              -- corpo del 20260804-20.
+              SELECT 1;

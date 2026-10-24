@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Elenco delle fatture il cui stato fiscale non coincide con quello del lotto che le contiene: e' la lista di lavoro dell'invariante presidiato da fn_guard_lotto_fatture_stato_coerente. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, flag eliminato perche' dormiente; resta la sola eccezione critical. ⚠️ security_invoker=on: da ri-specificare in ogni CREATE OR REPLACE, non e' visibile in pg_get_viewdef.
+> Vista di lavoro e SEDE UNICA dell'invariante lotto &lt;-&gt; fatture: una riga per fattura il cui stato fiscale diverge da quello del lotto che la contiene. Eccezione: la fattura in errore (critical) rimasta indietro; ⛔ non quella gia' congelata e non abortita davanti a un lotto non congelato (R-1 di Tid, 2026-10-24: un documento definitivo non convive con uno in errore nello stesso lotto). La legge il guard vendite.fn_guard_lotto_fatture_stato_coerente. security_invoker: vede cio' che vede chi interroga. rev 2026-10-24 (20261024-34): predicato R-1 e colonna fattura_critical in coda.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -27,13 +27,14 @@ SELECT l.id AS lotto_id,
     sf.codice_interno AS stato_fattura_codice_interno,
     sf.codice AS stato_fattura_codice,
     l.data_update AS lotto_data_update,
-    f.data_update AS fattura_data_update
+    f.data_update AS fattura_data_update,
+    COALESCE(f.critical, false) AS fattura_critical
    FROM ((((vendite.fatturazione_lotti l
      JOIN vendite.fatturazione_lotti_fatture lf ON ((lf.lotto_id = l.id)))
      JOIN vendite.fatture f ON ((f.id = lf.fattura_id)))
      LEFT JOIN config.stati_doc_fiscale sl ON ((sl.id = l.stato_doc_fiscale_id)))
      LEFT JOIN config.stati_doc_fiscale sf ON ((sf.id = f.stato_doc_fiscale_id)))
-  WHERE ((COALESCE(f.critical, false) IS FALSE) AND (f.stato_doc_fiscale_id IS DISTINCT FROM l.stato_doc_fiscale_id));
+  WHERE ((f.stato_doc_fiscale_id IS DISTINCT FROM l.stato_doc_fiscale_id) AND ((COALESCE(f.critical, false) IS FALSE) OR ((COALESCE(sf.congela_fiscale, false) IS TRUE) AND (COALESCE(sf.is_abortito, false) IS FALSE) AND (COALESCE(sl.congela_fiscale, false) IS FALSE))));
 ```
 
 </div>

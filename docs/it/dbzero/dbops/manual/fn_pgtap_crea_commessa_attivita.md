@@ -13,7 +13,7 @@ Guide: [pgTAP — come si scrive un test](/guide/pgtap-come-si-scrive-un-test) �
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-10-07; rev 2026-10-15: articolo e listino dal chiamante)
+(rev 2026-10-07; rev 2026-10-15: articolo e listino dal chiamante; rev 2026-10-24: sorgente, stati, quantità e periodo)
 
 **Un'attività approvata su una commessa già costruita**, scritta dalla **madre del
 dominio**: `APPROVATA` e `NON_EMESSA`, quantità 1, prezzo snapshot fisso (default 10), con
@@ -50,8 +50,8 @@ madre.
 
 | Chi | Cosa |
 | --- | --- |
-| builder | l'istanza di utility (quella del billing account della commessa), la competenza (della commessa, o il mese corrente), la sorgente `COMMESSA`, `APPROVATA` e `NON_EMESSA`, quantità 1, la chiave del segmento |
-| chiamante | il prezzo (default 10), l'**articolo** (`p_articolo_id`), la **versione** (`p_listino_versione_id`) e la **riga di listino** (`p_listino_riga_id`) |
+| builder | l'istanza di utility (quella del billing account della commessa), la **chiave del segmento** (dal costruttore del dominio) |
+| chiamante | il prezzo (default 10), l'**articolo** (`p_articolo_id`), la **versione** (`p_listino_versione_id`) e la **riga di listino** (`p_listino_riga_id`); dal 2026-10-24 la **sorgente** (codice, chiave del documento, riga; default la commessa stessa), la **quantità** (default 1), gli **stati** di approvazione ed emissione (default `APPROVATA`, `NON_EMESSA`) e il **periodo** (default quello della commessa, o il mese corrente) |
 
 * **L'articolo**: se il chiamante non lo passa, il builder lo costruisce
   (`fn_pgtap_crea_articolo`, non gestito a magazzino; da zero il catalogo è vuoto). Se serve
@@ -65,6 +65,12 @@ madre.
 * ⛔ La **coerenza** fra articolo, riga e versione non la controlla il builder: la tiene la
   tabella ([vendite.trgfn_attivita_guard_listino_riga](/dbzero/vendite/manual/trgfn_attivita_guard_listino_riga)),
   per tutti, test compresi.
+* **La sorgente** (rev 2026-10-24): l'attività che la push di una riga di un documento avrebbe
+  scritto. La chiave del segmento la compone **il dominio**, con `script.fn_segment_key` (il
+  solo costruttore), dal codice della sorgente, dalla chiave del documento e dalla riga.
+  Ricopiarne il formato a mano è ciò che aveva rotto sedici pgTAP il 2026-10-20, quando la
+  grammatica dei documenti era cambiata. Una sorgente senza la chiave del documento viene
+  rifiutata.
 * **L'attività** la scrive `vendite.fn_upsert_commessa_attivita`.
 
 ---
@@ -86,10 +92,11 @@ listino che non esistono vengono rifiutati per nome.
 ---
 ### 🧪 Il presidio
 
-`db/pgtap/dbops/test-fn-pgtap-crea-commessa-attivita-v1.sql` (11 casi) pinna il
+`db/pgtap/dbops/test-fn-pgtap-crea-commessa-attivita-v1.sql` (14 casi) pinna il
 **contratto**: l'attività è sulla commessa, approvata e non emessa, con l'istanza del
 billing account e la competenza della commessa, il prezzo è quello chiesto, **l'emissione
 la prende**, una commessa inesistente parla; e (dal 2026-10-15) l'articolo passato arriva
 coi suoi flag, la riga di listino dà la sua unità di misura, articolo e versione, la sola
 versione registra la riga senza riga di listino, un articolo o una riga di listino
-inesistenti parlano.
+inesistenti parlano; e (dal 2026-10-24) con la sorgente la chiave è quella del costruttore
+del dominio, quantità, stati e periodo sono quelli dichiarati, una sorgente senza chiave parla.

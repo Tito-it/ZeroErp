@@ -402,7 +402,7 @@ E_PIPELINE,DATO_ERRATO,NULL,NULL,NULL
 E_PIPELINE_DOMINIO,DATO_ERRATO,NULL,NULL,NULL
 E_PIPELINE_DOMINIO_NOT_FOUND,NON_TROVATO,NULL,NULL,NULL
 E_PIPELINE_DRIVER_MAX_ITER,TECNICO,NULL,NULL,NULL
-E_PIPELINE_LOTTO_CRITICAL,DATO_ERRATO,NULL,NULL,NULL
+E_PIPELINE_LOTTO_CRITICAL,DATO_ERRATO,NULL,"Il lotto e' FERMO (vendite.vw_lotti_segnalazioni_summary.fermo: segnalazioni critiche, fatture o documenti in errore) e non puo' avanzare. Due punti di applicazione, una regola: il runner del backend prima di muovere il lotto (pipeline_step_executor) e, dal 2026-10-24 (20261024-35, R-1 di Tid, brief-modello-documento-vendita), il guard vendite.trgfn_fatturazione_lotti_guard_stato, che rifiuta l'ingresso in uno stato congelato e non abortito. Senza valori.",NULL
 E_PIPELINE_LOTTO_IN_ESECUZIONE,CONFLITTO_STATO,NULL,NULL,NULL
 E_PIPELINE_LOTTO_NOT_FOUND,NON_TROVATO,NULL,NULL,NULL
 E_PIPELINE_MARK_ERROR,DATO_ERRATO,2026-08-24,"RITIRATO il 2026-08-24, sostituito da E_DIAGNOSTICA_NON_REGISTRATA (987). Marcava i guasti del telaio best-effort del backend (diagnostica_best_effort.py) e mentiva due volte: il NOME diceva PIPELINE, ma dal 2026-08-22 il telaio serve anche il push commesse — chi cercasse i guasti del push per codice non li avrebbe trovati; e la CLASSE era DATO_ERRATO (400) su un guasto interno, dove chi ha fatto la richiesta non puo' correggere niente. ⚠️ Il ritiro arriva DOPO che il backend ha spostato la costante CODICE_DIAGNOSTICA_FALLITA sul codice nuovo, e non prima: un codice ritirato che qualcuno solleva ancora e' peggio di un nome che mente. ⛔ La riga resta a catalogo e non si cancella: le 355 mila righe di log gia' scritte la citano, e un messaggio orfano di codice e' una riga di storia che nessuno sa piu' leggere.",NULL

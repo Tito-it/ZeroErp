@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DI dbops.fn_pgtap_crea_preventivo E fn_pgtap_crea_ordine
+#   Brief: brief-modello-documento-vendita §4-sexies (debito emerso dal porting
+#   del secondo giro).
+#
+#   I changeSet 20261024-23 e -24 hanno riscritto i due builder (il documento
+#   nasce in bozza e si porta avanti per la matrice) ma non il COMMENT, che
+#   dice ancora «la testata nello stato scelto alla nascita» e «Non cambia
+#   stato». Il COMMENT e' la doc auto-generata della funzione: chi lo legge
+#   scrive la fixture sbagliata. Solo il testo: firma e corpo invariati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261024-29-comment-fn-pgtap-crea-preventivo-ordine-nascita-in-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20261024-29-comment-fn-pgtap-crea-preventivo-ordine-nascita-in-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di dbops.fn_pgtap_crea_preventivo e dbops.fn_pgtap_crea_ordine allineati ai
+        changeSet 20261024-23/-24: il documento nasce in bozza e arriva allo stato chiesto per la
+        matrice. Solo testo. Brief: brief-modello-documento-vendita.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_preventivo(text, config.stati_doc_preventivi.codice_interno%TYPE)
+              IS 'Fixture pgTAP: un PREVENTIVO del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata, con l''emittente del mondo, il suo billing account, la sua istanza e utility, la prima valuta del catalogo e una validita'' di trenta giorni da oggi. Il numero lo assegna il trigger del dominio, come in produzione. ⭐ Lo stato: il preventivo NASCE nello stato iniziale (trigger della nascita) e, se il secondo parametro ne chiede un altro, ci arriva per la matrice con dbops.fn_pgtap_porta_a_stato, sotto i guard veri; un passaggio che pretende cio'' che il builder non scrive (le righe, per l''emissione) si ferma: il test chiede la bozza, scrive le righe e porta avanti da se''. Uno stato inesistente solleva prima di costruire. ⛔ NON scrive righe: sono il caso del test. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti. Rev 2026-10-24 (20261024-24, brief-modello-documento-vendita N-1): nascita in bozza; COMMENT allineato dal 20261024-29.';
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_ordine(text, config.stati_doc_ordini.codice_interno%TYPE, vendite.ordini.billing_account_id%TYPE)
+              IS 'Fixture pgTAP: un ORDINE di vendita del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata, con l''emittente del mondo, il suo billing account, la sua utility e la prima valuta del catalogo. Numero, anno, registro e fatturazione_trigger li assegnano i trigger del dominio, come in produzione. ⭐ Lo stato: l''ordine NASCE nello stato iniziale (trigger della nascita) e, se il secondo parametro ne chiede un altro, ci arriva per la matrice con dbops.fn_pgtap_porta_a_stato, sotto i guard veri; un passaggio che pretende cio'' che il builder non scrive (le righe, per la conferma) si ferma: il test chiede la bozza, scrive le righe e porta avanti da se''. Uno stato inesistente solleva prima di costruire. ⛔ NON scrive righe: sono il caso del test. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti. ⚠️ Terzo parametro (rev 2026-10-22, 20261022-10, richiesta BE R-3): il billing account di un cliente gia'' costruito, per il secondo ordine dello stesso cliente; verificato dell''azienda di chi agisce da dbops.fn_pgtap_cliente_ba_del_mondo, e un BA di un''altra azienda solleva. Rev 2026-10-24 (20261024-23, brief-modello-documento-vendita N-1): nascita in bozza; COMMENT allineato dal 20261024-29.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Solo testo: il rollback non ripristina il COMMENT precedente (stantio).
+              SELECT 1;

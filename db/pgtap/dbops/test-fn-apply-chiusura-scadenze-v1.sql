@@ -16,6 +16,12 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): il contratto nasce in
 --   bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima nasceva
 --   gia' ATTIVO).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): il contratto nasce
+--   da dbops.fn_pgtap_crea_contratto (madre di produzione) invece che da un
+--   INSERT a mano; date 2022, listino scaduto e variazione si scrivono in bozza.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-2): il periodo 2022 e il
+--   listino il contratto li prende dal builder; in bozza restano solo la
+--   versione di listino e la variazione globale, che il builder non accetta.
 --
 -- Strategia fixture:
 --   - Disattiva temporaneamente le righe seed di automazione_chiusura_scadenze
@@ -106,24 +112,30 @@ SELECT listino_id, listino_versione_id
 -- Contratto in modalita' A (listino + variazione globale): la modalita' C
 -- pretenderebbe righe in contratti_righe con prezzo_unitario.
 -- rev 2026-10-24: nasce in DRAFT (trigger della nascita) e si attiva per la
---   matrice. La versione di listino si FISSA alla nascita: quella del 2022 non
+--   matrice. La versione di listino si FISSA in bozza: quella del 2022 non
 --   e' in vigore oggi, e senza una versione operativa il contratto non si
 --   attiva (fn_check_listino_congelabile).
-INSERT INTO vendite.contratti(
-    numero, billing_account_id, istanza_utility_id, utility_id,
-    valido_dal, valido_al,
-    listino_id, listino_versione_id,
-    tipo_variazione_globale, valore_variazione_globale
-)
-SELECT 'PGTAP_FW_CONTR_SCAD', ba.billing_account_id, ba.istanza_utility_id, ba.utility_id,
-       DATE '2022-01-01', DATE '2022-12-31',
-       l.listino_id, l.listino_versione_id,
-       'PERCENTUALE', -10
-  FROM tmp_ctx_ba ba, tmp_listino l;
+-- ⭐ rev 2026-10-24 (Q-2/Q-4): la nascita la fa il builder, dalla madre di
+--   produzione, sul cliente del caso 2.
+-- rev 2026-10-24 (R-2): il contratto nasce DRAFT col periodo 2022 e il
+--   listino scaduto dal builder. Resta del test, in bozza prima del
+--   passaggio, cio' che il builder non accetta: la versione di listino (non
+--   in vigore oggi) e la variazione globale (modalita' A). Poi la matrice.
+CREATE TEMP TABLE tmp_contratto AS
+SELECT * FROM dbops.fn_pgtap_crea_contratto(
+                 'chiusura scadenze', 'DRAFT', (SELECT billing_account_id FROM tmp_ctx_ba), NULL,
+                 DATE '2022-01-01', DATE '2022-12-31', NULL,
+                 (SELECT listino_id FROM tmp_listino));
 
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', c.id, 'ATTIVO')
-  FROM vendite.contratti c
- WHERE c.numero = 'PGTAP_FW_CONTR_SCAD';
+UPDATE vendite.contratti c
+   SET listino_versione_id = l.listino_versione_id,
+       tipo_variazione_globale  = 'PERCENTUALE',
+       valore_variazione_globale = -10
+  FROM tmp_listino l
+ WHERE c.id = (SELECT contratto_id FROM tmp_contratto);
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', t.contratto_id, 'ATTIVO')
+  FROM tmp_contratto t;
 
 -- =============================================================
 -- 1) Esecuzione VARCHAR: chiude versione listino scaduta
@@ -172,7 +184,7 @@ SELECT is(
     (SELECT sd.codice_interno
        FROM vendite.contratti c
        JOIN config.stati_doc_contratti sd ON sd.id = c.stato_doc_contratto_id
-      WHERE c.numero = 'PGTAP_FW_CONTR_SCAD'),
+      WHERE c.id = (SELECT contratto_id FROM tmp_contratto)),
     'CESSATO'::varchar,
     'Framework FK: contratto scaduto passa a CESSATO via lookup codice_interno'
 );

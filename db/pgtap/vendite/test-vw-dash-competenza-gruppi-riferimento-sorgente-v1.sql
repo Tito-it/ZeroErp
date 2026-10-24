@@ -8,6 +8,12 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
 --   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
 --   preventivo nasceva gia' EMESSO).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-4): il mondo si COSTRUISCE
+--   (azienda A col suo operatore, contesto su di lui, cliente, articolo
+--   servizio) invece di pescare «il primo BA / articolo / emittente per id».
+-- rev 2026-10-24 (brief-modello-documento-vendita R-9): azienda, operatore,
+--   contesto e cliente nascono in una chiamata da
+--   dbops.fn_pgtap_crea_mondo_cliente, al posto dei tre builder atomici.
 -- ------------------------------------------------------------
 -- Indice test (1..6):
 --  1) controllo: PRIMA della revisione riferimento = numero e documento_id = rev spinta
@@ -60,34 +66,36 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⭐ rev 2026-10-24 (Q-4): l'azienda e il suo operatore si costruiscono PRIMA
+--   del contesto, e il contesto si apre su di lui: la vista legge nel suo
+--   perimetro, e il cliente che nasce dopo il trigger z90 lo lega a lei.
+-- rev 2026-10-24 (R-9): il mondo del builder fa i tre passi nell'ordine giusto.
+CREATE TEMP TABLE tmp_rif_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('vista gruppi riferimento');
+
+-- Il contesto l'ha gia' aperto il mondo sul suo operatore: la riga lo rende
+-- esplicito (ed e' cio' che legge scripts/guardrail_pgtap_preambolo.py).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_rif_mondo)); END $ctx$;
 
 SELECT plan(6);
+
+CREATE TEMP TABLE tmp_rif_cli AS
+SELECT billing_account_id, istanza_utility_id, utility_id FROM tmp_rif_mondo;
 
 -- ============================================================
 -- Riferimenti minimi
 -- ============================================================
 CREATE TEMP TABLE tmp_rif_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                         AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                         AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                         AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-      AND a.causale_onere_id IS NULL
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1) AS articolo_id,
+  (SELECT billing_account_id FROM tmp_rif_cli)      AS billing_account_id,
+  (SELECT utility_id FROM tmp_rif_cli)              AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_rif_cli)      AS istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo('PGT-VGRIF-SERV', false,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'SERVIZIO_UNA_TANTUM')) AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  (SELECT emittente_fiscale_id FROM tmp_rif_mondo) AS emittente_fiscale_id,
   -- ⚠️ EMESSO e non ACCETTATO: fn_crea_revisione_preventivo ammette la
   --   revisione SOLO da EMESSO (E_PREV_REVISIONE_STATO_NON_AMMESSO). Il
   --   preventivo si porta nello stato da cui si revisiona (rev 2026-10-24:

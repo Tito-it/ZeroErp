@@ -10,6 +10,23 @@
 --   attiva (trgfn_contratti_freeze_listino_versione). Il figlio ANNULLATO si
 --   annulla col verbo vendite.fn_annulla_contratto (conferma del legame con
 --   l'offerta).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): il mondo si
+--   COSTRUISCE (emittente A col suo operatore, cliente, articoli merce e
+--   servizio con la natura nel builder, listino) invece di pescare «il primo BA
+--   / articolo / emittente / operatore per id»; i due contratti nascono da
+--   dbops.fn_pgtap_crea_contratto: il figlio ANNULLATO dalla push dell'offerta
+--   ACCETTATA, l'ATTIVO sul cliente del test.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-9): azienda, operatore,
+--   contesto e cliente nascono da dbops.fn_pgtap_crea_mondo_cliente, che da'
+--   anche la whitelist su A: tolta la riscrittura a mano di
+--   config.user_emittenti_fiscali e il set_config. La commessa nasce da
+--   dbops.fn_pgtap_crea_commessa in BOZZA (prima: INSERT a mano nel «primo
+--   stato per id»); le attivita' restano del test.
+-- rev 2026-10-24 (brief-modello-documento-vendita §4-octies): le due attivita'
+--   della commessa le scrive dbops.fn_pgtap_crea_commessa_attivita: l'EMESSA
+--   con la sorgente (chiave dal dominio), la ferma senza (sorgente COMMESSA:
+--   prima una riga PREVENTIVO con una chiave inventata); uom e tipo documento
+--   non si pescano piu'.
 --
 -- Test: Lente 2 Backlog (20260706-01..02 lookup+seed, -03..08 colonna
 --       data_riferimento su resolver/union, -12..13 viste backlog):
@@ -56,28 +73,44 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⭐ rev 2026-10-24 (Q-4): l'azienda A e il suo operatore si costruiscono
+--   PRIMA del contesto, e il contesto si apre su di lui: il cliente che nasce
+--   dopo il trigger z90 lo lega ad A.
+-- rev 2026-10-24 (R-9): il mondo del builder fa i tre passi nell'ordine giusto.
+CREATE TEMP TABLE tmp_bl_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('dash backlog');
+
+-- Il contesto l'ha gia' aperto il mondo sul suo operatore: la riga lo rende
+-- esplicito (ed e' cio' che legge scripts/guardrail_pgtap_preambolo.py).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_bl_mondo)); END $ctx$;
 
 SELECT plan(14);
+
+CREATE TEMP TABLE tmp_bl_cli AS
+SELECT billing_account_id, istanza_utility_id, utility_id FROM tmp_bl_mondo;
+
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo): si
+--   COSTRUISCE con l'operatore di A in sessione, quindi il builder gli da'
+--   l'emittente A, sulla utility del cliente.
+CREATE TEMP TABLE tmp_bl_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_bl_cli), 'dash backlog');
 
 -- ============================================================
 -- 0) Riferimenti minimi
 -- ============================================================
 CREATE TEMP TABLE tmp_bl_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1 OFFSET 0) AS art_merce_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1 OFFSET 1) AS art_serv_id,
+  (SELECT billing_account_id FROM tmp_bl_cli) AS billing_account_id,
+  (SELECT utility_id FROM tmp_bl_cli) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_bl_cli) AS istanza_utility_id,
+  -- Gli articoli si costruiscono con la natura che il caso pretende (rev
+  --   2026-10-24): prima si pescavano i primi due per id e se ne cambiava la
+  --   natura con un UPDATE.
+  dbops.fn_pgtap_crea_articolo('PGT-BL-MERCE', true,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE')) AS art_merce_id,
+  dbops.fn_pgtap_crea_articolo('PGT-BL-SERV', false,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita WHERE codice_interno = 'SERVIZIO_UNA_TANTUM')) AS art_serv_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS prev_accettato_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
@@ -94,24 +127,11 @@ SELECT
     WHERE s.codice_interno = 'ATTIVO' AND s.attivo IS TRUE LIMIT 1) AS contr_attivo_id,
   (SELECT s.id FROM config.stati_doc_contratti s
     WHERE s.codice_interno = 'ANNULLATO' AND s.attivo IS TRUE LIMIT 1) AS contr_annullato_id,
-  (SELECT s.id FROM config.sorgenti s
-    WHERE s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1) AS sorg_preventivo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE
-    ORDER BY u.id LIMIT 1) AS uom_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE
-    ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
-  (SELECT sc.id FROM vendite.stati_commessa sc
-    WHERE sc.attivo IS TRUE AND sc.codice_interno <> 'ANNULLATA'
-    ORDER BY sc.id LIMIT 1) AS stato_commessa_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
-  (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS ef_a_sr,
+  (SELECT emittente_fiscale_id FROM tmp_bl_mondo) AS emittente_fiscale_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1) AS listino_id,
-  (SELECT lv.id FROM vendite.listini_versioni lv WHERE lv.stato = 'ATTIVA'
-    ORDER BY lv.id LIMIT 1) AS listino_versione_id,
+  (SELECT listino_id FROM tmp_bl_listino) AS listino_id,
+  (SELECT listino_versione_id FROM tmp_bl_listino) AS listino_versione_id,
   (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE') AS natura_merce_id,
   (SELECT id FROM config.nature_vendita WHERE codice_interno = 'SERVIZIO_UNA_TANTUM') AS natura_serv_id;
 
@@ -160,62 +180,33 @@ SELECT ok(
 -- ============================================================
 -- 3) Setup scope operatore (il ramo commesse della union e' fail-closed)
 -- ============================================================
+-- L'operatore e' quello costruito con l'azienda A (rev 2026-10-24): prima si
+-- pescava il primo OPERATORE non super per id.
+-- rev 2026-10-24 (R-9): la whitelist su A e il contesto li da' il mondo; la
+-- riscrittura a mano e il set_config sono usciti.
 CREATE TEMP TABLE tmp_bl_op AS
 SELECT id.auth_user_id AS user_id
   FROM anagrafiche.identita_digitali id
- WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+ WHERE id.auth_user_id = (SELECT auth_user_id FROM tmp_bl_mondo)
+   AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
    AND id.attivo = true
    AND NOT EXISTS (
        SELECT 1 FROM config.profili_accesso_bindings pab
        JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
        WHERE pab.identita_digitale_id = id.id
          AND pab.attivo = true
-         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso)
- ORDER BY id.id LIMIT 1;
+         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso);
 
 SELECT ok(
   (SELECT user_id IS NOT NULL FROM tmp_bl_op),
   '3. Trovato un operatore OPERATORE non-super per lo scope'
 );
 
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_bl_op);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
-
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id, meta)
-SELECT o.user_id, r.emittente_fiscale_id,
-       '{"test_scope":"pgtap_dash_backlog"}'::jsonb
-  FROM tmp_bl_op o, tmp_bl_refs r
- WHERE o.user_id IS NOT NULL;
-
-SELECT set_config('app.current_user_id',
-    (SELECT user_id::text FROM tmp_bl_op), true);
-
--- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
---   documento e' della sua utility e del suo emittente (guard nuovo). Le offerte
---   del fixture sono dell'emittente A e del primo BA dei dati: il listino si
---   COSTRUISCE qui, dopo il passaggio all'operatore whitelistato su A, quindi il
---   builder gli da' l'emittente A, sulla utility del BA. Prima era il primo listino
---   per id, di qualunque utility ed emittente.
---   ⚠️ Prima stesura dello stesso giorno: si cercava fra i dati un listino di A
---   sulla utility del BA, e su dbdev non c'era (offerta con listino NULL).
-CREATE TEMP TABLE tmp_bl_listino AS
-SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_bl_refs), 'dash backlog');
-UPDATE tmp_bl_refs r
-   SET listino_id          = (SELECT listino_id FROM tmp_bl_listino),
-       listino_versione_id = (SELECT listino_versione_id FROM tmp_bl_listino);
-
 -- ============================================================
 -- Fixture PREVENTIVO ACCETTATO misto (pattern test-vw-dash-fatturazione):
 -- merce 1x50 a ordine, servizio 2x30 emesso in commessa, servizio 3x10
 -- residuo -> RIGA_RESIDUA con valore fermo 30. data documento 2080-01-01.
 -- ============================================================
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tmp_bl_refs)
- WHERE id = (SELECT art_merce_id FROM tmp_bl_refs);
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_serv_id FROM tmp_bl_refs)
- WHERE id = (SELECT art_serv_id FROM tmp_bl_refs);
-
 -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende le tre righe, poi passa ad ACCETTATO con dbops.fn_pgtap_porta_a_stato prima del push — fuori bozza le righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_bl_prev AS
 WITH ins AS (
@@ -257,49 +248,59 @@ SELECT vendite.fn_push_preventivo_a_ordine((SELECT id FROM tmp_bl_prev));
 
 -- Commessa (emittente A) + attivita' EMESSA per il servizio 2x30 + una ferma
 -- BOZZA/NON_EMESSA (per il motivo ATTIVITA_NON_APPROVATA in backlog).
+-- rev 2026-10-24: la commessa nasce dalla madre via dbops.fn_pgtap_crea_commessa,
+--   in BOZZA; le due attivita' dal builder (rev §4-octies, sotto).
+CREATE TEMP TABLE tmp_bl_cmd AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa(
+                 'dash backlog', 'BOZZA', (SELECT billing_account_id FROM tmp_bl_refs));
+
 CREATE TEMP TABLE tmp_bl_commessa AS
-WITH ins AS (
-  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                emittente_soggetto_ruolo_id, stato_commessa_id)
-  SELECT 'PGTAP-BL-CMD-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id, r.ef_a_sr, r.stato_commessa_id
-    FROM tmp_bl_refs r
-  RETURNING id)
-SELECT id FROM ins;
+SELECT commessa_id AS id FROM tmp_bl_cmd;
 
-INSERT INTO vendite.commesse_attivita (
-  commessa_id, segment_key,
-  articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
-  competenza_mese, competenza_dal, competenza_al,
-  tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
-  pricing_mode, stato_approvazione, stato_emissione,
-  sorgente_tipo_id, sorgente_uid)
-SELECT
-  (SELECT id FROM tmp_bl_commessa),
-  'PREVENTIVO:' || (SELECT uid FROM tmp_bl_prev)::text || ':R:' || (SELECT id FROM tmp_bl_riga_serv_emessa)::text,
-  r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 2,
-  DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31',
-  r.tipo_doc_fiscale_id, r.valuta_id, 30.000000,
-  'FIXED', 'BOZZA', 'EMESSA',
-  r.sorg_preventivo_id, (SELECT uid FROM tmp_bl_prev)::text
-FROM tmp_bl_refs r;
+-- rev 2026-10-24 (§4-octies): le due attivita' le scrive il builder.
+--   L'EMESSA del servizio porta la sorgente (la riga del preventivo): la
+--   chiave la compone il dominio. La ferma era una riga PREVENTIVO con una
+--   chiave inventata, che nessuna riga del preventivo produce: ora e' una
+--   riga della commessa (sorgente COMMESSA, chiave del builder), cio' che il
+--   caso 11 legge (il motivo della commessa) non cambia. Tipo documento
+--   fiscale e valuta li deriva la madre, l'unita' di misura l'articolo.
+CREATE TEMP TABLE tmp_bl_att_emessa AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+    p_commessa_id        => (SELECT id FROM tmp_bl_commessa),
+    p_prezzo_snapshot    => 30.000000,
+    p_articolo_id        => (SELECT art_serv_id FROM tmp_bl_refs),
+    p_sorgente_codice    => 'PREVENTIVO',
+    p_sorgente_uid       => (SELECT uid::text FROM tmp_bl_prev),
+    p_sorgente_riga_id   => (SELECT id FROM tmp_bl_riga_serv_emessa),
+    p_quantita           => 2,
+    p_stato_approvazione => 'BOZZA',
+    p_stato_emissione    => 'EMESSA',
+    p_competenza_dal     => DATE '2080-01-01',
+    p_competenza_al      => DATE '2080-12-31');
 
-INSERT INTO vendite.commesse_attivita (
-  commessa_id, segment_key,
-  articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
-  competenza_mese, competenza_dal, competenza_al,
-  tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
-  pricing_mode, stato_approvazione, stato_emissione,
-  sorgente_tipo_id, sorgente_uid)
-SELECT
-  (SELECT id FROM tmp_bl_commessa),
-  'PGTAP-BL-NE-' || substr(md5(clock_timestamp()::text), 1, 8),
-  r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 3,
-  DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31',
-  r.tipo_doc_fiscale_id, r.valuta_id, 10.000000,
-  'FIXED', 'BOZZA', 'NON_EMESSA',
-  r.sorg_preventivo_id, (SELECT uid FROM tmp_bl_prev)::text
-FROM tmp_bl_refs r;
+CREATE TEMP TABLE tmp_bl_att_ferma AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+    p_commessa_id        => (SELECT id FROM tmp_bl_commessa),
+    p_prezzo_snapshot    => 10.000000,
+    p_articolo_id        => (SELECT art_serv_id FROM tmp_bl_refs),
+    p_quantita           => 3,
+    p_stato_approvazione => 'BOZZA',
+    p_stato_emissione    => 'NON_EMESSA',
+    p_competenza_dal     => DATE '2080-01-01',
+    p_competenza_al      => DATE '2080-12-31');
+
+-- Le due righe scritte davvero (controllo, non test).
+DO $chk$ BEGIN
+  IF (SELECT count(*) FROM vendite.commesse_attivita ca
+       WHERE ca.commessa_id = (SELECT id FROM tmp_bl_commessa)
+         AND ((ca.id = (SELECT attivita_id FROM tmp_bl_att_emessa) AND ca.stato_emissione = 'EMESSA'
+               AND ca.segment_key = script.fn_segment_key('PREVENTIVO', (SELECT uid::text FROM tmp_bl_prev),
+                                                          (SELECT id FROM tmp_bl_riga_serv_emessa)))
+           OR (ca.id = (SELECT attivita_id FROM tmp_bl_att_ferma)
+               AND ca.stato_approvazione = 'BOZZA' AND ca.stato_emissione = 'NON_EMESSA'))) <> 2 THEN
+    RAISE EXCEPTION 'fixture: attese 2 attivita'' dal builder';
+  END IF;
+END $chk$;
 
 -- Fixture OFFERTE: BOZZA (verde, fuori), EMESSA (blu), ACCETTATA con figlio
 -- ANNULLATO (rossa). validita_dal 2080-03-01.
@@ -345,52 +346,31 @@ SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', o.offerta_id,
   FROM tmp_bl_offerte o
  WHERE o.slot = 'ACC_FIGLIO_ABORTITO';
 
--- Il figlio ANNULLATO: nasce DRAFT e si annulla col verbo (rev 2026-10-24).
--- ⚠️ Non con fn_pgtap_porta_a_stato: annullare un contratto nato da
---   un'offerta riapre un legame (l'offerta da cui nasce), e il guard
---   trg_contratti_m10_guard_annullo_con_legami_upd vuole la conferma. Il verbo
---   vendite.fn_annulla_contratto la riceve come conteggio: 1, l'offerta.
+-- Il figlio ANNULLATO (rev 2026-10-24, Q-2): nasce dalla PUSH dell'offerta
+--   ACCETTATA, come in produzione, e il builder lo annulla col verbo
+--   vendite.fn_annulla_contratto dichiarando il legame con l'offerta.
+CREATE TEMP TABLE tmp_bl_k_annullato AS
+SELECT * FROM dbops.fn_pgtap_crea_contratto(
+                 'dash backlog figlio', 'ANNULLATO', NULL,
+                 (SELECT offerta_id FROM tmp_bl_offerte WHERE slot = 'ACC_FIGLIO_ABORTITO'));
+
 CREATE TEMP TABLE tmp_bl_contratto_annullato AS
-WITH ins AS (
-  INSERT INTO vendite.contratti (
-    numero, billing_account_id, istanza_utility_id, utility_id,
-    valido_dal, valido_al, data, offerta_id,
-    emittente_fiscale_id, meta)
-  SELECT 'PGTAP-BL-CA-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         script.fn_data_operativa(), NULL, script.fn_data_operativa(),
-         (SELECT offerta_id FROM tmp_bl_offerte WHERE slot = 'ACC_FIGLIO_ABORTITO'),
-         COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
-                  r.emittente_fiscale_id),
-         jsonb_build_object('test_scope','pgtap_dash_backlog')
-    FROM tmp_bl_refs r
-  RETURNING id)
-SELECT * FROM ins;
+SELECT contratto_id AS id FROM tmp_bl_k_annullato;
 
-SELECT vendite.fn_annulla_contratto(c.id, 1)
-  FROM tmp_bl_contratto_annullato c;
+-- Fixture CONTRATTO ATTIVO senza canone (fisiologico, fuori dal backlog).
+-- ⚠️ Il motivo e' NULL, non CANONE_NON_GENERATO: dal 20260707-03 (vista dei
+--   contratti «de-esplosa») i contratti non hanno un motivo di fermo finche' non
+--   esiste il push ricorrente dei canoni. Il codice resta nel seed di
+--   config.motivi_fermo apposta, per la riaccensione (vedi la doc della vista).
+--   rev 2026-10-24: il commento diceva ancora CANONE_NON_GENERATO.
+-- rev 2026-10-24 (Q-2): dal builder, sul cliente del test, attivato sul
+--   listino che il builder gli costruisce (dell'azienda di chi agisce).
+CREATE TEMP TABLE tmp_bl_k_attivo AS
+SELECT * FROM dbops.fn_pgtap_crea_contratto(
+                 'dash backlog', 'ATTIVO', (SELECT billing_account_id FROM tmp_bl_refs));
 
--- Fixture CONTRATTO ATTIVO senza canone (verde: CANONE_NON_GENERATO).
--- rev 2026-10-24: nasce DRAFT sul listino della fixture e si attiva per la matrice.
 CREATE TEMP TABLE tmp_bl_contratto AS
-WITH ins AS (
-  INSERT INTO vendite.contratti (
-    numero, billing_account_id, istanza_utility_id, utility_id,
-    valido_dal, valido_al, data, listino_id,
-    emittente_fiscale_id, meta)
-  SELECT 'PGTAP-BL-CT-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         date_trunc('month', script.fn_data_operativa())::date, NULL,
-         date_trunc('month', script.fn_data_operativa())::date, r.listino_id,
-         COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
-                  r.emittente_fiscale_id),
-         jsonb_build_object('test_scope','pgtap_dash_backlog')
-    FROM tmp_bl_refs r
-  RETURNING id)
-SELECT * FROM ins;
-
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', c.id, 'ATTIVO')
-  FROM tmp_bl_contratto c;
+SELECT contratto_id AS id FROM tmp_bl_k_attivo;
 
 -- ============================================================
 -- 4) Coerenza vocabolario: ogni motivo emesso dalla union e' in lookup.
@@ -483,7 +463,7 @@ SELECT is(
     WHERE b.area = 'CONTRATTO'
       AND b.documento_id = (SELECT id FROM tmp_bl_contratto)),
   0,
-  '10. Contratto ATTIVO senza canone (CANONE_NON_GENERATO, fisiologico): FUORI dal backlog'
+  '10. Contratto ATTIVO senza canone (motivo NULL dal 20260707-03, fisiologico): FUORI dal backlog'
 );
 
 -- ============================================================
