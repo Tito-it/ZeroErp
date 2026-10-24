@@ -9,7 +9,7 @@ lavorazione: tutte aspettano una decisione o un via.
 | --- | --- | --- | --- | --- |
 | 1 | Tid | D18: le cinque decisioni della catena delle istanze | `brief-db-catena-istanze-pdp.md` §6 | — |
 | 2 | Tid | D31: G-1…G-4 (canone, orario, consumo del contratto in commessa) | `brief-db-contratto-righe-periodiche-in-commessa.md` §4 | — |
-| 3 | Tid | D32: N-1…N-3 (un documento nasce nel suo stato iniziale); dal lato della grammatica unica può partire | `brief-db-documento-nasce-nello-stato-iniziale.md` §4 | — |
+| 3 | Tid | D32: N-1…N-3 (un documento nasce nel suo stato iniziale), confluito il 2026-10-24 nel modello del documento di vendita | `brief-modello-documento-vendita.md` §4-bis | — |
 | 4 | Tid | D17 Q-2: riprendere o no le GUC di bypass (rimandata il 2026-10-04) | §3 D17 | — |
 | 5 | Tid | D7: i test legati a dati di macchina; il ramo «ultimo SUPER_ADMIN» | §3 D7 | — |
 | 6 | team DB | D24 (la vista del presidio C2 e i `tgargs`), D6-bis, D11-bis, D16: lavori senza decisioni aperte | §3 | il via di Tid |
@@ -1054,6 +1054,8 @@ bolla: nasce EMESSA e numerata con zero righe, e dopo le righe non si aggiungono
 📝 Aperto, non iniziato: decisioni N-1…N-3 di Tid. Al 2026-10-23 il vincolo verso la grammatica
 unica è sciolto (il lotto 0 è chiuso il 19-10, e dal 2a le testate parlano i codici di
 `config.sorgenti`): il cantiere aspetta solo le decisioni.
+➡️ **2026-10-24: confluito** in [brief-modello-documento-vendita.md](brief-modello-documento-vendita.md)
+§4-bis (M-6 di Tid): le decisioni N-1…N-3 si prendono là, nel cantiere del modello.
 
 ---
 
@@ -1295,7 +1297,8 @@ rossi in CI.
 * [ ] **D31** — canone, orario e consumo del contratto in commessa: brief
       `brief-db-contratto-righe-periodiche-in-commessa` (aperto il 2026-10-13, non iniziato; decisioni G-1…G-4).
 * [ ] **D32** — un documento nasce nel suo stato iniziale: brief
-      `brief-db-documento-nasce-nello-stato-iniziale` (aperto il 2026-10-13, non iniziato; decisioni N-1…N-3).
+      `brief-db-documento-nasce-nello-stato-iniziale` (aperto il 2026-10-13, non iniziato), confluito il 2026-10-24
+      in `brief-modello-documento-vendita` §4-bis (decisioni N-1…N-3).
 * [x] **D33** — un cliente manuale per soggetto e utility: brief
       `work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility` — chiuso e archiviato il 2026-10-15
       (DB `20261014-08 … -20`; BE §6-bis; smoke clienti verde).

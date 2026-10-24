@@ -1,8 +1,11 @@
 # Brief DB — Un documento nasce nel suo stato iniziale
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-13
+## ⏭️ Chi riparte — aggiornato al 2026-10-24
 
-**Riparte: Tid**, con le decisioni del §4. Cantiere aperto, non iniziato.
+➡️ **Confluito in [brief-modello-documento-vendita](brief-modello-documento-vendita.md) §4-bis**
+(decisione M-6 di Tid, 2026-10-24: stesso tema, stati e verbo). Le decisioni N-1 … N-3 si prendono
+là; qui restano il caso, la prova e il censimento da fare (§1-§3). Da archiviare in `work-done/`
+insieme a quel brief. La tabella qui sotto e' superata.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
