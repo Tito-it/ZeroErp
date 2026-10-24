@@ -1,7 +1,7 @@
 # ⚙️ Funzione `fn_idempotency_prenota`
 
 ```sql
-CREATE FUNCTION fn_idempotency_prenota(p_idempotency_key text, p_auth_user_id integer, p_endpoint text, p_request_id uuid)
+CREATE FUNCTION fn_idempotency_prenota(p_idempotency_key text, p_auth_user_id integer, p_endpoint text, p_request_id uuid, p_ripresa_ammessa boolean)
 ```
 
 **Definizione completa:**
@@ -9,7 +9,7 @@ CREATE FUNCTION fn_idempotency_prenota(p_idempotency_key text, p_auth_user_id in
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_idempotency_prenota(p_idempotency_key text, p_auth_user_id integer, p_endpoint text, p_request_id uuid DEFAULT NULL::uuid)
+CREATE OR REPLACE FUNCTION dbops.fn_idempotency_prenota(p_idempotency_key text, p_auth_user_id integer, p_endpoint text, p_request_id uuid DEFAULT NULL::uuid, p_ripresa_ammessa boolean DEFAULT NULL::boolean)
  RETURNS TABLE(esito text, response_payload jsonb)
  LANGUAGE plpgsql
 AS $function$
@@ -36,11 +36,13 @@ BEGIN
     --   - completed                         → REPLAY
     --   - failed                            → ripresa, ESEGUI
     --   - in_progress entro la soglia       → IN_CORSO
-    --   - in_progress oltre la soglia       → ripresa, ESEGUI (D6)
+    --   - in_progress oltre la soglia:
+    --       ripresa ammessa                 → ripresa, ESEGUI (D6)
+    --       ripresa non ammessa             → IN_CORSO
     --
     -- ⛔ La ripresa di una in_progress e' sicura solo se il backend
     --   scrive completed nella stessa transazione dell'operazione:
-    --   vedi l'intestazione del changeSet 20261023-04.
+    --   e' cio' che dichiara p_ripresa_ammessa (changeSet 20261023-06).
     -- =========================================================
 
     -- Guard di parametro: forme che nessuna richiesta produce.
@@ -53,6 +55,18 @@ BEGIN
             NULL::uuid,
             'dbops.fn_idempotency_prenota',
             'la key e l''endpoint della richiesta sono obbligatori');
+    END IF;
+
+    -- La ripresa si dichiara sempre: ne' true ne' false sono un
+    -- default del modello (intestazione di 20261023-06).
+    IF p_ripresa_ammessa IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'dbops', 'dbops.fn_idempotency_prenota', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+            jsonb_build_object('detail', 'p_ripresa_ammessa obbligatorio',
+                               'p_endpoint', p_endpoint),
+            NULL::uuid,
+            'dbops.fn_idempotency_prenota',
+            'il chiamante deve dichiarare se la ripresa di una key in corso e'' ammessa');
     END IF;
 
     -- 1. Key nuova: la prenotazione e' di chi la scrive.
@@ -88,14 +102,14 @@ BEGIN
         RETURN;
     END IF;
 
-    -- 3. D7: la key e' di chi l'ha prenotata, su quell'endpoint.
-    --    ⚠️ endpoint NULL = riga nata prima del 2026-10-23: nessun
-    --    legame da confrontare.
+    -- 3. D7: la key e' di chi l'ha prenotata, su quell'endpoint
+    --    (endpoint NOT NULL da 20261024-01: ogni key ha il legame).
+    --    auth_user_id NULL = richiesta anonima: un utente diverso
+    --    da ogni altro, non un jolly (IS DISTINCT FROM).
     --    ⛔ Nel contesto non entrano utente ed endpoint dell'ALTRO:
     --    sono proprio cio' che non va rivelato a chi rimanda la key.
-    IF v_riga.endpoint IS NOT NULL
-       AND (v_riga.endpoint     IS DISTINCT FROM p_endpoint
-         OR v_riga.auth_user_id IS DISTINCT FROM p_auth_user_id) THEN
+    IF v_riga.endpoint        IS DISTINCT FROM p_endpoint
+       OR v_riga.auth_user_id IS DISTINCT FROM p_auth_user_id THEN
         PERFORM script.fn_log_and_raise_error(
             'dbops', 'dbops.fn_idempotency_prenota', 'E_IDEMPOTENCY_KEY_RIUSATA',
             jsonb_build_object('detail', 'key prenotata da un altro utente o su un altro endpoint',
@@ -117,11 +131,20 @@ BEGIN
     END IF;
 
     -- 5. In corso: entro la soglia lavora qualcun altro; oltre, chi
-    --    lavorava e' morto senza commit (D6) e si riprende.
+    --    lavorava e' morto (D6) e si riprende, se il chiamante
+    --    dichiara che la morte vuol dire «nessun commit».
     --    prenotata_at e' l'ora della prenotazione o della ripresa
     --    (20261023-03); non data_update, che il trigger di audit
     --    riscrive a ogni UPDATE.
     IF v_riga.status = 'in_progress' THEN
+        -- Ripresa non ammessa: l'operazione lavora a passi, e una
+        -- key orfana puo' coprire un lavoro gia' in parte
+        -- committato. Resta in corso; la soglia non decide niente.
+        IF NOT p_ripresa_ammessa THEN
+            RETURN QUERY SELECT 'IN_CORSO'::text, NULL::jsonb;
+            RETURN;
+        END IF;
+
         SELECT p.default_value INTO v_soglia_testo
           FROM config.parameters p
          WHERE p.code = 'SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI';
@@ -145,15 +168,15 @@ BEGIN
         END IF;
     END IF;
 
-    -- 6. Ripresa: failed, o in_progress abbandonata. La riga si
-    --    lega a chi la riprende (le righe senza legame lo prendono qui).
+    -- 6. Ripresa: failed (l'esito l'ha scritto il backend: lo stato
+    --    e' noto, con o senza ripresa ammessa), o in_progress
+    --    abbandonata con ripresa ammessa. Utente ed endpoint non si
+    --    riscrivono: il passo 3 ha gia' detto che sono gli stessi.
     UPDATE dbops.idempotency_keys k
        SET status           = 'in_progress',
            request_id       = p_request_id,
            tx_id            = NULL,
            response_payload = NULL,
-           auth_user_id     = p_auth_user_id,
-           endpoint         = p_endpoint,
            prenotata_at     = now(),
            data_update      = now(),
            user_update      = CURRENT_USER
@@ -163,8 +186,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION dbops.fn_idempotency_prenota(p_idempotency_key text, p_auth_user_id integer, p_endpoint text, p_request_id uuid)
-IS 'Prenota una Idempotency-Key per una richiesta e risponde al backend: ESEGUI (la key e'' sua), REPLAY (operazione gia'' fatta: response_payload), IN_CORSO (la sta eseguendo un''altra richiesta: il backend solleva E_IDEMPOTENCY_IN_PROGRESS). Una key failed, o in_progress da oltre SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI (config.parameters, sopra il timeout di gunicorn), si riprende (D6). Una key prenotata da un altro utente o su un altro endpoint solleva E_IDEMPOTENCY_KEY_RIUSATA (D7); le righe nate prima del 2026-10-23 (endpoint NULL) non hanno legame e lo prendono alla ripresa. ⛔ La ripresa di una in_progress e'' sicura solo se il backend scrive completed nella STESSA transazione dell''operazione: allora una in_progress orfana vuol dire «nessun commit». La prenotazione committa da sola: le altre richieste la vedono subito e non aspettano. SECURITY INVOKER. Brief: brief-be-verifica-documentazione-api D6, D7.';
+COMMENT ON FUNCTION dbops.fn_idempotency_prenota(p_idempotency_key text, p_auth_user_id integer, p_endpoint text, p_request_id uuid, p_ripresa_ammessa boolean)
+IS 'Prenota una Idempotency-Key per una richiesta e risponde al backend: ESEGUI (la key e'' sua), REPLAY (operazione gia'' fatta: response_payload), IN_CORSO (la sta eseguendo un''altra richiesta: il backend solleva E_IDEMPOTENCY_IN_PROGRESS). Una key failed si riprende sempre. Una key in_progress da oltre SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI (config.parameters, sopra il timeout di gunicorn) si riprende solo con p_ripresa_ammessa = true (D6), che il chiamante dichiara quando completed sta nella STESSA transazione dell''operazione: allora una in_progress orfana vuol dire «nessun commit». Con false (operazione a passi) resta IN_CORSO. p_ripresa_ammessa e'' obbligatorio: NULL e'' E_SCRIPT_CHIAMATA_NON_VALIDA. Una key prenotata da un altro utente o su un altro endpoint solleva E_IDEMPOTENCY_KEY_RIUSATA (D7): ogni key e'' legata alla richiesta che l''ha prenotata (endpoint NOT NULL). La prenotazione committa da sola: le altre richieste la vedono subito e non aspettano. SECURITY INVOKER. Brief: brief-be-verifica-documentazione-api D6, D7, §I.7.3, §I.5.';
 ```
 
 </div>
