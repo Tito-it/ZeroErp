@@ -6,7 +6,7 @@
 // Note: estratto 2026-09-04 (regola del 2, ok Tid) da CodeLavoroView +
 //       UnitaMisuraView, che lo avevano scritto identico.
 // ------------------------------------------------------------
-import { ref, watch, onActivated } from 'vue'
+import { ref, watch, onActivated, onDeactivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 // ── Perche' un BB e non due copie ────────────────────────────────────────────
@@ -42,7 +42,17 @@ import { useRoute, useRouter } from 'vue-router'
 // @param {object|string[]} ammessi    i valori validi (l'enum delle schede)
 // @param {string}          [iniziale] scheda di partenza (default: il primo)
 // @param {string}          [parametro='tab'] nome del query param
-export function useTabDaQuery({ nomeRotta, ammessi, iniziale, parametro = 'tab' }) {
+// @param {boolean}         [ripartiDaIniziale=false] chi rientra nella vista
+//                          trova la scheda iniziale, non quella dell'ultima
+//                          visita (il deep-link `?tab=` vince comunque).
+// ⭐ `ripartiDaIniziale` (Tid 2026-10-24, Processi automatici): sotto KeepAlive
+//    la vista resta in cache e conserva la scheda; per una vista che ha una
+//    scheda «di casa» chi entra se la aspetta.
+// ⛔ Si torna all'iniziale all'USCITA (`onDeactivated`), non all'ingresso: un
+//    deep-link verso la vista in cache lo applica il `watch` (la rotta cambia
+//    prima della riattivazione) e la query e' gia' pulita quando arriva
+//    `onActivated` — che, azzerando li', annullerebbe la scheda appena chiesta.
+export function useTabDaQuery({ nomeRotta, ammessi, iniziale, parametro = 'tab', ripartiDaIniziale = false }) {
   const route = useRoute()
   const router = useRouter()
   const valori = Array.isArray(ammessi) ? ammessi : Object.values(ammessi)
@@ -73,6 +83,9 @@ export function useTabDaQuery({ nomeRotta, ammessi, iniziale, parametro = 'tab' 
 
   watch(() => route.query[parametro], applicaDaQuery)
   onActivated(applicaDaQuery)
+  if (ripartiDaIniziale) {
+    onDeactivated(() => { attivo.value = partenza })
+  }
 
   return attivo
 }

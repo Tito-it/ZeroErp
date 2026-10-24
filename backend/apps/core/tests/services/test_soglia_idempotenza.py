@@ -4,7 +4,10 @@
 # Doc: Python
 # Scopo: Il presidio di avvio fra timeout di gunicorn e soglia di ripresa
 #        delle Idempotency-Key (`soglia_idempotenza`, BE-5). La soglia si
-#        finge: qui si prova la regola, non la lettura dal database.
+#        finge: qui si prova la regola, non la lettura dal database (la
+#        chiamata vera a `dbops.fn_idempotency_soglia_secondi` la prova
+#        `tests/db/test_idempotency_prenota_db.py`; le forme ammesse della
+#        soglia il pgTAP `script/test-intero-positivo-da-testo-v1`).
 # ------------------------------------------------------------
 """
 Indice test eseguiti:
@@ -12,7 +15,6 @@ Indice test eseguiti:
 2) VerificaSogliaTests.test_margine_mancante_rifiuta
 3) VerificaSogliaTests.test_timeout_zero_rifiuta_senza_leggere_la_soglia
 4) VerificaSogliaTests.test_worker_non_sync_rifiuta
-5) DefaultIntPositivoTests.test_forme_rifiutate_come_la_funzione_db
 """
 from __future__ import annotations
 
@@ -22,15 +24,13 @@ from unittest.mock import patch
 from gunicorn.workers.gthread import ThreadWorker
 from gunicorn.workers.sync import SyncWorker
 
-from apps.core.services.parameter_service import ParameterService
-from apps.core.services.service_errors import ServiceError
 from apps.core.services.soglia_idempotenza import (
     MARGINE_SECONDI,
     SogliaIdempotenzaNonSicura,
     verifica_soglia_contro_timeout,
 )
 
-_SOGLIA = "apps.core.services.soglia_idempotenza.ParameterService.get_default_int_positivo"
+_SOGLIA = "apps.core.services.soglia_idempotenza.IdempotencyStore.soglia_ripresa_secondi"
 
 
 class VerificaSogliaTests(TestCase):
@@ -55,18 +55,3 @@ class VerificaSogliaTests(TestCase):
             with self.assertRaises(SogliaIdempotenzaNonSicura):
                 verifica_soglia_contro_timeout(timeout_secondi=60, worker_class=ThreadWorker)
 
-
-class DefaultIntPositivoTests(TestCase):
-    # ⚠️ Le forme che `dbops.fn_idempotency_prenota` rifiuta (`^[1-9][0-9]{0,5}$`)
-    #    le rifiuta anche il backend: una soglia letta qui e rifiutata la' non
-    #    sarebbe un presidio.
-    def test_forme_rifiutate_come_la_funzione_db(self) -> None:
-        servizio = ParameterService()
-        for valore in (None, "", "  ", "0", "007", "-5", "1.5", "１２０", "1234567", " 120 "):
-            with self.subTest(valore=valore):
-                with patch.object(servizio._repo, "get_default_value", return_value=valore):
-                    with self.assertRaises(ServiceError) as ctx:
-                        servizio.get_default_int_positivo("X")
-                    self.assertEqual(ctx.exception.code, "E_CONFIG_MANCANTE")
-        with patch.object(servizio._repo, "get_default_value", return_value="120"):
-            self.assertEqual(servizio.get_default_int_positivo("X"), 120)

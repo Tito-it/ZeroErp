@@ -14,8 +14,8 @@ defineProps({
   active: { type: Boolean, default: false },
   // La voce e' un GRUPPO (ha delle voci dentro). A sidebar chiusa resta
   // l'icona sola, e senza un segno nessuno penserebbe di cliccarla per
-  // trovarne altre (rilievo in-app di Tid, 2026-10-06): il chevron accanto e'
-  // lo stesso del gruppo chiuso a sidebar aperta.
+  // trovarne altre (rilievo in-app di Tid, 2026-10-06): il segno accanto e'
+  // lo stesso del gruppo chiuso a sidebar aperta (`MANAGE_ICONS.SOTTOMENU`).
   gruppo: { type: Boolean, default: false }
 })
 
@@ -30,7 +30,7 @@ defineEmits(['click'])
     v-tooltip.right="isCollapsed ? label : null"
   >
     <i :class="icon"></i>
-    <i v-if="isCollapsed && gruppo" class="sidebar-item-gruppo" :class="MANAGE_ICONS.ROW_EXPAND"></i>
+    <i v-if="isCollapsed && gruppo" class="sidebar-item-gruppo app-sottomenu-icon" :class="MANAGE_ICONS.SOTTOMENU"></i>
     <span v-if="!isCollapsed">
       <slot>{{ label }}</slot>
     </span>
@@ -57,16 +57,16 @@ defineEmits(['click'])
   padding: 0.5rem 0.35rem;
 }
 
-/* Il chevron del gruppo a sidebar chiusa: piccolo, sul bordo destro, fuori
-   dal flusso — l'icona resta centrata come quella delle voci semplici. */
+/* Il segno del gruppo a sidebar chiusa: piccolo, sul bordo destro, fuori
+   dal flusso — l'icona resta centrata come quella delle voci semplici. Il
+   colore e' quello dell'icona (regole qui sotto). */
 .sidebar-item .sidebar-item-gruppo {
   position: absolute;
   right: 0;
   top: 50%;
   transform: translateY(-50%);
   width: auto;
-  font-size: 0.55rem;
-  color: var(--app-text-muted);
+  font-size: 0.6rem;
 }
 
 .sidebar-item:hover {
@@ -83,12 +83,20 @@ defineEmits(['click'])
   font-size: 1rem;
   width: 1.25rem;
   text-align: center;
+}
+
+/* ⭐ Il segno di sottomenu che il chiamante mette nello slot (SidebarDomain,
+   gruppo a sidebar aperta) ha lo stesso colore dell'icona: una regola sola. */
+.sidebar-item i,
+.sidebar-item :slotted(.app-sottomenu-icon) {
   color: var(--app-icon-color);
 }
 
 /* In hover e active l'icona segue il colore del parent */
 .sidebar-item:hover i,
-.sidebar-item.active i {
+.sidebar-item.active i,
+.sidebar-item:hover :slotted(.app-sottomenu-icon),
+.sidebar-item.active :slotted(.app-sottomenu-icon) {
   color: inherit;
 }
 </style>

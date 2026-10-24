@@ -166,8 +166,8 @@ function handleToggleFavorite(item) {
         </span>
         <i
           v-if="!isCollapsed && hasChildren(item)"
-          class="group-chevron"
-          :class="isGroupOpen(item) ? MANAGE_ICONS.ROW_COLLAPSE : MANAGE_ICONS.ROW_EXPAND"
+          class="app-sottomenu-icon"
+          :class="isGroupOpen(item) ? MANAGE_ICONS.SOTTOMENU_APERTO : MANAGE_ICONS.SOTTOMENU"
         ></i>
         <!-- Stella preferito -->
         <i
@@ -202,7 +202,7 @@ function handleToggleFavorite(item) {
       </div>
     </template>
 
-    <Menu ref="gruppoMenu" :model="gruppoMenuItems" popup />
+    <Menu ref="gruppoMenu" :model="gruppoMenuItems" popup class="app-sidebar-gruppo-popup" />
   </div>
 </template>
 
@@ -252,11 +252,6 @@ function handleToggleFavorite(item) {
 .favorite-star.favorite-star-attiva {
   opacity: 1;
   color: var(--p-yellow-400);
-}
-
-.group-chevron {
-  font-size: 0.75rem;
-  color: var(--app-text-muted);
 }
 
 .sidebar-submenu {

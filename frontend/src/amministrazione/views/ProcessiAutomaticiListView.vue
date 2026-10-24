@@ -28,7 +28,8 @@
 //    che si dividono un'altezza sola se la rubano a vicenda, qualunque tetto si
 //    scelga. Ora ognuno ha la pagina intera, e la notizia dei presidi sta nel
 //    BADGE della scheda, che si legge anche senza aprirla.
-// ⭐ Si apre su «Processi»; il pallino in topbar porta GIÀ sui presidi
+// ⭐ Si apre SEMPRE su «Processi», anche tornando dopo aver lasciato i
+//    presidi aperti (`ripartiDaIniziale`); il pallino in topbar porta GIÀ sui presidi
 //    (`?tab=presidi`, `PROCESSI_TABS`). ⛔ La vista non cambia scheda da sola
 //    quando un presidio si accende: i presidi arrivano dopo il primo disegno, e
 //    la pagina salterebbe sotto gli occhi di chi legge. Il richiamo è il badge.
@@ -59,6 +60,9 @@ const activeTab = useTabDaQuery({
   nomeRotta: 'strumenti-diagnostica-processi-automatici',
   ammessi: PROCESSI_TABS,
   iniziale: PROCESSI_TABS.PROCESSI,
+  // A ogni ingresso si riparte da «Processi», non dalla scheda dell'ultima
+  // visita (Tid 2026-10-24); i presidi si raggiungono dal pallino o dal badge.
+  ripartiDaIniziale: true,
 })
 
 // ⭐ Il badge della scheda si COLORA con la stessa funzione del pallino in

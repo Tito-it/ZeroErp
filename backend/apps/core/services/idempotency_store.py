@@ -80,6 +80,20 @@ class IdempotencyStore:
         # Un esito fuori dai tre e' un contratto rotto con la funzione: si dice.
         raise RuntimeError(f"idempotency: esito di fn_idempotency_prenota non previsto: {esito!r}")
 
+    # Scopo: La soglia di ripresa in secondi, letta e validata dal database.
+    # ⭐ Sede unica della regola: `dbops.fn_idempotency_soglia_secondi` (§I.11 di
+    #    brief-be-verifica-documentazione-api, 2026-10-24), la stessa che usa
+    #    `fn_idempotency_prenota`. Fino a quel giorno il backend ricopiava la
+    #    regex del parametro, e una copia aveva gia' divergito (lo `strip`).
+    #    Una soglia rotta e' `E_CONFIG_MANCANTE` sollevato dalla funzione.
+    @staticmethod
+    def soglia_ripresa_secondi() -> int:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT dbops.fn_idempotency_soglia_secondi()")
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
+
     # Scopo: Marca la richiesta idempotente come completata persistendo la response serializzata.
     @staticmethod
     def mark_completed(

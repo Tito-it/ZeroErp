@@ -15,7 +15,9 @@
 #          · un fallimento ATOMICA non lascia niente dell'operazione, e la key
 #            e' `failed` (scritta FUORI dall'atomic);
 #          · il diario dopo un errore DB catturato si scrive a transazione
-#            chiusa, non dentro quella abortita.
+#            chiusa, non dentro quella abortita;
+#          · la soglia letta da `dbops.fn_idempotency_soglia_secondi` (§I.11),
+#            con la chiamata vera: un mock non vede firma e nome.
 # Note: ⚠️ Il caso si COSTRUISCE (regola zero): key generate dal test,
 #       `prenotata_at` retrodatato per la ripresa. Il diario vero non si
 #       scrive: `_scrivi_diario` e' sostituito da una sonda che interroga la
@@ -30,6 +32,7 @@ Indice test eseguiti:
 4) PrenotaDbTests.test_orfana_oltre_la_soglia_si_riprende_solo_se_atomica
 5) PrenotaDbTests.test_fallimento_atomica_annulla_tutto_e_la_key_e_failed
 6) PrenotaDbTests.test_il_diario_si_scrive_a_transazione_chiusa
+7) PrenotaDbTests.test_la_soglia_si_legge_dalla_funzione
 """
 from __future__ import annotations
 
@@ -61,6 +64,7 @@ class PrenotaDbTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         richiedi_db_provvisto("dbops.fn_idempotency_prenota(text,integer,text,uuid,boolean)")
+        richiedi_db_provvisto("dbops.fn_idempotency_soglia_secondi()")
         super().setUpClass()
 
     def setUp(self) -> None:
@@ -104,12 +108,17 @@ class PrenotaDbTests(unittest.TestCase):
             )
             return cur.fetchone()
 
+    # ⚠️ Oltre la soglia VERA, non un intervallo fisso: la funzione ammette
+    #    soglie fino a 999999 s, e `1 day` sotto una soglia lecita non
+    #    retrodaterebbe niente.
     def _retrodata(self) -> None:
+        oltre = IdempotencyStore.soglia_ripresa_secondi() + 1
         with connection.cursor() as cur:
             cur.execute(
-                "UPDATE dbops.idempotency_keys SET prenotata_at = now() - interval '1 day'"
+                "UPDATE dbops.idempotency_keys"
+                " SET prenotata_at = now() - make_interval(secs => %s)"
                 " WHERE idempotency_key = %s",
-                [self.key],
+                [oltre, self.key],
             )
 
     def test_prima_esegue_poi_rimanda_la_risposta(self) -> None:
@@ -213,3 +222,10 @@ class PrenotaDbTests(unittest.TestCase):
 
         self._annullato(azione)
         self.assertEqual(sane, [True])
+
+    # ⭐ Il valore e' del seed: qui si prova il legame, non il numero — un
+    #    intero positivo, cioe' una soglia che la funzione ha validato.
+    def test_la_soglia_si_legge_dalla_funzione(self) -> None:
+        soglia = IdempotencyStore.soglia_ripresa_secondi()
+        self.assertIsInstance(soglia, int)
+        self.assertGreater(soglia, 0)
