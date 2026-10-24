@@ -12,9 +12,9 @@ from collections.abc import Callable
 from uuid import uuid4
 from typing import Any
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 
-from apps.core.services.db_error_fields import bersagli_envelope
+from apps.core.services.db_error_fields import bersagli_envelope, structured_db_error_code
 from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_translator import ErrorTranslator
@@ -158,6 +158,59 @@ class LottoPipelineRunner:
             contesto=contesto,
             function_name="vendite.run_lotto_pipeline",
         )
+
+    # Scopo: il fallimento di DOMINIO di uno step: il lotto in errore col suo
+    #        codice, la fattura che l'ha causato, il diario dei task. Un solo
+    #        posto per i due ingressi di `run_pipeline` (il `ServiceError` del
+    #        runner, e il codice del catalogo arrivato dal DB).
+    def _registra_fallimento_di_dominio(
+        self,
+        exc: ServiceError,
+        *,
+        lotto_id: int | None,
+        tipo_lotto: str,
+        correlation_id: str | None,
+    ) -> None:
+        if lotto_id is not None:
+            self._mark_lotto_error_safely(
+                lotto_id=lotto_id,
+                code=exc.code,
+                tipo_lotto=tipo_lotto,
+                detail=exc.detail or str(exc),
+                correlation_id=correlation_id,
+            )
+            # La testata dice CHE c'e' un errore grave nel dettaglio; questa
+            # riga dice QUALE documento, e perche'.
+            self._persist_fattura_error_safely(lotto_id=lotto_id, exc=exc)
+        # E il diario dei task registra anche i falliti, non solo i riusciti.
+        self._persist_task_run_error_safely(exc)
+
+    # Scopo: il `ServiceError` di un'eccezione DB che porta un codice del
+    #        catalogo (campo strutturato di `script.fn_log_and_raise_error`),
+    #        oppure None. La traduzione e' il BB `raise_from_database_error`:
+    #        frase e soluzione del catalogo, campi, bersagli, e nessun doppione
+    #        nel diario (il DB ha gia' scritto la sua riga).
+    # ⚠️ Solo il campo STRUTTURATO, non il testo: un `E_...` letto dal messaggio
+    #    di un errore qualunque non e' una prova di dominio.
+    @staticmethod
+    def _errore_di_dominio_dal_database(
+        exc: Exception, *, lotto_id: int | None, tipo_lotto: str,
+    ) -> ServiceError | None:
+        if not isinstance(exc, DatabaseError) or structured_db_error_code(exc) is None:
+            return None
+        try:
+            ErrorManager.raise_from_database_error(
+                exc,
+                known_markers=(),
+                fallback_code=None,
+                message="Errore nella pipeline di fatturazione.",
+                context={"lotto_id": lotto_id, "tipo_lotto": tipo_lotto},
+                function_name="vendite.run_lotto_pipeline",
+            )
+        except ServiceError as dominio:
+            return dominio
+        # Irraggiungibile: con un codice strutturato il BB solleva sempre.
+        return None
 
     def _mark_lotto_error_safely(
         self,
@@ -1077,21 +1130,32 @@ class LottoPipelineRunner:
                     transaction.set_rollback(True)
                 return lotto_id
         except ServiceError as exc:
-            if lotto_id is not None:
-                self._mark_lotto_error_safely(
-                    lotto_id=lotto_id,
-                    code=exc.code,
-                    tipo_lotto=effective_tipo_lotto,
-                    detail=exc.detail or str(exc),
-                    correlation_id=correlation_id,
-                )
-                # La testata dice CHE c'e' un errore grave nel dettaglio; questa
-                # riga dice QUALE documento, e perche'.
-                self._persist_fattura_error_safely(lotto_id=lotto_id, exc=exc)
-            # E il diario dei task registra anche i falliti, non solo i riusciti.
-            self._persist_task_run_error_safely(exc)
+            self._registra_fallimento_di_dominio(
+                exc,
+                lotto_id=lotto_id,
+                tipo_lotto=effective_tipo_lotto,
+                correlation_id=correlation_id,
+            )
             raise
         except Exception as exc:
+            # ⭐ Un codice del catalogo sollevato dal DB e' un errore di DOMINIO,
+            #    come quello che solleva il runner: stesso ramo, stesso codice.
+            #    Prima finiva qui e diventava `E_PIPELINE` — il guard del lotto
+            #    (`trgfn_fatturazione_lotti_guard_stato`, R-1) solleva
+            #    `E_PIPELINE_LOTTO_CRITICAL`, e il driver usciva con `ERRORE`
+            #    invece che con `BLOCCATO_CRITICITA` (brief-modello-documento-
+            #    vendita §4-octies, BE-2).
+            dominio = self._errore_di_dominio_dal_database(
+                exc, lotto_id=lotto_id, tipo_lotto=effective_tipo_lotto,
+            )
+            if dominio is not None:
+                self._registra_fallimento_di_dominio(
+                    dominio,
+                    lotto_id=lotto_id,
+                    tipo_lotto=effective_tipo_lotto,
+                    correlation_id=correlation_id,
+                )
+                raise dominio from exc
             if lotto_id is not None:
                 self._mark_lotto_error_safely(
                     lotto_id=lotto_id,

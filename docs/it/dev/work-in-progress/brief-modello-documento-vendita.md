@@ -1,9 +1,9 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-24
+## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-**Riparte: il team BE** (le due sonde di firma sulle firme FINALI, §4-septies/octies «Richiesta al team
-BE»), poi il team DB con il punto 3. Giri 1-4 chiusi
+**Riparte: il team DB**, con il punto 3. Il giro BE (sonde, BE-1, BE-2) è fatto il 2026-10-25, da
+committare. Giri 1-4 chiusi
 lato DB il 2026-10-24: `20261024-26` … `-42` applicati da Tid (l'ultimo blocco, `-37` … `-42`, alle 23:50 su
 dbdev e scratch), corsa pgTAP come app **verde** (Tid, 2026-10-24).
 
@@ -20,16 +20,16 @@ dbdev e scratch), corsa pgTAP come app **verde** (Tid, 2026-10-24).
 | 2-sexies-ter | ✅ team DB | Q-2 (tre builder estesi, non nuovi: Tid), Q-3, Q-4: `20261024-26` … `-28`, 28 pgTAP portati, presidi estesi | §4-sexies | 2-sexies-bis |
 | 2-sexies-quater | ✅ **Tid** | Corsa pgTAP (come app) del secondo giro; R-1 (Q-3: la «definitiva» ferma nel lotto); i candidati e i residui | §4-sexies | 2-sexies-ter |
 | 2-septies | ✅ team BE | Richiesta 1-5 fatta il 2026-10-24: policy e ripiego del codice nuovo, i 5 service e i loro repository senza lo stato iniziale, test e smoke portati alla nascita in bozza; revisione critica dello stesso giro (punto 6) | §4-quinquies | 2-sexies |
-| 2-octies | team BE | Le due sonde `richiedi_db_provvisto` sulle firme FINALI dei builder (§4-septies): oggi i due test Django SALTANO | §4-septies | 2-nonies |
+| 2-octies | ✅ team BE | Le sonde `richiedi_db_provvisto` sulle firme FINALI dei builder: le due della richiesta **e una terza** (articolo) rotta da prima; policy rigenerata; suite completa sul DB reale verde (2026-10-25) | §4-octies | 2-nonies |
+| 2-octies-bis | ✅ **Tid** / team BE | BE-1 e BE-2 accettate da Tid e fatte (2026-10-25): il BB delle sonde fallisce sull'oggetto mancante; il runner del lotto tiene il codice del DB | §4-octies | 2-octies |
 | 2-nonies | ✅ team DB / **Tid** | Terzo giro: debiti emersi chiusi, R-1 … R-6 e R-9 (`-29` … `-36`); applicati | §4-septies | 2-sexies-quater |
 | 2-decies | ✅ team DB / **Tid** | Quarto giro: il pezzo comune (nessun cliente in più nei builder) e i builder delle fixture ripetute (`-37` … `-42`); applicati da Tid alle 23:50, corsa come app verde | §4-octies | 2-nonies |
 | 3 | team DB | Il §2, corretto con le decisioni, diventa la guida `docs/it/guide/modello-documento-di-vendita.md`; le guide `gestione-*.md` rimandano lì | §2 | 2 |
 | 4 | team DB + BE | Il piano: ogni documento portato al modello **tutto in una volta**, un documento per giro | §5 | 3 |
 | 5 | Tid | Fine del fermo dei temi trasversali (PROJECT_CONTEXT) | — | 3 |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare:
-giri 2-4 lato DB (`dev/db-tid`: changeSet `-26` … `-42`, i pgTAP portati, i presidi, la doc) e questo
-documento.
+Decisioni aperte di Tid: nessuna. Lavoro da committare: il giro BE delle sonde, BE-1 e BE-2
+(`dev/backend-tid`) e questo documento. I giri 2-4 lato DB sono committati (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -665,6 +665,59 @@ La bolla generata da un ordine e il reso scritto a mano, ripetuti in tutta la su
 (2) dopo l'apply di `-35`, il DB può sollevare `E_PIPELINE_LOTTO_CRITICAL` anche dall'UPDATE dello stato
 del lotto (`pipeline_repository.update_lotto_stato_doc`): il runner lo gestisce già come codice, ma
 oggi lo produce solo lui; nessuna modifica attesa, da sapere.
+
+**Fatto dal team BE** (2026-10-25, `dev/backend-tid`, da committare):
+
+1. le sonde sulle firme finali, verificate su dbdev con `to_regprocedure` (non ricopiate dal brief):
+   `test_prezzo_riga_commessa_db` → `fn_pgtap_crea_commessa(text,character varying,bigint,boolean,boolean)`,
+   `test_scritture_email_note_db` → `fn_pgtap_crea_fattura(text,character varying,bigint,boolean,boolean,boolean,numeric,bigint,boolean)`;
+2. ⚠️ **una terza sonda rotta, fuori dalla richiesta**: `catalogo/tests/db/test_scritture_dinamiche_db`
+   sondava `fn_pgtap_crea_articolo` con 5 argomenti, la firma è a 10 da `69844e217` (un brief
+   precedente). Saltava in silenzio da allora; portata alla firma vera. Trovata controllando **tutte**
+   le 21 sonde di firma della suite contro il DB: le altre 18 risolvono;
+3. i tre test, che saltavano, girano e sono verdi (13 casi);
+4. `error_policies_generated.py` rigenerato: il `--check` divergeva per la `note` nuova di
+   `E_PIPELINE_LOTTO_CRITICAL` (solo il commento, nessuna classe cambiata);
+5. suite completa con `ZEROERP_TEST_DB_E2E=1`: 6899 test, OK; l'unico skip è il presidio «verso 2,
+   solo misurato» di `test_ui_action_e_canale_campi`, dichiarato.
+
+Per Tid, due decisioni — ✅ **accettate il 2026-10-25, fatte** (sotto, «Fatto per BE-1 e BE-2»):
+
+* **BE-1. Le sonde di firma sono un presidio che si spegne da solo.** Una sonda con la firma esatta
+  di un builder trasforma ogni cambio di firma in uno skip muto — è successo tre volte, e la terza
+  nessuno l'aveva vista. Proposta: un test che raccoglie le sonde dichiarate nella suite e, sul DB
+  provvisto (sonda di default verde), è **rosso** se una non risolve. Tocca il BB
+  `richiedi_db_provvisto` (`apps/core/tests/db_e2e.py`), trasversale a tutte le app.
+* **BE-2. Il codice del DB nel runner del lotto si perde.** Il punto (2) qui sopra non regge: un
+  `E_PIPELINE_LOTTO_CRITICAL` sollevato dal guard (`trgfn_fatturazione_lotti_guard_stato`) arriva
+  al runner come `DatabaseError`, non come `ServiceError`; `run_pipeline` lo prende nel ramo
+  `except Exception` e lo appiattisce in `E_PIPELINE`, e il driver esce con `ERRORE` invece che
+  con `BLOCCATO_CRITICITA`. Oggi il guard scatta dal runner solo se il lotto diventa fermo **fra**
+  il controllo Python e l'UPDATE (stessa sede, `vw_lotti_segnalazioni_summary.fermo`; il rilancio
+  dello stesso step non cambia stato e il guard non scatta; il runner è l'unico che scrive quello
+  stato): è un'ultima difesa, ma quando difende dice la cosa sbagliata. Vale per **ogni** codice
+  strutturato del DB dentro uno step (`E_LOTTO_PARAMETRO_NON_COERENTE` dello stesso guard compreso).
+  Proposta: nel ramo generico, un `DatabaseError` con un codice del catalogo
+  (`diagnostica_db(...).codice_strutturato`) diventa un `ServiceError` con quel codice, attraverso il
+  BB esistente (`ErrorManager.raise_from_database_error`), e segue il ramo di dominio.
+
+**Fatto per BE-1 e BE-2** (2026-10-25, `dev/backend-tid`, da committare):
+
+* **BE-1, nel BB e non con un test che scansiona i file.** `richiedi_db_provvisto`
+  (`apps/core/tests/db_e2e.py`) legge sempre lo schema dalla sonda di default (assente → skip,
+  ambiente) e la sonda del chiamante solo dopo (assente su schema presente → `AssertionError`). È la
+  regola che header del BB e catalogo dichiaravano già («schema presente + oggetto assente è un
+  difetto»), e che il parametro `sonda` contraddiceva. Una scansione col regex avrebbe mancato le
+  cinque chiamate scritte su più righe; il BB le copre tutte, e anche quelle future. Presidio dei tre
+  rami: `apps/core/tests/test_db_e2e_sonda.py`; voce del catalogo BB aggiornata;
+* **BE-2.** `run_pipeline`: il ramo generico riconosce un `DatabaseError` col codice **strutturato**
+  del catalogo (non il testo) e lo traduce col BB `raise_from_database_error` (frase e soluzione
+  del catalogo, nessun doppione nel diario); il fallimento segue il ramo di dominio, estratto in
+  `_registra_fallimento_di_dominio` per non copiarlo. Test in `test_pipeline_runner`: il codice
+  arriva intatto, il driver esce con `BLOCCATO_CRITICITA`, un errore DB senza codice resta
+  `E_PIPELINE`. Provato che i due test nuovi vanno rossi sul runner di prima;
+* suite completa verde con e senza `ZEROERP_TEST_DB_E2E=1` (6905 e 6426 test); il cancello mypy
+  (`check_mypy_baseline.py`) pulito.
 
 ---
 
