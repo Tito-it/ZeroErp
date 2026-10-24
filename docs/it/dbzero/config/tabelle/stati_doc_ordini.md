@@ -21,11 +21,13 @@
 | pdf_mode | character varying | NO |  |
 | pdf_allow_allegati | boolean | NO |  |
 | is_abortito | boolean | NO | false |
+| iniziale | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_stati_doc_ordini_fase |  |
+| CHECK | chk_stati_doc_ordini_iniziale_attivo |  |
 | CHECK | chk_stati_doc_ordini_pdf_mode |  |
 | CHECK | chk_stati_doc_ordini_terminale_chiuso |  |
 | FOREIGN KEY | fk_stati_doc_ordini_esito | esito |
@@ -40,6 +42,7 @@
 | pk_stati_doc_ordini | `CREATE UNIQUE INDEX pk_stati_doc_ordini ON config.stati_doc_ordini USING btree (id)` |
 | uq_stati_doc_ordini_codice | `CREATE UNIQUE INDEX uq_stati_doc_ordini_codice ON config.stati_doc_ordini USING btree (codice)` |
 | uq_stati_doc_ordini_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_ordini_codice_interno ON config.stati_doc_ordini USING btree (codice_interno)` |
+| uq_stati_doc_ordini_iniziale | `CREATE UNIQUE INDEX uq_stati_doc_ordini_iniziale ON config.stati_doc_ordini USING btree (iniziale) WHERE iniziale` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

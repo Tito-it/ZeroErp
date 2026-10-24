@@ -14,12 +14,14 @@ CREATE OR REPLACE FUNCTION vendite.fn_genera_ddt_da_ordine(p_ordine_id bigint, p
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-24 (20261024-15, brief-modello-documento-vendita N-1/P-2):
+--   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+--   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
 -- rev 2026-10-20 (20261020-55, brief-db-grammatica-unica-documenti, 2d G-6):
 --   l'ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della
 --   sorgente; firma e RETURNS ancorati.
 DECLARE
     v_sorg_ord_id     config.sorgenti.id%TYPE;
-    v_stato_draft_id  config.stati_doc_ddt.id%TYPE;
     v_stato_ord       config.stati_doc_ordini.codice_interno%TYPE;
     v_ordine_uid      vendite.ordini.uid%TYPE;
     v_dest_ruolo_id   vendite.ordini.soggetto_ruolo_id%TYPE;
@@ -81,18 +83,17 @@ BEGIN
             NULL::uuid, p_ordine_id::text, v_stato_ord);
     END IF;
 
-    -- 3) Sorgente ORDINE_VENDITA (C1) + stato DRAFT DDT (per codice_interno).
+    -- 3) Sorgente ORDINE_VENDITA (C1).
     SELECT id INTO v_sorg_ord_id FROM config.sorgenti
      WHERE codice_interno = 'ORDINE_VENDITA' AND attivo IS TRUE;
-    SELECT id INTO v_stato_draft_id FROM config.stati_doc_ddt
-     WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
 
     -- 4) Testata DDT DRAFT. Billing/utility/valuta via trgfn_ddt_normalize.
+    --    Lo stato non si scrive: DRAFT lo mette trg_ddt_a05_stato_iniziale_ins.
     INSERT INTO vendite.ddt (
-        data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
+        data, destinatario_soggetto_ruolo_id,
         sorgente_tipo_id, sorgente_uid)
     VALUES (
-        COALESCE(p_data, (SELECT script.fn_data_operativa())), v_stato_draft_id, v_dest_ruolo_id,
+        COALESCE(p_data, (SELECT script.fn_data_operativa())), v_dest_ruolo_id,
         v_sorg_ord_id, v_ordine_uid)
     RETURNING id INTO v_ddt_id;
 

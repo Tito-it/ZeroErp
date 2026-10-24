@@ -14,11 +14,13 @@ CREATE OR REPLACE FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id 
  RETURNS TABLE(nuovo_preventivo_id bigint, numero character varying, nuova_rev integer)
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-24 (20261024-21, brief-modello-documento-vendita N-1/P-2):
+--   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+--   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
 DECLARE
   v_stato_corrente_cod  config.stati_doc_preventivi.codice_interno%TYPE;
   v_numero              vendite.preventivi.numero%TYPE;
   v_max_rev             vendite.preventivi.rev%TYPE;
-  v_stato_draft_id      config.stati_doc_preventivi.id%TYPE;
   v_new_id              vendite.preventivi.id%TYPE;
   -- La data della testata nuova, letta dal RETURNING (rev 2026-10-13):
   -- e' il riferimento delle date di consegna copiate.
@@ -199,21 +201,6 @@ BEGIN
     NULL::uuid,
     jsonb_build_object('preventivo_id', p_preventivo_id, 'numero', v_numero));
 
-  -- Recupera stato DRAFT id
-  SELECT id INTO v_stato_draft_id
-    FROM config.stati_doc_preventivi
-   WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
-
-  IF v_stato_draft_id IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_crea_revisione_preventivo',
-      'E_CONFIG_MANCANTE',
-      jsonb_build_object('tabella', 'config.stati_doc_preventivi', 'codice', 'DRAFT'),
-      NULL::uuid,
-      'stato DRAFT non trovato o non attivo in config.stati_doc_preventivi'
-    );
-  END IF;
-
   -- Calcola nuova revisione
   SELECT COALESCE(MAX(p.rev), 0) + 1
     INTO v_new_rev
@@ -230,7 +217,7 @@ BEGIN
     validita_dal, validita_al,
     totale_imponibile, totale_iva, totale_documento,
     valuta_id, competenza_mese, fatturazione_immediata,
-    stato_doc_preventivo_id, data, termine_pagamento_id,
+    data, termine_pagamento_id,
     storicizza, meta,
     user_insert, user_update
   )
@@ -240,7 +227,7 @@ BEGIN
     p.validita_dal, p.validita_al,
     0, 0, 0,
     p.valuta_id, p.competenza_mese, p.fatturazione_immediata,
-    v_stato_draft_id, (SELECT script.fn_data_operativa()), p.termine_pagamento_id,
+    (SELECT script.fn_data_operativa()), p.termine_pagamento_id,
     p.storicizza, p.meta,
     COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
   FROM vendite.preventivi p

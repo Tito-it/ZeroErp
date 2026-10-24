@@ -9,6 +9,9 @@
 --   -70…-75 (lista, ritiri, commenti) + CSV codici e lock.
 --   ⚠️ rev 2026-10-19 (20261019-20, brief-db-grammatica-unica-documenti lotto 1):
 --   il documento dell'offerta e' OFFERTA_COMMERCIALE (test 25).
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): l'offerta EMESSA nasce
+--   in bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima nasceva
+--   gia' EMESSA).
 --
 -- ⭐ TUTTO COSTRUITO: azienda, cliente, listino con un bundle, articoli,
 --   contratto, offerte e righe nascono qui (builder dbops.fn_pgtap_crea_*).
@@ -18,7 +21,7 @@
 --   X fuori listino. Sullo stesso listino:
 --   contratto in DRAFT: B OVERRIDE, C ESCLUSIONE, X AGGIUNTA
 --   offerta in BOZZA:   B OVERRIDE, C ESCLUSIONE, X AGGIUNTA
---   offerta EMESSA (nata gia' emessa, senza righe): per il rifiuto «fuori bozza»
+--   offerta EMESSA (emessa senza righe): per il rifiuto «fuori bozza»
 --
 -- ⛔ COSA PRESIDIA:
 --   · R1: le due tabelle vietano i dati di vendita sull'esclusione (CHECK) e la
@@ -137,23 +140,42 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
--- Due offerte sullo stesso listino: una in BOZZA (le righe), una nata EMESSA
--- (per il rifiuto «fuori bozza»: nasce cosi' con un INSERT, senza passare dalla
--- transizione, che qui non e' in esame).
-CREATE TEMP TABLE tmp_rsv_offerta AS
+-- Due offerte sullo stesso listino: una in BOZZA (le righe), una EMESSA senza
+-- righe (per il rifiuto «fuori bozza»).
+-- ⛔ rev 2026-10-24 (brief-modello-documento-vendita N-1): l'EMESSA nasceva cosi'
+--   con un INSERT, senza passare dalla transizione. Ora nascono entrambe in
+--   BOZZA (trg_offerte_commerciali_a05_stato_iniziale_ins) e l'EMESSA ci arriva
+--   per la matrice, sotto il guard di emissione (senza righe non ha niente da
+--   rifiutare). La colonna stato e' lo stato VOLUTO, che fa da etichetta.
+CREATE TEMP TABLE tmp_rsv_offerta (id bigint, stato text);
+
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali
            (codice, emittente_fiscale_id, billing_account_id, istanza_utility_id,
-            utility_id, listino_id, validita_dal, stato_doc_offerta_id)
-    SELECT 'PGTAP-RSV-O-' || v.stato || '-' || substr(gen_random_uuid()::text, 1, 8),
+            utility_id, listino_id, validita_dal)
+    SELECT 'PGTAP-RSV-O-BOZZA-' || substr(gen_random_uuid()::text, 1, 8),
            m.emittente_fiscale_id, m.billing_account_id, m.istanza_utility_id,
-           m.utility_id, l.listino_id, script.fn_data_operativa(),
-           (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = v.stato)
-      FROM tmp_rsv_mondo m, tmp_rsv_listino l, (VALUES ('BOZZA'), ('EMESSA')) AS v(stato)
-    RETURNING id, stato_doc_offerta_id
+           m.utility_id, l.listino_id, script.fn_data_operativa()
+      FROM tmp_rsv_mondo m, tmp_rsv_listino l
+    RETURNING id
 )
-SELECT ins.id, s.codice_interno AS stato
-  FROM ins JOIN config.stati_doc_offerte s ON s.id = ins.stato_doc_offerta_id;
+INSERT INTO tmp_rsv_offerta SELECT id, 'BOZZA' FROM ins;
+
+WITH ins AS (
+    INSERT INTO vendite.offerte_commerciali
+           (codice, emittente_fiscale_id, billing_account_id, istanza_utility_id,
+            utility_id, listino_id, validita_dal)
+    SELECT 'PGTAP-RSV-O-EMESSA-' || substr(gen_random_uuid()::text, 1, 8),
+           m.emittente_fiscale_id, m.billing_account_id, m.istanza_utility_id,
+           m.utility_id, l.listino_id, script.fn_data_operativa()
+      FROM tmp_rsv_mondo m, tmp_rsv_listino l
+    RETURNING id
+)
+INSERT INTO tmp_rsv_offerta SELECT id, 'EMESSA' FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', o.id, o.stato)
+  FROM tmp_rsv_offerta o
+ WHERE o.stato = 'EMESSA';
 
 -- Scopo: id del documento: 'contratto', 'offerta' (BOZZA), 'emessa'.
 CREATE OR REPLACE FUNCTION pg_temp.doc(p_doc text)

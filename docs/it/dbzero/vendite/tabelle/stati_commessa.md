@@ -20,11 +20,13 @@
 | modificabile | boolean | NO | true |
 | fase | character varying(20) | NO |  |
 | is_abortito | boolean | NO | false |
+| iniziale | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_stati_commessa_fase |  |
+| CHECK | chk_stati_commessa_iniziale_attivo |  |
 | PRIMARY KEY | pk_stati_commessa | id |
 | UNIQUE | uq_stati_commessa_codice | codice |
 | UNIQUE | uq_stati_commessa_codice_interno | codice_interno |
@@ -36,6 +38,7 @@
 | pk_stati_commessa | `CREATE UNIQUE INDEX pk_stati_commessa ON vendite.stati_commessa USING btree (id)` |
 | uq_stati_commessa_codice | `CREATE UNIQUE INDEX uq_stati_commessa_codice ON vendite.stati_commessa USING btree (codice)` |
 | uq_stati_commessa_codice_interno | `CREATE UNIQUE INDEX uq_stati_commessa_codice_interno ON vendite.stati_commessa USING btree (codice_interno)` |
+| uq_stati_commessa_iniziale | `CREATE UNIQUE INDEX uq_stati_commessa_iniziale ON vendite.stati_commessa USING btree (iniziale) WHERE iniziale` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

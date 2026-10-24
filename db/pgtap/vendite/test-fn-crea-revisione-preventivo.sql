@@ -1,6 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
+--   preventivo del test 9 nasceva gia' ACCETTATO).
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_crea_revisione_preventivo
 -- ------------------------------------------------------------
@@ -286,8 +289,11 @@ SELECT throws_ok(
 
 -- ============================================================
 -- 9) Revisione da ACCETTATO vietata (rev 03-05-2026)
---    Setup: nuovo preventivo direttamente in stato ACCETTATO
---    (tramite INSERT diretto, skip transizioni manuali).
+--    Setup: nuovo preventivo portato ad ACCETTATO.
+--    ⚠️ rev 2026-10-24: nasce DRAFT e va ad ACCETTATO (DRAFT -> EMESSO ->
+--    ACCETTATO) con dbops.fn_pgtap_porta_a_stato, sotto i guard veri: senza
+--    righe non hanno motivi da sollevare. Prima nasceva gia' ACCETTATO con
+--    un INSERT diretto, che il trigger della nascita ora rifiuta.
 -- ============================================================
 CREATE TEMP TABLE tmp_rv_prev_accettato AS
 WITH ins AS (
@@ -304,13 +310,17 @@ WITH ins AS (
     0,
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_accettato_id, DATE '2026-06-01',
+    r.stato_draft_id, DATE '2026-06-01',
     r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_revisione')
   FROM tmp_rv_refs r
   RETURNING id, uid, numero
 )
 SELECT * FROM ins;
+
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_rv_prev_accettato), 'ACCETTATO');
+END $porta$;
 
 SELECT throws_ok(
   format(

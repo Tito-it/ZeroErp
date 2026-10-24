@@ -11,6 +11,12 @@
 -- Piano: piano-db-satelliti-fattura.md Fase 2.5, criterio allargato dal
 --        brief-db-snapshot-intestazione-fattura.md §3.5 (passo I.4)
 -- ------------------------------------------------------------
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le fatture nascono in
+--   bozza; la «gia_fuori» si completa, si porta in EMESSA con
+--   dbops.fn_pgtap_porta_a_stato e poi si rende di nuovo NUDA (indirizzo
+--   cancellato, intestazione a NULL: in EMESSA non c'e' congelamento), cosi'
+--   l'8 prova ancora l'uscita in testa sullo stato di partenza (prima nasceva
+--   gia' EMESSA).
 -- Indice test (plan 12; il 6-bis e' del 2026-10-21):
 --   1) Cablaggio: BEFORE UPDATE OF stato_doc_fiscale_id, FOR EACH ROW
 --   2) Fixture: tre fatture nude create (due DRAFT, una EMESSA)
@@ -146,18 +152,45 @@ CREATE TEMP TABLE tmp_fatture_gud AS
 WITH ins AS (
   INSERT INTO vendite.fatture (
     registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-    tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, meta
+    tipo_doc_fiscale_id, valuta_id, meta
   )
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id,
-         r.billing_account_id, r.tipo_doc_fiscale_id, v.stato_id, r.valuta_id,
+         r.billing_account_id, r.tipo_doc_fiscale_id, r.valuta_id,
          jsonb_build_object('test', 'pgtap_guard_uscita_draft', 'caso', v.caso)
     FROM tmp_refs_gud r
-   CROSS JOIN LATERAL (VALUES ('lavorata',  r.stato_draft_id),
-                              ('intatta',   r.stato_draft_id),
-                              ('gia_fuori', r.stato_emessa_id)) AS v(caso, stato_id)
+   CROSS JOIN (VALUES ('lavorata'), ('intatta'), ('gia_fuori')) AS v(caso)
   RETURNING id, meta ->> 'caso' AS caso
 )
 SELECT id, caso FROM ins;
+
+-- ⛔ La «gia_fuori» NASCE in bozza come ogni documento (rev 2026-10-24,
+--   trigger della nascita). Per l'8 serve NUDA ma gia' in EMESSA: la si
+--   completa (indirizzo FATT + intestazione con la sede, come il 7), la si
+--   porta in EMESSA per la matrice, sotto i guard veri, e poi la si SPOGLIA di
+--   nuovo. In EMESSA si puo': congela_fiscale e' false, i guard di
+--   congelamento non scattano. Senza la spoliazione l'8 passerebbe perche' la
+--   fattura e' completa, non perche' il guard esce sullo stato di partenza.
+INSERT INTO vendite.fatture_indirizzi (fattura_id, tipo_indirizzo_id, snapshot)
+SELECT f.id, r.fatt_id,
+       '{"intestazione":"Cliente pgTAP","via":"Via Guard 2","cap":"83100"}'::jsonb
+  FROM tmp_fatture_gud f, tmp_refs_gud r
+ WHERE f.caso = 'gia_fuori';
+
+UPDATE vendite.fatture
+   SET emittente_snapshot = '{"denominazione":"Emittente pgTAP","id_fiscale":"00000000000","sede":{"via":"Via Cedente 1","cap":"83100"}}'::jsonb,
+       cliente_snapshot   = '{"denominazione":"Cliente pgTAP","id_fiscale":"11111111111"}'::jsonb
+ WHERE id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'gia_fuori');
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', f.id, 'EMESSA')
+  FROM tmp_fatture_gud f WHERE f.caso = 'gia_fuori';
+
+DELETE FROM vendite.fatture_indirizzi
+ WHERE fattura_id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'gia_fuori');
+
+UPDATE vendite.fatture
+   SET emittente_snapshot = NULL,
+       cliente_snapshot   = NULL
+ WHERE id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'gia_fuori');
 
 SELECT is(
   (SELECT count(*)::int FROM tmp_fatture_gud), 3,

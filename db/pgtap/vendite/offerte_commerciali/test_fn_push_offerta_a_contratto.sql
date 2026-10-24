@@ -3,6 +3,9 @@
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   l'ordine collegato all'offerta porta documento_origine_tipo = OFFERTA_COMMERCIALE, il
 --   codice della sorgente (era OFFERTA: ora la FK verso config.sorgenti lo rifiuta).
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le offerte dei test 8 e 9
+--   nascono in bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima
+--   nascevano gia' RIFIUTATA e ACCETTATA).
 -- pgTAP test per Zero ERP
 --
 -- Test: vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id) (Step 8).
@@ -167,7 +170,8 @@ UPDATE vendite.offerte_commerciali
    SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_push_ctx)
  WHERE id = (SELECT id FROM tmp_push_offerta_emessa);
 
--- Offerta in RIFIUTATA (per test 8): bypassata via INSERT diretto
+-- Offerta in RIFIUTATA (per test 8): nasce in BOZZA e arriva a RIFIUTATA per
+-- la matrice (BOZZA -> EMESSA -> RIFIUTATA), rev 2026-10-24.
 CREATE TEMP TABLE tmp_push_offerta_rif AS
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
@@ -176,14 +180,18 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva,
-           DATE '2101-01-01', ctx.stato_rifiutata_id
+           DATE '2101-01-01', ctx.stato_bozza_id
       FROM tmp_push_ctx ctx
     RETURNING id
 )
 SELECT id FROM ins;
 
--- Offerta in ACCETTATA con ORDINE gia' generato (per test 9): INSERT diretto in
--- ACCETTATA + ordine collegato via documento_origine ('OFFERTA_COMMERCIALE', id).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', r.id, 'RIFIUTATA')
+  FROM tmp_push_offerta_rif r;
+
+-- Offerta in ACCETTATA con ORDINE gia' generato (per test 9): nasce in BOZZA,
+-- arriva ad ACCETTATA per la matrice (rev 2026-10-24) + ordine collegato via
+-- documento_origine ('OFFERTA_COMMERCIALE', id).
 CREATE TEMP TABLE tmp_push_offerta_ord AS
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
@@ -192,11 +200,14 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva,
-           DATE '2102-01-01', ctx.stato_accettata_id
+           DATE '2102-01-01', ctx.stato_bozza_id
       FROM tmp_push_ctx ctx
     RETURNING id
 )
 SELECT id FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', o.id, 'ACCETTATA')
+  FROM tmp_push_offerta_ord o;
 
 -- GUC vuota: l'INSERT su vendite.ordini supera i guard emittente/scope senza
 -- restrizione (stesso approccio del test fn_available_actions_offerta).

@@ -1,5 +1,5 @@
-id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update,is_abortito,fase,terminale,pdf_mode,pdf_allow_allegati,is_bozza
-1,DRAFT,DRAFT,Bozza,t,10,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.364955+01,titodb,f,APERTO,f,PREVIEW,f,t
-2,ATTIVO,ATTIVO,Attivo,t,20,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.364955+01,titodb,f,IN_CORSO,f,ARCHIVE,f,f
-5,CESSATO,CESSATO,Cessato,t,50,"{""nessuna_azione_key"":""vendite.contratti.stato_info.cessato""}",2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.364955+01,titodb,f,CHIUSO,t,ARCHIVE,f,f
-8,ANNULLATO,ANNULLATO,Annullato,t,70,"{""nessuna_azione_key"":""vendite.contratti.stato_info.annullato""}",2026-05-20 00:00:00+02,mctit,2026-07-16 00:00:00+02,mctit,t,CHIUSO,t,ARCHIVE,f,f
+id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update,is_abortito,fase,terminale,pdf_mode,pdf_allow_allegati,is_bozza,iniziale
+1,DRAFT,DRAFT,Bozza,t,10,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.364955+01,titodb,f,APERTO,f,PREVIEW,f,t,t
+2,ATTIVO,ATTIVO,Attivo,t,20,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.364955+01,titodb,f,IN_CORSO,f,ARCHIVE,f,f,f
+5,CESSATO,CESSATO,Cessato,t,50,"{""nessuna_azione_key"":""vendite.contratti.stato_info.cessato""}",2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.364955+01,titodb,f,CHIUSO,t,ARCHIVE,f,f,f
+8,ANNULLATO,ANNULLATO,Annullato,t,70,"{""nessuna_azione_key"":""vendite.contratti.stato_info.annullato""}",2026-05-20 00:00:00+02,mctit,2026-07-16 00:00:00+02,mctit,t,CHIUSO,t,ARCHIVE,f,f,f

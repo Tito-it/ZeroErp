@@ -24,6 +24,12 @@ AS $function$
 --              'rls ordini 2', 'DRAFT',
 --              (SELECT billing_account_id FROM tmp_o));
 -- ⛔ Le righe NON le scrive: sono il caso del test.
+-- ⭐ rev 2026-10-24 (20261024-23, brief-modello-documento-vendita N-1):
+--   l'ordine NASCE nello stato iniziale (trigger della nascita); uno
+--   stato diverso si raggiunge con dbops.fn_pgtap_porta_a_stato, sotto
+--   i guard veri. Un passaggio che pretende cio' che il builder non
+--   scrive (righe, indirizzi…) qui fallisce: il test lo scrive e porta
+--   avanti da se'.
 -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
 --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
 DECLARE
@@ -74,11 +80,17 @@ BEGIN
 
     INSERT INTO vendite.ordini (
         soggetto_ruolo_id, billing_account_id, utility_id,
-        stato_doc_ordine_id, valuta_id, emittente_fiscale_id, meta)
+        valuta_id, emittente_fiscale_id, meta)
     VALUES (v_cli_sr_id, v_ba_id, v_utility,
-            v_stato_id, v_valuta_id, v_ef_id,
+            v_valuta_id, v_ef_id,
             jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
     RETURNING id, uid INTO v_ordine, v_uid;
+
+    -- Lo stato chiesto (rev 20261024-23): il documento e' nato nello stato
+    -- iniziale; se il test ne vuole un altro, ci arriva per la matrice.
+    IF v_stato_id IS DISTINCT FROM script.fn_stato_iniziale_id('config.stati_doc_ordini'::regclass) THEN
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini'::regclass, v_ordine, p_stato_codice_interno);
+    END IF;
 
     -- Contratto dichiarato, non fiducia nel chiamato.
     SET CONSTRAINTS ALL IMMEDIATE;

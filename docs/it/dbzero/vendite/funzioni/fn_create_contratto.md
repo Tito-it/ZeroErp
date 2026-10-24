@@ -14,11 +14,13 @@ CREATE OR REPLACE FUNCTION vendite.fn_create_contratto(p_testata jsonb, p_utilit
  RETURNS TABLE(contratto_id bigint, numero character varying)
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-24 (20261024-14, brief-modello-documento-vendita N-1/P-2):
+--   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+--   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
 DECLARE
     v_numero       vendite.contratti.numero%TYPE;
-    v_stato_id     vendite.contratti.stato_doc_contratto_id%TYPE;
     v_contratto_id vendite.contratti.id%TYPE;
-    v_testata      jsonb;   -- le sole chiavi ammesse, piu' numero e stato
+    v_testata      jsonb;   -- le sole chiavi ammesse, piu' il numero
     v_util         jsonb;   -- le sole chiavi ammesse della fornitura
     -- rev 2026-07-27: aggiunta 'fatturazione_immediata' (corsia di
     -- instradamento, Fase B brief emissione mirata). Va decisa PRIMA
@@ -52,21 +54,8 @@ BEGIN
     -- ----------------------------------------------------
     v_numero := script.fn_generate_codice('contratto');
 
-    -- 2) Stato iniziale DRAFT.
-    SELECT s.id
-      INTO v_stato_id
-      FROM config.stati_doc_contratti s
-     WHERE s.codice_interno = 'DRAFT';
-    IF NOT FOUND THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database',
-            'vendite.fn_create_contratto',
-            'E_CONFIG_MANCANTE',
-            jsonb_build_object('config', 'config.stati_doc_contratti.DRAFT'),
-            NULL::uuid,
-            VARIADIC ARRAY['stato iniziale DRAFT (config.stati_doc_contratti)']
-        );
-    END IF;
+    -- 2) Lo stato iniziale non si scrive: lo mette il trigger della
+    --    nascita (trg_contratti_a05_stato_iniziale_ins), dal vocabolario.
 
     -- ----------------------------------------------------
     -- 3) INSERT testata: solo chiavi whitelisted presenti
@@ -82,8 +71,7 @@ BEGIN
 
     v_contratto_id := (script.fn_scrivi_riga_da_jsonb(
                            'vendite.contratti'::regclass,
-                           v_testata || jsonb_build_object('numero',                 v_numero,
-                                                           'stato_doc_contratto_id', v_stato_id))
+                           v_testata || jsonb_build_object('numero', v_numero))
                        ->> 'id')::bigint;
 
     -- ----------------------------------------------------

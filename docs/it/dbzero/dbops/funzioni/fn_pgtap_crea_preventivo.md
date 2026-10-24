@@ -20,6 +20,12 @@ AS $function$
 --   CREATE TEMP TABLE tmp_p AS
 --   SELECT * FROM dbops.fn_pgtap_crea_preventivo('rls preventivi');
 -- ⛔ Le righe NON le scrive: sono il caso del test.
+-- ⭐ rev 2026-10-24 (20261024-24, brief-modello-documento-vendita N-1):
+--   il preventivo NASCE nello stato iniziale (trigger della nascita); uno
+--   stato diverso si raggiunge con dbops.fn_pgtap_porta_a_stato, sotto
+--   i guard veri. Un passaggio che pretende cio' che il builder non
+--   scrive (righe, indirizzi…) qui fallisce: il test lo scrive e porta
+--   avanti da se'.
 -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
 --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
 DECLARE
@@ -60,12 +66,18 @@ BEGIN
     INSERT INTO vendite.preventivi (
         billing_account_id, istanza_utility_id, utility_id,
         validita_dal, validita_al, valuta_id,
-        stato_doc_preventivo_id, emittente_fiscale_id, meta)
+        emittente_fiscale_id, meta)
     VALUES (v_ba_id, v_ist_id, v_utility,
             (SELECT script.fn_data_operativa()), (SELECT script.fn_data_operativa()) + 30, v_valuta_id,
-            v_stato_id, v_ef_id,
+            v_ef_id,
             jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
     RETURNING id, uid INTO v_preventivo, v_uid;
+
+    -- Lo stato chiesto (rev 20261024-24): il documento e' nato nello stato
+    -- iniziale; se il test ne vuole un altro, ci arriva per la matrice.
+    IF v_stato_id IS DISTINCT FROM script.fn_stato_iniziale_id('config.stati_doc_preventivi'::regclass) THEN
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi'::regclass, v_preventivo, p_stato_codice_interno);
+    END IF;
 
     -- Contratto dichiarato, non fiducia nel chiamato.
     SET CONSTRAINTS ALL IMMEDIATE;

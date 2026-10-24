@@ -13,6 +13,10 @@
 --   5) Pre-check colonna inesistente -> raise
 --   6) Pre-check codice FK inesistente -> raise
 --
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): il contratto nasce in
+--   bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima nasceva
+--   gia' ATTIVO).
+--
 -- Strategia fixture:
 --   - Disattiva temporaneamente le righe seed di automazione_chiusura_scadenze
 --     (UPDATE attivo=false; il rollback finale ripristina). Cosi' i test
@@ -99,22 +103,27 @@ SELECT listino_id, listino_versione_id
            'framework chiusura',
            DATE '2022-01-01', DATE '2022-12-31');
 
-CREATE TEMP TABLE tmp_ctx_stati AS
-SELECT
-    (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')  AS id_attivo,
-    (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'CESSATO') AS id_cessato;
-
 -- Contratto in modalita' A (listino + variazione globale): la modalita' C
 -- pretenderebbe righe in contratti_righe con prezzo_unitario.
+-- rev 2026-10-24: nasce in DRAFT (trigger della nascita) e si attiva per la
+--   matrice. La versione di listino si FISSA alla nascita: quella del 2022 non
+--   e' in vigore oggi, e senza una versione operativa il contratto non si
+--   attiva (fn_check_listino_congelabile).
 INSERT INTO vendite.contratti(
     numero, billing_account_id, istanza_utility_id, utility_id,
-    stato_doc_contratto_id, valido_dal, valido_al,
-    listino_id, tipo_variazione_globale, valore_variazione_globale
+    valido_dal, valido_al,
+    listino_id, listino_versione_id,
+    tipo_variazione_globale, valore_variazione_globale
 )
 SELECT 'PGTAP_FW_CONTR_SCAD', ba.billing_account_id, ba.istanza_utility_id, ba.utility_id,
-       s.id_attivo, DATE '2022-01-01', DATE '2022-12-31',
-       l.listino_id, 'PERCENTUALE', -10
-  FROM tmp_ctx_ba ba, tmp_ctx_stati s, tmp_listino l;
+       DATE '2022-01-01', DATE '2022-12-31',
+       l.listino_id, l.listino_versione_id,
+       'PERCENTUALE', -10
+  FROM tmp_ctx_ba ba, tmp_listino l;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', c.id, 'ATTIVO')
+  FROM vendite.contratti c
+ WHERE c.numero = 'PGTAP_FW_CONTR_SCAD';
 
 -- =============================================================
 -- 1) Esecuzione VARCHAR: chiude versione listino scaduta

@@ -29,6 +29,10 @@
 --   - BA senza tipi_utenze per evitare guard tipo/classe su contratti_utilities.
 --   - Offerte in date future lontane per evitare conflitti.
 --   - Un'offerta per scenario (no riuso, per isolare le transizioni).
+--
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): l'offerta dello slot F
+--   nasce in bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima
+--   nasceva gia' ACCETTATA).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -168,8 +172,9 @@ UPDATE vendite.offerte_commerciali
    SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_sm_ctx)
  WHERE id = (SELECT offerta_id FROM tmp_sm_ids WHERE slot = 'E');
 
--- Slot F: direttamente ACCETTATA (test 8: ACCETTATA->EMESSA fails)
--- Inserimento diretto bypassando il trigger di transizione (solo INSERT).
+-- Slot F: ACCETTATA (test 8: ACCETTATA->EMESSA fails). Nasce in BOZZA e
+-- arriva ad ACCETTATA per la matrice, sotto il guard di transizione
+-- (rev 2026-10-24: prima nasceva gia' ACCETTATA).
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
@@ -177,11 +182,15 @@ WITH ins AS (
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
            ctx.listino_id, ctx.listino_versione_id_attiva,
-           DATE '2087-01-01', ctx.stato_accettata_id
+           DATE '2087-01-01', ctx.stato_bozza_id
       FROM tmp_sm_ctx ctx
     RETURNING id
 )
 INSERT INTO tmp_sm_ids SELECT 'F', id FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id, 'ACCETTATA')
+  FROM tmp_sm_ids i
+ WHERE i.slot = 'F';
 
 -- Slot G: BOZZA (test 9: BOZZA->ANNULLATA)
 WITH ins AS (

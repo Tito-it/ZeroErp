@@ -14,6 +14,9 @@ CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_fattura_header(p_lotto_id bi
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-24 (20261024-17, brief-modello-documento-vendita N-1/P-2):
+--   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+--   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
 -- Scopo: recupera o crea la testata DRAFT della fattura a cui
 --        l'attivita' appartiene, dentro il lotto dato.
 -- Regole: il `WHERE` del lookup e la INSERT devono nominare gli
@@ -41,7 +44,6 @@ AS $function$
 DECLARE
     v_key          JSONB;
     v_fattura_id   vendite.fatture.id%TYPE;
-    v_stato_doc_id config.stati_doc_fiscale.id%TYPE;
     v_registro_id  vendite.registri_fatturazione.id%TYPE;
     v_ba_id        anagrafiche.billing_account.id%TYPE;
     v_tipo_doc_id  config.tipi_doc_fiscale.id%TYPE;
@@ -126,20 +128,6 @@ BEGIN
         );
     END IF;
 
-    -- Stato DRAFT
-    SELECT id INTO v_stato_doc_id
-      FROM config.stati_doc_fiscale
-     WHERE codice_interno = 'DRAFT' AND attivo IS TRUE
-     ORDER BY id LIMIT 1;
-
-    IF v_stato_doc_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite', 'fn_get_or_create_fattura_header', 'E_CONFIG_MANCANTE',
-            jsonb_build_object('codice_interno', 'DRAFT'),
-            NULL::uuid, 'stato DRAFT non trovato'
-        );
-    END IF;
-
     -- Cerca fattura gia' nel lotto con la stessa chiave.
     -- ⚠️ IS NOT DISTINCT FROM sui QUATTRO elementi nullable: con
     -- `=` il NULL non combacia mai, quindi ogni giro aprirebbe una
@@ -215,13 +203,13 @@ BEGIN
     --    lotto, che non e' ambiguo.
     INSERT INTO vendite.fatture (registro_id, data, competenza_mese,
         tipo_doc_fiscale_id, natura_doc_id,
-        stato_doc_fiscale_id, serie,
+        serie,
         emittente_soggetto_ruolo_id, billing_account_id, reseller_soggetto_ruolo_id,
         utility_id, valuta_id, tasso_cambio,
         termine_pagamento_id, modalita_pagamento_id, meta)
     VALUES (v_registro_id, v_data, v_competenza_mese,
         v_tipo_doc_id, v_natura_id,
-        v_stato_doc_id, v_serie,
+        v_serie,
         v_emittente_id, v_ba_id, v_reseller_id,
         v_utility_id, v_valuta_id, 1,
         v_termine_id, v_modalita_id, jsonb_build_object('lotto_id', p_lotto_id))

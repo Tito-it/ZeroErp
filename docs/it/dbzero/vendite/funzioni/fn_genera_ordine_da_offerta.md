@@ -13,6 +13,9 @@ CREATE OR REPLACE FUNCTION vendite.fn_genera_ordine_da_offerta(p_offerta_id bigi
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-24 (20261024-19, brief-modello-documento-vendita N-1/P-2):
+--   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+--   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
 -- =========================================================
 -- VERBO (brief-db-offerta-emissione-ed-erogazione §I.2, I-D2 di Tid,
 --   2026-10-21): genera un ordine DRAFT da un'offerta ACCETTATA, in UNA
@@ -50,7 +53,6 @@ AS $function$
 DECLARE
     v_offerta       vendite.offerte_commerciali%ROWTYPE;
     v_stato_cod     config.stati_doc_offerte.codice_interno%TYPE;
-    v_stato_draft   config.stati_doc_ordini.id%TYPE;
     v_ordine_id     vendite.ordini.id%TYPE;
     v_ordine_data   vendite.ordini.data%TYPE;
     v_emittente_fiscale_id vendite.ordini.emittente_fiscale_id%TYPE;
@@ -146,31 +148,17 @@ BEGIN
                            'codice',     v_offerta.codice));
 
     -- 5. La testata.
-    SELECT id INTO v_stato_draft
-      FROM config.stati_doc_ordini
-     WHERE codice_interno = 'DRAFT';
-
-    IF v_stato_draft IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite', 'fn_genera_ordine_da_offerta',
-            'E_CONFIG_MANCANTE',
-            jsonb_build_object('tabella', 'config.stati_doc_ordini', 'codice', 'DRAFT'),
-            NULL::uuid,
-            'stato DRAFT non trovato in config.stati_doc_ordini');
-    END IF;
-
+    --    Lo stato non si scrive: DRAFT lo mette trg_ordini_a05_stato_iniziale_ins.
     INSERT INTO vendite.ordini (
         billing_account_id,
         emittente_fiscale_id,
         valuta_id,
-        stato_doc_ordine_id,
         documento_origine_tipo,
         documento_origine_id)
     VALUES (
         v_offerta.billing_account_id,
         v_offerta.emittente_fiscale_id,
         v_offerta.valuta_id,
-        v_stato_draft,
         'OFFERTA_COMMERCIALE',
         p_offerta_id)
     RETURNING id, data, emittente_fiscale_id

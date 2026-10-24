@@ -14,6 +14,9 @@ CREATE OR REPLACE FUNCTION vendite.fn_push_preventivo_a_ordine(p_preventivo_id b
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-24 (20261024-20, brief-modello-documento-vendita N-1/P-2):
+--   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+--   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
 -- rev 2026-10-20 (20261020-58, brief-db-grammatica-unica-documenti, 2d G-6):
 --   l'ambito degli indirizzi ORDINI diventa ORDINE_VENDITA, il codice
 --   della sorgente; firma e RETURNS ancorati.
@@ -118,9 +121,9 @@ BEGIN
     SELECT soggetto_ruolo_id INTO v_emittente_sr_id
       FROM anagrafiche.emittenti_fiscali WHERE id = v_emittente_fiscale_id;
 
-    SELECT id INTO v_stato_draft_ord_id
-      FROM config.stati_doc_ordini
-     WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
+    -- Lo stato iniziale delle RIGHE dell'ordine, dal vocabolario (rev
+    -- 2026-10-24): la testata lo riceve dal trigger della nascita.
+    v_stato_draft_ord_id := script.fn_stato_iniziale_id('config.stati_doc_ordini'::regclass);
 
     v_fatt_trigger := p_fatturazione_trigger;   -- NULL = «non scelto» -> eredita dal BA (trgfn_ordini_normalize)
 
@@ -148,12 +151,12 @@ BEGIN
     INSERT INTO vendite.ordini (
         soggetto_ruolo_id, billing_account_id, utility_id, valuta_id,
         termine_pagamento_id, emittente_fiscale_id, data,
-        stato_doc_ordine_id, fatturazione_trigger,
+        fatturazione_trigger,
         documento_origine_tipo, documento_origine_id)
     VALUES (
         v_soggetto_ruolo_id, v_ba_id, v_utility_id, v_valuta_id,
         v_termine_pag_id, v_emittente_fiscale_id, v_data,
-        v_stato_draft_ord_id, v_fatt_trigger,
+        v_fatt_trigger,
         'PREVENTIVO', p_preventivo_id)
     RETURNING id INTO v_ordine_id;
 

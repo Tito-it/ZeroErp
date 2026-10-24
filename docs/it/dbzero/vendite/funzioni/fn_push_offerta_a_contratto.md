@@ -14,6 +14,9 @@ CREATE OR REPLACE FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigi
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-24 (20261024-13, brief-modello-documento-vendita N-1/P-2):
+--   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+--   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
 -- rev 2026-10-20 (20261020-57, brief-db-grammatica-unica-documenti, 2d G-6):
 --   l'ambito degli indirizzi CONTRATTI diventa CONTRATTO, il codice
 --   della sorgente; firma e RETURNS ancorati.
@@ -24,7 +27,6 @@ DECLARE
     v_bersagli jsonb;
     v_offerta               vendite.offerte_commerciali%ROWTYPE;
     v_stato_cod             config.stati_doc_offerte.codice_interno%TYPE;
-    v_stato_draft_id        config.stati_doc_contratti.id%TYPE;
     v_sorgente_ofc_id       config.sorgenti.id%TYPE;
     v_sorgente_contratto_id config.sorgenti.id%TYPE;
     v_contratto_id          vendite.contratti.id%TYPE;
@@ -141,21 +143,6 @@ BEGIN
         );
     END IF;
 
-    -- Config: stato DRAFT contratto.
-    SELECT id INTO v_stato_draft_id
-      FROM config.stati_doc_contratti
-     WHERE codice_interno = 'DRAFT';
-
-    IF v_stato_draft_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite', 'fn_push_offerta_a_contratto',
-            'E_CONFIG_MANCANTE',
-            jsonb_build_object('tabella', 'config.stati_doc_contratti', 'codice', 'DRAFT'),
-            NULL::uuid,
-            'stato DRAFT non trovato in config.stati_doc_contratti'
-        );
-    END IF;
-
     -- Config: sorgente OFFERTA_COMMERCIALE.
     SELECT id INTO v_sorgente_ofc_id
       FROM config.sorgenti
@@ -228,7 +215,6 @@ BEGIN
             tipo_variazione_globale,
             valido_dal,
             valido_al,
-            stato_doc_contratto_id,
             sorgente_tipo_id,
             sorgente_uid,
             offerta_id,
@@ -245,7 +231,6 @@ BEGIN
             v_offerta.tipo_variazione_globale,
             v_offerta.validita_dal,
             v_offerta.validita_al,
-            v_stato_draft_id,
             v_sorgente_ofc_id,
             v_offerta.uid,
             p_offerta_id,

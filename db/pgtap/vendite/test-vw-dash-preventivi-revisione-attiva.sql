@@ -1,6 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d): l'area della dashboard e' il codice della sorgente.
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima le
+--   revisioni nascevano gia' EMESSO/RIFIUTATO/ANNULLATO).
 -- pgTAP test per Zero ERP
 --
 -- Test: regressione bug di vista "la vecchia revisione EMESSO riemerge come
@@ -17,7 +20,8 @@
 --       "revisione annullata rifluisce al predecessore" (gestione-preventivi
 --       §4.3), testato dallo scenario B.
 --
---       Fixture (numeri multi-rev inseriti diretti, stato scelto):
+--       Fixture (numeri multi-rev inseriti diretti, nati DRAFT e portati
+--       allo stato scelto con dbops.fn_pgtap_porta_a_stato — rev 2026-10-24):
 --         A) PGTAP-REVATT-A: rev0 EMESSO + rev1 RIFIUTATO
 --            -> attiva = rev1 (negativa) -> 0 righe backlog/aperto, 1 sola riga
 --               (RIFIUTATO) nella union; la rev0 EMESSO NON deve comparire.
@@ -153,10 +157,10 @@ CREATE TEMP TABLE tmp_ra_a_rev0 AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-REVATT-A', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.st_emesso_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_dash_revisione_attiva'), r.emittente_fiscale_id
     FROM tmp_ra_refs r
@@ -167,10 +171,10 @@ CREATE TEMP TABLE tmp_ra_a_rev1 AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-REVATT-A', 1, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.st_rifiutato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_dash_revisione_attiva'), r.emittente_fiscale_id
     FROM tmp_ra_refs r
@@ -184,10 +188,10 @@ CREATE TEMP TABLE tmp_ra_b_rev0 AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-REVATT-B', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.st_emesso_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_dash_revisione_attiva'), r.emittente_fiscale_id
     FROM tmp_ra_refs r
@@ -198,10 +202,10 @@ CREATE TEMP TABLE tmp_ra_b_rev1 AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-REVATT-B', 1, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.st_annullato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_dash_revisione_attiva'), r.emittente_fiscale_id
     FROM tmp_ra_refs r
@@ -215,10 +219,10 @@ CREATE TEMP TABLE tmp_ra_c_rev0 AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-REVATT-C', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.st_emesso_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_dash_revisione_attiva'), r.emittente_fiscale_id
     FROM tmp_ra_refs r
@@ -233,15 +237,32 @@ CREATE TEMP TABLE tmp_ra_d_rev0 AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-REVATT-D', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.st_annullato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_dash_revisione_attiva'), r.emittente_fiscale_id
     FROM tmp_ra_refs r
   RETURNING id)
 SELECT id FROM ins;
+
+-- ============================================================
+-- Stato delle fixture (rev 2026-10-24, brief-modello-documento-vendita N-1):
+--   le revisioni nascono DRAFT (lo stato non si scrive: lo mette il trigger
+--   della nascita) e si portano allo stato del caso per la matrice, sotto i
+--   guard veri: senza righe non hanno motivi da sollevare. Prima la rev 0,
+--   poi la rev 1, come nel flusso vero. RIFIUTATO passa da EMESSO; ANNULLATO
+--   esce direttamente dalla bozza (DRAFT -> ANNULLATO).
+-- ============================================================
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_ra_a_rev0), 'EMESSO');
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_ra_a_rev1), 'RIFIUTATO');
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_ra_b_rev0), 'EMESSO');
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_ra_b_rev1), 'ANNULLATO');
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_ra_c_rev0), 'EMESSO');
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_ra_d_rev0), 'ANNULLATO');
+END $porta$;
 
 -- ============================================================
 -- 3) A: derivazione canonica corretta (rev1 attiva, rev0 no)

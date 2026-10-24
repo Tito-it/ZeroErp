@@ -5,6 +5,9 @@
 --       risolti da vendite.fn_get_sorgente_documento_ref
 -- Brief: brief-db-riferimento-gruppi-lateral-costosa §6
 -- Changeset coperti: 20260901-04
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
+--   preventivo nasceva gia' EMESSO).
 -- ------------------------------------------------------------
 -- Indice test (1..6):
 --  1) controllo: PRIMA della revisione riferimento = numero e documento_id = rev spinta
@@ -87,7 +90,8 @@ SELECT
   (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
   -- ⚠️ EMESSO e non ACCETTATO: fn_crea_revisione_preventivo ammette la
   --   revisione SOLO da EMESSO (E_PREV_REVISIONE_STATO_NON_AMMESSO). Il
-  --   preventivo nasce gia' nello stato da cui si revisiona.
+  --   preventivo si porta nello stato da cui si revisiona (rev 2026-10-24:
+  --   nasce in bozza e ci arriva con dbops.fn_pgtap_porta_a_stato).
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE LIMIT 1) AS stato_prev_emesso_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t
@@ -101,15 +105,21 @@ CREATE TEMP TABLE tmp_rif_prev0 AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-VGRIF', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2082-01-01', DATE '2082-12-31', r.valuta_id, r.stato_prev_emesso_id,
+         DATE '2082-01-01', DATE '2082-12-31', r.valuta_id,
          DATE '2082-01-01', false, false,
          jsonb_build_object('test_scope', 'pgtap_vgrif'), r.emittente_fiscale_id
   FROM tmp_rif_refs r
   RETURNING id, uid, numero)
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-24: nato in bozza, va a EMESSO sotto i guard veri (senza
+--   righe non hanno motivi da sollevare).
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_rif_prev0), 'EMESSO');
+END $porta$;
 
 CREATE TEMP TABLE tmp_rif_comm AS
 SELECT vendite.fn_get_or_create_commessa(

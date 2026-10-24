@@ -3,6 +3,10 @@
 -- pgTAP test per Zero ERP
 -- Test: il fondo fattura REGISTRATO — quarto stato ESEGUITO e sue conseguenze
 --
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): la sorgente nasce in
+--   bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima nasceva
+--   gia' DEFINITIVA).
+--
 -- Elenco test (plan 13):
 --  1) Riferimenti minimi presenti
 --  2) Il sync crea la riga contabile del fondo
@@ -101,18 +105,26 @@ CREATE TEMP TABLE tmp_src AS
 WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
+      tipo_doc_fiscale_id, valuta_id, utility_id,
       minimo, totale_a_pagare, meta)
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
-         (SELECT id FROM config.stati_doc_fiscale
-           WHERE codice_interno = 'DEFINITIVA' AND attivo IS TRUE ORDER BY id LIMIT 1),
          true, 100.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_refs r
   RETURNING id
 )
 SELECT * FROM ins;
+
+-- ⛔ Nata in bozza (rev 2026-10-24, trigger della nascita): si porta in
+--   DEFINITIVA per la matrice, sotto i guard veri, con indirizzi e
+--   intestazione scritti dai building block della pipeline.
+SELECT i.inserted_rows, t.scritta
+  FROM (SELECT id FROM tmp_src) s
+ CROSS JOIN LATERAL vendite.fn_snapshot_indirizzi_fattura(s.id) i
+ CROSS JOIN LATERAL vendite.fn_snapshot_intestazione_fattura(s.id) t;
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', s.id, 'DEFINITIVA')
+  FROM (SELECT id FROM tmp_src) s;
 
 -- La fattura FIGLIA: quella su cui il fondo viene applicato.
 CREATE TEMP TABLE tmp_dst AS

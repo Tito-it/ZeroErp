@@ -5,6 +5,9 @@
 --       + presidio di immutabilita' dopo il push in commessa
 -- Brief: brief-db-emissione-fattura-per-documento-sorgente PARTE B (step B6)
 -- Changeset coperti: 20260727-01..09
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
+--   preventivo dei test 18-20 nasceva gia' ACCETTATO).
 -- ------------------------------------------------------------
 -- Indice test (1..20):
 --  1) colonna fatturazione_immediata presente su vendite.ordini
@@ -536,16 +539,24 @@ CREATE TEMP TABLE tmp_prev_fi AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-FI-SIMM', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_prev_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', true, false,
          jsonb_build_object('test_scope', 'pgtap_fi_simmetria_prev'),
          r.emittente_fiscale_id
   FROM tmp_refs_fi r
   RETURNING id, uid)
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-24: il preventivo nasce in bozza (lo stato non si scrive: lo
+--   mette il trigger della nascita) e va ad ACCETTATO con
+--   dbops.fn_pgtap_porta_a_stato, sotto i guard veri: senza righe non hanno
+--   motivi da sollevare.
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_prev_fi), 'ACCETTATO');
+END $porta$;
 
 -- 18) prima del push: modificabile
 SELECT lives_ok(

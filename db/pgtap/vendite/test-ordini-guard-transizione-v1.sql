@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
+--   portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano gia' CONFERMATO
+--   l'ordine F e APERTA la commessa).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
 -- Test: vendite.trgfn_ordini_guard_transizione (+ trigger)
@@ -262,23 +265,39 @@ CREATE TEMP TABLE tmp_gt_f AS
 WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
       stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id), r.stato_conf_id, r.valuta_id,
+  SELECT c.soggetto_ruolo_id, c.billing_account_id, anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id), r.stato_draft_id, r.valuta_id,
          DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"F"}'::jsonb
   FROM tmp_refs_gt r, tmp_gt_cli c RETURNING id
 ) SELECT id FROM ins;
+-- ⚠️ rev 2026-10-24 (brief-modello-documento-vendita N-1): l'ordine nasce DRAFT,
+--   prende la riga (DRAFT->CONFERMATO la pretende) e passa a CONFERMATO con
+--   dbops.fn_pgtap_porta_a_stato, come lo slot E.
+INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+SELECT o.id, 1, r.articolo_id, 'riga F', 3.0, 3.0, 10.0, r.iva_id, true, false, '{}'::jsonb
+FROM tmp_gt_f o, tmp_refs_gt r;
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_gt_f), 'CONFERMATO');
+END $x$;
 
 -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): la commessa e' quella del
 --   cliente dell'ordine, con l'emittente dell'ordine. Prima si copiava dalla
 --   prima commessa del database (un altro cliente, magari un altro emittente):
 --   passava solo perche' l'ordine non aveva BA, e il guard «una commessa, un
 --   emittente» non aveva niente da confrontare.
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): la commessa nasce BOZZA
+--   (lo stato lo mette il trigger della nascita) e si porta ad APERTA con
+--   dbops.fn_pgtap_porta_a_stato.
 INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                              emittente_soggetto_ruolo_id, stato_commessa_id)
+                              emittente_soggetto_ruolo_id)
 SELECT 'PGTAP-GT-COM', c.billing_account_id, c.utility_id,
        (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
-         WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id)),
-       (SELECT sc.id FROM vendite.stati_commessa sc WHERE sc.codice_interno = 'APERTA')
+         WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id))
   FROM tmp_gt_cli c;
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.commesse',
+      (SELECT id FROM vendite.commesse WHERE codice = 'PGTAP-GT-COM'), 'APERTA');
+END $x$;
 
 INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
 SELECT (SELECT id FROM vendite.commesse WHERE codice = 'PGTAP-GT-COM'),

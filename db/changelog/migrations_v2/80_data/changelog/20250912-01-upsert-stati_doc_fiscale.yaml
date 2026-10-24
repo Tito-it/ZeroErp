@@ -49,6 +49,9 @@ databaseChangeLog:
               - column: { name: applica_lotto, type: BOOLEAN }
               - column: { name: applica_fattura, type: BOOLEAN }
               - column: { name: chiude_lotto, type: BOOLEAN }
+              # 2026-10-24 (20261024-07, brief-modello-documento-vendita P-1): lo stato in cui
+              # un documento nasce. Va dichiarata qui, o la cella del CSV non la governa.
+              - column: { name: iniziale, type: BOOLEAN }
 
   - changeSet:
       id: 20250912-90-upsert-stati_doc_fiscale

@@ -11,6 +11,13 @@
 --   «la fixture costruisce un mondo che l'operatore non deve vedere».
 -- pgTAP test per Zero ERP
 --
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima le offerte
+--   nascevano gia' ACCETTATA, i contratti gia' ANNULLATO e ATTIVO). Il figlio
+--   ANNULLATO si annulla col verbo vendite.fn_annulla_contratto (conferma del
+--   legame con l'offerta); il contratto ATTIVO prende il listino della fixture,
+--   senza il quale non si attiva (trgfn_contratti_freeze_listino_versione).
+--
 -- Test: viste dashboard fatturazione (20260703-51..57, agg. 20260707-03/06
 --       "Situazione aperta"): 5 resolver di area + union
 --       (vw_dash_fatturazione_documenti). La mensile e' DISMESSA (20260707-06)
@@ -451,7 +458,7 @@ WITH ins AS (
     emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
     listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id)
   SELECT r.emittente_fiscale_id, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         r.listino_id, r.listino_versione_id, DATE '2080-03-01', r.off_accettata_id
+         r.listino_id, r.listino_versione_id, DATE '2080-03-01', r.off_bozza_id
     FROM tmp_df_refs r
   RETURNING id)
 INSERT INTO tmp_df_offerte SELECT 'ACC_SENZA_FIGLIO', id FROM ins;
@@ -461,7 +468,7 @@ WITH ins AS (
     emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
     listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id)
   SELECT r.emittente_fiscale_id, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         r.listino_id, r.listino_versione_id, DATE '2080-03-01', r.off_accettata_id
+         r.listino_id, r.listino_versione_id, DATE '2080-03-01', r.off_bozza_id
     FROM tmp_df_refs r
   RETURNING id)
 INSERT INTO tmp_df_offerte SELECT 'ACC_FIGLIO_VIVO', id FROM ins;
@@ -471,10 +478,17 @@ WITH ins AS (
     emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
     listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id)
   SELECT r.emittente_fiscale_id, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         r.listino_id, r.listino_versione_id, DATE '2080-03-01', r.off_accettata_id
+         r.listino_id, r.listino_versione_id, DATE '2080-03-01', r.off_bozza_id
     FROM tmp_df_refs r
   RETURNING id)
 INSERT INTO tmp_df_offerte SELECT 'ACC_FIGLIO_ABORTITO', id FROM ins;
+
+-- rev 2026-10-24: le tre ACCETTATA nascono in BOZZA e ci arrivano per la
+-- matrice (BOZZA -> EMESSA -> ACCETTATA), sotto i guard veri.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', o.offerta_id, 'ACCETTATA')
+  FROM tmp_df_offerte o
+ WHERE o.slot IN ('ACC_SENZA_FIGLIO', 'ACC_FIGLIO_VIVO', 'ACC_FIGLIO_ABORTITO')
+ ORDER BY o.slot;
 
 -- Figlio VIVO: contratto DRAFT da offerta (is_abortito_snapshot = false).
 -- emittente_fiscale_id esplicito: in pgTAP la GUC app.current_user_id e' vuota
@@ -494,15 +508,20 @@ SELECT 'PGTAP-DF-CV-' || substr(md5(clock_timestamp()::text), 1, 8),
   FROM tmp_df_refs r;
 
 -- Figlio ABORTITO: contratto ANNULLATO da offerta (snapshot -> true).
+-- rev 2026-10-24: nasce DRAFT e si annulla col verbo. ⚠️ Non con
+--   fn_pgtap_porta_a_stato: annullare un contratto nato da un'offerta riapre un
+--   legame (l'offerta da cui nasce), e il guard
+--   trg_contratti_m10_guard_annullo_con_legami_upd vuole la conferma, che
+--   vendite.fn_annulla_contratto riceve come conteggio: 1, l'offerta.
 CREATE TEMP TABLE tmp_df_contr_abortito AS
 WITH ins AS (
   INSERT INTO vendite.contratti (
     numero, billing_account_id, istanza_utility_id, utility_id,
-    valido_dal, valido_al, stato_doc_contratto_id, data, offerta_id,
+    valido_dal, valido_al, data, offerta_id,
     emittente_fiscale_id, meta)
   SELECT 'PGTAP-DF-CA-' || substr(md5(clock_timestamp()::text), 1, 8),
          r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         script.fn_data_operativa(), NULL, r.contr_annullato_id, script.fn_data_operativa(),
+         script.fn_data_operativa(), NULL, script.fn_data_operativa(),
          (SELECT offerta_id FROM tmp_df_offerte WHERE slot = 'ACC_FIGLIO_ABORTITO'),
          COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
                   r.emittente_fiscale_id),
@@ -510,6 +529,9 @@ WITH ins AS (
     FROM tmp_df_refs r
   RETURNING id)
 SELECT * FROM ins;
+
+SELECT vendite.fn_annulla_contratto(c.id, 1)
+  FROM tmp_df_contr_abortito c;
 
 -- ============================================================
 -- 8-11) Area OFFERTE
@@ -549,23 +571,29 @@ SELECT ok(
 -- ============================================================
 -- Fixture CONTRATTI: ATTIVO da 2 mesi fa, aperto -> multi-mese: prima della
 -- de-esplosione (20260707-03) avrebbe prodotto 3 righe-mese, ora 1 sola.
+-- rev 2026-10-24: nasce DRAFT sul listino della fixture e si attiva per la
+--   matrice.
 -- ============================================================
 CREATE TEMP TABLE tmp_df_contratto AS
 WITH ins AS (
   INSERT INTO vendite.contratti (
     numero, billing_account_id, istanza_utility_id, utility_id,
-    valido_dal, valido_al, stato_doc_contratto_id, data,
+    valido_dal, valido_al, data, listino_id,
     emittente_fiscale_id, meta)
   SELECT 'PGTAP-DF-CT-' || substr(md5(clock_timestamp()::text), 1, 8),
          r.billing_account_id, r.istanza_utility_id, r.utility_id,
          (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date, NULL,
-         r.contr_attivo_id, (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date,
+         (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date,
+         r.listino_id,
          COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
                   r.emittente_fiscale_id),
          jsonb_build_object('test_scope','pgtap_dash_fatturazione')
     FROM tmp_df_refs r
   RETURNING id, uid)
 SELECT * FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', c.id, 'ATTIVO')
+  FROM tmp_df_contratto c;
 
 -- ============================================================
 -- 12-14) Area CONTRATTI (de-esplosa, giudizio sospeso — DL-12)

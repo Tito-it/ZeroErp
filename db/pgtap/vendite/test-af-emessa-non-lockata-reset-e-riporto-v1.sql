@@ -48,6 +48,9 @@
 --   mano: e' il percorso che il difetto attraversa.
 --
 -- ChangeSet: 20260912-34 (cleanup), 20260912-35 (check).
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
+--   portano avanti con dbops.fn_pgtap_porta_a_stato (prima la commessa nasceva gia' nello
+--   stato emittibile, PRONTA_FATTURAZIONE).
 -- Brief: brief-db-rilancio-step-non-rivede-le-proprie-commesse.md §10.4
 -- ------------------------------------------------------------
 
@@ -116,10 +119,13 @@ DECLARE
 BEGIN
     SELECT * INTO v_rif FROM tmp_ar_rif;
 
+    -- rev 2026-10-24: la commessa nasce BOZZA (trigger della nascita); passa allo
+    --   stato emittibile DOPO aver preso la riga APPROVATA (il passaggio a
+    --   PRONTA_FATTURAZIONE la pretende: fn_check_commessa_pronta_fatturazione).
     INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                  emittente_soggetto_ruolo_id, stato_commessa_id)
+                                  emittente_soggetto_ruolo_id)
     VALUES ('PGTAP-AR-' || substr(md5(clock_timestamp()::text), 1, 6),
-            v_rif.billing_account_id, v_rif.utility_id, v_rif.emittente_sr, v_rif.stato_ok)
+            v_rif.billing_account_id, v_rif.utility_id, v_rif.emittente_sr)
     RETURNING id INTO v_comm;
 
     -- Il pull PRETENDE una sorgente ROOT (vedi P-5 per il perche' della chiave).
@@ -139,6 +145,9 @@ BEGIN
             'APPROVATA', 'NON_EMESSA', -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
             (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text)
     RETURNING id INTO v_ca;
+
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.commesse', v_comm,
+        (SELECT sc.codice_interno FROM vendite.stati_commessa sc WHERE sc.id = v_rif.stato_ok));
 
     INSERT INTO tmp_ar VALUES (v_comm, v_ca, NULL);
 

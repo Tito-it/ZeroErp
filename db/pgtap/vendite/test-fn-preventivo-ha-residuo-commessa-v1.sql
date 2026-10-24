@@ -1,6 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato; il preventivo
+--   senza BA del test 3 nasce DRAFT (prima ACCETTATO: il trigger della nascita
+--   avrebbe parlato prima del NOT NULL, coprendo il 23502 che il test chiede).
 -- pgTAP test per Zero ERP
 --
 -- Test: vendite.fn_preventivo_ha_residuo_commessa (20260612-03) +
@@ -203,6 +207,10 @@ SELECT is(
 --    giorno il caso esisteva, e il test chiedeva «residuo = false, testata
 --    incompleta». Ora billing_account_id e' NOT NULL: il guard dell'emittente
 --    lascia parlare il vincolo (23502), che e' la regola.
+--    ⚠️ rev 2026-10-24: nello stato iniziale (DRAFT). Con uno stato avanti il
+--    trigger della nascita (a05, BEFORE INSERT) solleverebbe
+--    E_DOC_STATO_INIZIALE_NON_VALIDO prima del vincolo, e il test smetterebbe
+--    di parlare del billing account.
 -- ============================================================
 SELECT throws_ok(
   $$INSERT INTO vendite.preventivi (
@@ -210,7 +218,7 @@ SELECT throws_ok(
       validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
       fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
     SELECT 'PGTAP-RC-NOBA', 0, r.istanza_utility_id, r.utility_id,
-           DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+           DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
            DATE '2080-01-01', false, false,
            jsonb_build_object('test_scope','pgtap_residuo_commessa_noba'), r.emittente_fiscale_id
       FROM tmp_rc_refs r$$,

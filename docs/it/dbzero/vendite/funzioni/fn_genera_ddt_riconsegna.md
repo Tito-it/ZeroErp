@@ -14,12 +14,14 @@ CREATE OR REPLACE FUNCTION vendite.fn_genera_ddt_riconsegna(p_reso_id bigint, p_
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-24 (20261024-16, brief-modello-documento-vendita N-1/P-2):
+--   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+--   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
 -- rev 2026-10-20 (20261020-56, brief-db-grammatica-unica-documenti, 2d G-6):
 --   l'ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della
 --   sorgente; firma e RETURNS ancorati.
 DECLARE
     v_stato          config.stati_doc_reso.codice_interno%TYPE;
-    v_stato_draft_id config.stati_doc_ddt.id%TYPE;
     v_sorg_ord_id    config.sorgenti.id%TYPE;
     v_ordine_uid     vendite.ordini.uid%TYPE;
     v_sorgente_tipo_id config.sorgenti.id%TYPE;
@@ -146,10 +148,8 @@ BEGIN
                                THEN v_orig.reso_uid END;
     END IF;
 
-    SELECT id INTO v_stato_draft_id FROM config.stati_doc_ddt
-     WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
-
-    -- 4) Nuovo DDT DRAFT. Denormalizzati dal DDT origine (normalize
+    -- 4) Nuovo DDT DRAFT (lo stato lo mette trg_ddt_a05_stato_iniziale_ins).
+    --    Denormalizzati dal DDT origine (normalize
     --    COALESCE li preserva). Order-backed -> sorgente ORDINE_VENDITA.
     --
     -- ⭐ rev 2026-08-28 (Fase A, R1+R5): si eredita il blocco
@@ -193,7 +193,7 @@ BEGIN
     --    corsia di instradamento, cioe' un patto commerciale
     --    come le altre colonne di questo blocco.
     INSERT INTO vendite.ddt (
-        data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
+        data, destinatario_soggetto_ruolo_id,
         sorgente_tipo_id, sorgente_uid, billing_account_id,
         utility_id, valuta_id, emittente_fiscale_id,
         causale_trasporto_id, aspetto_bene_id,
@@ -201,7 +201,7 @@ BEGIN
         mittente_soggetto_ruolo_id, vettore_soggetto_ruolo_id,
         fatturazione_immediata)
     VALUES (
-        COALESCE(p_data, (SELECT script.fn_data_operativa())), v_stato_draft_id,
+        COALESCE(p_data, (SELECT script.fn_data_operativa())),
         v_orig.destinatario_soggetto_ruolo_id,
         v_sorgente_tipo_id, v_sorgente_uid, v_orig.billing_account_id,
         v_orig.utility_id, v_orig.valuta_id, v_orig.emittente_fiscale_id,

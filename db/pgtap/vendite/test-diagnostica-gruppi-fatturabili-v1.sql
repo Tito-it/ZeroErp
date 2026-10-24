@@ -6,6 +6,9 @@
 --       La FOTOGRAFIA di un gruppo fatturabile: quante righe, in che stato, e
 --       in che stato e' la testata della commessa.
 --       Brief: brief-db-emittibilita-visibile-e-sbloccabile §9 F4.
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
+--   portano avanti con dbops.fn_pgtap_porta_a_stato (prima le commesse nascevano gia'
+--   nello stato bloccato / emittibile).
 --
 -- Perche' esiste: fino al 2026-08-15 questa query stava in
 -- `CommesseRepository.diagnostica_gruppi`, ed era l'ultima copia dei filtri di
@@ -112,20 +115,29 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_dg_commessa (slot text, commessa_id bigint);
 
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le commesse nascono
+--   BOZZA (trigger della nascita) e si portano allo stato voluto con
+--   dbops.fn_pgtap_porta_a_stato: CA subito (lo stato bloccato non pretende
+--   righe), CB DOPO le sue righe (PRONTA_FATTURAZIONE pretende una riga
+--   APPROVATA, fn_check_commessa_pronta_fatturazione).
 WITH ins AS (
   INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                emittente_soggetto_ruolo_id, stato_commessa_id)
+                                emittente_soggetto_ruolo_id)
   SELECT 'PGTAP-DG-CA-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id, r.ef_sr, r.stato_bloccato_id
+         r.billing_account_id, r.utility_id, r.ef_sr
     FROM tmp_dg_refs r
   RETURNING id)
 INSERT INTO tmp_dg_commessa SELECT 'CA', id FROM ins;
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.commesse', c.commessa_id, sc.codice_interno)
+  FROM tmp_dg_commessa c, tmp_dg_refs r
+  JOIN vendite.stati_commessa sc ON sc.id = r.stato_bloccato_id
+ WHERE c.slot = 'CA';
 
 WITH ins AS (
   INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                emittente_soggetto_ruolo_id, stato_commessa_id)
+                                emittente_soggetto_ruolo_id)
   SELECT 'PGTAP-DG-CB-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id, r.ef_sr, r.stato_emittibile_id
+         r.billing_account_id, r.utility_id, r.ef_sr
     FROM tmp_dg_refs r
   RETURNING id)
 INSERT INTO tmp_dg_commessa SELECT 'CB', id FROM ins;
@@ -168,6 +180,12 @@ SELECT pg_temp.mk_dg('CA', 'GA', 'APPROVATA', 'NON_EMESSA', DATE '2082-03-01', t
 -- GB, lo STESSO documento sorgente su DUE commesse di stato opposto.
 SELECT pg_temp.mk_dg('CA', 'GB', 'APPROVATA', 'NON_EMESSA', DATE '2082-01-01', true);
 SELECT pg_temp.mk_dg('CB', 'GB', 'APPROVATA', 'NON_EMESSA', DATE '2082-01-01', true);
+
+-- CB ora ha la sua riga APPROVATA: passa allo stato emittibile (rev 2026-10-24).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.commesse', c.commessa_id, sc.codice_interno)
+  FROM tmp_dg_commessa c, tmp_dg_refs r
+  JOIN vendite.stati_commessa sc ON sc.id = r.stato_emittibile_id
+ WHERE c.slot = 'CB';
 
 -- Le chiavi arrivano dalla sola fonte di verita': ricostruirle nel test
 -- significherebbe verificare la copia invece dell'originale.
@@ -360,10 +378,11 @@ BEGIN
     SELECT * INTO v_r FROM tmp_dg_refs;
     v_mese := date_trunc('month', script.fn_data_operativa())::date;
 
+    -- rev 2026-10-24: nasce BOZZA, passa allo stato emittibile dopo la riga.
     INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                  emittente_soggetto_ruolo_id, stato_commessa_id)
+                                  emittente_soggetto_ruolo_id)
     VALUES ('PGTAP-DG-TRAT-' || substr(md5(clock_timestamp()::text), 1, 6),
-            v_r.billing_account_id, v_r.utility_id, v_r.ef_sr, v_r.stato_emittibile_id)
+            v_r.billing_account_id, v_r.utility_id, v_r.ef_sr)
     RETURNING id INTO v_comm;
 
     INSERT INTO vendite.commesse_attivita (
@@ -378,6 +397,9 @@ BEGIN
             v_r.tipo_doc_fiscale_id, v_r.valuta_id, 10.000000, 'FIXED',
             'APPROVATA', 'NON_EMESSA', -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
             (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text);
+
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.commesse', v_comm,
+        (SELECT sc.codice_interno FROM vendite.stati_commessa sc WHERE sc.id = v_r.stato_emittibile_id));
 
     INSERT INTO vendite.fatturazione_lotti
         (codice, competenza_mese, tipo_doc_fiscale_id,

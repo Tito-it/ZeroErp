@@ -5,6 +5,9 @@
 --       (chiave, persistenza del criterio, filtri su pull e select)
 -- Brief: brief-db-emissione-fattura-per-documento-sorgente PARTE A (step A10)
 -- Changeset coperti: 20260727-10..15
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
+--   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
+--   preventivo nasceva gia' ACCETTATO).
 -- ------------------------------------------------------------
 -- Indice test (1..17):
 --  1) fn_build_gruppo_fatturabile_key: forma documento '<codice_interno>:<uid>'
@@ -107,19 +110,26 @@ SELECT
     WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1)                AS stato_contr_draft_id;
 
 -- Preventivo REALE: serve come ROOT source della commessa.
+-- ⚠️ rev 2026-10-24: nasce in bozza (lo stato non si scrive: lo mette il
+--   trigger della nascita) e va ad ACCETTATO con dbops.fn_pgtap_porta_a_stato,
+--   sotto i guard veri: senza righe non hanno motivi da sollevare.
 CREATE TEMP TABLE tmp_gr_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    validita_dal, validita_al, valuta_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-GRUPPI', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_prev_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope', 'pgtap_gruppi'), r.emittente_fiscale_id
   FROM tmp_gr_refs r
   RETURNING id, uid)
 SELECT * FROM ins;
+
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_gr_prev), 'ACCETTATO');
+END $porta$;
 
 -- Contratto VERO per il gruppo C (rev 2026-10-13): basta la testata in bozza.
 --   La madre lo aggancia alla commessa (20261012-46) e il link ne verifica

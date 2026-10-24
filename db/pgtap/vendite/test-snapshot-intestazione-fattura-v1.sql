@@ -11,6 +11,12 @@
 -- Piano: piano-db-satelliti-fattura.md, cantiere INTESTAZIONE passo I.6
 -- Brief: brief-db-snapshot-intestazione-fattura.md §3.1-§3.4, §10.3
 -- ------------------------------------------------------------
+-- rev 2026-10-24 (brief-modello-documento-vendita N-1): le fatture nascono in
+--   bozza e la «congelata» si porta avanti con dbops.fn_pgtap_porta_a_stato
+--   (prima nasceva gia' DEFINITIVA). Per uscire dalla bozza le si scrivono a
+--   mano indirizzo FATT e intestazione — NON con la funzione sotto test — e in
+--   EMESSA (sotto soglia) si tolgono di nuovo: arriva in DEFINITIVA con
+--   l'intestazione a NULL come prima, e l'11 prova ancora la prima scrittura.
 -- Indice test (1..12):
 --   1) Cablaggio: guard di congelamento BEFORE UPDATE OF le due colonne
 --   2) Fixture: riferimenti presenti + due fatture (DRAFT e DEFINITIVA)
@@ -155,17 +161,46 @@ CREATE TEMP TABLE tmp_fatture_int AS
 WITH ins AS (
   INSERT INTO vendite.fatture (
     registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-    tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, meta
+    tipo_doc_fiscale_id, valuta_id, meta
   )
   SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id,
-         r.billing_account_id, r.tipo_doc_fiscale_id, v.stato_id, r.valuta_id,
+         r.billing_account_id, r.tipo_doc_fiscale_id, r.valuta_id,
          jsonb_build_object('test', 'pgtap_snapshot_intestazione', 'caso', v.caso)
     FROM tmp_refs_int r
-   CROSS JOIN LATERAL (VALUES ('draft',      r.stato_draft_id),
-                              ('congelata',  r.stato_def_id)) AS v(caso, stato_id)
+   CROSS JOIN (VALUES ('draft'), ('congelata')) AS v(caso)
   RETURNING id, meta ->> 'caso' AS caso
 )
 SELECT id, caso FROM ins;
+
+-- La «congelata» nasce in bozza (rev 2026-10-24). Per uscirne vuole indirizzo
+-- FATT e intestazione (trgfn_fatture_guard_uscita_draft): si scrivono A MANO,
+-- non con fn_snapshot_intestazione_fattura, che e' la funzione sotto test. In
+-- EMESSA (congela_fiscale = false) si tolgono di nuovo, poi DEFINITIVA: l'11
+-- trova l'intestazione a NULL, come quando la fattura nasceva congelata.
+INSERT INTO vendite.fatture_indirizzi (fattura_id, tipo_indirizzo_id, snapshot)
+SELECT f.id, (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'FATT'),
+       '{"via":"Via Emissione pgTAP"}'::jsonb
+  FROM tmp_fatture_int f
+ WHERE f.caso = 'congelata';
+
+UPDATE vendite.fatture
+   SET emittente_snapshot = '{"denominazione":"Emittente pgTAP","id_fiscale":"00000000000","sede":{"via":"Via Cedente 1","cap":"83100"}}'::jsonb,
+       cliente_snapshot   = '{"denominazione":"Cliente pgTAP","id_fiscale":"11111111111"}'::jsonb
+ WHERE id = (SELECT id FROM tmp_fatture_int WHERE caso = 'congelata');
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', f.id, 'EMESSA')
+  FROM tmp_fatture_int f WHERE f.caso = 'congelata';
+
+DELETE FROM vendite.fatture_indirizzi
+ WHERE fattura_id = (SELECT id FROM tmp_fatture_int WHERE caso = 'congelata');
+
+UPDATE vendite.fatture
+   SET emittente_snapshot = NULL,
+       cliente_snapshot   = NULL
+ WHERE id = (SELECT id FROM tmp_fatture_int WHERE caso = 'congelata');
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', f.id, 'DEFINITIVA')
+  FROM tmp_fatture_int f WHERE f.caso = 'congelata';
 
 SELECT ok(
   (SELECT count(*) FROM tmp_refs_int WHERE emittente_soggetto_ruolo_id IS NOT NULL) = 1
