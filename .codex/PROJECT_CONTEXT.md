@@ -550,6 +550,16 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 
 ### Aperto — Media priorità
+- **Residui di `work-done/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`** (ereditati il
+  2026-10-24 dal collaudo passato, §3):
+  - **il reset del rifiuto sta solo nel BE del preventivo** (`preventivi_service.py` `aggiorna_riga`,
+    «Auto-reset stato approvazione»), nessun trigger a DB: una correzione del prezzo che non passa da lì
+    lascia la riga `REJECTED` e il documento bloccato. Su contratto e offerta un reset equivalente non
+    risulta: asimmetria del modello. Da decidere, di Tid, se la regola vada a DB, simmetrica su tutti i
+    documenti; brief DB nuovo;
+  - **la riga `test-preventivi-approvazione-prezzo.sql`** è ancora in `db/pgtap/baseline-rossi-ci.tsv`
+    (`ERRORE_FIXTURE`): si toglie dopo la corsa CI su `Tito-dev` (`scripts/pgtap-baseline-ci-rientrati.sh`).
+    Team DB.
 - **Residui di `work-done/brief-db-modelli-documento-standard.md`** (ereditati il 2026-10-21 dalla
   chiusura, §11.5.4 e riga 10):
   - **il giro degli smoke su `dev.smoke`** (§7, B-11): DEVA emette con lo standard e chiude una
@@ -881,8 +891,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   vendita), non più la sola accettazione — la revisione con quella riga non si
   emette, e resta solo l'annullamento. ✅ **Deciso da Tid lo stesso giorno**
   (§10 di `work-done/brief-db-preventivi-congelamento-pricing.md`,
-  `20260924-33…-37`, applicati il 24-09 con test verdi; collaudo a video da
-  eseguire in `work-in-progress/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`):
+  `20260924-33…-37`, applicati il 24-09 con test verdi; collaudo a video
+  passato il 2026-10-24, `work-done/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`):
   una revisione **non si crea** finché un
   prezzo è in attesa, quindi la riga in attesa ricopiata non può più nascere;
   approvato e rifiutato si ricopiano come prima. Resta del BE il ciclo di vita

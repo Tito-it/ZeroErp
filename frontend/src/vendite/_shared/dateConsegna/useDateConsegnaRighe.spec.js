@@ -13,6 +13,7 @@
 //  4) readonly puro: l'azione non compare, anche con colonne attive
 //  5) documento non ancora letto: l'azione non compare
 //  6) il comando apre il dialog
+//  7) documento senza righe: azione spenta col motivo «nessuna riga»
 // ------------------------------------------------------------
 import { describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
@@ -21,7 +22,7 @@ vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (chiave) => chiave }) }))
 
 const { useDateConsegnaRighe } = await import('./useDateConsegnaRighe')
 
-function crea({ richiesta = false, confermata = false, motivo = null, readonly = false, presente = true } = {}) {
+function crea({ richiesta = false, confermata = false, motivo = null, readonly = false, presente = true, righe = 1 } = {}) {
   const ro = ref(readonly)
   const pr = ref(presente)
   const uso = useDateConsegnaRighe({
@@ -31,6 +32,7 @@ function crea({ richiesta = false, confermata = false, motivo = null, readonly =
     ],
     readonlyPuro: () => ro.value,
     presente: pr,
+    righe: () => righe,
   })
   return uso
 }
@@ -66,5 +68,11 @@ describe('useDateConsegnaRighe', () => {
     const uso = crea({ richiesta: true })
     uso.azione.value[0].command()
     expect(uso.dialogVisible.value).toBe(true)
+  })
+
+  it('documento senza righe: azione spenta col motivo «nessuna riga»', () => {
+    const uso = crea({ richiesta: true, righe: 0 })
+    expect(uso.azione.value[0].disabled).toBe(true)
+    expect(uso.azione.value[0].tooltip).toBe('vendite.date_consegna.nessuna_riga')
   })
 })

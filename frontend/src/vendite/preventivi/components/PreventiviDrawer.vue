@@ -908,6 +908,7 @@ const dateConsegna = useDateConsegnaRighe({
   }],
   readonlyPuro: () => isReadonlyPuro.value,
   presente: () => hasDetail.value,
+  righe: () => detail.value?.righe_count ?? 0,
 })
 const dateConsegnaAzione = dateConsegna.azione
 const dateConsegnaVisible = dateConsegna.dialogVisible

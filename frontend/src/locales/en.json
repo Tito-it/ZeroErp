@@ -2172,6 +2172,7 @@
     },
     "date_consegna": {
       "azione": "Update delivery dates",
+      "nessuna_riga": "The document has no lines.",
       "titolo": "Update delivery dates",
       "intro": "Writes one delivery date on several lines of the document.",
       "colonna": "Date to update",

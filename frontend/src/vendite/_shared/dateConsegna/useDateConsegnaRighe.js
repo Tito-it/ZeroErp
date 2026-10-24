@@ -20,6 +20,8 @@
 //    prima colonna che ne porta uno (`motivo()`, la frase gia' composta); se
 //    nessuna lo porta il pulsante NON compare — come «Nuova riga» fuori bozza.
 //    Un pulsante grigio e muto sembrerebbe un difetto.
+// ⚠️ Documento senza righe: dove il pulsante comparirebbe, si spegne col suo
+//    motivo — non c'e' nessuna riga su cui scrivere la data.
 import { computed, ref, unref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MANAGE_ICONS } from '../../../core/constants'
@@ -29,8 +31,9 @@ import { MANAGE_ICONS } from '../../../core/constants'
  * @param {Array<{colonna: string, labelKey: string, attiva: () => boolean, motivo?: () => string|null}>} opts.colonne
  * @param {Function|Ref<boolean>} opts.readonlyPuro - permessi / split: nasconde
  * @param {Function|Ref<boolean>} opts.presente - il documento c'e' (dettaglio letto)
+ * @param {Function|Ref<number>} opts.righe - quante righe ha il documento
  */
-export function useDateConsegnaRighe({ colonne, readonlyPuro, presente }) {
+export function useDateConsegnaRighe({ colonne, readonlyPuro, presente, righe }) {
   const { t } = useI18n()
   const dialogVisible = ref(false)
   const leggi = (v) => (typeof v === 'function' ? v() : unref(v))
@@ -52,9 +55,12 @@ export function useDateConsegnaRighe({ colonne, readonlyPuro, presente }) {
   // L'azione per `DrawerActionsBar`: sempre un array (0 o 1 voce).
   const azione = computed(() => {
     if (leggi(readonlyPuro) || !leggi(presente)) return []
-    const accesa = colonneAttive.value.length > 0
-    const motivo = accesa ? null : motivoSpento()
-    if (!accesa && !motivo) return []
+    const scrivibile = colonneAttive.value.length > 0
+    const motivoColonne = scrivibile ? null : motivoSpento()
+    if (!scrivibile && !motivoColonne) return []
+    const conRighe = (leggi(righe) ?? 0) > 0
+    const accesa = scrivibile && conRighe
+    const motivo = motivoColonne || (conRighe ? null : t('vendite.date_consegna.nessuna_riga'))
     return [{
       key: 'date-consegna',
       kind: 'manage',
