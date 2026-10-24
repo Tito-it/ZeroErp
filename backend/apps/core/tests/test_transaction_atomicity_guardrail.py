@@ -52,17 +52,10 @@ _EXEC_WRITE_SQL_RE = re.compile(
 
 # Metodi deliberatamente non-atomici (2+ scritture per scelta di design).
 # Chiave: (path relativo da backend/, nome qualificato Classe.metodo). Valore: motivo.
-ALLOWLIST: dict[tuple[str, str], str] = {
-    (
-        "apps/core/services/idempotency_store.py",
-        "IdempotencyStore.claim_or_replay",
-    ): (
-        "Protocollo idempotency forte: il claim atomico e' garantito dall'INSERT "
-        "... ON CONFLICT DO NOTHING a livello statement; la ri-esecuzione dopo "
-        "'failed' e' intenzionalmente separata. Un transaction.atomic() non "
-        "aggiungerebbe garanzie e potrebbe alterare la semantica di concorrenza."
-    ),
-}
+# ⭐ Vuota dal 2026-10-24: l'unica voce era `IdempotencyStore.claim_or_replay`,
+#    che scriveva col suo SQL; la prenotazione e' passata a
+#    `dbops.fn_idempotency_prenota` (BE-1 di brief-be-verifica-documentazione-api).
+ALLOWLIST: dict[tuple[str, str], str] = {}
 
 
 def _is_atomic_with(node: ast.With) -> bool:

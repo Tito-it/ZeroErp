@@ -186,6 +186,15 @@ regolano con le variabili `ZEROERP_GUNICORN_*`, descritte in
 [Gunicorn in sviluppo](gunicorn-dev-autoreload.md). Il default è
 `127.0.0.1:8000`, 3 worker, timeout 60 s, niente reload.
 
+⛔ **Il timeout non si alza da solo.** Gunicorn carica da sé `backend/gunicorn.conf.py`
+(dalla directory di lavoro: `backend/` qui, `/app` nel Dockerfile), che all'avvio e a ogni
+`kill -HUP` (gli hook `on_starting` e `on_reload`), con la modalità forte accesa, rifiuta di
+partire se `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` non supera il timeout **effettivo** di almeno 30 secondi, se il timeout è 0 o se il worker non è `sync`.
+Il motivo: oltre quella soglia una Idempotency-Key «in corso» si riprende, e una richiesta ancora
+viva verrebbe eseguita due volte. Timeout e soglia si cambiano insieme
+([API — Idempotency-Key](../api.md), guida
+[Le operazioni che non si ripetono](/guide/operazioni-che-non-si-ripetono)).
+
 ### Unit systemd
 
 ```ini

@@ -1,15 +1,15 @@
 # Brief BE — La documentazione API confrontata col codice
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-24
+## ⏭️ Chi riparte — aggiornato al 2026-10-24 (sera)
 
-**Riparte: il BE, subito**, con BE-1 + BE-2 + BE-5 nello stesso rilascio, più le due pagine di
-doc BE (§I.7.4). `20261024-01` e `-02` sono applicati e il pgTAP è verde (§I.8): ⚠️ da adesso,
-finché BE-1 non è in esercizio, ogni POST in modalità forte risponde 500, perché la prenotazione
-vecchia del backend scrive key senza `endpoint` (decisione di Tid del 2026-10-24, ambiente di
-sviluppo). **Il lato DB è finito.** BE-3 e BE-4 sono fatti (§I.7.1). La guida nuova
-[Le operazioni che non si ripetono](../../guide/operazioni-che-non-si-ripetono.md) è scritta
-(§I.9). **D2 e D3 sono usciti da questo brief**: sono il
-tema del [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).
+**Riparte: il team DB** con §I.11 (passo 10): una funzione che legge e valida la soglia di
+ripresa, così la regola smette di stare due volte (funzione e backend). **In parallelo Tid**:
+riavvio di gunicorn su dbdev con verifica di BE-1 (passo 8-bis) e commit del giro BE (passo 9).
+Dopo l'apply di §I.11 il passo BE (12) e l'archiviazione. BE-1, BE-2, BE-5 e BE-6 sono fatti;
+del lato DB resta solo §I.11. La guida
+[Le operazioni che non si ripetono](../../guide/operazioni-che-non-si-ripetono.md) è riletta
+dopo BE-6 (§I.9). **D2 e D3 sono usciti da questo brief**: sono il tema del
+[brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -22,21 +22,26 @@ tema del [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (
 | 6 | ✅ team DB | NOT NULL su `dbops.idempotency_keys.endpoint` e ramo «senza legame» ritirato (`20261024-01`, `-02`), prova pre-apply verde | §I.8 | 5 |
 | 7 | ✅ **Tid** | Apply di `20261024-01` e `-02` su scratch e dbdev, `dbops/test-idempotency-prenota-v1` verde (2026-10-24) | §I.8 | 6 |
 | 7-bis | ✅ team DB | Guida «Le operazioni che non si ripetono» | §I.9 | — |
-| 8 | **BE** | BE-1 + BE-2 nella forma «unità dichiarata», BE-5 (soglia legata al timeout di gunicorn) e BE-6 (le due pagine di doc BE), nello stesso rilascio, **subito** | §I.7.4 | 7 |
-| 9 | **Tid** | Archiviazione in `work-done/` | — | 8 |
+| 8 | ✅ BE | BE-1 + BE-2 nella forma «unità dichiarata», BE-5 (soglia legata al timeout di gunicorn) e BE-6 (le due pagine di doc BE), nello stesso rilascio | §I.10 | 7 |
+| 8-bis | **Tid** | `sudo systemctl restart zeroerp-gunicorn` su dbdev — ⚠️ un restart, non un `kill -HUP`: il master tiene i moduli Python importati al suo avvio (il presidio di BE-5 gira anche al HUP, §I.10.4, ma col codice di allora) — e una POST in modalità forte: 200 | §I.10.3 | 8 |
+| 9 | **Tid** | Commit del giro BE (§I.10, compresa la revisione di §I.10.4) | — | 8-bis |
+| 10 | **team DB** | `dbops.fn_idempotency_soglia_secondi()` + `fn_idempotency_prenota` che la usa + pgTAP | §I.11.1 | — |
+| 11 | **Tid** | Apply su scratch e dbdev, pgTAP verdi | §I.11.1 | 10 |
+| 12 | BE | Il presidio di BE-5 legge la soglia dalla funzione; ritirati `get_default_int_positivo` e la sua regex | §I.11.2 | 11 |
+| 13 | **Tid** | Commit, archiviazione in `work-done/` | — | 12 |
 
 Decisioni aperte di Tid: **nessuna** (§I.5 decisa il 2026-10-23: 90 giorni, anche per
 `audit_log`; §I.7 decisa il 2026-10-23: unità di lavoro dichiarata, e i `catch` muti corretti in
-questo giro). Lavoro da committare: il giro DB di §I.7.5 (`20261023-06`) e di §I.8
-(`20261024-01`, `-02`), il pgTAP, la pagina manual, questo brief; il giro DB di §I.2/§I.6 e il giro BE/FE di §I.7.1 sono nei commit del
+questo giro). Lavoro da committare: il giro BE di §I.10 (codice, test, doc BE, la riga
+aggiunta alla guida, questo brief) con la revisione di §I.10.4. I giri DB di §I.7.5 e §I.8
+sono nel commit del 2026-10-24; quelli di §I.2/§I.6 e il giro BE/FE di §I.7.1 nei commit del
 2026-10-23.
 
 ✅ Deciso da Tid col BE il 2026-10-23: `p_ripresa_ammessa` è **obbligatorio, senza un default
 che decida** (§I.7.5). Applicato il 2026-10-24.
 
-⚠️ Fino a BE-1 + BE-2 il backend usa ancora la sua prenotazione: le colonne nuove restano
-vuote sulle righe che scrive (`endpoint` NULL = riga senza legame) e la ripresa dopo 120
-secondi non agisce. Nessuna regressione: è il comportamento di prima.
+✅ Dal 2026-10-24 (§I.10) il backend prenota con `dbops.fn_idempotency_prenota`: il 500 di
+§I.8 (INSERT senza `endpoint`) finisce col riavvio di gunicorn.
 
 ### 🟢 D1, D4-D7 — la forma decisa il 2026-10-21, sviluppata il 2026-10-23 (§I)
 
@@ -432,6 +437,129 @@ contratto non si ricopia: rimanda alle quattro pagine.
 * ⚠️ Descrive il comportamento **dopo** BE-1/BE-2 (la prenotazione dal DB, le operazioni in un
   passo e a passi). Va riletta con BE-6 (§I.7.4): se il BE chiude in modo diverso, si corregge.
 * Build della doc non lanciata (a cura del manutentore).
+
+### I.10 Il giro BE del 2026-10-24 — BE-1, BE-2, BE-5, BE-6 ✅ fatti (da committare)
+
+#### I.10.1 Fatto
+
+| Passo | Dove | Che cosa |
+| --- | --- | --- |
+| BE-1 | `apps/core/services/idempotency_store.py` | `claim_or_replay(key, request_id, auth_user_id, endpoint, ripresa_ammessa)` chiama `dbops.fn_idempotency_prenota` e ritira il suo SQL (INSERT + UPDATE sulle `failed`). Endpoint = `"<METODO> <percorso>"`, utente = `get_actor_user_id` (NULL per l'anonimo). Un esito fuori dai tre, o un REPLAY senza risposta leggibile, è un errore (500), non una riesecuzione. `_resolve_tx_id` ora in savepoint: dentro l'`atomic` di una ATOMICA un suo fallimento abortiva la transazione |
+| BE-2 | `apps/core/api/endpoint_helpers.py` | `UnitaDiLavoro` (`ATOMICA` default, `A_PASSI`) e `handle_post_json(..., unita_di_lavoro=…)`. ATOMICA: handler + `mark_completed` in `transaction.atomic()`; `mark_failed` fuori, dopo il rollback. `ripresa_ammessa = unita is ATOMICA`, in un punto solo |
+| BE-2 | `apps/vendite/api/views.py` | i quattro endpoint di §I.7.2 dichiarano `A_PASSI`, col motivo accanto |
+| BE-2, diario | `apps/core/services/error_manager.py` | `ErrorManager.diario_dopo_la_transazione()`: dentro il blocco `log_error_only` mette le righe in coda (ContextVar) e le scrive a transazione chiusa. La scrittura vera è `_scrivi_diario` |
+| BE-2, presidio | `apps/core/tests/test_unita_di_lavoro.py` | registro degli A_PASSI, a cricchetto nei due versi |
+| BE-2, guardrail | `apps/core/tests/test_transaction_atomicity_guardrail.py` | ALLOWLIST vuota: la voce di `claim_or_replay` è caduta col suo SQL |
+| BE-5 | `backend/gunicorn.conf.py`, `apps/core/services/soglia_idempotenza.py` | `on_starting`: in modalità forte gunicorn non parte se la soglia non supera il timeout **effettivo** di 30 s (`MARGINE_SECONDI`), se il timeout è 0 o se il worker non è `sync`. Gunicorn carica il file da solo, quindi vale per `bin/start-gunicorn.sh` e per il `CMD` del Dockerfile |
+| BE-5 | `apps/core/services/parameter_service.py` | `get_default_int_positivo` (default nudo, forma della funzione DB); il controllo di presenza condiviso con `get_default_date` (`_default_obbligatorio`) |
+| BE-6 | `docs/it/dev/api.md`, `docs/it/backend/core/manual/api_endpoint_helpers.md` | prenotazione dal DB, key riusata/fallita/orfana, ATOMICA/A_PASSI, diario, presidio di BE-5; più `configurazione-django.md` (il timeout non si alza da solo) e il catalogo BB backend |
+| guida | `docs/it/guide/operazioni-che-non-si-ripetono.md` | riletta dopo BE-6: il comportamento coincide. Aggiunta una frase: il backend controlla il rapporto all'avvio |
+| a margine | `apps/pagamenti/services/pagamenti_service.py` | `cambia_stato_riga` (`ApiRigaStato`) ha un `atomic` suo: §I.7.2 contava sull'`atomic` esterno, che c'è solo in modalità forte (§I.10.2) |
+
+#### I.10.2 Scelte dichiarate
+
+* **L'`atomic` esterno c'è solo in modalità forte** (`idempotency_claimed`), non su ogni
+  `require_idempotency_key=True`. Provata la versione «sempre»: 59 test API sono `SimpleTestCase`
+  coi service mockati, e l'`atomic` apre una connessione che quella classe vieta. È lo stesso
+  motivo per cui il runner spegne la modalità forte. Sul modello: l'`atomic` esiste per tenere
+  insieme operazione ed esito, e senza registro non c'è un esito. Il ramo ATOMICA lo prova il
+  test sul DB vero. ⇒ Un service che compone più scritture tiene il **proprio** `atomic`: per
+  questo `cambia_stato_riga` ne ha uno suo.
+* **Worker `sync` obbligatorio** in modalità forte: in `gthread` e nei worker asincroni il
+  battito continua mentre la richiesta lavora, quindi il timeout non è il tetto di una
+  richiesta. Oggi i due lanciatori usano il default `sync`.
+* **Il presidio di BE-5 non gira a modalità forte spenta**: la funzione che legge la soglia non
+  viene chiamata. ⚠️ `.env.systemd` la spegne: se si accende lì, il presidio si accende con lei.
+* **Margine di 30 secondi** come costante in codice (`MARGINE_SECONDI`), con la proposta del
+  brief: è una proprietà del meccanismo, non una configurazione dell'installazione. Se Tid
+  preferisce un parametro, va chiesto al team DB.
+
+#### I.10.3 Verifiche
+
+* `apps/core/tests/db/test_idempotency_prenota_db.py` (DB vero, transazione annullata, 6 test):
+  ESEGUI poi REPLAY senza rieseguire; 400 `E_IDEMPOTENCY_KEY_RIUSATA` su un altro endpoint; 409
+  entro la soglia; orfana retrodatata: 409 per A_PASSI, 200 per ATOMICA; fallimento ATOMICA: la
+  scrittura dell'handler sparisce e la key è `failed`; il diario dopo un `SELECT 1/0` catturato
+  trova la transazione sana. ⭐ Il test del diario è provato per mutazione: senza il
+  differimento è rosso.
+* Il hook di gunicorn provato sul DB vero con un server finto: 60 s/sync parte; 100 s, 0 s e
+  `gthread` rifiutano col motivo.
+* Suite Django completa con `ZEROERP_TEST_DB_E2E=1`: **6897 test, OK** (6 skip); mypy col
+  cancello: 0 nuovi; ruff verde.
+* ⚠️ **Non provato in esercizio**: gunicorn su dbdev gira col codice di prima, quindi le POST in
+  modalità forte rispondono ancora 500 (§I.8) finché non si riavvia (passo 8-bis).
+
+#### I.10.4 Revisione critica del giro (2026-10-24, sera, da committare)
+
+| Che cosa | Dove | Correzione |
+| --- | --- | --- |
+| 🔴 La soglia `' 120 '` passava il presidio e rompeva ogni prenotazione | `parameter_service.py` | `get_default_int_positivo` faceva `strip`, la funzione DB no (niente `btrim`). Ora il valore si controlla com'è; `_default_obbligatorio` restituisce il valore grezzo e lo `strip` lo fa `get_default_date`. Test: `' 120 '` fra le forme rifiutate |
+| 🟠 `-k gunicorn.workers.sync.SyncWorker` rifiutato | `soglia_idempotenza.py`, `gunicorn.conf.py` | il worker si riconosceva dal nome scritto (`"sync"`); ora dalla classe (`issubclass(cfg.worker_class, SyncWorker)`). `gunicorn` in `mypy.ini` fra le librerie senza tipi, per nome |
+| 🟠 Diario annidato scritto dentro la transazione esterna | `error_manager.py` | il blocco interno di `diario_dopo_la_transazione` consegna le righe all'esterno (`_registra_diario`). Test senza DB: `test_error_manager.py` n. 6-7 |
+| 🟡 Il presidio non girava al `kill -HUP` | `gunicorn.conf.py` | `on_reload` chiama lo stesso controllo di `on_starting`: un timeout alzato e ricaricato ferma il master |
+| 🟡 Il motivo di ogni A_PASSI scritto due volte | `test_unita_di_lavoro.py` | il registro è un elenco di chiavi; il motivo sta solo nel commento `⭐ A_PASSI` della view |
+| 🟡 La regex della soglia ricopiata dalla funzione DB | — | non si toglie dal BE senza il DB: §I.11 |
+
+Verifiche: ruff verde; mypy col cancello 0 nuovi; `apps.core` + `apps.pagamenti` 1971 OK;
+`test_idempotency_prenota_db` sul DB vero 6 OK; il hook provato sulla soglia reale con
+`sync`, percorso completo di `SyncWorker` (partono), `gthread` e timeout 0 (rifiutati).
+
+### I.11 La soglia letta da una sede sola (2026-10-24, sera) — richiesta al team DB
+
+**Il difetto.** La forma ammessa per `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` è scritta due volte:
+nella funzione (`^[1-9][0-9]{0,5}$`, ramo 5 di `dbops.fn_idempotency_prenota`) e nel backend
+(`_INTERO_POSITIVO` in `parameter_service.py`, che il presidio di BE-5 usa all'avvio). Sono due
+copie della stessa regola: la revisione di §I.10.4 ne ha già trovata una divergenza (lo `strip`),
+e la prossima modifica a una delle due ne aprirebbe un'altra senza che nessun test lo veda. Il
+presidio vale solo se legge la soglia **come la legge la funzione**.
+
+#### I.11.1 Richiesta al team DB
+
+**Da dove si parte.** Il corpo attuale di `dbops.fn_idempotency_prenota` si prende dalla doc
+auto-generata ([fn_idempotency_prenota](../../dbzero/dbops/funzioni/fn_idempotency_prenota.md)),
+non dagli YAML: l'ultima revisione è `20261024-02` (`20_code/dbops/`). Il ramo da toccare è il 5
+(«in corso oltre la soglia»): oggi legge `config.parameters.default_value` del codice
+`SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI`, lo confronta con `^[1-9][0-9]{0,5}$` e su forma non ammessa
+chiama `script.fn_log_and_raise_error(..., 'E_CONFIG_MANCANTE', ...)`.
+
+1. **Funzione nuova** `dbops.fn_idempotency_soglia_secondi() RETURNS integer`, `STABLE`,
+   `SECURITY INVOKER` come la prenotazione. Legge il parametro, lo valida e restituisce i secondi.
+   Il fail-loud è quello di oggi, spostato e non cambiato: `E_CONFIG_MANCANTE` (codice già a
+   catalogo) su assente, vuoto o forma non ammessa, con lo stesso contesto (`config`,
+   `parametro`, `valore`). ⛔ Nessun valore di ripiego.
+2. **`fn_idempotency_prenota` la usa** al ramo 5, al posto della sua lettura e della sua regex:
+   una sede sola. File nuovo in `20_code/dbops/` (mai ritoccare `20261024-02`). Firma, esiti e
+   comportamento della prenotazione non cambiano; spariscono solo `v_soglia_testo` e il blocco di
+   validazione.
+3. **Nessun GRANT nel changeSet**: l'`EXECUTE` a `zeroerp_app` lo dà il loop dei grant di
+   `ci_apply` su tutte le funzioni (linee-guida-sql §11.8). Il backend la chiamerà con il ruolo
+   applicativo, all'avvio di gunicorn.
+4. **pgTAP.** Le forme da provare: un valore valido restituisce l'intero; assente, vuoto, `'0'`,
+   `'007'`, `'-5'`, `'1.5'`, `' 120 '` (con spazi: oggi la funzione **non** fa `btrim`, e deve
+   restare così), `'1234567'` → `E_CONFIG_MANCANTE`.
+   ⚠️ `dbops/test-idempotency-prenota-v1` gira **come applicazione**, che non scrive
+   `config.parameters`: per questo oggi dichiara scoperto il ramo `E_CONFIG_MANCANTE`. Come
+   costruire i casi lo sceglie il team DB. Una via: separare la validazione del testo in una
+   funzione pura (testo → intero o errore), provabile con valori costruiti senza toccare il
+   parametro, e lasciare a `fn_idempotency_soglia_secondi` la sola lettura. Il caso «valore
+   valido» si prova comunque sul seed. `test-idempotency-prenota-v1` resta verde senza ritocchi.
+5. **Doc**: il commento (`COMMENT ON FUNCTION`) di `fn_idempotency_prenota` rimanda alla funzione
+   nuova per la soglia; la guida «Le operazioni che non si ripetono» non cambia (descrive il
+   comportamento, che resta uguale).
+
+**Perché in una funzione e non nel backend.** La regola su che cosa è una soglia valida è del
+database, che la applica a ogni prenotazione: il backend la deve **chiedere**, non ricopiare.
+Il controllo all'avvio di gunicorn vale solo se legge la soglia esattamente come la legge la
+prenotazione.
+
+#### I.11.2 Il passo BE, dopo l'apply
+
+* `verifica_soglia_contro_timeout` legge la soglia con `SELECT dbops.fn_idempotency_soglia_secondi()`;
+  un rifiuto della funzione risale come `E_CONFIG_MANCANTE` e ferma l'avvio come oggi.
+* Si ritirano `ParameterService.get_default_int_positivo` e `_INTERO_POSITIVO`, che non hanno altri
+  consumatori; `_default_obbligatorio` torna dentro `get_default_date` (un consumatore solo, regola
+  del 2). Voce del catalogo BB aggiornata nello stesso giro, test di `DefaultIntPositivoTests` spostato
+  sul pgTAP.
 
 ---
 
