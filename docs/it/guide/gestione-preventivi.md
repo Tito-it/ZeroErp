@@ -1,6 +1,6 @@
 # Guida — Gestione Preventivi vendita
 
-> **Ultimo aggiornamento**: 12 ottobre 2026
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -29,6 +29,7 @@
 >
 > **Vedi anche** — guide correlate:
 >
+> * [Il modello del documento di vendita](/guide/modello-documento-di-vendita) — **le regole comuni a tutti i documenti**: nascita, cambio di stato, permesso sul passaggio, emissione, annullo
 > * [Gestione Listini e Pricing v5](/guide/gestione-listini)
 > * [Fatturazione end-to-end](/guide/fatturazione) — il push commessa attiva la pipeline fatturazione
 > * [Documenti e stampe](/guide/documenti-e-stampe) — generazione PDF preventivo
@@ -236,6 +237,8 @@ Vedi [documenti e stampe](/guide/documenti-e-stampe) per i template e il motore.
 ---
 
 ## 3. Ciclo di vita e stati
+
+⭐ Le regole comuni a tutti i documenti — in che stato si nasce, chi cambia lo stato, quale permesso chiede un passaggio, l'emissione, l'annullo — stanno nel [modello del documento di vendita](/guide/modello-documento-di-vendita), che al §10 dice anche a che punto è il preventivo rispetto al modello. Qui ci sono gli stati e i passaggi che sono suoi.
 
 ### 3.1 Stati e transizioni
 

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi dal builder dbops.fn_pgtap_crea_reso (pg_temp.mk_reso ritirata), la bolla di ri-consegna di D da dbops.fn_pgtap_crea_ddt_riconsegna (via indirizzo e causale a mano); nulla della strada del reso resta scritto a mano.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (le due spedizioni di F con p_qta_da_evadere e p_ordine_id; ritirate pg_temp.mk_partita_ordine, mk_ddt_consegnato, mk_partita); il reso (pg_temp.mk_reso) resta scritto a mano (giro 2), la bolla di ri-consegna di D resta del verbo fn_genera_ddt_riconsegna (con causale e indirizzo) e va a CONSEGNATO per la matrice.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
@@ -48,14 +49,6 @@ SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 -- ⛔ rev 2026-10-13: niente app.current_user_id = '1' (in CI l'utente 1 non
 --   esiste): l'operatore e' quello del contesto aperto qui sopra.
 
--- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
--- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
-DO $az$ BEGIN
-    PERFORM dbops.fn_pgtap_concedi_azione(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
-END $az$;
-
 -- ============================================================
 -- Riferimenti + helper
 -- ============================================================
@@ -75,35 +68,8 @@ SELECT
   (SELECT m.istanza_utility_id FROM tmp_mondo m)                         AS istanza_utility_id,
   (SELECT t.id FROM tmp_art t)                                           AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA' AND s.attivo LIMIT 1)      AS sorgente_root_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id,
-  -- Dal 2026-07-18 (step 5b / DL-28) la causale di trasporto e' obbligatoria
-  -- all'emissione del DDT: VENDITA e' l'unica causale fatturabile, quindi
-  -- l'unica che tiene eleggibile al lister di push la bolla di ri-consegna di D.
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id;
-
-CREATE OR REPLACE FUNCTION pg_temp.mk_reso(p_ddt_riga bigint, p_ddt_uid uuid, p_qta numeric, p_tipo bigint)
-RETURNS bigint AS $$
-DECLARE r RECORD; v_reso bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs;
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  VALUES (r.stato_reso_draft_id, r.sorgente_ddt_id, p_ddt_uid, false, jsonb_build_object('test_scope','pgtap_lister'))
-  RETURNING id INTO v_reso;
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-    articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-  SELECT v_reso, 1, dr.id,
-         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id=dr.id LIMIT 1),
-         dr.articolo_id, dr.descrizione, p_qta, dr.uom_operativa_id, dr.factor_to_base, p_tipo, false
-  FROM vendite.ddt_righe dr WHERE dr.id=p_ddt_riga;
-  PERFORM vendite.fn_conferma_reso(v_reso);
-  RETURN v_reso;
-END $$ LANGUAGE plpgsql;
+  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id;
 
 -- Commessa unica per gli AF di test + ROOT source.
 CREATE TEMP TABLE tmp_com AS
@@ -158,13 +124,15 @@ CREATE TEMP TABLE tmp_b AS
 SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('lister B', 'CONSEGNATO',
     (SELECT billing_account_id FROM tmp_refs), p_quantita => 10, p_prezzo => 25,
     p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'CONSEGNATO');
-SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_b), (SELECT ddt_uid FROM tmp_b), 3, (SELECT tipo_credito_id FROM tmp_refs));
+CREATE TEMP TABLE tmp_b_reso AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('lister B', (SELECT ddt_id FROM tmp_b), 3);
 
 CREATE TEMP TABLE tmp_c AS
 SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('lister C', 'CONSEGNATO',
     (SELECT billing_account_id FROM tmp_refs), p_quantita => 10, p_prezzo => 25,
     p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'CONSEGNATO');
-SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_c), (SELECT ddt_uid FROM tmp_c), 3, (SELECT tipo_credito_id FROM tmp_refs));
+CREATE TEMP TABLE tmp_c_reso AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('lister C', (SELECT ddt_id FROM tmp_c), 3);
 
 -- D (caso 8): consegnato + fatturato 10, reso 3 PER RICONSEGNA, ri-spedito.
 CREATE TEMP TABLE tmp_d AS
@@ -172,16 +140,12 @@ SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('lister D', 'CONSEGNATO',
     (SELECT billing_account_id FROM tmp_refs), p_quantita => 10, p_prezzo => 25,
     p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'CONSEGNATO');
 CREATE TEMP TABLE tmp_d_reso AS
-SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_d), (SELECT ddt_uid FROM tmp_d), 3, (SELECT tipo_riconsegna_id FROM tmp_refs)) AS reso_id;
--- ri-spedizione dei 3 (p_righe NULL = copertura residua) -> nuovo DDT
+SELECT * FROM dbops.fn_pgtap_crea_reso('lister D', (SELECT ddt_id FROM tmp_d), 3, 'RESO_PER_RICONSEGNA');
+-- ri-spedizione dei 3 (tutto il reso) -> nuovo DDT, CONSEGNATO per essere
+-- eleggibile al lister; la causale VENDITA (la sola fatturabile) la copia la
+-- madre dalla bolla d'origine.
 CREATE TEMP TABLE tmp_d_ric AS
-SELECT vendite.fn_genera_ddt_riconsegna((SELECT reso_id FROM tmp_d_reso)) AS ddt_id;
--- porta il DDT di ri-consegna a CONSEGNATO (per essere eleggibile al lister)
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-SELECT (SELECT ddt_id FROM tmp_d_ric), (SELECT tipo_ind_con_id FROM tmp_refs), '{"display":"CON"}'::jsonb ON CONFLICT DO NOTHING;
--- Causale obbligatoria all'emissione (guard causale_emissione, 2026-07-18).
-UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_d_ric);
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_d_ric), 'CONSEGNATO');
+SELECT * FROM dbops.fn_pgtap_crea_ddt_riconsegna((SELECT reso_id FROM tmp_d_reso));
 
 -- F (§3d, distribuzione greedy): UNA partita da 10 spezzata in DUE DDT parziali
 -- (6 + 4), entrambi CONSEGNATO ed eleggibili, con reso 5 -> differenza 5.
@@ -204,10 +168,8 @@ SELECT f1.ordine_id, f1.ordine_riga_id, f1.ddt_id AS ddt1_id, f2.ddt_id AS ddt2_
   FROM tmp_f1 f1, tmp_f2 f2;
 
 -- reso 5 sul PRIMO DDT (riga da 6) -> tenuti 5 sulla partita
-SELECT pg_temp.mk_reso(
-  (SELECT ddt_riga_id FROM tmp_f1),
-  (SELECT ddt_uid FROM tmp_f1),
-  5, (SELECT tipo_credito_id FROM tmp_refs));
+CREATE TEMP TABLE tmp_f_reso AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('lister F', (SELECT ddt_id FROM tmp_f1), 5);
 
 -- Nota: lo standalone (ramo ELSE = dr.quantita grezza, invariato) e' gia' coperto
 -- da test-fn-list-ddt-da-pushare-v1 (casi 7-8, "DDT autonomo"): non ripetuto qui.

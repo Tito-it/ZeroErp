@@ -2,10 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-**Riparte: il team DB**, con il punto 3. Il giro BE (sonde, BE-1, BE-2) è fatto il 2026-10-25, da
-committare. Giri 1-4 chiusi
-lato DB il 2026-10-24: `20261024-26` … `-42` applicati da Tid (l'ultimo blocco, `-37` … `-42`, alle 23:50 su
-dbdev e scratch), corsa pgTAP come app **verde** (Tid, 2026-10-24).
+**Riparte: Tid**, col via allo sviluppo del primo giro del piano: **il DDT, col DDT d'acquisto**, con i due pezzi comuni decisi il 2026-10-25 (S-1: il guard sulla colonna di stato; S-2: il verbo di stato comune). Poi il team DB scrive il giro. Guida del modello scritta e approvata da Tid (2026-10-25); fermo dei temi trasversali allentato (scelta C). Il giro BE (sonde, BE-1, BE-2) è committato (`9fbff66d2`, PR #1938). Giri 1-4 chiusi lato DB il 2026-10-24.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -24,12 +21,14 @@ dbdev e scratch), corsa pgTAP come app **verde** (Tid, 2026-10-24).
 | 2-octies-bis | ✅ **Tid** / team BE | BE-1 e BE-2 accettate da Tid e fatte (2026-10-25): il BB delle sonde fallisce sull'oggetto mancante; il runner del lotto tiene il codice del DB | §4-octies | 2-octies |
 | 2-nonies | ✅ team DB / **Tid** | Terzo giro: debiti emersi chiusi, R-1 … R-6 e R-9 (`-29` … `-36`); applicati | §4-septies | 2-sexies-quater |
 | 2-decies | ✅ team DB / **Tid** | Quarto giro: il pezzo comune (nessun cliente in più nei builder) e i builder delle fixture ripetute (`-37` … `-42`); applicati da Tid alle 23:50, corsa come app verde | §4-octies | 2-nonies |
-| 3 | team DB | Il §2, corretto con le decisioni, diventa la guida `docs/it/guide/modello-documento-di-vendita.md`; le guide `gestione-*.md` rimandano lì | §2 | 2 |
-| 4 | team DB + BE | Il piano: ogni documento portato al modello **tutto in una volta**, un documento per giro | §5 | 3 |
-| 5 | Tid | Fine del fermo dei temi trasversali (PROJECT_CONTEXT) | — | 3 |
+| 3 | ✅ team DB | Il §2, corretto con le decisioni, diventa la guida `docs/it/guide/modello-documento-di-vendita.md`; le otto guide dei documenti rimandano lì (2026-10-25) | §6 | 2 |
+| 3-bis | ✅ **Tid** | Rilettura della guida: le sei regole sono scritte come le ha decise (Tid, 2026-10-25: «sì, ok») | §6 | 3 |
+| 4 | team DB + BE | Il piano: ogni documento portato al modello **tutto in una volta**, un documento per giro. ✅ Primo documento (Tid, 2026-10-25): **il DDT, col DDT d'acquisto** — il più vicino al modello; lì nascono i pezzi comuni di S-1 e S-2. S-1 (b) e S-2 (a) decise | §5, §6 | 3-bis |
+| 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare: il giro BE delle sonde, BE-1 e BE-2
-(`dev/backend-tid`) e questo documento. I giri 2-4 lato DB sono committati (`498cc8275`).
+Decisioni aperte di Tid: nessuna; manca solo il via allo sviluppo del giro DDT. Lavoro da committare: la
+guida, i rimandi nelle otto guide, `readme.md`, `mkdocs.yml`, PROJECT_CONTEXT (fermo) e questo documento (`dev/db-tid`). Il
+giro BE è committato (`9fbff66d2`); i giri 2-4 lato DB pure (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -742,3 +741,45 @@ Due regole di Tid, 2026-10-24, che valgono per il piano e per ogni giro:
   annullo), invece di un tema per giro su nove documenti. L'ordine dei documenti si decide col piano.
 * Prima di ricopiare una regola nelle 11 capability o negli 11 guard, si valuta se quella parte può
   vivere in un building block comune che legge la matrice: è la causa strutturale del §1.
+
+---
+
+## 6. Punto 3: la guida del modello (2026-10-25)
+
+**Verifica del giro BE, prima di partire.** Il commit `9fbff66d2` (PR #1938) contiene quello che il
+§4-octies dichiara: le tre sonde sulle firme finali, `richiedi_db_provvisto` che fallisce
+sull'oggetto mancante (BE-1, presidio `test_db_e2e_sonda.py`), il runner del lotto che tiene il
+codice del DB (BE-2), `error_policies_generated.py` rigenerato, la voce del catalogo BB.
+
+**Scritto:**
+
+* la guida [modello-documento-di-vendita](../../guide/modello-documento-di-vendita.md): il §2 di
+  questo brief con le decisioni M-1 … M-6, N-1 … N-3, P-1 … P-3 dentro, in sei regole (nascita,
+  vocabolario e matrice, verbo, permesso sul passaggio, emissione, annullo), gli acquisti (§5) e
+  «come si porta un documento» (§5). La tabella del §3.1 diventa il §10 della guida, «a che punto è
+  ogni documento», **riverificata il 2026-10-25 sulla doc auto-generata** (verbi con e senza
+  `fn_guard_azione`, guard che leggono o no la matrice): nessuna differenza dal censimento del
+  2026-10-21, oltre alla nascita in bozza ora presente ovunque. In più la riga degli acquisti
+  (vocabolario e nascita sì, nessun guard di transizione);
+* le otto guide dei documenti (`gestione-preventivi`, `-ordini`, `-ddt`, `-contratti`,
+  `-offerte-commerciali`, `-commesse`, `fatturazione`, `gestione-listini`): il rimando nell'header e,
+  in testa alla sezione degli stati, una riga che manda alle regole comuni e al §10. Il loro corpo
+  **non** è riscritto: descrive com'è oggi ogni documento, e si riallinea nel giro di quel documento;
+* `fatturazione.md`, regole del modello lotti: R-1 (il lotto fermo non diventa definitivo) mancava
+  dalla guida, c'era solo nella scheda del guard;
+* `readme.md` (regole trasversali ai documenti) e `mkdocs.yml` (nav, accanto a numerazione e IVA).
+
+⚠️ La guida descrive come regola ciò che Tid ha deciso, anche dove i documenti non ci sono ancora
+arrivati: il §10 dice dove. È la condizione del §5 («da lì una proposta che non è nella guida si
+dichiara come revoca»), e differisce dalla norma delle guide («lo stato attuale») in modo
+dichiarato.
+
+**Domande per il piano (punto 4)**, emerse scrivendo la guida; la guida non le decide:
+
+| # | Domanda | Proposta |
+| --- | --- | --- |
+| S-1 | **La porta.** La guida dei permessi (§7.4) dice che il verbo protegge solo se non si aggira, e per i domini nuovi toglie all'app `INSERT`/`UPDATE` sulle tabelle. Una testata di documento però l'app la scrive anche per i campi ordinari (CRUD). Come si chiude la sola colonna di stato? (a) privilegio per colonna; (b) un guard sulla colonna di stato che passa solo se attraversato dal verbo (`script.fn_is_proprietario_tabella`, già previsto dal §7.4 per questo); (c) nessuna porta, il verbo è la strada ma non l'unica | **(b)**: (a) si scontra col loop dei grant di `ci_apply`, che rimette i privilegi di tabella; (c) lascia che un `UPDATE` del backend salti il permesso, cioè il buco che M-1 chiude. Un guard solo, montato su ogni testata come quello della nascita ✅ **Deciso da Tid il 2026-10-25: (b)** |
+| S-2 | **Un verbo per documento, o uno solo?** Il verbo di stato legge matrice e azione dalla riga (M-3): il suo corpo è lo stesso per ogni documento. (a) un BB comune che riceve il documento (la sua sorgente) e lo stato, con i verbi specifici (annulla, conferma, emetti) che lo chiamano; (b) un verbo per documento, come oggi DDT, preventivo e commessa | **(a)**: è la regola del §5 («prima di ricopiare una regola nei guard o nelle capability, un BB comune che legge la matrice») e la causa del §1; i tre verbi di oggi diventano chiamate al BB nel giro del loro documento ✅ **Deciso da Tid il 2026-10-25: (a)** |
+
+✅ Tid, 2026-10-25: guida approvata; fermo allentato (C, in PROJECT_CONTEXT); primo documento il DDT
+col DDT d'acquisto; S-1 (b), S-2 (a). Il giro si scrive col via di Tid.

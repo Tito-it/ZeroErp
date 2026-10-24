@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi A, B, C dal builder dbops.fn_pgtap_crea_reso (C in bozza a due righe, con p_reso_id); restano scritte a mano la riga di C spenta in bozza e la conferma che la segue, che sono il caso del test 9 (per lei resta concessa conferma_reso).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; restano scritti a mano i resi A, B, C (il caso del test, e giro 2).
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_resi_righe_effettive — helper unico «merce tornata indietro»
@@ -49,8 +50,9 @@ SELECT plan(9);
 -- il perimetro e' quello dell'operatore del mondo, aperto qui sopra.
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
--- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
+-- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f).
+-- Il builder del reso la concede per le sue conferme; quella del reso C (test 9)
+-- e' scritta qui, e l'operatore di fixture non ha azioni: si concede qui.
 DO $az$ BEGIN
     PERFORM dbops.fn_pgtap_concedi_azione(
         NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
@@ -88,10 +90,7 @@ SELECT
   --   del database; l'articolo si costruisce (nasce merce, non solo componente:
   --   ordine e bolla lo ammettono — brief-db-articoli-ammessi-per-documento, Lotto 3a).
   (SELECT billing_account_id FROM _m)                                    AS billing_account_id,
-  dbops.fn_pgtap_crea_articolo('PGTAP-RESI-EFFETTIVE', false)           AS articolo_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id;
+  dbops.fn_pgtap_crea_articolo('PGTAP-RESI-EFFETTIVE', false)           AS articolo_id;
 
 -- FIXTURE: ordine (qta 10 a 25, trigger SPEDITO) -> DDT -> CONSEGNATO, dal builder
 CREATE TEMP TABLE tmp_bolla AS
@@ -101,60 +100,39 @@ SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('resi righe effettive',
                   p_prezzo               => 25,
                   p_articolo_id          => (SELECT articolo_id FROM tmp_refs),
                   p_fatturazione_trigger => 'SPEDITO');
-CREATE TEMP TABLE tmp_ddt AS SELECT ddt_id FROM tmp_bolla;
-
-CREATE TEMP TABLE tmp_ddt_riga AS
-SELECT dr.id, dr.articolo_id, dr.descrizione, dr.uom_operativa_id, dr.factor_to_base
-  FROM vendite.ddt_righe dr WHERE dr.id=(SELECT ddt_riga_id FROM tmp_bolla);
 
 -- Reso A: CONFERMATO, riga a credito qta 3 -> deve essere IN vista.
 CREATE TEMP TABLE tmp_reso_a AS
-WITH ins AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id,
-         (SELECT d.uid FROM vendite.ddt d WHERE d.id=(SELECT ddt_id FROM tmp_ddt)),
-         false, jsonb_build_object('test_scope','pgtap_vw_effettive')
-  FROM tmp_refs r RETURNING id)
-SELECT * FROM ins;
-CREATE TEMP TABLE tmp_reso_a_riga AS
-WITH ins AS (
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-    articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-  SELECT (SELECT id FROM tmp_reso_a), 1, dr.id,
-         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id=dr.id LIMIT 1),
-         dr.articolo_id, dr.descrizione, 3, dr.uom_operativa_id, dr.factor_to_base,
-         (SELECT tipo_credito_id FROM tmp_refs), false
-  FROM tmp_ddt_riga dr RETURNING id, ddt_riga_id, ordine_riga_id)
-SELECT * FROM ins;
-SELECT vendite.fn_conferma_reso((SELECT id FROM tmp_reso_a));
+SELECT * FROM dbops.fn_pgtap_crea_reso('resi righe effettive', (SELECT ddt_id FROM tmp_bolla), 3,
+                                       p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_bolla));
 
 -- ============================================================
 -- 4) Riga CONFERMATA + attiva presente, quantita base = 3
 -- ============================================================
 SELECT is(
   (SELECT e.quantita FROM vendite.vw_resi_righe_effettive e
-    WHERE e.resi_riga_id=(SELECT id FROM tmp_reso_a_riga)),
+    WHERE e.resi_riga_id=(SELECT resi_riga_id FROM tmp_reso_a)),
   3::numeric,
   '4) riga reso CONFERMATO+attiva presente, quantita base = 3');
 
 -- 5) ddt_riga_id corretto
 SELECT is(
   (SELECT e.ddt_riga_id FROM vendite.vw_resi_righe_effettive e
-    WHERE e.resi_riga_id=(SELECT id FROM tmp_reso_a_riga)),
-  (SELECT ddt_riga_id FROM tmp_reso_a_riga),
+    WHERE e.resi_riga_id=(SELECT resi_riga_id FROM tmp_reso_a)),
+  (SELECT ddt_riga_id FROM tmp_reso_a),
   '5) espone ddt_riga_id corretto');
 
 -- 6) ordine_riga_id corretto (order-backed)
 SELECT is(
   (SELECT e.ordine_riga_id FROM vendite.vw_resi_righe_effettive e
-    WHERE e.resi_riga_id=(SELECT id FROM tmp_reso_a_riga)),
-  (SELECT ordine_riga_id FROM tmp_reso_a_riga),
+    WHERE e.resi_riga_id=(SELECT resi_riga_id FROM tmp_reso_a)),
+  (SELECT ordine_riga_id FROM tmp_reso_a),
   '6) espone ordine_riga_id corretto');
 
 -- 7) riapre_residuo decodificato dal tipo: credito -> false
 SELECT is(
   (SELECT e.riapre_residuo FROM vendite.vw_resi_righe_effettive e
-    WHERE e.resi_riga_id=(SELECT id FROM tmp_reso_a_riga)),
+    WHERE e.resi_riga_id=(SELECT resi_riga_id FROM tmp_reso_a)),
   false,
   '7) riapre_residuo decodificato dal tipo (credito -> false)');
 
@@ -162,27 +140,13 @@ SELECT is(
 -- 8) Filtro STATO: reso DRAFT -> ASSENTE
 -- ============================================================
 CREATE TEMP TABLE tmp_reso_b AS
-WITH ins AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id,
-         (SELECT d.uid FROM vendite.ddt d WHERE d.id=(SELECT ddt_id FROM tmp_ddt)),
-         false, jsonb_build_object('test_scope','pgtap_vw_effettive')
-  FROM tmp_refs r RETURNING id)
-SELECT * FROM ins;
-CREATE TEMP TABLE tmp_reso_b_riga AS
-WITH ins AS (
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-    articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-  SELECT (SELECT id FROM tmp_reso_b), 1, dr.id,
-         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id=dr.id LIMIT 1),
-         dr.articolo_id, dr.descrizione, 2, dr.uom_operativa_id, dr.factor_to_base,
-         (SELECT tipo_credito_id FROM tmp_refs), false
-  FROM tmp_ddt_riga dr RETURNING id)
-SELECT * FROM ins;
+SELECT * FROM dbops.fn_pgtap_crea_reso('resi righe effettive', (SELECT ddt_id FROM tmp_bolla), 2,
+                                       p_stato_codice_interno => 'DRAFT',
+                                       p_ddt_riga_id          => (SELECT ddt_riga_id FROM tmp_bolla));
 
 SELECT ok(
   NOT EXISTS (SELECT 1 FROM vendite.vw_resi_righe_effettive e
-               WHERE e.resi_riga_id=(SELECT id FROM tmp_reso_b_riga)),
+               WHERE e.resi_riga_id=(SELECT resi_riga_id FROM tmp_reso_b)),
   '8) filtro stato: riga di reso DRAFT assente dalla vista');
 
 -- ============================================================
@@ -198,38 +162,23 @@ SELECT ok(
 --    Totale non-annullati sulla riga DDT = 3(A)+2(B bozza)+1+1(C) = 7 < 10 -> il
 --    guard over-return non blocca l'inserimento di C.
 -- ============================================================
+-- Le due righe in bozza dal builder (la seconda con p_reso_id).
 CREATE TEMP TABLE tmp_reso_c AS
-WITH ins AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id,
-         (SELECT d.uid FROM vendite.ddt d WHERE d.id=(SELECT ddt_id FROM tmp_ddt)),
-         false, jsonb_build_object('test_scope','pgtap_vw_effettive')
-  FROM tmp_refs r RETURNING id)
-SELECT * FROM ins;
-CREATE TEMP TABLE tmp_reso_c_riga AS
-WITH ins AS (
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-    articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-  SELECT (SELECT id FROM tmp_reso_c), 1, dr.id,
-         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id=dr.id LIMIT 1),
-         dr.articolo_id, dr.descrizione, 1, dr.uom_operativa_id, dr.factor_to_base,
-         (SELECT tipo_credito_id FROM tmp_refs), false
-  FROM tmp_ddt_riga dr RETURNING id)
-SELECT * FROM ins;
--- La riga che resta attiva (riga 2), poi la riga 1 spenta in bozza.
-INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-  articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-SELECT (SELECT id FROM tmp_reso_c), 2, dr.id,
-       (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id=dr.id LIMIT 1),
-       dr.articolo_id, dr.descrizione, 1, dr.uom_operativa_id, dr.factor_to_base,
-       (SELECT tipo_credito_id FROM tmp_refs), false
-FROM tmp_ddt_riga dr;
-UPDATE vendite.resi_righe SET attivo = false WHERE id=(SELECT id FROM tmp_reso_c_riga);
-SELECT vendite.fn_conferma_reso((SELECT id FROM tmp_reso_c));
+SELECT * FROM dbops.fn_pgtap_crea_reso('resi righe effettive', (SELECT ddt_id FROM tmp_bolla), 1,
+                                       p_stato_codice_interno => 'DRAFT',
+                                       p_ddt_riga_id          => (SELECT ddt_riga_id FROM tmp_bolla));
+CREATE TEMP TABLE tmp_reso_c_riga2 AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('resi righe effettive', NULL, 1,
+                                       p_stato_codice_interno => 'DRAFT',
+                                       p_ddt_riga_id          => (SELECT ddt_riga_id FROM tmp_bolla),
+                                       p_reso_id              => (SELECT reso_id FROM tmp_reso_c));
+-- Il caso: la riga 1 spenta in bozza, poi la conferma (la riga 2 resta attiva).
+UPDATE vendite.resi_righe SET attivo = false WHERE id=(SELECT resi_riga_id FROM tmp_reso_c);
+SELECT vendite.fn_conferma_reso((SELECT reso_id FROM tmp_reso_c));
 
 SELECT ok(
   NOT EXISTS (SELECT 1 FROM vendite.vw_resi_righe_effettive e
-               WHERE e.resi_riga_id=(SELECT id FROM tmp_reso_c_riga)),
+               WHERE e.resi_riga_id=(SELECT resi_riga_id FROM tmp_reso_c)),
   '9) filtro attivo: riga di reso CONFERMATO ma disattivata assente dalla vista');
 
 SELECT * FROM finish();

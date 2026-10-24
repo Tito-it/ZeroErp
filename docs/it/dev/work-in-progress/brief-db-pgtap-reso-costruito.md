@@ -2,19 +2,21 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-**Riparte: team DB**, col giro 2 del lavoro aperto in
-[brief-db-pgtap-bolla-e-reso-costruiti](../work-done/brief-db-pgtap-bolla-e-reso-costruiti.md): il via di Tid
-(2026-10-25) copriva i due giri, e la forma del builder ha già i default approvati (§3).
+**Riparte: team DB**, col giro D-4 (§7): le fixture ripetute emerse dal porting si fanno qui, non in un brief
+nuovo (Tid, 2026-10-25). Il giro del reso è applicato e verde come app.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ team DB + Tid | Problema, proposta e via (nel brief del giro 1) | §1, §3 | — |
-| 2 | team DB | Censimento fine dei file: quale blocco è la strada del reso, quale è il caso | §4 | 1 |
-| 3 | team DB | Il builder del reso (con la ri-consegna a richiesta), presidio, porting, regressione prima/dopo | §3, §4 | 2 |
-| 4 | **Tid** | Apply e corsa pgTAP come app; archiviazione | — | 3 |
+| 2 | ✅ team DB | Censimento dei 32 file che scrivono un reso a mano | §5.1 | 1 |
+| 3 | ✅ team DB | I due builder, i presidi, il porting di 29 file, regressione prima/dopo senza differenze | §5 | 2 |
+| 4 | ✅ Tid | Apply di `-05`/`-06`, corsa pgTAP come app: verde (2026-10-25) | §5.3 | 3 |
+| 5 | ✅ Tid | D-4: le fixture ripetute si fanno in questo brief | §6 | 3 |
+| 6 | team DB | Giro D-4: censimento fine, builder dove c'è una trappola d'ordine, porting, regressione | §7 | 5 |
+| 7 | **Tid** | Apply del giro D-4, corsa pgTAP come app; archiviazione | — | 6 |
 
-Decisioni aperte di Tid: nessuna (i default del §3 sono approvati; se il censimento ne fa emergere una, si
-scrive qui). Lavoro da committare: questo documento.
+Decisioni aperte di Tid: nessuna. Lavoro da committare: i changeSet `20261025-05`/`-06`, i due presidi, i 29
+pgTAP portati, le due pagine manuali, la guida pgTAP e questo documento.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-25. **A chi:** il team DB; Tid per l'apply.
 > **Origine:** giro 2 di [brief-db-pgtap-bolla-e-reso-costruiti](../work-done/brief-db-pgtap-bolla-e-reso-costruiti.md),
@@ -87,3 +89,88 @@ I quattro agenti del porting del giro 1 hanno descritto la strada del reso file 
   quattro (partite merce chiusura, situazione merce chiusura, partite merce dopo nota di credito, contatore).
 
 Il censimento fine — quale blocco di ogni file è una copia e quale è il caso — è il primo passo (§ «Chi riparte»).
+
+---
+
+## 5. Il giro (fatto, 2026-10-25)
+
+### 5.1 I builder
+
+* `20261025-05` — `dbops.fn_pgtap_crea_reso(etichetta, p_ddt_id, p_quantita, p_tipo_reso_codice DEFAULT
+  'RESO_A_CREDITO', stato DEFAULT 'CONFERMATO', p_ddt_riga_id, p_ordine_riga_id, p_reso_id, p_data)`. La bolla:
+  del test, del reso a cui si aggiunge una riga (`p_reso_id`, finché è in bozza), o una consegnata costruita da
+  `dbops.fn_pgtap_crea_ddt_da_ordine`. La testata porta solo sorgente, uid e data: il resto lo mettono i trigger.
+  La riga: la riga della bolla (o la prima), la riga d'ordine (o la prima del legame, ordinata), quantità
+  operativa (default: metà della riga, arrotondata in su), tipo per codice. La conferma dal verbo, con l'azione
+  `conferma_reso` concessa dal builder all'operatore in sessione. Uno stato abortito si rifiuta (l'annullo è del
+  verbo `vendite.fn_annulla_reso`), come per la bolla.
+* `20261025-06` — `dbops.fn_pgtap_crea_ddt_riconsegna(p_reso_id, stato DEFAULT 'CONSEGNATO', p_resi_riga_id,
+  p_quantita, p_data, p_causale_codice DEFAULT 'VENDITA')` (D-3). Separato dal reso: i test fanno più ri-consegne
+  dallo stesso reso. Il censimento ha mostrato che la madre copia già causale e indirizzi dalla bolla d'origine:
+  quelli che i test riscrivevano a mano erano ridondanti; il builder completa solo i mancanti.
+* Presidi `db/pgtap/dbops/test-fn-pgtap-crea-reso-v1.sql` (11 casi; due provano che quantità oltre il consegnato e
+  bolla non consegnata le ferma il guard vero, non il builder) e `test-fn-pgtap-crea-ddt-riconsegna-v1.sql` (7).
+* Doc: pagine manuali `dbzero/dbops/manual/fn_pgtap_crea_reso.md` e `fn_pgtap_crea_ddt_riconsegna.md`, due righe
+  nella tabella dei builder della guida pgTAP.
+
+### 5.2 Il porting
+
+Censimento (fatto datato, 2026-10-25): 32 pgTAP scrivevano una testata di reso a mano. **29 portati**, 3 lasciati
+interi (`magazzino/test-ddt-trasferimento-v1`, `vendite/test-esecutivi-ba-coppia-v1`,
+`vendite/test-resi-righe-guard-origine-coerente-v1`: il reso è dentro un `throws_*`/`lives_ok` o è la nascita
+della testata stessa). Nessuna attesa e nessun `plan` cambiati.
+
+Resta scritto a mano, dentro i file portati, ciò che è il caso: le conferme e gli annulli che il test misura
+(e lì la concessione di `conferma_reso` resta esplicita), la riga spenta in bozza, il reso senza righe
+(`magazzino/test-reso-carico-v1` 6b), i rientri di magazzino, il legame `resi_righe_riconsegne` scritto a mano,
+le ri-consegne in bozza dal verbo dove la bolla appena generata è ciò che si misura (sei file chiamano ancora
+`vendite.fn_genera_ddt_riconsegna`, tutti per questo motivo o dentro un `throws_ok`).
+
+**Curato**: `vendite/test-resi-rinunce-fondamenta-v1` era rosso in partenza (6 ok su 11, poi un errore): la fixture
+pescava dal database una riga di bolla con capienza e «il primo tipo di reso che riapre il residuo». Sullo scratch
+la riga non c'era e il tipo non era quello per ri-consegna. Ora si costruisce col builder: 11/11.
+
+### 5.3 La prova (fatto datato, 2026-10-25, scratch `zeroerp_ruoli` come owner)
+
+* I 32 file del censimento, prima e dopo, in sequenza: **stesso piano, stessi `ok`, stessi `not ok`** in 31; il 32°
+  è `test-resi-rinunce-fondamenta-v1`, da rotto a verde. I `not ok` di partenza (test di scope, rossi da owner)
+  restano gli stessi.
+* Presidi verdi; `dbops/test-riferimenti-morti-v1` e `dbops/test-security-definer-search-path-v1` verdi col changeSet;
+  guardrail del preambolo e dei changeSet verdi.
+* Tid ha applicato `-05`/`-06` sullo scratch mentre gli agenti provavano: l'ultima regressione è sui builder
+  applicati. Non provato: la corsa come app.
+
+### 5.4 Note sui builder, senza azione
+
+* La concessione di `conferma_reso` fatta dal builder vale per tutta la sessione: un file che dopo conferma o
+  annulla a mano resterebbe verde anche senza la sua concessione. I file che lo fanno la tengono esplicita.
+* Il builder non scrive `storicizza = false` (lo scrivevano le copie a mano): resta il default di tabella, come
+  negli altri builder. Nessun esito cambiato.
+* Segnalati e lasciati (una copia sola, regola del 2): il magazzino del reso alla nascita (un file), la testata
+  senza righe (un caso), la ri-consegna in bozza senza completamenti (è la madre stessa).
+
+---
+
+## 6. Decisione di Tid
+
+**D-4 — le fixture ripetute emerse, fuori dal reso.** Il porting ha trovato altre strade ricopiate che nessun
+builder copre:
+
+| Strada | Dove (fatto datato) |
+| --- | --- |
+| commessa + attività + emissione, con una fattura vera agganciata all'attività | ~6 file (accrediti, rinunce, annulli) |
+| ordine confermato senza bolla (testata + riga + conferma) | ~5 file (chiusure, righe evase) |
+| la fattura scritta a mano sul segmento della bolla | 2 file (chiusure) |
+| la riga aggiunta a mano su una bolla in bozza | 2 file (partite merce, contatore) |
+| la bolla senza ordine consegnata a mano (INSERT, indirizzo, tre UPDATE di stato) | 2 file RLS |
+
+Proposta del team DB: un brief suo. **Decisione di Tid (2026-10-25): no — «nessun altro brief, rimane in
+questo».** Il perimetro del brief si allarga a queste strade: censimento fine, un builder dove c'è una trappola
+d'ordine, le copie ritirate nello stesso giro (§7).
+
+---
+
+## 7. Giro D-4 — le altre fixture ripetute (in corso, 2026-10-25)
+
+Si parte dal censimento fine delle cinque strade del §6: quale blocco è una copia della strada e quale è il caso,
+e dove un builder esistente basta (esteso, non nuovo, come da preferenza di Tid nei giri precedenti).

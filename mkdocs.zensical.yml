@@ -155,6 +155,7 @@ nav:
                             - Configurazione e responsività delle liste: it/guide/configurazione-liste.md
                             - Sistema numerazione generico per codici e documenti: it/guide/numerazione-documenti-e-codici.md
                             - Il risolutore IVA di riga: it/guide/iva-risolutore-di-riga.md
+                            - Il modello del documento di vendita: it/guide/modello-documento-di-vendita.md
                             - Sicurezza di ZeroErp: it/guide/sicurezza.md
                   - Approfondimenti tecnici:
                             - Architettura Permessi e Autorizzazioni: it/guide/architettura-permessi-e-autorizzazioni.md

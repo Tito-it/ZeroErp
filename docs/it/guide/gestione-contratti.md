@@ -1,6 +1,6 @@
 # Guida — Gestione Contratti vendita
 
-> **Ultimo aggiornamento**: 11 ottobre 2026
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -23,6 +23,7 @@
 >
 > **Vedi anche** — guide correlate:
 >
+> * [Il modello del documento di vendita](/guide/modello-documento-di-vendita) — **le regole comuni a tutti i documenti**: nascita, cambio di stato, permesso sul passaggio, emissione, annullo
 > * [Gestione Listini e Pricing v5](/guide/gestione-listini) — cascata promo → contratto → categoria
 > * [Gestione Preventivi](/guide/gestione-preventivi) — proposta puntuale (→ commessa); modello simmetrico
 > * [Fatturazione end-to-end](/guide/fatturazione) — la pipeline a valle del contratto
@@ -161,6 +162,8 @@ contratto**: si possono cambiare i prezzi, non la composizione.
 ---
 
 ## 3. Ciclo di vita e stati
+
+⭐ Le regole comuni a tutti i documenti — in che stato si nasce, chi cambia lo stato, quale permesso chiede un passaggio, l'emissione, l'annullo — stanno nel [modello del documento di vendita](/guide/modello-documento-di-vendita), che al §10 dice anche a che punto è il contratto rispetto al modello. Qui ci sono gli stati e i passaggi che sono suoi.
 
 ### 3.1 Stati e transizioni
 

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi dal builder dbops.fn_pgtap_crea_reso, le ri-spedizioni da dbops.fn_pgtap_crea_ddt_riconsegna (ritirati pg_temp.ric_mk_reso e pg_temp.ric_rispedisci, con indirizzo e causale a mano); nulla della strada del reso resta scritto a mano.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; la bolla di ri-consegna (fn_genera_ddt_riconsegna) tiene indirizzo e causale scritti a mano, gli stati per dbops.fn_pgtap_porta_a_stato; i resi restano a mano (giro 2).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
@@ -43,14 +44,6 @@ SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 -- ⛔ rev 2026-10-13: niente app.current_user_id = '1' (in CI l'utente 1 non
 --   esiste): l'operatore e' quello del contesto aperto qui sopra.
 
--- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
--- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
-DO $az$ BEGIN
-    PERFORM dbops.fn_pgtap_concedi_azione(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
-END $az$;
-
 -- ============================================================
 -- Riferimenti (ogni scelta col suo ORDER BY; l'emittente si DERIVA)
 -- ============================================================
@@ -70,15 +63,10 @@ SELECT
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)             AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                            AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)                        AS iva_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo ORDER BY s.id LIMIT 1)        AS sorgente_ddt_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA'    AND s.attivo ORDER BY s.id LIMIT 1)        AS sorgente_root_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo ORDER BY s.id LIMIT 1)        AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo ORDER BY t.id LIMIT 1) AS tipo_riconsegna_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                           AS tipo_doc_fiscale_id,
   (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_fatt_draft_id,
-  script.fn_pgtap_registro_fattura()                     AS registro_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' ORDER BY c.id LIMIT 1)                        AS causale_vendita_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')                                                   AS tipo_ind_con_id
+  script.fn_pgtap_registro_fattura()                     AS registro_id
 FROM tmp_mondo_ric m;
 
 -- ============================================================
@@ -131,33 +119,6 @@ BEGIN
   RETURN v_riga;
 END $$ LANGUAGE plpgsql;
 
--- Reso PER RI-CONSEGNA: e' il tipo che riapre il residuo, e l'unico che
--- ammette una spedizione di ritorno.
-CREATE OR REPLACE FUNCTION pg_temp.ric_mk_reso(p_ddt_riga bigint, p_ddt_uid uuid, p_qta numeric)
-RETURNS TABLE(reso_id bigint, resi_riga_id bigint) AS $$
-DECLARE r RECORD; v_reso bigint; v_riga bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_ric;
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  VALUES (r.stato_reso_draft_id, r.sorgente_ddt_id, p_ddt_uid, false,
-          jsonb_build_object('test_scope','pgtap_riconsegna_nc'))
-  RETURNING id INTO v_reso;
-
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-      articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base,
-      tipo_reso_id, storicizza)
-  SELECT v_reso, 1, dr.id,
-         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f
-           WHERE f.ddt_riga_id = dr.id ORDER BY f.id LIMIT 1),
-         dr.articolo_id, dr.descrizione, p_qta, dr.uom_operativa_id, dr.factor_to_base,
-         r.tipo_riconsegna_id, false
-    FROM vendite.ddt_righe dr WHERE dr.id = p_ddt_riga
-  RETURNING id INTO v_riga;
-
-  PERFORM vendite.fn_conferma_reso(v_reso);
-  RETURN QUERY SELECT v_reso, v_riga;
-END $$ LANGUAGE plpgsql;
-
 -- ============================================================
 -- FIXTURE: consegnati 10 a 20 euro, fatturati 10, resi 3 per ri-consegna
 --          -> tenuti 7, fatturati 10 -> accredito dovuto 3 (FACOLTATIVA)
@@ -195,8 +156,11 @@ SELECT pg_temp.ric_fattura(
     script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_ric_p)::text, (SELECT ddt_riga_id FROM tmp_ric_p)),
     10, 20) AS fattura_riga_id;
 
+-- Reso PER RI-CONSEGNA: e' il tipo che riapre il residuo, e l'unico che
+-- ammette una spedizione di ritorno.
 CREATE TEMP TABLE tmp_ric_reso AS
-SELECT * FROM pg_temp.ric_mk_reso((SELECT ddt_riga_id FROM tmp_ric_p), (SELECT ddt_uid FROM tmp_ric_p), 3);
+SELECT * FROM dbops.fn_pgtap_crea_reso('riconsegna A', (SELECT ddt_id FROM tmp_ric_p), 3,
+         'RESO_PER_RICONSEGNA');
 
 SELECT is(
   (SELECT q.accredito_dovuto FROM vendite.vw_resi_da_accreditare q
@@ -206,35 +170,9 @@ SELECT is(
 );
 
 -- ============================================================
--- La RI-SPEDIZIONE, come helper: serve due volte, su due partite diverse.
--- ⚠️ La bolla di ri-consegna nasce da fn_genera_ddt_riconsegna, non da un
---    ordine: il builder della bolla da ordine non la fa. Indirizzo e causale a
---    mano; gli stati per la matrice (dbops.fn_pgtap_porta_a_stato parte dallo
---    stato in cui la bolla e' nata).
+-- La RI-SPEDIZIONE (due volte, su due partite diverse): la bolla di
+-- ri-consegna dal builder, 3 pezzi del reso al 1° agosto, CONSEGNATA.
 -- ============================================================
-CREATE OR REPLACE FUNCTION pg_temp.ric_rispedisci(p_reso_id bigint, p_resi_riga_id bigint, p_qta numeric)
-RETURNS TABLE(ddt_riga_id bigint, ddt_uid uuid) AS $$
-DECLARE r RECORD; v_ddt bigint; v_riga bigint; v_uid uuid;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_ric;
-  v_ddt := vendite.fn_genera_ddt_riconsegna(
-      p_reso_id,
-      jsonb_build_array(jsonb_build_object('resi_riga_id', p_resi_riga_id, 'qta', p_qta)),
-      DATE '2026-08-01');
-
-  -- L'indirizzo di consegna serve all'EMISSIONE, non alla creazione.
-  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-  VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id WHERE id = v_ddt;
-
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ddt', v_ddt, 'CONSEGNATO');
-
-  SELECT dr.id, d.uid INTO v_riga, v_uid
-    FROM vendite.ddt_righe dr JOIN vendite.ddt d ON d.id = dr.ddt_id
-   WHERE dr.ddt_id = v_ddt ORDER BY dr.id LIMIT 1;
-  RETURN QUERY SELECT v_riga, v_uid;
-END $$ LANGUAGE plpgsql;
-
 -- ============================================================
 -- CASO A — ri-spedizione SENZA nota di credito.
 -- ⚠️ E' il caso D di test-fn-list-ddt-da-pushare-contatore-v1: la ri-consegna
@@ -242,8 +180,9 @@ END $$ LANGUAGE plpgsql;
 --    regola D-NC-4 a essere sbagliata, non il test.
 -- ============================================================
 CREATE TEMP TABLE tmp_ric_r2 AS
-SELECT * FROM pg_temp.ric_rispedisci(
-    (SELECT reso_id FROM tmp_ric_reso), (SELECT resi_riga_id FROM tmp_ric_reso), 3);
+SELECT * FROM dbops.fn_pgtap_crea_ddt_riconsegna((SELECT reso_id FROM tmp_ric_reso),
+         p_resi_riga_id => (SELECT resi_riga_id FROM tmp_ric_reso), p_quantita => 3,
+         p_data => DATE '2026-08-01');
 
 SELECT is(
   (SELECT COALESCE(p.differenza::text, 'NULL') || '|' || p.stato || '|' || p.riconsegna_quota_nuova::text
@@ -280,14 +219,16 @@ SELECT pg_temp.ric_fattura(
     10, 20) AS fattura_riga_id;
 
 CREATE TEMP TABLE tmp_ric_reso_b AS
-SELECT * FROM pg_temp.ric_mk_reso((SELECT ddt_riga_id FROM tmp_ric_pb), (SELECT ddt_uid FROM tmp_ric_pb), 3);
+SELECT * FROM dbops.fn_pgtap_crea_reso('riconsegna B', (SELECT ddt_id FROM tmp_ric_pb), 3,
+         'RESO_PER_RICONSEGNA');
 
 SELECT vendite.fn_accredita_riga_reso((SELECT resi_riga_id FROM tmp_ric_reso_b));
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com_ric), true, false);
 
 CREATE TEMP TABLE tmp_ric_r2b AS
-SELECT * FROM pg_temp.ric_rispedisci(
-    (SELECT reso_id FROM tmp_ric_reso_b), (SELECT resi_riga_id FROM tmp_ric_reso_b), 3);
+SELECT * FROM dbops.fn_pgtap_crea_ddt_riconsegna((SELECT reso_id FROM tmp_ric_reso_b),
+         p_resi_riga_id => (SELECT resi_riga_id FROM tmp_ric_reso_b), p_quantita => 3,
+         p_data => DATE '2026-08-01');
 
 SELECT is(
   (SELECT p.riconsegna_quota_nuova FROM vendite.vw_partite_merce p

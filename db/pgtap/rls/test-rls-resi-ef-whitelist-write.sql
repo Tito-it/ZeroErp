@@ -47,6 +47,7 @@
 --
 -- Perimetro: questo file collauda la scrittura sulla TESTATA. I satelliti
 -- (`resi_righe` e le tre figlie) stanno in test-rls-resi-satelliti.sql.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso, in bozza (nasce con una riga, che il test non legge); restano le policy esercitate a mano, che sono il caso.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -126,18 +127,13 @@ BEGIN
 END
 $consegna$;
 
+-- Il reso in bozza dal builder: destinatario ed emittente li deriva il
+-- normalize dalla bolla. La riga che il builder gli da' non pesa: il test
+-- collauda la testata.
 CREATE TEMP TABLE _reso AS
-WITH x AS (
-    INSERT INTO vendite.resi
-        (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid,
-         destinatario_soggetto_ruolo_id, emittente_fiscale_id)
-    SELECT (SELECT id FROM config.stati_doc_reso WHERE codice_interno='DRAFT'),
-           (SELECT id FROM config.sorgenti WHERE codice_interno='DDT_VENDITA'),
-           d.uid, d.destinatario_soggetto_ruolo_id, d.emittente_fiscale_id
-      FROM _ddt d
-    RETURNING id
-)
-SELECT id AS reso_id FROM x;
+SELECT b.reso_id
+  FROM dbops.fn_pgtap_crea_reso('RLS resi write', (SELECT id FROM _ddt), 1,
+                                p_stato_codice_interno => 'DRAFT') b;
 
 -- ⛔ Guard sul RISULTATO: se la fixture non si e' costruita il file deve
 --   diventare ROSSO qui, non passare tre asserzioni a vuoto piu' in giu'.

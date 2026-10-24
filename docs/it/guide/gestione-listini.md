@@ -1,6 +1,6 @@
 # Guida — Gestione Listini e Pricing
 
-> **Ultimo aggiornamento**: 14 ottobre 2026
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA
 >
@@ -23,6 +23,7 @@
 >
 > **Vedi anche** — guide correlate:
 >
+> * [Il modello del documento di vendita](/guide/modello-documento-di-vendita) — **le regole comuni a tutti i documenti**: nascita, cambio di stato, permesso sul passaggio, emissione, annullo
 > * [Gestione Preventivi](/guide/gestione-preventivi) — dove il prezzo viene sovrascritto (L1/L2/L3)
 > * [Gestione Commesse](/guide/gestione-commesse) — dove lo snapshot pricing vive
 > * [Fatturazione](/guide/fatturazione) — la propagazione dello snapshot alle righe fatturabili

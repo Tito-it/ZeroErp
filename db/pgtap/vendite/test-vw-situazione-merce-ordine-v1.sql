@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso, la ri-consegna da dbops.fn_pgtap_crea_ddt_riconsegna (tutto il reso, consegnata); l'azione conferma_reso la concede il builder.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (le spedizioni parziali con p_qta_da_evadere e p_ordine_id); restano a mano gli ordini SENZA bolla (A, G, H: il caso del 4/5/12/13), la bolla di ri-consegna (indirizzo e causale; gli stati per dbops.fn_pgtap_porta_a_stato) e il reso (giro 2).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
@@ -102,14 +103,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_
 
 SELECT plan(17);
 
--- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
--- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
-DO $az$ BEGIN
-    PERFORM dbops.fn_pgtap_concedi_azione(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
-END $az$;
-
 -- ============================================================
 -- 1-3) Struttura
 -- ============================================================
@@ -150,13 +143,8 @@ SELECT
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)               AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   (SELECT emittente_fiscale_id FROM _m)                                  AS emittente_fiscale_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo LIMIT 1)        AS sorgente_root_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1)       AS causale_vendita_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')      AS tipo_ind_con_id;
+  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id;
 
 -- Helper: crea l'ordine confermato (una riga da p_qta) SENZA bolla e ritorna
 -- gli id: serve alle righe mai spedite (A, H). Le bolle vengono dal builder.
@@ -252,22 +240,11 @@ CREATE TEMP TABLE tmp_d AS
 SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('situazione D',
          p_billing_account_id => (SELECT billing_account_id FROM tmp_refs), p_quantita => 10,
          p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'SPEDITO');
--- La bolla e' quella di tmp_d (il builder torna ordine e bolla insieme).
-CREATE TEMP TABLE tmp_d_ddt AS SELECT ddt_id, ddt_uid, ddt_riga_id FROM tmp_d;
+-- Il reso per ri-consegna di 3, confermato, sulla bolla di tmp_d: dal builder.
 CREATE TEMP TABLE tmp_d_reso AS
-WITH t AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id, (SELECT ddt_uid FROM tmp_d_ddt), false,
-         jsonb_build_object('test_scope','pgtap_situazione_ordine')
-  FROM tmp_refs r RETURNING id
-) SELECT id AS reso_id FROM t;
-INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-  articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-SELECT (SELECT reso_id FROM tmp_d_reso), 1, dr.id, (SELECT ordine_riga_id FROM tmp_d),
-       dr.articolo_id, dr.descrizione, 3, dr.uom_operativa_id, dr.factor_to_base,
-       (SELECT tipo_riconsegna_id FROM tmp_refs), false
-FROM vendite.ddt_righe dr WHERE dr.id = (SELECT ddt_riga_id FROM tmp_d_ddt);
-SELECT vendite.fn_conferma_reso((SELECT reso_id FROM tmp_d_reso));
+SELECT * FROM dbops.fn_pgtap_crea_reso('situazione D', (SELECT ddt_id FROM tmp_d), 3, 'RESO_PER_RICONSEGNA',
+         p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_d),
+         p_ordine_riga_id => (SELECT ordine_riga_id FROM tmp_d));
 
 SELECT results_eq(
   $q$SELECT ordinato, consegnato, da_spedire FROM vendite.vw_situazione_merce_ordine
@@ -279,16 +256,9 @@ SELECT results_eq(
 -- E) La RI-CONSEGNA emessa — test 9
 --    I 3 pezzi rispediti tornano nel consegnato dell'ORIGINE, non aprono una
 --    partita nuova, e il residuo si chiude.
---    ⚠️ La bolla di ri-consegna nasce dal reso, non da un ordine: indirizzo e
---    causale a mano, gli stati per la matrice.
 -- ============================================================
 CREATE TEMP TABLE tmp_e AS
-SELECT vendite.fn_genera_ddt_riconsegna((SELECT reso_id FROM tmp_d_reso)) AS ddt_id;
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-SELECT (SELECT ddt_id FROM tmp_e), (SELECT tipo_ind_con_id FROM tmp_refs),
-       '{"display":"CON"}'::jsonb ON CONFLICT DO NOTHING;
-UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_e);
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_e), 'CONSEGNATO');
+SELECT * FROM dbops.fn_pgtap_crea_ddt_riconsegna((SELECT reso_id FROM tmp_d_reso));
 
 SELECT results_eq(
   $q$SELECT partite_merce, consegnato, da_spedire FROM vendite.vw_situazione_merce_ordine

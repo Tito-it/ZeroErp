@@ -1,6 +1,6 @@
 # Guida — Gestione DDT di vendita
 
-> **Ultimo aggiornamento**: 12 ottobre 2026
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali/logistici,
 > sviluppatori backend/frontend, DBA.
@@ -33,6 +33,7 @@
 >
 > **Vedi anche** — guide correlate:
 >
+> * [Il modello del documento di vendita](/guide/modello-documento-di-vendita) — **le regole comuni a tutti i documenti**: nascita, cambio di stato, permesso sul passaggio, emissione, annullo
 > * [Gestione Ordini](/guide/gestione-ordini) — la sorgente del DDT (evasione)
 > * [Gestione Commesse](/guide/gestione-commesse) — la destinazione del push
 > * [Fatturazione end-to-end](/guide/fatturazione) — il push a commessa avvia la pipeline
@@ -211,6 +212,8 @@ comportamento di preventivi, ordini, offerte e contratti.
 ---
 
 ## 4. Ciclo di vita e stati
+
+⭐ Le regole comuni a tutti i documenti — in che stato si nasce, chi cambia lo stato, quale permesso chiede un passaggio, l'emissione, l'annullo — stanno nel [modello del documento di vendita](/guide/modello-documento-di-vendita), che al §10 dice anche a che punto è il DDT (e il reso) rispetto al modello. Qui ci sono gli stati e i passaggi che sono suoi.
 
 ### 4.1 Stati
 

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi dal builder dbops.fn_pgtap_crea_reso (pg_temp.mk_reso ritirata); resta la chiamata diretta al verbo fn_genera_ddt_riconsegna del 4 (la generazione e' il caso: la bolla resta in bozza).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (pg_temp.mk_partita ritirata); il reso (pg_temp.mk_reso) e la fatturazione restano scritti a mano (giro 2, e il caso del test).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente (RESO_VENDITA).
@@ -55,14 +56,6 @@ SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP backlog resi');
 CREATE TEMP TABLE tmp_art AS
 SELECT dbops.fn_pgtap_crea_articolo('PGT-BLR-V1', false) AS id;
 
--- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
--- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
-DO $az$ BEGIN
-    PERFORM dbops.fn_pgtap_concedi_azione(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
-END $az$;
-
 -- ============================================================
 -- Riferimenti + helper (fixture consolidata della slice)
 -- ============================================================
@@ -75,31 +68,8 @@ SELECT
   (SELECT m.istanza_utility_id FROM tmp_mondo m)                         AS istanza_utility_id,
   (SELECT t.id FROM tmp_art t)                                           AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo LIMIT 1)        AS sorgente_root_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id;
-
--- Ritorna il RESO creato (qui serve la testata: la grana backlog e' reso x motivo).
-CREATE OR REPLACE FUNCTION pg_temp.mk_reso(p_ddt_riga bigint, p_ddt_uid uuid, p_qta numeric, p_tipo bigint)
-RETURNS bigint AS $$
-DECLARE r RECORD; v_reso bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs;
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  VALUES (r.stato_reso_draft_id, r.sorgente_ddt_id, p_ddt_uid, false, jsonb_build_object('test_scope','pgtap_backlog_resi'))
-  RETURNING id INTO v_reso;
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-    articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-  SELECT v_reso, 1, dr.id,
-         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id=dr.id LIMIT 1),
-         dr.articolo_id, dr.descrizione, p_qta, dr.uom_operativa_id, dr.factor_to_base, p_tipo, false
-  FROM vendite.ddt_righe dr WHERE dr.id=p_ddt_riga;
-  PERFORM vendite.fn_conferma_reso(v_reso);
-  RETURN v_reso;
-END $$ LANGUAGE plpgsql;
 
 -- Commessa + AF per la partita "fatturata" (caso 5-6)
 CREATE TEMP TABLE tmp_com AS
@@ -152,9 +122,10 @@ CREATE TEMP TABLE tmp_a AS
 SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('backlog resi A', 'CONSEGNATO',
     (SELECT billing_account_id FROM tmp_refs), p_quantita => 10, p_prezzo => 25,
     p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'CONSEGNATO');
+-- La grana del backlog e' reso x motivo: si legge la testata (reso_id).
 CREATE TEMP TABLE tmp_a_reso AS
-SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_a), (SELECT ddt_uid FROM tmp_a), 3,
-                       (SELECT tipo_riconsegna_id FROM tmp_refs)) AS reso_id;
+SELECT * FROM dbops.fn_pgtap_crea_reso('backlog resi A', (SELECT ddt_id FROM tmp_a), 3,
+         'RESO_PER_RICONSEGNA');
 
 CREATE TEMP TABLE tmp_b AS
 SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('backlog resi B', 'CONSEGNATO',
@@ -164,8 +135,7 @@ SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM t
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));
 CREATE TEMP TABLE tmp_b_reso AS
-SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_b), (SELECT ddt_uid FROM tmp_b), 3,
-                       (SELECT tipo_credito_id FROM tmp_refs)) AS reso_id;
+SELECT * FROM dbops.fn_pgtap_crea_reso('backlog resi B', (SELECT ddt_id FROM tmp_b), 3);
 
 -- ============================================================
 -- ASSERZIONI

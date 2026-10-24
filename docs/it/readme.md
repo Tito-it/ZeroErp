@@ -240,7 +240,9 @@ sono le sue trappole. **44 guide**, raggruppate per area:
   [commesse](./guide/gestione-commesse.md) · [listini](./guide/gestione-listini.md)
 - **Regole trasversali ai documenti** — [numerazione: come nasce un numero o un
   codice](./guide/numerazione-documenti-e-codici.md) ·
-  [il risolutore IVA di riga](./guide/iva-risolutore-di-riga.md) — ⭐ **meccanismi
+  [il risolutore IVA di riga](./guide/iva-risolutore-di-riga.md) ·
+  [il modello del documento di vendita: nascita, stati, permesso, emissione,
+  annullo](./guide/modello-documento-di-vendita.md) — ⭐ **meccanismi
   unici** condivisi da tutta la famiglia vendite (e domani dagli acquisti): le
   guide dei singoli documenti ci **rimandano** invece di rispiegarli, così non
   nascono tre versioni della stessa regola

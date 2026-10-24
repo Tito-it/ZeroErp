@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso in bozza dal builder dbops.fn_pgtap_crea_reso; restano scritti a mano la conferma e l'annullo fn_annulla_reso, che sono i passi dei test 7 e 8 (per loro resta concessa conferma_reso).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (CONSEGNATO, EMESSO; ANNULLATO = EMESSO + il verbo vendite.fn_annulla_ddt, che resta perche' l'annullo con legami passa da li'); il reso resta scritto a mano (giro 2).
 -- pgTAP test per Zero ERP
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
@@ -71,7 +72,8 @@ SELECT plan(13);
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
 -- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
+-- qui sono i passi dei test 7 e 8, e l'operatore di fixture non ha azioni: si
+-- concede qui.
 DO $az$ BEGIN
     PERFORM dbops.fn_pgtap_concedi_azione(
         NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
@@ -86,8 +88,6 @@ SELECT
   --   (merce, non gestito: il test non misura il magazzino).
   (SELECT billing_account_id FROM _m)                                    AS billing_account_id,
   dbops.fn_pgtap_crea_articolo('PGTAP-STATO-SORG', false)                AS articolo_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)  AS sorgente_ddt_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='RESO_VENDITA' AND s.attivo LIMIT 1) AS sorgente_reso_id;
 
@@ -118,22 +118,12 @@ SELECT vendite.fn_annulla_ddt(a.ddt_id,
          (SELECT count(*)::integer FROM vendite.fn_documento_legami('DDT_VENDITA', a.ddt_id) l))
   FROM tmp_ann a;
 
--- Reso in DRAFT sul DDT consegnato (il guard pretende il DDT CONSEGNATO)
+-- Reso a credito di 3 in DRAFT sul DDT consegnato (il guard pretende il DDT
+-- CONSEGNATO): conferma e annullo sono i passi dei test 7 e 8.
 CREATE TEMP TABLE tmp_reso AS
-WITH ins AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id, (SELECT ddt_uid FROM tmp_cons), false,
-         jsonb_build_object('test_scope','pgtap_stato_sorgente')
-  FROM tmp_refs r RETURNING id)
-SELECT * FROM ins;
-
-INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-  articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-SELECT (SELECT id FROM tmp_reso), 1, dr.id,
-       (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id=dr.id LIMIT 1),
-       dr.articolo_id, dr.descrizione, 3, dr.uom_operativa_id, dr.factor_to_base,
-       (SELECT tipo_credito_id FROM tmp_refs), false
-FROM vendite.ddt_righe dr WHERE dr.id=(SELECT ddt_riga_id FROM tmp_cons);
+SELECT * FROM dbops.fn_pgtap_crea_reso('stato sorgente', (SELECT ddt_id FROM tmp_cons), 3,
+                                       p_stato_codice_interno => 'DRAFT',
+                                       p_ddt_riga_id          => (SELECT ddt_riga_id FROM tmp_cons));
 
 -- ============================================================
 -- ASSERZIONI
@@ -177,24 +167,24 @@ SELECT is(
 SELECT is(
   (SELECT (v.esito, v.terminale) FROM script.vw_stato_sorgente v
     WHERE v.sorgente_tipo_id=(SELECT sorgente_reso_id FROM tmp_refs)
-      AND v.sorgente_uid=(SELECT id FROM tmp_reso)::text),
+      AND v.sorgente_uid=(SELECT reso_id FROM tmp_reso)::text),
   (NULL::text, false), '6) ramo RESO: reso DRAFT (fase APERTO) -> esito NULL / non terminale');
 
 -- 7) conferma -> CONFERMATO ha fase CHIUSO (correzione catalogo 2026-07-18):
 --    il reso confermato E' concluso -> POSITIVO / terminale
-SELECT vendite.fn_conferma_reso((SELECT id FROM tmp_reso));
+SELECT vendite.fn_conferma_reso((SELECT reso_id FROM tmp_reso));
 SELECT is(
   (SELECT (v.esito, v.terminale) FROM script.vw_stato_sorgente v
     WHERE v.sorgente_tipo_id=(SELECT sorgente_reso_id FROM tmp_refs)
-      AND v.sorgente_uid=(SELECT id FROM tmp_reso)::text),
+      AND v.sorgente_uid=(SELECT reso_id FROM tmp_reso)::text),
   ('POSITIVO'::text, true), '7) reso CONFERMATO (fase CHIUSO da correzione catalogo) -> POSITIVO / terminale');
 
 -- 8) annullo (storno guardato, ammesso da CONFERMATO senza ri-consegne)
-SELECT vendite.fn_annulla_reso((SELECT id FROM tmp_reso));
+SELECT vendite.fn_annulla_reso((SELECT reso_id FROM tmp_reso));
 SELECT is(
   (SELECT (v.esito, v.terminale) FROM script.vw_stato_sorgente v
     WHERE v.sorgente_tipo_id=(SELECT sorgente_reso_id FROM tmp_refs)
-      AND v.sorgente_uid=(SELECT id FROM tmp_reso)::text),
+      AND v.sorgente_uid=(SELECT reso_id FROM tmp_reso)::text),
   ('NEGATIVO'::text, true), '8) reso ANNULLATO (is_abortito) -> NEGATIVO / terminale');
 
 -- 9) unicita' della chiave sui due rami nuovi

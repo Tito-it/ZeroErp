@@ -1,0 +1,250 @@
+# Guida — Il modello del documento di vendita
+
+> **Ultimo aggiornamento**: 25 ottobre 2026
+>
+> **Destinatari**: chi lavora su un documento di vendita o d'acquisto — sviluppatori database,
+> backend, frontend e analisti funzionali. Prima di cambiare come un documento nasce, cambia stato,
+> si emette o si annulla, si legge qui.
+>
+> **Vedi anche** — schemi DB:
+>
+> * [config.azioni_processo](/dbzero/config/tabelle/azioni_processo) — il catalogo delle azioni di processo, quelle che si concedono a un profilo
+> * [config.transizioni_stati_ordini](/dbzero/config/tabelle/transizioni_stati_ordini) — una matrice dei passaggi presa ad esempio: le altre hanno la stessa forma
+>
+> **Vedi anche** — funzioni e trigger DB:
+>
+> * [script.trgfn_doc_stato_iniziale](/dbzero/script/funzioni/trgfn_doc_stato_iniziale) — un documento nasce nel suo stato iniziale
+> * [script.fn_stato_iniziale_id](/dbzero/script/funzioni/fn_stato_iniziale_id) — l'unico lettore dello stato iniziale di un vocabolario
+> * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) — il permesso dentro il verbo
+> * [script.fn_check_azione_processo](/dbzero/script/funzioni/fn_check_azione_processo) — la regola del permesso, la stessa per DB e backend
+> * [vendite.trgfn_doc_guard_annullo_con_legami](/dbzero/vendite/funzioni/trgfn_doc_guard_annullo_con_legami) — l'annullo di un documento con legami si conferma
+>
+> **Vedi anche** — guide correlate:
+>
+> * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) — §7.4, «una scrittura = un verbo»: il modello generale di cui questo è il caso dei documenti
+> * [Numerazione dei documenti e codici](/guide/numerazione-documenti-e-codici) — come nasce il numero all'emissione
+> * [Documenti e Stampe](/guide/documenti-e-stampe) — come nasce il PDF all'emissione
+> * Le guide dei singoli documenti: [preventivi](/guide/gestione-preventivi) · [offerte](/guide/gestione-offerte-commerciali) · [contratti](/guide/gestione-contratti) · [ordini](/guide/gestione-ordini) · [DDT e resi](/guide/gestione-ddt) · [commesse](/guide/gestione-commesse) · [fatturazione](/guide/fatturazione) · [listini](/guide/gestione-listini)
+
+---
+
+## 1. A cosa serve questa guida
+
+Preventivo, offerta, contratto, ordine, DDT, reso, commessa, fattura e versione di listino sono
+documenti diversi, ma fanno le stesse cose: **nascono**, **cambiano stato**, a un certo punto si
+**emettono** e qualche volta si **annullano**. Ognuna di queste cose ha **una regola sola**, che vale
+per tutti, e questa guida è il posto in cui è scritta.
+
+Le guide dei singoli documenti descrivono ciò che è **loro**: quali stati hanno, quali passaggi, che
+cosa controlla l'emissione di quel documento. Per le regole comuni **rimandano qui**, e non ne
+scrivono una versione locale: nove spiegazioni della stessa regola diventano, col tempo, nove regole.
+
+⭐ **Una proposta che non sta in questa guida, o la contraddice, si dichiara come cambio del modello**
+(e, se ne toglie una regola, come revoca): non si applica a un documento solo.
+
+Il modello vale **anche per gli acquisti** (ordine e DDT d'acquisto): §9.
+
+---
+
+## 2. Le regole, in una tabella
+
+| # | La regola | In una riga |
+| --- | --- | --- |
+| 1 | **Si nasce nello stato iniziale** | Un documento nuovo è in bozza; ogni altro stato si raggiunge coi passaggi (§3) |
+| 2 | **Stati e passaggi stanno in tabella** | Il vocabolario degli stati e la matrice dei passaggi ammessi sono dati, non codice (§4) |
+| 3 | **Ogni cambio di stato passa da un verbo** | Una funzione del database per cambiare lo stato, che controlla anche il permesso (§5) |
+| 4 | **Il permesso sta sul passaggio** | La riga della matrice dice quale azione chiede quel passaggio; un'azione per documento, sui passaggi pesanti (§6) |
+| 5 | **Si emette solo da «Emetti»** | Numero e PDF nascono insieme, nella stessa operazione (§7) |
+| 6 | **Un annullo che riapre altro si conferma** | Chi annulla vede che cosa si riapre e conferma (§8) |
+
+Non tutti i documenti seguono già tutte le regole: dove è arrivato ciascuno lo dice il §10.
+
+---
+
+## 3. Nascere: lo stato iniziale
+
+Un documento nuovo nasce **nel suo stato iniziale** (la bozza) e in nessun altro. Gli altri stati si
+raggiungono con i passaggi del documento — emetti, conferma, accetta… — che sono il posto dove stanno
+le condizioni: righe presenti, indirizzi, causale, e così via. Un documento che nascesse già avanti
+le salterebbe tutte: una bolla nata emessa è numerata e vuota, e dopo le righe non si aggiungono più.
+
+* **Quale sia lo stato iniziale lo dice il vocabolario**, con la colonna `iniziale`: uno stato solo
+  per vocabolario, ed è attivo. Nessuno scrive `'DRAFT'` o `'BOZZA'` nel codice per dire «lo stato
+  in cui si nasce»: lo legge [`script.fn_stato_iniziale_id`](/dbzero/script/funzioni/fn_stato_iniziale_id).
+* **Se chi crea non dice lo stato, il database mette l'iniziale**; se dice l'iniziale, passa; se dice
+  un altro stato, l'errore è `E_DOC_STATO_INIZIALE_NON_VALIDO`. È un errore tecnico: nessuna maschera
+  crea un documento già avanti, lo commette solo chi scrive il codice.
+* **Chi ha bisogno di un documento già avanti** (un passaggio da un altro documento, un import, una
+  fixture di test) lo crea in bozza e lo porta avanti coi passaggi, nella stessa transazione.
+* Le API di creazione non accettano lo stato dal client, e i service non lo scrivono.
+
+Il trigger è uno solo,
+[`script.trgfn_doc_stato_iniziale`](/dbzero/script/funzioni/trgfn_doc_stato_iniziale), montato su
+ogni testata che ha un vocabolario degli stati: la sua scheda dice dove e perché è il primo a
+scattare.
+
+---
+
+## 4. Stati e passaggi: il vocabolario e la matrice
+
+Ogni documento ha due tabelle di configurazione:
+
+* il **vocabolario degli stati** (`config.stati_doc_*`): quali stati esistono, e per ognuno se è
+  quello iniziale, se è terminale, se è un annullo;
+* la **matrice dei passaggi** (`config.transizioni_stati_*`): **una riga = un passaggio ammesso**,
+  da uno stato a un altro.
+
+La matrice è **l'unica fonte** dei passaggi, e la leggono tutti:
+
+| Chi la legge | Per fare che cosa |
+| --- | --- |
+| il **guard di transizione** del documento (un trigger) | rifiuta ogni cambio di stato che non è nella matrice, da qualunque strada arrivi |
+| la **funzione di capability** del documento | dice quali azioni sono disponibili e perché le altre sono spente |
+| il **frontend**, attraverso le capability | disegna i bottoni: il `meta` della riga porta la chiave dell'azione, l'etichetta, se chiede conferma, se il passaggio è manuale o di un processo |
+
+⛔ Un passaggio scritto nel codice (un `IF` nel trigger, un elenco di stati in Python) è una seconda
+matrice: prima o poi le due rispondono in modo diverso. I passaggi si aggiungono, si tolgono e si
+spengono **nella tabella**.
+
+---
+
+## 5. Chi cambia lo stato: il verbo
+
+**Ogni cambio di stato di un documento passa da un verbo**: una funzione del database che cambia lo
+stato e, nella sua prima riga, controlla il permesso. È il modello generale
+«una scrittura = un verbo» della
+[guida dei permessi](/guide/architettura-permessi-e-autorizzazioni) (§7.4), applicato allo stato dei
+documenti.
+
+* Il verbo **non decide** quali passaggi sono ammessi: lo dice la matrice, e lo fa rispettare il
+  guard di transizione.
+* Il verbo **non decide** quale permesso serve: lo legge dalla riga del passaggio (§6).
+* I verbi specifici (annulla, conferma…) **non scrivono lo stato da sé**: fanno il loro lavoro
+  (ritirare i legami, scrivere il magazzino…) e poi chiamano il verbo di stato del documento.
+* Il backend chiama il verbo; non cambia lo stato con un `UPDATE`.
+
+---
+
+## 6. Chi può: il permesso sul passaggio
+
+Le operazioni ordinarie su un documento (crearlo, modificarlo) chiedono il **livello** sull'area del
+documento. Le operazioni di **processo** chiedono un'**azione di processo**, cioè un permesso con un
+nome, che si concede a un profilo ([`config.azioni_processo`](/dbzero/config/tabelle/azioni_processo)).
+
+**L'azione si dichiara sulla riga del passaggio, nella matrice.** Una riga senza azione chiede solo il
+permesso sul documento. La stessa riga la leggono tre punti, e nessuno dei tre decide da sé:
+
+| Chi | Che cosa fa con l'azione della riga |
+| --- | --- |
+| il **verbo** | la controlla ([`script.fn_guard_azione`](/dbzero/script/funzioni/fn_guard_azione)) e rifiuta con `E_PERMESSO_NEGATO` |
+| il **backend** | risponde 403 subito, prima di aprire la transazione, con le stesse funzioni del database: chiede, non decide una seconda volta |
+| le **capability** | nascondono il bottone a chi non ha l'azione |
+
+Un punto unico è ciò che rende i permessi **configurabili**: un'azione scritta nel corpo di un verbo,
+o nel codice di una view, non la cambia nessuno senza un rilascio.
+
+**Quante azioni per documento: una, sui passaggi pesanti.** Ogni documento ha **un'azione** per i
+passaggi che pesano — l'emissione e l'annullo di un documento emesso: chi può farlo può anche
+disfarlo. Gli altri passaggi (spedito, accettato, rifiutato…) chiedono solo il permesso sul
+documento. Nessun documento fa eccezione. Separare un giorno l'annullo dall'emissione è un cambio di
+riga nella matrice, non un lavoro sul codice.
+
+---
+
+## 7. L'emissione
+
+**Un documento che si stampa si emette solo da «Emetti»** (la rotta `/emetti/` del backend): numero e
+PDF nascono **insieme**, nella stessa transazione. Nessun'altra strada — un cambio di stato generico,
+una conferma, un passaggio da un altro documento — porta un documento che si stampa nello stato
+emesso.
+
+* Il **numero** lo assegna il database, al passaggio allo stato emesso: il meccanismo è quello della
+  [guida della numerazione](/guide/numerazione-documenti-e-codici).
+* Il **PDF** lo genera il modulo documenti, col modello di stampa del documento: [guida](/guide/documenti-e-stampe).
+* Le **condizioni** per uscire dalla bozza (righe, indirizzi, causale…) stanno sul passaggio, nel
+  guard del documento: sono sue, e le descrive la sua guida.
+
+I documenti che non si stampano hanno il loro passaggio al posto dell'emissione: la commessa nasce
+dalla push dei documenti a monte, la fattura segue gli step della pipeline di fatturazione.
+
+---
+
+## 8. L'annullo
+
+Ogni documento ha un **verbo d'annullo**. Annullare un documento che ha consumato qualcosa di un
+altro — la bolla che ha evaso un ordine, l'ordine nato da un preventivo — restituisce ciò che aveva
+consumato: per questo non avviene in silenzio.
+
+* Entrare in uno stato di annullo con dei legami è rifiutato con `E_DOC_ANNULLO_CON_LEGAMI`, che dice
+  quanti sono, su qualunque strada cambi lo stato
+  ([guard comune](/dbzero/vendite/funzioni/trgfn_doc_guard_annullo_con_legami)).
+* Il backend mostra i legami ([`vendite.fn_documento_legami`](/dbzero/vendite/funzioni/fn_documento_legami))
+  e, alla conferma, chiama il verbo d'annullo passando **quanti legami ha mostrato**: chi conferma
+  dichiara ciò che ha visto, e se nel frattempo i legami sono cambiati la finestra si ripresenta.
+* Il verbo d'annullo ritira i legami e poi cambia lo stato attraverso il verbo di stato (§5).
+
+Quale stato è un annullo lo dice il vocabolario (`is_abortito`), non il nome `'ANNULLATO'` scritto nel
+codice.
+
+---
+
+## 9. Gli acquisti nascono sul modello
+
+L'ordine e il DDT d'acquisto usano gli stessi vocabolari degli ordini e dei DDT di vendita, e seguono
+**lo stesso modello**: stesso verbo, stessa matrice, stesse azioni, stessi building block. Quando un
+documento di vendita viene portato al modello, il suo gemello d'acquisto ci arriva **nello stesso
+lavoro**, non in una fase successiva: gli acquisti non hanno una copia loro delle regole, quindi non
+possono sbagliarla in un altro modo.
+
+---
+
+## 10. A che punto è ogni documento
+
+Stato al 25 ottobre 2026. ✅ = segue la regola; ❌ = non ancora, con che cosa fa oggi. La riga di un
+documento cambia quando quel documento viene portato al modello (§11).
+
+| Documento | Nasce in bozza (§3) | Matrice in tabella (§4) | Verbo di stato (§5) | Azione sul passaggio (§6) | Emissione (§7) | Annullo (§8) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Preventivo | ✅ | ✅ | ✅ `fn_cambia_stato_preventivo`, ma senza il controllo del permesso | ❌ `cambia_stato_preventivi` su ogni passaggio, controllata solo dal backend | ✅ solo da «Emetti» | ✅ `fn_annulla_preventivo` → verbo di stato |
+| Offerta | ✅ | ✅ (tabella `config.stati_doc_offerte_transizioni`, nome fuori serie) | ❌ `UPDATE` dal backend; gli stati di partenza sono ripetuti in Python | ❌ nessuna azione | ✅ | ❌ da accettata, con un controllo suo (`fn_check_offerta_annullabile`) invece dell'avviso dei legami |
+| Contratto | ✅ | ❌ passaggi scritti nel guard; la tabella la legge solo la capability | ❌ `UPDATE` dal backend | ❌ nessuna azione | ✅ | ❌ `fn_annulla_contratto` scrive lo stato da sé |
+| Ordine | ✅ | ✅ | ❌ `UPDATE` dal backend | ❌ nessuna azione | ❌ anche la conferma e il cambio stato generico portano a confermato | ❌ `fn_annulla_ordine` scrive lo stato da sé |
+| DDT | ✅ | ✅ | ✅ `fn_cambia_stato_ddt` | ❌ `emetti_ddt` e `registra_magazzino` scritte nel corpo del verbo, non sulla riga | ❌ anche il cambio stato generico porta a emesso | ✅ `fn_annulla_ddt` → verbo di stato |
+| Reso | ✅ | ✅ | ✅ `fn_conferma_reso`, `fn_annulla_reso` | ❌ `conferma_reso` scritta nel corpo dei verbi | — la conferma fa da emissione | ✅ verbo |
+| Commessa | ✅ | ✅ (tabella in `vendite`, non in `config`) | ✅ `fn_cambia_stato_commessa`, ma senza il controllo del permesso | ❌ `cambia_stato_commessa` su ogni passaggio, controllata solo dal backend | — nasce dalla push | ✅ `fn_annulla_commessa` → verbo di stato |
+| Fattura | ✅ | ✅ (`config.stati_doc_fiscale_transizioni`, con passaggi solo del lotto e solo della fattura singola) | ❌ funzioni della pipeline; lo stato del lotto con `UPDATE` | ❌ azioni della pipeline, controllate solo dal backend | — la pipeline | — il ritorno del lotto in bozza |
+| Versione di listino | ❌ stato testo con `CHECK`, senza vocabolario | ❌ passaggi nel guard e ricopiati in Python | ❌ `UPDATE` dal backend | ❌ nessuna azione | — | — |
+| Ordine e DDT d'acquisto | ✅ | ❌ nessun guard di transizione | ❌ | ❌ | ❌ | ❌ |
+
+Le azioni a catalogo che nessuno usa — `genera_fattura`, `approva_fattura`, `emetti_fattura` — si
+sistemano col giro della fattura.
+
+---
+
+## 11. Come si porta un documento al modello
+
+* **Un documento per volta, tutto intero**: verbo, matrice, azioni, emissione, annullo, insieme al
+  suo gemello d'acquisto se ne ha uno. Non un tema alla volta su nove documenti: è così che una regola
+  comune finisce ricopiata in nove posti, e le nove copie divergono.
+* **Prima, chi emette o conferma senza passare da «Emetti»** (import, passaggi da altri documenti):
+  si censisce, e per ognuno si decide.
+* **Le copie si ritirano nello stesso lavoro**: i passaggi scritti nel codice, gli stati ripetuti in
+  Python, le azioni controllate solo dal backend.
+* Prima di ricopiare una regola nelle capability o nei guard di ogni documento, si valuta se può
+  vivere in un **building block comune che legge la matrice**.
+* Si va **per la strada più corta**, senza fasi in cui vecchio e nuovo convivono: il database consegna
+  il suo lavoro e scrive al backend che cosa si è rotto e come si ripara.
+
+---
+
+## 12. Da dove vengono le regole
+
+Le decisioni, con la data e le alternative scartate, stanno nel brief del cantiere:
+[brief-modello-documento-vendita](../dev/work-in-progress/brief-modello-documento-vendita.md) — M-1 …
+M-6 (verbo, emissione, permesso, azioni, matrici, nascita), N-1 … N-3 e P-1 … P-3 (lo stato
+iniziale). Il permesso nel verbo viene da
+[brief-db-permesso-nel-verbo-di-scrittura](../dev/work-done/brief-db-permesso-nel-verbo-di-scrittura.md);
+l'annullo con legami da
+[brief-db-annullo-documento-con-legami](../dev/work-done/brief-db-annullo-documento-con-legami.md).
+
+{% include-markdown "signature-core.md" %}

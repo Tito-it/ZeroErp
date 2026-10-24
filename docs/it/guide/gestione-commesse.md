@@ -1,12 +1,13 @@
 # Guida Tecnica – API Commesse (DB layer)
 
-> **Ultimo aggiornamento**: 12 ottobre 2026
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
 > Destinatari: sviluppatori backend e database di Zero ERP
 >
 > 👀 **Vedi anche**
 >
 > * [Guida fatturazione](/guide/fatturazione)
+> * [Il modello del documento di vendita](/guide/modello-documento-di-vendita) — **le regole comuni a tutti i documenti**: nascita, cambio di stato, permesso sul passaggio, emissione, annullo
 > * [Gestione Listini e Pricing v5](/guide/gestione-listini) — modello pricing che alimenta lo snapshot commesse
 > * [vendite.commesse](/dbzero/vendite/manual/commesse) — la tabella, con la testata leggibile
 > * [vendite.stati_commessa](/dbzero/vendite/tabelle/stati_commessa)
@@ -44,6 +45,8 @@ SORGENTI (preventivi / ordini / consumi / ...)
 ---
 
 ## Ciclo di vita della commessa
+
+⭐ Le regole comuni a tutti i documenti — in che stato si nasce, chi cambia lo stato, quale permesso chiede un passaggio, l'emissione, l'annullo — stanno nel [modello del documento di vendita](/guide/modello-documento-di-vendita), che al §10 dice anche a che punto è la commessa rispetto al modello. Qui ci sono gli stati e i passaggi che sono suoi.
 
 ### Stati
 

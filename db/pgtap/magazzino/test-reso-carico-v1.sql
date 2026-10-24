@@ -10,6 +10,7 @@
 --   di un reso confermato storna; la porta del registro chiude l'UPDATE
 --   diretto; il permesso e' conferma_reso (D-3b-f).
 --   Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso, sezioni 3 e 5.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi in bozza dal builder dbops.fn_pgtap_crea_reso (piu' righe con p_reso_id); restano scritti a mano il reso senza righe (6b, il caso), i rientri, le conferme e l'annullo dal verbo, che sono il caso del file.
 --
 -- Il mondo: due magazzini senza ubicazioni (MAG, e QUA per i «resi da
 --   verificare»), tre articoli costruiti — SEMPLICE (gestito), A_LOTTI
@@ -71,7 +72,7 @@ DO $az$ BEGIN
 END $az$;
 
 CREATE TEMP TABLE _fix (mag bigint, qua bigint, art_s uuid, art_l uuid, art_n uuid, lotto_a bigint, lotto_b bigint,
-                        tipo_credito bigint, sorgente_ddt bigint);
+                        sorgente_ddt bigint);
 DO $fix$
 DECLARE
     v_mag bigint; v_qua bigint; v_s uuid; v_l uuid; v_n uuid; v_la bigint; v_lb bigint; v_inv bigint;
@@ -85,7 +86,6 @@ BEGIN
     INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_l, 'PGT-L3B-B', script.fn_data_operativa() - 5)  RETURNING id INTO v_lb;
     INSERT INTO _fix
     SELECT v_mag, v_qua, v_s, v_l, v_n, v_la, v_lb,
-           (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno = 'RESO_A_CREDITO'),
            (SELECT so.id FROM config.sorgenti so WHERE so.codice_interno = 'DDT_VENDITA');
 
     -- Il carico: SEMPLICE 10 a 5, A_LOTTI 6+6 a 3.
@@ -121,30 +121,21 @@ BEGIN
            (SELECT p.id FROM vendite.ddt_righe_prelievi p WHERE p.ddt_riga_id = v_rs), v_pla, v_plb;
 END $d$;
 
--- Il reso n.1: SEMPLICE 2, A_LOTTI 4, NON_GESTITO 1, a credito.
+-- Il reso n.1, a credito, in bozza dal builder: SEMPLICE 2, A_LOTTI 4,
+-- NON_GESTITO 1 (righe 1, 2, 3). La conferma e' il passo del test (9).
 CREATE TEMP TABLE _r1 (reso bigint, rr_s bigint, rr_l bigint, rr_n bigint);
 DO $r$
 DECLARE v_reso bigint; v_s bigint; v_l bigint; v_n bigint;
 BEGIN
-    INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza)
-    SELECT (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno = 'DRAFT'),
-           f.sorgente_ddt, (SELECT dd.uid FROM vendite.ddt dd WHERE dd.id = (SELECT ddt FROM _d)), false
-      FROM _fix f RETURNING id INTO v_reso;
-    INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, articolo_id, descrizione,
-                                    qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-    SELECT v_reso, 1, dr.id, dr.articolo_id, dr.descrizione, 2, dr.uom_operativa_id, dr.factor_to_base,
-           (SELECT tipo_credito FROM _fix), false
-      FROM vendite.ddt_righe dr WHERE dr.id = (SELECT r_s FROM _d) RETURNING id INTO v_s;
-    INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, articolo_id, descrizione,
-                                    qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-    SELECT v_reso, 2, dr.id, dr.articolo_id, dr.descrizione, 4, dr.uom_operativa_id, dr.factor_to_base,
-           (SELECT tipo_credito FROM _fix), false
-      FROM vendite.ddt_righe dr WHERE dr.id = (SELECT r_l FROM _d) RETURNING id INTO v_l;
-    INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, articolo_id, descrizione,
-                                    qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-    SELECT v_reso, 3, dr.id, dr.articolo_id, dr.descrizione, 1, dr.uom_operativa_id, dr.factor_to_base,
-           (SELECT tipo_credito FROM _fix), false
-      FROM vendite.ddt_righe dr WHERE dr.id = (SELECT r_n FROM _d) RETURNING id INTO v_n;
+    SELECT b.reso_id, b.resi_riga_id INTO v_reso, v_s
+      FROM dbops.fn_pgtap_crea_reso('L3BR', (SELECT ddt FROM _d), 2, p_stato_codice_interno => 'DRAFT',
+                                    p_ddt_riga_id => (SELECT r_s FROM _d)) b;
+    SELECT b.resi_riga_id INTO v_l
+      FROM dbops.fn_pgtap_crea_reso('L3BR', NULL, 4, p_stato_codice_interno => 'DRAFT',
+                                    p_ddt_riga_id => (SELECT r_l FROM _d), p_reso_id => v_reso) b;
+    SELECT b.resi_riga_id INTO v_n
+      FROM dbops.fn_pgtap_crea_reso('L3BR', NULL, 1, p_stato_codice_interno => 'DRAFT',
+                                    p_ddt_riga_id => (SELECT r_n FROM _d), p_reso_id => v_reso) b;
     INSERT INTO _r1 VALUES (v_reso, v_s, v_l, v_n);
 END $r$;
 
@@ -208,6 +199,8 @@ SELECT is(
     '6a) ...e la «Conferma» e'' accesa, con `reasons` presente e null');
 
 -- 6b) PRESIDIO della precedenza: un reso senza righe sulla stessa bolla.
+--   Scritto a mano: il builder nasce sempre con una riga, e qui la riga che
+--   manca e' il caso.
 CREATE TEMP TABLE _r0 (reso bigint);
 DO $r0$
 DECLARE v_reso bigint;
@@ -312,15 +305,9 @@ CREATE TEMP TABLE _r2 (reso bigint, rr_l bigint);
 DO $r$
 DECLARE v_reso bigint; v_l bigint;
 BEGIN
-    INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza)
-    SELECT (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno = 'DRAFT'),
-           f.sorgente_ddt, (SELECT dd.uid FROM vendite.ddt dd WHERE dd.id = (SELECT ddt FROM _d)), false
-      FROM _fix f RETURNING id INTO v_reso;
-    INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, articolo_id, descrizione,
-                                    qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-    SELECT v_reso, 1, dr.id, dr.articolo_id, dr.descrizione, 4, dr.uom_operativa_id, dr.factor_to_base,
-           (SELECT tipo_credito FROM _fix), false
-      FROM vendite.ddt_righe dr WHERE dr.id = (SELECT r_l FROM _d) RETURNING id INTO v_l;
+    SELECT b.reso_id, b.resi_riga_id INTO v_reso, v_l
+      FROM dbops.fn_pgtap_crea_reso('L3BR', (SELECT ddt FROM _d), 4, p_stato_codice_interno => 'DRAFT',
+                                    p_ddt_riga_id => (SELECT r_l FROM _d)) b;
     INSERT INTO vendite.resi_righe_rientri (resi_riga_id, ddt_riga_prelievo_id, qta)
     SELECT v_l, p_la, 3 FROM _d UNION ALL SELECT v_l, p_lb, 1 FROM _d;
     INSERT INTO _r2 VALUES (v_reso, v_l);
@@ -375,15 +362,8 @@ BEGIN
     PERFORM 1 FROM vendite.fn_cambia_stato_ddt(v_ddt, 'EMESSO');
     PERFORM 1 FROM vendite.fn_cambia_stato_ddt(v_ddt, 'SPEDITO');
     PERFORM 1 FROM vendite.fn_cambia_stato_ddt(v_ddt, 'CONSEGNATO');
-    INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza)
-    SELECT (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno = 'DRAFT'),
-           f.sorgente_ddt, (SELECT dd.uid FROM vendite.ddt dd WHERE dd.id = v_ddt), false
-      FROM _fix f RETURNING id INTO v_reso;
-    INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, articolo_id, descrizione,
-                                    qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-    SELECT v_reso, 1, dr.id, dr.articolo_id, dr.descrizione, 1, dr.uom_operativa_id, dr.factor_to_base,
-           (SELECT tipo_credito FROM _fix), false
-      FROM vendite.ddt_righe dr WHERE dr.id = v_rn;
+    SELECT b.reso_id INTO v_reso
+      FROM dbops.fn_pgtap_crea_reso('L3BR', v_ddt, 1, p_stato_codice_interno => 'DRAFT', p_ddt_riga_id => v_rn) b;
     INSERT INTO _d9 VALUES (v_ddt, v_reso);
 END $d$;
 SELECT ok(

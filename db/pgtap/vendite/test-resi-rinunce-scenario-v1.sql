@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso per ri-consegna dal builder dbops.fn_pgtap_crea_reso (che concede da se' conferma_reso); resta scritta a mano la commessa con l'attivita' fatturata, che e' il caso del test.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano il reso per ri-consegna (giro 2) e la commessa con l'attivita' fatturata, che sono il caso del test.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
 -- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): la bolla consegnata non si pesca piu' dal database: ordine dal builder, riga di un articolo costruito, bolla generata dall'ordine e portata a CONSEGNATO per la matrice; il tipo reso si legge per codice.
@@ -67,14 +68,6 @@ SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgTAP rinunce scenario',
                   p_quantita => 5, p_prezzo => 10);
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_o)); END $ctx$;
 
--- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
--- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
-DO $az$ BEGIN
-    PERFORM dbops.fn_pgtap_concedi_azione(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
-END $az$;
-
 SELECT plan(9);
 
 -- ============================================================
@@ -94,16 +87,8 @@ SELECT ok(
 -- Riga DDT consegnata, order-backed (ha fulfillment): quella costruita qui sopra.
 CREATE TEMP TABLE tmp_r AS
 SELECT dr.id AS ddt_riga_id, dr.quantita AS consegnato, dr.articolo_id,
-       dr.descrizione, dr.uom_operativa_id, dr.factor_to_base,
        d.id AS ddt_id, d.uid AS ddt_uid,
        f.ordine_riga_id, orr.ordine_id,
-       (SELECT s.id FROM config.sorgenti s
-         WHERE s.codice_interno = 'DDT_VENDITA' AND s.attivo)          AS sorg_ddt,
-       (SELECT s.id FROM config.stati_doc_reso s
-         WHERE s.codice_interno = 'DRAFT' AND s.attivo)                AS st_reso_draft,
-       -- Il reso per ri-consegna (riapre_residuo = true), per codice.
-       (SELECT tr.id FROM config.tipi_reso tr
-         WHERE tr.codice_interno = 'RESO_PER_RICONSEGNA' AND tr.attivo) AS tipo_ric,
        d.billing_account_id, d.utility_id
   FROM vendite.ddt_righe dr
   JOIN vendite.ddt d ON d.id = dr.ddt_id
@@ -191,47 +176,27 @@ SELECT r.articolo_id,
          WHERE c.id = (SELECT commessa_id FROM tmp_com))
        FROM tmp_r r;
 
--- Reso PER RI-CONSEGNA di 2 sulla riga DDT, poi CONFERMATO.
+-- Reso PER RI-CONSEGNA (riapre_residuo = true) di 2 sulla riga DDT, CONFERMATO:
+--   la conferma proietta lo stato ordine (residuo riaperto dal reso).
 CREATE TEMP TABLE tmp_reso AS
-WITH ins AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid,
-                            storicizza, meta)
-  SELECT st_reso_draft, sorg_ddt, ddt_uid, false,
-         jsonb_build_object('test_scope','pgtap_rinunce_scenario')
-  FROM tmp_r RETURNING id)
-SELECT id AS reso_id FROM ins;
-
-CREATE TEMP TABLE tmp_riga AS
-WITH ins AS (
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-        articolo_id, descrizione, qta_operativa, uom_operativa_id,
-        factor_to_base, tipo_reso_id, attivo, storicizza)
-  SELECT (SELECT reso_id FROM tmp_reso), 1, r.ddt_riga_id, r.ordine_riga_id,
-         r.articolo_id, r.descrizione, 2.000000, r.uom_operativa_id,
-         r.factor_to_base, r.tipo_ric, true, false
-  FROM tmp_r r RETURNING id)
-SELECT id AS resi_riga_id FROM ins;
-
--- La conferma proietta lo stato ordine (residuo riaperto dal reso).
-DO $setup$
-BEGIN
-  PERFORM vendite.fn_conferma_reso((SELECT reso_id FROM tmp_reso));
-END
-$setup$;
+SELECT * FROM dbops.fn_pgtap_crea_reso('rinunce scenario', (SELECT ddt_id FROM tmp_r), 2,
+                                       'RESO_PER_RICONSEGNA',
+                                       p_ddt_riga_id    => (SELECT ddt_riga_id FROM tmp_r),
+                                       p_ordine_riga_id => (SELECT ordine_riga_id FROM tmp_r));
 
 -- Snapshot dell'accredito PRIMA della chiusura: e' il valore che il test 6
 -- pretende INVARIATO.
 CREATE TEMP TABLE tmp_pre AS
 SELECT a.accredito_dovuto, a.etichetta
   FROM vendite.vw_resi_da_accreditare a
- WHERE a.resi_riga_id = (SELECT resi_riga_id FROM tmp_riga);
+ WHERE a.resi_riga_id = (SELECT resi_riga_id FROM tmp_reso);
 
 -- ============================================================
 -- 2-3) Stato iniziale
 -- ============================================================
 SELECT is(
   (SELECT v.qta_residua FROM vendite.vw_resi_da_riconsegnare v
-    WHERE v.resi_riga_id = (SELECT resi_riga_id FROM tmp_riga)),
+    WHERE v.resi_riga_id = (SELECT resi_riga_id FROM tmp_reso)),
   2.000000::numeric,
   '2) fixture: riga in elenco ri-spedizione con residuo 2');
 
@@ -251,16 +216,16 @@ SELECT is(
   '4) chiusura: 1 riga reso chiusa');
 
 SELECT ok(
-  vendite.fn_resi_riga_residuo_riconsegna((SELECT resi_riga_id FROM tmp_riga)) = 0
+  vendite.fn_resi_riga_residuo_riconsegna((SELECT resi_riga_id FROM tmp_reso)) = 0
   AND NOT EXISTS (SELECT 1 FROM vendite.vw_resi_da_riconsegnare v
-                   WHERE v.resi_riga_id = (SELECT resi_riga_id FROM tmp_riga)),
+                   WHERE v.resi_riga_id = (SELECT resi_riga_id FROM tmp_reso)),
   '5) dopo la chiusura: residuo 0 e riga fuori dall''elenco ri-spedizione');
 
 -- IL PUNTO: stessa riga, stesso importo, etichetta cambiata.
 SELECT is(
   (SELECT a.accredito_dovuto::text || ' / ' || a.etichetta
      FROM vendite.vw_resi_da_accreditare a
-    WHERE a.resi_riga_id = (SELECT resi_riga_id FROM tmp_riga)),
+    WHERE a.resi_riga_id = (SELECT resi_riga_id FROM tmp_reso)),
   (SELECT accredito_dovuto::text FROM tmp_pre) || ' / DOVUTA',
   '6) accredito ANCORA in coda, importo IDENTICO, etichetta -> DOVUTA');
 
@@ -284,15 +249,15 @@ SELECT vendite.fn_riapri_riconsegna_reso((SELECT reso_id FROM tmp_reso)) AS righ
 
 SELECT ok(
   (SELECT righe FROM tmp_riap) = 1
-  AND vendite.fn_resi_riga_residuo_riconsegna((SELECT resi_riga_id FROM tmp_riga)) = 2
+  AND vendite.fn_resi_riga_residuo_riconsegna((SELECT resi_riga_id FROM tmp_reso)) = 2
   AND EXISTS (SELECT 1 FROM vendite.vw_resi_da_riconsegnare v
-               WHERE v.resi_riga_id = (SELECT resi_riga_id FROM tmp_riga)),
+               WHERE v.resi_riga_id = (SELECT resi_riga_id FROM tmp_reso)),
   '8) riapertura: residuo torna 2 e la riga torna in elenco');
 
 SELECT is(
   (SELECT a.accredito_dovuto::text || ' / ' || a.etichetta
      FROM vendite.vw_resi_da_accreditare a
-    WHERE a.resi_riga_id = (SELECT resi_riga_id FROM tmp_riga)),
+    WHERE a.resi_riga_id = (SELECT resi_riga_id FROM tmp_reso)),
   (SELECT accredito_dovuto::text FROM tmp_pre) || ' / FACOLTATIVA',
   '9) round-trip: etichetta torna FACOLTATIVA, importo sempre identico');
 

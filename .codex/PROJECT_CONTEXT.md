@@ -173,14 +173,22 @@ def nome_metodo(self, ...):
 > Lo stato reale sta nei documenti di `docs/it/dev/work-in-progress/` e nel repo; qui solo
 > le decisioni di rotta e una riga per cantiere aperto.
 
-### ⛔ Fermo dei temi trasversali sui documenti di vendita (Tid, 2026-10-21)
+### ⛔ Fermo dei temi trasversali sui documenti di vendita (Tid, 2026-10-21; allentato il 2026-10-25)
 
-Finché il modello del documento di vendita non è scritto
-(`work-in-progress/brief-modello-documento-vendita.md`), **nessun tema nuovo che tocca tutti i
-documenti di vendita** (preventivo, offerta, contratto, ordine, DDT, reso, commessa, fattura,
-listino). Si correggono i difetti; i brief già in esecuzione arrivano in fondo; i temi trasversali
-in coda aspettano il modello. Il perché, con i fatti datati, sta nel §1 di quel brief. La regola
-generale «un tema, un brief» è in `.codex/AGENTS.md`.
+Il modello del documento di vendita è scritto:
+[guida del modello](../docs/it/guide/modello-documento-di-vendita.md). Il fermo resta, **allentato**
+(Tid, 2026-10-25, scelta C):
+
+- ✅ un tema nuovo che tocca tutti i documenti di vendita (preventivo, offerta, contratto, ordine,
+  DDT, reso, commessa, fattura, listino) è ammesso **se poggia su un pezzo comune già fatto** (un
+  building block montato su tutte le testate, come la nascita nello stato iniziale) e rispetta la
+  guida;
+- ⛔ resta fermo il tema che andrebbe **ricopiato documento per documento** (nelle capability, nei
+  guard, nei verbi di ciascuno): aspetta che il cantiere porti quei documenti al modello.
+
+Si correggono i difetti; i brief già in esecuzione arrivano in fondo. Il perché, con i fatti datati,
+sta nel §1 di `work-in-progress/brief-modello-documento-vendita.md`. La regola generale «un tema, un
+brief» è in `.codex/AGENTS.md`.
 
 ### 🔵 Il cantiere principale — `acquisti` e `magazzino` (decisione di Tid, 2026-09-11)
 

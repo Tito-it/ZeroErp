@@ -6,6 +6,7 @@
 --   non fabbrica: il KIT uscito per componenti (D-3b-g), il SERIALE, e
 --   l'UBICAZIONE di rientro in un magazzino che le usa (D-L2-m).
 --   Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso, sezioni 3 e 5.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): pg_temp.crea_reso fa le righe col builder dbops.fn_pgtap_crea_reso, in bozza; il magazzino scelto (reso n.3) si scrive in bozza dopo la nascita, il builder non lo sceglie; restano scritti a mano i rientri e le conferme dal verbo, che sono il caso.
 --
 -- Il mondo, costruito: MAG senza ubicazioni, MAGU con l'ubicazione U1; un KIT
 --   non gestito (is_composito) con due componenti gestiti — C_SEMPLICE (2 per
@@ -55,7 +56,7 @@ DO $az$ BEGIN
 END $az$;
 
 CREATE TEMP TABLE _fix (mag bigint, magu bigint, u1 bigint, kit uuid, c_s uuid, c_l uuid, ser uuid, sem uuid,
-                        lotto_a bigint, sn1 bigint, tipo_credito bigint, sorgente_ddt bigint);
+                        lotto_a bigint, sn1 bigint);
 DO $fix$
 DECLARE
     v_mag bigint; v_magu bigint; v_u1 bigint; v_k uuid; v_cs uuid; v_cl uuid; v_ser uuid; v_sem uuid;
@@ -85,9 +86,7 @@ BEGIN
     RETURNING id INTO v_sn;
 
     INSERT INTO _fix
-    SELECT v_mag, v_magu, v_u1, v_k, v_cs, v_cl, v_ser, v_sem, v_la, v_sn,
-           (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno = 'RESO_A_CREDITO'),
-           (SELECT so.id FROM config.sorgenti so WHERE so.codice_interno = 'DDT_VENDITA');
+    SELECT v_mag, v_magu, v_u1, v_k, v_cs, v_cl, v_ser, v_sem, v_la, v_sn;
 
     -- Il carico: C_SEMPLICE 10 a 2, C_LOTTI 10 nel lotto A a 4, il seriale a 100, SEMPLICE 10 a 5.
     INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_mag) RETURNING id INTO v_inv;
@@ -125,23 +124,24 @@ BEGIN
     INSERT INTO _d VALUES (v_ddt, v_rk, v_rser, v_rsem);
 END $d$;
 
--- Un reso: una riga per (riga di bolla, quantita'), su un magazzino scelto o di default.
+-- Un reso a credito in bozza: una riga per (riga di bolla, quantita'), dal
+-- builder; su un magazzino scelto o di default.
+-- ⚠️ Il builder non sceglie il magazzino: il reso nasce con quello della bolla
+--   e, se il test ne vuole un altro, lo cambia in bozza (dove si sceglie,
+--   D-3b-a), prima di ogni rientro.
 CREATE FUNCTION pg_temp.crea_reso(p_righe jsonb, p_magazzino bigint DEFAULT NULL)
 RETURNS bigint LANGUAGE plpgsql AS $f$
-DECLARE v_reso bigint; v_r jsonb; v_nr int := 0;
+DECLARE v_reso bigint; v_r jsonb;
 BEGIN
-    INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, magazzino_id, storicizza)
-    SELECT (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno = 'DRAFT'),
-           f.sorgente_ddt, (SELECT dd.uid FROM vendite.ddt dd WHERE dd.id = (SELECT ddt FROM _d)), p_magazzino, false
-      FROM _fix f RETURNING id INTO v_reso;
     FOR v_r IN SELECT * FROM jsonb_array_elements(p_righe) LOOP
-        v_nr := v_nr + 1;
-        INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, articolo_id, descrizione,
-                                        qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-        SELECT v_reso, v_nr, dr.id, dr.articolo_id, dr.descrizione, (v_r ->> 'qta')::numeric,
-               dr.uom_operativa_id, dr.factor_to_base, (SELECT tipo_credito FROM _fix), false
-          FROM vendite.ddt_righe dr WHERE dr.id = (v_r ->> 'riga')::bigint;
+        SELECT b.reso_id INTO v_reso
+          FROM dbops.fn_pgtap_crea_reso('L3BK', CASE WHEN v_reso IS NULL THEN (SELECT ddt FROM _d) END,
+                                        (v_r ->> 'qta')::numeric, p_stato_codice_interno => 'DRAFT',
+                                        p_ddt_riga_id => (v_r ->> 'riga')::bigint, p_reso_id => v_reso) b;
     END LOOP;
+    IF p_magazzino IS NOT NULL THEN
+        UPDATE vendite.resi SET magazzino_id = p_magazzino WHERE id = v_reso;
+    END IF;
     RETURN v_reso;
 END $f$;
 
