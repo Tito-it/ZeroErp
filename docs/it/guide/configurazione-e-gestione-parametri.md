@@ -14,6 +14,8 @@
 > **Vedi anche** — funzioni e trigger DB:
 >
 > * [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full) — la lettura di un parametro con la cascata degli override
+> * [script.fn_get_parameter_di_sessione](/dbzero/script/funzioni/fn_get_parameter_di_sessione) — la stessa cascata, con utente, gruppi, emittente e sessione presi dal contesto della sessione
+> * [script.fn_intero_positivo_da_testo](/dbzero/script/funzioni/fn_intero_positivo_da_testo) — la regola «intero positivo» del valore di un parametro di sistema
 > * [script.fn_list_parameters_for_user](/dbzero/script/funzioni/fn_list_parameters_for_user) — la lista per la UI admin: default, override di ogni livello, valore risolto
 > * [config.trgfn_parameters_fk_surrogate_dispatch](/dbzero/config/funzioni/trgfn_parameters_fk_surrogate_dispatch) · [config.trgfn_parameter_overrides_fk_surrogate_dispatch](/dbzero/config/funzioni/trgfn_parameter_overrides_fk_surrogate_dispatch) — il controllo sul *valore* scritto nel default e in un override
 > * [script.fn_check_parameter_fk_surrogate](/dbzero/script/funzioni/fn_check_parameter_fk_surrogate) — la regola condivisa dai due trigger
@@ -86,10 +88,17 @@ Parametri **senza override** dichiarati come tali nella loro descrizione:
 * `SYSTEM_FUSO_ORARIO` — il fuso dell'azienda, da cui si calcola la «data di oggi» dei documenti
   (lo legge `script.fn_fuso_operativo`);
 * `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` — la soglia oltre cui una chiave di idempotenza rimasta
-  «in corso» si può riprendere (vedi [Le operazioni che non si ripetono](/guide/operazioni-che-non-si-ripetono));
+  «in corso» si può riprendere (la legge `dbops.fn_idempotency_soglia_secondi`, per la
+  prenotazione e per il controllo all'avvio del backend; vedi
+  [Le operazioni che non si ripetono](/guide/operazioni-che-non-si-ripetono));
 * `VENDITE_LIMITE_EMISSIONE_IMMEDIATA_GIORNI` e `VENDITE_LIMITE_EMISSIONE_DIFFERITA_GIORNO_MESE` —
   i limiti di data dei documenti fiscali (li legge `vendite.fn_get_limite_emissione_default`);
   l'unico asse di eccezione è il registro di fatturazione, non l'utente.
+
+Un parametro senza override che deve essere un **intero positivo** (le soglie, i tentativi e le
+attese del login) si valida con `script.fn_intero_positivo_da_testo`: dal testo all'intero,
+oppure `E_CONFIG_MANCANTE` col nome del parametro. La regola sta lì sola; chi legge il parametro
+la chiama invece di riscriverla.
 
 ⚠️ **Il database non impedisce di scrivere un override su un parametro senza override.**
 L'override viene accettato e poi ignorato, perché chi legge il parametro non guarda la cascata.
@@ -218,6 +227,11 @@ regola commerciale (es. «PREMIUM, sconto massimo 5%») deve vincere sulla senio
 * Se l'utente appartiene a **più gruppi** con override diversi, vince quello con l'`id` più
   basso: non è una scelta di merito, è il tie-break dichiarato.
 * Considera solo gli override con `attivo = true`.
+
+Chi gira dentro una richiesta dell'applicazione può usare `script.fn_get_parameter_di_sessione`:
+applica la stessa cascata e prende utente, gruppi, emittente e sessione dai GUC `app.*` della
+sessione, invece di riceverli come parametri. Un GUC vuoto salta il suo livello; i gruppi si
+leggono solo se la tabella di Django c'è ed è leggibile.
 
 La lista per la UI admin, `script.fn_list_parameters_for_user`, mostra per ogni parametro il
 default, l'override di ciascun livello e il valore risolto, che chiede a questa funzione senza

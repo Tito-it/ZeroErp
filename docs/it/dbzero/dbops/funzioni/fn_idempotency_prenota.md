@@ -15,10 +15,6 @@ CREATE OR REPLACE FUNCTION dbops.fn_idempotency_prenota(p_idempotency_key text, 
 AS $function$
 DECLARE
     v_riga           dbops.idempotency_keys%ROWTYPE;
-    -- il valore grezzo del parametro, prima della validazione
-    v_soglia_testo   config.parameters.default_value%TYPE;
-    -- secondi: un intero validato, non una colonna
-    v_soglia_secondi integer;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -145,24 +141,10 @@ BEGIN
             RETURN;
         END IF;
 
-        SELECT p.default_value INTO v_soglia_testo
-          FROM config.parameters p
-         WHERE p.code = 'SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI';
-
-        -- Fail-loud: assente, vuoto o non intero positivo e'
-        -- un'installazione rotta, mai un valore di ripiego.
-        IF COALESCE(v_soglia_testo, '') !~ '^[1-9][0-9]{0,5}$' THEN
-            PERFORM script.fn_log_and_raise_error(
-                'dbops', 'dbops.fn_idempotency_prenota', 'E_CONFIG_MANCANTE',
-                jsonb_build_object('config',    'config.parameters',
-                                   'parametro', 'SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI',
-                                   'valore',    v_soglia_testo),
-                NULL::uuid,
-                VARIADIC ARRAY['parametro SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI (intero positivo)']);
-        END IF;
-        v_soglia_secondi := v_soglia_testo::integer;
-
-        IF v_riga.prenotata_at > now() - make_interval(secs => v_soglia_secondi) THEN
+        -- La soglia dalla sua sede (20261024-04): la stessa
+        -- lettura del presidio di BE-5 all'avvio del backend.
+        -- Fail-loud la' (E_CONFIG_MANCANTE), mai un ripiego.
+        IF v_riga.prenotata_at > now() - make_interval(secs => dbops.fn_idempotency_soglia_secondi()) THEN
             RETURN QUERY SELECT 'IN_CORSO'::text, NULL::jsonb;
             RETURN;
         END IF;
@@ -187,7 +169,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_idempotency_prenota(p_idempotency_key text, p_auth_user_id integer, p_endpoint text, p_request_id uuid, p_ripresa_ammessa boolean)
-IS 'Prenota una Idempotency-Key per una richiesta e risponde al backend: ESEGUI (la key e'' sua), REPLAY (operazione gia'' fatta: response_payload), IN_CORSO (la sta eseguendo un''altra richiesta: il backend solleva E_IDEMPOTENCY_IN_PROGRESS). Una key failed si riprende sempre. Una key in_progress da oltre SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI (config.parameters, sopra il timeout di gunicorn) si riprende solo con p_ripresa_ammessa = true (D6), che il chiamante dichiara quando completed sta nella STESSA transazione dell''operazione: allora una in_progress orfana vuol dire «nessun commit». Con false (operazione a passi) resta IN_CORSO. p_ripresa_ammessa e'' obbligatorio: NULL e'' E_SCRIPT_CHIAMATA_NON_VALIDA. Una key prenotata da un altro utente o su un altro endpoint solleva E_IDEMPOTENCY_KEY_RIUSATA (D7): ogni key e'' legata alla richiesta che l''ha prenotata (endpoint NOT NULL). La prenotazione committa da sola: le altre richieste la vedono subito e non aspettano. SECURITY INVOKER. Brief: brief-be-verifica-documentazione-api D6, D7, §I.7.3, §I.5.';
+IS 'Prenota una Idempotency-Key per una richiesta e risponde al backend: ESEGUI (la key e'' sua), REPLAY (operazione gia'' fatta: response_payload), IN_CORSO (la sta eseguendo un''altra richiesta: il backend solleva E_IDEMPOTENCY_IN_PROGRESS). Una key failed si riprende sempre. Una key in_progress da oltre la soglia (dbops.fn_idempotency_soglia_secondi, sopra il timeout di gunicorn) si riprende solo con p_ripresa_ammessa = true (D6), che il chiamante dichiara quando completed sta nella STESSA transazione dell''operazione: allora una in_progress orfana vuol dire «nessun commit». Con false (operazione a passi) resta IN_CORSO. p_ripresa_ammessa e'' obbligatorio: NULL e'' E_SCRIPT_CHIAMATA_NON_VALIDA. Una key prenotata da un altro utente o su un altro endpoint solleva E_IDEMPOTENCY_KEY_RIUSATA (D7): ogni key e'' legata alla richiesta che l''ha prenotata (endpoint NOT NULL). La prenotazione committa da sola: le altre richieste la vedono subito e non aspettano. SECURITY INVOKER. Brief: brief-be-verifica-documentazione-api D6, D7, §I.7.3, §I.5, §I.11.';
 ```
 
 </div>

@@ -91,6 +91,7 @@ search:
 - [fn_grant_storico_shadows](funzioni/fn_grant_storico_shadows.md)
 - [fn_guardiano_digest](funzioni/fn_guardiano_digest.md) — (latest review 11-09-2026)
 - [fn_idempotency_prenota](funzioni/fn_idempotency_prenota.md)
+- [fn_idempotency_soglia_secondi](funzioni/fn_idempotency_soglia_secondi.md)
 - [fn_imposta_accensione_processo](funzioni/fn_imposta_accensione_processo.md)
 - [fn_list_indices](funzioni/fn_list_indices.md) — (rev 2026-08-21)
 - [fn_lock_columns_divergenze](funzioni/fn_lock_columns_divergenze.md) — (latest review 26-09-26)
