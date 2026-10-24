@@ -2172,6 +2172,7 @@
     },
     "date_consegna": {
       "azione": "Aggiorna date di consegna",
+      "nessuna_riga": "Il documento non ha righe.",
       "titolo": "Aggiorna date di consegna",
       "intro": "Scrive una data di consegna su più righe del documento.",
       "colonna": "Data da aggiornare",

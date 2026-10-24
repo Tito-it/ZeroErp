@@ -651,9 +651,8 @@ operativo può prenderle al posto di una persona.
   5 `*SearchTable` di dominio che non passano dal building block. ⛔ Il presidio a
   un numero solo non sa distinguerli: finché resta così, misura la crescita del
   frontend più del debito
-- **Collaudi in-app aperti**: **tre copioni** scritti e da eseguire al 13-10 — il giro
+- **Collaudi in-app aperti**: **due copioni** scritti e da eseguire al 24-10 — il giro
   incassi ([ultimo giro](dev/work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md)),
-  la [capability annidata e i prezzi autorizzati](dev/work-in-progress/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md),
   [inventario e rettifica](dev/work-in-progress/collaudo-in-app-magazzino-inventario-e-rettifica.md)
   (il FE del magazzino non è mai stato aperto in-app) —
   più le due voci residue dell'area RESI, e tre prove a video senza un copione a
@@ -662,6 +661,7 @@ operativo può prenderle al posto di una persona.
   *cammino*, mai l'*esito*. Superati a video nel periodo: la soglia della ricerca
   (26-09), le misure di pagina (30-09), i filtri compatti su dispositivi veri (24-09),
   i permessi ereditati e la UI dei permessi dell'operatore (06-10),
+  la [capability annidata e i prezzi autorizzati](dev/work-done/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md) (24-10),
   l'[osservabilità](dev/work-done/collaudo-in-app-osservabilita-giornale-errori-pallino.md)
   (06-10, il suo §5-bis è il [brief dei testi dei presidi](dev/work-done/brief-db-presidi-cosa-significa-cosa-fare.md)),
   la [casella di ricerca delle liste](dev/work-done/collaudo-in-app-casella-ricerca-liste.md) (06-10),
