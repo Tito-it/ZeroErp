@@ -163,6 +163,7 @@ nav:
                             - Implementazione Transaction ID: it/guide/tx_id_implementation_guide.md
                             - Storicizzazione Tabelle: it/guide/storicizzazione-tabelle.md
                             - Audit e tracciabilità: it/guide/audit-e-tracciabilita.md
+                            - Le operazioni che non si ripetono (Idempotency-Key): it/guide/operazioni-che-non-si-ripetono.md
                             - Automazione DB: it/guide/automazione-db.md
                             - Presidi e registri del debito: it/guide/presidi-e-registri-del-debito.md
                             - Sorgente polimorfa: it/guide/sorgente-polimorfa.md

@@ -11,16 +11,19 @@
 -- all'operatore (D4).
 --   Brief: brief-be-verifica-documentazione-api, «Aperto per il team DB»
 --   changeSet 20261023-02 (trigger alla nascita), -03 (colonne e CHECK),
---   -04 (dbops.fn_idempotency_prenota); 80_data: automation_scope.csv,
+--   -04 (dbops.fn_idempotency_prenota), -06 (p_ripresa_ammessa, §I.7.3);
+--   20261024-01 (endpoint NOT NULL) e -02 (via il ramo delle key senza legame);
+--   80_data: automation_scope.csv,
 --   automation_rules_tbl.csv (regola 24), parameters_sistema.csv (id 62),
 --   codici_errore.csv e messaggi_errore.csv (1386-1388).
 --
 -- ⚠️ La ripresa si prova retrodatando prenotata_at, che nessun trigger
 --   riscrive: e' il motivo per cui la soglia non si misura da data_update.
 --
--- Elenco test (plan 24):
+-- Elenco test (plan 31):
 --   forma
 --    1) dbops.fn_idempotency_prenota esiste, SECURITY INVOKER
+--    1-bis) una sola firma, a cinque argomenti (la firma a quattro e' ritirata)
 --    2) le colonne auth_user_id, endpoint, prenotata_at esistono
 --    3) ⛔ una key completed senza risposta e' respinta dal CHECK
 --    3-bis) ⛔ ...e una failed con una risposta pure (il CHECK vale nei due versi)
@@ -42,9 +45,16 @@
 --   16) ...e la ripresa rinnova prenotata_at
 --   17) completed → REPLAY con la risposta salvata
 --   18) failed → ESEGUI: ripresa, e la riga torna in_progress
---   19) riga nata prima del 2026-10-23 (endpoint NULL), completed → REPLAY a chiunque
---   20) riga senza legame, failed → la ripresa la lega a chi la riprende
+--   19) ⛔ una key senza endpoint e' respinta (NOT NULL, 20261024-01)
+--   20) ⛔ una key con endpoint vuoto e' respinta dal CHECK
 --   21) ⛔ key vuota → E_SCRIPT_CHIAMATA_NON_VALIDA
+--   §I.7.3 — la ripresa dichiarata (i test 9-21 la dichiarano ammessa)
+--   23) key nuova, ripresa non ammessa → ESEGUI
+--   24) ⛔ in_progress da 200 s, ripresa non ammessa → IN_CORSO
+--   24-bis) ...e la riga non si tocca
+--   25) failed, ripresa non ammessa → ESEGUI: lo stato e' noto
+--   26) ⛔ ripresa non dichiarata (NULL) → E_SCRIPT_CHIAMATA_NON_VALIDA
+--   26-bis) ...e nessuna riga prenotata
 --   catalogo
 --   22) D4 e D7: classi giuste, IN_PROGRESS con causa, soluzione e riga en
 --
@@ -59,7 +69,7 @@ BEGIN;
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(24);
+SELECT plan(31);
 
 -- ============================================================
 -- Fixture: chi solleva cosa. Il codice di dominio arriva nel canale
@@ -86,6 +96,13 @@ SELECT ok(
              WHERE n.nspname = 'dbops' AND p.proname = 'fn_idempotency_prenota'
                AND NOT p.prosecdef),
     '1) dbops.fn_idempotency_prenota esiste ed e'' SECURITY INVOKER');
+
+SELECT results_eq(
+    $q$SELECT pg_get_function_identity_arguments(p.oid)
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'dbops' AND p.proname = 'fn_idempotency_prenota'$q$,
+    $q$VALUES ('p_idempotency_key text, p_auth_user_id integer, p_endpoint text, p_request_id uuid, p_ripresa_ammessa boolean'::text)$q$,
+    '1-bis) Una sola firma, con p_ripresa_ammessa in coda: la firma a quattro e'' ritirata (nessun overload ambiguo)');
 
 SELECT is(
     (SELECT count(*)::int FROM information_schema.columns
@@ -139,7 +156,7 @@ SELECT is(
 -- D6/D7 — la prenotazione. Una key per caso; utente 9001 e endpoint fissi.
 -- ============================================================
 SELECT is(
-    (SELECT esito FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', 9001, 'POST /pgtap/azione/')),
+    (SELECT esito FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', 9001, 'POST /pgtap/azione/', p_ripresa_ammessa => true)),
     'ESEGUI',
     '9) Key nuova: ESEGUI');
 
@@ -166,22 +183,22 @@ SELECT results_eq(
     '9-bis) ...la riga e'' in_progress, legata a utente ed endpoint, prenotata adesso');
 
 SELECT is(
-    (SELECT esito FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', 9001, 'POST /pgtap/azione/')),
+    (SELECT esito FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', 9001, 'POST /pgtap/azione/', p_ripresa_ammessa => true)),
     'IN_CORSO',
     '10) Stessa key, stessa richiesta, appena prenotata: IN_CORSO');
 
 SELECT is(
-    pg_temp.codice_di($q$SELECT * FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', 9002, 'POST /pgtap/azione/')$q$),
+    pg_temp.codice_di($q$SELECT * FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', 9002, 'POST /pgtap/azione/', p_ripresa_ammessa => true)$q$),
     'E_IDEMPOTENCY_KEY_RIUSATA',
     '11) Stessa key da un ALTRO utente: E_IDEMPOTENCY_KEY_RIUSATA, mai la risposta dell''altro');
 
 SELECT is(
-    pg_temp.codice_di($q$SELECT * FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', 9001, 'POST /pgtap/altra/')$q$),
+    pg_temp.codice_di($q$SELECT * FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', 9001, 'POST /pgtap/altra/', p_ripresa_ammessa => true)$q$),
     'E_IDEMPOTENCY_KEY_RIUSATA',
     '12) Stessa key su un ALTRO endpoint: E_IDEMPOTENCY_KEY_RIUSATA');
 
 SELECT is(
-    pg_temp.codice_di($q$SELECT * FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', NULL, 'POST /pgtap/azione/')$q$),
+    pg_temp.codice_di($q$SELECT * FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', NULL, 'POST /pgtap/azione/', p_ripresa_ammessa => true)$q$),
     'E_IDEMPOTENCY_KEY_RIUSATA',
     '13) Stessa key da una richiesta ANONIMA: NULL e'' un utente diverso, non un jolly');
 
@@ -190,7 +207,7 @@ UPDATE dbops.idempotency_keys
  WHERE idempotency_key = 'pgtap-idem-k1';
 
 SELECT is(
-    (SELECT esito FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', 9001, 'POST /pgtap/azione/')),
+    (SELECT esito FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', 9001, 'POST /pgtap/azione/', p_ripresa_ammessa => true)),
     'IN_CORSO',
     '14) In corso da 60 secondi, sotto la soglia di 120: IN_CORSO');
 
@@ -199,7 +216,7 @@ UPDATE dbops.idempotency_keys
  WHERE idempotency_key = 'pgtap-idem-k1';
 
 SELECT is(
-    (SELECT esito FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', 9001, 'POST /pgtap/azione/')),
+    (SELECT esito FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', 9001, 'POST /pgtap/azione/', p_ripresa_ammessa => true)),
     'ESEGUI',
     '15) In corso da 200 secondi, sopra la soglia: abbandonata, ESEGUI (D6)');
 
@@ -217,12 +234,12 @@ UPDATE dbops.idempotency_keys
 
 SELECT results_eq(
     $q$SELECT esito, response_payload
-         FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', 9001, 'POST /pgtap/azione/')$q$,
+         FROM dbops.fn_idempotency_prenota('pgtap-idem-k1', 9001, 'POST /pgtap/azione/', p_ripresa_ammessa => true)$q$,
     $q$VALUES ('REPLAY'::text, '{"data": {"id": 42}}'::jsonb)$q$,
     '17) Completed: REPLAY con la risposta salvata');
 
 -- failed: come lo scrive IdempotencyStore.mark_failed
-SELECT dbops.fn_idempotency_prenota('pgtap-idem-k2', 9001, 'POST /pgtap/azione/');
+SELECT dbops.fn_idempotency_prenota('pgtap-idem-k2', 9001, 'POST /pgtap/azione/', p_ripresa_ammessa => true);
 UPDATE dbops.idempotency_keys
    SET status = 'failed', tx_id = NULL, response_payload = NULL
  WHERE idempotency_key = 'pgtap-idem-k2';
@@ -231,7 +248,7 @@ UPDATE dbops.idempotency_keys
 --   SELECT la riga si vedrebbe con la fotografia di prima della ripresa.
 CREATE TEMP TABLE _t_esito AS
 SELECT 'k2'::text AS caso, esito
-  FROM dbops.fn_idempotency_prenota('pgtap-idem-k2', 9001, 'POST /pgtap/azione/');
+  FROM dbops.fn_idempotency_prenota('pgtap-idem-k2', 9001, 'POST /pgtap/azione/', p_ripresa_ammessa => true);
 
 SELECT results_eq(
     $q$SELECT e.esito, k.status
@@ -240,32 +257,75 @@ SELECT results_eq(
     $q$VALUES ('ESEGUI'::text, 'in_progress'::text)$q$,
     '18) Failed: ESEGUI, e la riga torna in_progress');
 
--- righe nate prima del 2026-10-23: nessun legame (endpoint NULL)
-INSERT INTO dbops.idempotency_keys (idempotency_key, status, tx_id, response_payload)
-VALUES ('pgtap-idem-legacy-ok', 'completed', gen_random_uuid(), '{"data": "vecchia"}'::jsonb),
-       ('pgtap-idem-legacy-ko', 'failed', NULL, NULL);
-
-SELECT results_eq(
-    $q$SELECT esito, response_payload
-         FROM dbops.fn_idempotency_prenota('pgtap-idem-legacy-ok', 9002, 'POST /pgtap/qualunque/')$q$,
-    $q$VALUES ('REPLAY'::text, '{"data": "vecchia"}'::jsonb)$q$,
-    '19) Una riga senza legame si rimanda come prima: non sa chi l''ha prenotata');
-
-INSERT INTO _t_esito
-SELECT 'legacy-ko', esito
-  FROM dbops.fn_idempotency_prenota('pgtap-idem-legacy-ko', 9003, 'POST /pgtap/legata/');
-
-SELECT results_eq(
-    $q$SELECT e.esito, k.auth_user_id, k.endpoint
-         FROM _t_esito e, dbops.idempotency_keys k
-        WHERE e.caso = 'legacy-ko' AND k.idempotency_key = 'pgtap-idem-legacy-ko'$q$,
-    $q$VALUES ('ESEGUI'::text, 9003, 'POST /pgtap/legata/'::text)$q$,
-    '20) Una riga senza legame, ripresa, si lega a chi la riprende');
+-- ogni key e' legata a una richiesta (20261024-01): una riga senza endpoint
+-- non nasce, come la scriveva la prenotazione del backend prima di BE-1
+SELECT is(
+    pg_temp.codice_di($q$
+        INSERT INTO dbops.idempotency_keys (idempotency_key, status)
+        VALUES ('pgtap-idem-slegata', 'in_progress')$q$),
+    '23502',
+    '19) ⛔ Una key senza endpoint e'' respinta (NOT NULL): nessuna key senza la richiesta che l''ha prenotata');
 
 SELECT is(
-    pg_temp.codice_di($q$SELECT * FROM dbops.fn_idempotency_prenota('  ', 9001, 'POST /pgtap/azione/')$q$),
+    pg_temp.codice_di($q$
+        INSERT INTO dbops.idempotency_keys (idempotency_key, status, endpoint)
+        VALUES ('pgtap-idem-vuota', 'in_progress', '   ')$q$),
+    'chk_idempotency_keys_endpoint_non_vuoto',
+    '20) ⛔ ...e una con endpoint vuoto pure: il legame dev''essere un valore');
+
+SELECT is(
+    pg_temp.codice_di($q$SELECT * FROM dbops.fn_idempotency_prenota('  ', 9001, 'POST /pgtap/azione/', p_ripresa_ammessa => true)$q$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '21) Key vuota: chiamata non valida, nessuna riga scritta');
+
+-- ============================================================
+-- §I.7.3 — la ripresa la dichiara il chiamante (20261023-06)
+--   Una key per caso: k3 per la in_progress, k4 per la failed.
+-- ============================================================
+SELECT is(
+    (SELECT esito FROM dbops.fn_idempotency_prenota('pgtap-idem-k3', 9001, 'POST /pgtap/a-passi/', p_ripresa_ammessa => false)),
+    'ESEGUI',
+    '23) Key nuova, ripresa NON ammessa: ESEGUI (la dichiarazione conta solo per le in_progress)');
+
+UPDATE dbops.idempotency_keys
+   SET prenotata_at = now() - interval '200 seconds'
+ WHERE idempotency_key = 'pgtap-idem-k3';
+
+SELECT is(
+    (SELECT esito FROM dbops.fn_idempotency_prenota('pgtap-idem-k3', 9001, 'POST /pgtap/a-passi/', p_ripresa_ammessa => false)),
+    'IN_CORSO',
+    '24) ⛔ In corso da 200 secondi, sopra la soglia, ripresa NON ammessa: IN_CORSO (un lavoro a passi non si rifa'')');
+
+SELECT results_eq(
+    $q$SELECT status, prenotata_at = now() - interval '200 seconds'
+         FROM dbops.idempotency_keys WHERE idempotency_key = 'pgtap-idem-k3'$q$,
+    $q$VALUES ('in_progress'::text, true)$q$,
+    '24-bis) ...e la riga non si tocca: prenotata_at resta quella della prenotazione');
+
+SELECT dbops.fn_idempotency_prenota('pgtap-idem-k4', 9001, 'POST /pgtap/a-passi/', p_ripresa_ammessa => false);
+UPDATE dbops.idempotency_keys
+   SET status = 'failed', tx_id = NULL, response_payload = NULL
+ WHERE idempotency_key = 'pgtap-idem-k4';
+
+INSERT INTO _t_esito
+SELECT 'k4', esito
+  FROM dbops.fn_idempotency_prenota('pgtap-idem-k4', 9001, 'POST /pgtap/a-passi/', p_ripresa_ammessa => false);
+
+SELECT results_eq(
+    $q$SELECT e.esito, k.status
+         FROM _t_esito e, dbops.idempotency_keys k
+        WHERE e.caso = 'k4' AND k.idempotency_key = 'pgtap-idem-k4'$q$,
+    $q$VALUES ('ESEGUI'::text, 'in_progress'::text)$q$,
+    '25) Failed, ripresa NON ammessa: ESEGUI lo stesso, l''esito l''ha scritto il backend e lo stato e'' noto');
+
+SELECT is(
+    pg_temp.codice_di($q$SELECT * FROM dbops.fn_idempotency_prenota('pgtap-idem-k5', 9001, 'POST /pgtap/azione/')$q$),
+    'E_SCRIPT_CHIAMATA_NON_VALIDA',
+    '26) ⛔ Ripresa non dichiarata (NULL): chiamata non valida, nessun default decide al posto del chiamante');
+
+SELECT ok(
+    NOT EXISTS (SELECT 1 FROM dbops.idempotency_keys WHERE idempotency_key = 'pgtap-idem-k5'),
+    '26-bis) ...e nessuna riga e'' stata prenotata');
 
 -- ============================================================
 -- catalogo — D4 e D7

@@ -2,6 +2,7 @@
 
 > 👀 **Vedi anche**
 >
+> [Le operazioni che non si ripetono](/guide/operazioni-che-non-si-ripetono) — la guida: il meccanismo intero, dal gesto alla scadenza
 > [dbops.fn_idempotency_prenota](/dbzero/dbops/funzioni/fn_idempotency_prenota) — la prenotazione di una key
 > [dbops.request_log](/dbzero/dbops/manual/request_log) — correlazione via `idempotency_key`
 > [dbops.error_log](/dbzero/dbops/tabelle/error_log)
@@ -31,7 +32,8 @@ riesegue: rimanda la risposta della prima.
   `completed`.
 * **`auth_user_id`**, **`endpoint`**: chi ha prenotato la key e su quale richiesta
   (metodo e percorso). La risposta si rimanda solo allo stesso utente sullo stesso
-  endpoint. `endpoint` è vuoto solo sulle righe nate prima del 2026-10-23.
+  endpoint. `endpoint` è obbligatorio: ogni key è legata alla richiesta che l'ha
+  prenotata. `auth_user_id` è vuoto per una richiesta anonima.
 * **`prenotata_at`**: quando la key è stata prenotata o ripresa. Da qui si misura se
   una key `in_progress` è stata abbandonata.
 * **`tx_id`**: la transazione DB dell'operazione completata.
@@ -42,17 +44,28 @@ riesegue: rimanda la risposta della prima.
 ### Come funziona
 
 1. Il backend chiama **[`dbops.fn_idempotency_prenota`](/dbzero/dbops/funzioni/fn_idempotency_prenota)**
-   con la key, l'utente e l'endpoint. La funzione risponde:
+   con la key, l'utente, l'endpoint e una dichiarazione obbligatoria: **la ripresa è
+   ammessa?** (vedi il punto 2). La funzione risponde:
     * **ESEGUI** — la key è nuova, oppure era fallita, oppure era «in corso» da più di
       `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` (120 secondi, sopra il timeout del server
-      web): chi lavorava è morto senza finire, e si riprende;
+      web) **e la ripresa è ammessa**: chi lavorava è morto senza finire, e si riprende;
     * **REPLAY** — l'operazione è già stata fatta: il backend rimanda la risposta salvata;
-    * **IN_CORSO** — la sta eseguendo un'altra richiesta: il backend risponde 409
+    * **IN_CORSO** — la sta eseguendo un'altra richiesta, oppure è «in corso» oltre la
+      soglia ma la ripresa **non** è ammessa: il backend risponde 409
       `E_IDEMPOTENCY_IN_PROGRESS` («L'operazione è ancora in corso»).
-2. A operazione finita il backend scrive `completed` con la risposta, **nella stessa
-   transazione dell'operazione**: o sono avvenute tutte e due, o nessuna. È questo che
-   rende sicura la ripresa di una key abbandonata.
-3. Se l'operazione fallisce, il backend scrive `failed`.
+2. A operazione finita il backend scrive `completed` con la risposta. Qui le operazioni
+   sono di due tipi, e il backend dice quale a ogni richiesta:
+    * **in un passo solo**: `completed` si scrive **nella stessa transazione
+      dell'operazione**, quindi o sono avvenute tutte e due, o nessuna. Una key rimasta
+      «in corso» vuol dire che l'operazione non ha salvato niente: riprenderla è sicuro,
+      e la ripresa è **ammessa**;
+    * **a passi** (per esempio la pipeline di un lotto, che salva ogni passo per conto
+      suo): una key rimasta «in corso» può coprire un lavoro già salvato in parte.
+      Riprenderla lo rifarebbe, quindi la ripresa **non è ammessa**: la key resta «in
+      corso» finché scade, o finché il frontend ne genera una nuova per il gesto dopo.
+3. Se l'operazione fallisce, il backend scrive `failed`. Una key `failed` si riprende
+   sempre, anche quando la ripresa non è ammessa: l'esito l'ha scritto il backend, quindi
+   si sa che cosa è successo.
 
 Una key usata da un **altro utente** o su un **altro endpoint** non rimanda niente: la
 funzione risponde `E_IDEMPOTENCY_KEY_RIUSATA` (400), perché la risposta salvata è
@@ -64,7 +77,7 @@ dell'operazione di qualcun altro.
 
 * `status` ammette solo `in_progress`, `completed`, `failed`.
 * Una key `completed` ha sempre `tx_id` e risposta; una key non `completed` non ha risposta.
-* `endpoint`, se c'è, non è vuoto.
+* `endpoint` c'è sempre e non è vuoto.
 
 ---
 

@@ -19,7 +19,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | auth_user_id | integer | YES |  |
-| endpoint | text | YES |  |
+| endpoint | text | NO |  |
 | prenotata_at | timestamp with time zone | NO | now() |
 
 ## 🔒 Vincoli

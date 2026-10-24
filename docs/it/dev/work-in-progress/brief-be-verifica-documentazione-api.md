@@ -1,12 +1,15 @@
 # Brief BE — La documentazione API confrontata col codice
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-23 (notte)
+## ⏭️ Chi riparte — aggiornato al 2026-10-24
 
-**Riparte: il team DB**, col parametro «ripresa ammessa» di `dbops.fn_idempotency_prenota`
-(§I.7.3). BE-3 e BE-4 sono fatti (§I.7.1); BE-1 e BE-2 **aspettano quel changeSet**, perché
-BE-2 com'era scritto non vale per la pipeline del lotto (§I.7.2, decisione di Tid del
-2026-10-23: unità di lavoro dichiarata). **D2 e D3 sono usciti da questo brief**: sono il tema
-del [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).
+**Riparte: il BE, subito**, con BE-1 + BE-2 + BE-5 nello stesso rilascio, più le due pagine di
+doc BE (§I.7.4). `20261024-01` e `-02` sono applicati e il pgTAP è verde (§I.8): ⚠️ da adesso,
+finché BE-1 non è in esercizio, ogni POST in modalità forte risponde 500, perché la prenotazione
+vecchia del backend scrive key senza `endpoint` (decisione di Tid del 2026-10-24, ambiente di
+sviluppo). **Il lato DB è finito.** BE-3 e BE-4 sono fatti (§I.7.1). La guida nuova
+[Le operazioni che non si ripetono](../../guide/operazioni-che-non-si-ripetono.md) è scritta
+(§I.9). **D2 e D3 sono usciti da questo brief**: sono il
+tema del [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -14,15 +17,22 @@ del [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 �
 | 2 | ✅ **Tid** | Apply su scratch e dbdev, pgTAP verdi (2026-10-23) | §I.3 | 1 |
 | 3-bis | ✅ team DB + **Tid** | §I.6: `error_log` e `audit_log` nello scope, 90 giorni; applicato, pgTAP verdi | §I.6 | — |
 | 3 | ✅ BE | BE-3 (policy e ripieghi) e BE-4 (drawer delle famiglie), più i quattordici `catch` muti del FE | §I.7.1 | 2 |
-| 4 | **team DB** | `p_ripresa_ammessa` su `fn_idempotency_prenota` + pgTAP | §I.7.3 | — |
-| 5 | **Tid** | Apply | — | 4 |
-| 6 | **BE** | BE-1 + BE-2 nella forma «unità dichiarata», nello stesso rilascio | §I.7.4 | 5 |
-| 7 | **Tid** | Archiviazione in `work-done/` | — | 6 |
+| 4 | ✅ team DB | `p_ripresa_ammessa` su `fn_idempotency_prenota` + pgTAP (`20261023-06`, prova pre-apply verde) | §I.7.5 | — |
+| 5 | ✅ **Tid** | Apply di `20261023-06` su scratch e dbdev, `dbops/test-idempotency-prenota-v1` verde (2026-10-24) | §I.7.5 | 4 |
+| 6 | ✅ team DB | NOT NULL su `dbops.idempotency_keys.endpoint` e ramo «senza legame» ritirato (`20261024-01`, `-02`), prova pre-apply verde | §I.8 | 5 |
+| 7 | ✅ **Tid** | Apply di `20261024-01` e `-02` su scratch e dbdev, `dbops/test-idempotency-prenota-v1` verde (2026-10-24) | §I.8 | 6 |
+| 7-bis | ✅ team DB | Guida «Le operazioni che non si ripetono» | §I.9 | — |
+| 8 | **BE** | BE-1 + BE-2 nella forma «unità dichiarata», BE-5 (soglia legata al timeout di gunicorn) e BE-6 (le due pagine di doc BE), nello stesso rilascio, **subito** | §I.7.4 | 7 |
+| 9 | **Tid** | Archiviazione in `work-done/` | — | 8 |
 
 Decisioni aperte di Tid: **nessuna** (§I.5 decisa il 2026-10-23: 90 giorni, anche per
 `audit_log`; §I.7 decisa il 2026-10-23: unità di lavoro dichiarata, e i `catch` muti corretti in
-questo giro). Lavoro da committare: il giro DB del 2026-10-23 (§I.2 e §I.6) e il giro BE/FE di
-§I.7.1.
+questo giro). Lavoro da committare: il giro DB di §I.7.5 (`20261023-06`) e di §I.8
+(`20261024-01`, `-02`), il pgTAP, la pagina manual, questo brief; il giro DB di §I.2/§I.6 e il giro BE/FE di §I.7.1 sono nei commit del
+2026-10-23.
+
+✅ Deciso da Tid col BE il 2026-10-23: `p_ripresa_ammessa` è **obbligatorio, senza un default
+che decida** (§I.7.5). Applicato il 2026-10-24.
 
 ⚠️ Fino a BE-1 + BE-2 il backend usa ancora la sua prenotazione: le colonne nuove restano
 vuote sulle righe che scrive (`endpoint` NULL = riga senza legame) e la ripresa dopo 120
@@ -142,6 +152,16 @@ SQL estratto dai changeSet e seed simulati dai CSV, in una transazione annullata
 * **Debito dichiarato:** `endpoint` resta nullable per le righe nate prima del 2026-10-23.
   Il NOT NULL è un changeSet successivo, quando il primo purge le ha tolte (un giorno dopo
   l'apply, più il giro settimanale).
+  ⚠️ **Precisato il 2026-10-24: il NOT NULL viene dopo BE-1, non solo dopo il purge.** Finché
+  il backend prenota col suo SQL (`claim_or_replay`), scrive righe nuove **senza** `endpoint`:
+  le righe senza legame non smettono di nascere, e un NOT NULL oggi romperebbe ogni POST in
+  modalità forte. L'ordine è: BE-1 in esercizio → un giorno di scadenza più il giro
+  settimanale → changeSet del NOT NULL (passo 7 del blocco in testa). Fatto datato
+  2026-10-24, su dbdev: 954 righe con `endpoint` NULL, la più vecchia del 2026-09-26. Il
+  purge non le ha ancora tolte: prima del NOT NULL va verificato perché (scadenza
+  valorizzata? job acceso?), non dato per scontato.
+  ➡️ **Superato il 2026-10-24: Tid ha deciso di chiudere subito (§I.8).** Il perché delle
+  righe ancora vive è spiegato lì.
 
 ### I.6 `error_log` e `audit_log` scadono (2026-10-23, decisione di Tid) — ✅ applicato, pgTAP verdi
 
@@ -223,6 +243,13 @@ dichiara se è **ATOMICA** (default: handler e `completed` in un `atomic`, ripre
 **A_PASSI** (niente `atomic` esterno, ripresa **non** ammessa: una key orfana resta `IN_CORSO`
 come oggi, finché scade o il frontend ne genera una nuova dopo il gesto).
 
+⭐ **ATOMICA vuol dire anche: l'operazione finisce dentro la richiesta** (precisazione del
+2026-10-24). Niente lavoro che continua dopo la risposta (thread, coda, job) mentre tiene la
+key: la durata di una richiesta ha il tetto del timeout di gunicorn, quella di un lavoro in
+background no, e la soglia di ripresa vale solo col tetto. Un endpoint che lascia lavoro in
+background è A_PASSI. I 65 punti classificati il 2026-10-23 rispettano già la regola: la riga
+serve a chi aggiunge un endpoint nuovo.
+
 #### I.7.3 Richiesta al team DB
 
 `dbops.fn_idempotency_prenota` riceve un parametro in più, `p_ripresa_ammessa boolean`, che il
@@ -243,7 +270,10 @@ Nessuna colonna nuova: la dichiarazione è della richiesta, non della key.
 #### I.7.4 BE-1 + BE-2, nella forma nuova (dopo l'apply)
 
 * `handle_post_json(..., unita_di_lavoro=...)`, un valore per i quattro endpoint di §I.7.2
-  (`A_PASSI`); il default è `ATOMICA`. `claim_or_replay` chiama la funzione DB col parametro.
+  (`A_PASSI`); il default è `ATOMICA`. `claim_or_replay` chiama la funzione DB col parametro:
+  `dbops.fn_idempotency_prenota(key, auth_user_id, endpoint, request_id, ripresa_ammessa)`,
+  con `ripresa_ammessa` = `unita_di_lavoro == ATOMICA`. ⛔ Il quinto argomento si passa
+  **sempre**: omesso è `E_SCRIPT_CHIAMATA_NON_VALIDA` (§I.7.5).
 * ATOMICA: `handler` + `mark_completed` in un `transaction.atomic()`; `mark_failed` **fuori**,
   dopo il rollback.
 * ⚠️ **Il diario dentro l'atomic.** `ErrorManager.log_error_only` (`error_manager.py:211`) scrive
@@ -255,6 +285,153 @@ Nessuna colonna nuova: la dichiarazione è della richiesta, non della key.
   un test sul DB vero che costruisce il caso.
 * Il presidio `test_transaction_atomicity_guardrail`: la voce dell'ALLOWLIST su
   `claim_or_replay` cade col suo SQL.
+* **BE-5 — la soglia legata al timeout di gunicorn** (2026-10-24, nello stesso rilascio di
+  BE-1). La ripresa di una key ATOMICA è sicura perché nessuna richiesta vive più del timeout
+  di gunicorn (`ZEROERP_GUNICORN_TIMEOUT`, default 60, `backend/bin/start-gunicorn.sh:21`):
+  oltre `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` (120, `config.parameters`) chi lavorava è morto
+  e non ha fatto commit. Oggi questa relazione sta **solo in un commento** di `20261023-04`, e
+  nessun controllo la tiene: alzando il timeout sopra la soglia (per esempio per far stare più
+  lavoro in una chiamata) una richiesta ancora viva verrebbe ripresa da un reinvio, e
+  l'operazione girerebbe due volte in parallelo. ⇒ Un presidio del backend, che conosce il
+  proprio timeout: all'avvio (o in un check di Django) il backend rifiuta di partire se il
+  timeout non sta **sotto** la soglia letta dal DB, con un margine (proposta: soglia almeno
+  30 secondi sopra il timeout). Fail-loud, come la soglia mancante nella funzione. Il difetto nasce dal giro DB di
+  D6 (2026-10-23), non da BE-1: è emerso da una domanda di Tid il 2026-10-24.
+* **BE-6 — la doc BE allineata nello stesso rilascio** (2026-10-24). Due pagine descrivono
+  oggi il comportamento di prima:
+  * [api.md §Idempotency-Key](../api.md): la tabella non conosce la ripresa oltre la soglia,
+    `E_IDEMPOTENCY_KEY_RIUSATA` (400), il legame a utente ed endpoint, ATOMICA / A_PASSI e il
+    presidio di BE-5;
+  * [api_endpoint_helpers.md](../../backend/core/manual/api_endpoint_helpers.md): descrive il
+    claim scritto nel backend e `mark_completed` fuori dalla transazione; con BE-1/BE-2 diventa
+    la chiamata a `dbops.fn_idempotency_prenota` e `unita_di_lavoro`.
+
+  La guida [Le operazioni che non si ripetono](../../guide/operazioni-che-non-si-ripetono.md)
+  (§I.9) rimanda a queste due pagine per il contratto BE: va riletta dopo BE-6, e se il
+  comportamento finale del BE è diverso da quello che racconta, si corregge lì.
+
+#### I.7.5 Il giro DB di §I.7.3 (2026-10-23, notte) — ✅ applicato il 2026-10-24, pgTAP verde
+
+✅ Dopo l'apply (2026-10-24): `20261023-06` EXECUTED su `zeroerp_ruoli` e `zeroerp`, una sola
+firma (`text, integer, text, uuid, boolean`), `dbops/test-idempotency-prenota-v1` verde nella
+corsa di Tid.
+
+**File.**
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261023-06-update-fn-idempotency-prenota-ripresa-ammessa` | DROP della firma a quattro, CREATE a cinque con `p_ripresa_ammessa boolean` in coda; COMMENT riscritto |
+| `db/pgtap/dbops/test-idempotency-prenota-v1.sql` | plan 24 → 31: ogni chiamata dichiara la ripresa; test 1-bis (una firma sola), 23-26-bis (i rami nuovi, costruiti con `prenotata_at` retrodatato) |
+| `dbzero/dbops/manual/idempotency_keys.md` | «Come funziona»: le operazioni in un passo e a passi |
+
+**Il comportamento.** `true` → come prima (ramo 5: oltre la soglia si riprende). `false` → una
+`in_progress` resta `IN_CORSO` anche oltre la soglia, e la riga non si tocca; la soglia non si
+legge, perché non decide niente. Una `failed` si riprende in entrambi i casi. Una key nuova è
+ESEGUI in entrambi i casi.
+
+**Il parametro è obbligatorio** (scelta presa scrivendo; ✅ confermata da Tid col BE il
+2026-10-23: «obbligatorio senza default»). Sta in coda (dopo
+`p_request_id`, che ha un default), quindi PostgreSQL gli pretende un default: è `DEFAULT
+NULL`, e NULL è `E_SCRIPT_CHIAMATA_NON_VALIDA`. Il motivo è sul modello, non sui chiamanti:
+`true` come default accenderebbe la ripresa a chi non ha dichiarato di poterla reggere, cioè
+proprio il caso non sicuro; `false` la spegnerebbe in silenzio a chi dimentica di dichiararla.
+Nessuno dei due è un valore del modello: la dichiarazione è del chiamante. Il costo è nullo
+oggi (il backend non chiama ancora la funzione, BE-1 la adotta già col parametro), ma la
+scelta non dipende da questo.
+
+**Chiamanti censiti il 2026-10-23:** il solo pgTAP `dbops/test-idempotency-prenota-v1`
+(riscritto); nessuna vista o funzione del DB; il backend non ancora (BE-1).
+
+**La prova** (SQL estratto inserito dopo la riga `BEGIN;` del pgTAP, `psql -X -v
+ON_ERROR_STOP=1`, transazione annullata, come `zeroerp_owner`):
+
+| pgTAP | scratch, senza | scratch, con | dbdev, con |
+| --- | --- | --- | --- |
+| `dbops/test-idempotency-prenota-v1` | rosso (1-bis `not ok`, poi il file si ferma alla prima chiamata: la firma a cinque non c'è) | 31/31 | 31/31 |
+| `dbops/test-stati-check-scrittori-v1` (presidio C1, testuale) | 15/15 | 15/15 | — |
+| `dbops/test-riferimenti-morti-v1`, `script/test-catalogo-messaggi-errore-completo`, `dbops/test-cleanup-framework` | verdi | verdi, identici | — |
+
+* Dopo le corse la funzione viva è quella di prima su entrambi i database (`md5` di
+  `pg_get_functiondef` identico) e non resta nessuna key `pgtap-idem-*`.
+* Guardrail statici verdi: runOnChange, precondition/seed, DDL su trigger di automazione,
+  GRANT ai ruoli batch, v1 congelato.
+* Nessun GRANT nel changeSet, come in `20261023-04`: l'EXECUTE all'applicazione arriva dai
+  privilegi di default di `zeroerp_owner` sullo schema `dbops` (verificato su scratch e dbdev
+  il 2026-10-23). La corsa **come app** di Tid dopo l'apply resta la prova: il file gira come
+  applicazione.
+
+### I.8 `endpoint` obbligatorio — il debito di §I.5 chiuso (2026-10-24) — ✅ applicato, pgTAP verde
+
+✅ Dopo l'apply (2026-10-24): `20261024-01` e `-02` EXECUTED su `zeroerp_ruoli` e `zeroerp`;
+`endpoint` NOT NULL, nessuna riga senza; `dbops/test-idempotency-prenota-v1` verde nella corsa di
+Tid.
+
+**Decisione di Tid (2026-10-24):** chiudere il lato DB adesso, senza aspettare BE-1 e il purge.
+Siamo in sviluppo; il BE fa BE-1 subito dopo l'apply.
+
+**File.**
+
+| File | Che cosa |
+| --- | --- |
+| `00_schema/dbops/20261024-01-alter-idempotency-keys-endpoint-not-null` | cancella le righe senza `endpoint`; `endpoint` NOT NULL; il CHECK «non vuoto» perde il ramo `IS NULL OR`; COMMENT di `endpoint` e `auth_user_id` riscritti |
+| `20_code/dbops/20261024-02-update-fn-idempotency-prenota-senza-righe-slegate` | `fn_idempotency_prenota`, firma invariata: il confronto D7 vale per ogni key (via `endpoint IS NOT NULL AND`); la ripresa non riscrive più utente ed endpoint, che il passo 3 ha già detto uguali; COMMENT senza le righe vecchie |
+| `db/pgtap/dbops/test-idempotency-prenota-v1.sql` | test 19-20 (le righe senza legame) sostituiti: key senza `endpoint` → 23502; `endpoint` vuoto → il CHECK. Plan invariato, 31 |
+| `dbzero/dbops/manual/idempotency_keys.md` | `endpoint` obbligatorio |
+
+**Scelte dichiarate.**
+
+* **Le righe senza `endpoint` si cancellano, non si riempiono.** Il valore non c'è, e
+  inventarlo legherebbe la key alla richiesta sbagliata. Una key cancellata vuol dire solo che
+  un reinvio con quella key verrebbe rieseguito: le righe hanno passato da tempo il gesto del
+  frontend (dieci minuti al massimo), salvo quelle degli ultimi minuti prima dell'apply. Da
+  zero (CI) non ce ne sono.
+* **Il `-02` non cambia nessuna risposta osservabile**: col NOT NULL il ramo ritirato non può
+  più scattare. Per questo il pgTAP non lo distingue (senza il `-02`, con il solo `-01`, il
+  file sarebbe verde uguale): è un ritiro di codice morto, dichiarato tale.
+
+**Perché le 954 righe di dbdev erano ancora vive** (domanda aperta in §I.5, fatto datato
+2026-10-24). Non è un guasto. Tutte avevano la scadenza: quelle nate prima dell'apply del
+2026-10-23 l'avevano a **30 giorni**, scritta dal job con la regola di default (la riga di scope
+a mano di dbdev, prima della regola 24); quelle nate dopo l'avevano a un giorno. Il job
+settimanale riempie solo le scadenze vuote e non ricalcola le altre, quindi le righe vecchie
+sarebbero rimaste fino al 2026-11-22. È lo stesso comportamento già scritto in §I.6 per
+`error_log`.
+
+⚠️ **Ricaduta BE, accettata da Tid:** fra l'apply e BE-1, `IdempotencyStore.claim_or_replay`
+(`idempotency_store.py:38`, INSERT senza `endpoint`) fallisce col 23502, quindi ogni POST in
+modalità forte risponde 500. Con BE-1 la prenotazione passa da `fn_idempotency_prenota`, che
+`endpoint` lo scrive sempre.
+
+**La prova** (SQL estratto di `-01` e `-02` in ordine, inserito dopo la riga `BEGIN;`, `psql -X
+-v ON_ERROR_STOP=1`, transazione annullata, come `zeroerp_owner`; su dbdev il DELETE tocca le 954
+righe vere):
+
+| pgTAP | scratch, senza | scratch, con | dbdev, senza | dbdev, con |
+| --- | --- | --- | --- | --- |
+| `dbops/test-idempotency-prenota-v1` | 30/31 (19 rosso: il NOT NULL manca) | 31/31 | 30/31 (19 rosso) | 31/31 |
+| `dbops/test-stati-check-scrittori-v1`, `test-riferimenti-morti-v1`, `test-cleanup-framework`, `test-registri-dbops-scadenza-v1` | verdi | verdi, identici | verdi | verdi, identici |
+
+* Dopo le corse: funzione (md5), `attnotnull` di `endpoint` e numero di righe identici a prima
+  su entrambi i database.
+* Guardrail statici verdi sui due changeSet.
+* Gli altri pgTAP che nominano `idempotency_keys` non ci inseriscono righe (censiti il
+  2026-10-24).
+
+### I.9 La guida del meccanismo (2026-10-24, richiesta di Tid) — ✅ scritta
+
+Fino a oggi il meccanismo della Idempotency-Key era descritto in quattro pezzi, per tre pubblici
+diversi (api.md, `api_endpoint_helpers.md`, il catalogo BB frontend, il manual di
+`idempotency_keys`), e nessuna guida lo raccontava intero. Nuova guida
+[Le operazioni che non si ripetono](../../guide/operazioni-che-non-si-ripetono.md), in linguaggio
+per non tecnici: il gesto e la chiave, i tre esiti, il legame con l'utente, la ripresa (in un
+passo / a passi, e perché la soglia sta sopra il timeout del server web), la scadenza. Il
+contratto non si ricopia: rimanda alle quattro pagine.
+
+* Registrata in `mkdocs.yml` e `mkdocs.zensical.yml` (Approfondimenti tecnici, accanto ad
+  «Audit e tracciabilità») e in `docs/it/readme.md`; il manual di `idempotency_keys` la linka.
+* ⚠️ Descrive il comportamento **dopo** BE-1/BE-2 (la prenotazione dal DB, le operazioni in un
+  passo e a passi). Va riletta con BE-6 (§I.7.4): se il BE chiude in modo diverso, si corregge.
+* Build della doc non lanciata (a cura del manutentore).
 
 ---
 
