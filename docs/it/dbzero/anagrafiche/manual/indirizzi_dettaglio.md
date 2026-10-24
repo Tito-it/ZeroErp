@@ -1,85 +1,95 @@
-
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.indirizzi_dettaglio`
 
-> 👀 **Vedi anche**    
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
-Guide:   
+> 👀 **Vedi anche**
 >
-[Gestione degli indirizzi](/guide/gestione-degli-indirizzi)       
+> Guide:
 >
-Approfondimento Tabelle:      
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
+> * [Linee guida SQL §8.4-bis](/linee-guida-sql#84-bis-indici-unique-con-colonne-nullable) — indici `UNIQUE` con colonne nullable
 >
-[anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)    
-> [config.stradario](/dbzero/config/tabelle/stradario)  
-> [config.comuni](/dbzero/config/tabelle/comuni)    
-> [config.province](/dbzero/config/tabelle/province)   
-> [storico.indirizzi_dettaglio](/dbzero/storico/tabelle/indirizzi_dettaglio)    
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:   
+> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)
+> * [config.stradario](/dbzero/config/tabelle/stradario)
+> * [config.comuni](/dbzero/config/tabelle/comuni)
+> * [config.province](/dbzero/config/tabelle/province)
+> * [storico.indirizzi_dettaglio](/dbzero/storico/tabelle/indirizzi_dettaglio)
 >
-[anagrafiche.trgfn_dettaglio_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize)    
-> [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/funzioni/fn_get_or_create_indirizzo_dettaglio) — il «trova o crea» del civico
+> * [anagrafiche.fn_build_indirizzo_normalizzato](/dbzero/anagrafiche/funzioni/fn_build_indirizzo_normalizzato) — la normalizzazione, unica sorgente
+> * [anagrafiche.trgfn_indirizzi_dettaglio_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize)
+> * [anagrafiche.trgfn_indirizzi_dettaglio_protect_update](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_protect_update)
+> * [maintenance.proc_bump_indirizzi_dettaglio](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio)
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 
-
-La tabella **`anagrafiche.indirizzi_dettaglio`** contiene il dettaglio degli indirizzi civici, collegati a una specifica via (tramite `stradario_id`) e al relativo contesto geografico (comune, provincia, regione, stato). In essa sono memorizzati numeri civici, estensioni, palazzine, interni, piani, dati di geolocalizzazione e un campo di indirizzo normalizzato generato automaticamente.
-
----
-### 🎯 Scopo Principale
-(latest review 10-01-26)
-* **Dettagliare lo stradario**  
-  Associare a ciascuna via (memorizzata in `config.stradario`) le singole unità civiche (numeri civici, estensioni, palazzine, interni, piani), ottenendo così l’indirizzo completo e navigabile.  
-* **Geolocalizzazione precisa**  
-  Il campo `civic_geoloc` memorizza il punto geografico corrispondente al singolo civico, mentre `street_geoloc` rappresenta la posizione media della via. Questi dati consentono ricerche spaziali e visualizzazioni GIS a livello di civico.  
-  Per le ricerche spaziali sul civico e' previsto un indice **GiST** su `civic_geoloc`.  
-* **Indirizzo normalizzato**  
-  Il campo calcolato `indirizzo_normalizzato` combina via, civico, palazzina, scala, piano e interno in un’unica stringa formattata in modo coerente, facilitando confronti testuali e ricerche full-text.
+La tabella **`anagrafiche.indirizzi_dettaglio`** contiene il dettaglio degli indirizzi civici, collegati a una specifica via (tramite `stradario_id`) e, attraverso la via, al contesto geografico (comune, provincia, regione, stato). Vi sono memorizzati numero civico, estensione, palazzina, scala, piano, interno, i dati di geolocalizzazione e tre campi calcolati dalla normalizzazione.
 
 ---
 
-### Regola di riclassificazione
+### 🎯 Scopo principale
 
-Il cambio di via (`stradario_id`) e' protetto da un guard: la modifica manuale e' bloccata.  
-La riclassificazione va eseguita tramite la procedura `maintenance.proc_bump_indirizzi_dettaglio(...)`, che abilita la manutenzione e forza la rinormalizzazione con storico.
-
----
-
-### Collegamenti con Altre Tabelle
-
-* **`config.stradario`**  
-  - Il campo `stradario_id` (integer) fa riferimento alla chiave primaria di `config.stradario`.  
-  - Vincolo referenziale:  
-    - **ON UPDATE CASCADE** (se cambia l’ID della via, si propaga automaticamente)  
-    - **ON DELETE RESTRICT** (non si può eliminare una via se esistono civici ad essa collegati).  
-  - Attraverso `config.stradario`, si risale alla catena gerarchica:  
-    1. **Comune** (via → comune)  
-    2. **Provincia** (comune → provincia)  
-    3. **Regione** (provincia → regione)  
-    4. **Stato** (regione → stato)
-
-* **Unicità del dettaglio civico**  
-  - Il vincolo `uq_indirizzi_dettaglio_norm` su (`via_norm`, `civico_norm`, `interno`, `piano`, `palazzina`) garantisce che non esistano duplicati logici dello stesso indirizzo normalizzato.
+* **Dettagliare lo stradario**
+  Associare a ciascuna via (`config.stradario`) le singole unità civiche (numero civico, estensione, palazzina, scala, piano, interno), ottenendo l'indirizzo completo.
+* **Geolocalizzazione**
+  `civic_geoloc` memorizza il punto del singolo civico, `street_geoloc` la posizione media della via. Per le ricerche spaziali sul civico c'è un indice **GiST** su `civic_geoloc`.
+* **Indirizzo normalizzato**
+  Un trigger `BEFORE INSERT OR UPDATE` delega a `fn_build_indirizzo_normalizzato` e scrive:
+  * le colonne strutturali normalizzate (`UPPER` + `BTRIM`); l'estensione prende il prefisso `/` (`A` → `/A`);
+  * `via_norm`: tipo toponimo + nome della via, in maiuscolo;
+  * `civico_norm`: numero + estensione, oppure **`SNC`** (senza numero civico) quando il civico è `NULL` o `0`;
+  * `indirizzo_normalizzato`: la stringa completa (via, civico, palazzina, scala, piano, interno), usata per i confronti testuali e per la ricerca con l'indice GIN trigram.
 
 ---
 
-### Vantaggi Operativi
+### Regola sul cambio di via
 
-* **Ricostruzione gerarchica completa**  
-  Mediante `stradario_id`, è possibile risalire in modo automatico e veloce all’intera struttura geografica (via → comune → provincia → regione → stato) senza duplicare dati.  
-* **Precisione nella geolocalizzazione**  
-  I campi `civic_geoloc` e `street_geoloc` permettono di visualizzare sia la posizione esatta di un civico sia la posizione media della via su mappe e applicazioni GIS.  
-* **Ricerche full-text e uniformità**  
-  Il campo `indirizzo_normalizzato` consente di effettuare ricerche testuali uniformi, confrontando stringhe già normalizzate (indipendenti da differenze di formattazione manuale).  
-* **Gestione completa delle varianti civiche**  
-  Grazie a `estensione_civico`, `palazzina`, `interno` e `scala`, si coprono tutte le possibili varianti di civico (lettere, palazzine multiple, suddivisioni e piani), senza necessità di alterare lo schema.  
-* **Integrità e prevenzione duplicati**  
-  Il vincolo di unicità `uq_indirizzi_dettaglio_norm` evita la creazione di due record con lo stesso indirizzo normalizzato, mantenendo coerenza e pulizia dei dati.
+Il cambio di via (`stradario_id`) è bloccato dal guard `trgfn_indirizzi_dettaglio_protect_update` (`E_COLONNA_NON_MODIFICABILE`): un civico non si sposta su un'altra via.
+
+Quando cambia la via stessa (per esempio il toponimo), i civici si rinormalizzano con la procedura `maintenance.proc_bump_indirizzi_dettaglio(p_stradario_id)`: apre la manutenzione solo per la durata della procedura, riscrive le righe di quella via (il trigger ricalcola i campi normalizzati, lo storico registra la versione precedente) e richiude la manutenzione anche se l'aggiornamento fallisce.
 
 ---
 
-> **“Una tabella di dettaglio civico che unisce normalizzazione testuale, geolocalizzazione puntuale e collegamenti gerarchici: il fulcro del sistema di indirizzamento completo in Zero ERP.”**  
+### Collegamenti con altre tabelle
 
+* **`config.stradario`**
+  * `stradario_id` (integer, obbligatorio) fa riferimento alla chiave primaria di `config.stradario` (`fk_stradario_config`):
+    * **ON UPDATE CASCADE**: se cambia l'id della via, si propaga;
+    * **ON DELETE NO ACTION**: una via con civici collegati non si cancella.
+  * Attraverso `config.stradario` si risale alla catena via → comune → provincia → regione → stato.
+* **Tabelle figlie** (indirizzi, indirizzi dei soggetti, PDP, istanze utilities, magazzini, unità catastali): un civico con figli attivi non si disattiva. Lo presidiano i trigger `a10_*_block_deact` generati dall'automazione.
+* **`storico.indirizzi_dettaglio`**: ogni `UPDATE` e `DELETE` lascia la versione precedente nello storico.
 
-###  Diagramma ER 
+---
+
+### Unicità del civico
+
+L'indice `uq_indirizzi_dettaglio_norm` (definizione esatta nella sezione Indici della pagina) è costruito sulla **chiave naturale**: `stradario_id`, `civico` e, nella forma `COALESCE(…, '')`, `estensione_civico`, `palazzina`, `scala`, `piano`, `interno`. Lavora sui valori **già normalizzati** dal trigger.
+
+Il «trova o crea» è `fn_get_or_create_indirizzo_dettaglio`: cerca per la stessa chiave (`civico IS NOT DISTINCT FROM`, `COALESCE` sulle altre colonne), crea se non trova e, su `unique_violation`, rilegge.
+
+> ⚠️ **Limiti noti (verificati il 25 ottobre 2026, da correggere)**: la correzione è nel
+> [brief-db-unicita-civico-indirizzi-dettaglio](/dev/work-in-progress/brief-db-unicita-civico-indirizzi-dettaglio).
+>
+> * **Civico senza numero non coperto dall'indice**: `civico` è nullable ed entra nell'indice senza `COALESCE` né `NULLS NOT DISTINCT`, quindi due civici `SNC` con lo stesso dettaglio sulla stessa via non collidono. Il lookup del «trova o crea» li evita in sequenza, ma due inserimenti concorrenti, o un `INSERT` diretto, creano la riga gemella; da lì il lookup ne sceglie una senza errore.
+> * **`civico = 0` e `civico NULL`** sono entrambi `SNC` (stesso `indirizzo_normalizzato`) ma restano due chiavi diverse, sia nell'indice sia nel lookup.
+> * **Il lookup confronta i parametri grezzi coi valori salvati normalizzati**: un'estensione passata come `A` (salvata `/A`) o un interno in minuscolo non trovano la riga esistente; l'`INSERT` urta l'indice e la ri-lettura fallisce di nuovo, così la funzione restituisce `NULL` invece dell'id.
+
+---
+
+### Vantaggi operativi
+
+* **Ricostruzione gerarchica completa**: da `stradario_id` si risale a via → comune → provincia → regione → stato senza duplicare dati.
+* **Geolocalizzazione**: `civic_geoloc` e `street_geoloc` danno la posizione del civico e quella media della via.
+* **Ricerche testuali uniformi**: `indirizzo_normalizzato` permette confronti indipendenti dalla formattazione manuale.
+* **Varianti civiche**: `estensione_civico`, `palazzina`, `scala`, `piano` e `interno` coprono le varianti (lettere, palazzine, scale, piani, interni) senza alterare lo schema.
+
+---
+
+### Diagramma ER
 
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%

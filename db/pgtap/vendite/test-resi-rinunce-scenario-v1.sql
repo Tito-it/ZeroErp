@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano il reso per ri-consegna (giro 2) e la commessa con l'attivita' fatturata, che sono il caso del test.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
 -- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): la bolla consegnata non si pesca piu' dal database: ordine dal builder, riga di un articolo costruito, bolla generata dall'ordine e portata a CONSEGNATO per la matrice; il tipo reso si legge per codice.
 -- pgTAP test per Zero ERP
@@ -56,10 +57,14 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 -- ⛔ rev 2026-10-24: il mondo si COSTRUISCE (su un DB ricostruito non c'e'
 --   nessuna bolla consegnata da pescare): azienda + operatore + cliente +
---   ordine dal builder, e il contesto si apre sul suo operatore. Gira come
+--   la partita dal builder, e il contesto si apre sul suo operatore. Gira come
 --   l'applicazione (ruolo OPERATORE + RLS attiva), non come owner.
+-- La partita: un ordine di 5 pezzi a 10 di un articolo merce costruito (non
+--   gestito: il test non misura il magazzino), confermato, e la bolla generata
+--   dall'ordine (order-backed: ha il fulfillment), CONSEGNATA.
 CREATE TEMP TABLE tmp_o AS
-SELECT * FROM dbops.fn_pgtap_crea_ordine('pgTAP rinunce scenario');
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgTAP rinunce scenario',
+                  p_quantita => 5, p_prezzo => 10);
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_o)); END $ctx$;
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
@@ -86,34 +91,6 @@ SELECT ok(
 -- ============================================================
 -- FIXTURE
 -- ============================================================
--- La partita: un ordine di 5 pezzi di un articolo merce costruito (non
--- gestito: il test non misura il magazzino), confermato, la bolla generata
--- dall'ordine (order-backed: ha il fulfillment) e portata a CONSEGNATO per
--- la matrice. Indirizzo di consegna e causale sono cio' che l'emissione
--- pretende.
-DO $part$
-DECLARE
-    v_art catalogo.articoli.id%TYPE;
-    v_ddt vendite.ddt.id%TYPE;
-BEGIN
-    v_art := dbops.fn_pgtap_crea_articolo('PGTAP-RIN-SCEN', false);
-    INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-                                      qta_operativa, quantita, prezzo_unitario, iva_id)
-    SELECT o.ordine_id, 1, v_art, 'Riga rinunce scenario pgTAP', 5, 5, 10,
-           (SELECT i.id FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1)
-      FROM tmp_o o;
-    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT ordine_id FROM tmp_o), 'CONFERMATO');
-
-    v_ddt := vendite.fn_genera_ddt_da_ordine((SELECT ordine_id FROM tmp_o));
-    INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-    VALUES (v_ddt, (SELECT t.id FROM config.tipi_indirizzi t WHERE t.codice_interno = 'CON'),
-            '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-    UPDATE vendite.ddt
-       SET causale_trasporto_id = (SELECT c.id FROM config.causali_trasporto c WHERE c.codice = 'VENDITA')
-     WHERE id = v_ddt;
-    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ddt', v_ddt, 'CONSEGNATO');
-END $part$;
-
 -- Riga DDT consegnata, order-backed (ha fulfillment): quella costruita qui sopra.
 CREATE TEMP TABLE tmp_r AS
 SELECT dr.id AS ddt_riga_id, dr.quantita AS consegnato, dr.articolo_id,

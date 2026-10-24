@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (le evasioni parziali restano in bozza: il residuo legge il fulfillment); il reso resta scritto a mano (giro 2).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente (ORDINE_VENDITA).
 -- pgTAP test per Zero ERP
 -- Test: vw_dash_fatturazione_ordini a valore RESIDUO da spedire — step 8,
@@ -60,81 +61,39 @@ END $az$;
 -- ============================================================
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  -- ⛔ rev 2026-10-13: BA, ruolo del cliente ed emittente dal mondo costruito;
-  --   l'articolo si costruisce (merce, non gestito: il test non misura il magazzino).
+  -- ⛔ rev 2026-10-13: BA dal mondo costruito; l'articolo si costruisce
+  --   (merce, non gestito: il test non misura il magazzino).
   (SELECT billing_account_id FROM _m)                                    AS billing_account_id,
-  (SELECT cliente_soggetto_ruolo_id FROM _m)                             AS soggetto_ruolo_id,
-  dbops.fn_pgtap_crea_articolo('PGTAP-DASH-RESIDUO', false)                  AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT emittente_fiscale_id FROM _m)                                  AS emittente_fiscale_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-DASH-RESIDUO', false)              AS articolo_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id;
-
--- Ordine (10 pz @25) con trigger parametrico.
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-90).
-CREATE OR REPLACE FUNCTION pg_temp.mk_ordine(p_trigger varchar)
-RETURNS TABLE(ordine_id bigint, ordine_riga_id bigint) AS $$
-DECLARE r RECORD; v_ord bigint; v_orr bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id,
-          (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE),
-          r.valuta_id,
-          DATE '2026-07-15', p_trigger, r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_residuo'))
-  RETURNING id INTO v_ord;
-  -- trgfn_ordini_normalize eredita il trigger dal BA solo su INSERT: va rimesso.
-  UPDATE vendite.ordini SET fatturazione_trigger = p_trigger WHERE id = v_ord;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'Riga residuo', 10, 10, 25, r.iva_id, true, false,
-          jsonb_build_object('test_scope','pgtap_residuo'))
-  RETURNING id INTO v_orr;
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-  RETURN QUERY SELECT v_ord, v_orr;
-END $$ LANGUAGE plpgsql;
-
--- Evasione parziale: DDT per qta indicata (resta DRAFT: il residuo legge il
--- fulfillment, che nasce alla generazione — non serve emettere).
-CREATE OR REPLACE FUNCTION pg_temp.evadi(p_ord bigint, p_riga bigint, p_qta numeric)
-RETURNS bigint AS $$
-  SELECT vendite.fn_genera_ddt_da_ordine(p_ord,
-    jsonb_build_array(jsonb_build_object('ordine_riga_id', p_riga, 'qta_da_evadere', p_qta)));
-$$ LANGUAGE sql;
+  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id;
 
 -- ============================================================
--- FIXTURE
+-- FIXTURE: ordine 10 pz @25 col trigger del caso, bolla dal builder.
+--   Le evasioni parziali restano in bozza: il residuo legge il fulfillment,
+--   che nasce alla generazione — non serve emettere.
 -- ============================================================
 -- A: trigger CONSEGNATO, evasi 4 di 10
-CREATE TEMP TABLE tmp_a AS SELECT * FROM pg_temp.mk_ordine('CONSEGNATO');
-SELECT pg_temp.evadi((SELECT ordine_id FROM tmp_a), (SELECT ordine_riga_id FROM tmp_a), 4);
+CREATE TEMP TABLE tmp_a AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('residuo A', 'DRAFT',
+    (SELECT billing_account_id FROM tmp_refs), p_quantita => 10, p_prezzo => 25,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs),
+    p_fatturazione_trigger => 'CONSEGNATO', p_qta_da_evadere => 4);
 
--- B: trigger CONSEGNATO, evaso tutto (10) in un DDT poi CONSEGNATO (serve al reso)
-CREATE TEMP TABLE tmp_b AS SELECT * FROM pg_temp.mk_ordine('CONSEGNATO');
-CREATE TEMP TABLE tmp_b_ddt AS
-SELECT pg_temp.evadi((SELECT ordine_id FROM tmp_b), (SELECT ordine_riga_id FROM tmp_b), 10) AS ddt_id;
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-SELECT (SELECT ddt_id FROM tmp_b_ddt), (SELECT tipo_ind_con_id FROM tmp_refs), '{"display":"CON"}'::jsonb
-ON CONFLICT DO NOTHING;
--- causale obbligatoria all'emissione (step 5b)
-UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_b_ddt);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)     WHERE id=(SELECT ddt_id FROM tmp_b_ddt);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_refs)    WHERE id=(SELECT ddt_id FROM tmp_b_ddt);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_b_ddt);
+-- B: trigger CONSEGNATO, evaso tutto (10) in una bolla CONSEGNATA (serve al reso)
+CREATE TEMP TABLE tmp_b AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('residuo B', 'CONSEGNATO',
+    (SELECT billing_account_id FROM tmp_refs), p_quantita => 10, p_prezzo => 25,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs),
+    p_fatturazione_trigger => 'CONSEGNATO');
 
 -- C: trigger CONFERMATO, evasi 4 di 10
-CREATE TEMP TABLE tmp_c AS SELECT * FROM pg_temp.mk_ordine('CONFERMATO');
-SELECT pg_temp.evadi((SELECT ordine_id FROM tmp_c), (SELECT ordine_riga_id FROM tmp_c), 4);
+CREATE TEMP TABLE tmp_c AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('residuo C', 'DRAFT',
+    (SELECT billing_account_id FROM tmp_refs), p_quantita => 10, p_prezzo => 25,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs),
+    p_fatturazione_trigger => 'CONFERMATO', p_qta_da_evadere => 4);
 
 -- ============================================================
 -- ASSERZIONI
@@ -164,7 +123,7 @@ SELECT is(
 CREATE TEMP TABLE reso AS
 WITH ins AS (
   INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id, (SELECT d.uid FROM vendite.ddt d WHERE d.id=(SELECT ddt_id FROM tmp_b_ddt)),
+  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id, (SELECT d.uid FROM vendite.ddt d WHERE d.id=(SELECT ddt_id FROM tmp_b)),
          false, jsonb_build_object('test_scope','pgtap_residuo')
   FROM tmp_refs r RETURNING id)
 SELECT id FROM ins;
@@ -173,7 +132,7 @@ INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
 SELECT (SELECT id FROM reso), 1, dr.id, (SELECT ordine_riga_id FROM tmp_b),
        dr.articolo_id, dr.descrizione, 3, dr.uom_operativa_id, dr.factor_to_base,
        (SELECT tipo_riconsegna_id FROM tmp_refs), false
-FROM vendite.ddt_righe dr WHERE dr.ddt_id=(SELECT ddt_id FROM tmp_b_ddt);
+FROM vendite.ddt_righe dr WHERE dr.ddt_id=(SELECT ddt_id FROM tmp_b);
 
 SELECT vendite.fn_conferma_reso((SELECT id FROM reso));
 

@@ -1,209 +1,215 @@
-## Parametri Personalizzati (GUC) in PostgreSQL
+# Parametri personalizzati (GUC) in PostgreSQL
 
+> **Ultimo aggiornamento**: 24 ottobre 2026
 >
-> (latest review 02-02-26)
+> **Destinatari**: chi scrive funzioni, trigger o verbi del database, e chi configura un'installazione
 >
-> **Vedi anche**
+> **Vedi anche**:
 >
-> * [GUC definite in ZeroErp](/postgresql/guc_reference.md)
->
-> Approfondimento Tabelle:
-> - [config.parameters](/dbzero/config/tabelle/parameters)
-> - [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)
->
-> Approfondimento funzioni:
-> - [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)
->
-> All'interno del documento viene spiegata la differenza tra parametri GUC e parametri tabellari.
-
-I **Parametri Personalizzati (GUC — Grand Unified Configuration)** di PostgreSQL consentono di definire variabili di configurazione custom, accessibili da funzioni, trigger e dalla sessione SQL. Sono ideali per configurazioni DB-centriche, centralizzate e versionabili tramite `postgresql.conf` o comandi SQL.
+> * [Contratto GUC `app.*`](/guide/contratto-guc-app) — l'identità della richiesta: la sede di tutto ciò che riguarda `app.*`
+> * [Configurazione e gestione parametri](/guide/configurazione-e-gestione-parametri) — i parametri che stanno in tabella (`config.parameters`)
+> * [dblink](/postgresql/dblink) — il canale dei registri fuori transazione
 
 ---
 
-### Scopo Principale
+## Che cosa sono
 
-* Centralizzare configurazioni applicative specifiche direttamente nel database.
-* Modificare dinamicamente parametri senza toccare il codice applicativo.
-* Rendere disponibili "feature flags", stringhe di connessione, lingua, ecc., in modo uniforme.
+Un **GUC personalizzato** è un parametro con un nome a due parti (`prefisso.nome`) che PostgreSQL
+tiene in memoria: per tutto il server, per un database, per un ruolo, per la connessione o per la
+sola transazione. Si legge con `current_setting('prefisso.nome', true)` — il secondo argomento
+`true` restituisce `NULL` invece di un errore se il parametro non c'è — e si scrive con
+`set_config('prefisso.nome', valore, is_local)`:
+
+* `is_local = true`: vale fino alla fine della **transazione**, poi sparisce da solo;
+* `is_local = false`: vale per tutta la **connessione**, finché qualcuno non lo cambia.
+
+Un GUC **non è storage**: non si versiona, non ha audit, non sopravvive al riavvio se non sta in un
+file di configurazione o in un `ALTER DATABASE/ROLE … SET`. Quello che deve durare, e che una persona
+può cambiare, sta in tabella: [Configurazione e gestione parametri](/guide/configurazione-e-gestione-parametri).
 
 ---
 
-### Definizione e Utilizzo
+## Le quattro famiglie
 
-Si definiscono in `postgresql.conf` o con:
+Il prefisso dice a che cosa serve un GUC, chi lo scrive e quanto dura. Sono quattro, e non si
+mescolano.
+
+| Prefisso    | A che cosa serve                                                       | Chi lo scrive                                         | Quanto dura                       |
+| ----------- | ---------------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------- |
+| `myapp.*`   | la **configurazione** dell'installazione: lingua, canale dei registri, ambiente | chi installa: `ALTER DATABASE/ROLE … SET`, opzioni della connessione | persistente                  |
+| `dbops.*`   | l'**infrastruttura** della transazione: il `tx_id`                       | le funzioni di `dbops`                                | la transazione                    |
+| `app.*`     | l'**identità** della richiesta (e due porte nate con questo prefisso)       | il backend a ogni richiesta; alcune funzioni          | la connessione (identità) · la transazione (contesto) |
+| `zeroerp.*` | le **porte**: un verbo che apre, per sé, un passaggio che un guard altrimenti chiude | i verbi del database, le procedure di manutenzione, il provisioning | la transazione            |
+
+### `myapp.*` — la configurazione
+
+Si impostano una volta, a livello di database o di ruolo, e le funzioni le leggono (elenco completo
+in [Elenco dei GUC](#elenco-dei-guc)). I più importanti:
+la lingua dei messaggi (`myapp.user_language`), la connessione del canale dei registri via dblink
+(`myapp.dblink_log_connection`, impostata da `scripts/sql/provision_dblink_log_channel.sql`),
+l'ambiente della passata di Liquibase (`myapp.env = 'ci'`, nelle opzioni della connessione di CI).
+
+⚠️ Il canale dei registri si legge dalla **sessione**: sotto pgAgent la sessione è `zeroerp_job`, e il
+parametro va impostato anche per lui (o per tutto il database), altrimenti il verbale di un
+fallimento non si scrive e resta solo un `WARNING`.
+
+### `dbops.*` — l'infrastruttura
+
+`dbops.tx_id` è l'identificativo della transazione logica: lo crea `dbops.fn_get_or_create_session_tx_id`
+e lo legge il trigger del `tx_id` per collegare tutte le righe toccate insieme. Il disegno è nella
+guida [Gestione del Transaction ID](/guide/tx_id_implementation_guide).
+
+### `app.*` — l'identità della richiesta
+
+I sei GUC d'identità (`app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id`,
+`app.current_emittente_id`, `app.current_user_id`, `app.jwt_user`) li scrive il backend a ogni
+richiesta, **di connessione** (`is_local = false`), e li **azzera all'inizio** di ogni richiesta: è
+quel reset, non il commit, a impedire che una richiesta erediti l'identità della precedente. Le
+policy RLS, le funzioni di scope e i trigger di audit li leggono.
+
+Tutto il resto — da dove viene ogni valore, l'invariante «tutto o niente», che cosa succede quando
+mancano, come si diagnostica — sta in un posto solo: [Contratto GUC `app.*`](/guide/contratto-guc-app).
+
+Nello stesso prefisso vivono anche due **porte** (`app.cessazione_automatica`,
+`app.registrazione_tardiva_riga_id`): funzionano come quelle `zeroerp.*` qui sotto, non sono identità
+e non fanno parte del contratto. Una porta nuova si chiama `zeroerp.*`.
+
+### `zeroerp.*` — le porte
+
+È la famiglia più numerosa, e la meno visibile. Una regola del database — un guard, un lucchetto di
+colonna, un «solo in bozza» — chiude una strada a tutti. Il **verbo** che ha il diritto di
+percorrerla la apre **per sé**:
+
+1. scrive il GUC della porta con `set_config('zeroerp.<porta>', <valore>, true)`, cioè per la sola
+   transazione; il valore, quando serve, nomina **l'oggetto** (`'<documento>:<id>'`), così la porta
+   vale per quella riga e non per tutte;
+2. fa la scrittura: il guard legge il GUC, riconosce il passaggio e lo lascia passare;
+3. richiude la porta (`set_config(…, '', true)`), o la lascia chiudere dalla fine della transazione.
+
+Regole:
+
+* ⛔ **Una porta si apre solo dentro un verbo**, mai dal backend e mai a mano in una sessione di
+  lavoro. Un `SET zeroerp.<porta>` in psql scavalca una regola che esiste per una ragione.
+* ⛔ **Sempre `is_local = true`**: una porta che resta aperta sulla connessione resta aperta per la
+  richiesta successiva, di chiunque sia.
+* Il guard legge la porta con `current_setting(…, true)`: una porta assente vale «chiusa».
+* Chi scrive un trigger che tocca una colonna protetta da una porta non la «difende» riassegnando
+  il valore vecchio: annullerebbe anche le scritture che passano dalla porta
+  ([Linee guida Trigger](/linee-guida-trigger)).
+
+Nello stesso prefisso stanno anche gli **override amministrativi** (`zeroerp.allow_*_override`, per
+esempio quello del lucchetto di colonna), le porte delle **procedure di manutenzione**
+(`zeroerp.maintenance_*`) e i parametri del **provisioning** (`zeroerp.prov_*`), che vivono solo per
+la durata dello script.
+
+---
+
+## GUC o tabella?
+
+| Domanda                                                     | GUC                                  | Tabella (`config.parameters` e override) |
+| ----------------------------------------------------------- | ------------------------------------ | ---------------------------------------- |
+| Lo cambia una persona dall'applicazione?                    | no                                   | sì                                       |
+| Serve sapere chi l'ha cambiato e quando?                    | no: non c'è audit                    | sì                                       |
+| Vale per un'azienda, un utente, una funzione?               | no: vale per server, database, ruolo, connessione o transazione | sì, per riga |
+| È un fatto della connessione o della transazione in corso (chi sei, quale `tx_id`, quale porta è aperta)? | sì | no |
+
+Una regola di dominio (una soglia, un termine, un comportamento che un'azienda sceglie) non sta mai
+in un GUC.
+
+---
+
+## Elenco dei GUC
+
+Censiti il 2026-10-24 dalle letture (`current_setting`) e dalle scritture (`set_config`) nei
+changeSet, nel backend e negli script. Per vedere chi usa un GUC sul database vivo, la query è nell'area
+tecnica, in coda.
+
+### `myapp.*` — configurazione dell'installazione
+
+| GUC                           | Valori                    | Dove si imposta                                                | Chi lo legge                                                        |
+| ----------------------------- | ------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `myapp.user_language`         | codice lingua (`it`)      | `ALTER ROLE … IN DATABASE … SET`                               | i messaggi d'errore (`script.fn_get_messaggio`, `fn_log_and_raise_error`) |
+| `myapp.dblink_log_connection` | stringa di connessione    | `scripts/sql/provision_dblink_log_channel.sql`, per ruolo      | il canale dei registri fuori transazione (`script.fn_log_error_only`, `maintenance.fn_job_run_log_failure`, `script.fn_ensure_logconn`) |
+| `myapp.logconn`               | stringa di connessione    | facoltativo, nella sessione                                    | gli stessi lettori: se c'è, **vince** su `myapp.dblink_log_connection` |
+| `myapp.log_with_dblink`       | `on` / `off`              | opzioni della connessione (`off` nelle migrazioni)             | l'audit delle automazioni (`dbops.fn_audit_begin`, `fn_audit_end`, `fn_audit_log_once`) |
+| `myapp.bypass_tx_id_check`    | `on` / `off`              | per ruolo o sessione                                           | il trigger del `tx_id` (`dbops.trgfn_tx_id_managed`), secondo livello del bypass |
+| `myapp.env`                   | `ci`                      | opzioni della connessione della passata `ci_apply` in CI        | la `preCondition` del changeSet `90_end/ci_apply/20250627-31`       |
+
+### `dbops.*` — infrastruttura della transazione
+
+| GUC           | Chi lo scrive                                   | Chi lo legge                                       |
+| ------------- | ----------------------------------------------- | -------------------------------------------------- |
+| `dbops.tx_id` | `dbops.fn_get_or_create_session_tx_id`          | il trigger del `tx_id` su ogni tabella tracciata   |
+
+### `app.*` — identità della richiesta e contesto
+
+**Identità** — li scrive il backend a ogni richiesta, di connessione, e li azzera all'inizio della
+successiva. Significato, provenienza e regole in [Contratto GUC `app.*`](/guide/contratto-guc-app):
+
+`app.current_identita_id` · `app.ruolo_applicativo` · `app.soggetto_ruolo_id` ·
+`app.current_emittente_id` · `app.current_user_id` · `app.jwt_user`
+
+**Porte con il prefisso `app.*`** — non sono identità: sono porte, con lo stesso meccanismo delle
+`zeroerp.*` (le apre una funzione per la sola transazione, un guard le legge):
+
+| GUC                                  | Chi la apre                                   | Che cosa lascia passare                                                    |
+| ------------------------------------ | --------------------------------------------- | -------------------------------------------------------------------------- |
+| `app.cessazione_automatica`          | `dbops.fn_apply_chiusura_scadenze`            | la chiusura per scadenza: i guard di transizione la distinguono da una manuale |
+| `app.registrazione_tardiva_riga_id`  | `pagamenti.fn_posta_riga_tardiva`             | quella sola riga, sul guard della distinta finale                           |
+
+⚠️ **Residuo**: `app.session_key` lo legge `script.fn_get_parameter_di_sessione` (livello «sessione»
+degli override dei parametri), ma l'unica funzione che lo scriveva, `dbops.fn_set_gucs_conn`, insieme
+ad `app.user_id` e `app.group_ids`, non ha più chiamanti. Oggi quel livello resta sempre saltato.
+
+### `zeroerp.*` — porte, override, manutenzione, provisioning
+
+Tutti per la sola transazione (`is_local = true`). Il meccanismo è spiegato sopra, in [`zeroerp.*` — le porte](#zeroerp-le-porte).
+
+| Gruppo                    | GUC                                                                                                                                                                  |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| porte dei verbi di documento | `zeroerp.doc_ritira_legami`, `zeroerp.ddt_cambio_stato`, `zeroerp.ddt_annullo`, `zeroerp.ddt_riconsegna`, `zeroerp.ddt_riga_correggi_qta`, `zeroerp.ddt_riga_ritira_legame`, `zeroerp.reso_cambio_stato` |
+| porte del magazzino       | `zeroerp.magazzino_posting_inventario`, `zeroerp.magazzino_posting_rettifica`, `zeroerp.magazzino_posting_trasferimento`                                              |
+| porta del catalogo        | `zeroerp.articolo_correggi_struttura`                                                                                                                                 |
+| override amministrativi   | `zeroerp.allow_lock_columns_override`, `zeroerp.allow_user_emittente_delete_override`, `zeroerp.allow_contabile_riga_delete_override`                                |
+| manutenzione              | `zeroerp.maintenance_reset_lotto_draft`, `zeroerp.maintenance_allow_delete_logs`, `zeroerp.maintenance_allow_attivita_bypass`, `zeroerp.maintenance_indirizzi_dettaglio`, `zeroerp.maintenance_toponomastica` |
+| provisioning e conversione | `zeroerp.prov_ambiente`, `zeroerp.prov_owner_password`, `zeroerp.prov_app_password`, `zeroerp.prov_job_password`, `zeroerp.prov_log_password`, `zeroerp.migratore`, `zeroerp.conv_utente` |
+
+---
+
+## Area tecnica — esempi
+
+Leggere un GUC senza errore se manca:
+
+```sql
+SELECT current_setting('myapp.user_language', true);
+```
+
+Impostare la configurazione di un'installazione, una volta:
 
 ```sql
 ALTER DATABASE zeroerp SET myapp.user_language = 'it';
-ALTER ROLE app_user   SET myapp.bypass_tx_id_check = 'on';
+ALTER ROLE zeroerp_job IN DATABASE zeroerp SET myapp.dblink_log_connection = '<dsn>';
 ```
 
-Si leggono in PL/pgSQL o SQL con:
+Vedere quali GUC `myapp.*` sono impostati per database e ruolo:
 
 ```sql
-SELECT current_setting('myapp.user_language', TRUE);
+SELECT coalesce(r.rolname, '(tutti)') AS ruolo, d.datname, s.setconfig
+  FROM pg_db_role_setting s
+  LEFT JOIN pg_roles r ON r.oid = s.setrole
+  LEFT JOIN pg_database d ON d.oid = s.setdatabase
+ ORDER BY 2, 1;
 ```
 
-e si possono modificare in sessione:
+Trovare quali funzioni aprono o leggono una porta:
 
 ```sql
-SET myapp.user_language = 'en';
+SELECT n.nspname, p.proname
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+ WHERE pg_get_functiondef(p.oid) LIKE '%zeroerp.<porta>%'
+ ORDER BY 1, 2;
 ```
 
 ---
 
-### Tipologie di GUC
-
-| Tipo di GUC           | Prefisso | Stabilita'             | Ambito                                  |
-| --------------------- | -------- | ---------------------- | --------------------------------------- |
-| **Di sistema**        | `myapp.` | Persistente (conf/db)  | Cluster, Database, Role, Session        |
-| **Di infrastruttura** | `dbops.` | Temporanee (GUC local) | Solo within-session (es. `dbops.tx_id`) |
-
-* **GUC di sistema** (`myapp.*`):
-  Parametri applicativi centrali (es. lingua, dblink, feature-flag). Definiti in `postgresql.conf`, `ALTER SYSTEM`, `ALTER DATABASE` o `ALTER ROLE`.
-* **GUC temporanee/infrastrutturali** (`<schema>.<name>`):
-  Usate da trigger e funzioni per passare variabili di sessione (es. `dbops.tx_id`). Vengono settate con `set_config(..., is_local := TRUE)` e reset al commit/rollback.
-
----
-
-### Esempi di GUC in Zero ERP
-
-* **`myapp.dblink_log_connection`**
-  Stringa di connessione per `dblink`, usata per log remoti fuori dalla transazione corrente. **Importante per** [`Dblink`](/postgresql/dblink.md) fare riferimento alla apposita documentazione.
-
-  ```conf
-  myapp.dblink_log_connection = 'host=localhost port=5432 dbname=Zero user=xx password=xx'
-  ```
-* **`myapp.user_language`**
-  Lingua di default per le funzioni applicative.
-
-  ```conf
-  myapp.user_language = 'it'
-  ```
-* **`myapp.bypass_tx_id_check`**
-  Flag booleano per abilitare/disabilitare il controllo obbligatorio di `tx_id` nel trigger.
-
-  ```conf
-  myapp.bypass_tx_id_check = off
-  ```
-* **`dbops.tx_id`** *(temporanea)*
-  UUID di sessione che identifica le operazioni della stessa transazione. Viene settato da trigger PL/pgSQL e reset al commit/rollback.
-
----
-
-### GUC di sessione `app.*` (contesto identità multi-face-auth)
-
-Il prefisso **`app.`** è riservato alle GUC **session-scoped** popolate dal
-middleware `JwtAuditAuthentication` al momento dell'autenticazione HTTP e
-resettate in `process_response`. Descrivono il **contesto identità** della
-richiesta corrente e sono lette da:
-
-* funzioni resolver (`fn_resolve_*`, `fn_check_*`, `fn_scope_*`),
-* policy RLS (§4.9 WIP multi-face-auth),
-* trigger di audit/log che collegano operazioni DB → identità utente.
-
-Tutte sono impostate via `set_config('app.<nome>', <valore>, is_local := false)`
-a livello di sessione dalla connessione del pool (reset a fine request).
-
-#### Set base (pre-esistente)
-
-* **`app.jwt_user`** — username stringa dell'utente Django autenticato.
-* **`app.current_user_id`** — `auth_user.id` come stringa.
-
-#### Set multi-face-auth (§4.7 WIP, introdotti 2026-04-19)
-
-Tre GUC aggiuntive descrivono la **veste** con cui l'utente accede in questa
-sessione (operatore interno vs cliente portale vs fornitore vs shop vs api
-client), usate dalle policy di scope / RLS per filtrare i dati in modo
-coerente col ruolo applicativo:
-
-* **`app.current_identita_id`** — `anagrafiche.identita_digitali.id` della
-  veste attiva per questa sessione. Lettura tipica: `NULLIF(current_setting('app.current_identita_id', true), '')::bigint`.
-* **`app.ruolo_applicativo`** — valore dell'enum `config.ruolo_applicativo`
-  dell'identità corrente. Usato dalle policy che vincolano l'accesso per
-  dimensione "chi sei" (es. i `CLIENTE_PORTALE` non vedono l'area acquisti).
-* **`app.soggetto_ruolo_id`** — `anagrafiche.soggetti_ruoli.id` dell'identità
-  corrente. Usato da policy **BA_OWNERSHIP** / **FORNITORE_OWNERSHIP** per
-  mappare l'utente al soggetto anagrafico proprietario dei dati.
-
-#### Helper `script.fn_current_identita_context()`
-
-Per leggere tutte e tre le GUC in un colpo solo e ottenere un record
-tipato, usare la funzione di convenienza
-[`script.fn_current_identita_context`](/dbzero/script/funzioni/fn_current_identita_context):
-
-```sql
-SELECT * FROM script.fn_current_identita_context();
---  current_identita_id | ruolo_applicativo | soggetto_ruolo_id
--- ---------------------+-------------------+-------------------
---                   42 | OPERATORE         |               123
-```
-
-La funzione fa il parsing dei tre GUC (fail-soft: restituisce `NULL` per i
-campi non impostati) e applica i cast ai tipi corretti.
-
-#### Invariante "tutto o niente"
-
-Il middleware **deve** popolare tutti e tre i GUC contemporaneamente (oppure
-nessuno, per i percorsi non autenticati): dati parziali producono stati
-incoerenti nelle policy RLS. Se una sola delle tre è `NULL`, le policy
-applicate via `fn_scope_*` falliscono in modo **fail-closed**.
-
----
-
-### Differenza GUC vs Parametri Tabellari
-
-| Caratteristica       | GUC (`myapp.*`, `dbops.*`)                        | Tabelle (`config.parameters` + overrides)                  |
-| -------------------- | ------------------------------------------------- | ---------------------------------------------------------- |
-| **Ambito**           | Cluster/DB/Role/Session                           | Record-level (tenant, utente, funzione, sessione)          |
-| **Versioning/Audit** | No (solo DDL o conf file)                         | Si' (Liquibase, trigger di audit, data_insert, ecc.)       |
-| **Dinamico**         | Si' (SET/ALTER in sessione)                       | Si' (modificabile in runtime con query)                    |
-| **Use case**         | Configurazioni DB-centriche (lingua, connessioni) | Configurazioni business-centriche (feature-flag, timeouts) |
-
----
-
-### Documentazione e Allegati
-
-* **Documento Principale** (questo): introduce GUC e best practice.
-* **Elenco GUC Definite**: vedi il file [`guc_reference.md`](/postgresql/guc_reference) con tabella di riferimento contenente:
-
-  * `nome parametro`
-  * `default`
-  * `ambito` (cluster/db/role/session)
-  * `descrizione`
-  * `schema/funzione che lo usa`
-
-> **Suggerimento**: per estrarre le GUC gia' definite in conf usa:
->
-> ```sql
-> SELECT name, setting
->   FROM pg_settings
->  WHERE name LIKE 'myapp.%' OR name LIKE 'dbops.%'
->  ORDER BY name;
-> ```
-
----
-
-### Comandi Utili
-
-```sql
--- Mostra la path di postgresql.conf
-SHOW config_file;
--- Mostra i parametri GUC definiti:
-SHOW myapp.user_language;     -- (Show nome Guc)
-```
-
----
-
-### Best Practices
-
-1. Usare **prefissi chiari** (`myapp.` per sistema, `<schema>.` per variabili di sessione).
-2. Documentare ogni parametro in `postgresql.conf` e in `guc_reference.md`.
-3. Gestire valori sensibili con Vault, non in GUC.
-4. Caricare in cache in applicazione e rinfrescare periodicamente.
-
-> **"Standardizza i prefissi, separa configurazioni di sistema da quelle transazionali e mantieni sempre un elenco aggiornato da allegare ai tuoi rilasci."**
-
----
-
----
 {% include-markdown "signature-core.md" %}

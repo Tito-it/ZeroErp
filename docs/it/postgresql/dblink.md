@@ -1,151 +1,91 @@
-## Estensione PostgreSQL: `dblink`
+# Estensione PostgreSQL: `dblink`
 
-> **Vedi anche**
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
-> Approfondimenti correlati:
-> - [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)
-> - [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)
+> **Destinatari**: chi installa un server, chi scrive una funzione che deve lasciare una traccia anche se la transazione fallisce
+>
+> **Vedi anche**:
+>
+> * [Parametri personalizzati (GUC)](/postgresql/parametri-personalizzati-(GUC)) — `myapp.dblink_log_connection`, `myapp.logconn`, `myapp.log_with_dblink`: chi li imposta e chi li legge
+> * [Installazione](/installazione) — passo 9, il canale dei registri
+> * [Provisioning ruoli DB](/dev/backend/provisioning-db-roles) — il ruolo `zeroerp_log`
+> * [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn) · [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only) · [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id) · [maintenance.fn_job_run_log_failure](/dbzero/maintenance/funzioni/fn_job_run_log_failure)
 
-L'estensione **`dblink`** consente l'esecuzione di query tra database PostgreSQL diversi o sullo stesso server ma su database separati. In Zero ERP e' utilizzata principalmente per:
-
-* Logging remoto indipendente dalla transazione corrente
-* Operazioni tecniche asincrone
-* Sincronizzazioni e integrazioni *cross-database*
-
----
-
-## Sezione critica — Configurazione necessaria prima dell'utilizzo
-
-> **FONDAMENTALE**
-> Prima di utilizzare `dblink`, e' necessario configurare correttamente i parametri di connessione.
-> Questa operazione **deve essere eseguita come `postgres`** (utente superuser) e puo' essere necessaria *dopo ogni clonazione o restore del database*.
-
-### 1. Evitare password in chiaro
-
-Utilizzare **pg_service.conf** anziche' inserire direttamente `password=` nei parametri.
-
-Percorso consigliato (utente `postgres`):
-
-```
-/var/lib/postgresql/.pg_service.conf
-```
-
-Esempio contenuto:
-
-```ini
-[zeroerp_log]
-dbname=zeroerp
-host=127.0.0.1
-user=zeroerp_log
-```
-
-La password non sta qui: sta in `/var/lib/postgresql/.pgpass`, nella riga
-`127.0.0.1:5432:zeroerp:zeroerp_log:<password>`. `dblink` si collega dal processo
-del server, quindi legge i file dell'utente di sistema `postgres`.
-
-Permessi suggeriti:
-
-```bash
-sudo chown postgres:postgres /var/lib/postgresql/.pg_service.conf
-sudo chmod 600 /var/lib/postgresql/.pg_service.conf
-```
+`dblink` apre, da dentro una funzione, una **seconda connessione** al database. In Zero ERP serve a una
+cosa sola: scrivere un registro **fuori dalla transazione corrente**, così che la riga resti anche
+quando la transazione viene annullata. Senza, il log di un errore verrebbe scritto e cancellato insieme
+all'errore che racconta.
 
 ---
 
-### 2. Impostare il parametro di connessione (GUC)
+## Chi lo usa
 
-Eseguire come utente `postgres`:
+| Funzione | Che cosa scrive fuori transazione |
+| --- | --- |
+| `script.fn_log_error_only` | la riga di `dbops.error_log` di un errore (la chiama anche `fn_log_and_raise_error` prima del `RAISE`) |
+| `maintenance.fn_job_run_log_failure` | il verbale di un job **fallito** in `maintenance.job_run_log` |
+| `dbops.fn_get_or_create_session_tx_id` | il `tx_id` di sessione |
+| `dbops.fn_audit_begin`, `fn_audit_end`, `fn_audit_log_once` | l'audit delle automazioni, **solo** con `myapp.log_with_dblink = on`; altrimenti in transazione |
 
-```sql
-ALTER DATABASE zeroerp
-  SET myapp.dblink_log_connection = 'service=zeroerp_log';
-```
-
-Verifica caricamento parametro:
-
-```sql
-SHOW myapp.dblink_log_connection;
--- Atteso: "service=zeroerp_log"
-```
+La connessione si chiama `logconn` e la apre `script.fn_ensure_logconn`: una per sessione, riusata
+finché la sessione vive. Le funzioni che scrivono sul canale **non sollevano** se il canale non c'è:
+emettono un `WARNING` (o ripiegano sulla scrittura in transazione) e il chiamante prosegue.
 
 ---
 
-### 3. Test funzionale tramite funzione
+## Come è fatto il canale
 
-Dopo aver impostato la configurazione, verificare:
+1. **Il ruolo**: `zeroerp_log`, ruolo di sistema creato dalla fase `ruoli` di
+   `scripts/sql/provision_zeroerp.sql`. Può solo inserire in `dbops.error_log` e in
+   `maintenance.job_run_log`.
+2. **Il service**: la connessione si fa con un nome di service, mai con la password nella stringa. Il file
+   è dell'utente di **sistema** `postgres`, perché `dblink` si collega dal processo del server:
 
-```sql
-SELECT script.fn_ensure_logconn();
+   ```ini
+   # /var/lib/postgresql/.pg_service.conf  (chown postgres:postgres, chmod 600)
+   [zeroerp_log]
+   dbname=zeroerp
+   host=127.0.0.1
+   user=zeroerp_log
+   ```
 
-SELECT dbops.fn_get_or_create_session_tx_id();
-```
+   La password sta in `/var/lib/postgresql/.pgpass`, riga `127.0.0.1:5432:zeroerp:zeroerp_log:<password>`.
+3. **Il parametro**: `myapp.dblink_log_connection = 'service=zeroerp_log'`, impostato **per ruolo**
+   (`ALTER ROLE … IN DATABASE`) per `zeroerp_owner`, `zeroerp_app` e `zeroerp_job` da
+   `scripts/sql/provision_dblink_log_channel.sql` (passo 9 dell'installazione). Lo script dà anche a
+   `zeroerp_log` i diritti di scrittura.
 
-**Nota:**
-Per funzione fn_get_or_create_session_tx_id risultato atteso la generazione di un UUID, verificare su messaggi che non ci siano segnalazioni. Eseguire la function su una nuova sessione SQL (su pgAdmin) in modo da essere certi che non ci siano precedenti attivita'.
+### ⚠️ Perché le funzioni del canale sono di `postgres`
 
----
-
-## Procedura completa (nuovo ambiente / restore DB)
-
-| Step | Azione                                      | Eseguito come      |
-| ---- | ------------------------------------------- | ------------------ |
-| 1    | Abilitare estensione dblink                 | postgres           |
-| 2    | Creare l'utente del canale, `zeroerp_log`   | postgres           |
-| 3    | Configurare `.pg_service.conf`              | root/postgres      |
-| 4    | Impostare GUC `myapp.dblink_log_connection` | postgres           |
-| 5    | Verifica con `fn_ensure_logconn()`          | utente tecnico/app |
-
----
-
-## Installazione estensione
-
-```sql
-CREATE EXTENSION IF NOT EXISTS dblink;
-```
-
----
-
-## Funzioni principali
-
-| Funzione                                      | Descrizione              |
-| --------------------------------------------- | ------------------------ |
-| `dblink_connect(text connname, text connstr)` | Apre connessione remota  |
-| `dblink_exec(text connname, text sql)`        | Esegue SQL sul DB remoto |
-| `dblink_disconnect(text connname)`            | Chiude la connessione    |
+PostgreSQL permette a un utente **non superuser** di aprire una connessione `dblink` solo se quella
+connessione usa davvero una password. Altrimenti risponde *«password or GSSAPI delegated credentials
+required»*. Per questo il canale si apre sempre **come `postgres`**: `fn_ensure_logconn` è di
+`postgres`, e la chiamano funzioni `SECURITY DEFINER` di `postgres` (`fn_log_error_only`,
+`fn_job_run_log_failure`, `fn_get_or_create_session_tx_id`). Il registro degli owner
+`dbops.sec_functions_owner` le elenca, e `dbops.fn_sync_functions_owner()` le riallinea. Un `SELECT dblink_connect(…)` scritto a mano da
+`zeroerp_app` fallisce con quel messaggio: è atteso.
 
 ---
 
-## Esempio d'uso in Zero ERP
+## Verifica dopo un'installazione o un restore
 
-```plpgsql
-PERFORM script.fn_ensure_logconn(); -- Assicura connessione log
+Dopo un restore o una clonazione il file di service e il `.pgpass` di `postgres` vanno ricreati, e lo
+script del passo 9 rilanciato.
 
-sql_text :=
-  'INSERT INTO dbops.error_log(occurred_at, area, function_name, messaggio_errore_id, context, tx_id) VALUES (' ||
-  'now(), ' || quote_literal(p_area) || ', ' || quote_literal(p_function_name) || ', ' ||
-  coalesce(v_id::text,'NULL') || ', ' || quote_literal(v_context::text) || '::jsonb, ' ||
-  quote_literal(md5(txid_current()::text)) || '::uuid' || ');';
-
-PERFORM dblink_exec('logconn', sql_text);
-```
-
-Questo approccio garantisce che il log venga salvato **indipendentemente dalla transazione principale**, anche in caso di rollback.
+La prova che conta è **guardare dove la riga deve arrivare**, non che la chiamata «non esploda»: il
+canale è fatto per tacere quando non funziona. Si provoca un errore registrato in una transazione che
+poi si annulla, e si controlla che la riga sia in `dbops.error_log`.
 
 ---
 
-## Buone pratiche Zero ERP
+## Spegnerlo
 
-* Utilizzare **utente tecnico dedicato**: il canale di log è `zeroerp_log`, che può
-  solo scrivere `dbops.error_log` (ruoli di sistema: [Provisioning ruoli DB](/dev/backend/provisioning-db-roles))
-* Evitare password in chiaro nei parametri GUC
-* Usare connessioni preconfigurate (`service=...`)
-* Utilizzare `script.fn_ensure_logconn()` come controllo iniziale
-* Dopo restore/clonazione → ricreare `.pg_service.conf` e reimpostare parametro
+* `myapp.log_with_dblink = off` nella sessione spegne il canale: le migrazioni e le connessioni di CI
+  lo passano così.
+* Un `myapp.dblink_log_connection` vuoto fa lo stesso: in CI e sullo scratch è vuoto per costruzione, e
+  `fn_get_or_create_session_tx_id` prende il ramo della sentinella.
 
----
-
-> *"L'utilizzo corretto di `dblink` garantisce logging distribuito affidabile e integrazione tecnica sicura, mantenendo l'operativita' isolata dalla transazione principale."*
+Il dettaglio dei tre parametri sta nella pagina [Parametri personalizzati (GUC)](/postgresql/parametri-personalizzati-(GUC)).
 
 ---
-
 {% include-markdown "signature-core.md" %}

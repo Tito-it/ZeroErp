@@ -17,9 +17,11 @@
 --   - una seconda chiamata riusa l'azienda di chi agisce, con un cliente nuovo;
 --   - il terzo parametro riusa un cliente gia' costruito (il secondo ordine
 --     dello stesso cliente) e RIFIUTA un billing account di un'altra azienda
---     (rev 2026-10-22, 20261022-10, richiesta BE R-3).
+--     (rev 2026-10-22, 20261022-10, richiesta BE R-3);
+--   - il quarto parametro sceglie la data dell'ordine alla nascita (rev
+--     2026-10-25, 20261025-03, brief-db-pgtap-bolla-e-reso-costruiti D-1).
 --
--- Elenco test (plan 10):
+-- Elenco test (plan 11):
 --   1) la funzione esiste con la firma dichiarata
 --   2) la testata esiste, col cliente e il billing account tornati
 --   3) l'emittente e' quello del billing account (il guard emittente/BA)
@@ -31,6 +33,7 @@
 --   9) terzo parametro: un BA di un'altra azienda parla
 --  10) un passaggio che vuole le righe (CONFERMATO) il builder non lo salta:
 --      lo rifiuta il guard vero (rev 2026-10-24)
+--  11) quarto parametro: la data dell'ordine e' quella chiesta (rev 2026-10-25)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -43,13 +46,13 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   viene chiamata come la chiamera' un file su un database ricostruito: senza
 --   nessuna veste in sessione. Aprirlo prima nasconderebbe meta' del contratto.
 
-SELECT plan(10);
+SELECT plan(11);
 
 -- 1) La firma
 SELECT has_function(
     'dbops', 'fn_pgtap_crea_ordine',
-    ARRAY['text', 'character varying', 'bigint'],
-    'dbops.fn_pgtap_crea_ordine(text, character varying, bigint) esiste con la firma dichiarata'
+    ARRAY['text', 'character varying', 'bigint', 'date'],
+    'dbops.fn_pgtap_crea_ordine(text, character varying, bigint, date) esiste con la firma dichiarata'
 );
 
 -- Fixture: un'altra azienda, PRIMA del contesto (una seconda azienda si
@@ -167,6 +170,18 @@ SELECT throws_like(
     $$SELECT dbops.fn_pgtap_crea_ordine('presidio ordine senza righe', 'CONFERMATO')$$,
     'Ordine % senza righe: impossibile confermare%',
     'CONFERMATO senza righe: il builder passa dalla matrice, e il guard della conferma lo ferma (E_ORDINE_CONFERMA_SENZA_RIGHE)'
+);
+
+-- 11) Quarto parametro: la data alla nascita (rev 2026-10-25, 20261025-03).
+--     Fuori bozza la data e' congelata: si sceglie nell'INSERT, o mai.
+CREATE TEMP TABLE t_data AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine('presidio ordine data', 'DRAFT',
+                                          (SELECT billing_account_id FROM t_o1), DATE '2026-08-05');
+
+SELECT is(
+    (SELECT o.data FROM vendite.ordini o WHERE o.id = (SELECT ordine_id FROM t_data)),
+    DATE '2026-08-05',
+    'quarto parametro: l''ordine nasce alla data chiesta'
 );
 
 SELECT * FROM finish();

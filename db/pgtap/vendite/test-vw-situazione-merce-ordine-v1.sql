@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (le spedizioni parziali con p_qta_da_evadere e p_ordine_id); restano a mano gli ordini SENZA bolla (A, G, H: il caso del 4/5/12/13), la bolla di ri-consegna (indirizzo e causale; gli stati per dbops.fn_pgtap_porta_a_stato) e il reso (giro 2).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_situazione_merce_ordine — l'aggregato PARLANTE per riga
@@ -149,20 +150,16 @@ SELECT
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)               AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   (SELECT emittente_fiscale_id FROM _m)                                  AS emittente_fiscale_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo LIMIT 1)        AS sorgente_root_id,
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1)       AS causale_vendita_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='CONTO_VISIONE' LIMIT 1) AS causale_non_fatt_id,
   (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')      AS tipo_ind_con_id;
 
--- Helper: crea l'ordine (una riga da p_qta) e ritorna gli id.
+-- Helper: crea l'ordine confermato (una riga da p_qta) SENZA bolla e ritorna
+-- gli id: serve alle righe mai spedite (A, H). Le bolle vengono dal builder.
 -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-90).
 CREATE OR REPLACE FUNCTION pg_temp.mk_ordine(p_qta numeric)
 RETURNS TABLE(ordine_id bigint, ordine_uid uuid, ordine_riga_id bigint) AS $$
@@ -187,25 +184,9 @@ BEGIN
   RETURN QUERY SELECT v_ord, v_uid, v_orr;
 END $$ LANGUAGE plpgsql;
 
--- Helper: spedisce p_qta della riga d'ordine con una causale data, fino a CONSEGNATO.
-CREATE OR REPLACE FUNCTION pg_temp.mk_spedizione(p_ordine bigint, p_orr bigint,
-                                                 p_qta numeric, p_causale bigint)
-RETURNS TABLE(ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
-DECLARE r RECORD; v_ddt bigint; v_uid uuid; v_dr bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs;
-  v_ddt := vendite.fn_genera_ddt_da_ordine(p_ordine,
-             jsonb_build_array(jsonb_build_object('ordine_riga_id', p_orr, 'qta_da_evadere', p_qta)));
-  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-  VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  UPDATE vendite.ddt SET causale_trasporto_id=p_causale               WHERE id=v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_emesso_id       WHERE id=v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id      WHERE id=v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_consegnato_id   WHERE id=v_ddt;
-  SELECT d.uid INTO v_uid FROM vendite.ddt d WHERE d.id=v_ddt;
-  SELECT dr.id INTO v_dr FROM vendite.ddt_righe dr WHERE dr.ddt_id=v_ddt ORDER BY dr.id LIMIT 1;
-  RETURN QUERY SELECT v_ddt, v_uid, v_dr;
-END $$ LANGUAGE plpgsql;
+-- Le spedizioni: dbops.fn_pgtap_crea_ddt_da_ordine, col cliente del mondo,
+-- l'articolo del file, trigger SPEDITO e la causale per codice (VENDITA o
+-- CONTO_VISIONE, la non fatturabile), fino a CONSEGNATO.
 
 -- ============================================================
 -- A) Riga MAI SPEDITA — test 4 e 5
@@ -229,9 +210,11 @@ SELECT is(
 --    (`vw_contatore_merce`) qui diceva «10 da fatturare» (tenuti − 0) su un
 --    conto visione.
 -- ============================================================
-CREATE TEMP TABLE tmp_b AS SELECT * FROM pg_temp.mk_ordine(10);
-SELECT pg_temp.mk_spedizione((SELECT ordine_id FROM tmp_b), (SELECT ordine_riga_id FROM tmp_b),
-                             10, (SELECT causale_non_fatt_id FROM tmp_refs));
+CREATE TEMP TABLE tmp_b AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('situazione B',
+         p_billing_account_id => (SELECT billing_account_id FROM tmp_refs), p_quantita => 10,
+         p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'SPEDITO',
+         p_causale_codice => 'CONTO_VISIONE');
 
 SELECT results_eq(
   $q$SELECT tenuti, differenza, stato::text FROM vendite.vw_situazione_merce_ordine
@@ -243,11 +226,14 @@ SELECT results_eq(
 -- C) Partite MISTE — test 7
 --    4 su causale fatturabile + 6 su conto visione: il conto e' 4, non 10.
 -- ============================================================
-CREATE TEMP TABLE tmp_c AS SELECT * FROM pg_temp.mk_ordine(10);
-SELECT pg_temp.mk_spedizione((SELECT ordine_id FROM tmp_c), (SELECT ordine_riga_id FROM tmp_c),
-                             4, (SELECT causale_vendita_id FROM tmp_refs));
-SELECT pg_temp.mk_spedizione((SELECT ordine_id FROM tmp_c), (SELECT ordine_riga_id FROM tmp_c),
-                             6, (SELECT causale_non_fatt_id FROM tmp_refs));
+CREATE TEMP TABLE tmp_c AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('situazione C',
+         p_billing_account_id => (SELECT billing_account_id FROM tmp_refs), p_quantita => 10,
+         p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'SPEDITO',
+         p_qta_da_evadere => 4);
+SELECT ddt_id FROM dbops.fn_pgtap_crea_ddt_da_ordine('situazione C',
+         p_ordine_id => (SELECT ordine_id FROM tmp_c), p_qta_da_evadere => 6,
+         p_causale_codice => 'CONTO_VISIONE');
 
 SELECT results_eq(
   $q$SELECT partite_merce, tenuti, differenza FROM vendite.vw_situazione_merce_ordine
@@ -262,10 +248,12 @@ SELECT results_eq(
 --    ⚠️ `GREATEST(0, ordinato − consegnato)` darebbe 10 − 10 = 0: e' la
 --    divergenza misurata sulla riga d'ordine reale 18946.
 -- ============================================================
-CREATE TEMP TABLE tmp_d AS SELECT * FROM pg_temp.mk_ordine(10);
-CREATE TEMP TABLE tmp_d_ddt AS
-SELECT * FROM pg_temp.mk_spedizione((SELECT ordine_id FROM tmp_d), (SELECT ordine_riga_id FROM tmp_d),
-                                    10, (SELECT causale_vendita_id FROM tmp_refs));
+CREATE TEMP TABLE tmp_d AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('situazione D',
+         p_billing_account_id => (SELECT billing_account_id FROM tmp_refs), p_quantita => 10,
+         p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'SPEDITO');
+-- La bolla e' quella di tmp_d (il builder torna ordine e bolla insieme).
+CREATE TEMP TABLE tmp_d_ddt AS SELECT ddt_id, ddt_uid, ddt_riga_id FROM tmp_d;
 CREATE TEMP TABLE tmp_d_reso AS
 WITH t AS (
   INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
@@ -291,6 +279,8 @@ SELECT results_eq(
 -- E) La RI-CONSEGNA emessa — test 9
 --    I 3 pezzi rispediti tornano nel consegnato dell'ORIGINE, non aprono una
 --    partita nuova, e il residuo si chiude.
+--    ⚠️ La bolla di ri-consegna nasce dal reso, non da un ordine: indirizzo e
+--    causale a mano, gli stati per la matrice.
 -- ============================================================
 CREATE TEMP TABLE tmp_e AS
 SELECT vendite.fn_genera_ddt_riconsegna((SELECT reso_id FROM tmp_d_reso)) AS ddt_id;
@@ -298,9 +288,7 @@ INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
 SELECT (SELECT ddt_id FROM tmp_e), (SELECT tipo_ind_con_id FROM tmp_refs),
        '{"display":"CON"}'::jsonb ON CONFLICT DO NOTHING;
 UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_e);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)     WHERE id=(SELECT ddt_id FROM tmp_e);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_refs)    WHERE id=(SELECT ddt_id FROM tmp_e);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_e);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_e), 'CONSEGNATO');
 
 SELECT results_eq(
   $q$SELECT partite_merce, consegnato, da_spedire FROM vendite.vw_situazione_merce_ordine
@@ -312,9 +300,10 @@ SELECT results_eq(
 -- F) Kit senza coefficiente sulla corsia ORD — test 10
 --    Il conto non si sa fare: si dichiara, non si mette a zero.
 -- ============================================================
-CREATE TEMP TABLE tmp_f AS SELECT * FROM pg_temp.mk_ordine(5);
-SELECT pg_temp.mk_spedizione((SELECT ordine_id FROM tmp_f), (SELECT ordine_riga_id FROM tmp_f),
-                             5, (SELECT causale_vendita_id FROM tmp_refs));
+CREATE TEMP TABLE tmp_f AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('situazione F',
+         p_billing_account_id => (SELECT billing_account_id FROM tmp_refs), p_quantita => 5,
+         p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'SPEDITO');
 CREATE TEMP TABLE tmp_com AS
 SELECT vendite.fn_get_or_create_commessa(
   p_billing_account_id => (SELECT billing_account_id FROM tmp_refs),

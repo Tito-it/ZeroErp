@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine, in bozza con la causale del caso, poi a CONSEGNATO per la matrice (ritirata pg_temp.porta_a); restano a mano il prezzo tolto dalla riga e la causale tolta (test 2), le emissioni di 2-4 (sono il caso: i gate) e la bolla standalone di 3 (non nasce da un ordine).
 -- Test: DDT di solo trasporto — l'intento si dichiara con la CAUSALE
 --       (fatturabile) — step 5b, brief-db-fatturazione-ddt-resi §4a / DL-28.
 -- (changeset 20260718-03/-04/-05/-06)
@@ -57,42 +58,26 @@ SELECT
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   (SELECT emittente_fiscale_id FROM _m)                                 AS emittente_fiscale_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)      AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
   (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1)      AS causale_vendita_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='CAMPIONATURA' LIMIT 1) AS causale_campioni_id,
   (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id;
 
--- Ordine + DDT da evasione, causale parametrica. p_prezzo_riga NULL = la riga
--- DDT non ha prezzo proprio (lo eredita dall'ordine via fulfillment).
-CREATE OR REPLACE FUNCTION pg_temp.mk_ddt_da_ordine(p_causale bigint, p_prezzo_ordine numeric)
+-- Ordine (10 @25, trigger CONSEGNATO) -> bolla dal builder, in bozza, con la
+-- causale del caso (NULL = tolta: il gate R1). La riga della bolla perde il
+-- prezzo proprio: deve ereditarlo dall'ordine via fulfillment.
+CREATE OR REPLACE FUNCTION pg_temp.mk_ddt_da_ordine(p_causale varchar)
 RETURNS TABLE(ordine_id bigint, ddt_id bigint) AS $$
 DECLARE r RECORD; v_ord bigint; v_ddt bigint;
 BEGIN
   SELECT * INTO r FROM tmp_refs;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
-  --   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza
-  --   le righe non si scrivono piu' (20261008-90).
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
-          DATE '2026-07-15', 'CONSEGNATO', r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_causale'))
-  RETURNING id INTO v_ord;
-  UPDATE vendite.ordini SET fatturazione_trigger = 'CONSEGNATO' WHERE id = v_ord;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'Riga causale', 10, 10, p_prezzo_ordine, r.iva_id, true, false,
-          jsonb_build_object('test_scope','pgtap_causale'));
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-  v_ddt := vendite.fn_genera_ddt_da_ordine(v_ord);
-  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-  VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  UPDATE vendite.ddt SET causale_trasporto_id = p_causale WHERE id = v_ddt;
-  -- la riga DDT nasce senza prezzo proprio: deve ereditarlo dall'ordine.
+  SELECT b.ordine_id, b.ddt_id INTO v_ord, v_ddt
+    FROM dbops.fn_pgtap_crea_ddt_da_ordine('causale', 'DRAFT', r.billing_account_id,
+           p_quantita => 10, p_prezzo => 25, p_articolo_id => r.articolo_id,
+           p_fatturazione_trigger => 'CONSEGNATO',
+           p_causale_codice => COALESCE(p_causale, 'VENDITA')) b;
+  IF p_causale IS NULL THEN
+    UPDATE vendite.ddt d SET causale_trasporto_id = NULL WHERE d.id = v_ddt;
+  END IF;
   -- Alias obbligatorio: `ddt_id` e' anche un parametro OUT di questa funzione.
   UPDATE vendite.ddt_righe dr SET prezzo_unitario = NULL WHERE dr.ddt_id = v_ddt;
   RETURN QUERY SELECT v_ord, v_ddt;
@@ -122,20 +107,6 @@ BEGIN
   RETURN v_ddt;
 END $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION pg_temp.porta_a(p_ddt bigint, p_stato bigint)
-RETURNS void AS $$
-DECLARE r RECORD;
-BEGIN
-  SELECT * INTO r FROM tmp_refs;
-  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_emesso_id  WHERE id=p_ddt;
-  IF p_stato <> r.stato_ddt_emesso_id THEN
-    UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id WHERE id=p_ddt;
-    IF p_stato <> r.stato_ddt_spedito_id THEN
-      UPDATE vendite.ddt SET stato_doc_ddt_id=p_stato WHERE id=p_ddt;
-    END IF;
-  END IF;
-END $$ LANGUAGE plpgsql;
-
 -- ============================================================
 -- 1) Il vocabolario guida: zero IF hardcoded, una cella di seed
 -- ============================================================
@@ -147,7 +118,7 @@ SELECT is(
 -- ============================================================
 -- 2) Gate R1: senza causale non si emette
 -- ============================================================
-CREATE TEMP TABLE tmp_senza AS SELECT * FROM pg_temp.mk_ddt_da_ordine(NULL, 25);
+CREATE TEMP TABLE tmp_senza AS SELECT * FROM pg_temp.mk_ddt_da_ordine(NULL);
 SELECT throws_ok(
   $$ UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)
       WHERE id=(SELECT ddt_id FROM tmp_senza) $$,
@@ -170,7 +141,7 @@ SELECT throws_ok(
 -- 4) Gate R2, il caso legittimo: prezzo ereditato dall'ordine
 -- ============================================================
 CREATE TEMP TABLE tmp_eredita AS
-SELECT * FROM pg_temp.mk_ddt_da_ordine((SELECT causale_vendita_id FROM tmp_refs), 25);
+SELECT * FROM pg_temp.mk_ddt_da_ordine('VENDITA');
 SELECT lives_ok(
   $$ UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)
       WHERE id=(SELECT ddt_id FROM tmp_eredita) $$,
@@ -180,12 +151,12 @@ SELECT lives_ok(
 -- 5-6) La cintura del lister: solo trasporto vs vendita
 -- ============================================================
 CREATE TEMP TABLE tmp_camp AS
-SELECT * FROM pg_temp.mk_ddt_da_ordine((SELECT causale_campioni_id FROM tmp_refs), 25);
-SELECT pg_temp.porta_a((SELECT ddt_id FROM tmp_camp), (SELECT stato_ddt_consegnato_id FROM tmp_refs));
+SELECT * FROM pg_temp.mk_ddt_da_ordine('CAMPIONATURA');
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_camp), 'CONSEGNATO');
 
 CREATE TEMP TABLE tmp_vend AS
-SELECT * FROM pg_temp.mk_ddt_da_ordine((SELECT causale_vendita_id FROM tmp_refs), 25);
-SELECT pg_temp.porta_a((SELECT ddt_id FROM tmp_vend), (SELECT stato_ddt_consegnato_id FROM tmp_refs));
+SELECT * FROM pg_temp.mk_ddt_da_ordine('VENDITA');
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_vend), 'CONSEGNATO');
 
 SELECT is(
   (SELECT COUNT(*)::int FROM vendite.fn_list_ddt_da_pushare(NULL,NULL,NULL,(SELECT ddt_id FROM tmp_camp))),

@@ -1,204 +1,57 @@
 # Estensione PostgreSQL: pgcrypto
 
-> **Vedi anche**
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
-> * Schema utilita': **maintenance**
-> * Estensioni correlate: [`dblink`](/postgresql/dblink)
-> * Funzioni di servizio: `maintenance.run_and_log(...)`
+> **Destinatari**: chi pensa di cifrare, firmare o calcolare un hash dentro il database
+>
+> **Vedi anche**:
+>
+> * [Estensioni utilizzate](/postgresql/estensioni-utilizzate) — l'elenco completo e chi le crea
+> * [Sicurezza e qualità statica](/dev/sicurezza-e-qualita-statica) — §«Le chiavi dei dati cifrati»: dove stanno davvero cifratura e chiavi
+> * [Contratto GUC `app.*`](/guide/contratto-guc-app) — perché i segreti non vanno in un GUC
 
-`pgcrypto` fornisce primitive crittografiche direttamente in PostgreSQL: **hash**, **HMAC**, **UUID random**, **byte casuali**, **cifratura PGP simmetrica/asimmetrica**, e **hash sicuri per password**.
-
----
-
-## Scopi principali
-
-* Generare **UUID** e **byte casuali** crittograficamente sicuri.
-* Calcolare **digest** (SHA-256, SHA-512, ...) e **HMAC**.
-* Cifrare/decifrare dati con **PGP simmetrica/asimmetrica**.
-* Gestire **password** con `crypt()`/`gen_salt()` (bcrypt).
+`pgcrypto` fornisce primitive crittografiche dentro PostgreSQL: hash (`digest`), HMAC (`hmac`), byte
+casuali (`gen_random_bytes`), hash di password (`crypt` + `gen_salt`) e cifratura PGP simmetrica e
+asimmetrica (`pgp_sym_*`, `pgp_pub_*`).
 
 ---
 
-## Installazione
+## Lo stato nel progetto
 
-> Da eseguire **per ogni database** dove serve usare le funzioni (es.: `zeroerp`).
+L'estensione è **installata** (la crea la baseline, `001-01-create-extensions`) ma, al 25 ottobre
+2026, **nessun oggetto del database la usa**. Le cose per cui di solito la si installa stanno altrove:
 
-```sql
-CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- crea in schema "public" (default)
--- oppure, se vuoi collocarla in uno schema dedicato
--- CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA public;
-```
-
-> In CI/Liquibase crea l'estensione **prima** di tabelle/funzioni che la usano.
-
-### Changeset Liquibase (esempio)
-
-```yaml
-databaseChangeLog:
-  - changeSet:
-      id: 20250810-01-ext-pgcrypto
-      author: mctit
-      changes:
-        - sql:
-            stripComments: true
-            splitStatements: false
-            sql: |
-              CREATE EXTENSION IF NOT EXISTS pgcrypto;
-```
+| Bisogno | Dove sta |
+| --- | --- |
+| UUID | `uuidv7()` nei default delle colonne `uid`, `gen_random_uuid()` dove serve un UUID casuale: tutte e due sono del motore, non di `pgcrypto` |
+| Password degli utenti | Django (hash e validatori), mai nel database applicativo |
+| Segreti salvati nel DB (per esempio il segreto TOTP) | cifrati dal backend con chiavi **Fernet** (`crypto_service`, `DJANGO_FIELD_ENCRYPTION_KEYS`); la rotazione la fa il comando `ricifra_campi_cifrati` |
+| Impronte e HMAC applicativi | il backend (`hashlib`, `salted_hmac`) |
 
 ---
 
-## Funzioni piu' usate
+## Se un lavoro nuovo ne ha bisogno
 
-### Random
-
-```sql
-SELECT gen_random_bytes(32);             -- bytea
-```
-
-### Digest / HMAC
-
-```sql
--- SHA-256 in esadecimale
-SELECT encode(digest('hello','sha256'),'hex');
-
--- HMAC-SHA256 (chiave app):
-SELECT encode(hmac('payload', current_setting('app.crypto.key', true), 'sha256'),'hex');
-```
-
-### Password hashing (bcrypt)
-
-> **Non** usare MD5 per password. Usa `crypt()` + `gen_salt('bf')`.
-
-```sql
--- Creazione
-INSERT INTO app.users(username, password_hash)
-VALUES ($1, crypt($2, gen_salt('bf')));
-
--- Verifica
-SELECT 1
-FROM app.users
-WHERE username = $1
-  AND password_hash = crypt($2, password_hash);
-```
-
-### Cifratura PGP simmetrica
-
-```sql
--- Cifra testo con passphrase (meglio leggere da GUC)
-INSERT INTO secret_docs(content_enc)
-VALUES (pgp_sym_encrypt('testo chiaro', current_setting('app.crypto.pass', true)));
-
--- Decifra
-SELECT pgp_sym_decrypt(content_enc, current_setting('app.crypto.pass', true))
-FROM secret_docs
-WHERE id = $1;
-```
-
-### Cifratura PGP asimmetrica (pub/priv)
-
-```sql
--- Cifra con chiave pubblica (armored)
-SELECT pgp_pub_encrypt('payload', dearmor(pubkey_text)) FROM keyring WHERE id=$1;
-
--- Decifra con chiave privata + passphrase
-SELECT pgp_pub_decrypt(payload_enc, dearmor(privkey_text), 'passphrase') FROM inbox WHERE id=$1;
-```
-
-> Suggerito: conservare **solo** chiavi pubbliche nel DB; chiavi private protette fuori dal DB o custodite con policy rigide.
-
----
-
-## Pattern utili
-
-### Colonna UUID di default
-
-```sql
-ALTER TABLE app.orders
-  ADD COLUMN id uuid PRIMARY KEY DEFAULT uuidv7();
-```
-
-### Indice su digest (ricerca rapida per hash)
-
-```sql
-ALTER TABLE app.events ADD COLUMN payload_sha256 bytea;
-UPDATE app.events SET payload_sha256 = digest(payload::text,'sha256');
-CREATE INDEX ON app.events (payload_sha256);
-```
-
-### Logging robusto (con `maintenance.run_and_log`)
-
-```sql
-CALL maintenance.run_and_log(
-  p_jobname  := 'rebuild_materialized',
-  p_stepname := 'refresh_view_x',
-  p_sql      := 'REFRESH MATERIALIZED VIEW CONCURRENTLY app.view_x;',
-  p_lock_key := hashtextextended('refresh_view_x', 0)
-);
-```
-
----
-
-## Buone pratiche di sicurezza
-
-* **Password**: usa `crypt()` + `gen_salt('bf')` (bcrypt). Evita `md5()`/`sha1()` per password.
-* **Chiavi/Passphrase**: non hardcodare. Leggile da **GUC** applicativi:
-
-  ```sql
-  ALTER DATABASE zeroerp SET app.crypto.pass = '...';
-  ALTER DATABASE zeroerp SET app.crypto.key  = '...';
-  -- poi current_setting('app.crypto.pass', true)
-  ```
-
-  Meglio ancora: impostare a runtime (sessione) via application server.
-* **Rotazione**: prevedi la rotazione passphrase/chiavi (versiona i segreti e i record cifrati, es. colonna `key_version`).
-* **Least privilege**: concedi `EXECUTE` solo alle funzioni necessarie e ai ruoli che ne hanno bisogno.
-* **Mascheramento**: i campi `bytea` cifrati non vanno mostrati in log; usa viste che omettono i dati sensibili.
-
----
-
-## Performance e tipi
-
-* `digest()`/`hmac()` sono CPU-bound: valuta **index su colonne hash** e batch update.
-* Per archiviazione hash **testuale**, usa `encode(...,'hex')` → `text`/`varchar(64)` (SHA-256) se serve leggibilita'; altrimenti lascia `bytea`.
-* PGP aggiunge overhead (header, salt, compressione opzionale): pianifica dimensioni e I/O.
+* **Chiavi e passphrase non stanno nel database**: né in una tabella, né nel codice SQL, né in un GUC.
+  I GUC `app.*` portano l'identità della richiesta, non i segreti; un `ALTER DATABASE … SET` con una
+  chiave la rende leggibile a chiunque legga le impostazioni.
+* **Cifrare nel DB vuol dire che la chiave arriva al DB.** Prima di farlo, chiedersi perché non basti la
+  cifratura del backend, che tiene le chiavi fuori dal database.
+* **Password**: mai `md5()`/`sha1()`; se mai servisse un hash di password nel DB, `crypt()` con
+  `gen_salt('bf')`.
+* **Hash per la ricerca** (trovare una riga dalla sua impronta): `digest(…, 'sha256')` in una colonna
+  `bytea` indicizzata; l'hash è CPU-bound, quindi si calcola una volta alla scrittura.
+* **Dove si dichiara**: la funzione che la usa sta in `20_code`, e un pgTAP prova il risultato; se la
+  si usa in un default di colonna, l'estensione deve esistere prima del changeSet della tabella.
 
 ---
 
 ## Troubleshooting
 
-* `function ... does not exist` → estensione non creata nel **database corrente**.
-* `ERROR: Wrong key or corrupt data` → passphrase/chiave errata o dato danneggiato.
-* Output incomprensibile → campi PGP sono `bytea`: usa `dearmor(...)`/`armor(...)` o `encode(...,'hex')` per debug.
-* In Liquibase: usa `splitStatements:false` per definizioni complesse; evita apici tipografici.
-
----
-
-## CI (Ubuntu/GitHub Actions)
-
-Esegui il changeset **prima** delle migrazioni che richiedono `pgcrypto`:
-
-```yaml
-- name: Create pgcrypto extension
-  run: |
-    export PGPASSWORD=secret
-    psql -h localhost -p 5432 -U zeroerp -d zeroerp -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
-```
-
----
-
-## Checklist rapida
-
-* [ ] `CREATE EXTENSION pgcrypto;` nel DB target
-* [ ] Password -> `crypt()` + `gen_salt('bf')`
-* [ ] UUID -> `uuidv7()`
-* [ ] Chiavi/Passphrase via **GUC** o segreti applicativi
-* [ ] Indici su hash se usati per ricerca
-* [ ] Liquibase: changeset dedicato e ordinato prima dei consumatori
-
----
-
-> **Regola d'oro**: usa `pgcrypto` per *primitive* (hash/HMAC/UUID/random) e **PGP** per cifratura applicativa; gestisci segreti fuori dal codice SQL e versiona solo la struttura (non le chiavi).
+* `function digest(…) does not exist`: l'estensione manca nel **database corrente**, oppure lo schema in
+  cui vive (`public`) non è nel `search_path` della funzione; nelle funzioni con `search_path` fissato
+  si qualifica (`public.digest(…)`).
+* `Wrong key or corrupt data`: passphrase o chiave sbagliata, o dato danneggiato.
 
 ---
 {% include-markdown "signature-core.md" %}

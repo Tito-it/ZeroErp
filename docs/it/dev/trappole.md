@@ -1,5 +1,7 @@
 # Trappole: cosa non fare
 
+> **Ultimo aggiornamento**: 24 ottobre 2026
+>
 > Questa pagina raccoglie gli errori che fanno male — le "mine" già pestate almeno una volta.
 > Ogni voce dice **cosa non fare**, **perché** e **cosa fare invece**. Leggerla all'inizio
 > risparmia ore di lavoro perso e dati da recuperare.
@@ -19,9 +21,12 @@ disastro: il branch sparisce per tutti.
 
 - **Perché fa male:** `Tito-dev` non è un branch usa-e-getta, è il punto di integrazione del
   progetto. Cancellarlo blocca il lavoro di tutti.
-- **Cosa fare invece:** tieni **disattivata** quell'opzione e proteggi `Tito-dev` e `main`
-  nelle impostazioni del repository. Il flusso corretto resta: branch di lavoro
-  (`dev/db-tid`, `dev/backend-tid`) → `Tito-dev` → `main`.
+- **Cosa fare invece:** tieni **disattivata** quell'opzione (oggi lo è). Il flusso corretto
+  resta: branch di lavoro (`dev/db-tid`, `dev/backend-tid`) → `Tito-dev` → `main`.
+- ⚠️ **La protezione dei branch oggi non c'è.** Su un repository privato con piano GitHub
+  gratuito non si può attivare (GitHub risponde 403, verificato il 2026-10-24): l'unica difesa
+  è quell'opzione spenta. Lo stato e le alternative sono in
+  [Configurazione GitHub](/dev/github/configurazione#impostazioni-del-repository).
 
 ---
 

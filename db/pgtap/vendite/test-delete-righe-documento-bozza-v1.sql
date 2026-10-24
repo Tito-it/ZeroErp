@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (test 5 e 6); restano scritti a mano i DDT in bozza senza ordine e gli ordini in bozza/confermato (sono il caso: righe che si tolgono o no), e i DELETE.
 -- pgTAP test per Zero ERP
 --
 -- Test: le righe di DDT e ordine si tolgono FINCHE' il documento e' in
@@ -36,9 +37,8 @@
 --   li saltava. Dal 20260922-03 quella scorciatoia e' esattamente cio' che
 --   il building block vendite.trgfn_doc_righe_lock_fuori_bozza chiude: una
 --   riga non entra in un documento fuori bozza. Il DDT emesso si costruisce
---   quindi da un ordine (fn_genera_ddt_da_ordine: DRAFT con la riga), poi
---   causale, indirizzo CON e la transizione — la ricetta di
---   test-fn-partite-merce-chiusura-v1. ⚠️ E il DELETE della sua riga (test
+--   quindi da un ordine, col builder dbops.fn_pgtap_crea_ddt_da_ordine (rev
+--   2026-10-25). ⚠️ E il DELETE della sua riga (test
 --   5) e' rifiutato dal BB in fascia _a05_, PRIMA che il traduttore dei
 --   legami veda il fulfillment: e' il verdetto giusto («il documento e'
 --   chiuso» va detto per primo), ed e' per questo che il ramo 1 e' uscito da
@@ -135,11 +135,7 @@ SELECT
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                            AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)                        AS iva_id,
   (SELECT s.id FROM config.stati_doc_ddt s    WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ddt_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt s    WHERE s.codice_interno='EMESSO'     AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_draft_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
-  (SELECT t.id FROM config.causali_trasporto t WHERE t.codice='VENDITA' ORDER BY t.id LIMIT 1)                        AS causale_vendita_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')                                                   AS tipo_ind_con_id
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_draft_id
 FROM tmp_cli_dr c;
 
 DO $fix$
@@ -147,7 +143,7 @@ DECLARE
   r       RECORD;
   v_id    bigint;
   v_ord   bigint;
-  v_orr   bigint;
+  v_ddr   bigint;
 BEGIN
   SELECT * INTO r FROM tmp_refs_dr;
 
@@ -183,37 +179,15 @@ BEGIN
   VALUES (v_id, 1, r.articolo_id, 'riga che muore col padre', 1.000000, 1.000000, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'));
 
-  -- ── DDT EMESSO nel verso vero (test 5 e 6): ordine confermato,
-  --    fn_genera_ddt_da_ordine (DRAFT con la riga), causale, indirizzo,
-  --    transizione ──────────────────────────────────────────────────
-  INSERT INTO vendite.ordini (data, stato_doc_ordine_id, soggetto_ruolo_id,
-                              billing_account_id, utility_id, valuta_id,
-                              emittente_fiscale_id, storicizza, meta)
-  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): l'ordine nasce DRAFT,
-  --   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
-  --   righe non si scrivono piu' (20261008-90).
-  VALUES (DATE '2026-08-05', r.stato_ord_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
-          r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
-  RETURNING id INTO v_ord;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-                                    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'riga ordine evasa', 2, 2, 10, r.iva_id, true, false,
-          jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
-  RETURNING id INTO v_orr;
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-
-  v_id := vendite.fn_genera_ddt_da_ordine(
-      v_ord,
-      jsonb_build_array(jsonb_build_object('ordine_riga_id', v_orr, 'qta_da_evadere', 2)),
-      DATE '2026-08-10');
-  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-  VALUES (v_id, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id  WHERE id = v_id;
-  UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_emesso_id WHERE id = v_id;
-  INSERT INTO tmp_fix VALUES ('ddt_emesso', v_id);
-  SELECT dr.id INTO v_id FROM vendite.ddt_righe dr WHERE dr.ddt_id = v_id ORDER BY dr.id LIMIT 1;
-  INSERT INTO tmp_fix VALUES ('ddt_emesso_riga', v_id);
+  -- ── DDT EMESSO nel verso vero (test 5 e 6): dal builder, ordine del
+  --    cliente del file con una riga di 2 a 10, bolla emessa per la matrice ─
+  SELECT b.ddt_id, b.ddt_riga_id INTO v_id, v_ddr
+    FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgtap_delete_righe_bozza', 'EMESSO',
+           p_billing_account_id => r.billing_account_id,
+           p_articolo_id        => r.articolo_id,
+           p_quantita           => 2,
+           p_prezzo             => 10) b;
+  INSERT INTO tmp_fix VALUES ('ddt_emesso', v_id), ('ddt_emesso_riga', v_ddr);
 
   -- ── Ordine in bozza e ordine confermato (test 7 e 8) ────────────
   INSERT INTO vendite.ordini (data, stato_doc_ordine_id, soggetto_ruolo_id,

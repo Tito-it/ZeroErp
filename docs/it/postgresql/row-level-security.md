@@ -1,13 +1,13 @@
 ## Row Level Security (RLS) in PostgreSQL
 
 >
-> (latest review 2026-04-18)
+> **Ultimo aggiornamento**: 24 ottobre 2026
 >
 > **Vedi anche**
 >
 > * [Linee guida SQL — sezione 10 Row Level Security](/linee-guida-sql#10-row-level-security-rls) — convenzioni ZeroErp (naming, funzioni `fn_scope_*`, bypass ruoli, checklist migrazione)
-> * [Parametri personalizzati (GUC)](/postgresql/parametri-personalizzati-(GUC))
-> * [GUC reference](/postgresql/guc_reference)
+> * [Parametri personalizzati (GUC)](/postgresql/parametri-personalizzati-(GUC)) — le famiglie di GUC e l'[elenco](/postgresql/parametri-personalizzati-(GUC)#elenco-dei-guc)
+> * [Contratto GUC `app.*`](/guide/contratto-guc-app) — i GUC d'identità che le policy leggono
 
 Questa scheda descrive **sintassi e comportamento** di Row Level Security in PostgreSQL 18.
 Le scelte architetturali di ZeroErp (quando abilitarla, come nominare le policy, come

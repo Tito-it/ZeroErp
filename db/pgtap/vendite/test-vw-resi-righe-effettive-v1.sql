@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; restano scritti a mano i resi A, B, C (il caso del test, e giro 2).
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_resi_righe_effettive — helper unico «merce tornata indietro»
 --       (brief-db-fatturazione-ddt-resi §3b, step 2). Fonte unica CONFERMATI +
@@ -87,57 +88,24 @@ SELECT
   --   del database; l'articolo si costruisce (nasce merce, non solo componente:
   --   ordine e bolla lo ammettono — brief-db-articoli-ammessi-per-documento, Lotto 3a).
   (SELECT billing_account_id FROM _m)                                    AS billing_account_id,
-  (SELECT cliente_soggetto_ruolo_id FROM _m)                             AS soggetto_ruolo_id,
   dbops.fn_pgtap_crea_articolo('PGTAP-RESI-EFFETTIVE', false)           AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT emittente_fiscale_id FROM _m)                                 AS emittente_fiscale_id,
-  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata d'ordine nasce DRAFT,
-  --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
-  --   righe non si scrivono piu' (20261008-90).
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo LIMIT 1) AS stato_ord_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id,
-  -- Dal 2026-07-18 (step 5b / DL-28) la causale trasporto e' obbligatoria all'emissione
-  -- del DDT: VENDITA e' l'unica fatturabile, quindi e' quella che tiene il DDT
-  -- eleggibile al push verso la fatturazione.
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id;
+  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id;
 
--- FIXTURE: ordine (qta 10) -> DDT -> CONSEGNATO
-CREATE TEMP TABLE tmp_ord AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
-         r.valuta_id, DATE '2026-07-14', 'SPEDITO', r.emittente_fiscale_id, false,
-         jsonb_build_object('test_scope','pgtap_vw_effettive')
-  FROM tmp_refs r RETURNING id)
-SELECT * FROM ins;
-INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-SELECT (SELECT id FROM tmp_ord), 1, r.articolo_id, 'Riga eff', 10, 10, 25, r.iva_id, true, false,
-       jsonb_build_object('test_scope','pgtap_vw_effettive') FROM tmp_refs r;
-
--- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90).
-DO $x$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord), 'CONFERMATO'); END $x$;
-CREATE TEMP TABLE tmp_ddt AS
-SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord)) AS ddt_id;
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-SELECT (SELECT ddt_id FROM tmp_ddt), (SELECT tipo_ind_con_id FROM tmp_refs),
-       '{"display":"CON"}'::jsonb ON CONFLICT DO NOTHING;
-UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs)  WHERE id=(SELECT ddt_id FROM tmp_ddt);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)     WHERE id=(SELECT ddt_id FROM tmp_ddt);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_refs)    WHERE id=(SELECT ddt_id FROM tmp_ddt);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_ddt);
+-- FIXTURE: ordine (qta 10 a 25, trigger SPEDITO) -> DDT -> CONSEGNATO, dal builder
+CREATE TEMP TABLE tmp_bolla AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('resi righe effettive',
+                  p_billing_account_id   => (SELECT billing_account_id FROM tmp_refs),
+                  p_quantita             => 10,
+                  p_prezzo               => 25,
+                  p_articolo_id          => (SELECT articolo_id FROM tmp_refs),
+                  p_fatturazione_trigger => 'SPEDITO');
+CREATE TEMP TABLE tmp_ddt AS SELECT ddt_id FROM tmp_bolla;
 
 CREATE TEMP TABLE tmp_ddt_riga AS
 SELECT dr.id, dr.articolo_id, dr.descrizione, dr.uom_operativa_id, dr.factor_to_base
-  FROM vendite.ddt_righe dr WHERE dr.ddt_id=(SELECT ddt_id FROM tmp_ddt) LIMIT 1;
+  FROM vendite.ddt_righe dr WHERE dr.id=(SELECT ddt_riga_id FROM tmp_bolla);
 
 -- Reso A: CONFERMATO, riga a credito qta 3 -> deve essere IN vista.
 CREATE TEMP TABLE tmp_reso_a AS

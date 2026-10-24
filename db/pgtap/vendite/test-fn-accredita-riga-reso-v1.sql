@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano il reso (giro 2) e la commessa con la fattura, che sono il caso del test.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_accredita_riga_reso — la madre del verbo «accredita»
@@ -75,33 +76,20 @@ SELECT
   ba.id                                                                  AS billing_account_id,
   ba.utility_id                                                          AS utility_id,
   ba.istanza_utility_id                                                  AS istanza_utility_id,
-  script.fn_pgtap_emittente_operatore()                                  AS emittente_fiscale_id,
   script.fn_pgtap_emittente_sr_operatore()                               AS emittente_sr_id,
-  ba.soggetto_ruolo_id               AS soggetto_ruolo_id,  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il ruolo del BA, non il primo del database
   -- ⛔ rev 2026-10-13: l'articolo si COSTRUISCE (merce non solo-componente, non
   --   gestito: il test non misura il magazzino) — da zero il catalogo ha solo ONERE_*.
   dbops.fn_pgtap_crea_articolo('PGTAP-ACC-RESO', false)                  AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)            AS iva_id,
-  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata d'ordine nasce DRAFT,
-  --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
-  --   righe non si scrivono piu' (20261008-90).
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1)  AS stato_ord_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO'     AND s.attivo ORDER BY s.id LIMIT 1)     AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO'    AND s.attivo ORDER BY s.id LIMIT 1)     AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo ORDER BY s.id LIMIT 1)     AS stato_ddt_consegnato_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo ORDER BY s.id LIMIT 1)         AS sorgente_ddt_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA'    AND s.attivo ORDER BY s.id LIMIT 1)         AS sorgente_root_id,
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo ORDER BY s.id LIMIT 1)         AS stato_reso_draft_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo ORDER BY t.id LIMIT 1)     AS tipo_credito_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                            AS tipo_doc_fiscale_id,
   (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_fatt_draft_id,
-  script.fn_pgtap_registro_fattura()                      AS registro_id,
-  -- Dal 2026-07-18 (DL-28) la causale trasporto e' obbligatoria all'emissione
-  -- del DDT, e VENDITA e' l'unica fatturabile.
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' ORDER BY c.id LIMIT 1)                         AS causale_vendita_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')                                                    AS tipo_ind_con_id
+  script.fn_pgtap_registro_fattura()                      AS registro_id
 -- ⛔ rev 2026-10-13: il BA e' quello del mondo costruito, non il primo del database.
 FROM tmp_mondo_acc m
 JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id;
@@ -111,43 +99,9 @@ JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id;
 -- ⚠️ Padre e figlio in DUE istruzioni, mai in una CTE sola: le CTE che scrivono
 --    condividono la stessa snapshot, e una policy che risolve il perimetro dal
 --    padre non lo trova e nega fail-closed. Per questo sono funzioni plpgsql.
+-- La partita di merce vera (ordine confermato -> bolla CONSEGNATA) e' del
+-- builder dbops.fn_pgtap_crea_ddt_da_ordine.
 -- ============================================================
-
--- Una partita di merce vera: ordine confermato -> DDT generato -> consegnato.
-CREATE OR REPLACE FUNCTION pg_temp.acc_mk_partita(p_qta numeric, p_prezzo numeric)
-RETURNS TABLE(ordine_riga_id bigint, ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
-DECLARE r RECORD; v_ord bigint; v_orr bigint; v_ddt bigint; v_uid uuid; v_ddtr bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_acc;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
-          DATE '2026-07-15', 'CONSEGNATO', r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_fn_accredita'))
-  RETURNING id INTO v_ord;
-  -- trgfn_ordini_normalize eredita il trigger dal BA su INSERT: va reimpostato.
-  UPDATE vendite.ordini SET fatturazione_trigger = 'CONSEGNATO' WHERE id = v_ord;
-
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'Riga accredito pgTAP', p_qta, p_qta, p_prezzo, r.iva_id,
-          true, false, jsonb_build_object('test_scope','pgtap_fn_accredita'))
-  RETURNING id INTO v_orr;
-  -- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90).
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-
-  v_ddt := vendite.fn_genera_ddt_da_ordine(v_ord);
-  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-  VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id  WHERE id = v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_emesso_id     WHERE id = v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_spedito_id    WHERE id = v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_consegnato_id WHERE id = v_ddt;
-
-  SELECT d.uid INTO v_uid  FROM vendite.ddt d       WHERE d.id = v_ddt;
-  SELECT dr.id INTO v_ddtr FROM vendite.ddt_righe dr WHERE dr.ddt_id = v_ddt ORDER BY dr.id LIMIT 1;
-  RETURN QUERY SELECT v_orr, v_ddt, v_uid, v_ddtr;
-END $$ LANGUAGE plpgsql;
 
 -- La merce viene FATTURATA: attivita' di commessa -> emissione -> riga di
 -- fattura vera, agganciata all'AF. E' la catena che la madre risale per
@@ -267,7 +221,14 @@ SELECT vendite.fn_link_commessa_sorgente(
   p_sorgente_riga    => 1,
   p_meta             => '{}'::jsonb);
 
-CREATE TEMP TABLE tmp_pa AS SELECT * FROM pg_temp.acc_mk_partita(10, 25);
+CREATE TEMP TABLE tmp_pa AS
+SELECT b.ordine_riga_id, b.ddt_id, b.ddt_uid, b.ddt_riga_id
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('accredita riga reso',
+           p_billing_account_id   => (SELECT billing_account_id FROM tmp_refs_acc),
+           p_quantita             => 10,
+           p_prezzo               => 25,
+           p_articolo_id          => (SELECT articolo_id FROM tmp_refs_acc),
+           p_fatturazione_trigger => 'CONSEGNATO') b;
 
 CREATE TEMP TABLE tmp_pa_fattura AS
 SELECT pg_temp.acc_fattura(
@@ -386,7 +347,14 @@ SELECT is(
 -- ============================================================
 -- Guard
 -- ============================================================
-CREATE TEMP TABLE tmp_pb AS SELECT * FROM pg_temp.acc_mk_partita(5, 12);
+CREATE TEMP TABLE tmp_pb AS
+SELECT b.ordine_riga_id, b.ddt_id, b.ddt_uid, b.ddt_riga_id
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('accredita riga reso',
+           p_billing_account_id   => (SELECT billing_account_id FROM tmp_refs_acc),
+           p_quantita             => 5,
+           p_prezzo               => 12,
+           p_articolo_id          => (SELECT articolo_id FROM tmp_refs_acc),
+           p_fatturazione_trigger => 'CONSEGNATO') b;
 CREATE TEMP TABLE tmp_pb_reso AS
 SELECT pg_temp.acc_mk_reso((SELECT ddt_riga_id FROM tmp_pb), (SELECT ddt_uid FROM tmp_pb), 2) AS resi_riga_id;
 
@@ -434,7 +402,14 @@ SELECT throws_like(
 --     incorporate): il verbo entra in commesse_attivita da segment_base, e la
 --     corsia ORD e' il ramo che nessun altro test costruiva.
 -- ============================================================
-CREATE TEMP TABLE tmp_pc AS SELECT * FROM pg_temp.acc_mk_partita(8, 30);
+CREATE TEMP TABLE tmp_pc AS
+SELECT b.ordine_riga_id, b.ddt_id, b.ddt_uid, b.ddt_riga_id
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('accredita riga reso',
+           p_billing_account_id   => (SELECT billing_account_id FROM tmp_refs_acc),
+           p_quantita             => 8,
+           p_prezzo               => 30,
+           p_articolo_id          => (SELECT articolo_id FROM tmp_refs_acc),
+           p_fatturazione_trigger => 'CONSEGNATO') b;
 
 CREATE TEMP TABLE tmp_pc_fattura AS
 SELECT pg_temp.acc_fattura(

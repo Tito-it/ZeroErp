@@ -1,11 +1,12 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 18 ottobre 2026
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
 > 
 > * [Liquibase Setup & Workflow](liquibase-setup-workflow.md)   
+> * [Linee guida Trigger](linee-guida-trigger.md) — trigger e funzioni trigger: nomi, ordine, eventi
 > * [Un database che resta veloce](/guide/database-che-resta-veloce) — il racconto e il metodo delle prestazioni; le regole sono al §13
 > * [Storicizzazione Tabelle](/guide/storicizzazione-tabelle)   
 > * [Transaction ID](/guide/tx_id_implementation_guide) 
@@ -122,31 +123,11 @@ lo riceverà in questa forma (D8 del documento di valutazione).
 
 ### 5. Trigger e Funzioni
 
-* **Trigger Functions** :
+**Trigger e funzioni trigger** — nomi, fasi e ordine di esecuzione, `UPDATE OF` contro `WHEN`, che
+cosa vede un `BEFORE ROW`, trigger differiti, rapporto coi trigger generati — hanno una sede sola:
+[Linee guida Trigger](linee-guida-trigger.md). Qui restano le regole che valgono per **tutte** le
+funzioni, trigger compresi.
 
->
-> Vedi il documento:
->
-> * [Linee Guida Trigger](linee-guida-trigger.md)   
->
-
-**Naming delle trigger function:**
-
-Qui la scelta migliore è NON mettere né fase né eventi nel nome della funzione.
-
-Quindi:
-
-**trgfn_<schema_opzionale>_<tabella>_<descrizione_breve>**
-```
-Esempi:
-
-trgfn_anagrafiche_soggetti_tx_id_managed
-
-trgfn_vendite_ddt_righe_qta_from_operativa
-
-trgfn_config_stati_prevent_delete_if_used
-
-```
 **Utilizzo di check o guard**
 
 * A. Usa check per funzioni “pure” che verificano
@@ -1054,6 +1035,35 @@ WHERE is_default;
 **Su una FK nullabile, `WHERE <colonna> IS NOT NULL` è preferibile all'indice totale.** Il controllo di integrità referenziale esegue `WHERE fkcol = $1` con `$1` mai nullo — una riga con FK nulla non ha padre da verificare — e la condizione `fkcol = $1` implica `fkcol IS NOT NULL`: il planner lo dimostra e usa l'indice parziale senza problemi. Che è più piccolo, perché non indicizza righe che nessuno cercherà mai.
 
 `dbops.vw_fk_senza_indice` riconosce questo caso e considera la FK coperta. **Ogni altro predicato no**: un indice con, per dire, `WHERE stato = 'ATTIVO'` non copre la FK, perché il controllo referenziale deve poter trovare qualsiasi riga figlia, non solo quelle attive.
+
+---
+
+### 8.4-bis ⛔ Indici UNIQUE con colonne nullable
+
+Per lo standard SQL un `NULL` non è uguale a un altro `NULL`, e un indice `UNIQUE` di default **non impedisce due righe con gli stessi campi a `NULL`**. Quando una colonna opzionale concorre all'**identità** della riga (un indirizzo fisico, l'ambito di un parametro, una chiave di raggruppamento), le righe che dovevano essere una convivono in silenzio, senza nessun errore.
+
+**La domanda la decide il modello, non i dati**: se la colonna è nullable e fa parte dell'identità, il `NULL` è un valore della chiave, anche quando oggi non ce n'è nemmeno uno.
+
+| Il campo… | Regola |
+| --- | --- |
+| è facoltativo e **non definisce l'identità** | resta fuori dall'indice `UNIQUE` |
+| è facoltativo e **definisce l'identità** | entra nell'indice, e l'indice si dichiara `NULLS NOT DISTINCT` |
+| è sempre valorizzato | si dichiara `NOT NULL` ed entra normalmente nell'indice |
+
+**Le due forme.** ⭐ Un indice nuovo si scrive `NULLS NOT DISTINCT`: due `NULL` nella stessa colonna collidono, l'indice resta sulle colonne nude, lo usano le query normali e un `ON CONFLICT (col_a, col_b)`, e vale per qualsiasi tipo. Alcuni indici più vecchi usano la forma storica `COALESCE(col, '')` su espressione, che ha tre limiti: equipara il `NULL` alla sentinella (un `''` scritto davvero collide col `NULL`); la sentinella dipende dal tipo (`''` non vale per un `integer`, e una colonna lasciata fuori dal `COALESCE` resta scoperta); la query o l'`ON CONFLICT` devono ripetere la stessa espressione per servirsi dell'indice.
+
+**Lo specchio nel lookup.** La stessa trappola ha un gemello opposto: nel `WHERE` di un «trova o crea» `col = param` **non combacia mai** quando entrambi sono `NULL`, e si crea un duplicato a ogni giro. Il confronto si scrive `col IS NOT DISTINCT FROM param`.
+
+**I punti in cui la chiave è scritta**, e la regola va applicata a tutti:
+
+* l'indice `UNIQUE`;
+* il `WHERE` del lookup (e la ri-lettura dopo un `unique_violation`);
+* l'eventuale `ON CONFLICT`;
+* l'hash di un `pg_advisory_xact_lock`, se la chiave serializza le scritture.
+
+⚠️ **Il lookup confronta i valori come sono SALVATI.** Se un trigger normalizza le colonne della chiave (maiuscolo, `BTRIM`, prefissi), il lookup deve confrontare con i parametri **passati per la stessa normalizzazione**, non con quelli grezzi. Altrimenti il lookup manca la riga esistente, l'`INSERT` normalizzato urta l'indice, e la ri-lettura dopo il `unique_violation` manca di nuovo: il «trova o crea» restituisce `NULL`.
+
+⚠️ Quando un brief dice «l'unicità è sull'insieme», si legge la definizione dell'indice nella doc auto-generata (o `pg_index.indnullsnotdistinct`) prima di crederci, e il pgTAP che presidia il vincolo asserisce la **clausola** e il caso col `NULL`, non solo il nome dell'indice.
 
 ---
 

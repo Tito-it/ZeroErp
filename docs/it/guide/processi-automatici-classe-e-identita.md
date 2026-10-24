@@ -1,6 +1,6 @@
 # Guida — I lavori automatici: che natura hanno e per conto di chi girano
 
-> (latest review 06-09-2026)
+> **Ultimo aggiornamento**: 24 ottobre 2026
 >
 > Destinatari: chiunque debba capire, aggiungere o controllare un lavoro che il
 > sistema fa da solo — sviluppatori, analisti, e chi guarda se stanotte è andato
@@ -10,6 +10,7 @@
 >
 > * [Gestione delle code di lavoro](/guide/gestione-code-di-lavoro) — come funziona la coda che esegue i lavori
 > * [Processi pgAgent funzionali](/guide/processi-pgagent-funzionali) — l'elenco dei lavori a orario
+> * [Framework automazione DB, §9-§10](/guide/automazione-db) — i giri delle automazioni (`automations_*`): la convergenza del rilascio, le notti, come si vedono in **Processi automatici**
 > * [Tracciamento processi e job](/guide/analisi-tracciamento-processi-e-job) — dove si leggono le esecuzioni
 > * [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — come funzionano i controlli che si vedono qui
 > * [dbops.processi](/dbzero/dbops/manual/processi) — il registro di cui parla tutta questa guida

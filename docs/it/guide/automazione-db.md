@@ -1,11 +1,14 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 24 ottobre 2026
 >
-> **Destinatari**: sviluppatori database, backend e analisti funzionali
+> **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
 > **Vedi anche** — schemi DB:
 >
+> * [dbops.processi](/dbzero/dbops/manual/processi) — il catalogo dei processi: i giri delle automazioni, il loro ordine in CI, la loro accensione
+> * [dbops.vw_processi_programmazione](/dbzero/dbops/manual/vw_processi_programmazione) — il panorama: per ogni processo, se gira come dovrebbe
+> * [maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log) — il giornale delle corse
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole di automazione
 > * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — l'ambito: gli schemi e le tabelle a cui applicarle
 > * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols) — le colonne non standard
@@ -29,10 +32,16 @@
 > * [dbops.fn_apply_automazione_guard_utility_tipo_ruolo](/dbzero/dbops/funzioni/fn_apply_automazione_guard_utility_tipo_ruolo) — monta la verifica utility/tipo ruolo
 > * [dbops.apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy) — crea e rimuove gli indici sulle FK secondo la policy
 > * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice) — genera codici e numeri da `config.sistema_codici`
+> * [maintenance.fn_sveglia_accesa](/dbzero/maintenance/manual/fn_sveglia_accesa) — il cancello che fa partire un giro notturno solo se il processo è acceso
+>
+> **Vedi anche** — API e service backend:
+>
+> * [API Amministrazione software, §6](/backend/amm-software/manual/api_amm_software) — i processi automatici dall'interfaccia: presidi, accensione, «Esegui ora»
 >
 > **Vedi anche** — guide correlate:
 >
-> * [Linee guida SQL](/linee-guida-sql) — le convenzioni di naming: il framework **legge i nomi**, quindi qui non sono stilistiche
+> * [Tutorial — Portare una tabella nuova nel framework](/tutorial/framework-automazione-db) — la procedura passo passo
+> * [Linee guida SQL](/linee-guida-sql) — le convenzioni di naming: il framework **legge i nomi**, quindi qui non sono stilistiche; i divieti dei changeSet (§11)
 > * [Storicizzazione delle tabelle](/guide/storicizzazione-tabelle)
 > * [Gestione del Transaction ID](/guide/tx_id_implementation_guide)
 > * [Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job)
@@ -51,20 +60,22 @@ Il **framework di automazione DB** risolve questo problema: invece di scrivere t
 * Il concetto di base: come il framework trasforma regole dichiarative in trigger
 * L'architettura: ambito, rules, orchestratori e audit
 * Le regole disponibili, divise in **core** (usate su ogni tabella) e **specializzate** (per casi specifici)
-* La configurazione pratica, e in coda gli esempi SQL da copiare
+* La configurazione pratica, e in coda gli esempi da copiare
 * La governance degli indici FK
 * La generazione automatica di codici/numeri
+* Quando girano le automazioni: la convergenza del rilascio e i giri notturni (§9)
+* Come si vedono e si governano dall'interfaccia di Zero ERP (§10)
 * La checklist operativa per il deploy
 
 ### In 3 passi: come portare una nuova tabella nel framework
 
 Se hai appena creato una tabella e vuoi che il framework la gestisca:
 
-1. **Verifica l'ambito**: la tabella è in uno schema già presente in `automation_scope`? Se sì, il framework la vede già. Se no, aggiungi lo schema all'ambito.
-2. **Verifica le rules**: esistono regole con `target_schema='*all'`? Se sì, la tabella è già coperta per TX_ID, AUDIT, STORICO ecc. Se serve una regola specifica (es. LOCK_COLUMNS), aggiungila.
-3. **Esegui il runner**: prima in dry-run (`p_dry_run=true`), poi in apply (`p_dry_run=false`). Verifica i trigger generati.
+1. **Dagli le colonne giuste**: il framework legge la **struttura**. `tx_id`, `data_update`/`user_update`, `storicizza`, `attivo`, `codice_interno`, `valido_dal`/`valido_al` decidono da sole che cosa la tabella riceve. Gli schemi di dominio sono già tutti nell'ambito.
+2. **Scrivi nei registri ciò che la struttura non dice**: da dove si congela l'azienda nello storico (`storico_scope_policy`, obbligatorio se la tabella si storicizza), colonne extra da bloccare, eccezioni ATTIVO, indici FK. Sempre dal **CSV** in `80_data`, mai con un `INSERT` a parte.
+3. **Lascia convergere**: i trigger li monta il giro delle automazioni — da zero nella passata `ci_apply` della migrazione, su sviluppo dentro ogni update, altrimenti di notte (§9). Non si scrivono a mano.
 
-Per la procedura dettagliata passo-passo, vedi il [Tutorial – Aggiungere una tabella al framework](/tutorial/framework-automazione-db).
+Per la procedura dettagliata passo passo, vedi il [Tutorial — Portare una tabella nuova nel framework](/tutorial/framework-automazione-db).
 
 ---
 
@@ -74,9 +85,9 @@ Il framework è composto da quattro livelli che collaborano tra loro. Ognuno ha 
 
 ### 1.1 Ambito (dove applicare)
 
-L'**ambito** definisce il perimetro: su quali schemi e tabelle il framework opera. E configurato nella tabella `dbops.automation_scope`.
+L'**ambito** definisce il perimetro: su quali schemi e tabelle il framework opera. È configurato nella tabella `dbops.automation_scope`, seminata dal CSV `80_data/sql/dbops/automation_scope.csv`.
 
-Ogni riga indica uno schema e un pattern di tabelle. Il sentinel `'*all'` significa "tutte le tabelle dello schema".
+Ogni riga indica uno schema e un pattern di tabelle. Il sentinel `'*all'` significa "tutte le tabelle dello schema". Tutti gli schemi di dominio ci sono con `*all`; `dbops` è nell'ambito tabella per tabella.
 
 Il runner usa due funzioni per risolvere l'ambito:
 
@@ -85,7 +96,7 @@ Il runner usa due funzioni per risolvere l'ambito:
 
 ### 1.2 Rules (cosa applicare)
 
-Le **regole** (`dbops.automation_rules_tbl`) dichiarano quale automazione applicare, a quale schema/tabella, e con quali parametri. Ogni regola ha:
+Le **regole** (`dbops.automation_rules_tbl`, seminata dal CSV `80_data/sql/dbops/automation_rules_tbl.csv`) dichiarano quale automazione applicare, a quale schema/tabella, e con quali parametri. Il CSV è anche la fonte dei template di nome dei trigger. Ogni regola ha:
 
 | Campo                | Significato                                                                |
 | -------------------- | -------------------------------------------------------------------------- |
@@ -106,9 +117,12 @@ Non tutte le tabelle seguono le convenzioni standard. Le tabelle di override per
 
 * `automation_overrides_cols` — nomi colonna non standard (es. `attivo_flag` invece di `attivo`, FK storico diverse)
 * `automazione_attivo_eccezioni` — le **FK** che la regola ATTIVO non lega: per una riga (schema, tabella **figlia**, colonna FK) il motore non genera né il block sul padre né il require sul figlio, e ritira quelli già generati. Ogni riga porta il suo **motivo**, obbligatorio: un'eccezione senza perché è un buco nel framework. È **per FK, non per tabella**: le altre coppie della stessa figlia restano legate. Dettaglio in §4.2, «Le eccezioni».
-  ⚠️ Non è la vecchia `automation_fk_exclusions`, ritirata insieme alle funzioni trigger legacy a cui serviva: quella era un elenco muto, questa è un registro con il motivo e con il ritiro dei trigger. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale §12.3). Per ritirare configurazione senza toccare il guard, invece, resta `obsoleto_dal` (vedi [Mandare in pensione una voce di catalogo](/guide/uso-di-obsoleto)).
+  ⚠️ Per ritirare configurazione senza toccare il guard, invece, resta `obsoleto_dal` (vedi [Mandare in pensione una voce di catalogo](/guide/uso-di-obsoleto)).
 * `automation_cleanup_exclusions` — tabelle da escludere dal cleanup automatico
 * `automation_lock_columns` — colonne extra da bloccare per singola tabella
+* `storico_scope_policy` — per ogni tabella storicizzata, da dove si prende l'azienda emittente da congelare nella sua storia (vedi §3.4)
+
+Tutti questi registri si cambiano dal loro CSV in `80_data/sql/dbops/`, mai con un `INSERT` o un `UPDATE` a parte ([linee-guida-sql §11.2](/linee-guida-sql)).
 
 ### 1.4 Orchestratori (chi esegue)
 
@@ -119,16 +133,20 @@ Gli **orchestratori** sono funzioni SQL che leggono rules e ambito, risolvono le
 | [fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)                             | Orchestratore principale (chiama i singoli runner) |
 | [fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id)                 | TX_ID                                              |
 | [fn_run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update)   | AUDIT_UPDATE                                       |
-| [fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico)             | STORICO + STORICO_PROVISION                        |
+| [fn_run_automations_storico_provision](/dbzero/dbops/funzioni/fn_run_automations_storico_provision) | STORICO_PROVISION (crea le tabelle di storico) |
+| [fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico)             | STORICO (monta il trigger dove la tabella di storico c'è) |
 | [fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)   | LOCK_COLUMNS (converge: crea, rigenera, toglie)    |
+| [fn_run_automations_date_validita](/dbzero/dbops/funzioni/fn_run_automations_date_validita) | DATE_VALIDITA                                      |
 | [fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)               | ATTIVO                                             |
 | [fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block)   | DELETE_BLOCK                                       |
 | [fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)             | CLEANUP                                            |
 
-Tutti i runner accettano il parametro `p_dry_run`:
+Tutti i runner accettano gli stessi tre parametri — modo di esecuzione, schemi (NULL = l'ambito), `p_dry_run`:
 
 * `true` — simula l'esecuzione e logga con stato `DRYRUN` (nessuna modifica)
 * `false` — esegue realmente e logga con stato `OK` o `ERROR`
+
+⚠️ L'orchestratore `fn_run_automations` chiama solo le parti `TX_ID`, `AUDIT_UPDATE`, `STORICO`, `LOCK_COLUMNS`, `ATTIVO`, `DATE_VALIDITA` e `CLEANUP`. **Non** conosce `STORICO_PROVISION` né `DELETE_BLOCK`: per quelle si chiama il loro runner. Nell'uso normale nessuno chiama i runner a mano: li chiamano le procedure dei giri (§9).
 
 ### 1.5 Audit (cosa è successo)
 
@@ -152,12 +170,14 @@ Le regole si dividono in due gruppi per importanza e frequenza d'uso.
 
 Sono le regole fondamentali, applicate a **tutte** (o quasi) le tabelle del sistema. Ogni progetto le usa fin dall'inizio.
 
-| Regola                | Cosa fa                                                          | Trigger generato                |
-| --------------------- | ---------------------------------------------------------------- | ------------------------------- |
-| **TX_ID**             | Assegna un UUID di transazione a ogni riga inserita/modificata   | `BEFORE INSERT OR UPDATE`       |
-| **AUDIT_UPDATE**      | Aggiorna i campi `data_update` e `user_update` a ogni modifica   | `BEFORE UPDATE`                 |
-| **STORICO**           | Salva uno snapshot del record prima di modificarlo o cancellarlo | `BEFORE UPDATE OR DELETE`       |
-| **STORICO_PROVISION** | Crea la tabella `storico.<tabella>` se non esiste                | Nessun trigger (crea struttura) |
+| Regola                | Cosa fa                                                          | Scatta se la tabella ha…         | Trigger generato                |
+| --------------------- | ---------------------------------------------------------------- | -------------------------------- | ------------------------------- |
+| **TX_ID**             | Assegna un UUID di transazione a ogni riga inserita/modificata   | `tx_id uuid`                     | `BEFORE INSERT OR UPDATE`       |
+| **AUDIT_UPDATE**      | Aggiorna i campi `data_update` e `user_update` a ogni modifica   | le due colonne di audit          | `BEFORE UPDATE`                 |
+| **STORICO**           | Salva uno snapshot del record prima di modificarlo o cancellarlo | la tabella `storico.<tabella>`   | `BEFORE UPDATE OR DELETE`       |
+| **STORICO_PROVISION** | Crea la tabella `storico.<tabella>` se non esiste                | la colonna `storicizza`          | Nessun trigger (crea struttura) |
+
+Le regole scattano sulla **presenza** delle colonne: una tabella che non le ha viene saltata, senza errore.
 
 ### Regole specializzate
 
@@ -187,7 +207,7 @@ Ogni operazione di insert o update riceve un **UUID di transazione** (`tx_id`). 
 * Il `tx_id` viene generato una volta per transazione e riutilizzato per tutte le righe toccate nella stessa transazione
 * La colonna `tx_id` deve esistere sulla tabella (tipo UUID)
 
-**Template naming:** `trg_{table}_ins_upd_gen_tx_id`
+**Template naming:** `trg_{table}_gen_tx_id_ins_upd`
 
 ### 3.2 AUDIT_UPDATE (campi audit)
 
@@ -199,7 +219,7 @@ Ogni modifica a un record aggiorna automaticamente **chi** ha fatto la modifica 
 * Aggiorna `data_update` (timestamp) e `user_update` (utente corrente)
 * Le colonne devono esistere sulla tabella (i nomi possono essere personalizzati via override)
 
-**Template naming:** `trg_upd_{table}_audit_data_user`
+**Template naming:** `trg_{table}_audit_data_user_upd`
 
 ### 3.3 STORICO (storicizzazione)
 
@@ -208,8 +228,10 @@ Prima di ogni modifica o cancellazione, il framework salva una **copia del recor
 **Come funziona:**
 
 * Trigger **unico** `BEFORE UPDATE OR DELETE` che chiama `script.trgfn_storico_generic(fk_col)`
-* Scrive su `storico.<stesso_nome_tabella>` (senza suffisso `_storico`)
+* Scrive su `storico.<stesso_nome_tabella>` (senza suffisso `_storico` e senza lo schema: tabelle omonime di schemi diversi condividono la tabella di storico e si distinguono per `origine_schema`)
 * Lo snapshot del record viene salvato in un campo JSONB
+* Si monta solo dove la tabella di storico **esiste già**, e la colonna verso la madre è `<tabella>_id` (override `STORICO_FK`); se manca, il runner si ferma con `E_STORICO_FK_COL_ASSENTE`
+* Il comportamento della colonna `storicizza` (storicizzazione permanente o una tantum) è nella guida [Storicizzazione delle tabelle](/guide/storicizzazione-tabelle#la-colonna-storicizza)
 
 **Template naming:** `trg_{table}_z90_storico_upd_dlt`
 
@@ -225,9 +247,17 @@ Complementare a STORICO: crea automaticamente la tabella `storico.<tabella>` se 
 * Campo `snapshot` JSONB con il contenuto del record
 * Campi `change_type`, `tipo_operazione`, metadati
 
+* Campi `origine_schema` e `scope_emittente_fiscale_id`: l'azienda emittente **congelata** al momento della fotografia
+
 **Parametro opzionale:** `create_gin_index` — se `true`, crea un indice GIN sul campo `snapshot` per ricerche rapide nel JSON.
 
+**Si applica** solo alle tabelle che hanno la colonna `storicizza` (override `STORICIZZA_COL`): senza, la tabella non riceve né la tabella di storico né, di conseguenza, il trigger.
+
+⛔ **Ogni tabella storicizzata dichiara il suo scope** in `dbops.storico_scope_policy` (CSV `80_data/sql/dbops/storico_scope_policy.csv`): da dove si prende l'azienda emittente da congelare (`EF`, `SR`, `PADRE`, `BA`, `COPPIA`) oppure `NESSUNO` con la ragione. La tabella di storico nasce già armata secondo quella riga; se la riga manca, il presidio `db/pgtap/dbops/test-storico-scope-policy-v1.sql` è rosso. I modi sono spiegati nella scheda [dbops.storico_scope_policy](/dbzero/dbops/manual/storico_scope_policy).
+
 **Guard**: i runner STORICO e STORICO_PROVISION **non processano** tabelle nello schema `storico` (per evitare ricorsione).
+
+⚠️ **L'ordine conta**: STORICO trova la tabella solo dopo che STORICO_PROVISION l'ha creata. Nella convergenza del rilascio l'ordine è garantito; nei giri notturni no (§9).
 
 ---
 
@@ -249,25 +279,29 @@ Alcune colonne non devono essere modificate dopo la creazione del record (es. `c
 Il comportamento completo, con le azioni e il caso in cui si ferma, sta nella pagina di
 [fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns).
 
-### 4.2 ATTIVO (soft-delete – policy BLOCK-ONLY)
+### 4.2 ATTIVO (soft-delete: blocco sul padre, requisito sul figlio)
 
-Molte tabelle hanno una colonna `attivo` per il soft-delete (disattivare un record invece di cancellarlo). L'automazione ATTIVO garantisce la **coerenza tra padre e figli**: un record padre non può essere disattivato se ha ancora figli collegati tramite FK.
+Molte tabelle hanno una colonna `attivo` per il soft-delete (disattivare un record invece di cancellarlo). L'automazione ATTIVO garantisce la **coerenza tra padre e figli** in due direzioni: un padre non si spegne se ha figli collegati, e un figlio non si attacca a un padre spento.
 
 **Regola applicata:**
 
 * La disattivazione (`attivo = false`) di un record **padre** è consentita **solo se non esistono record figli** collegati
+* Un figlio non si inserisce né si sposta su un padre con `attivo = false`
 * **Nessuna cascata automatica** sui figli
 * La regola si applica solo se il padre possiede la colonna `attivo`
 * Le FK considerate sono `RESTRICT` e `NO ACTION` (anche `DEFERRABLE`)
 * Solo FK con colonna che termina in `_id` (esclude riferimenti a codici testuali)
 
-**Trigger generato:**
+**Trigger generati:**
 
-* Tabella: PADRE
-* Evento: `BEFORE UPDATE OF attivo`
-* Funzione: `dbops.trgfn_prevent_deactivate_if_children(child_schema, child_table, fk_col [, pk_col])`
+| Dove   | Evento                         | Funzione                                         | Nome                                                   |
+| ------ | ------------------------------ | ------------------------------------------------ | ------------------------------------------------------ |
+| PADRE  | `BEFORE UPDATE OF attivo`      | `dbops.trgfn_prevent_deactivate_if_children(...)` | `trg_{parent}_a10_{child}_block_deact_upd_…`           |
+| FIGLIO | `BEFORE INSERT OR UPDATE`      | `dbops.trgfn_child_requires_active_parent(...)`  | `trg_{child}_a10_{parent}_require_attivo_ins_upd_…`    |
 
-**Effetto:** se `OLD.attivo = true` e `NEW.attivo = false` e esistono figli FK → operazione **bloccata con errore**.
+Il suffisso finale è un hash corto della FK, aggiunto quando il nome supererebbe i 63 caratteri.
+
+**Effetto:** se `OLD.attivo = true` e `NEW.attivo = false` e esistono figli FK → operazione **bloccata con errore**; un figlio che punta a un padre spento → **rifiutato**.
 
 **Le eccezioni: quando padre e figlio NON si legano sull'attivo.** Ci sono coppie in cui `attivo` sul padre e `attivo` sul figlio rispondono a due domande diverse, e legarle rende impossibile uno stato legittimo. Si dichiarano in [`dbops.automazione_attivo_eccezioni`](/dbzero/dbops/tabelle/automazione_attivo_eccezioni), una FK per riga col suo motivo (seed da `80_data`, CSV `dbops/automazione_attivo_eccezioni.csv`). Per quelle FK il motore non genera né il block né il require, e in testa a ogni giro chiama [`dbops.fn_ritira_attivo_eccezioni`](/dbzero/dbops/funzioni/fn_ritira_attivo_eccezioni), che toglie i trigger già generati riconoscendoli per **funzione e argomenti** (i nomi generati sono hashati). Il presidio è `db/pgtap/dbops/test-automazione-attivo-eccezioni-v1.sql`.
 
@@ -326,7 +360,7 @@ Per tabelle sensibili (es. tabelle ruoli, configurazioni critiche) dove la DELET
 
 * Config in `dbops.automation_delete_block` con schema, tabella, chiave GUC e flag `enabled`
 * Trigger `script.trgfn_delete_block_by_guc(guc_key)` — blocca la DELETE a meno che il GUC specificato non sia impostato a `'on'`
-* Apply con `dbops.fn_run_automations_delete_block()`
+* Apply con `dbops.fn_run_automations_delete_block()`, nella convergenza del rilascio e nel giro notturno `automations_delete_block` (§9)
 
 ### 4.5 CLEANUP (pulizia record scaduti)
 
@@ -426,7 +460,7 @@ PostgreSQL lo tronca: il trigger si riconosce dalla funzione, non dal nome.
 
 ### 5.1 Configurare le rules
 
-Le regole si inseriscono in `dbops.automation_rules_tbl`. Usa `target_schema='*all'` per applicare globalmente, altrimenti specifica lo schema.
+Le regole si dichiarano nel CSV `80_data/sql/dbops/automation_rules_tbl.csv`, caricato in `dbops.automation_rules_tbl` dal suo changeSet di `80_data` (con `id` esplicito, la chiave del caricamento). Usa `target_schema='*all'` per applicare globalmente, altrimenti specifica lo schema. Le regole globali di ogni tipo ci sono già: una regola nuova serve solo per un'eccezione (per esempio un TTL di CLEANUP diverso per una tabella).
 
 **Consigli:**
 
@@ -436,13 +470,13 @@ Le regole si inseriscono in `dbops.automation_rules_tbl`. Usa `target_schema='*a
 
 ### 5.2 Configurare l'ambito
 
-Inserisci righe in `dbops.automation_scope`: una riga per schema, con `table_like` che dice quali tabelle (esempi in coda, in [Area tecnica — esempi](#area-tecnica-esempi)).
+Aggiungi righe al CSV `80_data/sql/dbops/automation_scope.csv`: una riga per schema, con `table_like` che dice quali tabelle (esempi in coda, in [Area tecnica — esempi](#area-tecnica-esempi)). Serve solo per uno schema nuovo o per una tabella nuova di `dbops`: gli schemi di dominio ci sono già con `*all`.
 
 `table_like` non è mai NULL: usa `'*all'` per indicare tutte le tabelle.
 
 ### 5.3 Configurare gli overrides
 
-La tabella `automation_overrides_cols` permette di definire nomi colonna diversi dallo standard per singola tabella: si dichiara `(schema, tabella, chiave di override, nome reale della colonna)`.
+La tabella `automation_overrides_cols` (CSV `80_data/sql/dbops/automation_overrides_cols.csv`) permette di definire nomi colonna diversi dallo standard per singola tabella: si dichiara `(schema, tabella, chiave di override, nome reale della colonna)`.
 
 Override disponibili: `ATTIVO_COL`, `AUDIT_TS`, `AUDIT_USER`, `STORICO_FK`, `STORICIZZA_COL`. Due esempi — una colonna di stato con un altro nome, e una FK storico diversa dal default — sono in coda, in [Area tecnica — esempi](#area-tecnica-esempi).
 
@@ -629,10 +663,10 @@ fattura era stato montato così. Quando è sparito, quell'importo è tornato
 modificabile e in nessun registro è comparso niente. Se n'è accorto un test,
 mesi dopo.
 
-**Cosa fare:** registrare la riga nella tabella di configurazione e lasciare che
-sia il framework a creare il trigger. Se serve provisionarlo subito senza
-aspettare il giro notturno, si chiama il *runner* — non si scrive il trigger a
-mano.
+**Cosa fare:** registrare la riga nella tabella di configurazione (dal suo CSV) e
+lasciare che sia il framework a creare il trigger. Se serve subito senza
+aspettare il giro notturno, si lancia la migrazione, che la comprende (§9.2) —
+non si scrive il trigger a mano.
 
 ### Il dry-run non mostra modifiche attese
 
@@ -641,11 +675,124 @@ Verifica in ordine:
 1. La tabella è nell'ambito? → controlla `automation_scope` o passa lo schema nel parametro `p_schemas`
 2. La regola è abilitata? → controlla `enabled = true` in `automation_rules_tbl`
 3. Il trigger esiste già? → il runner lo salta con `SKIP_EXISTS`
-4. La tabella ha le colonne necessarie? → es. `tx_id` per TX_ID, `attivo` per ATTIVO
+4. La tabella ha le colonne necessarie? → es. `tx_id` per TX_ID, `attivo` per ATTIVO, `storicizza` per lo storico
+5. Per STORICO: la tabella di storico esiste? → finché STORICO_PROVISION non l'ha creata, il trigger non compare nemmeno in dry-run
+
+### C'è la tabella di storico ma non il trigger
+
+Su sviluppo, nei giri notturni, `automations_storico` può partire prima di
+`automations_storico_provision` (stesso minuto, nessun ordine): la tabella di
+storico nasce la prima notte e il trigger la notte dopo. Non è un guasto; se
+serve subito, l'update di sviluppo (o `ci-local.sh --ci-apply` sullo scratch) fa tutto nell'ordine giusto (§9.2).
+
+### La migrazione si ferma con `PROCESSI_CI: …`
+
+La convergenza del rilascio pretende, dopo ogni procedura, una corsa riuscita nel
+giornale. Il messaggio nomina il processo: la causa sta nelle sue righe di
+`maintenance.job_run_log` e, se è un runner che cattura gli errori per tabella,
+nelle righe `status = 'ERROR'` di `dbops.audit_log`.
 
 ### Lo schema storico non è escluso
 
 I runner STORICO e STORICO_PROVISION escludono automaticamente lo schema `storico`. Se vedi trigger storici su tabelle dello schema `storico`, è probabilmente un trigger manuale — non del framework.
+
+---
+
+## 9. Quando girano le automazioni
+
+I runner non si lanciano a mano: li chiamano le **procedure dei processi**
+`maintenance.proc_automations_*_job()` (una per regola, più `proc_apply_fk_index_policy_job`,
+`proc_apply_storicizza_defaults_job`, `proc_sync_storico_set_storicizza_job`). Ogni processo è una
+riga del catalogo [dbops.processi](/dbzero/dbops/manual/processi), e ogni procedura registra la sua
+corsa in [maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log) attraverso
+`maintenance.fn_run_and_log` (con un advisory lock che impedisce due corse insieme).
+
+Le stesse procedure vengono chiamate in tre momenti.
+
+### 9.1 La convergenza del rilascio — CI, installazione, database da zero
+
+La pipeline invoca Liquibase due volte. Nella seconda passata (`--contexts=ci_apply`) il changeSet
+`90_end/ci_apply/20260926-10-run-processi-strutturali-in-ordine` (`runAlways`) chiama le procedure di
+tutti i processi strutturali **nell'ordine** dichiarato da `dbops.processi.ci_ordine`:
+
+```text
+audit_update → storico_provision → storico → tx_id → attivo → lock_columns
+→ delete_block → overlap → cleanup → sync_storico_set_storicizza
+→ apply_storicizza → analyze_statistiche (ultimo)
+```
+
+Dopo ogni chiamata pretende una riga riuscita, e non di salto, nel giornale; altrimenti la
+migrazione si ferma nominando il processo. Un database ricostruito da zero esce così con tutti i
+trigger al primo rilascio. L'elenco non sta nel changeSet: un processo strutturale nuovo dichiara
+`ci_ordine` e `ci_procedura` nel CSV di `dbops.processi`, e il presidio
+`db/pgtap/dbops/test-processi-convergenza-ci` è rosso se un job pgAgent non dichiara né posizione
+né esclusione.
+
+⛔ Un changeSet di `00_schema`/`20_code` non fa DDL né `preCondition` sui trigger che nascono qui: da
+zero non esistono ancora ([linee-guida-sql §11.5](/linee-guida-sql)).
+
+### 9.2 Su sviluppo, dopo una migrazione
+
+Il database di sviluppo non si ricostruisce. La sua migrazione (`cd db && ../scripts/liquibase5.sh
+update`) gira **senza filtro di contesti**, quindi esegue anche i changeSet `ci_apply`: la convergenza
+del §9.1 è dentro ogni update, e le automazioni si riallineano senza una seconda passata. Per provare
+un lotto su un database ricostruito da zero c'è `scripts/ci-local.sh --ci-apply`. I due comandi sono
+spiegati in [Liquibase — struttura e workflow, §6](/liquibase-setup-workflow).
+
+Sono migrazioni e li ferma l'hook `guardrail_no_db_migrate.py`: si lanciano solo con la conferma
+esplicita di chi ne ha la responsabilità.
+
+### 9.3 Di notte, da pgAgent
+
+Dove pgAgent c'è, i job di `85_pgagent` rieseguono le stesse procedure:
+
+| Quando              | Job                                                                                                                   |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| ogni giorno, 21:00  | `automations_audit_update`, `automations_storico_provision`, `automations_storico`, `automations_tx_id`, `automations_attivo`, `automations_overlap` |
+| ogni giorno, 21:10  | `automations_lock_columns` (con DATE_VALIDITA), `automations_delete_block`                                             |
+| sabato, 07:00       | `apply_storicizza_weekly`, `sync_storico_set_storicizza`                                                               |
+| domenica, 23:00     | `automations_cleanup_weekly`, `automations_apply_fk_indexes_policy`                                                   |
+
+* Ogni passo è avvolto nel cancello [maintenance.fn_sveglia_accesa](/dbzero/maintenance/manual/fn_sveglia_accesa): un processo **spento** non si sveglia, e non lascia righe nel giornale. La convergenza del rilascio invece gira sempre: spegnere ferma la sveglia, non l'aggiornamento.
+* ⚠️ I job delle 21:00 partono nello stesso minuto, **senza ordine fra loro**: una tabella nuova riceve la tabella di storico la prima notte e il trigger di storico la seconda (§8).
+* ⚠️ In CI su GitHub `85_pgagent` è `MARK_RAN`: i job non esistono, e il loro lavoro lo fa la convergenza del §9.1.
+
+Gli orari stanno nei changeSet di `85_pgagent`; il programma vero di un'installazione si legge
+dal panorama dei processi (§10).
+
+---
+
+## 10. Dall'interfaccia: i processi automatici
+
+Chi amministra un'installazione non ha bisogno del database per sapere se le automazioni girano: in
+Zero ERP la schermata **Strumenti → Diagnostica → Processi automatici** mostra ogni processo del
+catalogo, comprese le automazioni (`automations_*`, `apply_fk_index_policy`,
+`apply_storicizza_weekly`, `sync_storico_set_storicizza`). La schermata è riservata a `SUPER_ADMIN`.
+
+| Che cosa si vede o si fa                                   | Da dove viene                                                                                                         |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| lo **stato** di ogni processo: `OK`, `IN_ATTESA`, `IN_RITARDO`, `MUTO`, `MAI_PARTITO`, `JOB_SPENTO`, `JOB_ASSENTE`, `SPENTO`… | il panorama [dbops.vw_processi_programmazione](/dbzero/dbops/manual/vw_processi_programmazione) |
+| le ultime **corse** di un processo, con esito e messaggio  | `maintenance.job_run_log`                                                                                             |
+| i **presidi**: i controlli che devono restare vuoti, con il rimedio e a chi tocca | il catalogo `dbops.presidi`; API in [Amministrazione software §6.1](/backend/amm-software/manual/api_amm_software) |
+| **accendere, spegnere** o riportare al default un processo, con il motivo | `dbops.fn_imposta_accensione_processo`; regole in [dbops.processi_accensione](/dbzero/dbops/manual/processi_accensione); API §6.4 |
+
+⚠️ **«Esegui ora» non vale per le automazioni.** Il pulsante lancia una sveglia del backend
+(systemd), ed esiste solo sulle sveglie che lo dichiarano (`avvio_manuale` in
+`backend/deploy/sveglie.json`, API §6.2). Le automazioni sono job pgAgent: si rieseguono con la
+convergenza (§9.1-9.2) o aspettando il giro notturno.
+
+⚠️ **Spegnere un'automazione** ferma il suo giro notturno, non la convergenza del rilascio: una
+tabella nuova la riceve comunque alla migrazione successiva. Su un processo che il catalogo
+dichiara non spegnibile, il pulsante è spento.
+
+⚠️ Il **registro delle azioni** delle automazioni (`dbops.audit_log`: che cosa ha creato, saltato o
+sbagliato ogni giro) non ha una schermata: si legge dal database (query in coda). La schermata
+**Strumenti → Diagnostica → Audit Log** mostra un'altra cosa, le modifiche alle righe delle tabelle
+storicizzate.
+
+Il modello dei processi — nature, identità, sveglie — è nella guida
+[I lavori automatici](/guide/processi-automatici-classe-e-identita); le sveglie del backend e i loro
+comandi in [Servizi ZeroERP — i comandi](/dev/backend/servizi-zeroerp-comandi).
 
 ---
 
@@ -701,177 +848,86 @@ erDiagram
 
 ---
 
-## Checklist operativa (deploy)
+## Checklist operativa (rilascio)
 
-Questa checklist è pensata per essere usata prima, durante e dopo il rollout delle automazioni.
+Questa checklist accompagna un lotto che crea o cambia tabelle governate dal framework.
 
-### Pre-flight
+### Prima della migrazione
 
-* [ ] **DB corretto**: `SELECT lower(current_database());` deve restituire `zero` o `zeroerp`
-* [ ] **Permessi**: l'utente ha `CREATE TRIGGER` sugli schemi target
-* [ ] **Ambito**: definito uno tra `p_schemas`, `dbops.automation_scope` oppure fallback accettato
-* [ ] **Contesto Liquibase**: conferma che in CI non passi `--contexts=test` (solo locale)
-* [ ] **Estensioni**: se vuoi audit out-of-tx → `dblink` installata e GUC configurato
+* [ ] Le tabelle nuove hanno le colonne standard che servono (§2, [linee-guida-sql §7](/linee-guida-sql))
+* [ ] Schema nuovo o tabella nuova di `dbops` → riga in `automation_scope.csv`
+* [ ] Tabella storicizzata → riga in `storico_scope_policy.csv`
+* [ ] Colonne extra da bloccare, eccezioni ATTIVO, override, indici FK → righe nei rispettivi CSV
+* [ ] Nessun changeSet scrive, rinomina o conta i trigger generati (§9.1)
 
-### Dry-run
+### Simulazione (facoltativa)
 
-* [ ] Esegui il dry-run sugli schemi target: `dbops.fn_run_automations(schema, p_dry_run := true, ...)` — query in coda
-* [ ] Verifica il log dei `DRYRUN`: ogni riga porta tabella e trigger nei `params` — query in coda
+* [ ] Dry-run sugli schemi toccati, con STORICO_PROVISION chiesto al suo runner — query in coda
+* [ ] Se cambiano i lucchetti, che cosa farebbe la convergenza: `dbops.fn_lock_columns_divergenze` — query in coda
 
-### Apply
+### Convergenza
 
-* [ ] Esegui l'apply **un modulo alla volta**: parti da `TX_ID` su `anagrafiche` e solo dopo passa agli altri — query in coda
-* [ ] Se usi LOCK_COLUMNS, guarda prima che cosa farebbe la convergenza con `dbops.fn_lock_columns_divergenze` — query in coda
+* [ ] In CI: la passata `ci_apply` chiude senza `PROCESSI_CI` (§9.1)
+* [ ] Su sviluppo: l'update senza contesti, che comprende la convergenza; da zero `scripts/ci-local.sh --ci-apply`; con la conferma per quei comandi (§9.2)
 
-### Verifica post-apply
+### Verifica
 
-* [ ] Trigger presenti: contali in `pg_trigger` escludendo i trigger interni (`NOT tgisinternal`) e controlla che i nomi seguano i template — query in coda
-* [ ] Test funzionali minimi:
-  * **TX_ID**: insert/update → `tx_id` non nullo
-  * **AUDIT_UPDATE**: update → `data_update`/`user_update` aggiornati
-  * **STORICO**: update/delete → riga presente in `storico.<tabella>`
-  * **ATTIVO**: set padre `attivo=false` con figli → errore bloccante
-
-### Osservabilità
-
-* [ ] Audit esiti: gli ultimi record di `dbops.audit_log` per `function_name = 'run_automations'` — query in coda
-* [ ] In caso di errore: le righe con `status = 'ERROR'` — query in coda
-
-### Config e naming
-
-* [ ] Template rispettano limite **63 char**
-* [ ] Override definiti in `automation_overrides_cols` dove necessario
-* [ ] `existence_strategy` coerente (`BY_NAME` / `BY_FUNCTION` / `BOTH`)
-
-### CI/CD
-
-* [ ] Pipeline CI usa `update` senza contexts di test
-* [ ] `tests/changelog.yaml` eseguito solo con context di test
+* [ ] Trigger presenti con i nomi dei template, esclusi gli interni (`NOT tgisinternal`) — query in coda
+* [ ] `storico.<tabella>` esiste per ogni tabella con `storicizza`
+* [ ] Nessuna riga `status = 'ERROR'` in `dbops.audit_log` del giro — query in coda
+* [ ] Il comportamento (`tx_id`, audit, storico, ATTIVO, lucchetto) è presidiato da un pgTAP che si costruisce le righe ([pgTAP — come si scrive un test](/guide/pgtap-come-si-scrive-un-test))
+* [ ] Su un'installazione: in **Processi automatici** le automazioni sono `OK` o `IN_ATTESA` dopo la notte (§10)
 
 ---
 
 ## Area tecnica — esempi
 
-Gli esempi stanno tutti qui: nel corpo della guida restano le regole, qui il testo da copiare. Gli insert sono **idempotenti** (`WHERE NOT EXISTS`), quindi si possono rieseguire senza duplicare righe.
+Gli esempi stanno tutti qui: nel corpo della guida restano le regole, qui il testo da copiare.
 
-### Regole: TX_ID
+### Regole: le righe globali del seed
 
-```sql
-INSERT INTO dbops.automation_rules_tbl
-(enabled, rule_type, target_schema, target_table, exec_mode,
- name_template, existence_strategy, params, priority, note)
-SELECT true, 'TX_ID', '*all', NULL, 'AUTO',
-       'trg_{table}_ins_upd_gen_tx_id', 'BOTH', '{}'::jsonb,
-       100, 'tx_id globale'
-WHERE NOT EXISTS (
-  SELECT 1 FROM dbops.automation_rules_tbl
-  WHERE rule_type = 'TX_ID' AND target_schema = '*all'
-);
+Le regole vivono nel CSV `80_data/sql/dbops/automation_rules_tbl.csv`. Le righe globali di oggi
+(colonne `id,enabled,rule_type,target_schema,target_table,exec_mode,name_template,existence_strategy,params,priority,note`):
+
+```text
+1,t,TX_ID,*all,*all,AUTO,trg_{table}_gen_tx_id_ins_upd,BOTH,{},100,txid
+2,t,AUDIT_UPDATE,*all,*all,AUTO,trg_{table}_audit_data_user_upd,BOTH,"{""audit_ts"": ""data_update"", ""audit_user"": ""user_update""}",100,audit
+6,t,STORICO_PROVISION,*all,*all,AUTO,"",BOTH,"{""create_gin_index"": false}",100,storico: provisioning
+7,t,STORICO,*all,*all,AUTO,trg_{table}_z90_storico_upd_dlt,BOTH,"{}",100,storico: trigger UPDATE/DELETE
 ```
 
-### Regole: AUDIT_UPDATE
+Una regola mirata è una riga in più, con `target_schema`/`target_table` valorizzati e un `id` nuovo.
+Esempio: la tabella di storico con indice GIN per le sole tabelle `articoli_%` di `catalogo`:
 
-```sql
-INSERT INTO dbops.automation_rules_tbl
-(enabled, rule_type, target_schema, target_table, exec_mode,
- name_template, existence_strategy, params, priority, note)
-SELECT true, 'AUDIT_UPDATE', '*all', NULL, 'AUTO',
-       'trg_upd_{table}_audit_data_user', 'BOTH',
-       '{"audit_ts":"data_update","audit_user":"user_update"}'::jsonb,
-       100, 'audit update globale'
-WHERE NOT EXISTS (
-  SELECT 1 FROM dbops.automation_rules_tbl
-  WHERE rule_type = 'AUDIT_UPDATE' AND target_schema = '*all'
-);
+```text
+<id nuovo>,t,STORICO_PROVISION,catalogo,articoli_%,AUTO,"",BOTH,"{""create_gin_index"": true}",100,storico: prov catalogo con GIN
 ```
 
-### Regole: STORICO (trigger unico UPDATE+DELETE)
+### Regole: ATTIVO
 
-```sql
-INSERT INTO dbops.automation_rules_tbl
-(enabled, rule_type, target_schema, target_table, exec_mode,
- name_template, existence_strategy, params, priority, note)
-SELECT true, 'STORICO', '*all', NULL, 'AUTO',
-       'trg_{table}_z90_storico_upd_dlt', 'BOTH',
-       '{}'::jsonb,
-       100, 'storico: trigger unificato'
-WHERE NOT EXISTS (
-  SELECT 1 FROM dbops.automation_rules_tbl
-  WHERE rule_type = 'STORICO' AND target_schema = '*all'
-);
+```text
+4,t,ATTIVO,*all,*all,AUTO,"{""block"": ""trg_{parent}_a10_{child}_block_deact_upd_{fkhash6_if_long}"", ""require"": ""trg_{child}_a10_{parent}_require_attivo_ins_upd_{fkhash6_if_long}""}",BOTH,"{""reconcile_on_change"": true}",100,lab attivo
 ```
 
-La tabella di destinazione deve esistere in `storico.<stesso_nome_tabella>` (creata da STORICO_PROVISION).
-
-### Regole: STORICO_PROVISION
-
-```sql
-INSERT INTO dbops.automation_rules_tbl
-(enabled, rule_type, target_schema, target_table, exec_mode,
- name_template, existence_strategy, params, priority, note)
-SELECT true, 'STORICO_PROVISION', '*all', NULL, 'AUTO',
-       NULL, 'BOTH', '{"create_gin_index": false}'::jsonb,
-       100, 'storico: provisioning tabelle'
-WHERE NOT EXISTS (
-  SELECT 1 FROM dbops.automation_rules_tbl
-  WHERE rule_type = 'STORICO_PROVISION' AND target_schema = '*all'
-);
-```
-
-Versione più mirata, solo schema `catalogo` e tabelle `articoli_%`:
-
-```sql
-INSERT INTO dbops.automation_rules_tbl
-(enabled, rule_type, target_schema, target_table, exec_mode,
- name_template, existence_strategy, params, priority, note)
-VALUES (true, 'STORICO_PROVISION', 'catalogo', 'articoli_%', 'AUTO',
-        NULL, 'BOTH', '{"create_gin_index": true}'::jsonb,
-        100, 'storico: prov catalogo');
-```
-
-### Regole: ATTIVO (BLOCK-ONLY)
-
-```sql
-INSERT INTO dbops.automation_rules_tbl
-(enabled, rule_type, target_schema, target_table, exec_mode,
- name_template, existence_strategy, params, priority, note)
-SELECT true, 'ATTIVO', '*all', NULL, 'AUTO',
-       '{"block":"trg_{parent}_a10_{child}_block_deact_upd",
-         "require":"trg_{child}_a10_{parent}_require_attivo_ins_upd"}',
-       'BOTH', '{"reconcile_on_change": true}'::jsonb,
-       100, 'attivo: blocco disattivazione padre se esistono figli'
-WHERE NOT EXISTS (
-  SELECT 1 FROM dbops.automation_rules_tbl
-  WHERE rule_type = 'ATTIVO' AND target_schema = '*all'
-);
-```
-
-Crea **solo** trigger di BLOCCO sul PADRE; nessuna cascata; nessun trigger REQUIRE sul figlio.
+Il `name_template` di ATTIVO è un JSON con i due nomi: il block sul padre e il require sul figlio.
 
 ### Ambito: quali tabelle
 
-```sql
--- Tutte le tabelle dello schema anagrafiche
-INSERT INTO dbops.automation_scope (schema_name, table_like)
-VALUES ('anagrafiche', '*all');
+Righe del CSV `80_data/sql/dbops/automation_scope.csv` (`schema_name,table_like`):
 
--- Solo le tabelle con prefisso fattur_ nello schema vendite
-INSERT INTO dbops.automation_scope (schema_name, table_like)
-VALUES ('vendite', 'fattur_%');
+```text
+anagrafiche,*all
+vendite,fattur_%
+dbops,sessioni_utente
 ```
 
 ### Overrides: nomi di colonna non standard
 
-```sql
--- Usa "attivo_flag" invece di "attivo"
-INSERT INTO dbops.automation_overrides_cols
-  (schema_name, table_name, override_key, column_name)
-VALUES ('vendite', 'ordini', 'ATTIVO_COL', 'attivo_flag');
+Righe del CSV `80_data/sql/dbops/automation_overrides_cols.csv` (`schema_name,table_name,override_key,column_name`):
 
--- Per storico: FK diversa dal default
-INSERT INTO dbops.automation_overrides_cols
-  (schema_name, table_name, override_key, column_name)
-VALUES ('catalogo', 'articoli_componenti', 'STORICO_FK', 'articoli_componenti_id');
+```text
+vendite,ordini,ATTIVO_COL,attivo_flag
+catalogo,articoli_componenti,STORICO_FK,articoli_componenti_id
 ```
 
 ### Policy indici FK: seed, populate, apply
@@ -894,17 +950,16 @@ SELECT * FROM dbops.vw_duplicate_indexes;            -- duplicati esatti
 SELECT * FROM dbops.vw_indici_ridondanti_prefisso;   -- ridondanti per prefisso
 ```
 
-### Deploy: dry-run, apply, verifica
+### Simulazione e verifica di un rilascio
 
 ```sql
--- Dry-run sugli schemi target
+-- Dry-run sugli schemi toccati: le parti dell'orchestratore…
 SELECT dbops.fn_run_automations(
-  'CI', ARRAY['anagrafiche','vendite'], true,
-  ARRAY['TX_ID','AUDIT_UPDATE','STORICO','ATTIVO']
+  'AUTO', ARRAY['anagrafiche','vendite'], true,
+  ARRAY['TX_ID','AUDIT_UPDATE','STORICO','LOCK_COLUMNS','ATTIVO','DATE_VALIDITA']
 );
-
--- Apply, un modulo alla volta
-SELECT dbops.fn_run_automations('CI', ARRAY['anagrafiche'], false, ARRAY['TX_ID']);
+-- …e le tabelle di storico, che l'orchestratore non prevede
+SELECT dbops.fn_run_automations_storico_provision('AUTO', ARRAY['anagrafiche','vendite'], true);
 
 -- LOCK_COLUMNS: che cosa farebbe la convergenza, e le colonne che la fermerebbero
 SELECT schema_name, table_name, azione, colonne_perse
@@ -918,6 +973,23 @@ JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE n.nspname IN ('anagrafiche')
   AND NOT t.tgisinternal
 ORDER BY 1, 2, 3;
+```
+
+### Processi: l'ordine della convergenza e le ultime corse
+
+```sql
+-- L'ordine in cui la convergenza del rilascio chiama le procedure
+SELECT ci_ordine, codice, ci_procedura
+  FROM dbops.processi
+ WHERE ci_ordine IS NOT NULL AND attivo
+ ORDER BY ci_ordine;
+
+-- Le ultime corse delle automazioni, con chi le ha fatte girare
+SELECT jobname, started_at, ok, saltata, rows_affected, ruolo_sessione, message
+  FROM maintenance.job_run_log
+ WHERE jobname LIKE 'automations_%'
+ ORDER BY started_at DESC
+ LIMIT 20;
 ```
 
 ### Diagnostica: cosa ha fatto la manutenzione

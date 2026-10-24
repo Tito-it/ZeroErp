@@ -5,6 +5,7 @@
 --       + presidio di immutabilita' dopo il push in commessa
 -- Brief: brief-db-emissione-fattura-per-documento-sorgente PARTE B (step B6)
 -- Changeset coperti: 20260727-01..09
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): il DDT SPEDITO del test 10 dal builder dbops.fn_pgtap_crea_ddt_da_ordine (trigger SPEDITO, causale VENDITA); restano a mano gli ordini col flag (6-8, 14-17: nessuna bolla, il flag e' il caso), il contratto e il preventivo.
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
 --   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
 --   preventivo dei test 18-20 nasceva gia' ACCETTATO).
@@ -307,52 +308,12 @@ UPDATE vendite.contratti
                                   ORDER BY s.id LIMIT 1)
  WHERE id = (SELECT id FROM tmp_ctr_fi);
 
-CREATE TEMP TABLE tmp_ord_sped_fi AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
-         r.valuta_id, DATE '2026-07-01', r.emittente_fiscale_id, false,
-         jsonb_build_object('test_scope', 'pgtap_fi_simmetria_ddt')
-  FROM tmp_refs_fi r
-  RETURNING id)
-SELECT * FROM ins;
-
--- normalize eredita il trigger dal BA all'INSERT: SPEDITO si scrive dopo.
-UPDATE vendite.ordini SET fatturazione_trigger = 'SPEDITO'
- WHERE id = (SELECT id FROM tmp_ord_sped_fi);
-
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, sconto_percentuale, iva_id,
-  attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'Riga simmetria DDT',
-       1.000000, 1.000000, 10.000000, 0.000000, r.iva_id,
-       true, false, jsonb_build_object('test_scope', 'pgtap_fi_simmetria_ddt')
-FROM tmp_ord_sped_fi o, tmp_refs_fi r;
-
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_sped_fi), 'CONFERMATO');
-END $x$;
-
+-- Il DDT: ordine 1 @10 trigger SPEDITO, bolla SPEDITA causale VENDITA, dal builder.
 CREATE TEMP TABLE tmp_ddt_fi AS
-SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_sped_fi)) AS ddt_id;
-
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-SELECT (SELECT ddt_id FROM tmp_ddt_fi),
-       (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON'),
-       '{"display":"CON test"}'::jsonb
-ON CONFLICT DO NOTHING;
-UPDATE vendite.ddt SET causale_trasporto_id =
-       (SELECT c.id FROM config.causali_trasporto c WHERE c.codice = 'VENDITA' ORDER BY c.id LIMIT 1)
- WHERE id = (SELECT ddt_id FROM tmp_ddt_fi);
-UPDATE vendite.ddt SET stato_doc_ddt_id =
-       (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'EMESSO' AND s.attivo ORDER BY s.id LIMIT 1)
- WHERE id = (SELECT ddt_id FROM tmp_ddt_fi);
-UPDATE vendite.ddt SET stato_doc_ddt_id =
-       (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'SPEDITO' AND s.attivo ORDER BY s.id LIMIT 1)
- WHERE id = (SELECT ddt_id FROM tmp_ddt_fi);
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('fi simmetria DDT', 'SPEDITO',
+    (SELECT billing_account_id FROM tmp_refs_fi), p_quantita => 1, p_prezzo => 10,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs_fi),
+    p_fatturazione_trigger => 'SPEDITO', p_causale_codice => 'VENDITA');
 
 CREATE TEMP TABLE tmp_chk_contratti AS
 SELECT count(*)::int AS totali,

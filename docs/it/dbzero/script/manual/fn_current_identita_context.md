@@ -1,12 +1,14 @@
 ## Documentazione Concettuale – Funzione `script.fn_current_identita_context`
 
+> **Ultimo aggiornamento**: 24 ottobre 2026
+>
 > **Vedi anche**
 >
 Architettura di riferimento:
 >
 [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
-> [Parametri personalizzati (GUC)](/postgresql/parametri-personalizzati-(GUC))
-> [Elenco GUC definite in ZeroErp](/postgresql/guc_reference)
+> [Parametri personalizzati (GUC)](/postgresql/parametri-personalizzati-(GUC)) — con l'[elenco dei GUC](/postgresql/parametri-personalizzati-(GUC)#elenco-dei-guc)
+> [Contratto GUC `app.*`](/guide/contratto-guc-app)
 >
 **Tabelle correlate:**
 >

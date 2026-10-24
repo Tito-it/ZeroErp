@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; la bolla nasce in DRAFT perche' il test le aggiunge la riga a mano (il caso: la spedizione mista), poi CONSEGNATA con dbops.fn_pgtap_porta_a_stato; restano scritti a mano il reso e le sue righe (il caso del test, e giro 2).
 -- pgTAP test per Zero ERP
 -- Test: vendite.trgfn_resi_righe_guard_origine_coerente — il riferimento
 --       all'ordine sul reso deve combaciare con la riga di merce resa.
@@ -75,53 +76,23 @@ SELECT
   --   del database; l'articolo si costruisce (nasce merce, non solo componente:
   --   ordine e bolla lo ammettono — brief-db-articoli-ammessi-per-documento, Lotto 3a).
   (SELECT billing_account_id FROM _m)                                    AS billing_account_id,
-  (SELECT cliente_soggetto_ruolo_id FROM _m)                             AS soggetto_ruolo_id,
   dbops.fn_pgtap_crea_articolo('PGTAP-RESI-ORIGINE', false)             AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)               AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT emittente_fiscale_id FROM _m)                                 AS emittente_fiscale_id,
-  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata d'ordine nasce DRAFT,
-  --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
-  --   righe non si scrivono piu' (20261008-90).
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo LIMIT 1) AS stato_ord_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')      AS tipo_ind_con_id;
+  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id;
 
--- ⛔ rev 2026-10-13: testata e riga in DUE istruzioni, non in una CTE. Sotto la
---   RLS il WITH CHECK della riga cerca la testata con la snapshot d'inizio
---   istruzione, che la testata appena scritta non la contiene ancora: un
---   operatore vero (non l'utente 1 di prima) viene rifiutato.
-CREATE TEMP TABLE tmp_ord AS
-WITH o AS (
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
-         DATE '2026-08-15', 'SPEDITO', r.emittente_fiscale_id, false,
-         jsonb_build_object('test_scope','pgtap_guard_origine')
-  FROM tmp_refs r RETURNING id
-)
-SELECT id FROM o;
-
+-- La bolla dal builder, in DRAFT: ordine di 10 a 25, trigger SPEDITO, del
+--   cliente del mondo, confermato, bolla generata. Resta in bozza perche' il
+--   test le aggiunge la riga a mano.
 CREATE TEMP TABLE tmp_doc AS
-WITH orr AS (
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  SELECT o.id, 1, r.articolo_id, 'Riga guard origine', 10, 10, 25, r.iva_id, true, false,
-         jsonb_build_object('test_scope','pgtap_guard_origine')
-  FROM tmp_ord o, tmp_refs r RETURNING id, ordine_id
-)
-SELECT orr.ordine_id, orr.id AS ordine_riga_id, NULL::bigint AS ddt_id
-FROM orr;
--- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90), e solo
---   dopo il DDT: per questo il DDT non nasce piu' nello stesso statement delle righe.
-DO $x$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT ordine_id FROM tmp_doc), 'CONFERMATO'); END $x$;
-UPDATE tmp_doc SET ddt_id = vendite.fn_genera_ddt_da_ordine(ordine_id);
+SELECT b.ordine_id, b.ordine_riga_id, b.ddt_id, b.ddt_riga_id
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('guard origine coerente', 'DRAFT',
+           p_billing_account_id   => (SELECT billing_account_id FROM tmp_refs),
+           p_quantita             => 10,
+           p_prezzo               => 25,
+           p_articolo_id          => (SELECT articolo_id FROM tmp_refs),
+           p_fatturazione_trigger => 'SPEDITO') b;
 
 -- La riga che evade l'ordine (ha un fulfillment) e quella aggiunta a mano.
 -- ⚠️ La riga a mano entra PRIMA delle transizioni (rev 2026-09-22): il BB
@@ -129,10 +100,8 @@ UPDATE tmp_doc SET ddt_id = vendite.fn_genera_ddt_da_ordine(ordine_id);
 -- ⚠️ In due passi e non in uno: un `INSERT ... RETURNING` non sta dentro una
 -- sottoquery scalare, va incapsulato in una CTE che modifica i dati.
 CREATE TEMP TABLE tmp_righe AS
-SELECT dr.id AS riga_ordinata, NULL::bigint AS riga_manuale
-  FROM vendite.ddt_righe dr
- WHERE dr.ddt_id = (SELECT ddt_id FROM tmp_doc)
- ORDER BY dr.id LIMIT 1;
+SELECT d.ddt_riga_id AS riga_ordinata, NULL::bigint AS riga_manuale
+  FROM tmp_doc d;
 
 WITH m AS (
   INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
@@ -143,14 +112,8 @@ WITH m AS (
 )
 UPDATE tmp_righe SET riga_manuale = (SELECT id FROM m);
 
--- Poi il DDT si consegna, nel verso vero.
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-SELECT (SELECT ddt_id FROM tmp_doc), (SELECT tipo_ind_con_id FROM tmp_refs),
-       '{"display":"CON"}'::jsonb ON CONFLICT DO NOTHING;
-UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_doc);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)     WHERE id=(SELECT ddt_id FROM tmp_doc);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_refs)    WHERE id=(SELECT ddt_id FROM tmp_doc);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_doc);
+-- Poi il DDT si consegna, nel verso vero: per la matrice.
+DO $x$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_doc), 'CONSEGNATO'); END $x$;
 
 -- La testata di reso su cui si tenteranno gli inserimenti.
 CREATE TEMP TABLE tmp_reso AS

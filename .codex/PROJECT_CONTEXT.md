@@ -227,6 +227,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
+- **Il reso costruito nei pgTAP** (aperto il 2026-10-25, `work-in-progress/brief-db-pgtap-reso-costruito.md`):
+  il builder di fixture del reso confermato, con la bolla di ri-consegna, e il ritiro delle ~20 copie scritte a
+  mano. È il seguito di `work-done/brief-db-pgtap-bolla-e-reso-costruiti` (chiuso il 2026-10-25: la bolla da
+  ordine ha il suo builder, `dbops.fn_pgtap_crea_ddt_da_ordine`, e 36 pgTAP non ricopiano più la sua strada).
 - **Una sola grammatica per i tipi di documento** (aperto il 2026-10-18,
   `work-in-progress/brief-db-grammatica-unica-documenti.md`): lo stesso tipo di documento ha più nomi
   (`config.tipi_entita`, `config.sorgenti`, la grammatica delle testate, le partizioni delle note) e chi passa

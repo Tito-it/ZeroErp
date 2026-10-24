@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti §6.4): le due bolle in bozza si COSTRUISCONO
+--   (vuota: dbops.fn_pgtap_crea_ddt; con una riga: dbops.fn_pgtap_crea_ddt_da_ordine in DRAFT) e il
+--   mondo pure. Prima si pescavano dal database: su un database ricostruito i test 8-12 passavano in
+--   skip, verdi per sottrazione. Le asserzioni non cambiano; i rami skip spariscono.
 -- pgTAP test per Zero ERP
 -- Test: "documento vuoto non avanza di stato" (brief 2026-07-16)
 --   §1a capability righe-aware (meta.requires_righe -> enabled/reason)
@@ -33,7 +37,13 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ rev 2026-10-25: il mondo si COSTRUISCE (azienda, operatore, cliente) e
+--   apre da se' il contesto sul suo operatore: niente operatore pescato.
+CREATE TEMP TABLE tmp_mondo_rr AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP requires righe');
+-- Il mondo ha gia' aperto il contesto sul suo operatore: la riga lo
+--   dichiara (e il guardrail del preambolo la cerca).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_mondo_rr)); END $ctx$;
 
 SELECT plan(15);
 
@@ -97,64 +107,56 @@ SELECT ok(
   '7) E_DDT_EMISSIONE_SENZA_RIGHE registrato in config.messaggi_errore');
 
 -- ============================================================
--- Fixture: DDT in DRAFT senza righe (via ordine -> fn_genera_ddt_da_ordine
--- non usabile qui: genererebbe righe). Inserimento diretto minimale.
+-- Fixture (rev 2026-10-25): le due bolle in DRAFT si COSTRUISCONO.
+--   * vuota: dbops.fn_pgtap_crea_ddt — testata, causale e indirizzi, nessuna
+--     riga (una bolla da ordine nascerebbe con le righe);
+--   * con una riga: dbops.fn_pgtap_crea_ddt_da_ordine, lasciata in bozza.
 -- ============================================================
+CREATE TEMP TABLE tmp_vuoto_rr AS
+SELECT dbops.fn_pgtap_crea_ddt(m.billing_account_id, m.cliente_soggetto_ruolo_id, 'VENDITA') AS ddt_id
+  FROM tmp_mondo_rr m;
+
+CREATE TEMP TABLE tmp_pieno_rr AS
+SELECT b.ddt_id
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgTAP requires righe', 'DRAFT',
+           (SELECT billing_account_id FROM tmp_mondo_rr)) b;
+
 CREATE TEMP TABLE tmp_refs_rr AS
 SELECT
-  (SELECT id FROM config.stati_doc_ddt WHERE codice_interno='DRAFT'  AND attivo IS TRUE LIMIT 1) AS stato_draft_id,
-  (SELECT id FROM config.stati_doc_ddt WHERE codice_interno='EMESSO' AND attivo IS TRUE LIMIT 1) AS stato_emesso_id,
-  (SELECT d.id FROM vendite.ddt d
-     JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
-    WHERE s.codice_interno = 'DRAFT'
-      AND NOT EXISTS (SELECT 1 FROM vendite.ddt_righe r
-                       WHERE r.ddt_id = d.id AND r.attivo IS TRUE)
-    LIMIT 1) AS ddt_vuoto_id,
-  (SELECT d.id FROM vendite.ddt d
-     JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
-    WHERE s.codice_interno = 'DRAFT'
-      AND EXISTS (SELECT 1 FROM vendite.ddt_righe r
-                   WHERE r.ddt_id = d.id AND r.attivo IS TRUE)
-    LIMIT 1) AS ddt_pieno_id;
+  (SELECT id FROM config.stati_doc_ddt WHERE codice_interno='EMESSO' AND attivo IS TRUE) AS stato_emesso_id,
+  (SELECT ddt_id FROM tmp_vuoto_rr) AS ddt_vuoto_id,
+  (SELECT ddt_id FROM tmp_pieno_rr) AS ddt_pieno_id;
 
 -- ============================================================
 -- 8-9) DDT vuoto: azione 'emetti' presente ma disabilitata + reason.
---      Data-dependent: skip se il DB dev non ha un DDT DRAFT vuoto.
 -- ============================================================
-SELECT CASE WHEN (SELECT ddt_vuoto_id FROM tmp_refs_rr) IS NULL
-  THEN pass('8) SKIP: nessun DDT DRAFT vuoto disponibile')
-  ELSE is(
-    (SELECT (elem->>'enabled')::boolean
-       FROM jsonb_array_elements(
-              script.fn_available_actions_ddt((SELECT ddt_vuoto_id FROM tmp_refs_rr))
-              ->'available_actions') elem
-      WHERE elem->>'key' = 'emetti'),
-    false, '8) DDT vuoto: azione emetti presente con enabled=false')
-END;
+SELECT is(
+  (SELECT (elem->>'enabled')::boolean
+     FROM jsonb_array_elements(
+            script.fn_available_actions_ddt((SELECT ddt_vuoto_id FROM tmp_refs_rr))
+            ->'available_actions') elem
+    WHERE elem->>'key' = 'emetti'),
+  false, '8) DDT vuoto: azione emetti presente con enabled=false');
 
-SELECT CASE WHEN (SELECT ddt_vuoto_id FROM tmp_refs_rr) IS NULL
-  THEN pass('9) SKIP: nessun DDT DRAFT vuoto disponibile')
-  ELSE is(
-    (SELECT elem->>'reason'
-       FROM jsonb_array_elements(
-              script.fn_available_actions_ddt((SELECT ddt_vuoto_id FROM tmp_refs_rr))
-              ->'available_actions') elem
-      WHERE elem->>'key' = 'emetti'),
-    'DOCUMENTO_SENZA_RIGHE', '9) DDT vuoto: reason=DOCUMENTO_SENZA_RIGHE')
-END;
+SELECT is(
+  (SELECT elem->>'reason'
+     FROM jsonb_array_elements(
+            script.fn_available_actions_ddt((SELECT ddt_vuoto_id FROM tmp_refs_rr))
+            ->'available_actions') elem
+    WHERE elem->>'key' = 'emetti'),
+  'DOCUMENTO_SENZA_RIGHE', '9) DDT vuoto: reason=DOCUMENTO_SENZA_RIGHE');
 
 -- ============================================================
 -- 10) Guard §1b: DDT vuoto non si emette.
 -- ============================================================
-SELECT CASE WHEN (SELECT ddt_vuoto_id FROM tmp_refs_rr) IS NULL
-  THEN pass('10) SKIP: nessun DDT DRAFT vuoto disponibile')
-  ELSE throws_ok(
-    format($$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$$,
-           (SELECT stato_emesso_id FROM tmp_refs_rr),
-           (SELECT ddt_vuoto_id FROM tmp_refs_rr)),
-    'P0001', NULL,
-    '10) DDT vuoto: DRAFT->EMESSO bloccato dal guard')
-END;
+-- Il messaggio discrimina (rev 2026-10-25): la bolla vuota ha causale e
+--   indirizzi, quindi l'unico rifiuto atteso e' quello delle righe.
+SELECT throws_like(
+  format($$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$$,
+         (SELECT stato_emesso_id FROM tmp_refs_rr),
+         (SELECT ddt_vuoto_id FROM tmp_refs_rr)),
+  '%senza righe attive%',
+  '10) DDT vuoto: DRAFT->EMESSO bloccato dal guard');
 
 -- ============================================================
 -- 11-12) DDT con almeno una riga attiva: azione abilitata, reason NULL.
@@ -171,33 +173,27 @@ END;
 --   ⭐ Ora asserisce cio' che gli compete: un DDT CON righe non e' bloccato
 --   PER MANCANZA DI RIGHE. Se e' bloccato per altro, e' affare di
 --   test-fn-check-ddt-emittibile-v1.
-SELECT CASE WHEN (SELECT ddt_pieno_id FROM tmp_refs_rr) IS NULL
-  THEN pass('11) SKIP: nessun DDT DRAFT con righe disponibile')
-  ELSE isnt(
-    (SELECT elem->>'reason'
-       FROM jsonb_array_elements(
-              script.fn_available_actions_ddt((SELECT ddt_pieno_id FROM tmp_refs_rr))
-              ->'available_actions') elem
-      WHERE elem->>'key' = 'emetti'),
-    'DOCUMENTO_SENZA_RIGHE',
-    '11) DDT con righe: NON bloccato per mancanza di righe')
-END;
+SELECT isnt(
+  (SELECT elem->>'reason'
+     FROM jsonb_array_elements(
+            script.fn_available_actions_ddt((SELECT ddt_pieno_id FROM tmp_refs_rr))
+            ->'available_actions') elem
+    WHERE elem->>'key' = 'emetti'),
+  'DOCUMENTO_SENZA_RIGHE',
+  '11) DDT con righe: NON bloccato per mancanza di righe');
 
-SELECT CASE WHEN (SELECT ddt_pieno_id FROM tmp_refs_rr) IS NULL
-  THEN pass('12) SKIP: nessun DDT DRAFT con righe disponibile')
-  -- Stessa correzione del test 11: `reason IS NULL` significava «nessun
-  -- ostacolo di NESSUN tipo», che questo file non ha titolo di pretendere.
-  -- Qui si verifica che l'ostacolo, se c'e', sia dichiarato — cioe' che il
-  -- documento non resti bloccato SENZA una ragione leggibile.
-  ELSE ok(
-    (SELECT (elem->>'enabled')::boolean
-          OR (elem->>'reason') IS NOT NULL
-       FROM jsonb_array_elements(
-              script.fn_available_actions_ddt((SELECT ddt_pieno_id FROM tmp_refs_rr))
-              ->'available_actions') elem
-      WHERE elem->>'key' = 'emetti'),
-    '12) DDT con righe: o e'' abilitato, o l''ostacolo ha una ragione dichiarata')
-END;
+-- Stessa correzione del test 11: `reason IS NULL` significava «nessun
+-- ostacolo di NESSUN tipo», che questo file non ha titolo di pretendere.
+-- Qui si verifica che l'ostacolo, se c'e', sia dichiarato — cioe' che il
+-- documento non resti bloccato SENZA una ragione leggibile.
+SELECT ok(
+  (SELECT (elem->>'enabled')::boolean
+        OR (elem->>'reason') IS NOT NULL
+     FROM jsonb_array_elements(
+            script.fn_available_actions_ddt((SELECT ddt_pieno_id FROM tmp_refs_rr))
+            ->'available_actions') elem
+    WHERE elem->>'key' = 'emetti'),
+  '12) DDT con righe: o e'' abilitato, o l''ostacolo ha una ragione dichiarata');
 
 -- ============================================================
 -- 13-15) Regola "SOLO presenza di righe" (decisione Tid 2026-07-16):

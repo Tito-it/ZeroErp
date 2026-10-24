@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (p_ordine_id, p_righe), l'emissione da dbops.fn_pgtap_porta_a_stato; restano scritti a mano gli ordini (due righe con la data di consegna confermata, che e' il caso) e l'annullo dal verbo (test 15).
 -- pgTAP test per Zero ERP
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
 --   il documento passato ai lettori delle testate, ai legami e ai montaggi del
@@ -46,7 +47,9 @@
 --
 -- ⚠️ LE FIXTURE SI COSTRUISCONO: cliente e articolo dai builder, ordini che
 --   nascono DRAFT e passano a CONFERMATO con dbops.fn_pgtap_porta_a_stato,
---   bolle da fn_genera_ddt_da_ordine portate avanti nel verso vero.
+--   bolle da dbops.fn_pgtap_crea_ddt_da_ordine portate avanti per la matrice.
+--   ⭐ L'ordine resta scritto qui: due righe con la data di consegna confermata
+--   che il test misura (il builder ne fa una, senza data).
 --   L'articolo NON e' gestito a magazzino: l'emissione non chiede prelievi.
 -- ------------------------------------------------------------
 
@@ -118,10 +121,7 @@ SELECT
   dbops.fn_pgtap_crea_articolo('PGT-DC-PIPPO', false)                                                        AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                                   AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)                               AS iva_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo LIMIT 1)         AS stato_ord_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'EMESSO' AND s.attivo LIMIT 1)           AS stato_ddt_emesso_id,
-  (SELECT c2.id FROM config.causali_trasporto c2 WHERE c2.codice = 'VENDITA' ORDER BY c2.id LIMIT 1)         AS causale_vendita_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON')                                        AS tipo_ind_con_id
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo LIMIT 1)         AS stato_ord_draft_id
 FROM tmp_cli_dc c;
 
 CREATE TEMP TABLE tmp_fix(chiave text PRIMARY KEY, id bigint);
@@ -154,32 +154,6 @@ BEGIN
     PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, p_stato);
   END IF;
   INSERT INTO tmp_fix VALUES (p_chiave || '_ord', v_ord), (p_chiave || '_r1', v_r1), (p_chiave || '_r2', v_r2);
-END $$ LANGUAGE plpgsql;
-
--- Una bolla da ordine in DRAFT che evade p_qta della riga 1.
-CREATE OR REPLACE FUNCTION pg_temp.dc_mk_ddt(p_chiave text, p_ordine text, p_qta numeric)
-RETURNS void AS $$
-DECLARE v_ddt bigint;
-BEGIN
-  v_ddt := vendite.fn_genera_ddt_da_ordine(
-      (SELECT id FROM tmp_fix WHERE chiave = p_ordine || '_ord'),
-      jsonb_build_array(jsonb_build_object(
-          'ordine_riga_id', (SELECT id FROM tmp_fix WHERE chiave = p_ordine || '_r1'),
-          'qta_da_evadere', p_qta)),
-      DATE '2026-10-02');
-  INSERT INTO tmp_fix VALUES (p_chiave || '_ddt', v_ddt);
-END $$ LANGUAGE plpgsql;
-
--- Emette la bolla nel verso vero: indirizzo, causale, transizione.
-CREATE OR REPLACE FUNCTION pg_temp.dc_emetti(p_ddt bigint)
-RETURNS void AS $$
-DECLARE r RECORD;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_dc;
-  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-  VALUES (p_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id WHERE id = p_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_emesso_id WHERE id = p_ddt;
 END $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION pg_temp.dc_fix(p_chiave text) RETURNS bigint
@@ -263,7 +237,13 @@ SELECT is(
   '4) nessun DDT: check vuota, colonna NULL, la data cambia');
 
 -- Bolla in bozza per 4 della riga 1: la merce non e' ancora partita.
-SELECT pg_temp.dc_mk_ddt('a1', 'a', 4);
+INSERT INTO tmp_fix
+SELECT 'a1_ddt', b.ddt_id
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgtap_data_cons_spedita', 'DRAFT',
+         p_ordine_id => pg_temp.dc_fix('a_ord'),
+         p_righe     => jsonb_build_array(jsonb_build_object(
+                            'ordine_riga_id', pg_temp.dc_fix('a_r1'), 'qta_da_evadere', 4)),
+         p_data      => DATE '2026-10-02') b;
 
 SELECT is(
   script.fn_check_ordine_riga_data_consegna_confermata(pg_temp.dc_fix('a_r1'))::text
@@ -272,7 +252,7 @@ SELECT is(
   '5) DDT in BOZZA: non conta, la data della riga cambia ancora');
 
 -- Emessa: la merce e' partita, per 4 su 10 (P-1).
-SELECT pg_temp.dc_emetti(pg_temp.dc_fix('a1_ddt'));
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', pg_temp.dc_fix('a1_ddt'), 'EMESSO');
 
 SELECT is(
   (SELECT m ->> 'codice' || '|' || (m ->> 'reason') || '|' || (m ->> 'reason_key') || '|'
@@ -351,17 +331,13 @@ SELECT is(
 -- ============================================================
 -- Spedito per intero: tutte e due le righe, l'ordine diventa EVASO.
 SELECT pg_temp.dc_mk_ordine('b', 'CONFERMATO');
-DO $b$
-DECLARE v_ddt bigint;
-BEGIN
-  v_ddt := vendite.fn_genera_ddt_da_ordine(
-      pg_temp.dc_fix('b_ord'),
-      jsonb_build_array(
-          jsonb_build_object('ordine_riga_id', pg_temp.dc_fix('b_r1'), 'qta_da_evadere', 10),
-          jsonb_build_object('ordine_riga_id', pg_temp.dc_fix('b_r2'), 'qta_da_evadere', 5)),
-      DATE '2026-10-02');
-  PERFORM pg_temp.dc_emetti(v_ddt);
-END $b$;
+SELECT b.ddt_id
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgtap_data_cons_spedita', 'EMESSO',
+         p_ordine_id => pg_temp.dc_fix('b_ord'),
+         p_righe     => jsonb_build_array(
+                            jsonb_build_object('ordine_riga_id', pg_temp.dc_fix('b_r1'), 'qta_da_evadere', 10),
+                            jsonb_build_object('ordine_riga_id', pg_temp.dc_fix('b_r2'), 'qta_da_evadere', 5)),
+         p_data      => DATE '2026-10-02') b;
 
 SELECT is(
   (SELECT s.codice_interno FROM vendite.ordini o JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
