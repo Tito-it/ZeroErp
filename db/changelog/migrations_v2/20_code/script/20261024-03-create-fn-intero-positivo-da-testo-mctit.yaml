@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_intero_positivo_da_testo — LA REGOLA «INTERO POSITIVO» DI UN PARAMETRO, IN UNA SEDE
+#   Brief: brief-be-verifica-documentazione-api §I.11.0 (forma decisa da Tid il
+#   2026-10-24).
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   Tre copie della stessa regola: un parametro di sistema che deve essere un
+#   intero positivo si valida con '^[1-9][0-9]{0,5}$' e, se non lo e', solleva
+#   E_CONFIG_MANCANTE col nome del parametro. La scrivevano a mano:
+#     * script.fn_login_parametri (i cinque login_*);
+#     * dbops.fn_idempotency_prenota (SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI);
+#     * il backend (ParameterService.get_default_int_positivo), per il presidio
+#       di BE-5 all'avvio di gunicorn.
+#   Stesso codice, stesso contesto, stessa frase: una copia, e una divergenza
+#   gia' trovata (lo strip del backend, §I.10.4). Da qui la regola e' una.
+#
+# -- CHE COSA FA -----------------------------------------------------------------
+#   Riceve il TESTO del valore e il codice del parametro; restituisce l'intero,
+#   oppure solleva E_CONFIG_MANCANTE (assente, vuoto o forma non ammessa: zeri
+#   iniziali, segno, decimali, spazi, oltre sei cifre). Fail-loud: un parametro
+#   di sistema sbagliato e' un'installazione rotta, mai un valore di ripiego.
+#   ⭐ Non legge tabelle: la lettura e' del chiamante, che sa da dove viene il
+#   valore. Per questo si prova con valori costruiti anche come applicazione,
+#   che non scrive config.parameters.
+#   ⚠️ Niente btrim: ' 120 ' e' rifiutato, come lo era nelle copie.
+#
+#   Consumatori: dbops.fn_idempotency_soglia_secondi (20261024-04) e
+#   script.fn_login_parametri (20261024-06), che ritirano le loro copie.
+#
+#   Firma con %TYPE dove il valore e' il riflesso di una colonna; SECURITY
+#   INVOKER esplicito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261024-03-create-fn-intero-positivo-da-testo-mctit.yaml
+
+  - changeSet:
+      id: 20261024-03-create-fn-intero-positivo-da-testo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_intero_positivo_da_testo: la regola «intero positivo» di un parametro di sistema
+        in una sede (testo → intero, oppure E_CONFIG_MANCANTE), al posto delle copie di
+        fn_login_parametri, fn_idempotency_prenota e del backend. Brief:
+        brief-be-verifica-documentazione-api §I.11.0.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_intero_positivo_da_testo(
+                  p_valore    config.parameters.default_value%TYPE,
+                  p_parametro config.parameters.code%TYPE,
+                  -- chi lo chiede, per il log: un nome di funzione, nessuna colonna
+                  p_chi       text DEFAULT NULL)
+               -- l'intero validato: nessuna colonna di cui sia il riflesso
+               RETURNS integer
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il valore di un parametro che deve essere un intero
+                  --   positivo: dal testo all'intero, oppure E_CONFIG_MANCANTE.
+                  --
+                  -- Regole:
+                  --   - ammesso: da 1 a 999999, senza zeri iniziali, segno,
+                  --     decimali o spazi ('^[1-9][0-9]{0,5}$');
+                  --   - NULL o vuoto: il parametro manca, E_CONFIG_MANCANTE;
+                  --   - niente valore di ripiego, niente btrim.
+                  -- =========================================================
+
+                  -- Guard di chiamata: senza il nome del parametro l'errore non
+                  -- direbbe all'amministratore che cosa correggere.
+                  IF NULLIF(btrim(p_parametro), '') IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', COALESCE(p_chi, 'script.fn_intero_positivo_da_testo'),
+                          'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'p_parametro obbligatorio'),
+                          NULL::uuid,
+                          'script.fn_intero_positivo_da_testo',
+                          'il codice del parametro da validare e'' obbligatorio');
+                  END IF;
+
+                  IF COALESCE(p_valore, '') !~ '^[1-9][0-9]{0,5}$' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', COALESCE(p_chi, 'script.fn_intero_positivo_da_testo'),
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config',    'config.parameters',
+                                             'parametro', p_parametro,
+                                             'valore',    p_valore),
+                          NULL::uuid,
+                          VARIADIC ARRAY[format('parametro %s (intero positivo)', p_parametro)]);
+                  END IF;
+
+                  RETURN p_valore::integer;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_intero_positivo_da_testo(
+                  config.parameters.default_value%TYPE,
+                  config.parameters.code%TYPE,
+                  text)
+                IS 'La regola «intero positivo» del valore di un parametro di sistema, in una sede: restituisce l''intero (da 1 a 999999, senza zeri iniziali, segno, decimali o spazi), oppure solleva E_CONFIG_MANCANTE col nome del parametro (assente, vuoto o forma non ammessa). Fail-loud, niente ripiego, niente btrim. Non legge tabelle: il valore lo passa il chiamante, che lo legge dove sta (di solito il default nudo di config.parameters, per un parametro senza override). p_chi: chi la chiama, per il log. Consumatori: dbops.fn_idempotency_soglia_secondi, script.fn_login_parametri. Brief: brief-be-verifica-documentazione-api §I.11.0.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_intero_positivo_da_testo(text, character varying, text);

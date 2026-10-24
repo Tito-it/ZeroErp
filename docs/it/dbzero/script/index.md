@@ -196,6 +196,7 @@ search:
 - [fn_indirizzi_obbligatori_mancanti](funzioni/fn_indirizzi_obbligatori_mancanti.md) — (rev 2026-07-11)
 - [fn_indirizzo_documento_fuori_cliente](funzioni/fn_indirizzo_documento_fuori_cliente.md)
 - [fn_inizio_giorno_operativo](funzioni/fn_inizio_giorno_operativo.md)
+- [fn_intero_positivo_da_testo](funzioni/fn_intero_positivo_da_testo.md)
 - [fn_is_proprietario_tabella](funzioni/fn_is_proprietario_tabella.md) — (scritta il 25-09-2026)
 - [fn_is_super_admin](funzioni/fn_is_super_admin.md) — (latest review 20-04-2026 — filtro OPERATORE)
 - [fn_is_super_admin_account](funzioni/fn_is_super_admin_account.md) — (scritta il 29-09-2026)

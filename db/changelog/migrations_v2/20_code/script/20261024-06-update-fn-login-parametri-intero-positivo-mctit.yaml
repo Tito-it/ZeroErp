@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_login_parametri — LA VALIDAZIONE DAL BUILDING BLOCK
+#   Brief: brief-be-verifica-documentazione-api §I.11.0 (forma decisa da Tid il
+#   2026-10-24).
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   La funzione validava i cinque parametri login_* con la sua copia della
+#   regola «intero positivo» (stessa regex, stesso E_CONFIG_MANCANTE, stesso
+#   contesto di dbops.fn_idempotency_prenota e del backend). La regola ha ora
+#   una sede, script.fn_intero_positivo_da_testo (20261024-03): la copia si
+#   ritira nello stesso giro dell'estrazione (regola del 2).
+#
+# -- CHE COSA CAMBIA -----------------------------------------------------------------
+#   * il ciclo di validazione e i cinque cast diventano cinque chiamate al
+#     building block, nello stesso ordine: il primo parametro sbagliato e'
+#     quello che si segnala, come prima;
+#   * l'errore e il log non cambiano: E_CONFIG_MANCANTE, area 'database',
+#     funzione script.fn_login_parametri (p_chi), contesto config / parametro /
+#     valore, frase «parametro <codice> (intero positivo)».
+#   Firma e RETURNS TABLE invariati: CREATE OR REPLACE, nessun DROP.
+#
+#   Corpo da 20260925-04 (identico al vivo su dbdev, verificato il 2026-10-24).
+#   RETURNS TABLE a interi espliciti: sono valori di parametri validati, nessuna
+#   colonna di cui siano il riflesso. SECURITY INVOKER esplicito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261024-06-update-fn-login-parametri-intero-positivo-mctit.yaml
+
+  - changeSet:
+      id: 20261024-06-update-fn-login-parametri-intero-positivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_login_parametri valida i cinque parametri login_* con
+        script.fn_intero_positivo_da_testo e ritira la sua copia della regola; errore, log e
+        risultato invariati. Brief: brief-be-verifica-documentazione-api §I.11.0.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_login_parametri()
+              -- interi validati dai parametri: nessuna colonna di cui siano il riflesso
+              RETURNS TABLE (
+                  max_tentativi       integer,
+                  blocco_minuti       integer,
+                  tetto_credenziale   integer,
+                  attesa_base_secondi integer,
+                  attesa_max_secondi  integer
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: i parametri del login, dal default nudo di config.parameters.
+              --   Fail-loud: un parametro assente, vuoto o non intero positivo e' una
+              --   installazione rotta (E_CONFIG_MANCANTE, dalla regola unica
+              --   script.fn_intero_positivo_da_testo), mai un valore di ripiego.
+              DECLARE
+                  -- i valori grezzi dei cinque parametri, per codice: un oggetto
+                  -- costruito qui, nessuna colonna
+                  v_valori jsonb;
+              BEGIN
+                  SELECT jsonb_object_agg(p.code, p.default_value)
+                    INTO v_valori
+                    FROM config.parameters p
+                   WHERE p.code IN ('login_max_tentativi_falliti',
+                                    'login_blocco_minuti',
+                                    'login_tetto_credenziale',
+                                    'login_attesa_base_secondi',
+                                    'login_attesa_max_secondi');
+
+                  -- Un parametro alla volta, nell'ordine di prima: il primo
+                  -- sbagliato e' quello che si segnala.
+                  max_tentativi := script.fn_intero_positivo_da_testo(
+                      v_valori ->> 'login_max_tentativi_falliti',
+                      'login_max_tentativi_falliti', 'script.fn_login_parametri');
+                  blocco_minuti := script.fn_intero_positivo_da_testo(
+                      v_valori ->> 'login_blocco_minuti',
+                      'login_blocco_minuti', 'script.fn_login_parametri');
+                  tetto_credenziale := script.fn_intero_positivo_da_testo(
+                      v_valori ->> 'login_tetto_credenziale',
+                      'login_tetto_credenziale', 'script.fn_login_parametri');
+                  attesa_base_secondi := script.fn_intero_positivo_da_testo(
+                      v_valori ->> 'login_attesa_base_secondi',
+                      'login_attesa_base_secondi', 'script.fn_login_parametri');
+                  attesa_max_secondi := script.fn_intero_positivo_da_testo(
+                      v_valori ->> 'login_attesa_max_secondi',
+                      'login_attesa_max_secondi', 'script.fn_login_parametri');
+                  RETURN NEXT;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_login_parametri() IS
+                  'I parametri del login in una lettura sola (regola del 2: la usano fn_check_blocco_login e fn_registra_tentativo_login): login_max_tentativi_falliti e login_blocco_minuti (freno sulla coppia credenziale + provenienza), login_tetto_credenziale, login_attesa_base_secondi e login_attesa_max_secondi (attesa crescente sulla credenziale). Default NUDO di config.parameters, non la cascata di override: la protezione del login non si personalizza, e prima del login l''utente non e'' noto. Fail-loud: un parametro assente, vuoto o non intero positivo solleva E_CONFIG_MANCANTE (script.fn_intero_positivo_da_testo, la regola unica), mai un ripiego nel codice. Brief: brief-db-blocco-login-per-credenziale §2.4, brief-be-verifica-documentazione-api §I.11.0.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- firma invariata: il corpo precedente si ricrea da 20260925-04, se servisse
+              SELECT 1;

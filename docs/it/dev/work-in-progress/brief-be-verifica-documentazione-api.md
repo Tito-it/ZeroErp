@@ -2,8 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-24 (sera)
 
-**Riparte: il team DB** con §I.11 (passo 10): una funzione che legge e valida la soglia di
-ripresa, così la regola smette di stare due volte (funzione e backend). **In parallelo Tid**:
+**Riparte: il BE** con il passo 12 (§I.11.2): il presidio di BE-5 legge la soglia da
+`dbops.fn_idempotency_soglia_secondi()` e si ritira `get_default_int_positivo`. `20261024-03` …
+`-06` sono applicati e i pgTAP verdi (§I.11.3, 2026-10-24). **Il lato DB di questo brief è
+finito.** **In parallelo Tid**:
 riavvio di gunicorn su dbdev con verifica di BE-1 (passo 8-bis) e commit del giro BE (passo 9).
 Dopo l'apply di §I.11 il passo BE (12) e l'archiviazione. BE-1, BE-2, BE-5 e BE-6 sono fatti;
 del lato DB resta solo §I.11. La guida
@@ -25,17 +27,18 @@ dopo BE-6 (§I.9). **D2 e D3 sono usciti da questo brief**: sono il tema del
 | 8 | ✅ BE | BE-1 + BE-2 nella forma «unità dichiarata», BE-5 (soglia legata al timeout di gunicorn) e BE-6 (le due pagine di doc BE), nello stesso rilascio | §I.10 | 7 |
 | 8-bis | **Tid** | `sudo systemctl restart zeroerp-gunicorn` su dbdev — ⚠️ un restart, non un `kill -HUP`: il master tiene i moduli Python importati al suo avvio (il presidio di BE-5 gira anche al HUP, §I.10.4, ma col codice di allora) — e una POST in modalità forte: 200 | §I.10.3 | 8 |
 | 9 | **Tid** | Commit del giro BE (§I.10, compresa la revisione di §I.10.4) | — | 8-bis |
-| 10 | **team DB** | `dbops.fn_idempotency_soglia_secondi()` + `fn_idempotency_prenota` che la usa + pgTAP | §I.11.1 | — |
-| 11 | **Tid** | Apply su scratch e dbdev, pgTAP verdi | §I.11.1 | 10 |
+| 10 | ✅ team DB | `20261024-03` … `-06`: validatore generico, `dbops.fn_idempotency_soglia_secondi()`, prenotazione e login che lo usano; pgTAP nuovo; prova pre-apply verde | §I.11.3 | — |
+| 11 | ✅ **Tid** | Apply su scratch e dbdev; pgTAP `script/test-intero-positivo-da-testo-v1`, `dbops/test-idempotency-prenota-v1` e i quattro del login verdi (2026-10-24) | §I.11.3 | 10 |
 | 12 | BE | Il presidio di BE-5 legge la soglia dalla funzione; ritirati `get_default_int_positivo` e la sua regex | §I.11.2 | 11 |
 | 13 | **Tid** | Commit, archiviazione in `work-done/` | — | 12 |
 
-Decisioni aperte di Tid: **nessuna** (§I.5 decisa il 2026-10-23: 90 giorni, anche per
+Decisioni aperte di Tid: **nessuna**. La forma di §I.11 e il margine costante di BE-5 sono decisi
+(§I.11.0, 2026-10-24). Prima decise: (§I.5 decisa il 2026-10-23: 90 giorni, anche per
 `audit_log`; §I.7 decisa il 2026-10-23: unità di lavoro dichiarata, e i `catch` muti corretti in
-questo giro). Lavoro da committare: il giro BE di §I.10 (codice, test, doc BE, la riga
-aggiunta alla guida, questo brief) con la revisione di §I.10.4. I giri DB di §I.7.5 e §I.8
-sono nel commit del 2026-10-24; quelli di §I.2/§I.6 e il giro BE/FE di §I.7.1 nei commit del
-2026-10-23.
+questo giro). Lavoro da committare: il giro DB di §I.11.3 (`20261024-03` … `-06`, il pgTAP
+`script/test-intero-positivo-da-testo-v1`, la guida «Configurazione e gestione parametri», questo
+brief). Il giro BE di §I.10 è nel commit `c3fce45ab`; i giri DB di §I.7.5 e §I.8 nei commit del
+2026-10-24; quelli di §I.2/§I.6 e il giro BE/FE di §I.7.1 nei commit del 2026-10-23.
 
 ✅ Deciso da Tid col BE il 2026-10-23: `p_ripresa_ammessa` è **obbligatorio, senza un default
 che decida** (§I.7.5). Applicato il 2026-10-24.
@@ -469,7 +472,9 @@ contratto non si ricopia: rimanda alle quattro pagine.
   battito continua mentre la richiesta lavora, quindi il timeout non è il tetto di una
   richiesta. Oggi i due lanciatori usano il default `sync`.
 * **Il presidio di BE-5 non gira a modalità forte spenta**: la funzione che legge la soglia non
-  viene chiamata. ⚠️ `.env.systemd` la spegne: se si accende lì, il presidio si accende con lei.
+  viene chiamata. ⚠️ Correzione del 2026-10-24 (sera): la prima stesura diceva che
+  `.env.systemd` la spegne. **Su dbdev la modalità forte è accesa** (confermato da Tid, come già
+  in §G), quindi il presidio gira all'avvio.
 * **Margine di 30 secondi** come costante in codice (`MARGINE_SECONDI`), con la proposta del
   brief: è una proprietà del meccanismo, non una configurazione dell'installazione. Se Tid
   preferisce un parametro, va chiesto al team DB.
@@ -513,6 +518,35 @@ copie della stessa regola: la revisione di §I.10.4 ne ha già trovata una diver
 e la prossima modifica a una delle due ne aprirebbe un'altra senza che nessun test lo veda. Il
 presidio vale solo se legge la soglia **come la legge la funzione**.
 
+#### I.11.0 La forma decisa (Tid, 2026-10-24, sera) — prevale sui punti 1 e 4 di §I.11.1
+
+⚠️ **La regola «intero positivo» non sta in due posti ma in tre.** Oltre alla prenotazione e al
+backend, `script.fn_login_parametri` valida i cinque parametri `login_*` con la stessa regex
+(`^[1-9][0-9]{0,5}$`), lo stesso codice (`E_CONFIG_MANCANTE`) e lo stesso contesto (`config`,
+`parametro`, `valore`). Verificato su dbdev il 2026-10-24. Una funzione solo per la soglia
+toglierebbe la copia del backend e lascerebbe quella del login: una terza versione della regola,
+non una sede (regola del 2, sul significato).
+
+**Decisione di Tid: due pezzi.**
+
+1. **Un validatore generico in `script`** (nome indicativo `script.fn_intero_positivo_da_testo(p_valore,
+   p_parametro)`): dal testo all'intero, oppure `E_CONFIG_MANCANTE` col nome del parametro. Non
+   legge tabelle: si prova come applicazione con valori costruiti, quindi copre le forme del
+   punto 4 di §I.11.1 senza scrivere `config.parameters`. Lo usano la soglia e
+   `fn_login_parametri`, la cui copia **si ritira nello stesso giro**.
+2. **`dbops.fn_idempotency_soglia_secondi()`**, come chiesto dal BE: legge il parametro e chiama il
+   validatore. La chiamano `fn_idempotency_prenota` (ramo 5) e il controllo all'avvio di
+   gunicorn. Per il BE non cambia nulla rispetto a §I.11.2.
+
+Il validatore va nel catalogo dei building block lato DB (lo schema `script` e la sua doc), e la
+guida [Configurazione e gestione parametri](../../guide/configurazione-e-gestione-parametri.md) lo
+nomina fra le letture dei parametri senza override. Il resto di §I.11.1 (punti 2, 3 e 5) resta
+com'è.
+
+✅ **Il margine di 30 secondi di BE-5 resta una costante in codice** (`MARGINE_SECONDI`, §I.10.2;
+Tid, 2026-10-24, con il via allo sviluppo): è una proprietà del meccanismo, non una scelta
+dell'installazione.
+
 #### I.11.1 Richiesta al team DB
 
 **Da dove si parte.** Il corpo attuale di `dbops.fn_idempotency_prenota` si prende dalla doc
@@ -551,6 +585,56 @@ chiama `script.fn_log_and_raise_error(..., 'E_CONFIG_MANCANTE', ...)`.
 database, che la applica a ogni prenotazione: il backend la deve **chiedere**, non ricopiare.
 Il controllo all'avvio di gunicorn vale solo se legge la soglia esattamente come la legge la
 prenotazione.
+
+#### I.11.3 Il giro DB (2026-10-24, sera) — ✅ applicato, pgTAP verdi
+
+✅ Dopo l'apply (2026-10-24): `20261024-03` … `-06` EXECUTED su `zeroerp_ruoli` e `zeroerp`;
+`dbops.fn_idempotency_soglia_secondi()` restituisce 120 su tutti e due; pgTAP verdi nella corsa
+di Tid.
+
+**File.**
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/script/20261024-03-create-fn-intero-positivo-da-testo` | `script.fn_intero_positivo_da_testo(p_valore, p_parametro, p_chi DEFAULT NULL)` → `integer`, `STABLE`, `SECURITY INVOKER`. Non legge tabelle. Forma non ammessa: `E_CONFIG_MANCANTE`, contesto `config`/`parametro`/`valore`; senza `p_parametro`: `E_SCRIPT_CHIAMATA_NON_VALIDA`. Niente `btrim` |
+| `20_code/dbops/20261024-04-create-fn-idempotency-soglia-secondi` | `dbops.fn_idempotency_soglia_secondi()` → `integer`: default nudo del parametro, validato dal building block. È la funzione che chiama il backend (§I.11.2) |
+| `20_code/dbops/20261024-05-update-fn-idempotency-prenota-soglia-da-funzione` | ramo 5: la soglia dalla funzione; via `v_soglia_testo`, `v_soglia_secondi` e la regex. Firma e comportamento invariati |
+| `20_code/script/20261024-06-update-fn-login-parametri-intero-positivo` | i cinque `login_*` validati dal building block, nello stesso ordine; via il ciclo e la regex. Firma, risultato ed errore invariati |
+| `db/pgtap/script/test-intero-positivo-da-testo-v1.sql` (nuovo, 9 test) | le forme ammesse e le nove rifiutate di §I.11.1 punto 4, **costruite** (il ramo `E_CONFIG_MANCANTE` non è più scoperto); la soglia letta dal seed; ⛔ presidio: la regex sta **solo** nel building block; prenotazione e login lo chiamano; il login restituisce i cinque valori del seed |
+| `guide/configurazione-e-gestione-parametri.md` | il building block fra le letture dei parametri senza override; `fn_get_parameter_di_sessione`, che la guida non citava |
+
+**Scelte dichiarate.**
+
+* **Il building block non legge tabelle.** Riceve il testo: il chiamante sa da dove viene il
+  valore (il login li legge tutti in una query). Per questo si prova come applicazione con valori
+  costruiti, che era la via suggerita dal BE in §I.11.1 punto 4.
+* **`p_chi` per il log.** Il login continua a registrare `script.fn_login_parametri` come funzione
+  che solleva; per la soglia la funzione nel log è ora `dbops.fn_idempotency_soglia_secondi` (prima
+  `dbops.fn_idempotency_prenota`) e l'area `database` (prima `dbops`). Codice, contesto e frase
+  restano quelli di prima.
+* `vendite.fn_get_limite_emissione_default` **non** è una copia: la sua regex (`^[0-9]{1,4}$`)
+  ammette lo zero e ha un altro limite.
+
+**La prova** (SQL estratto dei quattro changeSet in ordine, dopo la riga `BEGIN;`, `psql -X -v
+ON_ERROR_STOP=1`, transazione annullata, come `zeroerp_owner`):
+
+| pgTAP | scratch, senza | scratch, con | dbdev, senza | dbdev, con |
+| --- | --- | --- | --- | --- |
+| `script/test-intero-positivo-da-testo-v1` (nuovo) | rosso (le funzioni non esistono) | 9/9 | rosso | 9/9 |
+| `dbops/test-idempotency-prenota-v1` | 31/31 | 31/31 | 31/31 | 31/31 |
+| `config/test-credenziale-login-v1`, `-login-tempo-v1`, `test-login-nome-inesistente-v1` | verdi | verdi, identici | verdi | verdi, identici |
+| `config/test-credenziali-porta-v1` | 10/13 | 10/13, identico | 10/13 | 10/13, identico |
+| `dbops/test-stati-check-scrittori-v1`, `test-riferimenti-morti-v1`, `script/test-catalogo-messaggi-errore-completo` | verdi | verdi, identici | verdi | verdi, identici |
+
+* Il presidio 7, senza i changeSet, trova le due copie (`dbops.fn_idempotency_prenota`,
+  `script.fn_login_parametri`): misura quello che deve.
+* `config/test-credenziali-porta-v1`: i tre rossi sono **di veste**, non di questo giro.
+  Asseriscono «come app, permesso negato», e la prova gira come owner; sono identici senza e con.
+  La misura vera è la corsa come app di Tid.
+* Dopo le corse le funzioni vive sono quelle di prima su tutti e due i database (md5 identici).
+* Guardrail statici verdi sui quattro changeSet.
+* ⚠️ La pagina auto-generata di `fn_intero_positivo_da_testo` nasce con la prossima
+  rigenerazione della doc: fino ad allora il link della guida non ha bersaglio.
 
 #### I.11.2 Il passo BE, dopo l'apply
 

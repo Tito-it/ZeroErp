@@ -91,6 +91,16 @@ ognuno la domanda è di modello: **il valore può dipendere da chi lavora?**
   soggetto. Qui un override per **emittente** avrebbe senso (ogni azienda propone i suoi
   default), e allora il difetto sarebbe nel lettore, non nel parametro. **Da decidere** (D-2).
 
+### 2.2-bis Il lettore della famiglia «senza override» (2026-10-24)
+
+Da `20261024-03` (brief-be-verifica-documentazione-api §I.11) la regola «intero positivo» dei
+parametri di sistema ha una sede: `script.fn_intero_positivo_da_testo`, usata da
+`fn_login_parametri` e da `dbops.fn_idempotency_soglia_secondi`. In questo giro va tenuta
+presente: è il punto naturale in cui, con la colonna `ammette_override`, un lettore del default
+nudo potrà verificare di non essere usato su un parametro che ammette override. Il building block
+oggi riceve il testo e non il codice da leggere: se serve, il controllo si mette nei lettori, non
+lì.
+
 ### 2.3 Altri debiti trovati nella stessa lettura
 
 * La descrizione di `DEFAULT_TIPO_SOGGETTO_DETTAGLIO_CL`/`_FO` cita una cascata vecchia
