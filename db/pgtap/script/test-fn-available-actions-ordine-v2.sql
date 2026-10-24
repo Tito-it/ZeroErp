@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (fixture A e B, bolla in bozza); restano scritti a mano gli ordini C (trigger SPEDITO, confermato senza bolla) e D (in bozza): sono il caso, non la strada della bolla.
 -- pgTAP test per Zero ERP
 -- Test: script.fn_available_actions_ordine — decoupling fatturazione <->
 --       spedizione (rev 20260710-02): can_push su PARZIALMENTE_EVASO/EVASO,
@@ -106,45 +107,15 @@ SELECT ok(
 -- ============================================================
 -- FIXTURE A: orfano — ordine trigger CONFERMATO evaso FULL, mai pushato
 -- ============================================================
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
---   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
---   righe non si scrivono piu' (20261008-90).
+-- L'ordine del BA pushabile (trigger CONFERMATO ereditato dal BA), una riga
+-- di 10 a 30, evaso tutto da una bolla: dal builder. La bolla resta in bozza:
+-- al test serve l'ordine EVASO, che la madre proietta alla generazione.
 CREATE TEMP TABLE tmp_ord_aa2_a AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-    stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA.
-  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
-         r.push_ba_id,
-         anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_draft_id, r.valuta_id, DATE '2026-07-05', false,
-         jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2','fix','orfano_a')
-  FROM tmp_refs_aa2 r
-  WHERE r.push_ba_id IS NOT NULL
-  RETURNING id, uid)
-SELECT * FROM ins;
-
-CREATE TEMP TABLE tmp_ord_aa2_a_riga AS
-WITH ins AS (
-  INSERT INTO vendite.ordini_righe (
-    ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id,
-    attivo, storicizza, meta)
-  SELECT o.id, 1, r.articolo_id, 'Riga orfano AA2',
-         10.000000, 10.000000, 30.000000, r.iva_id,
-         true, false, jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2')
-  FROM tmp_ord_aa2_a o, tmp_refs_aa2 r
-  RETURNING id)
-SELECT * FROM ins;
-
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_aa2_a o;
-END $x$;
-
--- Evasione FULL -> ordine EVASO (skip-tolerant)
-SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_aa2_a))
- WHERE EXISTS (SELECT 1 FROM tmp_ord_aa2_a);
+SELECT b.ordine_id AS id, b.ordine_uid AS uid
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgtap_fn_aa_ordine_v2 orfano_a', 'DRAFT',
+         p_billing_account_id => (SELECT push_ba_id FROM tmp_refs_aa2),
+         p_articolo_id        => (SELECT articolo_id FROM tmp_refs_aa2),
+         p_prezzo             => 30) b;
 
 -- 2) orfano EVASO -> can_push_commessa = true
 SELECT ok(
@@ -169,48 +140,15 @@ SELECT ok(
 -- ============================================================
 -- FIXTURE B: PARZIALMENTE_EVASO (evasione 4/10)
 -- ============================================================
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
---   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
---   righe non si scrivono piu' (20261008-90).
+-- Una riga di 10 a 20, evasa per 4 da una bolla in bozza: dal builder.
 CREATE TEMP TABLE tmp_ord_aa2_b AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-    stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA.
-  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
-         r.push_ba_id,
-         anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_draft_id, r.valuta_id, DATE '2026-07-06', false,
-         jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2','fix','parz_b')
-  FROM tmp_refs_aa2 r
-  WHERE r.push_ba_id IS NOT NULL
-  RETURNING id)
-SELECT * FROM ins;
-
-CREATE TEMP TABLE tmp_ord_aa2_b_riga AS
-WITH ins AS (
-  INSERT INTO vendite.ordini_righe (
-    ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id,
-    attivo, storicizza, meta)
-  SELECT o.id, 1, r.articolo_id, 'Riga parziale BB2',
-         10.000000, 10.000000, 20.000000, r.iva_id,
-         true, false, jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2')
-  FROM tmp_ord_aa2_b o, tmp_refs_aa2 r
-  RETURNING id)
-SELECT * FROM ins;
-
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_aa2_b o;
-END $x$;
-
-SELECT vendite.fn_genera_ddt_da_ordine(
-         (SELECT id FROM tmp_ord_aa2_b),
-         jsonb_build_array(jsonb_build_object(
-             'ordine_riga_id', (SELECT id FROM tmp_ord_aa2_b_riga),
-             'qta_da_evadere', 4)))
- WHERE EXISTS (SELECT 1 FROM tmp_ord_aa2_b);
+SELECT b.ordine_id AS id
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgtap_fn_aa_ordine_v2 parz_b', 'DRAFT',
+         p_billing_account_id => (SELECT push_ba_id FROM tmp_refs_aa2),
+         p_articolo_id        => (SELECT articolo_id FROM tmp_refs_aa2),
+         p_quantita           => 10,
+         p_prezzo             => 20,
+         p_qta_da_evadere     => 4) b;
 
 -- 4) PARZIALMENTE_EVASO -> can_push = true
 SELECT ok(

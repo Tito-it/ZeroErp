@@ -11,7 +11,7 @@ Guide: [pgTAP — come si scrive un test](/guide/pgtap-come-si-scrive-un-test) �
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-10-07)
+(rev 2026-10-25)
 
 **Un ordine di vendita del mondo, in una chiamata sola**: l'azienda con il suo operatore,
 il cliente fatturabile e la testata nello stato scelto. Torna tutte le chiavi, `uid`
@@ -25,12 +25,19 @@ SELECT * FROM dbops.fn_pgtap_crea_ordine('consegne', 'CONFERMATO');
 -- il secondo ordine dello STESSO cliente (terzo parametro, rev 2026-10-22):
 SELECT * FROM dbops.fn_pgtap_crea_ordine(
            'consegne 2', 'DRAFT', (SELECT billing_account_id FROM tmp_o));
+-- un ordine di una data passata (quarto parametro, rev 2026-10-25):
+SELECT * FROM dbops.fn_pgtap_crea_ordine('chiusure', p_data => DATE '2026-08-05');
 ```
 
 ⚠️ **Il terzo parametro** è il billing account di un cliente già costruito: serve a chi
 vuole due ordini dello stesso cliente. Viene **verificato** dal building block
 [dbops.fn_pgtap_cliente_ba_del_mondo](/dbzero/dbops/manual/fn_pgtap_cliente_ba_del_mondo),
 come per fattura e contratto: un billing account di un'altra azienda solleva subito.
+
+⚠️ **Il quarto parametro** è la data dell'ordine, scritta **alla nascita**: fuori bozza la
+data è congelata, quindi o si sceglie qui o non si sceglie più. Senza, vale la data
+operativa (il default della colonna). Serve a chi costruisce bolle di date passate: una
+bolla più vecchia del suo ordine sarebbe una fixture incoerente.
 
 ---
 ### 🧭 Perché esiste

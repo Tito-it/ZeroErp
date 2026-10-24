@@ -38,8 +38,9 @@ on:
     paths:
       - db/**
       - backend/**
-      - requirements/**
       - requirements.txt
+      - .python-version
+      - .pre-commit-config.yaml
       - scripts/**
       - .github/workflows/ci-validate.yaml
   pull_request:
@@ -47,8 +48,9 @@ on:
     paths:
       - db/**
       - backend/**
-      - requirements/**
       - requirements.txt
+      - .python-version
+      - .pre-commit-config.yaml
       - scripts/**
       - .github/workflows/ci-validate.yaml
 
@@ -80,9 +82,6 @@ jobs:
       #   flag attivo (`calculate-checksum` = valore nel databasechangelog).
       #   Quindi: impedisce che nasca la PRIMA forma, non copre la seconda.
       LIQUIBASE_ALLOW_PARENT_DIRECTORY_REFERENCES: "false"
-
-      # requirements runtime backend
-      REQ_FILE: backbase.txt
 
       # Django / DB
       DB_HOST: localhost

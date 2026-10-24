@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (pg_temp.re_mk_ddt lo chiama e annota le chiavi; ritirata pg_temp.re_avanza); restano a mano gli ordini senza bolla (re_mk_ordine), le bolle standalone di D e J, il legame in piu' di E, le scritture sulle righe e gli annulli (sono il caso), il reso di F (giro 2).
 -- Test: le righe di un DDT nato da un ordine (D28)
 --   vendite.fn_ddt_riga_evasa, vendite.trgfn_ddt_righe_guard_riga_evasa,
 --   vendite.trgfn_ordini_ful_guard_legame, il lock delle righe sul
@@ -67,10 +68,12 @@
 --      ROSSO DA OWNER, VERDE COME APP: da proprietario della tabella la porta
 --      si apre per costruzione. Per ultimo.
 --
--- ⚠️ LE FIXTURE SI COSTRUISCONO: cliente e articoli dai builder, ordini che
---   nascono DRAFT e passano a CONFERMATO con dbops.fn_pgtap_porta_a_stato,
---   bolle da fn_genera_ddt_da_ordine. L'articolo NON e' gestito a magazzino:
---   l'emissione non chiede prelievi (il Lotto 3 e' invariato, §5.1).
+-- ⚠️ LE FIXTURE SI COSTRUISCONO: cliente e articoli dai builder, bolle da
+--   ordine da dbops.fn_pgtap_crea_ddt_da_ordine (ordine 10 @20, bolla in
+--   bozza o nello stato del caso, per la matrice); gli ordini senza bolla
+--   nascono DRAFT e passano a CONFERMATO con dbops.fn_pgtap_porta_a_stato.
+--   L'articolo NON e' gestito a magazzino: l'emissione non chiede prelievi
+--   (il Lotto 3 e' invariato, §5.1).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -161,20 +164,16 @@ SELECT
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)                               AS iva_id,
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo LIMIT 1)         AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'DRAFT'      AND s.attivo LIMIT 1)       AS stato_ddt_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'EMESSO'     AND s.attivo LIMIT 1)       AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'SPEDITO'    AND s.attivo LIMIT 1)       AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'CONSEGNATO' AND s.attivo LIMIT 1)       AS stato_ddt_conseg_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'DDT_VENDITA' AND s.attivo LIMIT 1)           AS sorgente_ddt_id,
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno = 'DRAFT' AND s.attivo LIMIT 1)           AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno = 'RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1)  AS tipo_riconsegna_id,
-  (SELECT c2.id FROM config.causali_trasporto c2 WHERE c2.codice = 'VENDITA' ORDER BY c2.id LIMIT 1)         AS causale_vendita_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON')                                        AS tipo_ind_con_id
+  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno = 'RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1)  AS tipo_riconsegna_id
 FROM tmp_cli_re c;
 
 CREATE TEMP TABLE tmp_fix(chiave text PRIMARY KEY, id bigint);
 CREATE TEMP TABLE tmp_esito(caso text PRIMARY KEY, sqlstate text, messaggio text, righe int);
 
--- Un ordine CONFERMATO con una riga (nasce DRAFT, prende la riga, poi la transizione).
+-- Un ordine CONFERMATO con una riga, senza bolla (nasce DRAFT, prende la riga,
+-- poi la transizione): serve dove il caso vuole una riga d'ordine e basta.
 CREATE OR REPLACE FUNCTION pg_temp.re_mk_ordine(p_chiave text, p_articolo uuid, p_qta numeric)
 RETURNS void AS $$
 DECLARE r RECORD; v_ord bigint; v_orr bigint;
@@ -195,37 +194,28 @@ BEGIN
   INSERT INTO tmp_fix VALUES (p_chiave || '_ord', v_ord), (p_chiave || '_orr', v_orr);
 END $$ LANGUAGE plpgsql;
 
--- Una bolla da ordine in DRAFT, con la sua riga evasa.
-CREATE OR REPLACE FUNCTION pg_temp.re_mk_ddt(p_chiave text, p_ordine text, p_qta numeric)
+-- Una bolla da ordine, con la sua riga evasa, dal builder: nello stato chiesto
+-- (default DRAFT, per scriverle cio' che il caso prova). Con p_qta_ordine il
+-- builder costruisce anche l'ordine (una riga di p_qta_ordine @20) e se ne
+-- annotano le chiavi; senza, la bolla evade l'ordine p_ordine gia' annotato.
+CREATE OR REPLACE FUNCTION pg_temp.re_mk_ddt(p_chiave text, p_ordine text, p_qta numeric,
+                                             p_qta_ordine numeric DEFAULT NULL,
+                                             p_stato varchar DEFAULT 'DRAFT')
 RETURNS void AS $$
-DECLARE v_ddt bigint; v_dr bigint;
-BEGIN
-  v_ddt := vendite.fn_genera_ddt_da_ordine(
-      (SELECT id FROM tmp_fix WHERE chiave = p_ordine || '_ord'),
-      jsonb_build_array(jsonb_build_object(
-          'ordine_riga_id', (SELECT id FROM tmp_fix WHERE chiave = p_ordine || '_orr'),
-          'qta_da_evadere', p_qta)),
-      DATE '2026-10-02');
-  SELECT dr.id INTO v_dr FROM vendite.ddt_righe dr WHERE dr.ddt_id = v_ddt ORDER BY dr.id LIMIT 1;
-  INSERT INTO tmp_fix VALUES (p_chiave || '_ddt', v_ddt), (p_chiave || '_dr', v_dr);
-END $$ LANGUAGE plpgsql;
-
--- Porta la bolla avanti nel verso vero: indirizzo, causale, transizioni.
-CREATE OR REPLACE FUNCTION pg_temp.re_avanza(p_ddt bigint, p_fino_a text)
-RETURNS void AS $$
-DECLARE r RECORD;
+DECLARE r RECORD; b RECORD;
 BEGIN
   SELECT * INTO r FROM tmp_refs_re;
-  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-  VALUES (p_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id WHERE id = p_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_emesso_id WHERE id = p_ddt;
-  IF p_fino_a IN ('SPEDITO', 'CONSEGNATO') THEN
-    UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_spedito_id WHERE id = p_ddt;
+  IF p_qta_ordine IS NOT NULL THEN
+    SELECT * INTO b FROM dbops.fn_pgtap_crea_ddt_da_ordine('righe evase', p_stato, r.billing_account_id,
+        p_quantita => p_qta_ordine, p_prezzo => 20, p_articolo_id => r.articolo_id,
+        p_qta_da_evadere => p_qta);
+    INSERT INTO tmp_fix VALUES (p_ordine || '_ord', b.ordine_id), (p_ordine || '_orr', b.ordine_riga_id);
+  ELSE
+    SELECT * INTO b FROM dbops.fn_pgtap_crea_ddt_da_ordine('righe evase', p_stato,
+        p_ordine_id => (SELECT id FROM tmp_fix WHERE chiave = p_ordine || '_ord'),
+        p_qta_da_evadere => p_qta);
   END IF;
-  IF p_fino_a = 'CONSEGNATO' THEN
-    UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_conseg_id WHERE id = p_ddt;
-  END IF;
+  INSERT INTO tmp_fix VALUES (p_chiave || '_ddt', b.ddt_id), (p_chiave || '_dr', b.ddt_riga_id);
 END $$ LANGUAGE plpgsql;
 
 -- Esegue un'istruzione e ne cattura l'esito (righe toccate, o SQLSTATE + frase).
@@ -259,8 +249,7 @@ $$ LANGUAGE sql;
 -- ============================================================
 -- A — ordine pippo 10, bolla generata con 10
 -- ============================================================
-SELECT pg_temp.re_mk_ordine('a', (SELECT articolo_id FROM tmp_refs_re), 10);
-SELECT pg_temp.re_mk_ddt('a1', 'a', 10);
+SELECT pg_temp.re_mk_ddt('a1', 'a', 10, p_qta_ordine => 10);
 
 SELECT is(pg_temp.re_stato_ordine('a'), 'EVASO',
   '4) evasione completa: l''ordine e'' EVASO (il BB dentro fn_genera_ddt_da_ordine)');
@@ -376,7 +365,7 @@ SELECT is((SELECT righe FROM tmp_esito WHERE caso = '21_upd_mano'), 1,
 
 -- La bolla (evasa 6 + a mano 4) si emette.
 SELECT pg_temp.re_prova('22_emetti',
-  format('SELECT pg_temp.re_avanza(%s, ''EMESSO'')', pg_temp.re_fix('a1_ddt')));
+  format('SELECT dbops.fn_pgtap_porta_a_stato(''vendite.ddt'', %s, ''EMESSO'')', pg_temp.re_fix('a1_ddt')));
 SELECT ok(
   (SELECT sqlstate IS NULL FROM tmp_esito WHERE caso = '22_emetti')
   AND pg_temp.re_stato_ordine('a') = 'PARZIALMENTE_EVASO',
@@ -401,8 +390,7 @@ SELECT is(
 -- ============================================================
 -- B — ordine 10, bolla 10, la riga si toglie: ultimo legame
 -- ============================================================
-SELECT pg_temp.re_mk_ordine('b', (SELECT articolo_id FROM tmp_refs_re), 10);
-SELECT pg_temp.re_mk_ddt('b1', 'b', 10);
+SELECT pg_temp.re_mk_ddt('b1', 'b', 10, p_qta_ordine => 10);
 DELETE FROM vendite.ddt_righe WHERE id = pg_temp.re_fix('b1_dr');
 SELECT ok(
   pg_temp.re_stato_ordine('b') = 'CONFERMATO'
@@ -412,8 +400,7 @@ SELECT ok(
 -- ============================================================
 -- C — la bolla da ordine si elimina intera in bozza
 -- ============================================================
-SELECT pg_temp.re_mk_ordine('c', (SELECT articolo_id FROM tmp_refs_re), 10);
-SELECT pg_temp.re_mk_ddt('c1', 'c', 10);
+SELECT pg_temp.re_mk_ddt('c1', 'c', 10, p_qta_ordine => 10);
 SELECT pg_temp.re_prova('27_dlt_ddt',
   format('DELETE FROM vendite.ddt WHERE id = %s', pg_temp.re_fix('c1_ddt')));
 SELECT ok(
@@ -452,9 +439,8 @@ SELECT ok(
 -- ============================================================
 -- E — una riga che evade due righe d'ordine (forma che nessuna madre produce)
 -- ============================================================
-SELECT pg_temp.re_mk_ordine('e', (SELECT articolo_id FROM tmp_refs_re), 10);
 SELECT pg_temp.re_mk_ordine('e_bis', (SELECT articolo_id FROM tmp_refs_re), 10);
-SELECT pg_temp.re_mk_ddt('e1', 'e', 5);
+SELECT pg_temp.re_mk_ddt('e1', 'e', 5, p_qta_ordine => 10);
 INSERT INTO vendite.ordini_righe_fulfillment (ordine_riga_id, ddt_riga_id, qta_evasa, storicizza)
 VALUES (pg_temp.re_fix('e_bis_orr'), pg_temp.re_fix('e1_dr'), 1, false);
 SELECT is(
@@ -465,9 +451,7 @@ SELECT is(
 -- ============================================================
 -- F — la ri-consegna di un reso (D-7: la stessa regola)
 -- ============================================================
-SELECT pg_temp.re_mk_ordine('f', (SELECT articolo_id FROM tmp_refs_re), 10);
-SELECT pg_temp.re_mk_ddt('f1', 'f', 10);
-SELECT pg_temp.re_avanza(pg_temp.re_fix('f1_ddt'), 'CONSEGNATO');
+SELECT pg_temp.re_mk_ddt('f1', 'f', 10, p_qta_ordine => 10, p_stato => 'CONSEGNATO');
 DO $f$
 DECLARE r RECORD; v_reso bigint;
 BEGIN
@@ -550,8 +534,7 @@ SELECT ok(
 -- ============================================================
 -- H — D-8: l'annullo di una bolla con legami chiede conferma
 -- ============================================================
-SELECT pg_temp.re_mk_ordine('h', (SELECT articolo_id FROM tmp_refs_re), 10);
-SELECT pg_temp.re_mk_ddt('h1', 'h', 10);
+SELECT pg_temp.re_mk_ddt('h1', 'h', 10, p_qta_ordine => 10);
 SELECT pg_temp.re_prova('37_annullo_diretto',
   format($q$UPDATE vendite.ddt SET stato_doc_ddt_id =
               (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'ANNULLATO')
@@ -572,9 +555,7 @@ SELECT ok(
   AND pg_temp.re_stato_ordine('h') = 'CONFERMATO',
   '39) D-8: confermato, la bolla in bozza si annulla, il legame si ritira, l''ordine torna CONFERMATO');
 
-SELECT pg_temp.re_mk_ordine('i', (SELECT articolo_id FROM tmp_refs_re), 10);
-SELECT pg_temp.re_mk_ddt('i1', 'i', 10);
-SELECT pg_temp.re_avanza(pg_temp.re_fix('i1_ddt'), 'EMESSO');
+SELECT pg_temp.re_mk_ddt('i1', 'i', 10, p_qta_ordine => 10, p_stato => 'EMESSO');
 SELECT * FROM vendite.fn_annulla_ddt(pg_temp.re_fix('i1_ddt'), 1);
 SELECT ok(
   (SELECT s.codice_interno = 'ANNULLATO' FROM vendite.ddt d

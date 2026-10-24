@@ -1,327 +1,142 @@
-# 🧠 Mappa Mentale Semplice di Git
+# Mappa mentale semplice di Git
+
+> **Ultimo aggiornamento**: 24 ottobre 2026
+>
+> **Destinatari**: chi lavora sui branch di ZeroERP e vuole un promemoria dei comandi
+>
+> **Vedi anche**:
+>
+> * [Configurazione GitHub](/dev/github/configurazione) — il flusso dei branch, i workflow della CI, le impostazioni del repository
+> * [Trappole: cosa non fare](/dev/trappole) — fra le altre, il branch cancellato da GitHub dopo il merge
 
 ---
 
-# 1️⃣ Git ha SOLO 3 cose importanti
+## 1. Git ha solo tre posti
 
-## 📂 Working Directory
+| Posto                 | Che cos'è                                 |
+| --------------------- | ----------------------------------------- |
+| **Working directory** | i file che stai modificando               |
+| **Repository locale** | i commit salvati sul tuo computer         |
+| **Remoto (`origin`)** | la copia su GitHub                        |
 
-I file che stai modificando sul tuo computer.
-
-## 🗂️ Local Repository
-
-I commit salvati sul tuo computer.
-
-## ☁️ Remote (origin)
-
-La copia su GitHub.
+**Regola d'oro**: GitHub vede solo quello che è stato **pushato**. Un merge fatto in locale e non
+pushato, per GitHub non esiste.
 
 ---
 
-# 2️⃣ Regola d’Oro
+## 2. I comandi fondamentali
 
-GitHub vede SOLO quello che è stato pushato.
+```bash
+git fetch origin        # scarica le novità del remoto, non tocca i tuoi file
+git status              # dove sono, cosa ho cambiato: il punto di partenza di ogni dubbio
+git push                # manda su GitHub i commit locali
+```
 
-Se fai merge locale ma non fai `git push`,
-GitHub NON sa nulla.
+«N in uscita» in VS Code vuol dire **N commit locali non ancora pushati**: non file modificati.
+
+Un branch è solo un **puntatore a un commit**, e `HEAD` è il punto in cui ti trovi adesso. Cambiare
+branch non duplica il codice: sposta il puntatore.
 
 ---
 
-# 3️⃣ I Comandi Fondamentali
+## 3. Il flusso di ZeroERP
 
-## 🔄 Aggiornare dal remoto
-
-```
-git fetch origin
-```
-
-Scarica informazioni, non modifica i file.
-
-## ⬇️ Portare aggiornamenti nel branch
-
-```
-git merge origin/main
+```text
+dev/db-tid ──────┐  PR
+                 ├──────►  Tito-dev  ──── PR ────►  main
+dev/backend-tid ─┘         (integrazione)           (rilascio)
 ```
 
-Oppure
+* `dev/db-tid` = lavoro sul database, `dev/backend-tid` = backend e frontend;
+* `Tito-dev` = il centro: le foglie **non** si aggiornano fra loro, passano sempre dal centro;
+* `main` = il rilascio.
 
-```
-git pull
-```
-
-## ⬆️ Mandare commit su GitHub
-
-```
-git push
-```
+Si integra **sempre con una pull request**, mai con un push diretto su `Tito-dev` o `main`. Il
+perché, e che cosa controlla la CI in ogni passaggio, è in [Configurazione GitHub](/dev/github/configurazione).
 
 ---
 
-# 4️⃣ Quando una PR dice “This branch has conflicts”
+## 4. La giornata
 
-Checklist mentale:
+### 4.1 Prima di lavorare: riallineati al centro
 
-1. Vai sul tuo branch
-
-```
-git checkout tuo-branch
-```
-
-2. Aggiorna riferimenti
-
-```
-git fetch origin
-```
-
-3. Porta main dentro
-
-```
-git merge origin/main
-```
-
-4. Risolvi conflitti
-
-5. Fai push
-
-```
-git push
-```
-
-6. Refresh PR
-
-Fine.
-
----
-
-# 5️⃣ Cosa significa “X in uscita” in VS Code
-
-Numero di commit locali NON ancora pushati.
-
-Non sono file modificati.
-Sono commit.
-
----
-
-# 6️⃣ Branch: Come pensarli
-
-Un branch è solo un puntatore a un commit.
-
-Cambiare branch non duplica codice.
-Sposta solo dove punta HEAD.
-
----
-
-# 7️⃣ HEAD (super importante)
-
-HEAD = dove ti trovi adesso.
-
-Controllo veloce:
-
-```
-git status
-```
-
----
-
-# 8️⃣ I 3 Problemi Classici
-
-🔴 "Branch diverged"
-Significa: locale e remoto hanno commit diversi.
-
-🟡 "This branch has conflicts"
-Significa: devi fare merge di main nel tuo branch.
-
-🟢 "Everything up-to-date"
-Sei allineato.
-
----
-
-# 9️⃣ Schema Visuale
-
-main
-|
-|---- A ---- B ---- C
-
-
-Tito-dev        D ---- E
-
-Se C cambia le stesse righe di D,
-serve un merge manuale.
-
----
-
-# 🔟 Mentalità Corretta
-
-Git non cancella niente da solo.
-Tu scegli cosa tenere nei conflitti.
-
-Se qualcosa va storto:
-
-```
-git status
-```
-
-È sempre il punto di partenza.
-
----
-
-# 🧩 Frase che salva la sanità mentale
-
-"Se GitHub dice conflitti, devo fare merge di main nel mio branch e pushare."
-
----
-
-# ✅ Playbook Anti-Casino (il tuo workflow con Tito-dev come centro)
-
-## 🎯 Struttura
-
-* `dev/db-tid` = lavoro DB
-* `dev/backend-tid` = lavoro backend
-* `Tito-dev` = integrazione (centro)
-* `main` = rilascio
-
-Idea: **le “foglie” non si aggiornano tra loro direttamente**. Passi sempre dal centro.
-
----
-
-## 🔁 Sequenza quotidiana (inizio giornata / prima di lavorare)
-
-### 1) Aggiorna il tuo branch di lavoro dal remoto
-
-Se lavori su DB:
-
-```
-git checkout dev/db-tid
-git pull --ff-only origin dev/db-tid
-```
-
-Se lavori su backend:
-
-```
-git checkout dev/backend-tid
-git pull --ff-only origin dev/backend-tid
-```
-
-### 2) Porta dentro l’integrazione dal centro (così hai tutto)
-
-DB:
-
-```
-git checkout dev/db-tid
+```bash
+git checkout dev/db-tid            # oppure dev/backend-tid
 git fetch origin
 git rebase origin/Tito-dev
-git push --force-with-lease
+git push --force-with-lease        # solo se il rebase ha riscritto commit già pushati
 ```
 
-Backend:
+`--force-with-lease`, mai `--force`: rifiuta il push se sul remoto c'è qualcosa che non hai visto.
 
-```
-git checkout dev/backend-tid
-git fetch origin
-git rebase origin/Tito-dev
-git push --force-with-lease
-```
+⚠️ Durante il rebase i file sul disco cambiano. Se nello stesso albero sta girando qualcosa — una
+suite pgTAP, un'altra sessione di lavoro — legge file a metà. Si fa il rebase ad albero fermo.
 
----
+### 4.2 Hai finito: porta il lavoro nel centro
 
-## 🧩 Quando hai finito una feature (portare la foglia nel centro)
-
-### A) Integra DB nel centro
-
-```
-git checkout Tito-dev
-git fetch origin
-git merge origin/dev/db-tid
-git push origin Tito-dev
-```
-
-### B) Integra backend nel centro
-
-```
-git checkout Tito-dev
-git fetch origin
-git merge origin/dev/backend-tid
-git push origin Tito-dev
-```
-
-Se ci sono conflitti:
-
-* risolvi nei file
-* poi:
-
-```
-git add .
+```bash
+git status                         # controlla che cosa stai per committare
+git add <file> <file>              # per nome: nell'albero possono esserci file di un altro lavoro
 git commit
-git push origin Tito-dev
+git push origin dev/db-tid
+gh pr create --base Tito-dev --head dev/db-tid   # oppure dalla pagina del repository
 ```
 
----
+Prima di premere «Merge», guarda le corse della CI sulla PR: il repository non ha branch protetti,
+quindi un rosso **non** impedisce il merge (vedi [Configurazione GitHub](/dev/github/configurazione)).
+Dopo il merge, si torna al punto 4.1.
 
-## 🚀 Prima di aprire/chiudere una PR verso `main`
+### 4.3 Il rilascio: `Tito-dev` → `main`
 
-**Sempre** allinea il centro con `main` (così niente conflitti in PR):
+Si apre la PR `Tito-dev → main`. Se GitHub dice che ci sono conflitti, `main` ha qualcosa che
+`Tito-dev` non ha: lo si porta dentro.
 
-```
+```bash
 git checkout Tito-dev
 git fetch origin
 git merge origin/main
 git push origin Tito-dev
 ```
 
-Poi PR: `Tito-dev → main`.
+⚠️ «Automatically delete head branches» deve restare **spento**: al merge di questa PR
+cancellerebbe `Tito-dev` ([Trappole](/dev/trappole)).
 
 ---
 
-## 🧯 Se GitHub dice “This branch has conflicts”
+## 5. Quando una PR dice «This branch has conflicts»
 
-Significa: il branch della PR non contiene l’ultimo `main` oppure non è stato pushato.
+Vuol dire: il branch della PR non contiene l'ultima versione del branch **di destinazione**.
 
-Sul branch della PR:
+| PR                     | Che cosa portare dentro | Comando, sul branch della PR |
+| ---------------------- | ----------------------- | ---------------------------- |
+| `dev/*` → `Tito-dev`   | `Tito-dev`              | `git rebase origin/Tito-dev` (punto 4.1) |
+| `Tito-dev` → `main`    | `main`                  | `git merge origin/main` (punto 4.3)      |
 
-```
-git checkout <branch-della-PR>
-git fetch origin
-git merge origin/main
-# risolvi conflitti
-git add .
-git commit
-git push
-```
+Poi si risolvono i conflitti nei file, si aggiungono **per nome** (`git add <file>`), si
+continua (`git rebase --continue` oppure `git commit`) e si fa push. La PR si aggiorna da sola.
 
-Refresh PR.
+Git non sceglie al posto tuo: in un conflitto decidi tu che cosa tenere.
 
 ---
 
-## 🔍 Check rapidi (sanity checks)
+## 6. I tre messaggi classici
 
-Dove sono?
+| Messaggio                       | Che cosa vuol dire                                         |
+| ------------------------------- | ---------------------------------------------------------- |
+| 🔴 «Your branch has diverged»   | locale e remoto hanno commit diversi: `git fetch`, poi rebase o merge |
+| 🟡 «This branch has conflicts» | vedi il punto 5                                            |
+| 🟢 «Everything up-to-date»      | sei allineato                                              |
 
-```
-git status
-```
+---
 
-Il mio branch include Tito-dev?
+## 7. Controlli rapidi
 
-```
-git merge-base --is-ancestor origin/Tito-dev HEAD; echo $?
-```
-
-`0` = sì.
-
-Cosa mi manca da Tito-dev?
-
-```
-git log --oneline HEAD..origin/Tito-dev
-```
-
-Cosa ho in più rispetto a Tito-dev?
-
-```
-git log --oneline origin/Tito-dev..HEAD
+```bash
+git merge-base --is-ancestor origin/Tito-dev HEAD; echo $?   # 0 = il mio branch contiene Tito-dev
+git log --oneline HEAD..origin/Tito-dev                      # cosa mi manca di Tito-dev
+git log --oneline origin/Tito-dev..HEAD                      # cosa ho in più di Tito-dev
 ```
 
 ---
 
-Fine.
-
-Se rileggi questo prima di PR/merge, eviti quasi tutti i loop mentali.
+{% include-markdown "signature-core.md" %}

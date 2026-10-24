@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla d'origine ORD dal builder dbops.fn_pgtap_crea_ddt_da_ordine (p_ordine_id, in bozza, poi CONSEGNATO per la matrice); l'ordine resta scritto a mano (sconto 5 sulla riga: il builder non lo sa fare), come i blocchi «relazione»/«viaggio» e l'origine dell'indirizzo scritti sulla bolla in bozza (sono il caso dei test 1, 2 e 7); il reso resta a mano (giro 2); la bolla STD e' standalone e va a CONSEGNATO per la matrice; le emissioni di 9, 13, 14, 16 sono il caso.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   la natura NON merce si cerca diversa da ORDINE_VENDITA, il codice della sorgente (era
 --   ORDINE: dopo il giro il filtro avrebbe preso anche la merce).
@@ -120,8 +121,6 @@ SELECT
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'       AND s.attivo LIMIT 1) AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='DRAFT'        AND s.attivo LIMIT 1) AS stato_ddt_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='EMESSO'       AND s.attivo LIMIT 1) AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='SPEDITO'      AND s.attivo LIMIT 1) AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='CONSEGNATO'   AND s.attivo LIMIT 1) AS stato_ddt_conseg_id,
   (SELECT s.id FROM config.sorgenti        s WHERE s.codice_interno='DDT_VENDITA'  AND s.attivo LIMIT 1) AS sorgente_ddt_id,
   (SELECT s.id FROM config.stati_doc_reso  s WHERE s.codice_interno='DRAFT'        AND s.attivo LIMIT 1) AS stato_reso_draft_id,
   (SELECT t.id FROM config.tipi_reso       t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
@@ -142,7 +141,7 @@ SELECT
      WHERE ma.attivo IS TRUE ORDER BY ma.id LIMIT 1)                        AS modalita_addebito_id;
 
 -- ============================================================
--- FIXTURE ORD — ordine -> DDT (gemello) -> CONSEGNATO -> reso order-backed
+-- FIXTURE ORD — ordine -> DDT (gemello, dal builder) -> CONSEGNATO -> reso order-backed
 -- ============================================================
 CREATE TEMP TABLE tmp_ord AS
 WITH ins AS (
@@ -171,14 +170,15 @@ DO $x$ BEGIN
   PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord), 'CONFERMATO');
 END $x$;
 
+-- La bolla dal builder, in bozza: causale VENDITA e indirizzo CON li scrive lui.
 CREATE TEMP TABLE tmp_ddt_ord AS
-SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord)) AS ddt_id;
+SELECT ddt_id FROM dbops.fn_pgtap_crea_ddt_da_ordine('riconsegna eredita', 'DRAFT',
+    p_ordine_id => (SELECT id FROM tmp_ord), p_causale_codice => 'VENDITA');
 
 -- Il DDT d'origine porta il blocco «relazione» E il blocco «viaggio»: e' cio'
 -- che rende distinguibili i test 1) e 7).
 UPDATE vendite.ddt d
-   SET causale_trasporto_id           = r.causale_vendita_id,
-       aspetto_bene_id                = r.aspetto_id,
+   SET aspetto_bene_id                = r.aspetto_id,
        modalita_addebito_trasporto_id = r.modalita_addebito_id,
        mittente_soggetto_ruolo_id     = r.mittente_sr_id,
        vettore_soggetto_ruolo_id      = r.vettore_sr_id,
@@ -189,16 +189,16 @@ UPDATE vendite.ddt d
   FROM tmp_ref r
  WHERE d.id = (SELECT ddt_id FROM tmp_ddt_ord);
 
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot,
-                                   origine_soggetto_ruolo_id)
-SELECT (SELECT ddt_id FROM tmp_ddt_ord), r.tipo_ind_con_id,
-       '{"display":"CON eredita ORD"}'::jsonb, r.soggetto_ruolo_id
+-- L'indirizzo di consegna porta la sua origine: e' cio' che il test 2 vede
+-- propagato (con origine_* a NULL su entrambe le bolle passerebbe a vuoto).
+UPDATE vendite.ddt_indirizzi di
+   SET snapshot = '{"display":"CON eredita ORD"}'::jsonb,
+       origine_soggetto_ruolo_id = r.soggetto_ruolo_id
   FROM tmp_ref r
-ON CONFLICT DO NOTHING;
+ WHERE di.ddt_id = (SELECT ddt_id FROM tmp_ddt_ord)
+   AND di.tipo_indirizzo_id = r.tipo_ind_con_id;
 
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id  FROM tmp_ref) WHERE id=(SELECT ddt_id FROM tmp_ddt_ord);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_ref) WHERE id=(SELECT ddt_id FROM tmp_ddt_ord);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_conseg_id  FROM tmp_ref) WHERE id=(SELECT ddt_id FROM tmp_ddt_ord);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_ddt_ord), 'CONSEGNATO');
 
 CREATE TEMP TABLE tmp_ddt_ord_riga AS
 SELECT dr.id, dr.articolo_id, dr.descrizione, dr.uom_operativa_id, dr.factor_to_base,
@@ -312,9 +312,7 @@ SELECT (SELECT id FROM tmp_ddt_std), r.tipo_ind_con_id,
        '{"display":"CON eredita STD"}'::jsonb, r.soggetto_ruolo_id
   FROM tmp_ref r;
 
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id  FROM tmp_ref) WHERE id=(SELECT id FROM tmp_ddt_std);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_ref) WHERE id=(SELECT id FROM tmp_ddt_std);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_conseg_id  FROM tmp_ref) WHERE id=(SELECT id FROM tmp_ddt_std);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT id FROM tmp_ddt_std), 'CONSEGNATO');
 
 CREATE TEMP TABLE tmp_reso_std AS
 WITH ins AS (

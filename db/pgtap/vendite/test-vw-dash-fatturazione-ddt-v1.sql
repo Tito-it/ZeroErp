@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta a mano solo il prezzo tolto dalla riga in bozza (il caso del test 7).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente (DDT_VENDITA).
 -- pgTAP test per Zero ERP
 -- Test: vw_dash_fatturazione_ddt — resolver DDT, sesta area della union
@@ -52,58 +53,25 @@ SELECT plan(8);
 -- ============================================================
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  -- ⛔ rev 2026-10-13: BA, ruolo del cliente ed emittente dal mondo costruito;
-  --   l'articolo si costruisce (merce, non gestito: il test non misura il magazzino).
+  -- ⛔ rev 2026-10-13: BA dal mondo costruito; l'articolo si costruisce
+  --   (merce, non gestito: il test non misura il magazzino).
   (SELECT billing_account_id FROM _m)                                    AS billing_account_id,
-  (SELECT cliente_soggetto_ruolo_id FROM _m)                             AS soggetto_ruolo_id,
-  dbops.fn_pgtap_crea_articolo('PGTAP-DASH-DDT', false)                  AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT emittente_fiscale_id FROM _m)                                  AS emittente_fiscale_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1)      AS causale_vendita_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='CAMPIONATURA' LIMIT 1) AS causale_campioni_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id;
+  dbops.fn_pgtap_crea_articolo('PGTAP-DASH-DDT', false)                  AS articolo_id;
 
--- Ordine (qta 10, prezzo 25) -> DDT portato allo stato richiesto.
--- La riga DDT resta SENZA prezzo proprio: il resolver deve ereditarlo
--- dall'ordine via fulfillment, come fanno lister e gate.
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-90).
-CREATE OR REPLACE FUNCTION pg_temp.mk_caso(p_trigger varchar, p_causale bigint, p_stato bigint)
+-- Ordine (qta 10, prezzo 25) -> bolla dal builder, in bozza: la riga perde
+-- il prezzo proprio (il resolver deve ereditarlo dall'ordine via fulfillment,
+-- come fanno lister e gate), poi la bolla va allo stato chiesto.
+CREATE OR REPLACE FUNCTION pg_temp.mk_caso(p_trigger varchar, p_causale varchar, p_stato varchar)
 RETURNS bigint AS $$
-DECLARE r RECORD; v_ord bigint; v_ddt bigint;
+DECLARE r RECORD; v_ddt bigint;
 BEGIN
   SELECT * INTO r FROM tmp_refs;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id,
-          (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE),
-          r.valuta_id,
-          DATE '2026-07-15', p_trigger, r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_dash_ddt'))
-  RETURNING id INTO v_ord;
-  -- trgfn_ordini_normalize eredita il trigger dal BA solo su INSERT: va rimesso.
-  UPDATE vendite.ordini SET fatturazione_trigger = p_trigger WHERE id = v_ord;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'Riga dash', 10, 10, 25, r.iva_id, true, false,
-          jsonb_build_object('test_scope','pgtap_dash_ddt'));
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-  v_ddt := vendite.fn_genera_ddt_da_ordine(v_ord);
-  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-  VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  UPDATE vendite.ddt SET causale_trasporto_id = p_causale WHERE id = v_ddt;
+  SELECT b.ddt_id INTO v_ddt
+    FROM dbops.fn_pgtap_crea_ddt_da_ordine('dash DDT', 'DRAFT', r.billing_account_id,
+           p_quantita => 10, p_prezzo => 25, p_articolo_id => r.articolo_id,
+           p_fatturazione_trigger => p_trigger, p_causale_codice => p_causale) b;
   UPDATE vendite.ddt_righe dr SET prezzo_unitario = NULL WHERE dr.ddt_id = v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_emesso_id WHERE id=v_ddt;
-  IF p_stato <> r.stato_ddt_emesso_id THEN
-    UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id WHERE id=v_ddt;
-    IF p_stato <> r.stato_ddt_spedito_id THEN
-      UPDATE vendite.ddt SET stato_doc_ddt_id=p_stato WHERE id=v_ddt;
-    END IF;
-  END IF;
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ddt', v_ddt, p_stato);
   RETURN v_ddt;
 END $$ LANGUAGE plpgsql;
 
@@ -112,20 +80,16 @@ END $$ LANGUAGE plpgsql;
 -- ============================================================
 -- A: trigger CONSEGNATO, DDT CONSEGNATO, VENDITA -> dentro, PUSH_NON_ESEGUITO
 CREATE TEMP TABLE tmp_a AS
-SELECT pg_temp.mk_caso('CONSEGNATO', (SELECT causale_vendita_id FROM tmp_refs),
-                       (SELECT stato_ddt_consegnato_id FROM tmp_refs)) AS ddt_id;
+SELECT pg_temp.mk_caso('CONSEGNATO', 'VENDITA', 'CONSEGNATO') AS ddt_id;
 -- B: trigger CONFERMATO -> fuori (fattura l'ordine)
 CREATE TEMP TABLE tmp_b AS
-SELECT pg_temp.mk_caso('CONFERMATO', (SELECT causale_vendita_id FROM tmp_refs),
-                       (SELECT stato_ddt_consegnato_id FROM tmp_refs)) AS ddt_id;
+SELECT pg_temp.mk_caso('CONFERMATO', 'VENDITA', 'CONSEGNATO') AS ddt_id;
 -- C: causale CAMPIONATURA -> fuori (solo trasporto)
 CREATE TEMP TABLE tmp_c AS
-SELECT pg_temp.mk_caso('CONSEGNATO', (SELECT causale_campioni_id FROM tmp_refs),
-                       (SELECT stato_ddt_consegnato_id FROM tmp_refs)) AS ddt_id;
+SELECT pg_temp.mk_caso('CONSEGNATO', 'CAMPIONATURA', 'CONSEGNATO') AS ddt_id;
 -- D: trigger CONSEGNATO ma DDT ancora SPEDITO -> IN_TRANSITO (in viaggio)
 CREATE TEMP TABLE tmp_d AS
-SELECT pg_temp.mk_caso('CONSEGNATO', (SELECT causale_vendita_id FROM tmp_refs),
-                       (SELECT stato_ddt_spedito_id FROM tmp_refs)) AS ddt_id;
+SELECT pg_temp.mk_caso('CONSEGNATO', 'VENDITA', 'SPEDITO') AS ddt_id;
 
 -- ============================================================
 -- ASSERZIONI

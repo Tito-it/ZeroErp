@@ -659,7 +659,7 @@ più gruppi trattenuti dallo stesso lotto, l'IVA nel builder dell'articolo, la v
 variazione globale nel contratto, la fattura con un'utility diversa da quella del cliente.
 
 La bolla generata da un ordine e il reso scritto a mano, ripetuti in tutta la suite, sono un tema suo:
-[brief-db-pgtap-bolla-e-reso-costruiti](brief-db-pgtap-bolla-e-reso-costruiti.md).
+[brief-db-pgtap-bolla-e-reso-costruiti](../work-done/brief-db-pgtap-bolla-e-reso-costruiti.md) (chiuso il 2026-10-25; il reso prosegue in [brief-db-pgtap-reso-costruito](brief-db-pgtap-reso-costruito.md)).
 
 **Richiesta al team BE**, aggiornata: (1) le due sonde `richiedi_db_provvisto` sulle firme finali (sopra);
 (2) dopo l'apply di `-35`, il DB può sollevare `E_PIPELINE_LOTTO_CRITICAL` anche dall'UPDATE dello stato

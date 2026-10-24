@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (DDT emesso e consegnato); restano scritti a mano il DDT in bozza senza ordine, gli ordini in bozza/confermato e i contratti (sono il caso: le porte delle righe per stato).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
@@ -34,10 +35,10 @@
 --   gemello test-delete-righe-documento-bozza-v1: un documento «che nasce
 --   fuori bozza» NON puo' piu' ricevere righe, perche' e' esattamente la
 --   scorciatoia che il BB chiude. Il DDT emesso si fabbrica quindi nel verso
---   vero — DRAFT, righe, causale, indirizzo, transizione — con la ricetta di
---   test-fn-partite-merce-chiusura-v1 (fn_genera_ddt_da_ordine + tre UPDATE
---   di stato). Il cliente lo fabbricano i builder di dbops: su un database
---   da zero anagrafiche.* e' vuoto.
+--   vero — DRAFT, righe, causale, indirizzo, transizione — col builder
+--   dbops.fn_pgtap_crea_ddt_da_ordine (rev 2026-10-25). Il cliente lo
+--   fabbricano i builder di dbops: su un database da zero anagrafiche.* e'
+--   vuoto.
 --
 -- ⭐ IL CASO CHE DA' IL TITOLO (test 8): una riga di DDT consegnato, con
 --   un'attivita' di commessa ALLOCATA sul suo segmento, e attivo = false.
@@ -209,22 +210,17 @@ SELECT
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO'     AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO'    AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_consegnato_id,
   (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno='DRAFT'   ORDER BY s.id LIMIT 1)              AS stato_con_draft_id,
   (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno='ATTIVO'  ORDER BY s.id LIMIT 1)              AS stato_con_attivo_id,
   (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno='CESSATO' ORDER BY s.id LIMIT 1)              AS stato_con_cessato_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo ORDER BY s.id LIMIT 1)           AS sorgente_root_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                           AS tipo_doc_fiscale_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' ORDER BY c.id LIMIT 1)                        AS causale_vendita_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')                                                   AS tipo_ind_con_id
+  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                           AS tipo_doc_fiscale_id
 FROM tmp_cli_lr c;
 
 CREATE TEMP TABLE tmp_fix(chiave text PRIMARY KEY, id bigint);
 CREATE TEMP TABLE tmp_esito(caso text PRIMARY KEY, sqlstate text, messaggio text, righe int);
 
--- Un ordine (DRAFT o CONFERMATO) con una riga.
+-- Un ordine (DRAFT o CONFERMATO) con una riga: e' il caso dei test 12-14.
 CREATE OR REPLACE FUNCTION pg_temp.lr_mk_ordine(p_stato_id bigint, p_qta numeric)
 RETURNS TABLE(ordine_id bigint, ordine_riga_id bigint) AS $$
 DECLARE r RECORD; v_ord bigint; v_orr bigint;
@@ -251,35 +247,6 @@ BEGIN
               (SELECT s.codice_interno FROM config.stati_doc_ordini s WHERE s.id = p_stato_id));
   END IF;
   RETURN QUERY SELECT v_ord, v_orr;
-END $$ LANGUAGE plpgsql;
-
--- Un DDT da ordine (nasce in DRAFT con la riga e il fulfillment), portato
--- allo stato chiesto nel verso vero: causale, indirizzo, transizioni.
-CREATE OR REPLACE FUNCTION pg_temp.lr_mk_ddt_da_ordine(p_ordine_id bigint, p_ordine_riga_id bigint,
-                                                       p_qta numeric, p_fino_a text)
-RETURNS TABLE(ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
-DECLARE r RECORD; v_ddt bigint; v_uid uuid; v_ddtr bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_lr;
-  v_ddt := vendite.fn_genera_ddt_da_ordine(
-      p_ordine_id,
-      jsonb_build_array(jsonb_build_object('ordine_riga_id', p_ordine_riga_id, 'qta_da_evadere', p_qta)),
-      DATE '2026-08-10');
-  IF p_fino_a <> 'DRAFT' THEN
-    INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-    VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-    UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id  WHERE id = v_ddt;
-    UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_emesso_id WHERE id = v_ddt;
-  END IF;
-  IF p_fino_a IN ('SPEDITO', 'CONSEGNATO') THEN
-    UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_spedito_id WHERE id = v_ddt;
-  END IF;
-  IF p_fino_a = 'CONSEGNATO' THEN
-    UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_consegnato_id WHERE id = v_ddt;
-  END IF;
-  SELECT d.uid INTO v_uid  FROM vendite.ddt d        WHERE d.id = v_ddt;
-  SELECT dr.id INTO v_ddtr FROM vendite.ddt_righe dr WHERE dr.ddt_id = v_ddt ORDER BY dr.id LIMIT 1;
-  RETURN QUERY SELECT v_ddt, v_uid, v_ddtr;
 END $$ LANGUAGE plpgsql;
 
 -- Un contratto con una riga AGGIUNTA, portato allo stato chiesto (DRAFT ->
@@ -355,14 +322,17 @@ BEGIN
   RETURNING id INTO v_id;
   INSERT INTO tmp_fix VALUES ('ddt_bozza_riga', v_id);
 
-  -- DDT EMESSO da ordine, con fulfillment (test 7, 9, 10)
-  SELECT * INTO o FROM pg_temp.lr_mk_ordine(r.stato_ord_conf_id, 5);
-  SELECT * INTO d FROM pg_temp.lr_mk_ddt_da_ordine(o.ordine_id, o.ordine_riga_id, 5, 'EMESSO');
+  -- DDT EMESSO da ordine, con fulfillment (test 7, 9, 10): dal builder,
+  -- una riga di 5 a 20 del cliente e dell'articolo del file.
+  SELECT * INTO d FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgtap_lock_righe', 'EMESSO',
+      p_billing_account_id => r.billing_account_id, p_articolo_id => r.articolo_id,
+      p_quantita => 5, p_prezzo => 20);
   INSERT INTO tmp_fix VALUES ('ddt_emesso', d.ddt_id), ('ddt_emesso_riga', d.ddt_riga_id);
 
-  -- DDT CONSEGNATO da ordine, per il caso ALLOCATA (test 8)
-  SELECT * INTO o FROM pg_temp.lr_mk_ordine(r.stato_ord_conf_id, 3);
-  SELECT * INTO d FROM pg_temp.lr_mk_ddt_da_ordine(o.ordine_id, o.ordine_riga_id, 3, 'CONSEGNATO');
+  -- DDT CONSEGNATO da ordine, per il caso ALLOCATA (test 8): una riga di 3 a 20.
+  SELECT * INTO d FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgtap_lock_righe', 'CONSEGNATO',
+      p_billing_account_id => r.billing_account_id, p_articolo_id => r.articolo_id,
+      p_quantita => 3, p_prezzo => 20);
   INSERT INTO tmp_fix VALUES ('ddt_cons', d.ddt_id), ('ddt_cons_riga', d.ddt_riga_id);
 
   -- Ordine in bozza e ordine confermato (test 12-14)

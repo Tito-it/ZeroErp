@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (in bozza), l'emissione da dbops.fn_pgtap_porta_a_stato; niente resta scritto a mano.
 -- pgTAP test per Zero ERP
 -- Test: script.fn_available_actions_ddt — blocco pdf {mode, allow_allegati}
 --       (bottone PDF data-driven via capabilities — dominio PILOTA)
@@ -64,19 +65,11 @@ CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP p
 CREATE TEMP TABLE tmp_refs_pdf AS
 SELECT
   m.billing_account_id,
-  m.cliente_soggetto_ruolo_id AS soggetto_ruolo_id,
   dbops.fn_pgtap_crea_articolo('PGTAP-PDF-CAPAB', false) AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  m.emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s
     WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
-  (SELECT s.id FROM config.stati_doc_ordini s                           -- rev 2026-10-08 (D-1)
-    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)      AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt s
-    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)     AS stato_ddt_emesso_id,
-  (SELECT ct.id FROM config.causali_trasporto ct
-    WHERE ct.codice = 'VENDITA' ORDER BY ct.id LIMIT 1)                               AS causale_vendita_id
+    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)     AS stato_ddt_emesso_id
 FROM _m m;
 
 SELECT ok(
@@ -85,39 +78,16 @@ SELECT ok(
    FROM tmp_refs_pdf),
   '1) riferimenti minimi disponibili');
 
--- Ordine CONFERMATO + riga, poi evasione full -> DDT in DRAFT.
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
---   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
---   righe non si scrivono piu' (20261008-90).
-CREATE TEMP TABLE tmp_ord_pdf AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
-         r.valuta_id, DATE '2026-07-05', 'SPEDITO', r.emittente_fiscale_id, false,
-         jsonb_build_object('test_scope','pgtap_pdf_capability')
-  FROM tmp_refs_pdf r
-  WHERE r.billing_account_id IS NOT NULL
-  RETURNING id)
-SELECT * FROM ins;
-
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'Riga pdf capability',
-       5.000000, 5.000000, 10.000000, r.iva_id, true, false,
-       jsonb_build_object('test_scope','pgtap_pdf_capability')
-FROM tmp_ord_pdf o, tmp_refs_pdf r
-WHERE EXISTS (SELECT 1 FROM tmp_ord_pdf);
-
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_pdf o;
-END $x$;
-
+-- La bolla in bozza dal builder: ordine del cliente del file (trigger SPEDITO,
+-- una riga di 5 a 10), evaso tutto. Causale e CON li scrive gia' il builder:
+-- servono all'emissione del test 5, e in bozza il pdf non li guarda.
 CREATE TEMP TABLE tmp_ddt_pdf AS
-SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_pdf)) AS ddt_id
- WHERE EXISTS (SELECT 1 FROM tmp_ord_pdf);
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgtap_pdf_capability', 'DRAFT',
+         p_billing_account_id   => (SELECT billing_account_id FROM tmp_refs_pdf),
+         p_articolo_id          => (SELECT articolo_id FROM tmp_refs_pdf),
+         p_quantita             => 5,
+         p_prezzo               => 10,
+         p_fatturazione_trigger => 'SPEDITO');
 
 -- 2) DDT DRAFT -> pdf.mode = PREVIEW
 SELECT ok(
@@ -139,23 +109,9 @@ SELECT ok(
   '4) blocco pdf presente con chiavi mode + allow_allegati');
 
 -- 5) DDT EMESSO -> pdf.mode = ARCHIVE (proiezione segue lo stato)
--- Causale di trasporto obbligatoria all'emissione dal 2026-07-18
--- (step 5b / DL-28, trg_ddt_a10_guard_causale_emissione_upd): con causale
--- VENDITA (fatturabile) serve anche il prezzo risolvibile, garantito dalla
--- riga d'ordine (prezzo 10) ereditata via fulfillment.
-UPDATE vendite.ddt SET causale_trasporto_id = (SELECT causale_vendita_id FROM tmp_refs_pdf)
- WHERE id = (SELECT ddt_id FROM tmp_ddt_pdf);
-
--- Guard indirizzi obbligatori (DDT): il CON e' obbligatorio all'emissione
--- (trg_ddt_a10_guard_indirizzi_obbligatori_upd).
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-SELECT (SELECT ddt_id FROM tmp_ddt_pdf),
-       (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON'),
-       '{"display":"CON test"}'::jsonb
-ON CONFLICT DO NOTHING;
-
-UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_refs_pdf)
- WHERE id = (SELECT ddt_id FROM tmp_ddt_pdf);
+-- L'emissione per la matrice, sotto i guard veri (causale, CON, prezzo dalla
+-- riga d'ordine ereditato via fulfillment).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_ddt_pdf), 'EMESSO');
 
 SELECT ok(
   (script.fn_available_actions_ddt((SELECT ddt_id FROM tmp_ddt_pdf))->'pdf'->>'mode') = 'ARCHIVE'

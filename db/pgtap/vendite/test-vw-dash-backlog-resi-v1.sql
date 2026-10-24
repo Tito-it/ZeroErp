@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (pg_temp.mk_partita ritirata); il reso (pg_temp.mk_reso) e la fatturazione restano scritti a mano (giro 2, e il caso del test).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente (RESO_VENDITA).
 -- pgTAP test per Zero ERP
@@ -67,65 +68,19 @@ END $az$;
 -- ============================================================
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  -- ⛔ rev 2026-10-13: BA, utility, istanza, ruolo del cliente e articolo dal
+  -- ⛔ rev 2026-10-13: BA, utility, istanza e articolo dal
   --   mondo costruito (prima: il primo BA del database e l'ultimo articolo).
   (SELECT m.billing_account_id FROM tmp_mondo m)                         AS billing_account_id,
   (SELECT m.utility_id FROM tmp_mondo m)                                 AS utility_id,
   (SELECT m.istanza_utility_id FROM tmp_mondo m)                         AS istanza_utility_id,
-  (SELECT m.cliente_soggetto_ruolo_id FROM tmp_mondo m)                  AS soggetto_ruolo_id,
   (SELECT t.id FROM tmp_art t)                                           AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT m.emittente_fiscale_id FROM tmp_mondo m)                      AS emittente_fiscale_id,  -- rev 2026-10-13: l'azienda del mondo
-  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata d'ordine nasce DRAFT,
-  --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
-  --   righe non si scrivono piu' (20261008-90).
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo LIMIT 1) AS stato_ord_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo LIMIT 1)        AS sorgente_root_id,
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
-  -- causale obbligatoria all'emissione (step 5b); VENDITA = unica fatturabile
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id;
-
-CREATE OR REPLACE FUNCTION pg_temp.mk_partita()
-RETURNS TABLE(ordine_id bigint, ordine_uid uuid, ordine_riga_id bigint,
-              ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
-DECLARE r RECORD; v_ord bigint; v_ord_uid uuid; v_orr bigint; v_ddt bigint; v_ddt_uid uuid; v_ddtr bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
-          DATE '2026-07-15', 'CONSEGNATO', r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_backlog_resi'))
-  RETURNING id, uid INTO v_ord, v_ord_uid;
-  UPDATE vendite.ordini SET fatturazione_trigger = 'CONSEGNATO' WHERE id = v_ord;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'Riga backlog resi', 10, 10, 25, r.iva_id, true, false,
-          jsonb_build_object('test_scope','pgtap_backlog_resi'))
-  RETURNING id INTO v_orr;
-  -- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90).
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-  v_ddt := vendite.fn_genera_ddt_da_ordine(v_ord);
-  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-  VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  UPDATE vendite.ddt SET causale_trasporto_id=r.causale_vendita_id  WHERE id=v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_emesso_id     WHERE id=v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id    WHERE id=v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_consegnato_id WHERE id=v_ddt;
-  SELECT d.uid INTO v_ddt_uid FROM vendite.ddt d WHERE d.id=v_ddt;
-  SELECT dr.id INTO v_ddtr FROM vendite.ddt_righe dr WHERE dr.ddt_id=v_ddt LIMIT 1;
-  RETURN QUERY SELECT v_ord, v_ord_uid, v_orr, v_ddt, v_ddt_uid, v_ddtr;
-END $$ LANGUAGE plpgsql;
+  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id;
 
 -- Ritorna il RESO creato (qui serve la testata: la grana backlog e' reso x motivo).
 CREATE OR REPLACE FUNCTION pg_temp.mk_reso(p_ddt_riga bigint, p_ddt_uid uuid, p_qta numeric, p_tipo bigint)
@@ -191,13 +146,20 @@ END $$ LANGUAGE plpgsql;
 -- FIXTURE
 --   A: reso 3 PER RICONSEGNA (merce non fatturata) -> coda ri-consegna
 --   B: fatturata 10 + reso 3 A CREDITO -> accredito dovuto 3
+--   La partita: ordine 10 @25 trigger CONSEGNATO, bolla CONSEGNATA dal builder.
 -- ============================================================
-CREATE TEMP TABLE tmp_a AS SELECT * FROM pg_temp.mk_partita();
+CREATE TEMP TABLE tmp_a AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('backlog resi A', 'CONSEGNATO',
+    (SELECT billing_account_id FROM tmp_refs), p_quantita => 10, p_prezzo => 25,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'CONSEGNATO');
 CREATE TEMP TABLE tmp_a_reso AS
 SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_a), (SELECT ddt_uid FROM tmp_a), 3,
                        (SELECT tipo_riconsegna_id FROM tmp_refs)) AS reso_id;
 
-CREATE TEMP TABLE tmp_b AS SELECT * FROM pg_temp.mk_partita();
+CREATE TEMP TABLE tmp_b AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('backlog resi B', 'CONSEGNATO',
+    (SELECT billing_account_id FROM tmp_refs), p_quantita => 10, p_prezzo => 25,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'CONSEGNATO');
 SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_b)::text, (SELECT ddt_riga_id FROM tmp_b)), 10);
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));

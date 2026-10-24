@@ -5,6 +5,12 @@
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: legge pg_proc delle funzioni del framework automazioni,
 --   che appartengono al migratore; nessuna scrittura.
+-- pgtap-contesto: escluso — il file non legge tabelle con RLS: interroga il
+--   catalogo (pg_proc) e una funzione pura sul codice SQLSTATE. Un contesto
+--   operatore non cambierebbe nessuna risposta.
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti §6.4): il preambolo
+--   dichiara il contesto escluso e richiude i vincoli differiti, come chiede
+--   scripts/guardrail_pgtap_preambolo.py; i test non cambiano.
 --
 -- Test: un guasto dell'ambiente dentro un'automazione esce col suo SQLSTATE
 --   (script.fn_sqlstate_di_ambiente e i gestori WHEN others del framework)
@@ -34,6 +40,11 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: in testa, come in ogni file. Qui nessuna scrittura li
+--   farebbe scattare (la tabella temporanea e' del test), ma la riga e' il
+--   contratto del preambolo: chi aggiungera' una fixture la trova gia' al suo posto.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(6);
 

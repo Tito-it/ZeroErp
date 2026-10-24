@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano l'ordine a DUE righe della partita D (ordine speciale: la bolla dal builder con p_ordine_id), il reso (giro 2) e la commessa con la fattura, che sono il caso del test.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_annulla_reso — la guardia dell'accredito
@@ -126,18 +127,13 @@ SELECT
   --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
   --   righe non si scrivono piu' (20261008-90).
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1)     AS stato_ord_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO'     AND s.attivo ORDER BY s.id LIMIT 1)        AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO'    AND s.attivo ORDER BY s.id LIMIT 1)        AS stato_ddt_spedito_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo ORDER BY s.id LIMIT 1)        AS stato_ddt_consegnato_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo ORDER BY s.id LIMIT 1)            AS sorgente_ddt_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA'    AND s.attivo ORDER BY s.id LIMIT 1)            AS sorgente_root_id,
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo ORDER BY s.id LIMIT 1)            AS stato_reso_draft_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo ORDER BY t.id LIMIT 1)   AS tipo_reso_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                               AS tipo_doc_fiscale_id,
   (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_fatt_draft_id,
-  script.fn_pgtap_registro_fattura()                         AS registro_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' ORDER BY c.id LIMIT 1)                            AS causale_vendita_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')                                                       AS tipo_ind_con_id
+  script.fn_pgtap_registro_fattura()                         AS registro_id
 -- ⛔ rev 2026-10-13: il BA e' quello del mondo costruito, non il primo del database.
 FROM tmp_mondo_acc m
 JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id;
@@ -149,11 +145,13 @@ JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id;
 --    perimetro dal padre non lo trova, negando fail-closed.
 -- ============================================================
 
--- Una partita consegnata, con p_n_righe righe di ordine (e quindi di DDT).
-CREATE OR REPLACE FUNCTION pg_temp.agr_mk_partita(p_qta numeric, p_prezzo numeric,
-                                                  p_n_righe integer DEFAULT 1)
-RETURNS TABLE(ordine_id bigint, ddt_id bigint, ddt_uid uuid) AS $$
-DECLARE r RECORD; v_ord bigint; v_ddt bigint; v_uid uuid; i integer;
+-- Le partite a una riga sono la bolla CONSEGNATA del builder
+-- dbops.fn_pgtap_crea_ddt_da_ordine. Qui solo l'ordine a p_n_righe righe
+-- (la partita D, test 8), confermato: la bolla poi dal builder (p_ordine_id).
+CREATE OR REPLACE FUNCTION pg_temp.agr_mk_ordine(p_qta numeric, p_prezzo numeric,
+                                                 p_n_righe integer)
+RETURNS bigint AS $$
+DECLARE r RECORD; v_ord bigint; i integer;
 BEGIN
   SELECT * INTO r FROM tmp_refs_agr;
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
@@ -172,17 +170,7 @@ BEGIN
   END LOOP;
   -- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90).
   PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-
-  v_ddt := vendite.fn_genera_ddt_da_ordine(v_ord);
-  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-  VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id      WHERE id = v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_emesso_id     WHERE id = v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_spedito_id    WHERE id = v_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_consegnato_id WHERE id = v_ddt;
-
-  SELECT d.uid INTO v_uid FROM vendite.ddt d WHERE d.id = v_ddt;
-  RETURN QUERY SELECT v_ord, v_ddt, v_uid;
+  RETURN v_ord;
 END $$ LANGUAGE plpgsql;
 
 -- ⚠️ ORDER BY esplicito: la n-esima riga del DDT va scelta, non pescata.
@@ -329,8 +317,15 @@ SELECT vendite.fn_link_commessa_sorgente(
   p_meta             => '{}'::jsonb);
 
 -- ── PARTITA A: consegnati 10 a 25, fatturati 10, resi 3 -> accreditabile ──
-CREATE TEMP TABLE tmp_pa AS SELECT * FROM pg_temp.agr_mk_partita(10, 25);
-CREATE TEMP TABLE tmp_pa_riga AS SELECT pg_temp.agr_ddt_riga((SELECT ddt_id FROM tmp_pa), 1) AS ddt_riga_id;
+CREATE TEMP TABLE tmp_pa AS
+SELECT b.ordine_id, b.ddt_id, b.ddt_uid, b.ddt_riga_id
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('annulla reso gate',
+           p_billing_account_id   => (SELECT billing_account_id FROM tmp_refs_agr),
+           p_quantita             => 10,
+           p_prezzo               => 25,
+           p_articolo_id          => (SELECT articolo_id FROM tmp_refs_agr),
+           p_fatturazione_trigger => 'CONSEGNATO') b;
+CREATE TEMP TABLE tmp_pa_riga AS SELECT ddt_riga_id FROM tmp_pa;
 CREATE TEMP TABLE tmp_pa_fatt AS
 SELECT pg_temp.agr_fattura(
     script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pa)::text, (SELECT ddt_riga_id FROM tmp_pa_riga)),
@@ -412,8 +407,15 @@ SELECT is(
 --    Partita B a parte: due resi sulla stessa riga di DDT si contendono il
 --    guard sull'over-return, che conta anche le bozze.
 -- ============================================================
-CREATE TEMP TABLE tmp_pb AS SELECT * FROM pg_temp.agr_mk_partita(10, 25);
-CREATE TEMP TABLE tmp_pb_riga AS SELECT pg_temp.agr_ddt_riga((SELECT ddt_id FROM tmp_pb), 1) AS ddt_riga_id;
+CREATE TEMP TABLE tmp_pb AS
+SELECT b.ordine_id, b.ddt_id, b.ddt_uid, b.ddt_riga_id
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('annulla reso gate',
+           p_billing_account_id   => (SELECT billing_account_id FROM tmp_refs_agr),
+           p_quantita             => 10,
+           p_prezzo               => 25,
+           p_articolo_id          => (SELECT articolo_id FROM tmp_refs_agr),
+           p_fatturazione_trigger => 'CONSEGNATO') b;
+CREATE TEMP TABLE tmp_pb_riga AS SELECT ddt_riga_id FROM tmp_pb;
 CREATE TEMP TABLE tmp_reso_b AS SELECT pg_temp.agr_new_reso((SELECT ddt_uid FROM tmp_pb)) AS reso_id;
 CREATE TEMP TABLE tmp_reso_b_riga AS
 SELECT pg_temp.agr_add_riga((SELECT reso_id FROM tmp_reso_b), 1,
@@ -431,8 +433,15 @@ SELECT lives_ok(
 --    quindi su una bozza la EXISTS non puo' trovare nulla — e l'annullo da
 --    DRAFT, che non ha effetti da stornare, deve restare quello di sempre.
 -- ============================================================
-CREATE TEMP TABLE tmp_pc AS SELECT * FROM pg_temp.agr_mk_partita(10, 25);
-CREATE TEMP TABLE tmp_pc_riga AS SELECT pg_temp.agr_ddt_riga((SELECT ddt_id FROM tmp_pc), 1) AS ddt_riga_id;
+CREATE TEMP TABLE tmp_pc AS
+SELECT b.ordine_id, b.ddt_id, b.ddt_uid, b.ddt_riga_id
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('annulla reso gate',
+           p_billing_account_id   => (SELECT billing_account_id FROM tmp_refs_agr),
+           p_quantita             => 10,
+           p_prezzo               => 25,
+           p_articolo_id          => (SELECT articolo_id FROM tmp_refs_agr),
+           p_fatturazione_trigger => 'CONSEGNATO') b;
+CREATE TEMP TABLE tmp_pc_riga AS SELECT ddt_riga_id FROM tmp_pc;
 CREATE TEMP TABLE tmp_reso_c AS SELECT pg_temp.agr_new_reso((SELECT ddt_uid FROM tmp_pc)) AS reso_id;
 CREATE TEMP TABLE tmp_reso_c_riga AS
 SELECT pg_temp.agr_add_riga((SELECT reso_id FROM tmp_reso_c), 1,
@@ -453,7 +462,11 @@ SELECT is(
 --    seconda riga di reso non ha (e non puo' avere) accredito. La guardia
 --    deve comunque rifiutare, perche' la sua unita' e' il DOCUMENTO.
 -- ============================================================
-CREATE TEMP TABLE tmp_pd AS SELECT * FROM pg_temp.agr_mk_partita(10, 25, 2);
+CREATE TEMP TABLE tmp_pd_ordine AS SELECT pg_temp.agr_mk_ordine(10, 25, 2) AS ordine_id;
+CREATE TEMP TABLE tmp_pd AS
+SELECT b.ordine_id, b.ddt_id, b.ddt_uid
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('annulla reso gate',
+           p_ordine_id => (SELECT ordine_id FROM tmp_pd_ordine)) b;
 CREATE TEMP TABLE tmp_pd_righe AS
 SELECT pg_temp.agr_ddt_riga((SELECT ddt_id FROM tmp_pd), 1) AS riga1,
        pg_temp.agr_ddt_riga((SELECT ddt_id FROM tmp_pd), 2) AS riga2;
