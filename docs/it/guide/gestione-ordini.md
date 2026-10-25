@@ -389,14 +389,22 @@ DRAFT ──(conferma)──▶ CONFERMATO ◀──(bolle)──▶ PARZIALMENT
   └──(annulla)──▶ ANNULLATO ◀──(annulla)──┘   (terminale)
 ```
 
-- **DRAFT → CONFERMATO** (*conferma*): richiede **almeno una riga**.
+- **DRAFT → CONFERMATO** (*conferma*): è l'**emissione** dell'ordine e si fa solo da
+  «Emetti», che produce numero e PDF insieme. Richiede **almeno una riga** e l'azione
+  `emetti_ordine`.
 - **DRAFT → ANNULLATO** (*annulla*): sempre consentito — una bozza non ha nulla da
   evadere.
 - **CONFERMATO ↔ PARZIALMENTE_EVASO ↔ EVASO** (*automatiche*): le muove il database
   dalle bolle. Non sono pulsanti: generare, correggere o ritirare una bolla, o un
   reso, riproietta lo stato dell'ordine.
-- **CONFERMATO → ANNULLATO** (*annulla*): consentito. Se l'ordine ha legami con
-  altri documenti, l'annullo chiede una conferma (§4.3).
+- **CONFERMATO → ANNULLATO** (*annulla*): consentito a chi ha l'azione
+  `emetti_ordine`. Se l'ordine ha legami con altri documenti, l'annullo chiede una
+  conferma (§4.3).
+
+Ogni cambio di stato passa dal verbo dell'ordine,
+[`vendite.fn_cambia_stato_ordine`](/dbzero/vendite/funzioni/fn_cambia_stato_ordine)
+(l'annullo dal suo verbo d'annullo, che lo chiama); le transizioni automatiche le
+scrive la proiezione dell'evasione. Nessun'altra strada scrive lo stato.
 
 > **Il push a commessa non è una transizione.** Il push crea le entità a valle
 > (righe di commessa, poi attività fatturabili) e **non tocca lo stato** dell'ordine.
@@ -429,7 +437,8 @@ Le regole di transizione valgono a **due livelli**:
 
 1. **In interfaccia**: la funzione `fn_available_actions_ordine` legge la matrice e
    restituisce solo le azioni davvero disponibili — così i pulsanti che non hanno
-   senso semplicemente non compaiono.
+   senso semplicemente non compaiono, e chi non ha `emetti_ordine` non vede
+   «Conferma» né l'annullo di un ordine confermato.
 2. **Nel database**: il trigger `trgfn_ordini_guard_transizione` rifiuta qualsiasi
    cambio di stato non previsto (`E_ORDINE_TRANSIZIONE_NON_AMMESSA`) e blocca la
    conferma di un ordine senza righe (`E_ORDINE_CONFERMA_SENZA_RIGHE`).

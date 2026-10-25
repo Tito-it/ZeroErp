@@ -26,6 +26,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_doc_fiscale_abortito_attivo |  |
 | CHECK | chk_stati_doc_fiscale_fase |  |
 | CHECK | chk_stati_doc_fiscale_iniziale_attivo |  |
 | PRIMARY KEY | pk_stati_doc_fiscale | id |
@@ -37,6 +38,7 @@
 |------|-------------|
 | ix_stati_doc_fiscale_attivo | `CREATE INDEX ix_stati_doc_fiscale_attivo ON config.stati_doc_fiscale USING btree (attivo)` |
 | pk_stati_doc_fiscale | `CREATE UNIQUE INDEX pk_stati_doc_fiscale ON config.stati_doc_fiscale USING btree (id)` |
+| uq_stati_doc_fiscale_abortito | `CREATE UNIQUE INDEX uq_stati_doc_fiscale_abortito ON config.stati_doc_fiscale USING btree (is_abortito) WHERE is_abortito` |
 | uq_stati_doc_fiscale_chiude_lotto_true | `CREATE UNIQUE INDEX uq_stati_doc_fiscale_chiude_lotto_true ON config.stati_doc_fiscale USING btree ((1)) WHERE (chiude_lotto IS TRUE)` |
 | uq_stati_doc_fiscale_codice | `CREATE UNIQUE INDEX uq_stati_doc_fiscale_codice ON config.stati_doc_fiscale USING btree (codice)` |
 | uq_stati_doc_fiscale_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_fiscale_codice_interno ON config.stati_doc_fiscale USING btree (codice_interno)` |

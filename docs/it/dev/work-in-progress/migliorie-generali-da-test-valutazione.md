@@ -1050,12 +1050,14 @@ Trovato il 2026-10-13 nel giro del `20261013-53` (i trigger della bolla che legg
 girano dopo il normalize). Le regole dell'uscita dalla bozza stanno tutte sul passaggio di stato
 (`BEFORE UPDATE`), su ogni famiglia: un `INSERT` con lo stato già avanti le salta. Provato sulla
 bolla: nasce EMESSA e numerata con zero righe, e dopo le righe non si aggiungono più. Brief
-[brief-db-documento-nasce-nello-stato-iniziale.md](brief-db-documento-nasce-nello-stato-iniziale.md).
+[brief-db-documento-nasce-nello-stato-iniziale.md](../work-done/brief-db-documento-nasce-nello-stato-iniziale.md).
 📝 Aperto, non iniziato: decisioni N-1…N-3 di Tid. Al 2026-10-23 il vincolo verso la grammatica
 unica è sciolto (il lotto 0 è chiuso il 19-10, e dal 2a le testate parlano i codici di
 `config.sorgenti`): il cantiere aspetta solo le decisioni.
 ➡️ **2026-10-24: confluito** in [brief-modello-documento-vendita.md](brief-modello-documento-vendita.md)
 §4-bis (M-6 di Tid): le decisioni N-1…N-3 si prendono là, nel cantiere del modello.
+✅ **2026-10-25: chiuso.** Costruito nel primo giro di quel brief (`20261024-07` … `-25`, §4-quinquies);
+il brief d'origine è archiviato in `work-done/` (V-3 di Tid, §8.11).
 
 ---
 
@@ -1296,9 +1298,10 @@ rossi in CI.
       BE/FE §9, §10.8, §11.6; collaudo di Tid).
 * [ ] **D31** — canone, orario e consumo del contratto in commessa: brief
       `brief-db-contratto-righe-periodiche-in-commessa` (aperto il 2026-10-13, non iniziato; decisioni G-1…G-4).
-* [ ] **D32** — un documento nasce nel suo stato iniziale: brief
-      `brief-db-documento-nasce-nello-stato-iniziale` (aperto il 2026-10-13, non iniziato), confluito il 2026-10-24
-      in `brief-modello-documento-vendita` §4-bis (decisioni N-1…N-3).
+* [x] **D32** — un documento nasce nel suo stato iniziale: brief
+      `brief-db-documento-nasce-nello-stato-iniziale` (aperto il 2026-10-13), confluito il 2026-10-24
+      in `brief-modello-documento-vendita` §4-bis (decisioni N-1…N-3), costruito nel primo giro
+      (`20261024-07` … `-25`), archiviato il 2026-10-25.
 * [x] **D33** — un cliente manuale per soggetto e utility: brief
       `work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility` — chiuso e archiviato il 2026-10-15
       (DB `20261014-08 … -20`; BE §6-bis; smoke clienti verde).

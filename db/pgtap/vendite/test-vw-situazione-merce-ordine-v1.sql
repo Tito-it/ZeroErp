@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-modello-documento-vendita §9, giro 7): l'annullo dell'ordine H (test 13) non e' piu' un UPDATE diretto dello stato, che la porta ferma (E_DOC_STATO_SOLO_DAL_VERBO): passa dal verbo d'annullo vendite.fn_annulla_ordine, con emetti_ordine concessa all'utente del contesto (l'annullo di un confermato la chiede). Attese invariate.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): gli ordini senza bolla (A, G, H) da dbops.fn_pgtap_crea_ordine_con_righe in pg_temp.mk_ordine (lo stato per parametro: ritirata la copia pg_temp.mk_ordine_stato); restano a mano l'annullo di H (il percorso del 13) e l'attivita' del kit di F (il caso del 10).
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso, la ri-consegna da dbops.fn_pgtap_crea_ddt_riconsegna (tutto il reso, consegnata); l'azione conferma_reso la concede il builder.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (le spedizioni parziali con p_qta_da_evadere e p_ordine_id); restano a mano gli ordini SENZA bolla (A, G, H: il caso del 4/5/12/13), la bolla di ri-consegna (indirizzo e causale; gli stati per dbops.fn_pgtap_porta_a_stato) e il reso (giro 2).
@@ -357,10 +358,10 @@ SELECT results_eq(
 --    SEMPRE: nessuna azione avrebbe potuto azzerarla.
 -- ============================================================
 CREATE TEMP TABLE tmp_h AS SELECT * FROM pg_temp.mk_ordine(7);
-UPDATE vendite.ordini
-   SET stato_doc_ordine_id = (SELECT s.id FROM config.stati_doc_ordini s
-                               WHERE s.codice_interno = 'ANNULLATO' AND s.attivo IS TRUE)
- WHERE id = (SELECT ordine_id FROM tmp_h);
+-- rev 2026-10-25 (giro 7): l'annullo dal verbo d'annullo (la porta ferma
+--   l'UPDATE diretto); l'annullo di un confermato chiede emetti_ordine.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_ordine');
+SELECT vendite.fn_annulla_ordine((SELECT ordine_id FROM tmp_h));
 
 SELECT results_eq(
   $q$SELECT ordinato, partite_merce, da_spedire, stato::text

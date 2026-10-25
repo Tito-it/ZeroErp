@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-modello-documento-vendita §9): l'ordine e' portato al modello. Test 8:
+--   il documento non ancora portato e' ora la fattura (portata per ultima fra i documenti della
+--   mappa; prima era l'ordine). Test 9 e 10: la porta anche sull'ordine, quattro testate (attese
+--   cambiate: la lista dichiarata e il conteggio 3 -> 4).
 -- pgTAP test per Zero ERP
 --
 -- Test: il verbo comune di stato e la porta (bolla e reso)
@@ -48,7 +52,7 @@
 --   6) il lettore: DRAFT->EMESSO manuale con emetti_ddt; CONSEGNATO->RESO di processo
 --   7) il lettore: un passaggio fuori matrice -> nessuna riga
 --   8) il lettore su un documento non ancora portato al modello: chiamata non valida
---   9) montaggio della porta: bolla, reso e preventivo (giro 6), e nessun'altra testata
+--   9) montaggio della porta: bolla, reso, preventivo (giro 6) e ordine (giro 7), e nessun'altra testata
 --  10) montaggio della porta: BEFORE UPDATE OF la colonna di stato della mappa
 --  11) le due porte del registro ritirate (E_DDT_/E_RESO_STATO_SOLO_DA_VERBO
 --      obsoleti, nessuna funzione li solleva piu')
@@ -161,9 +165,11 @@ SELECT is(
     'il lettore: un passaggio che la matrice non ha (DRAFT->CONSEGNATO) non ha righe'
 );
 
--- 8) Un documento non ancora portato al modello (la sua matrice non ha la colonna)
+-- 8) Un documento non ancora portato al modello (la sua matrice non ha la colonna).
+--    La fattura: nell'ordine dei giri e' fra gli ultimi (Tid, 2026-10-25), cosi' il
+--    test non cambia a ogni giro.
 SELECT throws_like(
-    $$SELECT * FROM script.fn_doc_passaggio('vendite.ordini'::regclass, 1, 2)$$,
+    $$SELECT * FROM script.fn_doc_passaggio('vendite.fatture'::regclass, 1, 2)$$,
     'Chiamata non valida a script.fn_doc_passaggio%',
     'il lettore su un documento non ancora portato al modello: chiamata non valida'
 );
@@ -182,8 +188,8 @@ SELECT is(
     (SELECT array_agg(tab::oid ORDER BY tab::oid) FROM t_porta),
     (SELECT array_agg(x::oid ORDER BY x::oid)
        FROM unnest(ARRAY['vendite.ddt'::regclass, 'vendite.resi'::regclass,
-                         'vendite.preventivi'::regclass]) x),
-    'la porta e'' montata su bolla, reso e preventivo, e su nessun''altra testata'
+                         'vendite.preventivi'::regclass, 'vendite.ordini'::regclass]) x),
+    'la porta e'' montata su bolla, reso, preventivo e ordine, e su nessun''altra testata'
 );
 
 SELECT is(
@@ -193,7 +199,7 @@ SELECT is(
       WHERE p.def LIKE '%BEFORE UPDATE OF ' || m.colonna_stato || ' ON %'
         AND p.def LIKE '%FOR EACH ROW%'
         AND p.nome LIKE 'trg\_%\_a05\_stato\_solo\_dal\_verbo\_upd'),
-    3,
+    4,
     'la porta: BEFORE UPDATE OF la colonna di stato della mappa, per riga, fascia _a05_'
 );
 

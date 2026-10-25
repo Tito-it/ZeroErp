@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-modello-documento-vendita §9, giro 7): il test 7 annullava l'ordine
+--   con un UPDATE diretto dello stato, che ora la porta ferma (E_DOC_STATO_SOLO_DAL_VERBO).
+--   Passa dal verbo di stato vendite.fn_cambia_stato_ordine (DRAFT -> ANNULLATO: nessuna
+--   azione); il guard dell'annullo da' lo stesso rifiuto. Attesa invariata.
 -- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): il test 25
 --   («23) il verbo di stato del preventivo…») chiama vendite.fn_cambia_stato_preventivo
 --   con la firma nuova a DUE argomenti (id, stato): p_user e' uscito, user_update
@@ -35,7 +39,7 @@
 --   5) i due indici unici valgono sui soli vivi
 --  B — caso 2: preventivo -> ordine (D-2)
 --   6) il push: ordine in bozza, preventivo EVASO, un legame PREVENTIVO di consumo
---   7) l'annullo diretto dell'ordine e' rifiutato: E_DOC_ANNULLO_CON_LEGAMI
+--   7) l'annullo dal verbo di stato, senza la conferma dei legami, e' rifiutato: E_DOC_ANNULLO_CON_LEGAMI
 --   8) il verbo con una conferma che non corrisponde: stesso rifiuto
 --   9) confermato: ordine ANNULLATO, riga staccata, preventivo ACCETTATO, riga di nuovo smistabile
 --  10) un secondo push dallo stesso preventivo riesce (il UNIQUE sulla riga regge)
@@ -310,10 +314,9 @@ SELECT ok(
   '6) il push: ordine in bozza, preventivo EVASO, un legame PREVENTIVO di consumo');
 
 SELECT pg_temp.al_prova('7_ord_diretto',
-  format('UPDATE vendite.ordini SET stato_doc_ordine_id = %s WHERE id = %s',
-         (SELECT ord_annullato_id FROM tmp_al_refs), pg_temp.al_fix('b1_ord')));
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'ANNULLATO')$q$, pg_temp.al_fix('b1_ord')));
 SELECT ok(pg_temp.al_rifiuto('7_ord_diretto', 'Serve una conferma'),
-  '7) l''annullo diretto dell''ordine e'' rifiutato: E_DOC_ANNULLO_CON_LEGAMI');
+  '7) l''annullo dell''ordine dal verbo di stato, senza la conferma dei legami, e'' rifiutato: E_DOC_ANNULLO_CON_LEGAMI');
 
 SELECT pg_temp.al_prova('8_ord_conferma_errata',
   format('SELECT vendite.fn_annulla_ordine(%s, 0)', pg_temp.al_fix('b1_ord')));

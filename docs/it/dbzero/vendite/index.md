@@ -123,6 +123,7 @@ search:
 - [fn_calcola_data_documento](funzioni/fn_calcola_data_documento.md) — **Che data porta un documento emesso su questo registro?**
 - [fn_cambia_stato_commessa](funzioni/fn_cambia_stato_commessa.md) — (rev 2026-06-07) `vendite.fn_cambia_stato_commessa(p_commessa_id, p_nuovo_stato, p_user)` è l'**entrypoint sanzionato (DB-first)** per cambiare lo stato di una commessa: risolve il codice stato in id, esegue l'`UPDATE` e ritorna lo stato da/a.
 - [fn_cambia_stato_ddt](funzioni/fn_cambia_stato_ddt.md)
+- [fn_cambia_stato_ordine](funzioni/fn_cambia_stato_ordine.md)
 - [fn_cambia_stato_preventivo](funzioni/fn_cambia_stato_preventivo.md) — (latest review 03-04-2026) `vendite.fn_cambia_stato_preventivo(p_preventivo_id, p_nuovo_stato, p_user)` esegue la **transizione di stato** di un preventivo vendita, validando la transizione tramite la matrice configurabile `config.transizioni_stati_preventivi`.
 - [fn_cancel_lotto_task_run](funzioni/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
 - [fn_cancella_fondo_fattura](funzioni/fn_cancella_fondo_fattura.md) — (latest review 14-09-2026)

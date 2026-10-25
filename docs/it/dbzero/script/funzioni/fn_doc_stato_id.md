@@ -51,7 +51,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_doc_stato_id(p_testata regclass, p_codice text)
-IS 'BB del modello del documento: l''id dello stato ATTIVO con quel codice_interno (la chiave stabile del vocabolario) nel vocabolario degli stati di una testata, letto dalla mappa script.fn_doc_stato_modello. NULL se nessuno stato attivo ha quel codice: uno stato spento non e'' una destinazione (U-3), e l''errore lo decide il chiamante. Testata fuori mappa: E_SCRIPT_CHIAMATA_NON_VALIDA. Sede unica della traduzione codice -> id: la leggono i verbi di stato (vendite.fn_cambia_stato_preventivo, vendite.fn_cambia_stato_ddt), la domanda intera script.fn_doc_azione_passaggio, la fixture dbops.fn_pgtap_porta_a_stato e il backend. Brief: brief-modello-documento-vendita §8 (richiesta del team BE, Tid 2026-10-25).';
+IS 'BB del modello del documento: l''id dello stato ATTIVO con quel codice_interno (la chiave stabile del vocabolario) nel vocabolario degli stati di una testata, letto dalla mappa script.fn_doc_stato_modello. NULL se nessuno stato attivo ha quel codice: uno stato spento non e'' una destinazione (U-3), e l''errore lo decide il chiamante. Testata fuori mappa: E_SCRIPT_CHIAMATA_NON_VALIDA. Sede unica della traduzione codice -> id: la leggono i verbi di stato (vendite.fn_cambia_stato_preventivo, vendite.fn_cambia_stato_ddt), la domanda intera script.fn_doc_azione_passaggio, la fixture dbops.fn_pgtap_porta_a_stato e il backend. Gemello inverso (id -> codice): script.fn_doc_stato_codice. Brief: brief-modello-documento-vendita §8 e §8.11 (Tid 2026-10-25).';
 ```
 
 </div>

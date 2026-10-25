@@ -25,6 +25,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_commessa_abortito_attivo |  |
 | CHECK | chk_stati_commessa_fase |  |
 | CHECK | chk_stati_commessa_iniziale_attivo |  |
 | PRIMARY KEY | pk_stati_commessa | id |
@@ -36,6 +37,7 @@
 |------|-------------|
 | ix_stati_commessa_attivo | `CREATE INDEX ix_stati_commessa_attivo ON vendite.stati_commessa USING btree (attivo)` |
 | pk_stati_commessa | `CREATE UNIQUE INDEX pk_stati_commessa ON vendite.stati_commessa USING btree (id)` |
+| uq_stati_commessa_abortito | `CREATE UNIQUE INDEX uq_stati_commessa_abortito ON vendite.stati_commessa USING btree (is_abortito) WHERE is_abortito` |
 | uq_stati_commessa_codice | `CREATE UNIQUE INDEX uq_stati_commessa_codice ON vendite.stati_commessa USING btree (codice)` |
 | uq_stati_commessa_codice_interno | `CREATE UNIQUE INDEX uq_stati_commessa_codice_interno ON vendite.stati_commessa USING btree (codice_interno)` |
 | uq_stati_commessa_iniziale | `CREATE UNIQUE INDEX uq_stati_commessa_iniziale ON vendite.stati_commessa USING btree (iniziale) WHERE iniziale` |

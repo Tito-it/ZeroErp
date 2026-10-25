@@ -32,6 +32,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_doc_contratti_abortito_attivo |  |
 | CHECK | chk_stati_doc_contratti_emissione_attivo |  |
 | CHECK | chk_stati_doc_contratti_fase |  |
 | CHECK | chk_stati_doc_contratti_iniziale_attivo |  |
@@ -47,6 +48,7 @@
 |------|-------------|
 | ix_stati_doc_contratti_attivo | `CREATE INDEX ix_stati_doc_contratti_attivo ON config.stati_doc_contratti USING btree (attivo)` |
 | pk_stati_doc_contratti | `CREATE UNIQUE INDEX pk_stati_doc_contratti ON config.stati_doc_contratti USING btree (id)` |
+| uq_stati_doc_contratti_abortito | `CREATE UNIQUE INDEX uq_stati_doc_contratti_abortito ON config.stati_doc_contratti USING btree (is_abortito) WHERE is_abortito` |
 | uq_stati_doc_contratti_codice | `CREATE UNIQUE INDEX uq_stati_doc_contratti_codice ON config.stati_doc_contratti USING btree (codice)` |
 | uq_stati_doc_contratti_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_contratti_codice_interno ON config.stati_doc_contratti USING btree (codice_interno)` |
 | uq_stati_doc_contratti_emissione | `CREATE UNIQUE INDEX uq_stati_doc_contratti_emissione ON config.stati_doc_contratti USING btree (emissione) WHERE emissione` |

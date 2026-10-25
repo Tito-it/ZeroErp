@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA SULL'ORDINE
+#   Brief: brief-modello-documento-vendita §9 (giro 7; S-1 b di Tid).
+#   Stesso BB e stessa fascia di bolla, reso (20261025-13) e preventivo
+#   (20261025-46).
+#
+#   Lo stato dell'ordine si cambia solo dai suoi verbi, che scrivono con
+#   script.fn_doc_scrivi_stato: vendite.fn_cambia_stato_ordine (e
+#   vendite.fn_annulla_ordine, che lo chiama) per i passaggi manuali,
+#   vendite.fn_ordine_proietta_stato_evasione per l'evasione. Un UPDATE
+#   diretto, anche del backend (OrdiniRepository.update_stato, da ritirare:
+#   richiesta al team BE): E_DOC_STATO_SOLO_DAL_VERBO.
+#
+#   Ordine nella fascia _a05_: trg_ordini_a05_lock_fuori_bozza_upd scatta
+#   prima (l < s), come su bolla e preventivo: il lock legge lo stato VECCHIO.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261025-80-create-trigger-stato-solo-dal-verbo-ordini-mctit.yaml
+
+  - changeSet:
+      id: 20261025-80-create-trigger-stato-solo-dal-verbo-ordini
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta script.trgfn_doc_stato_solo_dal_verbo (BEFORE UPDATE OF colonna di stato, _a05_)
+        su vendite.ordini. Brief: brief-modello-documento-vendita §9 (S-1 b).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_doc_stato_solo_dal_verbo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ordini_a05_stato_solo_dal_verbo_upd
+                  BEFORE UPDATE OF stato_doc_ordine_id ON vendite.ordini
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_stato_solo_dal_verbo();
+
+              COMMENT ON TRIGGER trg_ordini_a05_stato_solo_dal_verbo_upd ON vendite.ordini IS
+                  'La porta (BB script.trgfn_doc_stato_solo_dal_verbo): lo stato dell''ordine si cambia solo dai suoi verbi (vendite.fn_cambia_stato_ordine, vendite.fn_annulla_ordine; l''evasione da vendite.fn_ordine_proietta_stato_evasione), che scrivono con script.fn_doc_scrivi_stato. Un UPDATE diretto: E_DOC_STATO_SOLO_DAL_VERBO. Fascia _a05_. Brief: brief-modello-documento-vendita §9 (S-1 b, Tid 2026-10-25).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_a05_stato_solo_dal_verbo_upd ON vendite.ordini;

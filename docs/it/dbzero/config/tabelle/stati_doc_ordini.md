@@ -27,6 +27,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_doc_ordini_abortito_attivo |  |
 | CHECK | chk_stati_doc_ordini_emissione_attivo |  |
 | CHECK | chk_stati_doc_ordini_fase |  |
 | CHECK | chk_stati_doc_ordini_iniziale_attivo |  |
@@ -42,6 +43,7 @@
 |------|-------------|
 | ix_stati_doc_ordini_attivo | `CREATE INDEX ix_stati_doc_ordini_attivo ON config.stati_doc_ordini USING btree (attivo)` |
 | pk_stati_doc_ordini | `CREATE UNIQUE INDEX pk_stati_doc_ordini ON config.stati_doc_ordini USING btree (id)` |
+| uq_stati_doc_ordini_abortito | `CREATE UNIQUE INDEX uq_stati_doc_ordini_abortito ON config.stati_doc_ordini USING btree (is_abortito) WHERE is_abortito` |
 | uq_stati_doc_ordini_codice | `CREATE UNIQUE INDEX uq_stati_doc_ordini_codice ON config.stati_doc_ordini USING btree (codice)` |
 | uq_stati_doc_ordini_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_ordini_codice_interno ON config.stati_doc_ordini USING btree (codice_interno)` |
 | uq_stati_doc_ordini_emissione | `CREATE UNIQUE INDEX uq_stati_doc_ordini_emissione ON config.stati_doc_ordini USING btree (emissione) WHERE emissione` |
