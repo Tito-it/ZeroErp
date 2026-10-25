@@ -47,6 +47,8 @@ from apps.core.services.payload_helpers import (
     PayloadValidator,
     translate_db_errors,
 )
+from apps.core.services.partitioned_note_service import contatori_documento
+from apps.vendite.db.note_repositories import NOTE_REPO_OFFERTA
 from apps.vendite.db._documento_eccezioni_repo import (
     list_erogazioni_riga,
     listino_versione_operativa,
@@ -534,6 +536,7 @@ class OfferteService:
             lambda: self._repo.get_available_actions(offerta_id),
             funzione="fn_available_actions_offerta", entita_id=offerta_id, logger=logger,
         )
+        row["contatori"] = contatori_documento(NOTE_REPO_OFFERTA, offerta_id)
         return row
 
     # =================================================================

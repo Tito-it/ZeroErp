@@ -60,6 +60,8 @@ from apps.core.services.testata_guard import (
     testata_o_not_found,
 )
 from apps.core.services.value_normalizer import empty_to_none
+from apps.core.services.partitioned_note_service import contatori_documento
+from apps.vendite.db.note_repositories import NOTE_REPO_DDT
 from apps.vendite.db.ddt_repository import TESTATA_DDT, DdtRepository
 from apps.vendite.services._componenti_service_helpers import (
     dati_patch_componente,
@@ -293,6 +295,7 @@ def get_ddt(ddt_id: int) -> dict[str, Any]:
         # COUNT dedicato: l'elenco righe completo (JOIN + EXISTS per riga)
         # sarebbe materializzato solo per contarlo.
         "righe_count": repo.count_righe(ddt_id),
+        "contatori": contatori_documento(NOTE_REPO_DDT, ddt_id),
     }
 
 

@@ -644,3 +644,18 @@ def _default_lingua_lookup(codice_iso: str) -> int | None:
         )
         row = cursor.fetchone()
     return int(row[0]) if row else None
+
+
+# Scopo: I `contatori` dei badge di un documento, nel payload del suo
+#        DETTAGLIO: oggi `{"note": <n>}`, il numero sul pulsante standard
+#        «Gestisci note» (FE `useContatoreNote`). UN posto per la forma: la
+#        chiave e' il contratto col frontend, e tutti i documenti con note
+#        partizionate la danno uguale (regola del 2, 2026-10-25).
+#        Dict e non scalare per reggere i prossimi contatori senza cambiare
+#        shape (api_fattura_dettaglio §`contatori`).
+# ⛔ Si chiama DOPO il cancello di testata: un documento fuori perimetro e'
+#    un 404, non un conteggio.
+def contatori_documento(repo: PartitionedNoteRepository, target_id: int) -> dict[str, int]:
+    return {
+        "note": PartitionedNoteService(repo=repo).count_per_target(target_id=target_id),
+    }

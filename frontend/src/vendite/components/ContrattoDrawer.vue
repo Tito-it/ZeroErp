@@ -15,6 +15,7 @@ import { ref, watch, computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useContatoreNote } from '../../core/composables/useContatoreNote'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
@@ -192,6 +193,9 @@ const mostraFooterSalva = computed(
 // Sub-drawer
 const righeVisible = ref(false)
 const noteDrawerVisible = ref(false)
+// Il pulsante «Gestisci note» standard, col numero delle note del documento
+// (BB `useContatoreNote`: dal dettaglio, poi dal sotto-drawer dopo un salvataggio).
+const contatoreNote = useContatoreNote(() => detail.value)
 
 // Guard di versione: invalida fetch stantii su apertura/chiusura rapide.
 const fgFv = useFetchVersion()
@@ -836,13 +840,10 @@ const drawerActions = computed(() => {
     badge: righeCount.value,
     command: () => { righeVisible.value = true },
   })
-  list.push({
-    key: 'manage-note',
-    kind: 'manage',
+  list.push(contatoreNote.azione({
     label: t('vendite.contratti.gestisci_note'),
-    icon: MANAGE_ICONS.NOTE,
     command: () => { noteDrawerVisible.value = true },
-  })
+  }))
   return list
 })
 
@@ -1278,6 +1279,7 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
     <ContrattoNoteDrawer
       v-if="isEdit && detail"
       v-model:visible="noteDrawerVisible"
+      @saved="contatoreNote.aggiorna"
       :contratto-id="props.contrattoId"
       :righe="detail.righe || []"
     />

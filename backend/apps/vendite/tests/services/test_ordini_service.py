@@ -149,8 +149,9 @@ class OrdiniServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
         self.assertEqual(cm.exception.context.get("field"), "billing_account_id")
         repo.update_ordine.assert_not_called()
 
+    @patch("apps.vendite.services.ordini_service.contatori_documento", return_value={"note": 2})
     @patch(_REPO)
-    def test_get_ordine_capabilities_annidate(self, repo_cls) -> None:
+    def test_get_ordine_capabilities_annidate(self, repo_cls, contatori) -> None:
         # get_ordine trasporta le capability di fn_available_actions_ordine
         # (available_actions, can_edit_*, ...) SOTTO `capabilities`, senza
         # fonderle nella testata (api.md §«Il blob sta SOTTO `capabilities`»).
@@ -169,6 +170,9 @@ class OrdiniServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
         self.assertEqual(caps, repo.get_capabilities.return_value)
         self.assertEqual(caps["available_actions"][0]["key"], "conferma")
         self.assertEqual(out["righe_count"], 1)
+        # I badge del drawer (pulsante «Gestisci note»), dal BB dei contatori.
+        self.assertEqual(out["contatori"], {"note": 2})
+        self.assertEqual(contatori.call_args.args[1], 7)
         for chiave in caps:
             self.assertNotIn(chiave, out)
         self.assertNotIn("can_conferma", caps)

@@ -146,6 +146,16 @@ def _normalize_componenti_attivazioni(
     )
 
 
+# Il dettaglio porta i `contatori` dei badge (BB `contatori_documento`), che
+# contano le note sul DB: qui si sostituisce, o ogni test che passa dal
+# dettaglio farebbe una query vera senza dirlo.
+_SENZA_CONTATORI_DB = patch(
+    "apps.vendite.services.preventivi_service.contatori_documento",
+    new=lambda *_a, **_k: {"note": 0},
+)
+
+
+@_SENZA_CONTATORI_DB
 class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
 
     def setUp(self):

@@ -255,7 +255,10 @@ Note (refactor 2026-05-15):
 
 Output: testata + `utility` + `righe[]` + **`capabilities`**
 (Fase 1.B2 refactor frontend vendite, da `script.fn_available_actions_contratto`;
-non fuse nella testata dal 2026-09-23, [api.md §«Il blob sta SOTTO `capabilities`»](../../../dev/api.md)):
+non fuse nella testata dal 2026-09-23, [api.md §«Il blob sta SOTTO `capabilities`»](../../../dev/api.md)).
+`contatori` (dal 2026-10-25): `{"note": <n>}`, il numero sul pulsante «Gestisci note» del drawer, dal BB `contatori_documento` — contato **dopo** il cancello di testata, con lo stesso perimetro della lista note. Forma e ragioni in [api_fattura_dettaglio §`contatori`](/backend/vendite/manual/api_fattura_dettaglio).
+
+Le chiavi di `capabilities`:
 
 | Campo | Tipo | Significato |
 | --- | --- | --- |

@@ -133,7 +133,7 @@ permessi — colonne nascoste escluse, ordine utente rispettato).
 
 - Metodo: `GET`
 - Path: `/api/v1/vendite/preventivi/{id}/`
-- Output `200`: testata completa con decodifiche (stato, cliente, utility, valuta, termini) + `indirizzi[]` + `righe_count` (summary leggero) + **capabilities** (Fase 1 refactor frontend vendite)
+- Output `200`: testata completa con decodifiche (stato, cliente, utility, valuta, termini) + `indirizzi[]` + `righe_count` (summary leggero) + **capabilities** (Fase 1 refactor frontend vendite) + `contatori` (dal 2026-10-25): `{"note": <n>}`, il numero sul pulsante «Gestisci note» del drawer, dal BB `contatori_documento` — contato **dopo** il cancello di testata, con lo stesso perimetro della lista note. Forma e ragioni in [api_fattura_dettaglio §`contatori`](/backend/vendite/manual/api_fattura_dettaglio).
 - **Fase 3.F6 refactor frontend vendite** — il detail NON include piu' `righe[]` (decisione C2: detail = testata + summary, righe via endpoint autonomo `/righe/`). Il FE chiama `GET /righe/` separatamente. Vantaggi: payload detail piu' leggero su lista refresh, mai mismatch con totali ricalcolati dai trigger DB. `righe_count` resta disponibile come badge UX.
 - Errori: `E_PREV_NOT_FOUND` (404)
 

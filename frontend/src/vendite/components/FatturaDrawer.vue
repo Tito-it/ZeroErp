@@ -54,6 +54,7 @@ import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiS
 import DocumentoCollegamentiBar from '../_shared/lineage/DocumentoCollegamentiBar.vue'
 import FatturaNoteDrawer from './FatturaNoteDrawer.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useContatoreNote } from '../../core/composables/useContatoreNote'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
@@ -154,12 +155,16 @@ const {
 const riepilogoIva = computed(() => dettaglio.value?.riepilogo_iva ?? [])
 const scadenze = computed(() => dettaglio.value?.scadenze ?? [])
 
-// Counter note del badge. Ref e non computed sul dettaglio perché ha DUE
-// fonti: il payload BE all'apertura (`contatori.note`, nessun round-trip
-// aggiuntivo) e il sub-drawer note dopo ogni create/update/delete — che il
-// totale aggiornato ce l'ha già e lo passa con `@saved`. Il conteggio BE usa
-// lo stesso perimetro della lista note, quindi i due valori non divergono.
-const noteCount = ref(0)
+// Il pulsante «Gestisci note» standard, col numero delle note (BB
+// `useContatoreNote`, dal 2026-10-25 lo stesso di ogni documento): DUE fonti,
+// il payload BE all'apertura (`contatori.note`, nessun round-trip aggiuntivo)
+// e il sub-drawer note dopo ogni create/update/delete, che il totale
+// aggiornato ce l'ha già e lo passa con `@saved`. Il conteggio BE usa lo
+// stesso perimetro della lista note, quindi i due valori non divergono.
+// ⚠️ Dopo un salvataggio il dettaglio NON si rilegge: ricaricarlo mentre il
+//    drawer note è aperto sopra rigenererebbe `righe`, cioè le opzioni del
+//    select riga che il figlio sta usando.
+const contatoreNote = useContatoreNote(dettaglio)
 
 // ⭐ LA STORIA DEL DOCUMENTO (Passo A del filone osservabilità). Dal 2026-09-27
 // è la lista a catalogo `vendite.giornale` filtrata sulla fattura, resa dal
@@ -256,7 +261,6 @@ async function loadDettaglio() {
     if (!fv.isCurrent(my)) return
     if (res == null) return
     dettaglio.value = res.data?.data ?? null
-    noteCount.value = Number(dettaglio.value?.contatori?.note ?? 0)
   } finally {
     if (fv.isCurrent(my)) loading.value = false
   }
@@ -277,7 +281,6 @@ watch(
       return
     }
     dettaglio.value = null
-    noteCount.value = 0
     tabAttiva.value = 'documento'
     // ⚠️ La storia NON si chiede qui: la chiede il tab quando si monta, cioè
     // dopo il dettaglio (sta dentro `v-if="fattura"`) — se la fattura non è
@@ -382,26 +385,12 @@ const drawerActions = computed(() => [
     disabled: !props.fatturaId,
     command: () => { pdfDialog.value = true },
   },
-  {
-    key: 'note',
-    kind: 'manage',
+  contatoreNote.azione({
     label: t('vendite.fatture.azione_note'),
-    icon: MANAGE_ICONS.NOTE,
-    // Badge solo se ci sono note: `null` = nessun badge (il BB nasconde la
-    // pillola su null/''), 0 stamperebbe uno zero che non informa.
-    badge: noteCount.value > 0 ? noteCount.value : null,
     disabled: !props.fatturaId,
     command: () => { noteDrawer.value = true },
-  },
+  }),
 ])
-
-// Scopo: allinea il badge al totale note comunicato dal sub-drawer dopo un
-//        create/update/delete. Nessuna rilettura del dettaglio: ricaricarlo
-//        mentre il drawer note è aperto sopra rigenererebbe `righe`, cioè le
-//        opzioni del select riga che il figlio sta usando.
-function onNoteSaved(total) {
-  if (typeof total === 'number' && Number.isFinite(total)) noteCount.value = total
-}
 
 </script>
 
@@ -741,7 +730,7 @@ function onNoteSaved(total) {
       v-model:visible="noteDrawer"
       :fattura-id="fatturaId"
       :righe="righe"
-      @saved="onNoteSaved"
+      @saved="contatoreNote.aggiorna"
     />
   </AppDrawer>
 </template>

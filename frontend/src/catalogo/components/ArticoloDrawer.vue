@@ -12,6 +12,7 @@ import { useI18n } from 'vue-i18n'
 import { useArticoliStore } from '../stores/articoli'
 import { useAuthStore } from '../../stores/auth'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useContatoreNote } from '../../core/composables/useContatoreNote'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { listArticoloUom, listArticoloComponenti, makeArticoloNotesApi, getArticoloFormDefaults } from '../api/catalogo'
@@ -20,6 +21,7 @@ import { oggiAziendaleString } from '../../core/utils/date'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
+import ActionBadge from '../../core/components/ActionBadge.vue'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import IvaSelect from '../../core/components/IvaSelect.vue'
@@ -113,6 +115,10 @@ const bomDrawerVisible = ref(false)
 const bomRiepilogo = ref([])
 const noteDrawerVisible = ref(false)
 const noteRiepilogo = ref([])
+// Il numero delle note sul pulsante «Gestisci note», come su ogni documento
+// (BB `useContatoreNote`). Qui il dettaglio non porta i contatori: il numero
+// e' il totale della lista del riepilogo, che si rilegge dopo ogni salvataggio.
+const contatoreNote = useContatoreNote()
 
 function defaultForm() {
   return {
@@ -143,6 +149,7 @@ function resetForm() {
   uomRiepilogo.value = []
   bomRiepilogo.value = []
   noteRiepilogo.value = []
+  contatoreNote.azzera()
 }
 
 // Scopo: Carica riepilogo UoM operative.
@@ -181,7 +188,12 @@ async function loadNoteRiepilogo() {
     const res = await makeArticoloNotesApi(props.articoloId).listNote()
     const payload = res.data?.data
     noteRiepilogo.value = payload?.results || payload || []
-  } catch { noteRiepilogo.value = [] }
+    // Il totale della lista, non le righe di questa pagina.
+    contatoreNote.aggiorna(typeof payload?.count === 'number' ? payload.count : noteRiepilogo.value.length)
+  } catch {
+    noteRiepilogo.value = []
+    contatoreNote.azzera()
+  }
 }
 
 async function loadDetail() {
@@ -644,10 +656,15 @@ const drawerActions = computed(() => {
           </div>
         </div>
         <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessuna_nota') }}</div>
-        <Button v-if="!isReadonly"
-          :label="t('catalogo.gestisci_note')" :icon="MANAGE_ICONS.NOTE"
-          text size="small" class="app-action-btn app-escape mt-025"
-          @click="noteDrawerVisible = true" />
+        <!-- Il numero delle note sopra l'icona: l'involucro posizionato e
+             `ActionBadge` sono quelli della barra azioni dei documenti. -->
+        <span v-if="!isReadonly" class="app-action-tooltip-wrap mt-025">
+          <Button
+            :label="t('catalogo.gestisci_note')" :icon="MANAGE_ICONS.NOTE"
+            text size="small" class="app-action-btn app-escape"
+            @click="noteDrawerVisible = true" />
+          <ActionBadge :valore="contatoreNote.badge.value" />
+        </span>
       </div>
     </template>
   </AppDrawer>

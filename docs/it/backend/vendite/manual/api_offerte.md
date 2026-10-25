@@ -317,7 +317,7 @@ Note:
 ### Detail `GET /api/v1/vendite/offerte/<id>/`
 
 Output: testata + display fields + `eccezioni[]` + `utility` (1:1, null se
-non ancora compilato).
+non ancora compilato) + `capabilities`. `contatori` (dal 2026-10-25): `{"note": <n>}`, il numero sul pulsante «Gestisci note» del drawer, dal BB `contatori_documento` — contato **dopo** il cancello di testata, con lo stesso perimetro della lista note. Forma e ragioni in [api_fattura_dettaglio §`contatori`](/backend/vendite/manual/api_fattura_dettaglio).
 
 ```json
 {

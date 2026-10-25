@@ -11,6 +11,8 @@ defineProps({
   contrattoId: { type: [Number, null], default: null },
   righe: { type: Array, default: () => [] },
 })
+// `saved` porta il TOTALE note aggiornato (dal BB `NoteDrawer`): il padre ci
+// aggiorna il pulsante «Gestisci note» (`useContatoreNote`).
 const emit = defineEmits(['update:visible', 'saved'])
 </script>
 
@@ -22,6 +24,6 @@ const emit = defineEmits(['update:visible', 'saved'])
     :id="contrattoId"
     :title="t('vendite.contratti.note_titolo')"
     :righe="righe"
-    @saved="emit('saved')"
+    @saved="(total) => emit('saved', total)"
   />
 </template>

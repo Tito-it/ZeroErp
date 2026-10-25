@@ -64,6 +64,8 @@ from apps.vendite.services._indirizzi_documento_helpers import (
     list_indirizzi_documento,
     upsert_indirizzo_documento,
 )
+from apps.core.services.partitioned_note_service import contatori_documento
+from apps.vendite.db.note_repositories import NOTE_REPO_PREVENTIVO
 from apps.vendite.db.preventivi_repository import TESTATA_PREVENTIVI, PreventiviRepository
 from apps.vendite.types import PreventivoDetailRow
 from apps.vendite.services._approvazioni_prezzo_constants import (
@@ -330,6 +332,7 @@ def get_preventivo(preventivo_id: int) -> dict[str, Any]:
         "capabilities": capabilities,
         "indirizzi": indirizzi,
         "righe_count": righe_count,
+        "contatori": contatori_documento(NOTE_REPO_PREVENTIVO, preventivo_id),
     }
 
 

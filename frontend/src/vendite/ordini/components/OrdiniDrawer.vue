@@ -9,6 +9,7 @@ import { ref, watch, computed, nextTick, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOrdiniStore } from '../stores/ordini'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
+import { useContatoreNote } from '../../../core/composables/useContatoreNote'
 import { useNotify } from '../../../core/composables/useNotify'
 import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
@@ -38,7 +39,7 @@ import { createOrdine } from '../api/ordiniApi'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
 import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
 import { ripristinaBillingAccount } from '../../../core/utils/ripristinaLookup'
-import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
+import { DRAWER_WIDTH, TAB_ENTITIES } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import AppDrawer from '../../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
@@ -102,6 +103,9 @@ const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumen
 const modificatoDocumento = documento.modificato
 const detail = ref(null)
 const noteDrawerVisible = ref(false)
+// Il pulsante «Gestisci note» standard, col numero delle note del documento
+// (BB `useContatoreNote`: dal dettaglio, poi dal sotto-drawer dopo un salvataggio).
+const contatoreNote = useContatoreNote(() => detail.value)
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_ordini_riepilogo_iva_dettaglio`).
 // Auto-popolato a ogni loadDetail e ogni `@changed` delle righe: la vista DB
 // e' la single source dei totali documento (regola fiscale DPR 633/72 art. 21).
@@ -659,13 +663,10 @@ const drawerActions = computed(() => {
         }]
       : []),
     ...dateConsegnaAzione.value,
-    {
-      key: 'manage-note',
-      kind: 'manage',
+    contatoreNote.azione({
       label: t('vendite.ordini.gestisci_note'),
-      icon: MANAGE_ICONS.NOTE,
       command: () => { noteDrawerVisible.value = true },
-    },
+    }),
   ]
 })
 
@@ -811,6 +812,7 @@ const drawerActions = computed(() => {
   <OrdineNoteDrawer
     v-if="effectiveOrdineId"
     v-model:visible="noteDrawerVisible"
+    @saved="contatoreNote.aggiorna"
     :ordine-id="effectiveOrdineId"
   />
 

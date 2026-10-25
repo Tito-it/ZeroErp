@@ -16,6 +16,7 @@
 #   4. AggiornaNota     - rifiuta target_riga_id, 404, patch vuoto idempotente
 #   5. EliminaNota      - 404 / ok
 #   6. CountPerTarget   - delega al repo
+#   7. ContatoriDocumento - la forma `{"note": n}` del dettaglio, zero compreso
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from apps.core.db.partitioned_note_repository import PartitionedNoteRepository
 from apps.core.services.partitioned_note_service import (
     PARAM_DEFAULT_STILE,
     PartitionedNoteService,
+    contatori_documento,
 )
 from apps.core.services.service_errors import ServiceError
 
@@ -461,3 +463,21 @@ class CountPerTargetTests(unittest.TestCase):
         repo.count_for_parent.return_value = 7
         svc = _make_service(repo, _make_params_mock())
         self.assertEqual(svc.count_per_target(target_id=1), 7)
+
+
+# ⭐ La chiave `note` e' il contratto col pulsante standard «Gestisci note» del
+#    frontend (`useContatoreNote` legge `contatori.note`): un rename qui spegne
+#    il badge di ogni documento senza errori.
+class ContatoriDocumentoTests(unittest.TestCase):
+    def test_forma_del_dettaglio(self) -> None:
+        repo = _make_repo_mock()
+        repo.count_for_parent.return_value = 3
+        self.assertEqual(contatori_documento(repo, 42), {"note": 3})
+        repo.count_for_parent.assert_called_once_with(42)
+
+    # Lo zero e' un numero, non un'assenza: decide il frontend di non
+    # mostrarlo, il backend lo dice comunque.
+    def test_zero_e_un_numero(self) -> None:
+        repo = _make_repo_mock()
+        repo.count_for_parent.return_value = 0
+        self.assertEqual(contatori_documento(repo, 42), {"note": 0})

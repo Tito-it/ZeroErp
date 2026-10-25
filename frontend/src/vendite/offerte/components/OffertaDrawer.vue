@@ -35,6 +35,7 @@ import EmittenteFiscaleField from '../../../core/components/EmittenteFiscaleFiel
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
+import { useContatoreNote } from '../../../core/composables/useContatoreNote'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
@@ -213,6 +214,9 @@ const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
 // Sub-drawer + dialogs.
 const eccezioniDrawerVisible = ref(false)
 const noteDrawerVisible = ref(false)
+// Il pulsante «Gestisci note» standard, col numero delle note del documento
+// (BB `useContatoreNote`: dal dettaglio, poi dal sotto-drawer dopo un salvataggio).
+const contatoreNote = useContatoreNote(() => detail.value)
 const emissioneDialogVisible = ref(false)
 const esitoDialogVisible = ref(false)
 const esitoDialogModalita = ref('ACCETTATA') // ACCETTATA | RIFIUTATA | ANNULLATA
@@ -835,13 +839,10 @@ const drawerActions = computed(() => {
       badge: eccCount,
       command: () => { eccezioniDrawerVisible.value = true },
     },
-    {
-      key: 'manage-note',
-      kind: 'manage',
+    contatoreNote.azione({
       label: t('vendite.offerte.gestisci_note'),
-      icon: MANAGE_ICONS.NOTE,
       command: () => { noteDrawerVisible.value = true },
-    },
+    }),
   ]
 })
 
@@ -1241,6 +1242,7 @@ const footerDrawer = useFooterDocumento({
     <OffertaNoteDrawer
       v-if="isEdit && detail"
       v-model:visible="noteDrawerVisible"
+      @saved="contatoreNote.aggiorna"
       :offerta-id="props.offertaId"
       :eccezioni="detail.eccezioni || []"
     />

@@ -62,6 +62,10 @@ class ContrattoCambioClienteTests(SimpleTestCase):
         self.repo.get_utility.return_value = {"id": 99, "istanza_utility_id": 20, "utility_id": 3}
         self.repo.list_righe.return_value = []
         self.repo.get_capabilities.return_value = {}
+        # Il contatore note del dettaglio legge il DB: SimpleTestCase lo vieta.
+        p_cont = patch(f"{_SVC}.contatori_documento", return_value={"note": 0})
+        p_cont.start()
+        self.addCleanup(p_cont.stop)
         # Niente transazione vera: SimpleTestCase vieta il DB.
         p_atomic = patch(f"{_SVC}.transaction.atomic", MagicMock())
         p_atomic.start()

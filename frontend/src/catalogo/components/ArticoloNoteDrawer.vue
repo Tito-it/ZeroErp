@@ -18,6 +18,8 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   articoloId: { type: [String, null], default: null },
 })
+// `saved` porta il TOTALE note aggiornato (dal BB `NoteDrawer`): il padre ci
+// aggiorna il pulsante «Gestisci note» (`useContatoreNote`).
 const emit = defineEmits(['update:visible', 'saved'])
 
 // articoloId e' UUID (catalogo.articoli.id); il watch reattivo di useNote lo
@@ -36,6 +38,6 @@ const apiClient = computed(() => {
     @update:visible="emit('update:visible', $event)"
     :api-client="apiClient"
     :title="t('catalogo.tab_note')"
-    @saved="emit('saved')"
+    @saved="(total) => emit('saved', total)"
   />
 </template>

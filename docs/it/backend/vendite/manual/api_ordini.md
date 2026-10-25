@@ -154,7 +154,7 @@ dal `key`), `can_edit_testata`, `can_edit_righe`,
 `non_editable_fields`, `stato_codice`, `pdf`; sulla testata `righe_count` e, dal 2026-10-20,
 `documento_origine_etichetta` (il nome del tipo d'origine da `config.sorgenti.etichetta`, «Preventivo»,
 «Offerta»; `null` senza origine). *(`can_conferma` non è
-più un flag: la conferma è un'entry di `available_actions`.)* 404
+più un flag: la conferma è un'entry di `available_actions`.)* `contatori` (dal 2026-10-25): `{"note": <n>}`, il numero sul pulsante «Gestisci note» del drawer, dal BB `contatori_documento` — contato **dopo** il cancello di testata, con lo stesso perimetro della lista note. Forma e ragioni in [api_fattura_dettaglio §`contatori`](/backend/vendite/manual/api_fattura_dettaglio). 404
 (`E_ORD_NOT_FOUND`) se inesistente o fuori scope (RLS).
 
 ### Ordine per pratica `GET /api/v1/vendite/ordini/per-pratica/?pratica_id=<id>`

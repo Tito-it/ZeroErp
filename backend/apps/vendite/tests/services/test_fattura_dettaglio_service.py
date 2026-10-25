@@ -52,12 +52,13 @@ class FatturaDettaglioServiceTests(TestCase):
     IVA, kit) vivono nelle query del repository e NON sono testate qui.
     """
 
-    # Il conteggio note passa dal service del BB note (`count_per_target`):
-    # si patcha la classe nel namespace del service sotto test, così nessun
-    # test tocca il DB reale per il contatore del badge.
+    # Il conteggio note passa dal BB `contatori_documento`, che chiama il
+    # service del BB note (`count_per_target`): si patcha la classe nel modulo
+    # del BB, dove la si risolve, così nessun test tocca il DB reale per il
+    # contatore del badge.
     def setUp(self):
         patcher = patch(
-            "apps.vendite.services.vendite_service.PartitionedNoteService",
+            "apps.core.services.partitioned_note_service.PartitionedNoteService",
         )
         note_svc_cls = patcher.start()
         self.addCleanup(patcher.stop)
