@@ -294,6 +294,8 @@ Errori sono `ServiceError` con `code` semantico:
   - Cablate note partizionate `target_tipo='OFFERTA'` via
     `apps.core.db.partitioned_note_repository.PartitionedNoteRepository`
     (whitelist `TARGET_TIPI_AMMESSI` + factory `_OFFERTA_REPO` + views).
+    Dal 2026-10-25 il codice è `OFFERTA_COMMERCIALE` e la whitelist non c'è
+    più: decide la FK verso `config.tipi_entita`.
   - 4 test BE aggiunti (suite 38 → 42).
 
 Dominio offerta commerciale lato BE+FE **completo**.

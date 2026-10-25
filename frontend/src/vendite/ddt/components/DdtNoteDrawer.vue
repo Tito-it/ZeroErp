@@ -2,7 +2,7 @@
 // Wrapper thin: cabla il BB `VenditeNoteDrawer` sul DDT corrente. Simmetrico a
 // Ordine/Preventivo/Contratto NoteDrawer; cambia solo dominio + title. Il
 // basePath note diventa `/vendite/ddt/<id>` → `/note/` (BE
-// PartitionedNoteRepository target_tipo='DDT').
+// PartitionedNoteRepository target_tipo='DDT_VENDITA').
 import { useI18n } from 'vue-i18n'
 import VenditeNoteDrawer from '../../_shared/note/VenditeNoteDrawer.vue'
 

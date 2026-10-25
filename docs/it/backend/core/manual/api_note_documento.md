@@ -19,7 +19,15 @@ il proprio repository (`apps/vendite/db/note_repositories.py`) e il proprio
 richiesta** — il repository, che non ha stato, resta condiviso.
 
 A database la tabella e' partizionata per `target_tipo`: una partizione per
-dominio, vincoli e trigger ereditati dalla parent.
+dominio, vincoli e trigger ereditati dalla parent. Il `target_tipo` e' un codice
+di `config.tipi_entita` (FK del padre) e il confine della partizione: lo decide
+il DB, il backend non ne tiene una whitelist. Dal 2026-10-25 (lotto 3 di
+brief-db-grammatica-unica-documenti) ordine, DDT e offerta usano i codici del
+catalogo delle entità, e il valore di `target_tipo` nelle risposte cambia con
+loro (`ORDINE` → `ORDINE_VENDITA`, `DDT` → `DDT_VENDITA`, `OFFERTA` →
+`OFFERTA_COMMERCIALE`). Le rotte non cambiano; nello schema OpenAPI cambiano i
+nomi dei componenti, che nascono dal codice
+(`PartitionedNote_DDT_VENDITA_CreateRequest`…).
 
 ## 1. La matrice
 
@@ -28,10 +36,10 @@ Sostituire `<dominio>` e `{id}` con la riga giusta:
 | dominio | path | `target_tipo` | partizione | righe ancorabili |
 |---|---|---|---|---|
 | preventivo | `/api/v1/vendite/preventivi/{preventivo_id}/note/` | `PREVENTIVO` | `vendite.note_preventivo` | righe preventivo |
-| offerta | `/api/v1/vendite/offerte/{offerta_id}/note/` | `OFFERTA` | `vendite.note_offerte_commerciali` | eccezioni offerta (`vendite.offerte_commerciali_eccezioni`) |
+| offerta | `/api/v1/vendite/offerte/{offerta_id}/note/` | `OFFERTA_COMMERCIALE` | `vendite.note_offerte_commerciali` | eccezioni offerta (`vendite.offerte_commerciali_eccezioni`) |
 | contratto | `/api/v1/vendite/contratti/{contratto_id}/note/` | `CONTRATTO` | `vendite.note_contratto` | righe contratto |
-| ordine | `/api/v1/vendite/ordini/{ordine_id}/note/` | `ORDINE` | `vendite.note_ordini` | righe ordine |
-| DDT | `/api/v1/vendite/ddt/{ddt_id}/note/` | `DDT` | `vendite.note_ddt` | righe DDT |
+| ordine | `/api/v1/vendite/ordini/{ordine_id}/note/` | `ORDINE_VENDITA` | `vendite.note_ordini` | righe ordine |
+| DDT | `/api/v1/vendite/ddt/{ddt_id}/note/` | `DDT_VENDITA` | `vendite.note_ddt` | righe DDT |
 | fattura | `/api/v1/vendite/fatture/{fattura_id}/note/` | `FATTURA` | `vendite.note_fatture` | `vendite.fatture_righe` |
 
 Ogni dominio espone **due** rotte:

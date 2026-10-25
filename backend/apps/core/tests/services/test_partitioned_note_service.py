@@ -7,7 +7,7 @@
 #        Repo e ParameterService mockati: nessun accesso DB reale.
 #
 # Indice test (0..N):
-#   0. RepoInit         - validazione target_tipo + child_table coerenti
+#   0. RepoInit         - target_tipo senza whitelist + child_table coerenti
 #   1. ListNote         - 404 parent / pass-through ok / clamp page_size
 #   2. GetNota          - 404 anti-tampering id<->target
 #   3. CreaNota         - default anchor/posizione/seq, testo obbligatorio,
@@ -115,13 +115,18 @@ def _make_service(
 
 
 class RepoInitTests(unittest.TestCase):
-    def test_target_tipo_invalido_solleva(self) -> None:
-        with self.assertRaises(ValueError):
-            PartitionedNoteRepository(
-                partition_table="vendite.note_xxx",
-                target_tipo="INESISTENTE",
-                parent_table="vendite.preventivi",
-            )
+    # ⛔ Il `target_tipo` non ha una whitelist nel backend dal 2026-10-25: e' un
+    #    codice di `config.tipi_entita` e il confine di una partizione, e decide
+    #    il DB (presidio: `core/tests/db/test_note_confini_partizione_db.py`).
+    #    Un codice con `_` si costruisce come gli altri.
+    def test_target_tipo_senza_whitelist(self) -> None:
+        repo = PartitionedNoteRepository(
+            partition_table="vendite.note_ddt",
+            target_tipo="DDT_VENDITA",
+            parent_table="vendite.ddt",
+        )
+        self.assertEqual(repo.target_tipo, "DDT_VENDITA")
+        self.assertEqual(repo.partition_table, "vendite.note_ddt")
 
     def test_child_table_senza_fk_solleva(self) -> None:
         with self.assertRaises(ValueError):

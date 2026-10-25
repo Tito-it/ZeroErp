@@ -157,7 +157,7 @@ scartava in silenzio).
     ≠ 1 su un seriale → `400 E_VENDITE_VALIDATION` col campo).
 - Note `GET/POST /<id>/note/` + `GET/PATCH/DELETE /<id>/note/<note_id>/` —
   building block, contratto comune in [api_note_documento](../../core/manual/api_note_documento.md)
-  (partizione `vendite.note_ddt`, `target_tipo='DDT'`).
+  (partizione `vendite.note_ddt`, `target_tipo='DDT_VENDITA'`).
 - Documenti/Stampa `…/<id>/documenti/…` — vedi api_ordini.md §Documenti.
 
 ### Lineage / genealogia (brief-be-fe-lineage, 2026-07-15)
