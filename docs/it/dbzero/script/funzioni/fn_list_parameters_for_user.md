@@ -11,7 +11,7 @@ CREATE FUNCTION fn_list_parameters_for_user(p_django_user_id integer, p_group_id
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_list_parameters_for_user(p_django_user_id integer, p_group_ids integer[] DEFAULT NULL::integer[], p_emittente_fiscale_id bigint DEFAULT NULL::bigint, p_categoria_cliente_id smallint DEFAULT NULL::smallint)
- RETURNS TABLE(code character varying, description text, default_value text, emittente_value text, emittente_override_id bigint, group_value text, user_value text, user_override_id bigint, categoria_cliente_value text, categoria_cliente_override_id bigint, resolved_value text)
+ RETURNS TABLE(code character varying, description text, default_value text, emittente_value text, emittente_override_id bigint, group_value text, user_value text, user_override_id bigint, categoria_cliente_value text, categoria_cliente_override_id bigint, resolved_value text, ammette_override boolean)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -27,6 +27,11 @@ BEGIN
     -- DISTINCT): ogni LEFT JOIN trova al piu' una riga, e la lista ha
     -- una riga per parametro. Le regole stanno nei vincoli, qui non si
     -- ripetono.
+    --
+    -- ammette_override dice la famiglia: dove e' false il FE non offre
+    -- l'override. Su quelle righe i livelli sono NULL e resolved_value
+    -- e' il default per costruzione (i guard sugli override): qui non
+    -- si ripete.
     --
     -- resolved_value NON ricopia la cascata: la chiede alla sua sede,
     -- script.fn_get_parameter_full (sessione e funzione NULL: la lista
@@ -54,7 +59,8 @@ BEGIN
             NULL,
             NULL,
             p_categoria_cliente_id
-        )
+        ),
+        p.ammette_override
       FROM config.parameters p
 
       LEFT JOIN config.parameter_overrides po_em
@@ -89,7 +95,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_list_parameters_for_user(p_django_user_id integer, p_group_ids integer[], p_emittente_fiscale_id bigint, p_categoria_cliente_id smallint)
-IS 'Lista tutti i parametri con l''override di ciascun livello mostrato (emittente, gruppo, utente, categoria_cliente) e gli id (emittente_override_id, user_override_id, categoria_cliente_override_id) per la DELETE del backend. Una riga per parametro per costruzione del modello: ogni override ha esattamente un ambito (chk_parameter_overrides_un_ambito) e ce n''e'' al piu'' uno per parametro e ambito (uq_overrides_full_scope_v5, NULLS NOT DISTINCT). resolved_value e'' script.fn_get_parameter_full con gli stessi ambiti (sessione e funzione NULL): il valore del runtime, non una sua copia. p_categoria_cliente_id NULL: livello categoria saltato. Rev 20261007-71 (brief-db-codici-sfilati-e-lista-parametri §3): livelli puri e cascata delegata (prima ricopiata). Rev 20261007-73 (§7.6): i filtri «puri» escono, li dicono i vincoli.';
+IS 'Lista tutti i parametri con l''override di ciascun livello mostrato (emittente, gruppo, utente, categoria_cliente), gli id (emittente_override_id, user_override_id, categoria_cliente_override_id) per la DELETE del backend e la famiglia del parametro (ammette_override: dove e'' false il FE non offre l''override). Una riga per parametro per costruzione del modello: ogni override ha esattamente un ambito (chk_parameter_overrides_un_ambito) e ce n''e'' al piu'' uno per parametro e ambito (uq_overrides_full_scope_v5, NULLS NOT DISTINCT). Sui parametri senza override i livelli sono NULL e resolved_value e'' il default per costruzione: i guard trgfn_parameter_overrides_guard_ammette_override e trgfn_parameters_guard_ammette_override impediscono che vi esista un override. resolved_value e'' script.fn_get_parameter_full con gli stessi ambiti (sessione e funzione NULL): il valore del runtime, non una sua copia. p_categoria_cliente_id NULL: livello categoria saltato. Rev 20261007-71 (brief-db-codici-sfilati-e-lista-parametri §3): livelli puri e cascata delegata (prima ricopiata). Rev 20261007-73 (§7.6): i filtri «puri» escono, li dicono i vincoli. Rev 20261025-86 (brief-db-parametri-senza-override §3): ammette_override in coda.';
 ```
 
 </div>

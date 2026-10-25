@@ -10,6 +10,8 @@
 
 ### Scopo
 
+(ultima revisione 25-10-2026)
+
 La tabella `config.parameter_overrides` contiene gli override dei parametri di sistema
 definiti in `config.parameters`. Ogni riga rappresenta un override valido per una
 specifica **dimensione di scope**: utente Django, gruppo Django, emittente fiscale,
@@ -95,6 +97,7 @@ per Mario sempre, anche fuori da PREMIUM (`brief-db-codici-sfilati-e-lista-param
 
 | Nome | Timing | Evento | Azione |
 |---|---|---|---|
+| `trg_parameter_overrides_a05_guard_ammette_override_ins_upd` | BEFORE | INSERT, UPDATE OF `parameter_id` | Rifiuta un override, anche spento, su un parametro che vale per tutti (`config.parameters.ammette_override = false`): `E_PARAMETER_OVERRIDE_NON_AMMESSO`. In `a05`, prima del dispatcher: se il parametro non si personalizza, la frase giusta è questa ([la funzione](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_ammette_override)) |
 | `trg_parameter_overrides_a10_fk_surrogate_dispatch_ins_upd` | BEFORE | INSERT, UPDATE OF `parameter_id, overridden_value` | Valida `overridden_value` contro le FK-surrogate registrate in `config.parameter_fk_surrogate` |
 | `trg_parameter_overrides_a10_emittenti_fiscali_require_at_...` | AFTER | INSERT, UPDATE | Blocca override su emittente disattivato |
 | `trg_parameter_overrides_a10_cat_clienti_req_attivo_ins_upd` | AFTER | INSERT, UPDATE OF `categoria_cliente_id` | Blocca override su categoria cliente disattivata |

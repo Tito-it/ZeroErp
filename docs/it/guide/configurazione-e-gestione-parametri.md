@@ -1,6 +1,6 @@
 # Guida — Configurazione e Gestione Parametri
 
-> **Ultimo aggiornamento**: 24 ottobre 2026
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
 > **Destinatari**: sviluppatori database e backend
 >
@@ -16,9 +16,10 @@
 > * [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full) — la lettura di un parametro con la cascata degli override
 > * [script.fn_get_parameter_di_sessione](/dbzero/script/funzioni/fn_get_parameter_di_sessione) — la stessa cascata, con utente, gruppi, emittente e sessione presi dal contesto della sessione
 > * [script.fn_intero_positivo_da_testo](/dbzero/script/funzioni/fn_intero_positivo_da_testo) — la regola «intero positivo» del valore di un parametro di sistema
-> * [script.fn_list_parameters_for_user](/dbzero/script/funzioni/fn_list_parameters_for_user) — la lista per la UI admin: default, override di ogni livello, valore risolto
+> * [script.fn_list_parameters_for_user](/dbzero/script/funzioni/fn_list_parameters_for_user) — la lista per la UI admin: default, override di ogni livello, valore risolto, famiglia
 > * [config.trgfn_parameters_fk_surrogate_dispatch](/dbzero/config/funzioni/trgfn_parameters_fk_surrogate_dispatch) · [config.trgfn_parameter_overrides_fk_surrogate_dispatch](/dbzero/config/funzioni/trgfn_parameter_overrides_fk_surrogate_dispatch) — il controllo sul *valore* scritto nel default e in un override
 > * [script.fn_check_parameter_fk_surrogate](/dbzero/script/funzioni/fn_check_parameter_fk_surrogate) — la regola condivisa dai due trigger
+> * [config.trgfn_parameter_overrides_guard_ammette_override](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_ammette_override) · [config.trgfn_parameters_guard_ammette_override](/dbzero/config/funzioni/trgfn_parameters_guard_ammette_override) — il rispetto della famiglia: nessun override su un parametro che vale per tutti
 >
 > **Vedi anche** — guide correlate:
 >
@@ -78,31 +79,34 @@ Zero ERP offre due meccanismi distinti:
 Tutti i parametri stanno in `config.parameters`. Si dividono in due famiglie, e la differenza
 non è tecnica: è una regola di business.
 
-| Famiglia | Che cosa vuol dire | Come si legge |
-| --- | --- | --- |
-| **Con override** | il valore può cambiare per utente, categoria cliente, gruppo, emittente, sessione o funzione | con `script.fn_get_parameter_full`, che applica la cascata |
-| **Senza override** | il valore deve essere **uguale per tutti**: un override per utente o per azienda darebbe allo stesso documento valori diversi a seconda di chi lo genera | dal valore di default, direttamente, dalla funzione che possiede la regola |
+| Famiglia | `ammette_override` | Che cosa vuol dire | Come si legge |
+| --- | :---: | --- | --- |
+| **Con override** | `true` | il valore può cambiare per utente, categoria cliente, gruppo, emittente, sessione o funzione | con `script.fn_get_parameter_full`, che applica la cascata |
+| **Senza override** | `false` | il valore deve essere **uguale per tutti**: un override per utente o per azienda darebbe allo stesso documento valori diversi a seconda di chi lo genera | dal valore di default, direttamente, dalla funzione che possiede la regola |
 
-Parametri **senza override** dichiarati come tali nella loro descrizione:
+La famiglia la dichiara la colonna `config.parameters.ammette_override`. Non ha valore di default:
+chi aggiunge un parametro decide a quale famiglia appartiene, come ne decide il valore. Quali
+parametri valgano per tutti si legge dalla colonna, non da un elenco: la descrizione di ciascuno
+dice **perché** (per esempio il fuso dell'azienda, i limiti di data dei documenti fiscali, le
+soglie del login).
 
-* `SYSTEM_FUSO_ORARIO` — il fuso dell'azienda, da cui si calcola la «data di oggi» dei documenti
-  (lo legge `script.fn_fuso_operativo`);
-* `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` — la soglia oltre cui una chiave di idempotenza rimasta
-  «in corso» si può riprendere (la legge `dbops.fn_idempotency_soglia_secondi`, per la
-  prenotazione e per il controllo all'avvio del backend; vedi
-  [Le operazioni che non si ripetono](/guide/operazioni-che-non-si-ripetono));
-* `VENDITE_LIMITE_EMISSIONE_IMMEDIATA_GIORNI` e `VENDITE_LIMITE_EMISSIONE_DIFFERITA_GIORNO_MESE` —
-  i limiti di data dei documenti fiscali (li legge `vendite.fn_get_limite_emissione_default`);
-  l'unico asse di eccezione è il registro di fatturazione, non l'utente.
+Il database fa rispettare la famiglia in due versi:
+
+* un override su un parametro che vale per tutti si rifiuta, anche se spento, con
+  `E_PARAMETER_OVERRIDE_NON_AMMESSO` («Il parametro … vale per tutti e non si personalizza»). Il
+  rimedio è cambiare il valore di default;
+* un parametro con override non diventa «per tutti» finché ne ha, accesi o spenti:
+  `E_PARAMETER_OVERRIDE_PRESENTI`. Prima si tolgono gli override, poi si cambia la famiglia.
+
+Un valore che il database **propone** a chi compila (per esempio socio unico e liquidazione dei
+dati societari) è di norma un parametro con override: ogni azienda propone il suo. Chi lo legge
+dentro il database, senza ricevere utente ed emittente dal chiamante, usa
+`script.fn_get_parameter_di_sessione`.
 
 Un parametro senza override che deve essere un **intero positivo** (le soglie, i tentativi e le
 attese del login) si valida con `script.fn_intero_positivo_da_testo`: dal testo all'intero,
 oppure `E_CONFIG_MANCANTE` col nome del parametro. La regola sta lì sola; chi legge il parametro
 la chiama invece di riscriverla.
-
-⚠️ **Il database non impedisce di scrivere un override su un parametro senza override.**
-L'override viene accettato e poi ignorato, perché chi legge il parametro non guarda la cascata.
-Prima di scrivere un override, si legge la descrizione del parametro.
 
 ---
 
@@ -112,19 +116,22 @@ Prima di scrivere un override, si legge la descrizione del parametro.
 
 Il punto unico in cui si definiscono i parametri. Ogni parametro ha un codice univoco e un
 valore di default, usato quando nessun override è applicabile, o sempre per i parametri senza
-override. La descrizione dice chi lo legge e se ammette override.
+override. La colonna `ammette_override` dice la famiglia; la descrizione dice chi lo legge e
+perché.
 
 | Colonna         | Tipo                 | Nullable | Descrizione                                                         |
 | --------------- | -------------------- | :------: | ------------------------------------------------------------------- |
 | `id`            | BIGINT, PK           |    no    | Chiave primaria                                                     |
 | `code`          | VARCHAR(100), UNIQUE |    no    | Codice identificativo (es. `NOTE_DEFAULT_LINGUA`)                   |
 | `default_value` | TEXT                 |    no    | Valore di default                                                   |
-| `description`   | TEXT                 |    sì    | Descrizione: significato, chi lo legge, se ammette override         |
+| `description`   | TEXT                 |    sì    | Descrizione: significato, chi lo legge, perché ha la sua famiglia   |
+| `ammette_override` | BOOLEAN           |    no    | La famiglia: `true` con override, `false` uguale per tutti. Senza default |
 | `storicizza`    | BOOLEAN              |    sì    | Flag storicizzazione (default: true)                                |
 | Campi audit     | —                    |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id` |
 
-I parametri si seminano dai CSV di `80_data` (uno per area: sistema, fatturazione, login, note,
-vendite…).
+I parametri si seminano da un CSV solo, `80_data/sql/config/parameters.csv`. Fanno eccezione i
+parametri di sistema (`parameters_sistema.csv`), caricati da `70_dati_sistema`: il codice li legge
+già mentre girano i seed, e su un database nuovo devono esistere prima.
 
 > Documentazione dettagliata: [config.parameters](/dbzero/config/tabelle/parameters)
 
@@ -235,7 +242,8 @@ leggono solo se la tabella di Django c'è ed è leggibile.
 
 La lista per la UI admin, `script.fn_list_parameters_for_user`, mostra per ogni parametro il
 default, l'override di ciascun livello e il valore risolto, che chiede a questa funzione senza
-ricopiare la cascata.
+ricopiare la cascata. Dice anche la famiglia (`ammette_override`): dove è `false` la UI non offre
+l'override, e il valore risolto è il default.
 
 > Documentazione dettagliata: [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)
 
@@ -274,9 +282,8 @@ Un parametro nuovo di questo tipo si aggiunge con una riga del registro, accanto
   registro FK-surrogata, perché il valore sia verificato alla scrittura.
 * **Parametri con override**: si leggono **sempre** con `fn_get_parameter_full`, mai con una
   query diretta sugli override.
-* **Parametri senza override**: si legge il default, nella funzione che possiede la regola, e la
-  descrizione del parametro lo dichiara («NON si legge via `fn_get_parameter_full` e non si
-  sovrascrive»), con il motivo.
+* **Parametri senza override**: `ammette_override = false`, e si legge il default nella funzione
+  che possiede la regola. La descrizione dice il motivo.
 * **Un lookup per codice si fa su una chiave univoca.** Se il codice non lo è (per esempio
   `config.stati.codice_iso2`, che ha righe storiche dello stesso paese), si usa la funzione che
   gestisce l'ambiguità (`script.fn_stato_id_da_iso2`), non un `SELECT … INTO`.

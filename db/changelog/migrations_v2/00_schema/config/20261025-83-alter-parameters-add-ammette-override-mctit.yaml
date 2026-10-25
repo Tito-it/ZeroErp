@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.parameters.ammette_override — LA FAMIGLIA DI UN PARAMETRO E' UNA COLONNA
+#   Brief: brief-db-parametri-senza-override §3 (D-1, Tid 2026-10-24)
+#
+# ── IL DIFETTO ───────────────────────────────────────────────────
+#   I parametri «senza override» (il valore vale uguale per tutti: lo legge
+#   dal default la funzione che possiede la regola) esistevano solo come
+#   testo nella descrizione. Il database non lo sapeva: un override su uno di
+#   loro veniva accettato e poi ignorato in silenzio, e la lista della UI
+#   admin lo mostrava come «valore effettivo».
+#
+# ── COSA FA ──────────────────────────────────────────────────────
+#   La colonna dichiara la famiglia; i due guard (20261025-84, -85) la fanno
+#   rispettare; il valore di ogni parametro sta nel suo CSV (D-2, D-3).
+#
+# ── ⛔ IL DEFAULT E' TEMPORANEO, E SI TOGLIE IN 90_end ───────────
+#   Nel modello la colonna non ha DEFAULT: un parametro nuovo dichiara la sua
+#   famiglia, come dichiara il suo valore. Il DEFAULT true serve a due cose:
+#   · il backfill delle righe esistenti (dbdev), prima che i mirror dei CSV
+#     scrivano il valore vero;
+#   · su un database ricostruito da zero, 80_data/20260224-38 (gia' mergiato)
+#     fa INSERT INTO config.parameters (code, default_value, description) ...
+#     ON CONFLICT (code): il NOT NULL si giudica sulla riga PROPOSTA, prima del
+#     conflitto, e senza DEFAULT quel seed fermerebbe il migrate.
+#   Lo toglie 90_end/20261025-88, dopo tutti i seed. Il valore true e' quello
+#   dei parametri «con override», cioe' il comportamento di prima per tutti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261025-83-alter-parameters-add-ammette-override-mctit.yaml
+
+  - changeSet:
+      id: 20261025-83-alter-parameters-add-ammette-override
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.parameters.ammette_override boolean NOT NULL: la famiglia del parametro (con o senza
+        override). DEFAULT true temporaneo per il backfill e per il seed 80_data/20260224-38, che
+        inserisce senza la colonna; lo toglie 90_end/20261025-88. Brief:
+        brief-db-parametri-senza-override §3 (D-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameters
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: parameters
+                    columnName: ammette_override
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.parameters
+                  ADD COLUMN ammette_override boolean NOT NULL DEFAULT true;
+
+              COMMENT ON COLUMN config.parameters.ammette_override IS
+                  'La famiglia del parametro. true = con override: il valore puo'' cambiare per utente, categoria cliente, gruppo, emittente, sessione o funzione, e si legge con la cascata di script.fn_get_parameter_full. false = senza override: il valore vale uguale per tutti, lo legge dal default la funzione che possiede la regola, e config.parameter_overrides lo rifiuta (E_PARAMETER_OVERRIDE_NON_AMMESSO). Il passaggio a false si rifiuta finche'' il parametro ha override (E_PARAMETER_OVERRIDE_PRESENTI). Nessun DEFAULT nel modello: un parametro nuovo dichiara la sua famiglia. Brief: brief-db-parametri-senza-override (D-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.parameters DROP COLUMN IF EXISTS ammette_override;

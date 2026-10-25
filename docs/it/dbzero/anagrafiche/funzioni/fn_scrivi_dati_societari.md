@@ -49,17 +49,19 @@ BEGIN
             p_soggetto_id::text);
     END IF;
 
-    -- I due enum NOT NULL: NULL vale il default di config.parameters.
+    -- I due enum NOT NULL: NULL vale il valore PROPOSTO dal parametro,
+    -- con la cascata della sessione (override per emittente, D-2-bis).
+    -- Parametro assente: la cascata solleva (nessun valore di riserva).
     v_socio_unico := COALESCE(
         p_socio_unico,
-        (SELECT default_value FROM config.parameters
-          WHERE code = 'dati_societari_default_socio_unico')::anagrafiche.socio_unico_enum,
-        'SU'::anagrafiche.socio_unico_enum);
+        script.fn_get_parameter_di_sessione(
+            'dati_societari_default_socio_unico',
+            'anagrafiche.fn_scrivi_dati_societari')::anagrafiche.socio_unico_enum);
     v_liquidazione := COALESCE(
         p_liquidazione,
-        (SELECT default_value FROM config.parameters
-          WHERE code = 'dati_societari_default_liquidazione')::anagrafiche.liquidazione_enum,
-        'LN'::anagrafiche.liquidazione_enum);
+        script.fn_get_parameter_di_sessione(
+            'dati_societari_default_liquidazione',
+            'anagrafiche.fn_scrivi_dati_societari')::anagrafiche.liquidazione_enum);
 
     UPDATE anagrafiche.dati_societari ds
        SET forma_giuridica_id = p_forma_giuridica_id,
@@ -98,7 +100,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_scrivi_dati_societari(p_soggetto_id uuid, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character varying, p_pec_fatturazione character varying, p_codice_sdi character varying, p_data_costituzione date)
-IS 'Il verbo di scrittura dei dati societari: crea o aggiorna la riga del soggetto (una per soggetto), STATO INTERO (NULL scrive NULL dove la colonna lo ammette; socio_unico e liquidazione NULL valgono il default di config.parameters; testi ripuliti, vuoto = NULL). Aggiunge solo il controllo del soggetto: NULL solleva E_PARAMETRO_INVALIDO, inesistente E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO; forma, natura, REA, capitale e canale FE restano ai trigger della tabella. SECURITY DEFINER: dal 20261011-04 l''applicazione non scrive anagrafiche.dati_societari direttamente, e questa e'' la porta (B-5); nessun guard di livello, il permesso resta al backend come per anagrafiche.soggetti. Se nella stessa scrittura cambia la natura del soggetto, si aggiorna prima il soggetto e poi si chiama il verbo. Lo chiamano il backend in modifica, le fixture pgTAP e, alla nascita di un soggetto, anagrafiche.fn_scrivi_dati_societari_alla_nascita (per fn_crea_soggetto_pg e fn_crea_soggetto_pf, rev 20261020-01). Brief: brief-db-dati-fiscali-e-societari-del-soggetto (B-1..B-5).';
+IS 'Il verbo di scrittura dei dati societari: crea o aggiorna la riga del soggetto (una per soggetto), STATO INTERO (NULL scrive NULL dove la colonna lo ammette; testi ripuliti, vuoto = NULL). socio_unico e liquidazione NULL valgono il valore proposto dai parametri dati_societari_default_socio_unico / _liquidazione, letto con script.fn_get_parameter_di_sessione: la cascata col contesto della sessione, quindi con l''override dell''emittente attivo (D-2-bis e D-4 di brief-db-parametri-senza-override); parametro assente = errore, nessun valore di riserva. Aggiunge solo il controllo del soggetto: NULL solleva E_PARAMETRO_INVALIDO, inesistente E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO; forma, natura, REA, capitale e canale FE restano ai trigger della tabella. SECURITY DEFINER: dal 20261011-04 l''applicazione non scrive anagrafiche.dati_societari direttamente, e questa e'' la porta (B-5); nessun guard di livello, il permesso resta al backend come per anagrafiche.soggetti. Se nella stessa scrittura cambia la natura del soggetto, si aggiorna prima il soggetto e poi si chiama il verbo. Lo chiamano anagrafiche.fn_scrivi_dati_societari_alla_nascita, il backend in modifica e le fixture pgTAP. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (B-1..B-5).';
 ```
 
 </div>

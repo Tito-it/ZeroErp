@@ -59,7 +59,7 @@ search:
 - [note_stili](tabelle/note_stili.md) — (latest review 15-01-26) * Fornire un **catalogo centralizzato** degli stili che possono essere applicati alle note (formattazione e/o semantica). * Separare la **semantica dello stile** (es. AVVISO, AVVERTENZA, INFO) dalla renderizzazione effettiva lato UI/templating. * Supportare la definizione di **regole visuali e di priorità** per note e messaggi (es. stile per warning, info, errori, note di servizio).
 - [parameter_fk_surrogate](tabelle/parameter_fk_surrogate.md) — (latest review 02-05-2026)
 - [parameter_overrides](tabelle/parameter_overrides.md)
-- [parameters](tabelle/parameters.md) — La tabella **`config.parameters`** implementa un’**architettura a due livelli** per la configurazione dinamica dell’applicazione:
+- [parameters](tabelle/parameters.md) — (ultima revisione 25-10-2026)
 - [priorita_pratiche](tabelle/priorita_pratiche.md) — La tabella `config.priorita_pratiche` definisce i **livelli di priorita'** assegnabili alle pratiche. Ogni pratica ha una priorita' obbligatoria che ne influenza l'ordine di lavorazione.
 - [profili_accesso](tabelle/profili_accesso.md) — (latest revision 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [profili_accesso_aree](tabelle/profili_accesso_aree.md) — (latest revision 04-05-2026 — modello legacy `profili_reparto_aree` dismesso)
@@ -165,7 +165,9 @@ search:
 - [trgfn_iva_guard_conti_iva](funzioni/trgfn_iva_guard_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 - [trgfn_iva_stati_normalize](funzioni/trgfn_iva_stati_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.iva_stati` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_parameter_overrides_fk_surrogate_dispatch](funzioni/trgfn_parameter_overrides_fk_surrogate_dispatch.md) — (latest review 02-05-2026)
+- [trgfn_parameter_overrides_guard_ammette_override](funzioni/trgfn_parameter_overrides_guard_ammette_override.md) — (scritta il 25-10-2026)
 - [trgfn_parameters_fk_surrogate_dispatch](funzioni/trgfn_parameters_fk_surrogate_dispatch.md) — (latest review 02-05-2026)
+- [trgfn_parameters_guard_ammette_override](funzioni/trgfn_parameters_guard_ammette_override.md) — (scritta il 25-10-2026)
 - [trgfn_profili_accesso_bindings_guard_coerenza](funzioni/trgfn_profili_accesso_bindings_guard_coerenza.md) — (latest review 18-04-2026) La trigger function **`config.trgfn_profili_accesso_bindings_guard_coerenza()`** verifica che il **tipo di binding** (colonna valorizzata) sia coerente con il **tipo del profilo di accesso** a cui il binding fa riferimento.
 - [trgfn_profili_accesso_bindings_guard_ultimo_super_admin](funzioni/trgfn_profili_accesso_bindings_guard_ultimo_super_admin.md) — (latest review 19-04-2026)
 - [trgfn_province_guard_sigla](funzioni/trgfn_province_guard_sigla.md)
