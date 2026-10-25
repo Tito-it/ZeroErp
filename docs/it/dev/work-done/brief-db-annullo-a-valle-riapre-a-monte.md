@@ -423,7 +423,14 @@ Nessun codice nuovo. R-4 ritirata (D-9), R-5 nel §3, R-10 nessun oggetto DB.
   parte» (pagina manual del classificatore): il flusso e' questo, e D-5 la sostituisce. La pagina lo dice.
 * **D-7, la rettifica, in pratica.** La rettifica nasce nella stessa commessa della riga fatturata che
   corregge, che e' EMESSA: finche' lo resta, la commessa non si annulla (D-3). Il ramo si raggiunge dopo il
-  reset del lotto (la riga torna NON_EMESSA). Annullando la commessa l'accredito si annulla e la quota non
+  reset del lotto (la riga torna NON_EMESSA).
+  > **Nota del 2026-10-25** (brief-db-pgtap-reso-costruito §7.9, F-1, con Tid): col verbo vero il ramo **non
+  > si raggiunge**. Il reset (`vendite.fn_cleanup_fatture_by_ids`) rifiuta una riga su cui c'e' un accredito
+  > (`E_FATTURE_RIGHE_RETTIFICATE`, decisione del 2026-08-22, `20260822-52`, gia' in vigore qui): la riga resta
+  > EMESSA e la commessa non si annulla. Il pgTAP `test-annullo-commessa-rettifica-v1` lo raggiungeva con un
+  > reset scritto a mano, che aggirava quel rifiuto; il 2026-10-25 e' stato riscritto sullo stato che il
+  > modello produce. **D-7 resta** (nessuna revoca, ramo compreso): il suo scopo — nessuna rettifica viva in
+  > una commessa morta, nessun reso «accreditato» a vuoto — lo garantiscono la regola del 22-08 e D-3. Annullando la commessa l'accredito si annulla e la quota non
   risulta piu' accreditata (test 5: da 3 a 0); la coda accrediti la riproporra' quando la merce tornera' in
   fattura, perche' dopo il reset non lo e'. ⚠️ Se l'accredito ha un'altra rettifica gia' emessa in un'altra
   commessa, il verbo dell'accredito rifiuta (RETTIFICA_EMESSA) dopo la conferma: caso non anticipato dal §1-bis.

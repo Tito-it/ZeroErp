@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): le bolle da ordine dei casi A (tmp_ddt_a, tmp_ddt_conf) da dbops.fn_pgtap_crea_ddt_da_ordine (p_data, p_data_ordine, p_fatturazione_trigger), la bolla autonoma del caso B da dbops.fn_pgtap_crea_ddt_senza_ordine (8 a 45, SPEDITO); resta a mano la bolla senza BA del test 9 (il caso). La riga della bolla A perde in bozza il prezzo che la madre copia (A-2): il test 5 prova il fallback via fulfillment.
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): pg_temp.spedisci porta la bolla a SPEDITO con dbops.fn_pgtap_porta_a_stato, non piu' con gli UPDATE diretti dello stato che la porta ora rifiuta.
 -- rev 2026-10-24 (brief-modello-documento-vendita Q-4): il mondo (azienda, operatore, contesto, cliente con BA) si costruisce con dbops.fn_pgtap_crea_mondo_cliente; prima BA, emittente e ruolo del cliente erano «il primo BA del database con un emittente», assente su un database ricostruito da zero.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
@@ -83,37 +84,18 @@ SELECT
   --   del push, non il registro di magazzino: la bolla non deve muovere merce,
   --   e non deve dipenderlo dal catalogo della macchina.
   dbops.fn_pgtap_crea_articolo('PGTAP-LDDT-ART', false) AS articolo_id,
-  (SELECT v.id
-     FROM config.valute v
-    ORDER BY v.id LIMIT 1
-  ) AS valuta_id,
   -- Stato ordine
   (SELECT s.id
      FROM config.stati_doc_ordini s
     WHERE s.codice = 'CONFERMATO' AND s.attivo IS TRUE
     LIMIT 1
   ) AS stato_ordine_confermato_id,
-  (SELECT s.id
-     FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE
-    LIMIT 1
-  ) AS stato_ordine_draft_id,
   -- Stati DDT
   (SELECT s.id
      FROM config.stati_doc_ddt s
     WHERE s.codice = 'SPEDITO' AND s.attivo IS TRUE
     LIMIT 1
   ) AS stato_ddt_spedito_id,
-  (SELECT s.id
-     FROM config.stati_doc_ddt s
-    WHERE s.codice = 'CONSEGNATO' AND s.attivo IS TRUE
-    LIMIT 1
-  ) AS stato_ddt_consegnato_id,
-  (SELECT s.id
-     FROM config.stati_doc_ddt s
-    WHERE s.codice = 'EMESSO' AND s.attivo IS TRUE
-    LIMIT 1
-  ) AS stato_ddt_emesso_id,
   -- rev 2026-09-22: i DDT nascono in DRAFT e si SPEDISCONO nel verso vero
   -- (righe, indirizzo CON, EMESSO, SPEDITO): il BB delle righe
   -- (trgfn_doc_righe_lock_fuori_bozza) non ammette piu' una riga in un
@@ -137,12 +119,7 @@ SELECT
      FROM config.sorgenti s
     WHERE s.codice = 'DDT_VENDITA' AND s.attivo IS TRUE
     LIMIT 1
-  ) AS sorgente_ddt_tipo_id,
-  (SELECT s.id
-     FROM config.sorgenti s
-    WHERE s.codice = 'ORDINE_VENDITA' AND s.attivo IS TRUE
-    LIMIT 1
-  ) AS sorgente_ordine_tipo_id
+  ) AS sorgente_ddt_tipo_id
 FROM tmp_mondo m;
 
 -- Porta un DDT nato in DRAFT fino a SPEDITO nel verso vero: indirizzo CON,
@@ -177,106 +154,30 @@ SELECT ok(
 --   DDT con stato SPEDITO, collegato via fulfillment
 -- ============================================================
 
--- 1. Crea ordine
+-- La bolla da ordine dal builder: ordine confermato del 2026-07-01 (riga 10
+-- a 30, trigger SPEDITO), bolla del 2026-07-05 generata dalla madre, in bozza.
+-- Il BA la bolla lo eredita dall'ordine.
+-- ⭐ Il test 5 prova il prezzo ereditato VIA FULFILLMENT: la madre copia il
+--   prezzo sulla riga di bolla (A-2), quindi qui la riga in bozza lo perde e
+--   il lister lo deve leggere dalla riga d'ordine. Poi SPEDITO per la matrice.
+CREATE TEMP TABLE tmp_a AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('PGTAP-LDDT A', 'DRAFT',
+         (SELECT billing_account_id FROM tmp_refs_ddt),
+         p_quantita => 10, p_prezzo => 30, p_articolo_id => (SELECT articolo_id FROM tmp_refs_ddt),
+         p_fatturazione_trigger => 'SPEDITO',
+         p_data => DATE '2026-07-05', p_data_ordine => DATE '2026-07-01');
+
+UPDATE vendite.ddt_righe dr SET prezzo_unitario = NULL
+ WHERE dr.ddt_id = (SELECT ddt_id FROM tmp_a);
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_a), 'SPEDITO');
+
 CREATE TEMP TABLE tmp_ordine_a AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id,
-    stato_doc_ordine_id, valuta_id, data,
-    emittente_fiscale_id, storicizza, meta
-  )
-  SELECT
-    r.soggetto_ruolo_id, r.billing_account_id,
-    r.stato_ordine_draft_id, r.valuta_id, DATE '2026-07-01',
-    r.emittente_fiscale_id,
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt')
-  FROM tmp_refs_ddt r
-  RETURNING id, uid, billing_account_id
-)
-SELECT * FROM ins;
+SELECT o.id, o.uid, o.billing_account_id
+  FROM vendite.ordini o
+ WHERE o.id = (SELECT ordine_id FROM tmp_a);
 
--- Imposta fatturazione_trigger = SPEDITO
--- (il trigger normalize non cambia se billing_account_id non cambia)
-UPDATE vendite.ordini
-SET fatturazione_trigger = 'SPEDITO'
-WHERE id = (SELECT id FROM tmp_ordine_a);
-
--- 2. Crea riga ordine con prezzo
-CREATE TEMP TABLE tmp_ordine_a_riga AS
-WITH ins AS (
-  INSERT INTO vendite.ordini_righe (
-    ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
-    storicizza, meta
-  )
-  SELECT
-    o.id, 1, r.articolo_id, 'Riga test DDT caso A',
-    -- iva_id (rev 2026-10-08, D-1): la conferma rifiuta «un prezzo senza aliquota»
-    10.000000, 10.000000, 30.000000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt')
-  FROM tmp_ordine_a o, tmp_refs_ddt r
-  RETURNING id
-)
-SELECT * FROM ins;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
--- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
--- righe non si scrivono piu' (20261008-90).
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ordine_a), 'CONFERMATO');
-END $x$;
-
--- 3. Crea DDT con stato SPEDITO (senza billing_account proprio)
-CREATE TEMP TABLE tmp_ddt_a AS
-WITH ins AS (
-  INSERT INTO vendite.ddt (
-    destinatario_soggetto_ruolo_id,
-    stato_doc_ddt_id, data,
-    sorgente_tipo_id, sorgente_uid,
-    causale_trasporto_id, storicizza, meta
-  )
-  SELECT
-    r.soggetto_ruolo_id,
-    r.stato_ddt_draft_id, DATE '2026-07-05',
-    r.sorgente_ordine_tipo_id,
-    (SELECT uid FROM tmp_ordine_a),
-    r.causale_vendita_id,
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt')
-  FROM tmp_refs_ddt r
-  RETURNING id, uid, billing_account_id
-)
-SELECT * FROM ins;
-
--- 4. Crea riga DDT (senza prezzo; sara` ereditato da ordine riga)
-CREATE TEMP TABLE tmp_ddt_a_riga AS
-WITH ins AS (
-  INSERT INTO vendite.ddt_righe (
-    ddt_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, attivo,
-    storicizza, meta
-  )
-  SELECT
-    d.id, 1, r.articolo_id, 'Riga DDT test caso A',
-    10.000000, 10.000000, true,
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt')
-  FROM tmp_ddt_a d, tmp_refs_ddt r
-  RETURNING id
-)
-SELECT * FROM ins;
-
--- 5. Crea fulfillment (collega riga ordine a riga DDT)
-INSERT INTO vendite.ordini_righe_fulfillment (
-  ordine_riga_id, ddt_riga_id, qta_evasa,
-  storicizza, meta
-)
-SELECT
-  (SELECT id FROM tmp_ordine_a_riga),
-  (SELECT id FROM tmp_ddt_a_riga),
-  10.000000,
-  false,
-  jsonb_build_object('test_scope', 'pgtap_fn_list_ddt');
-
-SELECT pg_temp.spedisci((SELECT id FROM tmp_ddt_a));
+CREATE TEMP TABLE tmp_ddt_a AS SELECT ddt_id AS id, ddt_uid AS uid FROM tmp_a;
 
 -- ============================================================
 -- Test 3: Caso A restituito
@@ -325,96 +226,14 @@ SELECT ok(
 --   Creo un altro ordine con trigger CONFERMATO e DDT collegato.
 --   L'ordine pusha su conferma, il DDT non deve pushare.
 -- ============================================================
-CREATE TEMP TABLE tmp_ordine_conf AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id,
-    stato_doc_ordine_id, valuta_id, data,
-    emittente_fiscale_id, storicizza, meta
-  )
-  SELECT
-    r.soggetto_ruolo_id, r.billing_account_id,
-    r.stato_ordine_draft_id, r.valuta_id, DATE '2026-07-01',
-    r.emittente_fiscale_id,
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'conf')
-  FROM tmp_refs_ddt r
-  RETURNING id, uid
-)
-SELECT * FROM ins;
--- fatturazione_trigger rimane CONFERMATO (default da BA)
-
-CREATE TEMP TABLE tmp_ordine_conf_riga AS
-WITH ins AS (
-  INSERT INTO vendite.ordini_righe (
-    ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
-    storicizza, meta
-  )
-  SELECT
-    o.id, 1, r.articolo_id, 'Riga ordine test conf',
-    -- iva_id (rev 2026-10-08, D-1): la conferma rifiuta «un prezzo senza aliquota»
-    5.000000, 5.000000, 20.000000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'conf')
-  FROM tmp_ordine_conf o, tmp_refs_ddt r
-  RETURNING id
-)
-SELECT * FROM ins;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
--- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
--- righe non si scrivono piu' (20261008-90).
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ordine_conf), 'CONFERMATO');
-END $x$;
-
+-- Dal builder: ordine del 2026-07-01 con la riga 5 a 20 e il trigger
+-- ereditato dal BA (CONFERMATO), bolla del 2026-07-10 portata a SPEDITO.
 CREATE TEMP TABLE tmp_ddt_conf AS
-WITH ins AS (
-  INSERT INTO vendite.ddt (
-    destinatario_soggetto_ruolo_id,
-    stato_doc_ddt_id, data,
-    sorgente_tipo_id, sorgente_uid,
-    causale_trasporto_id, storicizza, meta
-  )
-  SELECT
-    r.soggetto_ruolo_id,
-    r.stato_ddt_draft_id, DATE '2026-07-10',
-    r.sorgente_ordine_tipo_id,
-    (SELECT uid FROM tmp_ordine_conf),
-    r.causale_vendita_id,
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'conf')
-  FROM tmp_refs_ddt r
-  RETURNING id, uid
-)
-SELECT * FROM ins;
-
-CREATE TEMP TABLE tmp_ddt_conf_riga AS
-WITH ins AS (
-  INSERT INTO vendite.ddt_righe (
-    ddt_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, attivo,
-    storicizza, meta
-  )
-  SELECT
-    d.id, 1, r.articolo_id, 'Riga DDT conf',
-    5.000000, 5.000000, true,
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'conf')
-  FROM tmp_ddt_conf d, tmp_refs_ddt r
-  RETURNING id
-)
-SELECT * FROM ins;
-
-INSERT INTO vendite.ordini_righe_fulfillment (
-  ordine_riga_id, ddt_riga_id, qta_evasa,
-  storicizza, meta
-)
-SELECT
-  (SELECT id FROM tmp_ordine_conf_riga),
-  (SELECT id FROM tmp_ddt_conf_riga),
-  5.000000,
-  false,
-  jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'conf');
-
-SELECT pg_temp.spedisci((SELECT id FROM tmp_ddt_conf));
+SELECT b.ddt_id AS id, b.ddt_uid AS uid
+  FROM dbops.fn_pgtap_crea_ddt_da_ordine('PGTAP-LDDT conf', 'SPEDITO',
+         (SELECT billing_account_id FROM tmp_refs_ddt),
+         p_quantita => 5, p_prezzo => 20, p_articolo_id => (SELECT articolo_id FROM tmp_refs_ddt),
+         p_data => DATE '2026-07-10', p_data_ordine => DATE '2026-07-01') b;
 
 SELECT ok(
   NOT EXISTS (
@@ -429,44 +248,16 @@ SELECT ok(
 -- Caso B: DDT autonomo
 -- ============================================================
 
--- DDT autonomo con billing_account_id e stato SPEDITO
-CREATE TEMP TABLE tmp_ddt_b AS
-WITH ins AS (
-  INSERT INTO vendite.ddt (
-    destinatario_soggetto_ruolo_id,
-    stato_doc_ddt_id, data,
-    billing_account_id, valuta_id,
-    causale_trasporto_id, storicizza, meta
-  )
-  SELECT
-    r.soggetto_ruolo_id,
-    r.stato_ddt_draft_id, DATE '2026-07-15',
-    r.billing_account_id, r.valuta_id,
-    r.causale_vendita_id,
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'autonomo')
-  FROM tmp_refs_ddt r
-  RETURNING id, uid
-)
-SELECT * FROM ins;
+-- DDT autonomo con billing_account_id e stato SPEDITO, dal builder: del
+-- 2026-07-15, una riga 8 a 45 (il prezzo che il test 8 legge).
+CREATE TEMP TABLE tmp_b AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_senza_ordine('PGTAP-LDDT autonomo', 'SPEDITO',
+         (SELECT billing_account_id FROM tmp_refs_ddt),
+         p_quantita => 8, p_prezzo => 45, p_articolo_id => (SELECT articolo_id FROM tmp_refs_ddt),
+         p_data => DATE '2026-07-15');
 
-CREATE TEMP TABLE tmp_ddt_b_riga AS
-WITH ins AS (
-  INSERT INTO vendite.ddt_righe (
-    ddt_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
-    storicizza, meta
-  )
-  SELECT
-    d.id, 1, r.articolo_id, 'Riga DDT autonomo',
-    -- iva_id: il gate di emissione rifiuta «un prezzo senza aliquota» (rev 22-09)
-    8.000000, 8.000000, 45.000000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'autonomo')
-  FROM tmp_ddt_b d, tmp_refs_ddt r
-  RETURNING id
-)
-SELECT * FROM ins;
-
-SELECT pg_temp.spedisci((SELECT id FROM tmp_ddt_b));
+CREATE TEMP TABLE tmp_ddt_b AS SELECT ddt_id AS id, ddt_uid AS uid FROM tmp_b;
+CREATE TEMP TABLE tmp_ddt_b_riga AS SELECT ddt_riga_id AS id FROM tmp_b;
 
 -- ============================================================
 -- Test 7: Caso B restituito

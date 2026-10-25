@@ -1,6 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i due ordini in bozza con la
+--   riga da dbops.fn_pgtap_crea_ordine_con_righe (DRAFT, trigger SPEDITO, 2 x 10 con
+--   l'articolo e l'IVA del test); a mano restano solo le transizioni, che sono il caso.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
 --   il documento passato ai lettori delle testate, ai legami e ai montaggi del
 --   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
@@ -315,41 +318,20 @@ SELECT dbops.fn_pgtap_crea_articolo('PGT-LM-S') AS id;
 CREATE TEMP TABLE _k AS
 SELECT (SELECT i.id FROM config.iva i
          WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
-         ORDER BY i.id LIMIT 1) AS iva_id,
-       (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id;
+         ORDER BY i.id LIMIT 1) AS iva_id;
 
-CREATE TEMP TABLE _doc (chiave text PRIMARY KEY, ordine_id bigint, riga_id bigint);
-
-DO $fixture$
-DECLARE
-    c      record;
-    k      record;
-    v_id   bigint;
-    v_riga bigint;
-BEGIN
-    SELECT * INTO c FROM _m;
-    SELECT * INTO k FROM _k;
-
-    FOR i IN 1..2 LOOP
-        INSERT INTO vendite.ordini
-            (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-             fatturazione_trigger, emittente_fiscale_id, valuta_id, data)
-        VALUES
-            (c.cliente_soggetto_ruolo_id, c.billing_account_id,
-             (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT'),
-             'SPEDITO', c.emittente_fiscale_id, k.valuta_id, script.fn_data_operativa())
-        RETURNING id INTO v_id;
-
-        INSERT INTO vendite.ordini_righe
-            (ordine_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa,
-             prezzo_unitario, iva_id)
-        VALUES (v_id, 1, (SELECT id FROM _art), 'Riga pgTAP', 2, 2, 10, k.iva_id)
-        RETURNING id INTO v_riga;
-
-        INSERT INTO _doc VALUES (CASE i WHEN 1 THEN 'CONF' ELSE 'ANN' END, v_id, v_riga);
-    END LOOP;
-END
-$fixture$;
+-- Due ordini del cliente del mondo, in bozza con una riga: uno si conferma, uno
+-- si annulla (le transizioni sono il caso, piu' sotto).
+CREATE TEMP TABLE _doc AS
+SELECT x.chiave, b.ordine_id, b.ordine_riga_id AS riga_id
+  FROM (VALUES (1, 'CONF'), (2, 'ANN')) x(n, chiave)
+ CROSS JOIN LATERAL dbops.fn_pgtap_crea_ordine_con_righe('pgTAP lock montaggio ' || x.chiave, 'DRAFT',
+           p_billing_account_id   => (SELECT billing_account_id FROM _m),
+           p_fatturazione_trigger => 'SPEDITO',
+           p_righe => jsonb_build_array(jsonb_build_object(
+               'articolo_id', (SELECT id FROM _art), 'quantita', 2, 'prezzo', 10,
+               'iva_id', (SELECT iva_id FROM _k), 'descrizione', 'Riga pgTAP'))) b
+ ORDER BY x.n;
 
 CREATE FUNCTION pg_temp.ord(p text) RETURNS bigint
 LANGUAGE sql STABLE AS $f$ SELECT ordine_id FROM _doc WHERE chiave = p $f$;

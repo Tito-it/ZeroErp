@@ -30,9 +30,10 @@
 --    commessa (righe ancora da spingere -> acceso, senza motivo)
 -- 7) Guard: EVASO -> ANNULLATO bloccata (throws) — terminale a runtime
 -- ------------------------------------------------------------
--- Nota emittente: l'ordine fixture passa emittente_fiscale_id esplicito e
---   billing_account_id=NULL (GUC vuota in pgTAP); bypassa trgfn_ordini_default_emittente
---   e il guard coerenza BA. La transizione di stato non dipende dal BA.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine CONFERMATO con la
+--   sua riga da dbops.fn_pgtap_crea_ordine_con_righe (cliente nuovo, trigger ereditato
+--   dal BA, data 2026-06-15, 3 x 10); a mano resta solo la transizione CONFERMATO -> EVASO,
+--   che e' il caso.
 
 BEGIN;
 
@@ -123,61 +124,19 @@ SELECT is(
 );
 
 -- ============================================================
--- Fixture: ordine CONFERMATO con una riga (BA=NULL, emittente esplicito).
+-- Fixture: ordine CONFERMATO con una riga, per la strada vera.
 -- ============================================================
 CREATE TEMP TABLE tmp_refs_ev AS
 SELECT
-  -- ⛔ L'emittente NON si pesca, si DERIVA (2026-09-23, guida pgTAP §5): con
-  --   una sola azienda a catalogo «il primo attivo» e quello di chi agisce
-  --   coincidevano per caso, su un database ricostruito no.
-  script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
--- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-1/D-2): l'articolo si
---   COSTRUISCE. Prima si pescava dal catalogo (il primo per id, o il piu' recente):
---   il primo per id e' l'onere del seed ONERE_SENZA_CONTRATTO (natura servizio), e
---   da 20261013-42 ordine e bolla portano solo merce. Un articolo costruito ha solo
---   le proprieta' che il test gli da' (merce, non gestito a magazzino).
-  dbops.fn_pgtap_crea_articolo('PGT-SDOE-ART', false) AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  -- ⚠️ rev 2026-10-08 (D-1): lo stato di nascita e l'aliquota della riga, che la conferma pretende.
-  (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT'      LIMIT 1) AS stato_draft_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'CONFERMATO' LIMIT 1) AS stato_conf_id,
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'EVASO'      LIMIT 1) AS stato_evaso_id,
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'ANNULLATO'  LIMIT 1) AS stato_ann_id;
 
--- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): l'ordine senza BA non esiste piu'.
---   Il cliente si FABBRICA (BA legato all'emittente dell'operatore dal trigger z90).
-CREATE TEMP TABLE tmp_ev_cli AS
-SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('ordine evaso');
-SET CONSTRAINTS ALL IMMEDIATE;
-
+-- Il cliente lo fabbrica il builder (BA legato all'emittente dell'operatore);
+-- il trigger di fatturazione e' quello ereditato dal BA (CONFERMATO, test 6).
 CREATE TEMP TABLE tmp_ord_ev AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-    stato_doc_ordine_id, valuta_id, data, storicizza, meta
-  )
-  SELECT c.soggetto_ruolo_id, c.billing_account_id,
-         anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),
-         r.stato_draft_id, r.valuta_id, DATE '2026-06-15', false,
-         '{"test_scope":"pgtap_ordine_evaso"}'::jsonb
-  FROM tmp_refs_ev r, tmp_ev_cli c
-  RETURNING id
-)
-SELECT id FROM ins;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
---   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
---   righe non si scrivono piu' (20261008-90).
-INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'riga evaso', 3.0, 3.0, 10.0, r.iva_id, true, false, '{}'::jsonb
-FROM tmp_ord_ev o, tmp_refs_ev r;
-
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_ev), 'CONFERMATO');
-END $x$;
+SELECT o.ordine_id AS id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('ordine evaso', 'CONFERMATO',
+           p_quantita => 3, p_prezzo => 10, p_data_ordine => DATE '2026-06-15') o;
 
 -- ============================================================
 -- TEST 5) Guard: CONFERMATO -> EVASO ammessa (lives)

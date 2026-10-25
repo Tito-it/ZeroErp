@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): gli ordini da dbops.fn_pgtap_crea_ordine_con_righe (p_righe con la richiesta del cliente, p_data_ordine a -40, trigger SPEDITO); restano a mano le date scritte dopo (la promessa a ordine CONFERMATO, la richiesta in bozza del test 8): sono il caso.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla del test 9 dal builder dbops.fn_pgtap_crea_ddt_da_ordine (p_ordine_id); l'ordine resta scritto dal test: data a -40 (una data di consegna non precede l'ordine) e la promessa a -3 scritta a ordine CONFERMATO prima della spedizione.
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture costruisce un'AZIENDA — emittente fiscale,
@@ -45,11 +46,9 @@
 --   test 9 e' quello che distingue «pareggiata» da «in ritardo»: senza, un
 --   ritardo contato su una riga gia' evasa passerebbe inosservato.
 --
--- ⚠️ IL MONDO SI COSTRUISCE: azienda, cliente, articolo. L'ordine CONFERMATO
---   nasce DRAFT, prende la riga e passa a CONFERMATO con
---   dbops.fn_pgtap_porta_a_stato (rev 2026-10-08, 20261008-90: fuori bozza le
---   righe non si scrivono piu') e la spedizione del test 9 e'
---   una bolla VERA, dal builder dbops.fn_pgtap_crea_ddt_da_ordine su
+-- ⚠️ IL MONDO SI COSTRUISCE: azienda, cliente, articolo. Gli ordini (con la
+--   riga, nello stato chiesto) dal builder dbops.fn_pgtap_crea_ordine_con_righe
+--   e la spedizione del test 9 e' una bolla VERA, dal builder dbops.fn_pgtap_crea_ddt_da_ordine su
 --   quell'ordine (p_ordine_id), fino a CONSEGNATO.
 --
 -- ⚠️ script.fn_data_operativa() anche qui: la vista conta i giorni dal giorno
@@ -111,53 +110,34 @@ WITH a AS (
 )
 SELECT id AS articolo_id FROM a;
 
--- Riferimenti di catalogo, scelti UNA volta (chiave stabile o ORDER BY).
-CREATE TEMP TABLE _refs AS
-SELECT
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO' AND s.attivo) AS stato_ord_confermato_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT'      AND s.attivo) AS stato_ord_draft_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id;
-
 -- ⭐ Da qui nei panni dell'operatore costruito.
 DO $ctx$ BEGIN
     PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo));
 END $ctx$;
 
--- Helper: un ordine nello stato dato, con una riga da p_qta (e, se data, la
--- richiesta del cliente scritta sulla riga in bozza).
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende la riga, poi passa allo stato voluto con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-90).
-CREATE OR REPLACE FUNCTION pg_temp.mk_ordine(p_stato_id bigint, p_qta numeric,
+-- Helper: un ordine nello stato dato, con una riga da p_qta a 25 (e, se data,
+-- la richiesta del cliente scritta sulla riga in bozza), dal builder.
+-- ⚠️ rev 2026-10-13 (collaudo date di consegna, 20261013-66): una data di
+--   consegna non viene prima della data dell'ordine. L'ordine nasce a -40
+--   (era -10), prima di ogni data di consegna del file (la piu' bassa e' la
+--   richiesta a -30 del test 8): il ritardo si misura su oggi, non sulla
+--   data dell'ordine, e nessuna asserzione cambia.
+CREATE OR REPLACE FUNCTION pg_temp.mk_ordine(p_stato text, p_qta numeric,
                                              p_richiesta date DEFAULT NULL)
 RETURNS TABLE(ordine_id bigint, ordine_riga_id bigint) AS $$
-DECLARE v_ord bigint; v_orr bigint; v_stato text;
-BEGIN
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, utility_id, stato_doc_ordine_id,
-                              valuta_id, data, fatturazione_trigger, emittente_fiscale_id, meta)
-  -- ⚠️ rev 2026-10-13 (collaudo date di consegna, 20261013-66): una data di
-  --   consegna non viene prima della data dell'ordine. L'ordine nasce a -40
-  --   (era -10), prima di ogni data di consegna del file (la piu' bassa e' la
-  --   richiesta a -30 del test 8): il ritardo si misura su oggi, non sulla
-  --   data dell'ordine, e nessuna asserzione cambia.
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, c.utility_id, r.stato_ord_draft_id,
-         r.valuta_id, script.fn_data_operativa() - 40, 'SPEDITO', m.emittente_fiscale_id,
-         jsonb_build_object('test_scope', 'pgtap_situazione_merce_ritardo')
-    FROM _cliente c, _mondo m, _refs r
-  RETURNING id INTO v_ord;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-                                    qta_operativa, quantita, prezzo_unitario, iva_id,
-                                    data_consegna_richiesta_cliente)
-  SELECT v_ord, 1, a.articolo_id, 'Riga ritardo', p_qta, p_qta, 25, r.iva_id, p_richiesta
-    FROM _articolo a, _refs r
-  RETURNING id INTO v_orr;
-  SELECT s.codice_interno INTO v_stato FROM config.stati_doc_ordini s WHERE s.id = p_stato_id;
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, v_stato);
-  RETURN QUERY SELECT v_ord, v_orr;
-END $$ LANGUAGE plpgsql;
+  SELECT o.ordine_id, o.ordine_riga_id
+    FROM dbops.fn_pgtap_crea_ordine_con_righe('situazione_merce_ritardo', p_stato,
+           (SELECT c.billing_account_id FROM _cliente c),
+           p_fatturazione_trigger => 'SPEDITO',
+           p_data_ordine          => script.fn_data_operativa() - 40,
+           p_righe                => jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
+               'articolo_id', (SELECT a.articolo_id FROM _articolo a), 'quantita', p_qta, 'prezzo', 25,
+               'data_consegna_richiesta_cliente', p_richiesta)))) o
+$$ LANGUAGE sql;
 
 -- La riga IMPEGNATA (ordine confermato, 10 pezzi, mai spedita): residuo 10.
 CREATE TEMP TABLE _a AS
-SELECT * FROM pg_temp.mk_ordine((SELECT stato_ord_confermato_id FROM _refs), 10);
+SELECT * FROM pg_temp.mk_ordine('CONFERMATO', 10);
 
 -- ============================================================
 -- IL RITARDO sulla riga impegnata
@@ -174,7 +154,7 @@ SELECT is(
 --   nasce con la richiesta a -5 scritta IN BOZZA e poi e' confermata; la promessa
 --   (5-7) resta un UPDATE su CONFERMATO, l'eccezione ammessa.
 CREATE TEMP TABLE _a2 AS
-SELECT * FROM pg_temp.mk_ordine((SELECT stato_ord_confermato_id FROM _refs), 10, script.fn_data_operativa() - 5);
+SELECT * FROM pg_temp.mk_ordine('CONFERMATO', 10, script.fn_data_operativa() - 5);
 
 SELECT is(
     (SELECT s.giorni_ritardo FROM vendite.vw_situazione_merce_ordine s WHERE s.ordine_riga_id = (SELECT ordine_riga_id FROM _a2)),
@@ -207,7 +187,7 @@ SELECT is(
 -- DOVE NON SI APPLICA
 -- ============================================================
 CREATE TEMP TABLE _b AS
-SELECT * FROM pg_temp.mk_ordine((SELECT stato_ord_draft_id FROM _refs), 10);
+SELECT * FROM pg_temp.mk_ordine('DRAFT', 10);
 
 UPDATE vendite.ordini_righe SET data_consegna_richiesta_cliente = script.fn_data_operativa() - 30
  WHERE id = (SELECT ordine_riga_id FROM _b);
@@ -220,7 +200,7 @@ SELECT is(
 
 -- ⭐ Spedita per intero: DDT vero da 10, consegnato. Promessa scaduta a -3.
 CREATE TEMP TABLE _c AS
-SELECT * FROM pg_temp.mk_ordine((SELECT stato_ord_confermato_id FROM _refs), 10);
+SELECT * FROM pg_temp.mk_ordine('CONFERMATO', 10);
 -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la promessa si
 --   scrive PRIMA della spedizione, a ordine CONFERMATO (l'eccezione di 20261008-90):
 --   spedito per intero l'ordine e' EVASO e la riga non si tocca piu'.

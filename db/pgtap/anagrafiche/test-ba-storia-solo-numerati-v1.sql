@@ -12,6 +12,7 @@
 --   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §3.6 e §3.7
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): la famiglia della bolla e' DDT_VENDITA, il codice della sorgente.
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): l'emissione del DDT (test 4) con dbops.fn_pgtap_porta_a_stato, non piu' con l'UPDATE diretto dello stato che la porta ora rifiuta.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la bolla in bozza dal builder dbops.fn_pgtap_crea_ddt_senza_ordine ('DRAFT', 5 a 10); l'emissione del test 4 resta col verbo, perche' e' il caso.
 -- ------------------------------------------------------------
 -- Elenco test (plan 7):
 -- 1) Fixture: un billing account NUOVO, quindi senza storia
@@ -66,34 +67,11 @@ SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('BA storia DDT');
 
 CREATE TEMP TABLE tmp_bsd_refs AS
 SELECT
-    m.cliente_soggetto_ruolo_id                              AS soggetto_ruolo_id,
-    m.emittente_fiscale_id,
     m.emittente_soggetto_ruolo_id                            AS emittente_sr_ok,
     -- ⭐ L'«altro» emittente e' un emittente VERO, costruito: prima era «un
     --   soggetto_ruolo qualunque diverso da quello dell'operatore».
     (SELECT e.soggetto_ruolo_id
-       FROM dbops.fn_pgtap_crea_emittente() e)               AS emittente_sr_altro,
-    -- ⚠️ `gestito_a_magazzino = false`: il caso del file e' la NUMERAZIONE del
-    --   DDT, non il suo movimento. Un articolo gestito porterebbe dentro il
-    --   magazzino — disponibilita', ubicazioni — che qui non e' in esame.
-    dbops.fn_pgtap_crea_articolo('PGTAP-BSD-' || m.billing_account_id,
-                                 p_gestito := false)          AS articolo_id,
-    (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
-    (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-    (SELECT s.id FROM config.stati_doc_ddt s
-      WHERE s.codice_interno = 'DRAFT'  ORDER BY s.id LIMIT 1) AS stato_ddt_draft_id,
-    (SELECT s.id FROM config.stati_doc_ddt s
-      WHERE s.codice_interno = 'EMESSO' ORDER BY s.id LIMIT 1) AS stato_ddt_emesso_id,
-    -- ⚠️ Qui l'aggancio e' su `codice` e NON su `codice_interno`, e non per
-    --   scelta: config.causali_trasporto la colonna `codice_interno` non ce
-    --   l'ha proprio. Resta quindi un aggancio FRAGILE — `codice` e'
-    --   modificabile dall'utente, e un rename lo sgancia in silenzio — ed e'
-    --   dichiarato qui invece di essere scoperto da chi vedra' il test
-    --   diventare rosso senza capire perche'.
-    (SELECT c.id FROM config.causali_trasporto c
-      WHERE c.codice = 'VENDITA' ORDER BY c.id LIMIT 1)                   AS causale_vendita_id,
-    (SELECT ti.id FROM config.tipi_indirizzi ti
-      WHERE ti.codice_interno = 'CON' ORDER BY ti.id LIMIT 1)             AS tipo_ind_con_id
+       FROM dbops.fn_pgtap_crea_emittente() e)               AS emittente_sr_altro
   FROM tmp_bsd_mondo m;
 
 -- =========================================================
@@ -115,41 +93,15 @@ SELECT is(
 --   NUMERATO» da «blocca qualunque documento», e un presidio troppo severo
 --   passerebbe il test chiudendo la finestra di correzione al primo documento
 --   aperto.
-CREATE TEMP TABLE tmp_bsd_ddt (ddt_id bigint);
-
-DO $$
-DECLARE
-    v_ddt bigint;
-    r     record;
-    t     record;
-BEGIN
-    SELECT * INTO r FROM tmp_bsd_refs;
-    SELECT * INTO t FROM tmp_bsd_ids;
-
-    INSERT INTO vendite.ddt (
-        destinatario_soggetto_ruolo_id, stato_doc_ddt_id, data,
-        billing_account_id, valuta_id, causale_trasporto_id,
-        emittente_fiscale_id, storicizza, meta)
-    VALUES (r.soggetto_ruolo_id, r.stato_ddt_draft_id, script.fn_data_operativa(),
-            t.billing_account_id, r.valuta_id, r.causale_vendita_id,
-            r.emittente_fiscale_id, false,
-            jsonb_build_object('test_scope', 'pgtap_ba_storia_ddt'))
-    RETURNING id INTO v_ddt;
-
-    INSERT INTO vendite.ddt_righe (
-        ddt_id, riga_nr, articolo_id, descrizione,
-        qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-    VALUES (v_ddt, 1, r.articolo_id, 'Riga storia BA', 5, 5, 10, r.iva_id, true, false,
-            jsonb_build_object('test_scope', 'pgtap_ba_storia_ddt'));
-
-    -- L'indirizzo di consegna serve all'EMISSIONE, non alla creazione.
-    INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-    VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb)
-    ON CONFLICT DO NOTHING;
-
-    INSERT INTO tmp_bsd_ddt VALUES (v_ddt);
-END;
-$$;
+-- La bolla in bozza dal builder della bolla senza ordine: causale VENDITA,
+-- indirizzi, una riga 5 a 10 su un articolo merce NON gestito (il caso del file
+-- e' la NUMERAZIONE del DDT, non il suo movimento).
+CREATE TEMP TABLE tmp_bsd_ddt AS
+SELECT b.ddt_id
+  FROM dbops.fn_pgtap_crea_ddt_senza_ordine('BA storia DDT', 'DRAFT',
+           p_billing_account_id => (SELECT billing_account_id FROM tmp_bsd_mondo),
+           p_quantita           => 5,
+           p_prezzo             => 10) b;
 
 SELECT is(
     (SELECT anagrafiche.fn_ba_ha_storia_emittente(t.billing_account_id)

@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): gli ordini senza bolla (re_mk_ordine) da dbops.fn_pgtap_crea_ordine_con_righe, la bolla J da dbops.fn_pgtap_crea_ddt_senza_ordine (DRAFT); restano a mano la bolla standalone di D col legame scritto a mano e il legame in piu' di E (sono il caso).
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso di F dal builder dbops.fn_pgtap_crea_reso, in bozza; restano a mano la conferma (fn_conferma_reso, il test 30 ne misura l'effetto: resta anche l'azione conferma_reso in testa) e la ri-consegna dalla madre in bozza (fn_genera_ddt_riconsegna e' il verbo del 30, e i 31-35 lavorano sulla bolla in bozza).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (pg_temp.re_mk_ddt lo chiama e annota le chiavi; ritirata pg_temp.re_avanza); restano a mano gli ordini senza bolla (re_mk_ordine), le bolle standalone di D e J, il legame in piu' di E, le scritture sulle righe e gli annulli (sono il caso), il reso di F (giro 2).
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): 37 e 42 annullano dal verbo vendite.fn_cambia_stato_ddt (senza conferma) invece che con un UPDATE diretto dello stato, che ora ferma la porta (E_DOC_STATO_SOLO_DAL_VERBO) prima dell'avviso sui legami. Attese invariate.
@@ -72,8 +73,9 @@
 --
 -- ⚠️ LE FIXTURE SI COSTRUISCONO: cliente e articoli dai builder, bolle da
 --   ordine da dbops.fn_pgtap_crea_ddt_da_ordine (ordine 10 @20, bolla in
---   bozza o nello stato del caso, per la matrice); gli ordini senza bolla
---   nascono DRAFT e passano a CONFERMATO con dbops.fn_pgtap_porta_a_stato.
+--   bozza o nello stato del caso, per la matrice); gli ordini senza bolla da
+--   dbops.fn_pgtap_crea_ordine_con_righe (CONFERMATO), la bolla senza legami
+--   di J da dbops.fn_pgtap_crea_ddt_senza_ordine (in bozza).
 --   L'articolo NON e' gestito a magazzino: l'emissione non chiede prelievi
 --   (il Lotto 3 e' invariato, §5.1).
 -- ------------------------------------------------------------
@@ -164,33 +166,23 @@ SELECT
   dbops.fn_pgtap_crea_articolo('PGT-RE-PLUTO', false)                                                        AS articolo2_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                                   AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)                               AS iva_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo LIMIT 1)         AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'DRAFT'      AND s.attivo LIMIT 1)       AS stato_ddt_draft_id
 FROM tmp_cli_re c;
 
 CREATE TEMP TABLE tmp_fix(chiave text PRIMARY KEY, id bigint);
 CREATE TEMP TABLE tmp_esito(caso text PRIMARY KEY, sqlstate text, messaggio text, righe int);
 
--- Un ordine CONFERMATO con una riga, senza bolla (nasce DRAFT, prende la riga,
--- poi la transizione): serve dove il caso vuole una riga d'ordine e basta.
+-- Un ordine CONFERMATO con una riga (p_qta @20), senza bolla, dal builder:
+-- serve dove il caso vuole una riga d'ordine e basta. Qui se ne annotano le chiavi.
 CREATE OR REPLACE FUNCTION pg_temp.re_mk_ordine(p_chiave text, p_articolo uuid, p_qta numeric)
 RETURNS void AS $$
-DECLARE r RECORD; v_ord bigint; v_orr bigint;
+DECLARE o RECORD;
 BEGIN
-  SELECT * INTO r FROM tmp_refs_re;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
-          DATE '2026-10-01', r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope', 'pgtap_righe_evase'))
-  RETURNING id INTO v_ord;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, p_articolo, 'Riga pgTAP righe evase', p_qta, p_qta, 20, r.iva_id,
-          true, false, jsonb_build_object('test_scope', 'pgtap_righe_evase'))
-  RETURNING id INTO v_orr;
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-  INSERT INTO tmp_fix VALUES (p_chiave || '_ord', v_ord), (p_chiave || '_orr', v_orr);
+  SELECT * INTO o FROM dbops.fn_pgtap_crea_ordine_con_righe('righe evase', 'CONFERMATO',
+      (SELECT r.billing_account_id FROM tmp_refs_re r),
+      p_quantita => p_qta, p_prezzo => 20, p_articolo_id => p_articolo,
+      p_data_ordine => DATE '2026-10-01');
+  INSERT INTO tmp_fix VALUES (p_chiave || '_ord', o.ordine_id), (p_chiave || '_orr', o.ordine_riga_id);
 END $$ LANGUAGE plpgsql;
 
 -- Una bolla da ordine, con la sua riga evasa, dal builder: nello stato chiesto
@@ -559,19 +551,13 @@ SELECT set_config('zeroerp.ddt_riga_ritira_legame', '', true);
 SELECT ok(pg_temp.re_rifiuto('41_ritiro_a_mano', 'non si scrive direttamente'),
   '41) D-8: fuori bozza la porta del ritiro accesa a mano non toglie un legame');
 
-DO $j$
-DECLARE r RECORD; v_ddt bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_re;
-  INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id, billing_account_id,
-                           valuta_id, emittente_fiscale_id, storicizza, meta)
-  VALUES (DATE '2026-10-02', r.stato_ddt_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
-          r.valuta_id, r.emittente_fiscale_id, false, '{"test_scope":"pgtap_righe_evase"}')
-  RETURNING id INTO v_ddt;
-  INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione, qta_operativa, storicizza, meta)
-  VALUES (v_ddt, 1, r.articolo_id, 'pippo senza legami', 2, false, '{"test_scope":"pgtap_righe_evase"}');
-  INSERT INTO tmp_fix VALUES ('j1_ddt', v_ddt);
-END $j$;
+-- J: una bolla senza ordine, in bozza (2 pezzi), dal builder: l'annullo e' il caso.
+INSERT INTO tmp_fix
+SELECT 'j1_ddt', b.ddt_id
+  FROM dbops.fn_pgtap_crea_ddt_senza_ordine('righe evase J', 'DRAFT',
+         (SELECT r.billing_account_id FROM tmp_refs_re r),
+         p_quantita => 2, p_articolo_id => (SELECT r.articolo_id FROM tmp_refs_re r),
+         p_data => DATE '2026-10-02') b;
 -- ⚠️ rev 2026-10-25 (§7, giro 5): dal verbo di stato, senza conferma. Il verbo
 --   ritorna i movimenti (nessuno: la bolla non muove merce), quindi la sonda
 --   conta UNA riga se il verbo e' passato senza errore.

@@ -49,6 +49,7 @@
 --   come app, 2026-10-10).
 -- ⛔ La clausola non si mette «per igiene»: entra in questo elenco solo una
 --   funzione su cui la misura ha mostrato il difetto.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la bolla in bozza da dbops.fn_pgtap_crea_ddt (VENDITA, p_data); niente resta a mano.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -69,19 +70,11 @@ SELECT ok(
 CREATE TEMP TABLE tmp_cli_pg AS
 SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('pgtap_piano_generico');
 
+-- La bolla in bozza dal builder (causale, indirizzi), alla data di sempre.
 CREATE TEMP TABLE tmp_ddt_pg AS
-WITH ins AS (
-  INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, data,
-      billing_account_id, valuta_id, emittente_fiscale_id, storicizza, meta)
-  SELECT c.soggetto_ruolo_id,
-         (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'DRAFT' LIMIT 1),
-         DATE '2026-09-01', c.billing_account_id,
-         (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),
-         script.fn_pgtap_emittente_operatore(),
-         false, jsonb_build_object('test_scope', 'pgtap_piano_generico')
-    FROM tmp_cli_pg c
-  RETURNING id)
-SELECT id AS ddt_id FROM ins;
+SELECT dbops.fn_pgtap_crea_ddt(c.billing_account_id, c.soggetto_ruolo_id, 'VENDITA',
+                               p_data => DATE '2026-09-01') AS ddt_id
+  FROM tmp_cli_pg c;
 
 SELECT is(
   (SELECT (script.fn_available_actions_ddt(ddt_id) ->> 'stato_codice') FROM tmp_ddt_pg)

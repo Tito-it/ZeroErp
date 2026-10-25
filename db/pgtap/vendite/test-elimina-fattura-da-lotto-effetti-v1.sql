@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): CURATO — pescava il billing account «il primo per id» e moriva sulla commessa (billing_account_id nullo), zero asserzioni. Ora il mondo si costruisce: due commesse emittibili di DUE clienti (dbops.fn_pgtap_crea_commessa), il lotto DRAFT massivo (dbops.fn_pgtap_crea_lotto), le due fatture nel lotto con riga, lucchetto e aggancio da dbops.fn_pgtap_fattura_attivita (p_lotto_id). Niente resta a mano. ⚠️ Lo stato_esecuzione 'COMPLETED' che la vecchia fixture scriveva sull'attivita' non lo scrive il builder, e a mano dopo l'aggancio il guard lo rifiuta («Riga gia' fatturata»): la clausola stato_esecuzione IS NULL del 6 oggi parte gia' vera (debito del builder, dichiarato nel rapporto).
 -- pgTAP test per Zero ERP
 -- Test: gli EFFETTI di «Elimina dal lotto» su un lotto con DUE fatture
 --       (brief-db-lavoro-che-non-torna-indietro, lotto L4 / D-3, §3.2)
@@ -32,22 +33,20 @@
 --   fatture che restano. Il test 8 e il test 9 sono l'unico posto in cui
 --   quella scelta viene verificata invece che dichiarata.
 --
--- ⚠️ FIXTURE COSTRUITA, non scelta
---   Commessa, righe di commessa, lotto, attivita', fatture e righe sono
---   INSERITE da questo file. Solo i riferimenti anagrafici/di catalogo
---   (billing account, articolo, unita' di misura, tipo documento, valuta,
---   registro) si scelgono dall'esistente, come fanno gli altri file di
---   questa famiglia. Un test che SCEGLIE un lotto reale salta su un DB
---   ricostruito da zero, cioe' proprio in CI, ed e' la forma classica del
---   verde per sottrazione.
+-- ⚠️ FIXTURE COSTRUITA, non scelta (rev 2026-10-25)
+--   Commesse, righe di commessa, lotto, attivita', fatture e righe vengono dai
+--   builder di dbops e dalle madri che chiamano. Un test che SCEGLIE un
+--   billing account o un lotto reale muore o salta su un DB ricostruito da
+--   zero, cioe' proprio in CI: e' la forma classica del verde per sottrazione.
 --
--- ⚠️ LE DUE FATTURE SI INSERISCONO DIRETTAMENTE, e non con
---   `fn_get_or_create_fattura_header`. Quella funzione e' un GET-or-create:
---   due attivita' dello stesso billing account, stesso tipo documento e
---   stessa valuta ricadono per costruzione sulla STESSA fattura, che e'
---   esattamente cio' che questo file non deve avere. Il soggetto qui e'
---   l'effetto dell'eliminazione, non la creazione della testata — quella ha
---   i suoi test.
+-- ⚠️ DUE FATTURE NELLO STESSO LOTTO = DUE CLIENTI. La testata viene dalla
+--   madre `fn_get_or_create_fattura_header`, che e' un GET-or-create: due
+--   attivita' dello stesso billing account, stesso tipo documento e stessa
+--   valuta ricadono per costruzione sulla STESSA fattura. Il lotto e' quindi
+--   MASSIVO (senza billing account) e le due commesse sono di due clienti: le
+--   fatture sono due per la via vera, sullo stesso lock_batch_id — che e'
+--   cio' che la regola C-22 mette alla prova. Fino al 2026-10-25 le due
+--   testate dello stesso cliente si inserivano a mano.
 --
 -- ⚠️ La mutazione gira in un'ISTRUZIONE SEPARATA e il suo esito e'
 --   materializzato in una temp: dentro la stessa istruzione dell'asserzione,
@@ -83,45 +82,41 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(11);
 
 -- ============================================================
--- 0) Riferimenti e costanti
+-- 0) Il mondo, e i riferimenti che ne vengono
 -- ============================================================
-CREATE TEMP TABLE tmp_cost_ef AS
-SELECT 'pgtap_elimina_fattura_effetti'::text AS test_scope,
-       uuidv7()                              AS lock_batch_id,
-       script.fn_pgtap_emittente_sr_operatore() AS emittente_sr_id;
+-- Due commesse emittibili, una riga di commessa approvata ciascuna e la
+-- sorgente ROOT (il pull la pretende): due clienti dell'azienda di chi agisce.
+-- ⚠️ Due righe di commessa DISTINTE: uq_attivita_fatturabili_commessa_attivita
+--   e' 1:1, quindi due attivita' non possono condividerne una.
+CREATE TEMP TABLE tmp_comm_ef AS
+SELECT 'A'::text AS slot, c.*
+  FROM dbops.fn_pgtap_crea_commessa('elimina fattura A', 'PRONTA_FATTURAZIONE',
+                                    p_con_sorgente_root => true) c;
+
+INSERT INTO tmp_comm_ef
+SELECT 'B', c.*
+  FROM dbops.fn_pgtap_crea_commessa('elimina fattura B', 'PRONTA_FATTURAZIONE',
+                                    p_con_sorgente_root => true) c;
 
 CREATE TEMP TABLE tmp_refs_ef AS
--- Il billing account si sceglie UNA volta: utility e istanza vengono da li'.
-WITH ba AS (
-  SELECT b.id, b.utility_id, b.istanza_utility_id
-    FROM anagrafiche.billing_account b
-   WHERE b.utility_id IS NOT NULL
-     AND b.istanza_utility_id IS NOT NULL
-     AND b.soggetto_ruolo_id IS NOT NULL
-   ORDER BY b.id
-   LIMIT 1
-)
 SELECT
   (SELECT id FROM config.stati_doc_fiscale
     WHERE upper(btrim(codice_interno)) = 'DRAFT' ORDER BY id LIMIT 1) AS stato_draft_id,
-  (SELECT id FROM ba)                 AS billing_account_id,
-  (SELECT utility_id FROM ba)         AS utility_id,
-  (SELECT istanza_utility_id FROM ba) AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE
-    ORDER BY a.id LIMIT 1)            AS articolo_id,
-  (SELECT u.id FROM catalogo.unita_misura u
-    WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)   AS uom_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t
-    WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)   AS tipo_doc_fiscale_id,
+  c.billing_account_id,
+  c.utility_id,
+  c.istanza_utility_id,
+  ca.articolo_id,
+  ca.uom_id,
+  ca.tipo_doc_fiscale_id,
+  -- la riga di commessa del builder non porta la valuta: catalogo, col suo ORDER BY
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT sc.id FROM vendite.stati_commessa sc
-    WHERE sc.attivo IS TRUE AND sc.codice_interno <> 'ANNULLATA'
-    ORDER BY sc.id LIMIT 1)           AS stato_commessa_id,
-  -- ⚠️ Il registro dev'essere compatibile con l'emittente del contesto:
-  --   uno legato a un ALTRO emittente farebbe fallire l'INSERT sul guard di
-  --   scope, e il rosso parlerebbe di permessi invece che del soggetto.
-  script.fn_pgtap_registro_fattura((SELECT emittente_sr_id FROM tmp_cost_ef))            AS registro_id;
+  c.stato_commessa_id,
+  c.emittente_soggetto_ruolo_id AS emittente_sr_id,
+  -- ⚠️ Il registro dev'essere compatibile con l'emittente del mondo.
+  script.fn_pgtap_registro_fattura(c.emittente_soggetto_ruolo_id) AS registro_id
+  FROM tmp_comm_ef c
+  JOIN vendite.commesse_attivita ca ON ca.id = c.attivita_id
+ WHERE c.slot = 'A';
 
 SELECT ok(
   (SELECT r.stato_draft_id IS NOT NULL
@@ -134,180 +129,44 @@ SELECT ok(
       AND r.valuta_id IS NOT NULL
       AND r.stato_commessa_id IS NOT NULL
       AND r.registro_id IS NOT NULL
-      AND (SELECT emittente_sr_id FROM tmp_cost_ef) IS NOT NULL
+      AND r.emittente_sr_id IS NOT NULL
      FROM tmp_refs_ef r),
   '1) riferimenti minimi presenti (anagrafiche, catalogo, registro, emittente)'
 );
 
 -- ============================================================
--- Fixture: una commessa, DUE righe di commessa, DUE attivita'
+-- Fixture: il lotto, DUE fatture, DUE attivita' agganciate
 -- ============================================================
-CREATE TEMP TABLE tmp_commessa_ef AS
-WITH ins AS (
-  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                emittente_soggetto_ruolo_id, stato_commessa_id)
-  SELECT 'PGTAP-EF-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id,
-         (SELECT emittente_sr_id FROM tmp_cost_ef), r.stato_commessa_id
-    FROM tmp_refs_ef r
-  RETURNING id)
-SELECT id FROM ins;
+CREATE TEMP TABLE tmp_ca_ef AS
+SELECT c.slot, c.attivita_id FROM tmp_comm_ef c;
 
-CREATE TEMP TABLE tmp_ca_ef (slot text PRIMARY KEY, attivita_id bigint);
-
--- ⚠️ Due righe di commessa DISTINTE: uq_attivita_fatturabili_commessa_attivita
---   e' 1:1, quindi due attivita' non possono condividerne una.
--- ⚠️ Nascono gia' EMESSA: e' lo stato che la pipeline lascia dopo
---   l'emissione, ed e' cio' che rende SIGNIFICATIVE le asserzioni 5, 7 e 9.
---   Lasciandole NON_EMESSA, `riemesse_attivita` varrebbe 0 con la correzione
---   e senza: verde per sottrazione.
-WITH ins AS (
-  INSERT INTO vendite.commesse_attivita (
-    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
-    uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
-    tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-  SELECT (SELECT id FROM tmp_commessa_ef),
-         'PGTAP-EF-SEG-A-' || substr(md5(clock_timestamp()::text), 1, 12),
-         r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
-         date_trunc('month', script.fn_data_operativa())::date,
-         date_trunc('month', script.fn_data_operativa())::date,
-         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
-         r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
-         'BOZZA', 'EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-         ((SELECT id FROM tmp_commessa_ef))::text
-    FROM tmp_refs_ef r
-  RETURNING id)
-INSERT INTO tmp_ca_ef SELECT 'A', id FROM ins;
-
-WITH ins AS (
-  INSERT INTO vendite.commesse_attivita (
-    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
-    uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
-    tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-  SELECT (SELECT id FROM tmp_commessa_ef),
-         'PGTAP-EF-SEG-B-' || substr(md5(clock_timestamp()::text), 1, 12),
-         r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
-         date_trunc('month', script.fn_data_operativa())::date,
-         date_trunc('month', script.fn_data_operativa())::date,
-         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
-         r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
-         'BOZZA', 'EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-         ((SELECT id FROM tmp_commessa_ef))::text
-    FROM tmp_refs_ef r
-  RETURNING id)
-INSERT INTO tmp_ca_ef SELECT 'B', id FROM ins;
-
--- Il lotto, in DRAFT, con il suo lock_batch_id
+-- Il lotto, in DRAFT, massivo, col tipo documento delle righe di commessa
+-- (il pull lo confronta). Il lock_batch_id lo decide la madre.
 CREATE TEMP TABLE tmp_lotto_ef AS
-WITH ins AS (
-  INSERT INTO vendite.fatturazione_lotti (
-      lock_batch_id, competenza_mese, tipo_doc_fiscale_id, utility_id,
-      billing_account_id, stato_doc_fiscale_id, emittente_soggetto_ruolo_id)
-  SELECT (SELECT lock_batch_id FROM tmp_cost_ef),
-         date_trunc('month', script.fn_data_operativa())::date,
-         r.tipo_doc_fiscale_id, r.utility_id, r.billing_account_id,
-         r.stato_draft_id, (SELECT emittente_sr_id FROM tmp_cost_ef)
-    FROM tmp_refs_ef r
-  RETURNING id, lock_batch_id)
-SELECT * FROM ins;
+SELECT l.lotto_id AS id, l.lock_batch_id
+  FROM tmp_refs_ef r,
+       dbops.fn_pgtap_crea_lotto('elimina fattura', 'DRAFT', r.billing_account_id,
+                                 r.tipo_doc_fiscale_id) l;
 
--- Le DUE fatture, entrambe DRAFT e collegate al lotto
-CREATE TEMP TABLE tmp_fatture_ef (slot text PRIMARY KEY, fattura_id bigint, riga_id bigint);
+-- Le DUE fatture, entrambe DRAFT e collegate al lotto: per ciascuna il pull col
+-- marchio del lotto (la riga di commessa va a EMESSA: e' cio' che rende
+-- SIGNIFICATIVE le asserzioni 5, 7 e 9), la testata della madre, la riga, il
+-- lucchetto sul lock_batch_id del lotto e l'aggancio.
+CREATE TEMP TABLE tmp_fatt_ef AS
+SELECT 'A'::text AS slot, f.*
+  FROM dbops.fn_pgtap_fattura_attivita('elimina fattura A',
+         ARRAY[(SELECT attivita_id FROM tmp_ca_ef WHERE slot = 'A')], (SELECT id FROM tmp_lotto_ef)) f;
 
-WITH ins AS (
-  INSERT INTO vendite.fatture (registro_id, emittente_soggetto_ruolo_id,
-                               billing_account_id, utility_id, tipo_doc_fiscale_id,
-                               valuta_id, stato_doc_fiscale_id, data)
-  SELECT r.registro_id, (SELECT emittente_sr_id FROM tmp_cost_ef),
-         r.billing_account_id, r.utility_id, r.tipo_doc_fiscale_id,
-         r.valuta_id, r.stato_draft_id, script.fn_data_operativa()
-    FROM tmp_refs_ef r
-  RETURNING id)
-INSERT INTO tmp_fatture_ef(slot, fattura_id) SELECT 'A', id FROM ins;
+INSERT INTO tmp_fatt_ef
+SELECT 'B', f.*
+  FROM dbops.fn_pgtap_fattura_attivita('elimina fattura B',
+         ARRAY[(SELECT attivita_id FROM tmp_ca_ef WHERE slot = 'B')], (SELECT id FROM tmp_lotto_ef)) f;
 
-WITH ins AS (
-  INSERT INTO vendite.fatture (registro_id, emittente_soggetto_ruolo_id,
-                               billing_account_id, utility_id, tipo_doc_fiscale_id,
-                               valuta_id, stato_doc_fiscale_id, data)
-  SELECT r.registro_id, (SELECT emittente_sr_id FROM tmp_cost_ef),
-         r.billing_account_id, r.utility_id, r.tipo_doc_fiscale_id,
-         r.valuta_id, r.stato_draft_id, script.fn_data_operativa()
-    FROM tmp_refs_ef r
-  RETURNING id)
-INSERT INTO tmp_fatture_ef(slot, fattura_id) SELECT 'B', id FROM ins;
+CREATE TEMP TABLE tmp_fatture_ef AS
+SELECT f.slot, f.fattura_id, f.fattura_riga_id AS riga_id FROM tmp_fatt_ef f;
 
-INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id, stato_doc_fiscale_id)
-SELECT (SELECT id FROM tmp_lotto_ef), f.fattura_id, (SELECT stato_draft_id FROM tmp_refs_ef)
-  FROM tmp_fatture_ef f;
-
--- Una riga per fattura. Due istruzioni: un INSERT non sta in un LATERAL.
-WITH ins AS (
-  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione,
-                                     qta, prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
-  SELECT f.fattura_id, 1, 'Riga PGTAP EF A', 1, 10, 10, script.fn_data_operativa(), script.fn_data_operativa()
-    FROM tmp_fatture_ef f WHERE f.slot = 'A'
-  RETURNING id)
-UPDATE tmp_fatture_ef t SET riga_id = (SELECT id FROM ins) WHERE t.slot = 'A';
-
-WITH ins AS (
-  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione,
-                                     qta, prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
-  SELECT f.fattura_id, 1, 'Riga PGTAP EF B', 1, 10, 10, script.fn_data_operativa(), script.fn_data_operativa()
-    FROM tmp_fatture_ef f WHERE f.slot = 'B'
-  RETURNING id)
-UPDATE tmp_fatture_ef t SET riga_id = (SELECT id FROM ins) WHERE t.slot = 'B';
-
--- Le DUE attivita', ciascuna agganciata alla riga della SUA fattura e
--- lucchettata sul lock_batch_id del lotto: e' lo stato che la pipeline lascia.
-CREATE TEMP TABLE tmp_af_ef (slot text PRIMARY KEY, attivita_id bigint);
-
-WITH ins AS (
-  INSERT INTO vendite.attivita_fatturabili (
-      articolo_id, istanza_utility_id, billing_account_id, data_attivita,
-      competenza_mese, competenza_dal, competenza_al, quantita, approvato,
-      sospesa, tipo_doc_fiscale_id, valuta_id, commessa_id,
-      commessa_attivita_id, uom_id, prezzo_unitario, lock_in_fatturazione,
-      lock_batch_id, fattura_riga_id, stato_esecuzione, meta)
-  SELECT r.articolo_id, r.istanza_utility_id, r.billing_account_id, script.fn_data_operativa(),
-         date_trunc('month', script.fn_data_operativa())::date,
-         date_trunc('month', script.fn_data_operativa())::date,
-         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
-         1, true, false, r.tipo_doc_fiscale_id, r.valuta_id,
-         (SELECT id FROM tmp_commessa_ef),
-         (SELECT attivita_id FROM tmp_ca_ef WHERE slot = 'A'),
-         r.uom_id, 10,
-         true, (SELECT lock_batch_id FROM tmp_lotto_ef),
-         (SELECT riga_id FROM tmp_fatture_ef WHERE slot = 'A'),
-         'COMPLETED',
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ef))
-    FROM tmp_refs_ef r
-  RETURNING id)
-INSERT INTO tmp_af_ef SELECT 'A', id FROM ins;
-
-WITH ins AS (
-  INSERT INTO vendite.attivita_fatturabili (
-      articolo_id, istanza_utility_id, billing_account_id, data_attivita,
-      competenza_mese, competenza_dal, competenza_al, quantita, approvato,
-      sospesa, tipo_doc_fiscale_id, valuta_id, commessa_id,
-      commessa_attivita_id, uom_id, prezzo_unitario, lock_in_fatturazione,
-      lock_batch_id, fattura_riga_id, stato_esecuzione, meta)
-  SELECT r.articolo_id, r.istanza_utility_id, r.billing_account_id, script.fn_data_operativa(),
-         date_trunc('month', script.fn_data_operativa())::date,
-         date_trunc('month', script.fn_data_operativa())::date,
-         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
-         1, true, false, r.tipo_doc_fiscale_id, r.valuta_id,
-         (SELECT id FROM tmp_commessa_ef),
-         (SELECT attivita_id FROM tmp_ca_ef WHERE slot = 'B'),
-         r.uom_id, 10,
-         true, (SELECT lock_batch_id FROM tmp_lotto_ef),
-         (SELECT riga_id FROM tmp_fatture_ef WHERE slot = 'B'),
-         'COMPLETED',
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ef))
-    FROM tmp_refs_ef r
-  RETURNING id)
-INSERT INTO tmp_af_ef SELECT 'B', id FROM ins;
+CREATE TEMP TABLE tmp_af_ef AS
+SELECT f.slot, f.attivita_fatturabile_id AS attivita_id FROM tmp_fatt_ef f;
 
 SELECT ok(
   (SELECT count(*) = 2 FROM tmp_fatture_ef WHERE fattura_id IS NOT NULL AND riga_id IS NOT NULL)
@@ -357,6 +216,9 @@ SELECT is(
 -- ============================================================
 -- 6-7) Il lavoro della fattura TOLTA e tornato disponibile
 -- ============================================================
+-- ⚠️ rev 2026-10-25: lo stato_esecuzione l'attivita' lo ha gia' NULL (il
+--   builder non scrive il 'COMPLETED' della pipeline): quella clausola non
+--   misura il ripristino finche' il builder non lo sa fare.
 SELECT ok(
   (SELECT a.fatturato IS FALSE
       AND a.fattura_riga_id IS NULL

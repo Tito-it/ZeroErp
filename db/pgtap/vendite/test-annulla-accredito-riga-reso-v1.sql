@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la commessa da dbops.fn_pgtap_crea_commessa (sorgente ROOT), le attivita' da dbops.fn_pgtap_crea_commessa_attivita (sorgente DDT_VENDITA, E-3), le fatture agganciate da dbops.fn_pgtap_fattura_attivita: ritirato pg_temp.ann_fattura; il reset del lotto (pg_temp.ann_reset_lotto, UPDATE a mano) diventa il verbo vero vendite.fn_cleanup_fatture_by_ids sulle note che fatturano le rettifiche (E-4); restano a mano la seconda riga di fattura e la seconda coppia sul ponte (il caso del plurale).
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso (che concede da se' conferma_reso); resta scritta a mano la commessa con la fattura e la seconda coppia sul ponte, che sono il caso del test.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano il reso (giro 2) e la commessa con la fattura, che sono il caso del test.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
@@ -92,140 +93,42 @@ SELECT plan(23);
 -- Riferimenti — ogni scelta col suo ORDER BY: senza, quale riga esca dipende
 -- dal piano del planner e il test passa a giorni alterni.
 -- ============================================================
+-- Servono alla SECONDA coppia della partita B (riga di fattura e rettifica
+-- scritte a mano: e' il caso del plurale).
 CREATE TEMP TABLE tmp_refs_ann AS
 SELECT
   ba.id                                        AS billing_account_id,
-  ba.utility_id                                AS utility_id,
   ba.istanza_utility_id                        AS istanza_utility_id,
-  script.fn_pgtap_emittente_sr_operatore()     AS emittente_sr_id,
   -- ⛔ rev 2026-10-13: l'articolo si COSTRUISCE (merce non solo-componente, non
   --   gestito: il test non misura il magazzino) — da zero il catalogo ha solo ONERE_*.
   dbops.fn_pgtap_crea_articolo('PGTAP-ANN-ACC', false)                  AS articolo_id,
-  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)            AS iva_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA'    AND s.attivo ORDER BY s.id LIMIT 1)            AS sorgente_root_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                               AS tipo_doc_fiscale_id,
-  (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_fatt_draft_id,
-  script.fn_pgtap_registro_fattura()                         AS registro_id,
   config.fn_get_natura_doc_fiscale_id('NOTA_CREDITO')                                                                     AS natura_nc_id
 -- ⛔ rev 2026-10-13: il BA e' quello del mondo costruito, non il primo del database.
 FROM tmp_mondo_acc m
 JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id;
 
 -- ============================================================
--- Helper di fixture (stessa forma di test-fn-accredita-riga-reso-v1).
--- La partita (bolla CONSEGNATA da ordine) e' del builder
--- dbops.fn_pgtap_crea_ddt_da_ordine.
+-- Fixture. La partita (bolla CONSEGNATA da ordine) e' del builder
+-- dbops.fn_pgtap_crea_ddt_da_ordine; la merce viene FATTURATA per intero
+-- (attivita' sul segmento della bolla, emessa, agganciata a una fattura vera)
+-- da dbops.fn_pgtap_fattura_attivita: e' la catena che la madre risale per
+-- copiare il prezzo. Senza `fattura_riga_id` l'accredito e' impossibile.
 -- ⚠️ Padre e figlio in DUE istruzioni, mai in una CTE sola: le CTE che
 --    scrivono condividono la stessa snapshot e una policy che risolve il
 --    perimetro dal padre non lo trova, negando fail-closed.
 -- ============================================================
--- La merce viene FATTURATA per intero: e' la catena che la madre risale per
--- copiare il prezzo. Senza `fattura_riga_id` l'accredito e' impossibile.
-CREATE OR REPLACE FUNCTION pg_temp.ann_fattura(p_segment varchar, p_qta numeric, p_prezzo numeric)
-RETURNS bigint AS $$
-DECLARE r RECORD; v_af bigint; v_fatt bigint; v_riga bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_ann;
-
-  PERFORM vendite.fn_upsert_commessa_attivita(
-    p_commessa_id                   => (SELECT commessa_id FROM tmp_com_ann),
-    -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-    p_sorgente_uid => ((SELECT commessa_id FROM tmp_com_ann))::text,
-    p_segment_key                   => p_segment,
-    p_articolo_id                   => r.articolo_id,
-    p_istanza_utility_id            => r.istanza_utility_id,
-    p_data_attivita                 => DATE '2026-07-15',
-    p_uom_id                        => r.uom_id,
-    p_quantita                      => p_qta,
-    p_competenza_mese               => DATE '2026-07-01',
-    p_competenza_dal                => DATE '2026-07-01',
-    p_competenza_al                 => DATE '2026-07-31',
-    p_prezzo_snapshot               => p_prezzo,
-    p_prezzo_base_snapshot          => NULL,
-    p_origine_prezzo                => NULL,
-    p_tipo_variazione_applicata     => NULL,
-    p_valore_variazione_applicata   => NULL,
-    p_promo_id                      => NULL,
-    p_contratto_id                  => NULL,
-    p_categoria_cliente_id_snapshot => NULL,
-    p_classe_utenza_id_snapshot     => NULL,
-    p_tipo_doc_fiscale_id           => r.tipo_doc_fiscale_id,
-    p_valuta_id                     => r.valuta_id,
-    p_stato_approvazione            => 'APPROVATA',
-    p_stato_emissione               => 'NON_EMESSA',
-    p_tipo_movimento                => 'NORMALE');
-
-  PERFORM vendite.fn_emit_attivita_fatturabili_da_commessa(
-      (SELECT commessa_id FROM tmp_com_ann), true, false);
-
-  SELECT af.id INTO v_af
-    FROM vendite.attivita_fatturabili af
-    JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
-   WHERE ca.segment_key = p_segment
-   ORDER BY af.id DESC LIMIT 1;
-
-  INSERT INTO vendite.fatture (registro_id, data, tipo_doc_fiscale_id, stato_doc_fiscale_id,
-      emittente_soggetto_ruolo_id, billing_account_id, utility_id, valuta_id, tasso_cambio, meta)
-  VALUES (r.registro_id, DATE '2026-07-31', r.tipo_doc_fiscale_id, r.stato_fatt_draft_id,
-      r.emittente_sr_id, r.billing_account_id, r.utility_id, r.valuta_id, 1,
-      jsonb_build_object('test_scope','pgtap_fn_annulla_accredito'))
-  RETURNING id INTO v_fatt;
-
-  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione,
-      uom_id, qta, prezzo_unitario, iva_id, imponibile_riga, competenza_dal, competenza_al)
-  VALUES (v_fatt, 1, r.articolo_id, 'Riga fattura pgTAP', r.uom_id, p_qta, p_prezzo,
-      r.iva_id, p_qta * p_prezzo, script.fn_data_operativa(), script.fn_data_operativa())
-  RETURNING id INTO v_riga;
-
-  UPDATE vendite.attivita_fatturabili
-     SET fattura_riga_id = v_riga
-   WHERE id = v_af;
-
-  RETURN v_riga;
-END $$ LANGUAGE plpgsql;
-
--- Il reset del lotto, nella forma esatta in cui lo fa
--- vendite.fn_cleanup_fatture_by_ids (RD-4): l'attivita' torna NON_EMESSA e
--- l'attivita_fatturabili SOPRAVVIVE, sbloccata e senza fattura_riga_id.
--- ⭐ E' proprio questa sopravvivenza che il test 17 mette alla prova.
-CREATE OR REPLACE FUNCTION pg_temp.ann_reset_lotto(p_ca_id bigint)
-RETURNS void AS $$
-BEGIN
-  UPDATE vendite.attivita_fatturabili
-     SET lock_in_fatturazione = false, lock_batch_id = NULL,
-         fattura_riga_id = NULL
-   WHERE commessa_attivita_id = p_ca_id;
-  UPDATE vendite.commesse_attivita
-     SET stato_emissione = 'NON_EMESSA'
-   WHERE id = p_ca_id;
-END $$ LANGUAGE plpgsql;
 
 -- ============================================================
 -- COMMESSA + PARTITA A: consegnati 10 a 25, fatturati 10, resi 3
 --                       -> tenuti 7, fatturati 10 -> accredito dovuto 3
 -- ============================================================
 CREATE TEMP TABLE tmp_com_ann AS
-SELECT vendite.fn_get_or_create_commessa(
-  p_billing_account_id     => (SELECT billing_account_id FROM tmp_refs_ann),
-  p_utility_id             => (SELECT utility_id FROM tmp_refs_ann),
-  p_tipo_commessa          => 'AUTO',
-  p_policy_fatturazione    => 'DA_DOCUMENTO',
-  p_fatturazione_immediata => false,
-  p_priorita_operativa     => 'NORMALE',
-  p_competenza_dal         => DATE '2026-07-01',
-  p_competenza_al          => DATE '2026-07-31',
-  p_meta                   => '{}'::jsonb,
-  p_force_new              => true) AS commessa_id;
-
-SELECT vendite.fn_link_commessa_sorgente(
-  p_commessa_id      => (SELECT commessa_id FROM tmp_com_ann),
-  p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs_ann),
-  p_sorgente_uid     => (SELECT commessa_id FROM tmp_com_ann)::text,
-  p_sorgente_riga    => 1,
-  p_meta             => '{}'::jsonb);
+SELECT c.commessa_id
+  FROM dbops.fn_pgtap_crea_commessa('annulla accredito', NULL,
+           (SELECT billing_account_id FROM tmp_refs_ann), p_con_sorgente_root => true) c;
 
 CREATE TEMP TABLE tmp_pa AS
 SELECT b.ordine_riga_id, b.ddt_id, b.ddt_uid, b.ddt_riga_id
@@ -235,10 +138,18 @@ SELECT b.ordine_riga_id, b.ddt_id, b.ddt_uid, b.ddt_riga_id
            p_prezzo               => 25,
            p_articolo_id          => (SELECT articolo_id FROM tmp_refs_ann),
            p_fatturazione_trigger => 'CONSEGNATO') b;
+-- E-3: l'attivita' sul segmento della bolla dichiara la sorgente DDT_VENDITA.
+CREATE TEMP TABLE tmp_pa_att AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM tmp_com_ann), 25,
+           p_articolo_id      => (SELECT articolo_id FROM tmp_refs_ann),
+           p_sorgente_codice  => 'DDT_VENDITA',
+           p_sorgente_uid     => (SELECT ddt_uid FROM tmp_pa)::text,
+           p_sorgente_riga_id => (SELECT ddt_riga_id FROM tmp_pa),
+           p_quantita         => 10);
 CREATE TEMP TABLE tmp_pa_fattura AS
-SELECT pg_temp.ann_fattura(
-    script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pa)::text, (SELECT ddt_riga_id FROM tmp_pa)),
-    10, 25) AS fattura_riga_id;
+SELECT f.fattura_riga_id
+  FROM dbops.fn_pgtap_fattura_attivita('annulla accredito pa',
+           ARRAY[(SELECT attivita_id FROM tmp_pa_att)]) f;
 -- Il reso a credito di 3, confermato.
 CREATE TEMP TABLE tmp_pa_reso AS
 SELECT x.resi_riga_id
@@ -382,10 +293,18 @@ SELECT b.ordine_riga_id, b.ddt_id, b.ddt_uid, b.ddt_riga_id
            p_prezzo               => 25,
            p_articolo_id          => (SELECT articolo_id FROM tmp_refs_ann),
            p_fatturazione_trigger => 'CONSEGNATO') b;
+-- E-3: l'attivita' sul segmento della bolla dichiara la sorgente DDT_VENDITA.
+CREATE TEMP TABLE tmp_pb_att AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM tmp_com_ann), 25,
+           p_articolo_id      => (SELECT articolo_id FROM tmp_refs_ann),
+           p_sorgente_codice  => 'DDT_VENDITA',
+           p_sorgente_uid     => (SELECT ddt_uid FROM tmp_pb)::text,
+           p_sorgente_riga_id => (SELECT ddt_riga_id FROM tmp_pb),
+           p_quantita         => 10);
 CREATE TEMP TABLE tmp_pb_fattura AS
-SELECT pg_temp.ann_fattura(
-    script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pb)::text, (SELECT ddt_riga_id FROM tmp_pb)),
-    10, 25) AS fattura_riga_id;
+SELECT f.fattura_riga_id
+  FROM dbops.fn_pgtap_fattura_attivita('annulla accredito pb',
+           ARRAY[(SELECT attivita_id FROM tmp_pb_att)]) f;
 CREATE TEMP TABLE tmp_pb_reso AS
 SELECT x.resi_riga_id
   FROM dbops.fn_pgtap_crea_reso('annulla accredito', (SELECT ddt_id FROM tmp_pb), 3,
@@ -409,7 +328,7 @@ CREATE TEMP TABLE tmp_pb_riga2 AS
 WITH ins AS (
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione,
       uom_id, qta, prezzo_unitario, iva_id, imponibile_riga, competenza_dal, competenza_al)
-  SELECT fr.fattura_id, 2, r.articolo_id, 'Seconda riga fattura pgTAP', r.uom_id, 5, 25,
+  SELECT fr.fattura_id, 2, r.articolo_id, 'Seconda riga fattura pgTAP', fr.uom_id, 5, 25,
          r.iva_id, 125, script.fn_data_operativa(), script.fn_data_operativa()
     FROM vendite.fatture_righe fr, tmp_refs_ann r
    WHERE fr.id = (SELECT fattura_riga_id FROM tmp_pb_fattura)
@@ -421,13 +340,13 @@ SELECT u.attivita_id AS commessa_attivita_id
   FROM tmp_refs_ann r,
        vendite.fn_upsert_commessa_attivita(
          p_commessa_id                 => (SELECT commessa_id FROM tmp_com_ann),
-         p_segment_key                 => ('DDT_VENDITA:' || (SELECT ddt_uid FROM tmp_pb)::text
-                                            || ':R:' || (SELECT ddt_riga_id FROM tmp_pb)::text
+         p_segment_key                 => (script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pb)::text,
+                                                                 (SELECT ddt_riga_id FROM tmp_pb))
                                             || '#RET:2')::varchar,
          p_articolo_id                 => r.articolo_id,
          p_istanza_utility_id          => r.istanza_utility_id,
          p_data_attivita               => DATE '2026-07-31',
-         p_uom_id                      => r.uom_id,
+         p_uom_id                      => (SELECT uom_id FROM tmp_pb_att),
          p_quantita                    => -1,
          p_competenza_mese             => DATE '2026-07-01',
          p_competenza_dal              => DATE '2026-07-31',
@@ -472,11 +391,19 @@ SELECT is(
   '14) fixture plurale: la riga di reso porta DUE coppie e DUE rettifiche'
 );
 
--- Le rettifiche vengono EMESSE, poi si resetta SOLO la prima: resta una
--- rettifica emessa e una che ha attraversato il reset.
-SELECT vendite.fn_emit_attivita_fatturabili_da_commessa(
-    (SELECT commessa_id FROM tmp_com_ann), true, false);
-SELECT pg_temp.ann_reset_lotto((SELECT commessa_attivita_id FROM tmp_acc_b));
+-- Le rettifiche vengono EMESSE e FATTURATE, ciascuna nella sua nota (il
+-- builder emette dalla madre tutte le attivita' approvate della commessa);
+-- poi si toglie SOLO la prima nota col verbo vero del reset,
+-- vendite.fn_cleanup_fatture_by_ids (E-4): resta una rettifica emessa e una
+-- che ha attraversato il reset, con l'attivita' fatturabile sopravvissuta.
+CREATE TEMP TABLE tmp_pb_nc1 AS
+SELECT * FROM dbops.fn_pgtap_fattura_attivita('annulla accredito nc 1',
+           ARRAY[(SELECT commessa_attivita_id FROM tmp_acc_b)]);
+CREATE TEMP TABLE tmp_pb_nc2 AS
+SELECT * FROM dbops.fn_pgtap_fattura_attivita('annulla accredito nc 2',
+           ARRAY[(SELECT commessa_attivita_id FROM tmp_pb_ret2)]);
+CREATE TEMP TABLE tmp_pb_reset1 AS
+SELECT * FROM vendite.fn_cleanup_fatture_by_ids(ARRAY[(SELECT fattura_id FROM tmp_pb_nc1)], NULL);
 
 SELECT throws_like(
   format($$ SELECT * FROM vendite.fn_annulla_accredito_riga_reso(%s, 'ci ho ripensato') $$,
@@ -501,7 +428,8 @@ SELECT is(
 --     non le cancella): se la funzione avesse scritto la scorciatoia «esiste
 --     una AF -> bloccato», qui rifiuterebbe per sempre un annullo legittimo.
 -- ============================================================
-SELECT pg_temp.ann_reset_lotto((SELECT commessa_attivita_id FROM tmp_pb_ret2));
+CREATE TEMP TABLE tmp_pb_reset2 AS
+SELECT * FROM vendite.fn_cleanup_fatture_by_ids(ARRAY[(SELECT fattura_id FROM tmp_pb_nc2)], NULL);
 
 -- ⚠️ Il verbo si chiama in un'ISTRUZIONE A PARTE, mai dentro la SELECT che ne
 --    verifica gli effetti. Sotto READ COMMITTED tutte le sottoquery di uno

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i quattro ordini con dbops.fn_pgtap_crea_ordine_con_righe (10 x 25.5, data 2026-06-15; SPEDITO/CONSEGNATO col trigger scritto in bozza, quello del test 3 ereditato dal BA, la bozza in DRAFT); a mano resta solo il mondo (azienda, cliente, articolo).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_ordini_da_pushare + trgfn_ordini_normalize
@@ -79,10 +80,6 @@ SELECT
     WHERE s.codice = 'DRAFT' AND s.attivo IS TRUE
     ORDER BY s.id LIMIT 1
   ) AS stato_bozza_id,
-  (SELECT v.id
-     FROM config.valute v
-    ORDER BY v.id LIMIT 1
-  ) AS valuta_id,
   (SELECT s.id
      FROM config.sorgenti s
     WHERE s.codice = 'ORDINE_VENDITA' AND s.attivo IS TRUE
@@ -104,46 +101,16 @@ SELECT ok(
 -- 1) Ordine CONFERMATO con fatturazione_trigger CONFERMATO
 -- ============================================================
 -- Il trigger trgfn_ordini_normalize imposta fatturazione_trigger
--- da billing_account.fatturazione_ordini (default CONFERMATO) su INSERT.
-CREATE TEMP TABLE tmp_ordine AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id,
-    stato_doc_ordine_id, valuta_id, data,
-    storicizza, meta
-  )
-  SELECT
-    r.soggetto_ruolo_id, r.billing_account_id,
-    r.stato_bozza_id, r.valuta_id, DATE '2026-06-15',
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ord')
-  FROM tmp_refs_ord r
-  RETURNING id, uid
-)
-SELECT * FROM ins;
-
-CREATE TEMP TABLE tmp_ordine_riga AS
-WITH ins AS (
-  INSERT INTO vendite.ordini_righe (
-    ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
-    storicizza, meta
-  )
-  SELECT
-    o.id, 1, r.articolo_id, 'Riga test pgtap',
-    10.000000, 10.000000, 25.500000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ord')
-  FROM tmp_ordine o, tmp_refs_ord r
-  RETURNING id
-)
-SELECT * FROM ins;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
--- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
--- righe non si scrivono piu' (20261008-90). La riga porta l'aliquota: la conferma rifiuta
+-- da billing_account.fatturazione_ordini (default CONFERMATO) su INSERT:
+-- per questo il builder NON riceve p_fatturazione_trigger (il test 10 lo misura).
+-- La riga porta l'aliquota (la mette il builder): la conferma rifiuta
 -- «un prezzo senza aliquota».
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ordine), 'CONFERMATO');
-END $x$;
+CREATE TEMP TABLE tmp_ordine AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('fn_list_ord', 'CONFERMATO',
+    p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_ord),
+    p_quantita => 10, p_prezzo => 25.5,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs_ord),
+    p_data_ordine => DATE '2026-06-15');
 
 -- Verifica che il trigger ha impostato CONFERMATO
 -- (prerequisito per il test funzionale)
@@ -151,7 +118,7 @@ SELECT ok(
   EXISTS (
     SELECT 1
     FROM vendite.fn_list_ordini_da_pushare(NULL, NULL, NULL) rp
-    WHERE rp.ordine_id = (SELECT id FROM tmp_ordine)
+    WHERE rp.ordine_id = (SELECT ordine_id FROM tmp_ordine)
   ),
   'Ordine CONFERMATO con fatturazione_trigger CONFERMATO restituito'
 );
@@ -163,9 +130,9 @@ SELECT ok(
   EXISTS (
     SELECT 1
     FROM vendite.fn_list_ordini_da_pushare(NULL, NULL, NULL) rp
-    WHERE rp.ordine_id = (SELECT id FROM tmp_ordine)
-      AND rp.segment_key = 'ORDINE_VENDITA:' || (SELECT uid FROM tmp_ordine)::text
-                           || ':R:' || (SELECT id FROM tmp_ordine_riga)::text
+    WHERE rp.ordine_id = (SELECT ordine_id FROM tmp_ordine)
+      AND rp.segment_key = 'ORDINE_VENDITA:' || (SELECT ordine_uid FROM tmp_ordine)::text
+                           || ':R:' || (SELECT ordine_riga_id FROM tmp_ordine)::text
   ),
   'Segment key formato corretto (ORD:<uid>:R:<riga_id>)'
 );
@@ -177,7 +144,7 @@ SELECT ok(
   EXISTS (
     SELECT 1
     FROM vendite.fn_list_ordini_da_pushare(NULL, NULL, NULL) rp
-    WHERE rp.ordine_id = (SELECT id FROM tmp_ordine)
+    WHERE rp.ordine_id = (SELECT ordine_id FROM tmp_ordine)
       AND rp.prezzo_bloccato IS TRUE
   ),
   'prezzo_bloccato = TRUE per ordini'
@@ -186,52 +153,20 @@ SELECT ok(
 -- ============================================================
 -- 4) Ordine con fatturazione_trigger SPEDITO escluso
 -- ============================================================
+-- Il trigger SPEDITO e' una condizione della bozza: lo scrive il builder.
 CREATE TEMP TABLE tmp_ordine_spedito AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id,
-    stato_doc_ordine_id, valuta_id, data,
-    storicizza, meta
-  )
-  SELECT
-    r.soggetto_ruolo_id, r.billing_account_id,
-    r.stato_bozza_id, r.valuta_id, DATE '2026-06-15',
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ord', 'case', 'spedito')
-  FROM tmp_refs_ord r
-  RETURNING id, uid
-)
-SELECT * FROM ins;
-
--- Imposta fatturazione_trigger = SPEDITO via UPDATE
--- (il trigger normalize non tocca fatturazione_trigger se billing_account_id non cambia)
-UPDATE vendite.ordini
-SET fatturazione_trigger = 'SPEDITO'
-WHERE id = (SELECT id FROM tmp_ordine_spedito);
-
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
-  storicizza, meta
-)
-SELECT
-  o.id, 1, r.articolo_id, 'Riga test spedito',
-  10.000000, 10.000000, 25.500000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
-  false, jsonb_build_object('test_scope', 'pgtap_fn_list_ord', 'case', 'spedito')
-FROM tmp_ordine_spedito o, tmp_refs_ord r;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
--- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
--- righe non si scrivono piu' (20261008-90). La riga porta l'aliquota: la conferma rifiuta
--- «un prezzo senza aliquota».
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ordine_spedito), 'CONFERMATO');
-END $x$;
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('fn_list_ord spedito', 'CONFERMATO',
+    p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_ord),
+    p_quantita => 10, p_prezzo => 25.5,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs_ord),
+    p_fatturazione_trigger => 'SPEDITO',
+    p_data_ordine => DATE '2026-06-15');
 
 SELECT ok(
   NOT EXISTS (
     SELECT 1
     FROM vendite.fn_list_ordini_da_pushare(NULL, NULL, NULL) rp
-    WHERE rp.ordine_id = (SELECT id FROM tmp_ordine_spedito)
+    WHERE rp.ordine_id = (SELECT ordine_id FROM tmp_ordine_spedito)
   ),
   'Ordine con fatturazione_trigger SPEDITO escluso'
 );
@@ -240,49 +175,18 @@ SELECT ok(
 -- 5) Ordine con fatturazione_trigger CONSEGNATO escluso
 -- ============================================================
 CREATE TEMP TABLE tmp_ordine_consegnato AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id,
-    stato_doc_ordine_id, valuta_id, data,
-    storicizza, meta
-  )
-  SELECT
-    r.soggetto_ruolo_id, r.billing_account_id,
-    r.stato_bozza_id, r.valuta_id, DATE '2026-06-15',
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ord', 'case', 'consegnato')
-  FROM tmp_refs_ord r
-  RETURNING id, uid
-)
-SELECT * FROM ins;
-
-UPDATE vendite.ordini
-SET fatturazione_trigger = 'CONSEGNATO'
-WHERE id = (SELECT id FROM tmp_ordine_consegnato);
-
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
-  storicizza, meta
-)
-SELECT
-  o.id, 1, r.articolo_id, 'Riga test consegnato',
-  10.000000, 10.000000, 25.500000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
-  false, jsonb_build_object('test_scope', 'pgtap_fn_list_ord', 'case', 'consegnato')
-FROM tmp_ordine_consegnato o, tmp_refs_ord r;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
--- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
--- righe non si scrivono piu' (20261008-90). La riga porta l'aliquota: la conferma rifiuta
--- «un prezzo senza aliquota».
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ordine_consegnato), 'CONFERMATO');
-END $x$;
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('fn_list_ord consegnato', 'CONFERMATO',
+    p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_ord),
+    p_quantita => 10, p_prezzo => 25.5,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs_ord),
+    p_fatturazione_trigger => 'CONSEGNATO',
+    p_data_ordine => DATE '2026-06-15');
 
 SELECT ok(
   NOT EXISTS (
     SELECT 1
     FROM vendite.fn_list_ordini_da_pushare(NULL, NULL, NULL) rp
-    WHERE rp.ordine_id = (SELECT id FROM tmp_ordine_consegnato)
+    WHERE rp.ordine_id = (SELECT ordine_id FROM tmp_ordine_consegnato)
   ),
   'Ordine con fatturazione_trigger CONSEGNATO escluso'
 );
@@ -291,38 +195,17 @@ SELECT ok(
 -- 6) Ordine non CONFERMATO escluso
 -- ============================================================
 CREATE TEMP TABLE tmp_ordine_bozza AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id,
-    stato_doc_ordine_id, valuta_id, data,
-    storicizza, meta
-  )
-  SELECT
-    r.soggetto_ruolo_id, r.billing_account_id,
-    COALESCE(r.stato_bozza_id, r.stato_confermato_id), r.valuta_id,
-    DATE '2026-06-15',
-    false, jsonb_build_object('test_scope', 'pgtap_fn_list_ord', 'case', 'bozza')
-  FROM tmp_refs_ord r
-  RETURNING id, uid
-)
-SELECT * FROM ins;
-
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, attivo,
-  storicizza, meta
-)
-SELECT
-  o.id, 1, r.articolo_id, 'Riga test bozza',
-  10.000000, 10.000000, 25.500000, true,
-  false, jsonb_build_object('test_scope', 'pgtap_fn_list_ord', 'case', 'bozza')
-FROM tmp_ordine_bozza o, tmp_refs_ord r;
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('fn_list_ord bozza', 'DRAFT',
+    p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_ord),
+    p_quantita => 10, p_prezzo => 25.5,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs_ord),
+    p_data_ordine => DATE '2026-06-15');
 
 SELECT ok(
   NOT EXISTS (
     SELECT 1
     FROM vendite.fn_list_ordini_da_pushare(NULL, NULL, NULL) rp
-    WHERE rp.ordine_id = (SELECT id FROM tmp_ordine_bozza)
+    WHERE rp.ordine_id = (SELECT ordine_id FROM tmp_ordine_bozza)
   )
   OR (SELECT stato_bozza_id IS NULL FROM tmp_refs_ord),
   'Ordine non CONFERMATO escluso (o stato BOZZA non configurato)'
@@ -335,7 +218,7 @@ SELECT ok(
   NOT EXISTS (
     SELECT 1
     FROM vendite.fn_list_ordini_da_pushare(NULL, -999999, NULL) rp
-    WHERE rp.ordine_id = (SELECT id FROM tmp_ordine)
+    WHERE rp.ordine_id = (SELECT ordine_id FROM tmp_ordine)
   ),
   'Filtro p_billing_account_id rispettato'
 );
@@ -347,7 +230,7 @@ SELECT ok(
   EXISTS (
     SELECT 1
     FROM vendite.ordini o
-    WHERE o.id = (SELECT id FROM tmp_ordine)
+    WHERE o.id = (SELECT ordine_id FROM tmp_ordine)
       AND o.fatturazione_trigger = COALESCE(
         (SELECT ba.fatturazione_ordini
            FROM anagrafiche.billing_account ba
@@ -359,4 +242,3 @@ SELECT ok(
 );
 
 SELECT * FROM finish();
-ROLLBACK;

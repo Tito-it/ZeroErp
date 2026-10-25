@@ -4,6 +4,9 @@
 -- Test: vendite.fn_genera_ddt_da_ordine (evasione ordine -> DDT)
 --       + macchina a stati DDT + numero a EMESSO + sync stato ordine
 -- Brief: brief-db-ddt-vendita-evasione-e-stati §10
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): gli ordini A e B (premessa della madre) da
+--   dbops.fn_pgtap_crea_ordine_con_righe (p_righe con lo sconto e l'aliquota, trigger, data), l'ordine
+--   in bozza del 24 da dbops.fn_pgtap_crea_ordine; resta a mano tutta la generazione (il caso).
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): l'emissione (14)
 --   da dbops.fn_pgtap_porta_a_stato e il salto fuori matrice (17) chiesto al
 --   verbo vendite.fn_cambia_stato_ddt: lo stato della bolla non si cambia piu'
@@ -86,18 +89,12 @@ SELECT
   m.billing_account_id,
   m.cliente_soggetto_ruolo_id AS soggetto_ruolo_id,
   dbops.fn_pgtap_crea_articolo('PGTAP-GENERA-DDT', false) AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT i.id FROM config.iva i
     WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  m.emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s
     WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
-  (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)      AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt s
     WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)     AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.stati_doc_ddt s
-    WHERE s.codice_interno = 'CONSEGNATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_ddt_consegnato_id,
   (SELECT ct.id FROM config.causali_trasporto ct
     WHERE ct.codice = 'VENDITA' ORDER BY ct.id LIMIT 1)                               AS causale_vendita_id
 FROM _m m;
@@ -116,37 +113,20 @@ SELECT ok(
 -- ============================================================
 -- FIXTURE A: ordine CONFERMATO (full evasion)
 -- ============================================================
+-- L'ordine e' la PREMESSA della madre: dal builder, confermato, con la riga
+-- 10 a 30, sconto 5 e l'aliquota dei riferimenti (i test 9-10 la ritrovano
+-- sulla bolla), trigger SPEDITO, data 2026-07-01.
 CREATE TEMP TABLE tmp_ord_a AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
-         r.valuta_id, DATE '2026-07-01', 'SPEDITO', r.emittente_fiscale_id, false,
-         jsonb_build_object('test_scope','pgtap_genera_ddt')
-  FROM tmp_refs r
-  RETURNING id, uid, billing_account_id)
-SELECT * FROM ins;
+SELECT o.ordine_id AS id, o.ordine_uid AS uid, o.billing_account_id, o.ordine_riga_id AS riga_id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('genera_ddt', 'CONFERMATO',
+         (SELECT billing_account_id FROM tmp_refs),
+         p_fatturazione_trigger => 'SPEDITO',
+         p_data_ordine          => DATE '2026-07-01',
+         p_righe                => jsonb_build_array(jsonb_build_object(
+             'articolo_id', (SELECT articolo_id FROM tmp_refs), 'quantita', 10, 'prezzo', 30,
+             'sconto_percentuale', 5, 'iva_id', (SELECT iva_id FROM tmp_refs)))) o;
 
-CREATE TEMP TABLE tmp_ord_a_riga AS
-WITH ins AS (
-  INSERT INTO vendite.ordini_righe (
-    ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, sconto_percentuale, iva_id,
-    attivo, storicizza, meta)
-  SELECT o.id, 1, r.articolo_id, 'Riga evasione A',
-         10.000000, 10.000000, 30.000000, 5.000000, r.iva_id,
-         true, false, jsonb_build_object('test_scope','pgtap_genera_ddt')
-  FROM tmp_ord_a o, tmp_refs r
-  RETURNING id)
-SELECT * FROM ins;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
--- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
--- righe non si scrivono piu' (20261008-90).
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_a), 'CONFERMATO');
-END $x$;
+CREATE TEMP TABLE tmp_ord_a_riga AS SELECT riga_id AS id FROM tmp_ord_a;
 
 -- Chiamata madre: evade tutto il residuo
 CREATE TEMP TABLE tmp_ddt_a AS
@@ -271,37 +251,15 @@ SELECT throws_ok(
 -- ============================================================
 -- FIXTURE B: ordine CONFERMATO (evasione parziale + multi-DDT)
 -- ============================================================
+-- Premessa: l'ordine confermato con la riga 10 a 20, trigger SPEDITO, 2026-07-02.
 CREATE TEMP TABLE tmp_ord_b AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
-         r.valuta_id, DATE '2026-07-02', 'SPEDITO', r.emittente_fiscale_id, false,
-         jsonb_build_object('test_scope','pgtap_genera_ddt')
-  FROM tmp_refs r
-  RETURNING id, uid)
-SELECT * FROM ins;
+SELECT o.ordine_id AS id, o.ordine_uid AS uid, o.ordine_riga_id AS riga_id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('genera_ddt', 'CONFERMATO',
+         (SELECT billing_account_id FROM tmp_refs),
+         p_quantita => 10, p_prezzo => 20, p_articolo_id => (SELECT articolo_id FROM tmp_refs),
+         p_fatturazione_trigger => 'SPEDITO', p_data_ordine => DATE '2026-07-02') o;
 
-CREATE TEMP TABLE tmp_ord_b_riga AS
-WITH ins AS (
-  INSERT INTO vendite.ordini_righe (
-    ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id,
-    attivo, storicizza, meta)
-  SELECT o.id, 1, r.articolo_id, 'Riga evasione B',
-         10.000000, 10.000000, 20.000000, r.iva_id,
-         true, false, jsonb_build_object('test_scope','pgtap_genera_ddt')
-  FROM tmp_ord_b o, tmp_refs r
-  RETURNING id)
-SELECT * FROM ins;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
--- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
--- righe non si scrivono piu' (20261008-90).
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_b), 'CONFERMATO');
-END $x$;
+CREATE TEMP TABLE tmp_ord_b_riga AS SELECT riga_id AS id FROM tmp_ord_b;
 
 -- Evasione parziale: 4 su 10
 CREATE TEMP TABLE tmp_ddt_b1 AS
@@ -358,16 +316,9 @@ SELECT throws_ok(
 -- 24) ordine DRAFT (non evadibile)
 -- ============================================================
 CREATE TEMP TABLE tmp_ord_draft AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
-         r.valuta_id, DATE '2026-07-03', r.emittente_fiscale_id, false,
-         jsonb_build_object('test_scope','pgtap_genera_ddt')
-  FROM tmp_refs r
-  RETURNING id)
-SELECT * FROM ins;
+SELECT o.ordine_id AS id
+  FROM dbops.fn_pgtap_crea_ordine('genera_ddt', 'DRAFT',
+         (SELECT billing_account_id FROM tmp_refs), DATE '2026-07-03') o;
 
 SELECT throws_ok(
   format($q$SELECT vendite.fn_genera_ddt_da_ordine(%s)$q$, (SELECT id FROM tmp_ord_draft)),

@@ -8,6 +8,10 @@
 --   fixture costruisce DUE aziende e una veste portale: un operatore dentro un
 --   perimetro non potrebbe crearle. Stesso criterio di rls/test-rls-ordini-satelliti.
 -- pgTAP test FUNZIONALE RLS — il cliente portale vede i PROPRI ordini
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine in bozza con la riga di
+--   ciascun cliente da dbops.fn_pgtap_crea_ordine_con_righe (DRAFT, 1 x 100), un'azienda alla
+--   volta sotto il contesto del suo operatore (il builder verifica che il BA sia dell'azienda di
+--   chi agisce); poi il contesto si richiude, come prima della fixture.
 --   Brief: brief-db-perimetro-una-volta-famiglie-residue §7 (giro 3),
 --   changeSet 20261021-33..-36.
 --
@@ -53,35 +57,37 @@ SELECT m.lato, m.emittente_fiscale_id, c.*
   FROM _mondi m
   CROSS JOIN LATERAL dbops.fn_pgtap_crea_cliente_ba('RLS cliente ordini ' || m.lato, NULL, m.soggetto_ruolo_id) c;
 
--- ⛔ L'articolo si COSTRUISCE: su un database ricostruito il catalogo non ha merce.
-CREATE TEMP TABLE _art AS
-SELECT dbops.fn_pgtap_crea_articolo('PGTAP-RLS-CLI-ORD', false) AS id;
+-- L'ordine di ciascun cliente, in bozza con una riga: lo costruisce l'operatore
+-- della sua azienda, un lato alla volta.
+CREATE TEMP TABLE _ordini (lato text, ordine_id bigint, riga_id bigint, soggetto_ruolo_id bigint);
 
-CREATE TEMP TABLE _ordini AS
-WITH ord AS (
-    INSERT INTO vendite.ordini
-        (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id, fatturazione_trigger,
-         emittente_fiscale_id)
-    SELECT c.soggetto_ruolo_id, c.billing_account_id,
-           (SELECT st.id FROM config.stati_doc_ordini st ORDER BY st.id LIMIT 1),
-           'CONFERMATO',
-           c.emittente_fiscale_id
-      FROM _clienti c
-    RETURNING id, emittente_fiscale_id, soggetto_ruolo_id
-)
-SELECT c.lato, o.id AS ordine_id, o.soggetto_ruolo_id
-  FROM ord o JOIN _clienti c ON c.emittente_fiscale_id = o.emittente_fiscale_id;
+DO $ctx_a$ BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondi WHERE lato = 'A'));
+END $ctx_a$;
+INSERT INTO _ordini
+SELECT 'A', b.ordine_id, b.ordine_riga_id, b.cliente_soggetto_ruolo_id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('RLS cliente ordini A', 'DRAFT',
+           p_billing_account_id   => (SELECT billing_account_id FROM _clienti WHERE lato = 'A'),
+           p_fatturazione_trigger => 'CONFERMATO',
+           p_quantita => 1, p_prezzo => 100) b;
 
-CREATE TEMP TABLE _righe AS
-WITH r AS (
-    INSERT INTO vendite.ordini_righe
-        -- ⚠️ `qta_operativa` va valorizzata insieme a `quantita`: un guard la pretende.
-        (ordine_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa, prezzo_unitario)
-    SELECT o.ordine_id, 1, (SELECT id FROM _art), 'Riga pgTAP cliente', 1, 1, 100.00
-      FROM _ordini o
-    RETURNING id, ordine_id
-)
-SELECT o.lato, r.id AS riga_id, r.ordine_id FROM r JOIN _ordini o ON o.ordine_id = r.ordine_id;
+DO $ctx_b$ BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondi WHERE lato = 'B'));
+END $ctx_b$;
+INSERT INTO _ordini
+SELECT 'B', b.ordine_id, b.ordine_riga_id, b.cliente_soggetto_ruolo_id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('RLS cliente ordini B', 'DRAFT',
+           p_billing_account_id   => (SELECT billing_account_id FROM _clienti WHERE lato = 'B'),
+           p_fatturazione_trigger => 'CONFERMATO',
+           p_quantita => 1, p_prezzo => 100) b;
+
+-- Il contesto dell'operatore si richiude: la veste la imposta il blocco $perimetro$.
+DO $ctx_chiuso$ BEGIN
+    PERFORM set_config('app.ruolo_applicativo', '', false);
+    PERFORM set_config('app.current_user_id', '', false);
+END $ctx_chiuso$;
+
+CREATE TEMP TABLE _righe AS SELECT o.lato, o.riga_id, o.ordine_id FROM _ordini o;
 
 -- La veste CLIENTE_PORTALE del cliente A, su una credenziale costruita.
 CREATE TEMP TABLE _veste (auth_user_id int, identita_id bigint);

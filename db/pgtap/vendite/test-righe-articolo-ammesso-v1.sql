@@ -3,6 +3,7 @@
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   la natura merce ha destinazione ORDINE_VENDITA, il codice della sorgente (era ORDINE).
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso; resta la bolla di ri-consegna dal verbo vendite.fn_genera_ddt_riconsegna, in bozza, perche' e' il caso (14-16).
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la bolla consegnata con K dal builder dbops.fn_pgtap_crea_ddt_senza_ordine (3 a 10), separata dalla bolla in bozza del test 13, che resta col suo rifiuto; le righe che i guard giudicano restano a mano.
 -- pgTAP test per Zero ERP
 --
 -- Quali articoli ammette una riga di preventivo, ordine e bolla: una check
@@ -181,20 +182,16 @@ SELECT throws_like(
 -- ============================================================
 -- La riconsegna (14-16)
 -- ============================================================
--- La bolla porta K (merce, vendibile) e viene consegnata.
-INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione, qta_operativa,
-                               prezzo_unitario, iva_id)
-SELECT (SELECT id FROM _ddt), 2, (SELECT k FROM _art), 'merce da rendere', 3, 10, (SELECT id FROM _iva);
-
--- Lo stato della bolla passa dal suo verbo, che chiede l'azione emetti_ddt
--- all'operatore del test (conferma_reso la concede il builder del reso).
-DO $az$ BEGIN
-  PERFORM dbops.fn_pgtap_concedi_azione(
-      NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_ddt');
-END $az$;
-SELECT * FROM vendite.fn_cambia_stato_ddt((SELECT id FROM _ddt), 'EMESSO');
-SELECT * FROM vendite.fn_cambia_stato_ddt((SELECT id FROM _ddt), 'SPEDITO');
-SELECT * FROM vendite.fn_cambia_stato_ddt((SELECT id FROM _ddt), 'CONSEGNATO');
+-- Una bolla CONSEGNATA che porta K (merce, vendibile), 3 a 10: dal builder
+-- della bolla senza ordine (riga prezzata, passi della matrice coi verbi).
+-- La bolla del test 13 resta in bozza: era il suo caso.
+CREATE TEMP TABLE _ddt_k AS
+SELECT b.ddt_id, b.ddt_riga_id
+  FROM dbops.fn_pgtap_crea_ddt_senza_ordine('articoli_ammessi K', 'CONSEGNATO',
+           p_billing_account_id => (SELECT billing_account_id FROM _m),
+           p_quantita           => 3,
+           p_prezzo             => 10,
+           p_articolo_id        => (SELECT k FROM _art)) b;
 
 -- K esce dall'ordine in bozza, poi diventa solo componente.
 -- ⛔ rev 2026-10-13 (A-10): K e' usato (ordine, bolla), e un articolo usato non
@@ -208,9 +205,8 @@ SELECT dbops.fn_pgtap_articolo_correggi_struttura(
 -- non nasce da un ordine: la riga d'ordine resta vuota.
 CREATE TEMP TABLE _reso AS
 SELECT reso_id AS id
-  FROM dbops.fn_pgtap_crea_reso('articoli_ammessi', (SELECT id FROM _ddt), 1, 'RESO_PER_RICONSEGNA',
-           p_ddt_riga_id => (SELECT dr.id FROM vendite.ddt_righe dr
-                              WHERE dr.ddt_id = (SELECT id FROM _ddt) AND dr.articolo_id = (SELECT k FROM _art)));
+  FROM dbops.fn_pgtap_crea_reso('articoli_ammessi', (SELECT ddt_id FROM _ddt_k), 1, 'RESO_PER_RICONSEGNA',
+           p_ddt_riga_id => (SELECT ddt_riga_id FROM _ddt_k));
 
 CREATE TEMP TABLE _ric AS
 SELECT vendite.fn_genera_ddt_riconsegna((SELECT id FROM _reso)) AS ddt_id;

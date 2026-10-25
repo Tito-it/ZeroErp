@@ -88,6 +88,9 @@
 --   emetti_ddt e si nasconde a chi non l'ha; il file prova il prezzo, non il permesso, quindi
 --   l'operatore riceve emetti_ddt prima del test 33. Il 35 emette con dbops.fn_pgtap_porta_a_stato
 --   al posto dell'UPDATE diretto, che la porta ora rifiuta prima del guard. Attese invariate.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): le due testate della bolla (VENDITA,
+--   CONTO_VISIONE, con gli indirizzi) da dbops.fn_pgtap_crea_ddt; restano a mano le righe kit col
+--   componente di ogni documento (il caso) e le testate degli ordini, che portano la riga kit.
 -- ------------------------------------------------------------
 
 -- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
@@ -688,19 +691,12 @@ BEGIN
     -- 'vende':  causale fatturabile — il prezzo si chiede;
     -- 'visione': conto visione — il documento non vende, il prezzo no.
     FOREACH v_tag IN ARRAY ARRAY['vende', 'visione'] LOOP
-        -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): col BA del cliente — la
-        --   causale vuole un cliente (D-2) e la utility senza BA viola
-        --   chk_ddt_ba_utility_insieme.
-        INSERT INTO vendite.ddt
-            (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, emittente_fiscale_id,
-             utility_id, billing_account_id, causale_trasporto_id)
-        VALUES
-            (c.cliente_soggetto_ruolo_id,
-             (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'DRAFT'),
-             c.emittente_fiscale_id, c.utility_id, c.billing_account_id,
-             (SELECT ct.id FROM config.causali_trasporto ct
-               WHERE ct.codice = CASE v_tag WHEN 'vende' THEN 'VENDITA' ELSE 'CONTO_VISIONE' END))
-        RETURNING id INTO v_ddt;
+        -- La testata in bozza dal builder, col BA del cliente (la causale vuole
+        --   un cliente, D-2) e gli indirizzi che l'emissione pretende: senza, il
+        --   guard solleverebbe quelli e coprirebbe il motivo del prezzo (test 35).
+        --   La riga kit e il componente PENDING sono il caso: restano qui.
+        v_ddt := dbops.fn_pgtap_crea_ddt(c.billing_account_id, c.cliente_soggetto_ruolo_id,
+                                         CASE v_tag WHEN 'vende' THEN 'VENDITA' ELSE 'CONTO_VISIONE' END);
 
         INSERT INTO vendite.ddt_righe
             (ddt_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa,
@@ -719,13 +715,6 @@ BEGIN
         UPDATE vendite.ddt_righe_componenti
            SET stato_approvazione_prezzo = 'PENDING'
          WHERE id = v_comp;
-
-        -- Gli indirizzi che l'emissione pretende: senza, il guard solleverebbe
-        -- quelli e coprirebbe il motivo del prezzo (test 35).
-        INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-        SELECT v_ddt, ti.id, '{"pgtap": true}'::jsonb
-          FROM config.tipi_indirizzi ti
-         WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', ARRAY[]::integer[]));
 
         INSERT INTO _d VALUES (v_tag, v_ddt, v_comp);
     END LOOP;

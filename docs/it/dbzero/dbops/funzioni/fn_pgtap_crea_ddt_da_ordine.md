@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_pgtap_crea_ddt_da_ordine`
 
 ```sql
-CREATE FUNCTION fn_pgtap_crea_ddt_da_ordine(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_quantita numeric, p_prezzo numeric, p_articolo_id uuid, p_fatturazione_trigger character varying, p_ordine_id bigint, p_qta_da_evadere numeric, p_righe jsonb, p_data date, p_causale_codice character varying, p_data_ordine date)
+CREATE FUNCTION fn_pgtap_crea_ddt_da_ordine(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_quantita numeric, p_prezzo numeric, p_articolo_id uuid, p_fatturazione_trigger character varying, p_ordine_id bigint, p_qta_da_evadere numeric, p_righe jsonb, p_data date, p_causale_codice character varying, p_data_ordine date, p_righe_ordine jsonb)
 ```
 
 **Definizione completa:**
@@ -10,7 +10,7 @@ CREATE FUNCTION fn_pgtap_crea_ddt_da_ordine(p_etichetta text, p_stato_codice_int
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ddt_da_ordine(p_etichetta text DEFAULT 'pgTAP'::text, p_stato_codice_interno character varying DEFAULT 'CONSEGNATO'::character varying, p_billing_account_id bigint DEFAULT NULL::bigint, p_quantita numeric DEFAULT NULL::numeric, p_prezzo numeric DEFAULT NULL::numeric, p_articolo_id uuid DEFAULT NULL::uuid, p_fatturazione_trigger character varying DEFAULT NULL::character varying, p_ordine_id bigint DEFAULT NULL::bigint, p_qta_da_evadere numeric DEFAULT NULL::numeric, p_righe jsonb DEFAULT NULL::jsonb, p_data date DEFAULT NULL::date, p_causale_codice character varying DEFAULT 'VENDITA'::character varying, p_data_ordine date DEFAULT NULL::date)
+CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ddt_da_ordine(p_etichetta text DEFAULT 'pgTAP'::text, p_stato_codice_interno character varying DEFAULT 'CONSEGNATO'::character varying, p_billing_account_id bigint DEFAULT NULL::bigint, p_quantita numeric DEFAULT NULL::numeric, p_prezzo numeric DEFAULT NULL::numeric, p_articolo_id uuid DEFAULT NULL::uuid, p_fatturazione_trigger character varying DEFAULT NULL::character varying, p_ordine_id bigint DEFAULT NULL::bigint, p_qta_da_evadere numeric DEFAULT NULL::numeric, p_righe jsonb DEFAULT NULL::jsonb, p_data date DEFAULT NULL::date, p_causale_codice character varying DEFAULT 'VENDITA'::character varying, p_data_ordine date DEFAULT NULL::date, p_righe_ordine jsonb DEFAULT NULL::jsonb)
  RETURNS TABLE(ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint, quantita numeric, ordine_id bigint, ordine_uid uuid, ordine_riga_id bigint, articolo_id uuid, billing_account_id bigint, cliente_soggetto_ruolo_id bigint, emittente_fiscale_id bigint, auth_user_id integer, stato_doc_ddt_id bigint)
  LANGUAGE plpgsql
 AS $function$
@@ -31,6 +31,10 @@ AS $function$
 -- rev 2026-10-25 (20261025-02): uno stato abortito si rifiuta prima
 --   di costruire — la bolla da ordine ha i legami, e il suo annullo
 --   passa dal verbo vendite.fn_annulla_ddt (caso del test).
+-- rev 2026-10-25 (20261025-32, brief-db-pgtap-reso-costruito E-1): l'ordine
+--   costruito viene da dbops.fn_pgtap_crea_ordine_con_righe (la copia della
+--   strada che stava qui si ritira); p_righe_ordine inoltra piu' righe,
+--   sconto e date di consegna.
 -- rev 2026-10-25 (20261025-04, D-1): p_data_ordine, la data dell'ordine
 --   costruito (dbops.fn_pgtap_crea_ordine la scrive alla nascita). Chi da'
 --   alla bolla una data passata da' anche quella dell'ordine: una bolla piu'
@@ -46,8 +50,6 @@ DECLARE
     v_ordine     vendite.ordini.id%TYPE;
     v_ordine_uid vendite.ordini.uid%TYPE;
     v_riga_ord   vendite.ordini_righe.id%TYPE;
-    v_articolo   catalogo.articoli.id%TYPE;
-    v_iva_id     config.iva.id%TYPE;
     v_ba_id      anagrafiche.billing_account.id%TYPE;
     v_cli_sr_id  vendite.ordini.soggetto_ruolo_id%TYPE;
     v_ef_id      vendite.ordini.emittente_fiscale_id%TYPE;
@@ -97,47 +99,22 @@ BEGIN
     IF p_ordine_id IS NOT NULL
        AND (p_billing_account_id IS NOT NULL OR p_quantita IS NOT NULL
             OR p_prezzo IS NOT NULL OR p_articolo_id IS NOT NULL
-            OR p_fatturazione_trigger IS NOT NULL OR p_data_ordine IS NOT NULL) THEN
+            OR p_fatturazione_trigger IS NOT NULL OR p_data_ordine IS NOT NULL
+            OR p_righe_ordine IS NOT NULL) THEN
         RAISE EXCEPTION
-            'fn_pgtap_crea_ddt_da_ordine: con p_ordine_id cliente, riga, data e trigger di fatturazione sono quelli dell''ordine — non si passano';
+            'fn_pgtap_crea_ddt_da_ordine: con p_ordine_id cliente, righe, data e trigger di fatturazione sono quelli dell''ordine — non si passano';
     END IF;
 
-    -- 1. L'ordine confermato.
+    -- 1. L'ordine confermato: quello del test, o uno del builder dell'ordine
+    --    con le righe (la strada sta li', una volta).
     IF p_ordine_id IS NULL THEN
         SELECT o.ordine_id, o.ordine_uid, o.billing_account_id,
                o.cliente_soggetto_ruolo_id, o.emittente_fiscale_id, o.auth_user_id
           INTO v_ordine, v_ordine_uid, v_ba_id, v_cli_sr_id, v_ef_id, v_user_id
-          FROM dbops.fn_pgtap_crea_ordine(p_etichetta, 'DRAFT', p_billing_account_id, p_data_ordine) o;
-
-        -- Il trigger di fatturazione e' una condizione della bozza.
-        IF p_fatturazione_trigger IS NOT NULL THEN
-            UPDATE vendite.ordini o
-               SET fatturazione_trigger = p_fatturazione_trigger
-             WHERE o.id = v_ordine;
-        END IF;
-
-        -- L'articolo si costruisce: il catalogo, da zero, e' vuoto.
-        v_articolo := COALESCE(p_articolo_id, dbops.fn_pgtap_crea_articolo(
-            ('PGT-DDT-' || substr(md5(clock_timestamp()::text || v_ordine::text), 1, 12))::varchar,
-            false));
-
-        -- Il catalogo di sistema si SCEGLIE, con il suo ORDER BY.
-        SELECT i.id INTO v_iva_id
-          FROM config.iva i
-         WHERE i.attivo IS TRUE
-         ORDER BY i.id
-         LIMIT 1;
-
-        INSERT INTO vendite.ordini_righe (
-            ordine_id, riga_nr, articolo_id, descrizione,
-            qta_operativa, quantita, prezzo_unitario, iva_id, meta)
-        VALUES (
-            v_ordine, 1, v_articolo, left('Fixture pgTAP: ' || p_etichetta, 150),
-            COALESCE(p_quantita, 10), COALESCE(p_quantita, 10), COALESCE(p_prezzo, 25),
-            v_iva_id, jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
-        RETURNING id INTO v_riga_ord;
-
-        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini'::regclass, v_ordine, 'CONFERMATO');
+          FROM dbops.fn_pgtap_crea_ordine_con_righe(
+                   p_etichetta, 'CONFERMATO', p_billing_account_id,
+                   p_quantita, p_prezzo, p_articolo_id, p_fatturazione_trigger,
+                   p_data_ordine, p_righe_ordine) o;
     ELSE
         SELECT o.id, o.uid, o.billing_account_id, o.soggetto_ruolo_id, o.emittente_fiscale_id
           INTO v_ordine, v_ordine_uid, v_ba_id, v_cli_sr_id, v_ef_id
@@ -149,19 +126,19 @@ BEGIN
                 p_ordine_id;
         END IF;
         v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    END IF;
 
-        -- La quantita' da evadere vale per LA riga: con piu' righe
-        -- il test dice quale con p_righe.
-        IF p_qta_da_evadere IS NOT NULL THEN
-            SELECT count(*), min(r.id) INTO v_n, v_riga_ord
-              FROM vendite.ordini_righe r
-             WHERE r.ordine_id = v_ordine
-               AND r.attivo IS TRUE;
-            IF v_n <> 1 THEN
-                RAISE EXCEPTION
-                    'fn_pgtap_crea_ddt_da_ordine: p_qta_da_evadere vuole un ordine con una sola riga attiva (l''ordine % ne ha %) — usare p_righe',
-                    v_ordine, v_n;
-            END IF;
+    -- La quantita' da evadere vale per LA riga: con piu' righe il test dice
+    -- quale con p_righe.
+    IF p_qta_da_evadere IS NOT NULL THEN
+        SELECT count(*), min(r.id) INTO v_n, v_riga_ord
+          FROM vendite.ordini_righe r
+         WHERE r.ordine_id = v_ordine
+           AND r.attivo IS TRUE;
+        IF v_n <> 1 THEN
+            RAISE EXCEPTION
+                'fn_pgtap_crea_ddt_da_ordine: p_qta_da_evadere vuole un ordine con una sola riga attiva (l''ordine % ne ha %) — usare p_righe',
+                v_ordine, v_n;
         END IF;
     END IF;
 
@@ -219,8 +196,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION dbops.fn_pgtap_crea_ddt_da_ordine(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_quantita numeric, p_prezzo numeric, p_articolo_id uuid, p_fatturazione_trigger character varying, p_ordine_id bigint, p_qta_da_evadere numeric, p_righe jsonb, p_data date, p_causale_codice character varying, p_data_ordine date)
-IS 'Fixture pgTAP: una BOLLA nata da un ORDINE confermato, nello stato chiesto (secondo parametro, default CONSEGNATO), per la strada vera del dominio. ⭐ Esiste per la TRAPPOLA D''ORDINE che ogni file ricopiava: ordine in bozza con la riga, conferma, bolla dalla madre vendite.fn_genera_ddt_da_ordine, causale e indirizzi che l''emissione pretende, passaggi per la matrice. L''ordine lo costruisce dbops.fn_pgtap_crea_ordine (terzo parametro: il billing account di un cliente gia'' costruito), con UNA riga di p_quantita (default 10) a p_prezzo (default 25), dell''articolo p_articolo_id o di uno costruito (merce non gestita), la prima IVA attiva e il trigger di fatturazione p_fatturazione_trigger (scritto in bozza; NULL = quello ereditato dal billing account). p_data_ordine: la data dell''ordine costruito, scritta alla nascita (NULL = data operativa): chi da'' alla bolla una data passata da'' anche quella dell''ordine. Con p_ordine_id la bolla nasce invece da un ordine gia'' costruito e confermato dal test, e cliente, riga, data e trigger non si passano (solleva). La quantita'': tutto il residuo; p_qta_da_evadere per l''unica riga attiva dell''ordine; p_righe nella grammatica della madre (i due insieme sollevano). p_data: la data della bolla (NULL = data operativa). p_causale_codice: la causale di trasporto per codice (default VENDITA). Gli indirizzi obbligatori dell''ambito DDT_VENDITA che la cascata dall''ordine non ha portato li scrive come dbops.fn_pgtap_crea_ddt. Lo stato si raggiunge con dbops.fn_pgtap_porta_a_stato, sotto i guard veri: chi deve scrivere sulla bolla in bozza (una riga a mano, un legame, un prezzo tolto) la chiede in DRAFT e la porta avanti da se''. Restituisce bolla, PRIMA riga della bolla con la sua quantita'' base, ordine e riga d''ordine evasa, articolo, cliente, emittente, operatore e stato. Uno stato, una causale o un ordine inesistenti sollevano prima di costruire; cosi'' uno stato abortito (is_abortito, per esempio ANNULLATO): la bolla nata da un ordine ha i legami e il suo annullo passa dal verbo vendite.fn_annulla_ddt, che il test chiama dopo aver chiesto EMESSO. ⛔ La bolla in bozza per il magazzino, senza ordine, resta di dbops.fn_pgtap_crea_ddt. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-pgtap-bolla-e-reso-costruiti (giro 1), 2026-10-25. Rev 20261025-02: lo stato abortito si rifiuta prima di costruire. Rev 20261025-04 (D-1): p_data_ordine, DROP + CREATE.';
+COMMENT ON FUNCTION dbops.fn_pgtap_crea_ddt_da_ordine(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_quantita numeric, p_prezzo numeric, p_articolo_id uuid, p_fatturazione_trigger character varying, p_ordine_id bigint, p_qta_da_evadere numeric, p_righe jsonb, p_data date, p_causale_codice character varying, p_data_ordine date, p_righe_ordine jsonb)
+IS 'Fixture pgTAP: una BOLLA nata da un ORDINE confermato, nello stato chiesto (secondo parametro, default CONSEGNATO), per la strada vera del dominio. ⭐ Esiste per la TRAPPOLA D''ORDINE che ogni file ricopiava: ordine in bozza con la riga, conferma, bolla dalla madre vendite.fn_genera_ddt_da_ordine, causale e indirizzi che l''emissione pretende, passaggi per la matrice. L''ordine lo costruisce dbops.fn_pgtap_crea_ordine_con_righe, confermato (terzo parametro: il billing account di un cliente gia'' costruito): UNA riga di p_quantita (default 10) a p_prezzo (default 25), dell''articolo p_articolo_id o di uno costruito (merce non gestita), oppure le righe di p_righe_ordine (piu'' righe, sconto, date di consegna, nella grammatica di quel builder); il trigger di fatturazione p_fatturazione_trigger (scritto in bozza; NULL = quello ereditato dal billing account). p_data_ordine: la data dell''ordine costruito, scritta alla nascita (NULL = data operativa): chi da'' alla bolla una data passata da'' anche quella dell''ordine. Con p_ordine_id la bolla nasce invece da un ordine gia'' costruito e confermato dal test, e cliente, riga, data e trigger non si passano (solleva). La quantita'': tutto il residuo; p_qta_da_evadere per l''unica riga attiva dell''ordine; p_righe nella grammatica della madre (i due insieme sollevano). p_data: la data della bolla (NULL = data operativa). p_causale_codice: la causale di trasporto per codice (default VENDITA). Gli indirizzi obbligatori dell''ambito DDT_VENDITA che la cascata dall''ordine non ha portato li scrive come dbops.fn_pgtap_crea_ddt. Lo stato si raggiunge con dbops.fn_pgtap_porta_a_stato, sotto i guard veri: chi deve scrivere sulla bolla in bozza (una riga a mano, un legame, un prezzo tolto) la chiede in DRAFT e la porta avanti da se''. Restituisce bolla, PRIMA riga della bolla con la sua quantita'' base, ordine e riga d''ordine evasa, articolo, cliente, emittente, operatore e stato. Uno stato, una causale o un ordine inesistenti sollevano prima di costruire; cosi'' uno stato abortito (is_abortito, per esempio ANNULLATO): la bolla nata da un ordine ha i legami e il suo annullo passa dal verbo vendite.fn_annulla_ddt, che il test chiama dopo aver chiesto EMESSO. ⛔ La bolla in bozza per il magazzino, senza ordine, resta di dbops.fn_pgtap_crea_ddt. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-pgtap-bolla-e-reso-costruiti (giro 1), 2026-10-25. Rev 20261025-02: lo stato abortito si rifiuta prima di costruire. Rev 20261025-04 (D-1): p_data_ordine, DROP + CREATE. Rev 20261025-32 (E-1): l''ordine dal builder dell''ordine con le righe, p_righe_ordine; DROP + CREATE.';
 ```
 
 </div>

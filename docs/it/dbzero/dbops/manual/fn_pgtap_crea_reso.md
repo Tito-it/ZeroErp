@@ -57,8 +57,9 @@ soddisfaceva ogni file da sé. Ora la strada ha una sede.
   arrotondata in su); il tipo si sceglie per codice (default `RESO_A_CREDITO`).
 * **La coerenza** — quantità oltre il consegnato, origine sbagliata, bolla non consegnata —
   la giudicano i controlli veri del dominio, non il builder.
-* **Lo stato** (default `CONFERMATO`) lo raggiunge il verbo `vendite.fn_conferma_reso`, dopo
-  aver concesso all'operatore in sessione l'azione `conferma_reso` che il verbo pretende.
+* **Lo stato** (default `CONFERMATO`) lo raggiunge `dbops.fn_pgtap_porta_a_stato`, che sul
+  reso passa dal verbo `vendite.fn_conferma_reso` e concede all'operatore in sessione l'azione
+  che la matrice chiede per il passaggio: il builder non nomina nessuna azione.
 
 ---
 ### 🚫 Cosa NON fa

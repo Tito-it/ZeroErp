@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i due ordini (CONFERMATO, ANNULLATO) da dbops.fn_pgtap_crea_ordine_con_righe (2 x 10, trigger SPEDITO scritto in bozza); il preventivo resta a mano: e' fuori dalle tre strade del giro (c'e' dbops.fn_pgtap_crea_preventivo, da valutare a parte).
 -- pgTAP test per Zero ERP
 --
 -- Test: la testata dopo la bozza (fase 2): che cosa si cambia ancora,
@@ -194,6 +195,7 @@ SELECT is(
 
 -- =========================================================
 -- Il mondo: due ordini e un preventivo, nati in bozza con una riga
+--   (gli ordini dal builder, il preventivo a mano)
 -- =========================================================
 CREATE TEMP TABLE _m AS
 SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP testata dopo emissione');
@@ -210,6 +212,23 @@ SELECT (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE AND i.aliquota_iva 
 
 CREATE TEMP TABLE _doc (chiave text PRIMARY KEY, id bigint);
 
+-- Gli ordini: nati in bozza con una riga 2 x 10 e il trigger SPEDITO, poi
+--   CONFERMATO e ANNULLATO per la matrice.
+CREATE TEMP TABLE _o_conf AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('testata dopo emissione conf', 'CONFERMATO',
+    p_billing_account_id => (SELECT billing_account_id FROM _m),
+    p_quantita => 2, p_prezzo => 10, p_articolo_id => (SELECT id FROM _art),
+    p_fatturazione_trigger => 'SPEDITO', p_data_ordine => script.fn_data_operativa());
+CREATE TEMP TABLE _o_ann AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('testata dopo emissione ann', 'ANNULLATO',
+    p_billing_account_id => (SELECT billing_account_id FROM _m),
+    p_quantita => 2, p_prezzo => 10, p_articolo_id => (SELECT id FROM _art),
+    p_fatturazione_trigger => 'SPEDITO', p_data_ordine => script.fn_data_operativa());
+INSERT INTO _doc
+SELECT 'ORD_CONF', ordine_id FROM _o_conf
+UNION ALL
+SELECT 'ORD_ANN', ordine_id FROM _o_ann;
+
 DO $fixture$
 DECLARE
     c    record;
@@ -218,23 +237,6 @@ DECLARE
 BEGIN
     SELECT * INTO c FROM _m;
     SELECT * INTO k FROM _k;
-
-    FOR i IN 1..2 LOOP
-        INSERT INTO vendite.ordini
-            (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-             fatturazione_trigger, emittente_fiscale_id, valuta_id, data)
-        VALUES
-            (c.cliente_soggetto_ruolo_id, c.billing_account_id,
-             (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT'),
-             'SPEDITO', c.emittente_fiscale_id, k.valuta_id, script.fn_data_operativa())
-        RETURNING id INTO v_id;
-
-        INSERT INTO vendite.ordini_righe
-            (ordine_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa, prezzo_unitario, iva_id)
-        VALUES (v_id, 1, (SELECT id FROM _art), 'Riga pgTAP', 2, 2, 10, k.iva_id);
-
-        INSERT INTO _doc VALUES (CASE i WHEN 1 THEN 'ORD_CONF' ELSE 'ORD_ANN' END, v_id);
-    END LOOP;
 
     INSERT INTO vendite.preventivi
         (numero, stato_doc_preventivo_id, utility_id, istanza_utility_id,
@@ -252,8 +254,6 @@ BEGIN
 
     INSERT INTO _doc VALUES ('PREV', v_id);
 
-    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM _doc WHERE chiave = 'ORD_CONF'), 'CONFERMATO');
-    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM _doc WHERE chiave = 'ORD_ANN'), 'ANNULLATO');
     PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', v_id, 'EMESSO');
 END
 $fixture$;

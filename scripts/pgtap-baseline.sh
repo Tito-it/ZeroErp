@@ -37,6 +37,20 @@
 #   scripts/pgtap-baseline.sh vendite config   # solo alcuni schemi (piu' veloce)
 #   scripts/pgtap-baseline.sh --update         # rigenera la baseline
 #   scripts/pgtap-baseline.sh --update vendite # rigenera solo quegli schemi
+#   scripts/pgtap-baseline.sh --modificati     # solo i pgTAP toccati nell'albero
+#   scripts/pgtap-baseline.sh --update --modificati   # rigenera solo le loro righe
+#
+#   --modificati prende i file `.sql` sotto db/pgtap/ che git vede cambiati
+#   rispetto a HEAD (in staged o no) piu' quelli nuovi non ancora aggiunti; i
+#   cancellati restano fuori. Il confronto guarda solo le righe di baseline di
+#   quei file. Non si combina con gli schemi.
+#   ⚠️ Dice se i TEST toccati sono verdi, non se il CODICE toccato ha rotto
+#   altro: dopo un cambio a una funzione o a un trigger il perimetro giusto
+#   resta lo schema (o la suite), perche' i test che la esercitano non sono
+#   fra i file modificati.
+#   ⚠️ Prende ogni `.sql` della suite, non solo i `test*.sql`: la suite esegue
+#   anche i file di fixture (`create-*.sql`), e un perimetro piu' stretto
+#   lascerebbe fuori proprio quelli.
 #
 #   PGTAP_RUNNER=app scripts/pgtap-baseline.sh vendite   # come gira l'applicazione
 #
@@ -110,10 +124,12 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BASELINE="${PGTAP_BASELINE:-$ROOT_DIR/db/pgtap/baseline-rossi.tsv}"
 
 UPDATE=0
+MODIFICATI=0
 SCHEMI=()
 for arg in "$@"; do
   case "$arg" in
     --update) UPDATE=1 ;;
+    --modificati) MODIFICATI=1 ;;
     # ⚠️ L'ultima riga si CALCOLA. Inchiodata a 81 l'aiuto troncava in silenzio
     #   la coda dell'intestazione ogni volta che qualcuno la allungava — e
     #   l'intestazione e' cresciuta due volte oggi. Stessa correzione fatta in
@@ -124,8 +140,29 @@ for arg in "$@"; do
   esac
 done
 
-# Perimetro: tutti gli schemi o solo quelli richiesti.
-if [ ${#SCHEMI[@]} -eq 0 ]; then
+if [ "$MODIFICATI" -eq 1 ] && [ ${#SCHEMI[@]} -gt 0 ]; then
+  echo "--modificati non si combina con gli schemi: scegli un perimetro solo." >&2; exit 2
+fi
+
+# Perimetro intero = ne' schemi ne' --modificati. Solo una corsa intera puo'
+# ribaselinare con un runner nuovo e far scattare il cancello «rossi tutti».
+perimetro_intero() { [ ${#SCHEMI[@]} -eq 0 ] && [ "$MODIFICATI" -eq 0 ]; }
+
+# Perimetro: tutta la suite, gli schemi richiesti, o i file modificati.
+if [ "$MODIFICATI" -eq 1 ]; then
+  # Cambiati rispetto a HEAD (staged e non) + nuovi non tracciati, solo quelli
+  # che esistono ancora: un file cancellato non si esegue.
+  FILES=$(
+    { git -C "$ROOT_DIR" diff --name-only HEAD -- db/pgtap
+      git -C "$ROOT_DIR" ls-files --others --exclude-standard -- db/pgtap
+    } | grep -E '^db/pgtap/[^/]+/.+\.sql$' | sort -u |
+    while IFS= read -r p; do [ -f "$ROOT_DIR/$p" ] && echo "$ROOT_DIR/$p"; done
+  )
+  if [ -z "$FILES" ]; then
+    echo "Nessun pgTAP modificato nell'albero (db/pgtap/, rispetto a HEAD): niente da misurare." >&2
+    exit 2
+  fi
+elif perimetro_intero; then
   # ⚠️ `find` e non `ls .../*/*.sql`: il glob a un livello solo lasciava fuori
   #   dalla baseline le sottocartelle di schema — al 2026-08-24 erano 16 file
   #   (vendite/offerte_commerciali, vendite/contratti), di cui 12 ROSSI da
@@ -142,6 +179,20 @@ else
     FILES="$FILES"$'\n'"$(find "$ROOT_DIR/db/pgtap/$sc" -name '*.sql' 2>/dev/null | sort)"
   done
   FILES=$(echo "$FILES" | grep -v '^$')
+fi
+
+# Il perimetro a file, in forma di baseline (`db/pgtap/...`), per filtrare le
+# righe in confronto e in aggiornamento. E gli argomenti che lo ripetono, per i
+# comandi suggeriti.
+PERIM_REL=$(mktemp)
+trap 'rm -f "$PERIM_REL"' EXIT
+if [ "$MODIFICATI" -eq 1 ]; then
+  echo "$FILES" | sed "s#^$ROOT_DIR/##" > "$PERIM_REL"
+  PERIM_ARGS=(--modificati)
+  PERIM_NOME="i file modificati"
+else
+  PERIM_ARGS=("${SCHEMI[@]}")
+  PERIM_NOME="${SCHEMI[*]}"
 fi
 
 # ⚠️ Nessun default QUI: lo si chiede a testpgtap.sh, che e' l'unico posto
@@ -188,7 +239,7 @@ invocazione() {
 # L'unico caso in cui un metro nuovo e' legittimo e' la ribaselinatura INTERA.
 if [ -f "$BASELINE" ]; then
   PRECED=$(baseline_runner)
-  RIBASE_INTERA=$([ "$UPDATE" -eq 1 ] && [ ${#SCHEMI[@]} -eq 0 ] && echo 1 || echo 0)
+  RIBASE_INTERA=$([ "$UPDATE" -eq 1 ] && perimetro_intero && echo 1 || echo 0)
   if [ "$PRECED" != "$RUNNER" ] && [ "$RIBASE_INTERA" -eq 0 ]; then
     echo "❌ La baseline e' registrata con runner '$PRECED', questa corsa gira con '$RUNNER'." >&2
     if [ "$UPDATE" -eq 1 ]; then
@@ -298,7 +349,7 @@ PRIMO_ROSSO=$(mktemp)
 #   create-cliente, due volte in due giorni) non lasciava NIENTE da leggere.
 #   L'etichetta dice che il file non ha misurato; il motivo dice perche'.
 MOTIVI=$(mktemp)
-trap 'rm -f "$CORRENTE" "$PRIMO_ROSSO"' EXIT
+trap 'rm -f "$CORRENTE" "$PRIMO_ROSSO" "$PERIM_REL"' EXIT
 
 n=0
 while IFS= read -r f; do
@@ -402,12 +453,12 @@ ROSSI=$(grep -c '' "$CORRENTE" || true)
 #   ⚠️ Vale sulla suite INTERA, non su un sottoinsieme: uno schema piccolo puo'
 #   essere tutto rosso per ragioni sue, e li' il divieto sarebbe un falso
 #   allarme. Con gli schemi indicati si avvisa e si prosegue.
-if [ "$ROSSI" -eq "$TOT" ] && [ "$TOT" -gt 0 ] && [ ${#SCHEMI[@]} -gt 0 ]; then
-  echo "⚠️  Tutti e $TOT i file di ${SCHEMI[*]} sono rossi: se non te l'aspettavi," >&2
+if [ "$ROSSI" -eq "$TOT" ] && [ "$TOT" -gt 0 ] && ! perimetro_intero; then
+  echo "⚠️  Tutti e $TOT i file di $PERIM_NOME sono rossi: se non te l'aspettavi," >&2
   echo "   guarda l'ambiente (estensione pgtap, privilegi, database) prima di fidarti." >&2
   echo >&2
 fi
-if [ "$ROSSI" -eq "$TOT" ] && [ "$TOT" -gt 0 ] && [ ${#SCHEMI[@]} -eq 0 ]; then
+if [ "$ROSSI" -eq "$TOT" ] && [ "$TOT" -gt 0 ] && perimetro_intero; then
   echo "⛔ ROSSI TUTTI E $TOT: la corsa non ha misurato la suite, ha misurato l'ambiente." >&2
   echo "   La baseline NON e' stata scritta: un registro con dentro tutto" >&2
   echo "   disarmerebbe il confronto per sempre." >&2
@@ -426,8 +477,13 @@ fi
 # --- modalita' aggiornamento -------------------------------------------------
 if [ "$UPDATE" -eq 1 ]; then
   TMP=$(mktemp)
-  if [ ${#SCHEMI[@]} -eq 0 ]; then
+  if perimetro_intero; then
     cp "$CORRENTE" "$TMP"
+  elif [ "$MODIFICATI" -eq 1 ]; then
+    # Si sostituiscono SOLO le righe dei file eseguiti.
+    baseline_righe | awk -F'\t' 'NR==FNR { dentro[$0]=1; next } !($1 in dentro)' "$PERIM_REL" - > "$TMP"
+    cat "$CORRENTE" >> "$TMP"
+    sort -o "$TMP" "$TMP"
   else
     # Aggiornamento parziale: si sostituiscono SOLO le righe degli schemi
     # eseguiti, lasciando intatto il resto della baseline.
@@ -456,9 +512,11 @@ fi
 # Confronto sulla sola colonna file: la causa e' informativa, non identitaria
 # (lo stesso file puo' cambiare causa restando rosso — non e' una regressione).
 NOTI=$(mktemp); ATTUALI=$(mktemp)
-trap 'rm -f "$CORRENTE" "$NOTI" "$ATTUALI" "$MOTIVI"' EXIT
-if [ ${#SCHEMI[@]} -eq 0 ]; then
+trap 'rm -f "$CORRENTE" "$NOTI" "$ATTUALI" "$MOTIVI" "$PERIM_REL" "$PRIMO_ROSSO"' EXIT
+if perimetro_intero; then
   baseline_righe | cut -f1 | sort > "$NOTI"
+elif [ "$MODIFICATI" -eq 1 ]; then
+  baseline_righe | cut -f1 | grep -F -x -f "$PERIM_REL" | sort > "$NOTI"
 else
   pat=$(printf 'db/pgtap/%s/\n' "${SCHEMI[@]}" | paste -sd'|')
   baseline_righe | cut -f1 | grep -E "^($pat)" | sort > "$NOTI"
@@ -487,7 +545,7 @@ if [ -n "$RIENTRATI" ]; then
   else
     echo "✅ RIENTRATI — ora verdi, vanno tolti dalla baseline:"
     echo "$RIENTRATI" | sed 's/^/   /'
-    echo "   → $(invocazione --update ${SCHEMI[*]:-})"
+    echo "   → $(invocazione --update "${PERIM_ARGS[@]}")"
   fi
   echo
 fi
