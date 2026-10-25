@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-**Riparte: Tid**, col via al **lotto 3** (le note), il cui piano è nel §14; poi il lotto 4 (presidio e archiviazione). Tutto il resto è chiuso e in `main`: lotti 0, 1, 2a … 2e e §13.6 su DB e BE/FE (§13.6: DB `2ada3f6d1`, BE/FE `a5af6305e`). Il ponte di `fn_articolo_riga_contesto` è morto nel 2a (`20261019-53`). Restano a Tid, quando vuole, le prove a video di fine cantiere. Il brief si è fermato il 2026-10-21 perché il lavoro è passato a [brief-modello-documento-vendita](brief-modello-documento-vendita.md): i due brief non dipendono l'uno dall'altro (§14.1).
+**Riparte: la sessione BE/FE**, col giro del §14.9 (elenco chiuso BE-1 … FE-2): il lotto 3 (le note, `20261025-53` … `-69`) è applicato su dbdev e scratch e i pgTAP sono verdi come app (Tid, 2026-10-25). ⚠️ Finché il BE non passa ai codici nuovi, le note di ordini, DDT, offerte e catalogo non si scrivono. Poi il lotto 4 (presidio e archiviazione). Tutto il resto è chiuso e in `main`: lotti 0, 1, 2a … 2e e §13.6 su DB e BE/FE (§13.6: DB `2ada3f6d1`, BE/FE `a5af6305e`). Il ponte di `fn_articolo_riga_contesto` è morto nel 2a (`20261019-53`). Restano a Tid, quando vuole, le prove a video di fine cantiere. Il brief si è fermato il 2026-10-21 perché il lavoro è passato a [brief-modello-documento-vendita](brief-modello-documento-vendita.md): i due brief non dipendono l'uno dall'altro (§14.1).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -44,11 +44,13 @@
 | 6-octies-i | ✅ sessione BE/FE | Colonne e whitelist d'ordinamento del repository, apertura del documento d'origine dalla commessa (fattura e reso compresi) col BB `buildApriDocumentoAction`, test, chiamata reale su dbdev (2026-10-21); committato (`a5af6305e`) | §13.6.2 | 6-octies-h |
 | 6-sexies | ✅ team DB, poi sessione BE/FE | Sotto-giri 2c, 2d, 2e insieme (un apply; con lo SQL una tantum delle chiavi su dbdev, G-8), poi un giro BE/FE; lotto 3 anticipabile; censimento su `pg_get_functiondef`, non su `prosrc` (§12.3) | §10, §10.4, §5 G-4 | 6-octies-b |
 | 6-novies-a | ✅ team DB | Piano del lotto 3 (le note): ricognizione sulla doc auto-generata, proposta, domande per Tid (2026-10-25) | §14 | — |
-| 6-novies-b | **Tid** | Risposte alle domande del lotto 3 e via allo sviluppo | §14.5 | 6-novies-a |
-| 6-novies-c | team DB, poi sessione BE/FE | Lotto 3 scritto e provato, apply di Tid, giro BE/FE (`note_repositories.py`, `TARGET_TIPI_AMMESSI` ritirato) | §14 | 6-novies-b |
-| 7 | chi chiude | Lotto 4: presidio (ogni colonna di tipo documento ha la FK), riga di PROJECT_CONTEXT, archiviazione. Il ponte di `fn_articolo_riga_contesto` è già ritirato (2a) | §5 G-4 | 6-novies-c |
+| 6-novies-b | ✅ **Tid** | L3-1 … L3-6 come da proposta, e via allo sviluppo (2026-10-25) | §14.5, §14.6 | 6-novies-a |
+| 6-novies-c | ✅ team DB | Lotto 3 scritto e provato: `20261025-53` … `-69`, 10 pgTAP portati, uno nuovo; avanti, rollback e «da zero» provati sul dump di schema (2026-10-25); committato su `dev/db-tid` | §14.7, §14.8 | 6-novies-b |
+| 6-novies-d | ✅ **Tid** | Apply su dbdev e scratch (`-57` rilanciato dopo il §14.8.1, `-69` dopo il §14.8.2), corsa dei pgTAP come app: verdi (2026-10-25) | §14.8 | 6-novies-c |
+| 6-novies-e | sessione BE/FE | Il giro del §14.9 (elenco chiuso BE-1 … FE-2), subito dopo l'apply: fino ad allora le note di ordini, DDT, offerte e catalogo non si scrivono | §14.9 | 6-novies-d |
+| 7 | chi chiude | Lotto 4: presidio (ogni colonna di tipo documento ha la FK; per le note c'è già, §14.7), riga di PROJECT_CONTEXT, archiviazione. Il ponte di `fn_articolo_riga_contesto` è già ritirato (2a) | §5 G-4 | 6-novies-e |
 
-**Decisioni aperte di Tid:** nessuna sul giro 2c-2e (L2e-2 = (a), L2c-1 = (a) in questo giro, 2026-10-20); il giro DB 2c-2e è committato (PR #1910); il giro BE/FE del §13.4 è committato (PR #1913), quello del §13.6 è committato (`a5af6305e`); **aperte quelle del lotto 3 (§14.5)**; il blocco «origine» della stampa della fattura, che non si vede mai (§12.9, in fondo). Il giro DB dei
+**Decisioni aperte di Tid:** nessuna sul giro 2c-2e (L2e-2 = (a), L2c-1 = (a) in questo giro, 2026-10-20); il giro DB 2c-2e è committato (PR #1910); il giro BE/FE del §13.4 è committato (PR #1913), quello del §13.6 è committato (`a5af6305e`); **nessuna sul lotto 3** (L3-1 … L3-6 decise il 2026-10-25, §14.6); il lotto 3 è committato su `dev/db-tid` (2026-10-25); il blocco «origine» della stampa della fattura, che non si vede mai (§12.9, in fondo). Il giro DB dei
 §12.8 e §12.9 (§12.10) è committato (PR #1904); il giro BE del §12.10.6 è committato (`323c96a5c`, PR #1907). Verificato su dbdev il 2026-10-20: lo standard e le
 copie degli emittenti 32 e 44 stampano l'ordine in forma 3, e nessuno legge più `origine.tipo`. Lo SQL una tantum
 di L2b-2 resta accanto al brief fino all'archiviazione. Il §12.8 è partito il 2026-10-19 sera, insieme al
@@ -229,7 +231,7 @@ migrazione resta chiuso invece di crescere a ogni giro.
 | Brief | Oggetti in comune | Che cosa si fa |
 | --- | --- | --- |
 | [brief-db-indirizzi-documento-seguono-il-cliente](../work-done/brief-db-indirizzi-documento-seguono-il-cliente.md) | `vendite.fn_doc_indirizzo_default` coi selettori `DDT`, `ORDINE`, `PREVENTIVO`, `OFFERTA`, `CONTRATTO` (R-BE-1, il BE li passa da quattro service e dai verbi con cascata); `script.fn_doc_lock_regola` e il lock delle testate del §8.7 (`20261018-65`); `fn_get_cliente_testata_documento`, `fn_doc_indirizzi_sede` | ✅ rimando in R-BE-1; i selettori sono migrati nel lotto 2a (§11), annotato lì il 2026-10-20 |
-| [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md) | i guard di transizione delle testate (`trg_<doc>_a10_guard_transizione_upd`), gli stati iniziali per famiglia | ✅ rimando in testa; non iniziato: se introduce un registro per tipo di documento, nasce sulla grammatica decisa in G-1 (il lotto 0 è chiuso) |
+| [brief-db-documento-nasce-nello-stato-iniziale](../work-done/brief-db-documento-nasce-nello-stato-iniziale.md) | i guard di transizione delle testate (`trg_<doc>_a10_guard_transizione_upd`), gli stati iniziali per famiglia | ✅ chiuso e archiviato il 2026-10-25: confluito in `brief-modello-documento-vendita` §4-bis, nessun registro per tipo di documento introdotto |
 | [brief-db-articoli-ammessi-per-documento](../work-done/brief-db-articoli-ammessi-per-documento.md) | il ponte di `script.fn_articolo_riga_contesto`, la famiglia del §9.8.3 | il ponte resta fino al lotto che lo rende inutile: lo ritira chi chiude questo brief |
 
 ### 6.2 Documenti che pesano sulle decisioni G-1 … G-3 (da leggere nel censimento)
@@ -1780,9 +1782,10 @@ Ricostruita dalla sessione BE/FE sul repo e sul catalogo vivo, perché il brief 
   `TEMPLATES_ORDER_COLUMNS` (`apps/documenti/db/documenti_repository.py`); seed e test di `apps.documenti` verdi,
   ordinamento provato su dbdev nei due versi. Annotato anche in brief-db-modelli-documento-standard.
 
-## 14. Lotto 3 — le note: ricognizione e piano (team DB, 2026-10-25)
+## 14. Lotto 3 — le note: ricognizione, piano, sviluppo (team DB, 2026-10-25)
 
-⛔ Solo piano: nessun changeSet prima delle risposte del §14.5 e del via di Tid.
+Piano (§14.1 … §14.5), decisioni di Tid e correzioni della scrittura (§14.6), sviluppo e prova (§14.7, §14.8),
+richiesta al BE/FE (§14.9). Da applicare.
 
 ### 14.1 Il rapporto col brief del modello del documento
 
@@ -1874,9 +1877,9 @@ quattro di `catalogo`), più un pgTAP nuovo: ogni confine di partizione delle qu
 1. **la sequenza dell'`id`** nasce a 1 sul padre nuovo: senza un `setval` al massimo di oggi il prossimo
    inserimento collide con la PK `(target_tipo, id)` della partizione;
 2. **`trg_note_offerte_commerciali_a10_eccezioni_require_attivo_ins_u`** è `AFTER INSERT OR UPDATE` senza
-   `OF`: l'`UPDATE` del codice lo fa scattare, e una nota su un'eccezione spenta ferma il migrate
-  . L'`UPDATE` passa a trigger spento nel changeSet,
-   oppure si corregge prima il montaggio (`UPDATE OF target_riga_id`, come gli altri), che è il difetto vero;
+   `OF`: l'`UPDATE` del codice lo fa scattare, e una nota su un'eccezione spenta ferma il migrate. L'`UPDATE`
+   passa a trigger spento nel changeSet, oppure si corregge prima il montaggio (`UPDATE OF target_riga_id`, come
+   gli altri), che è il difetto vero;
 3. **l'`ON UPDATE CASCADE`** di `catalogo`: senza togliere prima la FK, l'`UPDATE` della nota cascata su
    `articoli.note_target_tipo` e sbatte contro il `CHECK` `= 'ARTICOLI'`;
 4. **il seed dei CSV di magazzino** ha `id` espliciti: il resync della sequenza deve venire **dopo** il seed
@@ -1912,3 +1915,168 @@ Dopo l'apply il backend che scrive `'DDT'` finisce senza partizione: DB e BE cam
 ⚠️ Notato, non proposto: `config.tipi_entita.modo_risoluzione_emittente` è valorizzata solo per `FATTURA`. Se
 fosse completa, gli smistatori `fn_scope_note_*` potrebbero leggerla al posto dei loro `CASE`. È un tema del
 perimetro, non della grammatica: qui gli smistatori cambiano solo i codici.
+
+### 14.6 Le decisioni (Tid, 2026-10-25) e cosa ha corretto la scrittura
+
+✅ **Tid, 2026-10-25: «ok», sì alle proposte L3-1 … L3-6, e via allo sviluppo.** Numeri dal primo libero,
+`20261025-53` (max + 1 su tutti i livelli e sul `databasechangelog` di dbdev e scratch).
+
+Scrivendo, tre punti del §14.3 sono cambiati — tutti sul **come**, nessuno sul modello:
+
+* **Niente `UPDATE`: conversione sul posto.** `ALTER COLUMN target_tipo TYPE varchar(50) USING '<codice>'` sulla
+  partizione staccata è DDL: nessun trigger di riga scatta. Così audit (`data_update`, `user_update`) e `tx_id`
+  restano quelli dell'ultima modifica vera, e la trappola 2 non c'è più come ostacolo (è la forma già usata nel
+  `20261001-42`).
+* **La trappola 2 era un doppione.** Il trigger d'offerta senza `OF` è un trigger ATTIVO **scritto a mano** dal
+  `20260524-08`, accanto a quello che il framework genera dalla FK `fk_offnote_riga` (stessa funzione, stessi
+  argomenti, differito, `OF target_riga_id`). Le linee guida vietano di scriverli a mano: L3-5 diventa «si toglie»
+  (`-53`), non «si corregge».
+* **La trappola 4 non c'è:** i CSV `80_data/sql/magazzino/note_*.csv` hanno la sola intestazione e nessun changelog
+  li carica.
+* **In più, trovato scrivendo L3-4:** il terzo argomento finiva anche nella **frase** per l'operatore
+  («…al documento di dominio %s…»). Le due destinazioni ora sono separate (linee-guida-sql §5, i tre canali): nel
+  payload il codice (`NEW.target_tipo`), nella frase l'etichetta della sorgente (`config.sorgenti.etichetta`:
+  «DDT», «Ordine»).
+* **Le viste di `catalogo` sono quattro e vanno tolte e rimesse:** `ALTER TYPE` rifiuta una colonna letta da una
+  vista. Oltre alle due delle note (`target_tipo` delle partizioni) ci sono `vw_articoli_dettaglio` e
+  `vw_articoli_componenti_dettaglio` (`note_target_tipo`). Nessun'altra vista né funzione dipende da loro
+  (`pg_depend`). Tornano identiche, come nel `20261021-18`/`-19`.
+
+### 14.7 Scritto (team DB, 2026-10-25) — non applicato
+
+| ChangeSet | Dove | Che cosa |
+| --- | --- | --- |
+| `-53` | `20_code/vendite` | via il trigger ATTIVO scritto a mano su `note_offerte_commerciali` (L3-5) |
+| `-54` | `00_schema/vendite` | `vendite.note` ricostruita: sette partizioni staccate, convertite, riattaccate (`ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`, `ATTIVITA`); FK `fk_vendite_note_target_tipo`; le tre policy del padre, RLS, GRANT, COMMENT |
+| `-55` | `00_schema/acquisti` | `acquisti.note`: `ORDINE_ACQUISTO`, `DDT_ACQUISTO`; escono `FATTURA` e `CONTRATTO` |
+| `-56` | `00_schema/magazzino` | `magazzino.note`: codici uguali, `varchar(50)` e FK; la policy del padre |
+| `-57` | `00_schema/catalogo` | via le quattro viste e la FK composta; `catalogo.note` con `ARTICOLO`, `ARTICOLO_COMPONENTE`; `articoli(_componenti).note_target_tipo` convertita sul posto, `CHECK` col codice nuovo, FK composta verso il padre nuovo |
+| `-58` … `-61` | `20_code/catalogo` | le quattro viste, identiche dal catalogo vivo |
+| `-62`, `-63`, `-64` | `20_code/script` | `fn_scope_note_ef_perimetro`, `_cliente_perimetro`, `_shop_perimetro` coi codici nuovi (rami e modi del risolutore uguali) |
+| `-65` | `20_code/script` | `fn_scope_note_magazzino_ef_perimetro`: rami uguali, il presidio citato passa dal `CHECK` ai confini |
+| `-66` | `20_code/script` | `trgfn_note_validate_generic`: dominio da `NEW.target_tipo` (payload) ed etichetta (frase); `SECURITY INVOKER` esplicito |
+| `-67`, `-68` | `20_code/vendite`, `/acquisti` | gli otto montaggi del validatore senza il terzo argomento |
+| `-69` | `20_code/acquisti` | via i due validatori di acquisti col nome vecchio, che da zero restavano accanto a quelli del `-68` (§14.8.2) |
+
+Tutti con rollback: il rollback delle ricostruzioni fa lo stesso procedimento al contrario, quello delle funzioni
+rimette il testo esatto dei changeSet di prima (`20261021-25`, `-38`, `20260804-46`).
+
+**pgTAP.** Nuovo: `config/test-grammatica-note-target-tipo-v1` (10 test: lunghezza, FK, nessun `CHECK` sul tipo,
+ogni confine è un'entità e le partizioni ci sono, nessun codice ritirato, l'altra metà della FK di catalogo, i due
+argomenti del validatore, nessun trigger doppione, il routing del codice ritirato, la frase dell'operatore). È il
+primo pezzo del presidio del lotto 4. Portati: `rls/test-rls-note-padre` (il test 4 ora legge i confini delle
+partizioni, ed è rosso con zero partizioni), `rls/test-rls-magazzino-perimetro-v1` (il 12, idem),
+`magazzino/test-valore-giacenza-forma-v1` (il 4: un `NOT EXISTS` su un `CHECK` ritirato sarebbe stato verde per
+sottrazione), `rls/test-rls-ddt-satelliti`, `rls/test-rls-offerte-satelliti`, `vendite/test-attivita-fatturabili`,
+`vendite/test-note-partitioning` (solo la nota), i tre di `catalogo` che scrivono le note. Invariati, perché i loro
+codici non cambiano: `rls/test-rls-contratti-satelliti`, `rls/test-rls-fatture-residuo`,
+`catalogo/test-articoli-componenti-immutabilita`.
+
+**Doc** (`manual/`, con la data): `vendite/note`, `acquisti/note`, `catalogo/note`, `catalogo/articoli`,
+`vendite/note_offerte_commerciali`, `vendite/offerte_commerciali_eccezioni`, `vendite/fn_get_vendite_note`,
+`script/fn_get_note`, `script/trgfn_note_validate_generic`, `script/fn_scope_note_magazzino_ef_perimetro`. La doc
+auto-generata si rigenera dopo l'apply.
+
+### 14.8 La prova (2026-10-25, cluster usa-e-getta PostgreSQL 18, col dump di schema di dbdev)
+
+Sullo scratch non ci sono credenziali da owner; la prova si è fatta su un cluster usa-e-getta: dump di **solo
+schema** di dbdev (`pg_dump -s` come app, senza gli schemi `shop` e `test`), ripristinato senza errori; copiati da
+dbdev i cataloghi che servono (`tipi_entita`, `sorgenti`, `note_stili`, `lingue`, `codici_errore`,
+`messaggi_errore`), gli articoli coi componenti e le 63 note di catalogo; note sintetiche per vendite (dieci, in
+tutte le sette partizioni), acquisti e magazzino (una per partizione), con audit di una data vecchia. Lo SQL
+eseguito è quello **estratto dagli YAML veri**, in una transazione con `ON_ERROR_STOP`.
+
+* **Avanti:** passa. Confronto prima/dopo su tutta la struttura toccata (colonne, vincoli, indici, confini, RLS,
+  policy, trigger, viste, funzioni, sequenze, dati): cambiano solo i confini, i codici delle righe, i `CHECK` → FK,
+  i tre argomenti → due, il trigger doppione, i COMMENT. Le policy, gli indici e la definizione delle quattro viste
+  (md5) sono **identici**; `data_update`/`user_update` delle note **invariati**; sequenze e identity uguali.
+* **Comportamento:** dal padre `DDT_VENDITA` va in `note_ddt` con l'id seguente della sequenza vecchia; `DDT` è
+  rifiutato dal routing; la FK composta di catalogo regge e rifiuta `ARTICOLI`; ogni confine di partizione di
+  vendite e magazzino ha il suo ramo nello smistatore, `DDT` no; una funzione per nome; la frase d'errore dice
+  «…al documento di dominio Ordine indicato…».
+* **Rollback:** avanti → indietro → struttura e dati **identici** a prima (ACL a parte: il dump era senza
+  privilegi); avanti di nuovo → identico al primo avanti.
+* **Da zero** (note e `config.tipi_entita` vuote, come in CI quando gira `00_schema`): passa.
+* **pgTAP nuovo:** 10/10 dopo; sul database di prima 10/10 rossi. Il test 10 era verde anche prima sul DDT (la sua
+  etichetta è «DDT», cioè il vecchio terzo argomento: coincidenza testuale), ed è stato spostato sugli ordini.
+* **Presidi portati** (test 4 del padre di vendite, 12 di magazzino): 0 dopo; con uno smistatore mutato a cui
+  mancano rami, 6 e 8.
+* **Guardrail** del repository: tutti verdi. ⚠️ `guardrail_pgtap_preambolo` dice che il debito dei `throws_ok`
+  senza discriminante è **calato di 2** (soglia 115, oggi 113): non viene da questo giro (2 → 2 sui file toccati),
+  era già nell'albero.
+
+⚠️ **Non provato:** i pgTAP con fixture (servono i dati e i builder: li lancia Tid come app dopo l'apply); la RLS
+come app.
+
+#### 14.8.1 Incidente dell'apply (2026-10-25, 15:03, dbdev) e correzione
+
+Il migrate di Tid su dbdev ha applicato `-53` … `-56` e si è fermato sul `-57`: *«la tabella figlia
+"note_articoli" ha una definizione diversa del vincolo di controllo "chk_note_anchor_tipo"»*.
+
+* **Il meccanismo.** L'`ATTACH` confronta l'**albero** dell'espressione dei `CHECK`, non il testo che
+  `pg_get_constraintdef` stampa, e la stampa non è reversibile: rianalizzata, dà un albero diverso. Il padre nuovo
+  era scritto col testo stampato. Le partizioni di catalogo hanno l'albero della forma d'origine
+  (`anchor_tipo IN (...)`, `20260113-06`); quelle di vendite, acquisti e magazzino **su dbdev** l'albero del testo
+  stampato (dbdev non è nato da zero), e per questo `-54` … `-56` sono passati. Misurato con `conbin` sullo scratch
+  (nato da zero): **tutte e quattro** le tabelle hanno l'albero della forma `IN`, quindi in CI si sarebbero fermati
+  anche `-54` … `-56`.
+* **Perché la prova non l'ha visto.** Il dump di schema ricostruisce i vincoli **dal testo stampato**: sul cluster
+  usa-e-getta gli alberi coincidevano per costruzione. La prova sul dump è cieca a questa differenza.
+* **La correzione** (`-54` … `-57` riscritti): su ogni partizione staccata i `CHECK` del padre si tolgono e si
+  rimettono **con lo stesso testo del padre nuovo** (la forma d'origine, `IN (...)`). Gli alberi coincidono per
+  costruzione, qualunque sia la storia del database. `-54` … `-56` portano `validCheckSums: ANY`: su dbdev non si
+  rieseguono (lì sono passati e lo stato è equivalente), da zero gira il corpo corretto. Il `-57` non era mai
+  andato a buon fine: il suo record non c'è.
+* **La prova della correzione** (cluster usa-e-getta, dump dello schema di dbdev **dopo** l'apply parziale):
+  * mondo «dbdev com'è» (catalogo con gli alberi `IN`): il `-57` vecchio riproduce **esattamente** l'errore di
+    Tid; il nuovo `-57` … `-68` passa;
+  * mondo «da zero» (riportato a prima del lotto col rollback nuovo di `-56` … `-53`: tutte le partizioni con
+    gli alberi `IN`, come in CI) e una variante avversaria (tutte con l'albero del testo stampato): avanti,
+    rollback, avanti passano in entrambi; il secondo avanti è identico al primo; il rollback è identico a prima,
+    salvo ACL (dump senza privilegi), COMMENT dei vincoli e la **forma** dei `CHECK` (il rollback li rimette nella
+    forma d'origine: stesso significato);
+  * il pgTAP nuovo: 10/10 nei tre mondi; guardrail verdi.
+
+**Per Tid:** rilanciare il migrate su dbdev (riparte dal `-57`); lo scratch prende tutto da `-53`.
+
+#### 14.8.2 Rosso del pgTAP nuovo sullo scratch (2026-10-25) e `-69`
+
+Corsa di Tid su `zeroerp_ruoli`: `config/test-grammatica-note-target-tipo-v1` rosso (regressione: il file è nuovo).
+Rifatte in sola lettura le query delle asserzioni 1-8: rossa la **7**. Su `acquisti.note_ddt` e
+`acquisti.note_ordini` c'erano **due** validatori: quello del `-68` (`*_validate_ins_upd`, due argomenti) e uno col
+nome vecchio (`*_ins_upd_validate`, col terzo argomento ritirato).
+
+* **Il difetto è del 2025.** Il `20251021-03` li monta col nome vecchio; il `20251119-42` doveva rinominarli, ma la
+  sua preCondition cerca in `pg_proc` una **funzione** che si chiama come un **trigger**
+  (`trg_ddt_a10_upd_a_protect_num`): non la trova mai, e con `onFail: MARK_RAN` la rinomina salta. Su dbdev è
+  girata (`RERAN`), da zero no (`MARK_RAN` sullo scratch). Il `-68` (`DROP IF EXISTS` del nome nuovo + `CREATE`)
+  da zero ha quindi **aggiunto** un validatore accanto al vecchio.
+* **`20261025-69`** (`20_code/acquisti`): `DROP TRIGGER IF EXISTS` dei due nomi vecchi. Su dbdev non fa niente.
+  Il `20251119-42` non si tocca; gli altri trigger che rinominava sullo scratch hanno già il nome giusto
+  (rimontati dopo, verificato su `pg_trigger`).
+* Il presidio ha fatto il suo lavoro: il doppione esisteva da zero dal 2025 (col validatore che girava due volte),
+  e nessun test lo vedeva.
+
+**Per Tid:** migrate (dbdev e scratch) per il `-69`, poi di nuovo il pgTAP.
+
+### 14.9 Richiesta al backend e al frontend (elenco chiuso, dopo l'apply)
+
+Dopo l'apply il backend che scrive `'DDT'` o `'ARTICOLI'` finisce senza partizione: le note di vendita di ordini,
+DDT e offerte, e quelle di catalogo, **non si scrivono** finché il BE non passa ai codici nuovi. Il percorso,
+censito su `backend/`, `frontend/src` e la doc del 2026-10-25:
+
+| # | Dove | Che cosa |
+| --- | --- | --- |
+| BE-1 | `vendite/db/note_repositories.py`, `vendite/api/note_views.py` | `ORDINE` → `ORDINE_VENDITA`, `DDT` → `DDT_VENDITA`, `OFFERTA` → `OFFERTA_COMMERCIALE` (`PREVENTIVO`, `CONTRATTO`, `FATTURA` uguali); via i commenti sulla lunghezza `varchar(16)` |
+| BE-2 | `core/db/partitioned_note_repository.py` | si ritira `TARGET_TIPI_AMMESSI` (copia del `CHECK` ritirato; decide la FK) e il suo controllo |
+| BE-3 | `core/services/partitioned_note_service.py:140` | la voce della mappa errori su `chk_note_target_tipo`, che non esiste più: un codice senza partizione è un `23514` del routing |
+| BE-4 | `catalogo/services/catalogo_service.py:1805, 1851, 1884` | `"ARTICOLI"` → `"ARTICOLO"`, `"ARTICOLI_COMPONENTI"` → `"ARTICOLO_COMPONENTE"` (anche il confronto su `nota_target_tipo` letto dalle viste) |
+| BE-5 | `core/api/partitioned_note_views.py` | i nomi dei serializer e delle viste nascono dal codice (`PartitionedNote_DDT_…` → `PartitionedNote_DDT_VENDITA_…`, e `.title()` di un codice con `_`): **cambia lo schema OpenAPI**, da verificare coi tipi generati del FE |
+| BE-6 | `vendite/api/urls_ordini.py:158`, `urls_ddt.py:150`, `urls_offerte.py:187` | i commenti col codice vecchio |
+| BE-7 | test: `core/tests/db/test_scritture_email_note_db.py`, `core/tests/services/test_partitioned_note_service.py`, `catalogo/tests/db/test_scritture_dinamiche_db.py`, `catalogo/tests/services/test_catalogo_service.py`, `scripts/tests/smoke-fattura-contatore-note.py` | i codici nuovi |
+| BE-8 | doc BE: `dev/backend/catalogo-building-block-backend.md` (`PartitionedNoteRepository`), `backend/core/manual/api_note_documento.md`, `backend/vendite/manual/api_{ordini,ddt,offerte,preventivi,contratti}.md`, `offerte_service.md`, `api_fattura_dettaglio.md` | dove citano i codici o `TARGET_TIPI_AMMESSI` |
+| FE-1 | `vendite/ordini/components/OrdineNoteDrawer.vue:5`, `vendite/ddt/components/DdtNoteDrawer.vue:5`, `dev/frontend/catalogo-building-block-frontend.md` | i commenti col codice vecchio; il FE non scrive `target_tipo` (lo governa il BE, `useNote.js:73`) |
+| FE-2 | risposte delle note | `target_tipo` restituito cambia valore (`'DDT'` → `'DDT_VENDITA'`…): verificare che nessuna vista FE lo confronti |
+
+Le API non cambiano rotta. Un solo passaggio BE/FE; una richiesta nuova dopo questa o è una riga dell'elenco o è
+un brief nuovo.

@@ -9,7 +9,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| target_tipo | character varying(16) | NO |  |
+| target_tipo | character varying(50) | NO |  |
 | target_id | bigint | NO |  |
 | target_riga_id | bigint | YES |  |
 | anchor_tipo | character varying(12) | NO |  |
@@ -36,12 +36,12 @@
 | CHECK | chk_note_anchor_tipo |  |
 | CHECK | chk_note_posizione |  |
 | CHECK | chk_note_seq_pos |  |
-| CHECK | chk_note_target_tipo |  |
 | CHECK | chk_note_testo_non_vuoto |  |
 | FOREIGN KEY | fk_fatture_note_riga | target_riga_id |
 | FOREIGN KEY | fk_fatture_note_testata | target_id |
 | FOREIGN KEY | fk_vendite_note_id_lingua | id_lingua |
 | FOREIGN KEY | fk_vendite_note_id_stile | id_stile |
+| FOREIGN KEY | fk_vendite_note_target_tipo | target_tipo |
 | PRIMARY KEY | note_fatture_pkey | target_tipo, id |
 
 ## 📑 Indici
@@ -59,8 +59,8 @@
 | trg_note_fatture_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_note_fatture_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_note_fatture_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_note_fatture_validate_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.fatture_righe', 'fattura_id', 'FATTURA')` |
-| trg_note_fatture_validate_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.fatture_righe', 'fattura_id', 'FATTURA')` |
+| trg_note_fatture_validate_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.fatture_righe', 'fattura_id')` |
+| trg_note_fatture_validate_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.fatture_righe', 'fattura_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Vista note per componenti articolo con dati stile e lingua.
+> Vista note per componenti articolo con dati stile e lingua. Rev 2026-10-25 (20261025-57/-59, brief-db-grammatica-unica-documenti lotto 3, G-7): tolta e rimessa identica perche' la colonna che legge cambia tipo; nota_target_tipo vale ARTICOLO_COMPONENTE (era ARTICOLI_COMPONENTI) e diventa varchar(50), dalla partizione.
 
 <div data-search-exclude markdown>
 

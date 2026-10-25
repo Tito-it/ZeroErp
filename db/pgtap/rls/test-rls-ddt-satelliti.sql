@@ -124,7 +124,7 @@ SELECT d.lato, d.riga_id, d.ddt_id FROM _ddt d;
 --   farebbe rumore. `note_ddt` risale da `target_id`.
 INSERT INTO vendite.note_ddt
     (target_tipo, target_id, anchor_tipo, posizione, testo, id_stile)
-SELECT 'DDT', d.ddt_id, 'DOCUMENTO', 'HEADER', 'Nota pgTAP RLS',
+SELECT 'DDT_VENDITA', d.ddt_id, 'DOCUMENTO', 'HEADER', 'Nota pgTAP RLS',
        (SELECT s.id FROM config.note_stili s WHERE s.codice_interno = 'NORMALE')
   FROM _ddt d;
 

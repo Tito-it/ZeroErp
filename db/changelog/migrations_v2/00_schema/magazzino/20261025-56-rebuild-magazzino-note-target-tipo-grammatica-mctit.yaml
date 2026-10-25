@@ -1,0 +1,367 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — lotto 3 (le note): magazzino.note.
+#   Brief: brief-db-grammatica-unica-documenti §14 (Tid, 2026-10-25: ok alle proposte L3-1 … L3-6, via).
+#
+#   I codici sono gia' quelli della grammatica (le nove partizioni portano i nomi di tipi_entita):
+#   cambiano solo la lunghezza, da varchar(32) a varchar(50) (L3-2, G-3), e il CHECK, che diventa
+#   la FK verso config.tipi_entita. La lunghezza e' la chiave di partizione, che con ALTER sul
+#   padre non si cambia: per questo anche qui il padre si ricostruisce.
+#
+# -- LA FORMA: STACCA, CONVERTI, RIATTACCA (L3-3) ------------------------------
+#   Il tipo della chiave di partizione non si cambia con ALTER sul padre; una partizione staccata
+#   e' una tabella qualunque. Quindi: padre nuovo, ogni partizione staccata -> convertita SUL
+#   POSTO (ALTER COLUMN ... TYPE ... USING, cioe' DDL: nessun trigger di riga scatta, audit e
+#   tx_id restano quelli dell'ultima modifica vera) -> riattaccata col codice nuovo; poi il padre
+#   vecchio, vuoto, se ne va e il nuovo prende il nome. Niente copia di righe: policy, trigger
+#   (anche i generati: nessun DDL su di loro, linee-guida-sql §11.5), FK e indici delle
+#   partizioni non si ricopiano. Provato su PostgreSQL 18 col dump di schema di dbdev e, per gli
+#   alberi dei CHECK, sullo scratch (nato da zero).
+#   * L'ATTACH fonde i CHECK per NOME, i NOT NULL per colonna, FK e indici per definizione: per
+#     questo CHECK, FK e NOT NULL del padre nuovo hanno i nomi di oggi, e PK e indici un nome
+#     provvisorio (i nomi d'indice sono unici nello schema) che si rinomina quando il vecchio non
+#     c'e' piu'.
+#   * ⛔ L'ATTACH confronta l'ALBERO dei CHECK (equal()), non il testo stampato, e l'albero dipende da
+#     come il vincolo e' nato: da zero dalla forma `IN (...)` dei changeSet d'origine, su dbdev (in
+#     parte ricaricato da dump) dal testo stampato, che rianalizzato da' un albero diverso. Per questo
+#     ogni partizione staccata riprende i CHECK del padre col testo del padre nuovo: gli alberi
+#     coincidono per costruzione, su qualunque database. (Il primo apply del 2026-10-25 si e' fermato
+#     sul -57 per questo; la prova sul dump non poteva vederlo, il dump ricostruisce dal testo.)
+#   * La sequenza dell'id e' del padre (identity): la nuova riparte da last_value della vecchia.
+#   * Le FK di catalogo e del registro dbops.fk_index_policy si leggono per NOME: i nomi restano.
+#     La FK nuova su target_tipo e' coperta dal prefisso della PK: nessun indice in piu' (§8.7).
+#   * Da zero l'ordine e' per numero, 00_schema e 20_code insieme: qui ci sono gia' partizioni,
+#     policy e trigger scritti a mano; le tabelle sono vuote e gli ALTER non convertono niente.
+#     config.tipi_entita si semina dopo (80_data): una FK su una tabella vuota non lo chiede.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20261025-56-rebuild-magazzino-note-target-tipo-grammatica-mctit.yaml
+
+  - changeSet:
+      id: 20261025-56-rebuild-magazzino-note-target-tipo-grammatica
+      author: mctit
+      runOnChange: false
+      # Rev 2026-10-25 (stessa giornata): i CHECK del padre si rimettono su ogni partizione
+      #   staccata col testo del padre (vedi intestazione). Il changeSet era gia' passato su dbdev,
+      #   dove gli alberi coincidevano per caso; da zero (scratch, CI) si sarebbe fermato.
+      #   ANY: dbdev non lo riesegue, e il suo stato e' equivalente.
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        magazzino.note ricostruita: target_tipo a varchar(50) col codice di config.tipi_entita e la FK al
+        posto del CHECK; le partizioni staccate, convertite sul posto e riattaccate. Grammatica
+        unica, lotto 3 (G-3, G-7).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 9
+            sql: >
+              SELECT count(*) FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+               WHERE i.inhparent = 'magazzino.note'::regclass
+                 AND pg_get_expr(c.relpartbound, c.oid) IN ('FOR VALUES IN (''ASSET'')', 'FOR VALUES IN (''EVENTO_ASSET'')', 'FOR VALUES IN (''INVENTARIO'')', 'FOR VALUES IN (''INVENTARIO_RIGA'')', 'FOR VALUES IN (''MOVIMENTO'')', 'FOR VALUES IN (''RETTIFICA'')', 'FOR VALUES IN (''RETTIFICA_RIGA'')', 'FOR VALUES IN (''TRASFERIMENTO'')', 'FOR VALUES IN (''TRASFERIMENTO_RIGA'')')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_attribute
+               WHERE attrelid = 'magazzino.note'::regclass AND attname = 'target_tipo'
+                 AND format_type(atttypid, atttypmod) = 'character varying(32)'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Il padre nuovo: le stesse colonne, target_tipo a varchar(50) con la FK verso
+              --    config.tipi_entita al posto del CHECK. CHECK e FK coi NOMI di oggi (l'ATTACH li fonde
+              --    con quelli delle partizioni); PK e indici con un nome provvisorio, che si libera al punto 4.
+              CREATE TABLE magazzino.note_nuova (
+                  id bigint CONSTRAINT note_id_not_null NOT NULL GENERATED BY DEFAULT AS IDENTITY,
+                  target_tipo character varying(50) CONSTRAINT note_target_tipo_not_null NOT NULL,
+                  target_id bigint CONSTRAINT note_target_id_not_null NOT NULL,
+                  target_riga_id bigint,
+                  anchor_tipo character varying(12) CONSTRAINT note_anchor_tipo_not_null NOT NULL,
+                  posizione character varying(12) CONSTRAINT note_posizione_not_null NOT NULL,
+                  seq integer CONSTRAINT note_seq_not_null NOT NULL DEFAULT 10,
+                  testo text,
+                  testo_md text,
+                  stile character varying(16) CONSTRAINT note_stile_not_null NOT NULL DEFAULT 'NORMALE'::character varying,
+                  lingua character varying(5),
+                  visibile boolean CONSTRAINT note_visibile_not_null NOT NULL DEFAULT true,
+                  solo_stampa boolean CONSTRAINT note_solo_stampa_not_null NOT NULL DEFAULT false,
+                  meta jsonb CONSTRAINT note_meta_not_null NOT NULL DEFAULT '{}'::jsonb,
+                  data_insert timestamp with time zone CONSTRAINT note_data_insert_not_null NOT NULL DEFAULT now(),
+                  user_insert text CONSTRAINT note_user_insert_not_null NOT NULL DEFAULT CURRENT_USER,
+                  data_update timestamp with time zone CONSTRAINT note_data_update_not_null NOT NULL DEFAULT now(),
+                  user_update text CONSTRAINT note_user_update_not_null NOT NULL DEFAULT CURRENT_USER,
+                  CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA')),
+                  CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> ''),
+                  CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER')),
+                  CONSTRAINT chk_note_seq_pos CHECK (seq >= 0),
+                  CONSTRAINT fk_mag_note_target_tipo FOREIGN KEY (target_tipo) REFERENCES config.tipi_entita(codice),
+                  CONSTRAINT pk_magazzino_note__nuova PRIMARY KEY (target_tipo, id)
+              ) PARTITION BY LIST (target_tipo);
+              CREATE INDEX ix_mag_note_by_riga__nuova ON magazzino.note_nuova USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL);
+              CREATE INDEX ix_mag_note_render_order__nuova ON magazzino.note_nuova USING btree (target_tipo, target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true');
+
+              -- 2. Ogni partizione: si stacca, perde il CHECK ereditato (ora locale), riprende i CHECK
+              --    del padre col TESTO del padre nuovo (l'ATTACH confronta l'albero, non la stampa), si converte
+              --    SUL POSTO (ALTER ... USING: e' DDL, nessun trigger di riga scatta — audit, tx_id e i
+              --    guard non vedono niente), si riattacca col codice della grammatica. Policy, trigger,
+              --    FK verso la testata e indici della partizione restano dove sono.
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_asset;
+              ALTER TABLE magazzino.note_asset DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE magazzino.note_asset DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_asset DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_asset DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_asset DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_asset ALTER COLUMN target_tipo TYPE character varying(50);
+              ALTER TABLE magazzino.note_nuova ATTACH PARTITION magazzino.note_asset FOR VALUES IN ('ASSET');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_evento_asset;
+              ALTER TABLE magazzino.note_evento_asset DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE magazzino.note_evento_asset DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_evento_asset DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_evento_asset DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_evento_asset DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_evento_asset ALTER COLUMN target_tipo TYPE character varying(50);
+              ALTER TABLE magazzino.note_nuova ATTACH PARTITION magazzino.note_evento_asset FOR VALUES IN ('EVENTO_ASSET');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_inventario;
+              ALTER TABLE magazzino.note_inventario DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE magazzino.note_inventario DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_inventario DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_inventario DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_inventario DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_inventario ALTER COLUMN target_tipo TYPE character varying(50);
+              ALTER TABLE magazzino.note_nuova ATTACH PARTITION magazzino.note_inventario FOR VALUES IN ('INVENTARIO');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_inventario_riga;
+              ALTER TABLE magazzino.note_inventario_riga DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE magazzino.note_inventario_riga DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_inventario_riga DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_inventario_riga DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_inventario_riga DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_inventario_riga ALTER COLUMN target_tipo TYPE character varying(50);
+              ALTER TABLE magazzino.note_nuova ATTACH PARTITION magazzino.note_inventario_riga FOR VALUES IN ('INVENTARIO_RIGA');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_movimento;
+              ALTER TABLE magazzino.note_movimento DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE magazzino.note_movimento DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_movimento DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_movimento DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_movimento DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_movimento ALTER COLUMN target_tipo TYPE character varying(50);
+              ALTER TABLE magazzino.note_nuova ATTACH PARTITION magazzino.note_movimento FOR VALUES IN ('MOVIMENTO');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_rettifica;
+              ALTER TABLE magazzino.note_rettifica DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE magazzino.note_rettifica DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_rettifica DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_rettifica DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_rettifica DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_rettifica ALTER COLUMN target_tipo TYPE character varying(50);
+              ALTER TABLE magazzino.note_nuova ATTACH PARTITION magazzino.note_rettifica FOR VALUES IN ('RETTIFICA');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_rettifica_riga;
+              ALTER TABLE magazzino.note_rettifica_riga DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE magazzino.note_rettifica_riga DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_rettifica_riga DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_rettifica_riga DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_rettifica_riga DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_rettifica_riga ALTER COLUMN target_tipo TYPE character varying(50);
+              ALTER TABLE magazzino.note_nuova ATTACH PARTITION magazzino.note_rettifica_riga FOR VALUES IN ('RETTIFICA_RIGA');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_trasferimento;
+              ALTER TABLE magazzino.note_trasferimento DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE magazzino.note_trasferimento DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_trasferimento DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_trasferimento DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_trasferimento DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_trasferimento ALTER COLUMN target_tipo TYPE character varying(50);
+              ALTER TABLE magazzino.note_nuova ATTACH PARTITION magazzino.note_trasferimento FOR VALUES IN ('TRASFERIMENTO');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_trasferimento_riga;
+              ALTER TABLE magazzino.note_trasferimento_riga DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE magazzino.note_trasferimento_riga DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_trasferimento_riga DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_trasferimento_riga DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_trasferimento_riga DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_trasferimento_riga ALTER COLUMN target_tipo TYPE character varying(50);
+              ALTER TABLE magazzino.note_nuova ATTACH PARTITION magazzino.note_trasferimento_riga FOR VALUES IN ('TRASFERIMENTO_RIGA');
+
+              -- 3. La sequenza dell'id e' del PADRE (identity): quella nuova riparte da dove era
+              --    arrivata la vecchia, o il prossimo id collide con la PK delle partizioni.
+              DO $seq$
+              DECLARE
+                v_last   bigint;
+                v_called boolean;
+              BEGIN
+                EXECUTE format('SELECT last_value, is_called FROM %s', pg_get_serial_sequence('magazzino.note', 'id'))
+                  INTO v_last, v_called;
+                PERFORM setval(pg_get_serial_sequence('magazzino.note_nuova', 'id'), v_last, v_called);
+              END
+              $seq$;
+
+              -- 4. Il padre vecchio, vuoto, se ne va (con le sue policy); il nuovo prende il nome.
+              DROP TABLE magazzino.note;
+              ALTER TABLE magazzino.note_nuova RENAME TO note;
+              ALTER TABLE magazzino.note RENAME CONSTRAINT pk_magazzino_note__nuova TO pk_magazzino_note;
+              ALTER INDEX magazzino.ix_mag_note_by_riga__nuova RENAME TO ix_mag_note_by_riga;
+              ALTER INDEX magazzino.ix_mag_note_render_order__nuova RENAME TO ix_mag_note_render_order;
+              ALTER SEQUENCE magazzino.note_nuova_id_seq RENAME TO note_id_seq;
+
+              -- 5. Cio' che stava sul padre e non sulle partizioni.
+              ALTER TABLE magazzino.note ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY rls_note_ef_whitelist ON magazzino.note FOR ALL
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_magazzino_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), target_tipo, target_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_magazzino_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), target_tipo, target_id)));
+              COMMENT ON POLICY rls_note_ef_whitelist ON magazzino.note IS
+                'Perimetro emittente (M-6), veste OPERATORE, fail-closed: il PADRE partizionato: smista su target_tipo (le policy delle partizioni non risalgono al padre, provato il 09-09). Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              GRANT SELECT, INSERT, UPDATE, DELETE ON magazzino.note TO zeroerp_app;
+              COMMENT ON TABLE magazzino.note IS
+                'Note testuali ancorabili a documenti/righe di magazzino; tabella padre partizionata per target_tipo. Rev 2026-10-25 (20261025-56, brief-db-grammatica-unica-documenti lotto 3, G-3/G-7): ricostruita per portare target_tipo a varchar(50) col codice di config.tipi_entita (ASSET, EVENTO_ASSET, INVENTARIO, INVENTARIO_RIGA, MOVIMENTO, RETTIFICA, RETTIFICA_RIGA, TRASFERIMENTO, TRASFERIMENTO_RIGA); le partizioni sono le stesse, staccate e riattaccate.';
+              COMMENT ON COLUMN magazzino.note.target_tipo IS
+                'Il tipo della cosa a cui la nota e'' ancorata: il codice di config.tipi_entita (G-7 di brief-db-grammatica-unica-documenti), che per un documento e'' il codice_interno della sua sorgente. E'' la chiave di partizione: ogni valore ha la sua partizione, con la FK verso la tabella della cosa. ⛔ Non c''e'' piu'' un CHECK con l''elenco: lo dice la FK fk_mag_note_target_tipo, e un tipo nuovo e'' una riga di tipi_entita.csv piu'' la sua partizione.';
+              COMMENT ON CONSTRAINT fk_mag_note_target_tipo ON magazzino.note IS
+                'Il tipo della nota e'' un''entita'' indicabile (G-7 di brief-db-grammatica-unica-documenti): toglie l''elenco scritto a mano. ⚠️ Non sostituisce la partizione: un codice senza partizione e'' rifiutato prima, dal routing.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Fallisce se intanto e' nata una nota di un tipo che il CHECK di prima non ammette:
+              --    e' voluto, un rollback non butta via righe.
+              CREATE TABLE magazzino.note_vecchia (
+                  id bigint CONSTRAINT note_id_not_null NOT NULL GENERATED BY DEFAULT AS IDENTITY,
+                  target_tipo character varying(32) CONSTRAINT note_target_tipo_not_null NOT NULL,
+                  target_id bigint CONSTRAINT note_target_id_not_null NOT NULL,
+                  target_riga_id bigint,
+                  anchor_tipo character varying(12) CONSTRAINT note_anchor_tipo_not_null NOT NULL,
+                  posizione character varying(12) CONSTRAINT note_posizione_not_null NOT NULL,
+                  seq integer CONSTRAINT note_seq_not_null NOT NULL DEFAULT 10,
+                  testo text,
+                  testo_md text,
+                  stile character varying(16) CONSTRAINT note_stile_not_null NOT NULL DEFAULT 'NORMALE'::character varying,
+                  lingua character varying(5),
+                  visibile boolean CONSTRAINT note_visibile_not_null NOT NULL DEFAULT true,
+                  solo_stampa boolean CONSTRAINT note_solo_stampa_not_null NOT NULL DEFAULT false,
+                  meta jsonb CONSTRAINT note_meta_not_null NOT NULL DEFAULT '{}'::jsonb,
+                  data_insert timestamp with time zone CONSTRAINT note_data_insert_not_null NOT NULL DEFAULT now(),
+                  user_insert text CONSTRAINT note_user_insert_not_null NOT NULL DEFAULT CURRENT_USER,
+                  data_update timestamp with time zone CONSTRAINT note_data_update_not_null NOT NULL DEFAULT now(),
+                  user_update text CONSTRAINT note_user_update_not_null NOT NULL DEFAULT CURRENT_USER,
+                  CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA')),
+                  CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> ''),
+                  CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER')),
+                  CONSTRAINT chk_note_seq_pos CHECK (seq >= 0),
+                  CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['ASSET'::character varying, 'EVENTO_ASSET'::character varying, 'INVENTARIO'::character varying, 'INVENTARIO_RIGA'::character varying, 'MOVIMENTO'::character varying, 'RETTIFICA'::character varying, 'RETTIFICA_RIGA'::character varying, 'TRASFERIMENTO'::character varying, 'TRASFERIMENTO_RIGA'::character varying])::text[]))),
+                  CONSTRAINT pk_magazzino_note__vecchia PRIMARY KEY (target_tipo, id)
+              ) PARTITION BY LIST (target_tipo);
+              CREATE INDEX ix_mag_note_by_riga__vecchia ON magazzino.note_vecchia USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL);
+              CREATE INDEX ix_mag_note_render_order__vecchia ON magazzino.note_vecchia USING btree (target_tipo, target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_asset;
+              ALTER TABLE magazzino.note_asset DROP CONSTRAINT fk_mag_note_target_tipo;
+              ALTER TABLE magazzino.note_asset DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_asset DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_asset DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_asset DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_asset ALTER COLUMN target_tipo TYPE character varying(32);
+              ALTER TABLE magazzino.note_asset ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['ASSET'::character varying, 'EVENTO_ASSET'::character varying, 'INVENTARIO'::character varying, 'INVENTARIO_RIGA'::character varying, 'MOVIMENTO'::character varying, 'RETTIFICA'::character varying, 'RETTIFICA_RIGA'::character varying, 'TRASFERIMENTO'::character varying, 'TRASFERIMENTO_RIGA'::character varying])::text[])));
+              ALTER TABLE magazzino.note_vecchia ATTACH PARTITION magazzino.note_asset FOR VALUES IN ('ASSET');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_evento_asset;
+              ALTER TABLE magazzino.note_evento_asset DROP CONSTRAINT fk_mag_note_target_tipo;
+              ALTER TABLE magazzino.note_evento_asset DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_evento_asset DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_evento_asset DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_evento_asset DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_evento_asset ALTER COLUMN target_tipo TYPE character varying(32);
+              ALTER TABLE magazzino.note_evento_asset ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['ASSET'::character varying, 'EVENTO_ASSET'::character varying, 'INVENTARIO'::character varying, 'INVENTARIO_RIGA'::character varying, 'MOVIMENTO'::character varying, 'RETTIFICA'::character varying, 'RETTIFICA_RIGA'::character varying, 'TRASFERIMENTO'::character varying, 'TRASFERIMENTO_RIGA'::character varying])::text[])));
+              ALTER TABLE magazzino.note_vecchia ATTACH PARTITION magazzino.note_evento_asset FOR VALUES IN ('EVENTO_ASSET');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_inventario;
+              ALTER TABLE magazzino.note_inventario DROP CONSTRAINT fk_mag_note_target_tipo;
+              ALTER TABLE magazzino.note_inventario DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_inventario DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_inventario DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_inventario DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_inventario ALTER COLUMN target_tipo TYPE character varying(32);
+              ALTER TABLE magazzino.note_inventario ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['ASSET'::character varying, 'EVENTO_ASSET'::character varying, 'INVENTARIO'::character varying, 'INVENTARIO_RIGA'::character varying, 'MOVIMENTO'::character varying, 'RETTIFICA'::character varying, 'RETTIFICA_RIGA'::character varying, 'TRASFERIMENTO'::character varying, 'TRASFERIMENTO_RIGA'::character varying])::text[])));
+              ALTER TABLE magazzino.note_vecchia ATTACH PARTITION magazzino.note_inventario FOR VALUES IN ('INVENTARIO');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_inventario_riga;
+              ALTER TABLE magazzino.note_inventario_riga DROP CONSTRAINT fk_mag_note_target_tipo;
+              ALTER TABLE magazzino.note_inventario_riga DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_inventario_riga DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_inventario_riga DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_inventario_riga DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_inventario_riga ALTER COLUMN target_tipo TYPE character varying(32);
+              ALTER TABLE magazzino.note_inventario_riga ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['ASSET'::character varying, 'EVENTO_ASSET'::character varying, 'INVENTARIO'::character varying, 'INVENTARIO_RIGA'::character varying, 'MOVIMENTO'::character varying, 'RETTIFICA'::character varying, 'RETTIFICA_RIGA'::character varying, 'TRASFERIMENTO'::character varying, 'TRASFERIMENTO_RIGA'::character varying])::text[])));
+              ALTER TABLE magazzino.note_vecchia ATTACH PARTITION magazzino.note_inventario_riga FOR VALUES IN ('INVENTARIO_RIGA');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_movimento;
+              ALTER TABLE magazzino.note_movimento DROP CONSTRAINT fk_mag_note_target_tipo;
+              ALTER TABLE magazzino.note_movimento DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_movimento DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_movimento DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_movimento DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_movimento ALTER COLUMN target_tipo TYPE character varying(32);
+              ALTER TABLE magazzino.note_movimento ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['ASSET'::character varying, 'EVENTO_ASSET'::character varying, 'INVENTARIO'::character varying, 'INVENTARIO_RIGA'::character varying, 'MOVIMENTO'::character varying, 'RETTIFICA'::character varying, 'RETTIFICA_RIGA'::character varying, 'TRASFERIMENTO'::character varying, 'TRASFERIMENTO_RIGA'::character varying])::text[])));
+              ALTER TABLE magazzino.note_vecchia ATTACH PARTITION magazzino.note_movimento FOR VALUES IN ('MOVIMENTO');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_rettifica;
+              ALTER TABLE magazzino.note_rettifica DROP CONSTRAINT fk_mag_note_target_tipo;
+              ALTER TABLE magazzino.note_rettifica DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_rettifica DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_rettifica DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_rettifica DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_rettifica ALTER COLUMN target_tipo TYPE character varying(32);
+              ALTER TABLE magazzino.note_rettifica ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['ASSET'::character varying, 'EVENTO_ASSET'::character varying, 'INVENTARIO'::character varying, 'INVENTARIO_RIGA'::character varying, 'MOVIMENTO'::character varying, 'RETTIFICA'::character varying, 'RETTIFICA_RIGA'::character varying, 'TRASFERIMENTO'::character varying, 'TRASFERIMENTO_RIGA'::character varying])::text[])));
+              ALTER TABLE magazzino.note_vecchia ATTACH PARTITION magazzino.note_rettifica FOR VALUES IN ('RETTIFICA');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_rettifica_riga;
+              ALTER TABLE magazzino.note_rettifica_riga DROP CONSTRAINT fk_mag_note_target_tipo;
+              ALTER TABLE magazzino.note_rettifica_riga DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_rettifica_riga DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_rettifica_riga DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_rettifica_riga DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_rettifica_riga ALTER COLUMN target_tipo TYPE character varying(32);
+              ALTER TABLE magazzino.note_rettifica_riga ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['ASSET'::character varying, 'EVENTO_ASSET'::character varying, 'INVENTARIO'::character varying, 'INVENTARIO_RIGA'::character varying, 'MOVIMENTO'::character varying, 'RETTIFICA'::character varying, 'RETTIFICA_RIGA'::character varying, 'TRASFERIMENTO'::character varying, 'TRASFERIMENTO_RIGA'::character varying])::text[])));
+              ALTER TABLE magazzino.note_vecchia ATTACH PARTITION magazzino.note_rettifica_riga FOR VALUES IN ('RETTIFICA_RIGA');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_trasferimento;
+              ALTER TABLE magazzino.note_trasferimento DROP CONSTRAINT fk_mag_note_target_tipo;
+              ALTER TABLE magazzino.note_trasferimento DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_trasferimento DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_trasferimento DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_trasferimento DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_trasferimento ALTER COLUMN target_tipo TYPE character varying(32);
+              ALTER TABLE magazzino.note_trasferimento ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['ASSET'::character varying, 'EVENTO_ASSET'::character varying, 'INVENTARIO'::character varying, 'INVENTARIO_RIGA'::character varying, 'MOVIMENTO'::character varying, 'RETTIFICA'::character varying, 'RETTIFICA_RIGA'::character varying, 'TRASFERIMENTO'::character varying, 'TRASFERIMENTO_RIGA'::character varying])::text[])));
+              ALTER TABLE magazzino.note_vecchia ATTACH PARTITION magazzino.note_trasferimento FOR VALUES IN ('TRASFERIMENTO');
+              ALTER TABLE magazzino.note DETACH PARTITION magazzino.note_trasferimento_riga;
+              ALTER TABLE magazzino.note_trasferimento_riga DROP CONSTRAINT fk_mag_note_target_tipo;
+              ALTER TABLE magazzino.note_trasferimento_riga DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE magazzino.note_trasferimento_riga DROP CONSTRAINT chk_note_lingua_non_vuota, ADD CONSTRAINT chk_note_lingua_non_vuota CHECK (btrim(lingua) <> '');
+              ALTER TABLE magazzino.note_trasferimento_riga DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE magazzino.note_trasferimento_riga DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE magazzino.note_trasferimento_riga ALTER COLUMN target_tipo TYPE character varying(32);
+              ALTER TABLE magazzino.note_trasferimento_riga ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['ASSET'::character varying, 'EVENTO_ASSET'::character varying, 'INVENTARIO'::character varying, 'INVENTARIO_RIGA'::character varying, 'MOVIMENTO'::character varying, 'RETTIFICA'::character varying, 'RETTIFICA_RIGA'::character varying, 'TRASFERIMENTO'::character varying, 'TRASFERIMENTO_RIGA'::character varying])::text[])));
+              ALTER TABLE magazzino.note_vecchia ATTACH PARTITION magazzino.note_trasferimento_riga FOR VALUES IN ('TRASFERIMENTO_RIGA');
+              DO $seq$
+              DECLARE
+                v_last   bigint;
+                v_called boolean;
+              BEGIN
+                EXECUTE format('SELECT last_value, is_called FROM %s', pg_get_serial_sequence('magazzino.note', 'id'))
+                  INTO v_last, v_called;
+                PERFORM setval(pg_get_serial_sequence('magazzino.note_vecchia', 'id'), v_last, v_called);
+              END
+              $seq$;
+              DROP TABLE magazzino.note;
+              ALTER TABLE magazzino.note_vecchia RENAME TO note;
+              ALTER TABLE magazzino.note RENAME CONSTRAINT pk_magazzino_note__vecchia TO pk_magazzino_note;
+              ALTER INDEX magazzino.ix_mag_note_by_riga__vecchia RENAME TO ix_mag_note_by_riga;
+              ALTER INDEX magazzino.ix_mag_note_render_order__vecchia RENAME TO ix_mag_note_render_order;
+              ALTER SEQUENCE magazzino.note_vecchia_id_seq RENAME TO note_id_seq;
+              ALTER TABLE magazzino.note ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY rls_note_ef_whitelist ON magazzino.note FOR ALL
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_magazzino_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), target_tipo, target_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_magazzino_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), target_tipo, target_id)));
+              COMMENT ON POLICY rls_note_ef_whitelist ON magazzino.note IS
+                'Perimetro emittente (M-6), veste OPERATORE, fail-closed: il PADRE partizionato: smista su target_tipo (le policy delle partizioni non risalgono al padre, provato il 09-09). Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              GRANT SELECT, INSERT, UPDATE, DELETE ON magazzino.note TO zeroerp_app;
+              COMMENT ON TABLE magazzino.note IS 'Note testuali ancorabili a documenti/righe di magazzino; tabella padre partizionata per target_tipo.';

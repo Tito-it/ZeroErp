@@ -56,8 +56,10 @@ nota letta. Ritirata dal `20261021-27`. Gli adattatori restano per la domanda su
 ### L'`ELSE false` è la riga che conta
 
 Un `target_tipo` nuovo e non gestito rende quelle note **invisibili** dal padre, non visibili
-a tutti, nemmeno al super admin. Il pgTAP confronta i rami con il CHECK `chk_note_target_tipo` del padre: quando si
-aggiunge un tipo, si aggiunge il ramo, e il test lo ricorda.
+a tutti, nemmeno al super admin. Il pgTAP confronta i rami con i confini delle partizioni del padre: quando si
+aggiunge un tipo (una partizione), si aggiunge il ramo, e il test lo ricorda.
+(Ultima revisione: 2026-10-25 (brief-db-grammatica-unica-documenti, lotto 3): il CHECK `chk_note_target_tipo`, con cui si confrontava prima, è ritirato; al suo posto la FK
+verso `config.tipi_entita`.)
 
 | Parametro | Tipo | Descrizione |
 |-----------|------|-------------|

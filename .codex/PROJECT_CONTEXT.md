@@ -248,8 +248,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`config.tipi_entita`, `config.sorgenti`, la grammatica delle testate, le partizioni delle note) e chi passa
   dall'uno all'altro traduce. Direzione decisa da Tid (strada 3 dell'A-8-ter): un vocabolario solo, nessun ponte.
   Lotti 0, 1 e 2a … 2e (testate, origine e destinazione, numeratori, aree, chiavi del push) e §13.6 chiusi su
-  DB, BE e FE e in `main` (2026-10-19 … 21); il ponte di `fn_articolo_riga_contesto` è ritirato. Restano il
-  lotto 3 (note: piano nel §14, attende il via di Tid) e il 4 (presidio, archiviazione). Non dipende dal
+  DB, BE e FE e in `main` (2026-10-19 … 21); il ponte di `fn_articolo_riga_contesto` è ritirato. Il lotto 3
+  (le note: quattro tabelle con `target_tipo` lungo e la FK verso `config.tipi_entita`) è applicato e verde il
+  2026-10-25 (`20261025-53` … `-69`); tocca al giro BE/FE del §14.9 (fino ad allora le note di ordini, DDT,
+  offerte e catalogo non si scrivono); resta il 4 (presidio, archiviazione). Non dipende dal
   brief del modello del documento: lì i BB prendono la tabella (`regclass`), qui il nome del tipo. Lo stato è
   nel blocco «Chi riparte» del brief.
 - **Type checker del backend (D2-b): chiuso il 2026-10-09** (`work-done/piano-be-type-checker.md`;

@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| target_tipo | character varying(32) | NO |  |
+| target_tipo | character varying(50) | NO |  |
 | target_id | bigint | NO |  |
 | target_riga_id | bigint | YES |  |
 | anchor_tipo | character varying(12) | NO |  |
@@ -31,7 +31,7 @@
 | CHECK | chk_note_posizione |  |
 | CHECK | chk_note_rettifica_riga_anchor |  |
 | CHECK | chk_note_seq_pos |  |
-| CHECK | chk_note_target_tipo |  |
+| FOREIGN KEY | fk_mag_note_target_tipo | target_tipo |
 | FOREIGN KEY | fk_note_rettifica_riga_riga | target_riga_id |
 | FOREIGN KEY | fk_note_rettifica_riga_testata | target_id |
 | PRIMARY KEY | note_rettifica_riga_pkey | target_tipo, id |

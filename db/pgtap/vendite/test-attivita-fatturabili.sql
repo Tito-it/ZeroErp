@@ -13,7 +13,7 @@
 -- 13-22) Default di colonna: approvato, fatturato, sospesa,
 --        lock_in_fatturazione, storicizza, uid, tipo_doc_fiscale_id,
 --        valuta_id, factor_to_base, sorgente_riga
--- 23-24) Nota su vendite.note (ATTIVITAFT) e presenza nella sua partizione
+-- 23-24) Nota su vendite.note (ATTIVITA, era ATTIVITAFT fino al 2026-10-25) e presenza nella sua partizione
 -- 25)    Riga da commessa: competenza_mese non al primo del mese e RESPINTA
 -- 26)    CHECK competenza_dal <= competenza_al
 -- 27)    Riga da commessa: competenza_mese NON derivata da posticipa_al
@@ -425,7 +425,7 @@ WITH ins AS (
         id_lingua
     )
     SELECT
-        'ATTIVITAFT',
+        'ATTIVITA',
         a.id,
         a.id,
         'RIGA',
@@ -447,14 +447,14 @@ SELECT * FROM ins;
 SELECT is(
     (SELECT count(*)::int FROM tmp_note_attivita),
     1,
-    'Inserita nota su vendite.note (ATTIVITAFT)'
+    'Inserita nota su vendite.note (ATTIVITA)'
 );
 
 SELECT is(
     (SELECT count(*)::int
        FROM vendite.note_attivita_fatturabili n
       WHERE n.id = (SELECT id FROM tmp_note_attivita)
-        AND n.target_tipo = 'ATTIVITAFT'),
+        AND n.target_tipo = 'ATTIVITA'),
     1,
     'Nota presente in partizione note_attivita_fatturabili'
 );

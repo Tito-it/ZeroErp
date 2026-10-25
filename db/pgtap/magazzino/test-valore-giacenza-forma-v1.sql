@@ -28,7 +28,7 @@
 --    1) nessun oggetto (vincolo, indice, sequenza, trigger, trigger sui padri, relazione) nomina piu' costo_medio
 --    2) la FK articolo che mancava c'e' (fk_mag_valore_giacenza_articolo)
 --    3) qta non c'e' piu': la quantita' vive solo nel registro
---    4) la partizione note_costo_medio non esiste e COSTO_MEDIO non e' nel CHECK del padre
+--    4) la partizione note_costo_medio non esiste e COSTO_MEDIO non e' un confine di partizione del padre (rev 2026-10-25)
 --   Le viste, sui valori:
 --    5) vw_giacenza = sum(qta) del registro (+5 +4 -2 = 7)
 --    6) vw_giacenza_ubicazione distingue due ubicazioni dello stesso magazzino (3 e 4)
@@ -73,13 +73,17 @@ SELECT ok(
                    AND attname = 'qta' AND NOT attisdropped),
     '3) qta non e'' piu'' nell''accumulatore: la quantita'' vive solo nel registro (M-4)');
 
+-- Rev 2026-10-25 (grammatica unica, lotto 3, 20261025-56): il CHECK chk_note_target_tipo e'
+--   ritirato, e un NOT EXISTS su un vincolo che non c'e' sarebbe verde per sottrazione. I tipi
+--   ammessi sono i confini delle partizioni: COSTO_MEDIO non deve essere fra quelli, e il padre
+--   deve averne (altrimenti la seconda condizione e' vuota).
 SELECT ok(
     to_regclass('magazzino.note_costo_medio') IS NULL
-    AND NOT EXISTS (SELECT 1 FROM pg_constraint
-                     WHERE conrelid = 'magazzino.note'::regclass
-                       AND conname = 'chk_note_target_tipo'
-                       AND pg_get_constraintdef(oid) ~ 'COSTO_MEDIO'),
-    '4) note_costo_medio non esiste e COSTO_MEDIO non e'' piu'' nel CHECK del padre (D-L1-e)');
+    AND EXISTS (SELECT 1 FROM pg_inherits WHERE inhparent = 'magazzino.note'::regclass)
+    AND NOT EXISTS (SELECT 1 FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+                     WHERE i.inhparent = 'magazzino.note'::regclass
+                       AND pg_get_expr(c.relpartbound, c.oid) ~ 'COSTO_MEDIO'),
+    '4) note_costo_medio non esiste e COSTO_MEDIO non e'' un confine di partizione del padre (D-L1-e)');
 
 -- ============================================================
 -- Fixture: un magazzino, due ubicazioni, tre movimenti, una riga di valore

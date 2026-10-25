@@ -341,7 +341,7 @@ BEGIN
         id_lingua
     )
     VALUES (
-        'ARTICOLI',
+        'ARTICOLO',
         (SELECT id FROM tmp_art_base),
         'DOCUMENTO',
         'HEADER',
@@ -367,7 +367,7 @@ SELECT CASE
     THEN lives_ok(
         $$
         UPDATE catalogo.articoli
-        SET note_target_tipo = 'ARTICOLI',
+        SET note_target_tipo = 'ARTICOLO',
             note_id = (SELECT id FROM tmp_note)
         WHERE id = (SELECT id FROM tmp_art_base);
         $$,
@@ -383,7 +383,7 @@ SELECT CASE
     THEN throws_ok(
         $$
         UPDATE catalogo.articoli
-        SET note_target_tipo = 'ARTICOLI_COMPONENTI',
+        SET note_target_tipo = 'ARTICOLO_COMPONENTE',
             note_id = (SELECT id FROM tmp_note)
         WHERE id = (SELECT id FROM tmp_art_base);
         $$,
@@ -399,7 +399,7 @@ SELECT CASE
     THEN throws_ok(
         $$
         UPDATE catalogo.articoli
-        SET note_target_tipo = 'ARTICOLI',
+        SET note_target_tipo = 'ARTICOLO',
             note_id = 999999999
         WHERE id = (SELECT id FROM tmp_art_base);
         $$,
@@ -587,7 +587,7 @@ DELETE FROM catalogo.articoli_uom_operativa
 WHERE articolo_id = (SELECT id FROM tmp_art_base);
 
 DELETE FROM catalogo.note
-WHERE target_tipo = 'ARTICOLI'
+WHERE target_tipo = 'ARTICOLO'
   AND id = (SELECT id FROM tmp_note);
 
 -- 🔴 DELETE degli ARTICOLI rimossa il 2026-08-18, di conseguenza.

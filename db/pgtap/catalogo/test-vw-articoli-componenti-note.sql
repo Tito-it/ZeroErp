@@ -143,7 +143,7 @@ BEGIN
     id_lingua
   )
   VALUES (
-    'ARTICOLI_COMPONENTI',
+    'ARTICOLO_COMPONENTE',
     v_comp_id,
     'DOCUMENTO',
     'HEADER',
@@ -202,7 +202,7 @@ SELECT throws_ok(
     id_lingua
   )
   VALUES (
-    'ARTICOLI',
+    'ARTICOLO',
     (SELECT id FROM tmp_art_comp_rel),
     'DOCUMENTO',
     'HEADER',

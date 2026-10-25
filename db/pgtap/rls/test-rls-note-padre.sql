@@ -11,9 +11,9 @@
 --
 -- Elenco test (plan 9):
 --   1) struttura: il padre porta le TRE vesti
---   2) struttura: e la RLS e' ACCESA sul padre e sulla partizione ATTIVITAFT
+--   2) struttura: e la RLS e' ACCESA sul padre e sulla partizione ATTIVITA
 --   3) struttura: ora tutte e SETTE le partizioni hanno la loro policy
---   4) ⭐ PRESIDIO: ogni `target_tipo` ammesso dal CHECK ha un ramo nello
+--   4) ⭐ PRESIDIO: ogni confine di partizione del padre ha un ramo nello
 --        smistatore — un tipo nuovo senza ramo fa rosso QUI
 --   5) l'operatore A vede DAL PADRE la nota del proprio DDT
 --   6) ⛔ e NON vede dal padre quella di B — e' la riparazione
@@ -31,8 +31,12 @@
 --   RLS: serviva una policy sul padre, che smista su `target_tipo`.
 --
 -- ⭐ IL TEST 4 E' IL PRESIDIO CHE VALE PIU' DI TUTTI, e il suo perimetro non e'
---   un elenco scritto a mano: legge i valori ammessi dal `CHECK` di
+--   un elenco scritto a mano: legge i confini delle partizioni di
 --   `vendite.note` e pretende che ognuno compaia come ramo dello smistatore.
+--   Rev 2026-10-25 (grammatica unica, lotto 3, 20261025-54): il CHECK
+--   chk_note_target_tipo e' ritirato (al suo posto la FK verso
+--   config.tipi_entita); i tipi ammessi sono le partizioni, e il routing
+--   rifiuta gli altri. Codici della grammatica: DDT -> DDT_VENDITA.
 --   Il giorno in cui qualcuno aggiunge un'ottava famiglia di note e non passa
 --   di qui, quelle note diventano invisibili dal padre (l'`ELSE false` e'
 --   fail-closed) — e questo test diventa rosso e dice perche'. *Il presidio si
@@ -86,7 +90,7 @@ SELECT c.lato, d.id AS ddt_id
   FROM d JOIN _clienti c ON c.emittente_fiscale_id = d.emittente_fiscale_id;
 
 INSERT INTO vendite.note_ddt (target_tipo, target_id, anchor_tipo, posizione, testo, id_stile)
-SELECT 'DDT', d.ddt_id, 'DOCUMENTO', 'HEADER', 'Nota pgTAP padre ' || d.lato,
+SELECT 'DDT_VENDITA', d.ddt_id, 'DOCUMENTO', 'HEADER', 'Nota pgTAP padre ' || d.lato,
        (SELECT s.id FROM config.note_stili s WHERE s.codice_interno = 'NORMALE')
   FROM _ddt d;
 
@@ -106,7 +110,7 @@ SELECT is(
       WHERE c.relname IN ('note', 'note_attivita_fatturabili')
         AND c.relrowsecurity),
     2,
-    '2. e la RLS e'' ACCESA sul padre e sulla partizione ATTIVITAFT'
+    '2. e la RLS e'' ACCESA sul padre e sulla partizione delle attivita'' (ATTIVITA)'
 );
 
 -- ⭐ Sette su sette: prima di questa slice `note_attivita_fatturabili` era
@@ -119,30 +123,32 @@ SELECT is(
 );
 
 -- ============================================================
--- 4. Il presidio: i rami dello smistatore contro il CHECK
+-- 4. Il presidio: i rami dello smistatore contro i confini delle partizioni
 -- ============================================================
--- ⛔ Il perimetro non e' un elenco mio: e' il CHECK della tabella. Se qualcuno
---   aggiunge un target_tipo e non tocca lo smistatore, qui diventa rosso.
+-- ⛔ Il perimetro non e' un elenco mio: sono le partizioni della tabella. Se
+--   qualcuno aggiunge un target_tipo (una partizione) e non tocca lo
+--   smistatore, qui diventa rosso.
 -- Rev 2026-10-21 (20261021-25): lo smistatore e' script.fn_scope_note_ef_perimetro,
 --   che riceve il perimetro dalla policy (prima fn_scope_note_ef_whitelist).
+-- Rev 2026-10-25 (20261025-54): i tipi si leggono dai confini delle partizioni,
+--   non piu' dal CHECK, ritirato. ⛔ Zero partizioni vale -1: un padre senza
+--   partizioni farebbe verde per sottrazione.
 SELECT is(
-    (SELECT count(*)::int
-       FROM (
-           SELECT unnest(regexp_matches(
-                      pg_get_constraintdef(c.oid),
-                      '''([A-Z_]+)''::character varying', 'g')) AS tipo
-             FROM pg_constraint c
-            WHERE c.conrelid = 'vendite.note'::regclass
-              AND c.conname  = 'chk_note_target_tipo'
-       ) v
-      -- coalesce: uno smistatore che manca e' rosso, non verde per sottrazione.
-      WHERE position('WHEN ''' || v.tipo || '''' IN
-                     coalesce((SELECT p.prosrc FROM pg_proc p
-                                 JOIN pg_namespace n ON n.oid = p.pronamespace
-                                WHERE n.nspname = 'script'
-                                  AND p.proname = 'fn_scope_note_ef_perimetro'), '')) = 0),
+    (WITH confini AS (
+         SELECT (regexp_match(pg_get_expr(c.relpartbound, c.oid), $r$IN \('([^']+)'\)$r$))[1] AS tipo
+           FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+          WHERE i.inhparent = 'vendite.note'::regclass)
+     SELECT CASE WHEN (SELECT count(*) FROM confini) = 0 THEN -1
+            ELSE (SELECT count(*)::int FROM confini v
+                   -- coalesce: uno smistatore che manca e' rosso, non verde per sottrazione.
+                   WHERE position('WHEN ''' || v.tipo || '''' IN
+                                  coalesce((SELECT p.prosrc FROM pg_proc p
+                                              JOIN pg_namespace n ON n.oid = p.pronamespace
+                                             WHERE n.nspname = 'script'
+                                               AND p.proname = 'fn_scope_note_ef_perimetro'), '')) = 0)
+            END),
     0,
-    '4. PRESIDIO: ogni target_tipo ammesso dal CHECK ha un ramo nello smistatore'
+    '4. PRESIDIO: ogni confine di partizione del padre ha un ramo nello smistatore'
 );
 
 -- ============================================================
@@ -168,19 +174,19 @@ BEGIN
 
     -- DAL PADRE: la propria.
     SELECT count(*) INTO v_n
-      FROM vendite.note n WHERE n.target_tipo = 'DDT' AND n.target_id = v_a.ddt_id;
+      FROM vendite.note n WHERE n.target_tipo = 'DDT_VENDITA' AND n.target_id = v_a.ddt_id;
     PERFORM set_config('pgtap.padre_a', v_n::text, true);
 
     -- ⭐ DAL PADRE: l'altrui. Prima di questa slice qui si leggeva 1.
     SELECT count(*) INTO v_n
-      FROM vendite.note n WHERE n.target_tipo = 'DDT' AND n.target_id = v_b.ddt_id;
+      FROM vendite.note n WHERE n.target_tipo = 'DDT_VENDITA' AND n.target_id = v_b.ddt_id;
     PERFORM set_config('pgtap.padre_b', v_n::text, true);
 
     -- ⭐ L'INVARIANTE: quello che si vede dal padre e' un sottoinsieme di
     --   quello che si vede dalla partizione. Si misura sulla differenza.
     SELECT count(*) INTO v_n
       FROM (SELECT target_id FROM vendite.note
-             WHERE target_tipo = 'DDT' AND target_id = ANY(v_ids)
+             WHERE target_tipo = 'DDT_VENDITA' AND target_id = ANY(v_ids)
             EXCEPT
             SELECT target_id FROM vendite.note_ddt
              WHERE target_id = ANY(v_ids)) x;
@@ -190,7 +196,7 @@ BEGIN
     BEGIN
         INSERT INTO vendite.note
             (target_tipo, target_id, anchor_tipo, posizione, testo, id_stile)
-        VALUES ('DDT', v_b.ddt_id, 'DOCUMENTO', 'FOOTER', 'intrusione dal padre',
+        VALUES ('DDT_VENDITA', v_b.ddt_id, 'DOCUMENTO', 'FOOTER', 'intrusione dal padre',
                 (SELECT s.id FROM config.note_stili s WHERE s.codice_interno = 'NORMALE'));
         PERFORM set_config('pgtap.scrittura', 'PASSATA', true);
     EXCEPTION WHEN insufficient_privilege OR check_violation THEN
@@ -200,7 +206,7 @@ BEGIN
     -- ⛔ Nessuna veste: fail-closed anche dal padre.
     PERFORM set_config('app.ruolo_applicativo', '', true);
     SELECT count(*) INTO v_n
-      FROM vendite.note n WHERE n.target_tipo = 'DDT' AND n.target_id = ANY(v_ids);
+      FROM vendite.note n WHERE n.target_tipo = 'DDT_VENDITA' AND n.target_id = ANY(v_ids);
     PERFORM set_config('pgtap.senza_veste', v_n::text, true);
 END
 $perimetro$;

@@ -9,7 +9,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| target_tipo | character varying(16) | NO |  |
+| target_tipo | character varying(50) | NO |  |
 | target_id | bigint | NO |  |
 | target_riga_id | bigint | YES |  |
 | anchor_tipo | character varying(12) | NO |  |
@@ -34,7 +34,6 @@
 | CHECK | chk_note_anchor_tipo |  |
 | CHECK | chk_note_posizione |  |
 | CHECK | chk_note_seq_pos |  |
-| CHECK | chk_note_target_tipo |  |
 | CHECK | chk_note_testo_non_vuoto |  |
 | CHECK | chk_ordini_note_anchor |  |
 | CHECK | chk_ordnote_testo_non_vuoto |  |
@@ -42,6 +41,7 @@
 | FOREIGN KEY | fk_ordini_note_testata | target_id |
 | FOREIGN KEY | fk_vendite_note_id_lingua | id_lingua |
 | FOREIGN KEY | fk_vendite_note_id_stile | id_stile |
+| FOREIGN KEY | fk_vendite_note_target_tipo | target_tipo |
 | PRIMARY KEY | note_ordini_pkey | target_tipo, id |
 
 ## 📑 Indici
@@ -55,14 +55,14 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_note_ordini_a10_ordini_righe_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'ordini_righe', 'attivo', 'target_riga_id', 'id')` |
 | trg_note_ordini_a10_ordini_righe_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'ordini_righe', 'attivo', 'target_riga_id', 'id')` |
+| trg_note_ordini_a10_ordini_righe_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'ordini_righe', 'attivo', 'target_riga_id', 'id')` |
 | trg_note_ordini_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_note_ordini_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_note_ordini_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_note_ordini_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_note_ordini_validate_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.ordini_righe', 'ordine_id', 'ORDINE')` |
-| trg_note_ordini_validate_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.ordini_righe', 'ordine_id', 'ORDINE')` |
+| trg_note_ordini_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_note_ordini_validate_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.ordini_righe', 'ordine_id')` |
+| trg_note_ordini_validate_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.ordini_righe', 'ordine_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -41,7 +41,8 @@
 --   10) CLIENTE_PORTALE vede zero su tutte e 13 (il magazzino e' interno)
 --   11) senza veste: zero su tutte e 13 (fail-closed)
 --   Lo smistatore:
---   12) i rami di fn_scope_note_magazzino_ef_perimetro (rev 2026-10-21, 20261021-25) sono esattamente i valori di chk_note_target_tipo
+--   12) i rami di fn_scope_note_magazzino_ef_perimetro (rev 2026-10-21, 20261021-25) sono esattamente i confini delle
+--       partizioni del padre (rev 2026-10-25, grammatica unica lotto 3: il CHECK chk_note_target_tipo e' ritirato, 20261025-56)
 -- ------------------------------------------------------------
 BEGIN;
 SET CONSTRAINTS ALL IMMEDIATE;
@@ -309,13 +310,17 @@ SELECT is(
         SELECT (regexp_matches(p.prosrc, 'WHEN ''([A-Z_]+)''', 'g'))[1] AS v
           FROM pg_proc p WHERE p.pronamespace = 'script'::regnamespace AND p.proname = 'fn_scope_note_magazzino_ef_perimetro'
      ), chk AS (
-        SELECT (regexp_matches(pg_get_constraintdef(c.oid), '''([A-Z_]+)''', 'g'))[1] AS v
-          FROM pg_constraint c WHERE c.conrelid = 'magazzino.note'::regclass AND c.conname = 'chk_note_target_tipo'
+        -- i tipi ammessi sono le partizioni (il CHECK e' ritirato, 20261025-56)
+        SELECT (regexp_match(pg_get_expr(c.relpartbound, c.oid), $r$IN \('([^']+)'\)$r$))[1] AS v
+          FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+         WHERE i.inhparent = 'magazzino.note'::regclass
      )
      SELECT (SELECT count(*) FROM ((SELECT v FROM rami) EXCEPT (SELECT v FROM chk)) x)
-          + (SELECT count(*) FROM ((SELECT v FROM chk) EXCEPT (SELECT v FROM rami)) y)),
+          + (SELECT count(*) FROM ((SELECT v FROM chk) EXCEPT (SELECT v FROM rami)) y)
+          -- ⛔ zero partizioni o zero rami non e' «esattamente uguali»: e' verde per sottrazione
+          + CASE WHEN NOT EXISTS (SELECT 1 FROM chk) OR NOT EXISTS (SELECT 1 FROM rami) THEN 1 ELSE 0 END),
     0::bigint,
-    '12) i rami dello smistatore delle note sono esattamente i valori del CHECK del padre: un tipo nuovo senza ramo e'' invisibile, non pubblico');
+    '12) i rami dello smistatore delle note sono esattamente i confini delle partizioni del padre: un tipo nuovo senza ramo e'' invisibile, non pubblico');
 
 SELECT * FROM finish();
 ROLLBACK;
