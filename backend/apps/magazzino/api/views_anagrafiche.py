@@ -34,8 +34,9 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import get_scope_user_id, handle_detail_patch, handle_post_json
+from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     parse_list_params,
     qp_bool_optional,
     qp_int_optional,
@@ -191,7 +192,7 @@ class ApiMagazzinoDetail(DomainAPIView):
     @extend_schema(request=_MAGAZZINO_UPDATE_REQUEST, operation_id="magazzino_magazzini_update", responses={200: RISPOSTA_GENERICA})
     # Scopo: Aggiorna per delta (compreso `attivo`: disattiva/riattiva).
     def patch(self, request: Request, magazzino_id: int) -> JsonResponse:
-        return handle_detail_patch(request, svc.aggiorna_magazzino, magazzino_id)
+        return success_response(svc.aggiorna_magazzino(magazzino_id, corpo_oggetto(request)))
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -272,11 +273,10 @@ class ApiUbicazioneDetail(DomainAPIView):
         return success_response(svc.get_ubicazione(magazzino_id, ubicazione_id))
 
     @extend_schema(request=_UBICAZIONE_UPDATE_REQUEST, operation_id="magazzino_ubicazioni_update", responses={200: RISPOSTA_GENERICA})
-    # Scopo: Aggiorna per delta. ⚠️ Non `handle_detail_patch`: la risorsa e'
-    #        la COPPIA (magazzino, ubicazione) e il BB conosce una sola chiave.
+    # Scopo: Aggiorna per delta; la risorsa e' la COPPIA (magazzino, ubicazione).
     def patch(self, request: Request, magazzino_id: int, ubicazione_id: int) -> JsonResponse:
-        return handle_post_json(
-            request, handler=lambda p: svc.aggiorna_ubicazione(magazzino_id, ubicazione_id, p),
+        return success_response(
+            svc.aggiorna_ubicazione(magazzino_id, ubicazione_id, corpo_oggetto(request))
         )
 
 
@@ -353,4 +353,4 @@ class ApiLottoDetail(DomainAPIView):
     @extend_schema(request=_LOTTO_UPDATE_REQUEST, operation_id="magazzino_lotti_update", responses={200: RISPOSTA_GENERICA})
     # Scopo: Aggiorna per delta.
     def patch(self, request: Request, lotto_id: int) -> JsonResponse:
-        return handle_detail_patch(request, svc.aggiorna_lotto, lotto_id)
+        return success_response(svc.aggiorna_lotto(lotto_id, corpo_oggetto(request)))

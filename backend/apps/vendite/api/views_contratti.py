@@ -663,7 +663,7 @@ class ApiContrattoRigaComponenteDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             ContrattiService().update_componente_riga(
-                contratto_id, riga_id, componente_id, dict(corpo_oggetto(request)),
+                contratto_id, riga_id, componente_id, corpo_oggetto(request),
                 auth_user_id=get_actor_user_id(request),
             )
         )

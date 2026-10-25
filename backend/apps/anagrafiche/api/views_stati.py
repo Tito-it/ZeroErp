@@ -15,7 +15,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import paginated_envelope, parse_list_params
+from apps.core.api.payload_validators import corpo_oggetto, paginated_envelope, parse_list_params
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.geo_service import GeoService
 
@@ -79,7 +79,7 @@ class StatiDetailView(DomainAPIView):
         responses={200: inline_serializer(name="StatiUpdateResp", fields={"data": serializers.DictField()})},
     )
     def patch(self, request: Request, pk: int) -> JsonResponse:
-        return handle_post_json(request, handler=lambda p: GeoService().update_stato(pk, p))
+        return success_response(GeoService().update_stato(pk, corpo_oggetto(request)))
 
 
 class StatiLookupView(DomainAPIView):

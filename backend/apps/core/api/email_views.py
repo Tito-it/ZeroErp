@@ -264,7 +264,7 @@ class EmailOutboxDetailView(DomainAPIView):
         #    con un 400 (2026-09-26). Fino a quel giorno la view le filtrava qui
         #    e un campo sbagliato «riusciva» senza essere scritto.
         service = EmailOutboxService()
-        result = service.update_draft(outbox_id, **dict(corpo_oggetto(request)))
+        result = service.update_draft(outbox_id, **corpo_oggetto(request))
         return success_response(result)
 
 

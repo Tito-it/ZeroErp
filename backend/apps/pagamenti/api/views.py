@@ -273,7 +273,7 @@ class ApiDistintaDetail(DomainAPIView):
     # ⛔ Lo stato non passa di qui: e' un'azione, e ha il suo endpoint.
     def patch(self, request: Request, contabile_id: int) -> JsonResponse:
         return success_response(
-            pagamenti_service.aggiorna_distinta(contabile_id, dict(corpo_oggetto(request)))
+            pagamenti_service.aggiorna_distinta(contabile_id, corpo_oggetto(request))
         )
 
 
@@ -550,7 +550,7 @@ class ApiRigaDetail(DomainAPIView):
     #    male.
     def patch(self, request: Request, riga_id: int) -> JsonResponse:
         return success_response(
-            pagamenti_service.aggiorna_riga(riga_id, dict(corpo_oggetto(request)))
+            pagamenti_service.aggiorna_riga(riga_id, corpo_oggetto(request))
         )
 
     @extend_schema(
@@ -1514,7 +1514,7 @@ class ApiEnteIncassoDetail(DomainAPIView):
     def patch(self, request: Request, ente_incasso_id: int) -> JsonResponse:
         return success_response(
             enti_incasso_service.aggiorna_ente_incasso(
-                ente_incasso_id, dict(corpo_oggetto(request))
+                ente_incasso_id, corpo_oggetto(request)
             )
         )
 

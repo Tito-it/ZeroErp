@@ -217,7 +217,7 @@ def make_note_views(
             updated = svc.aggiorna_nota(
                 note_id=note_id,
                 target_id=target_id,
-                patch=dict(corpo_oggetto(request)),
+                patch=corpo_oggetto(request),
                 auth_user_id=auth_user_id,
             )
             return success_response(updated)

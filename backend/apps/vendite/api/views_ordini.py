@@ -305,12 +305,11 @@ class ApiOrdineDetail(DomainAPIView):
         responses={200: _ORDINE_RESPONSE},
     )
     # Scopo: Aggiorna testata ordine (quali campi in quale stato lo decide il
-    #        lock di testata del DB). PATCH usa request.data
-    #        (api.md §handle_post_json vs request.data): DRF ha gia' parsato il
-    #        body; handle_post_json rileggerebbe il raw consumato.
+    #        lock di testata del DB). Corpo da `corpo_oggetto` (api.md
+    #        §«Quando usare handle_post_json»).
     def patch(self, request: Request, ordine_id: int) -> JsonResponse:
         return success_response(
-            ordini_service.aggiorna_ordine(int(ordine_id), dict(corpo_oggetto(request))),
+            ordini_service.aggiorna_ordine(int(ordine_id), corpo_oggetto(request)),
         )
 
     @extend_schema(
@@ -487,7 +486,7 @@ class ApiOrdineRigaDetail(DomainAPIView):
     def patch(self, request: Request, ordine_id: int, riga_id: int) -> JsonResponse:
         return success_response(
             ordini_service.aggiorna_riga(
-                int(ordine_id), int(riga_id), dict(corpo_oggetto(request)),
+                int(ordine_id), int(riga_id), corpo_oggetto(request),
                 auth_user_id=get_actor_user_id(request),
             ),
         )
@@ -614,7 +613,7 @@ class ApiOrdineRigaComponenteDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             ordini_service.update_componente(
-                int(ordine_id), int(riga_id), int(componente_id), dict(corpo_oggetto(request)),
+                int(ordine_id), int(riga_id), int(componente_id), corpo_oggetto(request),
                 auth_user_id=get_actor_user_id(request),
             ),
         )

@@ -231,11 +231,8 @@ class ApiPraticaDetail(DomainAPIView):
     )
     # Scopo: Gestisce la richiesta HTTP PATCH per aggiornare una pratica.
     def patch(self, request: Request, pratica_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            pratiche_service.aggiorna_pratica(pratica_id, dict(payload))
-            return {"status": "ok"}
-
-        return handle_post_json(request, handler=_handler)
+        pratiche_service.aggiorna_pratica(pratica_id, corpo_oggetto(request))
+        return success_response({"status": "ok"})
 
 
 

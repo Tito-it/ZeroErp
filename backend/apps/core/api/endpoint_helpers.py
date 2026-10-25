@@ -277,23 +277,6 @@ def handle_post_json(
         return exception_to_error_response(exc)
 
 
-# Scopo: Handler standard PATCH di dettaglio: parsing/envelope via handle_post_json
-#        + delega a update_fn(pk, payload). Centralizza il pattern ripetuto nelle
-#        view detail (lambda p: Service().update_X(pk, p)).
-def handle_detail_patch(
-    request: HttpRequest | Request,
-    update_fn: Callable[[int, dict[str, Any]], Mapping[str, Any] | list[Any]],
-    pk: int,
-    *,
-    require_idempotency_key: bool = False,
-) -> JsonResponse:
-    return handle_post_json(
-        request,
-        handler=lambda payload: update_fn(pk, payload),
-        require_idempotency_key=require_idempotency_key,
-    )
-
-
 # Scopo: Estrae il payload JSON da request e gestisce fallback parser/errore strutturato.
 def _extract_json_payload(response: JsonResponse) -> dict[str, Any]:
     return json.loads(response.content.decode("utf-8"))
