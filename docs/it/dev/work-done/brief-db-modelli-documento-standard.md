@@ -687,7 +687,7 @@ mirror `loadUpdateData`; le versioni in un changeSet forward-only per modello in
 Lo standard «Ordine di vendita» ha la versione 2 (`20261020-25`), nella forma di Q-5: copia della pubblicata,
 solo sullo standard, pubblicata dalla data operativa. Dichiara la **forma dei dati 3** (chiave nuova
 `origine.etichetta`): dopo il giro BE le copie degli emittenti in forma 2 non stampano più. Sede:
-[brief-db-grammatica-unica-documenti §12.10](../work-in-progress/brief-db-grammatica-unica-documenti.md).
+[brief-db-grammatica-unica-documenti §12.10](../work-done/brief-db-grammatica-unica-documenti.md).
 
 ### 8.4 Correzione Q-2: conta solo un modello che può stampare (2026-10-20; ✅ applicata da Tid, pgTAP verdi)
 

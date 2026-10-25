@@ -47,11 +47,11 @@
 #   stesso**. Un confronto CSV-vs-DB non lo vede: l'unica verifica che lo
 #   trovava era provare a RIESEGUIRE il loader.
 #
-#   ⭐ Un CSV per famiglia di parametri e' comunque il pattern di casa:
-#   `parameters_note_defaults.csv`, `parameters_documenti_storage.csv`,
-#   `parameters_vendite_defaults.csv`, `parameters_default_tipo_soggetto_dettaglio.csv`.
-#   Questo apre la famiglia `parameters_sistema.csv` per i parametri
-#   trasversali `SYSTEM_*`. La sede resta un CSV: AGENTS.md §80_data rispettato.
+#   ⛔ SUPERATO il 2026-10-25 (brief-db-parametri-senza-override, D-3): i CSV
+#   «per famiglia» di 80_data sono confluiti in `parameters.csv` (una tabella,
+#   un CSV). `parameters_sistema.csv` resta separato per una ragione d'ORDINE,
+#   non di famiglia: lo carica questa fase, che gira prima di 80_data (vedi
+#   sopra). La mina di DEFAULT_UTILITY e' disinnescata da 20260831-36.
 #
 # ── ℹ️ IL DISPATCHER QUI E' UN NO-OP ────────────────────────────────
 #   `SYSTEM_FUSO_ORARIO` non corrisponde a nessuno dei quattro pattern attivi in
@@ -127,3 +127,6 @@ databaseChangeLog:
               - column: { name: user_update,   type: STRING }
               - column: { name: tx_id,         type: uuid }
               - column: { name: storicizza,    type: BOOLEAN }
+              # 2026-10-25 (brief-db-parametri-senza-override, D-1): la famiglia
+              # del parametro; i due SYSTEM_* sono senza override (false).
+              - column: { name: ammette_override, type: BOOLEAN }

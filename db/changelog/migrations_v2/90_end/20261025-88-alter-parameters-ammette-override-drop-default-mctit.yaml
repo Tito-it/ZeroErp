@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.parameters.ammette_override — VIA IL DEFAULT TEMPORANEO
+#   Brief: brief-db-parametri-senza-override §3 punto 1 (D-1, Tid 2026-10-24)
+#
+# ── ⛔ PERCHE' IN 90_end E NON IN 00_schema ──────────────────────
+#   Su un database ricostruito da zero Liquibase esegue 00_schema -> 20_code ->
+#   70_dati_sistema -> 80_data -> 90_end. La colonna nasce in 00_schema
+#   (20261025-83) con DEFAULT true; poi 80_data/20260224-38 (gia' mergiato)
+#   inserisce attivita_fatturabili_require_commessa SENZA la colonna, con
+#   ON CONFLICT (code): il NOT NULL si giudica sulla riga proposta, prima del
+#   conflitto, e senza DEFAULT il migrate si fermerebbe li'. Il valore vero lo
+#   scrive il mirror del CSV, e l'ON CONFLICT di quel seed non tocca la colonna.
+#   Qui tutti i seed sono passati: il modello torna senza DEFAULT, e un
+#   parametro nuovo deve dichiarare la sua famiglia.
+#   ⚠️ DROP DEFAULT e' idempotente: nessuna preCondition sul default.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261025-88-alter-parameters-ammette-override-drop-default-mctit.yaml
+
+  - changeSet:
+      id: 20261025-88-alter-parameters-ammette-override-drop-default
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.parameters.ammette_override: DROP DEFAULT. Il DEFAULT true di 20261025-83 serviva al
+        backfill e al seed 80_data/20260224-38, che inserisce senza la colonna; dopo i seed un
+        parametro nuovo dichiara la sua famiglia. Brief: brief-db-parametri-senza-override §3.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: config
+            tableName: parameters
+            columnName: ammette_override
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.parameters
+                  ALTER COLUMN ammette_override DROP DEFAULT;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.parameters
+                  ALTER COLUMN ammette_override SET DEFAULT true;

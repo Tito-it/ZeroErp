@@ -477,7 +477,7 @@ render restano in `DocumentGenerationService` (invariato). Permessi: oggetto
 senza, `genera`/`anteprima` falliscono con `E_DOCUMENTI_*`.
 
 **Contratto di stampa — forma dei dati 3** (dal 2026-10-20,
-[brief-db-grammatica-unica-documenti §12.10](../../../dev/work-in-progress/brief-db-grammatica-unica-documenti.md)).
+[brief-db-grammatica-unica-documenti §12.10](../../../dev/work-done/brief-db-grammatica-unica-documenti.md)).
 Chiavi di primo livello: `ordine`, `cliente`, `indirizzi`, `righe`, `riepilogo_iva`, `_meta`.
 La provenienza è `ordine.origine`, con tre chiavi **sempre presenti** (`null` senza origine, il render gira
 con `StrictUndefined`):

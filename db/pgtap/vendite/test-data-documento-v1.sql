@@ -207,8 +207,11 @@ SELECT throws_ok(
   '5) fn_data_operativa: parametro ASSENTE -> solleva');
 
 -- Ripristino: da qui in poi la funzione deve tornare a rispondere.
-INSERT INTO config.parameters (id, code, default_value, description)
-VALUES (54, 'SYSTEM_FUSO_ORARIO', 'Europe/Rome', 'ripristino fixture pgTAP')
+-- 2026-10-25 (brief-db-parametri-senza-override): ammette_override e' NOT NULL senza
+-- DEFAULT, e il NOT NULL si giudica sulla riga proposta anche con ON CONFLICT. Il fuso
+-- vale per tutti: false, come nel CSV.
+INSERT INTO config.parameters (id, code, default_value, description, ammette_override)
+VALUES (54, 'SYSTEM_FUSO_ORARIO', 'Europe/Rome', 'ripristino fixture pgTAP', false)
 ON CONFLICT (id) DO UPDATE SET default_value = 'Europe/Rome';
 
 -- ============================================================

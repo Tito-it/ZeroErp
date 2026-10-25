@@ -94,10 +94,12 @@ ORDER BY ef.id
 LIMIT 1;
 
 -- Parametri di test (2: uno con override a tutti i livelli, uno senza)
-INSERT INTO config.parameters (id, code, default_value, description)
+-- 2026-10-25 (brief-db-parametri-senza-override): config.parameters.ammette_override
+-- e' NOT NULL senza DEFAULT, un parametro dichiara la sua famiglia.
+INSERT INTO config.parameters (id, code, default_value, description, ammette_override)
 VALUES
-    (99980, '_TEST_LIST_A_', 'DEF_A', 'Test list parametro A'),
-    (99981, '_TEST_LIST_B_', 'DEF_B', 'Test list parametro B')
+    (99980, '_TEST_LIST_A_', 'DEF_A', 'Test list parametro A', true),
+    (99981, '_TEST_LIST_B_', 'DEF_B', 'Test list parametro B', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Override emittente su parametro A
@@ -296,8 +298,8 @@ SELECT is(
 -- ============================================================
 -- Setup dati test — parte 3: parametro C con un override per livello
 -- ============================================================
-INSERT INTO config.parameters (id, code, default_value, description)
-VALUES (99984, '_TEST_LIST_C_', 'DEF_C', 'Test list parametro C (tutti i livelli)')
+INSERT INTO config.parameters (id, code, default_value, description, ammette_override)
+VALUES (99984, '_TEST_LIST_C_', 'DEF_C', 'Test list parametro C (tutti i livelli)', true)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO config.parameter_overrides
