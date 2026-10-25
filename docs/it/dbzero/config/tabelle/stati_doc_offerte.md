@@ -32,6 +32,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_doc_offerte_abortito_attivo |  |
 | CHECK | chk_stati_doc_offerte_emissione_attivo |  |
 | CHECK | chk_stati_doc_offerte_fase |  |
 | CHECK | chk_stati_doc_offerte_iniziale_attivo |  |
@@ -47,6 +48,7 @@
 |------|-------------|
 | ix_stati_doc_offerte_attivo | `CREATE INDEX ix_stati_doc_offerte_attivo ON config.stati_doc_offerte USING btree (attivo)` |
 | pk_stati_doc_offerte | `CREATE UNIQUE INDEX pk_stati_doc_offerte ON config.stati_doc_offerte USING btree (id)` |
+| uq_stati_doc_offerte_abortito | `CREATE UNIQUE INDEX uq_stati_doc_offerte_abortito ON config.stati_doc_offerte USING btree (is_abortito) WHERE is_abortito` |
 | uq_stati_doc_offerte_codice | `CREATE UNIQUE INDEX uq_stati_doc_offerte_codice ON config.stati_doc_offerte USING btree (codice)` |
 | uq_stati_doc_offerte_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_offerte_codice_interno ON config.stati_doc_offerte USING btree (codice_interno)` |
 | uq_stati_doc_offerte_emissione | `CREATE UNIQUE INDEX uq_stati_doc_offerte_emissione ON config.stati_doc_offerte USING btree (emissione) WHERE emissione` |

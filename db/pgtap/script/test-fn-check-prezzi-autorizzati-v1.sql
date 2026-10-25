@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-modello-documento-vendita §9): l'ordine ha la porta sulla colonna di stato
+--   e la conferma chiede emetti_ordine. Concessa all'operatore del contesto prima del 28 (senza,
+--   «Conferma» e' nascosta e la reason esce NULL); 29 e 30 passano dal verbo
+--   vendite.fn_cambia_stato_ordine (prima UPDATE diretti, ora fermati dalla porta); il 31 porta
+--   l'ordine in EVASO evadendolo davvero (dbops.fn_pgtap_crea_ddt_da_ordine): EVASO e' un
+--   passaggio di processo, non si scrive a mano. Stessi esiti attesi.
 -- pgTAP test per Zero ERP
 --
 -- Test: script.fn_check_prezzi_autorizzati — «un prezzo che nessuno ha
@@ -7,7 +13,7 @@
 --   documenti di vendita. Riferimenti: 20260924-20 … -32.
 -- Brief: docs/it/dev/work-in-progress/brief-db-preventivi-congelamento-pricing.md
 --
--- Elenco test (plan 44):
+-- Elenco test (plan 45):
 --  Il building block
 --   1) una testata che non conosce e' un errore, non un «niente da dire»
 --   2) un id nullo e' un errore
@@ -48,6 +54,7 @@
 --  28) «Conferma» spento col motivo, dalla bozza
 --  29) DRAFT -> CONFERMATO con un componente rifiutato: BLOCCA
 --  30) DRAFT -> CONFERMATO con prezzi autorizzati: PASSA
+--  30b) l'ordine evaso davvero dalla bolla (fixture del 31; rev 2026-10-25)
 --  31) EVASO: un componente non diventa rifiutato (componenti fuori bozza)
 --      (rev 2026-10-08, brief-db-righe-e-componenti-le-altre-famiglie §2.2:
 --      prima «il RIENTRO EVASO -> CONFERMATO con un componente rifiutato
@@ -114,7 +121,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- arriva mai.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(44);
+SELECT plan(45);
 
 -- =========================================================
 -- Il mondo: azienda di chi agisce + cliente fatturabile legato a lei.
@@ -636,6 +643,9 @@ SELECT is(
     '27) ordine: un componente rifiutato da'' un motivo'
 );
 
+-- rev 2026-10-25 (§9): permesso => nascondi; con l'azione «Conferma» c'e', spento dal motivo.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_ordine');
+
 SELECT is(
     (SELECT a ->> 'reason_key'
        FROM jsonb_array_elements(script.fn_available_actions_ordine(
@@ -646,16 +656,14 @@ SELECT is(
 );
 
 SELECT throws_like(
-    format('UPDATE vendite.ordini SET stato_doc_ordine_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO'),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'CONFERMATO')$q$,
            (SELECT ordine_id FROM _or WHERE tag = 'rifiutato')),
     '%prezzi rifiutati dal responsabile%',
     '29) DRAFT -> CONFERMATO con un componente rifiutato: BLOCCA (prima passava)'
 );
 
 SELECT lives_ok(
-    format('UPDATE vendite.ordini SET stato_doc_ordine_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO'),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'CONFERMATO')$q$,
            (SELECT ordine_id FROM _or WHERE tag = 'pulito')),
     '30) DRAFT -> CONFERMATO con prezzi autorizzati: PASSA (controllo del 29)'
 );
@@ -669,9 +677,18 @@ SELECT lives_ok(
 --   autorizzati (29), e dopo la conferma i componenti si toccano solo in bozza.
 --   Quindi un prezzo non diventa rifiutato su un ordine EVASO: il test prova
 --   questo. Stessa riscrittura dei test 26 e 44 sull'offerta (rev 2026-10-04).
-UPDATE vendite.ordini
-   SET stato_doc_ordine_id = (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'EVASO')
- WHERE id = (SELECT ordine_id FROM _or WHERE tag = 'pulito');
+-- rev 2026-10-25 (§9): EVASO e' di processo: l'ordine si evade davvero, con una
+--   bolla che porta tutta la riga.
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('prezzi autorizzati evaso', 'EMESSO',
+           p_ordine_id => (SELECT ordine_id FROM _or WHERE tag = 'pulito'));
+
+SELECT is(
+    (SELECT s.codice_interno::text FROM vendite.ordini o
+       JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
+      WHERE o.id = (SELECT ordine_id FROM _or WHERE tag = 'pulito')),
+    'EVASO',
+    '30b) l''ordine evaso davvero (la fixture del 31)'
+);
 
 SELECT throws_like(
     format($$UPDATE vendite.ordini_righe_componenti

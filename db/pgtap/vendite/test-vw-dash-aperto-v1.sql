@@ -3,6 +3,7 @@
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente.
 -- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): il contratto ATTIVO nasce da dbops.fn_pgtap_crea_contratto (madre di produzione) invece che da un INSERT a mano; date multi-mese e listino in bozza.
 -- rev 2026-10-24 (brief-modello-documento-vendita R-2/R-9): l'azienda A nasce da dbops.fn_pgtap_crea_mondo_cliente (contesto aperto sul suo operatore, whitelist gia' sua: tolta la riscrittura a mano); B ha il suo operatore e il suo cliente e preventivo nascono sotto il suo contesto; il contratto nasce ATTIVO col periodo, la data e il listino dal builder; la commessa nasce da dbops.fn_pgtap_crea_commessa in BOZZA.
+-- rev 2026-10-25 (brief-modello-documento-vendita §8.5): il caso (b) e' un contratto CESSATO; il preventivo EVASO con riga residua il modello non lo ammette piu'.
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: ALTER TABLE vendite.preventivi FORCE ROW LEVEL SECURITY: il test verifica che
 --   la vista di dashboard resti coerente con la RLS armata.
@@ -27,22 +28,28 @@
 --         (a) TRANSITATO-non-chiuso  -> lo toglie SOLO is_transitato<>true
 --             (es. preventivo ACCETTATO gia' completamente smistato, IN_CORSO);
 --         (b) CHIUSO-non-transitato  -> lo toglie SOLO fase<>CHIUSO
---             (es. preventivo EVASO con riga residua: esito POSITIVO ->
---             NOT is_abortito NON lo prende, is_transitato=false -> is_aperto
+--             (es. contratto CESSATO: esito POSITIVO -> NOT is_abortito NON
+--             lo prende, is_transitato NULL (giudizio sospeso) -> is_aperto
 --             NON lo prende).  NB: l'esempio "offerta SUPERATA" del brief NON
 --             vale (SUPERATA ha esito=NEGATIVO -> is_abortito, gia' escluso).
+--             ⛔ rev 2026-10-25: l'esempio era il preventivo EVASO con riga
+--             residua, che il modello non ammette piu': EVASO lo scrive solo
+--             la proiezione dello smistamento quando nessuna riga e' RESIDUA,
+--             cioe' quando il preventivo e' anche transitato (brief-modello-
+--             documento-vendita §8; la fixture non lo raggiunge: passaggio di
+--             processo, manuale = false).
 --
 --       Caso (a): coperto da INVARIANTE data-level (fallback, test 10) invece
 --       che da fixture "transito completo" (costosa: is_transitato e' derivata
 --       da tutte-le-righe-transitate).
 --
--- Fixture: preventivo ACCETTATO con riga residua (aperto, resta), preventivo
--- EVASO con riga residua (chiuso-non-transitato, ESCE — caso b), preventivo
+-- Fixture: preventivo ACCETTATO con riga residua (aperto, resta), contratto
+-- CESSATO (chiuso-non-transitato, ESCE — caso b), preventivo
 -- ABORTITO (NEGATIVO, fuori), preventivo emittente B (scope), contratto ATTIVO
 -- multi-mese (aperto, resta), commessa (esclusa dallo stock).
 --
 -- Indice test (0..13):
---   0)  Precondizioni (refs: BA, articoli, stati incl. NEGATIVO ed EVASO)
+--   0)  Precondizioni (refs: BA, articoli, stati incl. NEGATIVO e CESSATO)
 --   1)  Le 2 viste vw_dash_aperto_* esistono
 --   2)  Colonne transitato RIMOSSE dalla dettaglio
 --       (is_transitato/is_aperto/valore_transitato/unita_transitate)
@@ -52,7 +59,7 @@
 --   6)  Abortito (esito NEGATIVO) fuori dallo stock
 --   7)  Preventivo ACCETTATO con residuo: nello stock, valore>0, fase, motivo
 --   8)  Contratto ATTIVO multi-mese: 1 riga nello stock, valori NULL
---   9)  Caso (b): preventivo EVASO con residuo -> in union (fase=CHIUSO,
+--   9)  Caso (b): contratto CESSATO -> in union (fase=CHIUSO,
 --       NON abortito, NON transitato) ma ASSENTE dallo stock (fase<>CHIUSO)
 --  10)  INVARIANTE perimetro: nessuna riga dello stock e' transitata o CHIUSA
 --       sulla union (fallback caso a + b, seed-agnostico)
@@ -95,8 +102,8 @@ SELECT
     WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS prev_accettato_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE) AS prev_bozza_id,
-  (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice_interno = 'EVASO' AND s.attivo IS TRUE LIMIT 1) AS prev_evaso_id,
+  (SELECT s.id FROM config.stati_doc_contratti s
+    WHERE s.codice_interno = 'CESSATO' AND s.attivo IS TRUE LIMIT 1) AS contr_cessato_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.esito = 'NEGATIVO' AND s.attivo IS TRUE
     ORDER BY s.id LIMIT 1) AS prev_negativo_id,
@@ -121,12 +128,12 @@ SELECT
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND articolo_id IS NOT NULL
-      AND prev_accettato_id IS NOT NULL AND prev_evaso_id IS NOT NULL
+      AND prev_accettato_id IS NOT NULL AND contr_cessato_id IS NOT NULL
       AND prev_negativo_id IS NOT NULL
       AND contr_attivo_id IS NOT NULL AND stato_commessa_id IS NOT NULL
       AND emittente_fiscale_id IS NOT NULL
      FROM tmp_ap_refs),
-  '0. Precondizioni soddisfatte (incl. stato EVASO per il caso b)'
+  '0. Precondizioni soddisfatte (incl. stato CESSATO per il caso b)'
 );
 
 -- ============================================================
@@ -187,28 +194,9 @@ SELECT p.id, r.articolo_id, 2.000000, 25.000000, r.iva_id, true
   FROM tmp_ap_prev p, tmp_ap_refs r;
 DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_ap_prev), 'ACCETTATO'); END $porta$;
 
--- Caso (b): preventivo EVASO (fase CHIUSO, esito POSITIVO -> NON abortito) con
--- riga residua (transitata=false di default -> is_transitato=false). Deve
--- essere presente in union ma FUORI dallo stock, tolto SOLO da fase<>CHIUSO.
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende la riga, poi cammina fino a EVASO (DRAFT->EMESSO->ACCETTATO->EVASO) con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-91).
-CREATE TEMP TABLE tmp_ap_prev_evaso AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
-    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-AP-PREVASO', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.prev_bozza_id,
-         DATE '2080-01-01', false, false,
-         jsonb_build_object('test_scope','pgtap_dash_aperto'), r.emittente_fiscale_id
-    FROM tmp_ap_refs r
-  RETURNING id)
-SELECT * FROM ins;
-
-INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
-SELECT p.id, r.articolo_id, 1.000000, 10.000000, r.iva_id, true
-  FROM tmp_ap_prev_evaso p, tmp_ap_refs r;
-DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_ap_prev_evaso), 'EVASO'); END $porta$;
+-- Caso (b): il contratto CESSATO, costruito dopo il setup 4 (vuole il listino
+-- dell'operatore di A). rev 2026-10-25: era un preventivo EVASO con riga
+-- residua, che il modello non ammette piu' (vedi la testata del file).
 
 -- Preventivo ABORTITO (stato con esito NEGATIVO, emittente A) -> fuori stock.
 -- rev 2026-10-24: nasce DRAFT e arriva allo stato NEGATIVO per la matrice.
@@ -226,8 +214,13 @@ WITH ins AS (
   RETURNING id)
 SELECT * FROM ins;
 
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', p.id, r.prev_negativo_cod)
-  FROM tmp_ap_prev_neg p, tmp_ap_refs r;
+-- rev 2026-10-25 (brief-modello-documento-vendita §8.5): la riga e lo stato dal
+--   builder sulla testata del test — l'emissione, sul percorso verso lo stato
+--   NEGATIVO, chiede almeno una riga attiva (vendite.trgfn_preventivi_guard_transizione).
+SELECT c.stato_doc_preventivo_id
+  FROM tmp_ap_prev_neg p, tmp_ap_refs r,
+       dbops.fn_pgtap_crea_preventivo_con_righe(
+           'dash aperto neg', r.prev_negativo_cod, p.id, NULL, r.articolo_id) c;
 
 -- Preventivo emittente B (per il test scope 13; il guard emittente<->BA del
 -- 2026-07-13 vieta di appoggiare l'emittente B sul BA di A).
@@ -264,8 +257,11 @@ WITH ins AS (
   RETURNING id)
 SELECT * FROM ins;
 
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', p.id, 'ACCETTATO')
-  FROM tmp_ap_prev_b p;
+-- rev 2026-10-25 (§8.5): la riga e lo stato dal builder, come sopra; l'articolo
+--   lo costruisce il builder sotto il contesto di B.
+SELECT c.stato_doc_preventivo_id
+  FROM tmp_ap_prev_b p,
+       dbops.fn_pgtap_crea_preventivo_con_righe('dash aperto B', 'ACCETTATO', p.id) c;
 
 SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_ap_mondo));
 
@@ -345,6 +341,27 @@ SELECT * FROM dbops.fn_pgtap_crea_contratto(
 CREATE TEMP TABLE tmp_ap_contratto AS
 SELECT contratto_id AS id FROM tmp_ap_k;
 
+-- Caso (b): contratto CESSATO (fase CHIUSO, esito POSITIVO -> NON abortito;
+-- giudizio di transito sospeso -> is_transitato NULL). Deve essere presente in
+-- union ma FUORI dallo stock, tolto SOLO da fase<>CHIUSO.
+-- rev 2026-10-25: un cliente suo (il builder senza BA lo costruisce nella
+-- stessa azienda, il contesto e' aperto), cosi' non si sovrappone al
+-- contratto ATTIVO qui sopra; ATTIVO fino a oggi, poi la cessazione manuale
+-- per la matrice (il guard la vuole con valido_al non nel passato).
+CREATE TEMP TABLE tmp_ap_k_cessato AS
+SELECT * FROM dbops.fn_pgtap_crea_contratto(
+                 'pgTAP dash aperto cessato', 'ATTIVO', NULL, NULL,
+                 (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date,
+                 script.fn_data_operativa(),
+                 (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date,
+                 (SELECT listino_id FROM tmp_ap_listino));
+
+CREATE TEMP TABLE tmp_ap_contratto_cessato AS
+SELECT contratto_id AS id FROM tmp_ap_k_cessato;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', c.id, 'CESSATO')
+  FROM tmp_ap_contratto_cessato c;
+
 -- ============================================================
 -- 5) COMMESSE fuori dallo stock
 -- ============================================================
@@ -401,22 +418,22 @@ SELECT ok(
 );
 
 -- ============================================================
--- 9) CASO (b): EVASO con residuo — in union (CHIUSO, non-abortito,
+-- 9) CASO (b): contratto CESSATO — in union (CHIUSO, non-abortito,
 --    non-transitato) ma FUORI dallo stock (tolto SOLO da fase<>CHIUSO).
 -- ============================================================
 SELECT ok(
   (SELECT EXISTS (
      SELECT 1 FROM vendite.vw_dash_fatturazione_documenti d
-      WHERE d.documento_id = (SELECT id FROM tmp_ap_prev_evaso)
-        AND d.area = 'PREVENTIVO'
+      WHERE d.documento_id = (SELECT id FROM tmp_ap_contratto_cessato)
+        AND d.area = 'CONTRATTO'
         AND d.fase = 'CHIUSO'
         AND NOT d.is_abortito
         AND d.is_transitato IS DISTINCT FROM true))
   AND NOT EXISTS (
      SELECT 1 FROM vendite.vw_dash_aperto_documenti a
-      WHERE a.area = 'PREVENTIVO'
-        AND a.documento_id = (SELECT id FROM tmp_ap_prev_evaso)),
-  '9. Caso (b): preventivo EVASO non-abortito/non-transitato in union (fase CHIUSO), ASSENTE dallo stock via fase<>CHIUSO'
+      WHERE a.area = 'CONTRATTO'
+        AND a.documento_id = (SELECT id FROM tmp_ap_contratto_cessato)),
+  '9. Caso (b): contratto CESSATO non-abortito/non-transitato in union (fase CHIUSO), ASSENTE dallo stock via fase<>CHIUSO'
 );
 
 -- ============================================================

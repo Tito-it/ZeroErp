@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-modello-documento-vendita §9): l'ordine ha la porta sulla colonna di
+--   stato. Le transizioni provate passano dal verbo vendite.fn_cambia_stato_ordine (con
+--   emetti_ordine concessa all'operatore costruito), che arriva al guard di transizione:
+--   prima erano UPDATE diretti, ora fermati dalla porta (E_DOC_STATO_SOLO_DAL_VERBO). Stessi
+--   esiti attesi; i throws_ok dei casi 3, 5, 7 passavano anche sulla porta, per questo
+--   passano dal verbo e non restano UPDATE.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): gli ordini A, C, D (DRAFT) ed E, F
 --   (CONFERMATO) da dbops.fn_pgtap_crea_ordine_con_righe (3 x 10, data 2026-06-15); lo slot B,
 --   senza righe, da dbops.fn_pgtap_crea_ordine. Restano a mano le transizioni provate, la
@@ -108,6 +114,8 @@ SELECT plan(8);
 CREATE TEMP TABLE tmp_gt_az AS
 SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_gt_az)); END $ctx$;
+-- rev 2026-10-25 (§9): la conferma e l'annullo del confermato chiedono emetti_ordine.
+SELECT dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM tmp_gt_az), 'emetti_ordine');
 
 CREATE TEMP TABLE tmp_refs_gt AS
 SELECT
@@ -179,8 +187,7 @@ SELECT ok(
 -- 2) DRAFT->CONFERMATO con riga -> ok
 -- ============================================================
 SELECT lives_ok(
-  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
-              (SELECT stato_conf_id FROM tmp_refs_gt) WHERE id = %s$q$,
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'CONFERMATO')$q$,
          (SELECT ordine_id FROM tmp_gt_a)),
   '2) DRAFT->CONFERMATO con riga -> ok'
 );
@@ -189,8 +196,7 @@ SELECT lives_ok(
 -- 3) DRAFT->CONFERMATO senza righe -> throws E_ORDINE_CONFERMA_SENZA_RIGHE
 -- ============================================================
 SELECT throws_ok(
-  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
-              (SELECT stato_conf_id FROM tmp_refs_gt) WHERE id = %s$q$,
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'CONFERMATO')$q$,
          (SELECT ordine_id FROM tmp_gt_b)),
   'P0001', NULL,
   '3) DRAFT->CONFERMATO senza righe -> throws E_ORDINE_CONFERMA_SENZA_RIGHE'
@@ -200,8 +206,7 @@ SELECT throws_ok(
 -- 4) DRAFT->ANNULLATO -> ok
 -- ============================================================
 SELECT lives_ok(
-  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
-              (SELECT stato_ann_id FROM tmp_refs_gt) WHERE id = %s$q$,
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'ANNULLATO')$q$,
          (SELECT ordine_id FROM tmp_gt_c)),
   '4) DRAFT->ANNULLATO -> ok (transizione manuale attiva)'
 );
@@ -210,8 +215,7 @@ SELECT lives_ok(
 -- 5) DRAFT->SPEDITO (fuori matrice) -> throws E_ORDINE_TRANSIZIONE_NON_AMMESSA
 -- ============================================================
 SELECT throws_ok(
-  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
-              (SELECT stato_sped_id FROM tmp_refs_gt) WHERE id = %s$q$,
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'SPEDITO')$q$,
          (SELECT ordine_id FROM tmp_gt_d)),
   'P0001', NULL,
   '5) DRAFT->SPEDITO (fuori matrice) -> throws E_ORDINE_TRANSIZIONE_NON_AMMESSA'
@@ -223,8 +227,7 @@ SELECT throws_ok(
 --    script.fn_check_ordine_annullabile ritorna [] e il guard lascia passare.
 -- ============================================================
 SELECT lives_ok(
-  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
-              (SELECT stato_ann_id FROM tmp_refs_gt) WHERE id = %s$q$,
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'ANNULLATO')$q$,
          (SELECT ordine_id FROM tmp_gt_e)),
   '6) CONFERMATO->ANNULLATO senza figli a valle -> ammesso'
 );
@@ -295,8 +298,7 @@ SELECT (SELECT commessa_id FROM tmp_gt_com),
   FROM tmp_refs_gt r;
 
 SELECT throws_ok(
-  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
-              (SELECT stato_ann_id FROM tmp_refs_gt) WHERE id = %s$q$,
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'ANNULLATO')$q$,
          (SELECT ordine_id FROM tmp_gt_f)),
   'P0001', NULL,
   '7) CONFERMATO->ANNULLATO con righe di commessa gia'' EMESSA -> rifiutato dal guard'
@@ -333,9 +335,7 @@ LANGUAGE plpgsql
 AS $fn$
 BEGIN
     BEGIN
-        UPDATE vendite.ordini
-           SET stato_doc_ordine_id = (SELECT stato_ann_id FROM tmp_refs_gt)
-         WHERE id = p_ordine_id;
+        PERFORM vendite.fn_cambia_stato_ordine(p_ordine_id, 'ANNULLATO');
         v_sqlstate := NULL; v_constraint := NULL;
         RETURN NEXT;
     EXCEPTION WHEN OTHERS THEN

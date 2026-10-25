@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.azioni_processo`
 
+> **Ultimo aggiornamento**: 25 ottobre 2026
+
 > 👀 **Vedi anche**
 >
 Architettura di riferimento:
@@ -64,7 +66,7 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 | run_commesse_push | Invio commesse a sistema esterno | NO | vendite | 2026-03-01 |
 | prezzo_override_manuale | Modifica manuale prezzo | NO | vendite | 2026-04-17 |
 | approva_prezzo_override | Approva modifica prezzo | NO | vendite | 2026-04-23 |
-| cambia_stato_preventivi | Cambia stato preventivo (emetti/accetta/rifiuta/annulla) | NO | vendite | 2026-05-02 |
+| cambia_stato_preventivi | ⛔ **Ritirata** il 2026-10-25 (`attivo = false`): sostituita da `emetti_preventivo`, che ha ricevuto le sue concessioni. Il permesso di un passaggio di stato non è più un'azione per documento: sta sulla riga del passaggio — brief `brief-modello-documento-vendita` §8.9 | NO | vendite | 2026-05-02 |
 | push_commessa_preventivi | Push preventivo a commessa per fatturazione | SI | vendite | 2026-05-02 |
 | genera_pratica_preventivi | Genera pratica esecutiva da preventivo | NO | vendite | 2026-05-02 |
 | documenti_template_manage | Gestione template e versioni documenti | NO | documenti | 2026-05-03 |
@@ -72,6 +74,8 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 | … | ⚠️ **Tabella parziale**: ferma al 2026-05-03 su 35 righe a catalogo (14-09-2026). La sede è il CSV `80_data/sql/config/azioni_processo.csv`; qui restano i casi che insegnano qualcosa | | | |
 | code_manage | Gestione code di lavoro e stampa (vista e azioni cross-utente). ⭐ Il precedente su area `strumenti`: valutata da `DomainAPIView(area_funzionale="strumenti")` | NO | strumenti | 2026-07-21 |
 | processo_avvia | Avvio manuale di un processo dall'interfaccia («Esegui ora» su una sveglia di deploy). ⛔ **Non** è `code_manage`: chi può riaccodare un lavoro non è per questo chi può avviare un giro. ⚠️ Conta solo se la view che la dichiara **non** è `AdminAPIView` (`IsAdminZeroERP` non legge `post_permission`) — brief `brief-db-avvio-manuale-di-un-processo` §8.2.2 | SI | strumenti | 2026-09-14 |
+| emetti_preventivo | Emette un preventivo, o annulla un preventivo emesso o accettato. ⭐ L'azione sta sulla **riga del passaggio** della matrice (`config.transizioni_stati_preventivi.azione_processo_codename`): la chiedono il verbo `vendite.fn_cambia_stato_preventivo` e il backend, con la domanda intera `script.fn_doc_azione_passaggio`. Stessa forma di `emetti_ddt` (giro 5) — guida [Il modello del documento di vendita](/guide/modello-documento-di-vendita) | NO | vendite | 2026-10-25 |
+| emetti_ordine | Emette (conferma) un ordine, o annulla un ordine confermato. Sulla **riga del passaggio** della matrice (`config.transizioni_stati_ordini.azione_processo_codename`), come `emetti_preventivo` e `emetti_ddt`; la chiede il verbo `vendite.fn_cambia_stato_ordine` — brief `brief-modello-documento-vendita` §9 | NO | vendite | 2026-10-25 |
 
 ---
 

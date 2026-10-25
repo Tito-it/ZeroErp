@@ -34,6 +34,13 @@
 --   sua riga da dbops.fn_pgtap_crea_ordine_con_righe (cliente nuovo, trigger ereditato
 --   dal BA, data 2026-06-15, 3 x 10); a mano resta solo la transizione CONFERMATO -> EVASO,
 --   che e' il caso.
+-- rev 2026-10-25 (brief-modello-documento-vendita §9): l'ordine ha la porta sulla colonna di
+--   stato, e CONFERMATO -> EVASO e' un passaggio di PROCESSO: lo scrive la proiezione
+--   dell'evasione, non un UPDATE. Il test 5 evade davvero l'ordine con una bolla che porta
+--   tutta la riga (dbops.fn_pgtap_crea_ddt_da_ordine, p_ordine_id) e il guard ammette il
+--   passaggio scritto dalla proiezione; il 7 chiede EVASO -> ANNULLATO al verbo
+--   vendite.fn_cambia_stato_ordine (prima un UPDATE, che oggi si fermerebbe sulla porta e
+--   sarebbe verde per la ragione sbagliata). Stessi esiti attesi.
 
 BEGIN;
 
@@ -144,10 +151,9 @@ SELECT o.ordine_id AS id
 --   non blocchi questa transizione in uscita da CONFERMATO.
 -- ============================================================
 SELECT lives_ok(
-  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
-              (SELECT stato_evaso_id FROM tmp_refs_ev) WHERE id = %s$q$,
+  format($q$SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('ordine evaso', 'EMESSO', p_ordine_id => %s)$q$,
          (SELECT id FROM tmp_ord_ev)),
-  '5) CONFERMATO -> EVASO -> ok (transizione automatica ammessa dal guard)'
+  '5) CONFERMATO -> EVASO -> ok (l''evasione vera: la proiezione scrive, il guard ammette)'
 );
 
 -- ============================================================
@@ -169,8 +175,7 @@ SELECT ok(
 -- TEST 7) Guard: EVASO -> ANNULLATO bloccata (terminale a runtime)
 -- ============================================================
 SELECT throws_ok(
-  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
-              (SELECT stato_ann_id FROM tmp_refs_ev) WHERE id = %s$q$,
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'ANNULLATO')$q$,
          (SELECT id FROM tmp_ord_ev)),
   'P0001', NULL,
   '7) EVASO -> ANNULLATO -> throws E_ORDINE_TRANSIZIONE_NON_AMMESSA (terminale)'

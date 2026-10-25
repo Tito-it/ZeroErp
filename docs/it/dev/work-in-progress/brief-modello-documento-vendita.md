@@ -1,8 +1,8 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-25 (giro BE 6 fatto e committato)
+## ⏭️ Chi riparte — aggiornato al 2026-10-25 (giro 7, l'ordine: DB applicato e verde, §9)
 
-**Riparte: il team DB**, con la richiesta del §8.10 (il codice dello stato di emissione) insieme al documento del giro dopo. Giro 6, il preventivo (§8): DB applicato e verde, BE fatto (§8.10) tranne il ritiro di `STATO_EMESSO`, che aspetta il lettore chiesto. Il giro 5 è chiuso e committato su DB e BE (`4351164c1`, PR #1943).
+**Riparte: il team BE**, **un passaggio solo** per il §8.11 (B-1 … B-6) e l'ordine (§9.6, C-1 … C-6); in parallelo il team DB col giro 8, il contratto, dopo il via di Tid. Giro 7 (l'ordine): DB applicato e verde (Tid, 2026-10-25). Giro 6, il preventivo (§8): DB applicato e verde, BE fatto (§8.10) tranne il ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committato su DB e BE (`4351164c1`, PR #1943).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -32,13 +32,22 @@
 | 4-bis-quinquies-bis | ✅ team DB / **Tid** | Anticipati (Tid, 2026-10-25): concessioni trasferite a `emetti_preventivo` su dbdev (script del §8.9), `cambia_stato_preventivi` spenta nel CSV, migrate applicato | §8.9 | — |
 | 4-bis-sexies | ✅ team BE | Richiesta §8.7 fatta: firma del verbo, 403 dalla riga (anche dalla pratica e su «Emetti»), lettori nuovi, rifiuto dell'emissione dal vocabolario su bolla, preventivo, contratto e ordine, controesempio. Non fatto il ritiro di `STATO_EMESSO`: manca il lettore del codice (richiesta al DB) | §8.10 | 4-bis-quinquies |
 | 4-bis-sexies-bis | ✅ **Tid** | Commit del giro BE 6 (con la revisione critica, §8.10 punto 8) | §8.10 | 4-bis-sexies |
-| 4-bis-septies | team DB ⏭️ | Il documento del giro dopo, con dentro la richiesta del §8.10 (lettore del codice dello stato) e `azioni_processo.md` da allineare | §5, §8.10 | 4-bis-sexies |
-| 4-bis-octies | team BE | Ritirare i due `STATO_EMESSO`; `emetti_passaggio` con la sola testata | §8.10 | 4-bis-septies |
+| 4-bis-sexies-ter | ✅ **Tid** | V-1 (lettore generico), V-2 (contratto, ordine e offerta nello stesso passaggio BE), V-3 (brief della nascita archiviato) | §8.11 | 4-bis-sexies |
+| 4-bis-septies | ✅ team DB | Via di Tid (2026-10-25); giro DB di chiusura K-1 … K-6 scritto, provato in transazione su dbdev (8/8, presidio dei riferimenti morti 9/9) | §8.11 | 4-bis-sexies-ter |
+| 4-bis-septies-bis | ✅ **Tid** | Apply di `20261025-70`, `-71` (dbdev, 15:27) e corsa pgTAP: verdi (2026-10-25) | §8.11 | 4-bis-septies |
+| 4-bis-septies-ter | ✅ team DB | Censimento di cosa resta al cantiere, lato DB: elenco chiuso | §8.12 | 4-bis-septies-bis |
+| 4-bis-septies-quater | ✅ **Tid** | W-1: l'ordine, **senza** l'ordine d'acquisto (acquisti tutti insieme, quando parte quel cantiere); ordine dei giri dopo: contratto, offerta, commessa, fattura, listino. W-2 e W-3: non ancora decise (W-2 torna come Z-3) | §8.12 | 4-bis-septies-ter |
+| 4-bis-septies-quinquies | ✅ team DB | Giro 7, l'ordine: ricognizione, piano, domande | §9 | 4-bis-septies-quater |
+| 4-bis-septies-sexies | ✅ **Tid** | Z-1 … Z-4 come da proposta, W-3 in un brief suo, via allo sviluppo | §9.3 | 4-bis-septies-quinquies |
+| 4-bis-septies-septies | ✅ team DB / **Tid** | Giro 7 scritto (`-72` … `-82`, CSV), provato, applicato da Tid (15:59); 11 pgTAP portati, regressione letta | §9.4, §9.5 | 4-bis-septies-sexies |
+| 4-bis-septies-octies | ✅ **Tid** | Migrazione applicata e corsa pgTAP verde (2026-10-25). Resta un dato: `emetti_ordine` ai profili su dbdev | §9.5, §9.6 | 4-bis-septies-septies |
+| 4-bis-octies | team BE ⏭️ | Un passaggio solo, B-1 … B-6 del §8.11 e C-1 … C-6 del §9.6: il lettore nel repository, «Emetti» che chiede lo stato a ogni richiesta, i due `STATO_EMESSO` ritirati, contratto, ordine e offerta senza letterali, la riga della guida | §8.11 | 4-bis-septies-bis |
+| 4-bis-nonies | **Tid** → team DB | Il via al giro 8: il contratto (ordine dei giri di W-1). Non aspetta il BE (§5) | §5 | 4-bis-septies-octies |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 
-Decisioni aperte di Tid: nessuna. Da sapere (§8.10): il cambio stato generico dell'ordine ora rifiuta CONFERMATO (M-2); `ApiPreventivoCollegaPratica` chiede il livello sul preventivo. Lavoro da committare: nessuno (il giro BE 6 è committato su `dev/backend-tid`).
+Decisioni aperte di Tid: nessuna in questo brief (W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md), E-1 … E-3). Da sapere (§8.10): il cambio stato generico dell'ordine ora rifiuta CONFERMATO (M-2); `ApiPreventivoCollegaPratica` chiede il livello sul preventivo. Lavoro da committare (`dev/db-tid`): il giro DB del §8.11 (`20261025-70`, `-71`) e il giro 7 (`-72` … `-82`, i due CSV e il mirror, i pgTAP nuovi e portati, le pagine `manual`, le guide del modello e degli ordini, `azioni_processo.md`), il brief nuovo [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md), i rimandi dell'archiviazione di V-3 (lo spostamento del file è già in `9bb735935`). Da rigenerare: la doc auto-generata (le pagine `funzioni/` di `fn_doc_stato_codice`, `fn_stato_abortito_id`, `fn_cambia_stato_ordine` non ci sono ancora).
 Committati: il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), il giro BE precedente (`9fbff66d2`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
@@ -48,7 +57,7 @@ Committati: il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), il giro BE p
 > un'altra (§3.2). Tid: «non mi sto più fidando… una volta in un modo, poi in un altro, poi si torna
 > al precedente». Da qui la ricostruzione della storia (§1) e questo brief.
 > **Brief vicini verificati:**
-> [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md)
+> [brief-db-documento-nasce-nello-stato-iniziale](../work-done/brief-db-documento-nasce-nello-stato-iniziale.md)
 > (stato iniziale e verbo: candidato a confluire qui, M-6);
 > [brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md) (solo i nomi dei
 > tipi: resta suo); [brief-db-magazzino-tutte-le-scritture-dal-verbo](brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
@@ -174,11 +183,11 @@ interni: nessuna azione; la registrazione col guard nel verbo).
 | M-3 | L'azione richiesta da un passaggio si dichiara **sulla riga della matrice**, letta dal verbo, dall'endpoint e dalla capability? | nel DDT è scritta nel corpo del verbo; altrove solo sulla view | ✅ **Deciso da Tid il 2026-10-24: A** — l'azione sta sulla riga del passaggio (riga senza azione = solo il permesso sul documento); la leggono il verbo (controllo), il backend (403 subito, senza deciderla da sé: il doppio punto di applicazione del 2026-09-24 resta) e le capability (bottone nascosto). Motivo di Tid: un punto unico è ciò che rende configurabili i permessi; sparso in nove documenti sarebbe ingestibile. **Supera** «gate per `action_key` nel service» (2026-07-27) e «permesso fuori dalle capability» (2026-08-04). Risponde a D3 |
 | M-4 | Quante azioni per documento: una «cambia stato X» (come preventivo e commessa) o separate (emetti / annulla come DDT e reso)? | miste | ✅ **Deciso da Tid il 2026-10-24: A** — per ogni documento UNA azione sui passaggi pesanti (emissione e annullo di un emesso), «chi fa disfa», come DDT e reso; gli altri passaggi (spedito, accettato, rifiutato…) chiedono solo il permesso sul documento. **Il preventivo non fa eccezione** (Tid): accetta e rifiuta perdono `cambia_stato_preventivi`; lo stesso vale per la commessa. Separare l'annullo dall'emissione, se servira', e' un cambio di riga (M-3), non un cantiere |
 | M-5 | Le matrici scritte nel codice (contratto, versione di listino) passano in tabella, e le copie Python si ritirano? | contratto e listino fuori dal modello | ✅ **Deciso da Tid il 2026-10-24: A** — il guard del contratto legge `config.transizioni_stati_contratti` (gli IF si ritirano); la versione di listino prende vocabolario degli stati e matrice dei passaggi come gli altri; si ritirano le copie Python (`listini_service._validate_versione_state_transition`, gli stati di partenza di `offerte_service._cambia_stato_manuale`). Condizione di M-3: senza righe in tabella l'azione non ha dove stare. Si fa nel giro del documento (M-1) |
-| M-6 | [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md) confluisce qui? | aperto, non iniziato, stesso tema (stato e verbo) | ✅ **Deciso da Tid il 2026-10-24: A** — confluisce (§4-bis). Nascere già avanti e' un passaggio «dal nulla» che nessuna matrice ammette. Va **all'inizio** del cantiere: chiude un buco gia' provato (la bolla emessa, numerata e vuota) |
+| M-6 | [brief-db-documento-nasce-nello-stato-iniziale](../work-done/brief-db-documento-nasce-nello-stato-iniziale.md) confluisce qui? | aperto, non iniziato, stesso tema (stato e verbo) | ✅ **Deciso da Tid il 2026-10-24: A** — confluisce (§4-bis). Nascere già avanti e' un passaggio «dal nulla» che nessuna matrice ammette. Va **all'inizio** del cantiere: chiude un buco gia' provato (la bolla emessa, numerata e vuota) |
 
 ### 4-bis. Confluito: un documento nasce nel suo stato iniziale (ex D32, M-6)
 
-Da [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md)
+Da [brief-db-documento-nasce-nello-stato-iniziale](../work-done/brief-db-documento-nasce-nello-stato-iniziale.md)
 (2026-10-13), confluito il 2026-10-24. Il caso, la prova e il censimento da fare restano scritti
 là (§1-§3); le decisioni si prendono qui.
 
@@ -1183,6 +1192,13 @@ portano al verbo, così provano ancora il guard) e i test con la firma vecchia d
 
 Rossi **non** del giro, lasciati: i test «rosso da owner» (scope, porta) e `vendite/test-vw-dash-aperto-v1`
 (chiede EVASO a `porta_a_stato`, che è un passaggio di processo: rosso anche prima del giro).
+**Portato il 2026-10-25:** il caso (b), «CHIUSO, non abortito, non transitato», era un preventivo EVASO con
+una riga residua, cioè uno stato che il modello non ammette più: EVASO lo scrive solo la proiezione dello
+smistamento quando nessuna riga è RESIDUA, quindi un preventivo EVASO è anche transitato. Il caso ora è un
+**contratto CESSATO** (esito POSITIVO, `is_transitato` NULL, il giudizio è sospeso), su un cliente suo per non
+sovrapporsi al contratto ATTIVO del test 8, cessato a mano dalla matrice con `valido_al` = oggi. Lo stesso file emetteva due preventivi senza righe
+(quello NEGATIVO e quello dell'emittente B): ora passano da `fn_pgtap_crea_preventivo_con_righe` sulla
+testata del test, come i 9 del porting. Da lanciare (Tid).
 
 **Portati (2026-10-25, tre agenti in parallelo), 22 file:** i 9 che scrivevano la testata a mano e la
 emettevano senza righe passano a `fn_pgtap_crea_preventivo_con_righe(…, p_preventivo_id => …)`; i 5 col
@@ -1378,4 +1394,278 @@ documentali.
 **Residui per i giri dei documenti** (non toccati, per memoria): `contratti_service.emetti` e
 `ordini_service.conferma` cercano lo stato di emissione per codice scritto (`"ATTIVO"`,
 `_STATO_CONFERMATO`) ma scrivono l'id: lì basterebbe già `fn_stato_emissione_id`; `offerte_service.emetti`
-usa `StatoOfferta.EMESSA`. Si allineano col giro del loro documento.
+usa `StatoOfferta.EMESSA`. Si allineano col giro del loro documento. ➡️ Superato da V-2 (§8.11): si
+chiudono nello stesso passaggio BE.
+
+### 8.11 Chiusura della richiesta del §8.10: il codice dello stato di emissione (2026-10-25)
+
+Analisi del team DB sul percorso intero (lettori DB, repository del modello, factory documentale,
+service), poi le decisioni di Tid. Lo scopo: dare al backend in un giro solo tutto quello che serve a
+chiudere 4-bis-octies, senza residui per i giri dei documenti.
+
+**Il punto che la richiesta non diceva.** «Emetti» fissa lo stato chiesto quando la view si definisce
+(`emetti_passaggio=(TESTATA, STATO_EMESSO)` nelle due view documentali → `PassaggioDocumento(stato_chiesto=…)`),
+cioè all'import, dove il DB non si interroga. Sostituire la costante col lettore sposterebbe il
+letterale, non lo ritirerebbe: il permesso di «Emetti» deve chiedere lo stato di emissione **a ogni
+richiesta**. Da qui `emetti_passaggio` con la sola testata.
+
+**Fatti letti dalla struttura (2026-10-25).** I cinque vocabolari con la colonna `emissione` la
+dichiarano tutti nei CSV di `80_data` (ordine `CONFERMATO`, preventivo `EMESSO`, bolla `EMESSO`,
+offerta `EMESSA`, contratto `ATTIVO`); il CHECK `chk_stati_doc_<doc>_emissione_attivo` garantisce che lo
+stato di emissione sia attivo. Reso, commessa e fattura non si emettono: `fn_stato_emissione_id` dà NULL.
+I verbi di bolla e preventivo prendono il `codice_interno` e lo traducono con `fn_doc_stato_id`.
+
+**Decisioni di Tid (2026-10-25).**
+
+| # | Domanda | Decisione |
+| --- | --- | --- |
+| V-1 | Un lettore generico id → codice, o uno apposta per il codice dell'emissione | ✅ **Generico**: `script.fn_doc_stato_codice(p_testata regclass, p_stato_id bigint) RETURNS text`, gemello inverso di `fn_doc_stato_id`. Uno stato ha due chiavi (id e `codice_interno`): la traduzione nei due sensi sta nella stessa coppia; un lettore dell'emissione sarebbe una terza lettura della stessa cosa. Il backend compone `fn_doc_stato_codice(t, fn_stato_emissione_id(t))` |
+| V-2 | Contratto, ordine e offerta nello stesso passaggio BE, o al giro del loro documento | ✅ **Stesso passaggio**: poggiano su pezzi comuni già fatti (scelta C del fermo). Per l'ordine si ritira solo il letterale: chi conferma senza `/emetti/` (M-2) resta al giro dell'ordine |
+| V-3 | Archiviare subito `brief-db-documento-nasce-nello-stato-iniziale` | ✅ **Sì**: N-1 … N-3 decise qui (§4-bis) e costruite nel primo giro (§4-quinquies). Archiviato in `work-done/` il 2026-10-25, D32 chiuso nel registro |
+
+**Il contratto del lettore (V-1).**
+
+* Il codice che rende è il `codice_interno`, la chiave stabile, quella che leggono i verbi.
+* Testata fuori mappa (`script.fn_doc_stato_modello`): `E_SCRIPT_CHIAMATA_NON_VALIDA`, come i gemelli.
+* Id NULL o che il vocabolario non ha: NULL, decide il chiamante. Per «Emetti» un NULL vuol dire
+  documento che non si emette: la factory monta `emetti_passaggio` solo dove l'emissione esiste.
+* Nessun filtro sugli attivi: un id è già una riga esistente, e uno stato spento come destinazione lo
+  rifiuta il verbo con `fn_doc_stato_id` (U-3). Per l'emissione il caso non si pone (il CHECK).
+* `STABLE`, `SECURITY INVOKER` esplicito; parametri `bigint` e non `%TYPE` (vocabolario polimorfo, come i gemelli).
+
+**Elenco chiuso, giro DB (dopo il via di Tid).**
+
+| # | Che cosa |
+| --- | --- |
+| K-1 | ChangeSet in `20_code/script`: `script.fn_doc_stato_codice` (numero al prossimo progressivo del giorno, riletto prima di salvare) |
+| K-2 | COMMENT di `script.fn_stato_emissione_id` e `script.fn_doc_stato_id`: il gemello e i consumatori nuovi («Emetti» del backend) |
+| K-3 | pgTAP: per le cinque testate con l'emissione, il codice reso è quello che il vocabolario dichiara (letto dalla colonna, non scritto nel test); testata senza emissione → NULL; id inesistente → NULL; testata fuori mappa → `E_SCRIPT_CHIAMATA_NON_VALIDA`; andata e ritorno con `fn_doc_stato_id` |
+| K-4 | `docs/it/dbzero/script/manual/fn_doc_stato_codice.md`; la coppia di lettori nella guida del modello |
+| K-5 | `docs/it/dbzero/config/manual/azioni_processo.md`: `cambia_stato_preventivi` non più attiva, `emetti_preventivo` presente (§8.9) |
+| K-6 | Questo brief: l'esito del giro e il passaggio al BE |
+
+**Elenco chiuso, passaggio BE (dopo l'apply del giro DB).**
+
+| # | Che cosa |
+| --- | --- |
+| B-1 | `DocumentoModelloRepository`: il codice dello stato di emissione di una testata (una lettura, i due lettori composti); NULL → il documento non si emette |
+| B-2 | Il permesso di «Emetti» chiede lo stato a ogni richiesta: `emetti_passaggio` riceve la sola testata, `PassaggioDocumento` risolve lo stato chiesto dal lettore |
+| B-3 | Ritirati `STATO_EMESSO` in `ddt_service` e `preventivi_service`: «Emetti» passa al verbo il codice letto |
+| B-4 | V-2: `contratti_service.emetti` e `ordini_service.conferma` su `fn_stato_emissione_id` (scrivono l'id); `offerte_service.emetti` sul codice letto al posto di `StatoOfferta.EMESSA`; ritirati `"ATTIVO"` e `_STATO_CONFERMATO` |
+| B-5 | Il presidio dell'emissione generico sui documenti della factory; test sul DB reale del lettore composto (le cinque testate, una senza emissione) |
+| B-6 | Guida del modello, §«L'emissione», riga «Quale stato è l'emissione»: «Emetti» ne legge il codice con `script.fn_doc_stato_codice` (si scrive quando è vero, cioè con B-3) |
+
+**Scritto e provato (team DB, 2026-10-25, dopo il via di Tid).**
+
+| # | Fatto |
+| --- | --- |
+| K-1 | `20_code/script/20261025-70-create-fn-doc-stato-codice`: `script.fn_doc_stato_codice(regclass, bigint) RETURNS text`, `STABLE`, `SECURITY INVOKER`, il contratto qui sopra. Il `-69` era gia' preso dal lotto della grammatica |
+| K-2 | `20_code/script/20261025-71-update-fn-doc-stato-id-emissione-commento-gemello`: i due COMMENT (il gemello inverso; «Emetti» fra i consumatori). Corpi invariati |
+| K-3 | `db/pgtap/script/test-doc-stato-codice-v1.sql` (plan 8): forma; emissione composta sulle cinque testate contro la colonna `emissione` dei vocabolari; NULL su reso, commessa, fattura; andata e ritorno con `fn_doc_stato_id` su ogni stato attivo delle otto testate (contando gli stati provati, niente verde per sottrazione); id assente e NULL; stato spento che rende il suo codice; fuori mappa |
+| K-4 | `docs/it/dbzero/script/manual/fn_doc_stato_codice.md`; il lettore nell'area tecnica della guida del modello. La riga «Emetti» della guida e' B-6: oggi non e' ancora vera |
+| K-5 | `docs/it/dbzero/config/manual/azioni_processo.md`: `cambia_stato_preventivi` ritirata, `emetti_preventivo` con la sua forma (l'azione sulla riga del passaggio, come `emetti_ddt`) |
+| K-6 | Questo paragrafo e il blocco «Chi riparte» |
+
+**Provato** su dbdev, come owner, in transazione annullata (`BEGIN` e `ROLLBACK` del file, `psql -v ON_ERROR_STOP=1`): l'SQL estratto dai due YAML davanti al pgTAP nuovo, 8 eseguiti su 8 pianificati, tutti `ok`; lo stesso SQL davanti a `dbops/test-riferimenti-morti-v1` (plpgsql_check su ogni funzione), 9/9 (`ok 8` e' lo `skip` dichiarato del file). La corsa come app e lo scratch restano a Tid, dopo l'apply.
+
+✅ **Applicato e verde** (Tid, 2026-10-25): `-70` e `-71` EXECUTED su dbdev alle 15:27 (`databasechangelog`), corsa pgTAP verde.
+
+### 8.12 Cosa resta al cantiere, lato DB (censimento del 2026-10-25)
+
+Letto dalla guida del modello (§10, la tabella per documento), dai debiti dichiarati dei giri (§7.7, §8.6, §4-septies)
+e dai corpi vivi (doc auto-generata). Elenco chiuso: ogni cosa che manca è una riga qui, o non manca.
+
+**I documenti ancora da portare al modello** (un documento per giro, tutto intero: §5). Fra parentesi quello che
+la guida §10 segna ❌.
+
+| # | Documento | Che cosa manca | Note |
+| --- | --- | --- | --- |
+| D-1 | Ordine (+ ordine d'acquisto, §5) | verbo di stato, azione sul passaggio, annullo dal verbo (`fn_annulla_ordine` scrive da sé) | matrice in tabella e colonna `emissione` già ci sono; da decidere qui `POST /ordini/<id>/conferma/` (M-2: chi conferma senza «Emetti»); l'ordine d'acquisto oggi non ha guard di transizione |
+| D-2 | Commessa | l'azione `cambia_stato_commessa` sulla riga del passaggio e controllata dal verbo (oggi solo dal backend) | il più piccolo: verbo, matrice e annullo ci sono; matrice in `vendite`, non in `config` |
+| D-3 | Contratto | matrice in tabella (oggi scritta nel guard), verbo, azione, annullo dal verbo | il backend scrive lo stato con `UPDATE` |
+| D-4 | Offerta | verbo, azione, annullo con l'avviso dei legami invece di `fn_check_offerta_annullabile`; il nome della matrice fuori serie (`stati_doc_offerte_transizioni`) | gli stati di partenza ripetuti in Python |
+| D-5 | Fattura | verbo al posto delle funzioni della pipeline e dell'`UPDATE` dello stato del lotto; azioni della pipeline sulla riga | il più lungo: tocca la pipeline di fatturazione |
+| D-6 | Versione di listino | vocabolario degli stati (oggi testo con `CHECK`), matrice in tabella (oggi nel guard e in Python), verbo | parte da zero |
+| D-7 | DDT d'acquisto | tutto | ⏸️ T-2 di Tid: aspetta il satellite per ambito (D-3 di analisi-simmetria-ordini-acquisto) |
+
+**I debiti DB dichiarati e ancora aperti.**
+
+| # | Debito | Dove è scritto |
+| --- | --- | --- |
+| X-1 | Letterali `'ANNULLATO'` in `vendite.fn_annulla_preventivo` (chiama il verbo con il codice) e in `vendite.fn_cambia_stato_ddt` (riconosce l'annullo dell'emesso confrontando il codice): la guida §8 vuole lo stato abortito letto dal vocabolario (`is_abortito`) | §8.6 |
+| X-2 | EMESSO → SCADUTO del preventivo non lo scrive nessuno: la guida dei preventivi parlava di un job notturno che non esiste | §8.6 (debito di prodotto) |
+| X-3 | R-7, R-8: due casi dei builder delle fixture | §4-septies, «non ora» per decisione di Tid: restano chiusi così |
+
+Fuori da questo brief: pagamenti e magazzino (§3.1, «stessa domanda»); il tema è di tutte le famiglie e non si
+apre senza l'ok di Tid (AGENTS.md).
+
+**Decisioni per Tid.**
+
+| # | Domanda | Consiglio del team DB |
+| --- | --- | --- |
+| W-1 | Il documento del giro dopo, e l'ordine dei successivi — ✅ **Tid 2026-10-25: l'ordine, senza acquisti; poi contratto, offerta, commessa, fattura, listino** | **D-1, l'ordine** (col gemello d'acquisto): è il più vicino al modello dopo bolla e preventivo, ha già matrice ed emissione, e chiude la domanda aperta di M-2 su `/conferma/`. Poi D-2 (piccolo), D-3, D-4, D-5, D-6. D-7 resta fermo su T-2 |
+| W-2 | X-1: un giro a sé subito, o dentro il giro del prossimo documento | **Dentro il giro dell'ordine**: il lettore dello stato abortito serve anche lì (`fn_annulla_ordine`), e nasce una volta sola per i tre (regola del 2) |
+| W-3 | X-2: lo scrive un job del DB, o si toglie SCADUTO dal modello del preventivo | Decisione di prodotto: se resta, è un processo con la sua riga di matrice di processo (`manuale = false`, già così) e un job; lo si scrive in un brief suo, non in questo |
+
+## 9. Giro 7: l'ordine al modello — ricognizione e piano (2026-10-25)
+
+✅ **Deciso da Tid il 2026-10-25 (W-1):** il documento del giro è l'**ordine di vendita**. L'ordine d'acquisto
+**non** entra: come per il DDT (T-2), gli acquisti arrivano al modello tutti insieme, quando parte quel
+cantiere (eccezione dichiarata alla regola del §5, «nello stesso giro»; i pezzi comuni restano generici).
+Ordine dei giri dopo: contratto, offerta, commessa, fattura, versione di listino.
+
+### 9.1 Com'è oggi (doc auto-generata e `backend/`, 2026-10-25)
+
+* **Vocabolario e matrice.** `config.stati_doc_ordini`: DRAFT (iniziale), CONFERMATO (emissione), ALLOCATO,
+  SPEDITO, CONSEGNATO, PARZIALMENTE_EVASO, EVASO, FATTURATO, ANNULLATO (`is_abortito`). Matrice
+  `config.transizioni_stati_ordini`, nove righe: tre **manuali** (DRAFT → CONFERMATO «conferma», DRAFT →
+  ANNULLATO e CONFERMATO → ANNULLATO «annulla») e sei **di processo** (`manuale: false`, fra CONFERMATO,
+  PARZIALMENTE_EVASO ed EVASO). La matrice **non ha** la colonna `azione_processo_codename`. ALLOCATO,
+  SPEDITO, CONSEGNATO e FATTURATO non hanno righe: nessun passaggio li raggiunge (si dichiara, non si tocca).
+* **Guard di transizione** `trgfn_ordini_guard_transizione`: matrice, righe attive su DRAFT → CONFERMATO,
+  `fn_check_ordine_confermabile`, `fn_check_ordine_annullabile`, prezzi autorizzati. Letterali `'DRAFT'`,
+  `'CONFERMATO'`, `'ANNULLATO'`: condizioni di un passaggio, restano (come sul preventivo, §8.1).
+* **Verbo di stato: non c'è.** Lo scrivono:
+  * il **backend** con un `UPDATE` (`OrdiniRepository.update_stato`), da `ordini_service.conferma` (usata da
+    «Emetti» **e** da `POST /ordini/<id>/conferma/`) e dal cambio stato generico. Sul generico, dopo il §8.10, non
+    resta nessun passaggio manuale da scrivere con l'`UPDATE`: la conferma è rifiutata (emissione), l'annullo
+    passa già da `fn_annulla_ordine`;
+  * `vendite.fn_annulla_ordine` (DEFINER, ritira i legami) con un `UPDATE` suo e il letterale `'ANNULLATO'`;
+  * `vendite.fn_ordine_proietta_stato_evasione` (**INVOKER**), i sei passaggi di processo, con un `UPDATE`.
+    La chiamano `fn_genera_ddt_da_ordine`, i cinque verbi del reso, `fn_ddt_riga_correggi_qta_evasa` e il trigger
+    `trgfn_dlt_block_ordrig_ddtrig`.
+* **Azione: nessuna.** Nessuna azione dell'ordine a catalogo (`config.azioni_processo`).
+* **«Emetti» e `/conferma/`.** `/emetti/` della factory chiama `ordini_service.conferma` e genera il PDF; dentro
+  la stessa transazione completa lo step `CONFERMA_ORDINE` della pratica. `POST /ordini/<id>/conferma/` fa la sola
+  transizione, senza PDF: il frontend la espone (`ordiniApi.confermaOrdine`, azione `conferma` dello store) ma
+  **nessun componente la chiama** (letto il 2026-10-25). È il «chi conferma senza Emetti» di M-2.
+* **Numero alla nascita.** `trgfn_ordini_gen_numero` numera l'ordine all'INSERT, scelta dichiarata nel corpo
+  («l'ordine nasce numerato… i buchi da bozza scartata restano»). La guida §7 dice «il numero lo assegna il
+  database al passaggio allo stato emesso»: è una divergenza (Z-4).
+* **Capability** `fn_available_actions_ordine`: matrice e motivi; nessun filtro sull'azione.
+* **pgTAP:** 19 file scrivono lo stato dell'ordine con un `UPDATE` diretto; 10 lo portano in EVASO o
+  PARZIALMENTE_EVASO, che sono passaggi di processo: con la porta si costruiscono evadendo davvero
+  (`dbops.fn_pgtap_crea_ddt_da_ordine`, già a catalogo). Conteggio del 2026-10-25, per dimensionare il porting.
+
+### 9.2 Il piano
+
+| Pezzo | Che cosa |
+| --- | --- |
+| matrice | colonna `azione_processo_codename` su `config.transizioni_stati_ordini` (FK alla chiave stabile, come preventivo e bolla), valori dal CSV: l'azione su DRAFT → CONFERMATO e CONFERMATO → ANNULLATO (Z-1); mirror con la colonna (⚠️ `nullValue`) |
+| azione | `emetti_ordine` a catalogo (Z-1) |
+| verbo | NUOVO `vendite.fn_cambia_stato_ordine(p_ordine_id, p_stato)`, gemello di quello del preventivo: DEFINER col predicato del perimetro (`fn_scope_ef_whitelist_via_ordine`), `fn_doc_stato_id`, `fn_guard_passaggio`, `fn_doc_scrivi_stato` |
+| porta | `trgfn_doc_stato_solo_dal_verbo` montato `_a05_` su `vendite.ordini` |
+| annullo | `fn_annulla_ordine` chiama il verbo (lo stato d'annullo dal vocabolario se Z-3 = sì) |
+| processo | `fn_ordine_proietta_stato_evasione` scrive con `fn_doc_scrivi_stato` (sola seconda metà) e diventa DEFINER, come la proiezione del preventivo (`-45`) |
+| capability | `fn_available_actions_ordine`: il passaggio con l'azione si nasconde a chi non ce l'ha (stessa forma di bolla e preventivo) |
+| fixture | `fn_pgtap_porta_a_stato` conosce il verbo dell'ordine; i 19 `UPDATE` diretti portati: al verbo dove provano il guard, a `crea_ddt_da_ordine` dove serve un EVASO o un PARZIALMENTE_EVASO |
+| guida | §10, riga dell'ordine; la guida degli ordini rimanda al modello |
+
+**Richiesta al BE** (si scrive col percorso intero, a giro DB provato): `OrdiniRepository.update_stato` si ritira
+e `conferma` chiama il verbo (lo step della pratica resta nella stessa transazione); il 403 dalla riga del passaggio
+(`PassaggioDocumento`) su «Emetti» e sull'annullo; il cambio stato generico senza `UPDATE`; `/conferma/` secondo Z-2;
+`_STATO_CONFERMATO` già nel passaggio B-4 del §8.11.
+
+### 9.3 Domande per Tid
+
+✅ **Decise da Tid il 2026-10-25: Z-1, Z-2, Z-3, Z-4 come da proposta; W-3 in un brief separato
+([brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md)); via allo sviluppo.**
+
+* **Z-1. L'azione dell'ordine.** Proposta: azione **nuova** `emetti_ordine` («emette un ordine o annulla un ordine
+  confermato») sulle righe DRAFT → CONFERMATO e CONFERMATO → ANNULLATO; DRAFT → ANNULLATO senza azione. È la guida §6
+  («un'azione per documento, sui passaggi pesanti») e il gemello di `emetti_ddt` ed `emetti_preventivo`. ⚠️ Nessun
+  profilo la riceve dai seed: dopo il giro chi non ce l'ha non vede «Emetti» né l'annullo del confermato. Concederla
+  ai profili è un dato (su dbdev lo fa Tid, come per `emetti_preventivo`).
+* **Z-2. `POST /ordini/<id>/conferma/`.** Proposta: **si ritira** (rotta, view, API e azione dello store del
+  frontend, che nessun componente chiama). È l'ultimo «conferma senza Emetti» (M-2): l'ordine si conferma solo da
+  «Emetti», con numero e PDF insieme. Alternativa: resta, e chiede la stessa azione di «Emetti».
+* **Z-3 (era W-2). Lo stato d'annullo dal vocabolario.** Proposta: **sì, in questo giro**: lettore
+  `script.fn_stato_abortito_id(p_testata)` (gemello di `fn_stato_iniziale_id` e `fn_stato_emissione_id`) e indice unico
+  parziale su `is_abortito` nei vocabolari (oggi ognuno ne ha uno solo: fatto letto dai CSV, la regola è sul
+  modello, «un documento ha un solo stato d'annullo»). Lo leggono `fn_annulla_ordine`, `fn_annulla_preventivo` e il
+  verbo della bolla, che oggi scrivono `'ANNULLATO'` (X-1 chiuso). Alternativa: X-1 resta debito, l'ordine nasce col
+  letterale come il preventivo.
+* **Z-4. Il numero alla nascita.** L'ordine si numera all'INSERT, la guida §7 lo vuole all'emissione. Proposta:
+  **fuori da questo giro**, dichiarato come divergenza nella riga dell'ordine della guida §10: spostarlo cambia la
+  numerazione (e i buchi da bozza scartata), è un tema suo da decidere con la storia della scelta
+  (`trgfn_ordini_gen_numero`, rev 2026-08-31). Alternativa: si porta in questo giro.
+
+### 9.4 Scritto (2026-10-25)
+
+| # | Cosa |
+| --- | --- |
+| `-72` | un solo stato d'annullo per vocabolario, ed è attivo: indice unico parziale `uq_<voc>_abortito` e CHECK `chk_<voc>_abortito_attivo` sugli otto vocabolari (Z-3) |
+| `-73` | colonna `azione_processo_codename` su `config.transizioni_stati_ordini` (FK alla chiave stabile) |
+| CSV | `azioni_processo`: `emetti_ordine` (id 41); matrice dell'ordine: `emetti_ordine` su DRAFT → CONFERMATO e CONFERMATO → ANNULLATO; mirror `20260605-11` con la colonna e `nullValue: "NULL"` |
+| `-74` | NUOVO `script.fn_stato_abortito_id(testata)`: lo stato d'annullo dal vocabolario, gemello di `fn_stato_emissione_id` |
+| `-75` | NUOVO `vendite.fn_cambia_stato_ordine(id, stato)`: il verbo dell'ordine sul verbo comune, DEFINER col predicato del perimetro; EXECUTE solo all'app |
+| `-76` | `fn_annulla_ordine` chiama il verbo, con lo stato d'annullo dal vocabolario |
+| `-77` | `fn_annulla_preventivo`: lo stato d'annullo dal vocabolario (X-1) |
+| `-78` | `fn_cambia_stato_ddt`: l'annullo dell'emessa riconosciuto dallo stato d'annullo del vocabolario (X-1) |
+| `-79` | `fn_ordine_proietta_stato_evasione` scrive con `fn_doc_scrivi_stato`, DEFINER (attesa cambiata dichiarata nel file: la proiezione vale per ogni ordine) |
+| `-80` | la porta montata su `vendite.ordini` |
+| `-81` | capability dell'ordine: il passaggio con l'azione si nasconde a chi non ce l'ha; motivi legati a `is_abortito` ed `emissione` |
+| `-82` | `fn_pgtap_porta_a_stato`: l'ordine dal suo verbo |
+
+Firme, `RETURNS TABLE` e `DECLARE` ancorati con `%TYPE`, anche nelle firme di GRANT e COMMENT (Tid, 2026-10-25);
+`fn_cambia_stato_ddt` torna alle ancore di `20261001-20`. Prova in transazione: una sola funzione per nome dopo il
+`CREATE OR REPLACE` (nessun sovraccarico nato dall'ancora).
+
+Doc: pagine `manual` di `fn_stato_abortito_id` e `fn_cambia_stato_ordine`; la guida del modello (riferimenti, §8,
+§10 riga dell'ordine con la divergenza del numero, Z-4); `gestione-ordini` §4.2 e §4.4; `azioni_processo.md`.
+pgTAP nuovo: `vendite/test-ordine-al-modello-v1` (16; il 16 è rosso da owner, verde come app).
+
+**Applicato da Tid** su dbdev alle 15:59, a metà della regressione (§9.5).
+
+### 9.5 Regressione e porting dei pgTAP (2026-10-25)
+
+La prima regressione prima/dopo (736 file che toccano documenti, stati, capability e presidi) non vale: l'apply di
+Tid è caduto a metà corsa, e quattro corse in parallelo con la DDL dell'SQL estratto si sono bloccate a vicenda
+(deadlock). Rifatta **in sequenza sul db migrato**, come owner: 70 file con almeno un rosso; letti uno per uno.
+
+* **Del giro, 11 file**, tutti per la stessa causa: scrivevano lo stato dell'ordine con un `UPDATE` diretto (ora la
+  porta), o cercavano «Conferma» con un utente senza `emetti_ordine`. Portati (tre agenti in parallelo, file
+  diversi): al verbo dove provano il guard (con `emetti_ordine` concessa), a `porta_a_stato` o ai builder dove serve
+  una fixture, all'**evasione vera** (`dbops.fn_pgtap_crea_ddt_da_ordine`) dove serviva un EVASO scritto a mano. Più
+  il presidio `script/test-doc-verbo-comune-e-porta-v1`: la porta su quattro testate (anche l'ordine), e il
+  «documento non ancora portato» del test 8 è ora la fattura, che arriva per ultima.
+* **Non del giro, 59 file**: 57 con gli stessi rossi della corsa prima dell'apply (rossi da owner dichiarati e
+  rossi preesistenti), 2 test di perimetro (`ddt-reason-catch-all` 18, `get-stato-push-segment` 12) rossi da owner
+  per costruzione (l'owner salta la RLS), la cui corsa «prima» era morta nel deadlock.
+
+**Dopo il porting**, rilanciati i 12 file (gli 11 e il test nuovo): tutti eseguiti contro il piano; rossi solo quelli
+da owner dichiarati (`annullo-documento-con-legami` 30, `vw-situazione-merce-ordine` 11, `doc-verbo-comune-e-porta`
+19 e 20, `ordine-al-modello` 16).
+
+**Attese cambiate nel porting, da guardare (Tid):**
+* `script/test-fn-check-prezzi-autorizzati-v1`: un test in più (30b, l'ordine è davvero EVASO dopo l'evasione), plan 45;
+* `script/test-seed-stati-doc-ordini-evaso-v1` 5: da «la transizione CONFERMATO → EVASO è ammessa» (scritta a mano)
+  a «l'evasione vera porta in EVASO»; il 7 ora dice che il rifiuto di EVASO → ANNULLATO viene dal guard;
+* `vendite/test-ordini-guard-transizione-v1`: i `throws_ok` dei test 3, 5 e 7 controllavano solo `P0001` e passavano
+  anche sulla porta; ora passano dal verbo e provano di nuovo il guard;
+* `vendite/test-ritiro-alla-chiusura-documento-v1` 7 resta un `UPDATE`: riscrive lo stesso stato, e la porta lo lascia
+  passare.
+
+✅ **Applicato e verde** (Tid, 2026-10-25): migrazione su dbdev e corsa pgTAP verde.
+
+⚠️ Nell'albero c'è anche `vendite/test-vw-dash-aperto-v1.sql` modificato alle 15:43, rev «§8.5»: non è di questo giro
+(un'altra sessione), non l'ho toccato.
+
+### 9.6 Richiesta al team BE (elenco chiuso)
+
+Percorso intero letto il 2026-10-25 (`backend/apps/vendite`, `frontend/src/vendite/ordini`, test Django). Si fa in **un
+passaggio**, insieme a B-1 … B-6 del §8.11 (lo stato di emissione letto dal DB): l'ordine ne usa il lettore.
+
+| # | Che cosa | Dove |
+| --- | --- | --- |
+| C-1 | `OrdiniRepository.update_stato` si ritira (l'`UPDATE` ora lo ferma la porta: `E_DOC_STATO_SOLO_DAL_VERBO`); nuovo `cambia_stato(id, codice)` su `vendite.fn_cambia_stato_ordine`, gemello di `PreventiviRepository.cambia_stato` | `ordini_repository.py` |
+| C-2 | `ordini_service.conferma` chiama il verbo con lo stato di emissione letto dal DB (B-1 del §8.11) e ritira `_STATO_CONFERMATO`; lo step `CONFERMA_ORDINE` della pratica resta nella stessa transazione. Il fail-fast `E_ORD_NESSUNA_RIGA` è la copia della Regola 2 del guard (`E_ORDINE_CONFERMA_SENZA_RIGHE`): si ritira (niente logica duplicata fra livelli) | `ordini_service.py` |
+| C-3 | Il cambio stato generico: il ramo che non è l'annullo chiama il verbo invece di `update_stato`. Oggi la matrice non ha altri passaggi manuali (la conferma è rifiutata come emissione, l'annullo passa da `fn_annulla_ordine`): il ramo resta per i passaggi che la matrice potrà avere | `ordini_service.cambia_stato` |
+| C-4 | Z-2: si ritira `POST /ordini/<id>/conferma/` (`ApiOrdineConferma`, la rotta, `ordiniApi.confermaOrdine`, l'azione `conferma` dello store e il suo mock nello spec, la doc API). L'ordine si conferma solo da «Emetti» | `views_ordini.py`, `urls_ordini.py`, `frontend/src/vendite/ordini/` |
+| C-5 | Il 403 dalla riga del passaggio (`PassaggioDocumento`) su `ApiOrdineCambiaStato` (l'annullo del confermato chiede `emetti_ordine`) e su «Emetti» dell'ordine (`emetti_passaggio`, con la sola testata dopo B-2) | `views_ordini.py`, `ordini_documenti_views.py` |
+| C-6 | Test: `test_ordini_service` (mock di `update_stato` → `cambia_stato`); l'helper DB `tests/db/_ddt_consegnato.py` scrive lo stato dell'ordine con un `UPDATE` (ora la porta): passa da `dbops.fn_pgtap_porta_a_stato` o da `dbops.fn_pgtap_crea_ordine_con_righe`; sonda `richiedi_db_provvisto` sulla firma del verbo nuovo; i codici della policy rigenerati se serve (nessun codice nuovo dal DB in questo giro) | `apps/vendite/tests/` |
+
+**Da sapere.** Dopo il giro, chi non ha `emetti_ordine` non vede «Conferma» né l'annullo di un ordine confermato, e il
+verbo glieli rifiuta. Concedere l'azione ai profili è un dato (su dbdev lo fa Tid, come per `emetti_preventivo`).
+Fino al passaggio BE la conferma dal backend e il cambio stato generico rispondono `E_DOC_STATO_SOLO_DAL_VERBO`: è
+la rottura accettata del §5, «il DB consegna e scrive al BE cosa si è rotto».

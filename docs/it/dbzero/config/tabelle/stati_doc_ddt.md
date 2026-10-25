@@ -29,6 +29,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_doc_ddt_abortito_attivo |  |
 | CHECK | chk_stati_doc_ddt_emissione_attivo |  |
 | CHECK | chk_stati_doc_ddt_fase |  |
 | CHECK | chk_stati_doc_ddt_iniziale_attivo |  |
@@ -42,6 +43,7 @@
 |------|-------------|
 | ix_stati_doc_ddt_attivo | `CREATE INDEX ix_stati_doc_ddt_attivo ON config.stati_doc_ddt USING btree (attivo)` |
 | pk_stati_doc_ddt | `CREATE UNIQUE INDEX pk_stati_doc_ddt ON config.stati_doc_ddt USING btree (id)` |
+| uq_stati_doc_ddt_abortito | `CREATE UNIQUE INDEX uq_stati_doc_ddt_abortito ON config.stati_doc_ddt USING btree (is_abortito) WHERE is_abortito` |
 | uq_stati_doc_ddt_codice | `CREATE UNIQUE INDEX uq_stati_doc_ddt_codice ON config.stati_doc_ddt USING btree (codice)` |
 | uq_stati_doc_ddt_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_ddt_codice_interno ON config.stati_doc_ddt USING btree (codice_interno)` |
 | uq_stati_doc_ddt_emissione | `CREATE UNIQUE INDEX uq_stati_doc_ddt_emissione ON config.stati_doc_ddt USING btree (emissione) WHERE emissione` |

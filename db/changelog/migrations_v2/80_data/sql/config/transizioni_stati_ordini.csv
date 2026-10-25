@@ -1,10 +1,10 @@
-id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_update
-1,1,2,t,"{""action_key"":""conferma"",""label_key"":""vendite.ordini.azione_conferma"",""requires_confirm"":true,""outlined"":false,""manuale"":true,""requires_righe"":true}",2026-06-05 00:00:00+02,SEED,2026-07-16 00:00:00+02,mctit
-2,1,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.ordini.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-05 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
-3,2,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.ordini.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-05 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
-4,2,8,t,"{""manuale"":false}",2026-06-08 00:00:00+02,SEED,2026-06-08 00:00:00+02,SEED
-5,2,9,t,"{""manuale"":false}",2026-07-09 00:00:00+02,SEED,2026-07-09 00:00:00+02,SEED
-6,9,8,t,"{""manuale"":false}",2026-07-09 00:00:00+02,SEED,2026-07-09 00:00:00+02,SEED
-7,8,9,t,"{""manuale"":false}",2026-07-09 00:00:00+02,SEED,2026-07-09 00:00:00+02,SEED
-8,8,2,t,"{""manuale"":false}",2026-07-09 00:00:00+02,SEED,2026-07-09 00:00:00+02,SEED
-9,9,2,t,"{""manuale"":false}",2026-07-09 00:00:00+02,SEED,2026-07-09 00:00:00+02,SEED
+id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_update,azione_processo_codename
+1,1,2,t,"{""action_key"":""conferma"",""label_key"":""vendite.ordini.azione_conferma"",""requires_confirm"":true,""outlined"":false,""manuale"":true,""requires_righe"":true}",2026-06-05 00:00:00+02,SEED,2026-10-25 00:00:00+02,mctit,emetti_ordine
+2,1,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.ordini.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-05 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit,NULL
+3,2,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.ordini.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-05 00:00:00+02,SEED,2026-10-25 00:00:00+02,mctit,emetti_ordine
+4,2,8,t,"{""manuale"":false}",2026-06-08 00:00:00+02,SEED,2026-06-08 00:00:00+02,SEED,NULL
+5,2,9,t,"{""manuale"":false}",2026-07-09 00:00:00+02,SEED,2026-07-09 00:00:00+02,SEED,NULL
+6,9,8,t,"{""manuale"":false}",2026-07-09 00:00:00+02,SEED,2026-07-09 00:00:00+02,SEED,NULL
+7,8,9,t,"{""manuale"":false}",2026-07-09 00:00:00+02,SEED,2026-07-09 00:00:00+02,SEED,NULL
+8,8,2,t,"{""manuale"":false}",2026-07-09 00:00:00+02,SEED,2026-07-09 00:00:00+02,SEED,NULL
+9,9,2,t,"{""manuale"":false}",2026-07-09 00:00:00+02,SEED,2026-07-09 00:00:00+02,SEED,NULL

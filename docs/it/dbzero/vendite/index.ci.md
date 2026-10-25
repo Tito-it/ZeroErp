@@ -115,6 +115,7 @@ search:
 - [fn_build_gruppo_fatturabile_key](manual/fn_build_gruppo_fatturabile_key.md) — Costruire la chiave del **gruppo fatturabile** di una riga di commessa. È l'**unica fonte di verità** della chiave: la usano sia l'elenco che l'operatore legge, sia i filtri che l'emissione applica. Se la forma cambiasse qui, cambierebbe ovunque insieme.
 - [fn_calcola_data_documento](manual/fn_calcola_data_documento.md) — **Che data porta un documento emesso su questo registro?**
 - [fn_cambia_stato_commessa](manual/fn_cambia_stato_commessa.md) — (rev 2026-06-07) `vendite.fn_cambia_stato_commessa(p_commessa_id, p_nuovo_stato, p_user)` è l'**entrypoint sanzionato (DB-first)** per cambiare lo stato di una commessa: risolve il codice stato in id, esegue l'`UPDATE` e ritorna lo stato da/a.
+- [fn_cambia_stato_ordine](manual/fn_cambia_stato_ordine.md)
 - [fn_cambia_stato_preventivo](manual/fn_cambia_stato_preventivo.md) — (latest review 03-04-2026) `vendite.fn_cambia_stato_preventivo(p_preventivo_id, p_nuovo_stato, p_user)` esegue la **transizione di stato** di un preventivo vendita, validando la transizione tramite la matrice configurabile `config.transizioni_stati_preventivi`.
 - [fn_cancel_lotto_task_run](manual/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
 - [fn_cancella_fondo_fattura](manual/fn_cancella_fondo_fattura.md) — (latest review 14-09-2026)

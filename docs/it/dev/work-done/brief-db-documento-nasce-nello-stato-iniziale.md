@@ -1,11 +1,12 @@
 # Brief DB — Un documento nasce nel suo stato iniziale
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-24
+## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-➡️ **Confluito in [brief-modello-documento-vendita](brief-modello-documento-vendita.md) §4-bis**
-(decisione M-6 di Tid, 2026-10-24: stesso tema, stati e verbo). Le decisioni N-1 … N-3 si prendono
-là; qui restano il caso, la prova e il censimento da fare (§1-§3). Da archiviare in `work-done/`
-insieme a quel brief. La tabella qui sotto e' superata.
+✅ **Archiviato il 2026-10-25** (V-3 di Tid, [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md)
+§8.11). Confluito in quel brief il 2026-10-24 (§4-bis, M-6): N-1 … N-3 decise là e costruite nel
+primo giro (`20261024-07` … `-25`, §4-quinquies: `script.trgfn_doc_stato_iniziale` montato sulle
+testate di vendita e d'acquisto, `E_DOC_STATO_INIZIALE_NON_VALIDO`). Nessuno riparte da qui. La
+tabella qui sotto e' superata; il caso e la prova (§1) restano come storia.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -13,10 +14,10 @@ insieme a quel brief. La tabella qui sotto e' superata.
 | 2 | DB | censimento degli scrittori che inseriscono fuori dallo stato iniziale, poi la consegna | §3 | 1 |
 | 3 | BE | solo se il censimento trova un INSERT del backend fuori dallo stato iniziale | — | 2 |
 
-Decisioni aperte di Tid: §4. Lavoro da committare: questo documento.
+Decisioni aperte di Tid: nessuna. Lavoro da committare: lo spostamento in `work-done/`.
 
 📌 Il tipo di documento si nomina secondo
-[brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md) (§6.1): se questo
+[brief-db-grammatica-unica-documenti](../work-in-progress/brief-db-grammatica-unica-documenti.md) (§6.1): se questo
 cantiere introduce un registro o un parametro per tipo di documento, usa i codici di
 `config.sorgenti` (G-1) e parte **dopo il lotto 0** di quel brief (G-4, Tid 2026-10-18).
 ✅ Il lotto 0 è chiuso (2026-10-19, §8 di quel brief), e dal lotto 2a anche i lettori delle testate
@@ -25,7 +26,7 @@ parlano i codici di `config.sorgenti`: da quel lato questo cantiere può partire
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-13. **A chi:** Tid, poi il team DB.
 > **Origine:** trovato verificando `trg_ddt_a10_gen_numero_emesso_upd` nel giro del `20261013-53`
 > (la bolla generata da un ordine nasceva senza magazzino). Registro: **D32** di
-> [migliorie-generali-da-test-valutazione](migliorie-generali-da-test-valutazione.md).
+> [migliorie-generali-da-test-valutazione](../work-in-progress/migliorie-generali-da-test-valutazione.md).
 
 ## 1. Il caso
 

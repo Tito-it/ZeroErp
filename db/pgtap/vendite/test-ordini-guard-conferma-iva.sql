@@ -1,5 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-modello-documento-vendita §9): l'ordine ha la porta sulla colonna di stato e
+--   la conferma chiede emetti_ordine. L'azione si concede all'operatore del contesto prima del test 4
+--   (senza, la capability nasconde «Conferma» e la reason esce NULL); i test 5 e 6 passano dal
+--   verbo vendite.fn_cambia_stato_ordine, che arriva al guard (prima UPDATE diretti, ora fermati
+--   dalla porta). Stessi esiti attesi.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la testata in bozza da dbops.fn_pgtap_crea_ordine sul BA costruito (il trigger SPEDITO scritto in bozza); la riga SENZA aliquota resta a mano: e' il caso.
 -- pgTAP test per Zero ERP
 -- Test: script.fn_check_ordine_confermabile + Regola 4 di
@@ -211,6 +216,9 @@ SELECT is(
 -- ============================================================
 -- 4) Il lato lettura: il bottone e' spento, e dice perche'
 -- ============================================================
+-- rev 2026-10-25 (§9): permesso => nascondi. Senza emetti_ordine il bottone non
+--   c'e' proprio; con l'azione c'e', ed e' spento dal motivo.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_ordine');
 -- ⭐ Se bastasse il guard, l'operatore vedrebbe un bottone ACCESO e prenderebbe
 --   un errore al click. Guard e capability devono dire la stessa cosa: e' il
 --   motivo per cui leggono la STESSA funzione pura.
@@ -239,8 +247,7 @@ SELECT is(
 -- ⚠️ Il pattern non attraversa i segnaposto: «Ordine %s: la riga %s ha un
 --   prezzo...» si matcha sul frammento stabile, mai sulla frase intera.
 SELECT throws_like(
-    format('UPDATE vendite.ordini SET stato_doc_ordine_id = %s WHERE id = %s',
-           (SELECT stato_conf_id FROM tmp_oi_refs),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'CONFERMATO')$q$,
            (SELECT ordine_id FROM tmp_oi_ordine)),
     '%prezzo ma nessuna aliquota IVA%',
     'DRAFT->CONFERMATO con una riga senza aliquota: BLOCCA'
@@ -253,8 +260,7 @@ UPDATE vendite.ordini_righe
  WHERE ordine_id = (SELECT ordine_id FROM tmp_oi_ordine);
 
 SELECT lives_ok(
-    format('UPDATE vendite.ordini SET stato_doc_ordine_id = %s WHERE id = %s',
-           (SELECT stato_conf_id FROM tmp_oi_refs),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'CONFERMATO')$q$,
            (SELECT ordine_id FROM tmp_oi_ordine)),
     'DRAFT->CONFERMATO con l''aliquota: PASSA'
   );

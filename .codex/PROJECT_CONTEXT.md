@@ -416,10 +416,6 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   contratti manda solo le righe UNA_TANTUM, col giorno di attivazione (`20261013-24`, D-1/D-2 di Tid); la
   generazione per periodo del canone e le quantità di orario e consumo dalle loro fonti: aperto, non
   iniziato (G-1…G-4). Nello stesso giorno `tipo_consumo` ritirato dalla catena del push (`20261013-16…-23`).
-- 📝 **Un documento nasce nel suo stato iniziale** (`work-in-progress/brief-db-documento-nasce-nello-stato-iniziale.md`,
-  D32, 2026-10-13): le regole dell'uscita dalla bozza sono solo sull'UPDATE, e una bolla inserita già EMESSA
-  nasce numerata e vuota. Trovato nel giro del `20261013-53` (i lettori dell'emittente della bolla dopo il
-  normalize). Aperto, non iniziato: decisioni N-1…N-3.
 - 📝 **Dove si addebita il trasporto di un ordine fatturato alla conferma**
   (`work-in-progress/brief-db-addebito-trasporto-ordine.md`, da A-9 del brief sopra): aperto, non iniziato.
 - ✅ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca: chiuso il 2026-10-10**

@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-modello-documento-vendita §9): la conferma dell'ordine passa da
+--   dbops.fn_pgtap_porta_a_stato (il verbo dell'ordine), non da un UPDATE dello stato: la porta lo
+--   ferma. Nessuna attesa cambiata.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): l'area della dashboard e' il codice della sorgente; le chiavi del push col prefisso lungo.
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture deve creare una commessa dell'emittente B con l'operatore di A
@@ -369,9 +372,10 @@ SELECT ok(
   '5. Ordine DRAFT: motivo DOC_BOZZA, valore 50/0'
 );
 
-UPDATE vendite.ordini
-   SET stato_doc_ordine_id = (SELECT ord_confermato_id FROM tmp_df_refs)
- WHERE id = (SELECT id FROM tmp_df_ordine);
+-- rev 2026-10-25 (brief-modello-documento-vendita §9): lo stato dell'ordine
+-- si cambia solo dal suo verbo (la porta ferma l'UPDATE diretto): la
+-- conferma passa da porta_a_stato, sotto il guard di transizione.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ordini'::regclass, (SELECT id FROM tmp_df_ordine), 'CONFERMATO');
 
 SELECT is(
   (SELECT v.motivo_fermo FROM vendite.vw_dash_fatturazione_ordini v
