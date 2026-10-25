@@ -89,7 +89,7 @@ WITH ins AS (
     id_lingua
   )
   VALUES (
-    'ARTICOLI',
+    'ARTICOLO',
     (SELECT articolo_id FROM tmp_seed),
     'DOCUMENTO',
     'HEADER',

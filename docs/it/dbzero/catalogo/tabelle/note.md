@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| target_tipo | character varying(32) | NO |  |
+| target_tipo | character varying(50) | NO |  |
 | target_id | uuid | NO |  |
 | target_riga_id | uuid | YES |  |
 | anchor_tipo | character varying(12) | NO |  |
@@ -29,9 +29,9 @@
 | CHECK | chk_note_anchor_tipo |  |
 | CHECK | chk_note_posizione |  |
 | CHECK | chk_note_seq_pos |  |
-| CHECK | chk_note_target_tipo |  |
 | FOREIGN KEY | fk_cat_note_id_lingua | id_lingua |
 | FOREIGN KEY | fk_cat_note_id_stile | id_stile |
+| FOREIGN KEY | fk_cat_note_target_tipo | target_tipo |
 | PRIMARY KEY | pk_note | target_tipo, id |
 
 ## 📑 Indici

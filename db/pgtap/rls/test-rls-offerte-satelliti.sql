@@ -146,7 +146,7 @@ SELECT o.offerta_id,
 
 INSERT INTO vendite.note_offerte_commerciali
     (target_tipo, target_id, anchor_tipo, posizione, testo, id_stile)
-SELECT 'OFFERTA', o.offerta_id, 'DOCUMENTO', 'HEADER', 'Nota pgTAP RLS',
+SELECT 'OFFERTA_COMMERCIALE', o.offerta_id, 'DOCUMENTO', 'HEADER', 'Nota pgTAP RLS',
        (SELECT s.id FROM config.note_stili s WHERE s.codice_interno = 'NORMALE')
   FROM _offerte o;
 
@@ -217,7 +217,7 @@ BEGIN
     -- ⭐ La stessa nota, letta dal PADRE partizionato: dal passo 8 il padre ha
     --   le sue policy, quindi qui si deve leggere ZERO come dalla partizione.
     SELECT count(*) INTO v_n
-      FROM vendite.note n WHERE n.target_id = v_b.offerta_id AND n.target_tipo = 'OFFERTA';
+      FROM vendite.note n WHERE n.target_id = v_b.offerta_id AND n.target_tipo = 'OFFERTA_COMMERCIALE';
     PERFORM set_config('pgtap.note_b_dal_padre', v_n::text, true);
 
     -- ⭐ L'INVARIANTE verso la testata.

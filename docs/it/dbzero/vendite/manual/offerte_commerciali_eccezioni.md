@@ -216,7 +216,7 @@ funzione `vendite.fn_offerta_righe_preview` (2026-10-05, §8.1 dello stesso brie
 ### Note collegate
 
 Le note testuali sulle singole eccezioni risiedono in `vendite.note_offerte_commerciali`
-(partizione `'OFFERTA'` di `vendite.note`) con `target_tipo = 'RIGA'` e
+(partizione `'OFFERTA_COMMERCIALE'` di `vendite.note`, fino al 2026-10-25 `'OFFERTA'`) con `anchor_tipo = 'RIGA'` e
 `target_riga_id → offerte_commerciali_eccezioni(id)`.
 
 ---

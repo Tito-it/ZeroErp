@@ -9,7 +9,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| target_tipo | character varying(16) | NO |  |
+| target_tipo | character varying(50) | NO |  |
 | target_id | bigint | NO |  |
 | target_riga_id | bigint | YES |  |
 | anchor_tipo | character varying(12) | NO |  |
@@ -34,13 +34,13 @@
 | CHECK | chk_note_anchor_tipo |  |
 | CHECK | chk_note_posizione |  |
 | CHECK | chk_note_seq_pos |  |
-| CHECK | chk_note_target_tipo |  |
 | CHECK | chk_note_testo_non_vuoto |  |
 | CHECK | chk_offnote_anchor |  |
 | FOREIGN KEY | fk_offnote_riga | target_riga_id |
 | FOREIGN KEY | fk_offnote_testata | target_id |
 | FOREIGN KEY | fk_vendite_note_id_lingua | id_lingua |
 | FOREIGN KEY | fk_vendite_note_id_stile | id_stile |
+| FOREIGN KEY | fk_vendite_note_target_tipo | target_tipo |
 | PRIMARY KEY | note_offerte_commerciali_pkey | target_tipo, id |
 
 ## 📑 Indici
@@ -54,16 +54,14 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_note_offerte_commerciali_a10_eccezioni_require_attivo_ins_u | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'offerte_commerciali_eccezioni', 'attivo', 'target_riga_id', 'id')` |
-| trg_note_offerte_commerciali_a10_eccezioni_require_attivo_ins_u | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'offerte_commerciali_eccezioni', 'attivo', 'target_riga_id', 'id')` |
-| trg_note_offerte_commerciali_a10_offerte_commerciali_ecc_499d43 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'offerte_commerciali_eccezioni', 'attivo', 'target_riga_id', 'id')` |
 | trg_note_offerte_commerciali_a10_offerte_commerciali_ecc_499d43 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'offerte_commerciali_eccezioni', 'attivo', 'target_riga_id', 'id')` |
+| trg_note_offerte_commerciali_a10_offerte_commerciali_ecc_499d43 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'offerte_commerciali_eccezioni', 'attivo', 'target_riga_id', 'id')` |
 | trg_note_offerte_commerciali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_note_offerte_commerciali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_note_offerte_commerciali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_note_offerte_commerciali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_note_offerte_commerciali_validate_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.offerte_commerciali_eccezioni', 'offerta_id', 'OFFERTA')` |
-| trg_note_offerte_commerciali_validate_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.offerte_commerciali_eccezioni', 'offerta_id', 'OFFERTA')` |
+| trg_note_offerte_commerciali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_note_offerte_commerciali_validate_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.offerte_commerciali_eccezioni', 'offerta_id')` |
+| trg_note_offerte_commerciali_validate_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.offerte_commerciali_eccezioni', 'offerta_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

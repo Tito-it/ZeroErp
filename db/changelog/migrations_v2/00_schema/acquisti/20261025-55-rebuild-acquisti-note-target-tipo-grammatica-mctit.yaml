@@ -1,0 +1,246 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — lotto 3 (le note): acquisti.note.
+#   Brief: brief-db-grammatica-unica-documenti §14 (Tid, 2026-10-25: ok alle proposte L3-1 … L3-6, via).
+#
+#   I codici: ORDINE -> ORDINE_ACQUISTO, DDT -> DDT_ACQUISTO. In vendite.note gli stessi DDT e ORDINE
+#   nominavano i documenti di VENDITA: lo stesso nome per due documenti (§7.1), che qui sparisce.
+#   ⛔ FATTURA e CONTRATTO escono: erano solo nel CHECK, senza partizione, senza tabella e senza
+#     entita' (§8.2). Un INSERT con quei codici falliva gia' sul routing: niente cambia di
+#     comportamento, sparisce un elenco che prometteva cio' che non c'era.
+#
+# -- LA FORMA: STACCA, CONVERTI, RIATTACCA (L3-3) ------------------------------
+#   Il tipo della chiave di partizione non si cambia con ALTER sul padre; una partizione staccata
+#   e' una tabella qualunque. Quindi: padre nuovo, ogni partizione staccata -> convertita SUL
+#   POSTO (ALTER COLUMN ... TYPE ... USING, cioe' DDL: nessun trigger di riga scatta, audit e
+#   tx_id restano quelli dell'ultima modifica vera) -> riattaccata col codice nuovo; poi il padre
+#   vecchio, vuoto, se ne va e il nuovo prende il nome. Niente copia di righe: policy, trigger
+#   (anche i generati: nessun DDL su di loro, linee-guida-sql §11.5), FK e indici delle
+#   partizioni non si ricopiano. Provato su PostgreSQL 18 col dump di schema di dbdev e, per gli
+#   alberi dei CHECK, sullo scratch (nato da zero).
+#   * L'ATTACH fonde i CHECK per NOME, i NOT NULL per colonna, FK e indici per definizione: per
+#     questo CHECK, FK e NOT NULL del padre nuovo hanno i nomi di oggi, e PK e indici un nome
+#     provvisorio (i nomi d'indice sono unici nello schema) che si rinomina quando il vecchio non
+#     c'e' piu'.
+#   * ⛔ L'ATTACH confronta l'ALBERO dei CHECK (equal()), non il testo stampato, e l'albero dipende da
+#     come il vincolo e' nato: da zero dalla forma `IN (...)` dei changeSet d'origine, su dbdev (in
+#     parte ricaricato da dump) dal testo stampato, che rianalizzato da' un albero diverso. Per questo
+#     ogni partizione staccata riprende i CHECK del padre col testo del padre nuovo: gli alberi
+#     coincidono per costruzione, su qualunque database. (Il primo apply del 2026-10-25 si e' fermato
+#     sul -57 per questo; la prova sul dump non poteva vederlo, il dump ricostruisce dal testo.)
+#   * La sequenza dell'id e' del padre (identity): la nuova riparte da last_value della vecchia.
+#   * Le FK di catalogo e del registro dbops.fk_index_policy si leggono per NOME: i nomi restano.
+#     La FK nuova su target_tipo e' coperta dal prefisso della PK: nessun indice in piu' (§8.7).
+#   * Da zero l'ordine e' per numero, 00_schema e 20_code insieme: qui ci sono gia' partizioni,
+#     policy e trigger scritti a mano; le tabelle sono vuote e gli ALTER non convertono niente.
+#     config.tipi_entita si semina dopo (80_data): una FK su una tabella vuota non lo chiede.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/acquisti/20261025-55-rebuild-acquisti-note-target-tipo-grammatica-mctit.yaml
+
+  - changeSet:
+      id: 20261025-55-rebuild-acquisti-note-target-tipo-grammatica
+      author: mctit
+      runOnChange: false
+      # Rev 2026-10-25 (stessa giornata): i CHECK del padre si rimettono su ogni partizione
+      #   staccata col testo del padre (vedi intestazione). Il changeSet era gia' passato su dbdev,
+      #   dove gli alberi coincidevano per caso; da zero (scratch, CI) si sarebbe fermato.
+      #   ANY: dbdev non lo riesegue, e il suo stato e' equivalente.
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        acquisti.note ricostruita: target_tipo a varchar(50) col codice di config.tipi_entita e la FK al
+        posto del CHECK; le partizioni staccate, convertite sul posto e riattaccate. Grammatica
+        unica, lotto 3 (G-3, G-7).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+               WHERE i.inhparent = 'acquisti.note'::regclass
+                 AND pg_get_expr(c.relpartbound, c.oid) IN ('FOR VALUES IN (''ORDINE'')', 'FOR VALUES IN (''DDT'')')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_attribute
+               WHERE attrelid = 'acquisti.note'::regclass AND attname = 'target_tipo'
+                 AND format_type(atttypid, atttypmod) = 'character varying(16)'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Il padre nuovo: le stesse colonne, target_tipo a varchar(50) con la FK verso
+              --    config.tipi_entita al posto del CHECK. CHECK e FK coi NOMI di oggi (l'ATTACH li fonde
+              --    con quelli delle partizioni); PK e indici con un nome provvisorio, che si libera al punto 4.
+              CREATE TABLE acquisti.note_nuova (
+                  id bigint CONSTRAINT note_id_not_null NOT NULL GENERATED BY DEFAULT AS IDENTITY,
+                  target_tipo character varying(50) CONSTRAINT note_target_tipo_not_null NOT NULL,
+                  target_id bigint CONSTRAINT note_target_id_not_null NOT NULL,
+                  target_riga_id bigint,
+                  anchor_tipo character varying(12) CONSTRAINT note_anchor_tipo_not_null NOT NULL,
+                  posizione character varying(12) CONSTRAINT note_posizione_not_null NOT NULL,
+                  seq integer CONSTRAINT note_seq_not_null NOT NULL DEFAULT 10,
+                  testo text,
+                  testo_md text,
+                  visibile boolean CONSTRAINT note_visibile_not_null NOT NULL DEFAULT true,
+                  solo_stampa boolean CONSTRAINT note_solo_stampa_not_null NOT NULL DEFAULT false,
+                  meta jsonb CONSTRAINT note_meta_not_null NOT NULL DEFAULT '{}'::jsonb,
+                  data_insert timestamp with time zone CONSTRAINT note_data_insert_not_null NOT NULL DEFAULT now(),
+                  user_insert text CONSTRAINT note_user_insert_not_null NOT NULL DEFAULT CURRENT_USER,
+                  data_update timestamp with time zone CONSTRAINT note_data_update_not_null NOT NULL DEFAULT now(),
+                  user_update text CONSTRAINT note_user_update_not_null NOT NULL DEFAULT CURRENT_USER,
+                  id_stile bigint CONSTRAINT note_id_stile_not_null NOT NULL,
+                  id_lingua bigint,
+                  CONSTRAINT chk_acq_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA')),
+                  CONSTRAINT chk_acq_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER')),
+                  CONSTRAINT chk_acq_note_seq_pos CHECK (seq >= 0),
+                  CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL),
+                  CONSTRAINT fk_acq_note_id_lingua FOREIGN KEY (id_lingua) REFERENCES config.lingue(id) ON UPDATE CASCADE,
+                  CONSTRAINT fk_acq_note_id_stile FOREIGN KEY (id_stile) REFERENCES config.note_stili(id) ON UPDATE CASCADE,
+                  CONSTRAINT fk_acq_note_target_tipo FOREIGN KEY (target_tipo) REFERENCES config.tipi_entita(codice),
+                  CONSTRAINT pk_note_acq__nuova PRIMARY KEY (target_tipo, id)
+              ) PARTITION BY LIST (target_tipo);
+              CREATE INDEX ix_acq_note_render_order__nuova ON acquisti.note_nuova USING btree (target_tipo, target_id, anchor_tipo, posizione, seq);
+              CREATE INDEX ix_acquisti_note_by_riga__nuova ON acquisti.note_nuova USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL);
+
+              -- 2. Ogni partizione: si stacca, perde il CHECK ereditato (ora locale), riprende i CHECK
+              --    del padre col TESTO del padre nuovo (l'ATTACH confronta l'albero, non la stampa), si converte
+              --    SUL POSTO (ALTER ... USING: e' DDL, nessun trigger di riga scatta — audit, tx_id e i
+              --    guard non vedono niente), si riattacca col codice della grammatica. Policy, trigger,
+              --    FK verso la testata e indici della partizione restano dove sono.
+              ALTER TABLE acquisti.note DETACH PARTITION acquisti.note_ordini;
+              ALTER TABLE acquisti.note_ordini DROP CONSTRAINT chk_acq_note_target_tipo;
+              ALTER TABLE acquisti.note_ordini DROP CONSTRAINT chk_acq_note_anchor_tipo, ADD CONSTRAINT chk_acq_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE acquisti.note_ordini DROP CONSTRAINT chk_acq_note_posizione, ADD CONSTRAINT chk_acq_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE acquisti.note_ordini DROP CONSTRAINT chk_acq_note_seq_pos, ADD CONSTRAINT chk_acq_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE acquisti.note_ordini DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE acquisti.note_ordini ALTER COLUMN target_tipo TYPE character varying(50) USING 'ORDINE_ACQUISTO'::character varying(50);
+              ALTER TABLE acquisti.note_nuova ATTACH PARTITION acquisti.note_ordini FOR VALUES IN ('ORDINE_ACQUISTO');
+              ALTER TABLE acquisti.note DETACH PARTITION acquisti.note_ddt;
+              ALTER TABLE acquisti.note_ddt DROP CONSTRAINT chk_acq_note_target_tipo;
+              ALTER TABLE acquisti.note_ddt DROP CONSTRAINT chk_acq_note_anchor_tipo, ADD CONSTRAINT chk_acq_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE acquisti.note_ddt DROP CONSTRAINT chk_acq_note_posizione, ADD CONSTRAINT chk_acq_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE acquisti.note_ddt DROP CONSTRAINT chk_acq_note_seq_pos, ADD CONSTRAINT chk_acq_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE acquisti.note_ddt DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE acquisti.note_ddt ALTER COLUMN target_tipo TYPE character varying(50) USING 'DDT_ACQUISTO'::character varying(50);
+              ALTER TABLE acquisti.note_nuova ATTACH PARTITION acquisti.note_ddt FOR VALUES IN ('DDT_ACQUISTO');
+
+              -- 3. La sequenza dell'id e' del PADRE (identity): quella nuova riparte da dove era
+              --    arrivata la vecchia, o il prossimo id collide con la PK delle partizioni.
+              DO $seq$
+              DECLARE
+                v_last   bigint;
+                v_called boolean;
+              BEGIN
+                EXECUTE format('SELECT last_value, is_called FROM %s', pg_get_serial_sequence('acquisti.note', 'id'))
+                  INTO v_last, v_called;
+                PERFORM setval(pg_get_serial_sequence('acquisti.note_nuova', 'id'), v_last, v_called);
+              END
+              $seq$;
+
+              -- 4. Il padre vecchio, vuoto, se ne va (con le sue policy); il nuovo prende il nome.
+              DROP TABLE acquisti.note;
+              ALTER TABLE acquisti.note_nuova RENAME TO note;
+              ALTER TABLE acquisti.note RENAME CONSTRAINT pk_note_acq__nuova TO pk_note_acq;
+              ALTER INDEX acquisti.ix_acq_note_render_order__nuova RENAME TO ix_acq_note_render_order;
+              ALTER INDEX acquisti.ix_acquisti_note_by_riga__nuova RENAME TO ix_acquisti_note_by_riga;
+              ALTER SEQUENCE acquisti.note_nuova_id_seq RENAME TO note_id_seq;
+
+              -- 5. Cio' che stava sul padre e non sulle partizioni.
+              GRANT SELECT, INSERT, UPDATE, DELETE ON acquisti.note TO zeroerp_app;
+              COMMENT ON TABLE acquisti.note IS
+                'Note ancorabili a documenti/righe (acquisti); parent partizionato per target_tipo. Rev 2026-10-25 (20261025-55, brief-db-grammatica-unica-documenti lotto 3, G-3/G-7): ricostruita per portare target_tipo a varchar(50) col codice di config.tipi_entita (DDT_ACQUISTO, ORDINE_ACQUISTO); le partizioni sono le stesse, staccate e riattaccate.';
+              COMMENT ON COLUMN acquisti.note.target_tipo IS
+                'Il tipo della cosa a cui la nota e'' ancorata: il codice di config.tipi_entita (G-7 di brief-db-grammatica-unica-documenti), che per un documento e'' il codice_interno della sua sorgente. E'' la chiave di partizione: ogni valore ha la sua partizione, con la FK verso la tabella della cosa. ⛔ Non c''e'' piu'' un CHECK con l''elenco: lo dice la FK fk_acq_note_target_tipo, e un tipo nuovo e'' una riga di tipi_entita.csv piu'' la sua partizione.';
+              COMMENT ON CONSTRAINT fk_acq_note_target_tipo ON acquisti.note IS
+                'Il tipo della nota e'' un''entita'' indicabile (G-7 di brief-db-grammatica-unica-documenti): toglie l''elenco scritto a mano. ⚠️ Non sostituisce la partizione: un codice senza partizione e'' rifiutato prima, dal routing.';
+              COMMENT ON COLUMN acquisti.note.id_stile IS 'Stile della nota: FK a config.note_stili(id).';
+              COMMENT ON COLUMN acquisti.note.id_lingua IS 'Lingua della nota: FK a config.lingue(id).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Fallisce se intanto e' nata una nota di un tipo che il CHECK di prima non ammette:
+              --    e' voluto, un rollback non butta via righe.
+              CREATE TABLE acquisti.note_vecchia (
+                  id bigint CONSTRAINT note_id_not_null NOT NULL GENERATED BY DEFAULT AS IDENTITY,
+                  target_tipo character varying(16) CONSTRAINT note_target_tipo_not_null NOT NULL,
+                  target_id bigint CONSTRAINT note_target_id_not_null NOT NULL,
+                  target_riga_id bigint,
+                  anchor_tipo character varying(12) CONSTRAINT note_anchor_tipo_not_null NOT NULL,
+                  posizione character varying(12) CONSTRAINT note_posizione_not_null NOT NULL,
+                  seq integer CONSTRAINT note_seq_not_null NOT NULL DEFAULT 10,
+                  testo text,
+                  testo_md text,
+                  visibile boolean CONSTRAINT note_visibile_not_null NOT NULL DEFAULT true,
+                  solo_stampa boolean CONSTRAINT note_solo_stampa_not_null NOT NULL DEFAULT false,
+                  meta jsonb CONSTRAINT note_meta_not_null NOT NULL DEFAULT '{}'::jsonb,
+                  data_insert timestamp with time zone CONSTRAINT note_data_insert_not_null NOT NULL DEFAULT now(),
+                  user_insert text CONSTRAINT note_user_insert_not_null NOT NULL DEFAULT CURRENT_USER,
+                  data_update timestamp with time zone CONSTRAINT note_data_update_not_null NOT NULL DEFAULT now(),
+                  user_update text CONSTRAINT note_user_update_not_null NOT NULL DEFAULT CURRENT_USER,
+                  id_stile bigint CONSTRAINT note_id_stile_not_null NOT NULL,
+                  id_lingua bigint,
+                  CONSTRAINT chk_acq_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA')),
+                  CONSTRAINT chk_acq_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER')),
+                  CONSTRAINT chk_acq_note_seq_pos CHECK (seq >= 0),
+                  CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL),
+                  CONSTRAINT chk_acq_note_target_tipo CHECK (((target_tipo)::text = ANY (ARRAY[('ORDINE'::character varying)::text, ('DDT'::character varying)::text, ('FATTURA'::character varying)::text, ('CONTRATTO'::character varying)::text]))),
+                  CONSTRAINT fk_acq_note_id_lingua FOREIGN KEY (id_lingua) REFERENCES config.lingue(id) ON UPDATE CASCADE,
+                  CONSTRAINT fk_acq_note_id_stile FOREIGN KEY (id_stile) REFERENCES config.note_stili(id) ON UPDATE CASCADE,
+                  CONSTRAINT pk_note_acq__vecchia PRIMARY KEY (target_tipo, id)
+              ) PARTITION BY LIST (target_tipo);
+              CREATE INDEX ix_acq_note_render_order__vecchia ON acquisti.note_vecchia USING btree (target_tipo, target_id, anchor_tipo, posizione, seq);
+              CREATE INDEX ix_acquisti_note_by_riga__vecchia ON acquisti.note_vecchia USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL);
+              ALTER TABLE acquisti.note DETACH PARTITION acquisti.note_ordini;
+              ALTER TABLE acquisti.note_ordini DROP CONSTRAINT fk_acq_note_target_tipo;
+              ALTER TABLE acquisti.note_ordini DROP CONSTRAINT chk_acq_note_anchor_tipo, ADD CONSTRAINT chk_acq_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE acquisti.note_ordini DROP CONSTRAINT chk_acq_note_posizione, ADD CONSTRAINT chk_acq_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE acquisti.note_ordini DROP CONSTRAINT chk_acq_note_seq_pos, ADD CONSTRAINT chk_acq_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE acquisti.note_ordini DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE acquisti.note_ordini ALTER COLUMN target_tipo TYPE character varying(16) USING 'ORDINE'::character varying(16);
+              ALTER TABLE acquisti.note_ordini ADD CONSTRAINT chk_acq_note_target_tipo CHECK (((target_tipo)::text = ANY (ARRAY[('ORDINE'::character varying)::text, ('DDT'::character varying)::text, ('FATTURA'::character varying)::text, ('CONTRATTO'::character varying)::text])));
+              ALTER TABLE acquisti.note_vecchia ATTACH PARTITION acquisti.note_ordini FOR VALUES IN ('ORDINE');
+              ALTER TABLE acquisti.note DETACH PARTITION acquisti.note_ddt;
+              ALTER TABLE acquisti.note_ddt DROP CONSTRAINT fk_acq_note_target_tipo;
+              ALTER TABLE acquisti.note_ddt DROP CONSTRAINT chk_acq_note_anchor_tipo, ADD CONSTRAINT chk_acq_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE acquisti.note_ddt DROP CONSTRAINT chk_acq_note_posizione, ADD CONSTRAINT chk_acq_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE acquisti.note_ddt DROP CONSTRAINT chk_acq_note_seq_pos, ADD CONSTRAINT chk_acq_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE acquisti.note_ddt DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE acquisti.note_ddt ALTER COLUMN target_tipo TYPE character varying(16) USING 'DDT'::character varying(16);
+              ALTER TABLE acquisti.note_ddt ADD CONSTRAINT chk_acq_note_target_tipo CHECK (((target_tipo)::text = ANY (ARRAY[('ORDINE'::character varying)::text, ('DDT'::character varying)::text, ('FATTURA'::character varying)::text, ('CONTRATTO'::character varying)::text])));
+              ALTER TABLE acquisti.note_vecchia ATTACH PARTITION acquisti.note_ddt FOR VALUES IN ('DDT');
+              DO $seq$
+              DECLARE
+                v_last   bigint;
+                v_called boolean;
+              BEGIN
+                EXECUTE format('SELECT last_value, is_called FROM %s', pg_get_serial_sequence('acquisti.note', 'id'))
+                  INTO v_last, v_called;
+                PERFORM setval(pg_get_serial_sequence('acquisti.note_vecchia', 'id'), v_last, v_called);
+              END
+              $seq$;
+              DROP TABLE acquisti.note;
+              ALTER TABLE acquisti.note_vecchia RENAME TO note;
+              ALTER TABLE acquisti.note RENAME CONSTRAINT pk_note_acq__vecchia TO pk_note_acq;
+              ALTER INDEX acquisti.ix_acq_note_render_order__vecchia RENAME TO ix_acq_note_render_order;
+              ALTER INDEX acquisti.ix_acquisti_note_by_riga__vecchia RENAME TO ix_acquisti_note_by_riga;
+              ALTER SEQUENCE acquisti.note_vecchia_id_seq RENAME TO note_id_seq;
+              GRANT SELECT, INSERT, UPDATE, DELETE ON acquisti.note TO zeroerp_app;
+              COMMENT ON TABLE acquisti.note IS 'Note ancorabili a documenti/righe (acquisti); parent partizionato per target_tipo.';
+              COMMENT ON COLUMN acquisti.note.id_stile IS 'Stile della nota: FK a config.note_stili(id).';
+              COMMENT ON COLUMN acquisti.note.id_lingua IS 'Lingua della nota: FK a config.lingue(id).';
+              COMMENT ON CONSTRAINT chk_acq_note_target_tipo ON acquisti.note IS 'Valori ammessi: ORDINE | DDT | FATTURA | CONTRATTO.';

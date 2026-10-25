@@ -1,0 +1,370 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — lotto 3 (le note): vendite.note.
+#   Brief: brief-db-grammatica-unica-documenti §14 (Tid, 2026-10-25: ok alle proposte L3-1 … L3-6, via).
+#
+#   G-7: le note puntano a config.tipi_entita; G-3: la colonna che nomina un tipo e' varchar(50) e
+#   ha la FK al posto del CHECK. I codici: ORDINE -> ORDINE_VENDITA, DDT -> DDT_VENDITA,
+#   OFFERTA -> OFFERTA_COMMERCIALE, ATTIVITAFT -> ATTIVITA; PREVENTIVO, CONTRATTO, FATTURA uguali.
+#   OFFERTA_COMMERCIALE (19) non stava in varchar(16): era il motivo del nome corto (§1).
+#
+# -- LA FORMA: STACCA, CONVERTI, RIATTACCA (L3-3) ------------------------------
+#   Il tipo della chiave di partizione non si cambia con ALTER sul padre; una partizione staccata
+#   e' una tabella qualunque. Quindi: padre nuovo, ogni partizione staccata -> convertita SUL
+#   POSTO (ALTER COLUMN ... TYPE ... USING, cioe' DDL: nessun trigger di riga scatta, audit e
+#   tx_id restano quelli dell'ultima modifica vera) -> riattaccata col codice nuovo; poi il padre
+#   vecchio, vuoto, se ne va e il nuovo prende il nome. Niente copia di righe: policy, trigger
+#   (anche i generati: nessun DDL su di loro, linee-guida-sql §11.5), FK e indici delle
+#   partizioni non si ricopiano. Provato su PostgreSQL 18 col dump di schema di dbdev e, per gli
+#   alberi dei CHECK, sullo scratch (nato da zero).
+#   * L'ATTACH fonde i CHECK per NOME, i NOT NULL per colonna, FK e indici per definizione: per
+#     questo CHECK, FK e NOT NULL del padre nuovo hanno i nomi di oggi, e PK e indici un nome
+#     provvisorio (i nomi d'indice sono unici nello schema) che si rinomina quando il vecchio non
+#     c'e' piu'.
+#   * ⛔ L'ATTACH confronta l'ALBERO dei CHECK (equal()), non il testo stampato, e l'albero dipende da
+#     come il vincolo e' nato: da zero dalla forma `IN (...)` dei changeSet d'origine, su dbdev (in
+#     parte ricaricato da dump) dal testo stampato, che rianalizzato da' un albero diverso. Per questo
+#     ogni partizione staccata riprende i CHECK del padre col testo del padre nuovo: gli alberi
+#     coincidono per costruzione, su qualunque database. (Il primo apply del 2026-10-25 si e' fermato
+#     sul -57 per questo; la prova sul dump non poteva vederlo, il dump ricostruisce dal testo.)
+#   * La sequenza dell'id e' del padre (identity): la nuova riparte da last_value della vecchia.
+#   * Le FK di catalogo e del registro dbops.fk_index_policy si leggono per NOME: i nomi restano.
+#     La FK nuova su target_tipo e' coperta dal prefisso della PK: nessun indice in piu' (§8.7).
+#   * Da zero l'ordine e' per numero, 00_schema e 20_code insieme: qui ci sono gia' partizioni,
+#     policy e trigger scritti a mano; le tabelle sono vuote e gli ALTER non convertono niente.
+#     config.tipi_entita si semina dopo (80_data): una FK su una tabella vuota non lo chiede.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261025-54-rebuild-vendite-note-target-tipo-grammatica-mctit.yaml
+
+  - changeSet:
+      id: 20261025-54-rebuild-vendite-note-target-tipo-grammatica
+      author: mctit
+      runOnChange: false
+      # Rev 2026-10-25 (stessa giornata): i CHECK del padre si rimettono su ogni partizione
+      #   staccata col testo del padre (vedi intestazione). Il changeSet era gia' passato su dbdev,
+      #   dove gli alberi coincidevano per caso; da zero (scratch, CI) si sarebbe fermato.
+      #   ANY: dbdev non lo riesegue, e il suo stato e' equivalente.
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.note ricostruita: target_tipo a varchar(50) col codice di config.tipi_entita e la FK al
+        posto del CHECK; le partizioni staccate, convertite sul posto e riattaccate. Grammatica
+        unica, lotto 3 (G-3, G-7).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 7
+            sql: >
+              SELECT count(*) FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+               WHERE i.inhparent = 'vendite.note'::regclass
+                 AND pg_get_expr(c.relpartbound, c.oid) IN ('FOR VALUES IN (''PREVENTIVO'')', 'FOR VALUES IN (''CONTRATTO'')', 'FOR VALUES IN (''FATTURA'')', 'FOR VALUES IN (''ORDINE'')', 'FOR VALUES IN (''DDT'')', 'FOR VALUES IN (''ATTIVITAFT'')', 'FOR VALUES IN (''OFFERTA'')')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_attribute
+               WHERE attrelid = 'vendite.note'::regclass AND attname = 'target_tipo'
+                 AND format_type(atttypid, atttypmod) = 'character varying(16)'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Il padre nuovo: le stesse colonne, target_tipo a varchar(50) con la FK verso
+              --    config.tipi_entita al posto del CHECK. CHECK e FK coi NOMI di oggi (l'ATTACH li fonde
+              --    con quelli delle partizioni); PK e indici con un nome provvisorio, che si libera al punto 4.
+              CREATE TABLE vendite.note_nuova (
+                  id bigint CONSTRAINT note_id_not_null NOT NULL GENERATED BY DEFAULT AS IDENTITY,
+                  target_tipo character varying(50) CONSTRAINT note_target_tipo_not_null NOT NULL,
+                  target_id bigint CONSTRAINT note_target_id_not_null NOT NULL,
+                  target_riga_id bigint,
+                  anchor_tipo character varying(12) CONSTRAINT note_anchor_tipo_not_null NOT NULL,
+                  posizione character varying(12) CONSTRAINT note_posizione_not_null NOT NULL,
+                  seq integer CONSTRAINT note_seq_not_null NOT NULL DEFAULT 10,
+                  testo text,
+                  testo_md text,
+                  visibile boolean CONSTRAINT note_visibile_not_null NOT NULL DEFAULT true,
+                  solo_stampa boolean CONSTRAINT note_solo_stampa_not_null NOT NULL DEFAULT false,
+                  meta jsonb CONSTRAINT note_meta_not_null NOT NULL DEFAULT '{}'::jsonb,
+                  data_insert timestamp with time zone CONSTRAINT note_data_insert_not_null NOT NULL DEFAULT now(),
+                  user_insert text CONSTRAINT note_user_insert_not_null NOT NULL DEFAULT CURRENT_USER,
+                  data_update timestamp with time zone CONSTRAINT note_data_update_not_null NOT NULL DEFAULT now(),
+                  user_update text CONSTRAINT note_user_update_not_null NOT NULL DEFAULT CURRENT_USER,
+                  id_stile bigint CONSTRAINT note_id_stile_not_null NOT NULL,
+                  id_lingua bigint,
+                  tx_id uuid,
+                  CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA')),
+                  CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER')),
+                  CONSTRAINT chk_note_seq_pos CHECK (seq >= 0),
+                  CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL),
+                  CONSTRAINT fk_vendite_note_id_lingua FOREIGN KEY (id_lingua) REFERENCES config.lingue(id) ON UPDATE CASCADE,
+                  CONSTRAINT fk_vendite_note_id_stile FOREIGN KEY (id_stile) REFERENCES config.note_stili(id) ON UPDATE CASCADE,
+                  CONSTRAINT fk_vendite_note_target_tipo FOREIGN KEY (target_tipo) REFERENCES config.tipi_entita(codice),
+                  CONSTRAINT pk_note__nuova PRIMARY KEY (target_tipo, id)
+              ) PARTITION BY LIST (target_tipo);
+              CREATE INDEX ix_note_render_order__nuova ON vendite.note_nuova USING btree (target_tipo, target_id, anchor_tipo, posizione, seq);
+              CREATE INDEX ix_vendite_note_by_riga__nuova ON vendite.note_nuova USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL);
+
+              -- 2. Ogni partizione: si stacca, perde il CHECK ereditato (ora locale), riprende i CHECK
+              --    del padre col TESTO del padre nuovo (l'ATTACH confronta l'albero, non la stampa), si converte
+              --    SUL POSTO (ALTER ... USING: e' DDL, nessun trigger di riga scatta — audit, tx_id e i
+              --    guard non vedono niente), si riattacca col codice della grammatica. Policy, trigger,
+              --    FK verso la testata e indici della partizione restano dove sono.
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_preventivo;
+              ALTER TABLE vendite.note_preventivo DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE vendite.note_preventivo DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE vendite.note_preventivo DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE vendite.note_preventivo DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE vendite.note_preventivo DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE vendite.note_preventivo ALTER COLUMN target_tipo TYPE character varying(50);
+              ALTER TABLE vendite.note_nuova ATTACH PARTITION vendite.note_preventivo FOR VALUES IN ('PREVENTIVO');
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_contratto;
+              ALTER TABLE vendite.note_contratto DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE vendite.note_contratto DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE vendite.note_contratto DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE vendite.note_contratto DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE vendite.note_contratto DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE vendite.note_contratto ALTER COLUMN target_tipo TYPE character varying(50);
+              ALTER TABLE vendite.note_nuova ATTACH PARTITION vendite.note_contratto FOR VALUES IN ('CONTRATTO');
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_fatture;
+              ALTER TABLE vendite.note_fatture DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE vendite.note_fatture DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE vendite.note_fatture DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE vendite.note_fatture DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE vendite.note_fatture DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE vendite.note_fatture ALTER COLUMN target_tipo TYPE character varying(50);
+              ALTER TABLE vendite.note_nuova ATTACH PARTITION vendite.note_fatture FOR VALUES IN ('FATTURA');
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_ordini;
+              ALTER TABLE vendite.note_ordini DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE vendite.note_ordini DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE vendite.note_ordini DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE vendite.note_ordini DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE vendite.note_ordini DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE vendite.note_ordini ALTER COLUMN target_tipo TYPE character varying(50) USING 'ORDINE_VENDITA'::character varying(50);
+              ALTER TABLE vendite.note_nuova ATTACH PARTITION vendite.note_ordini FOR VALUES IN ('ORDINE_VENDITA');
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_ddt;
+              ALTER TABLE vendite.note_ddt DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE vendite.note_ddt DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE vendite.note_ddt DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE vendite.note_ddt DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE vendite.note_ddt DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE vendite.note_ddt ALTER COLUMN target_tipo TYPE character varying(50) USING 'DDT_VENDITA'::character varying(50);
+              ALTER TABLE vendite.note_nuova ATTACH PARTITION vendite.note_ddt FOR VALUES IN ('DDT_VENDITA');
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_attivita_fatturabili;
+              ALTER TABLE vendite.note_attivita_fatturabili DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE vendite.note_attivita_fatturabili DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE vendite.note_attivita_fatturabili DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE vendite.note_attivita_fatturabili DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE vendite.note_attivita_fatturabili DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE vendite.note_attivita_fatturabili ALTER COLUMN target_tipo TYPE character varying(50) USING 'ATTIVITA'::character varying(50);
+              ALTER TABLE vendite.note_nuova ATTACH PARTITION vendite.note_attivita_fatturabili FOR VALUES IN ('ATTIVITA');
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_offerte_commerciali;
+              ALTER TABLE vendite.note_offerte_commerciali DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE vendite.note_offerte_commerciali DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE vendite.note_offerte_commerciali DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE vendite.note_offerte_commerciali DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE vendite.note_offerte_commerciali DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE vendite.note_offerte_commerciali ALTER COLUMN target_tipo TYPE character varying(50) USING 'OFFERTA_COMMERCIALE'::character varying(50);
+              ALTER TABLE vendite.note_nuova ATTACH PARTITION vendite.note_offerte_commerciali FOR VALUES IN ('OFFERTA_COMMERCIALE');
+
+              -- 3. La sequenza dell'id e' del PADRE (identity): quella nuova riparte da dove era
+              --    arrivata la vecchia, o il prossimo id collide con la PK delle partizioni.
+              DO $seq$
+              DECLARE
+                v_last   bigint;
+                v_called boolean;
+              BEGIN
+                EXECUTE format('SELECT last_value, is_called FROM %s', pg_get_serial_sequence('vendite.note', 'id'))
+                  INTO v_last, v_called;
+                PERFORM setval(pg_get_serial_sequence('vendite.note_nuova', 'id'), v_last, v_called);
+              END
+              $seq$;
+
+              -- 4. Il padre vecchio, vuoto, se ne va (con le sue policy); il nuovo prende il nome.
+              DROP TABLE vendite.note;
+              ALTER TABLE vendite.note_nuova RENAME TO note;
+              ALTER TABLE vendite.note RENAME CONSTRAINT pk_note__nuova TO pk_note;
+              ALTER INDEX vendite.ix_note_render_order__nuova RENAME TO ix_note_render_order;
+              ALTER INDEX vendite.ix_vendite_note_by_riga__nuova RENAME TO ix_vendite_note_by_riga;
+              ALTER SEQUENCE vendite.note_nuova_id_seq RENAME TO note_id_seq;
+
+              -- 5. Cio' che stava sul padre e non sulle partizioni.
+              ALTER TABLE vendite.note ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY rls_note_ef_whitelist ON vendite.note FOR ALL
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), target_tipo, target_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), target_tipo, target_id)));
+              COMMENT ON POLICY rls_note_ef_whitelist ON vendite.note IS
+                'Perimetro emittente sul PADRE partizionato: smista su target_tipo verso l''adattatore della famiglia. ⛔ Esiste perche'' le policy delle PARTIZIONI non risalgono al padre — provato il 2026-09-09: col padre armato e senza policy propria, SELECT FROM vendite.note risponde zero. Senza questa policy, ogni policy sulle partizioni resta aggirabile leggendo dal padre. Brief §6.4, passo 8.';
+              CREATE POLICY rls_note_cliente ON vendite.note FOR SELECT
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'CLIENTE_PORTALE'::text) AND script.fn_scope_note_cliente_perimetro((SELECT script.fn_get_identita_sr_perimetro((NULLIF(current_setting('app.current_identita_id'::text, true), ''::text))::bigint, ARRAY['CLIENTE_PORTALE'::config.ruolo_applicativo])), target_tipo, target_id)));
+              COMMENT ON POLICY rls_note_cliente ON vendite.note IS
+                'Veste CLIENTE_PORTALE sul padre: copre FATTURA e ORDINE_VENDITA, cioe'' l''unione esatta delle vesti cliente che le partizioni concedono. Le altre cinque famiglie non ne hanno.';
+              CREATE POLICY rls_note_shop ON vendite.note FOR SELECT
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'SHOP_CUSTOMER'::text) AND script.fn_scope_note_shop_perimetro((SELECT script.fn_get_identita_sr_perimetro((NULLIF(current_setting('app.current_identita_id'::text, true), ''::text))::bigint, ARRAY['SHOP_CUSTOMER'::config.ruolo_applicativo])), target_tipo, target_id)));
+              COMMENT ON POLICY rls_note_shop ON vendite.note IS
+                'Veste SHOP_CUSTOMER sul padre: solo ORDINE_VENDITA, con la doppia condizione (proprieta'' e canale SHOP) che pretende la testata.';
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.note TO zeroerp_app;
+              COMMENT ON TABLE vendite.note IS
+                'Note testuali ancorabili al documento o alla riga; tabella padre partizionata per target_tipo. Rev 2026-10-25 (20261025-54, brief-db-grammatica-unica-documenti lotto 3, G-3/G-7): ricostruita per portare target_tipo a varchar(50) col codice di config.tipi_entita (ATTIVITA, CONTRATTO, DDT_VENDITA, FATTURA, OFFERTA_COMMERCIALE, ORDINE_VENDITA, PREVENTIVO); le partizioni sono le stesse, staccate e riattaccate.';
+              COMMENT ON COLUMN vendite.note.target_tipo IS
+                'Il tipo della cosa a cui la nota e'' ancorata: il codice di config.tipi_entita (G-7 di brief-db-grammatica-unica-documenti), che per un documento e'' il codice_interno della sua sorgente. E'' la chiave di partizione: ogni valore ha la sua partizione, con la FK verso la tabella della cosa. ⛔ Non c''e'' piu'' un CHECK con l''elenco: lo dice la FK fk_vendite_note_target_tipo, e un tipo nuovo e'' una riga di tipi_entita.csv piu'' la sua partizione.';
+              COMMENT ON CONSTRAINT fk_vendite_note_target_tipo ON vendite.note IS
+                'Il tipo della nota e'' un''entita'' indicabile (G-7 di brief-db-grammatica-unica-documenti): toglie l''elenco scritto a mano. ⚠️ Non sostituisce la partizione: un codice senza partizione e'' rifiutato prima, dal routing.';
+              COMMENT ON COLUMN vendite.note.id_stile IS 'Stile della nota: FK a config.note_stili(id).';
+              COMMENT ON COLUMN vendite.note.id_lingua IS 'Lingua della nota: FK a config.lingue(id).';
+              COMMENT ON COLUMN vendite.note.tx_id IS 'Transaction id correlazione audit (popolato da trgfn_tx_id_managed via automation). La colonna e'' definita sulla padre e propagata a tutte le partizioni figlie.';
+              COMMENT ON CONSTRAINT chk_note_anchor_tipo ON vendite.note IS 'Valori ammessi per anchor_tipo.';
+              COMMENT ON CONSTRAINT chk_note_posizione ON vendite.note IS 'Valori ammessi per posizione.';
+              COMMENT ON CONSTRAINT chk_note_seq_pos ON vendite.note IS 'seq obbligatoria e non negativa.';
+              COMMENT ON CONSTRAINT pk_note ON vendite.note IS 'PK composita (target_tipo, id) richiesta per la tabella partizionata.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Fallisce se intanto e' nata una nota di un tipo che il CHECK di prima non ammette:
+              --    e' voluto, un rollback non butta via righe.
+              CREATE TABLE vendite.note_vecchia (
+                  id bigint CONSTRAINT note_id_not_null NOT NULL GENERATED BY DEFAULT AS IDENTITY,
+                  target_tipo character varying(16) CONSTRAINT note_target_tipo_not_null NOT NULL,
+                  target_id bigint CONSTRAINT note_target_id_not_null NOT NULL,
+                  target_riga_id bigint,
+                  anchor_tipo character varying(12) CONSTRAINT note_anchor_tipo_not_null NOT NULL,
+                  posizione character varying(12) CONSTRAINT note_posizione_not_null NOT NULL,
+                  seq integer CONSTRAINT note_seq_not_null NOT NULL DEFAULT 10,
+                  testo text,
+                  testo_md text,
+                  visibile boolean CONSTRAINT note_visibile_not_null NOT NULL DEFAULT true,
+                  solo_stampa boolean CONSTRAINT note_solo_stampa_not_null NOT NULL DEFAULT false,
+                  meta jsonb CONSTRAINT note_meta_not_null NOT NULL DEFAULT '{}'::jsonb,
+                  data_insert timestamp with time zone CONSTRAINT note_data_insert_not_null NOT NULL DEFAULT now(),
+                  user_insert text CONSTRAINT note_user_insert_not_null NOT NULL DEFAULT CURRENT_USER,
+                  data_update timestamp with time zone CONSTRAINT note_data_update_not_null NOT NULL DEFAULT now(),
+                  user_update text CONSTRAINT note_user_update_not_null NOT NULL DEFAULT CURRENT_USER,
+                  id_stile bigint CONSTRAINT note_id_stile_not_null NOT NULL,
+                  id_lingua bigint,
+                  tx_id uuid,
+                  CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA')),
+                  CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER')),
+                  CONSTRAINT chk_note_seq_pos CHECK (seq >= 0),
+                  CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL),
+                  CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['PREVENTIVO'::character varying, 'CONTRATTO'::character varying, 'FATTURA'::character varying, 'ORDINE'::character varying, 'DDT'::character varying, 'ATTIVITAFT'::character varying, 'OFFERTA'::character varying])::text[]))),
+                  CONSTRAINT fk_vendite_note_id_lingua FOREIGN KEY (id_lingua) REFERENCES config.lingue(id) ON UPDATE CASCADE,
+                  CONSTRAINT fk_vendite_note_id_stile FOREIGN KEY (id_stile) REFERENCES config.note_stili(id) ON UPDATE CASCADE,
+                  CONSTRAINT pk_note__vecchia PRIMARY KEY (target_tipo, id)
+              ) PARTITION BY LIST (target_tipo);
+              CREATE INDEX ix_note_render_order__vecchia ON vendite.note_vecchia USING btree (target_tipo, target_id, anchor_tipo, posizione, seq);
+              CREATE INDEX ix_vendite_note_by_riga__vecchia ON vendite.note_vecchia USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL);
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_preventivo;
+              ALTER TABLE vendite.note_preventivo DROP CONSTRAINT fk_vendite_note_target_tipo;
+              ALTER TABLE vendite.note_preventivo DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE vendite.note_preventivo DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE vendite.note_preventivo DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE vendite.note_preventivo DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE vendite.note_preventivo ALTER COLUMN target_tipo TYPE character varying(16);
+              ALTER TABLE vendite.note_preventivo ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['PREVENTIVO'::character varying, 'CONTRATTO'::character varying, 'FATTURA'::character varying, 'ORDINE'::character varying, 'DDT'::character varying, 'ATTIVITAFT'::character varying, 'OFFERTA'::character varying])::text[])));
+              ALTER TABLE vendite.note_vecchia ATTACH PARTITION vendite.note_preventivo FOR VALUES IN ('PREVENTIVO');
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_contratto;
+              ALTER TABLE vendite.note_contratto DROP CONSTRAINT fk_vendite_note_target_tipo;
+              ALTER TABLE vendite.note_contratto DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE vendite.note_contratto DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE vendite.note_contratto DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE vendite.note_contratto DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE vendite.note_contratto ALTER COLUMN target_tipo TYPE character varying(16);
+              ALTER TABLE vendite.note_contratto ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['PREVENTIVO'::character varying, 'CONTRATTO'::character varying, 'FATTURA'::character varying, 'ORDINE'::character varying, 'DDT'::character varying, 'ATTIVITAFT'::character varying, 'OFFERTA'::character varying])::text[])));
+              ALTER TABLE vendite.note_vecchia ATTACH PARTITION vendite.note_contratto FOR VALUES IN ('CONTRATTO');
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_fatture;
+              ALTER TABLE vendite.note_fatture DROP CONSTRAINT fk_vendite_note_target_tipo;
+              ALTER TABLE vendite.note_fatture DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE vendite.note_fatture DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE vendite.note_fatture DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE vendite.note_fatture DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE vendite.note_fatture ALTER COLUMN target_tipo TYPE character varying(16);
+              ALTER TABLE vendite.note_fatture ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['PREVENTIVO'::character varying, 'CONTRATTO'::character varying, 'FATTURA'::character varying, 'ORDINE'::character varying, 'DDT'::character varying, 'ATTIVITAFT'::character varying, 'OFFERTA'::character varying])::text[])));
+              ALTER TABLE vendite.note_vecchia ATTACH PARTITION vendite.note_fatture FOR VALUES IN ('FATTURA');
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_ordini;
+              ALTER TABLE vendite.note_ordini DROP CONSTRAINT fk_vendite_note_target_tipo;
+              ALTER TABLE vendite.note_ordini DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE vendite.note_ordini DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE vendite.note_ordini DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE vendite.note_ordini DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE vendite.note_ordini ALTER COLUMN target_tipo TYPE character varying(16) USING 'ORDINE'::character varying(16);
+              ALTER TABLE vendite.note_ordini ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['PREVENTIVO'::character varying, 'CONTRATTO'::character varying, 'FATTURA'::character varying, 'ORDINE'::character varying, 'DDT'::character varying, 'ATTIVITAFT'::character varying, 'OFFERTA'::character varying])::text[])));
+              ALTER TABLE vendite.note_vecchia ATTACH PARTITION vendite.note_ordini FOR VALUES IN ('ORDINE');
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_ddt;
+              ALTER TABLE vendite.note_ddt DROP CONSTRAINT fk_vendite_note_target_tipo;
+              ALTER TABLE vendite.note_ddt DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE vendite.note_ddt DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE vendite.note_ddt DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE vendite.note_ddt DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE vendite.note_ddt ALTER COLUMN target_tipo TYPE character varying(16) USING 'DDT'::character varying(16);
+              ALTER TABLE vendite.note_ddt ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['PREVENTIVO'::character varying, 'CONTRATTO'::character varying, 'FATTURA'::character varying, 'ORDINE'::character varying, 'DDT'::character varying, 'ATTIVITAFT'::character varying, 'OFFERTA'::character varying])::text[])));
+              ALTER TABLE vendite.note_vecchia ATTACH PARTITION vendite.note_ddt FOR VALUES IN ('DDT');
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_attivita_fatturabili;
+              ALTER TABLE vendite.note_attivita_fatturabili DROP CONSTRAINT fk_vendite_note_target_tipo;
+              ALTER TABLE vendite.note_attivita_fatturabili DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE vendite.note_attivita_fatturabili DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE vendite.note_attivita_fatturabili DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE vendite.note_attivita_fatturabili DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE vendite.note_attivita_fatturabili ALTER COLUMN target_tipo TYPE character varying(16) USING 'ATTIVITAFT'::character varying(16);
+              ALTER TABLE vendite.note_attivita_fatturabili ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['PREVENTIVO'::character varying, 'CONTRATTO'::character varying, 'FATTURA'::character varying, 'ORDINE'::character varying, 'DDT'::character varying, 'ATTIVITAFT'::character varying, 'OFFERTA'::character varying])::text[])));
+              ALTER TABLE vendite.note_vecchia ATTACH PARTITION vendite.note_attivita_fatturabili FOR VALUES IN ('ATTIVITAFT');
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_offerte_commerciali;
+              ALTER TABLE vendite.note_offerte_commerciali DROP CONSTRAINT fk_vendite_note_target_tipo;
+              ALTER TABLE vendite.note_offerte_commerciali DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE vendite.note_offerte_commerciali DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE vendite.note_offerte_commerciali DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE vendite.note_offerte_commerciali DROP CONSTRAINT chk_note_testo_non_vuoto, ADD CONSTRAINT chk_note_testo_non_vuoto CHECK (testo IS NOT NULL OR testo_md IS NOT NULL);
+              ALTER TABLE vendite.note_offerte_commerciali ALTER COLUMN target_tipo TYPE character varying(16) USING 'OFFERTA'::character varying(16);
+              ALTER TABLE vendite.note_offerte_commerciali ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['PREVENTIVO'::character varying, 'CONTRATTO'::character varying, 'FATTURA'::character varying, 'ORDINE'::character varying, 'DDT'::character varying, 'ATTIVITAFT'::character varying, 'OFFERTA'::character varying])::text[])));
+              ALTER TABLE vendite.note_vecchia ATTACH PARTITION vendite.note_offerte_commerciali FOR VALUES IN ('OFFERTA');
+              DO $seq$
+              DECLARE
+                v_last   bigint;
+                v_called boolean;
+              BEGIN
+                EXECUTE format('SELECT last_value, is_called FROM %s', pg_get_serial_sequence('vendite.note', 'id'))
+                  INTO v_last, v_called;
+                PERFORM setval(pg_get_serial_sequence('vendite.note_vecchia', 'id'), v_last, v_called);
+              END
+              $seq$;
+              DROP TABLE vendite.note;
+              ALTER TABLE vendite.note_vecchia RENAME TO note;
+              ALTER TABLE vendite.note RENAME CONSTRAINT pk_note__vecchia TO pk_note;
+              ALTER INDEX vendite.ix_note_render_order__vecchia RENAME TO ix_note_render_order;
+              ALTER INDEX vendite.ix_vendite_note_by_riga__vecchia RENAME TO ix_vendite_note_by_riga;
+              ALTER SEQUENCE vendite.note_vecchia_id_seq RENAME TO note_id_seq;
+              ALTER TABLE vendite.note ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY rls_note_ef_whitelist ON vendite.note FOR ALL
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), target_tipo, target_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), target_tipo, target_id)));
+              COMMENT ON POLICY rls_note_ef_whitelist ON vendite.note IS
+                'Perimetro emittente sul PADRE partizionato: smista su target_tipo verso l''adattatore della famiglia. ⛔ Esiste perche'' le policy delle PARTIZIONI non risalgono al padre — provato il 2026-09-09: col padre armato e senza policy propria, SELECT FROM vendite.note risponde zero. Senza questa policy, ogni policy sulle partizioni resta aggirabile leggendo dal padre. Brief §6.4, passo 8.';
+              CREATE POLICY rls_note_cliente ON vendite.note FOR SELECT
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'CLIENTE_PORTALE'::text) AND script.fn_scope_note_cliente_perimetro((SELECT script.fn_get_identita_sr_perimetro((NULLIF(current_setting('app.current_identita_id'::text, true), ''::text))::bigint, ARRAY['CLIENTE_PORTALE'::config.ruolo_applicativo])), target_tipo, target_id)));
+              COMMENT ON POLICY rls_note_cliente ON vendite.note IS
+                'Veste CLIENTE_PORTALE sul padre: copre FATTURA e ORDINE, cioe'' l''unione esatta delle vesti cliente che le partizioni concedono. Le altre cinque famiglie non ne hanno.';
+              CREATE POLICY rls_note_shop ON vendite.note FOR SELECT
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'SHOP_CUSTOMER'::text) AND script.fn_scope_note_shop_perimetro((SELECT script.fn_get_identita_sr_perimetro((NULLIF(current_setting('app.current_identita_id'::text, true), ''::text))::bigint, ARRAY['SHOP_CUSTOMER'::config.ruolo_applicativo])), target_tipo, target_id)));
+              COMMENT ON POLICY rls_note_shop ON vendite.note IS
+                'Veste SHOP_CUSTOMER sul padre: solo ORDINE, con la doppia condizione (proprieta'' e canale SHOP) che pretende la testata.';
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.note TO zeroerp_app;
+              COMMENT ON TABLE vendite.note IS 'Note testuali ancorabili al documento o alla riga; tabella padre partizionata per target_tipo.';
+              COMMENT ON COLUMN vendite.note.id_stile IS 'Stile della nota: FK a config.note_stili(id).';
+              COMMENT ON COLUMN vendite.note.id_lingua IS 'Lingua della nota: FK a config.lingue(id).';
+              COMMENT ON COLUMN vendite.note.tx_id IS 'Transaction id correlazione audit (popolato da trgfn_tx_id_managed via automation). La colonna e'' definita sulla padre e propagata a tutte le partizioni figlie.';
+              COMMENT ON CONSTRAINT chk_note_anchor_tipo ON vendite.note IS 'Valori ammessi per anchor_tipo.';
+              COMMENT ON CONSTRAINT chk_note_posizione ON vendite.note IS 'Valori ammessi per posizione.';
+              COMMENT ON CONSTRAINT chk_note_seq_pos ON vendite.note IS 'seq obbligatoria e non negativa.';
+              COMMENT ON CONSTRAINT pk_note ON vendite.note IS 'PK composita (target_tipo, id) richiesta per la tabella partizionata.';
+              COMMENT ON CONSTRAINT chk_note_target_tipo ON vendite.note IS 'Valori ammessi: PREVENTIVO | CONTRATTO | FATTURA | ORDINE | DDT | ATTIVITAFT | OFFERTA.';

@@ -92,11 +92,13 @@ FROM script.fn_get_note(
 
 **3) Note documento + righe insieme**
 
+> Ultima revisione: 2026-10-25 (brief-db-grammatica-unica-documenti, lotto 3): `_target_tipo` è il codice di `config.tipi_entita` (`ORDINE_VENDITA`, non più `ORDINE`).
+
 ```sql
 SELECT *
 FROM script.fn_get_note(
   'vendite.note'::regclass,
-  'ORDINE',
+  'ORDINE_VENDITA',
   :ordine_id,
   :riga_id,
   true,

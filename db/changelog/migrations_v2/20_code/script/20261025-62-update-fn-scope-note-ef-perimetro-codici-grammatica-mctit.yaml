@@ -1,0 +1,122 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — lotto 3 (le note): lo smistatore dell'operatore
+#   sul padre vendite.note parla i codici nuovi.
+#   Brief: brief-db-grammatica-unica-documenti §14 (Tid, 2026-10-25: ok alle proposte, via).
+#
+#   Dopo il 20261025-54 le partizioni di vendite.note hanno i codici di config.tipi_entita:
+#   ORDINE_VENDITA, DDT_VENDITA, OFFERTA_COMMERCIALE, ATTIVITA (PREVENTIVO, CONTRATTO, FATTURA
+#   uguali). Un ramo col codice vecchio non scatterebbe piu': l'ELSE false renderebbe quelle note
+#   invisibili dal padre. Corpo vivo (dbdev, 2026-10-25, ultima revisione 20261021-25), stessi
+#   rami, stessi modi del risolutore; cambiano solo i codici dei WHEN e il presidio citato
+#   (il CHECK chk_note_target_tipo non c'e' piu': i rami si confrontano coi confini delle
+#   partizioni, rls/test-rls-note-padre test 4).
+#   ⚠️ I modi del risolutore ('ddt', 'offerta', 'attivita_fatturabile'…) restano: sono modi di
+#     risoluzione, non nomi di tipo (L3-6).
+#   Firma %TYPE dal padre nuovo (varchar(50): il typmod si perde nella firma, la funzione resta
+#   una), il perimetro no: `colonna%TYPE[]` non esiste. SECURITY INVOKER, STABLE, COST 5000 come prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261025-62-update-fn-scope-note-ef-perimetro-codici-grammatica-mctit.yaml
+
+  - changeSet:
+      id: 20261025-62-update-fn-scope-note-ef-perimetro-codici-grammatica
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_scope_note_ef_perimetro smista sui codici della grammatica (ORDINE_VENDITA,
+        DDT_VENDITA, OFFERTA_COMMERCIALE, ATTIVITA). Grammatica unica, lotto 3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_note_ef_perimetro(
+                  -- ⚠️ `bigint[]` esplicito: elementi = anagrafiche.emittenti_fiscali.id.
+                  p_perimetro   bigint[],
+                  p_target_tipo vendite.note.target_tipo%TYPE,
+                  p_target_id   vendite.note.target_id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- Scopo: la nota sta nel perimetro dell'operatore? Smista su
+                  --   target_tipo per il PADRE partizionato vendite.note, che non
+                  --   eredita le policy delle partizioni.
+                  -- Il perimetro NON lo calcola lei: glielo passa la policy in UNA
+                  --   sottoquery non correlata su script.fn_get_emittenti_scope_pk_ids
+                  --   (InitPlan, una volta per istruzione). Per riga resta l'emittente,
+                  --   dal risolutore DEFINER con lo stesso modo della partizione.
+                  -- ⛔ L'ELSE false e' la riga che conta: un target_tipo nuovo e non
+                  --   gestito rende quelle note INVISIBILI dal padre, non visibili a
+                  --   tutti (neanche al super admin). Presidio: rls/test-rls-note-padre,
+                  --   contro i confini delle partizioni.
+                  SELECT CASE p_target_tipo
+                      WHEN 'PREVENTIVO'          THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('preventivo', p_target_id))
+                      WHEN 'ORDINE_VENDITA'      THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('ordine', p_target_id))
+                      WHEN 'DDT_VENDITA'         THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('ddt', p_target_id))
+                      WHEN 'CONTRATTO'           THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('contratto', p_target_id))
+                      WHEN 'FATTURA'             THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('fattura', p_target_id))
+                      WHEN 'OFFERTA_COMMERCIALE' THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('offerta', p_target_id))
+                      WHEN 'ATTIVITA'            THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('attivita_fatturabile', p_target_id))
+                      ELSE false
+                  END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_note_ef_perimetro(
+                  bigint[],
+                  vendite.note.target_tipo%TYPE,
+                  vendite.note.target_id%TYPE) IS
+              'Smistatore di scope per il PADRE partizionato vendite.note, veste OPERATORE: la nota sta nel perimetro? Il perimetro lo passa la policy, calcolato UNA volta per istruzione da script.fn_get_emittenti_scope_pk_ids in una sottoquery non correlata (InitPlan); per riga resta l''emittente, da script.fn_resolve_emittente_fiscale_id con lo stesso modo della partizione, confrontato da script.fn_scope_ef_perimetro (linee-guida-sql §10.3). Esiste perche'' le policy delle PARTIZIONI non risalgono al padre. ⛔ ELSE false: un target_tipo non gestito rende quelle note invisibili dal padre, anche al super admin; che ogni confine di partizione abbia il suo ramo lo presidia rls/test-rls-note-padre. Rev 2026-10-21 (20261021-25, P-1 di brief-db-perimetro-una-volta-famiglie-residue): prende il posto di fn_scope_note_ef_whitelist, che calcolava il perimetro per riga. Rev 2026-10-25 (20261025-62, brief-db-grammatica-unica-documenti lotto 3): i rami parlano i codici di config.tipi_entita (ORDINE_VENDITA, DDT_VENDITA, OFFERTA_COMMERCIALE, ATTIVITA); i modi del risolutore restano.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Torna il corpo del 20261021-25, testo e COMMENT compresi (i codici corti).
+              CREATE OR REPLACE FUNCTION script.fn_scope_note_ef_perimetro(
+                  -- ⚠️ `bigint[]` esplicito: elementi = anagrafiche.emittenti_fiscali.id.
+                  p_perimetro   bigint[],
+                  p_target_tipo vendite.note.target_tipo%TYPE,
+                  p_target_id   vendite.note.target_id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- Scopo: la nota sta nel perimetro dell'operatore? Smista su
+                  --   target_tipo per il PADRE partizionato vendite.note, che non
+                  --   eredita le policy delle partizioni.
+                  -- Il perimetro NON lo calcola lei: glielo passa la policy in UNA
+                  --   sottoquery non correlata su script.fn_get_emittenti_scope_pk_ids
+                  --   (InitPlan, una volta per istruzione). Per riga resta l'emittente,
+                  --   dal risolutore DEFINER con lo stesso modo della partizione.
+                  -- ⛔ L'ELSE false e' la riga che conta: un target_tipo nuovo e non
+                  --   gestito rende quelle note INVISIBILI dal padre, non visibili a
+                  --   tutti (neanche al super admin). Presidio: rls/test-rls-note-padre.
+                  SELECT CASE p_target_tipo
+                      WHEN 'PREVENTIVO' THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('preventivo', p_target_id))
+                      WHEN 'ORDINE'     THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('ordine', p_target_id))
+                      WHEN 'DDT'        THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('ddt', p_target_id))
+                      WHEN 'CONTRATTO'  THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('contratto', p_target_id))
+                      WHEN 'FATTURA'    THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('fattura', p_target_id))
+                      WHEN 'OFFERTA'    THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('offerta', p_target_id))
+                      WHEN 'ATTIVITAFT' THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('attivita_fatturabile', p_target_id))
+                      ELSE false
+                  END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_note_ef_perimetro(
+                  bigint[],
+                  vendite.note.target_tipo%TYPE,
+                  vendite.note.target_id%TYPE) IS
+              'Smistatore di scope per il PADRE partizionato vendite.note, veste OPERATORE: la nota sta nel perimetro? Il perimetro lo passa la policy, calcolato UNA volta per istruzione da script.fn_get_emittenti_scope_pk_ids in una sottoquery non correlata (InitPlan); per riga resta l''emittente, da script.fn_resolve_emittente_fiscale_id con lo stesso modo della partizione, confrontato da script.fn_scope_ef_perimetro (linee-guida-sql §10.3). Esiste perche'' le policy delle PARTIZIONI non risalgono al padre. ⛔ ELSE false: un target_tipo non gestito rende quelle note invisibili dal padre, anche al super admin; i rami contro chk_note_target_tipo li presidia rls/test-rls-note-padre. Rev 2026-10-21 (20261021-25, P-1 di brief-db-perimetro-una-volta-famiglie-residue): prende il posto di fn_scope_note_ef_whitelist, che calcolava il perimetro per riga.';

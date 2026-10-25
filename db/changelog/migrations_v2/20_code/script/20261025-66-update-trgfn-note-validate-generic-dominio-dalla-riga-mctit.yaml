@@ -1,0 +1,212 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — lotto 3 (le note), L3-4: il «dominio» della nota
+#   viene dalla riga, non da un argomento del trigger.
+#   Brief: brief-db-grammatica-unica-documenti §14 (Tid, 2026-10-25: ok alle proposte, via).
+#
+#   Il terzo argomento (TG_ARGV[2]: 'DDT', 'ORDINE', 'OFFERTA'…) ripeteva a mano il confine della
+#   partizione su cui il trigger e' montato: una copia, e col codice vecchio. Lo dice gia'
+#   NEW.target_tipo, sempre giusto. Il terzo argomento si ignora e i montaggi lo perdono
+#   (20261025-67, -68).
+#   ⭐ Il valore serviva a DUE lettori, e ora ciascuno ha il suo (linee-guida-sql §5, i tre canali):
+#     * p_context ->> 'dominio' (la macchina): il codice, NEW.target_tipo;
+#     * il secondo %s della frase di E_NOTE_RIGA_MISMATCH («…al documento di dominio %s…»,
+#       l'operatore): la parola che una persona riconosce, config.sorgenti.etichetta del codice
+#       («DDT», «Ordine»); se il tipo non e' una sorgente, il codice. Si legge solo nel ramo
+#       d'errore. Nessuno legge 'dominio' dal payload (grep su backend/ e frontend/, 2026-10-25).
+#   Corpo vivo (dbdev, 2026-10-25, ultima revisione 20260804-46); il resto non cambia.
+#   SECURITY INVOKER esplicito (era il default implicito).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261025-66-update-trgfn-note-validate-generic-dominio-dalla-riga-mctit.yaml
+
+  - changeSet:
+      id: 20261025-66-update-trgfn-note-validate-generic-dominio-dalla-riga
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_note_validate_generic: il dominio dell'errore e' NEW.target_tipo nel payload
+        e l'etichetta della sorgente nella frase; il terzo argomento del trigger non si legge piu'.
+        Grammatica unica, lotto 3, L3-4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_note_validate_generic()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                v_child_table text := TG_ARGV[0];
+                v_child_fk    text := TG_ARGV[1];
+
+                -- La parola che l'operatore legge nella frase d'errore: l'etichetta della
+                --   sorgente del tipo della nota (si legge solo nel ramo d'errore).
+                v_etichetta   config.sorgenti.etichetta%TYPE;
+
+                -- ⚠️ `bigint` esplicito: e' l'id della testata letto dalla tabella delle righe
+                --   che arriva in TG_ARGV, diversa per ogni montaggio.
+                v_found_parent_id bigint;
+                v_reg regclass;
+                v_area text := TG_TABLE_SCHEMA;
+              BEGIN
+
+                IF NEW.anchor_tipo <> 'RIGA' THEN
+                  RETURN NEW;
+                END IF;
+
+
+                IF NEW.target_riga_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    v_area, TG_TABLE_NAME, 'E_NOTE_TARGET_ID',
+                    jsonb_build_object('anchor_tipo', NEW.anchor_tipo,
+                                      'target_id', NEW.target_id,
+                                      'target_riga_id', NEW.target_riga_id,
+                                      'detail','target_riga_id mancante'),
+                    NULL::uuid,
+                    NEW.anchor_tipo, NEW.target_id::text
+                  );
+                END IF;
+
+
+                v_reg := to_regclass(v_child_table);
+                IF v_reg IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    v_area, TG_TABLE_NAME, 'E_NOTE_CONFIG',
+                    jsonb_build_object('child_table', v_child_table,
+                                      'child_fk', v_child_fk,
+                                      'detail','tabella righe non trovata'),
+                    NULL::uuid,
+                    v_child_table
+                  );
+                END IF;
+
+
+                EXECUTE format('SELECT %I FROM %s WHERE id = $1', v_child_fk, v_reg)
+                  INTO v_found_parent_id
+                  USING NEW.target_riga_id;
+
+
+                IF v_found_parent_id IS NULL OR v_found_parent_id IS DISTINCT FROM NEW.target_id THEN
+                  -- rev 2026-10-25 (grammatica unica, lotto 3, L3-4): il dominio e' il tipo della
+                  --   riga, non piu' il terzo argomento del trigger (che lo ripeteva a mano).
+                  SELECT s.etichetta INTO v_etichetta
+                    FROM config.sorgenti s
+                   WHERE s.codice_interno = NEW.target_tipo;
+
+                  PERFORM script.fn_log_and_raise_error(
+                    v_area, TG_TABLE_NAME, 'E_NOTE_RIGA_MISMATCH',
+                    jsonb_build_object('dominio', NEW.target_tipo,
+                                      'target_id', NEW.target_id,
+                                      'target_riga_id', NEW.target_riga_id,
+                                      'child_table', v_child_table,
+                                      'child_fk', v_child_fk,
+                                      'fk_value', v_found_parent_id),
+                    NULL::uuid,
+                    -- rev 2026-08-04 (bonifica F3): NEW.target_riga_id e' bigint e il
+                    --   parametro e' VARIADIC text[]: senza ::text la chiamata non si
+                    --   risolve.
+                    NEW.target_riga_id::text,
+                    COALESCE(v_etichetta, NEW.target_tipo)::text,
+                    NEW.target_id::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_note_validate_generic() IS
+                'Validazione generica per note ancorate a RIGA: verifica appartenenza target_riga_id→target_id via tabella righe (schema.qualificata) e FK passate in TG_ARGV[0] e TG_ARGV[1]. Rev 2026-10-25 (20261025-66, brief-db-grammatica-unica-documenti lotto 3, L3-4): il dominio dell''errore E_NOTE_RIGA_MISMATCH e'' NEW.target_tipo nel payload e l''etichetta della sorgente nella frase per l''operatore; il terzo argomento del trigger, che ripeteva il confine della partizione, non si legge piu''.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Torna il corpo del 20260804-46, testo compreso (il dominio dal terzo argomento), e il COMMENT di prima.
+              CREATE OR REPLACE FUNCTION script.trgfn_note_validate_generic()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_child_table text := TG_ARGV[0];   
+                v_child_fk    text := TG_ARGV[1];   
+
+                v_domain      text := COALESCE(TG_ARGV[2], TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME);
+
+                v_found_parent_id bigint;
+                v_reg regclass;
+                v_area text := TG_TABLE_SCHEMA;     
+              BEGIN
+
+                IF NEW.anchor_tipo <> 'RIGA' THEN
+                  RETURN NEW;
+                END IF;
+
+
+                IF NEW.target_riga_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    v_area, TG_TABLE_NAME, 'E_NOTE_TARGET_ID',
+                    jsonb_build_object('anchor_tipo', NEW.anchor_tipo,
+                                      'target_id', NEW.target_id,
+                                      'target_riga_id', NEW.target_riga_id,
+                                      'detail','target_riga_id mancante'),
+                    NULL::uuid,
+                    NEW.anchor_tipo, NEW.target_id::text
+                  );
+                END IF;
+
+
+                v_reg := to_regclass(v_child_table);
+                IF v_reg IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    v_area, TG_TABLE_NAME, 'E_NOTE_CONFIG',
+                    jsonb_build_object('child_table', v_child_table,
+                                      'child_fk', v_child_fk,
+                                      'detail','tabella righe non trovata'),
+                    NULL::uuid,
+                    v_child_table
+                  );
+                END IF;
+
+
+                EXECUTE format('SELECT %I FROM %s WHERE id = $1', v_child_fk, v_reg)
+                  INTO v_found_parent_id
+                  USING NEW.target_riga_id;
+
+
+                IF v_found_parent_id IS NULL OR v_found_parent_id IS DISTINCT FROM NEW.target_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    v_area, TG_TABLE_NAME, 'E_NOTE_RIGA_MISMATCH',
+                    jsonb_build_object('dominio', v_domain,
+                                      'target_id', NEW.target_id,
+                                      'target_riga_id', NEW.target_riga_id,
+                                      'child_table', v_child_table,
+                                      'child_fk', v_child_fk,
+                                      'fk_value', v_found_parent_id),
+                    NULL::uuid,
+                    -- rev 2026-08-04 (bonifica F3): NEW.target_riga_id e' bigint e il
+                    --   parametro e' VARIADIC text[]: senza ::text la chiamata non si
+                    --   risolve. Gli altri due valori erano gia' testuali.
+                    NEW.target_riga_id::text, v_domain, NEW.target_id::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_note_validate_generic() IS
+                'Validazione generica per note ancorate a RIGA: verifica appartenenza target_riga_id→target_id via tabella righe (schema.qualificata) e FK passate in TG_ARGV.';

@@ -32,7 +32,9 @@
 --
 -- Nota architetturale:
 --   trgfn_note_validate_generic è definita su OGNI partizione con parametri
---   specifici (tabella righe, colonna FK, valore target_tipo). Non è sul
+--   specifici (tabella righe, colonna FK). Il dominio dell'errore lo prende da
+--   NEW.target_tipo (rev 2026-10-25, 20261025-66/-67: il terzo argomento, che
+--   ripeteva il confine della partizione, è ritirato). Non è sul
 --   padre vendite.note — ogni partizione ha il proprio trigger con i parametri
 --   corretti per la propria testata/riga. La partizione note_attivita_fatturabili
 --   non ha questo trigger perché attività fatturabili non hanno "righe" nel

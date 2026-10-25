@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — lotto 3 (le note), L3-5.
+#   Brief: brief-db-grammatica-unica-documenti §14 (Tid, 2026-10-25: ok alle proposte, via).
+#
+#   Su vendite.note_offerte_commerciali «la nota su un'eccezione spenta» la presidiano DUE
+#   trigger con la stessa funzione e gli stessi argomenti:
+#     * trg_note_offerte_commerciali_a10_offerte_commerciali_ecc_499d43 — GENERATO dal
+#       framework ATTIVO (dbops.fn_run_automations_attivo, dalla FK fk_offnote_riga):
+#       CONSTRAINT TRIGGER, differito, AFTER INSERT OR UPDATE OF target_riga_id;
+#     * trg_note_offerte_commerciali_a10_eccezioni_require_attivo_ins_u — scritto A MANO dal
+#       20260524-08 (il nome di 64 caratteri, troncato da PostgreSQL a 63): AFTER INSERT OR
+#       UPDATE senza OF, immediato.
+#   ⛔ Un trigger ATTIVO non si scrive a mano (linee-guida-trigger, «I trigger generati»): e'
+#     un doppione del generato, e senza OF scatta a ogni UPDATE della nota, anche di una
+#     colonna che non c'entra col padre. Si toglie e resta il generato.
+#   ⚠️ DROP TRIGGER IF EXISTS: e' la forma lecita su un trigger della funzione delle automazioni
+#     (linee-guida-sql §11.5). Da zero il trigger a mano c'e' (lo crea il 20260524-08, prima per
+#     numero) e il generato nasce dopo, in ci_apply. Il nome e' quello letto su pg_trigger.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261025-53-drop-trg-note-offerte-require-attivo-scritto-a-mano-mctit.yaml
+
+  - changeSet:
+      id: 20261025-53-drop-trg-note-offerte-require-attivo-scritto-a-mano
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie da vendite.note_offerte_commerciali il trigger ATTIVO scritto a mano dal
+        20260524-08 (AFTER INSERT OR UPDATE senza OF): doppione di quello generato dal
+        framework. Grammatica unica, lotto 3, L3-5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_note_offerte_commerciali_a10_eccezioni_require_attivo_ins_u
+                  ON vendite.note_offerte_commerciali;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_note_offerte_commerciali_a10_eccezioni_require_attivo_ins_u
+              AFTER INSERT OR UPDATE ON vendite.note_offerte_commerciali
+              FOR EACH ROW
+              EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent(
+                  'vendite', 'offerte_commerciali_eccezioni', 'attivo', 'target_riga_id', 'id');

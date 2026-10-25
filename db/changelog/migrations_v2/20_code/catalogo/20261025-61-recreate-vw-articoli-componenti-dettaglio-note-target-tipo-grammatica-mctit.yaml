@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — lotto 3 (le note): catalogo.vw_articoli_componenti_dettaglio torna.
+#   Brief: brief-db-grammatica-unica-documenti §14 (Tid, 2026-10-25: ok alle proposte, via).
+#
+#   Tolta in 00_schema (20261025-57) perche' note_target_tipo legge una colonna che cambia
+#   tipo e valore: note_target_tipo vale ARTICOLO_COMPONENTE (era ARTICOLI_COMPONENTI) e diventa varchar(50), dalla colonna di catalogo.articoli_componenti.
+#   Torna IDENTICA: definizione e COMMENT dal catalogo vivo di dbdev (2026-10-25), con la sola nota
+#   di revisione in coda al COMMENT. Senza security_invoker, com'era (reloptions vuote: catalogo non
+#   ha RLS). GRANT ripetuto: si azzera con la vista. Nessun'altra vista o funzione dipende da lei.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261025-61-recreate-vw-articoli-componenti-dettaglio-note-target-tipo-grammatica-mctit.yaml
+
+  - changeSet:
+      id: 20261025-61-recreate-vw-articoli-componenti-dettaglio-note-target-tipo-grammatica
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.vw_articoli_componenti_dettaglio torna identica dopo la ricostruzione di catalogo.note e la conversione di
+        note_target_tipo (20261025-57). Grammatica unica, lotto 3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW catalogo.vw_articoli_componenti_dettaglio AS
+               SELECT ac.id,
+                  ac.prodotto_id,
+                  ac.componente_id,
+                  ac.coeff_qta,
+                  ac.obbligatorio,
+                  ac.valido_dal,
+                  ac.valido_al,
+                  ac.meta,
+                  ac.user_insert,
+                  ac.user_update,
+                  ac.data_insert,
+                  ac.data_update,
+                  ac.tx_id,
+                  ac.storicizza,
+                  ac.attivo,
+                  ac.note_target_tipo,
+                  ac.note_id,
+                  ap.codice AS prodotto_codice,
+                  ap.descrizione AS prodotto_descrizione,
+                  acmp.codice AS componente_codice,
+                  acmp.descrizione AS componente_descrizione,
+                  ac.valido_al IS NULL AS puo_chiudersi,
+                      CASE
+                          WHEN ac.valido_al IS NULL THEN ac.valido_dal
+                          ELSE NULL::date
+                      END AS data_min_chiusura,
+                      CASE
+                          WHEN ac.valido_al IS NULL THEN GREATEST(ac.valido_dal, ( SELECT script.fn_data_operativa() AS fn_data_operativa))
+                          ELSE NULL::date
+                      END AS data_default_chiusura,
+                      CASE
+                          WHEN ac.valido_al IS NULL THEN NULL::text
+                          ELSE 'RIGA_GIA_CHIUSA'::text
+                      END AS motivo_non_chiudibile,
+                  ac.esposizione_in_fattura,
+                  ec.codice AS esposizione_in_fattura_codice,
+                  ec.etichetta_key AS esposizione_in_fattura_etichetta_key
+                 FROM catalogo.articoli_componenti ac
+                   LEFT JOIN catalogo.articoli ap ON ap.id = ac.prodotto_id
+                   LEFT JOIN catalogo.articoli acmp ON acmp.id = ac.componente_id
+                   LEFT JOIN config.esposizioni_componente ec ON ec.codice_interno::text = ac.esposizione_in_fattura::text;
+
+              COMMENT ON VIEW catalogo.vw_articoli_componenti_dettaglio IS
+                'Righe della distinta base (componenti di un articolo) con codici e descrizioni di prodotto e componente, piu'' la capability di riga (puo_chiudersi, data_min_chiusura, data_default_chiusura, motivo_non_chiudibile) per «Chiudi riga». Dal 2026-09-28 (brief-db-liste-righe-documento, D-8.5) e'' la SORGENTE UNICA delle righe: per la lista configurabile catalogo.articolo_componenti e per il repository, che prima ne rifaceva la proiezione e la capability in Python. Dal 2026-10-01 (brief-db-esposizione-componenti-kit-in-fattura) esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO) al posto del booleano esposto_in_fattura, e in coda codice ed etichetta_key del modo da config.esposizioni_componente: la logica confronta esposizione_in_fattura, il codice e'' solo a video. Dal 2026-10-02 (brief-db-bom-flag-quantita-e-kit-in-fattura, D-1) senza partecipa_qta e determina_qta_padre, ritirate dalla tabella: nessuna logica le leggeva. Tutte le righe, anche le non attive e le chiuse: filtro e ordine li mette chi legge. Rev 2026-10-25 (20261025-57/-61, brief-db-grammatica-unica-documenti lotto 3, G-7): tolta e rimessa identica perche'' la colonna che legge cambia tipo; note_target_tipo vale ARTICOLO_COMPONENTE (era ARTICOLI_COMPONENTI) e diventa varchar(50), dalla colonna di catalogo.articoli_componenti.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON catalogo.vw_articoli_componenti_dettaglio TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW catalogo.vw_articoli_componenti_dettaglio;
