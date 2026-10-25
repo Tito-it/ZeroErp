@@ -27,10 +27,12 @@
 | is_abortito | boolean | NO | false |
 | is_superato | boolean | NO | false |
 | iniziale | boolean | NO | false |
+| emissione | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_doc_offerte_emissione_attivo |  |
 | CHECK | chk_stati_doc_offerte_fase |  |
 | CHECK | chk_stati_doc_offerte_iniziale_attivo |  |
 | CHECK | chk_stati_doc_offerte_pdf_mode |  |
@@ -47,6 +49,7 @@
 | pk_stati_doc_offerte | `CREATE UNIQUE INDEX pk_stati_doc_offerte ON config.stati_doc_offerte USING btree (id)` |
 | uq_stati_doc_offerte_codice | `CREATE UNIQUE INDEX uq_stati_doc_offerte_codice ON config.stati_doc_offerte USING btree (codice)` |
 | uq_stati_doc_offerte_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_offerte_codice_interno ON config.stati_doc_offerte USING btree (codice_interno)` |
+| uq_stati_doc_offerte_emissione | `CREATE UNIQUE INDEX uq_stati_doc_offerte_emissione ON config.stati_doc_offerte USING btree (emissione) WHERE emissione` |
 | uq_stati_doc_offerte_iniziale | `CREATE UNIQUE INDEX uq_stati_doc_offerte_iniziale ON config.stati_doc_offerte USING btree (iniziale) WHERE iniziale` |
 
 ## 🚨 Trigger

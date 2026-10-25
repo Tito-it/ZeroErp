@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA DOMANDA INTERA DEL BACKEND: CHE COSA CHIEDE QUESTO PASSAGGIO
+#   Brief: brief-modello-documento-vendita §7.9 e §8 (giro 6; richiesta del
+#   team BE, Tid 2026-10-25).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Per rispondere 403 prima della transazione il backend chiede a
+#   script.fn_doc_passaggio l'azione del passaggio, che vuole due id di stato.
+#   Fino a oggi li ricavava da se', componendo SQL sulla mappa: lo stato
+#   corrente dalla colonna della testata, lo stato chiesto dal codice_interno
+#   del vocabolario. Qui la domanda e' intera: documento e codice dello stato
+#   chiesto, e il database risponde con le stesse funzioni che legge il verbo.
+#   In piu' dice se lo stato chiesto e' quello di emissione (M-2): il cambio
+#   stato generico lo rifiuta, e il backend fa una chiamata sola.
+#
+# ── COME RISPONDE ───────────────────────────────────────────────────
+#   Una riga se il documento c'e' e chi chiama lo vede (SECURITY INVOKER: la
+#   RLS di chi chiama); nessuna riga altrimenti. La riga porta:
+#   - stato_da_id, stato_a_id: lo stato corrente e quello chiesto (NULL se il
+#     codice non e' uno stato attivo, script.fn_doc_stato_id);
+#   - emissione: lo stato chiesto e' quello di emissione
+#     (script.fn_stato_emissione_id);
+#   - nella_matrice, manuale, azione_processo_codename: la riga del passaggio
+#     (script.fn_doc_passaggio); nella_matrice = false se il passaggio non c'e'
+#     (lo rifiutera' il guard di transizione), e allora manuale e azione sono
+#     NULL.
+#   Nessuna decisione: il backend applica la stessa regola del verbo
+#   (azione -> permesso dell'azione; nessuna azione -> livello sul documento).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261025-41-create-fn-doc-azione-passaggio-mctit.yaml
+
+  - changeSet:
+      id: 20261025-41-create-fn-doc-azione-passaggio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_doc_azione_passaggio(regclass, bigint, text): per un documento e il codice
+        dello stato chiesto, gli stati (corrente e chiesto), se lo stato chiesto e'
+        l'emissione e la riga del passaggio (manuale, azione). La domanda intera del backend
+        per il 403. Brief: brief-modello-documento-vendita §8.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "4"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_doc_stato_modello', 'fn_doc_passaggio',
+                                   'fn_doc_stato_id', 'fn_stato_emissione_id');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_doc_azione_passaggio(
+                  p_testata         regclass,
+                  p_documento_id    bigint,
+                  p_stato_a_codice  text)
+               RETURNS TABLE(stato_da_id              bigint,
+                             stato_a_id               bigint,
+                             emissione                boolean,
+                             nella_matrice            boolean,
+                             manuale                  boolean,
+                             azione_processo_codename config.azioni_processo.permission_codename%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- Testata, documento e stati di una qualunque testata della
+                  -- mappa: bigint in tutti, nessuna colonna comune a cui
+                  -- ancorarli. La colonna di stato e' un nome.
+                  v_col     text;
+                  v_da      bigint;
+                  v_a       bigint;
+                  v_manuale boolean;
+                  v_azione  config.azioni_processo.permission_codename%TYPE;
+                  v_trovata boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: che cosa chiede il passaggio di questo documento
+                  --   verso lo stato chiesto. Una riga se il documento si
+                  --   vede, nessuna altrimenti.
+                  -- =========================================================
+                  SELECT m.colonna_stato
+                    INTO v_col
+                    FROM script.fn_doc_stato_modello(p_testata) m;
+
+                  IF v_col IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_doc_azione_passaggio', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('testata', p_testata::text),
+                          NULL::uuid,
+                          'script.fn_doc_azione_passaggio',
+                          'p_testata: una testata della mappa del modello (script.fn_doc_stato_modello)');
+                  END IF;
+
+                  -- Lo stato corrente, sotto la RLS di chi chiama.
+                  EXECUTE format('SELECT t.%I FROM %s t WHERE t.id = $1', v_col, p_testata)
+                     INTO v_da
+                    USING p_documento_id;
+
+                  IF v_da IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  v_a := script.fn_doc_stato_id(p_testata, p_stato_a_codice);
+
+                  SELECT p.manuale, p.azione_processo_codename
+                    INTO v_manuale, v_azione
+                    FROM script.fn_doc_passaggio(p_testata, v_da, v_a) p;
+                  v_trovata := FOUND;
+
+                  RETURN QUERY
+                  SELECT v_da,
+                         v_a,
+                         COALESCE(v_a = script.fn_stato_emissione_id(p_testata), false),
+                         v_trovata,
+                         v_manuale,
+                         v_azione;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_doc_azione_passaggio(p_testata regclass, p_documento_id bigint, p_stato_a_codice text)
+                IS 'Lettore del modello del documento per il backend: per un documento (testata della mappa + id) e il codice_interno dello stato chiesto, che cosa chiede quel passaggio. Una riga se il documento esiste e chi chiama lo vede (SECURITY INVOKER: la RLS di chi chiama), nessuna altrimenti. Colonne: stato_da_id (corrente), stato_a_id (script.fn_doc_stato_id: NULL se il codice non e'' uno stato attivo), emissione (lo stato chiesto e'' quello di emissione, script.fn_stato_emissione_id: il cambio stato generico lo rifiuta, M-2), nella_matrice / manuale / azione_processo_codename (la riga del passaggio, script.fn_doc_passaggio; nella_matrice = false: il passaggio non e'' nella matrice e manuale e azione sono NULL). Non decide: il backend applica la regola del verbo (azione -> permesso dell''azione, nessuna azione -> livello sul documento) prima di aprire la transazione. Testata fuori mappa, o non ancora portata al modello (matrice senza azione_processo_codename): E_SCRIPT_CHIAMATA_NON_VALIDA. Brief: brief-modello-documento-vendita §8 (richiesta del team BE, Tid 2026-10-25).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_doc_azione_passaggio(regclass, bigint, text);

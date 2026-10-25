@@ -42,6 +42,13 @@
 --   gia' EMESSO/ACCETTATO/RIFIUTATO), PRIMA dell'aggancio alla pratica: il
 --   trigger z90 di riconciliazione scatta a ogni passaggio di stato, e senza
 --   aggancio non ha niente da riconciliare.
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): i preventivi
+--   si emettono con una riga (merce, 1 x 10) da
+--   dbops.fn_pgtap_crea_preventivo_con_righe (p_preventivo_id): l'emissione
+--   senza righe e' rifiutata. L'accettazione dei test 9 e 11 passa dal verbo
+--   vendite.fn_cambia_stato_preventivo invece dell'UPDATE dello stato, che la
+--   porta rifiuta: il trigger z90 sotto prova scatta uguale. Nessuna attesa
+--   conta righe o importi.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -239,8 +246,10 @@ SELECT throws_like(
 -- Preventivi: 3 EMESSO (adv, noop-milestone, additivita') + 1 ACCETTATO (tie-break).
 -- ⚠️ rev 2026-10-24 (brief-modello-documento-vendita N-1): nascono in bozza
 --   (lo stato non si scrive: lo mette il trigger della nascita) e si portano
---   avanti con dbops.fn_pgtap_porta_a_stato subito sotto, senza righe: i guard
---   di EMESSO/ACCETTATO non trovano motivi su un preventivo vuoto.
+--   avanti subito sotto, per la matrice.
+-- ⚠️ rev 2026-10-25 (§8, giro 6): ognuno con una riga (merce, 1 x 10) scritta
+--   in bozza da dbops.fn_pgtap_crea_preventivo_con_righe, che poi porta lo
+--   stato: senza righe l'emissione e' rifiutata (E_PREV_NESSUNA_RIGA_ATTIVA).
 CREATE TEMP TABLE tmp_g_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi
@@ -278,8 +287,9 @@ DECLARE
   r record;
 BEGIN
   FOR r IN SELECT l.id, l.tag FROM tmp_g_prev_lbl l ORDER BY l.id LOOP
-    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', r.id,
-              CASE r.tag WHEN 'AMB' THEN 'ACCETTATO' ELSE 'EMESSO' END);
+    PERFORM dbops.fn_pgtap_crea_preventivo_con_righe('guida ' || r.tag,
+              CASE r.tag WHEN 'AMB' THEN 'ACCETTATO' ELSE 'EMESSO' END,
+              p_preventivo_id => r.id);
   END LOOP;
 END
 $porta$;
@@ -350,9 +360,12 @@ VALUES
 -- ============================================================
 -- 9) Standalone -> avanza (E2E via trigger G3b + due-salti)
 -- ============================================================
-UPDATE vendite.preventivi
-   SET stato_doc_preventivo_id = (SELECT stato_accettato_id FROM tmp_g_refs)
- WHERE id = (SELECT id FROM tmp_g_prev_lbl WHERE tag = 'ADV');
+-- rev 2026-10-25 (§8, giro 6): l'accettazione passa dal verbo; l'UPDATE
+--   diretto dello stato lo rifiuta la porta (E_DOC_STATO_SOLO_DAL_VERBO).
+DO $verbo$ BEGIN
+  PERFORM vendite.fn_cambia_stato_preventivo(
+            (SELECT id FROM tmp_g_prev_lbl WHERE tag = 'ADV'), 'ACCETTATO');
+END $verbo$;
 
 SELECT results_eq(
   $$SELECT s.codice_interno, f.esito
@@ -382,9 +395,12 @@ SELECT is(
 -- ============================================================
 -- 11) Additivita': step senza attende/binding -> nessun avanzamento
 -- ============================================================
-UPDATE vendite.preventivi
-   SET stato_doc_preventivo_id = (SELECT stato_accettato_id FROM tmp_g_refs)
- WHERE id = (SELECT id FROM tmp_g_prev_lbl WHERE tag = 'ADD');
+-- rev 2026-10-25 (§8, giro 6): l'accettazione passa dal verbo; l'UPDATE
+--   diretto dello stato lo rifiuta la porta (E_DOC_STATO_SOLO_DAL_VERBO).
+DO $verbo$ BEGIN
+  PERFORM vendite.fn_cambia_stato_preventivo(
+            (SELECT id FROM tmp_g_prev_lbl WHERE tag = 'ADD'), 'ACCETTATO');
+END $verbo$;
 
 SELECT is(
   (SELECT s.codice_interno FROM pratiche.flussi f
@@ -493,6 +509,7 @@ VALUES ((SELECT tf_id FROM tmp_g_neg), NULL);
 -- Preventivo RIFIUTATO (proietta verdetto NEGATIVO).
 -- ⚠️ rev 2026-10-24: nasce in bozza e va a RIFIUTATO per la matrice
 --   (DRAFT -> EMESSO -> RIFIUTATO), prima dell'aggancio del test 17a.
+--   rev 2026-10-25 (§8, giro 6): con una riga, dal builder (come sopra).
 CREATE TEMP TABLE tmp_g_prev_rif AS
 WITH ins AS (
   INSERT INTO vendite.preventivi
@@ -506,7 +523,8 @@ WITH ins AS (
 ) SELECT id, uid FROM ins;
 
 DO $porta$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_g_prev_rif), 'RIFIUTATO');
+  PERFORM dbops.fn_pgtap_crea_preventivo_con_righe('guida RIF', 'RIFIUTATO',
+            p_preventivo_id => (SELECT id FROM tmp_g_prev_rif));
 END $porta$;
 
 -- Pratica NEG + flusso MS_NEG (DA_ESEGUIRE) + link ROOT col flusso_id.

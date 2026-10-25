@@ -13,6 +13,8 @@ CREATE FUNCTION fn_preventivo_proietta_stato_smistamento(p_preventivo_id bigint)
 CREATE OR REPLACE FUNCTION vendite.fn_preventivo_proietta_stato_smistamento(p_preventivo_id bigint)
  RETURNS void
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 -- =========================================================
 -- Scopo: portare il preventivo nello stato che il suo
@@ -27,6 +29,12 @@ AS $function$
 --   vendite.trgfn_commesse_attivita_proietta_stato_preventivo
 --   (invio in commessa, ritiro, annullo della commessa).
 -- Brief: brief-db-annullo-a-valle-riapre-a-monte (D-1, D-10).
+-- rev 2026-10-25 (20261025-45, brief-modello-documento-vendita
+--   §8): e' il verbo dei passaggi di PROCESSO del preventivo
+--   (manuale = false): scrive con la sola seconda meta' del
+--   verbo comune, attraverso la porta. DEFINER, perche' la porta
+--   vuole il proprietario; lo stato e' la proiezione dei residui,
+--   non una scelta di chi chiama.
 -- =========================================================
 DECLARE
     v_stato        config.stati_doc_preventivi.codice_interno%TYPE;
@@ -44,7 +52,7 @@ BEGIN
             'p_preventivo_id (obbligatorio, maggiore di zero)');
     END IF;
 
-    -- Lo stato di oggi. Preventivo assente o invisibile: niente.
+    -- Lo stato di oggi. Preventivo assente: niente.
     SELECT s.codice_interno
       INTO v_stato
       FROM vendite.preventivi p
@@ -67,11 +75,7 @@ BEGIN
         RETURN;
     END IF;
 
-    SELECT s.id
-      INTO v_target_id
-      FROM config.stati_doc_preventivi s
-     WHERE s.codice_interno = v_target
-       AND s.attivo IS TRUE;
+    v_target_id := script.fn_doc_stato_id('vendite.preventivi'::regclass, v_target);
 
     IF v_target_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
@@ -81,15 +85,15 @@ BEGIN
             NULL::uuid, 'stato ' || v_target || ' (config.stati_doc_preventivi)');
     END IF;
 
-    UPDATE vendite.preventivi
-       SET stato_doc_preventivo_id = v_target_id
-     WHERE id = p_preventivo_id
-       AND stato_doc_preventivo_id IS DISTINCT FROM v_target_id;
+    -- Il target e' sempre diverso dallo stato di oggi (CASE sopra).
+    -- La matrice la giudica il guard di transizione, all'UPDATE.
+    PERFORM script.fn_doc_scrivi_stato('vendite.preventivi'::regclass,
+                                       p_preventivo_id, v_target_id);
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_preventivo_proietta_stato_smistamento(p_preventivo_id bigint)
-IS 'Building block (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte D-1/D-10 di Tid): porta il preventivo nello stato che il suo smistamento dice. ACCETTATO senza residuo su nessuna strada (vendite.fn_preventivo_ha_residuo_ordine, vendite.fn_preventivo_ha_residuo_commessa) -> EVASO; EVASO con un residuo su almeno una -> ACCETTATO; ogni altro stato, o preventivo assente o invisibile, -> niente. Specchio di vendite.fn_ordine_proietta_stato_evasione. La transizione passa dalla matrice (vendite.trgfn_preventivi_guard_transizione); si scrive solo se lo stato cambia; destinazione assente dal catalogo: E_CONFIG_MANCANTE. Sede unica della regola, che prima aveva tre copie su due livelli: il §8 di vendite.fn_push_preventivo_a_ordine, il §4b di vendite.fn_documento_ritira_legami e il gate EVASO del backend dopo l''invio in commessa. Consumatori: vendite.fn_push_preventivo_a_ordine, vendite.fn_documento_ritira_legami (annullo dell''ordine), vendite.trgfn_commesse_attivita_proietta_stato_preventivo (invio in commessa, ritiro delle righe, annullo della commessa). SECURITY INVOKER: scrive con la RLS di chi chiama. Parametro non valido: E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO).';
+IS 'Building block (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte D-1/D-10 di Tid): porta il preventivo nello stato che il suo smistamento dice. ACCETTATO senza residuo su nessuna strada (vendite.fn_preventivo_ha_residuo_ordine, vendite.fn_preventivo_ha_residuo_commessa) -> EVASO; EVASO con un residuo su almeno una -> ACCETTATO; ogni altro stato, o preventivo assente, -> niente. Specchio di vendite.fn_ordine_proietta_stato_evasione. E'' il verbo dei passaggi di PROCESSO del preventivo (manuale = false nella matrice): scrive con la sola seconda meta'' del verbo comune, script.fn_doc_scrivi_stato, attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo); la matrice la giudica vendite.trgfn_preventivi_guard_transizione. Destinazione da script.fn_doc_stato_id; assente dal catalogo: E_CONFIG_MANCANTE. Sede unica della regola, che prima aveva tre copie su due livelli: il §8 di vendite.fn_push_preventivo_a_ordine, il §4b di vendite.fn_documento_ritira_legami e il gate EVASO del backend dopo l''invio in commessa. Consumatori: vendite.fn_push_preventivo_a_ordine, vendite.fn_documento_ritira_legami (annullo dell''ordine), vendite.trgfn_commesse_attivita_proietta_stato_preventivo (invio in commessa, ritiro delle righe, annullo della commessa). SECURITY DEFINER con search_path bloccato (la porta vuole il proprietario): la proiezione vale per ogni preventivo, perche'' lo stato e'' la proiezione dei residui e non una scelta di chi chiama; il perimetro di chi agisce lo controllano i consumatori. Parametro non valido: E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO). rev 2026-10-25 (20261025-45, brief-modello-documento-vendita §8): il verbo comune, DEFINER.';
 ```
 
 </div>

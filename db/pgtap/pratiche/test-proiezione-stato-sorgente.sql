@@ -54,6 +54,10 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i preventivi nascono in
 --   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano
 --   gia' EMESSO/ACCETTATO/ANNULLATO).
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): i tre
+--   preventivi si portano allo stato con una riga (merce, 1 x 10) da
+--   dbops.fn_pgtap_crea_preventivo_con_righe (p_preventivo_id): l'emissione
+--   senza righe e' rifiutata. Nessuna attesa conta righe o importi.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -121,8 +125,11 @@ SELECT
 -- ⚠️ rev 2026-10-24 (brief-modello-documento-vendita N-1): nascono in bozza
 --   (lo stato non si scrive: lo mette il trigger della nascita); lo stato
 --   VOLUTO si legge dal suffisso del numero e si raggiunge subito sotto con
---   dbops.fn_pgtap_porta_a_stato, per la matrice e sotto i guard veri (senza
---   righe i guard di EMESSO/ACCETTATO/ANNULLATO non trovano motivi).
+--   dbops.fn_pgtap_porta_a_stato, per la matrice e sotto i guard veri.
+-- ⚠️ rev 2026-10-25 (§8, giro 6): ognuno con una riga (merce, 1 x 10) scritta
+--   in bozza da dbops.fn_pgtap_crea_preventivo_con_righe, che poi porta lo
+--   stato: senza righe l'emissione e' rifiutata (E_PREV_NESSUNA_RIGA_ATTIVA).
+--   Anche l'ANNULLATO, per uniformita': la riga non cambia lo stato proiettato.
 CREATE TEMP TABLE tmp_prev_pss AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -164,7 +171,8 @@ DECLARE
   r record;
 BEGIN
   FOR r IN SELECT p.id, p.stato_codice_interno FROM tmp_prev_pss p ORDER BY p.id LOOP
-    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', r.id, r.stato_codice_interno);
+    PERFORM dbops.fn_pgtap_crea_preventivo_con_righe('pss ' || r.stato_codice_interno,
+              r.stato_codice_interno, p_preventivo_id => r.id);
   END LOOP;
 END
 $porta$;

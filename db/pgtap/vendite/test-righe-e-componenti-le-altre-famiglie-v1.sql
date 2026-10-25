@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): anche il preventivo esce dalla bozza con dbops.fn_pgtap_porta_a_stato (il verbo), non piu' con un UPDATE diretto dello stato: la porta lo rifiuta (E_DOC_STATO_SOLO_DAL_VERBO) e il test si fermava li'.
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): la bolla esce dalla bozza con dbops.fn_pgtap_porta_a_stato (il verbo), non piu' con un UPDATE diretto dello stato (E_DOC_STATO_SOLO_DAL_VERBO).
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
 --   il documento passato ai lettori delle testate, ai legami e ai montaggi del
@@ -312,9 +313,9 @@ SELECT lives_ok(
 -- Fuori dalla bozza: preventivo EMESSO, ordine CONFERMATO, DDT EMESSO.
 -- La revisione (17-22) parte da questo preventivo EMESSO.
 -- =========================================================
-UPDATE vendite.preventivi
-   SET stato_doc_preventivo_id = (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'EMESSO')
- WHERE id = (SELECT testata_id FROM _doc WHERE famiglia = 'PREVENTIVO');
+-- Il preventivo col verbo (dbops.fn_pgtap_porta_a_stato, giro 6): come la
+--   bolla, il suo stato non si cambia con un UPDATE diretto.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT testata_id FROM _doc WHERE famiglia = 'PREVENTIVO'), 'EMESSO');
 
 UPDATE vendite.ordini
    SET stato_doc_ordine_id = (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO')

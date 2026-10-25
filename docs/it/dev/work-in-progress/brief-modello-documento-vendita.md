@@ -1,8 +1,8 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-25 (giro BE 5)
+## ⏭️ Chi riparte — aggiornato al 2026-10-25 (giro DB 6 applicato e verde)
 
-**Riparte: il team DB**, col documento del giro dopo (§5: l'ordine dei documenti si decide col piano) e, nello stesso giro, le due richieste del §7.9 (il lettore codice → id dello stato; la colonna `emissione` sui vocabolari, decisa da Tid). Il giro 5 è chiuso su DB e BE: la richiesta del §7.6 è fatta (§7.9), da committare su `dev/backend-tid`.
+**Riparte: il team BE**, con la richiesta del §8.7 (giro DB 6 applicato e verde il 2026-10-25). Giro 6, il preventivo (§8), con le due richieste del §7.9 dentro. Il giro 5 è chiuso e committato su DB e BE: la richiesta del §7.6 è fatta (§7.9), committata in `4351164c1` (PR #1943).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -24,13 +24,20 @@
 | 3 | ✅ team DB | Il §2, corretto con le decisioni, diventa la guida `docs/it/guide/modello-documento-di-vendita.md`; le otto guide dei documenti rimandano lì (2026-10-25) | §6 | 2 |
 | 3-bis | ✅ **Tid** | Rilettura della guida: le sei regole sono scritte come le ha decise (Tid, 2026-10-25: «sì, ok») | §6 | 3 |
 | 4 | ✅ team DB / **Tid** · team BE | Giro 5 (bolla e reso): DB scritto, applicato e verde il 2026-10-25 (§7); tocca al BE (§7.6). Il piano: ogni documento portato al modello **tutto in una volta**, un documento per giro. ✅ Primo documento (Tid, 2026-10-25): **il DDT, col DDT d'acquisto** — il più vicino al modello; lì nascono i pezzi comuni di S-1 e S-2. S-1 (b) e S-2 (a) decise | §5, §6 | 3-bis |
-| 4-bis | ✅ team BE | Giro 5 lato BE: §7.6 punti 1-5 (EMESSO solo da «Emetti», il 403 dalla riga del passaggio col BB `PassaggioDocumento`, codici, test DB) | §7.9 | 4 |
+| 4-bis | ✅ team BE | Giro 5 lato BE: §7.6 punti 1-5 (EMESSO solo da «Emetti», il 403 dalla riga del passaggio col BB `PassaggioDocumento`, codici, test DB); committato `4351164c1` | §7.9 | 4 |
+| 4-bis-bis | ✅ **Tid** | Giro 6 = il preventivo; lettore in due pezzi, `fn_doc_stato_id` + `fn_doc_azione_passaggio` (2026-10-25) | §8 | 4-bis |
+| 4-bis-ter | ✅ **Tid** | U-1 (a), U-2, U-3 come da proposta, e il via (2026-10-25) | §8.3 | 4-bis-bis |
+| 4-bis-quater | ✅ team DB / **Tid** | Giro 6 scritto; `-37` … `-48` applicati da Tid (11:37); `-49` … `-52` scritti e provati in transazione; 22 pgTAP portati, regressione senza differenze | §8.4, §8.5 | 4-bis-ter |
+| 4-bis-quinquies | ✅ **Tid** | Apply di `-49` … `-52` e corsa pgTAP: verdi (2026-10-25) | §8.4 | 4-bis-quater |
+| 4-bis-quinquies-bis | ✅ team DB / **Tid** | Anticipati (Tid, 2026-10-25): concessioni trasferite a `emetti_preventivo` su dbdev (script del §8.9), `cambia_stato_preventivi` spenta nel CSV, migrate applicato | §8.9 | — |
+| 4-bis-sexies | **team BE** ⏭️ | Richiesta §8.7 (firma del verbo, 403 dalla riga, lettori nuovi, emissione dal vocabolario, controesempio) | §8.7 | 4-bis-quinquies |
+| 4-bis-septies | team DB | Dopo il giro BE: il documento del giro dopo | §5 | 4-bis-sexies |
 | 4-ter | team DB | Il lettore codice → id dello stato (o la domanda intera) e la colonna `emissione` sui vocabolari col suo lettore (Tid, 2026-10-25), col giro del documento dopo | §7.9 | 4-bis |
 | 4-quater | team BE | Ritirare `STATO_EMESSO` e la composizione SQL del repository, sui lettori nuovi | §7.9 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 
-Decisioni aperte di Tid: nessuna (T-1 … T-4 decise il 2026-10-25). Da decidere: il documento del giro dopo. Lavoro da committare: il giro BE 5
-(§7.9, `dev/backend-tid`). Committati: il giro DB 5 (`c3e34be02`), il giro BE precedente (`9fbff66d2`), i giri 2-4 lato DB (`498cc8275`).
+Decisioni aperte di Tid: nessuna (le tre attese cambiate dei pgTAP del §8.5 accettate coi test verdi). Lavoro da committare: nessuno (giro DB 6 committato su `dev/db-tid`).
+Committati: il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), il giro BE precedente (`9fbff66d2`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -660,7 +667,7 @@ più gruppi trattenuti dallo stesso lotto, l'IVA nel builder dell'articolo, la v
 variazione globale nel contratto, la fattura con un'utility diversa da quella del cliente.
 
 La bolla generata da un ordine e il reso scritto a mano, ripetuti in tutta la suite, sono un tema suo:
-[brief-db-pgtap-bolla-e-reso-costruiti](../work-done/brief-db-pgtap-bolla-e-reso-costruiti.md) (chiuso il 2026-10-25; il reso prosegue in [brief-db-pgtap-reso-costruito](brief-db-pgtap-reso-costruito.md)).
+[brief-db-pgtap-bolla-e-reso-costruiti](../work-done/brief-db-pgtap-bolla-e-reso-costruiti.md) (chiuso il 2026-10-25; il reso è proseguito in [brief-db-pgtap-reso-costruito](../work-done/brief-db-pgtap-reso-costruito.md), chiuso anch'esso il 2026-10-25).
 
 **Richiesta al team BE**, aggiornata: (1) le due sonde `richiedi_db_provvisto` sulle firme finali (sopra);
 (2) dopo l'apply di `-35`, il DB può sollevare `E_PIPELINE_LOTTO_CRITICAL` anche dall'UPDATE dello stato
@@ -823,7 +830,7 @@ Via di Tid il 2026-10-25 («ok procedi»). Ricognizione sul codice (doc auto-gen
   vendite e acquisti si separano con un satellite per ambito (`config.stati_doc_ddt_ambiti`, `ambito`
   nella chiave delle transizioni). Il satellite non c'è ancora.
 * ⚠️ **Un'altra sessione** lavora in questo momento su
-  [brief-db-pgtap-reso-costruito](brief-db-pgtap-reso-costruito.md) (giro 2): una trentina di pgTAP di
+  [brief-db-pgtap-reso-costruito](../work-done/brief-db-pgtap-reso-costruito.md) (giro 2): una trentina di pgTAP di
   bolla e reso modificati e non committati, `20261025-05`/`-06` nuovi. Sono gli stessi file che questo
   giro deve portare.
 
@@ -1050,3 +1057,238 @@ DB si chiede solo di **dire** quale stato è l'emissione.
 rifiuta lo stato di emissione letto dal DB, e `/emetti/` lo prende dallo stesso lettore (la factory non
 riceve più lo stato in `emetti_passaggio`, solo la testata). Il presidio diventa generico su tutti i
 documenti della factory.
+
+---
+
+## 8. Giro 6: il preventivo al modello — ricognizione e piano (2026-10-25)
+
+✅ **Deciso da Tid il 2026-10-25:** il documento del giro è il **preventivo** (nessun gemello d'acquisto).
+Il lettore del §7.9 si fa in **due pezzi**, come il backend chiedeva: `script.fn_doc_stato_id(p_testata
+regclass, p_codice text)` (codice → id dello stato di una testata, il BB) e la domanda intera
+`script.fn_doc_azione_passaggio(p_testata, p_documento_id, p_stato_a_codice)`, che lo compone e dice anche
+se il passaggio è l'emissione. Il backend sceglie il lettore che gli serve; nessuno dei due compone SQL
+sulla mappa. Lo sviluppo parte col via di Tid.
+
+### 8.1 Com'è oggi (doc auto-generata e `backend/`, 2026-10-25)
+
+* **Verbo.** `vendite.fn_cambia_stato_preventivo(id, codice, user)` è **INVOKER**, valida la matrice nel
+  corpo (copia del guard di transizione, «voluta» dal 2026-08-05), scrive lo stato con un `UPDATE`.
+  Nessun controllo di permesso. Codice → id scritto nel corpo (`codice_interno = p AND attivo`).
+* **Guard di transizione** `trgfn_preventivi_guard_transizione`: matrice, condizioni dell'emissione
+  (`fn_check_preventivo_emettibile`), prezzi autorizzati all'accettazione. Letterali `'EMESSO'`,
+  `'ACCETTATO'`: sono condizioni di un passaggio, restano (guida §7, «le condizioni stanno sul passaggio»).
+* **Annullo.** `fn_annulla_preventivo` (DEFINER) ritira i legami e chiama il verbo: già al modello.
+* **Scrittori dello stato senza il verbo:** `vendite.fn_preventivo_proietta_stato_smistamento`
+  (ACCETTATO ↔ EVASO, i passaggi di processo 4→10 e 10→4, `manuale = false`), consumata da push a
+  ordine, ritiro dei legami e trigger della commessa. Il passaggio di processo EMESSO → SCADUTO (2→7) è
+  nella matrice ma **nessuno lo scrive** (né DB né backend): si dichiara, non si tocca.
+* **Azione.** `cambia_stato_preventivi` («emetti/accetta/rifiuta/annulla»), su **ogni** passaggio e solo
+  nel backend: `ApiPreventivoStato`, `ApiPreventivoStatoDaPratica`, `ApiPreventivoCollegaPratica` (che
+  non è un cambio di stato), `/emetti/` della factory (`emetti_post_permission`). Nessun profilo la
+  riceve dai seed. È la divergenza dalla guida §6 («una azione, sui passaggi pesanti»).
+* **Emissione (M-2).** Già lato BE: `preventivi_service.cambia_stato` rifiuta `'EMESSO'` con un
+  letterale suo, `emetti` passa dal repository.
+* **Codice → id dello stato, copie censite:** `fn_cambia_stato_preventivo`, `fn_cambia_stato_ddt`,
+  `dbops.fn_pgtap_porta_a_stato`, `DocumentoModelloRepository.azione_del_passaggio` (BE). Quattro: il BB
+  `fn_doc_stato_id` le ritira tutte nello stesso giro (quelle DB qui, quella BE nella richiesta).
+* **pgTAP:** 6 file scrivono lo stato del preventivo con un `UPDATE` diretto, 39 passano da
+  `porta_a_stato` o dal verbo (conteggio del 2026-10-25, per dimensionare il porting).
+* ⚠️ **Controesempio, lato BE:** `cambia_stato` dichiara «ACCETTATO → ACCETTATO (no-op stato)» per
+  aggiornare la modalità di fatturazione, ma poi chiama il verbo con lo stesso stato: la matrice non ha
+  la riga 4→4 e il verbo risponde `E_PREV_TRANSIZIONE_NON_AMMESSA`. Va nella richiesta al BE.
+
+### 8.2 Il piano
+
+| Pezzo | Che cosa |
+| --- | --- |
+| `fn_doc_stato_id` | NUOVO BB in `script`: l'id dello stato **attivo** con quel `codice_interno` nel vocabolario della testata (dalla mappa), NULL se non c'è (decide il chiamante); testata fuori mappa: `E_SCRIPT_CHIAMATA_NON_VALIDA` |
+| `emissione` | colonna `boolean NOT NULL DEFAULT false` su `stati_doc_preventivi`, `_offerte`, `_contratti`, `_ordini`, `_ddt` (i documenti della factory `/emetti/`, guida §7), indice unico parziale e CHECK «solo su una riga attiva» come `iniziale`; valori dai CSV, mirror con la colonna (⚠️ `nullValue`, §7.5) |
+| `fn_stato_emissione_id(p_testata)` | NUOVO lettore, gemello di `fn_stato_iniziale_id`: NULL se il documento non si emette |
+| `fn_doc_azione_passaggio` | NUOVO: stato corrente del documento (dalla mappa) + `fn_doc_stato_id` + `fn_doc_passaggio`; restituisce `manuale`, `azione_processo_codename`, `emissione` (lo stato chiesto è quello di emissione). Nel perimetro di chi chiama (INVOKER) |
+| matrice del preventivo | colonna `azione_processo_codename`, valori dal CSV: l'azione sui passaggi pesanti (U-1) |
+| verbo | `fn_cambia_stato_preventivo` sul verbo comune: `fn_guard_passaggio` in testa, `fn_doc_scrivi_stato` per scrivere; la copia della matrice nel corpo si ritira (la fa il guard). Diventa DEFINER come la bolla: la porta vuole il proprietario |
+| porta | `trgfn_doc_stato_solo_dal_verbo` montato `_a05_` su `vendite.preventivi` |
+| processo | `fn_preventivo_proietta_stato_smistamento` scrive con `fn_doc_scrivi_stato` (sola seconda metà, come il flip della bolla dal reso) |
+| capability | `fn_available_actions_preventivo`: il passaggio con l'azione si nasconde a chi non ce l'ha |
+| copie | `fn_cambia_stato_ddt` e `fn_pgtap_porta_a_stato` usano `fn_doc_stato_id`; `porta_a_stato` passa dal verbo per il preventivo (lo dice già il catalogo, porta montata) |
+| pgTAP | i 6 `UPDATE` diretti a `porta_a_stato`; test nuovo dei due lettori e della colonna; i presidi del verbo comune estesi al preventivo |
+
+**Richiesta al BE** (si scrive col percorso intero, a giro DB provato): `post_passaggio` su
+`ApiPreventivoStato`, `ApiPreventivoStatoDaPratica` e `/emetti/` (le copie di `cambia_stato_preventivi`
+si ritirano; `ApiPreventivoCollegaPratica` resta da decidere col BE, non è un passaggio); il repository
+del §7.9 sui lettori nuovi; `STATO_EMESSO` e il letterale del preventivo ritirati, il rifiuto
+dell'emissione letto dal DB per tutti i documenti della factory; il controesempio ACCETTATO → ACCETTATO;
+i codici rigenerati.
+
+### 8.3 Domande per Tid
+
+✅ **Decise da Tid il 2026-10-25: U-1 (a), U-2 sì, U-3 sì, come da proposta; via allo sviluppo.**
+
+* **U-1. L'azione del preventivo.** (a) azione **nuova** `emetti_preventivo` («emette un preventivo o
+  annulla un preventivo emesso»), sulle righe 1→2 (emissione), 2→9 e 4→9 (annullo dell'emesso e
+  dell'accettato), e `cambia_stato_preventivi` obsoleta; (b) si tiene `cambia_stato_preventivi` sulle
+  stesse tre righe, cambiandole il significato. **Proposta (a)**: il gemello di `emetti_ddt`, e un
+  profilo che oggi ha «cambia stato» per accettare e rifiutare non si ritrova in silenzio il potere di
+  emettere e annullare.
+* **U-2. ACCETTATO → ANNULLATO chiede l'azione?** La guida §6 dice «l'annullo di un documento emesso»;
+  l'accettato è emesso. **Proposta: sì** (è dentro U-1).
+* **U-3. `fn_doc_stato_id` legge solo gli stati attivi?** **Proposta: sì**: risponde alla domanda «verso
+  quale stato vado», e uno stato spento non è una destinazione; i verbi di oggi filtrano già così (il
+  repository BE no: è la copia che si ritira).
+
+### 8.4 Scritto (2026-10-25)
+
+| # | Cosa | Stato |
+| --- | --- | --- |
+| `-37` | colonna `emissione` su `stati_doc_preventivi`, `_offerte`, `_contratti`, `_ordini`, `_ddt`, con indice unico parziale e CHECK «attivo»; valori nei CSV (EMESSO, EMESSA, ATTIVO, CONFERMATO, EMESSO), dichiarata nei sei mirror dei vocabolari | applicato |
+| `-38` | colonna `azione_processo_codename` su `config.transizioni_stati_preventivi`; nel CSV `emetti_preventivo` sulle righe 1→2, 2→9, 4→9; i due mirror con la colonna e `nullValue: "NULL"` | applicato |
+| CSV | `azioni_processo`: `emetti_preventivo` (id 40) nuova; `cambia_stato_preventivi` marcata **obsoleta** nella descrizione ma **attiva** (vedi §8.6) | applicato su dbdev |
+| `-39` | NUOVO `script.fn_doc_stato_id(testata, codice)`: codice → id dello stato attivo (U-3) | applicato |
+| `-40` | NUOVO `script.fn_stato_emissione_id(testata)`: lo stato di emissione, NULL se il documento non si emette | applicato |
+| `-41` | NUOVO `script.fn_doc_azione_passaggio(testata, id, codice)`: la domanda intera del backend (stati, emissione, riga del passaggio) | applicato |
+| `-42` | `fn_cambia_stato_preventivo` sul verbo comune: firma (id, stato), DEFINER col predicato del perimetro, `fn_guard_passaggio` + `fn_doc_scrivi_stato`; ritirate dal corpo le copie della matrice e dell'annullabilità | applicato |
+| `-43` | `fn_annulla_preventivo` chiama il verbo con la firma nuova | applicato |
+| `-44` | `fn_cambia_stato_ddt`: codice → id e stato di emissione dai lettori comuni (nessun cambio di comportamento) | applicato |
+| `-45` | `fn_preventivo_proietta_stato_smistamento`: ACCETTATO ↔ EVASO da `fn_doc_scrivi_stato`, DEFINER (§8.6) | applicato |
+| `-46` | la porta montata su `vendite.preventivi` | applicato |
+| `-47` | capability del preventivo: il passaggio con l'azione si nasconde a chi non ce l'ha; i motivi dell'emissione sulla colonna `emissione` | applicato |
+| `-48` | `fn_pgtap_porta_a_stato`: il preventivo dal suo verbo, lo stato voluto da `fn_doc_stato_id` | applicato |
+| `-49` | guard di transizione del preventivo: la regola «almeno una riga attiva» all'emissione (prima solo nel verbo: guida §7, «le condizioni stanno sul passaggio») | **da applicare** |
+| `-50` | il verbo non ripete più la regola delle righe | **da applicare** |
+| `-51` | COMMENT di `fn_stato_emissione_id`: i consumatori dopo `-49` | **da applicare** |
+| `-52` | NUOVO builder `dbops.fn_pgtap_crea_preventivo_con_righe`: una riga valida e lo stato chiesto (gemello di quello dell'ordine) | **da applicare** |
+
+Doc: tre pagine `manual` nuove (script), la guida del modello (riferimenti, §4, §7, §10), `gestione-preventivi`
+§3.1 (chi cambia lo stato, quale permesso, SCADUTO), la tabella dei builder della guida pgTAP. pgTAP nuovo:
+`script/test-doc-lettori-stato-e-preventivo-al-modello-v1` (22; il 22 è rosso da owner, verde come app).
+Presidio del giro 5 esteso: `script/test-doc-verbo-comune-e-porta-v1` test 9 e 10 (la porta anche sul preventivo).
+
+**Incidente (2026-10-25, 11:37).** Tid ha applicato `-37` … `-48` su dbdev e scratch mentre la regressione
+girava; dopo l'apply ho ritoccato `-40` (COMMENT) e `-42` (tolta la regola delle righe), e i checksum non
+tornavano. I due file sono riportati al contenuto applicato (corpo e COMMENT uguali al vivo su dbdev); le
+modifiche stanno in `-50` e `-51`. ⚠️ **Sullo scratch** i mirror dei CSV non sono ripartiti: mancano
+`emetti_preventivo` e i valori di `emissione` (dbdev li ha). Da rifare lo scratch prima della corsa pgTAP lì.
+
+### 8.5 Regressione e porting dei pgTAP
+
+Regressione da owner su dbdev, 399 file che toccano preventivo, bolla, capability, matrici e verbo comune: con
+`-37` … `-48` applicati, i rossi dovuti al giro sono 21, in tre famiglie; `-49` … `-51` non cambiano nessun
+esito. Il controesempio vero è il primo: **14 pgTAP emettevano preventivi senza righe**, perché
+`porta_a_stato` scriveva lo stato con un `UPDATE` e la regola stava solo nel verbo. Ora lo stato passa dal
+verbo e la regola dal guard, su ogni strada. Si portano al builder `-52`, non ricopiando la riga in ogni test
+(criterio dei builder, §4-octies). Le altre due famiglie: 6 test con l'`UPDATE` diretto (ora la porta; si
+portano al verbo, così provano ancora il guard) e i test con la firma vecchia del verbo.
+
+Rossi **non** del giro, lasciati: i test «rosso da owner» (scope, porta) e `vendite/test-vw-dash-aperto-v1`
+(chiede EVASO a `porta_a_stato`, che è un passaggio di processo: rosso anche prima del giro).
+
+**Portati (2026-10-25, tre agenti in parallelo), 22 file:** i 9 che scrivevano la testata a mano e la
+emettevano senza righe passano a `fn_pgtap_crea_preventivo_con_righe(…, p_preventivo_id => …)`; i 5 col
+builder in uno stato oltre la bozza passano al builder con le righe; 6 test con l'`UPDATE` diretto passano dal
+verbo (con `emetti_preventivo` concessa) e provano ancora il **guard**, non la porta; il test del verbo e
+quello dell'annullo con legami alla firma a due argomenti. Due test erano verdi per la ragione sbagliata e ora
+discriminano: `test-fn-cambia-stato-preventivo` 7 e 8 (`throws_ok NULL` passavano sulla funzione
+inesistente) e `test-preventivi-guard-transizione-v1` 3 (prendeva il P0001 della porta).
+**Regressione finale da owner su dbdev, 400 file, con `-49` … `-52` in testa:** i 20 file rossi hanno gli
+stessi test rossi di prima del porting (rossi da owner o rossi preesistenti), più il 22 del test nuovo,
+rosso da owner per costruzione. Nessuna regressione.
+
+**Attese cambiate nel porting, da guardare (Tid):**
+* `vendite/test-preventivi-guard-transizione-v1` 6: contava due funzioni che sollevano
+  `E_PREV_TRANSIZIONE_NON_AMMESSA` (verbo e guard); dal `-42` il verbo non ricopia la matrice, e il test ora
+  asserisce che lo solleva **solo** il guard (sede unica);
+* `vendite/test-fn-list-preventivi-da-pushare-v1` 7: «riga inattiva esclusa» costruiva un preventivo ACCETTATO
+  con la sola riga spenta, che il modello non ammette più; ora il preventivo ha anche una riga attiva e il test
+  asserisce **a livello di riga** (la spenta assente, l'attiva presente): più stretto, forma diversa;
+* `script/test-fn-available-actions-preventivo-v1` 2: un ACCETTATO «senza righe» con la sola azione `annulla`
+  non si costruisce più (senza residuo il preventivo è EVASO); con la riga di merce compare anche
+  `genera_ordine`, e l'attesa è ora `["annulla","genera_ordine"]`. Il test 8, che leggeva un motivo da quel
+  preventivo, lo legge ora dal preventivo in bozza, per non perdere una sorgente in silenzio;
+* `dbops/test-fn-pgtap-crea-preventivo-v1`: due test in più (5b: il parametro di stato provato su ANNULLATO
+  dalla bozza; 6b: il builder senza righe si ferma sull'emissione).
+
+### 8.6 Attese cambiate e debiti, dichiarati
+
+* **La proiezione dello smistamento è DEFINER** (`-45`). Prima un preventivo che chi chiamava non vedeva non si
+  proiettava; ora sì, perché lo stato è la conseguenza dei residui, non una scelta di chi chiama. Il perimetro di
+  chi agisce lo controllano i consumatori (il trigger delle righe di commessa legge sotto la RLS). EXECUTE resta
+  PUBLIC: la chiama quel trigger per chiunque scriva le righe di commessa, anche un ruolo batch.
+* **Il verbo fuori perimetro risponde `E_PREV_NOT_FOUND`** (prima `E_PREV_STATO_CORRENTE_NON_TROVATO`, che
+  resta della revisione).
+* **Righe all'emissione**: ora la regola vale su ogni strada, non solo dal verbo.
+* **`cambia_stato_preventivi` non si spegne in questo giro.** Su dbdev è concessa a 4 profili e a 1 override:
+  mettere `attivo = false` dal CSV fermerebbe il migrate sul guard delle figlie (vedi la memoria del ritiro di
+  `approva_rimessa`). Si spegne quando il backend non la chiede più, togliendo prima a mano le concessioni.
+  ⚠️ Chi oggi ha `cambia_stato_preventivi` **non** ha `emetti_preventivo`: la capability non gli mostra più
+  «Emetti» e l'annullo dell'emesso, e il verbo glieli rifiuta. Concedere `emetti_preventivo` ai profili è un
+  dato, da decidere (Tid).
+* **EMESSO → SCADUTO non lo scrive nessuno**: la guida dei preventivi parlava di un job notturno che non
+  esiste (verificato il 2026-10-25, DB e backend). Debito di prodotto, fuori da questo giro.
+* Letterali rimasti, fuori dal perimetro del giro: `'ANNULLATO'` in `fn_annulla_preventivo` e nel verbo della
+  bolla (la guida §8 vuole `is_abortito`).
+
+### 8.7 Richiesta al team BE (elenco chiuso)
+
+Percorso censito: `preventivi_repository.cambia_stato`, `preventivi_service.cambia_stato` / `emetti` /
+`cambia_stato_da_pratica`, `ApiPreventivoStato`, `ApiPreventivoStatoDaPratica`, `ApiPreventivoCollegaPratica`,
+la factory `/emetti/` del preventivo, `DocumentoModelloRepository`, i `get_stato_id_by_codice` dei repository.
+
+1. **La firma del verbo.** `preventivi_repository.cambia_stato` chiama
+   `vendite.fn_cambia_stato_preventivo(id, stato)`: il terzo argomento (`'django_api'`) non c'è più.
+   **Oggi il cambio di stato del preventivo è rotto** finché non si cambia questa riga.
+2. **Il 403 dalla riga del passaggio** (BB `PassaggioDocumento`): su `ApiPreventivoStato`,
+   `ApiPreventivoStatoDaPratica` e `/emetti/` del preventivo (`emetti_passaggio` al posto di
+   `emetti_post_permission="cambia_stato_preventivi"`). Le copie di `cambia_stato_preventivi` si ritirano.
+   `ApiPreventivoCollegaPratica` non è un cambio di stato: il suo permesso lo decide il team BE (livello sul
+   documento, o un'azione sua), ma non `cambia_stato_preventivi`, che si spegne.
+3. **I lettori nuovi.** `DocumentoModelloRepository.azione_del_passaggio` legge
+   `script.fn_doc_azione_passaggio` (o `script.fn_doc_stato_id` + `script.fn_doc_passaggio`) e non compone più
+   SQL sulla mappa. I `get_stato_id_by_codice` di ordini, offerte, DDT e contratti sono la stessa traduzione:
+   `script.fn_doc_stato_id` è la sede.
+4. **L'emissione dal vocabolario (M-2).** `ddt_service.STATO_EMESSO` e il letterale `'EMESSO'` di
+   `preventivi_service.cambia_stato` si ritirano: il cambio di stato generico rifiuta lo stato con
+   `emissione = true` (colonna `emissione` di `fn_doc_azione_passaggio`, o `script.fn_stato_emissione_id`), per
+   ogni documento della factory; `/emetti/` lo prende dallo stesso lettore.
+5. **Controesempio.** `cambia_stato` verso ACCETTATO da ACCETTATO (aggiornare la modalità di fatturazione)
+   chiama il verbo con lo stesso stato: la matrice non ha la riga 4→4 e la risposta è
+   `E_PREV_TRANSIZIONE_NON_AMMESSA`. Il ramo «no-op» deve aggiornare i due campi senza chiamare il verbo.
+6. **Da sapere, nessuna modifica attesa:** il verbo fuori perimetro risponde `E_PREV_NOT_FOUND`; un passaggio
+   di processo chiesto (ACCETTATO → EVASO, EMESSO → SCADUTO) risponde `E_DOC_PASSAGGIO_DI_PROCESSO`; la
+   capability nasconde «Emetti» e l'annullo dell'emesso a chi non ha `emetti_preventivo`. Nessun codice nuovo:
+   la policy non si rigenera per questo giro.
+7. **Test Django** che scrivono lo stato del preventivo con un `UPDATE` o chiamano il verbo a tre argomenti: si
+   portano al verbo (o a `dbops.fn_pgtap_porta_a_stato`). Censimento del 2026-10-25: nessuna chiamata diretta
+   nei test, solo il repository (punto 1).
+
+### 8.8 Applicato e verde (2026-10-25)
+
+Tid: `-49` … `-52` applicati, corsa pgTAP verde. Il giro DB 6 è chiuso; restano a DB solo lo spegnimento di
+`cambia_stato_preventivi` dopo il giro BE e il dato dei profili (§8.6).
+
+### 8.9 Anticipati: le concessioni passano a `emetti_preventivo`, `cambia_stato_preventivi` si spegne (2026-10-25)
+
+Tid: i due passi del §8.6 si fanno subito, prima del giro BE.
+
+✅ 2026-10-25: script eseguito su dbdev (4 + 1 righe), migrate applicato da Tid: `cambia_stato_preventivi` spenta.
+
+* **Le concessioni** (dato di dbdev, nessun CSV le semina): le righe di `config.profili_accesso_azioni` (4: profili
+  1, 3, 9221 negati, 9222 concesso) e di `config.user_override_azioni` (1, utente 6, concesso) passano da
+  `cambia_stato_preventivi` a `emetti_preventivo`, **con lo stesso `abilitata`**: chi poteva emettere può
+  ancora, chi era negato resta negato, e l'azione vecchia resta senza figlie. Script nel brief, sotto; provato
+  in transazione su dbdev il 2026-10-25 (4 + 1 righe, zero residue, lo spegnimento passa il guard).
+* **`cambia_stato_preventivi` spenta** nel CSV di `config.azioni_processo` (`attivo = false`, descrizione
+  «ritirata»). ⚠️ **Ordine: prima lo script, poi il migrate**: con una figlia ancora attaccata il mirror di
+  febbraio (`20260228-18`) si ferma sul guard delle figlie. Su un database da zero non ci sono figlie.
+* ⚠️ **Il backend**: finché `post_permission = "cambia_stato_preventivi"` resta nelle tre view e nella factory,
+  quegli endpoint rispondono 403 a tutti (l'azione è spenta). Era già rotto dalla firma del verbo (§8.7 punto
+  1): il punto 2 della richiesta lo ripara.
+
+```sql
+UPDATE config.profili_accesso_azioni x
+   SET azione_id = (SELECT a.id FROM config.azioni_processo a WHERE a.permission_codename = 'emetti_preventivo')
+ WHERE x.azione_id = (SELECT a.id FROM config.azioni_processo a WHERE a.permission_codename = 'cambia_stato_preventivi');
+UPDATE config.user_override_azioni x
+   SET azione_id = (SELECT a.id FROM config.azioni_processo a WHERE a.permission_codename = 'emetti_preventivo')
+ WHERE x.azione_id = (SELECT a.id FROM config.azioni_processo a WHERE a.permission_codename = 'cambia_stato_preventivi');
+```
+

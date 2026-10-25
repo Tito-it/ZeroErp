@@ -103,7 +103,26 @@ BEGIN
     -- ⛔ E nessuna chiave `campo`: il codice e' CONFLITTO_STATO, non
     --   DATO_ERRATO — la richiesta e' «porta il preventivo a
     --   EMESSO», e non c'e' un campo di QUELLA richiesta da accendere.
-    IF v_codice_a = 'EMESSO' THEN
+    -- ⭐ rev 2026-10-25 (20261025-49, brief-modello-documento-vendita §8):
+    --   l'emissione e' lo stato che il vocabolario dichiara (colonna
+    --   emissione), non il letterale. E la regola «almeno una riga
+    --   attiva» sta QUI, sul passaggio (guida del modello §7): prima la
+    --   aveva solo il verbo, e un UPDATE diretto la aggirava.
+    IF NEW.stato_doc_preventivo_id = script.fn_stato_emissione_id('vendite.preventivi'::regclass) THEN
+        IF NOT EXISTS (SELECT 1
+                         FROM vendite.preventivi_righe pr
+                        WHERE pr.preventivo_id = NEW.id
+                          AND pr.attivo IS TRUE) THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database', TG_NAME::text,
+                'E_PREV_NESSUNA_RIGA_ATTIVA',
+                jsonb_build_object('preventivo_id', NEW.id,
+                                   'stato_da',      v_codice_da,
+                                   'stato_a',       v_codice_a),
+                NEW.tx_id,
+                COALESCE(NEW.numero, NEW.id::text));
+        END IF;
+
         v_motivi := script.fn_check_preventivo_emettibile(NEW.id);
 
         -- ⚠️ `riga_id` non si estrae piu' a mano: sta nel `dettaglio` del
@@ -158,7 +177,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_transizione()
-IS 'Trigger function: enforcement del grafo transizioni del preventivo (matrice config.transizioni_stati_preventivi) e, dal 2026-08-29, controlli sull''EMISSIONE delegati a script.fn_check_preventivo_emettibile — la stessa funzione letta da fn_available_actions_preventivo, cosi'' bottone e guard non divergono. ⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I9): Regola 2, una riga attiva con quantita e prezzo deve portare un''aliquota, altrimenti il preventivo non si emette. Chiude il difetto silenzioso gemello di DDT e ordine: fn_ricalcola_riepilogo_iva_preventivo aggrega le righe attive con quantita > 0 e calcola l''imposta con COALESCE(fn_get_aliquota_iva(iva_id, stato), 0), quindi la riga senza aliquota finisce in preventivi_riepiloghi_iva con imponibile pieno e imposta zero. ⭐ NEL TRIGGER e non nella porta: il commento di questo stesso corpo dichiara che la regola «documento senza righe» vive in vendite.fn_cambia_stato_preventivo e che un UPDATE diretto la aggira — e'' la descrizione di una debolezza, non un modello da imitare. Una regola che protegge un numero fiscale non puo'' dipendere da quale porta ha usato il chiamante. ⚠️ Il predicato e'' sulla DESTINAZIONE (v_codice_a = ''EMESSO'') e non su una coppia cablata: oggi la matrice ha solo DRAFT->EMESSO, ma e'' una lettura del seed, e una strada nuova verso EMESSO nasce gia'' coperta. ⛔ Nel VARIADIC va la DESCRIZIONE della riga: preventivi_righe non ha riga_nr e la colonna `ordine` ha default 0. ⛔ Non e'' un NOT NULL di colonna: preventivi_righe.iva_id e'' nullable e la bozza deve restare libera. ℹ️ Il guard dell''annullamento resta trgfn_preventivi_guard_annullamento. ⭐ rev 2026-09-24: Regola 3 — entrando in ACCETTATO solleva il primo motivo di script.fn_check_prezzi_autorizzati (prezzi PENDING o REJECTED su righe e componenti BoM attivi), la stessa funzione con cui la capability spegne «Accetta». Verso EMESSO gli stessi motivi arrivano dalla Regola 2, dentro fn_check_preventivo_emettibile. Assorbe il trigger a10 trgfn_preventivi_guard_transizione_approvazione (ritirato in 20260924-24), che guardava il solo PENDING. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-2).';
+IS 'Trigger function: enforcement del grafo transizioni del preventivo (matrice config.transizioni_stati_preventivi) e, dal 2026-08-29, controlli sull''EMISSIONE delegati a script.fn_check_preventivo_emettibile — la stessa funzione letta da fn_available_actions_preventivo, cosi'' bottone e guard non divergono. ⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I9): Regola 2, una riga attiva con quantita e prezzo deve portare un''aliquota, altrimenti il preventivo non si emette. Chiude il difetto silenzioso gemello di DDT e ordine: fn_ricalcola_riepilogo_iva_preventivo aggrega le righe attive con quantita > 0 e calcola l''imposta con COALESCE(fn_get_aliquota_iva(iva_id, stato), 0), quindi la riga senza aliquota finisce in preventivi_riepiloghi_iva con imponibile pieno e imposta zero. ⭐ NEL TRIGGER e non nella porta: una regola sull''emissione vive sul passaggio, qualunque strada lo scriva. Una regola che protegge un numero fiscale non puo'' dipendere da quale porta ha usato il chiamante. ⚠️ Il predicato e'' sulla DESTINAZIONE (v_codice_a = ''EMESSO'') e non su una coppia cablata: oggi la matrice ha solo DRAFT->EMESSO, ma e'' una lettura del seed, e una strada nuova verso EMESSO nasce gia'' coperta. ⛔ Nel VARIADIC va la DESCRIZIONE della riga: preventivi_righe non ha riga_nr e la colonna `ordine` ha default 0. ⛔ Non e'' un NOT NULL di colonna: preventivi_righe.iva_id e'' nullable e la bozza deve restare libera. ℹ️ Il guard dell''annullamento resta trgfn_preventivi_guard_annullamento. ⭐ rev 2026-09-24: Regola 3 — entrando in ACCETTATO solleva il primo motivo di script.fn_check_prezzi_autorizzati (prezzi PENDING o REJECTED su righe e componenti BoM attivi), la stessa funzione con cui la capability spegne «Accetta». Verso EMESSO gli stessi motivi arrivano dalla Regola 2, dentro fn_check_preventivo_emettibile. Assorbe il trigger a10 trgfn_preventivi_guard_transizione_approvazione (ritirato in 20260924-24), che guardava il solo PENDING. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-2). ⭐ rev 2026-10-25 (20261025-49, brief-modello-documento-vendita §8): Regola 1-bis, all''emissione almeno una riga attiva (E_PREV_NESSUNA_RIGA_ATTIVA, solo la presenza: un totale zero si emette), spostata qui dal verbo vendite.fn_cambia_stato_preventivo, che non la ripete; l''emissione e'' lo stato che il vocabolario dichiara (script.fn_stato_emissione_id), non il letterale ''EMESSO''.';
 ```
 
 </div>

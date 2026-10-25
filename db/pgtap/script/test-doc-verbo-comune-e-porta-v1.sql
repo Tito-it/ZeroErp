@@ -34,6 +34,7 @@
 --   proprietario e la sola GUC apre: rossi da owner per costruzione. Per
 --   questo stanno in coda.
 --
+-- rev 2026-10-25 (giro 6, brief §8): test 9 e 10 con il preventivo, che ha la porta.
 -- rev 2026-10-25: test 2 e 9 confrontano regclass, non il loro testo (dipende dal
 --   search_path: come app il test 2 era rosso, «transizioni_stati_ddt» senza schema).
 --
@@ -47,7 +48,7 @@
 --   6) il lettore: DRAFT->EMESSO manuale con emetti_ddt; CONSEGNATO->RESO di processo
 --   7) il lettore: un passaggio fuori matrice -> nessuna riga
 --   8) il lettore su un documento non ancora portato al modello: chiamata non valida
---   9) montaggio della porta: bolla e reso, e nessun'altra testata
+--   9) montaggio della porta: bolla, reso e preventivo (giro 6), e nessun'altra testata
 --  10) montaggio della porta: BEFORE UPDATE OF la colonna di stato della mappa
 --  11) le due porte del registro ritirate (E_DDT_/E_RESO_STATO_SOLO_DA_VERBO
 --      obsoleti, nessuna funzione li solleva piu')
@@ -180,8 +181,9 @@ SELECT g.tgrelid::regclass AS tab, g.tgname::text AS nome,
 SELECT is(
     (SELECT array_agg(tab::oid ORDER BY tab::oid) FROM t_porta),
     (SELECT array_agg(x::oid ORDER BY x::oid)
-       FROM unnest(ARRAY['vendite.ddt'::regclass, 'vendite.resi'::regclass]) x),
-    'la porta e'' montata sulla bolla e sul reso, e su nessun''altra testata'
+       FROM unnest(ARRAY['vendite.ddt'::regclass, 'vendite.resi'::regclass,
+                         'vendite.preventivi'::regclass]) x),
+    'la porta e'' montata su bolla, reso e preventivo, e su nessun''altra testata'
 );
 
 SELECT is(
@@ -191,7 +193,7 @@ SELECT is(
       WHERE p.def LIKE '%BEFORE UPDATE OF ' || m.colonna_stato || ' ON %'
         AND p.def LIKE '%FOR EACH ROW%'
         AND p.nome LIKE 'trg\_%\_a05\_stato\_solo\_dal\_verbo\_upd'),
-    2,
+    3,
     'la porta: BEFORE UPDATE OF la colonna di stato della mappa, per riga, fascia _a05_'
 );
 

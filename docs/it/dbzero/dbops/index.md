@@ -130,6 +130,7 @@ search:
 - [fn_pgtap_crea_ordine_con_righe](funzioni/fn_pgtap_crea_ordine_con_righe.md) — (rev 2026-10-25)
 - [fn_pgtap_crea_pdp](funzioni/fn_pgtap_crea_pdp.md)
 - [fn_pgtap_crea_preventivo](funzioni/fn_pgtap_crea_preventivo.md) — (rev 2026-10-07)
+- [fn_pgtap_crea_preventivo_con_righe](funzioni/fn_pgtap_crea_preventivo_con_righe.md)
 - [fn_pgtap_crea_reso](funzioni/fn_pgtap_crea_reso.md) — (rev 2026-10-25)
 - [fn_pgtap_crea_roster_processo](funzioni/fn_pgtap_crea_roster_processo.md)
 - [fn_pgtap_crea_soggetto_pg](funzioni/fn_pgtap_crea_soggetto_pg.md) — (rev 2026-08-21)

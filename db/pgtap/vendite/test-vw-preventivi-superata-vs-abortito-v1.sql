@@ -62,6 +62,14 @@
 --   Le asserzioni sul numero letterale (3..11) leggono ora il numero
 --   COSTRUITO (tmp_sa_numeri, da vendite.preventivi): provano le stesse cose
 --   (superata vs abortita), con le stesse attese.
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): le rev 0 EMESSO
+--   (A, C) vengono da dbops.fn_pgtap_crea_preventivo_con_righe. Lo stato ora
+--   passa dal verbo sotto la porta e l'emissione chiede almeno una riga
+--   attiva: senza righe la fixture si fermava su E_PREV_NESSUNA_RIGA_ATTIVA.
+--   La rev 1 di C copia la riga dalla rev 0 e si emette con quella. B
+--   (ANNULLATO dalla bozza) resta senza righe. Il builder con le righe non
+--   restituisce la valuta: i riferimenti la leggono dalla testata. Le
+--   asserzioni contano revisioni, non righe: invariate.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -89,19 +97,23 @@ SELECT plan(12);
 --   d'accordo per costruzione. ⛔ Cio' che il builder scrive si legge in
 --   un'istruzione SEPARATA.
 -- ⭐ rev 2026-10-24 (R-6): ogni numero e' un preventivo del builder, con
---   la rev 0 gia' nello stato del caso (per la matrice; l'emissione oggi non
---   pretende righe, e il test non ne ha bisogno).
+--   la rev 0 gia' nello stato del caso (per la matrice).
+-- ⚠️ rev 2026-10-25 (giro 6): l'emissione pretende una riga attiva (guard di
+--   transizione): le rev 0 EMESSO vengono dal builder con le righe. B esce
+--   dalla bozza verso ANNULLATO, che righe non ne chiede.
 CREATE TEMP TABLE tmp_sa_a AS
-SELECT * FROM dbops.fn_pgtap_crea_preventivo('superata vs abortito A', 'EMESSO');
+SELECT * FROM dbops.fn_pgtap_crea_preventivo_con_righe('superata vs abortito A', 'EMESSO');
 CREATE TEMP TABLE tmp_sa_b AS
 SELECT * FROM dbops.fn_pgtap_crea_preventivo('superata vs abortito B', 'ANNULLATO');
 CREATE TEMP TABLE tmp_sa_c AS
-SELECT * FROM dbops.fn_pgtap_crea_preventivo('superata vs abortito C', 'EMESSO');
+SELECT * FROM dbops.fn_pgtap_crea_preventivo_con_righe('superata vs abortito C', 'EMESSO');
 
 CREATE TEMP TABLE tmp_sa_refs AS
 SELECT
   a.billing_account_id,
-  a.valuta_id,
+  -- rev 2026-10-25: il builder con le righe non restituisce la valuta; si
+  --   legge dalla testata che ha costruito.
+  (SELECT p.valuta_id FROM vendite.preventivi p WHERE p.id = a.preventivo_id) AS valuta_id,
   a.emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE) AS st_emesso_id,

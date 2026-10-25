@@ -9,7 +9,7 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 8,2,run_commesse_push,Invio commesse a sistema esterno,f,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres,TUTTO
 9,2,prezzo_override_manuale,Modifica manuale prezzo,f,t,{},2026-04-17 00:00:00+02,postgres,2026-04-17 00:00:00+02,postgres,TUTTO
 10,2,approva_prezzo_override,Approva modifica prezzo,f,t,{},2026-04-23 00:00:00+02,postgres,2026-04-23 00:00:00+02,postgres,TUTTO
-11,2,cambia_stato_preventivi,Cambia stato preventivo (emetti/accetta/rifiuta/annulla),f,t,{},2026-05-02 00:00:00+02,postgres,2026-05-02 00:00:00+02,postgres,TUTTO
+11,2,cambia_stato_preventivi,"RITIRATA il 2026-10-25, sostituita da emetti_preventivo (le concessioni sono passate a lei): il permesso sta sulla riga del passaggio",f,f,{},2026-05-02 00:00:00+02,postgres,2026-10-25 00:00:00+02,mctit,TUTTO
 12,2,push_commessa_preventivi,Push preventivo a commessa per fatturazione,t,t,{},2026-05-02 00:00:00+02,postgres,2026-05-02 00:00:00+02,postgres,TUTTO
 13,2,genera_pratica_preventivi,Genera pratica esecutiva da preventivo,f,t,{},2026-05-02 00:00:00+02,postgres,2026-05-02 00:00:00+02,postgres,TUTTO
 14,11,documenti_template_manage,Gestione template e versioni documenti,f,t,{},2026-05-03 00:00:00+02,postgres,2026-05-03 00:00:00+02,postgres,TUTTO
@@ -38,3 +38,4 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 37,2,emetti_ddt,Emette una bolla o annulla una bolla emessa (se muove merce scarica o storna il magazzino: irreversibile),t,t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit,TUTTO
 38,6,blocca_merce,Apre o libera un blocco manuale di merce a magazzino (riserva pezzi per qualcuno: ferma gli scarichi degli altri),f,t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit,TUTTO
 39,2,conferma_reso,Conferma o annulla un reso (se fa rientrare merce carica o storna il magazzino),t,t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit,TUTTO
+40,2,emetti_preventivo,Emette un preventivo o annulla un preventivo emesso o accettato,f,t,{},2026-10-25 00:00:00+02,mctit,2026-10-25 00:00:00+02,mctit,TUTTO

@@ -8,6 +8,11 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
 --   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
 --   preventivo nasceva gia' EMESSO).
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): la rev 0 si
+--   emette con una riga (merce, 1 x 10) da
+--   dbops.fn_pgtap_crea_preventivo_con_righe (p_preventivo_id): l'emissione
+--   senza righe e' rifiutata. Le attese leggono la vista dei gruppi della
+--   commessa, non le righe del preventivo: non cambiano.
 -- rev 2026-10-24 (brief-modello-documento-vendita Q-4): il mondo si COSTRUISCE
 --   (azienda A col suo operatore, contesto su di lui, cliente, articolo
 --   servizio) invece di pescare «il primo BA / articolo / emittente per id».
@@ -123,10 +128,13 @@ WITH ins AS (
   RETURNING id, uid, numero)
 SELECT * FROM ins;
 
--- ⚠️ rev 2026-10-24: nato in bozza, va a EMESSO sotto i guard veri (senza
---   righe non hanno motivi da sollevare).
+-- ⚠️ rev 2026-10-24: nato in bozza, va a EMESSO sotto i guard veri.
+-- ⚠️ rev 2026-10-25 (§8, giro 6): con una riga (merce, 1 x 10) scritta in
+--   bozza da dbops.fn_pgtap_crea_preventivo_con_righe, che poi porta lo stato:
+--   senza righe l'emissione e' rifiutata (E_PREV_NESSUNA_RIGA_ATTIVA).
 DO $porta$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_rif_prev0), 'EMESSO');
+  PERFORM dbops.fn_pgtap_crea_preventivo_con_righe('vgrif', 'EMESSO',
+            p_preventivo_id => (SELECT id FROM tmp_rif_prev0));
 END $porta$;
 
 CREATE TEMP TABLE tmp_rif_comm AS

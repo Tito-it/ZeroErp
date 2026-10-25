@@ -9,6 +9,10 @@
 --   l'operatore riceve emetti_ddt prima dei test 8-12. Il test 10 emette con
 --   dbops.fn_pgtap_porta_a_stato (verbo sotto la porta) al posto dell'UPDATE diretto, che ora la
 --   porta rifiuta prima del guard delle righe. Attese invariate.
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): la regola «almeno una riga attiva»
+--   del preventivo esce dal verbo vendite.fn_cambia_stato_preventivo e sta nel guard
+--   vendite.trgfn_preventivi_guard_transizione (20261025-49/-50). Il test 14 guarda il guard, con
+--   l'ancora sul codice E_PREV_NESSUNA_RIGA_ATTIVA: la regola deve essere li', senza filtro qta > 0.
 -- pgTAP test per Zero ERP
 -- Test: "documento vuoto non avanza di stato" (brief 2026-07-16)
 --   §1a capability righe-aware (meta.requires_righe -> enabled/reason)
@@ -24,6 +28,7 @@
 -- 11-12) DDT con riga: azione 'emetti' enabled=true, reason NULL
 -- 13-14) SOLO presenza righe (decisione Tid 2026-07-16): nessun guard di
 --        emissione vincola il totale; il guard preventivo non filtra qta>0
+--        (dal 2026-10-25 la regola sta nel guard di transizione, non nel verbo)
 -- 15)    simmetria: tutti i guard di avanzamento contano righe ATTIVE
 -- ------------------------------------------------------------
 
@@ -228,14 +233,21 @@ SELECT is(
 -- 14) Il guard preventivo non filtra piu' quantita > 0: conta la sola
 --     presenza di righe attive (una riga a qta 0 e' comunque una riga).
 --     Si cerca il predicato con alias (pr.quantita > 0), che compare solo
---     nel codice: il commento della fn cita "quantita > 0" senza alias.
+--     nel codice: i commenti citano "quantita > 0" senza alias.
+-- ⚠️ rev 2026-10-25 (giro 6, 20261025-49/-50): la regola delle righe
+--   all'emissione non sta piu' nel verbo vendite.fn_cambia_stato_preventivo
+--   ma nel guard vendite.trgfn_preventivi_guard_transizione, la sede del
+--   passaggio. Il test guarda il guard, e prima pretende che la regola sia
+--   LI' (il letterale 'E_PREV_NESSUNA_RIGA_ATTIVA'): senza quell'ancora,
+--   un guard che avesse perso la regola passerebbe il NOT LIKE a vuoto.
 SELECT ok(
-  (SELECT p.prosrc NOT LIKE '%pr.quantita > 0%'
+  (SELECT p.prosrc LIKE '%''E_PREV_NESSUNA_RIGA_ATTIVA''%'
+          AND p.prosrc NOT LIKE '%pr.quantita > 0%'
      FROM pg_proc p
      JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'vendite'
-      AND p.proname = 'fn_cambia_stato_preventivo'),
-  '14) fn_cambia_stato_preventivo non filtra pr.quantita > 0 (solo presenza righe)');
+      AND p.proname = 'trgfn_preventivi_guard_transizione'),
+  '14) trgfn_preventivi_guard_transizione chiede le righe all''emissione e non filtra pr.quantita > 0 (solo presenza righe)');
 
 -- 15) Simmetria: il guard ordini conta le righe ATTIVE come tutti gli altri.
 SELECT ok(

@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VOCABOLARIO DICE QUALE STATO E' L'EMISSIONE
+#   Brief: brief-modello-documento-vendita §7.9 e §8 (giro 6; richiesta del
+#   team BE, colonna decisa da Tid il 2026-10-25).
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   Un documento che si stampa si emette solo da «Emetti» (guida del modello
+#   §7, M-2): numero e PDF nascono insieme. Il backend rifiuta lo stato di
+#   emissione sul cambio stato generico, e per farlo deve sapere QUALE stato
+#   e' l'emissione: oggi lo scrive come letterale, uno per documento. Lo dice
+#   il vocabolario, come dice lo stato iniziale (P-1, 20261024-07).
+#
+# ── LA COLONNA ──────────────────────────────────────────────────────
+#   emissione boolean NOT NULL DEFAULT false, al piu' una riga per
+#   vocabolario (indice unico parziale) e solo su uno stato attivo (CHECK).
+#   La legge script.fn_stato_emissione_id. I valori stanno nei CSV dei
+#   vocabolari (80_data), non qui (§11.2): EMESSO del preventivo e del DDT,
+#   EMESSA dell'offerta, ATTIVO del contratto, CONFERMATO dell'ordine.
+#
+# ── PERCHE' QUESTI CINQUE ───────────────────────────────────────────
+#   Sono i documenti che passano da «Emetti» (la factory /emetti/ del
+#   backend). Reso (la conferma fa da emissione), commessa (nasce dalla push)
+#   e fattura (la pipeline) non si emettono: non hanno la colonna, e il
+#   lettore risponde NULL.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261025-37-alter-stati-doc-add-emissione-mctit.yaml
+
+  - changeSet:
+      id: 20261025-37-alter-stati-doc-add-emissione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Colonna emissione (NOT NULL DEFAULT false) sui vocabolari degli stati dei cinque
+        documenti che si emettono (preventivo, offerta, contratto, ordine, DDT), con un indice
+        unico parziale (al massimo uno stato di emissione per vocabolario) e il CHECK «lo stato
+        di emissione e'' attivo». Valori dai CSV di 80_data. Brief: brief-modello-documento-vendita
+        §8.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: stati_doc_preventivi }
+            - tableExists: { schemaName: config, tableName: stati_doc_offerte }
+            - tableExists: { schemaName: config, tableName: stati_doc_contratti }
+            - tableExists: { schemaName: config, tableName: stati_doc_ordini }
+            - tableExists: { schemaName: config, tableName: stati_doc_ddt }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_preventivi
+                  ADD COLUMN emissione BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_preventivi_emissione_attivo CHECK (NOT emissione OR attivo);
+              ALTER TABLE config.stati_doc_offerte
+                  ADD COLUMN emissione BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_offerte_emissione_attivo CHECK (NOT emissione OR attivo);
+              ALTER TABLE config.stati_doc_contratti
+                  ADD COLUMN emissione BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_contratti_emissione_attivo CHECK (NOT emissione OR attivo);
+              ALTER TABLE config.stati_doc_ordini
+                  ADD COLUMN emissione BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_ordini_emissione_attivo CHECK (NOT emissione OR attivo);
+              ALTER TABLE config.stati_doc_ddt
+                  ADD COLUMN emissione BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_ddt_emissione_attivo CHECK (NOT emissione OR attivo);
+
+              CREATE UNIQUE INDEX uq_stati_doc_preventivi_emissione ON config.stati_doc_preventivi (emissione) WHERE emissione;
+              CREATE UNIQUE INDEX uq_stati_doc_offerte_emissione ON config.stati_doc_offerte (emissione) WHERE emissione;
+              CREATE UNIQUE INDEX uq_stati_doc_contratti_emissione ON config.stati_doc_contratti (emissione) WHERE emissione;
+              CREATE UNIQUE INDEX uq_stati_doc_ordini_emissione ON config.stati_doc_ordini (emissione) WHERE emissione;
+              CREATE UNIQUE INDEX uq_stati_doc_ddt_emissione ON config.stati_doc_ddt (emissione) WHERE emissione;
+
+              COMMENT ON COLUMN config.stati_doc_preventivi.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti», che produce numero e PDF insieme (guida del modello di documento §7, M-2); il cambio stato generico lo rifiuta. Al massimo uno per vocabolario (uq_stati_doc_preventivi_emissione) ed e'' attivo (chk_stati_doc_preventivi_emissione_attivo). Lo legge script.fn_stato_emissione_id (backend e verbi), non un letterale ''EMESSO''. Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita §8 (Tid, 2026-10-25).';
+              COMMENT ON COLUMN config.stati_doc_offerte.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti», che produce numero e PDF insieme (guida del modello di documento §7, M-2); il cambio stato generico lo rifiuta. Al massimo uno per vocabolario (uq_stati_doc_offerte_emissione) ed e'' attivo (chk_stati_doc_offerte_emissione_attivo). Lo legge script.fn_stato_emissione_id (backend e verbi), non un letterale ''EMESSA''. Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita §8 (Tid, 2026-10-25).';
+              COMMENT ON COLUMN config.stati_doc_contratti.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti», che produce numero e PDF insieme (guida del modello di documento §7, M-2); il cambio stato generico lo rifiuta. Al massimo uno per vocabolario (uq_stati_doc_contratti_emissione) ed e'' attivo (chk_stati_doc_contratti_emissione_attivo). Lo legge script.fn_stato_emissione_id (backend e verbi), non un letterale ''ATTIVO''. Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita §8 (Tid, 2026-10-25).';
+              COMMENT ON COLUMN config.stati_doc_ordini.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti», che produce numero e PDF insieme (guida del modello di documento §7, M-2); il cambio stato generico lo rifiuta. Al massimo uno per vocabolario (uq_stati_doc_ordini_emissione) ed e'' attivo (chk_stati_doc_ordini_emissione_attivo). Lo legge script.fn_stato_emissione_id (backend e verbi), non un letterale ''CONFERMATO''. Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita §8 (Tid, 2026-10-25).';
+              COMMENT ON COLUMN config.stati_doc_ddt.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti», che produce numero e PDF insieme (guida del modello di documento §7, M-2); il cambio stato generico lo rifiuta. Al massimo uno per vocabolario (uq_stati_doc_ddt_emissione) ed e'' attivo (chk_stati_doc_ddt_emissione_attivo). Lo legge script.fn_stato_emissione_id (backend e verbi), non un letterale ''EMESSO''. Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita §8 (Tid, 2026-10-25).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_preventivi DROP COLUMN IF EXISTS emissione;
+              ALTER TABLE config.stati_doc_offerte DROP COLUMN IF EXISTS emissione;
+              ALTER TABLE config.stati_doc_contratti DROP COLUMN IF EXISTS emissione;
+              ALTER TABLE config.stati_doc_ordini DROP COLUMN IF EXISTS emissione;
+              ALTER TABLE config.stati_doc_ddt DROP COLUMN IF EXISTS emissione;

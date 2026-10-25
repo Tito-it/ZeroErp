@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): il test 25
+--   («23) il verbo di stato del preventivo…») chiama vendite.fn_cambia_stato_preventivo
+--   con la firma nuova a DUE argomenti (id, stato): p_user e' uscito, user_update
+--   lo scrive il trigger di audit. L'attesa non cambia: l'annullo della bozza
+--   con un legame e' rifiutato dal guard dell'annullo (E_DOC_ANNULLO_CON_LEGAMI,
+--   «Serve una conferma»); dalla bozza non serve l'azione emetti_preventivo.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   l'ordine da offerta porta documento_origine_tipo = OFFERTA_COMMERCIALE, e il legame di
 --   provenienza ha origine OFFERTA_COMMERCIALE (il codice della sorgente, era OFFERTA).
@@ -455,7 +461,7 @@ SELECT ok(
   '22) il legame del preventivo e'' la riga di commessa NON_EMESSA che ha spinto');
 
 SELECT pg_temp.al_prova('23_prev_verbo_stato',
-  format('SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''ANNULLATO'', NULL)', pg_temp.al_fix('e_prev')));
+  format('SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''ANNULLATO'')', pg_temp.al_fix('e_prev')));
 SELECT ok(pg_temp.al_rifiuto('23_prev_verbo_stato', 'Serve una conferma'),
   '23) il verbo di stato del preventivo (la strada del backend) e'' rifiutato: niente ritiro silenzioso');
 

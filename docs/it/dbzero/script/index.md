@@ -108,6 +108,7 @@ search:
 - [fn_data_consegna_ammessa](funzioni/fn_data_consegna_ammessa.md) — (nata il 2026-10-13, dal collaudo)
 - [fn_data_operativa](funzioni/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md) — (rev 2026-08-21)
+- [fn_doc_azione_passaggio](funzioni/fn_doc_azione_passaggio.md)
 - [fn_doc_colonna_modificabile](funzioni/fn_doc_colonna_modificabile.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_doc_date_consegna_anteriori](funzioni/fn_doc_date_consegna_anteriori.md) — (nata il 2026-10-13, dal collaudo)
 - [fn_doc_indirizzi_sede](funzioni/fn_doc_indirizzi_sede.md)
@@ -117,6 +118,7 @@ search:
 - [fn_doc_passaggio](funzioni/fn_doc_passaggio.md)
 - [fn_doc_riga_modificabile](funzioni/fn_doc_riga_modificabile.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-3)
 - [fn_doc_scrivi_stato](funzioni/fn_doc_scrivi_stato.md)
+- [fn_doc_stato_id](funzioni/fn_doc_stato_id.md)
 - [fn_doc_stato_modello](funzioni/fn_doc_stato_modello.md)
 - [fn_doc_testata_in_stato](funzioni/fn_doc_testata_in_stato.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 2)
 - [fn_elimina_credenziale](funzioni/fn_elimina_credenziale.md) — (scritta il 06-10-2026)
@@ -295,6 +297,7 @@ search:
 - [fn_sorgente_chiave_id](funzioni/fn_sorgente_chiave_id.md) — (scritta il 05-10-2026)
 - [fn_sorgente_chiave_uuid](funzioni/fn_sorgente_chiave_uuid.md) — (scritta il 05-10-2026)
 - [fn_sqlstate_di_ambiente](funzioni/fn_sqlstate_di_ambiente.md) — (latest review 16-10-2026)
+- [fn_stato_emissione_id](funzioni/fn_stato_emissione_id.md)
 - [fn_stato_id_da_iso2](funzioni/fn_stato_id_da_iso2.md) — (18-10-2026 — decisione D-1 di Tid)
 - [fn_stato_iniziale_id](funzioni/fn_stato_iniziale_id.md)
 - [fn_stato_proposto_id](funzioni/fn_stato_proposto_id.md) — (18-10-2026 — decisione D-1 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)

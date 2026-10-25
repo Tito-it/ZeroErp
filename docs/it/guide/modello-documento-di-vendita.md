@@ -19,6 +19,9 @@
 > * [script.fn_guard_passaggio](/dbzero/script/funzioni/fn_guard_passaggio) e [script.fn_doc_scrivi_stato](/dbzero/script/funzioni/fn_doc_scrivi_stato) — le due metà del verbo di stato
 > * [script.trgfn_doc_stato_solo_dal_verbo](/dbzero/script/funzioni/trgfn_doc_stato_solo_dal_verbo) — la porta: lo stato si cambia solo dal verbo
 > * [script.fn_stato_iniziale_id](/dbzero/script/funzioni/fn_stato_iniziale_id) — l'unico lettore dello stato iniziale di un vocabolario
+> * [script.fn_stato_emissione_id](/dbzero/script/funzioni/fn_stato_emissione_id) — l'unico lettore dello stato di emissione di un documento
+> * [script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id) — dal codice di uno stato al suo id, per ogni documento
+> * [script.fn_doc_azione_passaggio](/dbzero/script/funzioni/fn_doc_azione_passaggio) — la domanda del backend: che cosa chiede questo passaggio?
 > * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) — il permesso dentro il verbo
 > * [script.fn_check_azione_processo](/dbzero/script/funzioni/fn_check_azione_processo) — la regola del permesso, la stessa per DB e backend
 > * [vendite.trgfn_doc_guard_annullo_con_legami](/dbzero/vendite/funzioni/trgfn_doc_guard_annullo_con_legami) — l'annullo di un documento con legami si conferma
@@ -94,7 +97,7 @@ scattare.
 Ogni documento ha due tabelle di configurazione:
 
 * il **vocabolario degli stati** (`config.stati_doc_*`): quali stati esistono, e per ognuno se è
-  quello iniziale, se è terminale, se è un annullo;
+  quello iniziale, se è quello di emissione, se è terminale, se è un annullo;
 * la **matrice dei passaggi** (`config.transizioni_stati_*`): **una riga = un passaggio ammesso**,
   da uno stato a un altro.
 
@@ -194,6 +197,10 @@ emesso.
 * Il **PDF** lo genera il modulo documenti, col modello di stampa del documento: [guida](/guide/documenti-e-stampe).
 * Le **condizioni** per uscire dalla bozza (righe, indirizzi, causale…) stanno sul passaggio, nel
   guard del documento: sono sue, e le descrive la sua guida.
+* **Quale stato è l'emissione** lo dice il vocabolario (colonna `emissione`), e lo legge
+  [`script.fn_stato_emissione_id`](/dbzero/script/funzioni/fn_stato_emissione_id): il backend rifiuta
+  quello stato sul cambio di stato generico, per ogni documento, senza un nome di stato scritto nel
+  codice.
 
 I documenti che non si stampano hanno il loro passaggio al posto dell'emissione: la commessa nasce
 dalla push dei documenti a monte, la fattura segue gli step della pipeline di fatturazione.
@@ -233,11 +240,13 @@ possono sbagliarla in un altro modo.
 
 Stato al 25 ottobre 2026. ✅ = segue la regola; ❌ = non ancora, con che cosa fa oggi. La riga di un
 documento cambia quando quel documento viene portato al modello (§11). Bolla e reso sono stati portati
-il 25 ottobre 2026, database e backend (403 dalla riga del passaggio, emissione solo da «Emetti»).
+il 25 ottobre 2026, database e backend (403 dalla riga del passaggio, emissione solo da «Emetti»). Il
+preventivo è stato portato lo stesso giorno lato database; il backend lo segue (il 403 dalla riga del
+passaggio e l'emissione letta dal vocabolario).
 
 | Documento | Nasce in bozza (§3) | Matrice in tabella (§4) | Verbo di stato (§5) | Azione sul passaggio (§6) | Emissione (§7) | Annullo (§8) |
 | --- | --- | --- | --- | --- | --- | --- |
-| Preventivo | ✅ | ✅ | ✅ `fn_cambia_stato_preventivo`, ma senza il controllo del permesso | ❌ `cambia_stato_preventivi` su ogni passaggio, controllata solo dal backend | ✅ solo da «Emetti» | ✅ `fn_annulla_preventivo` → verbo di stato |
+| Preventivo | ✅ | ✅ | ✅ `fn_cambia_stato_preventivo` sul verbo comune, con la porta; ACCETTATO ↔ EVASO dalla proiezione dello smistamento | ✅ `emetti_preventivo` su emissione e annullo dell'emesso e dell'accettato (il backend chiede ancora `cambia_stato_preventivi` fino al suo giro) | ✅ solo da «Emetti»; le righe sul passaggio, nel guard | ✅ `fn_annulla_preventivo` → verbo di stato |
 | Offerta | ✅ | ✅ (tabella `config.stati_doc_offerte_transizioni`, nome fuori serie) | ❌ `UPDATE` dal backend; gli stati di partenza sono ripetuti in Python | ❌ nessuna azione | ✅ | ❌ da accettata, con un controllo suo (`fn_check_offerta_annullabile`) invece dell'avviso dei legami |
 | Contratto | ✅ | ❌ passaggi scritti nel guard; la tabella la legge solo la capability | ❌ `UPDATE` dal backend | ❌ nessuna azione | ✅ | ❌ `fn_annulla_contratto` scrive lo stato da sé |
 | Ordine | ✅ | ✅ | ❌ `UPDATE` dal backend | ❌ nessuna azione | ❌ anche la conferma e il cambio stato generico portano a confermato | ❌ `fn_annulla_ordine` scrive lo stato da sé |

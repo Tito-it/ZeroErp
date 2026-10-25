@@ -4,6 +4,16 @@
 --
 -- Test: dbops.fn_pgtap_crea_preventivo — il BB del preventivo
 -- Riferimento: brief-db-fixture-rls-documenti-costruiti (giro 2).
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): l'emissione
+--   chiede almeno una riga attiva (E_PREV_NESSUNA_RIGA_ATTIVA, ora nel guard
+--   di transizione) e lo stato passa dal verbo sotto la porta. Il builder resta
+--   SENZA righe: uno stato oltre la bozza si chiede a
+--   dbops.fn_pgtap_crea_preventivo_con_righe (test 5, che costruisce anche il
+--   preventivo della seconda chiamata del test 6), e chiederlo a questo builder
+--   si ferma sull'emissione (test 6b, nuovo). Il parametro di stato di QUESTO
+--   builder resta provato su uno stato che non chiede righe (test 5b, nuovo:
+--   ANNULLATO, dalla bozza). Prima il test 5 chiedeva EMESSO a un preventivo
+--   senza righe, uno stato che il modello non ammette. Plan 7 -> 9.
 --
 -- Semantica attesa (il contratto, non l'implementazione):
 --   - costruisce il mondo e la testata, e la testata e' SCRIVIBILE: e' la
@@ -11,16 +21,21 @@
 --   - l'emittente e' quello che il billing account pretende, l'istanza e la
 --     utility sono quelle del billing account;
 --   - il numero lo assegna il dominio, non la fixture;
---   - lo stato si sceglie alla nascita, e uno inesistente parla;
+--   - lo stato si sceglie alla nascita, e uno inesistente parla; uno oltre la
+--     bozza chiede righe: il builder senza righe si ferma sull'emissione, e lo
+--     costruisce dbops.fn_pgtap_crea_preventivo_con_righe;
 --   - una seconda chiamata riusa l'azienda di chi agisce, con un cliente nuovo.
 --
--- Elenco test (plan 7):
+-- Elenco test (plan 9):
 --   1) la funzione esiste con la firma dichiarata
 --   2) la testata esiste, col billing account e l'istanza tornati
 --   3) l'emittente e' quello del billing account (il guard emittente/BA)
 --   4) numero assegnato dal dominio, validita' aperta da oggi
---   5) stato: quello chiesto alla nascita (EMESSO, non il default)
+--   5) stato: quello chiesto alla nascita (EMESSO, non il default), dal
+--      builder con le righe
+--   5b) stato chiesto a questo builder, senza righe: ANNULLATO (dalla bozza)
 --   6) seconda chiamata: stessa azienda, cliente nuovo
+--   6b) senza righe EMESSO non si raggiunge: si ferma sull'emissione
 --   7) guard: uno stato che non esiste parla invece di scrivere NULL
 -- ------------------------------------------------------------
 
@@ -34,7 +49,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   viene chiamata come la chiamera' un file su un database ricostruito: senza
 --   nessuna veste in sessione. Aprirlo prima nasconderebbe meta' del contratto.
 
-SELECT plan(7);
+SELECT plan(9);
 
 -- 1) La firma
 SELECT has_function(
@@ -75,8 +90,11 @@ SELECT ok(
 );
 
 -- 5) Lo stato si sceglie alla nascita
+-- ⭐ rev 2026-10-25 (giro 6): oltre la bozza serve una riga attiva, e la
+--   scrive il builder gemello; la testata la costruisce comunque
+--   dbops.fn_pgtap_crea_preventivo, che resta il soggetto del test 6.
 CREATE TEMP TABLE t_em AS
-SELECT * FROM dbops.fn_pgtap_crea_preventivo('presidio preventivo emesso', 'EMESSO');
+SELECT * FROM dbops.fn_pgtap_crea_preventivo_con_righe('presidio preventivo emesso', 'EMESSO');
 
 SELECT is(
     (SELECT s.codice_interno
@@ -87,6 +105,20 @@ SELECT is(
     'lo stato e'' quello chiesto alla nascita, non il default'
 );
 
+-- 5b) Il parametro di stato di questo builder, su uno stato che non chiede
+--   righe: l'annullo esce direttamente dalla bozza.
+CREATE TEMP TABLE t_ann AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('presidio preventivo annullato', 'ANNULLATO');
+
+SELECT is(
+    (SELECT s.codice_interno
+       FROM vendite.preventivi p
+       JOIN config.stati_doc_preventivi s ON s.id = p.stato_doc_preventivo_id
+      WHERE p.id = (SELECT preventivo_id FROM t_ann)),
+    'ANNULLATO'::character varying,
+    'senza righe, il builder porta allo stato chiesto quando la strada non chiede righe (ANNULLATO)'
+);
+
 -- 6) Seconda chiamata: il contesto e' ormai aperto, l'azienda si riusa
 SELECT is(
     (SELECT (e.emittente_fiscale_id = p1.emittente_fiscale_id)::text
@@ -94,6 +126,16 @@ SELECT is(
        FROM t_p1 p1, t_em e),
     'true true',
     'seconda chiamata: stessa azienda di chi agisce, cliente nuovo'
+);
+
+-- 6b) Senza righe, uno stato oltre la bozza non si raggiunge: l'emissione
+--   chiede almeno una riga attiva (guard di transizione), e il builder non ne
+--   scrive. E' il motivo per cui esiste fn_pgtap_crea_preventivo_con_righe.
+SELECT throws_like($$
+    SELECT dbops.fn_pgtap_crea_preventivo('presidio emesso senza righe', 'EMESSO')
+$$,
+    '%senza righe attive%',
+    'senza righe EMESSO non si raggiunge: si ferma sull''emissione (E_PREV_NESSUNA_RIGA_ATTIVA)'
 );
 
 -- 7) Guard: uno stato che non esiste
