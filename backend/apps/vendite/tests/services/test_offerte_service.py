@@ -86,6 +86,7 @@ from unittest.mock import MagicMock, patch
 from django.db import DatabaseError, IntegrityError
 
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests._helpers.modello_documento_mockato import ModelloDocumentoMockatoMixin
 
 
 def _make_offerta_dict(stato_codice: str = "BOZZA") -> dict[str, object]:
@@ -118,7 +119,7 @@ _SENZA_CONTATORI_DB = patch(
 
 
 @_SENZA_CONTATORI_DB
-class OfferteServiceTests(TestCase):
+class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # --- lista --------------------------------------------------------
 
     # Scopo: order_by fuori whitelist -> ServiceError E_VENDITE_VALIDATION.
@@ -307,6 +308,7 @@ class OfferteServiceTests(TestCase):
         from apps.vendite.services.offerte_service import OfferteService
 
         repo_cls.return_value.get_stato_codice.return_value = "EMESSA"
+        self.emissione_del_documento("EMESSA")
         with self.assertRaises(ServiceError) as cm:
             OfferteService().emetti(1)
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
@@ -485,6 +487,8 @@ class OfferteServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "BOZZA"
         repo.get_stato_id_by_codice.return_value = 2
+        # Lo stato di emissione dal vocabolario (§8.11 B-4), non `StatoOfferta.EMESSA`.
+        self.emissione_del_documento("EMESSA")
         repo.get_offerta.return_value = _make_offerta_dict("EMESSA")
         repo.list_eccezioni.return_value = []
         repo.get_utility.return_value = None
@@ -493,6 +497,8 @@ class OfferteServiceTests(TestCase):
 
         repo.update_offerta.assert_not_called()
         repo.update_stato.assert_called_once_with(1, 2, motivazione_rifiuto=None)
+        self.modello_documento.stato_di_emissione.assert_called_once_with("vendite.offerte_commerciali")
+        repo.get_stato_id_by_codice.assert_called_once_with("EMESSA")
 
     # Scopo: registra_accettazione EMESSA -> ACCETTATA, no motivazione.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
@@ -628,6 +634,8 @@ class OfferteServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "BOZZA"
         repo.get_stato_id_by_codice.return_value = 2
+        # Lo stato di emissione dal vocabolario (§8.11 B-4), non `StatoOfferta.EMESSA`.
+        self.emissione_del_documento("EMESSA")
         # Simula il P0001 sollevato dal trigger guard transizione.
         repo.update_stato.side_effect = DatabaseError(
             "E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO: "

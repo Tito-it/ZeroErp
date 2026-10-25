@@ -6,7 +6,7 @@
 #
 # Copre contro DB+API reali (ciò che gli unit test mockano):
 # creazione ordine BOZZA (numero già valorizzato dal trigger, §8.1),
-# guard push pre-conferma, conferma (BOZZA→CONFERMATO), push singolo a
+# guard push pre-conferma, conferma da /emetti/ (BOZZA→CONFERMATO), push singolo a
 # commessa (pr_run_commesse_push_one ORDINE_VENDITA), stato dell'ordine
 # INVARIATO dall'invio (D-6), idempotenza re-push (nessuna riga da mandare),
 # consultazione push log; poi il ritorno: annullo della commessa con la
@@ -29,7 +29,7 @@
 #  2) Crea ordine BOZZA (fatturazione_trigger=CONFERMATO) + verifica numero
 #  3) Aggiungi riga merce
 #  4) Push su BOZZA → 4xx E_ORD_STATO_TRANSIZIONE (guard pre-conferma)
-#  5) Conferma (BOZZA → CONFERMATO)
+#  5) Conferma (BOZZA → CONFERMATO) da /emetti/ (multipart)
 #  6) Push singolo → COMPLETATO (created >= 1, commesse_ids esposti)
 #  7) Detail → stato CONFERMATO (l'invio in commessa non lo cambia, D-6)
 #  8) Commessa emittibile: stato PRONTA_FATTURAZIONE + approvate >= 1
@@ -46,7 +46,7 @@ BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"   # smoke_articolo_merce
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"   # smoke_articolo_merce, smoke_emetti
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 PASS=0; FAIL=0; SKIP=0
@@ -198,9 +198,17 @@ else
 fi
 
 # --- 5. Conferma ---
-echo ""; echo "-- 5. Conferma (BOZZA → CONFERMATO) --"
-do_curl POST "/api/v1/vendite/ordini/${ORDINE_ID}/conferma/" '{}'
-check "POST conferma" 200 || true
+# ⭐ L'ordine si conferma solo da «Emetti» (numero e PDF nella stessa
+#    transazione, M-2): `POST /conferma/` e' ritirato dal 2026-10-25 (Z-2,
+#    brief-modello-documento-vendita §9.6).
+echo ""; echo "-- 5. Conferma (BOZZA → CONFERMATO, da /emetti/) --"
+smoke_emetti ordini "${ORDINE_ID}"   # BB _smoke_documenti.sh
+if [[ "$SMOKE_EMETTI_SENZA_MODELLO" == "1" ]]; then
+    log_info "Smoke non conclusivo: nessun modello di documento per l'ordine, i passi a valle non girano."
+    echo "== Risultato: ${GREEN}${PASS} OK${NC}, ${RED}${FAIL} FAIL${NC}, ${YELLOW}${SKIP} SKIP${NC} =="
+    [[ "$FAIL" -eq 0 ]] && exit 0 || exit 1
+fi
+check "POST emetti (conferma)" 200 || true
 do_curl GET "/api/v1/vendite/ordini/${ORDINE_ID}/"
 STATO=$(json_get "$LAST_BODY" "data.stato_codice_interno")
 [[ "$STATO" == "CONFERMATO" ]] && log_ok "stato = CONFERMATO" || log_fail "stato atteso CONFERMATO, trovato '$STATO'"

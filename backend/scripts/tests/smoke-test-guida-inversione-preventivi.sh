@@ -150,14 +150,17 @@ with connection.cursor() as c:
     emitt = pemitt
     # Il preventivo NASCE in bozza (lo stato lo mette il DB, BB
     # `script.trgfn_doc_stato_iniziale`) e va a EMESSO per la matrice, sotto i
-    # guard veri: brief-modello-documento-vendita N-1.
+    # guard veri: brief-modello-documento-vendita N-1. ⚠️ Dal 2026-10-25 il
+    # passo e' il verbo del preventivo, che vuole almeno una riga attiva
+    # (E_PREV_NESSUNA_RIGA_ATTIVA): la riga e lo stato li scrive il builder del
+    # DB sulla testata in bozza, non `fn_pgtap_porta_a_stato` da solo.
     c.execute("""INSERT INTO vendite.preventivi (numero, rev, billing_account_id, istanza_utility_id, utility_id, validita_dal, validita_al,
                    valuta_id, data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
                  VALUES (%s,0,%s,%s,%s,DATE '2026-07-01',DATE '2026-07-31',%s,DATE '2026-07-01',false,false,
                    '{"test_scope":"smoke_guida"}'::jsonb,%s) RETURNING id,(uid)::text""",
               [f"SMOKE_GUIDA-{uuid.uuid4().hex[:10]}", ba, istanza, utility, valuta, pemitt])
     prev_id, prev_uid = c.fetchone()
-    c.execute("SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', %s, 'EMESSO')", [prev_id])
+    c.execute("SELECT 1 FROM dbops.fn_pgtap_crea_preventivo_con_righe('smoke guida', 'EMESSO', p_preventivo_id => %s)", [prev_id])
     c.execute("""INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id,
                    priorita_id, definizione_id, descrizione) VALUES (%s,%s,%s,%s,%s,%s,'SMOKE_GUIDA E2E') RETURNING id""",
               [emitt, tipo, sogg, aperta, priorita, defin])

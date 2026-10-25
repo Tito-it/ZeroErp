@@ -35,11 +35,14 @@ import { menuItemClass } from '../utils/rowActions'
 import { useInjectReadonly } from './useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 
-// Scopo: l'azione porta un numero (`badge`)? Vuoto = null, undefined o ''
-//        (lo zero E' un numero: «0 righe» si dice). Regola unica del pallino
-//        (`ActionBadge`), del punto sul kebab e dell'etichetta di menu.
+// Scopo: l'azione porta un numero (`badge`)? Vuoto = null, undefined, '' o
+//        ZERO: il pallino dice «qui c'e' qualcosa», e «Gestisci righe» con 0
+//        righe non informa (Tid 2026-10-25). Regola unica del pallino
+//        (`ActionBadge`), del punto sul kebab e dell'etichetta di menu: chi
+//        passa il conteggio grezzo non deve tradurre lo zero in `null`.
 export function haBadge(action) {
-  return action?.badge != null && action.badge !== ''
+  const badge = action?.badge
+  return badge != null && badge !== '' && badge !== 0 && badge !== '0'
 }
 
 // Scopo: l'etichetta di un'azione in un MENU, col suo numero: «Gestisci

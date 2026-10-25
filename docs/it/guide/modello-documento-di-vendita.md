@@ -202,7 +202,9 @@ emesso.
 * **Quale stato è l'emissione** lo dice il vocabolario (colonna `emissione`), e lo legge
   [`script.fn_stato_emissione_id`](/dbzero/script/funzioni/fn_stato_emissione_id): il backend rifiuta
   quello stato sul cambio di stato generico, per ogni documento, senza un nome di stato scritto nel
-  codice.
+  codice. «Emetti» ne legge il codice con
+  [`script.fn_doc_stato_codice`](/dbzero/script/funzioni/fn_doc_stato_codice) a ogni richiesta, e lo
+  passa al verbo; lo stesso codice gli dà l'azione da chiedere.
 
 I documenti che non si stampano hanno il loro passaggio al posto dell'emissione: la commessa nasce
 dalla push dei documenti a monte, la fattura segue gli step della pipeline di fatturazione.
@@ -225,7 +227,7 @@ consumato: per questo non avviene in silenzio.
 
 Quale stato è un annullo lo dice il vocabolario (`is_abortito`, uno solo per documento, ed è attivo), e lo
 legge [`script.fn_stato_abortito_id`](/dbzero/script/funzioni/fn_stato_abortito_id); non il nome `'ANNULLATO'` scritto nel
-codice.
+codice. Lo legge anche il backend, per mandare l'annullo chiesto dal cambio di stato al verbo d'annullo.
 
 ---
 
@@ -254,7 +256,7 @@ ritiro della conferma senza «Emetti»).
 | Preventivo | ✅ | ✅ | ✅ `fn_cambia_stato_preventivo` sul verbo comune, con la porta; ACCETTATO ↔ EVASO dalla proiezione dello smistamento | ✅ `emetti_preventivo` su emissione e annullo dell'emesso e dell'accettato (backend allineato il 2026-10-25: il 403 dalla riga del passaggio) | ✅ solo da «Emetti»; le righe sul passaggio, nel guard | ✅ `fn_annulla_preventivo` → verbo di stato |
 | Offerta | ✅ | ✅ (tabella `config.stati_doc_offerte_transizioni`, nome fuori serie) | ❌ `UPDATE` dal backend; gli stati di partenza sono ripetuti in Python | ❌ nessuna azione | ✅ | ❌ da accettata, con un controllo suo (`fn_check_offerta_annullabile`) invece dell'avviso dei legami |
 | Contratto | ✅ | ❌ passaggi scritti nel guard; la tabella la legge solo la capability | ❌ `UPDATE` dal backend | ❌ nessuna azione | ✅ | ❌ `fn_annulla_contratto` scrive lo stato da sé |
-| Ordine | ✅ | ✅ | ✅ `fn_cambia_stato_ordine` sul verbo comune, con la porta; l'evasione (confermato ↔ parzialmente evaso ↔ evaso) dalla proiezione delle bolle | ✅ `emetti_ordine` sulla conferma e sull'annullo del confermato | ✅ solo da «Emetti» (il backend ritira la conferma senza PDF). ⚠️ Il numero si assegna alla nascita, non all'emissione: divergenza dichiarata, tema a parte | ✅ `fn_annulla_ordine` → verbo di stato |
+| Ordine | ✅ | ✅ | ✅ `fn_cambia_stato_ordine` sul verbo comune, con la porta; l'evasione (confermato ↔ parzialmente evaso ↔ evaso) dalla proiezione delle bolle | ✅ `emetti_ordine` sulla conferma e sull'annullo del confermato | ✅ solo da «Emetti» (la conferma senza PDF è ritirata dal 2026-10-25). ⚠️ Il numero si assegna alla nascita, non all'emissione: divergenza dichiarata, tema a parte | ✅ `fn_annulla_ordine` → verbo di stato |
 | DDT | ✅ | ✅ | ✅ `fn_cambia_stato_ddt` sul verbo comune, con la porta | ✅ `emetti_ddt` sulla riga di emissione e annullo dell'emesso; `registra_magazzino` nel verbo, per l'operazione di magazzino | ✅ solo da «Emetti»: il cambio stato generico rifiuta emesso | ✅ `fn_annulla_ddt` → verbo di stato |
 | Reso | ✅ | ✅ | ✅ `fn_conferma_reso`, `fn_annulla_reso` sul verbo comune, con la porta | ✅ `conferma_reso` sulla riga di conferma e annullo del confermato | — la conferma fa da emissione | ✅ verbo |
 | Commessa | ✅ | ✅ (tabella in `vendite`, non in `config`) | ✅ `fn_cambia_stato_commessa`, ma senza il controllo del permesso | ❌ `cambia_stato_commessa` su ogni passaggio, controllata solo dal backend | — nasce dalla push | ✅ `fn_annulla_commessa` → verbo di stato |

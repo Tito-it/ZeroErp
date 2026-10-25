@@ -37,7 +37,6 @@ from apps.ui.api.export_helpers import build_export_response, parse_export_forma
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.api._list_filters_helpers import extract_doc_list_filters
 from apps.vendite.services import resi_service
-from apps.vendite.services._annullo_con_legami import STATO_ANNULLATO
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.vendite.db.resi_repository import ResiRepository
 from apps.core.api.openapi_params import param_ricerca_full
@@ -606,9 +605,11 @@ class ApiResoAnnulla(DomainAPIView):
     # ⭐ L'azione dalla riga del passaggio, la stessa che legge il verbo (M-3):
     #    oggi `conferma_reso` per la conferma e per l'annullo di un confermato;
     #    l'annullo di una bozza chiede il solo livello sul documento (M-4).
+    #    Lo stato d'annullo lo dice il vocabolario a ogni richiesta (§9.8), non
+    #    un letterale fissato qui.
     post_passaggio = PassaggioDocumento(
         testata=resi_service.TESTATA_RESO, documento_kwarg="reso_id",
-        stato_chiesto=STATO_ANNULLATO,
+        stato_del_modello="annullo",
     )
 
     @extend_schema(

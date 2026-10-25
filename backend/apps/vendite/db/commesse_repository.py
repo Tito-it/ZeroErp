@@ -427,6 +427,11 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
     )
 
 
+# La testata nella mappa del modello del documento (`script.fn_doc_stato_modello`),
+# come `TESTATA_<DOC>` degli altri repository.
+TESTATA_COMMESSE = "vendite.commesse"
+
+
 class CommesseRepository(EventLogRepositoryMixin):
     """Wrapper SQL a basso livello per il dominio commesse."""
 

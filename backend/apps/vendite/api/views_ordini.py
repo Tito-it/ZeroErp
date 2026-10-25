@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: API views per vendite.ordini (scheletro CRUD + conferma + push singolo).
+# Scopo: API views per vendite.ordini (scheletro CRUD + cambio stato + push singolo).
 #        Espone: lista DEF-8 + export, testata CRUD, righe + componenti BoM,
-#        conferma (DRAFT->CONFERMATO) e push singolo a commessa. La transizione
-#        di stato e' enforced dal trigger DB trgfn_ordini_guard_transizione_*;
-#        il service traduce gli errori P0001 in ServiceError -> envelope uniforme.
+#        cambio stato e push singolo a commessa. La conferma passa da «Emetti»
+#        (`ordini_documenti_views`). Lo stato lo scrive il verbo DB
+#        `vendite.fn_cambia_stato_ordine`; il service traduce gli errori P0001
+#        in ServiceError -> envelope uniforme.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
@@ -39,7 +41,7 @@ from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ordini_service
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.core.api.openapi_params import descrizione_order_by
-from apps.vendite.db.ordini_repository import _ORDER_COLS_ORDINI, OrdiniRepository
+from apps.vendite.db.ordini_repository import _ORDER_COLS_ORDINI, TESTATA_ORDINI, OrdiniRepository
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.vendite.api._componenti_schema import (
     COMPONENTE_PATCH_REQUEST,
@@ -354,21 +356,6 @@ class ApiOrdinePerPratica(DomainAPIView):
         return success_response(ordini_service.get_ordine_per_pratica(pratica_id))
 
 
-class ApiOrdineConferma(DomainAPIView):
-    """POST /api/v1/vendite/ordini/<ordine_id>/conferma/ (DRAFT->CONFERMATO)."""
-
-    area_funzionale = "vendite"
-    model_permission = ("vendite", "ordine")
-
-    @extend_schema(
-        request=None,
-        responses={200: _ORDINE_RESPONSE},
-    )
-    def post(self, request: Request, ordine_id: int) -> JsonResponse:
-        user = getattr(request.user, "username", None) or None
-        return success_response(ordini_service.conferma(int(ordine_id), user=user))
-
-
 class ApiOrdinePush(DomainAPIView):
     """POST /api/v1/vendite/ordini/<ordine_id>/push/ — push singolo a commessa."""
 
@@ -387,10 +374,15 @@ class ApiOrdinePush(DomainAPIView):
 class ApiOrdineCambiaStato(DomainAPIView):
     """POST /api/v1/vendite/ordini/<ordine_id>/cambia-stato/ — transizione di
     stato data-driven (es. annulla). Body: `stato_codice` (= `target_state`
-    dell'azione). L'ammissibilita' e' validata dal trigger guard DB."""
+    dell'azione). L'ammissibilita' e' validata dal verbo e dal trigger guard
+    DB; lo stato di emissione (CONFERMATO) si raggiunge solo da «Emetti»."""
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "ordine")
+    # L'azione del passaggio (stato corrente -> `stato_codice`) dalla riga della
+    # matrice: l'annullo di un ordine confermato chiede `emetti_ordine`,
+    # l'annullo di una bozza il solo livello sul documento (M-3, M-4; §9.6 C-5).
+    post_passaggio = PassaggioDocumento(testata=TESTATA_ORDINI, documento_kwarg="ordine_id")
 
     @extend_schema(
         request=CAMBIA_STATO_CON_CONFERMA_REQUEST,

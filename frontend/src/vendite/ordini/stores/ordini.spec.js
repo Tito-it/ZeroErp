@@ -33,7 +33,6 @@ vi.mock('../api/ordiniApi', () => ({
   aggiornaDateConsegna: vi.fn(),
   cambiaDataConsegnaConfermata: vi.fn(),
   cambiaStatoOrdine: vi.fn(),
-  confermaOrdine: vi.fn(),
   createOrdine: vi.fn(),
   createRiga: vi.fn(),
   deleteOrdine: vi.fn(),

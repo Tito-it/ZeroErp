@@ -524,6 +524,7 @@ class DdtCambiaStatoTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     def test_emetti_non_chiede_il_rifiuto(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
+        self.emissione_del_documento("EMESSO")
         repo.get_stato_id_by_codice.return_value = 2
         repo.cambia_stato.return_value = []
         ddt_service.emetti(7)
@@ -540,6 +541,8 @@ class DdtCambiaStatoTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
         repo.get_stato_id_by_codice.return_value = 2
+        # Lo stato di emissione dal vocabolario (§8.11 B-3), non un letterale.
+        self.emissione_del_documento("EMESSO")
         # Una bolla che muove merce: il verbo ritorna le uscite scritte.
         repo.cambia_stato.return_value = [
             {"movimento_id": 501, "prelievo_id": 11, "qta": 3},
@@ -547,6 +550,7 @@ class DdtCambiaStatoTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
 
         out = ddt_service.emetti(7)
 
+        self.modello_documento.stato_di_emissione.assert_called_once_with("vendite.ddt")
         repo.get_stato_id_by_codice.assert_called_once_with("EMESSO")
         repo.cambia_stato.assert_called_once_with(7, "EMESSO")
         self.assertEqual(out["movimenti_scritti"], 1)

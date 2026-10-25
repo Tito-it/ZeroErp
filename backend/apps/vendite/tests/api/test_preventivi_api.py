@@ -394,7 +394,7 @@ class PreventivoPermessoPassaggioTests(SimpleTestCase):
         )
 
         self.assertEqual(ApiPreventivoEmetti.post_passaggio, PassaggioDocumento(
-            testata="vendite.preventivi", documento_kwarg="sorgente_id", stato_chiesto="EMESSO",
+            testata="vendite.preventivi", documento_kwarg="sorgente_id", stato_del_modello="emissione",
         ))
         self.assertEqual(ApiPreventivoStato.post_passaggio, PassaggioDocumento(
             testata="vendite.preventivi", documento_kwarg="preventivo_id",

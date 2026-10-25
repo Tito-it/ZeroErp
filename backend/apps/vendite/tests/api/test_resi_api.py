@@ -401,9 +401,13 @@ class ResiPermessoAzioneTests(SimpleTestCase):
         from apps.core.api.permissions import PassaggioDocumento
         from apps.vendite.api.views_resi import ApiResoAnnulla, ApiResoConferma
 
-        for view, stato in ((ApiResoConferma, "CONFERMATO"), (ApiResoAnnulla, "ANNULLATO")):
+        self.assertEqual(ApiResoConferma.post_passaggio, PassaggioDocumento(
+            testata="vendite.resi", documento_kwarg="reso_id", stato_chiesto="CONFERMATO",
+        ))
+        # L'annullo: lo stato d'annullo dal vocabolario, non un letterale (§9.8).
+        self.assertEqual(ApiResoAnnulla.post_passaggio, PassaggioDocumento(
+            testata="vendite.resi", documento_kwarg="reso_id", stato_del_modello="annullo",
+        ))
+        for view in (ApiResoConferma, ApiResoAnnulla):
             with self.subTest(view=view.__name__):
-                self.assertEqual(view.post_passaggio, PassaggioDocumento(
-                    testata="vendite.resi", documento_kwarg="reso_id", stato_chiesto=stato,
-                ))
                 self.assertIsNone(getattr(view, "post_permission", None))

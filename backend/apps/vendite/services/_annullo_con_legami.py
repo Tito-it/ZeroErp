@@ -56,13 +56,12 @@ DocumentoLegami = Literal[
     "DDT_VENDITA", "ORDINE_VENDITA", "PREVENTIVO", "CONTRATTO", "COMMESSA",
 ]
 
-# Lo stato di destinazione dei verbi di annullo. ⚠️ L'avviso del DB scatta
-# entrando in uno stato ABORTITO del vocabolario (`is_abortito`): in bolla,
-# ordine, preventivo e contratto l'unico e' ANNULLATO, nella commessa e'
-# ANNULLATA (femminile, `vendite.stati_commessa`). Sono anche dove portano i
-# verbi. Uno stato abortito nuovo vorrebbe il suo verbo, a DB.
-STATO_ANNULLATO = "ANNULLATO"
-STATO_ANNULLATA = "ANNULLATA"
+# ⛔ Lo stato di destinazione dei verbi di annullo NON si scrive qui: fino al
+#    2026-10-25 c'erano `STATO_ANNULLATO` / `STATO_ANNULLATA`, letterali con cui
+#    i service riconoscevano l'annullo. Quale stato sia l'annullo lo dice il
+#    vocabolario (`is_abortito`, uno solo e attivo, Z-3), letto dal BB
+#    `core/services/documento_modello.e_stato_di_annullo`
+#    (brief-modello-documento-vendita §9.8).
 
 # Le ORIGINI di un legame che sono un documento del lineage: per queste
 # l'`origine` del lettore e' anche il tipo del lineage, e serve al gesto «vai al

@@ -1,5 +1,5 @@
 // Store Pinia per gli ordini di vendita (lista, dettaglio, CRUD testata,
-// righe, conferma, push singolo a commessa).
+// righe, emissione, push singolo a commessa).
 //
 // userScoped: true → reset automatico al logout (autoResetPlugin): items +
 // filters dell'utente non devono persistere per l'eventuale utente successivo
@@ -20,7 +20,6 @@ import {
   aggiornaDateConsegna as postDateConsegna,
   cambiaDataConsegnaConfermata as postDataConsegnaConfermata,
   cambiaStatoOrdine,
-  confermaOrdine,
   createOrdine,
   createRiga,
   deleteOrdine,
@@ -95,17 +94,10 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
 
   // --- Transizioni / integrazione ---
 
-  // DRAFT -> CONFERMATO (sola transizione). Resta come API di servizio: il
-  // flusso utente usa `emetti()` (apertura OrdineEmissioneDialog).
-  async function conferma(id) {
-    const res = await confermaOrdine(id)
-    emitDataChanged(TAB_ENTITIES.ORDINE, id)
-    return res.data.data
-  }
-
   // DRAFT -> CONFERMATO (multipart): conferma + genera documento + allegati in
   // transazione atomica lato BE. Invocata da OrdineEmissioneDialog (il drawer
-  // intercetta l'action 'conferma' e apre il dialog invece di chiamare conferma).
+  // intercetta l'action 'conferma' e apre il dialog). È l'unica conferma: la
+  // sola transizione senza PDF (`/conferma/`) è ritirata dal 2026-10-25 (M-2).
   // Mirror del flusso emissione preventivo/offerta.
   async function emetti(id, { allegati = [], templateId = null } = {}) {
     const res = await emettiOrdine(id, { allegati, templateId })
@@ -209,7 +201,7 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
     // testata
     fetchDetail, create, update, elimina,
     // transizioni
-    conferma, emetti, push, cambiaStato,
+    emetti, push, cambiaStato,
     // righe
     loadRighe, addRiga, aggiornaRiga, eliminaRiga,
     // date di consegna

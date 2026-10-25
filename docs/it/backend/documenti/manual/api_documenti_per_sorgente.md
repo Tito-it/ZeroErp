@@ -203,16 +203,21 @@ genera né l'anteprima né un documento nuovo.
 
 ⭐ **Il permesso dell'emissione dalla riga del passaggio.** Un documento portato
 al modello (guida `modello-documento-di-vendita` §6) passa
-`emetti_passaggio=(testata, stato di emissione)`: la factory dichiara
-`post_passaggio` e la catena dei permessi legge l'azione dalla riga della matrice,
-la stessa del verbo. Oggi lo fanno il **DDT** (`("vendite.ddt", "EMESSO")`) e il
-**preventivo** (`("vendite.preventivi", "EMESSO")`), dal 2026-10-25; offerte,
-contratti e ordini non dichiarano un'azione (livello sul documento) finché il loro
-giro del cantiere non li porta al modello. `emetti_post_permission`, l'azione
-dichiarata a mano, è ritirato: il preventivo era l'ultimo a usarlo.
-⚠️ Lo stato di emissione è ancora scritto dal dominio (`STATO_EMESSO`): il verbo
-prende il codice, e il DB oggi dà solo l'id (`script.fn_stato_emissione_id`).
-Richiesta al team DB in brief-modello-documento-vendita §8.10.
+`emetti_passaggio=<testata>`: la factory dichiara `post_passaggio` con
+`stato_del_modello="emissione"`, e la catena dei permessi legge l'azione dalla riga della
+matrice verso lo **stato di emissione**, la stessa del verbo. Lo stato non è
+scritto nel codice: si chiede al vocabolario a ogni richiesta
+(`script.fn_doc_stato_codice(t, script.fn_stato_emissione_id(t))`, letto da
+`DocumentoModelloRepository.stato_di_emissione`). Oggi lo fanno il **DDT**
+(`"vendite.ddt"`), il **preventivo** (`"vendite.preventivi"`) e l'**ordine**
+(`"vendite.ordini"`); offerte e contratti non dichiarano un'azione (livello sul
+documento) finché il loro giro del cantiere non li porta al modello.
+`emetti_post_permission`, l'azione dichiarata a mano, è ritirato: il preventivo era
+l'ultimo a usarlo. Anche lo stato che il dominio scrive all'emissione viene dallo
+stesso lettore (BB `stato_di_emissione` di `core/services/documento_modello`),
+per tutti e cinque i documenti che si emettono: nessun `STATO_EMESSO` nei service.
+Presidio: `core/tests/test_passaggio_rotte.py` (ogni «Emetti» sul modello chiede lo
+stato al vocabolario, e la sua testata ce l'ha).
 
 ## 6. Dove guardare nel codice
 

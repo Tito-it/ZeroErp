@@ -7,7 +7,8 @@
 #        passaggio di stato chiede, la traduzione codice -> id dello stato e lo
 #        stato di emissione, letti dai lettori unici del DB
 #        (`script.fn_doc_azione_passaggio`, `script.fn_doc_stato_id`,
-#        `script.fn_stato_emissione_id`), gli stessi che usano i verbi e le
+#        `script.fn_stato_emissione_id`, `script.fn_stato_abortito_id`,
+#        `script.fn_doc_stato_codice`), gli stessi che usano i verbi e le
 #        capability. Generico per ogni testata della mappa
 #        `script.fn_doc_stato_modello`: un documento portato al modello non
 #        scrive niente qui.
@@ -22,7 +23,23 @@
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 from django.db import connection
+
+
+# Uno stato del modello di una testata (l'emissione, l'annullo), con le sue due
+# chiavi: l'id (lo scrive chi aggiorna la colonna di stato) e il
+# `codice_interno` (lo prende un verbo).
+class StatoDocumento(NamedTuple):
+    id: int
+    codice: str
+
+
+# I lettori del DB degli stati che il modello dice, interpolati nella query:
+# ⛔ solo queste costanti, mai un valore che arriva da fuori.
+_LETTORE_EMISSIONE = "script.fn_stato_emissione_id"
+_LETTORE_ANNULLO = "script.fn_stato_abortito_id"
 
 
 class DocumentoModelloRepository:
@@ -63,10 +80,53 @@ class DocumentoModelloRepository:
     #        False anche per un documento che non si emette (vocabolario senza
     #        la colonna `emissione`) e per un codice che non e' uno stato attivo.
     def e_stato_di_emissione(self, testata: str, codice: str) -> bool:
+        return self._e_stato_del_modello(_LETTORE_EMISSIONE, testata, codice)
+
+    # Scopo: Lo stato chiesto (codice) e' lo stato d'annullo della testata
+    #        (`is_abortito` del vocabolario, uno solo e attivo: Z-3)? False per
+    #        un codice che non e' uno stato attivo. Gemello di
+    #        `e_stato_di_emissione`.
+    def e_stato_di_annullo(self, testata: str, codice: str) -> bool:
+        return self._e_stato_del_modello(_LETTORE_ANNULLO, testata, codice)
+
+    # Scopo: Lo stato di emissione della testata (id e codice), o None: il
+    #        documento non si emette (vocabolario senza la colonna `emissione`).
+    #        Una lettura, i due lettori composti (V-1, brief-modello-documento-
+    #        vendita §8.11): `fn_stato_emissione_id` da' l'id,
+    #        `fn_doc_stato_codice` lo traduce nel codice.
+    # ⭐ Si chiede a ogni uso, mai a import: quale stato sia l'emissione lo dice
+    #    il vocabolario (B-2), e un letterale nel codice e' una seconda sede.
+    def stato_di_emissione(self, testata: str) -> StatoDocumento | None:
+        return self._stato_del_modello(_LETTORE_EMISSIONE, testata)
+
+    # Scopo: Lo stato d'annullo della testata (id e codice), o None (il
+    #        vocabolario non ne dichiara uno). Gemello di `stato_di_emissione`,
+    #        su `fn_stato_abortito_id`.
+    def stato_di_annullo(self, testata: str) -> StatoDocumento | None:
+        return self._stato_del_modello(_LETTORE_ANNULLO, testata)
+
+    # Scopo: la lettura (id, codice) di uno stato del modello col suo lettore
+    #        del DB. Una query sola per emissione e annullo: cambia il lettore.
+    def _stato_del_modello(self, lettore: str, testata: str) -> StatoDocumento | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT e.id, script.fn_doc_stato_codice(%s::regclass, e.id)"  # noqa: S608 — lettore dalle costanti _LETTORE_* del modulo, valori come parametri
+                f"  FROM (SELECT {lettore}(%s::regclass) AS id) e",
+                [testata, testata],
+            )
+            row = cursor.fetchone()
+        if not row or row[0] is None:
+            return None
+        return StatoDocumento(id=int(row[0]), codice=str(row[1]))
+
+    # Scopo: il codice chiesto e' lo stato del modello che il lettore dice?
+    #        False per un codice che non e' uno stato attivo e per una testata
+    #        che quello stato non lo dichiara.
+    def _e_stato_del_modello(self, lettore: str, testata: str, codice: str) -> bool:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT COALESCE(script.fn_doc_stato_id(%s::regclass, %s)"
-                "                = script.fn_stato_emissione_id(%s::regclass), false)",
+                f"                = {lettore}(%s::regclass), false)",
                 [testata, codice, testata],
             )
             row = cursor.fetchone()

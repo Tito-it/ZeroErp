@@ -66,10 +66,11 @@ _views = build_documenti_sorgente_views(
     doc_service=_doc_service,
     emetti_call=_emetti_call,
     emetti_response_key="preventivo",
-    # ⭐ L'azione dell'emissione la dice la riga DRAFT -> EMESSO della matrice
-    #    (oggi `emetti_preventivo`), non questa view: il 403 arriva dalla stessa
-    #    riga che legge il verbo (M-3, brief-modello-documento-vendita §8.7).
-    emetti_passaggio=(TESTATA_PREVENTIVI, preventivi_service.STATO_EMESSO),
+    # ⭐ L'azione dell'emissione la dice la riga della matrice verso lo stato
+    #    di emissione (oggi `emetti_preventivo`), non questa view: il 403 arriva
+    #    dalla stessa riga che legge il verbo (M-3, brief-modello-documento-
+    #    vendita §8.7); lo stato lo dice il vocabolario a ogni richiesta (§8.11 B-2).
+    emetti_passaggio=TESTATA_PREVENTIVI,
     model_permission=("vendite", "preventivo"),
 )
 
