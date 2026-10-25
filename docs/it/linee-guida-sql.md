@@ -377,7 +377,7 @@ vesti.
   `prosrc` **non vede queste funzioni** e risponde «zero occorrenze». Si cerca nel testo di
   `pg_get_functiondef(oid)`, che le copre tutte. Successo al censimento del lotto 2a della
   grammatica unica: quattro funzioni mai viste
-  ([brief-db-grammatica-unica-documenti](/dev/work-in-progress/brief-db-grammatica-unica-documenti)
+  ([brief-db-grammatica-unica-documenti](/dev/work-done/brief-db-grammatica-unica-documenti)
   §12.3).
 
 ⚠️ `pg_get_functiondef` di una `BEGIN ATOMIC` stampa i nomi relativi al `search_path` della sessione

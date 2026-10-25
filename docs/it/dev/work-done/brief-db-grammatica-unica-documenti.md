@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-**Riparte: il team DB, col lotto 4** (il presidio: ogni colonna di tipo documento ha la FK verso il catalogo; per le note c'è già, §14.7). Prima, a **Tid**: la decisione L4-1 (l'accensione, riga 7-bis) e il commit del giro BE/FE (prova a video fatta, 2026-10-25). A lotto chiuso: riga di PROJECT_CONTEXT e archiviazione. Il lotto 3 (le note) è chiuso su DB (`20261025-53` … `-69`, applicato su dbdev e scratch, pgTAP verdi come app) e su BE/FE (§14.10, 2026-10-25: elenco BE-1 … FE-2 tutto fatto, chiamata reale su dbdev, suite intera verde); il giro BE/FE è **da committare**. A Tid, quando vuole, la prova a video delle note di ordine, DDT, offerta e articolo. Tutto il resto è chiuso e in `main`: lotti 0, 1, 2a … 2e e §13.6 su DB e BE/FE (§13.6: DB `2ada3f6d1`, BE/FE `a5af6305e`). Il ponte di `fn_articolo_riga_contesto` è morto nel 2a (`20261019-53`). Restano a Tid, quando vuole, le prove a video di fine cantiere. Il brief si è fermato il 2026-10-21 perché il lavoro è passato a [brief-modello-documento-vendita](brief-modello-documento-vendita.md): i due brief non dipendono l'uno dall'altro (§14.1).
+✅ **Brief chiuso il 2026-10-25 e archiviato.** Lotto 4 fatto: presidio verde come app (Tid, 2026-10-25), L4-1 = A (§15). I due punti che non erano grammatica (il blocco «origine» della stampa della fattura, la prova a video del 2b) sono passati a [brief-modello-documento-vendita §10](../work-in-progress/brief-modello-documento-vendita.md) (D-G1, D-G2). Lo storico qui sotto resta com'era. Il giro BE/FE del lotto 3 è committato (`de6adcf9f`, PR #1949). Il lotto 3 (le note) è chiuso su DB (`20261025-53` … `-69`, applicato su dbdev e scratch, pgTAP verdi come app) e su BE/FE (§14.10, 2026-10-25: elenco BE-1 … FE-2 tutto fatto, chiamata reale su dbdev, suite intera verde); il giro BE/FE è **da committare**. A Tid, quando vuole, la prova a video delle note di ordine, DDT, offerta e articolo. Tutto il resto è chiuso e in `main`: lotti 0, 1, 2a … 2e e §13.6 su DB e BE/FE (§13.6: DB `2ada3f6d1`, BE/FE `a5af6305e`). Il ponte di `fn_articolo_riga_contesto` è morto nel 2a (`20261019-53`). Restano a Tid, quando vuole, le prove a video di fine cantiere. Il brief si è fermato il 2026-10-21 perché il lavoro è passato a [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md): i due brief non dipendono l'uno dall'altro (§14.1).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -49,9 +49,10 @@
 | 6-novies-d | ✅ **Tid** | Apply su dbdev e scratch (`-57` rilanciato dopo il §14.8.1, `-69` dopo il §14.8.2), corsa dei pgTAP come app: verdi (2026-10-25) | §14.8 | 6-novies-c |
 | 6-novies-e | ✅ sessione BE/FE | Il giro del §14.9 (elenco chiuso BE-1 … FE-2): codici nuovi nei repository, `TARGET_TIPI_AMMESSI` ritirata, voce del tipo target sulla FK, schema OpenAPI verificato (solo i nomi dei componenti), un presidio nuovo della giuntura; chiamata reale su dbdev, suite Django intera verde (2026-10-25); **da committare** | §14.9, §14.10 | 6-novies-d |
 | 6-novies-f | ✅ **Tid** | Prova a video: una nota su ordine, DDT, offerta, articolo e componente (2026-10-25) | §14.10 | 6-novies-e |
-| 7-bis | **Tid** | L4-1: la FK lega il **nome** del tipo, non l'**accensione** — una sorgente nominata da note o legami si spegne (`attivo = false`) senza errore. Si scrive una regola che lo impedisce, o resta così? | §8.2 (in fondo) | — |
-| 7 | team DB | Lotto 4, il presidio: pgTAP «ogni colonna di tipo documento ha la FK verso il catalogo» (per le note c'è già, §14.7); più la regola di L4-1, se Tid la vuole. Il ponte di `fn_articolo_riga_contesto` è già ritirato (2a) | §5 G-4 | 6-novies-e, 7-bis |
-| 8 | chi chiude il lotto 4 | Riga di PROJECT_CONTEXT e archiviazione del brief in `work-done/` | — | 7 |
+| 7-bis | ✅ **Tid** | L4-1 = A: la FK lega il nome, non l'accensione, e resta così (il catalogo lo scrive solo chi migra; le FK sull'id già bloccano lo spegnimento di un tipo con documenti), 2026-10-25 | §15.1 | — |
+| 7 | ✅ team DB | Lotto 4, il presidio: `config/test-grammatica-presidio-tipo-documento-v1` (6 test), nessun changeSet; query provate sul catalogo di dbdev (2026-10-25) | §15.2 | 6-novies-e, 7-bis |
+| 7-ter | ✅ **Tid** | pgTAP del presidio lanciato come app: 6/6 verde, dopo la correzione del test 5 (2026-10-25) | §15.3 | 7 |
+| 8 | ✅ team DB | Riga di PROJECT_CONTEXT, archiviazione in `work-done/`; il blocco «origine» della stampa e la prova a video del 2b passati a brief-modello-documento-vendita §10 (2026-10-25) | §15.3 | 7-ter |
 
 **Decisioni aperte di Tid:** nessuna sul giro 2c-2e (L2e-2 = (a), L2c-1 = (a) in questo giro, 2026-10-20); il giro DB 2c-2e è committato (PR #1910); il giro BE/FE del §13.4 è committato (PR #1913), quello del §13.6 è committato (`a5af6305e`); **nessuna sul lotto 3** (L3-1 … L3-6 decise il 2026-10-25, §14.6); il lotto 3 è committato su `dev/db-tid` (2026-10-25), il suo giro BE/FE (§14.10) è **da committare** su `dev/backend-tid`; il blocco «origine» della stampa della fattura, che non si vede mai (§12.9, in fondo). Il giro DB dei
 §12.8 e §12.9 (§12.10) è committato (PR #1904); il giro BE del §12.10.6 è committato (`323c96a5c`, PR #1907). Verificato su dbdev il 2026-10-20: lo standard e le
@@ -241,10 +242,10 @@ migrazione resta chiuso invece di crescere a ogni giro.
 
 | Documento | Che cosa porta | Decisione |
 | --- | --- | --- |
-| [analisi-simmetria-ordini-acquisto](analisi-simmetria-ordini-acquisto.md) §4.6 | `config.sorgenti` ha solo sorgenti di `vendite`; `config.tipi_entita` non ha l'ordine d'acquisto: lineage, motore documentale e bersaglio d'errore non vedono gli acquisti | **G-2**: la grammatica comprende `acquisti`? |
-| [brief-design-proiezione-stato-dominio](brief-design-proiezione-stato-dominio.md) | `config.sorgenti` trattato già da registro dei tipi (`target_table`, `key_selector`, la proposta `resolver_key`) | **G-1** |
-| [valutazione-modello-di-dominio-db](valutazione-modello-di-dominio-db.md) | V-5: `codice` mutabile e `codice_interno` immutabile; le note di `vendite`, `acquisti`, `magazzino` partizionate per `target_tipo`, con `CHECK` e routing di partizione | **G-1** (quale colonna porta il codice), **G-3** (allargare `target_tipo` tocca le partizioni) |
-| [analisi-db-magazzino-carico-e-scarico](analisi-db-magazzino-carico-e-scarico.md), [analisi-db-magazzino-aggancio-documento-e-produzione](analisi-db-magazzino-aggancio-documento-e-produzione.md) | le sorgenti di riga (`*_RIGA`) e la sorgente polimorfa (`sorgente_tipo_id` → `config.sorgenti`) di rettifiche, trasferimenti, inventari, eventi asset | **G-2** (righe e varianti) |
+| [analisi-simmetria-ordini-acquisto](../work-in-progress/analisi-simmetria-ordini-acquisto.md) §4.6 | `config.sorgenti` ha solo sorgenti di `vendite`; `config.tipi_entita` non ha l'ordine d'acquisto: lineage, motore documentale e bersaglio d'errore non vedono gli acquisti | **G-2**: la grammatica comprende `acquisti`? |
+| [brief-design-proiezione-stato-dominio](../work-in-progress/brief-design-proiezione-stato-dominio.md) | `config.sorgenti` trattato già da registro dei tipi (`target_table`, `key_selector`, la proposta `resolver_key`) | **G-1** |
+| [valutazione-modello-di-dominio-db](../work-in-progress/valutazione-modello-di-dominio-db.md) | V-5: `codice` mutabile e `codice_interno` immutabile; le note di `vendite`, `acquisti`, `magazzino` partizionate per `target_tipo`, con `CHECK` e routing di partizione | **G-1** (quale colonna porta il codice), **G-3** (allargare `target_tipo` tocca le partizioni) |
+| [analisi-db-magazzino-carico-e-scarico](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md), [analisi-db-magazzino-aggancio-documento-e-produzione](../work-in-progress/analisi-db-magazzino-aggancio-documento-e-produzione.md) | le sorgenti di riga (`*_RIGA`) e la sorgente polimorfa (`sorgente_tipo_id` → `config.sorgenti`) di rettifiche, trasferimenti, inventari, eventi asset | **G-2** (righe e varianti) |
 
 ### 6.3 Solo da avvisare
 
@@ -1792,7 +1793,7 @@ richiesta al BE/FE (§14.9) e il suo giro (§14.10). Applicato su dbdev e scratc
 
 ### 14.1 Il rapporto col brief del modello del documento
 
-Nessuna dipendenza, nei due versi. [brief-modello-documento-vendita](brief-modello-documento-vendita.md)
+Nessuna dipendenza, nei due versi. [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md)
 lavora su stato, verbo, permesso, emissione e annullo; i suoi BB (`fn_doc_stato_modello`,
 `fn_stato_iniziale_id`, `fn_doc_stato_id`, `fn_doc_azione_passaggio`, `fn_stato_emissione_id`) ricevono la
 **tabella** (`regclass`), non un codice di tipo: non aprono un vocabolario nuovo. Il lotto 3 non tocca
@@ -2115,3 +2116,62 @@ dell'elenco e la prova sono al §14.10.
   mypy 2.4.0), **anche sull'albero pulito**: non viene da questo giro, ma il cricchetto mypy non è stato visto. Lo
   vede la CI;
 * i worker di sviluppo sono ripartiti alle 15:31:34, dopo l'ultima modifica Python: girano già il codice nuovo.
+
+## 15. Lotto 4 — la chiusura: il presidio (team DB, 2026-10-25)
+
+### 15.1 L4-1, l'accensione: resta così (Tid, 2026-10-25)
+
+**Decisione: A.** La FK lega il **nome** del tipo, non l'accensione, e non si scrive una regola in più.
+Perché, sul modello:
+
+* `config.sorgenti` non ha una schermata: lo scrive solo chi migra, coi CSV di `80_data`. Il caso «un tipo
+  nominato da note o legami si spegne» lo può produrre solo un changeSet;
+* le FK sull'`id` (`sorgente_tipo_id` di tutte le testate e delle righe) hanno già il `block_deact`
+  dell'automazione ATTIVO: un tipo che ha documenti non si spegne. Un tipo che ha note ha anche documenti;
+* le FK sul **codice** (note, legami, entità) l'automazione le salta (`ATTIVO_SKIP_FK_NO_ID`: il guard della
+  figlia legge il padre per `id`). Resta così, ed è un limite **dichiarato**, non un caso dimenticato.
+
+Nella discussione sono uscite due strade, scartate: «spento = niente di nuovo» sulle note (sbagliata sul modello:
+ritirare il tipo DDT vuol dire niente DDT nuovi, non niente note sui DDT che esistono; e per ritirare una voce di
+catalogo il progetto ha `obsoleto_dal`, non `attivo`), ed estendere l'automazione alle FK sul codice (lavoro vero
+per un caso che il modello non produce).
+
+### 15.2 Il presidio
+
+Nuovo: `db/pgtap/config/test-grammatica-presidio-tipo-documento-v1.sql` (6 test). Nessun changeSet: il lotto
+non tocca lo schema.
+
+* **La definizione è una grammatica dei nomi**: una colonna porta un tipo di documento se si chiama
+  `[…_]sorgente[_…]_tipo_id`, `[…_]target_tipo`, `entity_type`, `…_origine_tipo`, `destinazione_tipo`,
+  `sorgente_codice_interno`. Il test 1 pretende che ognuna sia ancorata al catalogo: FK diretta verso
+  `config.sorgenti` o `config.tipi_entita`, oppure una FK composta verso una colonna che lo è (un passo:
+  `catalogo.articoli(_componenti).note_target_tipo` verso le note, `vendite.fatture_stampa_coda.sorgente_tipo_id`
+  verso `documenti.template_documenti`);
+* **eccezioni dichiarate, col motivo, nel test**: una sola, `pratiche.reconcile_errori.sorgente_tipo_id` (registro
+  append-only, «nessuna FK, log resiliente per definizione» dal suo COMMENT). Il test 2 pretende che ogni eccezione
+  sia viva;
+* **G-3**: ogni FK sul codice del catalogo è lunga almeno come `config.sorgenti.codice_interno`, letto dal
+  catalogo e non scritto nel test (test 3);
+* **nessun elenco a mano**: nessun `CHECK` su una colonna della grammatica nomina due o più codici del catalogo
+  (test 4). Un solo codice non è un elenco: `chk_famiglie_documento_regole_fiscali_solo_fattura` (una regola su
+  `FATTURA`) e il `CHECK` delle FK composte del catalogo restano, e il secondo lo prova già il lotto 3;
+* **contro il verde per sottrazione**: la grammatica deve trovare colonne di tutti e tre i tipi di ancoraggio
+  (test 5); **contro la grammatica che invecchia**: ogni colonna con la FK diretta al catalogo ha un nome della
+  grammatica, o è dichiarata fuori, col motivo (test 6: oggi `config.tipi_indirizzi_allowed.ambito` e
+  `vendite.famiglie_documento.codice_interno`).
+
+**Fatti datati, dbdev 2026-10-25** (servono a trovare gli errori del test, non a disegnarlo): la grammatica trova
+38 colonne, 34 con la FK diretta, 3 per un passo, 1 eccezione; nessun `CHECK` con un elenco; una scansione larga dei
+nomi (`sorgente`, `origine`, `entita`, `tipo_doc`…) non trova altre colonne che portino un tipo di documento
+(`origine` di distinte, fondi e allegati sono vocabolari loro). Le query sono state provate sul catalogo di dbdev;
+il file l'ha lanciato Tid (§15.3).
+
+### 15.3 Cosa resta per chiudere
+
+1. ✅ **Tid**: pgTAP lanciato come app, 6/6 verde (2026-10-25). La prima corsa aveva il test 5 rosso per un
+   difetto del test: `regclass::text` perde lo schema quando `config` è nel search_path di chi legge, e il
+   confronto col nome falliva; ora si confrontano gli oid;
+2. ✅ riga di PROJECT_CONTEXT e archiviazione in `work-done/` (2026-10-25);
+3. ✅ passati a [brief-modello-documento-vendita §10](../work-in-progress/brief-modello-documento-vendita.md)
+   (scelta di Tid, 2026-10-25): il blocco «origine» della stampa della fattura (§12.9, in fondo) come D-G1, la
+   prova a video del 2b (riga 6-septies-d) come D-G2.

@@ -494,7 +494,7 @@ errore.
    prossimo cantiere (`acquisti`) applica dal primo changeSet.
 
 ⭐ **Aggiornamento 2026-10-23 — il punto 5 ha un primo cantiere.**
-[brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md) (aperto il 18-10)
+[brief-db-grammatica-unica-documenti](../work-done/brief-db-grammatica-unica-documenti.md) (aperto il 18-10)
 dà a tutti i tipi di documento **un vocabolario solo** (`config.sorgenti`, G-1): catalogo,
 eccezioni, testate, origine e destinazione delle righe sono passati (lotti 0, 1, 2a-2e e §13.6,
 applicati su dbdev fra il 19 e il 21-10); restano il lotto 3 (note) e il 4. È la parte «come si

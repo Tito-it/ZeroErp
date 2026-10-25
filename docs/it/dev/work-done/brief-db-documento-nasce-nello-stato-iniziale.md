@@ -17,7 +17,7 @@ tabella qui sotto e' superata; il caso e la prova (§1) restano come storia.
 Decisioni aperte di Tid: nessuna. Lavoro da committare: lo spostamento in `work-done/`.
 
 📌 Il tipo di documento si nomina secondo
-[brief-db-grammatica-unica-documenti](../work-in-progress/brief-db-grammatica-unica-documenti.md) (§6.1): se questo
+[brief-db-grammatica-unica-documenti](../work-done/brief-db-grammatica-unica-documenti.md) (§6.1): se questo
 cantiere introduce un registro o un parametro per tipo di documento, usa i codici di
 `config.sorgenti` (G-1) e parte **dopo il lotto 0** di quel brief (G-4, Tid 2026-10-18).
 ✅ Il lotto 0 è chiuso (2026-10-19, §8 di quel brief), e dal lotto 2a anche i lettori delle testate

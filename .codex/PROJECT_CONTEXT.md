@@ -243,17 +243,15 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   ognuna ha il suo builder in `dbops` (`fn_pgtap_crea_reso`, `_ddt_riconsegna`, `_ordine_con_righe`,
   `_ddt_senza_ordine`, `fn_pgtap_fattura_attivita`). DB `20261025-05`, `-06`, `-31…-36`; pgTAP portati: 29 nel
   giro del reso, 64 nel D-4; verdi come app.
-- **Una sola grammatica per i tipi di documento** (aperto il 2026-10-18,
-  `work-in-progress/brief-db-grammatica-unica-documenti.md`): lo stesso tipo di documento ha più nomi
-  (`config.tipi_entita`, `config.sorgenti`, la grammatica delle testate, le partizioni delle note) e chi passa
-  dall'uno all'altro traduce. Direzione decisa da Tid (strada 3 dell'A-8-ter): un vocabolario solo, nessun ponte.
-  Lotti 0, 1 e 2a … 2e (testate, origine e destinazione, numeratori, aree, chiavi del push) e §13.6 chiusi su
-  DB, BE e FE e in `main` (2026-10-19 … 21); il ponte di `fn_articolo_riga_contesto` è ritirato. Il lotto 3
-  (le note: quattro tabelle con `target_tipo` lungo e la FK verso `config.tipi_entita`) è applicato e verde il
-  2026-10-25 (`20261025-53` … `-69`); tocca al giro BE/FE del §14.9 (fino ad allora le note di ordini, DDT,
-  offerte e catalogo non si scrivono); resta il 4 (presidio, archiviazione). Non dipende dal
-  brief del modello del documento: lì i BB prendono la tabella (`regclass`), qui il nome del tipo. Lo stato è
-  nel blocco «Chi riparte» del brief.
+- ✅ **Una sola grammatica per i tipi di documento: chiuso il 2026-10-25**
+  (`work-done/brief-db-grammatica-unica-documenti.md`): un tipo di documento ha un nome solo, il codice di
+  `config.sorgenti` (e di `config.tipi_entita` per ciò che si può indicare, come le note), senza ponti né
+  traduzioni. Lotti 0 … 3 su DB, BE e FE (testate, origine e destinazione, numeratori, aree, chiavi del push, le
+  quattro tabelle delle note con `target_tipo` lungo e la FK). Lotto 4, il presidio:
+  `config/test-grammatica-presidio-tipo-documento-v1` — ogni colonna che porta un tipo di documento (riconosciuta
+  dal nome) ha la FK verso il catalogo, è lunga come il codice e non ha un `CHECK` con l'elenco; le eccezioni
+  stanno nel test col motivo. L4-1 (Tid): la FK lega il nome, non l'accensione, e resta così. I due residui
+  passati al brief del modello del documento (§10, D-G1 e D-G2).
 - **Type checker del backend (D2-b): chiuso il 2026-10-09** (`work-done/piano-be-type-checker.md`;
   `0ffe7b7c3`, `ebc54fc56`): mypy col plugin Django in CI, a cricchetto (`backend/mypy.ini`,
   `backend/mypy.baseline.json`, `scripts/check_mypy_baseline.py`; sede `docs/it/dev/sicurezza-e-qualita-statica.md`

@@ -46,6 +46,7 @@
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
+| 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1, il blocco «origine» della stampa della fattura, da decidere nel giro della fattura; D-G2, la prova a video del lotto 2b | §10 | — |
 
 Decisioni aperte di Tid: nessuna in questo brief (W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md), E-1 … E-3). Da sapere (§8.10): il cambio stato generico dell'ordine ora rifiuta CONFERMATO (M-2); `ApiPreventivoCollegaPratica` chiede il livello sul preventivo. Lavoro da committare (`dev/db-tid`): il giro DB del §8.11 (`20261025-70`, `-71`) e il giro 7 (`-72` … `-82`, i due CSV e il mirror, i pgTAP nuovi e portati, le pagine `manual`, le guide del modello e degli ordini, `azioni_processo.md`), il brief nuovo [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md), i rimandi dell'archiviazione di V-3 (lo spostamento del file è già in `9bb735935`). Da rigenerare: la doc auto-generata (le pagine `funzioni/` di `fn_doc_stato_codice`, `fn_stato_abortito_id`, `fn_cambia_stato_ordine` non ci sono ancora).
 Committati: il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), il giro BE precedente (`9fbff66d2`), i giri 2-4 lato DB (`498cc8275`).
@@ -59,7 +60,7 @@ Committati: il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), il giro BE p
 > **Brief vicini verificati:**
 > [brief-db-documento-nasce-nello-stato-iniziale](../work-done/brief-db-documento-nasce-nello-stato-iniziale.md)
 > (stato iniziale e verbo: candidato a confluire qui, M-6);
-> [brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md) (solo i nomi dei
+> [brief-db-grammatica-unica-documenti](../work-done/brief-db-grammatica-unica-documenti.md) (solo i nomi dei
 > tipi: resta suo); [brief-db-magazzino-tutte-le-scritture-dal-verbo](brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
 > (magazzino; rimanda «`vendite`, brief suo»: è **questo**).
 
@@ -1669,3 +1670,21 @@ passaggio**, insieme a B-1 … B-6 del §8.11 (lo stato di emissione letto dal D
 verbo glieli rifiuta. Concedere l'azione ai profili è un dato (su dbdev lo fa Tid, come per `emetti_preventivo`).
 Fino al passaggio BE la conferma dal backend e il cambio stato generico rispondono `E_DOC_STATO_SOLO_DAL_VERBO`: è
 la rottura accettata del §5, «il DB consegna e scrive al BE cosa si è rotto».
+
+## 10. Ereditati da brief-db-grammatica-unica-documenti (2026-10-25)
+
+Il brief della grammatica unica si è chiuso il 2026-10-25 (lotto 4, il presidio) ed è in
+[work-done](../work-done/brief-db-grammatica-unica-documenti.md). Due punti non erano grammatica e passano qui
+(scelta di Tid, 2026-10-25):
+
+* **D-G1 — il blocco «origine» della stampa della fattura, che non si vede mai** (dal suo §12.9, in fondo). I
+  modelli della fattura (le versioni pubblicate 2334 e 3097 su dbdev, al 2026-10-19) hanno il blocco
+  `fattura.origine.tipo`, ma `VenditeRepository.get_fattura_testata` non porta né `origine_tipo` né
+  `origine_codice`: sulla carta il blocco resta sempre vuoto. Non è la correzione dell'ordine (L2b-1, etichetta in
+  `config.sorgenti`): una fattura può nascere da più documenti. **Da decidere (Tid), nel giro della fattura**:
+  togliere il blocco dal modello, o dire che cosa una fattura chiama «origine»;
+* **D-G2 — la prova a video del lotto 2b** (dal suo §12.7, riga 6-septies-d), a Tid quando vuole: «Genera ordine»
+  da un'offerta accettata; la finestra dell'annullo con legami di un ordine nato da offerta («Offerta …, torna
+  trasformabile», col link) e di una commessa con righe da reso e da consumi; il pannello di smistamento di un
+  preventivo misto (tag Ordine/Commessa, «Smista tutto» / «Smista selezionate», il routing verso ordine e
+  commessa).
