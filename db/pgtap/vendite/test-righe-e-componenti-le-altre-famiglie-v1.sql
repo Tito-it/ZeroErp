@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): la bolla esce dalla bozza con dbops.fn_pgtap_porta_a_stato (il verbo), non piu' con un UPDATE diretto dello stato (E_DOC_STATO_SOLO_DAL_VERBO).
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
 --   il documento passato ai lettori delle testate, ai legami e ai montaggi del
 --   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
@@ -332,9 +333,9 @@ UPDATE vendite.ordini
    SET stato_doc_ordine_id = (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO')
  WHERE id = (SELECT testata_id FROM _doc WHERE famiglia = 'ORDINE');
 
-UPDATE vendite.ddt
-   SET stato_doc_ddt_id = (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'EMESSO')
- WHERE id = (SELECT testata_id FROM _doc WHERE famiglia = 'DDT');
+-- La bolla col verbo (dbops.fn_pgtap_porta_a_stato): il suo stato non si cambia
+--   con un UPDATE diretto.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT testata_id FROM _doc WHERE famiglia = 'DDT'), 'EMESSO');
 
 -- =========================================================
 -- 7-15) Fuori bozza: modificare, aggiungere, togliere

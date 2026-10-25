@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): l'emissione della bolla (16, 17) da dbops.fn_pgtap_porta_a_stato (il verbo), che solleva lo stesso errore del guard degli indirizzi: lo stato della bolla non si cambia piu' con un UPDATE diretto (E_DOC_STATO_SOLO_DAL_VERBO). Le attese non cambiano.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): test 1 con gli ambiti col codice della sorgente.
 -- pgTAP test per Zero ERP
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
@@ -363,8 +364,8 @@ SELECT ok(
     '15) la check della bolla ha il motivo 4-bis');
 
 SELECT throws_like(
-    format('UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s',
-           (SELECT ddt_emesso FROM _k), (SELECT ddt_em FROM _d)),
+    format($q$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$q$,
+           (SELECT ddt_em FROM _d)),
     '%non e'' del cliente del documento%',
     '16) la bolla non si emette: E_INDIRIZZO_DOC_NON_DEL_CLIENTE dal guard degli indirizzi');
 
@@ -374,8 +375,8 @@ UPDATE vendite.ddt_indirizzi
  WHERE ddt_id = (SELECT ddt_em FROM _d);
 
 SELECT lives_ok(
-    format('UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s',
-           (SELECT ddt_emesso FROM _k), (SELECT ddt_em FROM _d)),
+    format($q$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$q$,
+           (SELECT ddt_em FROM _d)),
     '17) con un indirizzo del cliente la bolla si emette');
 
 -- ============================================================

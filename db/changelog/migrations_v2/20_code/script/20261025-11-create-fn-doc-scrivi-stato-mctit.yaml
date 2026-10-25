@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: LA SCRITTURA DELLO STATO ATTRAVERSO LA PORTA
+#   Brief: brief-modello-documento-vendita §7 (S-1 b, S-2 a di Tid, 2026-10-25).
+#
+# ── SECONDA META' DEL VERBO COMUNE ──────────────────────────────────
+#   La prima meta' (script.fn_guard_passaggio, 20261025-10) controlla il
+#   permesso; questa scrive lo stato. Apre la porta per QUESTA testata e
+#   QUESTO documento (GUC transazionale zeroerp.doc_cambio_stato =
+#   '<oid della testata>:<id>'), fa l'UPDATE e rimette la porta com'era. Tutti
+#   i guard di sempre girano (matrice, condizioni d'uscita, numero, legami).
+#
+# ── PERCHE' SECURITY INVOKER, E NON RISERVATA ───────────────────────
+#   La porta (script.trgfn_doc_stato_solo_dal_verbo, 20261025-12) chiede due
+#   cose: la GUC giusta E che chi esegue sia il proprietario della tabella
+#   (script.fn_is_proprietario_tabella). Chiamata da un verbo DEFINER passa;
+#   chiamata dall'applicazione si ferma alla porta. Non serve toglierle
+#   l'EXECUTE: da sola non apre niente.
+#
+# ── LA PORTA SI RIMETTE COM'ERA ─────────────────────────────────────
+#   Il valore precedente della GUC si conserva e si rimette dopo l'UPDATE:
+#   un verbo che cambia due documenti (il reso e poi la sua bolla) non lascia
+#   aperta la porta del primo, e un UPDATE annidato non chiude quella di chi
+#   lo ha chiamato.
+#
+# ── NESSUNA RIGA ────────────────────────────────────────────────────
+#   L'UPDATE che non tocca una riga e' un chiamante rotto (il verbo ha gia'
+#   preso la testata FOR UPDATE): E_SCRIPT_CHIAMATA_NON_VALIDA.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261025-11-create-fn-doc-scrivi-stato-mctit.yaml
+
+  - changeSet:
+      id: 20261025-11-create-fn-doc-scrivi-stato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        BB script.fn_doc_scrivi_stato(regclass, bigint, bigint): la seconda meta' del verbo di
+        stato. Apre la porta (GUC zeroerp.doc_cambio_stato = oid:id), scrive lo stato, rimette
+        la porta com'era. Da un verbo DEFINER passa; dall'applicazione la ferma la porta.
+        Brief: brief-modello-documento-vendita §7 (S-1, S-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_doc_stato_modello';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_doc_scrivi_stato(
+                  p_testata  regclass,
+                  p_id       bigint,
+                  p_stato_id bigint)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Uso, nel verbo DEFINER, dopo la prima riga (script.fn_guard_passaggio):
+              --   PERFORM script.fn_doc_scrivi_stato('vendite.ddt', p_ddt_id, v_stato_a_id);
+              DECLARE
+                  -- Testata, id e stato di uno qualunque dei documenti della
+                  -- mappa: bigint in tutti, nessuna colonna comune a cui
+                  -- ancorarli. Colonna e porta sono testo.
+                  v_col   text;
+                  v_porta text;
+                  v_prima text;
+                  v_n     integer;   -- righe toccate (ROW_COUNT): un conteggio
+              BEGIN
+                  SELECT m.colonna_stato INTO v_col
+                    FROM script.fn_doc_stato_modello(p_testata) m;
+
+                  IF v_col IS NULL OR p_id IS NULL OR p_id <= 0 OR p_stato_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_doc_scrivi_stato', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('testata', p_testata::text, 'id', p_id,
+                                             'stato_id', p_stato_id),
+                          NULL::uuid,
+                          'script.fn_doc_scrivi_stato',
+                          'p_testata (una testata della mappa del modello), p_id (maggiore di zero), p_stato_id (obbligatorio)');
+                  END IF;
+
+                  -- La porta per QUESTA testata e QUESTO documento: l'oid, non il
+                  -- nome, che dipende dal search_path di chi lo stampa.
+                  v_porta := p_testata::oid::text || ':' || p_id::text;
+                  v_prima := current_setting('zeroerp.doc_cambio_stato', true);
+                  PERFORM set_config('zeroerp.doc_cambio_stato', v_porta, true);
+
+                  EXECUTE format('UPDATE %s t SET %I = $1 WHERE t.id = $2', p_testata, v_col)
+                    USING p_stato_id, p_id;
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+
+                  PERFORM set_config('zeroerp.doc_cambio_stato', COALESCE(v_prima, ''), true);
+
+                  IF v_n <> 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_doc_scrivi_stato', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('testata', p_testata::text, 'id', p_id,
+                                             'stato_id', p_stato_id, 'righe', v_n),
+                          NULL::uuid,
+                          'script.fn_doc_scrivi_stato',
+                          'p_id: un documento esistente, preso FOR UPDATE dal verbo');
+                  END IF;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_doc_scrivi_stato(p_testata regclass, p_id bigint, p_stato_id bigint)
+                IS 'BB del modello del documento, seconda meta'' del verbo di stato: scrive lo stato di un documento attraverso la porta. Apre la porta per QUESTA testata e QUESTO documento (GUC transazionale zeroerp.doc_cambio_stato = ''<oid testata>:<id>''), fa l''UPDATE della colonna di stato della mappa (script.fn_doc_stato_modello) con tutti i guard di sempre, e rimette la GUC com''era (un verbo che cambia due documenti non lascia aperta la porta del primo). SECURITY INVOKER: la porta (script.trgfn_doc_stato_solo_dal_verbo) chiede anche che chi esegue sia il proprietario della tabella, quindi passa da un verbo DEFINER e si ferma se la chiama l''applicazione. Il permesso lo controlla prima la prima meta'', script.fn_guard_passaggio; i passaggi di processo (manuale = false) li scrive il verbo che ne e'' la causa, con questa sola. Testata fuori mappa, id o stato mancanti, nessuna riga toccata: E_SCRIPT_CHIAMATA_NON_VALIDA. Brief: brief-modello-documento-vendita §7 (S-1, S-2, Tid 2026-10-25).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_doc_scrivi_stato(regclass, bigint, bigint);

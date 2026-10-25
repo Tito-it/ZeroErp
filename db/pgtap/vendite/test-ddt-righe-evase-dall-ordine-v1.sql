@@ -3,6 +3,7 @@
 -- pgTAP test per Zero ERP
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso di F dal builder dbops.fn_pgtap_crea_reso, in bozza; restano a mano la conferma (fn_conferma_reso, il test 30 ne misura l'effetto: resta anche l'azione conferma_reso in testa) e la ri-consegna dalla madre in bozza (fn_genera_ddt_riconsegna e' il verbo del 30, e i 31-35 lavorano sulla bolla in bozza).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (pg_temp.re_mk_ddt lo chiama e annota le chiavi; ritirata pg_temp.re_avanza); restano a mano gli ordini senza bolla (re_mk_ordine), le bolle standalone di D e J, il legame in piu' di E, le scritture sulle righe e gli annulli (sono il caso), il reso di F (giro 2).
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): 37 e 42 annullano dal verbo vendite.fn_cambia_stato_ddt (senza conferma) invece che con un UPDATE diretto dello stato, che ora ferma la porta (E_DOC_STATO_SOLO_DAL_VERBO) prima dell'avviso sui legami. Attese invariate.
 -- Test: le righe di un DDT nato da un ordine (D28)
 --   vendite.fn_ddt_riga_evasa, vendite.trgfn_ddt_righe_guard_riga_evasa,
 --   vendite.trgfn_ordini_ful_guard_legame, il lock delle righe sul
@@ -59,12 +60,12 @@
 --  G — D-6
 --  36) su una bolla emessa non nasce un legame nuovo (fulfillment, ponte)
 --  H — D-8: l'annullo di una bolla con legami chiede conferma
---  37) l'annullo diretto (UPDATE dello stato) e' rifiutato: E_DOC_ANNULLO_CON_LEGAMI
+--  37) l'annullo dal verbo di stato, senza conferma, e' rifiutato: E_DOC_ANNULLO_CON_LEGAMI
 --  38) il verbo con una conferma che non corrisponde: stesso rifiuto
 --  39) il verbo confermato, bolla in bozza: ANNULLATO, legame ritirato, ordine CONFERMATO
 --  40) il verbo confermato, bolla emessa: ANNULLATO, legame ritirato, ordine CONFERMATO
 --  41) fuori bozza la porta del ritiro accesa a mano non toglie un legame
---  42) una bolla senza legami si annulla come prima (UPDATE diretto)
+--  42) una bolla senza legami si annulla come prima (dal verbo di stato, senza conferma)
 --  43) ⚠️ la porta senza il proprietario: GUC accesa a mano -> rifiuto.
 --      ROSSO DA OWNER, VERDE COME APP: da proprietario della tabella la porta
 --      si apre per costruzione. Per ultimo.
@@ -522,10 +523,10 @@ SELECT ok(
 -- H — D-8: l'annullo di una bolla con legami chiede conferma
 -- ============================================================
 SELECT pg_temp.re_mk_ddt('h1', 'h', 10, p_qta_ordine => 10);
+-- ⚠️ rev 2026-10-25 (§7, giro 5): la strada «diretta» che resta e' il verbo di
+--   stato senza conferma; l'UPDATE dello stato lo ferma la porta, prima.
 SELECT pg_temp.re_prova('37_annullo_diretto',
-  format($q$UPDATE vendite.ddt SET stato_doc_ddt_id =
-              (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'ANNULLATO')
-            WHERE id = %s$q$, pg_temp.re_fix('h1_ddt')));
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ddt(%s, 'ANNULLATO')$q$, pg_temp.re_fix('h1_ddt')));
 SELECT ok(pg_temp.re_rifiuto('37_annullo_diretto', 'Serve una conferma'),
   '37) D-8: l''annullo diretto di una bolla con legami e'' rifiutato (E_DOC_ANNULLO_CON_LEGAMI)');
 
@@ -571,10 +572,11 @@ BEGIN
   VALUES (v_ddt, 1, r.articolo_id, 'pippo senza legami', 2, false, '{"test_scope":"pgtap_righe_evase"}');
   INSERT INTO tmp_fix VALUES ('j1_ddt', v_ddt);
 END $j$;
+-- ⚠️ rev 2026-10-25 (§7, giro 5): dal verbo di stato, senza conferma. Il verbo
+--   ritorna i movimenti (nessuno: la bolla non muove merce), quindi la sonda
+--   conta UNA riga se il verbo e' passato senza errore.
 SELECT pg_temp.re_prova('42_senza_legami',
-  format($q$UPDATE vendite.ddt SET stato_doc_ddt_id =
-              (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'ANNULLATO')
-            WHERE id = %s$q$, pg_temp.re_fix('j1_ddt')));
+  format($q$SELECT count(*) FROM vendite.fn_cambia_stato_ddt(%s, 'ANNULLATO')$q$, pg_temp.re_fix('j1_ddt')));
 SELECT is((SELECT righe FROM tmp_esito WHERE caso = '42_senza_legami'), 1,
   '42) una bolla senza legami si annulla come prima, senza conferma');
 

@@ -2,8 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-**Riparte: team DB**, col giro D-4 (§7): le fixture ripetute emerse dal porting si fanno qui, non in un brief
-nuovo (Tid, 2026-10-25). Il giro del reso è applicato e verde come app.
+**⏸️ In attesa del giro 5 di [brief-modello-documento-vendita](brief-modello-documento-vendita.md)** (bolla e reso al
+modello: stato solo dal verbo, `dbops.fn_pgtap_porta_a_stato` riscritto). Quando è applicato e verde come app,
+**riparte il team DB** coi builder del giro D-4 (E-1…E-5 decise, §7.6), sopra il modello nuovo (§7.7).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -12,11 +13,14 @@ nuovo (Tid, 2026-10-25). Il giro del reso è applicato e verde come app.
 | 3 | ✅ team DB | I due builder, i presidi, il porting di 29 file, regressione prima/dopo senza differenze | §5 | 2 |
 | 4 | ✅ Tid | Apply di `-05`/`-06`, corsa pgTAP come app: verde (2026-10-25) | §5.3 | 3 |
 | 5 | ✅ Tid | D-4: le fixture ripetute si fanno in questo brief | §6 | 3 |
-| 6 | team DB | Giro D-4: censimento fine, builder dove c'è una trappola d'ordine, porting, regressione | §7 | 5 |
-| 7 | **Tid** | Apply del giro D-4, corsa pgTAP come app; archiviazione | — | 6 |
+| 6 | ✅ team DB | Giro D-4: censimento fine delle cinque strade | §7.1-§7.5 | 5 |
+| 7 | ✅ Tid | Decisioni E-1…E-5: come da proposta (2026-10-25) | §7.6 | 6 |
+| 7-bis | altra sessione | Giro 5 di brief-modello-documento-vendita applicato e verde (Tid: si aspetta, 2026-10-25) | §7.7 | — |
+| 8 | team DB | Giro D-4: i builder decisi, porting, regressione | §7 | 7, 7-bis |
+| 9 | **Tid** | Apply del giro D-4, corsa pgTAP come app; archiviazione | — | 8 |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare: i changeSet `20261025-05`/`-06`, i due presidi, i 29
-pgTAP portati, le due pagine manuali, la guida pgTAP e questo documento.
+Decisioni aperte di Tid: nessuna. Lavoro da committare: questo documento (il giro del reso è nel commit
+`2e1a6aaac`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-25. **A chi:** il team DB; Tid per l'apply.
 > **Origine:** giro 2 di [brief-db-pgtap-bolla-e-reso-costruiti](../work-done/brief-db-pgtap-bolla-e-reso-costruiti.md),
@@ -170,7 +174,120 @@ d'ordine, le copie ritirate nello stesso giro (§7).
 
 ---
 
-## 7. Giro D-4 — le altre fixture ripetute (in corso, 2026-10-25)
+## 7. Giro D-4 — le altre fixture ripetute (censimento fatto, 2026-10-25)
 
-Si parte dal censimento fine delle cinque strade del §6: quale blocco è una copia della strada e quale è il caso,
-e dove un builder esistente basta (esteso, non nuovo, come da preferenza di Tid nei giri precedenti).
+Censimento in sola lettura, file per file, copia o caso (fatto datato: i numeri descrivono le copie, non decidono
+il lavoro). Il motivo di ogni builder è la **trappola d'ordine** della strada, scritta per ciascuna.
+
+### 7.1 L'ordine confermato con le sue righe
+
+47 file scrivono righe d'ordine a mano: **9 sono il caso** (guard sulle righe, IVA e riepiloghi, natura, lineage,
+date di consegna), **5 misti** (la testata è il caso — emittente di default, coppia BA, flag sulla testata,
+termini — e righe e conferma sono copia), **~33 copie piene**.
+
+La trappola: la testata nasce in bozza con la data alla nascita (fuori bozza è congelata); il trigger di
+fatturazione si riscrive in bozza (il normalize lo eredita dal BA solo all'INSERT); le righe si scrivono in bozza,
+con l'IVA (la conferma rifiuta un prezzo senza aliquota) e `qta_operativa` con `quantita`; le date di consegna non
+precedono la data dell'ordine; poi la conferma per la matrice.
+
+Varianti vere: stato finale (CONFERMATO, DRAFT con righe, ANNULLATO), trigger, data, quantità e prezzo, numero di
+righe (1, a volte 2 o N), sconto (3 file), date di consegna sulla riga (2), articolo del test, `p_ordine_id` sulla
+testata del test (5 misti).
+
+⚠️ **Storia**: che `dbops.fn_pgtap_crea_ordine` *non* scriva righe è una decisione registrata (D-1 di
+`brief-db-righe-e-componenti-debiti-residui`). Estenderlo la revocherebbe: la proposta è un builder nuovo che lo
+compone.
+
+La stessa strada vive **dentro** `dbops.fn_pgtap_crea_ddt_da_ordine` (ramo senza `p_ordine_id`): il builder nuovo
+la sostituisce, e la bolla da ordine può allora inoltrare le righe (sconto, più righe) — riconsegna-eredita e
+genera-ddt-da-ordine non scriverebbero più l'ordine a mano.
+
+### 7.2 L'attività di commessa emessa, con la fattura vera agganciata
+
+| Variante | Che cosa | File |
+| --- | --- | --- |
+| V1 | un'attività sul segmento della bolla, emessa, una fattura in bozza con una riga | 8 (`*_fattura` di chiusure, accrediti, rinunce, annulli, ri-consegna dopo nota; il blocco di annullo-commessa-rettifica) |
+| V2 | N componenti di kit, una fattura, N righe | 1 (accredito-kit) |
+| V3 | attività del builder, testata da `fn_pgtap_crea_fattura`, riga e aggancio | 1 (rls viste fattura) |
+| V4 | attività fatturabile scritta a mano, senza emissione | 1 da portare (billing-account guard); in 4 gli stati sono il caso |
+| V5 | con lotto: marchio, testata della madre, lucchetto, esito | 3 (reset-lotto-draft, elimina-fattura-da-lotto, esito-gruppi); più riporta-lotto-a-draft, che oggi va in skip perché pesca un lotto |
+
+L'attività è già coperta da `dbops.fn_pgtap_crea_commessa_attivita` (sorgente, quantità, prezzo, articolo) e la
+commessa da `dbops.fn_pgtap_crea_commessa(…, p_con_sorgente_root => true)`. Manca la metà **fattura agganciata**,
+con la sua trappola: sorgente ROOT prima dell'emissione; l'attività fatturabile letta per `commessa_attivita_id`
+(oggi per `segment_key … ORDER BY id DESC LIMIT 1`, che con le rettifiche sullo stesso segmento prende la riga
+sbagliata); testata e righe in due istruzioni (sotto RLS); registro coerente con l'emittente; righe finché la
+fattura è in bozza, poi lo stato; l'aggancio dopo la riga (il guard ammette solo vuoto → valorizzato). Del
+dominio nessuna funzione scrive le righe di fattura (le scrive il backend): il builder fa gli INSERT.
+
+Incoerenze trovate:
+* le sette copie `*_fattura` dichiarano la sorgente **COMMESSA** con la chiave della bolla (forma ibrida); annullo-
+  commessa-rettifica usa **DDT_VENDITA** come la push;
+* un **reset scritto a mano** (annullo-commessa-rettifica, `ann_reset_lotto` di annulla-accredito, test 13 della
+  dash competenza) sgancia la fattura senza cancellarla: in annullo-commessa-rettifica proprio sulla riga
+  rettificata, uno stato che il verbo vero (`vendite.fn_cleanup_fatture_by_ids`, che lì rifiuta con
+  `E_FATTURE_RIGHE_RETTIFICATE`) non produce;
+* `ann_reset_lotto` in `rinuncia-gate-accredito` è **definita e mai chiamata** (copia morta).
+
+### 7.3 La bolla senza ordine portata fuori bozza
+
+`dbops.fn_pgtap_crea_ddt` (bozza senza righe, per il magazzino) più `fn_pgtap_porta_a_stato` **non bastano**: manca
+il passo con la trappola, la riga. Per uscire dalla bozza una bolla senza ordine pretende la riga, il prezzo sulla
+riga (senza ordine non c'è da dove ereditarlo), l'aliquota col prezzo, un articolo merce costruito, il BA, la
+causale e l'indirizzo; e se la riga muove merce, il verbo con l'azione `emetti_ddt` invece dell'UPDATE.
+
+Copie: ~12 file (i due RLS a due mondi, causale immutabile, magazzino della testata, articolo ammesso, numerazione,
+storia del BA, esecutivi, push delle bolle, righe evase J…); stato d'arrivo CONSEGNATO, EMESSO, SPEDITO o DRAFT con
+la riga; causale VENDITA, a volte CONTO_VISIONE; una riga. Caso in ~15 (guard all'INSERT, testate senza BA o senza
+causale, righe senza prezzo, magazzino che muove merce).
+
+### 7.4 La riga aggiunta a mano su una bolla in bozza
+
+Nove righe a mano: **7 sono il caso** (sospetto duplicato, riga «in più», natura, porta del verbo, WITH CHECK). Le
+due di fixture vogliono «merce senza ordine consegnata», cioè la strada §7.3. Nessun builder per questa strada.
+
+### 7.5 Trovato fuori dalle cinque strade
+
+* `vendite/test-fn-list-ddt-da-pushare-v1`, casi A: la **bolla da ordine scritta a mano** (sorgente, riga,
+  legame). Il giro 1 non l'ha vista (non chiama la madre): si porta su `dbops.fn_pgtap_crea_ddt_da_ordine`.
+* `vendite/test-resi-rinunce-fondamenta-v1`: la bolla di destinazione della ri-consegna, in bozza, scritta a mano
+  sopra un reso in bozza. La madre vuole un reso confermato: è il caso del test, resta.
+
+### 7.6 Decisioni di Tid (2026-10-25: «per le decisioni fai come da tua proposta»)
+
+* **E-1 — l'ordine con le righe.** Proposta: builder nuovo `dbops.fn_pgtap_crea_ordine_con_righe(etichetta,
+  stato DEFAULT 'CONFERMATO', ba, p_quantita, p_prezzo, p_articolo_id, p_fatturazione_trigger, p_data_ordine,
+  p_righe jsonb, p_ordine_id)` che compone `fn_pgtap_crea_ordine` (D-1 resta: quel builder continua a non scrivere
+  righe). `p_righe` per più righe, sconto e date di consegna; `p_ordine_id` per la testata del test.
+  `dbops.fn_pgtap_crea_ddt_da_ordine` ci delega la sua copia interna e inoltra le righe.
+* **E-2 — la fattura agganciata.** Proposta: builder nuovo `dbops.fn_pgtap_fattura_attivita(p_attivita_ids bigint[],
+  stato DEFAULT 'DRAFT', p_lotto_id DEFAULT NULL)`: emette, legge l'attività fatturabile per attività, testata
+  (senza lotto da `fn_pgtap_crea_fattura`; con lotto dalla madre `vendite.fn_get_or_create_fattura_header`), righe
+  con quantità e prezzo dell'attività, aggancio, stato per la matrice. Copre V1, V2, V3 e **V5 (lotto)**: dentro
+  anche il lotto, che cura riporta-lotto-a-draft.
+* **E-3 — la sorgente delle attività fatturate.** Proposta: **DDT_VENDITA** (la chiave la compone
+  `script.fn_segment_key`), come la scrive la push; la forma ibrida COMMESSA + chiave della bolla delle sette copie
+  non la produce nessuna strada del dominio.
+* **E-4 — il reset scritto a mano.** Proposta: dove il test vuole una fattura tolta, il verbo vero
+  `vendite.fn_cleanup_fatture_by_ids`; dove il verbo rifiuta (riga rettificata), la fixture costruisce uno stato
+  che il modello non produce, e il test si riscrive sullo stato che il modello produce (da guardare file per
+  file, con le attese dichiarate se cambiano). La copia morta si cancella.
+* **E-5 — la bolla senza ordine fuori bozza.** Proposta: builder nuovo `dbops.fn_pgtap_crea_ddt_senza_ordine(etichetta,
+  stato DEFAULT 'CONSEGNATO', ba, p_quantita, p_prezzo, p_articolo_id, p_causale_codice, p_data, p_magazzino_id)`,
+  gemello di quello da ordine; `dbops.fn_pgtap_crea_ddt` resta la bozza senza righe del magazzino. Merce gestita:
+  rifiutata (i test che muovono merce scrivono le righe da sé). Nessun builder per la riga a mano (§7.4).
+
+### 7.7 Perché si aspetta (2026-10-25)
+
+Mentre il censimento si chiudeva, l'altra sessione ha avviato il giro 5 di brief-modello-documento-vendita:
+`20261025-07` … `-21` (non applicati quando scritto) mettono su bolla e reso un trigger che vieta l'UPDATE diretto
+dello stato, riscrivono sul verbo comune `vendite.fn_cambia_stato_ddt`, `fn_conferma_reso` e `fn_annulla_reso`
+(permesso letto dalla matrice) e riscrivono `dbops.fn_pgtap_porta_a_stato` (`-19`). Il giro D-4 tocca gli stessi
+punti (la bolla senza ordine passa da `porta_a_stato`, la bolla da ordine si riscrive, ~50 pgTAP in buona parte
+gli stessi della loro bonifica). Tid: **si aspetta il giro 5**, poi D-4 sopra il modello nuovo.
+
+⚠️ Alla ripresa: i numeri di changeSet liberi si rileggono (max+1 su tutti i livelli: il giro 5 occupa già
+`-07` … `-21`); il censimento §7.1-§7.5 si ricontrolla sui file che il giro 5 avrà portato; i builder del giro 1 e
+del reso (`fn_pgtap_crea_ddt_da_ordine`, `fn_pgtap_crea_reso`, `fn_pgtap_crea_ddt_riconsegna`) si riprovano sul
+`porta_a_stato` e sui verbi nuovi (per esempio l'azione `conferma_reso` che `fn_pgtap_crea_reso` concede: il
+permesso ora lo legge la matrice).

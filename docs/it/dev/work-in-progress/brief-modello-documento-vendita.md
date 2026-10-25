@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-**Riparte: Tid**, col via allo sviluppo del primo giro del piano: **il DDT, col DDT d'acquisto**, con i due pezzi comuni decisi il 2026-10-25 (S-1: il guard sulla colonna di stato; S-2: il verbo di stato comune). Poi il team DB scrive il giro. Guida del modello scritta e approvata da Tid (2026-10-25); fermo dei temi trasversali allentato (scelta C). Il giro BE (sonde, BE-1, BE-2) è committato (`9fbff66d2`, PR #1938). Giri 1-4 chiusi lato DB il 2026-10-24.
+**Riparte: il team BE**, con la richiesta del §7.6 (giro 5, il DDT e il reso al modello). Lato DB il giro è chiuso: `20261025-07` … `-22` applicati da Tid su dbdev e scratch dopo la correzione del mirror (§7.5), corsa pgTAP verde (Tid, 2026-10-25). Poi il team DB col documento del giro dopo (§5: l'ordine dei documenti si decide col piano).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -23,10 +23,10 @@
 | 2-decies | ✅ team DB / **Tid** | Quarto giro: il pezzo comune (nessun cliente in più nei builder) e i builder delle fixture ripetute (`-37` … `-42`); applicati da Tid alle 23:50, corsa come app verde | §4-octies | 2-nonies |
 | 3 | ✅ team DB | Il §2, corretto con le decisioni, diventa la guida `docs/it/guide/modello-documento-di-vendita.md`; le otto guide dei documenti rimandano lì (2026-10-25) | §6 | 2 |
 | 3-bis | ✅ **Tid** | Rilettura della guida: le sei regole sono scritte come le ha decise (Tid, 2026-10-25: «sì, ok») | §6 | 3 |
-| 4 | team DB + BE | Il piano: ogni documento portato al modello **tutto in una volta**, un documento per giro. ✅ Primo documento (Tid, 2026-10-25): **il DDT, col DDT d'acquisto** — il più vicino al modello; lì nascono i pezzi comuni di S-1 e S-2. S-1 (b) e S-2 (a) decise | §5, §6 | 3-bis |
+| 4 | ✅ team DB / **Tid** · team BE | Giro 5 (bolla e reso): DB scritto, applicato e verde il 2026-10-25 (§7); tocca al BE (§7.6). Il piano: ogni documento portato al modello **tutto in una volta**, un documento per giro. ✅ Primo documento (Tid, 2026-10-25): **il DDT, col DDT d'acquisto** — il più vicino al modello; lì nascono i pezzi comuni di S-1 e S-2. S-1 (b) e S-2 (a) decise | §5, §6 | 3-bis |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 
-Decisioni aperte di Tid: nessuna; manca solo il via allo sviluppo del giro DDT. Lavoro da committare: la
+Decisioni aperte di Tid: nessuna (T-1 … T-4 decise il 2026-10-25). Da decidere: il documento del giro dopo. Lavoro da committare: la
 guida, i rimandi nelle otto guide, `readme.md`, `mkdocs.yml`, PROJECT_CONTEXT (fermo) e questo documento (`dev/db-tid`). Il
 giro BE è committato (`9fbff66d2`); i giri 2-4 lato DB pure (`498cc8275`).
 
@@ -783,3 +783,187 @@ dichiarato.
 
 ✅ Tid, 2026-10-25: guida approvata; fermo allentato (C, in PROJECT_CONTEXT); primo documento il DDT
 col DDT d'acquisto; S-1 (b), S-2 (a). Il giro si scrive col via di Tid.
+
+---
+
+## 7. Giro 5: il DDT al modello — ricognizione e piano (2026-10-25)
+
+Via di Tid il 2026-10-25 («ok procedi»). Ricognizione sul codice (doc auto-generata, `backend/`,
+`db/pgtap/`), prima di scrivere i changeSet.
+
+### 7.1 Com'è oggi
+
+* **Verbo.** `vendite.fn_cambia_stato_ddt` (DEFINER) fa ogni passaggio e, sulle bolle che muovono
+  merce, i prelievi e i movimenti. Il permesso è scritto nel corpo: `emetti_ddt` verso EMESSO e per
+  EMESSO → ANNULLATO, `registra_magazzino` alla consegna di un trasferimento che muove merce; gli altri
+  passaggi senza controllo («al permesso del backend»). `fn_annulla_ddt` ritira i legami e chiama il
+  verbo. Il backend passa già **sempre** dal verbo (giro A1 del 2026-10-12).
+* **Porta.** Esiste già, ma a metà: la Regola 3 di `trgfn_ddt_guard_transizione` (GUC
+  `zeroerp.ddt_cambio_stato` + `script.fn_is_proprietario_tabella`, `E_DDT_STATO_SOLO_DA_VERBO`) chiude
+  solo emissione, annullo dell'emesso e consegna del trasferimento, e solo se la bolla muove merce. La
+  stessa forma, copiata, sta sul reso (`E_RESO_STATO_SOLO_DA_VERBO`) e sui documenti interni di
+  magazzino (`E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE`): tre copie.
+* **Chi scrive lo stato della bolla senza il verbo:** `vendite.fn_conferma_reso` (CONSEGNATO → RESO) e
+  `vendite.fn_annulla_reso` (RESO → CONSEGNATO), i due passaggi di processo (`manuale = false`) della
+  matrice; `dbops.fn_pgtap_porta_a_stato`; nei pgTAP 19 file con un `UPDATE` diretto e 12 con
+  `porta_a_stato` sulla bolla (conteggio del 2026-10-25, per dimensionare il porting).
+* **Capability.** `script.fn_available_actions_ddt` legge la matrice, ma non guarda il permesso: un
+  bottone «Emetti» compare anche a chi non ha `emetti_ddt` (§12.1 della linee guida SQL: permesso ⇒
+  nascondi).
+* **Emissione (M-2).** `/emetti/` chiama `ddt_service.emetti`, che è `cambia_stato(…, 'EMESSO')`: la
+  rotta generica `cambia-stato/` accetta EMESSO allo stesso modo.
+* **La mappa dei documenti** (testata → colonna di stato, vocabolario, matrice) esiste in un posto
+  solo, dentro `dbops.fn_pgtap_porta_a_stato`. Il verbo comune ne ha bisogno: è la seconda occorrenza.
+* **DDT d'acquisto.** `acquisti.ddt` usa `config.stati_doc_ddt` e ha solo il trigger della nascita:
+  nessun guard di transizione, nessun verbo, nessuna capability, nessun backend, zero righe. ⚠️ La
+  decisione D-3 di [analisi-simmetria-ordini-acquisto](analisi-simmetria-ordini-acquisto.md)
+  (Tid, 2026-09-02) dice che gli stati condivisi descrivono un documento **emesso da noi**, e che
+  vendite e acquisti si separano con un satellite per ambito (`config.stati_doc_ddt_ambiti`, `ambito`
+  nella chiave delle transizioni). Il satellite non c'è ancora.
+* ⚠️ **Un'altra sessione** lavora in questo momento su
+  [brief-db-pgtap-reso-costruito](brief-db-pgtap-reso-costruito.md) (giro 2): una trentina di pgTAP di
+  bolla e reso modificati e non committati, `20261025-05`/`-06` nuovi. Sono gli stessi file che questo
+  giro deve portare.
+
+### 7.2 Il piano (da confermare con le domande del §7.3)
+
+**I pezzi comuni** (schema `script`, montati sulla bolla e riusati dai documenti dei giri dopo):
+
+| Pezzo | Che cosa fa |
+| --- | --- |
+| la mappa dei documenti | testata → colonna di stato, vocabolario, matrice; estratta da `fn_pgtap_porta_a_stato`, che la legge (la copia si ritira) |
+| l'azione sulla riga (M-3) | colonna `azione_processo_codename` sulla matrice (FK a `config.azioni_processo.permission_codename`, la chiave stabile: §6b delle linee guida), valorizzata nel CSV: emissione e annullo dell'emesso = `emetti_ddt` |
+| la prima riga del verbo | legge la riga del passaggio, applica il permesso (l'azione della riga; senza azione il permesso sul documento resta al backend, niente `fn_guard_livello`: l'operatore dei pgTAP è bloccato su più aree) e rifiuta i passaggi di processo chiesti a mano |
+| la primitiva di scrittura | apre la porta per **quel** documento e scrive lo stato. `SECURITY INVOKER` e non riservata: la porta chiede anche il proprietario, quindi dall'app si ferma da sola |
+| la porta (S-1) | un guard sulla colonna di stato: passa solo dalla primitiva (GUC + proprietario). Prende il posto della Regola 3 della bolla, che si ritira |
+| il permesso nelle capability | il bottone di un passaggio con azione si nasconde a chi non ce l'ha, dalla stessa riga |
+
+**La bolla:** `fn_cambia_stato_ddt` comincia dalla prima riga comune e scrive con la primitiva; restano
+suoi i prelievi e i movimenti. `fn_conferma_reso`/`fn_annulla_reso` scrivono lo stato della bolla con
+la primitiva. `fn_pgtap_porta_a_stato` passa dal verbo per i documenti con la porta. pgTAP portati nello
+stesso giro.
+
+**Richiesta al BE** (da completare col percorso intero): `cambia-stato/` rifiuta EMESSO (M-2, solo
+`/emetti/`); il 403 dell'endpoint legge l'azione dalla riga del passaggio, con la funzione del DB; i
+codici nuovi in `error_policies_generated.py`.
+
+### 7.3 Domande per Tid
+
+Una alla volta, nel giro di domande del 2026-10-25.
+
+* ✅ **T-1. L'altra sessione** — Tid: **B**, si parte subito; l'altra sessione ha committato
+  (`2e1a6aaac`, 2026-10-25), l'albero è libero.
+* ✅ **T-2. Il DDT d'acquisto** — Tid: **non si fa** in questo giro («il ddt acquisto no, non
+  farlo»). Il giro porta la sola bolla di vendita; il DDT d'acquisto aspetta il satellite per ambito
+  (D-3 di analisi-simmetria-ordini-acquisto). ⚠️ È un'eccezione dichiarata alla regola del §5 «nello
+  stesso giro»: i pezzi comuni nascono generici, così il DDT d'acquisto li monta senza copie.
+* ✅ **T-3. Il reso** — Tid: **A**, entra nel giro: il pezzo comune della porta sostituisce la sua
+  copia (`E_RESO_STATO_SOLO_DA_VERBO`), `conferma_reso` passa sulla riga del passaggio. I documenti
+  interni di magazzino restano fuori (nessun vocabolario degli stati in tabella): la loro porta resta,
+  dichiarata.
+* ✅ **T-4. `registra_magazzino` alla consegna del trasferimento** — Tid: **A**, resta nel verbo della
+  bolla come permesso dell'operazione di magazzino dentro il passaggio; la riga CONSEGNATO non porta
+  azioni. Scritto nella guida del modello §6 come regola.
+
+### 7.4 Scritto (2026-10-25)
+
+| # | Cosa |
+| --- | --- |
+| `-07` | NUOVO `script.fn_doc_stato_modello(regclass)`: la mappa, estratta da `fn_pgtap_porta_a_stato` |
+| `-08` | colonna `azione_processo_codename` (FK al codename) su `config.transizioni_stati_ddt` e `_reso`; valori nei CSV, mirror `20260709-10` e `20260713-41` con la colonna e `nullValue: "NULL"` |
+| `-09` | NUOVO `script.fn_doc_passaggio`: la riga viva del passaggio (manuale, azione), lettore unico |
+| `-10` | NUOVO `script.fn_guard_passaggio`: prima metà del verbo (processo → `E_DOC_PASSAGGIO_DI_PROCESSO`; azione → `fn_guard_azione`) |
+| `-11` | NUOVO `script.fn_doc_scrivi_stato`: seconda metà, la scrittura attraverso la porta (GUC `zeroerp.doc_cambio_stato` = `oid:id`, rimessa com'era) |
+| `-12`, `-13` | NUOVO `script.trgfn_doc_stato_solo_dal_verbo` (`E_DOC_STATO_SOLO_DAL_VERBO`), montato `_a05_` su `vendite.ddt` e `vendite.resi` |
+| `-14`, `-15` | i guard di transizione di bolla e reso perdono la loro porta del registro (Regola 3 e Regola 2): la copia si ritira |
+| `-16` | `fn_cambia_stato_ddt` sul verbo comune; resta suo `registra_magazzino` (T-4) |
+| `-17`, `-18` | `fn_conferma_reso`, `fn_annulla_reso` sul verbo comune; il flip della bolla (RESO ↔ CONSEGNATO) dalla scrittura comune |
+| `-19` | `fn_pgtap_porta_a_stato`: la mappa comune; sotto la porta, i passi col verbo (solo manuali) e l'azione concessa |
+| `-20`, `-21` | capability di bolla e reso: il passaggio con l'azione si nasconde a chi non ce l'ha |
+
+Dati: `E_DOC_STATO_SOLO_DAL_VERBO` e `E_DOC_PASSAGGIO_DI_PROCESSO` (TECNICO) in `messaggi_errore.csv` e
+`codici_errore.csv`; `E_DDT_STATO_SOLO_DA_VERBO` e `E_RESO_STATO_SOLO_DA_VERBO` obsoleti dal 2026-10-25.
+Doc: cinque pagine `manual` nuove (script), le schede del reso, la guida del modello (§5, §6, §10),
+`gestione-ddt` (§4.4), la tabella dei builder della guida pgTAP. pgTAP nuovo:
+`script/test-doc-verbo-comune-e-porta-v1` (20).
+
+**Attese cambiate, dichiarate:**
+
+* l'annullo di un reso in **bozza** non chiede più `conferma_reso` (M-4: non è un passaggio pesante); il
+  backend lo chiedeva staticamente (`ApiResoAnnulla.post_permission`), vedi la richiesta;
+* una conferma (o un annullo) di un reso che non ha la riga del passaggio (già confermato, già annullato)
+  risponde col codice dello stato (`E_RESO_STATO_NON_CONFERMABILE` / `_NON_ANNULLABILE`) anche a chi non
+  ha l'azione: prima `E_PERMESSO_NEGATO`;
+* **ogni** cambio di stato diretto di bolla e reso è rifiutato, non più solo quelli del magazzino;
+* le capability di bolla e reso non mostrano più «Emetti» / «Conferma» / «Annulla» (dell'emesso o del
+  confermato) a chi non ha l'azione.
+* pgTAP, attese della regola ritirata (dichiarate nei file): `magazzino/test-ddt-scarico-v1` 4 e 16 (la
+  bolla senza merce non passa più dall'`UPDATE` diretto), `test-ddt-trasferimento-v1` 8,
+  `test-reso-carico-v1` 11 → `E_DOC_STATO_SOLO_DAL_VERBO`; `vendite/test-ddt-causale-immutabile-v1` 4:
+  provava che il guard della causale legge lo stato VECCHIO quando causale e stato cambiano nella stessa
+  istruzione. ⚠️ Con la porta quell'istruzione non si può più scrivere da fuori (il verbo scrive solo lo
+  stato): il test ora asserisce il rifiuto della porta. ✅ **Confermato da Tid il 2026-10-25**: il test
+  discrimina ancora, perché il lock della causale (`trg_ddt_a05_lock_fuori_bozza_upd`) scatta prima
+  della porta (`…a05_stato_solo_dal_verbo_upd`): un lock che leggesse lo stato nuovo rifiuterebbe con la
+  sua frase. La dipendenza dall'ordine dei nomi è scritta nel test. Tre test, dopo l'apply e prima del porting, erano verdi **per la ragione sbagliata** (prendevano il P0001 della porta
+  invece del guard che provavano: `test-fn-check-ddt-emittibile-v1` 9, `test-ddt-solo-trasporto-causale-v1`
+  2 e 3) passano dal verbo e cadono sul guard vero.
+
+### 7.5 Incidente dell'apply (2026-10-25, 01:53)
+
+Tid ha applicato `-07` … `-21` su dbdev e scratch mentre la prova era in corso; il migrate si è fermato
+nel mirror `20260709-10`: la colonna nuova aveva celle vuote e il mirror `nullValue: ""`, Liquibase ha
+scritto `''` e la FK l'ha rifiutata. ⛔ Era una trappola già scritta (memoria del 2026-09-28, mirror
+`20260709-11`), e la prova col seed simulato in Python non la vede. Corretto: `nullValue: "NULL"` nei
+due mirror e il token `NULL` nelle celle. Stato dopo l'incidente: i changeSet `-07` … `-21` applicati, le
+azioni sulle righe **ancora NULL** fino al prossimo migrate (il mirror è `runOnChange`).
+
+### 7.6 Richiesta al team BE (elenco chiuso)
+
+Percorso censito: `ddt_service.cambia_stato` / `emetti`, `ApiDdtCambiaStato`, la fabbrica `/emetti/`
+(`emetti_post_permission`), `ApiResoConferma` / `ApiResoAnnulla`, `ddt_repository`, il catalogo dei
+messaggi di ripiego.
+
+1. **M-2, solo da «Emetti».** `ddt_service.cambia_stato` (e `ApiDdtCambiaStato`) rifiuta `EMESSO`: la
+   bolla si emette solo da `/emetti/`, che produce numero e PDF insieme. Codice: un `*_VALIDATION`
+   del dominio (400), la frase dice di usare «Emetti».
+2. **M-3, il 403 dalla riga del passaggio.** Il permesso dell'endpoint di un cambio di stato non si
+   dichiara più a mano: si legge da `script.fn_doc_passaggio(<testata>, <stato corrente id>, <stato
+   chiesto id>)` (colonna `azione_processo_codename`; NULL = basta `model_permission`) e si controlla
+   con la stessa regola del DB, prima di aprire la transazione. Vale per `ApiDdtCambiaStato` (oggi
+   nessun `post_permission`: l'annullo dell'emesso arrivava al DB senza 403 prima), per
+   `ApiResoConferma` e `ApiResoAnnulla` (oggi `post_permission = "conferma_reso"` fisso: con M-4
+   l'annullo di una bozza **non** lo chiede più, e il 403 statico lo rifiuterebbe), e per l'`/emetti/`
+   della bolla (`emetti_post_permission="emetti_ddt"`: coincide con la riga, ma è una seconda copia).
+3. **I codici.** Rigenerare `error_policies_generated.py`: `E_DOC_STATO_SOLO_DAL_VERBO`,
+   `E_DOC_PASSAGGIO_DI_PROCESSO` (TECNICO, frasi chiuse o col solo identificativo del documento);
+   `E_DDT_STATO_SOLO_DA_VERBO` / `E_RESO_STATO_SOLO_DA_VERBO` obsoleti (le due voci di
+   `error_messages_fallback.py` e il commento di `ddt_repository.cambia_stato` si allineano).
+4. **Da sapere, nessuna modifica attesa:** `cambia_stato` verso `RESO` (passaggio di processo) ora
+   risponde `E_DOC_PASSAGGIO_DI_PROCESSO`; le capability nascondono le azioni senza permesso (il
+   frontend non cambia: riceve meno azioni).
+5. **I test DB che scrivono lo stato della bolla con un `UPDATE` diretto** (censiti il 2026-10-25, ora
+   rifiutati con `E_DOC_STATO_SOLO_DAL_VERBO`): `apps/vendite/tests/db/_ddt_consegnato.py` (righe 75-77,
+   EMESSO → SPEDITO → CONSEGNATO) e `apps/vendite/tests/db/test_date_consegna_righe_db.py` (riga 120).
+   Si portano a `dbops.fn_pgtap_porta_a_stato('vendite.ddt', <id>, '<stato>')`, che passa dal verbo e
+   concede all'utente del contesto l'azione del passaggio; senza un utente di contesto il verbo non vede
+   la bolla (`E_DDT_NOT_FOUND`).
+
+### 7.7 Debito emerso e chiuso nello stesso giro
+
+* **`-22`: la frase del rifiuto di matrice di bolla e reso.** `E_STATO_DDT_TRANSIZIONE_NON_VALIDA` e
+  `E_STATO_RESO_TRANSIZIONE_NON_VALIDA` hanno due segnaposto (stato da, stato a), ma i due guard
+  passavano anche l'id del documento: a video «da 14566 a EMESSO» per un EMESSO → CONSEGNATO. Difetto di
+  prima del giro, visto nel porting; corretto qui perché i due corpi erano appena stati riscritti
+  (`-14`/`-15`, già applicati: non si toccano). Provato in transazione: compila, `plpgsql_check` pulito.
+* Lasciato: `E_DDT_EMISSIONE_SENZA_RIGHE` riceve id e numero per un segnaposto solo, e mostra l'id; in
+  bozza il numero non c'è ancora, e l'id è l'informazione giusta.
+
+### 7.8 Applicato e verde (2026-10-25)
+
+Tid: `-07` … `-22` applicati su dbdev e scratch (il mirror `20260709-10` è ripartito dopo la correzione
+del §7.5, le azioni sulle righe sono valorizzate), corsa pgTAP verde. Un solo rosso visto come app prima
+della corsa finale, corretto: il test 2 del presidio nuovo confrontava il **testo** di un `regclass`, che
+dipende dal `search_path` (come app `config` ci sta e lo schema sparisce); ora i test 2 e 9 confrontano i
+`regclass`. La corsa come app ha confermato anche i due test della porta (19, 20) che da owner non si
+potevano provare.

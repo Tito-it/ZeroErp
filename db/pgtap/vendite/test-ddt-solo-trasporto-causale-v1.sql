@@ -2,6 +2,11 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine, in bozza con la causale del caso, poi a CONSEGNATO per la matrice (ritirata pg_temp.porta_a); restano a mano il prezzo tolto dalla riga e la causale tolta (test 2), le emissioni di 2-4 (sono il caso: i gate) e la bolla standalone di 3 (non nasce da un ordine).
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): la porta sullo stato rifiuta ogni
+--   UPDATE diretto della colonna di stato (E_DOC_STATO_SOLO_DAL_VERBO), prima dei gate. Le emissioni
+--   di 2-4 passano da dbops.fn_pgtap_porta_a_stato (verbo sotto la porta, stessi errori dei guard):
+--   con l'UPDATE diretto il 4 moriva sulla porta, e 2-3 erano verdi per la ragione sbagliata.
+--   Attese invariate.
 -- Test: DDT di solo trasporto — l'intento si dichiara con la CAUSALE
 --       (fatturabile) — step 5b, brief-db-fatturazione-ddt-resi §4a / DL-28.
 -- (changeset 20260718-03/-04/-05/-06)
@@ -120,8 +125,7 @@ SELECT is(
 -- ============================================================
 CREATE TEMP TABLE tmp_senza AS SELECT * FROM pg_temp.mk_ddt_da_ordine(NULL);
 SELECT throws_ok(
-  $$ UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)
-      WHERE id=(SELECT ddt_id FROM tmp_senza) $$,
+  $$ SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_senza), 'EMESSO') $$,
   'P0001', NULL,
   '2) gate R1: emissione senza causale di trasporto -> bloccata');
 
@@ -132,8 +136,7 @@ SELECT throws_ok(
 CREATE TEMP TABLE tmp_nopr AS
 SELECT pg_temp.mk_ddt_standalone((SELECT causale_vendita_id FROM tmp_refs)) AS ddt_id;
 SELECT throws_ok(
-  $$ UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)
-      WHERE id=(SELECT ddt_id FROM tmp_nopr) $$,
+  $$ SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_nopr), 'EMESSO') $$,
   'P0001', NULL,
   '3) gate R2: causale VENDITA + riga senza prezzo risolvibile -> emissione bloccata');
 
@@ -143,8 +146,7 @@ SELECT throws_ok(
 CREATE TEMP TABLE tmp_eredita AS
 SELECT * FROM pg_temp.mk_ddt_da_ordine('VENDITA');
 SELECT lives_ok(
-  $$ UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)
-      WHERE id=(SELECT ddt_id FROM tmp_eredita) $$,
+  $$ SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_eredita), 'EMESSO') $$,
   '4) gate R2: riga da evasione senza prezzo proprio ma ereditabile dall''ordine -> emissione passa');
 
 -- ============================================================

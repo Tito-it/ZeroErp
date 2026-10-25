@@ -7,6 +7,9 @@
 --   CONSEGNATO, con lo stesso transfer_uid e al costo dell'uscita (D-L3-c,
 --   D-L2-g). In mezzo e' in viaggio. Una bolla di trasferimento non genera
 --   un reso. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 3.
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): ATTESA CAMBIATA del test 8, per regola
+--   ritirata: l'UPDATE diretto dello stato e' rifiutato dalla porta comune (E_DOC_STATO_SOLO_DAL_VERBO),
+--   non piu' da E_DDT_STATO_SOLO_DA_VERBO («muove merce»).
 --
 -- Il mondo: due magazzini dello stesso emittente, A e B, senza ubicazioni;
 --   un articolo SEMPLICE caricato in A: 10 a 5.
@@ -19,7 +22,7 @@
 --    5) ...con transfer_uid = uid della bolla
 --    6) in viaggio: A 6, B nessuna giacenza
 --    7) SPEDITO dal verbo: nessun movimento
---    8) CONSEGNATO con UPDATE diretto -> E_DDT_STATO_SOLO_DA_VERBO
+--    8) CONSEGNATO con UPDATE diretto -> E_DOC_STATO_SOLO_DAL_VERBO
 --    9) CONSEGNATO dal verbo: TRASF_IN +4 in B, al costo dell'uscita (5)
 --   10) giacenze: A 6, B 4
 --   11) un reso da una bolla di trasferimento -> E_RESO_DA_DDT_TRASFERIMENTO
@@ -123,8 +126,8 @@ SELECT is((SELECT count(*)::int FROM _sp1), 0, '7) SPEDITO: nessun movimento');
 SELECT throws_like(
     format('UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT id FROM config.stati_doc_ddt WHERE codice_interno = %L) WHERE id = %s',
            'CONSEGNATO', (SELECT ddt FROM _d1)),
-    '%muove merce%',
-    '8) CONSEGNATO con UPDATE diretto di una bolla di trasferimento: E_DDT_STATO_SOLO_DA_VERBO');
+    '%si cambia solo dalle sue operazioni%',
+    '8) CONSEGNATO con UPDATE diretto di una bolla di trasferimento: E_DOC_STATO_SOLO_DAL_VERBO');
 
 -- 9) CONSEGNATO dal verbo
 CREATE TEMP TABLE _co1 AS SELECT * FROM vendite.fn_cambia_stato_ddt((SELECT ddt FROM _d1), 'CONSEGNATO');

@@ -14,6 +14,10 @@
 > **Vedi anche** — funzioni e trigger DB:
 >
 > * [script.trgfn_doc_stato_iniziale](/dbzero/script/funzioni/trgfn_doc_stato_iniziale) — un documento nasce nel suo stato iniziale
+> * [script.fn_doc_stato_modello](/dbzero/script/funzioni/fn_doc_stato_modello) — la mappa: dove sta lo stato di una testata e quale matrice ne dice i passaggi
+> * [script.fn_doc_passaggio](/dbzero/script/funzioni/fn_doc_passaggio) — la riga del passaggio: è di processo? che azione chiede?
+> * [script.fn_guard_passaggio](/dbzero/script/funzioni/fn_guard_passaggio) e [script.fn_doc_scrivi_stato](/dbzero/script/funzioni/fn_doc_scrivi_stato) — le due metà del verbo di stato
+> * [script.trgfn_doc_stato_solo_dal_verbo](/dbzero/script/funzioni/trgfn_doc_stato_solo_dal_verbo) — la porta: lo stato si cambia solo dal verbo
 > * [script.fn_stato_iniziale_id](/dbzero/script/funzioni/fn_stato_iniziale_id) — l'unico lettore dello stato iniziale di un vocabolario
 > * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) — il permesso dentro il verbo
 > * [script.fn_check_azione_processo](/dbzero/script/funzioni/fn_check_azione_processo) — la regola del permesso, la stessa per DB e backend
@@ -123,6 +127,27 @@ documenti.
   (ritirare i legami, scrivere il magazzino…) e poi chiamano il verbo di stato del documento.
 * Il backend chiama il verbo; non cambia lo stato con un `UPDATE`.
 
+**Il verbo comune ha due metà**, perché i verbi dei documenti lavorano in mezzo:
+
+1. la **prima riga**, [`script.fn_guard_passaggio`](/dbzero/script/funzioni/fn_guard_passaggio): il
+   permesso del passaggio, prima di scrivere qualunque cosa;
+2. la **scrittura**, [`script.fn_doc_scrivi_stato`](/dbzero/script/funzioni/fn_doc_scrivi_stato): lo
+   stato, con tutti i controlli di sempre.
+
+La bolla, per esempio, scrive i prelievi di magazzino fra le due, e i movimenti dopo.
+
+**La porta.** Lo stato si scrive **solo** dalla seconda metà: un guard sulla colonna di stato
+([`script.trgfn_doc_stato_solo_dal_verbo`](/dbzero/script/funzioni/trgfn_doc_stato_solo_dal_verbo))
+rifiuta ogni modifica diretta con `E_DOC_STATO_SOLO_DAL_VERBO`, anche quella del backend. Non si
+toglie all'applicazione la scrittura sulla testata, che le serve per i campi ordinari: si chiude la
+sola colonna di stato.
+
+**I passaggi di processo.** Alcune righe della matrice non sono una scelta dell'operatore: le fa il
+sistema come conseguenza di un'altra operazione (la bolla passa a «Reso» quando si conferma il reso
+di tutta la sua merce). Sono le righe con `manuale = false`: le capability non le propongono, il
+verbo le rifiuta se chieste a mano (`E_DOC_PASSAGGIO_DI_PROCESSO`), e le scrive solo il verbo che ne
+è la causa, con la sola seconda metà.
+
 ---
 
 ## 6. Chi può: il permesso sul passaggio
@@ -142,6 +167,12 @@ permesso sul documento. La stessa riga la leggono tre punti, e nessuno dei tre d
 
 Un punto unico è ciò che rende i permessi **configurabili**: un'azione scritta nel corpo di un verbo,
 o nel codice di una view, non la cambia nessuno senza un rilascio.
+
+**Il permesso di un'operazione dentro il passaggio** non sta sulla riga. Se un passaggio, in certi
+casi, fa anche un'operazione che ha un permesso suo, quel permesso lo chiede il verbo quando la fa.
+È il caso della consegna di una bolla di trasferimento che muove merce: scrive gli arrivi in
+magazzino e chiede `registra_magazzino`. Una riga della matrice non sa dire «solo se è un
+trasferimento che muove merce», e il permesso protegge l'operazione di magazzino, non il passaggio.
 
 **Quante azioni per documento: una, sui passaggi pesanti.** Ogni documento ha **un'azione** per i
 passaggi che pesano — l'emissione e l'annullo di un documento emesso: chi può farlo può anche
@@ -201,7 +232,9 @@ possono sbagliarla in un altro modo.
 ## 10. A che punto è ogni documento
 
 Stato al 25 ottobre 2026. ✅ = segue la regola; ❌ = non ancora, con che cosa fa oggi. La riga di un
-documento cambia quando quel documento viene portato al modello (§11).
+documento cambia quando quel documento viene portato al modello (§11). Bolla e reso sono stati portati
+il 25 ottobre 2026; il backend allinea il suo controllo nel suo giro (403 dalla riga del passaggio,
+emissione solo da «Emetti»).
 
 | Documento | Nasce in bozza (§3) | Matrice in tabella (§4) | Verbo di stato (§5) | Azione sul passaggio (§6) | Emissione (§7) | Annullo (§8) |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -209,8 +242,8 @@ documento cambia quando quel documento viene portato al modello (§11).
 | Offerta | ✅ | ✅ (tabella `config.stati_doc_offerte_transizioni`, nome fuori serie) | ❌ `UPDATE` dal backend; gli stati di partenza sono ripetuti in Python | ❌ nessuna azione | ✅ | ❌ da accettata, con un controllo suo (`fn_check_offerta_annullabile`) invece dell'avviso dei legami |
 | Contratto | ✅ | ❌ passaggi scritti nel guard; la tabella la legge solo la capability | ❌ `UPDATE` dal backend | ❌ nessuna azione | ✅ | ❌ `fn_annulla_contratto` scrive lo stato da sé |
 | Ordine | ✅ | ✅ | ❌ `UPDATE` dal backend | ❌ nessuna azione | ❌ anche la conferma e il cambio stato generico portano a confermato | ❌ `fn_annulla_ordine` scrive lo stato da sé |
-| DDT | ✅ | ✅ | ✅ `fn_cambia_stato_ddt` | ❌ `emetti_ddt` e `registra_magazzino` scritte nel corpo del verbo, non sulla riga | ❌ anche il cambio stato generico porta a emesso | ✅ `fn_annulla_ddt` → verbo di stato |
-| Reso | ✅ | ✅ | ✅ `fn_conferma_reso`, `fn_annulla_reso` | ❌ `conferma_reso` scritta nel corpo dei verbi | — la conferma fa da emissione | ✅ verbo |
+| DDT | ✅ | ✅ | ✅ `fn_cambia_stato_ddt` sul verbo comune, con la porta | ✅ `emetti_ddt` sulla riga di emissione e annullo dell'emesso; `registra_magazzino` nel verbo, per l'operazione di magazzino | ❌ anche il cambio stato generico porta a emesso (backend, in richiesta) | ✅ `fn_annulla_ddt` → verbo di stato |
+| Reso | ✅ | ✅ | ✅ `fn_conferma_reso`, `fn_annulla_reso` sul verbo comune, con la porta | ✅ `conferma_reso` sulla riga di conferma e annullo del confermato | — la conferma fa da emissione | ✅ verbo |
 | Commessa | ✅ | ✅ (tabella in `vendite`, non in `config`) | ✅ `fn_cambia_stato_commessa`, ma senza il controllo del permesso | ❌ `cambia_stato_commessa` su ogni passaggio, controllata solo dal backend | — nasce dalla push | ✅ `fn_annulla_commessa` → verbo di stato |
 | Fattura | ✅ | ✅ (`config.stati_doc_fiscale_transizioni`, con passaggi solo del lotto e solo della fattura singola) | ❌ funzioni della pipeline; lo stato del lotto con `UPDATE` | ❌ azioni della pipeline, controllate solo dal backend | — la pipeline | — il ritorno del lotto in bozza |
 | Versione di listino | ❌ stato testo con `CHECK`, senza vocabolario | ❌ passaggi nel guard e ricopiati in Python | ❌ `UPDATE` dal backend | ❌ nessuna azione | — | — |

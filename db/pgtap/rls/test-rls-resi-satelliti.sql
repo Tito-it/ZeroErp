@@ -55,6 +55,7 @@
 --   `_via_reso_riga` che il test 10 interroga direttamente. *Non serve una riga
 --   per chiedere a una funzione se dice il vero.*
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i due resi con la loro riga dal builder dbops.fn_pgtap_crea_reso, in bozza; restano scritte a mano la rinuncia e la riga d'intrusione del test 6, che sono il caso.
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): le due bolle a CONSEGNATO con dbops.fn_pgtap_porta_a_stato (i passi col verbo, nel contesto dell'operatore di ciascun mondo), non piu' con UPDATE diretti dello stato che la porta ora rifiuta.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -131,17 +132,17 @@ SELECT d.ddt_id,
   FROM _ddt d;
 
 -- ⛔ I tre passi si fanno TUTTI: la matrice delle transizioni non ammette il
---   salto da DRAFT a CONSEGNATO.
+--   salto da DRAFT a CONSEGNATO. E ciascuno col verbo: la porta sullo stato
+--   rifiuta l'UPDATE diretto; il percorso lo segue il BB dalla matrice.
+--   Il verbo legge la bolla nel perimetro di chi agisce: per ogni mondo il
+--   contesto e' il suo operatore.
 DO $consegna$
 DECLARE d record;
 BEGIN
-    FOR d IN SELECT ddt_id FROM _ddt LOOP
-        UPDATE vendite.ddt SET stato_doc_ddt_id =
-            (SELECT id FROM config.stati_doc_ddt WHERE codice_interno='EMESSO')     WHERE id = d.ddt_id;
-        UPDATE vendite.ddt SET stato_doc_ddt_id =
-            (SELECT id FROM config.stati_doc_ddt WHERE codice_interno='SPEDITO')    WHERE id = d.ddt_id;
-        UPDATE vendite.ddt SET stato_doc_ddt_id =
-            (SELECT id FROM config.stati_doc_ddt WHERE codice_interno='CONSEGNATO') WHERE id = d.ddt_id;
+    FOR d IN SELECT x.ddt_id, m.auth_user_id
+               FROM _ddt x JOIN _mondi m ON m.lato = x.lato LOOP
+        PERFORM script.fn_pgtap_set_contesto_operatore(d.auth_user_id);
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ddt', d.ddt_id, 'CONSEGNATO');
     END LOOP;
 END
 $consegna$;

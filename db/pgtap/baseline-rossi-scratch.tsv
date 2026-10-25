@@ -88,7 +88,6 @@ db/pgtap/vendite/test-preventivi-guard-transizione-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-refactor-qta-operativa-preventivi-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-registri-log-orario-reale.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-registri-per-emittente-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-resi-rinunce-fondamenta-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-rettifica-non-annullabile-e-prezzo-immutabile-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-ricalcola-riepiloghi-iva.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-ricalcola-totali-fattura-arrotondamento.sql	ERRORE_FIXTURE

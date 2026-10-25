@@ -273,10 +273,21 @@ per ordini, preventivi e contratti.
 ### 4.4 La doppia difesa
 
 1. **In interfaccia**: `fn_available_actions_ddt` legge la matrice e restituisce
-   solo le azioni disponibili — i pulsanti senza senso non compaiono.
-2. **Nel database**: il trigger `trgfn_ddt_guard_transizione` rifiuta qualsiasi
-   cambio di stato non previsto; `trgfn_ddt_guard_indirizzi_obbligatori` blocca
-   l'emissione senza indirizzo di consegna.
+   solo le azioni disponibili — i pulsanti senza senso non compaiono, e quelli
+   che chiedono un permesso che l'operatore non ha (*Emetti DDT*, `emetti_ddt`,
+   sull'emissione e sull'annullo di una bolla emessa) si nascondono.
+2. **Nel database**: ogni cambio di stato passa dal verbo
+   `vendite.fn_cambia_stato_ddt` (l'annullo da `vendite.fn_annulla_ddt`), che
+   controlla il permesso del passaggio; una modifica diretta dello stato la
+   rifiuta la porta (`E_DOC_STATO_SOLO_DAL_VERBO`). Il trigger
+   `trgfn_ddt_guard_transizione` rifiuta qualsiasi cambio di stato non previsto;
+   `trgfn_ddt_guard_indirizzi_obbligatori` blocca l'emissione senza indirizzo di
+   consegna. Le regole comuni stanno nel
+   [modello del documento di vendita](/guide/modello-documento-di-vendita) §5-§6.
+
+Il passaggio a `RESO`, e il ritorno a `CONSEGNATO`, sono **di processo**: li fa
+la conferma (o l'annullo) di un reso che rende tutta la merce della bolla, non
+si chiedono a mano.
 
 ---
 

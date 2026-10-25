@@ -11,6 +11,7 @@
 --   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §3.6
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): la famiglia della bolla e' DDT_VENDITA.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso in bozza dal builder dbops.fn_pgtap_crea_reso; resta scritta la conferma dal verbo vendite.fn_conferma_reso, perche' e' il passo che numera (8-9).
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): emissione e consegna della bolla da dbops.fn_pgtap_porta_a_stato (il verbo): lo stato della bolla non si cambia piu' con un UPDATE diretto (E_DOC_STATO_SOLO_DAL_VERBO).
 -- ------------------------------------------------------------
 -- Elenco test (plan 11):
 -- 0) ⚠️ Precondizioni: la fixture non mente
@@ -255,9 +256,7 @@ UPDATE vendite.ddt d
 
 -- ⚠️ Il verbo in un'istruzione SEPARATA dalle asserzioni: la transizione
 --   scrive numero, anno e registro.
-UPDATE vendite.ddt d
-   SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_num_refs)
- WHERE d.id = (SELECT ddt_id FROM tmp_num_ddt);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_num_ddt), 'EMESSO');
 
 SELECT is(
     (SELECT reg.famiglia_documento::text || '|' ||
@@ -479,16 +478,9 @@ SELECT throws_ok(
 --   «non si rende cio' che non e' stato consegnato». I test 1..3 hanno gia'
 --   letto numero, registro e anno subito dopo l'emissione — la transizione non
 --   li tocca.
--- ⚠️ Uno stato alla volta: la matrice delle transizioni non ammette salti
---   (EMESSO -> SPEDITO -> CONSEGNATO), e un UPDATE diretto a CONSEGNATO
---   verrebbe respinto da vendite.trgfn_ddt_guard_transizione.
-UPDATE vendite.ddt d
-   SET stato_doc_ddt_id = (SELECT stato_ddt_spedito_id FROM tmp_num_refs)
- WHERE d.id = (SELECT ddt_id FROM tmp_num_ddt);
-
-UPDATE vendite.ddt d
-   SET stato_doc_ddt_id = (SELECT stato_ddt_consegnato_id FROM tmp_num_refs)
- WHERE d.id = (SELECT ddt_id FROM tmp_num_ddt);
+-- ⚠️ La matrice non ammette salti (EMESSO -> SPEDITO -> CONSEGNATO): il
+--   builder fa un passo alla volta, col verbo.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_num_ddt), 'CONSEGNATO');
 
 CREATE TEMP TABLE tmp_num_reso AS
 SELECT reso_id

@@ -23,9 +23,18 @@
 --   1) (precondizione) fixture: un DDT in bozza con causale
 --   2) in BOZZA la causale si cambia liberamente
 --   3) su DDT EMESSO il cambio e' BLOCCATO (P0001)
---   4) ⚠️ l'UPDATE che cambia stato e causale INSIEME (DRAFT->EMESSO) passa
+--   4) ⚠️ l'UPDATE che cambia stato e causale INSIEME (DRAFT->EMESSO) — dal 2026-10-25
+--      rifiutato dalla porta sullo stato (attesa cambiata, vedi la rev qui sotto)
 --   5) riscrivere la STESSA causale su un DDT emesso non e' un cambio: passa
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): l'ambito degli indirizzi della bolla e' DDT_VENDITA.
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): lo stato si cambia solo dal verbo;
+--   la porta (trg_ddt_a05_stato_solo_dal_verbo_upd) rifiuta ogni UPDATE diretto della colonna di
+--   stato con E_DOC_STATO_SOLO_DAL_VERBO. La fixture emette il DDT n.1 con
+--   dbops.fn_pgtap_porta_a_stato. ⚠️ ATTESA CAMBIATA sul test 4 (regola ritirata «una bolla senza
+--   merce passa dall'UPDATE diretto»): l'UPDATE che sceglie la causale ed emette insieme non e' piu'
+--   un'operazione legittima — prima la causale in bozza (test 2), poi il verbo — e la porta lo
+--   ferma prima del guard della causale. Il test lo asserisce sulla frase della porta, cosi' un
+--   rifiuto del guard della causale (che leggesse NEW) resterebbe rosso.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -120,7 +129,8 @@ BEGIN
      WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', NULL))
     ON CONFLICT DO NOTHING;
 
-    UPDATE vendite.ddt SET stato_doc_ddt_id = v_emesso WHERE id = v_uno;
+    -- rev 2026-10-25 (giro 5): l'emissione dal verbo, sotto la porta.
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ddt', v_uno, 'EMESSO');
 
     -- DDT n.2 — resta in bozza, serve al test 4
     INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
@@ -180,21 +190,30 @@ END;
 
 -- ============================================================
 -- 4) ⚠️ IL CASO CHE UN GUARD SCRITTO MALE ROMPEREBBE: stato e causale
---    cambiati NELLO STESSO UPDATE, da bozza a emesso. E' l'operazione
---    legittima per eccellenza — l'operatore sceglie la causale ed emette — e
---    passa solo se il guard legge lo stato VECCHIO. Leggendo NEW la
---    boccerebbe, restando verde su tutto il resto.
+--    cambiati NELLO STESSO UPDATE, da bozza a emesso. Fino al 2026-10-24 era
+--    l'operazione legittima per eccellenza — l'operatore sceglie la causale ed
+--    emette — e passava solo se il guard leggeva lo stato VECCHIO.
+--    ⚠️ ATTESA CAMBIATA il 2026-10-25 (giro 5): lo stato si cambia solo dal
+--    verbo, e la porta ferma l'UPDATE diretto PRIMA del guard della causale.
+--    Si asserisce la frase della porta: se a rifiutare fosse il guard della
+--    causale (che leggesse NEW), il messaggio sarebbe un altro e il test rosso.
+--    ⛔ DISCRIMINA PER L'ORDINE DEI NOMI (confermato da Tid, 2026-10-25): il lock
+--    della causale (trg_ddt_a05_lock_fuori_bozza_upd) scatta PRIMA della porta
+--    (trg_ddt_a05_stato_solo_dal_verbo_upd), «lock» < «stato». Se un rinomina
+--    facesse parlare prima la porta, questo test diventerebbe verde senza provare
+--    piu' niente: chi rinomina uno dei due trigger rilegge questo test.
 -- ============================================================
 SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM tmp_b)
   THEN skip('fixture non costruibile su questo DB', 1)
-  ELSE lives_ok(
+  ELSE throws_like(
        format($q$UPDATE vendite.ddt
                     SET causale_trasporto_id = %s,
                         stato_doc_ddt_id = (SELECT id FROM config.stati_doc_ddt
                                              WHERE codice_interno='EMESSO' LIMIT 1)
                   WHERE id = %s$q$,
               (SELECT caus_vendita FROM tmp_b), (SELECT ddt_bozza FROM tmp_b)),
-       'DRAFT->EMESSO con la causale scelta nello STESSO update: passa')
+       '%si cambia solo dalle sue operazioni%',
+       'DRAFT->EMESSO con la causale scelta nello STESSO update: rifiutato dalla porta, non dal guard della causale')
 END;
 
 -- ============================================================

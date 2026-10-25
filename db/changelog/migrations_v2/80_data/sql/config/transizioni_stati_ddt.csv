@@ -1,10 +1,10 @@
-id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_update
-1,1,2,t,"{""action_key"":""emetti"",""label_key"":""vendite.ddt.azione_emetti"",""requires_confirm"":true,""outlined"":false,""manuale"":true,""requires_righe"":true}",2026-07-09 00:00:00+02,SEED,2026-07-16 00:00:00+02,mctit
-2,1,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.ddt.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-07-09 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
-3,2,4,t,"{""action_key"":""spedisci"",""label_key"":""vendite.ddt.azione_spedisci"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-07-09 00:00:00+02,SEED,2026-07-09 00:00:00+02,SEED
-4,2,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.ddt.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-07-09 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
-5,4,5,t,"{""action_key"":""consegna"",""label_key"":""vendite.ddt.azione_consegna"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-07-09 00:00:00+02,SEED,2026-07-09 00:00:00+02,SEED
-6,4,7,f,"{""action_key"":""reso"",""label_key"":""vendite.ddt.azione_reso"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-07-09 00:00:00+02,SEED,2026-07-25 00:00:00+02,mctit
-7,5,7,t,"{""manuale"":false}",2026-07-09 00:00:00+02,SEED,2026-07-25 00:00:00+02,mctit
-8,5,6,f,"{""action_key"":""annulla"",""label_key"":""vendite.ddt.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-07-09 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
-9,7,5,t,"{""manuale"":false}",2026-07-13 00:00:00+02,mctit,2026-08-06 00:00:00+02,mctit
+id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_update,azione_processo_codename
+1,1,2,t,"{""action_key"":""emetti"",""label_key"":""vendite.ddt.azione_emetti"",""requires_confirm"":true,""outlined"":false,""manuale"":true,""requires_righe"":true}",2026-07-09 00:00:00+02,SEED,2026-07-16 00:00:00+02,mctit,emetti_ddt
+2,1,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.ddt.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-07-09 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit,NULL
+3,2,4,t,"{""action_key"":""spedisci"",""label_key"":""vendite.ddt.azione_spedisci"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-07-09 00:00:00+02,SEED,2026-07-09 00:00:00+02,SEED,NULL
+4,2,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.ddt.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-07-09 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit,emetti_ddt
+5,4,5,t,"{""action_key"":""consegna"",""label_key"":""vendite.ddt.azione_consegna"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-07-09 00:00:00+02,SEED,2026-07-09 00:00:00+02,SEED,NULL
+6,4,7,f,"{""action_key"":""reso"",""label_key"":""vendite.ddt.azione_reso"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-07-09 00:00:00+02,SEED,2026-07-25 00:00:00+02,mctit,NULL
+7,5,7,t,"{""manuale"":false}",2026-07-09 00:00:00+02,SEED,2026-07-25 00:00:00+02,mctit,NULL
+8,5,6,f,"{""action_key"":""annulla"",""label_key"":""vendite.ddt.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-07-09 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit,NULL
+9,7,5,t,"{""manuale"":false}",2026-07-13 00:00:00+02,mctit,2026-08-06 00:00:00+02,mctit,NULL

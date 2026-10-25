@@ -11,6 +11,9 @@
 --   diretto; il permesso e' conferma_reso (D-3b-f).
 --   Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso, sezioni 3 e 5.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi in bozza dal builder dbops.fn_pgtap_crea_reso (piu' righe con p_reso_id); restano scritti a mano il reso senza righe (6b, il caso), i rientri, le conferme e l'annullo dal verbo, che sono il caso del file.
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): ATTESA CAMBIATA del test 7 (n.11), per regola
+--   ritirata: l'UPDATE diretto dello stato e' rifiutato dalla porta comune (E_DOC_STATO_SOLO_DAL_VERBO),
+--   non piu' da E_RESO_STATO_SOLO_DA_VERBO («fa rientrare merce»).
 --
 -- Il mondo: due magazzini senza ubicazioni (MAG, e QUA per i «resi da
 --   verificare»), tre articoli costruiti — SEMPLICE (gestito), A_LOTTI
@@ -33,7 +36,7 @@
 --   6b) PRESIDIO: un reso senza righe -> DOCUMENTO_SENZA_RIGHE e `reasons` null.
 --       Oggi verde anche senza la precedenza scritta (la check della merce con
 --       zero righe non parla): diventa rosso il giorno che l'incastro si rompe
---    7) UPDATE diretto a CONFERMATO di un reso che muove merce -> E_RESO_STATO_SOLO_DA_VERBO
+--    7) UPDATE diretto a CONFERMATO di un reso che muove merce -> E_DOC_STATO_SOLO_DAL_VERBO
 --    8) senza l'azione conferma_reso il verbo rifiuta -> E_PERMESSO_NEGATO
 --    9) il verbo conferma: tre carichi CARICO_RESO_VEN (SEMPLICE 2, lotto A 3, lotto B 1)
 --   10) il rientro automatico della SEMPLICE esiste, per la quantita' resa
@@ -222,8 +225,8 @@ SELECT is(
 SELECT throws_like(
     format('UPDATE vendite.resi SET stato_doc_reso_id = (SELECT id FROM config.stati_doc_reso WHERE codice_interno = %L) WHERE id = %s',
            'CONFERMATO', (SELECT reso FROM _r1)),
-    '%fa rientrare merce%',
-    '7) UPDATE diretto a CONFERMATO di un reso che muove merce: E_RESO_STATO_SOLO_DA_VERBO');
+    '%si cambia solo dalle sue operazioni%',
+    '7) UPDATE diretto a CONFERMATO di un reso che muove merce: E_DOC_STATO_SOLO_DAL_VERBO');
 
 -- 8) il permesso: tolto l'override, il verbo rifiuta
 UPDATE config.user_override_azioni SET abilitata = false

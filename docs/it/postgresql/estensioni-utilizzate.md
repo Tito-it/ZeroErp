@@ -39,7 +39,10 @@ le crea la baseline:
 * **`uuid-ossp`**: le sue funzioni (`uuid_generate_v*`) non compaiono in nessun oggetto.
 * **`postgis_topology`**: nessun oggetto usa lo schema `topology`.
 
-Se un lavoro nuovo ne ha bisogno, le usa; se si decide di toglierle, è un changeSet di provisioning.
+**Si tengono** (Tid, 25 ottobre 2026). Le crea la baseline della prima generazione, che non si tocca
+(Linee guida SQL §11.11): un `DROP EXTENSION` in un changeSet nuovo le cancellerebbe subito dopo averle
+create, su ogni database costruito da zero, e il pacchetto sul server servirebbe lo stesso. Se ne
+riparla solo se un giorno si rifà la baseline. Se un lavoro nuovo ne ha bisogno, le usa.
 
 ### Installarle sul server
 

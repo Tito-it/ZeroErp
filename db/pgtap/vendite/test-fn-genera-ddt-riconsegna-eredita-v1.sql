@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): le emissioni dei test 9, 13, 14 e 16 da dbops.fn_pgtap_porta_a_stato (il verbo), che solleva gli stessi errori dei guard d'emissione: lo stato della bolla non si cambia piu' con un UPDATE diretto (E_DOC_STATO_SOLO_DAL_VERBO). Le attese non cambiano.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i due resi per ri-consegna (ORD e STD) dal builder dbops.fn_pgtap_crea_reso, che li conferma e concede da se' l'azione conferma_reso; la bolla di ri-consegna resta dalla madre vendite.fn_genera_ddt_riconsegna, in bozza e senza completamenti: e' lei sotto test (cio' che eredita), non una fixture.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla d'origine ORD dal builder dbops.fn_pgtap_crea_ddt_da_ordine (p_ordine_id, in bozza, poi CONSEGNATO per la matrice); l'ordine resta scritto a mano (sconto 5 sulla riga: il builder non lo sa fare), come i blocchi «relazione»/«viaggio» e l'origine dell'indirizzo scritti sulla bolla in bozza (sono il caso dei test 1, 2 e 7); il reso resta a mano (giro 2); la bolla STD e' standalone e va a CONSEGNATO per la matrice; le emissioni di 9, 13, 14, 16 sono il caso.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
@@ -384,8 +385,8 @@ SELECT is(
 --    Provare le colonne una per una non lo dimostra.
 -- ============================================================
 SELECT lives_ok(
-  format($q$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$q$,
-         (SELECT stato_ddt_emesso_id FROM tmp_ref), (SELECT ddt_id FROM tmp_ric_std)),
+  format($q$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$q$,
+         (SELECT ddt_id FROM tmp_ric_std)),
   '9) standalone: il DDT di ri-consegna si EMETTE');
 
 -- ============================================================
@@ -454,8 +455,8 @@ SELECT (SELECT id FROM tmp_ddt_iva), 1, r.articolo_id, 'Riga con prezzo senza IV
 --     non con un errore qualunque.
 -- ============================================================
 SELECT throws_ok(
-  format($q$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$q$,
-         (SELECT stato_ddt_emesso_id FROM tmp_ref), (SELECT id FROM tmp_ddt_iva)),
+  format($q$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$q$,
+         (SELECT id FROM tmp_ddt_iva)),
   'P0001', NULL,
   '13) C-1: riga con prezzo e senza aliquota -> l''emissione rifiuta');
 
@@ -492,8 +493,8 @@ UPDATE vendite.ddt SET causale_trasporto_id = (SELECT causale_non_fatt_id FROM t
  WHERE id = (SELECT id FROM tmp_ddt_iva);
 
 SELECT throws_ok(
-  format($q$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$q$,
-         (SELECT stato_ddt_emesso_id FROM tmp_ref), (SELECT id FROM tmp_ddt_iva)),
+  format($q$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$q$,
+         (SELECT id FROM tmp_ddt_iva)),
   'P0001', NULL,
   '16) C-1: causale NON fatturabile ma riga con prezzo senza aliquota -> rifiuta lo stesso');
 
@@ -511,8 +512,8 @@ UPDATE vendite.ddt_righe SET prezzo_unitario = NULL
  WHERE ddt_id = (SELECT id FROM tmp_ddt_iva);
 
 SELECT lives_ok(
-  format($q$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$q$,
-         (SELECT stato_ddt_emesso_id FROM tmp_ref), (SELECT id FROM tmp_ddt_iva)),
+  format($q$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$q$,
+         (SELECT id FROM tmp_ddt_iva)),
   '14) C-1: causale non fatturabile e riga senza prezzo -> emette (solo trasporto)');
 
 -- ============================================================

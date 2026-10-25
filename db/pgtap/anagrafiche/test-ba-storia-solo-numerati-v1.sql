@@ -11,6 +11,7 @@
 --   anagrafiche.fn_guard_ba_cambio_emittente()
 --   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §3.6 e §3.7
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): la famiglia della bolla e' DDT_VENDITA, il codice della sorgente.
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): l'emissione del DDT (test 4) con dbops.fn_pgtap_porta_a_stato, non piu' con l'UPDATE diretto dello stato che la porta ora rifiuta.
 -- ------------------------------------------------------------
 -- Elenco test (plan 7):
 -- 1) Fixture: un billing account NUOVO, quindi senza storia
@@ -173,9 +174,10 @@ SELECT lives_ok(
 -- ⚠️ Il verbo in un'istruzione SEPARATA dall'asserzione: la transizione SCRIVE
 --   (numero, anno, registro), e mescolarla alla is() la leggerebbe nella
 --   snapshot sbagliata.
-UPDATE vendite.ddt d
-   SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_bsd_refs)
- WHERE d.id = (SELECT ddt_id FROM tmp_bsd_ddt);
+-- ⭐ 2026-10-25: l'emissione passa dal verbo (porta sullo stato), non da un
+--   UPDATE diretto della colonna.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', t.ddt_id, 'EMESSO')
+  FROM tmp_bsd_ddt t;
 
 SELECT ok(
     (SELECT d.numero IS NOT NULL

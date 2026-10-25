@@ -95,7 +95,10 @@ search:
 - [fn_doc_lock_colonna_bloccata](manual/fn_doc_lock_colonna_bloccata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_doc_lock_montaggi](manual/fn_doc_lock_montaggi.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_doc_lock_regola](manual/fn_doc_lock_regola.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_passaggio](manual/fn_doc_passaggio.md)
 - [fn_doc_riga_modificabile](manual/fn_doc_riga_modificabile.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-3)
+- [fn_doc_scrivi_stato](manual/fn_doc_scrivi_stato.md)
+- [fn_doc_stato_modello](manual/fn_doc_stato_modello.md)
 - [fn_doc_testata_in_stato](manual/fn_doc_testata_in_stato.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 2)
 - [fn_elimina_credenziale](manual/fn_elimina_credenziale.md) — (scritta il 06-10-2026)
 - [fn_ensure_logconn](manual/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
@@ -158,6 +161,7 @@ search:
 - [fn_gruppi_trascinati_da_uscita](manual/fn_gruppi_trascinati_da_uscita.md) — (latest review 2026-09-08)
 - [fn_guard_azione](manual/fn_guard_azione.md) — (scritta il 24-09-2026)
 - [fn_guard_livello](manual/fn_guard_livello.md) — (scritta il 25-09-2026)
+- [fn_guard_passaggio](manual/fn_guard_passaggio.md)
 - [fn_guard_soggetto_pf_pura](manual/fn_guard_soggetto_pf_pura.md) — (latest review 18-04-2026)
 - [fn_guard_soggetto_ruolo](manual/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
 - [fn_guard_super_admin](manual/fn_guard_super_admin.md) — (scritta il 25-09-2026)
@@ -265,6 +269,7 @@ search:
 - [trgfn_doc_guard_listino_con_righe](manual/trgfn_doc_guard_listino_con_righe.md) — (nato il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-4)
 - [trgfn_doc_righe_guard_data_consegna](manual/trgfn_doc_righe_guard_data_consegna.md) — (nato il 2026-10-13, dal collaudo)
 - [trgfn_doc_stato_iniziale](manual/trgfn_doc_stato_iniziale.md)
+- [trgfn_doc_stato_solo_dal_verbo](manual/trgfn_doc_stato_solo_dal_verbo.md)
 - [trgfn_doc_testata_guard_data_consegna_righe](manual/trgfn_doc_testata_guard_data_consegna_righe.md) — (nato il 2026-10-13, dal collaudo)
 - [trgfn_guard_emittente_scope](manual/trgfn_guard_emittente_scope.md) — (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
 - [trgfn_guard_sorgente_polimorfa_testuale](manual/trgfn_guard_sorgente_polimorfa_testuale.md) — Valida la sorgente polimorfa delle **tabelle di collegamento a chiave unica TESTUALE** (modello B): la colonna `sorgente_uid` è **TEXT** e contiene la chiave nel **formato dettato da `config.sorgenti.key_selector`**:
