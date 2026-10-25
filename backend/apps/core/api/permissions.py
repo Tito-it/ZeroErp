@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
@@ -89,13 +89,21 @@ _CONSENTITO = EsitoPermesso(consentito=True)
 # Campi: testata — la testata nella mappa del modello (`vendite.ddt`);
 #        documento_kwarg — il parametro di percorso con l'id del documento;
 #        stato_chiesto — il codice dello stato di arrivo, fisso per le rotte
-#        di un verbo (`CONFERMATO`, `EMESSO`); None = dal corpo, `stato_codice`
-#        (il cambio stato generico).
+#        di un verbo (`CONFERMATO`, `EMESSO`); None = dal corpo, campo
+#        `campo_stato` (il cambio stato generico);
+#        campo_stato — il campo del corpo con lo stato chiesto (`stato_codice`;
+#        il preventivo usa `nuovo_stato`);
+#        risolvi_documento — per una rotta il cui parametro non e' l'id del
+#        documento (il preventivo ROOT di una pratica, dal `pratica_id`): la
+#        funzione che lo ricava, None = documento che non c'e' (decide il
+#        livello, e il 404 lo da' il service).
 @dataclass(frozen=True)
 class PassaggioDocumento:
     testata: str
     documento_kwarg: str
     stato_chiesto: str | None = None
+    campo_stato: str = "stato_codice"
+    risolvi_documento: Callable[[int], int | None] | None = None
 
     # Scopo: L'azione che il passaggio chiede in questa richiesta, o None (riga
     #        senza azione, o nessuna riga: decide il livello sul documento, e il
@@ -103,15 +111,20 @@ class PassaggioDocumento:
     # ⚠️ Un corpo illeggibile e' il 400 di sempre (`corpo_oggetto`), sollevato
     #    qui invece che nell'handler: lo stesso codice, un passo prima.
     def azione(self, view: Any) -> str | None:
-        documento_id = view.kwargs.get(self.documento_kwarg)
+        parametro = view.kwargs.get(self.documento_kwarg)
         stato = self.stato_chiesto
         if stato is None:
-            valore = corpo_oggetto(view.request).get("stato_codice")
+            valore = corpo_oggetto(view.request).get(self.campo_stato)
             stato = valore.strip() if isinstance(valore, str) else None
-        if documento_id is None or not stato:
+        if parametro is None or not stato:
+            return None
+        documento_id: int | None = int(parametro)
+        if self.risolvi_documento is not None:
+            documento_id = self.risolvi_documento(int(parametro))
+        if documento_id is None:
             return None
         return DocumentoModelloRepository().azione_del_passaggio(
-            self.testata, int(documento_id), stato,
+            self.testata, documento_id, stato,
         )
 
 # I tipi di accesso CRUD che la catena conosce: quelli che il livello piu'

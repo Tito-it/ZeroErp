@@ -34,6 +34,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
 )
+from apps.core.db.documento_modello_repository import DocumentoModelloRepository
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.righe_lista_mixin import RigheListaMixin
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
@@ -302,6 +303,11 @@ _FROM_JOINS_UTILITY = """
     LEFT JOIN config.tipi_utenze tu ON tu.id = cu.tipo_utenza_id
     LEFT JOIN config.classi_utenze clu ON clu.id = cu.classe_utenza_id
 """
+
+
+# La testata nella mappa del modello del documento (`script.fn_doc_stato_modello`):
+# la leggono il repository, il service e la catena dei permessi.
+TESTATA_CONTRATTI = "vendite.contratti"
 
 
 class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryMixin):
@@ -1131,19 +1137,12 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     # Lookup tecnici usati dal service
     # =================================================================
 
-    # Scopo: Risolve stato DRAFT (o lo stato richiesto) dal codice_interno.
-    #        Usato in create per impostare stato iniziale standard.
+    # Scopo: L'id dello stato ATTIVO con quel codice_interno, o None: lo stato target del cambio stato e dell'emissione.
+    #        ⭐ La traduzione la fa il lettore unico del DB
+    #        (`script.fn_doc_stato_id`, brief-modello-documento-vendita §8.7
+    #        punto 3): qui resta solo il nome della testata.
     def get_stato_id_by_codice(self, codice_interno: str) -> int | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id FROM config.stati_doc_contratti
-                 WHERE codice_interno = %s
-                """,
-                [codice_interno],
-            )
-            row = cursor.fetchone()
-            return None if row is None else int(row[0])
+        return DocumentoModelloRepository().stato_id(TESTATA_CONTRATTI, codice_interno)
 
     # Scopo: Ritorna il codice_interno dello stato corrente del contratto.
     def get_stato_codice(self, contratto_id: int) -> str | None:

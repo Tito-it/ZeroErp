@@ -31,7 +31,7 @@ from apps.documenti.api.sorgente_documenti_views import (
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
-from apps.vendite.db.ddt_repository import DdtRepository
+from apps.vendite.db.ddt_repository import TESTATA_DDT, DdtRepository
 from apps.vendite.services import ddt_service
 
 
@@ -69,7 +69,7 @@ _views = build_documenti_sorgente_views(
     # ⭐ L'azione dell'emissione la dice la riga DRAFT -> EMESSO della matrice
     #    (oggi `emetti_ddt`), non questa view: il 403 arriva dalla stessa riga
     #    che legge il verbo (M-3, brief-modello-documento-vendita §7.6).
-    emetti_passaggio=(ddt_service.TESTATA_DDT, ddt_service.STATO_EMESSO),
+    emetti_passaggio=(TESTATA_DDT, ddt_service.STATO_EMESSO),
 )
 
 ApiDdtEmetti = _views.emetti

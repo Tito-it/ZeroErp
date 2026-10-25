@@ -285,11 +285,11 @@ class UtentiListView(AdminAPIView):
     def get(self, request): ...
     def post(self, request): ...
 
-# Per endpoint del portale clienti/fornitori (/api/portale/*)
+# Per endpoint del portale clienti/fornitori (/api/v1/portale/*)
 class PortaleFattureListView(PortaleAPIView):
     def get(self, request): ...
 
-# Per endpoint del negozio online (/api/shop/*, anche pubblici)
+# Per endpoint del negozio online (/api/v1/shop/*, anche pubblici)
 class ShopCatalogoView(ShopAPIView):
     def get(self, request): ...
 ```
@@ -308,7 +308,7 @@ class ShopCatalogoView(ShopAPIView):
 | `area_funzionale`    | Schema DB dell'area (es. `"vendite"`, `"anagrafiche"`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Si' su DomainAPIView |
 | `is_search_endpoint` | Abilita `SearchBurstRateThrottle`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | No                   |
 | `post_permission`    | Codename azione di processo (per comandi specifici)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | No                   |
-| `<metodo>_passaggio` | `PassaggioDocumento(testata, documento_kwarg, stato_chiesto=None)`, per il **cambio di stato** di un documento portato al modello (guida `modello-documento-di-vendita` §6, M-3): l'azione **non si dichiara**, la catena la legge dalla riga del passaggio (stato corrente → stato chiesto; `None` = `stato_codice` del corpo) con `script.fn_doc_passaggio`, prima della transazione. Con l'azione decide lei (come `post_permission`); senza, il livello sul documento. ⛔ Esclude `<metodo>_permission` sullo stesso metodo; sulla sola classe **nega** (`PASSAGGIO_SENZA_RICHIESTA`). Presidio: `core/tests/test_passaggio_rotte.py` | No |
+| `<metodo>_passaggio` | `PassaggioDocumento(testata, documento_kwarg, stato_chiesto=None, campo_stato="stato_codice", risolvi_documento=None)`, per il **cambio di stato** di un documento portato al modello (guida `modello-documento-di-vendita` §6, M-3): l'azione **non si dichiara**, la catena la legge dalla riga del passaggio (stato corrente → stato chiesto; `None` = il campo `campo_stato` del corpo) con `script.fn_doc_azione_passaggio`, prima della transazione. `risolvi_documento` per una rotta il cui parametro non è l'id del documento (il preventivo ROOT dal `pratica_id`). Con l'azione decide lei (come `post_permission`); senza, il livello sul documento. ⛔ Esclude `<metodo>_permission` sullo stesso metodo; sulla sola classe **nega** (`PASSAGGIO_SENZA_RICHIESTA`). Presidio: `core/tests/test_passaggio_rotte.py` | No |
 | `<metodo>_accesso`   | Tipo di accesso (`view`/`add`/`change`/`delete`) che il metodo chiede al livello d'area, quando **non** è quello del suo verbo HTTP. Es. `post_accesso = "view"`: una lettura che viaggia in una POST (la domanda all'assistente AI). Stessa chiave di `<metodo>_permission`. ⛔ Un valore fuori dai quattro **nega** (non ricade sul verbo). Da qui si deriva anche «la chiamata scrive?» (`chiamata_in_scrittura`, catalogo BB) | No |
 | `oggetto_permesso_da_richiesta()` | Metodo, per quando l'**oggetto** dipende dalla richiesta (una tabella nel path): torna `(app_label, model_name)` e la catena chiede il livello su quell'oggetto, nell'area di `script.fn_area_di_oggetto`, al posto dell'area della classe; `None` ricade sull'area della classe. ⛔ Valutata sulla **sola classe** (i tool dell'assistente, `valuta_accesso_endpoint`) la richiesta non c'è, e la view **nega** (`OGGETTO_SENZA_RICHIESTA`). Unico uso: il pannello «Gestione tabelle» (`views_config_crud.py`, D-P7 del brief-db-pannello-config-verbo-generico, 2026-09-25) | No |
 | `skip_area_check`    | Salta il check area — ammesso solo per endpoint cross-dominio (profilo, sessioni, lookup). ⛔ **Non convive con `area_funzionale`**: la catena lo legge **solo** se l'area non si risolve, quindi una view che dichiara entrambi ha lo skip **muto** e vince l'area in silenzio (trovato il 2026-09-12 su 15 view). ⚠️ E una view con lo skip che **scrive** (`post`/`patch`/`put`/`delete`) senza il `<metodo>_permission` è aperta a chiunque sia autenticato: lecito solo se agisce **su sé stessa**. Presidio: `core/tests/test_skip_area_check_registro.py` | No                   |
@@ -357,11 +357,14 @@ from apps.core.api.endpoint_helpers import handle_post_json
 
 class ApiPraticaStato(DomainAPIView):
     area_funzionale = "pratiche"
+    post_permission = "cambia_stato_pratica"
 
     # Scopo: Gestisce la richiesta HTTP POST per cambiare stato pratica.
     def post(self, request: Request, pratica_id: int) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            pratiche_service.cambia_stato_pratica(pratica_id, str(payload["nuovo_stato"]))
+            pratiche_service.cambia_stato_pratica(
+                pratica_id, _V_PRATICA.require_string(payload, "nuovo_stato"),
+            )
             return {"status": "ok"}
 
         return handle_post_json(request, handler=_handler)
@@ -1024,10 +1027,7 @@ default.
 
 La view resta sottile (una riga). L'error handling e' garantito dal service
 (`ServiceError`) e dal middleware (`ApiExceptionMiddleware`), non serve il
-wrapper `handle_post_json`.
-
-**Eccezione**: se il PATCH richiede `Idempotency-Key` (operazione critica),
-usare `handle_post_json` con `require_idempotency_key=True`.
+wrapper `handle_post_json` (salvo la modalità forte, seconda riga della tabella sopra).
 
 ---
 
@@ -1818,10 +1818,10 @@ senza che nessuno lo scriva.
 | `error_policies_generated.py` | `codice → classe`, una voce per codice del catalogo, ritirati compresi (`CODICI_RITIRATI`) | ⛔ **GENERATO** da `config.vw_codici_errore_identita` |
 | `error_policies.py`           | `classe → (status, ui_action)` — 10 righe + la logica     | a mano, quasi mai                                    |
 | `error_ui_overrides.py`       | le `ui_action` fuori default, **coi loro perché**         | a mano, quando cambia una scelta di UI               |
+| `error_messages_fallback.py`  | i messaggi **senza segnaposto**                           | a mano, per ora                                      |
 
 I numeri li dice il codice (`len(CLASSE_PER_CODICE)`, `len(UI_ACTION_OVERRIDE)`), non
-questa pagina. Fatto datato 2026-10-25: 1128 voci (120 ritirate), 154 override.
-| `error_messages_fallback.py`  | i messaggi **senza segnaposto**                           | a mano, per ora                                      |
+questa pagina. Fatto datato 2026-10-25: 1135 voci (122 ritirate), 156 override.
 
 ⛔ **Il primo modulo non si modifica a mano.** Per dare una classe a un codice si
 cambia il **catalogo** e si rigenera:
@@ -1934,7 +1934,7 @@ un minuto invece che in un'indagine.
 Storia completa: `docs/it/dev/work-done/brief-db-sveglia-dei-processi.md` §23.
 
 ⚠️ **`ui_action` non si deriva dalla classe, e il numero conta.** Gli override
-stanno per lo più sulla classe **`DATO_ERRATO`** (al 2026-10-25: 97 su 154): lì il
+stanno per lo più sulla classe **`DATO_ERRATO`** (al 2026-10-25: 99 su 156): lì il
 default è un lancio di moneta, perché il discriminante non è la classe ma
 **dove manca il dato**, sul form in corso (`highlight_form_fields`) o
 sull'entità collegata (`show_error_banner`). Il default scelto è il banner:
@@ -2628,7 +2628,9 @@ Stessa forma di `pgtap-baseline.sh`: non-verde **noto** → silenzio, **nuovo** 
    dichiara `post_accesso = "view"`. In modalità forte, un'operazione a passi dichiara
    `unita_di_lavoro=UnitaDiLavoro.A_PASSI` e si registra in `test_unita_di_lavoro.py`
    (§Idempotency-Key)
-7. Per GET: usare `success_response()` e `paginated_envelope()` per le liste
+7. Per GET: usare `success_response()`; per le liste la finestra si legge con
+   `pagina_da_query` (o `parse_list_params`) e l'envelope si costruisce con
+   `envelope_da_offset` (o direttamente dal BB `fetch_paged_with_total`), §Paginazione
 8. Aggiungere `@extend_schema` con `request` e `responses`. Lo schema del **corpo** di una
    scrittura si legge dal contratto del service con `schema_da_contratto` (chiavi ammesse +
    dizionario dei tipi del dominio): una chiave senza tipo è un errore all'import.

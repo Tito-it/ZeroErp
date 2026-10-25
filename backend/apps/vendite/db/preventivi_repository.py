@@ -152,6 +152,11 @@ _ORDER_COLS_RIGHE: dict[str, str] = {
 }
 
 
+# La testata nella mappa del modello del documento (`script.fn_doc_stato_modello`):
+# la leggono il repository, il service e la catena dei permessi.
+TESTATA_PREVENTIVI = "vendite.preventivi"
+
+
 class PreventiviRepository(
     RigheDocumentoRepositoryMixin,
     ComponentiRepositoryMixin,
@@ -659,17 +664,19 @@ class PreventiviRepository(
             )
             return cursor.rowcount > 0
 
-    # Scopo: Cambia stato preventivo invocando la funzione DB.
-    # La funzione valida transizione via config.transizioni_stati_preventivi,
-    # guard su righe/totale per EMESSO, blocco annullamento con commessa attiva.
-    def cambia_stato(
-        self, preventivo_id: int, nuovo_stato_codice: str, user: str
-    ) -> dict[str, Any]:
+    # Scopo: Cambia stato preventivo invocando il verbo DB (modello del
+    #        documento, giro 6): passaggio di processo e azione dalla riga della
+    #        matrice (`script.fn_guard_passaggio`), poi i guard della tabella
+    #        (matrice, righe e condizioni dell'emissione, prezzi
+    #        all'accettazione, annullabilita'). L'utente lo legge il verbo dal
+    #        contesto della sessione (`app.current_user_id`).
+    # Ritorna: {preventivo_id, stato_precedente, stato_nuovo}.
+    def cambia_stato(self, preventivo_id: int, nuovo_stato_codice: str) -> dict[str, Any]:
         sql = """
-            SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, %s, %s)
+            SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, %s)
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [preventivo_id, nuovo_stato_codice, user])
+            cursor.execute(sql, [preventivo_id, nuovo_stato_codice])
             result = row_to_dict(cursor)
             assert result is not None
             return result

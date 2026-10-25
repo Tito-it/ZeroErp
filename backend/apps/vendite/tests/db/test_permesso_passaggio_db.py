@@ -2,14 +2,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: `DocumentoModelloRepository.azione_del_passaggio` sul DATABASE
-#        PROVVISTO, con bolla e reso costruiti: l'azione che il backend chiede
-#        prima della transazione e' quella della riga della matrice
-#        (`script.fn_doc_passaggio`, M-3), dallo stato CORRENTE del documento.
-#        E' la giuntura che i test unitari (repository mockato) non vedono:
-#        mappa, quote degli identificatori, codice -> id dello stato.
-# Note: ⚠️ Le azioni attese sono quelle del seed di oggi
-#       (`transizioni_stati_ddt.csv`, `_reso.csv`): se Tid sposta un'azione su
+# Scopo: `DocumentoModelloRepository` sul DATABASE PROVVISTO, con bolla, reso
+#        e preventivo costruiti: l'azione che il backend chiede prima della
+#        transazione e' quella della riga della matrice
+#        (`script.fn_doc_azione_passaggio`, M-3), dallo stato CORRENTE del
+#        documento; codice -> id dello stato e stato di emissione dai lettori
+#        unici (`script.fn_doc_stato_id`, `script.fn_stato_emissione_id`). E' la
+#        giuntura che i test unitari (repository mockato) non vedono.
+# Note: ⚠️ Le azioni e gli stati di emissione attesi sono quelli del seed di
+#       oggi (`transizioni_stati_ddt.csv`, `_reso.csv`, `_preventivi.csv`, la
+#       colonna `emissione` dei vocabolari): se Tid sposta un'azione su
 #       un'altra riga, cambia l'atteso, non il codice. Transazione annullata.
 # ------------------------------------------------------------
 """
@@ -17,15 +19,19 @@ Indice test eseguiti:
 1) test_reso_in_bozza — conferma: `conferma_reso`; annullo di una bozza: nessuna (M-4)
 2) test_bolla_consegnata — passaggio di processo e passaggio fuori matrice: nessuna
 3) test_casi_senza_riga — stato inesistente, documento inesistente: None, nessun errore
-4) test_testata_fuori_mappa — errore di cablaggio: RuntimeError
+4) test_testata_fuori_mappa — errore di cablaggio: E_SCRIPT_CHIAMATA_NON_VALIDA dal DB
+5) test_preventivo_in_bozza — emissione: `emetti_preventivo`; annullo di una bozza: nessuna (M-4)
+6) test_stato_di_emissione — il vocabolario dice l'emissione; reso e codici ignoti no
+7) test_stato_id — codice -> id dello stato attivo, None per un codice ignoto
 """
 from __future__ import annotations
 
 import unittest
 
-from django.db import connection
+from django.db import DatabaseError, connection
 
 from apps.core.db.documento_modello_repository import DocumentoModelloRepository
+from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 from apps.vendite.db.resi_repository import ResiRepository
 from apps.vendite.tests.db._ddt_consegnato import crea_ddt_consegnato
@@ -35,7 +41,9 @@ class PermessoPassaggioDbTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        richiedi_db_provvisto()
+        # La sonda sul lettore del giro 6: un DB indietro fallisce sull'oggetto
+        # mancante, non su un'attesa sbagliata.
+        richiedi_db_provvisto("script.fn_doc_azione_passaggio(regclass,bigint,text)")
 
     def setUp(self) -> None:
         apri_transazione_annullata(self)
@@ -74,5 +82,41 @@ class PermessoPassaggioDbTests(unittest.TestCase):
         self.assertIsNone(self.repo.azione_del_passaggio("vendite.resi", -1, "CONFERMATO"))
 
     def test_testata_fuori_mappa(self) -> None:
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(DatabaseError) as cm:
             self.repo.azione_del_passaggio("vendite.ddt_righe", self.ddt_id, "EMESSO")
+        # Il codice dal campo strutturato (BB), non dal testo del messaggio.
+        self.assertEqual(structured_db_error_code(cm.exception), "E_SCRIPT_CHIAMATA_NON_VALIDA")
+
+    def test_preventivo_in_bozza(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT preventivo_id FROM dbops.fn_pgtap_crea_preventivo('permesso passaggio db')",
+            )
+            preventivo_id = cur.fetchone()[0]
+        self.assertEqual(
+            self.repo.azione_del_passaggio("vendite.preventivi", preventivo_id, "EMESSO"),
+            "emetti_preventivo",
+        )
+        self.assertIsNone(
+            self.repo.azione_del_passaggio("vendite.preventivi", preventivo_id, "ANNULLATO"),
+        )
+
+    def test_stato_di_emissione(self) -> None:
+        for testata, codice in (("vendite.preventivi", "EMESSO"), ("vendite.ddt", "EMESSO"),
+                                ("vendite.contratti", "ATTIVO"), ("vendite.ordini", "CONFERMATO"),
+                                ("vendite.offerte_commerciali", "EMESSA")):
+            with self.subTest(testata=testata):
+                self.assertTrue(self.repo.e_stato_di_emissione(testata, codice))
+        for testata, codice in (("vendite.preventivi", "ANNULLATO"), ("vendite.ddt", "INESISTENTE"),
+                                ("vendite.resi", "CONFERMATO")):
+            with self.subTest(testata=testata, codice=codice):
+                self.assertFalse(self.repo.e_stato_di_emissione(testata, codice))
+
+    def test_stato_id(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM config.stati_doc_ddt WHERE codice_interno = 'EMESSO' AND attivo",
+            )
+            atteso = cur.fetchone()[0]
+        self.assertEqual(self.repo.stato_id("vendite.ddt", "EMESSO"), atteso)
+        self.assertIsNone(self.repo.stato_id("vendite.ddt", "INESISTENTE"))

@@ -15,7 +15,7 @@
 Indice test eseguiti:
 1) PassaggioRotteTests.test_il_parametro_e_nel_percorso — il kwarg c'e' nella rotta
 2) PassaggioRotteTests.test_esclusivo_con_permission — mai le due fonti sullo stesso metodo
-3) PassaggioRotteTests.test_le_rotte_attese_dichiarano — DDT e reso sul modello
+3) PassaggioRotteTests.test_le_rotte_attese_dichiarano — DDT, reso e preventivo sul modello
 4) PassaggioTestataDbTests.test_la_testata_e_sul_modello — mappa + matrice con l'azione
 """
 from __future__ import annotations
@@ -60,11 +60,13 @@ class PassaggioRotteTests(SimpleTestCase):
             with self.subTest(rotta=rotta.percorso, metodo=metodo):
                 self.assertIsNone(getattr(rotta.view, f"{metodo}_permission", None))
 
-    # Il presidio non deve passare a vuoto: le rotte del giro 5 ci sono.
+    # Il presidio non deve passare a vuoto: le rotte dei giri 5 e 6 ci sono.
     def test_le_rotte_attese_dichiarano(self) -> None:
         percorsi = {r.percorso for r, _, _ in _dichiarazioni()}
-        for coda in ("<int:ddt_id>/cambia-stato/", "<int:sorgente_id>/emetti/",
-                     "<int:reso_id>/conferma/", "<int:reso_id>/annulla/"):
+        for coda in ("<int:ddt_id>/cambia-stato/", "ddt/<int:sorgente_id>/emetti/",
+                     "<int:reso_id>/conferma/", "<int:reso_id>/annulla/",
+                     "<int:preventivo_id>/stato/", "da-pratica/<int:pratica_id>/stato/",
+                     "preventivi/<int:sorgente_id>/emetti/"):
             with self.subTest(coda=coda):
                 self.assertTrue(any(p.endswith(coda) for p in percorsi), coda)
 

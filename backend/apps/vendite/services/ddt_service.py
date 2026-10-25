@@ -42,6 +42,7 @@ from django.db import transaction
 from apps.config.sorgenti import SORGENTE_DDT_VENDITA
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import MAX_LIMIT
+from apps.core.services.documento_modello import rifiuta_stato_di_emissione
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
@@ -59,7 +60,7 @@ from apps.core.services.testata_guard import (
     testata_o_not_found,
 )
 from apps.core.services.value_normalizer import empty_to_none
-from apps.vendite.db.ddt_repository import DdtRepository
+from apps.vendite.db.ddt_repository import TESTATA_DDT, DdtRepository
 from apps.vendite.services._componenti_service_helpers import (
     dati_patch_componente,
     normalize_componenti_overrides,
@@ -131,9 +132,11 @@ _V = PayloadValidator(validation_code="E_DDT_VALIDAZIONE")
 # Gli id della controparte che il payload puo' portare: si coerciscono a
 # intero (un valore non numerico e' un 400 col campo, non un 500 da `int()`).
 _ID_CONTROPARTE: tuple[str, ...] = ("billing_account_id", "destinatario_soggetto_ruolo_id")
-# La testata nel modello del documento e lo stato di emissione: li legge anche
-# la catena dei permessi (`PassaggioDocumento` delle view), dalla stessa sede.
-TESTATA_DDT = "vendite.ddt"
+# Il codice dello stato di emissione, che «Emetti» passa al verbo. ⚠️ Resta
+# finche' il DB non da' il CODICE dello stato di emissione (il verbo prende il
+# codice, `script.fn_stato_emissione_id` l'id): richiesta al team DB in
+# brief-modello-documento-vendita §8.10. Il rifiuto dal cambio stato generico
+# non lo usa piu' (lo legge dal vocabolario).
 STATO_EMESSO = "EMESSO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 
@@ -531,13 +534,11 @@ def _passa_a(
         context={"field": "stato_codice"},
         function_name=f"{_FN}.cambia_stato",
     )
-    ErrorManager.require(
-        emissione or target != STATO_EMESSO,
-        code="E_DDT_VALIDAZIONE",
-        message="La bolla si emette solo da «Emetti», che assegna il numero e genera il documento.",
-        context={"field": "stato_codice"},
-        function_name=f"{_FN}.cambia_stato",
-    )
+    if not emissione:
+        rifiuta_stato_di_emissione(
+            TESTATA_DDT, target, campo="stato_codice",
+            validation_code="E_DDT_VALIDAZIONE", function_name=f"{_FN}.cambia_stato",
+        )
     stato_id = repo.get_stato_id_by_codice(target)
     ErrorManager.require(
         stato_id is not None,

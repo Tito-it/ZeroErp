@@ -30,6 +30,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
 )
+from apps.core.db.documento_modello_repository import DocumentoModelloRepository
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
@@ -91,6 +92,11 @@ _ORDER_COLS_RIGHE: dict[str, str] = {
     "data_consegna_confermata": "data_consegna_confermata",
     "data_consegna_richiesta_cliente": "data_consegna_richiesta_cliente",
 }
+
+
+# La testata nella mappa del modello del documento (`script.fn_doc_stato_modello`):
+# la leggono il repository, il service e la catena dei permessi.
+TESTATA_ORDINI = "vendite.ordini"
 
 
 class OrdiniRepository(
@@ -713,14 +719,9 @@ class OrdiniRepository(
     #    `script.fn_cliente_dal_billing_account` (brief-db-esecutivi-ba-coppia
     #    §10.2 domanda 2). Derivarli qui era una copia della regola.
 
-    # Scopo: id di uno stato ordine via codice_interno (immutabile).
+    # Scopo: L'id dello stato ATTIVO con quel codice_interno, o None: lo stato target del cambio stato e della conferma.
+    #        ⭐ La traduzione la fa il lettore unico del DB
+    #        (`script.fn_doc_stato_id`, brief-modello-documento-vendita §8.7
+    #        punto 3): qui resta solo il nome della testata.
     def get_stato_id_by_codice(self, codice_interno: str) -> int | None:
-        sql = """
-            SELECT id FROM config.stati_doc_ordini
-             WHERE codice_interno = %s AND attivo = true
-             LIMIT 1
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [codice_interno])
-            row = cursor.fetchone()
-            return row[0] if row else None
+        return DocumentoModelloRepository().stato_id(TESTATA_ORDINI, codice_interno)

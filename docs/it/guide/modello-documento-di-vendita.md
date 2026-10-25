@@ -246,7 +246,7 @@ passaggio e l'emissione letta dal vocabolario).
 
 | Documento | Nasce in bozza (§3) | Matrice in tabella (§4) | Verbo di stato (§5) | Azione sul passaggio (§6) | Emissione (§7) | Annullo (§8) |
 | --- | --- | --- | --- | --- | --- | --- |
-| Preventivo | ✅ | ✅ | ✅ `fn_cambia_stato_preventivo` sul verbo comune, con la porta; ACCETTATO ↔ EVASO dalla proiezione dello smistamento | ✅ `emetti_preventivo` su emissione e annullo dell'emesso e dell'accettato (il backend chiede ancora `cambia_stato_preventivi` fino al suo giro) | ✅ solo da «Emetti»; le righe sul passaggio, nel guard | ✅ `fn_annulla_preventivo` → verbo di stato |
+| Preventivo | ✅ | ✅ | ✅ `fn_cambia_stato_preventivo` sul verbo comune, con la porta; ACCETTATO ↔ EVASO dalla proiezione dello smistamento | ✅ `emetti_preventivo` su emissione e annullo dell'emesso e dell'accettato (backend allineato il 2026-10-25: il 403 dalla riga del passaggio) | ✅ solo da «Emetti»; le righe sul passaggio, nel guard | ✅ `fn_annulla_preventivo` → verbo di stato |
 | Offerta | ✅ | ✅ (tabella `config.stati_doc_offerte_transizioni`, nome fuori serie) | ❌ `UPDATE` dal backend; gli stati di partenza sono ripetuti in Python | ❌ nessuna azione | ✅ | ❌ da accettata, con un controllo suo (`fn_check_offerta_annullabile`) invece dell'avviso dei legami |
 | Contratto | ✅ | ❌ passaggi scritti nel guard; la tabella la legge solo la capability | ❌ `UPDATE` dal backend | ❌ nessuna azione | ✅ | ❌ `fn_annulla_contratto` scrive lo stato da sé |
 | Ordine | ✅ | ✅ | ❌ `UPDATE` dal backend | ❌ nessuna azione | ❌ anche la conferma e il cambio stato generico portano a confermato | ❌ `fn_annulla_ordine` scrive lo stato da sé |

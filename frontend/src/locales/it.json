@@ -502,6 +502,7 @@
       "descrizione_fattura": "Descrizione in fattura",
       "descrizione_locale": "Descrizione locale",
       "direzione": "Direzione",
+      "emissione": "Stato di emissione",
       "emittibile": "Emettibile",
       "entita_colonna_codice": "Colonna codice entità",
       "entita_esistenza": "Tabella che fa esistere il ruolo",

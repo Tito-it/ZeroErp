@@ -502,6 +502,7 @@
       "descrizione_fattura": "Invoice description",
       "descrizione_locale": "Local description",
       "direzione": "Direction",
+      "emissione": "Issue state",
       "emittibile": "Can be issued",
       "entita_colonna_codice": "Entity code column",
       "entita_esistenza": "Table that makes the role exist",

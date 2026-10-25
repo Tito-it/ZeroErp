@@ -45,6 +45,7 @@ from django.db import DatabaseError, IntegrityError, transaction
 from apps.config.sorgenti import SORGENTE_CONTRATTO
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.services.documento_modello import rifiuta_stato_di_emissione
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
@@ -75,6 +76,7 @@ from apps.core.services.payload_helpers import (
     map_integrity_error,
 )
 from apps.vendite.db.contratti_repository import (
+    TESTATA_CONTRATTI,
     _ORDER_COLS_CONTRATTI,
     ContrattiRepository,
     ContrattoRigheListaRepository,
@@ -917,23 +919,16 @@ class ContrattiService:
             context={"field": "codice_interno"},
         )
         codice_norm = codice_interno.strip()
-        # Guard refactor 2026-05-28: la transizione DRAFT->ATTIVO non passa
-        # piu' da qui. ApiContrattoEmetti (endpoint multipart `/emetti/`)
-        # orchestra in transaction.atomic() la sequenza stato +
-        # genera_documento + allegati, mirror del flusso offerta/preventivo.
-        # cambia_stato resta per le altre transizioni (CESSATO, ANNULLATO,
-        # SOSPESO). Defense-in-depth: se qualcuno invoca cambia_stato('ATTIVO')
-        # direttamente la transizione fallirebbe a meta', lasciando il
-        # contratto ATTIVO senza PDF (rompe invariante documentale).
-        ErrorManager.require(
-            codice_norm != "ATTIVO",
-            code=E_VENDITE_VALIDATION,
-            message=(
-                "Usare l'endpoint /emetti/ (multipart) per la transizione "
-                "DRAFT->ATTIVO: orchestra stato + generazione documento + "
-                "allegati in transazione atomica."
-            ),
-            context={"contratto_id": contratto_id},
+        # ⛔ Lo stato di emissione (ATTIVO) NO (M-2): DRAFT -> ATTIVO passa da
+        #    ApiContrattoEmetti (`/emetti/`, multipart), che orchestra in
+        #    transaction.atomic() stato + genera_documento + allegati; da qui
+        #    la transizione lascerebbe il contratto ATTIVO senza PDF. Quale
+        #    stato sia l'emissione lo dice il vocabolario (BB
+        #    `rifiuta_stato_di_emissione`, brief-modello-documento-vendita §8.7
+        #    punto 4). cambia_stato resta per CESSATO, ANNULLATO, SOSPESO.
+        rifiuta_stato_di_emissione(
+            TESTATA_CONTRATTI, codice_norm, campo="codice_interno",
+            validation_code=E_VENDITE_VALIDATION, function_name="contratti_service.cambia_stato",
         )
         target_stato_id = self._repo.get_stato_id_by_codice(codice_norm)
         ErrorManager.require(

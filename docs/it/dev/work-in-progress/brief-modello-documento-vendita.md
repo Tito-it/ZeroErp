@@ -1,8 +1,8 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-25 (giro DB 6 applicato e verde)
+## ⏭️ Chi riparte — aggiornato al 2026-10-25 (giro BE 6 fatto e committato)
 
-**Riparte: il team BE**, con la richiesta del §8.7 (giro DB 6 applicato e verde il 2026-10-25). Giro 6, il preventivo (§8), con le due richieste del §7.9 dentro. Il giro 5 è chiuso e committato su DB e BE: la richiesta del §7.6 è fatta (§7.9), committata in `4351164c1` (PR #1943).
+**Riparte: il team DB**, con la richiesta del §8.10 (il codice dello stato di emissione) insieme al documento del giro dopo. Giro 6, il preventivo (§8): DB applicato e verde, BE fatto (§8.10) tranne il ritiro di `STATO_EMESSO`, che aspetta il lettore chiesto. Il giro 5 è chiuso e committato su DB e BE (`4351164c1`, PR #1943).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -30,13 +30,15 @@
 | 4-bis-quater | ✅ team DB / **Tid** | Giro 6 scritto; `-37` … `-48` applicati da Tid (11:37); `-49` … `-52` scritti e provati in transazione; 22 pgTAP portati, regressione senza differenze | §8.4, §8.5 | 4-bis-ter |
 | 4-bis-quinquies | ✅ **Tid** | Apply di `-49` … `-52` e corsa pgTAP: verdi (2026-10-25) | §8.4 | 4-bis-quater |
 | 4-bis-quinquies-bis | ✅ team DB / **Tid** | Anticipati (Tid, 2026-10-25): concessioni trasferite a `emetti_preventivo` su dbdev (script del §8.9), `cambia_stato_preventivi` spenta nel CSV, migrate applicato | §8.9 | — |
-| 4-bis-sexies | **team BE** ⏭️ | Richiesta §8.7 (firma del verbo, 403 dalla riga, lettori nuovi, emissione dal vocabolario, controesempio) | §8.7 | 4-bis-quinquies |
-| 4-bis-septies | team DB | Dopo il giro BE: il documento del giro dopo | §5 | 4-bis-sexies |
-| 4-ter | team DB | Il lettore codice → id dello stato (o la domanda intera) e la colonna `emissione` sui vocabolari col suo lettore (Tid, 2026-10-25), col giro del documento dopo | §7.9 | 4-bis |
-| 4-quater | team BE | Ritirare `STATO_EMESSO` e la composizione SQL del repository, sui lettori nuovi | §7.9 | 4-ter |
+| 4-bis-sexies | ✅ team BE | Richiesta §8.7 fatta: firma del verbo, 403 dalla riga (anche dalla pratica e su «Emetti»), lettori nuovi, rifiuto dell'emissione dal vocabolario su bolla, preventivo, contratto e ordine, controesempio. Non fatto il ritiro di `STATO_EMESSO`: manca il lettore del codice (richiesta al DB) | §8.10 | 4-bis-quinquies |
+| 4-bis-sexies-bis | ✅ **Tid** | Commit del giro BE 6 (con la revisione critica, §8.10 punto 8) | §8.10 | 4-bis-sexies |
+| 4-bis-septies | team DB ⏭️ | Il documento del giro dopo, con dentro la richiesta del §8.10 (lettore del codice dello stato) e `azioni_processo.md` da allineare | §5, §8.10 | 4-bis-sexies |
+| 4-bis-octies | team BE | Ritirare i due `STATO_EMESSO`; `emetti_passaggio` con la sola testata | §8.10 | 4-bis-septies |
+| 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
+| 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 
-Decisioni aperte di Tid: nessuna (le tre attese cambiate dei pgTAP del §8.5 accettate coi test verdi). Lavoro da committare: nessuno (giro DB 6 committato su `dev/db-tid`).
+Decisioni aperte di Tid: nessuna. Da sapere (§8.10): il cambio stato generico dell'ordine ora rifiuta CONFERMATO (M-2); `ApiPreventivoCollegaPratica` chiede il livello sul preventivo. Lavoro da committare: nessuno (il giro BE 6 è committato su `dev/backend-tid`).
 Committati: il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), il giro BE precedente (`9fbff66d2`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
@@ -1292,3 +1294,88 @@ UPDATE config.user_override_azioni x
  WHERE x.azione_id = (SELECT a.id FROM config.azioni_processo a WHERE a.permission_codename = 'cambia_stato_preventivi');
 ```
 
+
+### 8.10 Fatto dal team BE (2026-10-25) e richiesta al team DB
+
+**Fatto** (`dev/backend-tid`, da committare), sulla richiesta del §8.7:
+
+1. **La firma del verbo.** `PreventiviRepository.cambia_stato(id, stato)` chiama
+   `vendite.fn_cambia_stato_preventivo` a due argomenti; tolto il `'django_api'` dai tre chiamanti.
+2. **Il 403 dalla riga.** `post_passaggio = PassaggioDocumento(...)` su `ApiPreventivoStato`,
+   `ApiPreventivoStatoDaPratica` e `/emetti/` del preventivo (`emetti_passaggio`), con
+   `model_permission = ("vendite", "preventivo")` per le righe senza azione. Il BB prende due campi
+   nuovi: `campo_stato` (il preventivo porta lo stato in `nuovo_stato`, non in `stato_codice`) e
+   `risolvi_documento` (la rotta dalla pratica porta il `pratica_id`: il preventivo ROOT lo ricava
+   la stessa lettura del service). `ApiPreventivoCollegaPratica` chiede il **livello sul preventivo**:
+   non è un passaggio, è una modifica del documento (scelta del team BE, come chiedeva il punto 2).
+   Le tre copie di `cambia_stato_preventivi` ritirate; con loro `emetti_post_permission` della factory
+   documenti, che non aveva più consumatori (e il controllo di esclusività che gli stava accanto).
+3. **I lettori nuovi.** `DocumentoModelloRepository.azione_del_passaggio` legge
+   `script.fn_doc_azione_passaggio`: nessun SQL composto sulla mappa. Una testata fuori mappa ora è
+   `E_SCRIPT_CHIAMATA_NON_VALIDA` dal DB (prima un `RuntimeError` del backend: sempre un 500). I
+   quattro `get_stato_id_by_codice` (ordini, offerte, DDT, contratti) delegano a
+   `DocumentoModelloRepository.stato_id` → `script.fn_doc_stato_id`: ora leggono solo gli stati
+   **attivi** anche offerte e contratti (U-3; prima no). La testata di ogni documento sta nel suo
+   repository (`TESTATA_<DOC>`), una sede sola per service, view e catena dei permessi.
+4. **L'emissione dal vocabolario, sul cambio stato generico.** BB nuovo
+   `core/services/documento_modello.rifiuta_stato_di_emissione` (regola del 2): rifiuta lo stato con
+   `emissione = true` (`fn_doc_stato_id = fn_stato_emissione_id`), 400 del dominio col campo del corpo.
+   Montato su bolla, preventivo, contratto **e ordine**. Ritirati i letterali `EMESSO` (bolla,
+   preventivo) e `ATTIVO` (contratto). ⚠️ Per l'**ordine** è un cambio di comportamento: il cambio
+   stato generico accettava CONFERMATO (opzione (i) del 2026-06-05, revocata da M-2); il frontend non lo
+   usava (passa da «Emetti»). Resta com'è `POST /ordini/<id>/conferma/` (la conferma senza PDF): è il
+   «censire chi emette senza /emetti/» di M-2, da decidere nel giro dell'ordine. L'offerta non ha un
+   cambio stato generico.
+5. **Controesempio.** ACCETTATO → ACCETTATO aggiorna la modalità di fatturazione e non chiama il
+   verbo; la risposta ha `stato_precedente = stato_nuovo = ACCETTATO`.
+7. **Test.** Nessuna chiamata diretta al verbo nei test (come censito). Emerso: le classi di test dei
+   quattro service chiedevano al DB lo stato di emissione; mixin nuovo `ModelloDocumentoMockatoMixin`
+   (mock sul repository del BB, default «non è l'emissione»). Due classi sovrascrivevano `setUp` senza
+   `super()` (ordini, preventivi): il mock non si applicava, e `TestPreventiviService`
+   (`unittest.TestCase`) avrebbe interrogato il DB di sviluppo. Test nuovi: il rifiuto sull'ordine,
+   l'ACCETTATO che non chiama il verbo, i due campi del BB, le rotte del preventivo nel presidio
+   `test_passaggio_rotte`, le dichiarazioni delle view; sul DB reale
+   `test_permesso_passaggio_db` (preventivo, stato di emissione, `stato_id`, testata fuori mappa) e il
+   nuovo `test_preventivo_cambia_stato_db` (verbo a due argomenti, accettazione, ACCETTATO →
+   ACCETTATO, il 400 dell'emissione), con le sonde sulle firme finali.
+8. **Revisione critica dello stesso giro.** `_parse_cambio_stato_payload` leggeva `nuovo_stato` con
+   `str(payload.get(...))`: `null` diventava `"None"`, e senza lo strip il rifiuto dell'emissione
+   guardava un codice diverso da quello del permesso (`PassaggioDocumento` ripulisce). Ora
+   `PayloadValidator.require_string` (400 col campo), con due test. `TESTATA_DDT` si importa dal
+   repository anche in `views_ddt` e `ddt_documenti_views` (non più via `ddt_service`); il test della
+   testata fuori mappa legge il codice dal campo strutturato (`structured_db_error_code`), non dal testo.
+
+Doc: catalogo BB backend (`PassaggioDocumento`, voce nuova `rifiuta_stato_di_emissione`, factory),
+`api.md`, `api_preventivi`, `api_preventivi_collega_pratica`, `api_documenti_per_sorgente`, e una
+nota nella guida del modello (riga del preventivo: «il backend chiede ancora `cambia_stato_preventivi`»
+non era più vero). ⚠️ Non toccato, è del team DB: `docs/it/dbzero/config/manual/azioni_processo.md`
+elenca ancora `cambia_stato_preventivi` come attiva e non ha `emetti_preventivo`.
+
+**Provato:** suite completa con `ZEROERP_TEST_DB_E2E=1`, 6940 test: due rossi, entrambi ricadute del
+giro DB 6 e non del codice di questo giro, corretti e rilanciati verdi: l'etichetta it/en della colonna
+nuova `emissione` dei vocabolari (`config_panel.campi.emissione`, presidio
+`test_config_panel_registro_db`, lo stesso caso di `iniziale` al primo giro) e la fixture di
+`test_ricerca_liste_db`, che emetteva un preventivo senza righe (il controesempio del §8.5): ora passa da
+`dbops.fn_pgtap_crea_preventivo_con_righe`. I due presidi della policy sono verdi (nessun codice nuovo).
+mypy (cricchetto, 0 rilievi) e ruff puliti. ⚠️ Non eseguiti gli smoke HTTP (login col secondo fattore).
+
+**Non fatto, e perché: il codice dello stato di emissione per «Emetti».** Il §8.7 punto 4 chiede che
+`/emetti/` prenda lo stato dal lettore e che `ddt_service.STATO_EMESSO` si ritiri. Il verbo di bolla e
+preventivo prende il **codice** dello stato; il DB dà l'**id** (`fn_stato_emissione_id`) e nessun lettore
+traduce id → codice. Leggerlo dal vocabolario nel backend vorrebbe dire comporre di nuovo SQL sulla mappa
+(quello che il punto 3 ha appena tolto). Restano quindi, dichiarati con questo rimando: `STATO_EMESSO` in
+`ddt_service` e in `preventivi_service` (una sede per documento, usata da `emetti` e dalla factory), e
+`emetti_passaggio=(testata, stato)`.
+
+**Richiesta al team DB (per il giro dopo):** un lettore del **codice** dello stato, gemello di
+`script.fn_doc_stato_id`, per esempio `script.fn_doc_stato_codice(p_testata regclass, p_stato_id bigint)
+RETURNS text` (oppure direttamente il codice dello stato di emissione di una testata: lo sceglie il team
+DB). Con quello il backend legge una volta `fn_doc_stato_codice(t, fn_stato_emissione_id(t))`: si
+ritirano i due `STATO_EMESSO`, `emetti_passaggio` riceve la sola testata, e il presidio dell'emissione
+diventa generico sui documenti della factory. Ricaduta BE: il repository del modello e le due view
+documentali.
+
+**Residui per i giri dei documenti** (non toccati, per memoria): `contratti_service.emetti` e
+`ordini_service.conferma` cercano lo stato di emissione per codice scritto (`"ATTIVO"`,
+`_STATO_CONFERMATO`) ma scrivono l'id: lì basterebbe già `fn_stato_emissione_id`; `offerte_service.emetti`
+usa `StatoOfferta.EMESSA`. Si allineano col giro del loro documento.
