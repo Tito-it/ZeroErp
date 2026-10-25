@@ -4,6 +4,10 @@
 -- Test: vendite.fn_genera_ddt_da_ordine (evasione ordine -> DDT)
 --       + macchina a stati DDT + numero a EMESSO + sync stato ordine
 -- Brief: brief-db-ddt-vendita-evasione-e-stati §10
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): l'emissione (14)
+--   da dbops.fn_pgtap_porta_a_stato e il salto fuori matrice (17) chiesto al
+--   verbo vendite.fn_cambia_stato_ddt: lo stato della bolla non si cambia piu'
+--   con un UPDATE diretto (E_DOC_STATO_SOLO_DAL_VERBO).
 -- ------------------------------------------------------------
 -- Indice test (1..24):
 --  1) fn_genera_ddt_da_ordine presente
@@ -233,8 +237,7 @@ UPDATE vendite.ddt SET causale_trasporto_id = (SELECT causale_vendita_id FROM tm
  WHERE id = (SELECT ddt_id FROM tmp_ddt_a);
 
 SELECT lives_ok(
-  format($q$UPDATE vendite.ddt SET stato_doc_ddt_id =
-             (SELECT stato_ddt_emesso_id FROM tmp_refs) WHERE id = %s$q$,
+  format($q$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$q$,
          (SELECT ddt_id FROM tmp_ddt_a)),
   '14) emissione DRAFT->EMESSO consentita (no componenti pending)');
 
@@ -251,10 +254,10 @@ SELECT throws_ok(
   'P0001', NULL,
   '16) numero immutabile dopo assegnazione (protect bespoke)');
 
--- 17) transizione fuori matrice EMESSO->CONSEGNATO
+-- 17) transizione fuori matrice EMESSO->CONSEGNATO: chiesta al verbo (con
+--     l'UPDATE diretto parlerebbe la porta, non la matrice)
 SELECT throws_ok(
-  format($q$UPDATE vendite.ddt SET stato_doc_ddt_id =
-             (SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id = %s$q$,
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ddt(%s, 'CONSEGNATO')$q$,
          (SELECT ddt_id FROM tmp_ddt_a)),
   'P0001', NULL,
   '17) transizione fuori matrice EMESSO->CONSEGNATO -> errore');

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso (anche in bozza, e a due righe con p_reso_id); restano scritti a mano l'annullo fn_annulla_reso (il caso: per lui resta concessa conferma_reso), l'ordine a due righe e la commessa con la fattura.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano l'ordine a DUE righe della partita D (ordine speciale: la bolla dal builder con p_ordine_id), il reso (giro 2) e la commessa con la fattura, che sono il caso del test.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
@@ -102,8 +103,9 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_
 SELECT plan(11);
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
--- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
+-- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f).
+-- La conferma la concede il builder del reso; l'annullo e' il caso del test, e
+-- l'operatore di fixture non ha azioni: si concede qui.
 DO $az$ BEGIN
     PERFORM dbops.fn_pgtap_concedi_azione(
         NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
@@ -127,10 +129,7 @@ SELECT
   --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
   --   righe non si scrivono piu' (20261008-90).
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1)     AS stato_ord_draft_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo ORDER BY s.id LIMIT 1)            AS sorgente_ddt_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA'    AND s.attivo ORDER BY s.id LIMIT 1)            AS sorgente_root_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo ORDER BY s.id LIMIT 1)            AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo ORDER BY t.id LIMIT 1)   AS tipo_reso_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                               AS tipo_doc_fiscale_id,
   (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_fatt_draft_id,
   script.fn_pgtap_registro_fattura()                         AS registro_id
@@ -246,38 +245,8 @@ BEGIN
   RETURN v_riga;
 END $$ LANGUAGE plpgsql;
 
--- Reso e righe separati dalla conferma: qui servono anche resi che restano
--- in DRAFT (test 7) e resi con piu' di una riga (test 8).
-CREATE OR REPLACE FUNCTION pg_temp.agr_new_reso(p_ddt_uid uuid)
-RETURNS bigint AS $$
-DECLARE r RECORD; v_reso bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_agr;
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  VALUES (r.stato_reso_draft_id, r.sorgente_ddt_id, p_ddt_uid, false,
-          jsonb_build_object('test_scope','pgtap_annulla_reso_gate'))
-  RETURNING id INTO v_reso;
-  RETURN v_reso;
-END $$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION pg_temp.agr_add_riga(p_reso_id bigint, p_riga_nr integer,
-                                                p_ddt_riga bigint, p_qta numeric)
-RETURNS bigint AS $$
-DECLARE r RECORD; v_riga bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_agr;
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-      articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base,
-      tipo_reso_id, storicizza)
-  SELECT p_reso_id, p_riga_nr, dr.id,
-         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f
-           WHERE f.ddt_riga_id = dr.id ORDER BY f.id LIMIT 1),
-         dr.articolo_id, dr.descrizione, p_qta, dr.uom_operativa_id, dr.factor_to_base,
-         r.tipo_reso_id, false
-    FROM vendite.ddt_righe dr WHERE dr.id = p_ddt_riga
-  RETURNING id INTO v_riga;
-  RETURN v_riga;
-END $$ LANGUAGE plpgsql;
+-- I resi sono del builder dbops.fn_pgtap_crea_reso: confermati, in DRAFT
+-- (test 7) o a due righe (test 8, la seconda con p_reso_id).
 
 -- ⭐ L'esito dell'annullo come COPPIA (sqlstate, codice di dominio), letto dal
 --    canale CONSTRAINT: e' il contratto di script.fn_log_and_raise_error, e non
@@ -330,11 +299,10 @@ CREATE TEMP TABLE tmp_pa_fatt AS
 SELECT pg_temp.agr_fattura(
     script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pa)::text, (SELECT ddt_riga_id FROM tmp_pa_riga)),
     10, 25) AS fattura_riga_id;
-CREATE TEMP TABLE tmp_reso_a AS SELECT pg_temp.agr_new_reso((SELECT ddt_uid FROM tmp_pa)) AS reso_id;
-CREATE TEMP TABLE tmp_reso_a_riga AS
-SELECT pg_temp.agr_add_riga((SELECT reso_id FROM tmp_reso_a), 1,
-                            (SELECT ddt_riga_id FROM tmp_pa_riga), 3) AS resi_riga_id;
-SELECT vendite.fn_conferma_reso((SELECT reso_id FROM tmp_reso_a));
+CREATE TEMP TABLE tmp_reso_a AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('annulla reso gate', (SELECT ddt_id FROM tmp_pa), 3,
+                                       'RESO_PER_RICONSEGNA',
+                                       p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_pa_riga));
 
 SELECT is(
   (SELECT sdr.codice_interno FROM vendite.resi r
@@ -342,7 +310,7 @@ SELECT is(
     WHERE r.id = (SELECT reso_id FROM tmp_reso_a))
   || '|' ||
   (SELECT count(*)::int FROM vendite.vw_resi_da_accreditare q
-    WHERE q.resi_riga_id = (SELECT resi_riga_id FROM tmp_reso_a_riga))::text,
+    WHERE q.resi_riga_id = (SELECT resi_riga_id FROM tmp_reso_a))::text,
   'CONFERMATO|1',
   '1) fixture A: il reso e'' CONFERMATO e la sua riga e'' in coda accrediti'
 );
@@ -351,7 +319,7 @@ SELECT is(
 -- IL VERBO, e poi l'annullo del documento
 -- ============================================================
 CREATE TEMP TABLE tmp_acc_a AS
-SELECT * FROM vendite.fn_accredita_riga_reso((SELECT resi_riga_id FROM tmp_reso_a_riga));
+SELECT * FROM vendite.fn_accredita_riga_reso((SELECT resi_riga_id FROM tmp_reso_a));
 
 -- ⚠️ Il verbo in un'istruzione SEPARATA dall'asserzione: la snapshot di
 --    statement leggerebbe PRIMA delle scritture, e il rosso accuserebbe la
@@ -387,7 +355,7 @@ SELECT is(
 --   soft-delete questi due test diventerebbero rossi — ed e' il loro scopo.
 -- ============================================================
 SELECT vendite.fn_annulla_accredito_riga_reso(
-    (SELECT resi_riga_id FROM tmp_reso_a_riga), 'ci ho ripensato, pgTAP');
+    (SELECT resi_riga_id FROM tmp_reso_a), 'ci ho ripensato, pgTAP');
 
 SELECT lives_ok(
   format($q$SELECT vendite.fn_annulla_reso(%s)$q$, (SELECT reso_id FROM tmp_reso_a)),
@@ -416,11 +384,10 @@ SELECT b.ordine_id, b.ddt_id, b.ddt_uid, b.ddt_riga_id
            p_articolo_id          => (SELECT articolo_id FROM tmp_refs_agr),
            p_fatturazione_trigger => 'CONSEGNATO') b;
 CREATE TEMP TABLE tmp_pb_riga AS SELECT ddt_riga_id FROM tmp_pb;
-CREATE TEMP TABLE tmp_reso_b AS SELECT pg_temp.agr_new_reso((SELECT ddt_uid FROM tmp_pb)) AS reso_id;
-CREATE TEMP TABLE tmp_reso_b_riga AS
-SELECT pg_temp.agr_add_riga((SELECT reso_id FROM tmp_reso_b), 1,
-                            (SELECT ddt_riga_id FROM tmp_pb_riga), 3) AS resi_riga_id;
-SELECT vendite.fn_conferma_reso((SELECT reso_id FROM tmp_reso_b));
+CREATE TEMP TABLE tmp_reso_b AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('annulla reso gate', (SELECT ddt_id FROM tmp_pb), 3,
+                                       'RESO_PER_RICONSEGNA',
+                                       p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_pb_riga));
 
 SELECT lives_ok(
   format($q$SELECT vendite.fn_annulla_reso(%s)$q$, (SELECT reso_id FROM tmp_reso_b)),
@@ -442,10 +409,10 @@ SELECT b.ordine_id, b.ddt_id, b.ddt_uid, b.ddt_riga_id
            p_articolo_id          => (SELECT articolo_id FROM tmp_refs_agr),
            p_fatturazione_trigger => 'CONSEGNATO') b;
 CREATE TEMP TABLE tmp_pc_riga AS SELECT ddt_riga_id FROM tmp_pc;
-CREATE TEMP TABLE tmp_reso_c AS SELECT pg_temp.agr_new_reso((SELECT ddt_uid FROM tmp_pc)) AS reso_id;
-CREATE TEMP TABLE tmp_reso_c_riga AS
-SELECT pg_temp.agr_add_riga((SELECT reso_id FROM tmp_reso_c), 1,
-                            (SELECT ddt_riga_id FROM tmp_pc_riga), 3) AS resi_riga_id;
+CREATE TEMP TABLE tmp_reso_c AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('annulla reso gate', (SELECT ddt_id FROM tmp_pc), 3,
+                                       'RESO_PER_RICONSEGNA', 'DRAFT',
+                                       p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_pc_riga));
 
 CREATE TEMP TABLE tmp_esito_c AS
 SELECT pg_temp.agr_esito_annullo((SELECT reso_id FROM tmp_reso_c)) AS esito;
@@ -474,14 +441,19 @@ CREATE TEMP TABLE tmp_pd_fatt AS
 SELECT pg_temp.agr_fattura(
     script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pd)::text, (SELECT riga1 FROM tmp_pd_righe)),
     10, 25) AS fattura_riga_id;
-CREATE TEMP TABLE tmp_reso_d AS SELECT pg_temp.agr_new_reso((SELECT ddt_uid FROM tmp_pd)) AS reso_id;
-CREATE TEMP TABLE tmp_reso_d_righe AS
-SELECT pg_temp.agr_add_riga((SELECT reso_id FROM tmp_reso_d), 1, (SELECT riga1 FROM tmp_pd_righe), 3) AS resi_riga1,
-       pg_temp.agr_add_riga((SELECT reso_id FROM tmp_reso_d), 2, (SELECT riga2 FROM tmp_pd_righe), 3) AS resi_riga2;
-SELECT vendite.fn_conferma_reso((SELECT reso_id FROM tmp_reso_d));
+-- La prima riga in bozza, la seconda aggiunta allo stesso reso, che si conferma.
+CREATE TEMP TABLE tmp_reso_d AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('annulla reso gate', (SELECT ddt_id FROM tmp_pd), 3,
+                                       'RESO_PER_RICONSEGNA', 'DRAFT',
+                                       p_ddt_riga_id => (SELECT riga1 FROM tmp_pd_righe));
+CREATE TEMP TABLE tmp_reso_d_riga2 AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('annulla reso gate', NULL, 3,
+                                       'RESO_PER_RICONSEGNA',
+                                       p_ddt_riga_id => (SELECT riga2 FROM tmp_pd_righe),
+                                       p_reso_id     => (SELECT reso_id FROM tmp_reso_d));
 
 CREATE TEMP TABLE tmp_acc_d AS
-SELECT * FROM vendite.fn_accredita_riga_reso((SELECT resi_riga1 FROM tmp_reso_d_righe));
+SELECT * FROM vendite.fn_accredita_riga_reso((SELECT resi_riga_id FROM tmp_reso_d));
 
 CREATE TEMP TABLE tmp_esito_d AS
 SELECT pg_temp.agr_esito_annullo((SELECT reso_id FROM tmp_reso_d)) AS esito;
@@ -528,7 +500,7 @@ SELECT is(
 --   nulla dell'annullo dell'accredito, si riabilita solo perche' quello CANCELLA
 --   le righe di ponte.
 SELECT vendite.fn_annulla_accredito_riga_reso(
-    (SELECT resi_riga1 FROM tmp_reso_d_righe), 'ci ho ripensato anche qui, pgTAP');
+    (SELECT resi_riga_id FROM tmp_reso_d), 'ci ho ripensato anche qui, pgTAP');
 
 SELECT is(
   (SELECT (a->>'enabled')::boolean

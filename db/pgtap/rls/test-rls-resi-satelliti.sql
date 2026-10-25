@@ -54,6 +54,8 @@
 --   appartiene a questa slice. Il suo perimetro passa dallo stesso adattatore
 --   `_via_reso_riga` che il test 10 interroga direttamente. *Non serve una riga
 --   per chiedere a una funzione se dice il vero.*
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i due resi con la loro riga dal builder dbops.fn_pgtap_crea_reso, in bozza; restano scritte a mano la rinuncia e la riga d'intrusione del test 6, che sono il caso.
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): le due bolle a CONSEGNATO con dbops.fn_pgtap_porta_a_stato (i passi col verbo, nel contesto dell'operatore di ciascun mondo), non piu' con UPDATE diretti dello stato che la porta ora rifiuta.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -130,54 +132,35 @@ SELECT d.ddt_id,
   FROM _ddt d;
 
 -- ⛔ I tre passi si fanno TUTTI: la matrice delle transizioni non ammette il
---   salto da DRAFT a CONSEGNATO.
+--   salto da DRAFT a CONSEGNATO. E ciascuno col verbo: la porta sullo stato
+--   rifiuta l'UPDATE diretto; il percorso lo segue il BB dalla matrice.
+--   Il verbo legge la bolla nel perimetro di chi agisce: per ogni mondo il
+--   contesto e' il suo operatore.
 DO $consegna$
 DECLARE d record;
 BEGIN
-    FOR d IN SELECT ddt_id FROM _ddt LOOP
-        UPDATE vendite.ddt SET stato_doc_ddt_id =
-            (SELECT id FROM config.stati_doc_ddt WHERE codice_interno='EMESSO')     WHERE id = d.ddt_id;
-        UPDATE vendite.ddt SET stato_doc_ddt_id =
-            (SELECT id FROM config.stati_doc_ddt WHERE codice_interno='SPEDITO')    WHERE id = d.ddt_id;
-        UPDATE vendite.ddt SET stato_doc_ddt_id =
-            (SELECT id FROM config.stati_doc_ddt WHERE codice_interno='CONSEGNATO') WHERE id = d.ddt_id;
+    FOR d IN SELECT x.ddt_id, m.auth_user_id
+               FROM _ddt x JOIN _mondi m ON m.lato = x.lato LOOP
+        PERFORM script.fn_pgtap_set_contesto_operatore(d.auth_user_id);
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ddt', d.ddt_id, 'CONSEGNATO');
     END LOOP;
 END
 $consegna$;
 
-CREATE TEMP TABLE _resi AS
-WITH x AS (
-    INSERT INTO vendite.resi
-        (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid,
-         destinatario_soggetto_ruolo_id, emittente_fiscale_id)
-    SELECT (SELECT id FROM config.stati_doc_reso WHERE codice_interno='DRAFT'),
-           (SELECT id FROM config.sorgenti WHERE codice_interno='DDT_VENDITA'),
-           d.ddt_uid,
-           (SELECT dd.destinatario_soggetto_ruolo_id FROM vendite.ddt dd WHERE dd.id = d.ddt_id),
-           d.emittente_fiscale_id
-      FROM _ddt d
-    RETURNING id, emittente_fiscale_id
-)
-SELECT d.lato, x.id AS reso_id, x.emittente_fiscale_id
-  FROM x JOIN _ddt d ON d.emittente_fiscale_id = x.emittente_fiscale_id;
-
+-- Il reso di ogni mondo dal builder, in bozza, con una riga da 1 sulla riga
+-- della bolla. Destinatario ed emittente li deriva il normalize dalla bolla.
+-- ⚠️ `RESO_PER_RICONSEGNA` e non `RESO_A_CREDITO`: la rinuncia si appende SOLO
+--   a una riga di tipo ri-consegna (`trgfn_resi_rinunce_guard`), e la rinuncia
+--   serve al test 5.
 CREATE TEMP TABLE _resi_righe AS
-WITH r AS (
-    INSERT INTO vendite.resi_righe
-        (reso_id, riga_nr, ddt_riga_id, articolo_id, descrizione,
-         quantita, qta_operativa, tipo_reso_id)
-    SELECT s.reso_id, 1, dr.ddt_riga_id,
-           (SELECT id FROM _art),
-           'Riga reso pgTAP', 1, 1,
-           -- ⚠️ `RESO_PER_RICONSEGNA` e non `RESO_A_CREDITO`: la rinuncia si
-           --   appende SOLO a una riga di tipo ri-consegna
-           --   (`trgfn_resi_rinunce_guard`), e la rinuncia serve al test 5.
-           (SELECT tr.id FROM config.tipi_reso tr WHERE tr.codice_interno='RESO_PER_RICONSEGNA')
-      FROM _resi s JOIN _ddt_righe dr ON dr.lato = s.lato
-    RETURNING id, reso_id
-)
-SELECT s.lato, r.id AS resi_riga_id, r.reso_id
-  FROM r JOIN _resi s ON s.reso_id = r.reso_id;
+SELECT d.lato, b.resi_riga_id, b.reso_id
+  FROM _ddt d
+ CROSS JOIN LATERAL dbops.fn_pgtap_crea_reso('RLS resi ' || d.lato, d.ddt_id, 1,
+                                             'RESO_PER_RICONSEGNA', 'DRAFT') b;
+
+CREATE TEMP TABLE _resi AS
+SELECT rr.lato, r.id AS reso_id, r.emittente_fiscale_id
+  FROM _resi_righe rr JOIN vendite.resi r ON r.id = rr.reso_id;
 
 -- ⭐ Una figlia di SECONDO livello costruita davvero: `rinunce` chiede solo la
 --   riga e una quantita', quindi il test 5 misura una riga vera invece di

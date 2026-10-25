@@ -79,6 +79,11 @@
 -- ⭐ `outlined` resta un DATO: cambia per STATO (l'annulla di una bozza e'
 -- solo bordato), non per verbo, e il test 3 continua a misurarlo.
 --
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): i passaggi di bolla e reso che
+--   portano un'azione (emetti_ddt, conferma_reso) si NASCONDONO a chi non l'ha. Il file misura la
+--   FORMA delle azioni, non il permesso: l'operatore in sessione riceve le due azioni, cosi' le
+--   righe di DDT e reso restano nel campione. Attese invariate.
+--
 -- Indice test (1..10):
 --   1) Il DATO: ogni riga `annulla` delle 8 matrici ha outlined=true
 --   2) Il PERCORSO: tutte le azioni emesse portano la CHIAVE `outlined`
@@ -124,6 +129,13 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+-- rev 2026-10-25 (giro 5): si misura la forma, non il permesso — l'operatore
+--   riceve le azioni dei passaggi di bolla e reso, senza le quali sparirebbero.
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_ddt');
+  PERFORM dbops.fn_pgtap_concedi_azione(NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
+END $az$;
 
 SELECT plan(10);
 

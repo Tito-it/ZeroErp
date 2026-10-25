@@ -47,6 +47,8 @@
 --
 -- Perimetro: questo file collauda la scrittura sulla TESTATA. I satelliti
 -- (`resi_righe` e le tre figlie) stanno in test-rls-resi-satelliti.sql.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso, in bozza (nasce con una riga, che il test non legge); restano le policy esercitate a mano, che sono il caso.
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): la bolla a CONSEGNATO con dbops.fn_pgtap_porta_a_stato (i passi col verbo), non piu' con tre UPDATE diretti dello stato che la porta ora rifiuta.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -112,32 +114,24 @@ SELECT d.id,
        '{"pgtap": true}'::jsonb
   FROM _ddt d;
 
--- ⛔ Tutti e tre i passi: la matrice non ammette il salto a CONSEGNATO.
-DO $consegna$
-DECLARE v_ddt vendite.ddt.id%TYPE;
-BEGIN
-    SELECT id INTO v_ddt FROM _ddt;
-    UPDATE vendite.ddt SET stato_doc_ddt_id =
-        (SELECT id FROM config.stati_doc_ddt WHERE codice_interno='EMESSO')     WHERE id = v_ddt;
-    UPDATE vendite.ddt SET stato_doc_ddt_id =
-        (SELECT id FROM config.stati_doc_ddt WHERE codice_interno='SPEDITO')    WHERE id = v_ddt;
-    UPDATE vendite.ddt SET stato_doc_ddt_id =
-        (SELECT id FROM config.stati_doc_ddt WHERE codice_interno='CONSEGNATO') WHERE id = v_ddt;
-END
-$consegna$;
+-- ⛔ Tutti e tre i passi (la matrice non ammette il salto a CONSEGNATO), e
+--   ciascuno col verbo: la porta sullo stato rifiuta l'UPDATE diretto. Il
+--   percorso EMESSO -> SPEDITO -> CONSEGNATO lo segue il BB dalla matrice.
+--   Il verbo legge la bolla nel perimetro di chi agisce: il contesto e'
+--   l'operatore di A, che la possiede (i casi sotto aprono ciascuno il suo).
+DO $ctx$ BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondi WHERE lato = 'A'));
+END $ctx$;
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', d.id, 'CONSEGNATO')
+  FROM _ddt d;
 
+-- Il reso in bozza dal builder: destinatario ed emittente li deriva il
+-- normalize dalla bolla. La riga che il builder gli da' non pesa: il test
+-- collauda la testata.
 CREATE TEMP TABLE _reso AS
-WITH x AS (
-    INSERT INTO vendite.resi
-        (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid,
-         destinatario_soggetto_ruolo_id, emittente_fiscale_id)
-    SELECT (SELECT id FROM config.stati_doc_reso WHERE codice_interno='DRAFT'),
-           (SELECT id FROM config.sorgenti WHERE codice_interno='DDT_VENDITA'),
-           d.uid, d.destinatario_soggetto_ruolo_id, d.emittente_fiscale_id
-      FROM _ddt d
-    RETURNING id
-)
-SELECT id AS reso_id FROM x;
+SELECT b.reso_id
+  FROM dbops.fn_pgtap_crea_reso('RLS resi write', (SELECT id FROM _ddt), 1,
+                                p_stato_codice_interno => 'DRAFT') b;
 
 -- ⛔ Guard sul RISULTATO: se la fixture non si e' costruita il file deve
 --   diventare ROSSO qui, non passare tre asserzioni a vuoto piu' in giu'.

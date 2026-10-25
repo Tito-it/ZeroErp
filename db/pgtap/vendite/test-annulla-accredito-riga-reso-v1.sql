@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso (che concede da se' conferma_reso); resta scritta a mano la commessa con la fattura e la seconda coppia sul ponte, che sono il caso del test.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano il reso (giro 2) e la commessa con la fattura, che sono il caso del test.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
@@ -87,14 +88,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_
 
 SELECT plan(23);
 
--- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
--- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
-DO $az$ BEGIN
-    PERFORM dbops.fn_pgtap_concedi_azione(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
-END $az$;
-
 -- ============================================================
 -- Riferimenti — ogni scelta col suo ORDER BY: senza, quale riga esca dipende
 -- dal piano del planner e il test passa a giorni alterni.
@@ -111,10 +104,7 @@ SELECT
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)            AS iva_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo ORDER BY s.id LIMIT 1)            AS sorgente_ddt_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA'    AND s.attivo ORDER BY s.id LIMIT 1)            AS sorgente_root_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo ORDER BY s.id LIMIT 1)            AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo ORDER BY t.id LIMIT 1)        AS tipo_credito_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                               AS tipo_doc_fiscale_id,
   (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_fatt_draft_id,
   script.fn_pgtap_registro_fattura()                         AS registro_id,
@@ -197,31 +187,6 @@ BEGIN
   RETURN v_riga;
 END $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION pg_temp.ann_mk_reso(p_ddt_riga bigint, p_ddt_uid uuid, p_qta numeric)
-RETURNS bigint AS $$
-DECLARE r RECORD; v_reso bigint; v_riga bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_ann;
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  VALUES (r.stato_reso_draft_id, r.sorgente_ddt_id, p_ddt_uid, false,
-          jsonb_build_object('test_scope','pgtap_fn_annulla_accredito'))
-  RETURNING id INTO v_reso;
-
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-      articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base,
-      tipo_reso_id, storicizza)
-  SELECT v_reso, 1, dr.id,
-         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f
-           WHERE f.ddt_riga_id = dr.id ORDER BY f.id LIMIT 1),
-         dr.articolo_id, dr.descrizione, p_qta, dr.uom_operativa_id, dr.factor_to_base,
-         r.tipo_credito_id, false
-    FROM vendite.ddt_righe dr WHERE dr.id = p_ddt_riga
-  RETURNING id INTO v_riga;
-
-  PERFORM vendite.fn_conferma_reso(v_reso);
-  RETURN v_riga;
-END $$ LANGUAGE plpgsql;
-
 -- Il reset del lotto, nella forma esatta in cui lo fa
 -- vendite.fn_cleanup_fatture_by_ids (RD-4): l'attivita' torna NON_EMESSA e
 -- l'attivita_fatturabili SOPRAVVIVE, sbloccata e senza fattura_riga_id.
@@ -274,8 +239,11 @@ CREATE TEMP TABLE tmp_pa_fattura AS
 SELECT pg_temp.ann_fattura(
     script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pa)::text, (SELECT ddt_riga_id FROM tmp_pa)),
     10, 25) AS fattura_riga_id;
+-- Il reso a credito di 3, confermato.
 CREATE TEMP TABLE tmp_pa_reso AS
-SELECT pg_temp.ann_mk_reso((SELECT ddt_riga_id FROM tmp_pa), (SELECT ddt_uid FROM tmp_pa), 3) AS resi_riga_id;
+SELECT x.resi_riga_id
+  FROM dbops.fn_pgtap_crea_reso('annulla accredito', (SELECT ddt_id FROM tmp_pa), 3,
+           p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_pa)) x;
 
 SELECT is(
   (SELECT q.accredito_dovuto FROM vendite.vw_resi_da_accreditare q
@@ -419,7 +387,9 @@ SELECT pg_temp.ann_fattura(
     script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pb)::text, (SELECT ddt_riga_id FROM tmp_pb)),
     10, 25) AS fattura_riga_id;
 CREATE TEMP TABLE tmp_pb_reso AS
-SELECT pg_temp.ann_mk_reso((SELECT ddt_riga_id FROM tmp_pb), (SELECT ddt_uid FROM tmp_pb), 3) AS resi_riga_id;
+SELECT x.resi_riga_id
+  FROM dbops.fn_pgtap_crea_reso('annulla accredito', (SELECT ddt_id FROM tmp_pb), 3,
+           p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_pb)) x;
 
 CREATE TEMP TABLE tmp_acc_b AS
 SELECT * FROM vendite.fn_accredita_riga_reso((SELECT resi_riga_id FROM tmp_pb_reso));

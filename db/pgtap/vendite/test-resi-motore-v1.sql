@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; restano scritti a mano i resi (giro 2), che sono il caso del test; la colonna stato_ddt_consegnato_id resta in tmp_refs perche' la legge il test 2.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi A, B, D1, D2 dal builder dbops.fn_pgtap_crea_reso (A e D1 in DRAFT: la conferma e' il passo del test, 8 e 26); restano scritti a mano la riga oltre il consegnato (7), il reso da una bolla non consegnata (24) e le ri-spedizioni dal verbo (14, 16), che sono il caso; tipi e stati di tmp_refs restano perche' li legge il test 2.
 -- pgTAP test per Zero ERP
 -- Test: motore resi vendita (vendite.resi / resi_righe / ponte)
 --       fn_conferma_reso, fn_genera_ddt_riconsegna, fn_annulla_reso,
@@ -100,7 +101,6 @@ SELECT
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='ANNULLATO' AND s.attivo LIMIT 1) AS stato_reso_ann_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1)      AS tipo_credito_id;
 
@@ -136,15 +136,15 @@ CREATE TEMP TABLE tmp_ddt_a_riga AS
 SELECT dr.id, dr.articolo_id, dr.descrizione, dr.uom_operativa_id, dr.factor_to_base
   FROM vendite.ddt_righe dr WHERE dr.id=(SELECT ddt_riga_id FROM tmp_bolla_a);
 
--- Crea reso DRAFT dal DDT (sorgente DDT_VENDITA, uid del DDT).
+-- Il reso A dal builder, in DRAFT: riga di ri-consegna da 3 sulla riga della
+-- bolla (la riga d'ordine dal legame). La testata porta solo sorgente e uid:
+-- emittente e billing li deriva il normalize, ed e' cio' che provano 3 e 4.
+CREATE TEMP TABLE tmp_reso_a_b AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('resi', (SELECT ddt_id FROM tmp_ddt_a), 3,
+                                       'RESO_PER_RICONSEGNA', 'DRAFT');
 CREATE TEMP TABLE tmp_reso_a AS
-WITH ins AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id,
-         (SELECT d.uid FROM vendite.ddt d WHERE d.id=(SELECT ddt_id FROM tmp_ddt_a)),
-         false, jsonb_build_object('test_scope','pgtap_resi')
-  FROM tmp_refs r RETURNING id, emittente_fiscale_id, billing_account_id)
-SELECT * FROM ins;
+SELECT r.id, r.emittente_fiscale_id, r.billing_account_id
+  FROM vendite.resi r WHERE r.id = (SELECT reso_id FROM tmp_reso_a_b);
 
 -- 3) emittente ereditato dal DDT
 SELECT is(
@@ -162,17 +162,10 @@ SELECT is(
 SELECT ok((SELECT numero IS NULL FROM vendite.resi WHERE id=(SELECT id FROM tmp_reso_a)),
   '5) numero NULL in DRAFT');
 
--- Riga reso: ri-consegna, qta 3
+-- La riga del reso A (ri-consegna, qta operativa 3), come l'ha scritta il dominio.
 CREATE TEMP TABLE tmp_reso_a_riga AS
-WITH ins AS (
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-    articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base,
-    tipo_reso_id, storicizza)
-  SELECT (SELECT id FROM tmp_reso_a), 1, dr.id, (SELECT id FROM tmp_ord_a_riga),
-         dr.articolo_id, dr.descrizione, 3, dr.uom_operativa_id, dr.factor_to_base,
-         (SELECT tipo_riconsegna_id FROM tmp_refs), false
-  FROM tmp_ddt_a_riga dr RETURNING id, quantita)
-SELECT * FROM ins;
+SELECT rr.id, rr.quantita
+  FROM vendite.resi_righe rr WHERE rr.id = (SELECT resi_riga_id FROM tmp_reso_a_b);
 
 -- 6) quantita derivata da qta_operativa
 SELECT is((SELECT quantita FROM tmp_reso_a_riga), 3.000000::numeric,
@@ -277,27 +270,10 @@ SELECT b.ddt_id FROM dbops.fn_pgtap_crea_ddt_da_ordine('resi motore B',
            p_articolo_id          => (SELECT articolo_id FROM tmp_refs),
            p_fatturazione_trigger => 'SPEDITO') b;
 
+-- Il reso B dal builder: a credito, qta piena (5) -> reso totale, confermato.
 CREATE TEMP TABLE tmp_reso_b AS
-WITH ins AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id,
-         (SELECT d.uid FROM vendite.ddt d WHERE d.id=(SELECT ddt_id FROM tmp_ddt_b)),
-         false, jsonb_build_object('test_scope','pgtap_resi')
-  FROM tmp_refs r RETURNING id)
-SELECT * FROM ins;
--- Riga credito, qta piena (5) -> reso totale
-CREATE TEMP TABLE tmp_reso_b_riga AS
-WITH ins AS (
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-    articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-  SELECT (SELECT id FROM tmp_reso_b), 1, dr.id,
-         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id=dr.id LIMIT 1),
-         dr.articolo_id, dr.descrizione, 5, dr.uom_operativa_id, dr.factor_to_base,
-         (SELECT tipo_credito_id FROM tmp_refs), false
-  FROM vendite.ddt_righe dr WHERE dr.ddt_id=(SELECT ddt_id FROM tmp_ddt_b) LIMIT 1
-  RETURNING id)
-SELECT * FROM ins;
-SELECT vendite.fn_conferma_reso((SELECT id FROM tmp_reso_b));
+SELECT reso_id AS id
+  FROM dbops.fn_pgtap_crea_reso('resi', (SELECT ddt_id FROM tmp_ddt_b), 5);
 
 -- 20) flip DDT -> RESO
 SELECT is(
@@ -374,45 +350,16 @@ SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('resi motore D',
            p_fatturazione_trigger => 'SPEDITO');
 CREATE TEMP TABLE tmp_ddt_d AS SELECT ddt_id FROM tmp_bolla_d;
 
-CREATE TEMP TABLE tmp_ddt_d_riga AS
-SELECT dr.id, dr.articolo_id, dr.descrizione, dr.uom_operativa_id, dr.factor_to_base
-  FROM vendite.ddt_righe dr WHERE dr.id=(SELECT ddt_riga_id FROM tmp_bolla_d);
-
--- Reso D1: 6 pz, resta in BOZZA (mai confermato).
+-- Reso D1: 6 pz a credito, resta in BOZZA (mai confermato).
 CREATE TEMP TABLE tmp_reso_d1 AS
-WITH ins AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id,
-         (SELECT d.uid FROM vendite.ddt d WHERE d.id=(SELECT ddt_id FROM tmp_ddt_d)),
-         false, jsonb_build_object('test_scope','pgtap_resi')
-  FROM tmp_refs r RETURNING id)
-SELECT * FROM ins;
-INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-  articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-SELECT (SELECT id FROM tmp_reso_d1), 1, dr.id,
-       (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id=dr.id LIMIT 1),
-       dr.articolo_id, dr.descrizione, 6, dr.uom_operativa_id, dr.factor_to_base,
-       (SELECT tipo_credito_id FROM tmp_refs), false
-FROM tmp_ddt_d_riga dr;
+SELECT reso_id AS id
+  FROM dbops.fn_pgtap_crea_reso('resi', (SELECT ddt_id FROM tmp_ddt_d), 6,
+                                p_stato_codice_interno => 'DRAFT');
 
--- Reso D2: 4 pz, confermato.
+-- Reso D2: 4 pz a credito, confermato.
 CREATE TEMP TABLE tmp_reso_d2 AS
-WITH ins AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id,
-         (SELECT d.uid FROM vendite.ddt d WHERE d.id=(SELECT ddt_id FROM tmp_ddt_d)),
-         false, jsonb_build_object('test_scope','pgtap_resi')
-  FROM tmp_refs r RETURNING id)
-SELECT * FROM ins;
-INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-  articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-SELECT (SELECT id FROM tmp_reso_d2), 1, dr.id,
-       (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id=dr.id LIMIT 1),
-       dr.articolo_id, dr.descrizione, 4, dr.uom_operativa_id, dr.factor_to_base,
-       (SELECT tipo_credito_id FROM tmp_refs), false
-FROM tmp_ddt_d_riga dr;
-
-SELECT vendite.fn_conferma_reso((SELECT id FROM tmp_reso_d2));
+SELECT reso_id AS id
+  FROM dbops.fn_pgtap_crea_reso('resi', (SELECT ddt_id FROM tmp_ddt_d), 4);
 
 -- 25) IL FIX: la bozza da 6 non conta -> confermati 4 < 10 -> niente flip.
 --     Col vecchio `<> 'ANNULLATO'` qui il DDT sarebbe gia' RESO (6+4=10).

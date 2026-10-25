@@ -17,19 +17,12 @@ Nessun grafo hardcodato — mirror di `trgfn_ddt_guard_transizione`.
 
 ---
 
-### La porta del magazzino (dal 2026-09-28, Lotto 3-bis)
+### La porta: non sta più qui (2026-10-25)
 
-Seconda regola: su un reso che **fa rientrare merce**, i due passaggi che toccano il magazzino —
-la conferma (`DRAFT → CONFERMATO`, carico) e l'annullo di un reso confermato
-(`CONFERMATO → ANNULLATO`, storno) — si fanno solo dalle operazioni
-[vendite.fn_conferma_reso](/dbzero/vendite/funzioni/fn_conferma_reso) e
-[vendite.fn_annulla_reso](/dbzero/vendite/funzioni/fn_annulla_reso), che scrivono i movimenti
-nella stessa transazione. Una modifica diretta dello stato è rifiutata con
-`E_RESO_STATO_SOLO_DA_VERBO`: il reso risulterebbe confermato senza la sua merce.
-
-La forma è la stessa della porta della bolla
-([trgfn_ddt_guard_transizione](/dbzero/vendite/funzioni/trgfn_ddt_guard_transizione)): un
-segnale che vale solo nella transazione dell'operazione, e l'operazione che gira come
-proprietario delle tabelle. I resi che non muovono merce, e l'annullo di una bozza, restano
-fuori dalla porta.
+Fino al 2026-10-25 questo guard aveva una seconda regola, la porta del magazzino: sui resi che fanno
+rientrare merce, conferma e annullo del confermato si facevano solo dai verbi
+(`E_RESO_STATO_SOLO_DA_VERBO`, ritirato). Oggi ogni cambio di stato del reso, con o senza merce, passa
+dalla porta comune
+[script.trgfn_doc_stato_solo_dal_verbo](/dbzero/script/funzioni/trgfn_doc_stato_solo_dal_verbo)
+(`E_DOC_STATO_SOLO_DAL_VERBO`), che la contiene. Qui resta la matrice.
 

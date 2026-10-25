@@ -4,6 +4,11 @@
 --   (vuota: dbops.fn_pgtap_crea_ddt; con una riga: dbops.fn_pgtap_crea_ddt_da_ordine in DRAFT) e il
 --   mondo pure. Prima si pescavano dal database: su un database ricostruito i test 8-12 passavano in
 --   skip, verdi per sottrazione. Le asserzioni non cambiano; i rami skip spariscono.
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): «emetti» ora porta il permesso
+--   emetti_ddt e si nasconde a chi non l'ha: il file prova le righe, non il permesso, quindi
+--   l'operatore riceve emetti_ddt prima dei test 8-12. Il test 10 emette con
+--   dbops.fn_pgtap_porta_a_stato (verbo sotto la porta) al posto dell'UPDATE diretto, che ora la
+--   porta rifiuta prima del guard delle righe. Attese invariate.
 -- pgTAP test per Zero ERP
 -- Test: "documento vuoto non avanza di stato" (brief 2026-07-16)
 --   §1a capability righe-aware (meta.requires_righe -> enabled/reason)
@@ -127,6 +132,12 @@ SELECT
   (SELECT ddt_id FROM tmp_vuoto_rr) AS ddt_vuoto_id,
   (SELECT ddt_id FROM tmp_pieno_rr) AS ddt_pieno_id;
 
+-- rev 2026-10-25 (giro 5): il file prova le righe, non il permesso — l'operatore
+--   in sessione riceve emetti_ddt, senza il quale «emetti» non comparirebbe.
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_ddt');
+END $az$;
+
 -- ============================================================
 -- 8-9) DDT vuoto: azione 'emetti' presente ma disabilitata + reason.
 -- ============================================================
@@ -152,8 +163,7 @@ SELECT is(
 -- Il messaggio discrimina (rev 2026-10-25): la bolla vuota ha causale e
 --   indirizzi, quindi l'unico rifiuto atteso e' quello delle righe.
 SELECT throws_like(
-  format($$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$$,
-         (SELECT stato_emesso_id FROM tmp_refs_rr),
+  format($$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$$,
          (SELECT ddt_vuoto_id FROM tmp_refs_rr)),
   '%senza righe attive%',
   '10) DDT vuoto: DRAFT->EMESSO bloccato dal guard');

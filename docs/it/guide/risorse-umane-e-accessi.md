@@ -1,6 +1,6 @@
 # Guida — Risorse Umane e Accessi al Software
 
-> **Ultimo aggiornamento**: 7 ottobre 2026
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -533,7 +533,7 @@ vale per tutte le porte. Tre regole, prima di guardare la password: il
 **blocco** dell'amministratore, il **freno** sulla provenienza dopo N password
 sbagliate di fila, l'**attesa** crescente sulla credenziale. Valgono anche per
 un nome che non esiste, così la risposta non dice se il nome c'è. Il modello
-completo è in [Architettura multi-face §3.1-bis](/guide/architettura-multi-face-auth#31-bis-la-credenziale-tentativi-freno-blocco).
+completo è in [Architettura multi-face §3.2](/guide/architettura-multi-face-auth#32-la-credenziale-tentativi-freno-blocco).
 
 * [`script.fn_check_blocco_login`](/dbzero/script/funzioni/fn_check_blocco_login) — le tre regole, prima della password
 * [`script.fn_registra_tentativo_login`](/dbzero/script/funzioni/fn_registra_tentativo_login) — l'esito del tentativo

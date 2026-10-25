@@ -84,6 +84,10 @@
 --    i guard di transizione sanno sollevare anche altro, e P0001 direbbe solo
 --    «errore di dominio», non quale.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): l'ambito degli indirizzi della bolla e' DDT_VENDITA.
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): «Emetti» del DDT porta il permesso
+--   emetti_ddt e si nasconde a chi non l'ha; il file prova il prezzo, non il permesso, quindi
+--   l'operatore riceve emetti_ddt prima del test 33. Il 35 emette con dbops.fn_pgtap_porta_a_stato
+--   al posto dell'UPDATE diretto, che la porta ora rifiuta prima del guard. Attese invariate.
 -- ------------------------------------------------------------
 
 -- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
@@ -737,6 +741,12 @@ SELECT is(
     '32) DDT che vende, componente PENDING: il motivo e'' E_DOC_PREZZO_PENDENTE (non piu'' E_COMPONENTE_PREZZO_PENDENTE)'
 );
 
+-- rev 2026-10-25 (giro 5): si prova il prezzo, non il permesso — l'operatore
+--   in sessione riceve emetti_ddt, senza il quale «Emetti» non comparirebbe.
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_ddt');
+END $az$;
+
 SELECT ok(
     (SELECT a -> 'reasons' @> '[{"reason": "PREZZO_PENDENTE"}]'::jsonb
             AND (a ->> 'enabled')::boolean IS FALSE
@@ -757,8 +767,7 @@ SELECT is(
 );
 
 SELECT throws_like(
-    format('UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'EMESSO'),
+    format($$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$$,
            (SELECT ddt_id FROM _d WHERE tag = 'vende')),
     '%prezzi ancora in attesa di approvazione%',
     '35) DRAFT -> EMESSO del DDT che vende con un prezzo in attesa: il guard solleva il codice nuovo'

@@ -67,6 +67,10 @@
 --       ⚠️ ROSSO DA OWNER, VERDE COME APP: da owner la RLS non c'e', l'ordine si
 --       vede e parla E_DOC_CLIENTE_DIVERSO_DA_SORGENTE. Per ultimo: cambia
 --       contesto (memoria del progetto, prova pre-apply da owner).
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): emissioni e
+--   consegne delle bolle da dbops.fn_pgtap_porta_a_stato (il verbo), non piu'
+--   con un UPDATE diretto dello stato (E_DOC_STATO_SOLO_DAL_VERBO). Il 13 prova
+--   lo stesso guard d'emissione dal verbo: l'attesa non cambia.
 -- ------------------------------------------------------------
 BEGIN;
 
@@ -275,14 +279,14 @@ SELECT ok(
     '12) trasferimento senza BA: la causale non vuole un cliente, nessun motivo');
 
 SELECT throws_like(
-    format('UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s',
-           (SELECT ddt_emesso FROM _k), (SELECT senza_ba FROM _d)),
+    format($q$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$q$,
+           (SELECT senza_ba FROM _d)),
     '%manda la merce a un cliente%',
     '13) l''emissione di un conto visione senza BA e'' rifiutata: E_DDT_CLIENTE_OBBLIGATORIO');
 
 SELECT lives_ok(
-    format('UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s',
-           (SELECT ddt_emesso FROM _k), (SELECT con_ba FROM _d)),
+    format($q$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$q$,
+           (SELECT con_ba FROM _d)),
     '14) col BA il conto visione si emette');
 
 SELECT throws_like(
@@ -351,8 +355,7 @@ SELECT throws_like(
     '20) in bozza, ma il DDT evade gia'' righe d''ordine: il BA non cambia');
 
 -- 21) il reso dal DDT di A (emesso al test 14, portato a consegnato)
-UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT ddt_spedito FROM _k)    WHERE id = (SELECT con_ba FROM _d);
-UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT ddt_consegnato FROM _k) WHERE id = (SELECT con_ba FROM _d);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT con_ba FROM _d), 'CONSEGNATO');
 
 SELECT throws_like(
     format($q$INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, destinatario_soggetto_ruolo_id, billing_account_id, emittente_fiscale_id)
@@ -492,9 +495,7 @@ SELECT is(
 CREATE TEMP TABLE _cl AS
 SELECT pg_temp.ddt_bozza(NULL, (SELECT soggetto_ruolo_id FROM _c WHERE lato = 'A'),
                          (SELECT conto_lavoro FROM _k)) AS id;
-UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT ddt_emesso FROM _k)     WHERE id = (SELECT id FROM _cl);
-UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT ddt_spedito FROM _k)    WHERE id = (SELECT id FROM _cl);
-UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT ddt_consegnato FROM _k) WHERE id = (SELECT id FROM _cl);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT id FROM _cl), 'CONSEGNATO');
 
 CREATE TEMP TABLE _r35 AS
 WITH r AS (

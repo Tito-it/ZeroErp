@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso a credito dal builder dbops.fn_pgtap_crea_reso (che concede da se' conferma_reso); resta scritta a mano la commessa con la fattura, che e' il caso del test.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano il reso a credito (giro 2) e la commessa con la fattura, che sono il caso del test.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
@@ -48,13 +49,11 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(6);
 
--- L'operatore di fixture non ha azioni: emissione della bolla e conferma del
--- reso sono verbi che le applicano.
+-- L'operatore di fixture non ha azioni: l'emissione della bolla e' un verbo
+-- che le applica (la conferma del reso la concede il suo builder).
 DO $az$ BEGIN
     PERFORM dbops.fn_pgtap_concedi_azione(
         NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_ddt');
-    PERFORM dbops.fn_pgtap_concedi_azione(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
 END $az$;
 
 -- ============================================================
@@ -75,8 +74,6 @@ SELECT
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)            AS iva_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo ORDER BY s.id LIMIT 1)       AS sorgente_ddt_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo ORDER BY s.id LIMIT 1)       AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo ORDER BY t.id LIMIT 1)   AS tipo_credito_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                          AS tipo_doc_fiscale_id,
   (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_fatt_draft_id,
   script.fn_pgtap_registro_fattura()                                                                                 AS registro_id,
@@ -189,28 +186,13 @@ END $fatt$;
 -- ============================================================
 -- Reso a credito di 3 e il suo accredito: la rettifica nasce nella commessa
 -- ============================================================
-DO $reso$
-DECLARE r RECORD; v_reso bigint; v_riga bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_acr;
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  VALUES (r.stato_reso_draft_id, r.sorgente_ddt_id,
-          (SELECT d.uid FROM vendite.ddt d WHERE d.id = pg_temp.acr('ddt')), false,
-          jsonb_build_object('test_scope','pgtap_annullo_commessa_rettifica'))
-  RETURNING id INTO v_reso;
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-      articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base,
-      tipo_reso_id, storicizza)
-  SELECT v_reso, 1, dr.id,
-         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f
-           WHERE f.ddt_riga_id = dr.id ORDER BY f.id LIMIT 1),
-         dr.articolo_id, dr.descrizione, 3, dr.uom_operativa_id, dr.factor_to_base,
-         r.tipo_credito_id, false
-    FROM vendite.ddt_righe dr WHERE dr.id = pg_temp.acr('ddt_riga')
-  RETURNING id INTO v_riga;
-  PERFORM vendite.fn_conferma_reso(v_reso);
-  INSERT INTO tmp_acr_fix VALUES ('reso', v_reso), ('resi_riga', v_riga);
-END $reso$;
+CREATE TEMP TABLE tmp_acr_reso AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('annullo commessa rettifica', pg_temp.acr('ddt'), 3,
+                                       p_ddt_riga_id => pg_temp.acr('ddt_riga'));
+INSERT INTO tmp_acr_fix
+SELECT 'reso', x.reso_id FROM tmp_acr_reso x
+UNION ALL
+SELECT 'resi_riga', x.resi_riga_id FROM tmp_acr_reso x;
 
 INSERT INTO tmp_acr_fix
 SELECT 'ca_ret', a.commessa_attivita_id

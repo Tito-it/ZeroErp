@@ -5,6 +5,7 @@
 --   vendite.resi_righe_rinunce + fn_resi_riga_residuo_riconsegna
 --   + trgfn_resi_rinunce_guard + trgfn_resi_riconsegne_guard ESTESO
 -- Brief: brief-db-chiusura-riconsegna-reso-definitivo §4.1, §4.2-bis, §4.6.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso, in DRAFT, su una bolla da ordine costruita: la fixture pescava dai dati (riga di bolla e tipo di reso) ed era rossa in partenza; restano scritti a mano la bolla di ri-consegna in bozza e i ponti (riconsegne, rinunce), che sono il caso.
 --
 -- COSA PRESIDIA: l'invariante condiviso dalle DUE uscite di una riga reso per
 -- ri-consegna — ri-spedire al cliente oppure dichiarare la quota definitiva
@@ -18,7 +19,7 @@
 -- dell'estensione il guard gemello sommava solo le riconsegne e avrebbe
 -- lasciato ri-spedire merce gia' rinunciata.
 --
--- Nota fixture: reso in DRAFT su una riga DDT esistente. I due guard NON
+-- Nota fixture: reso in DRAFT su una bolla da ordine costruita. I due guard NON
 -- filtrano lo stato del reso: l'invariante di copertura vale comunque, e la
 -- conferma e' materia della madre. Le rinunce si inseriscono DIRETTAMENTE sul
 -- ponte: fn_chiudi_riconsegna_reso e' Fase 2, qui si testano le fondamenta.
@@ -107,44 +108,23 @@ SELECT is(
   '6) helper: riga inesistente -> 0 (non errore)');
 
 -- ============================================================
--- FIXTURE: ordine -> DDT CONSEGNATO -> reso CONFERMATO (ri-consegna)
+-- FIXTURE: ordine -> DDT CONSEGNATO -> reso DRAFT (ri-consegna)
 -- ============================================================
--- Il reso nasce SEMPRE da un DDT (sorgente_tipo_id + sorgente_uid NOT NULL):
--- si riusa una riga DDT esistente, il normalize deriva destinatario/emittente.
--- resi_righe si popola con qta_operativa (il trigger qta_from_operativa calcola
--- `quantita`): passare `quantita` direttamente solleverebbe E_QTA_MISSING.
-CREATE TEMP TABLE tmp_refs_rin AS
-SELECT
-  dr.id                                                      AS ddt_riga_id,
-  dr.articolo_id,
-  dr.descrizione,
-  dr.uom_operativa_id,
-  dr.factor_to_base,
-  d.uid                                                      AS ddt_uid,
-  (SELECT s.id FROM config.sorgenti s
-    WHERE s.codice_interno = 'DDT_VENDITA' AND s.attivo LIMIT 1) AS sorgente_ddt_id,
-  (SELECT s.id FROM config.stati_doc_reso s
-    WHERE s.codice_interno = 'DRAFT' AND s.attivo LIMIT 1)   AS stato_reso_draft_id,
-  -- Tipo reso che RIAPRE il residuo (= per ri-consegna): e' il solo tipo su cui
-  -- la rinuncia ha senso, ed e' quello che i due guard pretendono.
-  (SELECT tr.id FROM config.tipi_reso tr
-    WHERE tr.riapre_residuo IS TRUE AND tr.attivo IS TRUE ORDER BY tr.id LIMIT 1) AS tipo_reso_ric_id
-FROM vendite.ddt_righe dr
-JOIN vendite.ddt d ON d.id = dr.ddt_id
-JOIN config.stati_doc_ddt sd ON sd.id = d.stato_doc_ddt_id
--- Il DDT sorgente DEVE essere CONSEGNATO: trgfn_resi_guard_ddt_consegnato
--- ammette resi solo da li' (e' anche la precondizione del flip DDT->RESO).
-WHERE dr.attivo IS TRUE
-  AND sd.codice_interno = 'CONSEGNATO'
-  -- ...e deve avere ancora CAPIENZA di reso: trgfn_resi_righe_guard_quantita
-  -- limita il reso a (consegnato - gia' reso). Si prende la riga con la
-  -- capienza maggiore; ne servono >= 3 per l'aritmetica dei test 7-10.
-  AND dr.quantita - COALESCE((SELECT SUM(rr.quantita) FROM vendite.resi_righe rr
-                               WHERE rr.ddt_riga_id = dr.id AND rr.attivo IS TRUE), 0) >= 3
-ORDER BY dr.quantita - COALESCE((SELECT SUM(rr.quantita) FROM vendite.resi_righe rr
-                                  WHERE rr.ddt_riga_id = dr.id AND rr.attivo IS TRUE), 0) DESC,
-         dr.id
-LIMIT 1;
+-- ⛔ rev 2026-10-25 (brief-db-pgtap-reso-costruito): la fixture si COSTRUISCE.
+--   Prima pescava una riga di bolla consegnata con capienza >= 3 fra i dati
+--   del database e il tipo di reso col primo `riapre_residuo` per id: su uno
+--   scratch senza bolle la riga del reso nasceva vuota (6-bis «have NULL»), e
+--   il tipo pescato non era quello di ri-consegna (il ponte del test 7 moriva
+--   su «Aggancio ri-consegna ammesso solo su righe reso di tipo ri-consegna»).
+-- Il reso dal builder: bolla da ordine consegnata (10 pezzi), riga del reso
+-- da 3 in unita' operativa, tipo RESO_PER_RICONSEGNA, riga d'ordine dal
+-- legame. Resta in DRAFT: i guard dei ponti non filtrano lo stato del reso,
+-- l'invariante di copertura vale comunque. La conferma e' materia della madre
+-- (Fase 2).
+CREATE TEMP TABLE tmp_reso_rin AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('resi_rinunce', NULL, 3, 'RESO_PER_RICONSEGNA', 'DRAFT');
+
+CREATE TEMP TABLE tmp_riga_rin AS SELECT resi_riga_id FROM tmp_reso_rin;
 
 -- ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-6/D-7): il ponte
 --   di ri-consegna punta a una riga di una bolla di RI-CONSEGNA, e un legame
@@ -158,16 +138,11 @@ DO $ric$
 DECLARE r RECORD; v_ddt bigint; v_dr bigint;
 BEGIN
   SELECT d.destinatario_soggetto_ruolo_id, d.billing_account_id, d.valuta_id, d.emittente_fiscale_id,
-         x.articolo_id, x.uom_operativa_id, x.factor_to_base
-    INTO r
-    FROM tmp_refs_rin x
+         dr.articolo_id, dr.uom_operativa_id, dr.factor_to_base
+    INTO STRICT r
+    FROM tmp_reso_rin x
     JOIN vendite.ddt_righe dr ON dr.id = x.ddt_riga_id
     JOIN vendite.ddt d ON d.id = dr.ddt_id;
-  -- Il file pesca la riga d'origine dai dati: se non c'e' (database da zero)
-  -- la fixture si ferma qui, e i test lo dicono al 6-bis come prima.
-  IF NOT FOUND THEN
-    RETURN;
-  END IF;
   INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id, billing_account_id,
                            valuta_id, emittente_fiscale_id, storicizza, meta)
   VALUES (script.fn_data_operativa(),
@@ -183,50 +158,9 @@ BEGIN
   UPDATE tmp_ddt_ric SET ddt_id = v_ddt, ddt_riga_id = v_dr;
 END $ric$;
 
-CREATE TEMP TABLE tmp_reso_rin AS
-WITH ins AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid,
-                            storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id, r.ddt_uid, false,
-         jsonb_build_object('test_scope', 'pgtap_resi_rinunce')
-  FROM tmp_refs_rin r
-  RETURNING id)
-SELECT id AS reso_id FROM ins;
-
--- Riga reso da 3 (unita' operativa), tipo ri-consegna. Il reso resta in DRAFT:
--- i guard dei ponti non filtrano lo stato del reso, l'invariante di copertura
--- vale comunque. La conferma e' materia della madre (Fase 2).
--- Base 3 e non 10: e' la capienza di reso realmente disponibile sui DDT
--- consegnati di dev. L'aritmetica sotto e' scalata di conseguenza; il
--- discriminante del test 8 regge identico.
-CREATE TEMP TABLE tmp_riga_rin AS
-WITH ins AS (
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-                                  articolo_id,
-                                  descrizione, qta_operativa, uom_operativa_id,
-                                  factor_to_base, tipo_reso_id, attivo, storicizza)
-  SELECT (SELECT reso_id FROM tmp_reso_rin), 1, r.ddt_riga_id,
-         -- ⚠️ `ordine_riga_id` va RICAVATO dal fulfillment, non omesso.
-         -- Prima del 2026-08-17 questa fixture lo lasciava vuoto e passava:
-         -- la riga di DDT che sceglie dai dati di dev evade un ordine, quindi
-         -- il reso risultava su merce ordinata senza riferimento all'ordine —
-         -- e in quella condizione `fn_ordine_riga_qta_riconsegna` non riapre
-         -- il residuo, cioe' la merce torna e l'ordine non se ne accorge.
-         -- Dal guard trgfn_resi_righe_guard_origine_coerente (20260817-13)
-         -- quella riga non e' piu' scrivibile. NULL resta corretto solo se la
-         -- riga di DDT non evade nulla, ed e' il senso del sotto-select.
-         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f
-           WHERE f.ddt_riga_id = r.ddt_riga_id ORDER BY f.id LIMIT 1),
-         r.articolo_id,
-         r.descrizione, 3.000000, r.uom_operativa_id, r.factor_to_base,
-         r.tipo_reso_ric_id, true, false
-  FROM tmp_refs_rin r
-  RETURNING id)
-SELECT id AS resi_riga_id FROM ins;
-
--- Precondizione esplicita: se i dati di dev non offrissero una riga DDT con
--- capienza 3, il fixture fallirebbe QUI in modo leggibile invece di far
--- fallire i test 7-10 con numeri incomprensibili (fail-visible).
+-- Precondizione esplicita: se la fixture non costruisse la riga da 3, il file
+-- fallirebbe QUI in modo leggibile invece di far fallire i test 7-10 con
+-- numeri incomprensibili (fail-visible).
 SELECT is(
   (SELECT rr.quantita FROM vendite.resi_righe rr
     WHERE rr.id = (SELECT resi_riga_id FROM tmp_riga_rin)),

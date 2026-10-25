@@ -21,6 +21,9 @@ AS $function$
 --   stessa transazione. Vedi l'intestazione del changeSet.
 -- Ritorna: i movimenti scritti (uscite, entrate o storni); nessuna riga
 --   se il passaggio non tocca il registro.
+-- rev 2026-10-25 (20261025-16, brief-modello-documento-vendita §7): il
+--   permesso dalla riga del passaggio (script.fn_guard_passaggio), lo
+--   stato dalla scrittura comune (script.fn_doc_scrivi_stato).
 DECLARE
     v_utente       config.user_override_azioni.auth_user_id%TYPE;
     v_ddt          vendite.ddt%ROWTYPE;
@@ -68,16 +71,20 @@ BEGIN
             'p_stato (codice_interno di config.stati_doc_ddt, attivo)');
     END IF;
 
+    -- Il permesso del passaggio, prima di scrivere qualunque cosa: dalla
+    -- sua riga della matrice (M-3). Un passaggio di processo chiesto qui
+    -- (CONSEGNATO <-> RESO, dei verbi del reso) si ferma qui.
+    PERFORM script.fn_guard_passaggio(v_utente, 'vendite.ddt'::regclass,
+                                      v_ddt.stato_doc_ddt_id, v_stato_a_id);
+
     v_causale     := vendite.fn_ddt_causale_magazzino(v_ddt);
     v_muove       := vendite.fn_ddt_muove_merce(v_ddt);
     v_emissione   := v_da = 'DRAFT'  AND p_stato = 'EMESSO';
     v_annullo     := v_da = 'EMESSO' AND p_stato = 'ANNULLATO';
     v_consegna_tr := p_stato = 'CONSEGNATO' AND v_causale = 'TRASF_OUT' AND v_muove;
 
-    -- Il permesso, prima di scrivere qualunque cosa (D-2).
-    IF p_stato = 'EMESSO' OR v_annullo THEN
-        PERFORM script.fn_guard_azione(v_utente, 'emetti_ddt');
-    END IF;
+    -- Il permesso dell'operazione di magazzino dentro il passaggio: la
+    -- consegna di un trasferimento scrive gli arrivi (T-4 di Tid).
     IF v_consegna_tr THEN
         PERFORM script.fn_guard_azione(v_utente, 'registra_magazzino');
     END IF;
@@ -97,11 +104,9 @@ BEGIN
            AND m.automatico;
     END IF;
 
-    -- Lo stato: la porta si apre per QUESTA bolla, e i guard di sempre girano.
-    PERFORM set_config('zeroerp.ddt_cambio_stato', p_ddt_id::text, true);
-    UPDATE vendite.ddt d
-       SET stato_doc_ddt_id = v_stato_a_id
-     WHERE d.id = p_ddt_id;
+    -- Lo stato, dalla scrittura comune: la porta si apre per QUESTA bolla,
+    -- e i guard di sempre girano.
+    PERFORM script.fn_doc_scrivi_stato('vendite.ddt'::regclass, p_ddt_id, v_stato_a_id);
 
     -- I movimenti.
     IF v_emissione AND v_muove THEN
@@ -127,13 +132,12 @@ BEGIN
         END IF;
     END IF;
 
-    PERFORM set_config('zeroerp.ddt_cambio_stato', '', true);
     RETURN;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_cambia_stato_ddt(p_ddt_id bigint, p_stato character varying)
-IS 'VERBO di ogni cambio di stato di una bolla (D-L3-e; modello «una scrittura = un verbo»). Permesso: emetti_ddt per -> EMESSO e per EMESSO -> ANNULLATO, registra_magazzino per la consegna di una bolla di trasferimento che muove merce (script.fn_guard_azione, E_PERMESSO_NEGATO); gli altri passaggi restano al permesso del backend. SECURITY DEFINER con search_path bloccato: la testata si prende FOR UPDATE con il predicato della policy nella WHERE (fuori perimetro E_DDT_NOT_FOUND, no-leak). Fa l''UPDATE dello stato — la matrice e tutti i guard di sempre — aprendo la porta del registro con la GUC transazionale zeroerp.ddt_cambio_stato. Su una bolla che muove merce: all''emissione solleva il primo motivo di script.fn_check_ddt_merce, crea i prelievi automatici e scrive le uscite (vendite.fn_posta_ddt USCITA); alla consegna di un trasferimento scrive le entrate (ARRIVO); all''annullo di una bolla emessa storna i movimenti dei suoi prelievi (magazzino.fn_storna_movimenti_sorgente). UNA transazione. Ritorna (movimento_id, prelievo_id, qta). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt; il posting in vendite dal 2026-10-01 (brief-db-magazzino-registro-anello-interno).';
+IS 'VERBO di ogni cambio di stato manuale di una bolla (modello «una scrittura = un verbo»; modello del documento, brief-modello-documento-vendita §7). Permesso: dalla riga del passaggio (config.transizioni_stati_ddt.azione_processo_codename: emetti_ddt su DRAFT -> EMESSO e EMESSO -> ANNULLATO) con script.fn_guard_passaggio, prima di ogni scrittura; un passaggio di processo (CONSEGNATO <-> RESO, dei verbi del reso) chiesto qui: E_DOC_PASSAGGIO_DI_PROCESSO; gli altri passaggi al permesso sul documento, che controlla il backend. In piu'' registra_magazzino alla consegna di una bolla di trasferimento che muove merce: il permesso dell''operazione di magazzino dentro il passaggio (T-4 di Tid). SECURITY DEFINER con search_path bloccato: la testata si prende FOR UPDATE con il predicato della policy nella WHERE (fuori perimetro E_DDT_NOT_FOUND, no-leak). Lo stato lo scrive script.fn_doc_scrivi_stato attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo), con la matrice e tutti i guard di sempre. Su una bolla che muove merce: all''emissione solleva il primo motivo di script.fn_check_ddt_merce, crea i prelievi automatici e scrive le uscite (vendite.fn_posta_ddt USCITA); alla consegna di un trasferimento scrive le entrate (ARRIVO); all''annullo di una bolla emessa storna i movimenti dei suoi prelievi (magazzino.fn_storna_movimenti_sorgente). UNA transazione. Ritorna (movimento_id, prelievo_id, qta). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt; il posting in vendite dal 2026-10-01 (brief-db-magazzino-registro-anello-interno); rev 2026-10-25 (20261025-16) il verbo comune.';
 ```
 
 </div>

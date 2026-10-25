@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): le emissioni dei test 9, 13, 14 e 16 da dbops.fn_pgtap_porta_a_stato (il verbo), che solleva gli stessi errori dei guard d'emissione: lo stato della bolla non si cambia piu' con un UPDATE diretto (E_DOC_STATO_SOLO_DAL_VERBO). Le attese non cambiano.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i due resi per ri-consegna (ORD e STD) dal builder dbops.fn_pgtap_crea_reso, che li conferma e concede da se' l'azione conferma_reso; la bolla di ri-consegna resta dalla madre vendite.fn_genera_ddt_riconsegna, in bozza e senza completamenti: e' lei sotto test (cio' che eredita), non una fixture.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla d'origine ORD dal builder dbops.fn_pgtap_crea_ddt_da_ordine (p_ordine_id, in bozza, poi CONSEGNATO per la matrice); l'ordine resta scritto a mano (sconto 5 sulla riga: il builder non lo sa fare), come i blocchi «relazione»/«viaggio» e l'origine dell'indirizzo scritti sulla bolla in bozza (sono il caso dei test 1, 2 e 7); il reso resta a mano (giro 2); la bolla STD e' standalone e va a CONSEGNATO per la matrice; le emissioni di 9, 13, 14, 16 sono il caso.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   la natura NON merce si cerca diversa da ORDINE_VENDITA, il codice della sorgente (era
@@ -67,14 +69,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_
 
 SELECT plan(18);
 
--- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
--- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
-DO $az$ BEGIN
-    PERFORM dbops.fn_pgtap_concedi_azione(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
-END $az$;
-
 -- ============================================================
 -- 0) Oggetti presenti
 -- ============================================================
@@ -121,9 +115,6 @@ SELECT
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'       AND s.attivo LIMIT 1) AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='DRAFT'        AND s.attivo LIMIT 1) AS stato_ddt_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='EMESSO'       AND s.attivo LIMIT 1) AS stato_ddt_emesso_id,
-  (SELECT s.id FROM config.sorgenti        s WHERE s.codice_interno='DDT_VENDITA'  AND s.attivo LIMIT 1) AS sorgente_ddt_id,
-  (SELECT s.id FROM config.stati_doc_reso  s WHERE s.codice_interno='DRAFT'        AND s.attivo LIMIT 1) AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso       t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
   (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')         AS tipo_ind_con_id,
   -- ⚠️ Aggancio per `codice`, non per `codice_interno`: config.causali_trasporto
   --   la colonna immutabile NON ce l'ha (caso CANDIDATE_ADD_CI delle linee
@@ -200,31 +191,11 @@ UPDATE vendite.ddt_indirizzi di
 
 SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_ddt_ord), 'CONSEGNATO');
 
-CREATE TEMP TABLE tmp_ddt_ord_riga AS
-SELECT dr.id, dr.articolo_id, dr.descrizione, dr.uom_operativa_id, dr.factor_to_base,
-       dr.prezzo_unitario, dr.sconto_percentuale, dr.iva_id
-  FROM vendite.ddt_righe dr
- WHERE dr.ddt_id = (SELECT ddt_id FROM tmp_ddt_ord)
- ORDER BY dr.riga_nr, dr.id LIMIT 1;
-
+-- Il reso per ri-consegna di 4, confermato, sulla prima riga della bolla d'origine.
 CREATE TEMP TABLE tmp_reso_ord AS
-WITH ins AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id,
-         (SELECT d.uid FROM vendite.ddt d WHERE d.id=(SELECT ddt_id FROM tmp_ddt_ord)),
-         false, jsonb_build_object('test_scope','pgtap_riconsegna_eredita')
-  FROM tmp_ref r RETURNING id)
-SELECT * FROM ins;
-
-INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-  articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base,
-  tipo_reso_id, storicizza)
-SELECT (SELECT id FROM tmp_reso_ord), 1, dr.id, (SELECT id FROM tmp_ord_riga),
-       dr.articolo_id, dr.descrizione, 4, dr.uom_operativa_id, dr.factor_to_base,
-       (SELECT tipo_riconsegna_id FROM tmp_ref), false
-  FROM tmp_ddt_ord_riga dr;
-
-SELECT vendite.fn_conferma_reso((SELECT id FROM tmp_reso_ord));
+SELECT reso_id AS id FROM dbops.fn_pgtap_crea_reso('riconsegna eredita ORD',
+    (SELECT ddt_id FROM tmp_ddt_ord), 4, 'RESO_PER_RICONSEGNA',
+    p_ordine_riga_id => (SELECT id FROM tmp_ord_riga));
 
 CREATE TEMP TABLE tmp_ric_ord AS
 SELECT vendite.fn_genera_ddt_riconsegna((SELECT id FROM tmp_reso_ord)) AS ddt_id;
@@ -314,26 +285,15 @@ SELECT (SELECT id FROM tmp_ddt_std), r.tipo_ind_con_id,
 
 SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT id FROM tmp_ddt_std), 'CONSEGNATO');
 
-CREATE TEMP TABLE tmp_reso_std AS
-WITH ins AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id, (SELECT uid FROM tmp_ddt_std),
-         false, jsonb_build_object('test_scope','pgtap_riconsegna_eredita')
-  FROM tmp_ref r RETURNING id)
-SELECT * FROM ins;
-
+-- Il reso per ri-consegna di 2, confermato.
 -- ⚠️ ordine_riga_id NULL, e non e' una scorciatoia: la riga di DDT non ha
---   nessun fulfillment, e trgfn_resi_righe_guard_origine_coerente RIFIUTA un
---   riferimento a un ordine che quella merce non l'ha spedita.
-INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-  articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base,
-  tipo_reso_id, storicizza)
-SELECT (SELECT id FROM tmp_reso_std), 1, dr.id, NULL,
-       dr.articolo_id, dr.descrizione, 2, dr.uom_operativa_id, dr.factor_to_base,
-       (SELECT tipo_riconsegna_id FROM tmp_ref), false
-  FROM tmp_ddt_std_riga dr;
-
-SELECT vendite.fn_conferma_reso((SELECT id FROM tmp_reso_std));
+--   nessun fulfillment (il builder non trova legame), e
+--   trgfn_resi_righe_guard_origine_coerente RIFIUTA un riferimento a un ordine
+--   che quella merce non l'ha spedita.
+CREATE TEMP TABLE tmp_reso_std AS
+SELECT reso_id AS id FROM dbops.fn_pgtap_crea_reso('riconsegna eredita STD',
+    (SELECT id FROM tmp_ddt_std), 2, 'RESO_PER_RICONSEGNA',
+    p_ddt_riga_id => (SELECT id FROM tmp_ddt_std_riga));
 
 -- Per il test 17: dopo la bolla d'origine l'articolo cambia natura. La nuova
 -- si sceglie fra quelle che non vanno in ordine: un articolo-onere non puo'
@@ -425,8 +385,8 @@ SELECT is(
 --    Provare le colonne una per una non lo dimostra.
 -- ============================================================
 SELECT lives_ok(
-  format($q$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$q$,
-         (SELECT stato_ddt_emesso_id FROM tmp_ref), (SELECT ddt_id FROM tmp_ric_std)),
+  format($q$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$q$,
+         (SELECT ddt_id FROM tmp_ric_std)),
   '9) standalone: il DDT di ri-consegna si EMETTE');
 
 -- ============================================================
@@ -495,8 +455,8 @@ SELECT (SELECT id FROM tmp_ddt_iva), 1, r.articolo_id, 'Riga con prezzo senza IV
 --     non con un errore qualunque.
 -- ============================================================
 SELECT throws_ok(
-  format($q$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$q$,
-         (SELECT stato_ddt_emesso_id FROM tmp_ref), (SELECT id FROM tmp_ddt_iva)),
+  format($q$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$q$,
+         (SELECT id FROM tmp_ddt_iva)),
   'P0001', NULL,
   '13) C-1: riga con prezzo e senza aliquota -> l''emissione rifiuta');
 
@@ -533,8 +493,8 @@ UPDATE vendite.ddt SET causale_trasporto_id = (SELECT causale_non_fatt_id FROM t
  WHERE id = (SELECT id FROM tmp_ddt_iva);
 
 SELECT throws_ok(
-  format($q$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$q$,
-         (SELECT stato_ddt_emesso_id FROM tmp_ref), (SELECT id FROM tmp_ddt_iva)),
+  format($q$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$q$,
+         (SELECT id FROM tmp_ddt_iva)),
   'P0001', NULL,
   '16) C-1: causale NON fatturabile ma riga con prezzo senza aliquota -> rifiuta lo stesso');
 
@@ -552,8 +512,8 @@ UPDATE vendite.ddt_righe SET prezzo_unitario = NULL
  WHERE ddt_id = (SELECT id FROM tmp_ddt_iva);
 
 SELECT lives_ok(
-  format($q$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$q$,
-         (SELECT stato_ddt_emesso_id FROM tmp_ref), (SELECT id FROM tmp_ddt_iva)),
+  format($q$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$q$,
+         (SELECT id FROM tmp_ddt_iva)),
   '14) C-1: causale non fatturabile e riga senza prezzo -> emette (solo trasporto)');
 
 -- ============================================================

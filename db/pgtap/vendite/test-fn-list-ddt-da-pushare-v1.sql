@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): pg_temp.spedisci porta la bolla a SPEDITO con dbops.fn_pgtap_porta_a_stato, non piu' con gli UPDATE diretti dello stato che la porta ora rifiuta.
 -- rev 2026-10-24 (brief-modello-documento-vendita Q-4): il mondo (azienda, operatore, contesto, cliente con BA) si costruisce con dbops.fn_pgtap_crea_mondo_cliente; prima BA, emittente e ruolo del cliente erano «il primo BA del database con un emittente», assente su un database ricostruito da zero.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
 -- pgTAP test per Zero ERP
@@ -146,6 +147,9 @@ FROM tmp_mondo m;
 
 -- Porta un DDT nato in DRAFT fino a SPEDITO nel verso vero: indirizzo CON,
 -- poi le transizioni contigue (EMESSO, SPEDITO). rev 2026-09-22.
+-- rev 2026-10-25 (§7, giro 5): i passi col verbo, da dbops.fn_pgtap_porta_a_stato
+--   (la porta sullo stato rifiuta l'UPDATE diretto); solleva gli stessi errori
+--   dei guard d'emissione, che il caso B senza BA aspetta.
 CREATE OR REPLACE FUNCTION pg_temp.spedisci(p_ddt bigint)
 RETURNS void AS $$
 DECLARE r RECORD;
@@ -153,8 +157,7 @@ BEGIN
   SELECT * INTO r FROM tmp_refs_ddt;
   INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
   VALUES (p_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
-  UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_emesso_id  WHERE id = p_ddt;
-  UPDATE vendite.ddt SET stato_doc_ddt_id = r.stato_ddt_spedito_id WHERE id = p_ddt;
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ddt', p_ddt, 'SPEDITO');
 END $$ LANGUAGE plpgsql;
 
 SELECT ok(

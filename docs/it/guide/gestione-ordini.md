@@ -1,6 +1,6 @@
 # Guida — Gestione Ordini di vendita
 
-> **Ultimo aggiornamento**: 12 ottobre 2026
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali, sviluppatori
 > backend/frontend, DBA.
@@ -36,6 +36,7 @@
 >
 > **Vedi anche** — guide correlate:
 >
+> * [Il modello del documento di vendita](/guide/modello-documento-di-vendita) — **le regole comuni a tutti i documenti**: nascita, cambio di stato, permesso sul passaggio, emissione, annullo
 > * [Gestione Preventivi](/guide/gestione-preventivi) — la sorgente principale dell'ordine (split per natura)
 > * [Gestione Offerte commerciali](/guide/gestione-offerte-commerciali) — l'altra sorgente (1:1, XOR contratto)
 > * [Gestione Contratti](/guide/gestione-contratti) — il "gemello ricorrente": l'offerta genera contratto **oppure** ordine, mai entrambi
@@ -350,6 +351,8 @@ il gesto per intero, e nessuna riga cambia.
 ---
 
 ## 4. Ciclo di vita e stati
+
+⭐ Le regole comuni a tutti i documenti — in che stato si nasce, chi cambia lo stato, quale permesso chiede un passaggio, l'emissione, l'annullo — stanno nel [modello del documento di vendita](/guide/modello-documento-di-vendita), che al §10 dice anche a che punto è l'ordine rispetto al modello. Qui ci sono gli stati e i passaggi che sono suoi.
 
 ### 4.1 Stati
 

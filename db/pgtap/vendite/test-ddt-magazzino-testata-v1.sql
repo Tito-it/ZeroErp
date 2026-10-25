@@ -18,6 +18,11 @@
 --   7) prelievo con seriale e quantita' diversa da 1 -> 23514
 --   8) vendite.ddt_righe non ha piu' la colonna lotto
 --   9) vendite.ddt_righe non ha piu' la colonna seriale
+--
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): l'emissione
+--   della bolla «senza» passa da dbops.fn_pgtap_porta_a_stato (il verbo): lo
+--   stato della bolla non si cambia piu' con un UPDATE diretto, per nessuna
+--   bolla (E_DOC_STATO_SOLO_DAL_VERBO).
 -- ------------------------------------------------------------
 BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
@@ -69,7 +74,7 @@ SELECT is(
     '3) nata con un magazzino: tiene il suo (il default non sovrascrive)');
 
 -- 4-5) immutabile fuori bozza. La bolla «senza» si emette con una riga di un
---      articolo NON gestito: non muove merce, quindi l'UPDATE diretto e' ammesso.
+--      articolo NON gestito, col verbo (lo stato si cambia solo da li').
 SELECT lives_ok(
     format('UPDATE vendite.ddt SET magazzino_id = %s WHERE id = %s', (SELECT mag_x FROM _fix), (SELECT senza FROM _d)),
     '4) in bozza il magazzino si cambia');
@@ -79,8 +84,7 @@ BEGIN
     SELECT i.id INTO v_iva FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1;
     INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione, qta_operativa, quantita, prezzo_unitario, iva_id)
     SELECT (SELECT senza FROM _d), 1, art_n, 'non gestito', 1, 1, 10, v_iva FROM _fix;
-    UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT id FROM config.stati_doc_ddt WHERE codice_interno = 'EMESSO')
-     WHERE id = (SELECT senza FROM _d);
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT senza FROM _d), 'EMESSO');
 END $e$;
 SELECT throws_like(
     format('UPDATE vendite.ddt SET magazzino_id = %s WHERE id = %s', (SELECT mag_p FROM _fix), (SELECT senza FROM _d)),

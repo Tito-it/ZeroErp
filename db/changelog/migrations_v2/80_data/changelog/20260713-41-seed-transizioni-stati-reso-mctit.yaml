@@ -36,7 +36,7 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: ""
+            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: NUMERIC }
@@ -48,3 +48,4 @@ databaseChangeLog:
               - column: { name: user_insert, type: STRING }
               - column: { name: data_update, type: STRING }
               - column: { name: user_update, type: STRING }
+              - column: { name: azione_processo_codename, type: STRING }

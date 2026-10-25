@@ -6,6 +6,11 @@
 --       consuma + regressione guard post-refactor.
 --       Brief: brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2
 --       (migrations 20260719-01/-02/-03).
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): «emetti» porta il permesso
+--   emetti_ddt e si nasconde a chi non l'ha; il file prova i motivi, non il permesso, quindi
+--   l'operatore riceve emetti_ddt (test 7-8). I test 9-10 emettono con
+--   dbops.fn_pgtap_porta_a_stato al posto dell'UPDATE diretto: la porta lo rifiuterebbe prima
+--   dei guard, e il 9 sarebbe stato verde per la ragione sbagliata. Attese invariate.
 -- ------------------------------------------------------------
 -- Indice test (1..10):
 --   1) fn_check_ddt_emittibile esiste
@@ -41,6 +46,12 @@ SET CONSTRAINTS ALL IMMEDIATE;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(10);
+
+-- rev 2026-10-25 (giro 5): si provano i motivi, non il permesso — l'operatore
+--   in sessione riceve emetti_ddt, senza il quale l'azione verso EMESSO sparisce.
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_ddt');
+END $az$;
 
 -- ⛔ L'UTENTE DI SESSIONE NON SI FISSA A MANO (2026-09-23). Queste due righe
 --   sovrascrivevano il contesto appena aperto con l'utente 1, che su un
@@ -206,8 +217,7 @@ SELECT ok(
 -- ============================================================
 SELECT throws_ok(
   format(
-    $$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$$,
-    (SELECT stato_emesso_id FROM tmp_chk_refs),
+    $$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$$,
     (SELECT ddt_senza_causale FROM tmp_chk_ddt)
   ),
   'P0001',
@@ -220,8 +230,7 @@ SELECT throws_ok(
 -- ============================================================
 SELECT lives_ok(
   format(
-    $$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$$,
-    (SELECT stato_emesso_id FROM tmp_chk_refs),
+    $$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$$,
     (SELECT ddt_ok FROM tmp_chk_ddt)
   ),
   '10) DDT completo (solo trasporto) -> emissione passa'

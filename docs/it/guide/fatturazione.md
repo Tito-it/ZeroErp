@@ -1,6 +1,6 @@
 # Guida — Fatturazione (processo end-to-end)
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend e database
 >
@@ -24,6 +24,7 @@
 >
 > **Vedi anche** — guide correlate:
 >
+> * [Il modello del documento di vendita](/guide/modello-documento-di-vendita) — **le regole comuni a tutti i documenti**: nascita, cambio di stato, permesso sul passaggio, emissione, annullo
 > * [Gestione commesse](/guide/gestione-commesse) — il livello a monte, e i presidi dell'emittente
 > * [Messaggi di errore e log](/guide/Messaggi-di-Errore-e-Generazione-Log)
 > * [Termini di pagamento](/guide/termini-di-pagamento) — il piano rate della fattura
@@ -439,6 +440,8 @@ erDiagram
 
 ### Stato documentale della fattura: segue lo step (invariante)
 
+⭐ Le regole comuni a tutti i documenti — in che stato si nasce, chi cambia lo stato, quale permesso chiede un passaggio, l'emissione, l'annullo — stanno nel [modello del documento di vendita](/guide/modello-documento-di-vendita), che al §10 dice anche a che punto è la fattura rispetto al modello. Qui ci sono gli stati e i passaggi che sono suoi.
+
 Lotto **e** fatture condividono `config.stati_doc_fiscale` ma con **macchine a stati
 distinte** (`config.stati_doc_fiscale_transizioni`, colonne `solo_lotto` / `solo_fattura`).
 Lo stato della **fattura** segue lo `stato_doc_fiscale_id` dello **step** di pipeline: a ogni
@@ -637,6 +640,16 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
 3. Ogni task-run deve essere tracciato con `tentativo` ed esito (`IN_ESECUZIONE`, `COMPLETATO`, `ERRORE`, `ANNULLATO`).
 4. Le policy runtime task (resume/reset/annullabilità) sono esterne alla sequenza step e risiedono in `fatturazione_pipeline_task_policy`.
 5. I task devono lavorare con input centrato sul `lotto_id`, recuperando il resto dal contesto lotto.
+6. **Un lotto fermo non diventa definitivo.** Se una fattura del lotto è in errore, nessun'altra
+   passa a uno stato definitivo: prima le fatture non conformi si correggono (e si rilancia lo
+   step) o si tolgono dal lotto. Il verdetto «fermo» ha una sede sola,
+   [`vendite.vw_lotti_segnalazioni_summary`](/dbzero/vendite/views/vw_lotti_segnalazioni_summary),
+   letta dal runner prima di avanzare e dal
+   [guard dello stato del lotto](/dbzero/vendite/manual/trgfn_fatturazione_lotti_guard_stato), che
+   rifiuta con `E_PIPELINE_LOTTO_CRITICAL` (lo stesso codice del runner); l'annullo del lotto resta
+   ammesso. Per la stessa ragione una fattura non è mai congelata davanti al suo lotto: l'invariante
+   lotto ↔ fatture sta in [`vendite.vw_lotti_fatture_incoerenti`](/dbzero/vendite/views/vw_lotti_fatture_incoerenti),
+   e solo una fattura in errore può restare **indietro**.
 
 ### Naming runtime (Python)
 
