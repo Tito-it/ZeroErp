@@ -2,9 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-**Riparte: team DB**, con l'archiviazione (quando Tid lo chiede). Tutto il lavoro del brief è applicato e verde come
-app: giro del reso, giro D-4 (`20261025-31` … `-36`), F-1 e F-2 (Tid, 2026-10-25: «migrazione applicata test verdi
-nessuna regressione»).
+**Riparte: nessuno — brief chiuso e archiviato il 2026-10-25.** Tutto il lavoro è applicato e verde come app:
+giro del reso (`20261025-05`, `-06`), giro D-4 (`20261025-31` … `-36`), F-1 (solo documentazione) e F-2 (il
+messaggio di `E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE`). Nessun debito residuo: le note del §7.8 sono copie singole,
+senza azione (regola del 2).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -19,12 +20,10 @@ nessuna regressione»).
 | 8 | ✅ team DB | Giro D-4: sei builder (`-31` … `-36`), presidi, porting di 64 file, regressione senza differenze | §7.8 | 7, 7-bis |
 | 9 | ✅ Tid | Apply di `-32` … `-36` e del CSV dei messaggi, corsa pgTAP come app: verde, nessuna regressione (2026-10-25) | §7.8 | 8 |
 | 10 | ✅ Tid + team DB | F-1: nessuna revoca, solo documentazione; F-2: messaggio corretto (2026-10-25) | §7.9 | 8 |
-| 11 | team DB | Archiviazione | — | 9, 10 |
+| 11 | ✅ team DB | Archiviazione (2026-10-25) | — | 9, 10 |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare: i changeSet `20261025-31` … `-36`, quattro presidi nuovi o estesi, 64 pgTAP portati, tre
-pagine manuali nuove e due aggiornate, la guida pgTAP, il messaggio di `E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE` in
-`messaggi_errore.csv` (F-2), le guide `gestione-ddt` e `gestione-commesse` e la nota nel brief di D-7 (F-1), e questo
-documento.
+Decisioni aperte di Tid: nessuna. Lavoro da committare: questo documento archiviato e i rimandi aggiornati
+(il resto è nel commit `0dda2f57f`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-25. **A chi:** il team DB; Tid per l'apply.
 > **Origine:** giro 2 di [brief-db-pgtap-bolla-e-reso-costruiti](../work-done/brief-db-pgtap-bolla-e-reso-costruiti.md),
