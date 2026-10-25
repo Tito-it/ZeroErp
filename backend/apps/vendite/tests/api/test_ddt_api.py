@@ -342,7 +342,7 @@ class DdtEmettiPermessoTests(SimpleTestCase):
         from apps.vendite.api.views_ddt import ApiDdtCambiaStato
 
         self.assertEqual(ApiDdtEmetti.post_passaggio, PassaggioDocumento(
-            testata="vendite.ddt", documento_kwarg="sorgente_id", stato_chiesto="EMESSO",
+            testata="vendite.ddt", documento_kwarg="sorgente_id", stato_del_modello="emissione",
         ))
         self.assertEqual(ApiDdtCambiaStato.post_passaggio, PassaggioDocumento(
             testata="vendite.ddt", documento_kwarg="ddt_id",

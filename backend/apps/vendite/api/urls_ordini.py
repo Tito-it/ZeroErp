@@ -24,7 +24,6 @@ from apps.vendite.api.ordini_documenti_views import (
 from apps.vendite.api.views_form_defaults import ApiOrdineFormDefaults
 from apps.vendite.api.views_ordini import (
     ApiOrdineCambiaStato,
-    ApiOrdineConferma,
     ApiOrdineDetail,
     ApiOrdineGeneraDdt,
     ApiOrdinePerPratica,
@@ -86,12 +85,11 @@ urlpatterns = [
     # Transizioni / integrazione
     # Emissione = conferma documentale (DRAFT->CONFERMATO + genera PDF +
     # allegati, multipart, atomica). Flusso target della famiglia vendite
-    # (§6 brief-ordini-stampa.md). `/conferma/` resta come API di servizio
-    # (sola transizione, riusata internamente da `emetti`).
+    # (§6 brief-ordini-stampa.md). ⛔ `/conferma/` (sola transizione, senza
+    # PDF) ritirata il 2026-10-25 (Z-2, brief-modello-documento-vendita §9.6
+    # C-4): l'ordine si conferma solo da qui.
     path("<int:sorgente_id>/emetti/", ApiOrdineEmetti.as_view(),
          name="vendite-ordine-emetti"),
-    path("<int:ordine_id>/conferma/", ApiOrdineConferma.as_view(),
-         name="vendite-ordine-conferma"),
     path("<int:ordine_id>/cambia-stato/", ApiOrdineCambiaStato.as_view(),
          name="vendite-ordine-cambia-stato"),
     path("<int:ordine_id>/push/", ApiOrdinePush.as_view(),

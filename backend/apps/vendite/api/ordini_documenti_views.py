@@ -30,9 +30,8 @@ from apps.documenti.api.sorgente_documenti_views import (
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
-from apps.vendite.db.ordini_repository import OrdiniRepository
+from apps.vendite.db.ordini_repository import TESTATA_ORDINI, OrdiniRepository
 from apps.vendite.services import ordini_service
-
 
 
 # Scopo: Closure di dominio per il factory: contesto minimo (id, uid,
@@ -48,11 +47,16 @@ def _doc_service() -> DocumentGenerationService:
     return DocumentGenerationService()
 
 
-# Scopo: Closure di dominio: conferma DRAFT->CONFERMATO (guard righe presenti
-#        + push a commessa nel service di dominio). Patchabile nei test come
-#        ordini_documenti_views.ordini_service.
+# Scopo: Closure di dominio: la conferma (lo stato di emissione dell'ordine)
+#        dal verbo, con lo step della pratica nella stessa transazione: lo
+#        step lo chiude l'utente della richiesta (dopo il ritiro di
+#        `/conferma/` questa e' l'unica strada della conferma).
+#        Patchabile nei test come ordini_documenti_views.ordini_service.
 def _emetti_call(request: Request, ordine_id: int) -> dict[str, Any]:
-    return ordini_service.conferma(int(ordine_id))
+    return ordini_service.conferma(
+        int(ordine_id),
+        user=getattr(request.user, "username", None) or None,
+    )
 
 
 _views = build_documenti_sorgente_views(
@@ -64,6 +68,12 @@ _views = build_documenti_sorgente_views(
     doc_service=_doc_service,
     emetti_call=_emetti_call,
     emetti_response_key="ordine",
+    # ⭐ L'azione dell'emissione la dice la riga della matrice verso lo stato
+    #    di emissione (oggi `emetti_ordine` su DRAFT -> CONFERMATO), non questa
+    #    view: il 403 arriva dalla stessa riga che legge il verbo (M-3,
+    #    brief-modello-documento-vendita §9.6 C-5); lo stato lo dice il
+    #    vocabolario a ogni richiesta (§8.11 B-2).
+    emetti_passaggio=TESTATA_ORDINI,
     model_permission=("vendite", "ordine"),
 )
 

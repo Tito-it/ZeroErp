@@ -10,11 +10,21 @@
 #       volte con un letterale per documento (`EMESSO` di bolla e preventivo,
 #       `ATTIVO` del contratto; l'ordine non lo aveva). Lo stato di emissione
 #       lo dice il vocabolario (colonna `emissione`).
+#       ⭐ Lo stesso per «Emetti» (B-3/B-4 del §8.11): lo stato che l'emissione
+#       scrive si legge dal vocabolario, non da un letterale per documento
+#       (`STATO_EMESSO` di bolla e preventivo, `_STATO_CONFERMATO`
+#       dell'ordine, `"ATTIVO"` del contratto, `StatoOfferta.EMESSA`).
+#       ⭐ E per l'annullo (brief-modello-documento-vendita §9.8): quale stato
+#       sia l'annullo lo dice il vocabolario (`is_abortito`), non i letterali
+#       `STATO_ANNULLATO` / `STATO_ANNULLATA` di `_annullo_con_legami`.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
-from apps.core.db.documento_modello_repository import DocumentoModelloRepository
+from apps.core.db.documento_modello_repository import (
+    DocumentoModelloRepository,
+    StatoDocumento,
+)
 from apps.core.services.error_manager import ErrorManager
 
 
@@ -45,3 +55,30 @@ def rifiuta_stato_di_emissione(
         context={"field": campo},
         function_name=function_name,
     )
+
+
+# Scopo: Lo stato che «Emetti» scrive, letto dal vocabolario della testata
+#        (id e codice: il verbo prende il codice, chi scrive ancora la colonna
+#        l'id). Un documento senza stato di emissione che arriva qui e' un
+#        errore di cablaggio, non di dati: la factory monta «Emetti» solo dove
+#        l'emissione esiste, e il CHECK del vocabolario la vuole attiva.
+def stato_di_emissione(testata: str, *, function_name: str) -> StatoDocumento:
+    stato = DocumentoModelloRepository().stato_di_emissione(testata)
+    ErrorManager.require(
+        stato is not None,
+        code="E_CONFIG_MANCANTE",
+        message="Il documento non ha uno stato di emissione nel suo vocabolario.",
+        detail=f"testata={testata}",
+        function_name=function_name,
+    )
+    assert stato is not None
+    return stato
+
+
+# Scopo: Lo stato chiesto e' l'annullo del documento? Il cambio stato generico
+#        lo instrada al verbo d'annullo (i legami da dichiarare). Lo dice il
+#        vocabolario (`script.fn_stato_abortito_id`): un documento ha un solo
+#        stato d'annullo, e il suo nome (ANNULLATO, ANNULLATA) non e' scritto
+#        nel codice.
+def e_stato_di_annullo(testata: str, stato_codice: str) -> bool:
+    return DocumentoModelloRepository().e_stato_di_annullo(testata, stato_codice)

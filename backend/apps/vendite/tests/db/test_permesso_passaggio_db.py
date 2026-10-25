@@ -7,7 +7,8 @@
 #        transazione e' quella della riga della matrice
 #        (`script.fn_doc_azione_passaggio`, M-3), dallo stato CORRENTE del
 #        documento; codice -> id dello stato e stato di emissione dai lettori
-#        unici (`script.fn_doc_stato_id`, `script.fn_stato_emissione_id`). E' la
+#        unici (`script.fn_doc_stato_id`, `script.fn_stato_emissione_id`,
+#        `script.fn_doc_stato_codice`). E' la
 #        giuntura che i test unitari (repository mockato) non vedono.
 # Note: ⚠️ Le azioni e gli stati di emissione attesi sono quelli del seed di
 #       oggi (`transizioni_stati_ddt.csv`, `_reso.csv`, `_preventivi.csv`, la
@@ -23,6 +24,9 @@ Indice test eseguiti:
 5) test_preventivo_in_bozza — emissione: `emetti_preventivo`; annullo di una bozza: nessuna (M-4)
 6) test_stato_di_emissione — il vocabolario dice l'emissione; reso e codici ignoti no
 7) test_stato_id — codice -> id dello stato attivo, None per un codice ignoto
+8) test_ordine_in_bozza — conferma: `emetti_ordine`; annullo di una bozza: nessuna (M-4)
+9) test_stato_di_emissione_composto — id e codice dell'emissione, dal vocabolario; reso: None
+10) test_stato_di_annullo — le otto testate: lo stato `is_abortito` del vocabolario, e solo quello
 """
 from __future__ import annotations
 
@@ -120,3 +124,67 @@ class PermessoPassaggioDbTests(unittest.TestCase):
             atteso = cur.fetchone()[0]
         self.assertEqual(self.repo.stato_id("vendite.ddt", "EMESSO"), atteso)
         self.assertIsNone(self.repo.stato_id("vendite.ddt", "INESISTENTE"))
+
+    def test_ordine_in_bozza(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute("SELECT ordine_id FROM dbops.fn_pgtap_crea_ordine('permesso passaggio db')")
+            ordine_id = cur.fetchone()[0]
+        self.assertEqual(
+            self.repo.azione_del_passaggio("vendite.ordini", ordine_id, "CONFERMATO"),
+            "emetti_ordine",
+        )
+        self.assertIsNone(self.repo.azione_del_passaggio("vendite.ordini", ordine_id, "ANNULLATO"))
+
+    # B-1/B-5 (§8.11): lo stato di emissione che «Emetti» scrive e' quello che
+    # il vocabolario dichiara (`emissione = true`), letto dalla colonna e non
+    # scritto qui; un documento che non si emette (il reso) -> None.
+    def test_stato_di_emissione_composto(self) -> None:
+        vocabolari = {
+            "vendite.ddt": "config.stati_doc_ddt",
+            "vendite.preventivi": "config.stati_doc_preventivi",
+            "vendite.ordini": "config.stati_doc_ordini",
+            "vendite.contratti": "config.stati_doc_contratti",
+            "vendite.offerte_commerciali": "config.stati_doc_offerte",
+        }
+        with connection.cursor() as cur:
+            for testata, vocabolario in vocabolari.items():
+                with self.subTest(testata=testata):
+                    cur.execute(f"SELECT id, codice_interno FROM {vocabolario} WHERE emissione")
+                    atteso = cur.fetchall()
+                    self.assertEqual(len(atteso), 1)
+                    stato = self.repo.stato_di_emissione(testata)
+                    assert stato is not None
+                    self.assertEqual((stato.id, stato.codice), (int(atteso[0][0]), atteso[0][1]))
+        self.assertIsNone(self.repo.stato_di_emissione("vendite.resi"))
+
+
+    # §9.8: lo stato d'annullo che il backend riconosce e' quello che il
+    # vocabolario dichiara (`is_abortito`), letto dalla colonna e non scritto
+    # qui; un altro stato attivo non lo e'.
+    def test_stato_di_annullo(self) -> None:
+        vocabolari = {
+            "vendite.ddt": "config.stati_doc_ddt",
+            "vendite.preventivi": "config.stati_doc_preventivi",
+            "vendite.ordini": "config.stati_doc_ordini",
+            "vendite.contratti": "config.stati_doc_contratti",
+            "vendite.offerte_commerciali": "config.stati_doc_offerte",
+            "vendite.resi": "config.stati_doc_reso",
+            "vendite.commesse": "vendite.stati_commessa",
+            "vendite.fatture": "config.stati_doc_fiscale",
+        }
+        with connection.cursor() as cur:
+            for testata, vocabolario in vocabolari.items():
+                with self.subTest(testata=testata):
+                    cur.execute(f"SELECT id, codice_interno FROM {vocabolario} WHERE is_abortito")
+                    atteso = cur.fetchall()
+                    self.assertEqual(len(atteso), 1)
+                    stato = self.repo.stato_di_annullo(testata)
+                    assert stato is not None
+                    self.assertEqual((stato.id, stato.codice), (int(atteso[0][0]), atteso[0][1]))
+                    self.assertTrue(self.repo.e_stato_di_annullo(testata, atteso[0][1]))
+                    cur.execute(
+                        f"SELECT codice_interno FROM {vocabolario}"
+                        " WHERE attivo AND NOT is_abortito ORDER BY id LIMIT 1",
+                    )
+                    self.assertFalse(self.repo.e_stato_di_annullo(testata, cur.fetchone()[0]))
+        self.assertFalse(self.repo.e_stato_di_annullo("vendite.ordini", "INESISTENTE"))

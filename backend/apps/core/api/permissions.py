@@ -18,7 +18,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
@@ -89,8 +89,14 @@ _CONSENTITO = EsitoPermesso(consentito=True)
 # Campi: testata — la testata nella mappa del modello (`vendite.ddt`);
 #        documento_kwarg — il parametro di percorso con l'id del documento;
 #        stato_chiesto — il codice dello stato di arrivo, fisso per le rotte
-#        di un verbo (`CONFERMATO`, `EMESSO`); None = dal corpo, campo
-#        `campo_stato` (il cambio stato generico);
+#        di un verbo (la `CONFERMATO` del reso); None = dal corpo, campo
+#        `campo_stato` (il cambio stato generico), o dal modello;
+#        stato_del_modello — lo stato di arrivo e' uno stato che il modello
+#        dice, letto dal vocabolario A OGNI RICHIESTA: "emissione" («Emetti»,
+#        B-2 di brief-modello-documento-vendita §8.11) o "annullo" (la rotta
+#        di un verbo d'annullo, §9.8). Un codice fissato alla definizione
+#        della view sarebbe un letterale spostato. ⛔ Esclusivo con
+#        `stato_chiesto`; un vocabolario che non lo dichiara -> None;
 #        campo_stato — il campo del corpo con lo stato chiesto (`stato_codice`;
 #        il preventivo usa `nuovo_stato`);
 #        risolvi_documento — per una rotta il cui parametro non e' l'id del
@@ -104,6 +110,15 @@ class PassaggioDocumento:
     stato_chiesto: str | None = None
     campo_stato: str = "stato_codice"
     risolvi_documento: Callable[[int], int | None] | None = None
+    stato_del_modello: Literal["emissione", "annullo"] | None = None
+
+    # Errore di cablaggio, quindi alla definizione della view e non a una
+    # richiesta: due fonti dello stato chiesto non si sa quale valga.
+    def __post_init__(self) -> None:
+        if self.stato_del_modello is not None and self.stato_chiesto is not None:
+            raise ValueError(
+                "PassaggioDocumento: `stato_del_modello` e `stato_chiesto` sono esclusivi"
+            )
 
     # Scopo: L'azione che il passaggio chiede in questa richiesta, o None (riga
     #        senza azione, o nessuna riga: decide il livello sul documento, e il
@@ -113,19 +128,30 @@ class PassaggioDocumento:
     def azione(self, view: Any) -> str | None:
         parametro = view.kwargs.get(self.documento_kwarg)
         stato = self.stato_chiesto
-        if stato is None:
+        if stato is None and self.stato_del_modello is None:
             valore = corpo_oggetto(view.request).get(self.campo_stato)
             stato = valore.strip() if isinstance(valore, str) else None
-        if parametro is None or not stato:
+            if not stato:
+                return None
+        if parametro is None:
             return None
         documento_id: int | None = int(parametro)
         if self.risolvi_documento is not None:
             documento_id = self.risolvi_documento(int(parametro))
         if documento_id is None:
             return None
-        return DocumentoModelloRepository().azione_del_passaggio(
-            self.testata, documento_id, stato,
-        )
+        repo = DocumentoModelloRepository()
+        if self.stato_del_modello is not None:
+            letto = (
+                repo.stato_di_emissione(self.testata)
+                if self.stato_del_modello == "emissione"
+                else repo.stato_di_annullo(self.testata)
+            )
+            if letto is None:
+                return None
+            stato = letto.codice
+        assert stato is not None
+        return repo.azione_del_passaggio(self.testata, documento_id, stato)
 
 # I tipi di accesso CRUD che la catena conosce: quelli che il livello piu'
 # alto concede. Un `<chiave>_accesso` o un `accesso` fuori da qui si nega.

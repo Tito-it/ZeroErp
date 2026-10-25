@@ -15,8 +15,10 @@
 Indice test eseguiti:
 1) PassaggioRotteTests.test_il_parametro_e_nel_percorso — il kwarg c'e' nella rotta
 2) PassaggioRotteTests.test_esclusivo_con_permission — mai le due fonti sullo stesso metodo
-3) PassaggioRotteTests.test_le_rotte_attese_dichiarano — DDT, reso e preventivo sul modello
-4) PassaggioTestataDbTests.test_la_testata_e_sul_modello — mappa + matrice con l'azione
+3) PassaggioRotteTests.test_le_rotte_attese_dichiarano — DDT, reso, preventivo e ordine sul modello
+4) PassaggioRotteTests.test_emetti_chiede_lo_stato_al_vocabolario — «Emetti» senza stato fissato
+5) PassaggioTestataDbTests.test_la_testata_e_sul_modello — mappa + matrice con l'azione
+6) PassaggioTestataDbTests.test_emetti_ha_lo_stato_di_emissione — ogni «Emetti» sul modello si emette
 """
 from __future__ import annotations
 
@@ -27,6 +29,7 @@ from django.test import SimpleTestCase
 
 from apps.core.api.permissions import PassaggioDocumento, ZeroERPPermission
 from apps.core.api.rotte import Rotta, rotte_servite
+from apps.core.db.documento_modello_repository import DocumentoModelloRepository
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
 # Le chiavi che la catena legge (`<chiave>_passaggio`), dalla catena stessa:
@@ -60,22 +63,35 @@ class PassaggioRotteTests(SimpleTestCase):
             with self.subTest(rotta=rotta.percorso, metodo=metodo):
                 self.assertIsNone(getattr(rotta.view, f"{metodo}_permission", None))
 
-    # Il presidio non deve passare a vuoto: le rotte dei giri 5 e 6 ci sono.
+    # Il presidio non deve passare a vuoto: le rotte dei giri 5, 6 e 7 ci sono.
     def test_le_rotte_attese_dichiarano(self) -> None:
         percorsi = {r.percorso for r, _, _ in _dichiarazioni()}
         for coda in ("<int:ddt_id>/cambia-stato/", "ddt/<int:sorgente_id>/emetti/",
                      "<int:reso_id>/conferma/", "<int:reso_id>/annulla/",
                      "<int:preventivo_id>/stato/", "da-pratica/<int:pratica_id>/stato/",
-                     "preventivi/<int:sorgente_id>/emetti/"):
+                     "preventivi/<int:sorgente_id>/emetti/",
+                     "<int:ordine_id>/cambia-stato/", "ordini/<int:sorgente_id>/emetti/"):
             with self.subTest(coda=coda):
                 self.assertTrue(any(p.endswith(coda) for p in percorsi), coda)
+
+    # ⭐ Il presidio dell'emissione, generico sui documenti della factory
+    #    (B-5, brief-modello-documento-vendita §8.11): ogni «Emetti» che legge
+    #    il passaggio chiede lo stato di emissione al vocabolario, nessuno lo
+    #    fissa. Un documento nuovo portato al modello entra da solo.
+    def test_emetti_chiede_lo_stato_al_vocabolario(self) -> None:
+        emetti = [(r, p) for r, _, p in _dichiarazioni() if r.percorso.endswith("/emetti/")]
+        self.assertGreaterEqual(len(emetti), 3)  # bolla, preventivo, ordine
+        for rotta, passaggio in emetti:
+            with self.subTest(rotta=rotta.percorso):
+                self.assertEqual(passaggio.stato_del_modello, "emissione")
+                self.assertIsNone(passaggio.stato_chiesto)
 
 
 class PassaggioTestataDbTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        richiedi_db_provvisto()
+        richiedi_db_provvisto("script.fn_doc_stato_codice(regclass,bigint)")
 
     # `fn_doc_passaggio` rifiuta una testata fuori mappa o una matrice senza
     # `azione_processo_codename` (E_SCRIPT_CHIAMATA_NON_VALIDA): chiamata con
@@ -91,3 +107,14 @@ class PassaggioTestataDbTests(unittest.TestCase):
                         [testata],
                     )
                     self.assertEqual(cur.fetchone()[0], 0)
+
+    # Lo stato che «Emetti» chiede esiste per ogni testata che lo dichiara:
+    # un documento senza emissione dietro un «Emetti» sarebbe un 500 a ogni
+    # richiesta (E_CONFIG_MANCANTE).
+    def test_emetti_ha_lo_stato_di_emissione(self) -> None:
+        testate = sorted({p.testata for _, _, p in _dichiarazioni() if p.stato_del_modello == "emissione"})
+        self.assertTrue(testate)
+        repo = DocumentoModelloRepository()
+        for testata in testate:
+            with self.subTest(testata=testata):
+                self.assertIsNotNone(repo.stato_di_emissione(testata))

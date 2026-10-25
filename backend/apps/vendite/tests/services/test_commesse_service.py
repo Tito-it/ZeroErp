@@ -100,11 +100,12 @@ from django.db import DatabaseError
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests._helpers.modello_documento_mockato import ModelloDocumentoMockatoMixin
 from apps.vendite.services.commesse_push_orchestrator import PushReport
 from apps.vendite.services.commesse_source_handlers import HandlerResult
 
 
-class CommesseServiceTests(TestCase):
+class CommesseServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # --- pr_run_commesse_push ---
 

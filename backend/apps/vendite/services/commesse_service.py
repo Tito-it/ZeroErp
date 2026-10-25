@@ -42,6 +42,7 @@ from apps.core.db._helpers import (
     sql_tiebreak_direction,
 )
 from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
+from apps.core.services.documento_modello import e_stato_di_annullo
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_enum_param, validate_order_params
 from apps.core.services.payload_helpers import (
@@ -51,6 +52,7 @@ from apps.core.services.payload_helpers import (
 from apps.anagrafiche.services.anagrafiche_service import AnagraficheService
 from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
 from apps.vendite.db.commesse_repository import (
+    TESTATA_COMMESSE,
     ATTIVITA_SORT_COLUMNS,
     TIPO_MOVIMENTO_RETTIFICA,
     STATI_APPROVAZIONE_ATTIVITA,
@@ -59,7 +61,6 @@ from apps.vendite.db.commesse_repository import (
     CommesseRepository,
 )
 from apps.vendite.services._annullo_con_legami import (
-    STATO_ANNULLATA,
     legami_del_documento,
     legami_confermati as dichiarazione_legami,
 )
@@ -663,7 +664,8 @@ def cambia_stato_commessa(
         log_to_db=True,
     )
 
-    if nuovo_stato == STATO_ANNULLATA:
+    # L'annullo (lo stato d'annullo del vocabolario, ANNULLATA) dal suo verbo.
+    if e_stato_di_annullo(TESTATA_COMMESSE, nuovo_stato):
         confermati = dichiarazione_legami(
             legami_confermati, validation_code="E_COMMESSA_VALIDATION",
             function_name="vendite.commesse_service.cambia_stato_commessa",
@@ -679,7 +681,7 @@ def cambia_stato_commessa(
         return {
             "commessa_id": commessa_id,
             "stato_da": capabilities.get("stato_codice"),
-            "stato_a": STATO_ANNULLATA,
+            "stato_a": nuovo_stato,
         }
 
     return repo.cambia_stato_commessa(

@@ -652,12 +652,15 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         from apps.vendite.services.preventivi_service import emetti
 
         self.mock_repo.cambia_stato.return_value = {"status": "ok"}
+        # Lo stato di emissione dal vocabolario (§8.11 B-3).
+        self.emissione_del_documento("EMESSO")
         # Preventivo non agganciato a un flusso → l'auto-completamento e' no-op
         # (emetti resta un thin wrapper sul repo).
         self.mock_repo.get_flusso_id_by_preventivo_root.return_value = None
         result = emetti(42)
         self.assertEqual(result, {"status": "ok"})
         self.mock_repo.cambia_stato.assert_called_once_with(42, "EMESSO")
+        self.modello_documento.stato_di_emissione.assert_called_once_with("vendite.preventivi")
         self.mock_repo.get_flusso_id_by_preventivo_root.assert_called_once_with(42)
 
     # Scopo: emettendo un preventivo agganciato a un flusso IN_CORSO, quel flusso
@@ -668,6 +671,8 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         from apps.vendite.services.preventivi_service import emetti
 
         self.mock_repo.cambia_stato.return_value = {"status": "ok"}
+        # Lo stato di emissione dal vocabolario (§8.11 B-3).
+        self.emissione_del_documento("EMESSO")
         self.mock_repo.get_flusso_id_by_preventivo_root.return_value = 315
         MockPratRepo.return_value.get_flusso.return_value = {
             "stato_codice_interno": "IN_CORSO",
@@ -687,6 +692,8 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         from apps.vendite.services.preventivi_service import emetti
 
         self.mock_repo.cambia_stato.return_value = {"status": "ok"}
+        # Lo stato di emissione dal vocabolario (§8.11 B-3).
+        self.emissione_del_documento("EMESSO")
         self.mock_repo.get_flusso_id_by_preventivo_root.return_value = 315
         MockPratRepo.return_value.get_flusso.return_value = {
             "stato_codice_interno": "COMPLETATO",

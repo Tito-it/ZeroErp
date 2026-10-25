@@ -1220,7 +1220,8 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 2  # ATTIVO id
+        # Lo stato di emissione dal vocabolario (§8.11 B-4), non "ATTIVO".
+        self.emissione_del_documento("ATTIVO", stato_id=2)
         repo.update_stato.side_effect = DatabaseError(
             "contratto senza listino e nessuna riga AGGIUNTA con prezzo: "
             "serve almeno un'AGGIUNTA prima di attivare."
@@ -1238,7 +1239,8 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 2  # ATTIVO id
+        # Lo stato di emissione dal vocabolario (§8.11 B-4), non "ATTIVO".
+        self.emissione_del_documento("ATTIVO", stato_id=2)
         repo.update_stato.return_value = True
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
@@ -1247,6 +1249,8 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         ContrattiService().emetti(1)
 
         repo.update_stato.assert_called_once_with(1, 2)
+        self.modello_documento.stato_di_emissione.assert_called_once_with("vendite.contratti")
+        repo.get_stato_id_by_codice.assert_not_called()
 
     # Scopo: la sovrapposizione la rifiuta il guard della transizione del DB
     #        (2026-10-19, `script.fn_check_contratto_sovrapposto`) col codice del
@@ -1258,7 +1262,8 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 2  # ATTIVO id
+        # Lo stato di emissione dal vocabolario (§8.11 B-4), non "ATTIVO".
+        self.emissione_del_documento("ATTIVO", stato_id=2)
         repo.update_stato.side_effect = make_db_error(
             "Il periodo si sovrappone al contratto CNT0000027, gia' vincolante.",
             codice="E_CONTRATTO_OVERLAP_ESISTENTE",

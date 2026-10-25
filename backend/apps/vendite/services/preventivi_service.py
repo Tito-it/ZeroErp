@@ -24,13 +24,16 @@ from apps.config.sorgenti import SORGENTE_COMMESSA, SORGENTE_PREVENTIVO
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
-from apps.core.services.documento_modello import rifiuta_stato_di_emissione
+from apps.core.services.documento_modello import (
+    e_stato_di_annullo,
+    rifiuta_stato_di_emissione,
+    stato_di_emissione,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_coppia_documento import rifiuta_colonne_ferme, risolvi_cliente_coppia
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.vendite.services._date_consegna_righe import aggiorna_date_consegna_righe
 from apps.vendite.services._annullo_con_legami import (
-    STATO_ANNULLATO,
     legami_del_documento,
     legami_confermati as dichiarazione_legami,
 )
@@ -82,12 +85,6 @@ _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 _STATI_FATTURABILI: frozenset[str] = frozenset({"ACCETTATO"})
 _STATI_GENERA_PRATICA: frozenset[str] = frozenset({"ACCETTATO"})
 _FN = "vendite.preventivi_service"
-# Il codice dello stato di emissione, che «Emetti» passa al verbo. ⚠️ Resta
-# finche' il DB non da' il CODICE dello stato di emissione (il verbo prende il
-# codice, `script.fn_stato_emissione_id` l'id): richiesta al team DB in
-# brief-modello-documento-vendita §8.10. Il rifiuto dal cambio stato generico
-# non lo usa (lo legge dal vocabolario).
-STATO_EMESSO = "EMESSO"
 # Il codice di validazione del dominio: una costante, non 35 letterali (2026-10-19).
 E_PREV_VALIDAZIONE = "E_PREV_VALIDAZIONE"
 # La data di consegna RICHIESTA dal cliente sulla riga (brief-db-modifiche-certe-
@@ -667,7 +664,8 @@ def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str
 #    (`emetti`), che produce numero e PDF nella stessa transazione. Quale stato
 #    sia l'emissione lo dice il vocabolario (BB `rifiuta_stato_di_emissione`).
 #
-# ⭐ ANNULLATO passa SEMPRE dal verbo `vendite.fn_annulla_preventivo`
+# ⭐ L'annullo (lo stato d'annullo del vocabolario, `is_abortito`) passa SEMPRE
+# dal verbo `vendite.fn_annulla_preventivo`
 # (brief-db-annullo-documento-con-legami): con legami il DB rifiuta
 # (E_DOC_ANNULLO_CON_LEGAMI, `confirm_and_retry`) finche' la richiesta non
 # dichiara `legami_confermati`, il numero letto da `get_legami`. La risposta ha
@@ -733,7 +731,7 @@ def cambia_stato(
                     }
                 return repo.cambia_stato(preventivo_id, nuovo_stato)
 
-    if nuovo_stato == STATO_ANNULLATO:
+    if e_stato_di_annullo(TESTATA_PREVENTIVI, nuovo_stato):
         confermati = dichiarazione_legami(
             legami_confermati, validation_code=E_PREV_VALIDAZIONE,
             function_name=f"{_FN}.cambia_stato",
@@ -748,7 +746,7 @@ def cambia_stato(
         return {
             "preventivo_id": preventivo_id,
             "stato_precedente": stato_prec,
-            "stato_nuovo": STATO_ANNULLATO,
+            "stato_nuovo": nuovo_stato,
         }
 
     with _db_errors("cambia_stato"):
@@ -810,10 +808,12 @@ def cambia_stato_da_pratica(
 #        implichi sempre l'esistenza del documento generato (invariante di
 #        dominio). Mirror del pattern offerta `OfferteService.emetti`.
 #        Bypassa il guard di `cambia_stato` sull'emissione via accesso
-#        diretto al repository.
+#        diretto al repository. Lo stato che scrive lo dice il vocabolario (BB
+#        `stato_di_emissione`, brief-modello-documento-vendita §8.11 B-3).
 def emetti(preventivo_id: int, *, user: str | None = None) -> dict[str, Any]:
     repo = PreventiviRepository()
-    result = repo.cambia_stato(preventivo_id, STATO_EMESSO)
+    stato = stato_di_emissione(TESTATA_PREVENTIVI, function_name=f"{_FN}.emetti")
+    result = repo.cambia_stato(preventivo_id, stato.codice)
     # Percorso pratica-first: l'emissione del preventivo completa il flusso di
     # preventivazione ancora aperto (quello che ha aperto questo drawer via
     # azione_ui APRI_PREVENTIVO). No-op se il preventivo non nasce da una pratica

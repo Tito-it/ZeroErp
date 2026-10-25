@@ -60,14 +60,19 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
 | ----- | ---------- | ---------------------- | ----------------------------------------------------------------- |
 | DRAFT | CONFERMATO | operatore (`/emetti/`) | Abilita il push a commessa (se `fatturazione_trigger=CONFERMATO`) |
 
-Il flusso utente innesca la transizione via `/emetti/` (conferma + generazione
-documento, vedi sezione Emetti); `/conferma/` resta come API di sola transizione,
-riusata internamente da `emetti`. La transizione è **autoritativa lato DB** (trigger
-`trgfn_ordini_guard_transizione` sull'UPDATE di `stato_doc_ordine_id`; dal
+La transizione si innesca **solo** da `/emetti/` (conferma + generazione
+documento, vedi sezione Emetti): la conferma senza PDF (`POST /<id>/conferma/`) è
+ritirata dal 2026-10-25 (M-2 e Z-2 di
+[brief-modello-documento-vendita](../../../dev/work-in-progress/brief-modello-documento-vendita.md) §9).
+Lo stato lo scrive il verbo `vendite.fn_cambia_stato_ordine` (un UPDATE diretto
+della colonna lo rifiuta la porta, `E_DOC_STATO_SOLO_DAL_VERBO`), e la
+transizione è **autoritativa lato DB** (trigger `trgfn_ordini_guard_transizione`; dal
 2026-09-24 la sua Regola 5 rifiuta `DRAFT → CONFERMATO` con componenti BoM attivi
 a prezzo `PENDING` o `REJECTED` — `E_DOC_PREZZO_PENDENTE` / `E_DOC_PREZZO_RIFIUTATO`,
-building block `script.fn_check_prezzi_autorizzati`): il service applica solo il guard applicativo «origine
-DRAFT + almeno una riga». I codici `E_ORDINE_*` sollevati dai trigger sono
+building block `script.fn_check_prezzi_autorizzati`): il service legge solo lo stato
+corrente (404 / «origine DRAFT»), le righe le conta il guard
+(`E_ORDINE_CONFERMA_SENZA_RIGHE`; il fail-fast `E_ORD_NESSUNA_RIGA` della conferma è
+ritirato, era la sua copia). I codici `E_ORDINE_*` sollevati dai trigger sono
 **estratti dal MESSAGE** via regex (`_DB_ERROR_CODE_RE`) e propagati come
 `ServiceError.code` originale (routing UI specifico), con fallback
 `E_VENDITE_VALIDATION`.
@@ -232,9 +237,9 @@ vuota hanno ON DELETE CASCADE; il trigger DB blocca se collegato a DDT.
 conferma documentale. Clone di `ApiPreventivoEmetti`/`ApiOffertaEmetti`. Orchestra in
 **una transazione atomica** (savepoint annidato):
 
-1. `ordini_service.conferma(id)` — transizione `DRAFT → CONFERMATO` (riusa il punto di
-   dominio esistente, che governa anche il push a commessa: la logica di stato non è
-   duplicata né spostata);
+1. `ordini_service.conferma(id)` — il passaggio allo **stato di emissione**
+   dell'ordine (oggi `CONFERMATO`), letto dal vocabolario e non scritto nel codice
+   (BB `stato_di_emissione`), dal verbo `vendite.fn_cambia_stato_ordine`;
 2. `DocumentGenerationService.genera_documento(...)` sullo stato `CONFERMATO` (lo
    snapshot del context riflette il nuovo stato);
 3. allegati multipart opzionali (`allegati`).
@@ -245,15 +250,13 @@ multipart: `template_documento_id`, `tipo_documento_output_id`, `allegati` (tutt
 opzionali). Risposta: `{ "ordine": <esito conferma>, "documento": <documento generato> }`.
 Prerequisito: template `ORDINE_VENDITA` con versione **PUBBLICATA** (vedi Documenti).
 
-### Conferma `POST /api/v1/vendite/ordini/<id>/conferma/`
+**Permesso dell'emissione** (dal 2026-10-25): livello sul documento e l'azione dalla
+riga del passaggio verso lo stato di emissione (`emetti_passaggio` della factory;
+oggi `emetti_ordine`): 403 prima della transazione a chi non ce l'ha, e il verbo la
+controlla di nuovo (`E_PERMESSO_NEGATO`).
 
-`DRAFT -> CONFERMATO`. Endpoint di **sola transizione**: il flusso utente passa da
-`/emetti/` (conferma + documento), mentre `/conferma/` resta come API di servizio
-(riusata internamente da `emetti`). La transizione e la precondizione "≥1 riga" sono
-validate dal **trigger guard DB** `trgfn_ordini_guard_transizione`
-(`E_ORDINE_CONFERMA_SENZA_RIGHE`); il service mantiene anche il guard applicativo
-`E_ORD_NESSUNA_RIGA` (defense-in-depth + messaggio). Le altre transizioni manuali
-(es. annulla) passano da `cambia-stato`.
+⛔ **`POST /<id>/conferma/` è ritirato** (2026-10-25, Z-2): era la conferma senza PDF
+(opzione (i) del 2026-06-05, revocata da M-2). La rotta risponde 404.
 
 **Percorso pratica — auto-completamento step `CONFERMA_ORDINE` (9013, bivio rev.3):**
 se l'ordine è **COLLEGATO** a una pratica, la conferma completa anche lo step
@@ -270,8 +273,14 @@ Transizione di stato **generica data-driven** (es. annulla `DRAFT→ANNULLATO`).
 Body: `stato_codice` (= `target_state` dell'azione da `available_actions`).
 L'ammissibilità della transizione è validata dal trigger guard DB
 `trgfn_ordini_guard_transizione` (matrice `config.transizioni_stati_ordini`):
-transizione non ammessa → `E_ORDINE_TRANSIZIONE_NON_AMMESSA`. La conferma
-(`DRAFT→CONFERMATO`) ha l'endpoint dedicato `/conferma/` per le sue precondizioni.
+transizione non ammessa → `E_ORDINE_TRANSIZIONE_NON_AMMESSA`. Lo stato di emissione
+(`CONFERMATO`, letto dal vocabolario) è un 400 `E_ORD_VALIDAZIONE` col `field`: si
+raggiunge solo da «Emetti». Un passaggio di processo (l'evasione) risponde
+`E_DOC_PASSAGGIO_DI_PROCESSO`. Uno stato che il vocabolario non ha lo rifiuta il verbo,
+`E_STATO_WORKFLOW_NON_TROVATO` (fino al 2026-10-25 un 400 `E_ORD_VALIDAZIONE` del service). Gli altri passaggi li scrive il verbo
+`vendite.fn_cambia_stato_ordine`. Permesso: l'azione dalla riga del passaggio
+(`PassaggioDocumento`): l'annullo di un ordine confermato chiede `emetti_ordine`,
+quello di una bozza il solo livello sul documento.
 
 Verso `ANNULLATO` passa sempre dal verbo `vendite.fn_annulla_ordine`: su un
 ordine con legami (righe di preventivo, offerta d'origine, righe di commessa da
@@ -545,10 +554,13 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 | `E_DOC_EMITTENTE_FUORI_BOZZA` | 409 | cambio di emittente fuori bozza (BB `trgfn_doc_testata_lock_fuori_bozza`) |
 | `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato (delete fuori DRAFT o bozza con righe → annullare; push da stato non pushabile) |
 | `E_RIGA_DOC_NON_BOZZA` | 409 | righe e componenti si aggiungono/modificano/tolgono solo in bozza — dal 2026-09-22 è il codice del BB a DB `trgfn_doc_righe_lock_fuori_bozza` (sugli ordini montato sul solo DELETE) e il pre-check BE lo usa uguale (`richiedi_righe_in_bozza`), con la frase a catalogo |
-| `E_ORD_NESSUNA_RIGA` | 409 | conferma/push senza righe eleggibili (guard applicativo `conferma()`) |
+| `E_ORD_NESSUNA_RIGA` | 409 | push senza righe eleggibili (la conferma senza righe la rifiuta il guard: `E_ORDINE_CONFERMA_SENZA_RIGHE`) |
 | `E_ORD_OFFERTA_GIA_CONVERTITA` | 409 | conversione offerta→ordine già avvenuta (univocità 1:1): guard BE fail-fast + rete UNIQUE parziale `uq_ordini_v_documento_origine_offerta` (via `map_integrity_error`) |
 | `E_ORDINE_TRANSIZIONE_NON_AMMESSA` | varia | trigger guard: transizione di stato non presente/attiva in `config.transizioni_stati_ordini` (es. `cambia-stato` verso uno stato non ammesso) |
-| `E_ORDINE_CONFERMA_SENZA_RIGHE` | varia | trigger guard: `DRAFT→CONFERMATO` senza righe (precondizione DB, gemella di `E_ORD_NESSUNA_RIGA`) |
+| `E_ORDINE_CONFERMA_SENZA_RIGHE` | varia | trigger guard: `DRAFT→CONFERMATO` senza righe attive (unica sede della regola dal 2026-10-25) |
+| `E_PERMESSO_NEGATO` / 403 | 403 | conferma o annullo di un confermato senza `emetti_ordine` (la catena dalla riga del passaggio, poi il verbo) |
+| `E_DOC_PASSAGGIO_DI_PROCESSO` | varia | `cambia-stato` verso un passaggio che fa il sistema (l'evasione) |
+| `E_CONFIG_MANCANTE` | 500 | il vocabolario non ha uno stato di emissione (errore di cablaggio, non di dati) |
 | `E_VENDITE_DUPLICATO` / `E_VENDITE_FK` | 409 / 400 | violazione UNIQUE/FK (via `map_integrity_error`) |
 | `E_ORDINE_*` | varia | altri codici sollevati dai trigger DB (estratti via regex) |
 | `E_UI_EXPORT_FORMAT_INVALID` / `E_UI_EXPORT_LIMIT_EXCEEDED` | 400 / 422 | export |

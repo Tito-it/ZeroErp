@@ -36,6 +36,7 @@ from django.db import transaction
 from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import DEFAULT_LIMIT
+from apps.core.services.documento_modello import stato_di_emissione
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.capability_blob import capabilities_o_vuoto
 from apps.core.services.testata_guard import (
@@ -56,6 +57,7 @@ from apps.vendite.db._documento_eccezioni_repo import (
 from apps.vendite.db.contratti_repository import ContrattiRepository
 from apps.vendite.db.offerte_repository import (
     _ORDER_COLS_OFFERTE,
+    TESTATA_OFFERTE,
     OffertaRigheListaRepository,
     OfferteRepository,
 )
@@ -785,10 +787,13 @@ class OfferteService:
     #        ⛔ Fino al 2026-10-07 il congelamento era qui, in Python, PRIMA del
     #        cambio stato: la capability spegneva «Emetti» proprio perche' quel
     #        passo non c'era ancora stato, e un'offerta nuova non si emetteva.
+    #        Lo stato di arrivo dal vocabolario (V-2, brief-modello-documento-
+    #        vendita §8.11 B-4), non `StatoOfferta.EMESSA`.
     def emetti(self, offerta_id: int) -> dict[str, Any]:
+        stato = stato_di_emissione(TESTATA_OFFERTE, function_name="offerte_service.emetti")
         return self._cambia_stato_manuale(
             offerta_id,
-            target_codice=StatoOfferta.EMESSA,
+            target_codice=stato.codice,
             expected_from=_STATI_EDITABILI,
         )
 

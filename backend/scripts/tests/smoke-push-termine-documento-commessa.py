@@ -137,16 +137,14 @@ def crea_ordine(cur, t, *, data_doc, termine_id, modalita_id, marker):
     return ordine_id
 
 
-# Scopo: Porta a CONFERMATO l'ordine clonato, dopo le sue righe. La coppia di
-#        stati la valida il DB (grafo delle transizioni), come per l'operatore.
+# Scopo: Porta a CONFERMATO l'ordine, dopo le sue righe, dal verbo del
+#        documento (`dbops.fn_pgtap_porta_a_stato`): permesso del passaggio,
+#        matrice e righe li giudica il DB, come per l'operatore.
+# ⛔ Fino al 2026-10-25 un UPDATE diretto della colonna di stato: ora la porta
+#    lo rifiuta (E_DOC_STATO_SOLO_DAL_VERBO, brief-modello-documento-vendita §9).
 def conferma_ordine(cur, ordine_id):
     cur.execute(
-        """
-        UPDATE vendite.ordini
-           SET stato_doc_ordine_id = (SELECT id FROM config.stati_doc_ordini
-                                       WHERE codice_interno = 'CONFERMATO')
-         WHERE id = %s
-        """,
+        "SELECT dbops.fn_pgtap_porta_a_stato('vendite.ordini', %s, 'CONFERMATO')",
         [ordine_id],
     )
 

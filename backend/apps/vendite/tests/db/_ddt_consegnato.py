@@ -7,7 +7,7 @@
 #        consegnata (`trgfn_resi_guard_ddt_consegnato`), e non c'e' un BB
 #        `dbops.fn_pgtap_*` che la costruisca. La catena ordine in BOZZA ->
 #        riga -> CONFERMATO -> DDT generato -> EMESSO -> SPEDITO -> CONSEGNATO
-#        (gli ultimi tre dal verbo, con `dbops.fn_pgtap_porta_a_stato`) e' la stessa di `db/pgtap/vendite/test-annulla-reso-gate-accredito-v1.sql`
+#        (la conferma e gli ultimi tre dal verbo, con `dbops.fn_pgtap_porta_a_stato`) e' la stessa di `db/pgtap/vendite/test-annulla-reso-gate-accredito-v1.sql`
 #        (`agr_mk_partita`), sul mondo di `dbops.fn_pgtap_crea_mondo_cliente` +
 #        `fn_pgtap_crea_articolo`. Era scritta in `test_resi_create_db`; alla
 #        seconda occorrenza (`test_righe_bozza_guard`, l'etichetta del reso)
@@ -38,7 +38,6 @@ _PASSI: tuple[str, ...] = (
     SELECT (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
            (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
            (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo) AS ord_draft,
-           (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO' AND s.attivo) AS ord_conf,
            (SELECT c.id FROM config.causali_trasporto c WHERE c.codice = 'VENDITA' ORDER BY c.id LIMIT 1) AS causale_vendita,
            (SELECT t.id FROM config.tipi_indirizzi t WHERE t.codice_interno = 'CON') AS tipo_ind_con
     """,
@@ -61,7 +60,10 @@ _PASSI: tuple[str, ...] = (
            jsonb_build_object('test_scope', %(etichetta)s)
       FROM _ord o, _art a, _refs r
     """,
-    "UPDATE vendite.ordini SET stato_doc_ordine_id = (SELECT ord_conf FROM _refs) WHERE id = (SELECT ordine_id FROM _ord)",
+    # ⛔ Lo stato dell'ordine si scrive solo dal verbo (porta comune,
+    #    E_DOC_STATO_SOLO_DAL_VERBO, dal 2026-10-25, brief-modello-documento-
+    #    vendita §9.6 C-6): la fixture passa dal verbo e concede l'azione.
+    "SELECT dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT ordine_id FROM _ord), 'CONFERMATO')",
     "CREATE TEMP TABLE _ddt AS SELECT vendite.fn_genera_ddt_da_ordine((SELECT ordine_id FROM _ord)) AS ddt_id",
     """
     INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)

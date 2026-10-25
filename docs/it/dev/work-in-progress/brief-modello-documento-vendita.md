@@ -1,8 +1,8 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-25 (giro 7, l'ordine: DB applicato e verde, §9)
+## ⏭️ Chi riparte — aggiornato al 2026-10-25 (giro 7: DB e BE fatti, §9.7; difetto DB X → X, §9.8)
 
-**Riparte: il team BE**, **un passaggio solo** per il §8.11 (B-1 … B-6) e l'ordine (§9.6, C-1 … C-6); in parallelo il team DB col giro 8, il contratto, dopo il via di Tid. Giro 7 (l'ordine): DB applicato e verde (Tid, 2026-10-25). Giro 6, il preventivo (§8): DB applicato e verde, BE fatto (§8.10) tranne il ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committato su DB e BE (`4351164c1`, PR #1943).
+**Riparte: Tid**, col commit del giro BE (§9.7, §9.8) e il dato `emetti_ordine` ai profili; poi il **team DB** sul difetto emerso nel §9.8 (il verbo comune accetta il passaggio allo stesso stato: un secondo «Emetti» passa), prima del giro 8, il contratto. Giro 7 (l'ordine): DB applicato e verde (Tid, 2026-10-25). Giro 6, il preventivo (§8): DB applicato e verde, BE fatto (§8.10) tranne il ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committato su DB e BE (`4351164c1`, PR #1943).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -41,15 +41,18 @@
 | 4-bis-septies-sexies | ✅ **Tid** | Z-1 … Z-4 come da proposta, W-3 in un brief suo, via allo sviluppo | §9.3 | 4-bis-septies-quinquies |
 | 4-bis-septies-septies | ✅ team DB / **Tid** | Giro 7 scritto (`-72` … `-82`, CSV), provato, applicato da Tid (15:59); 11 pgTAP portati, regressione letta | §9.4, §9.5 | 4-bis-septies-sexies |
 | 4-bis-septies-octies | ✅ **Tid** | Migrazione applicata e corsa pgTAP verde (2026-10-25). Resta un dato: `emetti_ordine` ai profili su dbdev | §9.5, §9.6 | 4-bis-septies-septies |
-| 4-bis-octies | team BE ⏭️ | Un passaggio solo, B-1 … B-6 del §8.11 e C-1 … C-6 del §9.6: il lettore nel repository, «Emetti» che chiede lo stato a ogni richiesta, i due `STATO_EMESSO` ritirati, contratto, ordine e offerta senza letterali, la riga della guida | §8.11 | 4-bis-septies-bis |
+| 4-bis-octies | ✅ team BE | Un passaggio solo, B-1 … B-6 del §8.11 e C-1 … C-6 del §9.6, fatto il 2026-10-25 | §9.7 | 4-bis-septies-bis |
+| 4-bis-octies-bis | ✅ team BE | I due residui del §9.7: l'annullo dal vocabolario fatto; il «solo da DRAFT» sospeso su un difetto DB | §9.8 | 4-bis-octies |
+| 4-bis-octies-ter | **Tid** ⏭️ | Commit del giro BE (`dev/backend-tid`); `emetti_ordine` ai profili su dbdev; via al team DB per il difetto X → X | §9.8 | 4-bis-octies-bis |
+| 4-bis-octies-quater | team DB | Il verbo comune rifiuta il passaggio allo stesso stato (difetto del modello, priorità alta); il verbo della bolla risponde a uno stato sconosciuto come i gemelli | §9.8, §9.9 | 4-bis-octies-ter |
 | 4-bis-nonies | **Tid** → team DB | Il via al giro 8: il contratto (ordine dei giri di W-1). Non aspetta il BE (§5) | §5 | 4-bis-septies-octies |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 | 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1, il blocco «origine» della stampa della fattura, da decidere nel giro della fattura; D-G2, la prova a video del lotto 2b | §10 | — |
 
-Decisioni aperte di Tid: nessuna in questo brief (W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md), E-1 … E-3). Da sapere (§8.10): il cambio stato generico dell'ordine ora rifiuta CONFERMATO (M-2); `ApiPreventivoCollegaPratica` chiede il livello sul preventivo. Lavoro da committare (`dev/db-tid`): il giro DB del §8.11 (`20261025-70`, `-71`) e il giro 7 (`-72` … `-82`, i due CSV e il mirror, i pgTAP nuovi e portati, le pagine `manual`, le guide del modello e degli ordini, `azioni_processo.md`), il brief nuovo [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md), i rimandi dell'archiviazione di V-3 (lo spostamento del file è già in `9bb735935`). Da rigenerare: la doc auto-generata (le pagine `funzioni/` di `fn_doc_stato_codice`, `fn_stato_abortito_id`, `fn_cambia_stato_ordine` non ci sono ancora).
-Committati: il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), il giro BE precedente (`9fbff66d2`), i giri 2-4 lato DB (`498cc8275`).
+Decisioni aperte di Tid: nessuna in questo brief (W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md), E-1 … E-3); il difetto X → X va al team DB (§9.8). Da sapere (§8.10, §9.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine. Lavoro da committare (`dev/backend-tid`): il giro BE del §9.7, §9.8 e §9.9.
+Committati: il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -995,7 +998,7 @@ potevano provare.
 
 1. **M-2.** `ddt_service.cambia_stato` rifiuta `EMESSO` con `400 E_DDT_VALIDAZIONE` (campo
    `stato_codice`, «La bolla si emette solo da «Emetti»…»); `emetti` passa da un corpo comune con
-   `emissione=True`. Frontend e smoke usavano già `/emetti/`.
+   `stato_del_modello="emissione"`. Frontend e smoke usavano già `/emetti/`.
 2. **M-3, il 403 dalla riga.** BB nuovo in `core` (ok Tid, 2026-10-25): la view dichiara
    `post_passaggio = PassaggioDocumento(testata, documento_kwarg, stato_chiesto)` e
    `ZeroERPPermission` legge l'azione con `script.fn_doc_passaggio` (stato corrente → stato chiesto)
@@ -1670,6 +1673,120 @@ passaggio**, insieme a B-1 … B-6 del §8.11 (lo stato di emissione letto dal D
 verbo glieli rifiuta. Concedere l'azione ai profili è un dato (su dbdev lo fa Tid, come per `emetti_preventivo`).
 Fino al passaggio BE la conferma dal backend e il cambio stato generico rispondono `E_DOC_STATO_SOLO_DAL_VERBO`: è
 la rottura accettata del §5, «il DB consegna e scrive al BE cosa si è rotto».
+
+### 9.7 Fatto dal team BE (2026-10-25): B-1 … B-6 del §8.11 e C-1 … C-6 del §9.6
+
+Un passaggio solo, `dev/backend-tid`, da committare.
+
+**Lo stato di emissione letto dal DB (§8.11).**
+
+| # | Fatto |
+| --- | --- |
+| B-1 | `DocumentoModelloRepository.stato_di_emissione(testata)` → `StatoDiEmissione(id, codice)` o None: una lettura, `fn_doc_stato_codice(t, fn_stato_emissione_id(t))`. BB service `documento_modello.stato_di_emissione(testata, *, function_name)`: None è `E_CONFIG_MANCANTE` (codice già a catalogo, `TECNICO`: è cablaggio, non dato) |
+| B-2 | `PassaggioDocumento` prende il campo `emissione: bool` (esclusivo con `stato_chiesto`, `ValueError` alla definizione): lo stato chiesto lo legge a ogni richiesta, e solo quando servono documento e stato (la lettura resta pigra). `emetti_passaggio` della factory riceve la sola testata |
+| B-3 | Ritirati `STATO_EMESSO` di `ddt_service` e `preventivi_service`: «Emetti» passa al verbo il codice letto |
+| B-4 | `contratti_service.emetti` scrive l'id letto (via `"ATTIVO"`); `ordini_service.conferma` sul verbo col codice letto (via `_STATO_CONFERMATO`); `offerte_service.emetti` col codice letto al posto di `StatoOfferta.EMESSA` (la classe resta: le altre transizioni dell'offerta la usano come condizione) |
+| B-5 | Presidio generico in `core/tests/test_passaggio_rotte.py`: ogni «Emetti» che legge il passaggio chiede lo stato al vocabolario, nessuno lo fissa; sul DB, ogni testata che lo dichiara ha lo stato di emissione. In `test_permesso_passaggio_db` il lettore composto sulle cinque testate, contro la colonna `emissione` dei vocabolari, e il reso → None |
+| B-6 | Guida del modello §7, riga «Quale stato è l'emissione»: «Emetti» ne legge il codice con `fn_doc_stato_codice` |
+
+**L'ordine al modello (§9.6).**
+
+| # | Fatto |
+| --- | --- |
+| C-1 | `OrdiniRepository.update_stato` ritirato; nuovo `cambia_stato(id, codice)` su `vendite.fn_cambia_stato_ordine` |
+| C-2 | `ordini_service.conferma` sul verbo con lo stato di emissione letto; lo step `CONFERMA_ORDINE` resta nella stessa transazione. Ritirato il fail-fast `E_ORD_NESSUNA_RIGA` della conferma (resta quello del push, che è un'altra regola); il rifiuto arriva dal guard, `E_ORDINE_CONFERMA_SENZA_RIGHE` |
+| C-3 | Il ramo non-annullo del cambio stato generico chiama il verbo |
+| C-4 | Ritirati `ApiOrdineConferma`, la rotta `/conferma/` (ora 404), `ordiniApi.confermaOrdine`, l'azione `conferma` dello store e il suo mock; doc `api_ordini` |
+| C-5 | `post_passaggio` su `ApiOrdineCambiaStato` (l'annullo del confermato chiede `emetti_ordine`) e `emetti_passaggio=TESTATA_ORDINI` su «Emetti» dell'ordine |
+| C-6 | `test_ordini_service` sul verbo; `_ddt_consegnato` conferma l'ordine con `fn_pgtap_porta_a_stato`; test nuovo `vendite/tests/db/test_ordine_cambia_stato_db` (sonde sulla firma del verbo e sul lettore: conferma dal verbo, senza `emetti_ordine` → `E_PERMESSO_NEGATO`, senza righe → il codice del guard, l'emissione dal generico → 400, annullo della bozza). Nessun codice nuovo: la policy non si rigenera |
+
+**Emerso nello stesso giro.** I test unitari dell'offerta (`OfferteServiceTests`, `unittest.TestCase`) non avevano il
+mixin del modello: `emetti` avrebbe chiesto lo stato al DB di sviluppo, verde per il motivo sbagliato. Ora hanno
+`ModelloDocumentoMockatoMixin`, che prende `emissione_del_documento(codice)` (default: il documento non si emette).
+
+**Doc:** catalogo BB backend (`PassaggioDocumento`, `stato_di_emissione`, factory), `api.md`, `api_ordini`,
+`api_documenti_per_sorgente`, guida del modello (B-6 e la riga dell'ordine del §10).
+
+**Provato:** suite completa con `ZEROERP_TEST_DB_E2E=1`, 6960 test, verde (1 skip, 1 expected failure, come
+prima). mypy (cricchetto, 0 rilievi) e ruff puliti; vitest dello store ordini ed ESLint sui file toccati puliti.
+⚠️ Non eseguiti gli smoke HTTP (login col secondo fattore).
+
+**Residui:** ritirati nel §9.8 (il letterale dell'annullo) o sospesi su un difetto DB (il «solo da DRAFT» della
+conferma). Da sapere: finché `emetti_ordine` non è concessa ai profili, nessuno conferma un ordine né annulla un
+confermato (dato su dbdev, Tid).
+
+### 9.8 I due residui del §9.7 (team BE, 2026-10-25, ok di Tid) e un difetto DB emerso
+
+**1. Lo stato d'annullo dal vocabolario: fatto.** I service riconoscevano l'annullo confrontando lo stato chiesto
+con i letterali `STATO_ANNULLATO` / `STATO_ANNULLATA` di `_annullo_con_legami`. Ora lo chiedono al DB: BB
+`documento_modello.e_stato_di_annullo(testata, codice)` (`fn_doc_stato_id = fn_stato_abortito_id`), nel cambio
+stato di ordine, bolla, preventivo, contratto e commessa (costante nuova `TESTATA_COMMESSE` nel suo repository).
+La rotta dell'annullo del reso dichiarava lo stato fisso (`stato_chiesto=STATO_ANNULLATO`): ora
+`PassaggioDocumento(stato_del_modello="annullo")`, letto a ogni richiesta. Per questo il campo `emissione` del §9.7
+diventa `stato_del_modello: "emissione" | "annullo"`, e `StatoDiEmissione` diventa `StatoDocumento`. Le due
+costanti sono ritirate. Test: sul DB, lo stato d'annullo delle otto testate contro la colonna `is_abortito`, e uno
+stato non abortito che non lo è. Emerso: `CommesseServiceTests` (`unittest.TestCase`) non aveva il mixin del
+modello e avrebbe chiesto al DB di sviluppo: ora ce l'ha; il mixin riconosce come annullo `ANNULLI_DI_PROVA`.
+
+**2. Il «solo da DRAFT» della conferma dell'ordine: NON ritirato, e perché.** Il §9.7 lo chiamava copia della
+matrice. Il test sul DB l'ha smentito: **il verbo comune accetta un passaggio allo stesso stato**, che nessuna
+matrice ha. Provato il 2026-10-25 su dbdev, in transazione annullata:
+
+| Documento | Richiesta | Esito |
+| --- | --- | --- |
+| Ordine | `fn_cambia_stato_ordine(id, 'CONFERMATO')` su un ordine CONFERMATO | passa: `CONFERMATO → CONFERMATO` |
+| Preventivo | `fn_cambia_stato_preventivo(id, 'EMESSO')` su un preventivo EMESSO | passa: `EMESSO → EMESSO` |
+| Bolla | `fn_cambia_stato_ddt(id, 'CONSEGNATO')` su una bolla CONSEGNATA | passa, nessun movimento |
+
+La causa, dalla doc auto-generata: il guard di transizione esce subito quando lo stato non cambia (`IF NEW.<stato>
+IS NOT DISTINCT FROM OLD.<stato> THEN RETURN NEW`, per esempio `trgfn_ordini_guard_transizione`), quindi la
+matrice non viene consultata, e il verbo non rifiuta prima. Per l'ordine il controllo del service è oggi l'**unica**
+cosa che ferma una seconda conferma: si lascia, dichiarato nel codice e nel test DB (`test_conferma_due_volte`, che
+oggi si aspetta `E_ORD_STATO_TRANSIZIONE`).
+
+⚠️ **Lo stesso buco è aperto su «Emetti» di preventivo e bolla**, che il controllo non l'hanno mai avuto: un secondo
+`POST …/emetti/` su un documento già emesso passa dal verbo senza errore e genera un secondo PDF. Il bottone nel
+frontend è nascosto dalle capability, ma un client può chiamare l'API. Non metto una copia del controllo nei due
+service: sarebbe un tampone, e il difetto è nel modello.
+
+**Richiesta al team DB (priorità alta, difetto del modello).** Il verbo comune rifiuta il passaggio X → X quando la
+matrice non ha la riga X → X (in `script.fn_guard_passaggio` o nel verbo, lo sceglie il team DB), col codice di
+transizione non ammessa del documento. Da decidere col team DB: cosa resta della scorciatoia «stato invariato» nei
+guard (un `UPDATE` della riga che riscrive lo stesso stato, come `test-ritiro-alla-chiusura-documento-v1` 7, non deve
+diventare un errore: la regola vale per il **verbo**, non per ogni `UPDATE`). Ricaduta BE dopo l'apply: si ritira
+`_assert_stato` dalla conferma dell'ordine, `test_conferma_due_volte` si aspetta il codice della matrice, e un test
+DB per preventivo e bolla prova che il secondo «Emetti» è rifiutato.
+
+**Provato (§9.8):** suite completa con `ZEROERP_TEST_DB_E2E=1`, 6963 test. Prima corsa: un rosso fuori perimetro,
+`core/tests/db/test_processi_accensione_db.test_un_non_spegnibile_rifiuta_col_suo_codice` (`E_CORE_VALIDATION` al
+posto di `E_PROCESSO_NON_SPEGNIBILE`), verde da solo e nella seconda corsa completa, verde per intero: instabile,
+non toccato, da guardare a parte. mypy (cricchetto, 0 rilievi) e ruff puliti.
+
+### 9.9 Tre ritocchi dopo la rilettura (team BE, 2026-10-25, ok di Tid)
+
+* **Il controllo «lo stato esiste?» nel cambio stato dell'ordine: ritirato.** Leggeva l'id dello stato chiesto solo
+  per un 400 del dominio, e l'id non era più usato: il verbo prende il codice e risponde da sé
+  `E_STATO_WORKFLOW_NON_TROVATO`. Con lui è ritirato `OrdiniRepository.get_stato_id_by_codice`, rimasto senza
+  chiamanti. Test: unitario (il codice del verbo passa) e sul DB (`test_stato_inesistente`).
+* **Lo stesso controllo nella bolla: NON ritirato.** Provato sul DB: il verbo della bolla tratta uno stato
+  sconosciuto come chiamata malformata, `E_VENDITE_CHIAMATA_NON_VALIDA` (`TECNICO`, un 500 «segnala
+  all'assistenza»), mentre i gemelli di ordine e preventivo rispondono `E_STATO_WORKFLOW_NON_TROVATO`. Togliere il
+  controllo avrebbe trasformato un 400 in un 500. Resta, dichiarato nel codice.
+  **Richiesta al team DB:** `vendite.fn_cambia_stato_ddt` risponde a uno stato che il vocabolario non ha con
+  `E_STATO_WORKFLOW_NON_TROVATO`, come i gemelli (il ramo `v_stato_a_id IS NULL`; il guard dei parametri NULL o
+  vuoti può restare tecnico). Si unisce alla richiesta del §9.8. Ricaduta BE dopo l'apply: si ritirano il controllo
+  di `ddt_service._passa_a` e `DdtRepository.get_stato_id_by_codice`.
+* **Test di `PassaggioDocumento`:** l'helper della view finta usava il parametro `ddt_id` per tutte le testate; ora
+  ha un nome neutro, `documento_id`. Nessun cambio di comportamento.
+* **Non toccato, già deciso:** `_STATI_DA_EMESSA` di `offerte_service` (gli stati di partenza di accettazione,
+  rifiuto e revisione) è una copia Python della matrice, da ritirare per M-5 nel giro dell'offerta (D-4).
+
+**Provato (§9.9):** test unitari di vendite, core e documenti verdi; test sul DB di `vendite` e il presidio delle
+rotte verdi; mypy e ruff puliti. Suite completa (6964): 8 rossi, tutti fuori da questo giro e con la stessa causa,
+il giro DB di `brief-db-parametri-senza-override` applicato su dbdev durante la sessione (`1b2e26556`, su
+`dev/db-tid`): i codici nuovi `E_PARAMETER_OVERRIDE_NON_AMMESSO` / `_PRESENTI` senza policy (i due presidi della
+policy) e il guard nuovo sugli override che rifiuta le fixture di `test_parameter_overrides_db` (5) e
+`test_accessi_db` (1). Tocca al passaggio BE di quel brief.
 
 ## 10. Ereditati da brief-db-grammatica-unica-documenti (2026-10-25)
 

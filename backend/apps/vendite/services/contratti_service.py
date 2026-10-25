@@ -45,7 +45,11 @@ from django.db import DatabaseError, IntegrityError, transaction
 from apps.config.sorgenti import SORGENTE_CONTRATTO
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
-from apps.core.services.documento_modello import rifiuta_stato_di_emissione
+from apps.core.services.documento_modello import (
+    e_stato_di_annullo,
+    rifiuta_stato_di_emissione,
+    stato_di_emissione,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
@@ -55,7 +59,6 @@ from apps.vendite.services._cliente_coppia_documento import (
     risolvi_cliente_coppia,
 )
 from apps.vendite.services._annullo_con_legami import (
-    STATO_ANNULLATO,
     legami_del_documento,
     legami_confermati as dichiarazione_legami,
 )
@@ -944,7 +947,8 @@ class ContrattiService:
         # Esistenza col lettore leggero: qui serve solo che il contratto ci sia.
         self._get_contratto_or_raise(contratto_id, op="cambia_stato", getter=self._repo.get_stato_codice)
 
-        if codice_norm == STATO_ANNULLATO:
+        # L'annullo (lo stato d'annullo del vocabolario) dal suo verbo.
+        if e_stato_di_annullo(TESTATA_CONTRATTI, codice_norm):
             confermati = dichiarazione_legami(
                 legami_confermati, validation_code=E_VENDITE_VALIDATION,
                 function_name="contratti_service.cambia_stato",
@@ -1036,18 +1040,15 @@ class ContrattiService:
         #    copia Python della regola, con un testo suo, che scattava solo alla
         #    conferma della stampa: «Attiva» restava acceso (collaudo di Tid).
         #    L'EXCLUDE `ex_contratti_no_overlap` resta la difesa dura.
-        target_stato_id = self._repo.get_stato_id_by_codice("ATTIVO")
-        ErrorManager.require(
-            target_stato_id is not None,
-            code=E_VENDITE_VALIDATION,
-            message="Stato 'ATTIVO' non configurato.",
-        )
-        assert target_stato_id is not None
+        # Lo stato di emissione dal vocabolario (V-2, brief-modello-documento-
+        # vendita §8.11 B-4): fino al 2026-10-25 il letterale "ATTIVO". Il
+        # contratto scrive ancora la colonna (l'id): il verbo arriva col suo giro.
+        stato = stato_di_emissione(TESTATA_CONTRATTI, function_name="contratti_service.emetti")
         with self._map_db_errors(
-            {"contratto_id": contratto_id, "codice_interno": "ATTIVO"},
+            {"contratto_id": contratto_id, "codice_interno": stato.codice},
             fallback_message="Violazione vincolo DB su attivazione contratto.",
         ):
-            updated = self._repo.update_stato(contratto_id, target_stato_id)
+            updated = self._repo.update_stato(contratto_id, stato.id)
             ErrorManager.require(
                 updated,
                 code=E_VENDITE_NOT_FOUND,

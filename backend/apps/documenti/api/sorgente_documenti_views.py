@@ -74,10 +74,13 @@ from apps.documenti.api.multipart_helpers import extract_allegati
 #         - emetti_response_key: chiave del risultato transizione nella
 #                             response emetti (es. "ordine", "ddt"). Ignorato se
 #                             emetti_call is None.
-#         - emetti_passaggio: (testata, stato di emissione) per un documento sul
-#                             modello (es. ("vendite.ddt", "EMESSO")): l'azione
-#                             la dice la riga del passaggio (`PassaggioDocumento`,
-#                             M-3). Senza, l'emissione chiede il livello sul
+#         - emetti_passaggio: la testata di un documento sul modello (es.
+#                             "vendite.ddt"): l'azione la dice la riga del
+#                             passaggio verso lo stato di emissione, letto dal
+#                             vocabolario a ogni richiesta (`PassaggioDocumento`
+#                             con `stato_del_modello="emissione"`, M-3; B-2 di
+#                             brief-modello-documento-vendita §8.11, che ritira
+#                             lo stato fissato qui). Senza, l'emissione chiede il livello sul
 #                             documento. ⛔ `emetti_post_permission` (l'azione
 #                             dichiarata a mano) e' ritirato il 2026-10-25: il
 #                             suo ultimo consumatore, il preventivo, e' passato
@@ -99,7 +102,7 @@ def build_documenti_sorgente_views(
     doc_service: Callable[[], Any],
     emetti_call: Callable[[Request, int], dict[str, Any]] | None = None,
     emetti_response_key: str | None = None,
-    emetti_passaggio: tuple[str, str] | None = None,
+    emetti_passaggio: str | None = None,
     area_funzionale: str = "vendite",
     model_permission: tuple[str, str] | None = None,
 ) -> SimpleNamespace:
@@ -185,9 +188,8 @@ def build_documenti_sorgente_views(
 
     Emetti.__doc__ = f"`POST .../<sorgente_id>/emetti/` (multipart) — {schema_prefix}."
     if emetti_passaggio is not None:
-        testata, stato_emissione = emetti_passaggio
         Emetti.post_passaggio = PassaggioDocumento(
-            testata=testata, documento_kwarg="sorgente_id", stato_chiesto=stato_emissione,
+            testata=emetti_passaggio, documento_kwarg="sorgente_id", stato_del_modello="emissione",
         )
     # Sorgenti senza emissione manuale (FATTURA): la view emetti non viene
     # esposta (namespace.emetti = None) → il dominio non ne cabla la rotta.
