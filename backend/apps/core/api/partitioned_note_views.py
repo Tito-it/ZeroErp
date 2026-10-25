@@ -37,6 +37,14 @@ def _make_serializer_name(target_tipo: str, suffix: str) -> str:
     return f"PartitionedNote_{target_tipo}_{suffix}"
 
 
+# Scopo: Il nome di classe delle view, in CamelCase dal codice del tipo
+#        (`DDT_VENDITA` -> `DdtVendita`). Dal 2026-10-25 i codici sono quelli
+#        di `config.tipi_entita`, con `_`: `.title()` dava `Ddt_Vendita`.
+def _make_view_name(target_tipo: str, suffix: str) -> str:
+    camel = "".join(parte.capitalize() for parte in target_tipo.split("_"))
+    return f"Note{camel}{suffix}"
+
+
 # Scopo: Costruisce la coppia (ListCreateView, DetailView) cablate sul
 #        service factory passato. Le view derivano da DomainAPIView con
 #        area_funzionale del dominio chiamante.
@@ -238,9 +246,9 @@ def make_note_views(
 
     # Rinomina le classi per debugging/admin/openapi (drf-spectacular usa il
     # nome di classe come operationId quando non specificato).
-    NoteListCreateView.__name__ = f"Note{target_tipo.title()}ListCreateView"
+    NoteListCreateView.__name__ = _make_view_name(target_tipo, "ListCreateView")
     NoteListCreateView.__qualname__ = NoteListCreateView.__name__
-    NoteDetailView.__name__ = f"Note{target_tipo.title()}DetailView"
+    NoteDetailView.__name__ = _make_view_name(target_tipo, "DetailView")
     NoteDetailView.__qualname__ = NoteDetailView.__name__
 
     return NoteListCreateView, NoteDetailView

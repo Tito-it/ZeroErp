@@ -155,7 +155,7 @@ urlpatterns = [
          ApiOrdineDocumentoRistampa.as_view(),
          name="vendite-ordine-documenti-ristampa"),
 
-    # Note partizionate (target_tipo='ORDINE'). Building block
+    # Note partizionate (target_tipo='ORDINE_VENDITA'). Building block
     # PartitionedNoteRepository: 3 righe di cablaggio + view generata.
     path("<int:ordine_id>/note/", ApiOrdineNoteList.as_view(),
          name="vendite-ordine-note-list"),

@@ -442,7 +442,7 @@ del resolver (comportamento storico).
 
 ### Note `GET/POST /<id>/note/` + `GET/PATCH/DELETE /<id>/note/<note_id>/`
 
-Note partizionate (`vendite.note_ordini`, `target_tipo='ORDINE'`) via building
+Note partizionate (`vendite.note_ordini`, `target_tipo='ORDINE_VENDITA'`) via building
 block `PartitionedNoteRepository` + `make_note_views`. Contratto identico agli
 altri cinque domini (testata + riga via `target_riga_id`): payload, filtri,
 `Idempotency-Key`, codici errore e permessi stanno in

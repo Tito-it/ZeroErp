@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-**Riparte: la sessione BE/FE**, col giro del §14.9 (elenco chiuso BE-1 … FE-2): il lotto 3 (le note, `20261025-53` … `-69`) è applicato su dbdev e scratch e i pgTAP sono verdi come app (Tid, 2026-10-25). ⚠️ Finché il BE non passa ai codici nuovi, le note di ordini, DDT, offerte e catalogo non si scrivono. Poi il lotto 4 (presidio e archiviazione). Tutto il resto è chiuso e in `main`: lotti 0, 1, 2a … 2e e §13.6 su DB e BE/FE (§13.6: DB `2ada3f6d1`, BE/FE `a5af6305e`). Il ponte di `fn_articolo_riga_contesto` è morto nel 2a (`20261019-53`). Restano a Tid, quando vuole, le prove a video di fine cantiere. Il brief si è fermato il 2026-10-21 perché il lavoro è passato a [brief-modello-documento-vendita](brief-modello-documento-vendita.md): i due brief non dipendono l'uno dall'altro (§14.1).
+**Riparte: il team DB, col lotto 4** (il presidio: ogni colonna di tipo documento ha la FK verso il catalogo; per le note c'è già, §14.7). Prima, a **Tid**: la decisione L4-1 (l'accensione, riga 7-bis) e il commit del giro BE/FE (prova a video fatta, 2026-10-25). A lotto chiuso: riga di PROJECT_CONTEXT e archiviazione. Il lotto 3 (le note) è chiuso su DB (`20261025-53` … `-69`, applicato su dbdev e scratch, pgTAP verdi come app) e su BE/FE (§14.10, 2026-10-25: elenco BE-1 … FE-2 tutto fatto, chiamata reale su dbdev, suite intera verde); il giro BE/FE è **da committare**. A Tid, quando vuole, la prova a video delle note di ordine, DDT, offerta e articolo. Tutto il resto è chiuso e in `main`: lotti 0, 1, 2a … 2e e §13.6 su DB e BE/FE (§13.6: DB `2ada3f6d1`, BE/FE `a5af6305e`). Il ponte di `fn_articolo_riga_contesto` è morto nel 2a (`20261019-53`). Restano a Tid, quando vuole, le prove a video di fine cantiere. Il brief si è fermato il 2026-10-21 perché il lavoro è passato a [brief-modello-documento-vendita](brief-modello-documento-vendita.md): i due brief non dipendono l'uno dall'altro (§14.1).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -47,10 +47,13 @@
 | 6-novies-b | ✅ **Tid** | L3-1 … L3-6 come da proposta, e via allo sviluppo (2026-10-25) | §14.5, §14.6 | 6-novies-a |
 | 6-novies-c | ✅ team DB | Lotto 3 scritto e provato: `20261025-53` … `-69`, 10 pgTAP portati, uno nuovo; avanti, rollback e «da zero» provati sul dump di schema (2026-10-25); committato su `dev/db-tid` | §14.7, §14.8 | 6-novies-b |
 | 6-novies-d | ✅ **Tid** | Apply su dbdev e scratch (`-57` rilanciato dopo il §14.8.1, `-69` dopo il §14.8.2), corsa dei pgTAP come app: verdi (2026-10-25) | §14.8 | 6-novies-c |
-| 6-novies-e | sessione BE/FE | Il giro del §14.9 (elenco chiuso BE-1 … FE-2), subito dopo l'apply: fino ad allora le note di ordini, DDT, offerte e catalogo non si scrivono | §14.9 | 6-novies-d |
-| 7 | chi chiude | Lotto 4: presidio (ogni colonna di tipo documento ha la FK; per le note c'è già, §14.7), riga di PROJECT_CONTEXT, archiviazione. Il ponte di `fn_articolo_riga_contesto` è già ritirato (2a) | §5 G-4 | 6-novies-e |
+| 6-novies-e | ✅ sessione BE/FE | Il giro del §14.9 (elenco chiuso BE-1 … FE-2): codici nuovi nei repository, `TARGET_TIPI_AMMESSI` ritirata, voce del tipo target sulla FK, schema OpenAPI verificato (solo i nomi dei componenti), un presidio nuovo della giuntura; chiamata reale su dbdev, suite Django intera verde (2026-10-25); **da committare** | §14.9, §14.10 | 6-novies-d |
+| 6-novies-f | ✅ **Tid** | Prova a video: una nota su ordine, DDT, offerta, articolo e componente (2026-10-25) | §14.10 | 6-novies-e |
+| 7-bis | **Tid** | L4-1: la FK lega il **nome** del tipo, non l'**accensione** — una sorgente nominata da note o legami si spegne (`attivo = false`) senza errore. Si scrive una regola che lo impedisce, o resta così? | §8.2 (in fondo) | — |
+| 7 | team DB | Lotto 4, il presidio: pgTAP «ogni colonna di tipo documento ha la FK verso il catalogo» (per le note c'è già, §14.7); più la regola di L4-1, se Tid la vuole. Il ponte di `fn_articolo_riga_contesto` è già ritirato (2a) | §5 G-4 | 6-novies-e, 7-bis |
+| 8 | chi chiude il lotto 4 | Riga di PROJECT_CONTEXT e archiviazione del brief in `work-done/` | — | 7 |
 
-**Decisioni aperte di Tid:** nessuna sul giro 2c-2e (L2e-2 = (a), L2c-1 = (a) in questo giro, 2026-10-20); il giro DB 2c-2e è committato (PR #1910); il giro BE/FE del §13.4 è committato (PR #1913), quello del §13.6 è committato (`a5af6305e`); **nessuna sul lotto 3** (L3-1 … L3-6 decise il 2026-10-25, §14.6); il lotto 3 è committato su `dev/db-tid` (2026-10-25); il blocco «origine» della stampa della fattura, che non si vede mai (§12.9, in fondo). Il giro DB dei
+**Decisioni aperte di Tid:** nessuna sul giro 2c-2e (L2e-2 = (a), L2c-1 = (a) in questo giro, 2026-10-20); il giro DB 2c-2e è committato (PR #1910); il giro BE/FE del §13.4 è committato (PR #1913), quello del §13.6 è committato (`a5af6305e`); **nessuna sul lotto 3** (L3-1 … L3-6 decise il 2026-10-25, §14.6); il lotto 3 è committato su `dev/db-tid` (2026-10-25), il suo giro BE/FE (§14.10) è **da committare** su `dev/backend-tid`; il blocco «origine» della stampa della fattura, che non si vede mai (§12.9, in fondo). Il giro DB dei
 §12.8 e §12.9 (§12.10) è committato (PR #1904); il giro BE del §12.10.6 è committato (`323c96a5c`, PR #1907). Verificato su dbdev il 2026-10-20: lo standard e le
 copie degli emittenti 32 e 44 stampano l'ordine in forma 3, e nessuno legge più `origine.tipo`. Lo SQL una tantum
 di L2b-2 resta accanto al brief fino all'archiviazione. Il §12.8 è partito il 2026-10-19 sera, insieme al
@@ -1785,7 +1788,7 @@ Ricostruita dalla sessione BE/FE sul repo e sul catalogo vivo, perché il brief 
 ## 14. Lotto 3 — le note: ricognizione, piano, sviluppo (team DB, 2026-10-25)
 
 Piano (§14.1 … §14.5), decisioni di Tid e correzioni della scrittura (§14.6), sviluppo e prova (§14.7, §14.8),
-richiesta al BE/FE (§14.9). Da applicare.
+richiesta al BE/FE (§14.9) e il suo giro (§14.10). Applicato su dbdev e scratch; giro BE/FE fatto il 2026-10-25.
 
 ### 14.1 Il rapporto col brief del modello del documento
 
@@ -2080,3 +2083,35 @@ censito su `backend/`, `frontend/src` e la doc del 2026-10-25:
 
 Le API non cambiano rotta. Un solo passaggio BE/FE; una richiesta nuova dopo questa o è una riga dell'elenco o è
 un brief nuovo.
+
+✅ **Fatto tutto, 2026-10-25** (sessione BE/FE): il dettaglio, le tre righe che sono andate oltre la lettera
+dell'elenco e la prova sono al §14.10.
+
+### 14.10 Il giro BE/FE (sessione BE/FE, 2026-10-25)
+
+| # | Esito |
+| --- | --- |
+| BE-1 | ✅ `vendite/db/note_repositories.py`: `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`; via i commenti su `varchar(16)` e su `TARGET_TIPI_AMMESSI`. In `vendite/api/note_views.py` le view **leggono** il codice dall'istanza (`NOTE_REPO_DDT.target_tipo`) invece di riscriverlo: era una seconda copia del codice della partizione |
+| BE-2 | ✅ `TARGET_TIPI_AMMESSI` e il suo controllo nel `__init__` ritirati; al loro posto un commento che dice chi decide (FK + confine). In più la proprietà `partition_table`, accanto a `target_tipo`, che serve al presidio nuovo (sotto) |
+| BE-3 | ✅ la voce `chk_note_target_tipo` esce da `_CHECK_CONSTRAINTS`; ⚠️ **non** sparisce: entra `fk_vendite_note_target_tipo` in `_FK_CONSTRAINTS` (`E_NOTA_FK`, «Tipo target nota non ammesso.», a due elementi: non ha un campo). La FK del padre si ripete su ogni partizione (letto su `pg_constraint` di dbdev), e il presidio `core/tests/db/test_note_vincoli_mappati_db.py` vuole ogni vincolo mappato. Il caso che il §14.9 descrive resta vero: un codice senza partizione esce dal routing (23514 senza nome di vincolo, `E_NOTA_VALIDATION`) e alla FK non ci arriva |
+| BE-4 | ✅ i due codici di catalogo sono costanti in `catalogo_bom_repository.py` (`NOTA_TARGET_ARTICOLO`, `NOTA_TARGET_COMPONENTE`), usate dalle due creazioni e dal confronto di `fn_update_nota`: tre letterali con un significato solo |
+| BE-5 | ✅ nomi dei serializer `PartitionedNote_<codice>_<suffisso>`; nomi di classe in CamelCase dal codice (`NoteDdtVenditaListCreateView`: `.title()` avrebbe dato `NoteDdt_Vendita…`). **Schema OpenAPI generato prima e dopo** (`spectacular --validate`): cambiano **solo** i 24 componenti di ordine, DDT e offerta (`PartitionedNote_DDT_…` → `PartitionedNote_DDT_VENDITA_…`); `operationId` (945), rotte e rilievi di drf-spectacular identici; `test_schema_openapi_registro` verde. **Tipi generati del FE: non ce ne sono** (nessun generatore OpenAPI in `frontend/` né in CI, verificato): nessun consumatore dei nomi dei componenti |
+| BE-6 | ✅ i tre commenti di `urls_ordini.py`, `urls_ddt.py`, `urls_offerte.py`; e quello di `core/services/error_ui_overrides.py` (elencava `ATTIVITAFT`) |
+| BE-7 | ✅ `test_partitioned_note_service`: il test della whitelist diventa `test_target_tipo_senza_whitelist` (un codice con `_` si costruisce); i due file di catalogo coi codici nuovi. `test_scritture_email_note_db` e `smoke-fattura-contatore-note.py` usano `FATTURA`, che non cambia: invariati, verdi. ➕ **Presidio nuovo** `core/tests/db/test_note_confini_partizione_db.py` (secondo livello, struttura): ogni istanza di `note_repositories.py` — raccolte dal modulo, non elencate — nomina il confine `FOR VALUES IN` della sua partizione, e i due codici di catalogo sono confini di `catalogo.note`. È la giuntura che il lotto 3 ha rotto e che i test mockati non vedono; **provato per mutazione** (`DDT_VENDITA` → `DDT`: rosso sulla partizione `vendite.note_ddt`) |
+| BE-8 | ✅ `catalogo-building-block-backend.md` (le due voci), `core/manual/api_note_documento.md` (matrice e paragrafo datato sul cambio, risposte e schema), `vendite/manual/api_{ordini,ddt,offerte,fattura_dettaglio}.md`, `offerte_service.md` (le voci storiche annotate con la data, non riscritte). `api_preventivi.md` e `api_contratti.md` citano `PREVENTIVO`/`CONTRATTO`: invariati |
+| FE-1 | ✅ i commenti di `OrdineNoteDrawer.vue` e `DdtNoteDrawer.vue`. Il catalogo BB frontend non cita codici (`useNote`: solo il nome del campo): invariato |
+| FE-2 | ✅ nessuna vista FE confronta `target_tipo` (unico uso: `useNote.js` lo **toglie** dal PATCH). Nessun test FE ne ha uno |
+
+**La prova (2026-10-25):**
+
+* **Chiamata reale su dbdev**, in transazione annullata, come `zeroerp_app` col contesto operatore: per DDT e ordine
+  (builder `fn_pgtap_crea_ddt_da_ordine`) e per un'offerta visibile all'operatore, dal service vero: nota di
+  testata e di riga, lista, update, delete. La riga finisce nella partizione giusta (`note_ddt` con `DDT_VENDITA`…)
+  e la risposta restituisce il codice nuovo. Catalogo: nota di articolo e di componente da `catalogo_service`,
+  update passando da `resolve_nota` (il confronto con `NOTA_TARGET_ARTICOLO`), delete;
+* **suite Django intera** col DB vero (`ZEROERP_TEST_DB_E2E=1`): 6944 test, verde (1 skip e 1 expected failure, già
+  noti); smoke `smoke-fattura-contatore-note.py`: verde; `ruff` sui file toccati: verde;
+* ⚠️ **non provato: mypy.** In questo ambiente non parte (errore interno al caricamento del plugin `django-stubs`,
+  mypy 2.4.0), **anche sull'albero pulito**: non viene da questo giro, ma il cricchetto mypy non è stato visto. Lo
+  vede la CI;
+* i worker di sviluppo sono ripartiti alle 15:31:34, dopo l'ultima modifica Python: girano già il codice nuovo.

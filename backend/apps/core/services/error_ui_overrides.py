@@ -399,7 +399,8 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_NOTA_CHECK_VIOLATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_NOTA_FK": "highlight_form_fields",  # classe DATO_ERRATO
     # Codici cross-area: il service in apps/core/ scrive su qualunque partizione
-    # di vendite.note (PREVENTIVO/CONTRATTO/ORDINE/DDT/FATTURA/ATTIVITAFT) e in
+    # di vendite.note (PREVENTIVO/CONTRATTO/ORDINE_VENDITA/DDT_VENDITA/
+    # OFFERTA_COMMERCIALE/FATTURA/ATTIVITA) e in
     # prospettiva su tabelle note di altri schemi che adotteranno lo stesso pattern.
     "E_NOTA_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_OFFERTA_ECCEZIONE_NON_TROVATA": "show_error_banner",  # classe NON_TROVATO

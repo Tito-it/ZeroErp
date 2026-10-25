@@ -110,7 +110,7 @@ Tutti gli endpoint cablati:
 - Suite pgTAP (step 9) confermata da team DB
 - `GET/POST /<id>/note/` + `GET/PATCH/DELETE /<id>/note/<note_id>/` —
   cablaggio building block `PartitionedNoteRepository` per
-  `target_tipo='OFFERTA'` (2026-05-26). Contratto comune in
+  `target_tipo='OFFERTA'` (2026-05-26; `'OFFERTA_COMMERCIALE'` dal 2026-10-25). Contratto comune in
   [api_note_documento](../../core/manual/api_note_documento.md)
 
 ### Perimetro D7 — capability layer + refactor atomico (2026-05-26)
@@ -1170,7 +1170,7 @@ diverso da "transizione non ammessa generica").
 - `vendite.offerte_commerciali_eccezioni` — mirror di `contratti_righe`
 - `vendite.offerte_commerciali_utilities` — estensione 1:1 (UNIQUE `offerta_id`)
 - `vendite.note_offerte_commerciali` — partizione del sistema note generico
-  (`target_tipo = 'OFFERTA'`), cablata via building block
+  (`target_tipo = 'OFFERTA_COMMERCIALE'`, fino al 2026-10-25 `'OFFERTA'`), cablata via building block
   `apps.core.db.PartitionedNoteRepository` (cablaggio differito, vedi piano BE/FE)
 
 **Funzioni**:

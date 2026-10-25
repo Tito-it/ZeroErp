@@ -40,51 +40,52 @@ NOTE_REPO_CONTRATTO = PartitionedNoteRepository(
     child_parent_fk="contratto_id",
 )
 
-# Partizione 'OFFERTA' (target_tipo varchar(16) ammette solo 7 caratteri;
-# 'OFFERTA_COMMERCIALE' (19) e' troppo lungo — vedi doc
-# `vendite.note_offerte_commerciali`). Il child_table
+# ⭐ Il `target_tipo` di ogni istanza e' un codice di `config.tipi_entita` (la
+# FK del padre `vendite.note` lo pretende, e il confine della partizione e' quel
+# codice): dal 2026-10-25 `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`
+# (lotto 3 di brief-db-grammatica-unica-documenti). Un codice senza partizione
+# non arriva a nessun vincolo: lo rifiuta il routing di PostgreSQL.
+
+# Partizione 'OFFERTA_COMMERCIALE'. Il child_table
 # `vendite.offerte_commerciali_eccezioni` collega le note di RIGA via FK
 # `offerta_id` (verificata su dbzero/vendite/tabelle).
 NOTE_REPO_OFFERTA = PartitionedNoteRepository(
     partition_table="vendite.note_offerte_commerciali",
-    target_tipo="OFFERTA",
+    target_tipo="OFFERTA_COMMERCIALE",
     parent_table="vendite.offerte_commerciali",
     parent_pk="id",
     child_table="vendite.offerte_commerciali_eccezioni",
     child_parent_fk="offerta_id",
 )
 
-# Partizione 'ORDINE' (target_tipo varchar(16): 'ORDINE' = 6 char, ok). Il
-# child_table `vendite.ordini_righe` collega le note di RIGA via FK `ordine_id`
-# (note_ordini.target_riga_id -> ordini_righe.id).
+# Partizione 'ORDINE_VENDITA'. Il child_table `vendite.ordini_righe` collega le
+# note di RIGA via FK `ordine_id` (note_ordini.target_riga_id -> ordini_righe.id).
 NOTE_REPO_ORDINE = PartitionedNoteRepository(
     partition_table="vendite.note_ordini",
-    target_tipo="ORDINE",
+    target_tipo="ORDINE_VENDITA",
     parent_table="vendite.ordini",
     parent_pk="id",
     child_table="vendite.ordini_righe",
     child_parent_fk="ordine_id",
 )
 
-# Partizione 'DDT' (target_tipo varchar(16): 'DDT' = 3 char, ok). Il child_table
-# `vendite.ddt_righe` collega le note di RIGA via FK `ddt_id`
-# (note_ddt.target_riga_id -> ddt_righe.id).
+# Partizione 'DDT_VENDITA'. Il child_table `vendite.ddt_righe` collega le note
+# di RIGA via FK `ddt_id` (note_ddt.target_riga_id -> ddt_righe.id).
 NOTE_REPO_DDT = PartitionedNoteRepository(
     partition_table="vendite.note_ddt",
-    target_tipo="DDT",
+    target_tipo="DDT_VENDITA",
     parent_table="vendite.ddt",
     parent_pk="id",
     child_table="vendite.ddt_righe",
     child_parent_fk="ddt_id",
 )
 
-# Partizione 'FATTURA' (target_tipo varchar(16): 'FATTURA' = 7 char, ok — la
-# partizione `vendite.note_fatture` e' definita FOR VALUES IN ('FATTURA')). Il
+# Partizione 'FATTURA' (`vendite.note_fatture` e' definita
+# FOR VALUES IN ('FATTURA')). Il
 # child_table `vendite.fatture_righe` collega le note di RIGA via FK
 # `fattura_id` (note_fatture.target_riga_id -> fatture_righe.id).
 # Sesto e ultimo dominio note del ciclo attivo: nessuna migration, la partizione
-# e il suo trigger di validazione esistono gia' a DB e 'FATTURA' e' gia' in
-# TARGET_TIPI_AMMESSI del repository BB.
+# e il suo trigger di validazione esistono gia' a DB.
 # La nota resta scrivibile anche su fattura congelata: il congelamento di
 # `trgfn_fattura_satellite_guard_congelamento` protegge gli IMPORTI della
 # fattura, non l'annotazione operativa che ci gira intorno.

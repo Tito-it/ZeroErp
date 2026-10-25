@@ -1295,7 +1295,7 @@ class CatalogoServiceTests(TestCase):
         from apps.catalogo.services import catalogo_service as svc
 
         mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
-        mock_resolve.return_value = {"nota_target_tipo": "ARTICOLI", "nota_target_id": "art-1"}
+        mock_resolve.return_value = {"nota_target_tipo": "ARTICOLO", "nota_target_id": "art-1"}
         comp = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
         casi = (
             ("update_articolo", lambda: svc.fn_update_articolo("art-1", {"descrizione": "x", "estranea": 1})),
@@ -1306,7 +1306,7 @@ class CatalogoServiceTests(TestCase):
             )),
             ("update_componente", lambda: svc.fn_update_componente("art-1", comp, {"coeff_qta": "2", "estranea": 1})),
             ("create_nota", lambda: svc.fn_create_nota_articolo(
-                "art-1", {"testo": "t", "id_stile": 1, "target_tipo": "ARTICOLI_COMPONENTI"},
+                "art-1", {"testo": "t", "id_stile": 1, "target_tipo": "ARTICOLO_COMPONENTE"},
             )),
             ("update_nota", lambda: svc.fn_update_nota(5, {"testo": "t", "target_id": "altro"})),
             ("update_uom_tipo", lambda: svc.fn_update_uom_tipo(1, {"descrizione": "x", "codice": "Y"})),

@@ -103,6 +103,14 @@ NOTA_WRITE_COLUMNS: frozenset[str] = frozenset({
     "meta",
 })
 
+# I due bersagli delle note catalogo: codici di `config.tipi_entita` (FK del
+# padre `catalogo.note`) e confini delle due partizioni. Li scrive il service
+# alla creazione e li confronta col `target_tipo` letto, quindi stanno in UN
+# posto. Fino al 2026-10-25 `ARTICOLI` / `ARTICOLI_COMPONENTI` (lotto 3 di
+# brief-db-grammatica-unica-documenti).
+NOTA_TARGET_ARTICOLO = "ARTICOLO"
+NOTA_TARGET_COMPONENTE = "ARTICOLO_COMPONENTE"
+
 NOTE_RESOLVE_COLUMNS: tuple[str, ...] = (
     "n.id AS nota_id",
     "n.target_tipo AS nota_target_tipo",

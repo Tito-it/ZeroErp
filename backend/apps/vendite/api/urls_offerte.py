@@ -184,7 +184,7 @@ urlpatterns = [
         ApiOffertaUtilityDetail.as_view(),
         name="vendite-offerta-utility-detail",
     ),
-    # Note partizionate (target_tipo='OFFERTA'). Building block
+    # Note partizionate (target_tipo='OFFERTA_COMMERCIALE'). Building block
     # PartitionedNoteRepository: 3 righe di cablaggio + view generata.
     path(
         "<int:offerta_id>/note/",

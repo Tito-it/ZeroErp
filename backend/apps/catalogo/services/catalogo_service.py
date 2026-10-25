@@ -19,6 +19,8 @@ from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.catalogo.db.catalogo_bom_repository import (
     COMPONENTE_WRITE_COLUMNS,
+    NOTA_TARGET_ARTICOLO,
+    NOTA_TARGET_COMPONENTE,
     NOTA_WRITE_COLUMNS,
     CatalogoBomRepository,
 )
@@ -1802,7 +1804,7 @@ def fn_create_nota_articolo(articolo_id: UUID | str, payload: dict[str, Any]) ->
     data = _extract_nota_payload(payload, for_update=False, function_name=function_name)
     repository = CatalogoBomRepository()
     try:
-        nota_id = repository.create_nota("ARTICOLI", articolo_id, data)
+        nota_id = repository.create_nota(NOTA_TARGET_ARTICOLO, articolo_id, data)
     except IntegrityError as exc:
         _translate_nota_integrity_error(exc, function_name=function_name)
     result = repository.get_nota_articolo(articolo_id, nota_id)
@@ -1848,7 +1850,7 @@ def fn_create_nota_componente(
     data = _extract_nota_payload(payload, for_update=False, function_name=function_name)
     repository = CatalogoBomRepository()
     try:
-        nota_id = repository.create_nota("ARTICOLI_COMPONENTI", componente_id, data)
+        nota_id = repository.create_nota(NOTA_TARGET_COMPONENTE, componente_id, data)
     except IntegrityError as exc:
         _translate_nota_integrity_error(exc, function_name=function_name)
     result = repository.get_nota_componente(nota_id)
@@ -1881,7 +1883,7 @@ def fn_update_nota(nota_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         function_name=function_name,
         log_to_db=False,
     )
-    if resolved["nota_target_tipo"] == "ARTICOLI":
+    if resolved["nota_target_tipo"] == NOTA_TARGET_ARTICOLO:
         result = repository.get_nota_articolo(resolved["nota_target_id"], nota_id)
     else:
         result = repository.get_nota_componente(nota_id)

@@ -9,6 +9,9 @@
 #        service del dettaglio fattura (contatore note) e un service non puo'
 #        importare da `api/`. Aggiungere un dominio = una istanza repo la` +
 #        una factory e una coppia di view qui.
+# Note: il `target_tipo` delle view (nomi dei serializer e delle classi nello
+#       schema OpenAPI) si legge dall'istanza del repository, non si riscrive:
+#       fino al 2026-10-25 era una seconda copia del codice della partizione.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -36,7 +39,7 @@ ApiPreventivoNoteList, ApiPreventivoNoteDetail = make_note_views(
     area_funzionale="vendite",
     parent_path_param="preventivo_id",
     service_factory=_preventivo_service_factory,
-    target_tipo="PREVENTIVO",
+    target_tipo=NOTE_REPO_PREVENTIVO.target_tipo,
     model_permission=("vendite", "preventivo"),
 )
 
@@ -50,7 +53,7 @@ ApiContrattoNoteList, ApiContrattoNoteDetail = make_note_views(
     area_funzionale="vendite",
     parent_path_param="contratto_id",
     service_factory=_contratto_service_factory,
-    target_tipo="CONTRATTO",
+    target_tipo=NOTE_REPO_CONTRATTO.target_tipo,
     model_permission=("vendite", "contratto"),
 )
 
@@ -64,7 +67,7 @@ ApiOffertaNoteList, ApiOffertaNoteDetail = make_note_views(
     area_funzionale="vendite",
     parent_path_param="offerta_id",
     service_factory=_offerta_service_factory,
-    target_tipo="OFFERTA",
+    target_tipo=NOTE_REPO_OFFERTA.target_tipo,
     model_permission=("vendite", "offerta_commerciale"),
 )
 
@@ -78,7 +81,7 @@ ApiOrdineNoteList, ApiOrdineNoteDetail = make_note_views(
     area_funzionale="vendite",
     parent_path_param="ordine_id",
     service_factory=_ordine_service_factory,
-    target_tipo="ORDINE",
+    target_tipo=NOTE_REPO_ORDINE.target_tipo,
     model_permission=("vendite", "ordine"),
 )
 
@@ -92,7 +95,7 @@ ApiDdtNoteList, ApiDdtNoteDetail = make_note_views(
     area_funzionale="vendite",
     parent_path_param="ddt_id",
     service_factory=_ddt_service_factory,
-    target_tipo="DDT",
+    target_tipo=NOTE_REPO_DDT.target_tipo,
     model_permission=("vendite", "ddt"),
 )
 
@@ -106,6 +109,6 @@ ApiFatturaNoteList, ApiFatturaNoteDetail = make_note_views(
     area_funzionale="vendite",
     parent_path_param="fattura_id",
     service_factory=_fattura_service_factory,
-    target_tipo="FATTURA",
+    target_tipo=NOTE_REPO_FATTURA.target_tipo,
     model_permission=("vendite", "fattura"),
 )
