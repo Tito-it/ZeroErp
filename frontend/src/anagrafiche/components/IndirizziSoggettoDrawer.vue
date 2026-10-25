@@ -29,7 +29,7 @@ import Message from 'primevue/message'
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const indirizzo = useIndirizzoSoggettoForm()
 
 // Context 'soggetto' (default) o 'ruolo': determina quale set di API usare.
@@ -447,6 +447,7 @@ const annullaForm = () => chiudiInlineConConferma(onCancelForm)
         }}</h4>
       </div>
       <IndirizzoSoggettoForm
+        :campi-errati="campiErrati"
         :form="indirizzo.form"
         :is-libera="indirizzo.isLibera.value"
         @update:is-libera="v => indirizzo.isLibera.value = v"

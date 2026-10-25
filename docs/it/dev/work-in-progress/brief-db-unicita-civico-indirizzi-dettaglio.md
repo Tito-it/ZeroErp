@@ -2,8 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-**Riparte: team FE e team BE**, con le due richieste del §6. Il lato DB è chiuso: giro 1 applicato
-su dbdev e sullo scratch (2026-10-25 09:50), corsa pgTAP di Tid verde.
+**Riparte: team DB**, con la chiusura (§5.5). Lato DB chiuso (giro 1 applicato su dbdev e sullo
+scratch il 2026-10-25, pgTAP verde); fatte anche le richieste FE e BE del §6 (2026-10-25).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -11,11 +11,11 @@ su dbdev e sullo scratch (2026-10-25 09:50), corsa pgTAP di Tid verde.
 | 2 | ✅ Tid | D1-D8, poi il via (2026-10-25) | §4 | 1 |
 | 3 | ✅ team DB | Giro 1: `20261025-23`…`-28`, cinque codici, pgTAP, guide e manuali | §5 | 2 |
 | 4 | ✅ Tid | Apply su dbdev e scratch, corsa pgTAP verde (2026-10-25) | §5.6 | 3 |
-| 5 | **team FE** | Il campo civico non accetta `0` né negativi | §6.1 | — |
-| 6 | **team BE** | I codici nuovi arrivano leggibili al drawer (D6 in modifica, D4/D8 in creazione) | §6.2 | — |
-| 7 | team DB | Chiusura: blocco «Chi riparte», archiviazione | §5.5 | 5, 6 |
+| 5 | ✅ team FE | Il campo civico non accetta `0` né negativi; civico e dettagli accendono il campo in errore | §6.1 | — |
+| 6 | ✅ team BE | I codici nuovi arrivano leggibili al drawer (D6 in modifica, D4/D8 in creazione) | §6.2 | — |
+| 7 | **team DB** | Chiusura: blocco «Chi riparte», archiviazione | §5.5 | 5, 6 |
 
-Decisioni aperte di Tid: nessuna. Lavoro DB committato (2026-10-25).
+Decisioni aperte di Tid: nessuna. Lavoro DB committato (2026-10-25); lavoro BE/FE del §6 da committare.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-25. **A chi:** Tid; poi il team DB; il §6.1 al team FE, il §6.2 al team BE.
 > **Origine:** revisione di `docs/it/postgresql/intro.md` (2026-10-24/25): l'esempio sull'indice di
@@ -322,6 +322,25 @@ non come errore generico:
   (TECNICO, 500).
 
 Nessun cambio di service.
+
+### 6.3 Esito (team BE/FE, 2026-10-25)
+
+* **BE**: dizionario `error_policies_generated.py` rigenerato (le cinque voci, nient'altro);
+  ripieghi senza segnaposto in `error_messages_fallback.py`; in `error_ui_overrides.py`
+  `highlight_form_fields` per `E_INDIRIZZO_CIVICO_NON_POSITIVO` e
+  `E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE` (il campo è un input del form). Doppione, via non
+  risolta e ri-lettura restano al banner di classe. Service invariati: su modifica, creazione e
+  madri dei soggetti il `P0001` arriva al middleware (`create_with_dedup` intercetta solo
+  `IntegrityError`). Test dei presidi errori verdi (33, uno skip «solo misurato» preesistente).
+* **FE**: `:min="0"` sul civico in `IndirizzoDrawer` e `IndirizzoSoggettoForm`, **non** `"1"` come
+  chiedeva il §6.1: l'`InputNumber` di PrimeVue (4.5) riporta al minimo un valore sotto soglia
+  (`onInputBlur` → `validateValue`, e il tasto Home), quindi con `1` uno `0` diventava in silenzio
+  il civico 1, un altro indirizzo: la correzione silenziosa scartata con D2-b. Con `0` il segno
+  meno non si digita, e lo `0` lo rifiuta il DB col campo acceso. Civico,
+  estensione, palazzina, scala, piano e interno legati a `campiErrati` (prop nuova di
+  `IndirizzoSoggettoForm`, passata dai quattro drawer padre). Il blocco dei sei campi, identico
+  nei due form, è estratto in `CivicoDettaglioCampi.vue` (regola del 2, ok Tid) e registrato nel
+  catalogo BB frontend. Lint e build verdi.
 
 ---
 

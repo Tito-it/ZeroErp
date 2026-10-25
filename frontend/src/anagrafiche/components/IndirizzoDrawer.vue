@@ -13,12 +13,11 @@ import { getIndirizzo } from '../api/anagrafiche'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import AppDrawer from '../../core/components/AppDrawer.vue'
-import InputMaiuscolo from '../../core/components/InputMaiuscolo.vue'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
+import CivicoDettaglioCampi from './CivicoDettaglioCampi.vue'
 import StradarioAutocomplete from './StradarioAutocomplete.vue'
 import StradarioGeneraleAutocomplete from './StradarioGeneraleAutocomplete.vue'
 import InputText from 'primevue/inputtext'
-import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -34,7 +33,7 @@ const emit = defineEmits(['update:visible', 'saved'])
 
 const { t } = useI18n()
 const store = useIndirizziStore()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const addr = useIndirizzoBase()
 
 // Edit: dettaglio read-only + attivo
@@ -199,32 +198,7 @@ async function handleSave() {
 
     <!-- Civico -->
     <div class="form-grid mt-1">
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_civico') }}</label>
-          <InputNumber v-model="addr.form.civico" :use-grouping="false" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_estensione') }}</label>
-          <InputMaiuscolo v-model="addr.form.estensione_civico" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_palazzina') }}</label>
-          <InputText v-model="addr.form.palazzina" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_scala') }}</label>
-          <InputText v-model="addr.form.scala" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_piano') }}</label>
-          <InputText v-model="addr.form.piano" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_interno') }}</label>
-          <InputText v-model="addr.form.interno" />
-        </div>
-      </div>
+      <CivicoDettaglioCampi :form="addr.form" :campi-errati="campiErrati" />
 
       <div v-if="!isCreate" class="form-field">
         <label>{{ t('indirizzi.campo_attivo') }}</label>

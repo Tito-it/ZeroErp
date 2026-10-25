@@ -551,6 +551,7 @@ async function handleSave() {
         <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
       </div>
       <IndirizzoSoggettoForm
+        :campi-errati="campiErrati"
         :form="indirizzo.form"
         :is-libera="indirizzo.isLibera.value"
         @update:is-libera="v => indirizzo.isLibera.value = v"
