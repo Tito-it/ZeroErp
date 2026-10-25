@@ -7,7 +7,7 @@
 #        consegnata (`trgfn_resi_guard_ddt_consegnato`), e non c'e' un BB
 #        `dbops.fn_pgtap_*` che la costruisca. La catena ordine in BOZZA ->
 #        riga -> CONFERMATO -> DDT generato -> EMESSO -> SPEDITO -> CONSEGNATO
-#        e' la stessa di `db/pgtap/vendite/test-annulla-reso-gate-accredito-v1.sql`
+#        (gli ultimi tre dal verbo, con `dbops.fn_pgtap_porta_a_stato`) e' la stessa di `db/pgtap/vendite/test-annulla-reso-gate-accredito-v1.sql`
 #        (`agr_mk_partita`), sul mondo di `dbops.fn_pgtap_crea_mondo_cliente` +
 #        `fn_pgtap_crea_articolo`. Era scritta in `test_resi_create_db`; alla
 #        seconda occorrenza (`test_righe_bozza_guard`, l'etichetta del reso)
@@ -39,9 +39,6 @@ _PASSI: tuple[str, ...] = (
            (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
            (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo) AS ord_draft,
            (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO' AND s.attivo) AS ord_conf,
-           (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'EMESSO' AND s.attivo) AS ddt_emesso,
-           (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'SPEDITO' AND s.attivo) AS ddt_spedito,
-           (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'CONSEGNATO' AND s.attivo) AS ddt_consegnato,
            (SELECT c.id FROM config.causali_trasporto c WHERE c.codice = 'VENDITA' ORDER BY c.id LIMIT 1) AS causale_vendita,
            (SELECT t.id FROM config.tipi_indirizzi t WHERE t.codice_interno = 'CON') AS tipo_ind_con
     """,
@@ -72,9 +69,11 @@ _PASSI: tuple[str, ...] = (
     ON CONFLICT DO NOTHING
     """,
     "UPDATE vendite.ddt SET causale_trasporto_id = (SELECT causale_vendita FROM _refs) WHERE id = (SELECT ddt_id FROM _ddt)",
-    "UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT ddt_emesso FROM _refs) WHERE id = (SELECT ddt_id FROM _ddt)",
-    "UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT ddt_spedito FROM _refs) WHERE id = (SELECT ddt_id FROM _ddt)",
-    "UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT ddt_consegnato FROM _refs) WHERE id = (SELECT ddt_id FROM _ddt)",
+    # ⛔ Lo stato della bolla si scrive solo dal verbo (porta comune,
+    #    E_DOC_STATO_SOLO_DAL_VERBO, dal 2026-10-25): il builder passa dal verbo
+    #    per la matrice, EMESSO -> SPEDITO -> CONSEGNATO, e concede all'utente
+    #    del contesto l'azione del passaggio.
+    "SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM _ddt), 'CONSEGNATO')",
 )
 
 

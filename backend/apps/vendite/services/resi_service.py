@@ -115,6 +115,10 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
 # ── Costanti di dominio ──
 _FN = "vendite.resi_service"
 _STATO_BOZZA = "DRAFT"
+# La testata nel modello del documento e lo stato a cui porta la conferma: li
+# legge la catena dei permessi (`PassaggioDocumento` delle view).
+TESTATA_RESO = "vendite.resi"
+STATO_CONFERMATO = "CONFERMATO"
 # Il reso si ELIMINA solo in bozza (abbandono del drawer, `elimina_reso`). I
 # campi della testata li governa il lock di testata del DB
 # (`trg_resi_a05_lock_fuori_bozza_upd`: in bozza tutto, dopo la conferma le

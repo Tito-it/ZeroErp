@@ -332,6 +332,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DDT_PREZZO_NON_RISOLVIBILE": "Causale fatturabile ma una riga del DDT non ha un prezzo risolvibile (proprio o ereditato dall'ordine).",
     "E_DDT_RIGA_IVA_MANCANTE": "Una riga del DDT ha un prezzo ma nessuna aliquota IVA: sceglila, oppure togli il prezzo se la merce non si valorizza.",
     "E_DDT_RIGA_NON_TROVATA": "Riga DDT non trovata.",
+    # Ritirato il 2026-10-25 (porta comune, E_DOC_STATO_SOLO_DAL_VERBO): resta per il diario.
     "E_DDT_STATO_SOLO_DA_VERBO": "La bolla muove merce: il cambio di stato si fa solo dall'operazione della bolla, che registra i movimenti di magazzino.",
     "E_DDT_STATO_TRANSIZIONE": "Operazione non ammessa nello stato corrente del DDT.",
     "E_DDT_VALIDAZIONE": "Parametri DDT non validi.",
@@ -372,6 +373,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # brief-modello-documento-vendita §4-bis (2026-10-24): un documento nasce solo
     # nel suo stato iniziale. TECNICO: nessuna maschera crea un documento gia' avanti.
     "E_DOC_STATO_INIZIALE_NON_VALIDO": "Un documento nuovo nasce solo nel suo stato iniziale: segnalalo all'assistenza.",
+    # brief-modello-documento-vendita §7 (2026-10-25): lo stato di un documento sul
+    # modello si scrive solo dal suo verbo, e i passaggi di processo li fa solo il
+    # verbo che ne e' la causa. Due codici TECNICI: nessuna maschera li provoca.
+    "E_DOC_STATO_SOLO_DAL_VERBO": "Lo stato del documento si cambia solo dalle sue operazioni (emetti, conferma, annulla...), non con una modifica diretta: segnalalo all'assistenza.",
+    "E_DOC_PASSAGGIO_DI_PROCESSO": "Questo passaggio di stato lo fa il sistema, come conseguenza di un'altra operazione: non si chiede a mano.",
     # brief-db-indirizzi-documento-seguono-il-cliente (2026-10-12): la scheda di
     # fornitura segue la coppia della testata. Due codici TECNICI.
     "E_DOC_FORNITURA_FUORI_TESTATA": "La scheda di fornitura indicata non e' della fornitura del documento: segnalalo all'assistenza.",
@@ -1158,6 +1164,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RESO_SENZA_RIGHE": "Il reso non ha righe: aggiungere almeno una riga prima della conferma.",
     "E_RESO_STATO_NON_ANNULLABILE": "Il reso non e' in uno stato che ammette l'annullo.",
     "E_RESO_STATO_NON_CONFERMABILE": "Il reso non e' in bozza: non e' confermabile.",
+    # Ritirato il 2026-10-25 (porta comune, E_DOC_STATO_SOLO_DAL_VERBO): resta per il diario.
     "E_RESO_STATO_SOLO_DA_VERBO": "Il reso fa rientrare merce: il cambio di stato si fa solo dall'operazione del reso, che registra i movimenti di magazzino.",
     "E_RESO_STATO_TRANSIZIONE": "Operazione non ammessa nello stato corrente del reso.",
     "E_RESO_VALIDAZIONE": "Parametri reso non validi.",

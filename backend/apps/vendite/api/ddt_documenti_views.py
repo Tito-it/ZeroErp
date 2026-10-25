@@ -66,11 +66,10 @@ _views = build_documenti_sorgente_views(
     emetti_call=_emetti_call,
     emetti_response_key="ddt",
     model_permission=("vendite", "ddt"),
-    # ⛔ L'azione di processo che il verbo DB applica all'emissione
-    #    (`fn_cambia_stato_ddt` -> EMESSO: `emetti_ddt`), dichiarata qui come il
-    #    gemello preventivo dichiara `cambia_stato_preventivi`
-    #    (brief-be-verifica-documentazione-api §A5, 2026-10-20).
-    emetti_post_permission="emetti_ddt",
+    # ⭐ L'azione dell'emissione la dice la riga DRAFT -> EMESSO della matrice
+    #    (oggi `emetti_ddt`), non questa view: il 403 arriva dalla stessa riga
+    #    che legge il verbo (M-3, brief-modello-documento-vendita §7.6).
+    emetti_passaggio=(ddt_service.TESTATA_DDT, ddt_service.STATO_EMESSO),
 )
 
 ApiDdtEmetti = _views.emetti

@@ -61,6 +61,11 @@ export via `ListaExportService`, scope emittente RLS + filtro applicativo).
   riapertura residuo ordine, proiezione stato ordine, flip DDT→RESO se reso totale.
 - Annullo `POST /<id>/annulla/` — storna gli effetti post-conferma; bloccato se
   già ri-spedito (`E_RESO_ANNULLO_CON_RICONSEGNE`).
+- Permesso di conferma e annullo: l'azione la dice la **riga del passaggio**
+  (`post_passaggio`, guida del modello §6), letta dallo stato corrente; 403 prima
+  della transazione, e il verbo la ricontrolla. Oggi `conferma_reso` per la
+  conferma e per l'annullo di un confermato; l'annullo di una **bozza** chiede il
+  solo livello sul documento (M-4).
 - Genera ri-consegna `POST /<id>/genera-ddt-riconsegna/` — body
   `{righe?: [{resi_riga_id, qta}], data?}` in unità BASE; omesse/null = tutta la
   copertura residua. Il DDT nasce DRAFT. Righe degeneri → 400 (mai degrado a

@@ -42,6 +42,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     optional_int,
@@ -74,7 +75,12 @@ from apps.documenti.api.multipart_helpers import extract_allegati
 #                             response emetti (es. "ordine", "ddt"). Ignorato se
 #                             emetti_call is None.
 #         - emetti_post_permission: azione di processo per emetti (opzionale,
-#                             es. "cambia_stato_preventivi")
+#                             es. "cambia_stato_preventivi"), per i documenti
+#                             non ancora portati al modello
+#         - emetti_passaggio: (testata, stato di emissione) per un documento sul
+#                             modello (es. ("vendite.ddt", "EMESSO")): l'azione
+#                             la dice la riga del passaggio (`PassaggioDocumento`,
+#                             M-3). Esclusivo con `emetti_post_permission`
 #         - area_funzionale:  area delle view (default "vendite")
 #         - model_permission: oggetto del catalogo permessi della sorgente
 #                             (es. ("vendite", "preventivo")): i documenti sono
@@ -93,6 +99,7 @@ def build_documenti_sorgente_views(
     emetti_call: Callable[[Request, int], dict[str, Any]] | None = None,
     emetti_response_key: str | None = None,
     emetti_post_permission: str | None = None,
+    emetti_passaggio: tuple[str, str] | None = None,
     area_funzionale: str = "vendite",
     model_permission: tuple[str, str] | None = None,
 ) -> SimpleNamespace:
@@ -106,6 +113,13 @@ def build_documenti_sorgente_views(
             "quando c'e' `emetti_call`"
         )
     chiave_emissione: str = emetti_response_key or ""
+    # ⛔ Due fonti per lo stesso permesso sarebbero due copie che divergono:
+    #    errore di cablaggio, all'import.
+    if emetti_post_permission is not None and emetti_passaggio is not None:
+        raise ValueError(
+            "build_documenti_sorgente_views: `emetti_post_permission` ed "
+            "`emetti_passaggio` sono alternativi"
+        )
 
     # Scopo: Risolve il contesto comune (entity + sorgente_tipo_id) con i
     #        guard NOT_FOUND/emittente/sorgente-attiva del BB condiviso.
@@ -179,6 +193,11 @@ def build_documenti_sorgente_views(
     Emetti.__doc__ = f"`POST .../<sorgente_id>/emetti/` (multipart) — {schema_prefix}."
     if emetti_post_permission is not None:
         Emetti.post_permission = emetti_post_permission
+    if emetti_passaggio is not None:
+        testata, stato_emissione = emetti_passaggio
+        Emetti.post_passaggio = PassaggioDocumento(
+            testata=testata, documento_kwarg="sorgente_id", stato_chiesto=stato_emissione,
+        )
     # Sorgenti senza emissione manuale (FATTURA): la view emetti non viene
     # esposta (namespace.emetti = None) → il dominio non ne cabla la rotta.
     # La classe resta definita ma inerte (closure su emetti_call=None mai chiamata).

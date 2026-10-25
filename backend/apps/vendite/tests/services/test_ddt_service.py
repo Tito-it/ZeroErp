@@ -51,7 +51,8 @@ DdtCambiaStatoTests
 14) test_cambia_stato_ok                    — valida il codice, poi il verbo col codice
 15) test_cambia_stato_codice_vuoto          — E_DDT_VALIDAZIONE
 16) test_cambia_stato_codice_inesistente    — E_DDT_VALIDAZIONE
-17) test_emetti_transita_a_emesso_light      — cambia_stato(EMESSO), ritorno light (no reload)
+16b) test_cambia_stato_emesso_rifiutato     — EMESSO solo da «Emetti» (M-2): 400, nessun verbo
+17) test_emetti_transita_a_emesso_light      — la stessa transizione a EMESSO, ritorno light (no reload)
 
 DdtCreaDaOrdineTests
 18) test_crea_ddt_da_ordine_delega_e_ritorna — push_da_ordine + ritorno mappato
@@ -494,9 +495,23 @@ class DdtCambiaStatoTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
         repo.cambia_stato.assert_not_called()
 
+    # M-2 (brief-modello-documento-vendita §7.6): la bolla si emette solo da
+    # «Emetti», che produce numero e PDF insieme. Dal cambio stato generico
+    # EMESSO e' un 400 col campo, e il verbo non parte.
+    @patch(_REPO)
+    def test_cambia_stato_emesso_rifiutato(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_stato_id_by_codice.return_value = 2
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.cambia_stato(7, "EMESSO")
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("field"), "stato_codice")
+        repo.cambia_stato.assert_not_called()
+
     @patch(_REPO)
     def test_emetti_transita_a_emesso_light(self, repo_cls) -> None:
-        # emetti = cambia_stato(EMESSO, guard leggero get_stato_codice) con
+        # emetti = la transizione a EMESSO (guard leggero get_stato_codice) con
         # ritorno LIGHT {ddt_id, stato_precedente, stato} — parita' con
         # ordini_service.conferma: NIENTE reload del detail pesante (vista +
         # capabilities + count) dentro la sezione atomica dell'emissione

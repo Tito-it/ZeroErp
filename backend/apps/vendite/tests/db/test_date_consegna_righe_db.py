@@ -116,11 +116,8 @@ class DateConsegnaRigheDbTests(unittest.TestCase):
                 (SELECT id FROM config.causali_trasporto WHERE codice = 'VENDITA' ORDER BY id LIMIT 1)
              WHERE id = %s
         """, [ddt_id])
-        cur.execute("""
-            UPDATE vendite.ddt SET stato_doc_ddt_id =
-                (SELECT id FROM config.stati_doc_ddt WHERE codice_interno = 'EMESSO')
-             WHERE id = %s
-        """, [ddt_id])
+        # Lo stato della bolla solo dal verbo (porta comune, dal 2026-10-25).
+        cur.execute("SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')", [ddt_id])
 
     def _date(self, cur: Any, tabella: str, colonna: str, ids: tuple[int, ...]) -> list[Any]:
         cur.execute(

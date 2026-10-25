@@ -1,8 +1,8 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-25
+## ⏭️ Chi riparte — aggiornato al 2026-10-25 (giro BE 5)
 
-**Riparte: il team BE**, con la richiesta del §7.6 (giro 5, il DDT e il reso al modello). Lato DB il giro è chiuso: `20261025-07` … `-22` applicati da Tid su dbdev e scratch dopo la correzione del mirror (§7.5), corsa pgTAP verde (Tid, 2026-10-25). Poi il team DB col documento del giro dopo (§5: l'ordine dei documenti si decide col piano).
+**Riparte: il team DB**, col documento del giro dopo (§5: l'ordine dei documenti si decide col piano) e, nello stesso giro, le due richieste del §7.9 (il lettore codice → id dello stato; la colonna `emissione` sui vocabolari, decisa da Tid). Il giro 5 è chiuso su DB e BE: la richiesta del §7.6 è fatta (§7.9), da committare su `dev/backend-tid`.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -24,11 +24,13 @@
 | 3 | ✅ team DB | Il §2, corretto con le decisioni, diventa la guida `docs/it/guide/modello-documento-di-vendita.md`; le otto guide dei documenti rimandano lì (2026-10-25) | §6 | 2 |
 | 3-bis | ✅ **Tid** | Rilettura della guida: le sei regole sono scritte come le ha decise (Tid, 2026-10-25: «sì, ok») | §6 | 3 |
 | 4 | ✅ team DB / **Tid** · team BE | Giro 5 (bolla e reso): DB scritto, applicato e verde il 2026-10-25 (§7); tocca al BE (§7.6). Il piano: ogni documento portato al modello **tutto in una volta**, un documento per giro. ✅ Primo documento (Tid, 2026-10-25): **il DDT, col DDT d'acquisto** — il più vicino al modello; lì nascono i pezzi comuni di S-1 e S-2. S-1 (b) e S-2 (a) decise | §5, §6 | 3-bis |
+| 4-bis | ✅ team BE | Giro 5 lato BE: §7.6 punti 1-5 (EMESSO solo da «Emetti», il 403 dalla riga del passaggio col BB `PassaggioDocumento`, codici, test DB) | §7.9 | 4 |
+| 4-ter | team DB | Il lettore codice → id dello stato (o la domanda intera) e la colonna `emissione` sui vocabolari col suo lettore (Tid, 2026-10-25), col giro del documento dopo | §7.9 | 4-bis |
+| 4-quater | team BE | Ritirare `STATO_EMESSO` e la composizione SQL del repository, sui lettori nuovi | §7.9 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 
-Decisioni aperte di Tid: nessuna (T-1 … T-4 decise il 2026-10-25). Da decidere: il documento del giro dopo. Lavoro da committare: la
-guida, i rimandi nelle otto guide, `readme.md`, `mkdocs.yml`, PROJECT_CONTEXT (fermo) e questo documento (`dev/db-tid`). Il
-giro BE è committato (`9fbff66d2`); i giri 2-4 lato DB pure (`498cc8275`).
+Decisioni aperte di Tid: nessuna (T-1 … T-4 decise il 2026-10-25). Da decidere: il documento del giro dopo. Lavoro da committare: il giro BE 5
+(§7.9, `dev/backend-tid`). Committati: il giro DB 5 (`c3e34be02`), il giro BE precedente (`9fbff66d2`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -967,3 +969,84 @@ della corsa finale, corretto: il test 2 del presidio nuovo confrontava il **test
 dipende dal `search_path` (come app `config` ci sta e lo schema sparisce); ora i test 2 e 9 confrontano i
 `regclass`. La corsa come app ha confermato anche i due test della porta (19, 20) che da owner non si
 potevano provare.
+
+### 7.9 Fatto dal team BE (2026-10-25) e richiesta al team DB per il giro dopo
+
+**Fatto** (`dev/backend-tid`, da committare), sulla richiesta del §7.6:
+
+1. **M-2.** `ddt_service.cambia_stato` rifiuta `EMESSO` con `400 E_DDT_VALIDAZIONE` (campo
+   `stato_codice`, «La bolla si emette solo da «Emetti»…»); `emetti` passa da un corpo comune con
+   `emissione=True`. Frontend e smoke usavano già `/emetti/`.
+2. **M-3, il 403 dalla riga.** BB nuovo in `core` (ok Tid, 2026-10-25): la view dichiara
+   `post_passaggio = PassaggioDocumento(testata, documento_kwarg, stato_chiesto)` e
+   `ZeroERPPermission` legge l'azione con `script.fn_doc_passaggio` (stato corrente → stato chiesto)
+   prima della transazione. Con l'azione decide lei (semantica di `post_permission`); senza riga o
+   senza azione, livello sul documento. Montato su `ApiDdtCambiaStato`, `/emetti/` della bolla
+   (`emetti_passaggio` della factory documenti, esclusivo con `emetti_post_permission`),
+   `ApiResoConferma`, `ApiResoAnnulla`. Le copie ritirate: `post_permission = "conferma_reso"` (due) e
+   `emetti_post_permission="emetti_ddt"`. Catalogo BB, `api.md`, `api_ddt`, `api_resi`,
+   `api_documenti_per_sorgente` aggiornati.
+3. **Codici.** `error_policies_generated.py` rigenerato (i due nuovi, i due ritirati), ripiego senza
+   segnaposto per `E_DOC_STATO_SOLO_DAL_VERBO` / `E_DOC_PASSAGGIO_DI_PROCESSO`, nota di ritiro sulle due
+   voci vecchie, commento di `ddt_repository.cambia_stato` allineato.
+5. **Test DB.** `_ddt_consegnato.py`, `test_date_consegna_righe_db.py` e (non in elenco)
+   `test_ddt_cambia_stato_db.py`, che passava a EMESSO dal cambio stato generico: tutti dal verbo.
+
+Emerso e non in richiesta: la sonda di `test_origine_ordine_sorgente_db` cercava
+`dbops.fn_pgtap_crea_ordine` a tre argomenti; la firma è a quattro (`p_data`) da `fae207c9e`
+(brief-db-pgtap-bolla-e-reso-costruiti, che dichiarava «nessuna ricaduta sul backend»). La sonda
+falliva sull'oggetto mancante, come vuole BE-1: allineata.
+
+**Provato:** suite completa con `ZEROERP_TEST_DB_E2E=1`, 6923 test, verdi tranne 2 che **non sono di
+questo giro**: `test_error_policies_divergenza_db` e `test_error_codes_db_policy_guardrail` vedono 5
+codici `E_INDIRIZZO_*` presenti su dbdev ma non in git (brief-db-unicita-civico-indirizzi-dettaglio, in
+corso). Si rigenera la policy dopo il suo push. mypy (cricchetto) e ruff puliti. Presidi nuovi:
+`core/tests/api/test_permesso_passaggio.py`, `core/tests/test_passaggio_rotte.py` (il kwarg è nella
+rotta, nessun `post_permission` accanto, la testata è sul modello), `vendite/tests/db/test_permesso_passaggio_db.py`.
+⚠️ Non eseguiti gli smoke HTTP (login col secondo fattore).
+
+**Richiesta al team DB, per il giro dopo** (Tid, 2026-10-25). Per rispondere 403 il backend deve
+passare a `script.fn_doc_passaggio` due **id** di stato, e oggi li ricava da sé componendo SQL sulla
+mappa (`DocumentoModelloRepository.azione_del_passaggio`):
+
+* lo stato **chiesto** arriva come codice e si traduce in id leggendo `codice_interno` del vocabolario.
+  La colonna c'è, UNIQUE, negli otto vocabolari, ma `script.fn_doc_stato_modello` non la dichiara: è
+  un pezzo del contratto del vocabolario che vive solo in Python;
+* lo stato **corrente** si legge da `<testata>.<colonna_stato>`, con gli identificatori presi dalla
+  mappa.
+
+Si chiede un lettore DB unico per la traduzione codice → id dello stato di una testata (per esempio
+`script.fn_doc_stato_id(p_testata regclass, p_codice text) RETURNS bigint`, il gemello di
+`fn_stato_iniziale_id`). Da valutare se esporre direttamente la domanda intera,
+`script.fn_doc_azione_passaggio(p_testata regclass, p_documento_id bigint, p_stato_a_codice text)`:
+il backend non comporrebbe più SQL, e quel lettore servirebbe ai giri dei documenti successivi così
+com'è. In entrambi i casi il backend cambia **solo** il repository (una funzione), e i presidi restano.
+
+✅ **Deciso da Tid il 2026-10-25: sì, la colonna** (emerso dalla revisione critica del giro BE). M-2 («si emette solo
+da Emetti») vale per **tutti** i documenti che si stampano, ma nessun vocabolario dice **quale** stato
+è l'emissione: `config.stati_doc_ddt` ha `iniziale`, `is_abortito`, `fase`, `pdf_mode`, non un segno
+dell'emissione. Il backend lo scrive quindi come letterale `EMESSO` (`ddt_service.STATO_EMESSO`, una
+sede sola), e ogni documento dei giri dopo ne avrebbe uno suo: è la copia per documento che il §1
+descrive. Proposta: il vocabolario dichiara lo stato di emissione come dichiara l'iniziale (colonna
+`emissione boolean` con indice unico parziale, oppure un segno sulla riga della matrice), e il backend
+lo legge invece di scriverlo: il cambio stato generico rifiuta lo stato di emissione di qualunque
+documento, senza un letterale per documento. Il PDF nasce nel backend, quindi il rifiuto resta lì: al
+DB si chiede solo di **dire** quale stato è l'emissione.
+
+**Richiesta al team DB (seconda, insieme a quella sopra):**
+
+1. colonna `emissione boolean NOT NULL DEFAULT false` sui vocabolari degli stati dei documenti che si
+   stampano, con indice unico parziale (al più uno per vocabolario) e il CHECK «solo su una riga
+   attiva», nella stessa forma di `iniziale` (P-1, `20261024-07`); valori dai CSV di `80_data` e
+   colonna dichiarata nei mirror (⚠️ `nullValue`, §7.5). Quali vocabolari: quelli dei documenti che
+   passano da «Emetti» (oggi la factory `/emetti/`: preventivo, offerta, contratto, ordine, DDT); il
+   team DB verifica il perimetro sulla guida §7 e lo dichiara;
+2. un lettore unico, gemello di `script.fn_stato_iniziale_id`: per esempio
+   `script.fn_stato_emissione_id(p_testata regclass)`, NULL se il documento non si emette;
+3. se si sceglie la domanda intera del punto sopra (`fn_doc_azione_passaggio`), può valere la pena
+   esporre anche «il passaggio chiesto è l'emissione?», così il backend fa una chiamata sola.
+
+**Ricaduta sul backend, al giro dopo:** `ddt_service.STATO_EMESSO` si ritira; il cambio stato generico
+rifiuta lo stato di emissione letto dal DB, e `/emetti/` lo prende dallo stesso lettore (la factory non
+riceve più lo stato in `emetti_passaggio`, solo la testata). Il presidio diventa generico su tutti i
+documenti della factory.

@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1128, di cui 120 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1130, di cui 122 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -540,7 +540,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # script.fn_check_ddt_riga_correggi_qta_evasa, sollevato dal verbo vendite.fn_ddt_riga_correggi_qta_evasa (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-2): la quantita' evasa si corregge solo su una riga legata a un ordine o a un reso da ri-consegnare (D-7), in un DDT che dichiara quell'origine. Due motivi con lo stesso codice: RIGA_NON_EVASA (riga aggiunta a mano) e DDT_SENZA_ORIGINE (legame scritto a mano su una bolla standalone). Per l'operatore il rimedio e' lo stesso: quella quantita' si cambia dalla riga, non da qui. Valori: numero di riga, etichetta del DDT.
     "E_DDT_RIGA_NON_EVASA": "CONFLITTO_STATO",
     "E_DDT_RIGA_NON_TROVATA": "NON_TROVATO",
-    # vendite.trgfn_ddt_guard_transizione, Regola 3 - la porta del registro (2026-09-28, D-L3-e): emissione, annullo di una bolla emessa o consegna di una bolla di trasferimento, su una bolla che muove merce, tentati con un UPDATE diretto invece che dal verbo vendite.fn_cambia_stato_ddt (manca la GUC transazionale, o chi scrive non e' il proprietario). TECNICO: e' un chiamante che scavalca il verbo, non una scelta dell'operatore. Il VARIADIC porta numero della bolla e stato di destinazione.
+    # vendite.trgfn_ddt_guard_transizione, Regola 3 - la porta del registro (2026-09-28, D-L3-e): emissione, annullo di una bolla emessa o consegna di una bolla di trasferimento, su una bolla che muove merce, tentati con un UPDATE diretto invece che dal verbo vendite.fn_cambia_stato_ddt (manca la GUC transazionale, o chi scrive non e' il proprietario). TECNICO: e' un chiamante che scavalca il verbo, non una scelta dell'operatore. Il VARIADIC porta numero della bolla e stato di destinazione. Ritirato il 2026-10-25 (20261025-14, brief-modello-documento-vendita §7, S-1 b di Tid): la porta del registro della bolla e' contenuta nella porta comune script.trgfn_doc_stato_solo_dal_verbo, che chiude OGNI cambio di stato della bolla al suo verbo, col codice E_DOC_STATO_SOLO_DAL_VERBO. Resta a catalogo per le righe gia' scritte in dbops.error_log (pattern obsoleto_dal).
+    # ⚠️ RITIRATO il 2026-10-25
     "E_DDT_STATO_SOLO_DA_VERBO": "TECNICO",
     "E_DDT_STATO_TRANSIZIONE": "CONFLITTO_STATO",
     "E_DDT_VALIDAZIONE": "DATO_ERRATO",
@@ -622,6 +623,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI": "NON_ESEGUIBILE",
     # Primo motivo di script.fn_check_listino_documento, sollevato da script.trgfn_doc_guard_listino_documento (trigger _a10_ su vendite.contratti e vendite.offerte_commerciali, all'INSERT e quando cambiano listino_id, utility_id o emittente_fiscale_id): il listino del documento e' di un'altra utility. Campo listino_id. DATO_ERRATO: lo rimedia l'operatore scegliendo un altro listino; la tendina (vendite.fn_listini_selezionabili) propone solo quelli ammessi. Frase chiusa. Nasce il 2026-10-08 (brief-db-offerta-emissione-ed-erogazione §F.2, decisione F-2 di Tid).
     "E_DOC_LISTINO_UTILITY_DIVERSA": "DATO_ERRATO",
+    # BB script.fn_guard_passaggio, la prima riga del verbo di stato (2026-10-25, brief-modello-documento-vendita §7): il passaggio richiesto e' nella matrice ma e' di PROCESSO (meta.manuale = false), cioe' lo scrive il verbo che ne e' la causa con la sola scrittura comune (oggi: la bolla CONSEGNATO <-> RESO, dai verbi del reso). TECNICO: le capability non propongono i passaggi di processo, quindi lo chiede solo un chiamante che scavalca la causa. Nessun valore: la frase e' chiusa (nessun %s), il contesto porta testata e stati.
+    "E_DOC_PASSAGGIO_DI_PROCESSO": "TECNICO",
     # Un documento di vendita (preventivo, contratto, offerta, ordine, DDT) contiene prezzi in attesa di approvazione (stato_approvazione_prezzo = PENDING) su righe o componenti BoM attivi, e si chiede di farlo uscire dalla bozza o di accettarlo. Motivo emesso dal building block script.fn_check_prezzi_autorizzati; sollevato dai guard di transizione dei cinque documenti (via fn_raise_primo_motivo_se_presente, o dal LOOP del guard di emissione del DDT). CONFLITTO_STATO: non c'e' un campo della richiesta da correggere, si aspetta l'esito del responsabile — quindi niente chiave `campo`. Nella frase il CONTEGGIO dei prezzi; riga e componente nel contesto. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-2, D-5).
     "E_DOC_PREZZO_PENDENTE": "CONFLITTO_STATO",
     # Un documento di vendita (preventivo, contratto, offerta, ordine, DDT) contiene prezzi RIFIUTATI dal responsabile (stato_approvazione_prezzo = REJECTED) su righe o componenti BoM attivi, e si chiede di farlo uscire dalla bozza o di accettarlo. Decisione di Tid del 2026-09-24 (D-1): un prezzo rifiutato e uno in attesa sono entrambi prezzi che nessuno ha autorizzato — fino a quel giorno il REJECTED non lo guardava nessun guard, e un prezzo rifiutato usciva col documento. Stesso building block e stessi siti di E_DOC_PREZZO_PENDENTE. CONFLITTO_STATO: il rimedio e' correggere il prezzo o togliere la riga, non un campo della richiesta. Brief: brief-db-preventivi-congelamento-pricing.
@@ -639,6 +642,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOC_SORGENTE_NON_TROVATA": "DATO_ERRATO",
     # BB script.trgfn_doc_stato_iniziale (BEFORE INSERT, fascia _a05_, montato sulle testate di vendita e d'acquisto: trg_<tabella>_a05_stato_iniziale_ins): un INSERT ha scritto uno stato diverso dallo stato iniziale del vocabolario (colonna iniziale, letta con script.fn_stato_iniziale_id). TECNICO e non DATO_ERRATO (N-3 di Tid, 2026-10-24): nessuna API accetta lo stato dal client in creazione, quindi lo commette solo chi scrive il documento. Valori: etichetta del documento (config.sorgenti.etichetta), descrizione dello stato scritto, descrizione dello stato iniziale. Brief: brief-modello-documento-vendita §4-bis/§4-ter.
     "E_DOC_STATO_INIZIALE_NON_VALIDO": "TECNICO",
+    # BB della porta script.trgfn_doc_stato_solo_dal_verbo (BEFORE UPDATE OF la colonna di stato, fascia _a05_, montato su vendite.ddt e vendite.resi: trg_<tabella>_a05_stato_solo_dal_verbo_upd), 2026-10-25, brief-modello-documento-vendita §7 (S-1 b di Tid): lo stato di un documento sul modello si cambia solo dalla scrittura del suo verbo, script.fn_doc_scrivi_stato (GUC transazionale zeroerp.doc_cambio_stato = '<oid>:<id>' E chi esegue e' il proprietario della tabella). TECNICO: nessuna maschera cambia lo stato con un UPDATE, lo fa solo un chiamante che scavalca il verbo. Valori: etichetta del documento (config.sorgenti.etichetta), numero (o id). Prende il posto di E_DDT_STATO_SOLO_DA_VERBO e E_RESO_STATO_SOLO_DA_VERBO, che chiudevano solo i passaggi di magazzino.
+    "E_DOC_STATO_SOLO_DAL_VERBO": "TECNICO",
     # script.fn_get_stato_testata_documento, script.fn_get_testata_id_di_riga (dal 2026-10-05, il lettore riga -> testata), vendite.trgfn_doc_guard_delete_solo_bozza e (dal 2026-09-22, attraverso i lettori) vendite.trgfn_doc_righe_lock_fuori_bozza: · il guard ha ricevuto un tipo di documento che non gestisce, o e' stato montato · su una tabella che non conosce. Nasce il 2026-08-26. · TECNICO e non DATO_ERRATO perche' nessuna persona sceglie quel valore: e' un · chiamante rotto o un trigger montato male, e chi ha fatto la richiesta non · puo' farci niente. · ⛔ NON si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito, non una · sede (D11 di brief-db-be-classe-codici-errore). La famiglia giusta e' quella · di E_RUOLO_APPLICATIVO_NON_GESTITO e E_PROFILO_ACCESSO_TIPO_NON_GESTITO — un · valore di enum che il guard non riconosce, con il valore nel messaggio. · ⚠️ Su un TECNICO la chiave `campo` NON esce dal contesto: su un 500 non c'e' · nessun campo da accendere.
     "E_DOC_TIPO_NON_GESTITO": "TECNICO",
     # Sollevati dai trigger DB Fase A · (trgfn_template_asset_block_delete, trgfn_template_asset_protect_file).
@@ -1443,7 +1448,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RESO_STATO_NON_ANNULLABILE": "CONFLITTO_STATO",
     # fn_conferma_reso: conferma ammessa solo da DRAFT / con righe attive.
     "E_RESO_STATO_NON_CONFERMABILE": "CONFLITTO_STATO",
-    # vendite.trgfn_resi_guard_transizione, Regola 2 - la porta del registro (2026-09-28, D-3b-f): conferma o annullo di un reso confermato, su un reso che fa rientrare merce, tentati con un UPDATE diretto invece che dai verbi vendite.fn_conferma_reso / fn_annulla_reso (manca la GUC transazionale, o chi scrive non e' il proprietario). TECNICO: e' un chiamante che scavalca il verbo. Il VARIADIC porta numero del reso e stato di destinazione.
+    # vendite.trgfn_resi_guard_transizione, Regola 2 - la porta del registro (2026-09-28, D-3b-f): conferma o annullo di un reso confermato, su un reso che fa rientrare merce, tentati con un UPDATE diretto invece che dai verbi vendite.fn_conferma_reso / fn_annulla_reso (manca la GUC transazionale, o chi scrive non e' il proprietario). TECNICO: e' un chiamante che scavalca il verbo. Il VARIADIC porta numero del reso e stato di destinazione. Ritirato il 2026-10-25 (20261025-15, brief-modello-documento-vendita §7, S-1 b e T-3 di Tid): la porta del registro del reso e' contenuta nella porta comune script.trgfn_doc_stato_solo_dal_verbo, che chiude OGNI cambio di stato del reso ai suoi verbi, col codice E_DOC_STATO_SOLO_DAL_VERBO. Resta a catalogo per le righe gia' scritte in dbops.error_log (pattern obsoleto_dal).
+    # ⚠️ RITIRATO il 2026-10-25
     "E_RESO_STATO_SOLO_DA_VERBO": "TECNICO",
     "E_RESO_STATO_TRANSIZIONE": "CONFLITTO_STATO",
     "E_RESO_VALIDAZIONE": "DATO_ERRATO",
@@ -1996,6 +2002,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_DBLINK_LOG_CONN_MISSING",
         "E_DDT_ANNULLO_CON_LEGAMI",
         "E_DDT_EMITTENTE_BA_INCOERENTE",
+        "E_DDT_STATO_SOLO_DA_VERBO",
         "E_DELETE_RIGA_DOC_NON_BOZZA",
         "E_DRYRUN_CREATE_TRIGGER",
         "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA",
@@ -2022,6 +2029,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_REFRESH_LOCK_TIMEOUT",
         "E_REGOLA_FATTURAZIONE_MANCANTE",
         "E_RESO_EMITTENTE_BA_INCOERENTE",
+        "E_RESO_STATO_SOLO_DA_VERBO",
         "ERRORE_PARAMETRI",
         "ERRORE_PARAMETRI_TABELLA",
         "E_SORG_BA_NON_RISOLTO",
