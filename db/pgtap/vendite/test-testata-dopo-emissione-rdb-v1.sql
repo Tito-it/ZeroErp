@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i due ordini da dbops.fn_pgtap_crea_ordine_con_righe in bozza (2 x 10 sull'articolo X, trigger SPEDITO); a mano restano l'indirizzo scritto in bozza (premessa dei satelliti) e la conferma che lo segue, il preventivo (fuori dalle tre strade del giro) e il listino.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): gli ambiti degli indirizzi col codice della sorgente (ORDINE_VENDITA, PREVENTIVO, CONTRATTO); 'DDT' in pg_temp.righe e' un argomento della grammatica dei montaggi e resta.
 -- pgTAP test per Zero ERP
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
@@ -242,6 +243,24 @@ LANGUAGE sql STABLE AS $f$
      WHERE a.ambito = p_ambito AND a.attivo ORDER BY a.tipo_indirizzo_id LIMIT 1
 $f$;
 
+-- Gli ordini: in bozza con una riga 2 x 10 sull'articolo X (fuori listino) e
+--   il trigger SPEDITO. Quello da confermare esce dalla bozza piu' sotto, dopo
+--   aver preso l'indirizzo: la conferma non sta nel builder.
+CREATE TEMP TABLE _o_conf AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('testata dopo emissione R-DB conf', 'DRAFT',
+    p_billing_account_id => (SELECT billing_account_id FROM _m),
+    p_quantita => 2, p_prezzo => 10, p_articolo_id => pg_temp.art('X'),
+    p_fatturazione_trigger => 'SPEDITO', p_data_ordine => script.fn_data_operativa());
+CREATE TEMP TABLE _o_draft AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('testata dopo emissione R-DB draft', 'DRAFT',
+    p_billing_account_id => (SELECT billing_account_id FROM _m),
+    p_quantita => 2, p_prezzo => 10, p_articolo_id => pg_temp.art('X'),
+    p_fatturazione_trigger => 'SPEDITO', p_data_ordine => script.fn_data_operativa());
+INSERT INTO _doc
+SELECT 'ORD_CONF', ordine_id FROM _o_conf
+UNION ALL
+SELECT 'ORD_DRAFT', ordine_id FROM _o_draft;
+
 DO $fixture$
 DECLARE
     c    record;
@@ -250,23 +269,6 @@ DECLARE
 BEGIN
     SELECT * INTO c FROM _m;
     SELECT * INTO k FROM _k;
-
-    FOR i IN 1..2 LOOP
-        INSERT INTO vendite.ordini
-            (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-             fatturazione_trigger, emittente_fiscale_id, valuta_id, data)
-        VALUES
-            (c.cliente_soggetto_ruolo_id, c.billing_account_id,
-             (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT'),
-             'SPEDITO', c.emittente_fiscale_id, k.valuta_id, script.fn_data_operativa())
-        RETURNING id INTO v_id;
-
-        INSERT INTO vendite.ordini_righe
-            (ordine_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa, prezzo_unitario, iva_id)
-        VALUES (v_id, 1, pg_temp.art('X'), 'Riga pgTAP', 2, 2, 10, k.iva_id);
-
-        INSERT INTO _doc VALUES (CASE i WHEN 1 THEN 'ORD_CONF' ELSE 'ORD_DRAFT' END, v_id);
-    END LOOP;
 
     INSERT INTO vendite.preventivi
         (numero, stato_doc_preventivo_id, utility_id, istanza_utility_id,

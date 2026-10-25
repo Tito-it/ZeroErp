@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine con la riga scontata e la bolla ORD in un colpo da dbops.fn_pgtap_crea_ddt_da_ordine (p_righe_ordine con lo sconto 5); restano a mano i blocchi «relazione»/«viaggio» e l'origine dell'indirizzo sulla bolla in bozza, la bolla STD e quella del C-1 (sono il caso).
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): le emissioni dei test 9, 13, 14 e 16 da dbops.fn_pgtap_porta_a_stato (il verbo), che solleva gli stessi errori dei guard d'emissione: lo stato della bolla non si cambia piu' con un UPDATE diretto (E_DOC_STATO_SOLO_DAL_VERBO). Le attese non cambiano.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i due resi per ri-consegna (ORD e STD) dal builder dbops.fn_pgtap_crea_reso, che li conferma e concede da se' l'azione conferma_reso; la bolla di ri-consegna resta dalla madre vendite.fn_genera_ddt_riconsegna, in bozza e senza completamenti: e' lei sotto test (cio' che eredita), non una fixture.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla d'origine ORD dal builder dbops.fn_pgtap_crea_ddt_da_ordine (p_ordine_id, in bozza, poi CONSEGNATO per la matrice); l'ordine resta scritto a mano (sconto 5 sulla riga: il builder non lo sa fare), come i blocchi «relazione»/«viaggio» e l'origine dell'indirizzo scritti sulla bolla in bozza (sono il caso dei test 1, 2 e 7); il reso resta a mano (giro 2); la bolla STD e' standalone e va a CONSEGNATO per la matrice; le emissioni di 9, 13, 14, 16 sono il caso.
@@ -111,10 +112,7 @@ SELECT
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                 AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   script.fn_pgtap_emittente_operatore()                                    AS emittente_fiscale_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO'  AND s.attivo LIMIT 1) AS stato_ord_conf_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'       AND s.attivo LIMIT 1) AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='DRAFT'        AND s.attivo LIMIT 1) AS stato_ddt_draft_id,
-  (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='EMESSO'       AND s.attivo LIMIT 1) AS stato_ddt_emesso_id,
   (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')         AS tipo_ind_con_id,
   -- ⚠️ Aggancio per `codice`, non per `codice_interno`: config.causali_trasporto
   --   la colonna immutabile NON ce l'ha (caso CANDIDATE_ADD_CI delle linee
@@ -134,37 +132,19 @@ SELECT
 -- ============================================================
 -- FIXTURE ORD — ordine -> DDT (gemello, dal builder) -> CONSEGNATO -> reso order-backed
 -- ============================================================
-CREATE TEMP TABLE tmp_ord AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
-         r.valuta_id, script.fn_data_operativa(), 'SPEDITO', r.emittente_fiscale_id, false,
-         jsonb_build_object('test_scope','pgtap_riconsegna_eredita')
-  FROM tmp_ref r RETURNING id, uid)
-SELECT * FROM ins;
+-- La bolla dal builder, in bozza, da un ordine confermato che costruisce lui:
+-- una riga 10 a 25 con sconto 5 (p_righe_ordine), trigger SPEDITO. Causale
+-- VENDITA e indirizzo CON li scrive lui.
+CREATE TEMP TABLE tmp_ddt_ord_b AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('riconsegna eredita', 'DRAFT',
+    (SELECT billing_account_id FROM tmp_ref),
+    p_fatturazione_trigger => 'SPEDITO', p_causale_codice => 'VENDITA',
+    p_righe_ordine => jsonb_build_array(jsonb_build_object(
+        'articolo_id', (SELECT articolo_id FROM tmp_ref), 'quantita', 10, 'prezzo', 25,
+        'sconto_percentuale', 5, 'iva_id', (SELECT iva_id FROM tmp_ref))));
 
-CREATE TEMP TABLE tmp_ord_riga AS
-WITH ins AS (
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, sconto_percentuale, iva_id,
-    attivo, storicizza, meta)
-  SELECT o.id, 1, r.articolo_id, 'Riga eredita ORD', 10, 10, 25, 5, r.iva_id,
-         true, false, jsonb_build_object('test_scope','pgtap_riconsegna_eredita')
-  FROM tmp_ord o, tmp_ref r RETURNING id)
-SELECT * FROM ins;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
--- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
--- righe non si scrivono piu' (20261008-90).
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord), 'CONFERMATO');
-END $x$;
-
--- La bolla dal builder, in bozza: causale VENDITA e indirizzo CON li scrive lui.
-CREATE TEMP TABLE tmp_ddt_ord AS
-SELECT ddt_id FROM dbops.fn_pgtap_crea_ddt_da_ordine('riconsegna eredita', 'DRAFT',
-    p_ordine_id => (SELECT id FROM tmp_ord), p_causale_codice => 'VENDITA');
+CREATE TEMP TABLE tmp_ddt_ord AS SELECT ddt_id FROM tmp_ddt_ord_b;
+CREATE TEMP TABLE tmp_ord_riga AS SELECT ordine_riga_id AS id FROM tmp_ddt_ord_b;
 
 -- Il DDT d'origine porta il blocco «relazione» E il blocco «viaggio»: e' cio'
 -- che rende distinguibili i test 1) e 7).

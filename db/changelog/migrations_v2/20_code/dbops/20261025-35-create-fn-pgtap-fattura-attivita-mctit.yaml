@@ -1,0 +1,228 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_pgtap_fattura_attivita: LE ATTIVITA' DI COMMESSA EMESSE, CON LA FATTURA VERA AGGANCIATA
+#   Brief: brief-db-pgtap-reso-costruito §7.2, E-2 (Tid, 2026-10-25).
+#
+# -- IL DIFETTO -----------------------------------------------------------
+#   Una dozzina di pgTAP (accrediti, rinunce, annulli, chiusure, kit, viste,
+#   lotti) scrivono a mano la stessa strada per avere un'attivita' fatturata:
+#   l'emissione, l'attivita' fatturabile letta per segment_key con un
+#   ORDER BY id DESC LIMIT 1 (con le rettifiche sullo stesso segmento prende
+#   la riga sbagliata), la testata della fattura, la riga, l'aggancio
+#   fattura_riga_id. Del dominio nessuna funzione scrive le righe di fattura
+#   (le scrive il backend): ogni file le scriveva da se'.
+#
+# -- IL BUILDER -----------------------------------------------------------
+#   * Le attivita' (commesse_attivita) le costruisce il test, coi builder
+#     della commessa e dell'attivita' (sorgente, quantita', prezzo): qui si
+#     fattura cio' che c'e'.
+#   * L'emissione dalla madre vendite.fn_emit_attivita_fatturabili_da_commessa,
+#     una volta per commessa (col marchio del lotto, se c'e'); poi l'attivita'
+#     fatturabile di OGNI attivita' chiesta, per commessa_attivita_id, ancora
+#     libera.
+#   * La testata: senza lotto dbops.fn_pgtap_crea_fattura (in bozza, sul conto
+#     della commessa: registro dell'azienda giusta); con lotto la madre
+#     vendite.fn_get_or_create_fattura_header.
+#   * Le righe, in un'istruzione a parte (sotto RLS una riga non vede la
+#     testata scritta nella stessa), in bozza: quantita', prezzo, articolo,
+#     unita' e competenza dall'attivita' fatturabile, la prima IVA attiva.
+#   * L'aggancio dopo la riga (il guard sul fatturato ammette solo vuoto ->
+#     valorizzato); col lotto anche il lucchetto e il marchio.
+#   ⛔ La fattura resta in bozza: portarla avanti, emetterla o toglierla
+#   (vendite.fn_cleanup_fatture_by_ids) e' il caso del test.
+#   Permessi: funzione di chi migra, SECURITY INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261025-35-create-fn-pgtap-fattura-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20261025-35-create-fn-pgtap-fattura-attivita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_fattura_attivita: le attivita' di commessa del test emesse dalla madre e agganciate a una
+        fattura vera in bozza (testata dal builder o, col lotto, dalla madre), una riga per attivita'.
+        Brief: brief-db-pgtap-reso-costruito (E-2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_pgtap_fattura_attivita(
+                   -- l'etichetta e' un frammento di testo della fixture: tipo nudo.
+                   p_etichetta    text,
+                   -- id di vendite.commesse_attivita: %TYPE[] non e' sintassi valida.
+                   p_attivita_ids bigint[],
+                   p_lotto_id     vendite.fatturazione_lotti.id%TYPE DEFAULT NULL)
+               RETURNS TABLE(
+                   attivita_id             vendite.attivita_fatturabili.commessa_attivita_id%TYPE,
+                   attivita_fatturabile_id vendite.attivita_fatturabili.id%TYPE,
+                   fattura_id              vendite.fatture.id%TYPE,
+                   fattura_riga_id         vendite.fatture_righe.id%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP una o piu' ATTIVITA' di commessa
+              --   fatturate: emesse dalla madre e agganciate a una fattura vera in
+              --   bozza, una riga per attivita'.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_att AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(v_commessa, 25,
+              --              p_sorgente_codice => 'DDT_VENDITA', p_sorgente_uid => v_ddt_uid,
+              --              p_sorgente_riga_id => v_ddt_riga, p_quantita => 10);
+              --   CREATE TEMP TABLE tmp_fatt AS
+              --   SELECT * FROM dbops.fn_pgtap_fattura_attivita('accrediti',
+              --              ARRAY[(SELECT attivita_id FROM tmp_att)]);
+              -- ⛔ La fattura resta in bozza: il seguito e' il caso del test.
+              -- ⚠️ La madre emette TUTTE le attivita' approvate e non emesse delle
+              --   commesse coinvolte. Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_ba_ids     bigint[];   -- conti delle attivita': devono essere uno
+                  v_commessa   vendite.commesse.id%TYPE;
+                  v_batch      vendite.fatturazione_lotti.lock_batch_id%TYPE;
+                  v_af_ids     bigint[];   -- attivita' fatturabili, nell'ordine delle attivita'
+                  v_af         vendite.attivita_fatturabili.id%TYPE;
+                  v_att        vendite.attivita_fatturabili.commessa_attivita_id%TYPE;
+                  v_fatt       vendite.fatture.id%TYPE;
+                  v_iva_id     config.iva.id%TYPE;
+                  v_riga       vendite.fatture_righe.id%TYPE;
+                  v_n          integer;    -- posizione nell'elenco: un contatore
+              BEGIN
+                  -- 0. I parametri si giudicano PRIMA di scrivere.
+                  IF p_attivita_ids IS NULL OR cardinality(p_attivita_ids) = 0 THEN
+                      RAISE EXCEPTION 'fn_pgtap_fattura_attivita: nessuna attivita'' da fatturare';
+                  END IF;
+                  IF cardinality(p_attivita_ids) <> (SELECT count(DISTINCT x) FROM unnest(p_attivita_ids) x) THEN
+                      RAISE EXCEPTION 'fn_pgtap_fattura_attivita: attivita'' ripetute in %', p_attivita_ids;
+                  END IF;
+
+                  SELECT array_agg(DISTINCT c.billing_account_id)
+                    INTO v_ba_ids
+                    FROM vendite.commesse_attivita ca
+                    JOIN vendite.commesse c ON c.id = ca.commessa_id
+                   WHERE ca.id = ANY (p_attivita_ids);
+                  IF (SELECT count(*) FROM vendite.commesse_attivita ca WHERE ca.id = ANY (p_attivita_ids))
+                     <> cardinality(p_attivita_ids) THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_fattura_attivita: qualche attivita'' di % non esiste o non e'' visibile', p_attivita_ids;
+                  END IF;
+                  IF cardinality(v_ba_ids) <> 1 THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_fattura_attivita: le attivita'' sono di % conti diversi — una fattura e'' di un conto solo',
+                          cardinality(v_ba_ids);
+                  END IF;
+
+                  IF p_lotto_id IS NOT NULL THEN
+                      SELECT l.lock_batch_id INTO v_batch
+                        FROM vendite.fatturazione_lotti l
+                       WHERE l.id = p_lotto_id;
+                      IF NOT FOUND THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_fattura_attivita: lotto id = % non esiste o non e'' visibile', p_lotto_id;
+                      END IF;
+                  END IF;
+
+                  -- 1. L'emissione, una volta per commessa, col marchio del lotto.
+                  FOR v_commessa IN
+                      SELECT DISTINCT ca.commessa_id
+                        FROM vendite.commesse_attivita ca
+                       WHERE ca.id = ANY (p_attivita_ids)
+                       ORDER BY ca.commessa_id
+                  LOOP
+                      PERFORM vendite.fn_emit_attivita_fatturabili_da_commessa(
+                          p_commessa_id   => v_commessa,
+                          p_emit_batch_id => v_batch);
+                  END LOOP;
+
+                  -- 2. L'attivita' fatturabile di ogni attivita': per attivita', non per
+                  --    segmento, e ancora libera.
+                  v_af_ids := ARRAY[]::bigint[];
+                  FOREACH v_att IN ARRAY p_attivita_ids LOOP
+                      SELECT af.id INTO v_af
+                        FROM vendite.attivita_fatturabili af
+                       WHERE af.commessa_attivita_id = v_att
+                         AND af.fattura_riga_id IS NULL
+                       ORDER BY af.id DESC
+                       LIMIT 1;
+                      IF v_af IS NULL THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_fattura_attivita: l''attivita'' % non ha un''attivita'' fatturabile libera dopo l''emissione (non approvata, gia'' emessa o gia'' fatturata)',
+                              v_att;
+                      END IF;
+                      v_af_ids := v_af_ids || v_af;
+                  END LOOP;
+
+                  -- 3. La testata, in bozza: dal builder sul conto, o dalla madre del lotto.
+                  IF p_lotto_id IS NULL THEN
+                      SELECT f.fattura_id INTO v_fatt
+                        FROM dbops.fn_pgtap_crea_fattura(p_etichetta, 'DRAFT', v_ba_ids[1]) f;
+                  ELSE
+                      v_fatt := vendite.fn_get_or_create_fattura_header(p_lotto_id, v_af_ids[1]);
+                  END IF;
+
+                  -- 4. Le righe, in istruzioni a parte, e l'aggancio dopo ciascuna.
+                  SELECT i.id INTO v_iva_id
+                    FROM config.iva i
+                   WHERE i.attivo IS TRUE
+                   ORDER BY i.id
+                   LIMIT 1;
+
+                  FOR v_n IN 1 .. cardinality(v_af_ids) LOOP
+                      INSERT INTO vendite.fatture_righe (
+                          fattura_id, riga_nr, articolo_id, descrizione, uom_id,
+                          qta, prezzo_unitario, iva_id, imponibile_riga,
+                          competenza_dal, competenza_al, meta)
+                      SELECT v_fatt,
+                             COALESCE((SELECT max(fr.riga_nr) FROM vendite.fatture_righe fr
+                                        WHERE fr.fattura_id = v_fatt), 0) + 1,
+                             af.articolo_id, left('Fixture pgTAP: ' || p_etichetta, 150), af.uom_id,
+                             af.quantita, af.prezzo_unitario, v_iva_id, af.quantita * af.prezzo_unitario,
+                             af.competenza_dal, af.competenza_al,
+                             jsonb_build_object('test_scope', 'pgtap_' || p_etichetta)
+                        FROM vendite.attivita_fatturabili af
+                       WHERE af.id = v_af_ids[v_n]
+                      RETURNING id INTO v_riga;
+
+                      IF p_lotto_id IS NULL THEN
+                          UPDATE vendite.attivita_fatturabili af
+                             SET fattura_riga_id = v_riga
+                           WHERE af.id = v_af_ids[v_n];
+                      ELSE
+                          UPDATE vendite.attivita_fatturabili af
+                             SET fattura_riga_id      = v_riga,
+                                 lock_in_fatturazione = true,
+                                 lock_batch_id        = v_batch
+                           WHERE af.id = v_af_ids[v_n];
+                      END IF;
+                  END LOOP;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT af.commessa_attivita_id, af.id, fr.fattura_id, fr.id
+                    FROM unnest(v_af_ids) WITH ORDINALITY AS x(af_id, n)
+                    JOIN vendite.attivita_fatturabili af ON af.id = x.af_id
+                    JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                   ORDER BY x.n;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_fattura_attivita(text, bigint[], vendite.fatturazione_lotti.id%TYPE)
+              IS 'Fixture pgTAP: le ATTIVITA'' di commessa del test (secondo parametro, id di vendite.commesse_attivita, tutte dello stesso conto) emesse e agganciate a una FATTURA vera in bozza, una riga per attivita''. ⭐ Esiste per la TRAPPOLA D''ORDINE che i file ricopiavano: emissione prima della lettura, attivita'' fatturabile letta per attivita'' (non per segmento, che con le rettifiche prende la riga sbagliata), testata coerente con l''emittente, righe in istruzioni a parte e in bozza, aggancio dopo la riga (il guard sul fatturato ammette solo vuoto -> valorizzato). L''emissione dalla madre vendite.fn_emit_attivita_fatturabili_da_commessa, una volta per commessa (emette tutte le attivita'' approvate e non emesse di quelle commesse), col marchio del lotto se c''e''. La testata: senza lotto dbops.fn_pgtap_crea_fattura in bozza sul conto delle attivita''; con p_lotto_id la madre vendite.fn_get_or_create_fattura_header. Le righe: quantita'', prezzo, articolo, unita'' e competenza dall''attivita'' fatturabile, prima IVA attiva, imponibile = quantita'' per prezzo. L''aggancio fattura_riga_id; col lotto anche lock_in_fatturazione e lock_batch_id del lotto. Del dominio nessuna funzione scrive le righe di fattura (le scrive il backend): il builder fa gli INSERT. ⛔ La fattura resta in bozza: portarla avanti, emetterla o toglierla (vendite.fn_cleanup_fatture_by_ids) e'' il caso del test. Restituisce, nell''ordine delle attivita'', attivita'', attivita'' fatturabile, fattura e riga. Attivita'' assenti, ripetute, di conti diversi, senza un''attivita'' fatturabile libera, o un lotto inesistente sollevano. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-pgtap-reso-costruito (E-2), 2026-10-25.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_fattura_attivita(text, bigint[], vendite.fatturazione_lotti.id%TYPE);

@@ -32,8 +32,6 @@ db/pgtap/vendite/test-commesse-transizioni-stati-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-contratti-utilities-guard-tipo-classe-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-documenti-canali-sync-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-documento-trattenuto-da-lotto-v1.sql	ASSERZIONE
-db/pgtap/vendite/test-elimina-fattura-da-lotto-effetti-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-esito-gruppi-giro-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fattura-utils-critical-termini.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fatturazione-draft.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fatture-arrotondamenti-scope.sql	ERRORE_FIXTURE
@@ -106,4 +104,3 @@ db/pgtap/vendite/test-uscita-documento-dal-giro-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-af-merce-per-riga-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-dash-commesse-respinte-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-dash-competenza-gruppi-cliente-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-vw-dash-competenza-v1.sql	ERRORE_FIXTURE

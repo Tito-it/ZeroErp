@@ -33,16 +33,13 @@ BEGIN
     END IF;
 
     -- via_norm, civico_norm e indirizzo_normalizzato li calcola il trigger
-    -- BEFORE INSERT (trgfn_indirizzi_dettaglio_normalize). L'ON CONFLICT e'
-    -- sull'espressione esatta di uq_indirizzi_dettaglio_norm.
+    -- BEFORE INSERT (trgfn_indirizzi_dettaglio_normalize). L'arbitro
+    -- dell'ON CONFLICT sono le colonne di uq_indirizzi_dettaglio_norm_v2
+    -- (NULLS NOT DISTINCT), sui valori normalizzati dal trigger.
     INSERT INTO anagrafiche.indirizzi_dettaglio (stradario_id, civico, interno, altro)
     VALUES (v_stradario_id, 99999, left(p_etichetta, 10), 'Fixture pgTAP: ' || p_etichetta)
-    ON CONFLICT (stradario_id, civico,
-                 COALESCE(estensione_civico, ''::character varying),
-                 COALESCE(palazzina,         ''::character varying),
-                 COALESCE(scala,             ''::character varying),
-                 COALESCE(piano,             ''::character varying),
-                 COALESCE(interno,           ''::character varying))
+    ON CONFLICT (stradario_id, civico, estensione_civico,
+                 palazzina, scala, piano, interno)
     DO UPDATE SET data_update = now()
     RETURNING id INTO v_id;
 
@@ -51,7 +48,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_indirizzo_dettaglio(p_etichetta text)
-IS 'Helper di fixture pgTAP: fabbrica un anagrafiche.indirizzi_dettaglio (civico 99999 sul primo stradario di seed, interno = etichetta) e ne ritorna l''id; etichette diverse danno indirizzi diversi, la stessa etichetta lo stesso id. Esiste perche'' indirizzi_dettaglio e'' DATO DI MACCHINA: su un database ricostruito da zero non ce n''e'' nessuno, e una fixture che ne cerca uno «attivo» muore in ERRORE_FIXTURE senza eseguire un''asserzione — misurato il 2026-09-15 su quattro pgTAP di magazzino (magazzini.indirizzo_dettaglio_id e'' NOT NULL). ⚠️ Non e'' un indirizzo vero: un test che verifichi la normalizzazione o la geolocalizzazione si costruisce il suo.';
+IS 'Helper di fixture pgTAP: fabbrica un anagrafiche.indirizzi_dettaglio (civico 99999 sul primo stradario di seed, interno = etichetta) e ne ritorna l''id; etichette diverse danno indirizzi diversi, la stessa etichetta lo stesso id (ON CONFLICT sulle colonne di uq_indirizzi_dettaglio_norm_v2, rev 2026-10-25). Esiste perche'' indirizzi_dettaglio e'' DATO DI MACCHINA: su un database ricostruito da zero non ce n''e'' nessuno, e una fixture che ne cerca uno «attivo» muore in ERRORE_FIXTURE senza eseguire un''asserzione — misurato il 2026-09-15 su quattro pgTAP di magazzino (magazzini.indirizzo_dettaglio_id e'' NOT NULL). ⚠️ Non e'' un indirizzo vero: un test che verifichi la normalizzazione o la geolocalizzazione si costruisce il suo.';
 ```
 
 </div>

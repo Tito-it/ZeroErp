@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): commessa (sorgente ROOT), attivita' e attivita' fatturabile da dbops.fn_pgtap_crea_commessa / _attivita e dall'emissione della madre; la fattura agganciata da dbops.fn_pgtap_fattura_attivita; lo smontaggio col verbo vero vendite.fn_cleanup_fatture_by_ids (E-4) al posto dello sgancio a mano con la GUC. Restano a mano istanze e BA padre/figli (il caso: la gerarchia) e il cleanup, ora per id.
 -- pgTAP test per Zero ERP
 --
 -- Test: guard dissociazione parent_account_id su billing_account
@@ -170,7 +171,9 @@ SELECT ok(
 CREATE TEMP TABLE tmp_ids_guard (
     parent_ba_id bigint,
     child1_ba_id bigint,
-    child2_ba_id bigint
+    child2_ba_id bigint,
+    commessa_id  bigint,
+    attivita_id  bigint
 );
 
 DO $$
@@ -262,60 +265,21 @@ BEGIN
     -- le trova finite.
     SET CONSTRAINTS ALL IMMEDIATE;
 
-    -- Commessa per BA figlio 1
-    -- ⚠️ L'emittente NON si lascia a NULL. `vendite.commesse` ha una policy
-    --   RLS (rls_commesse_ef_whitelist) il cui WITH CHECK passa da
-    --   `script.fn_scope_ef_whitelist_via_sr(utente, emittente_soggetto_ruolo_id)`:
-    --   con la colonna vuota la scrittura viene NEGATA, e il file moriva qui.
-    --   L'helper da' il soggetto_ruolo dell'emittente su cui l'operatore del
-    --   contesto puo' davvero scrivere: la scelta di «quale emittente» resta in
-    --   un posto solo.
-    INSERT INTO vendite.commesse (
-        codice, billing_account_id, utility_id, emittente_soggetto_ruolo_id
-    ) VALUES (
-        'TST-GUARD-PARENT-COMM-01', v_child1_ba_id, v_utility_id,
-        script.fn_pgtap_emittente_sr_operatore()
-    ) RETURNING id INTO v_commessa_id;
+    -- Commessa (con la sorgente ROOT) e attivita' per il BA figlio 1, dai
+    -- builder: la commessa nell'azienda di chi agisce, l'attivita' approvata.
+    SELECT c.commessa_id INTO v_commessa_id
+      FROM dbops.fn_pgtap_crea_commessa('guard parent', NULL, v_child1_ba_id,
+                                        p_con_sorgente_root => true) c;
 
-    -- Commessa attivita. -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-    INSERT INTO vendite.commesse_attivita (
-        commessa_id, segment_key, articolo_id, istanza_utility_id,
-        data_attivita, uom_id, quantita,
-        competenza_mese, competenza_dal, competenza_al,
-        prezzo_snapshot, tipo_doc_fiscale_id, valuta_id,
-        sorgente_tipo_id, sorgente_uid
-    ) VALUES (
-        v_commessa_id, 'TST-SEG-01', v_articolo_id, v_child1_istanza_id,
-        script.fn_data_operativa(), v_uom_id, 1,
-        date_trunc('month', script.fn_data_operativa())::date,
-        date_trunc('month', script.fn_data_operativa())::date,
-        (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date,
-        10.00, v_tipo_doc_id, v_valuta_id,
-        (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_commessa_id::text
-    ) RETURNING id INTO v_commessa_attivita_id;
+    SELECT a.attivita_id INTO v_commessa_attivita_id
+      FROM dbops.fn_pgtap_crea_commessa_attivita(v_commessa_id, 10.00, v_articolo_id) a;
 
-    -- Attivita fatturabili (NON fatturata) per BA figlio 1
-    INSERT INTO vendite.attivita_fatturabili (
-        articolo_id, billing_account_id, istanza_utility_id,
-        data_attivita, quantita,
-        competenza_mese, competenza_dal, competenza_al,
-        commessa_id, commessa_attivita_id,
-        tipo_doc_fiscale_id, valuta_id,
-        approvato
-    ) VALUES (
-        v_articolo_id, v_child1_ba_id, v_child1_istanza_id,
-        script.fn_data_operativa(), 1,
-        date_trunc('month', script.fn_data_operativa())::date,
-        date_trunc('month', script.fn_data_operativa())::date,
-        (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date,
-        v_commessa_id, v_commessa_attivita_id,
-        v_tipo_doc_id, v_valuta_id,
-        false
-    );
+    -- L'attivita' fatturabile (NON fatturata) del BA figlio 1: dalla madre.
+    PERFORM vendite.fn_emit_attivita_fatturabili_da_commessa(v_commessa_id, true, false);
 
     -- Salva gli ID per i test successivi
-    INSERT INTO tmp_ids_guard (parent_ba_id, child1_ba_id, child2_ba_id)
-    VALUES (v_parent_ba_id, v_child1_ba_id, v_child2_ba_id);
+    INSERT INTO tmp_ids_guard (parent_ba_id, child1_ba_id, child2_ba_id, commessa_id, attivita_id)
+    VALUES (v_parent_ba_id, v_child1_ba_id, v_child2_ba_id, v_commessa_id, v_commessa_attivita_id);
 END;
 $$;
 
@@ -386,41 +350,8 @@ SELECT lives_ok(
 --   fattura c'e', e la domanda che il test pone e' quella vera.
 -- ⚠️ La fatturazione e' SETUP e sta FUORI dal lives_ok: il test 6 asserisce
 --   che il parent si stacchi, non che si riesca a fatturare.
-DO $fatt$
-DECLARE
-    v_fattura_id bigint;
-    v_riga_id    bigint;
-BEGIN
--- ⚠️ utility_id dal BA, come la testata vera (fn_get_or_create_fattura_header):
---   una fattura senza utility l'applicazione non la crea, e dal 20261021-15 le sue
---   righe senza regole dell'articolo non hanno parametri d'importo
---   (brief-db-modelli-documento-standard §10.7 R-3).
-    INSERT INTO vendite.fatture (
-        registro_id, emittente_soggetto_ruolo_id, billing_account_id,
-        tipo_doc_fiscale_id, valuta_id, stato_doc_fiscale_id, data, utility_id)
-    SELECT script.fn_pgtap_registro_fattura(script.fn_pgtap_emittente_sr_operatore()),
-           script.fn_pgtap_emittente_sr_operatore(),
-           af.billing_account_id, af.tipo_doc_fiscale_id, af.valuta_id,
-           (SELECT s.id FROM config.stati_doc_fiscale s
-             WHERE s.codice_interno = 'DRAFT' ORDER BY s.id LIMIT 1),
-           script.fn_data_operativa(),
-           (SELECT ba.utility_id FROM anagrafiche.billing_account ba WHERE ba.id = af.billing_account_id)
-      FROM vendite.attivita_fatturabili af
-     WHERE af.billing_account_id = (SELECT child1_ba_id FROM tmp_ids_guard)
-     ORDER BY af.id
-     LIMIT 1
-    RETURNING id INTO v_fattura_id;
-
-    INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione,
-                                       qta, prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
-    VALUES (v_fattura_id, 1, 'Riga PGTAP guard parent', 1, 10, 10, script.fn_data_operativa(), script.fn_data_operativa())
-    RETURNING id INTO v_riga_id;
-
-    UPDATE vendite.attivita_fatturabili
-       SET fattura_riga_id = v_riga_id
-     WHERE billing_account_id = (SELECT child1_ba_id FROM tmp_ids_guard);
-END
-$fatt$;
+CREATE TEMP TABLE tmp_fatt_guard AS
+SELECT * FROM dbops.fn_pgtap_fattura_attivita('guard parent', ARRAY[(SELECT attivita_id FROM tmp_ids_guard)]);
 
 SELECT lives_ok(
     $$
@@ -434,33 +365,9 @@ SELECT lives_ok(
 -- ⚠️ Si smonta subito, e non e' pignoleria: il cleanup finale CANCELLA le
 --   attivita', e dal changeSet 20260826-26 la chiave esterna verso la riga di
 --   fattura e' NO ACTION — piu' il guard di riga che rifiuta di toccare
---   un'attivita' ancora agganciata. Sganciare qui tiene il cleanup semplice
---   invece di fargli aggirare il muro con la GUC di manutenzione.
-DO $smonta$
-DECLARE
-    v_fattura_id bigint;
-BEGIN
-    SELECT f.id INTO v_fattura_id
-      FROM vendite.fatture f
-     WHERE f.billing_account_id = (SELECT child1_ba_id FROM tmp_ids_guard)
-     ORDER BY f.id DESC
-     LIMIT 1;
-
-    IF v_fattura_id IS NULL THEN
-        RETURN;
-    END IF;
-
-    PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true);
-    UPDATE vendite.attivita_fatturabili
-       SET fattura_riga_id = NULL
-     WHERE fattura_riga_id IN (SELECT fr.id FROM vendite.fatture_righe fr
-                                WHERE fr.fattura_id = v_fattura_id);
-    PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', 'off', true);
-
-    DELETE FROM vendite.fatture_righe WHERE fattura_id = v_fattura_id;
-    DELETE FROM vendite.fatture       WHERE id = v_fattura_id;
-END
-$smonta$;
+--   un'attivita' ancora agganciata. Si toglie la fattura col verbo vero (E-4):
+--   sgancia e riporta in coda le attivita', poi cancella righe e testata.
+SELECT vendite.fn_cleanup_fatture_by_ids(ARRAY[(SELECT DISTINCT fattura_id FROM tmp_fatt_guard)], NULL);
 
 -- =========================================================
 -- Cleanup finale
@@ -476,17 +383,16 @@ BEGIN
     --   DELETE dei BA, con l'istanza ancora li'.
     SET CONSTRAINTS ALL DEFERRED;
     DELETE FROM vendite.attivita_fatturabili af
-    WHERE af.commessa_id IN (
-        SELECT c.id FROM vendite.commesse c WHERE c.codice = 'TST-GUARD-PARENT-COMM-01'
-    );
+    WHERE af.commessa_id = (SELECT commessa_id FROM tmp_ids_guard);
 
     DELETE FROM vendite.commesse_attivita ca
-    WHERE ca.commessa_id IN (
-        SELECT c.id FROM vendite.commesse c WHERE c.codice = 'TST-GUARD-PARENT-COMM-01'
-    );
+    WHERE ca.commessa_id = (SELECT commessa_id FROM tmp_ids_guard);
+
+    DELETE FROM vendite.commesse_sorgenti cs
+    WHERE cs.commessa_id = (SELECT commessa_id FROM tmp_ids_guard);
 
     DELETE FROM vendite.commesse c
-    WHERE c.codice = 'TST-GUARD-PARENT-COMM-01';
+    WHERE c.id = (SELECT commessa_id FROM tmp_ids_guard);
 
     -- ⚠️ Prima il legame con l'emittente, poi il BA. Ogni billing account viene
     --   agganciato a un emittente fiscale da

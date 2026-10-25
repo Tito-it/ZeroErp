@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): emissione col marchio del lotto, testata dalla madre del lotto, riga di fattura, lucchetto e aggancio da dbops.fn_pgtap_fattura_attivita (p_lotto_id), per i due slot; gli ok dei passi 3-5 leggono cio' che il builder ha scritto. Restano i due annulli (il caso).
 -- pgTAP test per Zero ERP
 -- Test: rollback tecnico lotto MASSIVO in DRAFT
 -- ------------------------------------------------------------
@@ -180,18 +181,20 @@ SELECT ok(
 -- ============================================================
 -- 2) Inserimento attivita_fatturabili di test
 -- ============================================================
--- ⭐ L'attivita' fatturabile nasce dal PULL vero, col marchio del lotto: prima
---   era un INSERT diretto in vendite.attivita_fatturabili.
-CREATE TEMP TABLE tmp_pull_rl AS
-SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
-         p_commessa_id   => (SELECT commessa_id FROM tmp_ca_rl WHERE slot = 'RL1'),
-         p_emit_batch_id => (SELECT lock_batch_id FROM tmp_lotto_rl));
+-- ⭐ Il passo della SELECT del lotto, dal builder: l'attivita' fatturabile nasce
+--   dal PULL vero col marchio del lotto, la testata dalla madre del lotto, poi
+--   la riga di fattura, il lucchetto e l'aggancio. La fattura resta in bozza.
+-- ⛔ Il builder scrive in un'istruzione, le sue righe si rileggono nelle altre.
+CREATE TEMP TABLE tmp_fatt_rl AS
+SELECT * FROM dbops.fn_pgtap_fattura_attivita('reset lotto draft RL1',
+         ARRAY[(SELECT attivita_id FROM tmp_ca_rl WHERE slot = 'RL1')],
+         (SELECT id FROM tmp_lotto_rl));
 
 CREATE TEMP TABLE tmp_attivita_rl AS
 SELECT af.id
-  FROM vendite.attivita_fatturabili af
- WHERE af.commessa_attivita_id = (SELECT attivita_id FROM tmp_ca_rl WHERE slot = 'RL1')
-   AND af.emit_batch_id = (SELECT lock_batch_id FROM tmp_lotto_rl);
+  FROM tmp_fatt_rl f
+  JOIN vendite.attivita_fatturabili af ON af.id = f.attivita_fatturabile_id
+ WHERE af.emit_batch_id = (SELECT lock_batch_id FROM tmp_lotto_rl);
 SELECT ok(
     (
       SELECT count(*) = 1
@@ -203,16 +206,10 @@ SELECT ok(
 -- 3) Creazione fattura bozza + link lotto
 -- ============================================================
 CREATE TEMP TABLE tmp_fattura_rl AS
-SELECT vendite.fn_get_or_create_fattura_header(
-    p_lotto_id => (
-      SELECT id
-      FROM tmp_lotto_rl
-    ),
-    p_attivita_id => (
-      SELECT id
-      FROM tmp_attivita_rl
-    )
-  ) AS fattura_id;
+SELECT DISTINCT f.fattura_id
+  FROM tmp_fatt_rl f
+  JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = f.fattura_id
+ WHERE lf.lotto_id = (SELECT id FROM tmp_lotto_rl);
 SELECT ok(
     (
       SELECT fattura_id IS NOT NULL
@@ -223,50 +220,13 @@ SELECT ok(
 -- ============================================================
 -- 4) Inserimento riga fattura
 -- ============================================================
-CREATE TEMP TABLE tmp_fattura_riga_rl AS WITH ins AS (
-  INSERT INTO vendite.fatture_righe (
-      fattura_id,
-      riga_nr,
-      descrizione,
-      qta,
-      prezzo_unitario,
-      meta, competenza_dal, competenza_al
-    )
-  VALUES (
-      (
-        SELECT fattura_id
-        FROM tmp_fattura_rl
-      ),
-      1,
-      'Riga test rollback',
-      1,
-      10,
-      jsonb_build_object(
-        'test_scope',
-        (
-          SELECT test_scope
-          FROM tmp_costanti_rl
-        )
-      ), script.fn_data_operativa(), script.fn_data_operativa()
-    )
-  RETURNING id
-)
-SELECT *
-FROM ins;
-UPDATE vendite.attivita_fatturabili
-SET lock_in_fatturazione = true,
-  lock_batch_id = (
-    SELECT lock_batch_id
-    FROM tmp_lotto_rl
-  ),
-  fattura_riga_id = (
-    SELECT id
-    FROM tmp_fattura_riga_rl
-  )
-WHERE id = (
-    SELECT id
-    FROM tmp_attivita_rl
-  );
+CREATE TEMP TABLE tmp_fattura_riga_rl AS
+SELECT f.fattura_riga_id AS id
+  FROM tmp_fatt_rl f
+  JOIN vendite.attivita_fatturabili af ON af.id = f.attivita_fatturabile_id
+ WHERE af.fattura_riga_id = f.fattura_riga_id
+   AND af.lock_in_fatturazione IS TRUE
+   AND af.lock_batch_id = (SELECT lock_batch_id FROM tmp_lotto_rl);
 SELECT ok(
     (
       SELECT count(*) = 1
@@ -378,76 +338,21 @@ SELECT l.lotto_id AS id, l.lock_batch_id
                                  r.tipo_doc_fiscale_id, p_del_cliente => true) l;
 
 -- L'attivita' dello slot RL2 nasce dal PULL della seconda commessa, col marchio
---   del secondo lotto.
-CREATE TEMP TABLE tmp_pull_rl2 AS
-SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
-         p_commessa_id   => (SELECT commessa_id FROM tmp_ca_rl WHERE slot = 'RL2'),
-         p_emit_batch_id => (SELECT lock_batch_id FROM tmp_lotto_rl2));
+--   del secondo lotto, e si aggancia alla fattura del secondo lotto: dal builder.
+CREATE TEMP TABLE tmp_fatt_rl2 AS
+SELECT * FROM dbops.fn_pgtap_fattura_attivita('reset lotto draft RL2',
+         ARRAY[(SELECT attivita_id FROM tmp_ca_rl WHERE slot = 'RL2')],
+         (SELECT id FROM tmp_lotto_rl2));
 
 CREATE TEMP TABLE tmp_attivita_rl2 AS
-SELECT af.id
-  FROM vendite.attivita_fatturabili af
- WHERE af.commessa_attivita_id = (SELECT attivita_id FROM tmp_ca_rl WHERE slot = 'RL2')
-   AND af.emit_batch_id = (SELECT lock_batch_id FROM tmp_lotto_rl2);
+SELECT f.attivita_fatturabile_id AS id FROM tmp_fatt_rl2 f;
 CREATE TEMP TABLE tmp_fattura_rl2 AS
-SELECT vendite.fn_get_or_create_fattura_header(
-    p_lotto_id => (
-      SELECT id
-      FROM tmp_lotto_rl2
-    ),
-    p_attivita_id => (
-      SELECT id
-      FROM tmp_attivita_rl2
-    )
-  ) AS fattura_id;
-CREATE TEMP TABLE tmp_fattura_riga_rl2 AS WITH ins AS (
-  INSERT INTO vendite.fatture_righe (
-      fattura_id,
-      riga_nr,
-      descrizione,
-      qta,
-      prezzo_unitario,
-      meta, competenza_dal, competenza_al
-    )
-  VALUES (
-      (
-        SELECT fattura_id
-        FROM tmp_fattura_rl2
-      ),
-      1,
-      'Riga test reset singolo',
-      1,
-      10,
-      jsonb_build_object(
-        'test_scope',
-        (
-          SELECT test_scope
-          FROM tmp_costanti_rl
-        )
-      ), script.fn_data_operativa(), script.fn_data_operativa()
-    )
-  RETURNING id
-)
-SELECT *
-FROM ins;
-UPDATE vendite.attivita_fatturabili
-SET lock_in_fatturazione = true,
-  lock_batch_id = (
-    SELECT lock_batch_id
-    FROM tmp_lotto_rl2
-  ),
-  fattura_riga_id = (
-    SELECT id
-    FROM tmp_fattura_riga_rl2
-  )
-WHERE id = (
-    SELECT id
-    FROM tmp_attivita_rl2
-  );
+SELECT DISTINCT f.fattura_id FROM tmp_fatt_rl2 f;
 -- ⚠️ La commessa_attivita dello slot RL2 deve essere EMESSA prima della
 --   chiamata: e' cio' che rende SIGNIFICATIVA l'asserzione su
 --   `riemesse_attivita` (lasciata NON_EMESSA, quel contatore varrebbe 0 sia con
---   la correzione sia senza). ⭐ rev 2026-10-24: ce la porta il PULL qui sopra,
+--   la correzione sia senza). ⭐ rev 2026-10-24: ce la porta il PULL qui sopra
+--   (oggi dentro dbops.fn_pgtap_fattura_attivita),
 --   per la via vera; prima la riga nasceva NON_EMESSA e la si portava a EMESSA a
 --   mano. Il 14 la vuole di nuovo NON_EMESSA dopo la mutazione.
 -- ⚠️ La mutazione gira in un'ISTRUZIONE SEPARATA e il suo esito si

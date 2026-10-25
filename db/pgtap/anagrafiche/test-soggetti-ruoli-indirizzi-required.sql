@@ -122,15 +122,7 @@ CREATE TEMP TABLE tmp_indirizzo_dettaglio_test AS WITH upsert AS (
     '1',
     TRUE,
     FALSE
-  FROM tmp_stradario_test s ON CONFLICT (
-      stradario_id,
-      civico,
-      COALESCE(estensione_civico, ''::character varying),
-      COALESCE(palazzina, ''::character varying),
-      COALESCE(scala, ''::character varying),
-      COALESCE(piano, ''::character varying),
-      COALESCE(interno, ''::character varying)
-    ) DO
+  FROM tmp_stradario_test s ON CONFLICT (stradario_id, civico, estensione_civico, palazzina, scala, piano, interno) DO
   UPDATE
   SET data_update = now(),
     user_update = CURRENT_USER

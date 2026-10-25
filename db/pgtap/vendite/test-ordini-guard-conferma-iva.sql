@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la testata in bozza da dbops.fn_pgtap_crea_ordine sul BA costruito (il trigger SPEDITO scritto in bozza); la riga SENZA aliquota resta a mano: e' il caso.
 -- pgTAP test per Zero ERP
 -- Test: script.fn_check_ordine_confermabile + Regola 4 di
 --       vendite.trgfn_ordini_guard_transizione + lato lettura
@@ -113,22 +114,20 @@ SELECT ok(
 -- ============================================================
 -- Fixture: un ordine in DRAFT con UNA riga attiva
 -- ============================================================
+-- La testata sola dal builder, in bozza, sul BA costruito (cliente ed emittente
+--   derivati dal BA). La riga no: e' il caso, e non deve portare l'aliquota che
+--   dbops.fn_pgtap_crea_ordine_con_righe le darebbe.
 -- ⚠️ Padre e figlio in DUE istruzioni, non in una CTE sola: le CTE che scrivono
 --   condividono la stessa snapshot, e una policy che risolve il perimetro dal
 --   padre non lo troverebbe, negando fail-closed.
 CREATE TEMP TABLE tmp_oi_ordine AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id,
-                              stato_doc_ordine_id, valuta_id, data,
-                              fatturazione_trigger, emittente_fiscale_id,
-                              storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_draft_id,
-         r.valuta_id, script.fn_data_operativa(), 'SPEDITO', r.emittente_fiscale_id, false,
-         jsonb_build_object('test_scope', 'pgtap_ordine_conferma_iva')
-    FROM tmp_oi_refs r
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT * FROM dbops.fn_pgtap_crea_ordine('ordine_conferma_iva', 'DRAFT',
+    (SELECT billing_account_id FROM tmp_oi_refs));
+
+-- Il trigger di fatturazione e' una condizione della bozza.
+UPDATE vendite.ordini
+   SET fatturazione_trigger = 'SPEDITO'
+ WHERE id = (SELECT ordine_id FROM tmp_oi_ordine);
 
 -- La riga nasce SENZA aliquota: e' il caso da provare.
 -- ⚠️ `prezzo_unitario` e' NOT NULL su vendite.ordini_righe, quindi ogni riga
@@ -137,7 +136,7 @@ SELECT * FROM ins;
 INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
                                   qta_operativa, quantita, prezzo_unitario,
                                   iva_id, attivo, storicizza, meta)
-SELECT (SELECT id FROM tmp_oi_ordine), 1, r.articolo_id, 'Riga di prova I9',
+SELECT (SELECT ordine_id FROM tmp_oi_ordine), 1, r.articolo_id, 'Riga di prova I9',
        2.000000, 2.000000, 100.000000, NULL, true, false,
        jsonb_build_object('test_scope', 'pgtap_ordine_conferma_iva')
   FROM tmp_oi_refs r;
@@ -148,10 +147,10 @@ SELECT (SELECT id FROM tmp_oi_ordine), 1, r.articolo_id, 'Riga di prova I9',
 -- Prima il caso SANO: con l'aliquota non ci sono motivi.
 UPDATE vendite.ordini_righe
    SET iva_id = (SELECT iva_id FROM tmp_oi_refs)
- WHERE ordine_id = (SELECT id FROM tmp_oi_ordine);
+ WHERE ordine_id = (SELECT ordine_id FROM tmp_oi_ordine);
 
 SELECT is(
-    script.fn_check_ordine_confermabile((SELECT id FROM tmp_oi_ordine)),
+    script.fn_check_ordine_confermabile((SELECT ordine_id FROM tmp_oi_ordine)),
     '[]'::jsonb,
     'Riga CON aliquota: nessun motivo ostativo alla conferma'
   );
@@ -159,10 +158,10 @@ SELECT is(
 -- Poi il caso da bloccare.
 UPDATE vendite.ordini_righe
    SET iva_id = NULL
- WHERE ordine_id = (SELECT id FROM tmp_oi_ordine);
+ WHERE ordine_id = (SELECT ordine_id FROM tmp_oi_ordine);
 
 SELECT is(
-    script.fn_check_ordine_confermabile((SELECT id FROM tmp_oi_ordine)) -> 0 ->> 'codice',
+    script.fn_check_ordine_confermabile((SELECT ordine_id FROM tmp_oi_ordine)) -> 0 ->> 'codice',
     'E_ORDINE_RIGA_IVA_MANCANTE',
     'Riga SENZA aliquota: un motivo, ed e'' quello giusto'
   );
@@ -171,7 +170,7 @@ SELECT is(
 --   che finisce nel VARIADIC, cioe' nella frase che legge una persona. Un id
 --   tecnico non si cerca a mano su un documento.
 SELECT is(
-    script.fn_check_ordine_confermabile((SELECT id FROM tmp_oi_ordine))
+    script.fn_check_ordine_confermabile((SELECT ordine_id FROM tmp_oi_ordine))
       -> 0 -> 'dettaglio' ->> 'riga_nr',
     '1',
     'Il motivo porta il NUMERO di riga, non il solo id'
@@ -192,7 +191,7 @@ SELECT is(
 --   E scritto con un `<>` nudo non guarderebbe niente: `jsonb_typeof(NULL) <>
 --   'array'` vale NULL, non vero.
 SELECT is(
-  (WITH v AS (SELECT script.fn_check_ordine_confermabile((SELECT id FROM tmp_oi_ordine)) -> 0 AS motivo)
+  (WITH v AS (SELECT script.fn_check_ordine_confermabile((SELECT ordine_id FROM tmp_oi_ordine)) -> 0 AS motivo)
    SELECT CASE
             WHEN coalesce(jsonb_typeof(v.motivo -> 'valori'), 'assente') <> 'array'
               THEN '(la check non emette valori)'
@@ -205,7 +204,7 @@ SELECT is(
   (SELECT format((SELECT m.messaggio FROM config.messaggi_errore m
                      WHERE m.codice = 'E_ORDINE_RIGA_IVA_MANCANTE' AND m.lingua = 'it'),
                  o.numero, '1')
-     FROM vendite.ordini o WHERE o.id = (SELECT id FROM tmp_oi_ordine)),
+     FROM vendite.ordini o WHERE o.id = (SELECT ordine_id FROM tmp_oi_ordine)),
   'La frase resa nomina il NUMERO dell''ordine e poi la RIGA, in quest''ordine'
   );
 
@@ -224,7 +223,7 @@ SELECT is(
 SELECT is(
     (SELECT a ->> 'reason'
        FROM jsonb_array_elements(
-              script.fn_available_actions_ordine((SELECT id FROM tmp_oi_ordine))
+              script.fn_available_actions_ordine((SELECT ordine_id FROM tmp_oi_ordine))
                 -> 'available_actions') a
       WHERE a ->> 'target_state' = 'CONFERMATO'),
     'RIGA_SENZA_ALIQUOTA',
@@ -242,7 +241,7 @@ SELECT is(
 SELECT throws_like(
     format('UPDATE vendite.ordini SET stato_doc_ordine_id = %s WHERE id = %s',
            (SELECT stato_conf_id FROM tmp_oi_refs),
-           (SELECT id FROM tmp_oi_ordine)),
+           (SELECT ordine_id FROM tmp_oi_ordine)),
     '%prezzo ma nessuna aliquota IVA%',
     'DRAFT->CONFERMATO con una riga senza aliquota: BLOCCA'
   );
@@ -251,12 +250,12 @@ SELECT throws_like(
 -- un rosso del test 4 potrebbe venire dalla fixture invece che dalla regola.
 UPDATE vendite.ordini_righe
    SET iva_id = (SELECT iva_id FROM tmp_oi_refs)
- WHERE ordine_id = (SELECT id FROM tmp_oi_ordine);
+ WHERE ordine_id = (SELECT ordine_id FROM tmp_oi_ordine);
 
 SELECT lives_ok(
     format('UPDATE vendite.ordini SET stato_doc_ordine_id = %s WHERE id = %s',
            (SELECT stato_conf_id FROM tmp_oi_refs),
-           (SELECT id FROM tmp_oi_ordine)),
+           (SELECT ordine_id FROM tmp_oi_ordine)),
     'DRAFT->CONFERMATO con l''aliquota: PASSA'
   );
 

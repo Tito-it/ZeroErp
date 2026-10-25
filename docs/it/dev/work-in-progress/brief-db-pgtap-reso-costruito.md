@@ -2,9 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-**⏸️ In attesa del giro 5 di [brief-modello-documento-vendita](brief-modello-documento-vendita.md)** (bolla e reso al
-modello: stato solo dal verbo, `dbops.fn_pgtap_porta_a_stato` riscritto). Quando è applicato e verde come app,
-**riparte il team DB** coi builder del giro D-4 (E-1…E-5 decise, §7.6), sopra il modello nuovo (§7.7).
+**Riparte: team DB**, con l'archiviazione (quando Tid lo chiede). Tutto il lavoro del brief è applicato e verde come
+app: giro del reso, giro D-4 (`20261025-31` … `-36`), F-1 e F-2 (Tid, 2026-10-25: «migrazione applicata test verdi
+nessuna regressione»).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -15,12 +15,16 @@ modello: stato solo dal verbo, `dbops.fn_pgtap_porta_a_stato` riscritto). Quando
 | 5 | ✅ Tid | D-4: le fixture ripetute si fanno in questo brief | §6 | 3 |
 | 6 | ✅ team DB | Giro D-4: censimento fine delle cinque strade | §7.1-§7.5 | 5 |
 | 7 | ✅ Tid | Decisioni E-1…E-5: come da proposta (2026-10-25) | §7.6 | 6 |
-| 7-bis | altra sessione | Giro 5 di brief-modello-documento-vendita applicato e verde (Tid: si aspetta, 2026-10-25) | §7.7 | — |
-| 8 | team DB | Giro D-4: i builder decisi, porting, regressione | §7 | 7, 7-bis |
-| 9 | **Tid** | Apply del giro D-4, corsa pgTAP come app; archiviazione | — | 8 |
+| 7-bis | ✅ altra sessione | Giro 5 di brief-modello-documento-vendita applicato e committato (`c3e34be02`) | §7.7 | — |
+| 8 | ✅ team DB | Giro D-4: sei builder (`-31` … `-36`), presidi, porting di 64 file, regressione senza differenze | §7.8 | 7, 7-bis |
+| 9 | ✅ Tid | Apply di `-32` … `-36` e del CSV dei messaggi, corsa pgTAP come app: verde, nessuna regressione (2026-10-25) | §7.8 | 8 |
+| 10 | ✅ Tid + team DB | F-1: nessuna revoca, solo documentazione; F-2: messaggio corretto (2026-10-25) | §7.9 | 8 |
+| 11 | team DB | Archiviazione | — | 9, 10 |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare: questo documento (il giro del reso è nel commit
-`2e1a6aaac`).
+Decisioni aperte di Tid: nessuna. Lavoro da committare: i changeSet `20261025-31` … `-36`, quattro presidi nuovi o estesi, 64 pgTAP portati, tre
+pagine manuali nuove e due aggiornate, la guida pgTAP, il messaggio di `E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE` in
+`messaggi_errore.csv` (F-2), le guide `gestione-ddt` e `gestione-commesse` e la nota nel brief di D-7 (F-1), e questo
+documento.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-25. **A chi:** il team DB; Tid per l'apply.
 > **Origine:** giro 2 di [brief-db-pgtap-bolla-e-reso-costruiti](../work-done/brief-db-pgtap-bolla-e-reso-costruiti.md),
@@ -291,3 +295,90 @@ gli stessi della loro bonifica). Tid: **si aspetta il giro 5**, poi D-4 sopra il
 del reso (`fn_pgtap_crea_ddt_da_ordine`, `fn_pgtap_crea_reso`, `fn_pgtap_crea_ddt_riconsegna`) si riprovano sul
 `porta_a_stato` e sui verbi nuovi (per esempio l'azione `conferma_reso` che `fn_pgtap_crea_reso` concede: il
 permesso ora lo legge la matrice).
+
+### 7.8 Il giro D-4 (fatto, 2026-10-25)
+
+Ripreso dopo il giro 5 (commit `c3e34be02`), numeri dal `-31` (Tid).
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `-31` | `dbops.fn_pgtap_crea_ordine_con_righe` (E-1): compone `fn_pgtap_crea_ordine`, che resta senza righe (D-1); una riga o `p_righe` (sconto, aliquota, date di consegna; chiave sconosciuta = errore), data alla nascita, trigger in bozza, stato per la matrice, `p_ordine_id` sulla testata del test. ⚠️ Applicato sullo scratch alle 09:50, nello stesso giro dei `-23` … `-28` del civico, pochi istanti dopo il salvataggio: l'apply ha preso l'albero di lavoro |
+| `-32` | `dbops.fn_pgtap_crea_ddt_da_ordine` delega l'ordine costruito al `-31` (la copia interna si ritira) e prende `p_righe_ordine` |
+| `-33` | `dbops.fn_pgtap_crea_ddt`: sesto parametro `p_data`, la data alla nascita |
+| `-34` | `dbops.fn_pgtap_crea_ddt_senza_ordine` (E-5): cliente, testata da `fn_pgtap_crea_ddt`, una riga prezzata, stato per la matrice; merce gestita e stato abortito rifiutati |
+| `-35` | `dbops.fn_pgtap_fattura_attivita` (E-2): emissione dalla madre, attività fatturabile per attività, testata (o quella del lotto dalla madre), righe, aggancio; la fattura resta in bozza |
+| `-36` | `dbops.fn_pgtap_crea_reso`: lo stato da `fn_pgtap_porta_a_stato` (verbo e azione dalla matrice, giro 5), non più l'azione scritta nel builder |
+
+Presidi: `dbops/test-fn-pgtap-crea-ordine-con-righe-v1` (10), `…-crea-ddt-senza-ordine-v1` (8),
+`…-fattura-attivita-v1` (8, col lotto), `…-crea-ddt-da-ordine-v1` esteso (16); ognuno rosso senza il suo changeSet.
+
+**Porting** (sei agenti per file, non per strada): 64 file su 65 portati, uno lasciato intero
+(`vendite/test-indirizzi-documento-seguono-cliente-v1`: la bolla deve nascere senza indirizzi, ed è il caso). E-3:
+le attività sul segmento di una bolla dichiarano DDT_VENDITA (chiave da `script.fn_segment_key`); la forma ibrida è
+ritirata ovunque, anche dove il censimento non la nominava (lock delle righe test 8, attività emesse senza fattura
+delle chiusure). E-4: i reset a mano diventano `vendite.fn_cleanup_fatture_by_ids`; due copie morte cancellate.
+
+**Curati** (pescavano): `vendite/test-vw-dash-competenza-v1`, `vendite/test-elimina-fattura-da-lotto-effetti-v1`,
+`vendite/test-esito-gruppi-giro-v1` (morivano in partenza: billing account nullo), `script/test-fn-available-actions-
+ordine-v1`, `vendite/test-riporta-lotto-a-draft-v1` (10 skip), `vendite/test-resolve-termini-livello-sorgente-v1`
+(test 7 in skip), `vendite/test-riepilogo-iva-equivalenza-cross-doc` (test 6-9 in skip), `vendite/test-ddt-riepilogo-iva`.
+
+**Attese cambiate, dichiarate nei file**:
+* `vendite/test-annullo-commessa-rettifica-v1` riscritto (6 attese): il reset a mano sganciava la riga già
+  rettificata, che il verbo vero rifiuta (`E_FATTURE_RIGHE_RETTIFICATE`). Sullo stato che il modello produce la
+  commessa con un accredito vivo non si annulla (`E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE`). Vedi F-1.
+* `vendite/test-vw-dash-competenza-v1` test 13: il reset vero libera anche la riga di commessa (RD-4): lo stadio torna
+  DA_EMETTERE, non EMESSA_NON_FATTURATA; spostato in coda (le righe TAP 14-22 scalano di uno).
+* `vendite/test-elimina-fattura-da-lotto-effetti-v1`: le due fatture dello stesso lotto ora sono di due clienti (la
+  testata della madre è un get-or-create per cliente); la regola provata (stesso marchio, due fatture) resta.
+* `vendite/test-esito-gruppi-giro-v1`: le tre sorgenti erano uid di preventivo inventati, che la madre rifiuta: ora
+  tre ordini veri, sorgente ORDINE_VENDITA; la chiave di gruppo ha la stessa forma.
+* skip diventati prove vere (i file curati); in `available-actions-ordine-v2` e `list-ordini-da-pushare-v3` tolti i
+  ripieghi `OR … IS NULL` rimasti dal tempo della pesca (asserzioni più severe, stesso testo).
+* `vendite/test-fn-list-ddt-da-pushare-v1` test 5: la madre copia il prezzo sulla riga della bolla, e il test sarebbe
+  rimasto verde senza esercitare il ramo che dichiara (il prezzo ereditato dalla riga d'ordine): ripristinato
+  togliendo il prezzo dalla riga in bozza, come nella dashboard delle bolle.
+
+**Prova** (fatto datato, 2026-10-25, scratch come owner, in sequenza, `-32` … `-36` in testa): i 65 file danno **gli
+stessi esiti della partenza**, salvo i tre curati (da rotti a verdi); i 53 file che usavano i builder toccati
+(bolla da ordine, reso, testata della bolla) identici con e senza i changeSet; presidi trasversali verdi; guardrail
+verdi. ⚠️ Come owner la porta «stato solo dal verbo» del giro 5 non scatta (lo dichiara anche
+`script/test-doc-verbo-comune-e-porta-v1`, test 19-20): un UPDATE di stato rimasto a mano in un pgTAP lo vede solo
+la corsa come app.
+
+**Note sui builder, senza azione** (una copia sola o caso, regola del 2): la prima aliquota attiva per id (alcune copie
+la sceglievano per codice; nessuna attesa ne dipende); con `p_ordine_id` il trigger non si passa; `fn_pgtap_crea_ddt_
+senza_ordine` non lavora su una bolla in bozza del test (due file costruiscono una seconda bolla); `fn_pgtap_fattura_
+attivita` non scrive `stato_esecuzione`, col lotto non fa due fatture dello stesso cliente, non porta la fattura a
+EMESSA; `fn_pgtap_crea_commessa_attivita` scrive solo righe NORMALE (l'onere resta a mano); `fn_pgtap_crea_preventivo`
+non accetta un billing account.
+
+### 7.9 Decisioni (chiuse il 2026-10-25)
+
+* **F-1 — il ramo RETTIFICA dell'annullo della commessa.** `vendite.fn_documento_ritira_legami` ha un ramo (D-7:
+  annullare la commessa annulla l'accredito) che, sullo stato che il modello produce, nessuna strada raggiunge: la
+  rettifica nasce nella commessa della riga fatturata, che resta EMESSA finché esiste l'accredito, e una commessa con
+  righe emesse non si annulla. Lo raggiungeva solo il reset scritto a mano che E-4 ha ritirato. Domanda di modello:
+  il ramo si ritira, o va ammessa una strada per arrivarci? Proposta: **chiederlo a chi ha scritto D-7** — non è
+  materia di fixture, e qui non si tocca.
+* **F-2 — un messaggio superato.** Il dettaglio di `E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE` dice ancora che il reset del
+  lotto non riporta indietro lo stato di emissione della riga; dopo RD-4 non è vero. Proposta: correggerlo dal CSV dei
+  messaggi in un giro DB (fuori dalle fixture), quando `messaggi_errore.csv` non è aperto da un'altra sessione.
+
+**Esito di F-1** (Tid: «una commessa se ha righe emesse in fattura non è annullabile», poi «ok procedi»). Proposta
+iniziale del team DB: ritirare il ramo come revoca parziale di D-7. Ricostruita la storia, **non è una revoca**: la
+regola che chiude la strada (una riga con un accredito non si disfa, `E_FATTURE_RIGHE_RETTIFICATE`, 2026-08-22)
+c'era già quando D-7 è stata decisa (2026-10-12); D-7 dava per raggiungibile il caso «dopo il reset del lotto», e il
+suo pgTAP lo raggiungeva con un reset a mano. Lo scopo di D-7 resta garantito, più forte, da quella regola e da D-3.
+**Il codice resta com'è**, ramo compreso; corretta la documentazione: nota datata nel brief archiviato di D-7
+(§8.3), `guide/gestione-ddt.md` (§ dei resi) e `guide/gestione-commesse.md` (tabella dei legami all'annullo).
+
+**Esito di F-2.** Il dettaglio di `E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE` (`80_data/sql/config/messaggi_errore.csv`,
+solo quella riga) ora dice che togliere la fattura dalle porte di reset riporta la riga a NON_EMESSA, e che una riga
+che resta EMESSA ha una fattura viva o un accredito che la rettifica. Nessun lettore del testo (pgTAP, backend).
+
+### 7.10 Apply e corsa (2026-10-25)
+
+Tid: «migrazione applicata test verdi nessuna regressione» — `20261025-32` … `-36` (il `-31` era già entrato), il
+messaggio di `E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE` (F-2), corsa pgTAP come app. Copre anche ciò che l'harness come
+owner non poteva vedere: gli UPDATE di stato a mano su bolla e reso, che la porta del giro 5 ferma solo come app.

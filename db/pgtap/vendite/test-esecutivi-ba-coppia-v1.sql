@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la riga dell'ordine di A da dbops.fn_pgtap_crea_ordine_con_righe sulla testata del caso (p_ordine_id, resta DRAFT: la conferma e' il 29), l'ordine di E2 da dbops.fn_pgtap_crea_ordine; restano a mano le testate di ordini e bolle (il caso: BA, utility, causali, BA NULL) e la riga di pg_temp.ddt_bozza (nessun builder scrive una riga su una testata del test; le bolle senza BA il builder non le fa).
 --
 -- Test: ordine, DDT e reso parlano del cliente come preventivo, offerta e
 --   contratto — il billing account, e le copie in testata legate a lui.
@@ -119,7 +120,6 @@ SELECT (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT')  
 --   da 20261013-42 ordine e bolla portano solo merce. Un articolo costruito ha solo
 --   le proprieta' che il test gli da' (merce, non gestito a magazzino).
        dbops.fn_pgtap_crea_articolo('PGT-EBC-ART', false)              AS articolo,
-       (SELECT i.id FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1)      AS iva,
        (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                  AS valuta,
        (SELECT emittente_fiscale_id FROM _m)                                     AS ef;
 
@@ -212,9 +212,13 @@ SELECT is(
     (SELECT utility_id FROM _c WHERE lato = 'A'),
     '6) senza utility l''ordine nasce con quella del suo BA (copia scritta da chi la conosce)');
 
-INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-                                  qta_operativa, quantita, prezzo_unitario, iva_id)
-SELECT o.id, 1, k.articolo, 'Riga ordine pgTAP', 5, 5, 10, k.iva FROM _ord o, _k k;
+-- La riga (5 a 10) sulla testata del caso, che resta in bozza: la conferma e'
+-- un passo del test 29.
+CREATE TEMP TABLE _ord_riga AS
+SELECT o.ordine_riga_id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('esecutivi A', 'DRAFT',
+         p_quantita => 5, p_prezzo => 10, p_articolo_id => (SELECT articolo FROM _k),
+         p_ordine_id => (SELECT id FROM _ord)) o;
 
 -- ============================================================
 -- DDT
@@ -547,14 +551,8 @@ CREATE TEMP TABLE _c2 AS
 SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('esecutivi E2') c;
 SET CONSTRAINTS ALL IMMEDIATE;
 CREATE TEMP TABLE _ord2 AS
-WITH o AS (
-    INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-                                emittente_fiscale_id, valuta_id)
-    SELECT c.soggetto_ruolo_id, c.billing_account_id, k.ord_draft, m.emittente_fiscale_id, k.valuta
-      FROM _c2 c, _k k, _m2 m
-    RETURNING uid
-)
-SELECT * FROM o;
+SELECT o.ordine_uid AS uid
+  FROM dbops.fn_pgtap_crea_ordine('esecutivi E2', 'DRAFT', (SELECT billing_account_id FROM _c2)) o;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m)); END $ctx$;
 
 SELECT throws_like(

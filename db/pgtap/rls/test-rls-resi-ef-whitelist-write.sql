@@ -47,6 +47,7 @@
 --
 -- Perimetro: questo file collauda la scrittura sulla TESTATA. I satelliti
 -- (`resi_righe` e le tre figlie) stanno in test-rls-resi-satelliti.sql.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la bolla CONSEGNATA dal builder dbops.fn_pgtap_crea_ddt_senza_ordine, sotto il contesto di A; niente resta a mano della bolla.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso, in bozza (nasce con una riga, che il test non legge); restano le policy esercitate a mano, che sono il caso.
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): la bolla a CONSEGNATO con dbops.fn_pgtap_porta_a_stato (i passi col verbo), non piu' con tre UPDATE diretti dello stato che la porta ora rifiuta.
 -- ------------------------------------------------------------
@@ -73,57 +74,19 @@ SELECT m.emittente_fiscale_id, c.*
   CROSS JOIN LATERAL dbops.fn_pgtap_crea_cliente_ba('RLS resi write', NULL, m.soggetto_ruolo_id) c
  WHERE m.lato = 'A';
 
--- Il DDT di A, portato fino a CONSEGNATO.
--- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3a): l'articolo
---   si COSTRUISCE. Ordine e bolla ammettono solo merce non solo-componente, e
---   su un database ricostruito il catalogo ha solo i cinque ONERE_* (servizi):
---   cercarlo dava NULL e la riga moriva su E_UOM_MISSING.
-CREATE TEMP TABLE _art AS
-SELECT dbops.fn_pgtap_crea_articolo('PGTAP-RLS-RESI-WR', false) AS id;
-
-CREATE TEMP TABLE _ddt AS
-WITH d AS (
-    -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il BA del cliente, non la sola
-    --   utility — chk_ddt_ba_utility_insieme vuole tutti e due o nessuno.
-    INSERT INTO vendite.ddt
-        (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, emittente_fiscale_id,
-         utility_id, billing_account_id, causale_trasporto_id)
-    SELECT c.soggetto_ruolo_id,
-           (SELECT st.id FROM config.stati_doc_ddt st WHERE st.codice_interno = 'DRAFT'),
-           c.emittente_fiscale_id,
-           c.utility_id,
-           c.billing_account_id,
-           (SELECT ct.id FROM config.causali_trasporto ct WHERE ct.attivo ORDER BY ct.id LIMIT 1)
-      FROM _cliente c
-    RETURNING id, uid, emittente_fiscale_id, destinatario_soggetto_ruolo_id
-)
-SELECT * FROM d;
-
-INSERT INTO vendite.ddt_righe
-    (ddt_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa,
-     prezzo_unitario, iva_id)
-SELECT d.id, 1,
-       (SELECT id FROM _art),
-       'Riga DDT da rendere', 10, 10, 25.00,
-       (SELECT i.id FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1)
-  FROM _ddt d;
-
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-SELECT d.id,
-       (SELECT ti.id FROM config.tipi_indirizzi ti WHERE ti.codice_interno = 'CON'),
-       '{"pgtap": true}'::jsonb
-  FROM _ddt d;
-
--- ⛔ Tutti e tre i passi (la matrice non ammette il salto a CONSEGNATO), e
---   ciascuno col verbo: la porta sullo stato rifiuta l'UPDATE diretto. Il
---   percorso EMESSO -> SPEDITO -> CONSEGNATO lo segue il BB dalla matrice.
---   Il verbo legge la bolla nel perimetro di chi agisce: il contesto e'
---   l'operatore di A, che la possiede (i casi sotto aprono ciascuno il suo).
+-- Il DDT di A, CONSEGNATO (il reso pretende una bolla consegnata): la bolla
+-- senza ordine dal builder, sotto il contesto dell'operatore di A — la bolla e'
+-- dell'azienda di chi agisce, e il BA e' quello del cliente di A. Il builder
+-- costruisce l'articolo, scrive causale, indirizzi e riga prezzata e segue la
+-- matrice coi verbi (i casi sotto aprono ciascuno il suo contesto).
 DO $ctx$ BEGIN
     PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondi WHERE lato = 'A'));
 END $ctx$;
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', d.id, 'CONSEGNATO')
-  FROM _ddt d;
+
+CREATE TEMP TABLE _ddt AS
+SELECT b.ddt_id AS id
+  FROM dbops.fn_pgtap_crea_ddt_senza_ordine('RLS resi write',
+           p_billing_account_id => (SELECT billing_account_id FROM _cliente)) b;
 
 -- Il reso in bozza dal builder: destinatario ed emittente li deriva il
 -- normalize dalla bolla. La riga che il builder gli da' non pesa: il test

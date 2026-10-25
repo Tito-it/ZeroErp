@@ -556,11 +556,13 @@ Come funziona, dal punto di vista del DDT:
 * **reso a credito** → alimenta la coda "da accreditare" (vista
   `vw_resi_da_accreditare`) per la futura nota di credito. L'accredito scrive una
   **rettifica** nella commessa della riga fatturata che corregge;
-* **se si annulla quella commessa** (la rettifica è ancora da emettere, cioè dopo il
-  reset del lotto: finché la riga fatturata è emessa la commessa non si annulla),
-  l'accredito si annulla con lei e la quota **non risulta più accreditata**: la
-  finestra di conferma lo dice («torna da accreditare»), e la coda accrediti la
-  ripropone quando la merce torna in fattura. Dettaglio in
+* **la commessa della rettifica non si annulla finché l'accredito c'è.** La riga
+  fatturata che la rettifica corregge resta emessa: una fattura con un accredito
+  registrato non si disfa, e una commessa con righe emesse non si annulla. Per
+  tornare indietro si annulla prima l'accredito (`vendite.fn_annulla_accredito_riga_reso`):
+  la quota non risulta più accreditata e la coda accrediti la ripropone. La regola
+  «annullando la commessa l'accredito si annulla con lei» resta scritta per il giorno
+  in cui le due regole sopra cambiassero, ma oggi nessuna strada ci arriva. Dettaglio in
   [Gestione Commesse](/guide/gestione-commesse) §«Annullare una commessa».
 
 > Il modello completo del reso (entità, guard, ri-consegna, note di credito) è

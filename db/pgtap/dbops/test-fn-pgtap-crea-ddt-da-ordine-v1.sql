@@ -5,7 +5,8 @@
 -- Test: dbops.fn_pgtap_crea_ddt_da_ordine — la bolla consegnata nata da un ordine
 -- Riferimento: brief-db-pgtap-bolla-e-reso-costruiti §4.1, giro 1
 --   (changeSet 20261025-01; 20261025-02 lo stato abortito; 20261025-04 la
---   data dell'ordine, D-1).
+--   data dell'ordine, D-1; 20261025-32 l'ordine dal builder dell'ordine con le
+--   righe e p_righe_ordine, brief-db-pgtap-reso-costruito E-1).
 --
 -- Semantica attesa (il contratto, non l'implementazione):
 --   - la bolla nasce dall'ordine per la madre del dominio: sorgente
@@ -18,7 +19,7 @@
 --   - trigger di fatturazione, data, cliente del test e causale si scelgono;
 --   - un errore del chiamante parla, e prima di costruire.
 --
--- Elenco test (plan 15):
+-- Elenco test (plan 16):
 --   1) la funzione esiste con la firma dichiarata
 --   2) default: CONSEGNATO, sorgente ORDINE_VENDITA, numero assegnato
 --   3) default: la riga tornata e' legata alla riga d'ordine tornata, quantita' 10
@@ -36,6 +37,7 @@
 --      (rev 20261025-02: prima moriva in fondo, dopo aver costruito)
 --  14) p_data_ordine: l'ordine nasce alla data chiesta, la bolla alla sua (D-1)
 --  15) guard: con p_ordine_id la data dell'ordine non si sceglie (D-1)
+--  16) p_righe_ordine: l'ordine nasce con le righe chieste (sconto) e la bolla le evade
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -48,13 +50,13 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   esaminato, chiamato come lo chiamera' un file su un database ricostruito:
 --   senza nessuna veste in sessione.
 
-SELECT plan(15);
+SELECT plan(16);
 
 -- 1) La firma
 SELECT has_function(
     'dbops', 'fn_pgtap_crea_ddt_da_ordine',
     ARRAY['text', 'character varying', 'bigint', 'numeric', 'numeric', 'uuid',
-          'character varying', 'bigint', 'numeric', 'jsonb', 'date', 'character varying', 'date'],
+          'character varying', 'bigint', 'numeric', 'jsonb', 'date', 'character varying', 'date', 'jsonb'],
     'dbops.fn_pgtap_crea_ddt_da_ordine esiste con la firma dichiarata'
 );
 
@@ -181,7 +183,7 @@ SELECT throws_like(
 SELECT throws_like(
     format($$SELECT dbops.fn_pgtap_crea_ddt_da_ordine('presidio ordine', p_ordine_id => %s, p_quantita => 3)$$,
            (SELECT ordine_id FROM t_s1)),
-    '%con p_ordine_id cliente, riga%',
+    '%con p_ordine_id cliente,%',
     'guard: con p_ordine_id quantita'' e articolo sono dell''ordine, e il builder lo dice'
 );
 
@@ -220,8 +222,24 @@ SELECT is(
 SELECT throws_like(
     format($$SELECT dbops.fn_pgtap_crea_ddt_da_ordine('presidio data', p_ordine_id => %s, p_data_ordine => DATE '2026-08-01')$$,
            (SELECT ordine_id FROM t_s1)),
-    '%con p_ordine_id cliente, riga, data e trigger%',
+    '%con p_ordine_id cliente, righe, data e trigger%',
     'guard: con p_ordine_id la data dell''ordine non si passa'
+);
+
+-- 16) Le righe dell'ordine (rev 20261025-32, E-1): sconto inoltrato al
+--     builder dell'ordine, e la bolla le evade tutte.
+CREATE TEMP TABLE t_righe AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('presidio righe ordine',
+                  p_righe_ordine => jsonb_build_array(
+                      jsonb_build_object('quantita', 4, 'prezzo', 30, 'sconto_percentuale', 5),
+                      jsonb_build_object('quantita', 2, 'prezzo', 10)));
+
+SELECT is(
+    (SELECT (SELECT count(*) FROM vendite.ddt_righe dr WHERE dr.ddt_id = t.ddt_id)::text || ' '
+         || orr.sconto_percentuale::text
+       FROM t_righe t JOIN vendite.ordini_righe orr ON orr.id = t.ordine_riga_id),
+    '2 5.00',
+    'p_righe_ordine: l''ordine nasce con le due righe (la prima scontata) e la bolla le evade'
 );
 
 SELECT * FROM finish();

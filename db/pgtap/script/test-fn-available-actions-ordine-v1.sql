@@ -18,14 +18,13 @@
 --     cantiere «vie d'uscita per l'operatore», 20260804-33/34/35),
 --     can_edit_testata=false, azioni = annulla + push_commessa
 -- ------------------------------------------------------------
--- Nota emittente: trgfn_ordini_default_emittente (20260601-21) richiede
---   emittente_fiscale_id su INSERT quando la GUC app.current_user_id e' vuota.
---   In pgTAP la GUC e' vuota: gli ordini passano emittente_fiscale_id esplicito.
---   rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): l'ordine senza BA non
---   esiste piu'. L'ordine in bozza ha il BA di un cliente FABBRICATO
---   (tmp_aao_cli, BA legato all'emittente dell'operatore dal trigger z90);
---   quello pushabile usa un BA reale col SUO ruolo e il suo emittente
---   (anagrafiche.fn_get_emittente_fiscale_pk).
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i due ordini da
+--   dbops.fn_pgtap_crea_ordine_con_righe (DRAFT e CONFERMATO, 5 x 12, data 2026-06-15),
+--   ognuno col suo cliente costruito. ⚠️ CURATO: l'ordine pushabile pescava un billing
+--   account dal database (push_ba_id, «il primo» utility/istanza/fatturazione CONFERMATO),
+--   e i test 9-10 andavano in skip dove non c'era. Ora il cliente si costruisce e la
+--   condizione che quel BA rendeva vera (fatturazione al CONFERMATO) si scrive sull'ordine:
+--   9 e 10 girano sempre.
 
 BEGIN;
 
@@ -63,102 +62,19 @@ SELECT plan(10);
 -- ============================================================
 -- Riferimenti minimi
 -- ============================================================
-CREATE TEMP TABLE tmp_aao_cli AS
-SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('capability ordine');
-SET CONSTRAINTS ALL IMMEDIATE;
-
-CREATE TEMP TABLE tmp_refs_aao AS
-SELECT
-  -- ⛔ L'emittente NON si pesca, si DERIVA (2026-09-23, guida pgTAP §5): con
-  --   una sola azienda a catalogo «il primo attivo» e quello di chi agisce
-  --   coincidevano per caso, su un database ricostruito no.
-  script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1
-  ) AS soggetto_ruolo_id,
-  -- ⛔ rev 2026-10-13 (Lotto 3a): l'articolo si COSTRUISCE (merce, non gestito):
-  --   da zero il catalogo ha solo servizi, che l'ordine non ammette.
-  dbops.fn_pgtap_crea_articolo('PGTAP-AAO-V1', false) AS articolo_id,
-  (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'CONFERMATO' AND attivo IS TRUE LIMIT 1
-  ) AS stato_confermato_id,
-  (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT' AND attivo IS TRUE LIMIT 1
-  ) AS stato_draft_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  -- rev 2026-10-08 (D-1): l'aliquota che la conferma pretende sulla riga.
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  -- BA pushabile (utility/istanza valorizzate, fatturazione CONFERMATO,
-  -- emittente risolvibile): rende l'ordine CONFERMATO eleggibile al push.
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND ba.fatturazione_ordini = 'CONFERMATO'
-      AND anagrafiche.fn_get_emittente_fiscale_pk(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS push_ba_id;
-
--- Ordine DRAFT con una riga (fixture test 2-8). BA=NULL, emittente esplicito.
+-- Ordine DRAFT con una riga (fixture test 2-8).
 CREATE TEMP TABLE tmp_ord_draft AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-    stato_doc_ordine_id, valuta_id, data, storicizza, meta
-  )
-  SELECT
-    c.soggetto_ruolo_id, c.billing_account_id,
-    anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),
-    r.stato_draft_id, r.valuta_id, DATE '2026-06-15',
-    false, jsonb_build_object('test_scope', 'pgtap_fn_aa_ordine', 'stato', 'draft')
-  FROM tmp_refs_aao r, tmp_aao_cli c
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT o.ordine_id AS id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('capability ordine draft', 'DRAFT',
+           p_quantita => 5, p_prezzo => 12, p_data_ordine => DATE '2026-06-15') o;
 
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, attivo, storicizza, meta
-)
-SELECT
-  o.id, 1, r.articolo_id, 'Riga test pgtap draft',
-  5.000000, 5.000000, 12.000000, true, false,
-  jsonb_build_object('test_scope', 'pgtap_fn_aa_ordine')
-FROM tmp_ord_draft o, tmp_refs_aao r;
-
--- Ordine CONFERMATO con una riga pushabile (fixture test 9-10).
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
---   prende la riga (con l'aliquota), poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato —
---   fuori bozza le righe non si scrivono piu' (20261008-90).
--- BA reale + emittente coerente; trgfn_ordini_normalize eredita
--- fatturazione_trigger=CONFERMATO dal BA su INSERT.
+-- Ordine CONFERMATO con una riga pushabile (fixture test 9-10): fatturazione al
+-- CONFERMATO, la condizione che lo rende eleggibile al push.
 CREATE TEMP TABLE tmp_ord_conf AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-    stato_doc_ordine_id, valuta_id, data, storicizza, meta
-  )
-  SELECT
-    (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
-    r.push_ba_id,
-    anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-    r.stato_draft_id, r.valuta_id, DATE '2026-06-15',
-    false, jsonb_build_object('test_scope', 'pgtap_fn_aa_ordine', 'stato', 'conf')
-  FROM tmp_refs_aao r
-  WHERE r.push_ba_id IS NOT NULL
-  RETURNING id
-)
-SELECT * FROM ins;
-
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta
-)
-SELECT
-  o.id, 1, r.articolo_id, 'Riga test pgtap conf',
-  5.000000, 5.000000, 12.000000, r.iva_id, true, false,
-  jsonb_build_object('test_scope', 'pgtap_fn_aa_ordine')
-FROM tmp_ord_conf o, tmp_refs_aao r;
-
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_conf o;
-END $x$;
+SELECT o.ordine_id AS id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('capability ordine conf', 'CONFERMATO',
+           p_quantita => 5, p_prezzo => 12, p_data_ordine => DATE '2026-06-15',
+           p_fatturazione_trigger => 'CONFERMATO') o;
 
 -- ============================================================
 -- TEST 1) Ordine inesistente -> NULL
@@ -246,12 +162,8 @@ SELECT ok(
 
 -- ============================================================
 -- TEST 9) CONFERMATO (riga pushabile) -> can_push_commessa=true + azione push_commessa
---         (skip se nessun BA pushabile disponibile nel seed)
 -- ============================================================
-SELECT CASE
-  WHEN (SELECT push_ba_id FROM tmp_refs_aao) IS NULL
-  THEN skip('9) skip: nessun billing_account pushabile/coerente nel seed')
-  ELSE ok(
+SELECT ok(
     (SELECT (script.fn_available_actions_ordine(o.id)->>'can_push_commessa')::boolean IS TRUE
         AND EXISTS (
               SELECT 1
@@ -260,8 +172,7 @@ SELECT CASE
                WHERE elem->>'key' = 'push_commessa')
        FROM tmp_ord_conf o),
     'CONFERMATO: can_push_commessa=true e push_commessa presente in available_actions'
-  )
-END;
+);
 
 -- ============================================================
 -- TEST 10) CONFERMATO -> can_change_state=TRUE, can_edit_testata=false
@@ -291,10 +202,7 @@ END;
 --   `push_commessa`) invece del solo booleano: `can_change_state = true`
 --   sarebbe vero anche se la transizione accesa fosse un'altra.
 -- ============================================================
-SELECT CASE
-  WHEN (SELECT push_ba_id FROM tmp_refs_aao) IS NULL
-  THEN skip('10) skip: nessun billing_account pushabile/coerente nel seed')
-  ELSE ok(
+SELECT ok(
     (SELECT (script.fn_available_actions_ordine(o.id)->>'can_change_state')::boolean IS TRUE
         AND (script.fn_available_actions_ordine(o.id)->>'can_edit_testata')::boolean IS TRUE
         AND (script.fn_available_actions_ordine(o.id)->'non_editable_fields')
@@ -306,8 +214,7 @@ SELECT CASE
             = '["annulla", "push_commessa"]'::jsonb
        FROM tmp_ord_conf o),
     'CONFERMATO: can_change_state=true (CONFERMATO->ANNULLATO riacceso), can_edit_testata=true (solo le note: identita'', condizioni e cliente non modificabili), azioni = annulla + push_commessa'
-  )
-END;
+);
 
 SELECT * FROM finish();
 ROLLBACK;

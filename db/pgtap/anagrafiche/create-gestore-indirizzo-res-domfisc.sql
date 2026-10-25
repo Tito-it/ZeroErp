@@ -137,7 +137,7 @@ SELECT ok(
 
 -- =========================================================
 -- 3) indirizzo_dettaglio di test
---    ⚠️ Civico UNICO PER CORSA: uq_indirizzi_dettaglio_norm e' UNIQUE su
+--    ⚠️ Civico UNICO PER CORSA: uq_indirizzi_dettaglio_norm_v2 e' UNIQUE su
 --    (stradario_id, civico, estensione, palazzina, scala, piano, interno), e
 --    con un civico fisso la corsa pescherebbe un dettaglio di qualcun altro.
 -- =========================================================

@@ -1,7 +1,7 @@
 # ⚙️ Funzione `fn_pgtap_crea_ddt`
 
 ```sql
-CREATE FUNCTION fn_pgtap_crea_ddt(p_billing_account_id bigint, p_destinatario_sr_id bigint, p_causale_codice character varying, p_magazzino_id bigint, p_magazzino_arrivo_id bigint)
+CREATE FUNCTION fn_pgtap_crea_ddt(p_billing_account_id bigint, p_destinatario_sr_id bigint, p_causale_codice character varying, p_magazzino_id bigint, p_magazzino_arrivo_id bigint, p_data date)
 ```
 
 **Definizione completa:**
@@ -9,10 +9,12 @@ CREATE FUNCTION fn_pgtap_crea_ddt(p_billing_account_id bigint, p_destinatario_sr
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ddt(p_billing_account_id bigint, p_destinatario_sr_id bigint, p_causale_codice character varying, p_magazzino_id bigint DEFAULT NULL::bigint, p_magazzino_arrivo_id bigint DEFAULT NULL::bigint)
+CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ddt(p_billing_account_id bigint, p_destinatario_sr_id bigint, p_causale_codice character varying, p_magazzino_id bigint DEFAULT NULL::bigint, p_magazzino_arrivo_id bigint DEFAULT NULL::bigint, p_data date DEFAULT NULL::date)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-25 (20261025-33, brief-db-pgtap-reso-costruito E-5): p_data,
+--   la data della bolla alla nascita (NULL = data operativa, come prima).
 -- rev 2026-10-20 (20261020-62, brief-db-grammatica-unica-documenti, 2d G-6):
 --   l'ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della
 --   sorgente; firma e RETURNS ancorati.
@@ -42,7 +44,7 @@ BEGIN
                              billing_account_id, utility_id, valuta_id, emittente_fiscale_id,
                              causale_trasporto_id, magazzino_id, magazzino_arrivo_id,
                              storicizza, meta)
-    VALUES ((SELECT script.fn_data_operativa()), v_draft, p_destinatario_sr_id,
+    VALUES (COALESCE(p_data, (SELECT script.fn_data_operativa())), v_draft, p_destinatario_sr_id,
             p_billing_account_id, v_utility, v_valuta, v_ef,
             v_causale, p_magazzino_id, p_magazzino_arrivo_id,
             false, jsonb_build_object('test_scope', 'pgtap_crea_ddt'))
@@ -60,8 +62,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION dbops.fn_pgtap_crea_ddt(p_billing_account_id bigint, p_destinatario_sr_id bigint, p_causale_codice character varying, p_magazzino_id bigint, p_magazzino_arrivo_id bigint)
-IS 'Fixture pgTAP: una bolla in DRAFT dell''emittente dell''operatore in sessione (script.fn_pgtap_emittente_operatore), per il cliente passato dal test (dal suo fn_pgtap_crea_mondo_cliente: costruito, non pescato), con la causale di trasporto per CODICE, i magazzini scelti (NULL = il default del predefinito, D-L3-h) e gli indirizzi obbligatori dell''ambito DDT. Le righe restano al test. Esce con i vincoli IMMEDIATE. Solo per i pgTAP (brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 5). Rev 2026-10-20 (20261020-62, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della sorgente.';
+COMMENT ON FUNCTION dbops.fn_pgtap_crea_ddt(p_billing_account_id bigint, p_destinatario_sr_id bigint, p_causale_codice character varying, p_magazzino_id bigint, p_magazzino_arrivo_id bigint, p_data date)
+IS 'Fixture pgTAP: una bolla in DRAFT dell''emittente dell''operatore in sessione (script.fn_pgtap_emittente_operatore), per il cliente passato dal test (dal suo fn_pgtap_crea_mondo_cliente: costruito, non pescato), con la causale di trasporto per CODICE, i magazzini scelti (NULL = il default del predefinito, D-L3-h) e gli indirizzi obbligatori dell''ambito DDT. Le righe restano al test. Esce con i vincoli IMMEDIATE. Solo per i pgTAP (brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 5). Rev 2026-10-20 (20261020-62, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della sorgente. Sesto parametro (rev 2026-10-25, 20261025-33, brief-db-pgtap-reso-costruito E-5): la data della bolla, alla nascita (NULL = data operativa); DROP + CREATE.';
 ```
 
 </div>

@@ -31,8 +31,11 @@ AS $function$
 --              'RESO_PER_RICONSEGNA', p_ddt_riga_id => v_r2,
 --              p_reso_id => (SELECT reso_id FROM tmp_r1));
 -- ⛔ L'annullo non lo fa: e' del verbo vendite.fn_annulla_reso.
--- ⚠️ Concede all'operatore in sessione l'azione conferma_reso
---   quando conferma. Esce con i vincoli IMMEDIATE, come ogni helper.
+-- rev 2026-10-25 (20261025-36, brief-db-pgtap-reso-costruito §7.7): lo
+--   stato da dbops.fn_pgtap_porta_a_stato, che sul reso passa dal verbo e
+--   concede l'azione che la matrice chiede per il passaggio (giro 5 di
+--   brief-modello-documento-vendita): il builder non nomina piu' l'azione.
+-- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.
 DECLARE
     v_stato_id    config.stati_doc_reso.id%TYPE;
     v_iniziale    config.stati_doc_reso.iniziale%TYPE;
@@ -48,7 +51,6 @@ DECLARE
     v_qta_riga    vendite.ddt_righe.qta_operativa%TYPE;
     v_riga_nr     vendite.resi_righe.riga_nr%TYPE;
     v_resi_riga   vendite.resi_righe.id%TYPE;
-    v_user_id     anagrafiche.identita_digitali.auth_user_id%TYPE;
 BEGIN
     -- 0. I parametri si giudicano PRIMA di costruire.
     SELECT s.id, s.iniziale, s.is_abortito
@@ -178,12 +180,10 @@ BEGIN
      WHERE dr.id = v_ddt_riga
     RETURNING id INTO v_resi_riga;
 
-    -- 3. Lo stato: il reso e' nato nello stato iniziale; avanti
-    --    lo porta il verbo, con l'azione che pretende.
+    -- 3. Lo stato: il reso e' nato nello stato iniziale; avanti lo porta
+    --    la matrice, dal verbo, con l'azione del passaggio concessa.
     IF NOT v_iniziale THEN
-        v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
-        PERFORM dbops.fn_pgtap_concedi_azione(v_user_id, 'conferma_reso');
-        PERFORM vendite.fn_conferma_reso(v_reso);
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.resi'::regclass, v_reso, p_stato_codice_interno);
     END IF;
 
     -- Contratto dichiarato, non fiducia nel chiamato.
@@ -199,7 +199,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_reso(p_etichetta text, p_ddt_id bigint, p_quantita numeric, p_tipo_reso_codice character varying, p_stato_codice_interno character varying, p_ddt_riga_id bigint, p_ordine_riga_id bigint, p_reso_id bigint, p_data date)
-IS 'Fixture pgTAP: un RESO su una bolla, nello stato chiesto (quinto parametro, default CONFERMATO), per la strada vera del dominio. ⭐ Esiste per la TRAPPOLA D''ORDINE che ogni file ricopiava: testata legata alla bolla, riga legata alla riga della bolla e alla riga d''ordine che essa evade, azione conferma_reso concessa, verbo di conferma. La bolla: p_ddt_id, quella del reso p_reso_id (a cui si aggiunge una riga, finche'' e'' in bozza), o una bolla consegnata costruita da dbops.fn_pgtap_crea_ddt_da_ordine. La testata porta solo sorgente DDT_VENDITA, uid della bolla e data (p_data; NULL = il default della colonna): cliente, emittente, stato iniziale, numero e magazzino li mettono i trigger del dominio. Del reso il database non ha una madre di creazione (testata e righe le scrive il backend), quindi il builder fa gli INSERT. La riga: p_ddt_riga_id (deve essere della bolla) o la prima riga attiva; p_ordine_riga_id o la prima riga d''ordine del legame (ORDER BY id; NULL se la riga della bolla non nasce da un ordine); quantita'' operativa p_quantita (default: la meta'' della riga della bolla, arrotondata in su); tipo per codice (p_tipo_reso_codice, default RESO_A_CREDITO); articolo, descrizione, unita'' e fattore dalla riga della bolla. La coerenza (quantita'', origine, bolla consegnata, cliente) la giudicano i guard veri. Lo stato: uno stato non iniziale si raggiunge col verbo vendite.fn_conferma_reso, dopo aver concesso all''operatore in sessione l''azione conferma_reso (dbops.fn_pgtap_concedi_azione); uno stato abortito si rifiuta prima di costruire (l''annullo e'' del verbo vendite.fn_annulla_reso, caso del test). Restituisce reso, la riga scritta, bolla, riga della bolla, riga d''ordine, quantita'' base, tipo e stato. Uno stato, un tipo, una bolla, una riga o un reso inesistenti sollevano. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-pgtap-reso-costruito, 2026-10-25.';
+IS 'Fixture pgTAP: un RESO su una bolla, nello stato chiesto (quinto parametro, default CONFERMATO), per la strada vera del dominio. ⭐ Esiste per la TRAPPOLA D''ORDINE che ogni file ricopiava: testata legata alla bolla, riga legata alla riga della bolla e alla riga d''ordine che essa evade, azione conferma_reso concessa, verbo di conferma. La bolla: p_ddt_id, quella del reso p_reso_id (a cui si aggiunge una riga, finche'' e'' in bozza), o una bolla consegnata costruita da dbops.fn_pgtap_crea_ddt_da_ordine. La testata porta solo sorgente DDT_VENDITA, uid della bolla e data (p_data; NULL = il default della colonna): cliente, emittente, stato iniziale, numero e magazzino li mettono i trigger del dominio. Del reso il database non ha una madre di creazione (testata e righe le scrive il backend), quindi il builder fa gli INSERT. La riga: p_ddt_riga_id (deve essere della bolla) o la prima riga attiva; p_ordine_riga_id o la prima riga d''ordine del legame (ORDER BY id; NULL se la riga della bolla non nasce da un ordine); quantita'' operativa p_quantita (default: la meta'' della riga della bolla, arrotondata in su); tipo per codice (p_tipo_reso_codice, default RESO_A_CREDITO); articolo, descrizione, unita'' e fattore dalla riga della bolla. La coerenza (quantita'', origine, bolla consegnata, cliente) la giudicano i guard veri. Lo stato: uno stato non iniziale si raggiunge con dbops.fn_pgtap_porta_a_stato, che sul reso passa dal verbo (vendite.fn_conferma_reso) e concede all''operatore in sessione l''azione che la matrice chiede per il passaggio; uno stato abortito si rifiuta prima di costruire (l''annullo e'' del verbo vendite.fn_annulla_reso, caso del test). Restituisce reso, la riga scritta, bolla, riga della bolla, riga d''ordine, quantita'' base, tipo e stato. Uno stato, un tipo, una bolla, una riga o un reso inesistenti sollevano. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-pgtap-reso-costruito, 2026-10-25. Rev 20261025-36 (§7.7): lo stato da dbops.fn_pgtap_porta_a_stato, l''azione dalla matrice.';
 ```
 
 </div>

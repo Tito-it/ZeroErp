@@ -2,22 +2,20 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-**Riparte: Tid**, con il via allo sviluppo. Tutte le decisioni del §4 (D1-D8) sono prese
-(2026-10-25).
+**Riparte: team FE e team BE**, con le due richieste del §6. Il lato DB è chiuso: giro 1 applicato
+su dbdev e sullo scratch (2026-10-25 09:50), corsa pgTAP di Tid verde.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ team DB | Il problema, la prova, la storia delle decisioni, la proposta | §1-§4 | — |
-| 2 | ✅ Tid | D1-D8 | §4 | 1 |
-| 3 | **Tid** | Il via allo sviluppo | — | 2 |
-| 4 | team DB | Giro 1: changeSet (BB, vincoli, guard, indice), pgTAP, guide | §5 | 3 |
-| 5 | **Tid** | Apply su dbdev, corsa pgTAP come app | — | 4 |
-| 6 | team FE | Il campo civico non accetta `0` né negativi | §6.1 | 3 |
-| 7 | team BE | Il codice del duplicato in modifica arriva leggibile al drawer | §6.2 | 5 |
-| 8 | team DB | Chiusura: tolti i «Limiti noti» dal manuale, archiviazione | §5.5 | 5, 6, 7 |
+| 2 | ✅ Tid | D1-D8, poi il via (2026-10-25) | §4 | 1 |
+| 3 | ✅ team DB | Giro 1: `20261025-23`…`-28`, cinque codici, pgTAP, guide e manuali | §5 | 2 |
+| 4 | ✅ Tid | Apply su dbdev e scratch, corsa pgTAP verde (2026-10-25) | §5.6 | 3 |
+| 5 | **team FE** | Il campo civico non accetta `0` né negativi | §6.1 | — |
+| 6 | **team BE** | I codici nuovi arrivano leggibili al drawer (D6 in modifica, D4/D8 in creazione) | §6.2 | — |
+| 7 | team DB | Chiusura: blocco «Chi riparte», archiviazione | §5.5 | 5, 6 |
 
-Decisioni aperte di Tid: nessuna (resta il via). Lavoro da committare: questo brief, e le pagine
-già aggiornate nella stessa sessione (§7).
+Decisioni aperte di Tid: nessuna. Lavoro DB committato (2026-10-25).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-25. **A chi:** Tid; poi il team DB; il §6.1 al team FE, il §6.2 al team BE.
 > **Origine:** revisione di `docs/it/postgresql/intro.md` (2026-10-24/25): l'esempio sull'indice di
@@ -149,15 +147,24 @@ Il vecchio indice si toglie nello stesso changeSet del nuovo, per non lasciarne 
 `fn_build_indirizzo_normalizzato` esce subito, con **tutti** gli `o_*` NULL, se non trova la via in
 `script.vw_indirizzo_completo`. La vista lega stradario, comune, provincia, CAP e
 `vw_stradario_esteso` con JOIN obbligatori: uno stradario presente in `config.stradario` può non
-risolversi. Con D1 il lookup cercherebbe allora «via, nessun dettaglio» e restituirebbe la riga SNC
-nuda di quella via: **un id sbagliato, senza errore**. Il BB, dopo la normalizzazione, solleva un
-errore registrato se `o_via_norm` è NULL, prima del lookup. Scartata la ricaduta sui valori grezzi: due
-modi di cercare, e l'`INSERT` fallirebbe comunque su `via_norm NOT NULL`.
+risolversi (`config.comuni.provincia_id` è nullable). Il BB, dopo la normalizzazione, solleva
+`E_INDIRIZZO_VIA_NON_RISOLTA` se `o_via_norm` è NULL, prima del lookup. Scartata la ricaduta sui valori
+grezzi: due modi di cercare, e l'`INSERT` fallirebbe comunque su `via_norm NOT NULL`.
+
+⚠️ **Correzione del 2026-10-25, emersa costruendo il pgTAP.** L'«id sbagliato in silenzio» richiede
+una riga già presente su una via che non si risolve, e il modello oggi la impedisce: il normalize non
+crea righe senza `via_norm`, e `config.trgfn_comuni_protect_update` blocca il cambio di provincia di un
+comune in uso. Ci si arriva solo con scritture che saltano i trigger. Il caso reale è un altro: il BB
+su una via non risolta usciva con un `23502` tecnico invece di un errore leggibile. La decisione resta
+la stessa (errore prima del lookup, e il lookup non si fa mai con una chiave a vuoto); cambia il
+motivo principale.
 
 ### D5 — Riga trovata ma disattivata: il BB la riattiva ✅ a (Tid, 2026-10-25)
 
 L'unicità copre anche le righe con `attivo = false`, e va bene così: un indirizzo fisico, una riga.
-Il lookup non filtra `attivo`, e oggi il BB restituisce in silenzio l'id di una riga spenta. Con D5 il
+Il lookup non filtra `attivo`, e prima il BB restituiva in silenzio l'id di una riga spenta, che poi
+il collegamento rifiutava (`trgfn_child_requires_active_parent` su `indirizzi` e
+`indirizzi_soggetti`). Con D5 il
 BB la **riattiva** e ne restituisce l'id: chi usa di nuovo un indirizzo fisico lo rimette in uso, e
 lo spegnimento era una conseguenza («nessuno lo usava»), non un divieto. Scartati l'errore (blocca
 l'utente su un indirizzo vero) e lo stato di oggi (collegamento a una riga spenta).
@@ -168,7 +175,7 @@ l'utente su un indirizzo vero) e lo stato di oggi (collegamento a una riga spent
 Il significato resta **«correggo l'indirizzo per tutti»**. Se il valore nuovo coincide con un'altra
 riga, il DB solleva un codice registrato che **nomina la riga esistente**, invece di un `23505` nudo;
 l'indice resta la rete per le corse concorrenti. Precedente: `E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA`.
-Il codice si sceglie nel giro, dopo una ricerca nel registro. Scartate la fusione delle righe e il
+Codice: `E_INDIRIZZO_DETTAGLIO_DUPLICATO` (DATO_ERRATO, come il precedente). Scartate la fusione delle righe e il
 «trasloco di uno solo»: la seconda è una domanda di modello (correzione per tutti contro cambio di
 indirizzo di un proprietario) che resta **fuori** da questo brief e, se servirà, partirà dalla storia
 delle decisioni.
@@ -177,8 +184,8 @@ delle decisioni.
 
 * Le stringhe vuote nelle colonne strutturali si riscrivono **nel changeSet dell'indice**, subito prima
   del `CREATE INDEX`: non sono dati sbagliati, sono la stessa chiave scritta con la regola vecchia.
-  L'`UPDATE` passa per i trigger della tabella (normalize, a10, storico z90): va preparato perché non
-  lasci versioni inutili nello storico.
+  L'`UPDATE` passa per i trigger della tabella (normalize, guard z10, storico z90), come ogni modifica
+  di dominio: tocca solo le righe che hanno un vuoto.
 * Civico `<= 0`, valori di soli caratteri speciali (D8) e righe gemelle: **niente codice**. Se su una
   macchina il vincolo non si crea, le righe si correggono o si cancellano a mano (AGENTS, «bug di dati in
   sviluppo»). Fatto datato, non un motivo: al 2026-10-25 le righe presenti sono solo di test.
@@ -189,75 +196,105 @@ Proposta di Tid: un valore senza nemmeno una lettera o una cifra (`/`, `-`, `.`)
 **rifiuta alla fonte** invece di correggerlo. Vale per le cinque colonne strutturali (estensione,
 palazzina, scala, piano, interno), non solo per l'estensione: una scala `-` è lo stesso difetto.
 
-* Sede: un CHECK di tabella per colonna, `col IS NULL OR col ~ '[[:alnum:]]'`, con messaggio registrato.
-  Il CHECK vede il valore **dopo** il trigger: gli spazi da soli diventano NULL (D3-a) e passano,
-  `/A`, `-1`, `BIS` passano, `/` da solo no.
+* Sede: il guard `trgfn_indirizzi_dettaglio_guard_chiave` (z10, dopo il normalize) parla, con
+  `E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE` e il campo; il CHECK `chk_indirizzi_dettaglio_dettaglio_leggibile`
+  (`col IS NULL OR col ~ '[[:alnum:]]'` sulle cinque colonne) è la rete, come nel precedente
+  `trgfn_indirizzi_guard_forma_libera` + `chk_indirizzi_free_requirements`. Vedono il valore **dopo**
+  il normalize: gli spazi da soli diventano NULL (D3-a) e passano, `/A`, `-1`, `BIS` passano, `/` da
+  solo no.
 * Stessa linea di D2-a: un valore senza senso è un errore visibile, non un valore da aggiustare.
 
 ---
 
-## 5. Giro 1 — cosa si costruisce (dopo il via)
+## 5. Giro 1 — fatto il 2026-10-25
 
 ### 5.1 ChangeSet
 
-Numerazione dal primo libero del giorno di sviluppo, un changeSet per file, DDL e corpi presi dalla
-doc auto-generata:
+L'ordine conta: l'autogen ordina per numero. Corpi e testate dalla doc auto-generata e dagli ultimi
+YAML ancorati; firme verificate byte-identiche al vivo (§5.6).
 
-L'ordine conta: l'autogen ordina per numero, quindi i numeri seguono la sequenza qui sotto.
+| # | Fase | Cosa | Decisioni |
+| --- | --- | --- | --- |
+| `20261025-23` | `20_code` | `fn_build_indirizzo_normalizzato`: vuoto → NULL (`NULLIF`), SNC solo col civico NULL | D3-a, D2-a |
+| `20261025-24` | `20_code` | guard nuovo `trgfn_indirizzi_dettaglio_guard_chiave`, trigger `trg_indirizzi_dettaglio_z10_guard_chiave_ins_upd` | D2-a, D6, D8 |
+| `20261025-25` | `20_code` | `fn_get_or_create_indirizzo_dettaglio`: chiave normalizzata, via non risolta, `IS NOT DISTINCT FROM`, riattivazione, ri-lettura vuota | D1, D4, D5 |
+| `20261025-26` | `00_schema` | riscrittura delle righe con `''`, poi `uq_indirizzi_dettaglio_norm_v2` `NULLS NOT DISTINCT` al posto di `uq_indirizzi_dettaglio_norm` | D3-a, D7 |
+| `20261025-27` | `00_schema` | CHECK di rete `chk_indirizzi_dettaglio_civico_positivo` e `chk_indirizzi_dettaglio_dettaglio_leggibile` | D2-a, D8 |
+| `20261025-28` | `20_code` | builder `dbops.fn_pgtap_crea_indirizzo_dettaglio`: `ON CONFLICT` sulle colonne del v2 | §5.2 |
 
-1. `20_code` — `fn_build_indirizzo_normalizzato`: `NULLIF(…, '')` sulle colonne strutturali (D3-a) e il
-   ramo `0` ritirato (D2-a). È l'unica sorgente: la usano trigger, BB e `fn_check_indirizzo_duplicato`.
-2. `20_code` — `fn_get_or_create_indirizzo_dettaglio`: chiave dai valori `o_*` (D1), errore se
-   `o_via_norm` è NULL (D4), lookup `IS NOT DISTINCT FROM`, riattivazione della riga spenta (D5),
-   errore se la ri-lettura è vuota.
-3. `20_code` — il guard della modifica che collide (D6), con il codice nuovo registrato.
-4. `00_schema` — i CHECK: civico (D2-a) e soli caratteri speciali (D8).
-5. `00_schema` — la riscrittura delle righe con `''` (D7, il trigger ricalcola, come fa
-   `proc_bump_indirizzi_dettaglio`), poi l'indice `NULLS NOT DISTINCT` e il ritiro di
-   `uq_indirizzi_dettaglio_norm` (D3-a).
+Codici nuovi (`messaggi_errore.csv` id 1392-1396, `codici_errore.csv`): `E_INDIRIZZO_CIVICO_NON_POSITIVO`,
+`E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE`, `E_INDIRIZZO_DETTAGLIO_DUPLICATO`, `E_INDIRIZZO_VIA_NON_RISOLTA`
+(DATO_ERRATO), `E_INDIRIZZO_DETTAGLIO_NON_RILETTO` (TECNICO).
+
+⚠️ Il doppione (D6) il guard lo cerca **solo in UPDATE**. In INSERT lo cerca il BB, che per la corsa
+concorrente conta sul `23505` dell'indice e lo rilegge: un `P0001` del guard in quella finestra gli
+toglierebbe la ri-lettura.
 
 Se su una macchina un CHECK o l'indice non si creano, le righe si sistemano a mano (D7): non si scrive
 un fix software.
 
-### 5.2 Censimento da fare nel giro
+### 5.2 Censimento
 
-* Gli scrittori diretti della tabella: il builder `dbops.fn_pgtap_crea_indirizzo_dettaglio` e i pgTAP
-  che fanno `INSERT` a mano (`test-indirizzi-istanza-cascata`, `test-create-pdp`,
-  `create-gestore-indirizzo-res*`): nessuno deve scrivere `civico = 0` o stringhe vuote.
-* Il ramo `UPDATE` del BE (`update_indirizzo_dettaglio`): modificare il civico di una riga esistente
-  passa per lo stesso indice, e con D3-a anche lo SNC collide. Lo copre il guard di D6.
-* Chi crea o modifica i dettagli con valori di soli caratteri speciali (D8): builder pgTAP e seed.
-* `fn_check_indirizzo_duplicato`: dopo D2-a il suo `exact_match` (sulla stringa) e l'indice (sulle
-  colonne) dicono la stessa cosa; verificarlo nel pgTAP.
+* **Copie della chiave dell'indice vecchio**: quattro `ON CONFLICT` sull'espressione `COALESCE`, che
+  togliendo l'indice sarebbero morti con «nessun vincolo corrispondente». Portati sulle colonne del v2:
+  il builder `dbops.fn_pgtap_crea_indirizzo_dettaglio` (`-28`) e i pgTAP `test-indirizzi-fallback`,
+  `test-indirizzi-istanza-cascata`, `test-soggetti-ruoli-indirizzi-required`. Nomi dell'indice
+  aggiornati nei commenti di `create-gestore-indirizzo-res*` e `test_indirizzi_unique_res`.
+* **Chiamanti del BB**: nel DB solo `anagrafiche.fn_create_indirizzo` (firma invariata). Nessuno
+  testava un ritorno `NULL`.
+* **Scrittori diretti**: nessun `civico = 0` né stringhe vuote nei pgTAP. La tabella non ha RLS.
+* **Il ramo `UPDATE` del BE** (`update_indirizzo_dettaglio`): lo copre il guard di D6 (§6.2).
+* **`fn_check_indirizzo_duplicato`**: il suo `exact_match` su un SNC costruito coincide con l'indice
+  (pgTAP, asserzione 26).
+* **Debito trovato e chiuso**: in `test-fn-get-or-create-indirizzo-dettaglio.sql` il test 4 cercava
+  l'estensione `'A'` mentre si salva `'/A'`; l'id restava NULL e il test 5 confrontava con NULL, verde
+  per sottrazione. Ora cerca `'/A'` e il test 5 pretende che il secondo id esista.
 
 ### 5.3 Documentazione
 
-* [Gestione degli indirizzi](/guide/gestione-degli-indirizzi) §«Indirizzo dettaglio» e R7: la chiave e la
-  forma dell'indice.
-* Manuale `anagrafiche/manual/indirizzi_dettaglio`: tolto il riquadro «Limiti noti».
-* Linee guida SQL §8.4-bis: nessun cambio di regola; se serve, questo caso come esempio.
+* ✅ [Gestione degli indirizzi](/guide/gestione-degli-indirizzi): §«Indirizzo dettaglio», R7 (la chiave,
+  l'SNC, i rifiuti, il «trova o crea», la modifica per tutti), R8 e la tabella dei guard.
+* ✅ Manuale `anagrafiche/manual/indirizzi_dettaglio`: §«Unicità del civico» riscritta, riquadro «Limiti
+  noti» tolto (descrive lo stato del repo; su dbdev vale dall'apply).
+* ✅ Manuali di `fn_get_or_create_indirizzo_dettaglio` e `fn_build_indirizzo_normalizzato`; pagina nuova
+  `anagrafiche/manual/trgfn_indirizzi_dettaglio_guard_chiave`.
+* Linee guida SQL §8.4-bis: nessun cambio di regola.
 
 ### 5.4 pgTAP
 
-Un file nuovo (o un'estensione di `test-fn-get-or-create-indirizzo-dettaglio.sql`) che **costruisce** i
-casi qui sotto, senza appoggiarsi ai dati presenti:
+`db/pgtap/anagrafiche/test-indirizzi-dettaglio-unicita-v1.sql` (nuovo, 28 asserzioni) **costruisce** i
+casi, senza appoggiarsi ai dati presenti: la clausola dell'indice e la forma dei due CHECK (non i nomi);
+A (SNC doppio → `23505`, il BB trova l'esistente); C (`a`, ` A `, `/a` → stesso id); il vuoto = NULL;
+D2-a (civico 0 e negativo); D8 (`/` e `-` rifiutati, `/B` e `-1` accettati, spazi = niente); D5
+(riattivazione); D6 (frase del doppione, e i due UPDATE che devono passare); D4 (un comune senza
+provincia costruito apposta); `fn_check_indirizzo_duplicato`; il builder delle fixture.
 
-* A: due civici SNC con lo stesso dettaglio → il secondo `INSERT` è rifiutato; il BB restituisce l'id esistente;
-* B: `civico = 0` è rifiutato dal CHECK;
-* C: BB con estensione `A` e interno minuscolo su una riga esistente → stesso id, mai NULL;
-* D4: stradario che non si risolve nella vista, accanto a una riga SNC nuda della stessa via → errore,
-  non l'id della riga SNC;
-* D5: BB su una riga disattivata → stesso id, riga di nuovo `attivo`;
-* D6: `UPDATE` che porta una riga sulla chiave di un'altra → il codice nuovo, non `23505`;
-* D8: `/`, `-` da soli rifiutati; `/A`, `-1` accettati; spazi da soli → NULL;
-* la clausola: l'indice è `NULLS NOT DISTINCT` (`pg_index.indnullsnotdistinct`), non solo il nome.
+⚠️ Non presidia la corsa fra due sessioni né `E_INDIRIZZO_DETTAGLIO_NON_RILETTO`: in una sessione
+sola non si producono. Lo dichiara la testata del file.
 
-I pgTAP li lancia Tid.
+Modificati: i tre `ON CONFLICT` e `test-fn-get-or-create-indirizzo-dettaglio` (§5.2).
 
 ### 5.5 Chiusura
 
-Dopo l'apply e la corsa verde: riquadro «Limiti noti» tolto dal manuale, blocco «Chi riparte» chiuso,
-brief in `work-done/`.
+Dopo l'apply su dbdev, la corsa verde e le richieste del §6: blocco «Chi riparte» chiuso, brief in
+`work-done/`.
+
+### 5.6 La prova (2026-10-25)
+
+* **SQL estratto dagli YAML**, in transazione annullata, prima sullo scratch `zeroerp_ruoli` poi su
+  dbdev, come owner: firme e `RETURNS` delle tre funzioni byte-identici al vivo, una funzione per nome;
+  dopo il `ROLLBACK` lo stato rilevato prima è identico. Fatto datato: su dbdev la riscrittura tocca 0
+  righe su 284, e indice e CHECK si creano.
+* **pgTAP nuovo** con l'SQL estratto e i cinque messaggi simulati: 28/28. **Controprova** sul modello
+  vecchio: 18 rossi su 28, uno per difetto.
+* **Dopo l'apply di Tid sullo scratch** (09:50): i 30 pgTAP che toccano gli indirizzi, da owner, tutti
+  verdi tranne `test-indirizzi-fallback` (6 rossi su 14: la fixture *cerca* un Gestore che non trova).
+  È debito già registrato in tutte e tre le baseline, non nato qui; il suo `ON CONFLICT` passa. Come
+  `zeroerp_app`: il test nuovo 28/28, `test-fn-get-or-create-indirizzo-dettaglio` 9/9,
+  `test-fn-crea-magazzino-v1`, `test-indirizzi-istanza-cascata`,
+  `test-soggetti-ruoli-indirizzi-required` verdi; `test-fn-create-indirizzo-v1` è dichiarato
+  `pgtap-runner: owner` e da owner è 6/6.
+* **Apply e corsa di Tid** (2026-10-25): migrazione applicata su dbdev e sullo scratch, test verdi.
 
 ---
 
@@ -273,13 +310,22 @@ validazione da ricopiare nel form.
 
 ### 6.2 Team BE
 
-Dopo l'apply: modificare un dettaglio sulla chiave di un'altra riga (D6) produce il codice nuovo, che
-nomina la riga esistente. Verificare che arrivi al drawer come messaggio leggibile (policy generata
-degli errori) e non come errore generico. Nessun cambio di service.
+Dopo l'apply, cinque codici nuovi (§5.1) possono arrivare dagli endpoint degli indirizzi. Verificare
+che arrivino al drawer come messaggi leggibili (policy generata degli errori, da rigenerare dai CSV) e
+non come errore generico:
+
+* in **modifica** (`update_indirizzo_dettaglio`): `E_INDIRIZZO_DETTAGLIO_DUPLICATO` (nomina l'indirizzo
+  esistente; nessun campo), `E_INDIRIZZO_CIVICO_NON_POSITIVO` (campo `civico`),
+  `E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE` (campo = la colonna);
+* in **creazione** (`fn_create_indirizzo` → BB): gli stessi due di validazione, più
+  `E_INDIRIZZO_VIA_NON_RISOLTA` (campo `stradario_id`) e, raro, `E_INDIRIZZO_DETTAGLIO_NON_RILETTO`
+  (TECNICO, 500).
+
+Nessun cambio di service.
 
 ---
 
-## 7. Già fatto in questa sessione (2026-10-24/25, da committare)
+## 7. Già fatto prima del giro (2026-10-24/25, committato)
 
 * `docs/it/postgresql/intro.md`: testata, elenco delle pagine, sezione UNIQUE ridotta a un rimando.
 * `docs/it/linee-guida-sql.md` §8.4-bis «Indici UNIQUE con colonne nullable»: la regola, compreso il

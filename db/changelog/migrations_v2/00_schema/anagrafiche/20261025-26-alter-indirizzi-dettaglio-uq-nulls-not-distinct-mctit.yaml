@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN CIVICO, UNA RIGA: L'INDICE UNICO DIVENTA NULLS NOT DISTINCT
+#   Brief: brief-db-unicita-civico-indirizzi-dettaglio §4 (D3-a e D7 di Tid,
+#   2026-10-25). Completa la decisione del 2025-11-27 (20251127-01: chiave
+#   fisica, NULL gestiti), non la revoca.
+#
+# -- PERCHE' -------------------------------------------------------------------
+#   uq_indirizzi_dettaglio_norm metteva civico NUDO accanto a cinque COALESCE:
+#   un `integer` non ha la sentinella '', e due righe SNC (civico NULL) con lo
+#   stesso dettaglio convivevano. Due chiamate concorrenti del BB passavano
+#   entrambe e nessuna urtava l'indice. Da qui: le sette colonne nude,
+#   NULLS NOT DISTINCT (linee guida SQL §8.4-bis). Lo usano il lookup del BB e
+#   un ON CONFLICT sulle colonne senza ripetere espressioni.
+#
+# -- I DATI PRESENTI (D7) --------------------------------------------------------
+#   * Le stringhe vuote si riscrivono QUI, prima dell'indice: non sono dati
+#     sbagliati, sono la stessa chiave scritta con la regola vecchia (prima ''
+#     e NULL coincidevano nei COALESCE). L'UPDATE passa dai trigger: il
+#     normalize (20261025-23) le porta a NULL, il guard z10 (20261025-24) le
+#     giudica, lo storico le registra come ogni modifica di dominio;
+#   * righe gemelle o civico <= 0: niente codice. Se su una macchina l'indice
+#     o il CHECK (20261025-27) non si creano, le righe si correggono o si
+#     cancellano a mano (AGENTS, «bug di dati in sviluppo»).
+#   La colonna FK stradario_id resta in testa: la copertura dell'indice FK
+#   (20260727-37) passa al v2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261025-26-alter-indirizzi-dettaglio-uq-nulls-not-distinct-mctit.yaml
+
+  - changeSet:
+      id: 20261025-26-alter-indirizzi-dettaglio-uq-nulls-not-distinct
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.indirizzi_dettaglio: le stringhe vuote delle colonne strutturali si riscrivono
+        (il normalize le porta a NULL), poi uq_indirizzi_dettaglio_norm (COALESCE, civico nudo)
+        lascia il posto a uq_indirizzi_dettaglio_norm_v2 sulle sette colonne nude NULLS NOT
+        DISTINCT. Brief: brief-db-unicita-civico-indirizzi-dettaglio §4 (D3-a, D7).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) D7: il vuoto della regola vecchia passa per il normalize.
+              UPDATE anagrafiche.indirizzi_dettaglio
+                 SET estensione_civico = estensione_civico
+               WHERE btrim(estensione_civico) = ''
+                  OR btrim(palazzina)         = ''
+                  OR btrim(scala)             = ''
+                  OR btrim(piano)             = ''
+                  OR btrim(interno)           = '';
+
+              -- 2) D3-a: l'indice nuovo al posto del vecchio, mai due insieme.
+              DROP INDEX IF EXISTS anagrafiche.uq_indirizzi_dettaglio_norm;
+              CREATE UNIQUE INDEX uq_indirizzi_dettaglio_norm_v2
+                  ON anagrafiche.indirizzi_dettaglio USING btree
+                  (stradario_id, civico, estensione_civico, palazzina, scala, piano, interno)
+                  NULLS NOT DISTINCT;
+
+              COMMENT ON INDEX anagrafiche.uq_indirizzi_dettaglio_norm_v2 IS
+                'Un indirizzo fisico, una riga: stradario_id + civico + estensione + palazzina + scala + piano + interno, sui valori come li salva il normalize (maiuscolo, vuoto -> NULL), NULLS NOT DISTINCT: due SNC (civico NULL) con lo stesso dettaglio collidono. Lo specchio e'' il lookup IS NOT DISTINCT FROM di anagrafiche.fn_get_or_create_indirizzo_dettaglio; la frase del doppione in UPDATE la da'' trgfn_indirizzi_dettaglio_guard_chiave. Sostituisce uq_indirizzi_dettaglio_norm (20251127-01). Brief: brief-db-unicita-civico-indirizzi-dettaglio (2026-10-25).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS anagrafiche.uq_indirizzi_dettaglio_norm_v2;
+              CREATE UNIQUE INDEX uq_indirizzi_dettaglio_norm
+                  ON anagrafiche.indirizzi_dettaglio USING btree
+                  (stradario_id, civico,
+                   COALESCE(estensione_civico, ''::character varying),
+                   COALESCE(palazzina, ''::character varying),
+                   COALESCE(scala, ''::character varying),
+                   COALESCE(piano, ''::character varying),
+                   COALESCE(interno, ''::character varying));

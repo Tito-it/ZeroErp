@@ -112,22 +112,25 @@ SELECT lives_ok(
   );
 
 -- Salva secondo id
+-- ⚠️ rev 2026-10-25: il trigger salva l'estensione col prefisso '/' ('A' ->
+--   '/A'). La ricerca su 'A' non trovava niente, civico_id_2 restava NULL e il
+--   test 5 confrontava un id con NULL: verde per sottrazione. Brief:
+--   brief-db-unicita-civico-indirizzi-dettaglio.
 UPDATE tmp_ind_det_ctx
 SET civico_id_2 = (
     SELECT id FROM anagrafiche.indirizzi_dettaglio
     WHERE stradario_id = (SELECT stradario_id FROM tmp_ind_det_ctx)
       AND civico = 99990
-      AND COALESCE(estensione_civico, '') = 'A'
-      AND COALESCE(palazzina, '') = 'B'
+      AND estensione_civico = '/A'
+      AND palazzina = 'B'
   );
 
 -- =========================================================
 -- 5) Civico diverso nella stessa via → id diverso
 -- =========================================================
-SELECT isnt(
-    (SELECT civico_id_1 FROM tmp_ind_det_ctx),
-    (SELECT civico_id_2 FROM tmp_ind_det_ctx),
-    '5. Civico con dettagli diversi produce id diverso'
+SELECT ok(
+    (SELECT civico_id_2 IS NOT NULL AND civico_id_2 <> civico_id_1 FROM tmp_ind_det_ctx),
+    '5. Civico con dettagli diversi produce id diverso (e il secondo esiste)'
   );
 
 -- =========================================================

@@ -32,6 +32,11 @@
 --   7. COMPORT: preventivi vs ordini -> arrotondamento uguale (aliq. A)
 --   8. COMPORT: preventivi vs ordini -> imposta uguale (aliq. A)
 --   9. COMPORT: preventivi vs ordini -> imponibile con sconto uguale (aliq. B)
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la testata della bolla da
+--   dbops.fn_pgtap_crea_ddt (VENDITA, p_data), quella del preventivo da dbops.fn_pgtap_crea_preventivo;
+--   curata la pesca dell'emittente («il primo attivo») e del BA del preventivo («il primo con
+--   utility e istanza»): ⚠️ i test 6-9, in SKIP dove quel BA non c'era, ora misurano. Restano a
+--   mano la testata dell'ordine e le righe dei tre documenti, che sono il caso.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -113,32 +118,27 @@ SELECT is(
 -- ============================================================
 
 -- Riferimenti minimi (stesso emittente e stesso articolo per tutti -> stessa
--- base aliquota; billing_account con utility/istanza richiesto dal preventivo).
+-- base aliquota).
+-- ⛔ rev 2026-10-25 (giro D-4): emittente e cliente si COSTRUISCONO. Prima
+--   l'emittente era «il primo emittente attivo per id» (e il destinatario della
+--   bolla il suo stesso soggetto), e il billing account del preventivo «il primo
+--   con utility e istanza»: pescati. Su un database senza billing account il
+--   preventivo non nasceva e i test 6-9 andavano in SKIP. L'emittente e' quello
+--   dell'operatore in sessione; il cliente di ordine e bolla e' costruito qui,
+--   quello del preventivo dal suo builder (stessa azienda di chi agisce).
+-- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): l'ordine ha sempre il
+--   BA, e il suo cliente e' il ruolo del BA (fk_ordini_ba_cliente). Prima
+--   nasceva senza BA e col ruolo dell'EMITTENTE come cliente. Il cliente si
+--   FABBRICA: pescato dai dati, su un database senza billing account l'ordine
+--   non nasceva. Il trigger z90 lega il BA all'emittente dell'operatore.
+CREATE TEMP TABLE tmp_eqiva_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('riepilogo iva equivalenza');
+SET CONSTRAINTS ALL IMMEDIATE;
+
 CREATE TEMP TABLE tmp_eqiva_refs AS
 SELECT
-  (SELECT ef.id
-     FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1)                 AS emittente_fiscale_id,
-  (SELECT ef.soggetto_ruolo_id
-     FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1)                 AS soggetto_ruolo_id,
-  (SELECT ba.id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                 AS billing_account_id,
-  (SELECT ba.utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                 AS utility_id,
-  (SELECT ba.istanza_utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                 AS istanza_utility_id,
+  script.fn_pgtap_emittente_operatore()     AS emittente_fiscale_id,
+  (SELECT c.soggetto_ruolo_id FROM tmp_eqiva_cli c) AS soggetto_ruolo_id,
 -- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-1/D-2): l'articolo si
 --   COSTRUISCE. Prima si pescava dal catalogo (il primo per id, o il piu' recente):
 --   il primo per id e' l'onere del seed ONERE_SENZA_CONTRATTO (natura servizio), e
@@ -150,8 +150,6 @@ SELECT
     WHERE s.attivo IS TRUE ORDER BY s.id LIMIT 1)          AS stato_doc_ordine_id,
   (SELECT s.id FROM config.stati_doc_ddt s
     WHERE s.attivo IS TRUE ORDER BY s.id LIMIT 1)          AS stato_doc_ddt_id,
-  (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice = 'DRAFT' AND s.attivo IS TRUE LIMIT 1) AS stato_draft_id,
   -- aliquota A: la piu' alta > 0
   (SELECT i.id FROM config.iva i
     WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
@@ -186,15 +184,7 @@ SELECT ok(
 -- ===== ORDINE =====
 CREATE TEMP TABLE tmp_eqiva_ordine(id bigint);
 
--- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): l'ordine ha sempre il
---   BA, e il suo cliente e' il ruolo del BA (fk_ordini_ba_cliente). Prima
---   nasceva senza BA e col ruolo dell'EMITTENTE come cliente. Il cliente si
---   FABBRICA: pescato dai dati, su un database senza billing account l'ordine
---   non nasceva. Il trigger z90 lega il BA all'emittente dell'operatore.
-CREATE TEMP TABLE tmp_eqiva_cli AS
-SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('riepilogo iva equivalenza');
-SET CONSTRAINTS ALL IMMEDIATE;
-
+-- L'ordine sul cliente costruito sopra (tmp_eqiva_cli).
 WITH ins AS (
   INSERT INTO vendite.ordini (
     serie, numero, anno, data,
@@ -237,25 +227,19 @@ SELECT o.id, 20, r.articolo_id, 'EQIVA B sconto',
 FROM tmp_eqiva_ordine o CROSS JOIN tmp_eqiva_refs r;
 
 -- ===== DDT =====
+-- La testata in bozza dal builder (causale VENDITA, indirizzi) sul cliente
+-- costruito, alla data dell'ordine. Le righe sono il caso: restano qui.
 CREATE TEMP TABLE tmp_eqiva_ddt(id bigint);
-WITH ins AS (
-  INSERT INTO vendite.ddt (
-    destinatario_soggetto_ruolo_id, stato_doc_ddt_id, data,
-    emittente_fiscale_id, valuta_id, storicizza, meta
-  )
-  SELECT
-    r.soggetto_ruolo_id, r.stato_doc_ddt_id, DATE '2080-06-01',
-    r.emittente_fiscale_id, r.valuta_id, false, jsonb_build_object('test_scope', 'pgtap_eqiva')
-  FROM tmp_eqiva_refs r
-  WHERE r.soggetto_ruolo_id IS NOT NULL
-    AND r.emittente_fiscale_id IS NOT NULL
-    AND r.stato_doc_ddt_id IS NOT NULL
-    AND r.articolo_id IS NOT NULL
-    AND r.iva_a_id IS NOT NULL
-    AND r.iva_b_id IS NOT NULL
-  RETURNING id
-)
-INSERT INTO tmp_eqiva_ddt(id) SELECT id FROM ins;
+INSERT INTO tmp_eqiva_ddt(id)
+SELECT dbops.fn_pgtap_crea_ddt(c.billing_account_id, c.soggetto_ruolo_id, 'VENDITA',
+                               p_data => DATE '2080-06-01')
+  FROM tmp_eqiva_refs r, tmp_eqiva_cli c
+ WHERE r.soggetto_ruolo_id IS NOT NULL
+   AND r.emittente_fiscale_id IS NOT NULL
+   AND r.stato_doc_ddt_id IS NOT NULL
+   AND r.articolo_id IS NOT NULL
+   AND r.iva_a_id IS NOT NULL
+   AND r.iva_b_id IS NOT NULL;
 
 INSERT INTO vendite.ddt_righe (
   ddt_id, riga_nr, articolo_id, descrizione,
@@ -276,31 +260,11 @@ SELECT o.id, 20, r.articolo_id, 'EQIVA B sconto',
 FROM tmp_eqiva_ddt o CROSS JOIN tmp_eqiva_refs r;
 
 -- ===== PREVENTIVO (snapshot popolato dal trigger su insert righe) =====
-CREATE TEMP TABLE tmp_eqiva_prev(id bigint);
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev,
-    billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id,
-    stato_doc_preventivo_id, data, emittente_fiscale_id,
-    storicizza, meta
-  )
-  SELECT
-    'PGTAP-EQIVA-' || substr(md5(clock_timestamp()::text), 1, 8), 0,
-    r.billing_account_id, r.istanza_utility_id, r.utility_id,
-    DATE '2080-06-01', DATE '2080-06-30', r.valuta_id,
-    r.stato_draft_id, DATE '2080-06-01', r.emittente_fiscale_id,
-    false, jsonb_build_object('test_scope', 'pgtap_eqiva')
-  FROM tmp_eqiva_refs r
-  WHERE r.billing_account_id IS NOT NULL
-    AND r.stato_draft_id IS NOT NULL
-    AND r.emittente_fiscale_id IS NOT NULL
-    AND r.articolo_id IS NOT NULL
-    AND r.iva_a_id IS NOT NULL
-    AND r.iva_b_id IS NOT NULL
-  RETURNING id
-)
-INSERT INTO tmp_eqiva_prev(id) SELECT id FROM ins;
+-- La testata in bozza dal builder del preventivo: cliente con utility e
+-- istanza (il preventivo li vuole), nell'azienda di chi agisce.
+CREATE TEMP TABLE tmp_eqiva_prev AS
+SELECT p.preventivo_id AS id
+  FROM dbops.fn_pgtap_crea_preventivo('riepilogo iva equivalenza') p;
 
 INSERT INTO vendite.preventivi_righe (
   preventivo_id, articolo_id, qta_operativa, quantita,

@@ -65,6 +65,7 @@
 --    verdi i test 13 e 15 per questa strada. Il rifiuto giusto e' quello che
 --    non passa dal ricalcolo della madre.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): l'ambito degli indirizzi della bolla e' DDT_VENDITA (le etichette ORDINE/DDT della tabella _doc sono del test e restano).
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la testata della bolla (CONTO_VISIONE, indirizzi) da dbops.fn_pgtap_crea_ddt; restano a mano la riga kit coi componenti di ogni famiglia (il caso del lock) e le testate di preventivo e ordine, che portano righe kit fuori dalla portata dei builder.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -227,18 +228,10 @@ BEGIN
 
     -- DDT: causale CONTO_VISIONE, che non vende — il prezzo non si chiede
     --   all'emissione (test 34 di test-fn-check-prezzi-autorizzati-v1).
-    -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): col BA del cliente — la
-    --   causale vuole un cliente (D-2) e la utility senza BA viola
-    --   chk_ddt_ba_utility_insieme.
-    INSERT INTO vendite.ddt
-        (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, emittente_fiscale_id,
-         utility_id, billing_account_id, causale_trasporto_id)
-    VALUES
-        (c.cliente_soggetto_ruolo_id,
-         (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'DRAFT'),
-         c.emittente_fiscale_id, c.utility_id, c.billing_account_id,
-         (SELECT ct.id FROM config.causali_trasporto ct WHERE ct.codice = 'CONTO_VISIONE'))
-    RETURNING id INTO v_id;
+    --   La testata in bozza dal builder: col BA del cliente (la causale vuole un
+    --   cliente, D-2) e gli indirizzi che l'emissione pretende. La riga kit e i
+    --   suoi componenti sono il caso: restano scritti qui.
+    v_id := dbops.fn_pgtap_crea_ddt(c.billing_account_id, c.cliente_soggetto_ruolo_id, 'CONTO_VISIONE');
 
     INSERT INTO vendite.ddt_righe
         (ddt_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa,
@@ -251,12 +244,6 @@ BEGIN
          coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo, uom_operativa_id)
     SELECT v_riga, b.bom_id, b.cmp_id, 1, 1, 10, 'MANUALE', b.cmp_uom_id
       FROM _bom b WHERE b.kit_id = k.kit_a;
-
-    -- Gli indirizzi che l'emissione pretende.
-    INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-    SELECT v_id, ti.id, '{"pgtap": true}'::jsonb
-      FROM config.tipi_indirizzi ti
-     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', ARRAY[]::integer[]));
 
     INSERT INTO _doc
     SELECT 'DDT', v_id, v_riga,

@@ -54,6 +54,7 @@
 --    che gira: un trigger su una tabella del dominio lo potrebbe montare
 --    solo l'owner. La tabella temporanea punta a righe vere, e i lettori
 --    DEFINER del building block le risolvono come sulle tabelle del dominio.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i due ordini in bozza con la riga semplice da dbops.fn_pgtap_crea_ordine_con_righe ('DRAFT', p_righe con l'aliquota del test); restano a mano le transizioni (il test 1 prova porta_a_stato), la riga del test 7, preventivo e offerta coi componenti del kit.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -168,23 +169,17 @@ BEGIN
     SELECT * INTO k FROM _k;
 
     -- ORDINE da confermare (4-8) e ORDINE da annullare (9): una riga semplice
+    --   (S, 2 a 10, l'aliquota del test), in BOZZA, dal builder dell'ordine con
+    --   le righe. Le transizioni sono il caso (1, 9): le fa il test.
     FOR i IN 1..2 LOOP
-        INSERT INTO vendite.ordini
-            (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-             fatturazione_trigger, emittente_fiscale_id, valuta_id, data)
-        VALUES
-            (c.cliente_soggetto_ruolo_id, c.billing_account_id,
-             (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT'),
-             'SPEDITO', c.emittente_fiscale_id, k.valuta_id, script.fn_data_operativa())
-        RETURNING id INTO v_id;
-
-        INSERT INTO vendite.ordini_righe
-            (ordine_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa,
-             prezzo_unitario, iva_id)
-        VALUES (v_id, 1, pg_temp.art('S'), 'Riga semplice pgTAP', 2, 2, 10, k.iva_id)
-        RETURNING id INTO v_riga;
-
-        INSERT INTO _doc VALUES (CASE i WHEN 1 THEN 'ORDINE' ELSE 'ORDINE_ANN' END, v_id, v_riga, NULL);
+        INSERT INTO _doc
+        SELECT CASE i WHEN 1 THEN 'ORDINE' ELSE 'ORDINE_ANN' END, o.ordine_id, o.ordine_riga_id, NULL
+          FROM dbops.fn_pgtap_crea_ordine_con_righe('debiti residui ' || i, 'DRAFT',
+                   p_billing_account_id   => c.billing_account_id,
+                   p_fatturazione_trigger => 'SPEDITO',
+                   p_righe => jsonb_build_array(jsonb_build_object(
+                       'articolo_id', pg_temp.art('S'), 'quantita', 2, 'prezzo', 10,
+                       'iva_id', k.iva_id, 'descrizione', 'Riga semplice pgTAP'))) o;
     END LOOP;
 
     -- PREVENTIVO: una riga semplice e una riga kit con i tre componenti

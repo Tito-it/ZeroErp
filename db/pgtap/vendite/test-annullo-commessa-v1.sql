@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine confermato del caso C da dbops.fn_pgtap_crea_ordine_con_righe (ritirato pg_temp.ac_mk_ordine); restano a mano il preventivo (fuori dalle tre strade) e le righe di commessa del caso I (la chiave e' il caso).
 -- rev 2026-10-24 (brief-modello-documento-vendita §4-octies): la chiave letta dal test 11 la compone script.fn_segment_key, il solo costruttore. Le righe restano scritte dal push vero (lister + madre); i segmenti PGT-AC-SEG:* del caso I restano a mano: la chiave (col suffisso #RET) e' il caso del classificatore.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
@@ -134,7 +135,7 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
 
 CREATE TEMP TABLE tmp_ac_refs AS
 SELECT
-  c.billing_account_id, c.istanza_utility_id, c.utility_id, c.soggetto_ruolo_id,
+  c.billing_account_id, c.istanza_utility_id, c.utility_id,
   script.fn_pgtap_emittente_operatore()                                                   AS emittente_fiscale_id,
   -- La natura di riga la da' l'articolo: uno per strada, scelta alla nascita.
   dbops.fn_pgtap_crea_articolo('PGT-AC-MERCE', false,
@@ -146,7 +147,6 @@ SELECT
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)            AS iva_id,
   (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'DRAFT')       AS prev_draft_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT')           AS ord_draft_id,
   (SELECT s.id FROM vendite.stati_commessa s WHERE s.codice_interno = 'ANNULLATA')        AS cm_annullata_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA')                AS sorg_commessa_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo ORDER BY t.id LIMIT 1)       AS tipo_doc_fiscale_id
@@ -225,28 +225,6 @@ BEGIN
   IF p_stato <> 'DRAFT' THEN
     PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', v_prev, p_stato);
   END IF;
-END $$ LANGUAGE plpgsql;
-
--- Un ordine CONFERMATO con una riga MERCE, fatturato alla conferma (il
--- lister della commessa vuole fatturazione_trigger = CONFERMATO).
-CREATE OR REPLACE FUNCTION pg_temp.ac_mk_ordine(p_chiave text) RETURNS void AS $$
-DECLARE r RECORD; v_ord bigint; v_riga bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_ac_refs;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-      stato_doc_ordine_id, valuta_id, data, fatturazione_trigger, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.emittente_fiscale_id, r.ord_draft_id,
-          r.valuta_id, script.fn_data_operativa(), 'CONFERMATO', false,
-          jsonb_build_object('test_scope', 'pgtap_annullo_commessa'))
-  RETURNING id INTO v_ord;
-  UPDATE vendite.ordini SET fatturazione_trigger = 'CONFERMATO' WHERE id = v_ord;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-      qta_operativa, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, r.art_merce_id, 'Riga annullo commessa pgTAP', 3, 40, r.iva_id, true, false,
-          jsonb_build_object('test_scope', 'pgtap_annullo_commessa'))
-  RETURNING id INTO v_riga;
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-  INSERT INTO tmp_ac_fix VALUES (p_chiave || '_ord', v_ord), (p_chiave || '_ord_riga', v_riga);
 END $$ LANGUAGE plpgsql;
 
 -- Una commessa nuova del cliente (come il push: fn_get_or_create_commessa).
@@ -439,7 +417,16 @@ SELECT ok(
 -- ============================================================
 -- C — ordine -> commessa (D-6)
 -- ============================================================
-SELECT pg_temp.ac_mk_ordine('c');
+-- Un ordine CONFERMATO con una riga MERCE 3 x 40, fatturato alla conferma
+-- (il lister della commessa vuole fatturazione_trigger = CONFERMATO).
+CREATE TEMP TABLE tmp_ac_c_ord AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('annullo commessa', 'CONFERMATO',
+           (SELECT billing_account_id FROM tmp_ac_refs),
+           p_quantita             => 3,
+           p_prezzo               => 40,
+           p_articolo_id          => (SELECT art_merce_id FROM tmp_ac_refs),
+           p_fatturazione_trigger => 'CONFERMATO');
+INSERT INTO tmp_ac_fix SELECT 'c_ord', o.ordine_id FROM tmp_ac_c_ord o;
 SELECT pg_temp.ac_mk_commessa('c_cm');
 SELECT pg_temp.ac_invia('ORDINE', pg_temp.ac_fix('c_ord'), pg_temp.ac_fix('c_cm'));
 

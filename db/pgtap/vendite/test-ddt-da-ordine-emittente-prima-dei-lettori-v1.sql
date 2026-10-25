@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine confermato con la riga gestita da dbops.fn_pgtap_crea_ordine_con_righe (p_articolo_id); restano a mano il magazzino, il carico e la bolla (il caso: generazione, emissione, magazzino scelto).
 -- pgTAP test per Zero ERP
 --
 -- Test: una bolla generata da un ordine arriva fino all'emissione — il giro
@@ -61,14 +62,13 @@ CREATE TEMP TABLE _mag2 AS SELECT dbops.fn_pgtap_crea_magazzino('PGT-EPL-ALTRA',
 -- ha gia' dei magazzini, e forse un predefinito).
 CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _az)); END $ctx$;
--- Con il contesto aperto, il mondo dell'ordine riusa l'azienda di chi agisce.
-CREATE TEMP TABLE _o AS SELECT * FROM dbops.fn_pgtap_crea_ordine('emittente prima dei lettori');
+-- Le azioni dell'operatore: il carico qui sotto, l'emissione al test 6.
 DO $az$ BEGIN
-    PERFORM dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _o), 'emetti_ddt');
-    PERFORM dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _o), 'registra_magazzino');
+    PERFORM dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _az), 'emetti_ddt');
+    PERFORM dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _az), 'registra_magazzino');
 END $az$;
 
-CREATE TEMP TABLE _fix (mag_p bigint, mag_x bigint, art uuid, iva integer, sorg_ord bigint, ddt_draft bigint);
+CREATE TEMP TABLE _fix (mag_p bigint, mag_x bigint, art uuid, sorg_ord bigint, ddt_draft bigint);
 DO $fix$
 DECLARE v_p bigint; v_x bigint; v_art uuid; v_inv bigint;
 BEGIN
@@ -86,19 +86,15 @@ BEGIN
 
     INSERT INTO _fix VALUES (
         v_p, v_x, v_art,
-        (SELECT i.id FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1),
         (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
         (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'DRAFT'));
 END $fix$;
 
--- L'ordine: una riga dell'articolo gestito, poi CONFERMATO (fuori bozza le
--- righe non si scrivono piu').
-DO $ord$ BEGIN
-    INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-                                      qta_operativa, quantita, prezzo_unitario, iva_id)
-    SELECT (SELECT ordine_id FROM _o), 1, f.art, 'gestito', 3, 3, 10, f.iva FROM _fix f;
-    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT ordine_id FROM _o), 'CONFERMATO');
-END $ord$;
+-- L'ordine CONFERMATO con una riga dell'articolo gestito (3 a 10). Con il
+-- contesto aperto, il mondo dell'ordine riusa l'azienda di chi agisce.
+CREATE TEMP TABLE _o AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('emittente prima dei lettori',
+         p_quantita => 3, p_prezzo => 10, p_articolo_id => (SELECT art FROM _fix));
 
 -- ============================================================
 -- FORMA

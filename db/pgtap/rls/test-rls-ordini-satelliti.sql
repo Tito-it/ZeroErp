@@ -6,6 +6,10 @@
 --   `titodb` non e' superuser e non puo' fare SET ROLE. E la fixture costruisce
 --   DUE aziende: un operatore dentro un perimetro non potrebbe crearle.
 -- pgTAP test FUNZIONALE RLS — satelliti di vendite.ordini
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine in bozza con la riga di
+--   ciascun mondo da dbops.fn_pgtap_crea_ordine_con_righe (DRAFT, 1 x 100), un'azienda alla
+--   volta sotto il contesto del suo operatore; poi il contesto si richiude. Resta a mano la
+--   riga 99 «intrusione», che e' il caso del test 5.
 --   Slice 20260909-33..35, brief brief-db-perimetro-emittente-righe-documento.md
 --
 -- Elenco test (plan 9):
@@ -67,35 +71,39 @@ SELECT m.lato, m.emittente_fiscale_id, c.*
 CREATE TEMP TABLE _art AS
 SELECT dbops.fn_pgtap_crea_articolo('PGTAP-RLS-ORD-SAT', false) AS id;
 
-CREATE TEMP TABLE _ordini AS
-WITH ord AS (
-    -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): l'ordine ha sempre il BA.
-    INSERT INTO vendite.ordini
-        (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id, fatturazione_trigger,
-         emittente_fiscale_id)
-    SELECT c.soggetto_ruolo_id, c.billing_account_id,
-           (SELECT st.id FROM config.stati_doc_ordini st ORDER BY st.id LIMIT 1),
-           'CONFERMATO',
-           c.emittente_fiscale_id
-      FROM _clienti c
-    RETURNING id, emittente_fiscale_id, soggetto_ruolo_id
-)
-SELECT c.lato, o.id AS ordine_id, o.emittente_fiscale_id, o.soggetto_ruolo_id
-  FROM ord o JOIN _clienti c ON c.emittente_fiscale_id = o.emittente_fiscale_id;
+-- L'ordine di ciascun mondo, in bozza con una riga: lo costruisce l'operatore
+-- della sua azienda, un lato alla volta (il builder verifica che il BA sia
+-- dell'azienda di chi agisce).
+CREATE TEMP TABLE _ordini (lato text, ordine_id bigint, riga_id bigint,
+                           emittente_fiscale_id bigint, soggetto_ruolo_id bigint);
 
-CREATE TEMP TABLE _righe AS
-WITH r AS (
-    INSERT INTO vendite.ordini_righe
-        -- ⚠️ `qta_operativa` va valorizzata insieme a `quantita`: un guard la
-        --   pretende, e non ha default.
-        (ordine_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa, prezzo_unitario)
-    SELECT o.ordine_id, 1,
-           (SELECT id FROM _art),
-           'Riga pgTAP RLS', 1, 1, 100.00
-      FROM _ordini o
-    RETURNING id, ordine_id
-)
-SELECT o.lato, r.id AS riga_id, r.ordine_id FROM r JOIN _ordini o ON o.ordine_id = r.ordine_id;
+DO $ctx_a$ BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondi WHERE lato = 'A'));
+END $ctx_a$;
+INSERT INTO _ordini
+SELECT 'A', b.ordine_id, b.ordine_riga_id, b.emittente_fiscale_id, b.cliente_soggetto_ruolo_id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('RLS ordini A', 'DRAFT',
+           p_billing_account_id   => (SELECT billing_account_id FROM _clienti WHERE lato = 'A'),
+           p_fatturazione_trigger => 'CONFERMATO',
+           p_articolo_id => (SELECT id FROM _art), p_quantita => 1, p_prezzo => 100) b;
+
+DO $ctx_b$ BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondi WHERE lato = 'B'));
+END $ctx_b$;
+INSERT INTO _ordini
+SELECT 'B', b.ordine_id, b.ordine_riga_id, b.emittente_fiscale_id, b.cliente_soggetto_ruolo_id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('RLS ordini B', 'DRAFT',
+           p_billing_account_id   => (SELECT billing_account_id FROM _clienti WHERE lato = 'B'),
+           p_fatturazione_trigger => 'CONFERMATO',
+           p_articolo_id => (SELECT id FROM _art), p_quantita => 1, p_prezzo => 100) b;
+
+-- Il contesto dell'operatore si richiude: lo riapre il blocco $perimetro$.
+DO $ctx_chiuso$ BEGIN
+    PERFORM set_config('app.ruolo_applicativo', '', false);
+    PERFORM set_config('app.current_user_id', '', false);
+END $ctx_chiuso$;
+
+CREATE TEMP TABLE _righe AS SELECT o.lato, o.riga_id, o.ordine_id FROM _ordini o;
 
 -- ⛔ NESSUNA riga di `ordini_righe_componenti` nella fixture, ed e' una scelta.
 --   Un componente pretende `componente_id` verso `catalogo.articoli_componenti`,

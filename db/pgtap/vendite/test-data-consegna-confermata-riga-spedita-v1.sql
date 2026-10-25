@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine con le due righe (10 e 5, data di consegna confermata) dal builder dbops.fn_pgtap_crea_ordine_con_righe (p_righe, p_data_ordine, lo stato chiesto); niente resta a mano nella strada dell'ordine.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (p_ordine_id, p_righe), l'emissione da dbops.fn_pgtap_porta_a_stato; restano scritti a mano gli ordini (due righe con la data di consegna confermata, che e' il caso) e l'annullo dal verbo (test 15).
 -- pgTAP test per Zero ERP
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
@@ -45,12 +46,11 @@
 --      silenzio: la riga va all'UPDATE e la rifiuta il lock col suo codice. Col filtro del
 --      §5 (`check = '[]'`) qui si leggerebbe «aggiornate 0»: e' la mutazione che morde.
 --
--- ⚠️ LE FIXTURE SI COSTRUISCONO: cliente e articolo dai builder, ordini che
---   nascono DRAFT e passano a CONFERMATO con dbops.fn_pgtap_porta_a_stato,
---   bolle da dbops.fn_pgtap_crea_ddt_da_ordine portate avanti per la matrice.
---   ⭐ L'ordine resta scritto qui: due righe con la data di consegna confermata
---   che il test misura (il builder ne fa una, senza data).
---   L'articolo NON e' gestito a magazzino: l'emissione non chiede prelievi.
+-- ⚠️ LE FIXTURE SI COSTRUISCONO: il cliente dal builder, gli ordini (due righe
+--   con la data di consegna confermata, nello stato chiesto) da
+--   dbops.fn_pgtap_crea_ordine_con_righe, le bolle da dbops.fn_pgtap_crea_ddt_da_ordine
+--   portate avanti per la matrice. L'articolo del builder NON e' gestito a
+--   magazzino: l'emissione non chiede prelievi.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -112,48 +112,27 @@ SELECT ok(
 CREATE TEMP TABLE tmp_cli_dc AS
 SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('pgtap_data_cons_spedita');
 
-CREATE TEMP TABLE tmp_refs_dc AS
-SELECT
-  c.billing_account_id,
-  c.soggetto_ruolo_id,
-  script.fn_pgtap_emittente_operatore()                                                                      AS emittente_fiscale_id,
-  -- ⚠️ NON gestito a magazzino: l'emissione non chiede prelievi.
-  dbops.fn_pgtap_crea_articolo('PGT-DC-PIPPO', false)                                                        AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                                   AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)                               AS iva_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo LIMIT 1)         AS stato_ord_draft_id
-FROM tmp_cli_dc c;
-
 CREATE TEMP TABLE tmp_fix(chiave text PRIMARY KEY, id bigint);
 
--- Un ordine con due righe (10 e 5); nasce DRAFT, poi lo stato chiesto.
+-- Un ordine con due righe (10 e 5 a 20, data di consegna confermata 2026-11-20)
+-- dal builder, nello stato chiesto; qui si annotano gli id per chiave.
 CREATE OR REPLACE FUNCTION pg_temp.dc_mk_ordine(p_chiave text, p_stato text)
 RETURNS void AS $$
-DECLARE r RECORD; v_ord bigint; v_r1 bigint; v_r2 bigint;
+DECLARE v_ord bigint;
 BEGIN
-  SELECT * INTO r FROM tmp_refs_dc;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
-          DATE '2026-10-01', r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope', 'pgtap_data_cons_spedita'))
-  RETURNING id INTO v_ord;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza,
-    data_consegna_confermata, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'Riga 1 pgTAP data consegna', 10, 10, 20, r.iva_id, true, false,
-          DATE '2026-11-20', jsonb_build_object('test_scope', 'pgtap_data_cons_spedita'))
-  RETURNING id INTO v_r1;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza,
-    data_consegna_confermata, meta)
-  VALUES (v_ord, 2, r.articolo_id, 'Riga 2 pgTAP data consegna', 5, 5, 20, r.iva_id, true, false,
-          DATE '2026-11-20', jsonb_build_object('test_scope', 'pgtap_data_cons_spedita'))
-  RETURNING id INTO v_r2;
-  IF p_stato <> 'DRAFT' THEN
-    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, p_stato);
-  END IF;
-  INSERT INTO tmp_fix VALUES (p_chiave || '_ord', v_ord), (p_chiave || '_r1', v_r1), (p_chiave || '_r2', v_r2);
+  SELECT o.ordine_id INTO v_ord
+    FROM dbops.fn_pgtap_crea_ordine_con_righe('pgtap_data_cons_spedita', p_stato,
+           (SELECT c.billing_account_id FROM tmp_cli_dc c),
+           p_data_ordine => DATE '2026-10-01',
+           p_righe       => jsonb_build_array(
+               jsonb_build_object('quantita', 10, 'prezzo', 20, 'data_consegna_confermata', '2026-11-20'),
+               jsonb_build_object('quantita', 5,  'prezzo', 20, 'data_consegna_confermata', '2026-11-20'))) o;
+  INSERT INTO tmp_fix
+  SELECT p_chiave || '_ord', v_ord
+  UNION ALL
+  SELECT p_chiave || '_r' || r.riga_nr, r.id
+    FROM vendite.ordini_righe r
+   WHERE r.ordine_id = v_ord;
 END $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION pg_temp.dc_fix(p_chiave text) RETURNS bigint

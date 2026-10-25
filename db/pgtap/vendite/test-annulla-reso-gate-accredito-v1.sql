@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la commessa da dbops.fn_pgtap_crea_commessa (sorgente ROOT), le attivita' da dbops.fn_pgtap_crea_commessa_attivita (sorgente DDT_VENDITA, E-3) e la fattura agganciata da dbops.fn_pgtap_fattura_attivita (pg_temp.agr_fattura resta: compone i due builder per le due partite fatturate); l'ordine a due righe della partita D da dbops.fn_pgtap_crea_ddt_da_ordine con p_righe_ordine (ritirato pg_temp.agr_mk_ordine).
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso (anche in bozza, e a due righe con p_reso_id); restano scritti a mano l'annullo fn_annulla_reso (il caso: per lui resta concessa conferma_reso), l'ordine a due righe e la commessa con la fattura.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano l'ordine a DUE righe della partita D (ordine speciale: la bolla dal builder con p_ordine_id), il reso (giro 2) e la commessa con la fattura, che sono il caso del test.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
@@ -113,64 +114,21 @@ END $az$;
 
 CREATE TEMP TABLE tmp_refs_agr AS
 SELECT
-  ba.id                                        AS billing_account_id,
-  ba.utility_id                                AS utility_id,
-  ba.istanza_utility_id                        AS istanza_utility_id,
-  script.fn_pgtap_emittente_operatore()        AS emittente_fiscale_id,
-  script.fn_pgtap_emittente_sr_operatore()     AS emittente_sr_id,
-  ba.soggetto_ruolo_id                AS soggetto_ruolo_id,  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il ruolo del BA, non il primo del database
+  m.billing_account_id                         AS billing_account_id,
   -- ⛔ rev 2026-10-13: l'articolo si COSTRUISCE (merce non solo-componente, non
   --   gestito: il test non misura il magazzino) — da zero il catalogo ha solo ONERE_*.
-  dbops.fn_pgtap_crea_articolo('PGTAP-ANN-RESO-GATE', false)                  AS articolo_id,
-  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)            AS iva_id,
-  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata d'ordine nasce DRAFT,
-  --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
-  --   righe non si scrivono piu' (20261008-90).
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1)     AS stato_ord_draft_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA'    AND s.attivo ORDER BY s.id LIMIT 1)            AS sorgente_root_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                               AS tipo_doc_fiscale_id,
-  (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_fatt_draft_id,
-  script.fn_pgtap_registro_fattura()                         AS registro_id
+  dbops.fn_pgtap_crea_articolo('PGTAP-ANN-RESO-GATE', false)                  AS articolo_id
 -- ⛔ rev 2026-10-13: il BA e' quello del mondo costruito, non il primo del database.
-FROM tmp_mondo_acc m
-JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id;
+FROM tmp_mondo_acc m;
 
 -- ============================================================
--- Helper di fixture (stessa forma di test-rinuncia-gate-accredito-v1)
--- ⚠️ Padre e figlio in DUE istruzioni, mai in una CTE sola: le CTE che
---    scrivono condividono la stessa snapshot e una policy che risolve il
---    perimetro dal padre non lo trova, negando fail-closed.
+-- Helper di fixture
+-- Le partite sono la bolla CONSEGNATA del builder
+-- dbops.fn_pgtap_crea_ddt_da_ordine (la partita D con un ordine a due righe,
+-- p_righe_ordine). La merce viene FATTURATA (attivita' sul segmento della
+-- bolla, emessa, agganciata a una fattura vera, da dbops.fn_pgtap_fattura_attivita):
+-- e' la catena che fn_accredita_riga_reso risale per copiare il prezzo.
 -- ============================================================
-
--- Le partite a una riga sono la bolla CONSEGNATA del builder
--- dbops.fn_pgtap_crea_ddt_da_ordine. Qui solo l'ordine a p_n_righe righe
--- (la partita D, test 8), confermato: la bolla poi dal builder (p_ordine_id).
-CREATE OR REPLACE FUNCTION pg_temp.agr_mk_ordine(p_qta numeric, p_prezzo numeric,
-                                                 p_n_righe integer)
-RETURNS bigint AS $$
-DECLARE r RECORD; v_ord bigint; i integer;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_agr;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
-          DATE '2026-07-15', 'CONSEGNATO', r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_annulla_reso_gate'))
-  RETURNING id INTO v_ord;
-  UPDATE vendite.ordini SET fatturazione_trigger = 'CONSEGNATO' WHERE id = v_ord;
-
-  FOR i IN 1..p_n_righe LOOP
-    INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-      qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-    VALUES (v_ord, i, r.articolo_id, 'Riga annullo reso pgTAP ' || i, p_qta, p_qta, p_prezzo,
-            r.iva_id, true, false, jsonb_build_object('test_scope','pgtap_annulla_reso_gate'));
-  END LOOP;
-  -- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90).
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-  RETURN v_ord;
-END $$ LANGUAGE plpgsql;
 
 -- ⚠️ ORDER BY esplicito: la n-esima riga del DDT va scelta, non pescata.
 CREATE OR REPLACE FUNCTION pg_temp.agr_ddt_riga(p_ddt_id bigint, p_n integer)
@@ -179,69 +137,21 @@ RETURNS bigint AS $$
    WHERE dr.ddt_id = p_ddt_id ORDER BY dr.id OFFSET (p_n - 1) LIMIT 1;
 $$ LANGUAGE sql;
 
--- La merce viene FATTURATA: e' la catena che fn_accredita_riga_reso risale per
--- copiare il prezzo. Senza `fattura_riga_id` l'accredito e' impossibile.
-CREATE OR REPLACE FUNCTION pg_temp.agr_fattura(p_segment varchar, p_qta numeric, p_prezzo numeric)
+-- L'attivita' sul segmento di una riga di bolla (E-3: sorgente DDT_VENDITA),
+-- fatturata. Torna la riga di fattura.
+CREATE OR REPLACE FUNCTION pg_temp.agr_fattura(p_ddt_uid uuid, p_ddt_riga_id bigint, p_qta numeric, p_prezzo numeric)
 RETURNS bigint AS $$
-DECLARE r RECORD; v_af bigint; v_fatt bigint; v_riga bigint;
+DECLARE v_att bigint; v_riga bigint;
 BEGIN
-  SELECT * INTO r FROM tmp_refs_agr;
-
-  PERFORM vendite.fn_upsert_commessa_attivita(
-    p_commessa_id                   => (SELECT commessa_id FROM tmp_com_agr),
-    -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-    p_sorgente_uid => ((SELECT commessa_id FROM tmp_com_agr))::text,
-    p_segment_key                   => p_segment,
-    p_articolo_id                   => r.articolo_id,
-    p_istanza_utility_id            => r.istanza_utility_id,
-    p_data_attivita                 => DATE '2026-07-15',
-    p_uom_id                        => r.uom_id,
-    p_quantita                      => p_qta,
-    p_competenza_mese               => DATE '2026-07-01',
-    p_competenza_dal                => DATE '2026-07-01',
-    p_competenza_al                 => DATE '2026-07-31',
-    p_prezzo_snapshot               => p_prezzo,
-    p_prezzo_base_snapshot          => NULL,
-    p_origine_prezzo                => NULL,
-    p_tipo_variazione_applicata     => NULL,
-    p_valore_variazione_applicata   => NULL,
-    p_promo_id                      => NULL,
-    p_contratto_id                  => NULL,
-    p_categoria_cliente_id_snapshot => NULL,
-    p_classe_utenza_id_snapshot     => NULL,
-    p_tipo_doc_fiscale_id           => r.tipo_doc_fiscale_id,
-    p_valuta_id                     => r.valuta_id,
-    p_stato_approvazione            => 'APPROVATA',
-    p_stato_emissione               => 'NON_EMESSA',
-    p_tipo_movimento                => 'NORMALE');
-
-  PERFORM vendite.fn_emit_attivita_fatturabili_da_commessa(
-      (SELECT commessa_id FROM tmp_com_agr), true, false);
-
-  SELECT af.id INTO v_af
-    FROM vendite.attivita_fatturabili af
-    JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
-   WHERE ca.segment_key = p_segment
-   ORDER BY af.id DESC LIMIT 1;
-
-  INSERT INTO vendite.fatture (registro_id, data, tipo_doc_fiscale_id, stato_doc_fiscale_id,
-      emittente_soggetto_ruolo_id, billing_account_id, utility_id, valuta_id, tasso_cambio, meta)
-  VALUES (r.registro_id, DATE '2026-07-31', r.tipo_doc_fiscale_id, r.stato_fatt_draft_id,
-      r.emittente_sr_id, r.billing_account_id, r.utility_id, r.valuta_id, 1,
-      jsonb_build_object('test_scope','pgtap_annulla_reso_gate'))
-  RETURNING id INTO v_fatt;
-
-  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione,
-      uom_id, qta, prezzo_unitario, iva_id, imponibile_riga, competenza_dal, competenza_al)
-  VALUES (v_fatt, 1, r.articolo_id, 'Riga fattura pgTAP', r.uom_id, p_qta, p_prezzo,
-      r.iva_id, p_qta * p_prezzo, script.fn_data_operativa(), script.fn_data_operativa())
-  RETURNING id INTO v_riga;
-
-  UPDATE vendite.attivita_fatturabili
-     SET fattura_riga_id = v_riga
-   WHERE id = v_af;
-
+  SELECT a.attivita_id INTO v_att
+    FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM tmp_com_agr), p_prezzo,
+             p_articolo_id      => (SELECT articolo_id FROM tmp_refs_agr),
+             p_sorgente_codice  => 'DDT_VENDITA',
+             p_sorgente_uid     => p_ddt_uid::text,
+             p_sorgente_riga_id => p_ddt_riga_id,
+             p_quantita         => p_qta) a;
+  SELECT f.fattura_riga_id INTO v_riga
+    FROM dbops.fn_pgtap_fattura_attivita('annulla reso gate', ARRAY[v_att]) f;
   RETURN v_riga;
 END $$ LANGUAGE plpgsql;
 
@@ -266,24 +176,9 @@ END $$ LANGUAGE plpgsql;
 -- FIXTURE: una commessa sola per tutto il file.
 -- ============================================================
 CREATE TEMP TABLE tmp_com_agr AS
-SELECT vendite.fn_get_or_create_commessa(
-  p_billing_account_id     => (SELECT billing_account_id FROM tmp_refs_agr),
-  p_utility_id             => (SELECT utility_id FROM tmp_refs_agr),
-  p_tipo_commessa          => 'AUTO',
-  p_policy_fatturazione    => 'DA_DOCUMENTO',
-  p_fatturazione_immediata => false,
-  p_priorita_operativa     => 'NORMALE',
-  p_competenza_dal         => DATE '2026-07-01',
-  p_competenza_al          => DATE '2026-07-31',
-  p_meta                   => '{}'::jsonb,
-  p_force_new              => true) AS commessa_id;
-
-SELECT vendite.fn_link_commessa_sorgente(
-  p_commessa_id      => (SELECT commessa_id FROM tmp_com_agr),
-  p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs_agr),
-  p_sorgente_uid     => (SELECT commessa_id FROM tmp_com_agr)::text,
-  p_sorgente_riga    => 1,
-  p_meta             => '{}'::jsonb);
+SELECT c.commessa_id
+  FROM dbops.fn_pgtap_crea_commessa('annulla reso gate', NULL,
+           (SELECT billing_account_id FROM tmp_refs_agr), p_con_sorgente_root => true) c;
 
 -- ── PARTITA A: consegnati 10 a 25, fatturati 10, resi 3 -> accreditabile ──
 CREATE TEMP TABLE tmp_pa AS
@@ -296,8 +191,7 @@ SELECT b.ordine_id, b.ddt_id, b.ddt_uid, b.ddt_riga_id
            p_fatturazione_trigger => 'CONSEGNATO') b;
 CREATE TEMP TABLE tmp_pa_riga AS SELECT ddt_riga_id FROM tmp_pa;
 CREATE TEMP TABLE tmp_pa_fatt AS
-SELECT pg_temp.agr_fattura(
-    script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pa)::text, (SELECT ddt_riga_id FROM tmp_pa_riga)),
+SELECT pg_temp.agr_fattura((SELECT ddt_uid FROM tmp_pa), (SELECT ddt_riga_id FROM tmp_pa_riga),
     10, 25) AS fattura_riga_id;
 CREATE TEMP TABLE tmp_reso_a AS
 SELECT * FROM dbops.fn_pgtap_crea_reso('annulla reso gate', (SELECT ddt_id FROM tmp_pa), 3,
@@ -429,17 +323,20 @@ SELECT is(
 --    seconda riga di reso non ha (e non puo' avere) accredito. La guardia
 --    deve comunque rifiutare, perche' la sua unita' e' il DOCUMENTO.
 -- ============================================================
-CREATE TEMP TABLE tmp_pd_ordine AS SELECT pg_temp.agr_mk_ordine(10, 25, 2) AS ordine_id;
 CREATE TEMP TABLE tmp_pd AS
 SELECT b.ordine_id, b.ddt_id, b.ddt_uid
   FROM dbops.fn_pgtap_crea_ddt_da_ordine('annulla reso gate',
-           p_ordine_id => (SELECT ordine_id FROM tmp_pd_ordine)) b;
+           p_billing_account_id   => (SELECT billing_account_id FROM tmp_refs_agr),
+           p_fatturazione_trigger => 'CONSEGNATO',
+           p_data_ordine          => DATE '2026-07-15',
+           p_righe_ordine         => jsonb_build_array(
+               jsonb_build_object('articolo_id', (SELECT articolo_id FROM tmp_refs_agr), 'quantita', 10, 'prezzo', 25),
+               jsonb_build_object('articolo_id', (SELECT articolo_id FROM tmp_refs_agr), 'quantita', 10, 'prezzo', 25))) b;
 CREATE TEMP TABLE tmp_pd_righe AS
 SELECT pg_temp.agr_ddt_riga((SELECT ddt_id FROM tmp_pd), 1) AS riga1,
        pg_temp.agr_ddt_riga((SELECT ddt_id FROM tmp_pd), 2) AS riga2;
 CREATE TEMP TABLE tmp_pd_fatt AS
-SELECT pg_temp.agr_fattura(
-    script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pd)::text, (SELECT riga1 FROM tmp_pd_righe)),
+SELECT pg_temp.agr_fattura((SELECT ddt_uid FROM tmp_pd), (SELECT riga1 FROM tmp_pd_righe),
     10, 25) AS fattura_riga_id;
 -- La prima riga in bozza, la seconda aggiunta allo stesso reso, che si conferma.
 CREATE TEMP TABLE tmp_reso_d AS

@@ -6,6 +6,7 @@
 -- Brief: brief-db-emissione-fattura-per-documento-sorgente PARTE B (step B6)
 -- Changeset coperti: 20260727-01..09
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): il DDT SPEDITO del test 10 dal builder dbops.fn_pgtap_crea_ddt_da_ordine (trigger SPEDITO, causale VENDITA); restano a mano gli ordini col flag (6-8, 14-17: nessuna bolla, il flag e' il caso), il contratto e il preventivo.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): righe e conferma dei due ordini col flag da dbops.fn_pgtap_crea_ordine_con_righe (p_ordine_id, 1 x 10): la testata col flag resta a mano, e' il caso; tolte dai riferimenti le colonne senza lettori (iva, stato confermato dell'ordine, stato accettato del preventivo).
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
 --   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
 --   preventivo dei test 18-20 nasceva gia' ACCETTATO).
@@ -144,20 +145,14 @@ SELECT
   m.cliente_soggetto_ruolo_id AS soggetto_ruolo_id,
   dbops.fn_pgtap_crea_articolo('PGTAP-FI-SIMM', false) AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT i.id FROM config.iva i
-    WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)  AS iva_id,
   m.emittente_fiscale_id,
-  (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ordini s
     WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)      AS stato_ord_draft_id,
   (SELECT s.id FROM config.sorgenti s
     WHERE s.codice_interno = 'ORDINE_VENDITA' ORDER BY s.id LIMIT 1) AS sorgente_ordine_id,
   (SELECT s.id FROM config.sorgenti s
     WHERE s.codice_interno = 'PREVENTIVO' ORDER BY s.id LIMIT 1)     AS sorgente_preventivo_id,
-  m.istanza_utility_id,
-  (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_prev_accettato_id
+  m.istanza_utility_id
 FROM _m m;
 
 -- ============================================================
@@ -165,6 +160,9 @@ FROM _m m;
 --   uno con flag true (corsia immediata) e uno con flag false.
 --   fatturazione_trigger = 'CONFERMATO' e' il requisito di eleggibilita'
 --   al push di fn_list_ordini_da_pushare.
+--   La testata col flag, scritto alla nascita, e' il caso: resta a mano.
+--   La riga (1 x 10) e la conferma sono la strada dell'ordine: dal builder,
+--   sulla testata del test (p_ordine_id).
 -- ============================================================
 CREATE TEMP TABLE tmp_ord_imm AS
 WITH ins AS (
@@ -194,30 +192,13 @@ WITH ins AS (
   RETURNING id, uid)
 SELECT * FROM ins;
 
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, sconto_percentuale, iva_id,
-  attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'Riga simmetria flag',
-       1.000000, 1.000000, 10.000000, 0.000000, r.iva_id,
-       true, false, jsonb_build_object('test_scope', 'pgtap_fi_simmetria')
-FROM tmp_ord_imm o, tmp_refs_fi r;
-
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, sconto_percentuale, iva_id,
-  attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'Riga simmetria flag',
-       1.000000, 1.000000, 10.000000, 0.000000, r.iva_id,
-       true, false, jsonb_build_object('test_scope', 'pgtap_fi_simmetria')
-FROM tmp_ord_dif o, tmp_refs_fi r;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): le testate nascono DRAFT,
--- prendono le righe, poi passano a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
--- righe non si scrivono piu' (20261008-90).
 DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_imm), 'CONFERMATO');
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_dif), 'CONFERMATO');
+  PERFORM dbops.fn_pgtap_crea_ordine_con_righe('fi_simmetria imm', 'CONFERMATO',
+      p_quantita => 1, p_prezzo => 10, p_articolo_id => (SELECT articolo_id FROM tmp_refs_fi),
+      p_ordine_id => (SELECT id FROM tmp_ord_imm));
+  PERFORM dbops.fn_pgtap_crea_ordine_con_righe('fi_simmetria dif', 'CONFERMATO',
+      p_quantita => 1, p_prezzo => 10, p_articolo_id => (SELECT articolo_id FROM tmp_refs_fi),
+      p_ordine_id => (SELECT id FROM tmp_ord_dif));
 END $x$;
 
 -- ============================================================
