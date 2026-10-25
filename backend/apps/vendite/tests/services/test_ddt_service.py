@@ -127,8 +127,9 @@ class DdtServiceGuardsTests(SimpleTestCase):
     #        `capabilities`, e nessuna sua chiave sale nella testata (api.md
     #        §«Il blob sta SOTTO `capabilities`», 2026-09-23). Fino a quel
     #        giorno nessun test del DDT guardava la forma del dettaglio.
+    @patch(f"{_SVC}.contatori_documento", return_value={"note": 2})
     @patch(_REPO)
-    def test_get_ddt_capabilities_annidate(self, repo_cls) -> None:
+    def test_get_ddt_capabilities_annidate(self, repo_cls, contatori) -> None:
         repo = repo_cls.return_value
         repo.get_ddt.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
         repo.get_capabilities.return_value = {
@@ -144,6 +145,9 @@ class DdtServiceGuardsTests(SimpleTestCase):
         for chiave in repo.get_capabilities.return_value:
             self.assertNotIn(chiave, out)
         self.assertEqual(out["righe_count"], 3)
+        # I badge del drawer (pulsante «Gestisci note»), dal BB dei contatori.
+        self.assertEqual(out["contatori"], {"note": 2})
+        self.assertEqual(contatori.call_args.args[1], 7)
 
     @patch(_REPO)
     def test_cambia_stato_ddt_not_found(self, repo_cls) -> None:

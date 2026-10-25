@@ -15,6 +15,8 @@ defineProps({
   // Le eccezioni dell'offerta diventano opzioni del select RIGA del NoteDrawer.
   eccezioni: { type: Array, default: () => [] },
 })
+// `saved` porta il TOTALE note aggiornato (dal BB `NoteDrawer`): il padre ci
+// aggiorna il pulsante «Gestisci note» (`useContatoreNote`).
 const emit = defineEmits(['update:visible', 'saved'])
 </script>
 
@@ -28,6 +30,6 @@ const emit = defineEmits(['update:visible', 'saved'])
     :righe="eccezioni"
     code-field="articolo_codice"
     desc-field="articolo_descrizione"
-    @saved="emit('saved')"
+    @saved="(total) => emit('saved', total)"
   />
 </template>

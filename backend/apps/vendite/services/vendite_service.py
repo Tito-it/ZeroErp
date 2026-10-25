@@ -39,7 +39,7 @@ from apps.core.services.list_helpers import (
     validate_order_params,
 )
 from apps.core.services.parameter_service import ParameterService
-from apps.core.services.partitioned_note_service import PartitionedNoteService
+from apps.core.services.partitioned_note_service import contatori_documento
 from apps.core.services.testata_guard import pagina_dopo_testata
 from apps.vendite.db.fatture_repository import FattureRepository
 from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
@@ -2065,11 +2065,7 @@ def get_fattura_dettaglio(
         "errore_vivo": repository.get_giornale_errore_vivo(
             entity_type="FATTURA", entity_id=fattura_id,
         ),
-        "contatori": {
-            "note": PartitionedNoteService(repo=NOTE_REPO_FATTURA).count_per_target(
-                target_id=fattura_id,
-            ),
-        },
+        "contatori": contatori_documento(NOTE_REPO_FATTURA, fattura_id),
     }
 
 

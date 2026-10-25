@@ -47,6 +47,8 @@ from apps.core.services.testata_guard import (
     testata_o_not_found,
 )
 from apps.core.services.value_normalizer import empty_to_none
+from apps.core.services.partitioned_note_service import contatori_documento
+from apps.vendite.db.note_repositories import NOTE_REPO_ORDINE
 from apps.vendite.db.ordini_repository import TESTATA_ORDINI, OrdiniRepository
 from apps.vendite.services._componenti_service_helpers import (
     dati_patch_componente,
@@ -284,6 +286,7 @@ def get_ordine(ordine_id: int) -> dict[str, Any]:
         **testata,
         "capabilities": capabilities,
         "righe_count": righe_count,
+        "contatori": contatori_documento(NOTE_REPO_ORDINE, ordine_id),
     }
 
 

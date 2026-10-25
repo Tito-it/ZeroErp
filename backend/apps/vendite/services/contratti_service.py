@@ -75,6 +75,8 @@ from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
 )
+from apps.core.services.partitioned_note_service import contatori_documento
+from apps.vendite.db.note_repositories import NOTE_REPO_CONTRATTO
 from apps.vendite.db.contratti_repository import (
     TESTATA_CONTRATTI,
     _ORDER_COLS_CONTRATTI,
@@ -693,6 +695,7 @@ class ContrattiService:
         else:
             testata["righe_count"] = len(righe)
         testata["capabilities"] = self._repo.get_capabilities(contratto_id)
+        testata["contatori"] = contatori_documento(NOTE_REPO_CONTRATTO, contratto_id)
         return testata
 
     # =================================================================

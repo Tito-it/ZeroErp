@@ -15,6 +15,8 @@ defineProps({
   // del form note. Le righe ordine espongono `articolo_codice`/`descrizione`.
   righe: { type: Array, default: () => [] },
 })
+// `saved` porta il TOTALE note aggiornato (dal BB `NoteDrawer`): il padre ci
+// aggiorna il pulsante «Gestisci note» (`useContatoreNote`).
 const emit = defineEmits(['update:visible', 'saved'])
 </script>
 
@@ -28,6 +30,6 @@ const emit = defineEmits(['update:visible', 'saved'])
     :righe="righe"
     code-field="articolo_codice"
     desc-field="descrizione"
-    @saved="emit('saved')"
+    @saved="(total) => emit('saved', total)"
   />
 </template>

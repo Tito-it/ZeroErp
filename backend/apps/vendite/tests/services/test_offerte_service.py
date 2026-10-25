@@ -108,6 +108,16 @@ def _make_offerta_dict(stato_codice: str = "BOZZA") -> dict[str, object]:
     }
 
 
+# Il dettaglio porta i `contatori` dei badge (BB `contatori_documento`), che
+# contano le note sul DB: qui si sostituisce, o ogni test che passa dal
+# dettaglio farebbe una query vera senza dirlo.
+_SENZA_CONTATORI_DB = patch(
+    "apps.vendite.services.offerte_service.contatori_documento",
+    new=lambda *_a, **_k: {"note": 0},
+)
+
+
+@_SENZA_CONTATORI_DB
 class OfferteServiceTests(TestCase):
     # --- lista --------------------------------------------------------
 
@@ -1572,6 +1582,7 @@ class OfferteGatePrezzoTests(TestCase):
         self.assertNotIn("stato_approvazione_prezzo", payload)
 
 
+@_SENZA_CONTATORI_DB
 class OfferteScrittureBbTests(TestCase):
     """Scritture sul BB core (2026-09-26): il service consegna al repository
     un `meta` OGGETTO e rifiuta (400) cio' che prima si scartava o si
