@@ -43,6 +43,14 @@
 --
 --   Piano: brief-db-be-iva-risolutore-e-regime-cliente.md
 --     I9 / §R-3 · changeSet 20260829-09 (fn pura), -10 (guard), -11 (capability)
+--
+--   rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): lo stato del
+--   preventivo si cambia solo dal verbo vendite.fn_cambia_stato_preventivo: i
+--   test 6-7 chiedono DRAFT -> EMESSO al verbo, che arriva al guard e prende la
+--   sua frase (un UPDATE diretto lo ferma prima la porta,
+--   E_DOC_STATO_SOLO_DAL_VERBO). L'operatore riceve emetti_preventivo prima del
+--   test 5: senza, «Emetti» e' nascosto e il verbo rifiuta col permesso.
+--   Attese invariate.
 -- ------------------------------------------------------------
 
 -- ⚠️ 1. TRANSAZIONE: senza, un fallimento a meta' lascia la fixture nel database.
@@ -221,6 +229,13 @@ UPDATE vendite.preventivi_righe
 -- ============================================================
 -- ⭐ Senza questo, l'operatore vedrebbe un bottone acceso e prenderebbe un
 --   errore al click: guard e capability devono leggere la STESSA funzione.
+-- ⚠️ rev 2026-10-25 (giro 6): «Emetti» porta il permesso emetti_preventivo e si
+--   nasconde a chi non l'ha. Il file prova l'aliquota, non il permesso:
+--   l'operatore lo riceve qui, e serve anche al verbo dei test 6-7.
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_preventivo');
+END $az$;
+
 SELECT is(
     (SELECT a ->> 'reason'
        FROM jsonb_array_elements(
@@ -238,9 +253,11 @@ SELECT is(
 --   sollevare anche E_PREV_TRANSIZIONE_NON_AMMESSA, e P0001 direbbe solo «e' un
 --   errore di dominio», non QUALE. Il discriminante e' la frase.
 -- ⚠️ Il pattern non attraversa i segnaposto.
+-- ⚠️ rev 2026-10-25 (giro 6): il passaggio si chiede al VERBO
+--   vendite.fn_cambia_stato_preventivo, che arriva al guard: un UPDATE diretto
+--   lo fermerebbe prima la porta (E_DOC_STATO_SOLO_DAL_VERBO).
 SELECT throws_like(
-    format('UPDATE vendite.preventivi SET stato_doc_preventivo_id = %s WHERE id = %s',
-           (SELECT stato_emesso_id FROM tmp_pi_refs),
+    format($$SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, 'EMESSO')$$,
            (SELECT id FROM tmp_pi_prev)),
     '%prezzo ma nessuna aliquota IVA%',
     'DRAFT->EMESSO con una riga senza aliquota: BLOCCA'
@@ -252,8 +269,7 @@ UPDATE vendite.preventivi_righe
  WHERE preventivo_id = (SELECT id FROM tmp_pi_prev);
 
 SELECT lives_ok(
-    format('UPDATE vendite.preventivi SET stato_doc_preventivo_id = %s WHERE id = %s',
-           (SELECT stato_emesso_id FROM tmp_pi_refs),
+    format($$SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, 'EMESSO')$$,
            (SELECT id FROM tmp_pi_prev)),
     'DRAFT->EMESSO con l''aliquota: PASSA'
   );

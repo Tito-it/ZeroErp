@@ -3,8 +3,8 @@
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
 **Riparte: nessuno — brief chiuso e archiviato il 2026-10-25.** Il giro 1 (la bolla consegnata) è fatto,
-applicato e verde come app; il giro 2 (il reso confermato, con la bolla di ri-consegna) prosegue in
-[brief-db-pgtap-reso-costruito](../work-in-progress/brief-db-pgtap-reso-costruito.md).
+applicato e verde come app; il giro 2 (il reso confermato, con la bolla di ri-consegna) è proseguito in
+[brief-db-pgtap-reso-costruito](brief-db-pgtap-reso-costruito.md), chiuso anch'esso il 2026-10-25.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -151,7 +151,7 @@ file, la regressione prima/dopo sullo scratch, poi l'apply e la corsa come app d
 | Giro | Che cosa | Fatto quando |
 | --- | --- | --- |
 | 1 | builder della bolla consegnata, presidio, porting dei ~27 file | i file ricopiano la strada solo dove è il caso; regressione senza differenze; corsa come app verde |
-| 2 | builder del reso confermato, presidio, porting dei ~20 file | spostato in [brief-db-pgtap-reso-costruito](../work-in-progress/brief-db-pgtap-reso-costruito.md) (§7) |
+| 2 | builder del reso confermato, presidio, porting dei ~20 file | spostato in [brief-db-pgtap-reso-costruito](brief-db-pgtap-reso-costruito.md) (§7) |
 
 Aperto il 2026-10-25; via di Tid lo stesso giorno («bisogna farlo»), coi default del §4.
 
@@ -272,6 +272,6 @@ l'asserzione, gli annulli dal verbo, la bolla di ri-consegna (`fn_genera_ddt_ric
   non ricopiano più la strada della bolla, i due debiti del §6.4 chiusi; doc: due pagine manuali e la guida pgTAP.
 * **Il giro 2 non è un residuo di questo lavoro ma il suo seguito**, deciso con lo stesso via: il builder del reso
   confermato e la bolla di ri-consegna (D-3). Tid ha chiesto di chiudere questo brief: il giro 2 vive in
-  [brief-db-pgtap-reso-costruito](../work-in-progress/brief-db-pgtap-reso-costruito.md), che eredita il §1.2, il §4.2
+  [brief-db-pgtap-reso-costruito](brief-db-pgtap-reso-costruito.md), che eredita il §1.2, il §4.2
   e il materiale del §6.6. Il titolo di questo documento resta quello di apertura: i pgTAP portati lo citano per
   nome.

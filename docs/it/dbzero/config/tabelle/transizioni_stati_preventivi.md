@@ -17,6 +17,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| azione_processo_codename | character varying(100) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -25,6 +26,7 @@
 | CHECK | ck_transizioni_stati_prev_meta_ui |  |
 | FOREIGN KEY | fk_transizioni_stati_prev_a | stato_a_id |
 | FOREIGN KEY | fk_transizioni_stati_prev_da | stato_da_id |
+| FOREIGN KEY | fk_transizioni_stati_preventivi_azioni_processo | azione_processo_codename |
 | PRIMARY KEY | pk_transizioni_stati_preventivi | id |
 | UNIQUE | uq_transizioni_stati_preventivi | stato_da_id, stato_a_id |
 

@@ -18,6 +18,14 @@
 --   Le asserzioni sul numero letterale (4, 8, 10, 11, 12) leggono ora il
 --   numero COSTRUITO (tmp_ra_numeri, da vendite.preventivi): provano le stesse
 --   cose (sola revisione attiva nei cruscotti).
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): le rev 0 EMESSO
+--   (A, B, C) vengono da dbops.fn_pgtap_crea_preventivo_con_righe. Lo stato
+--   ora passa dal verbo sotto la porta e l'emissione chiede almeno una riga
+--   attiva: senza righe la fixture si fermava su E_PREV_NESSUNA_RIGA_ATTIVA.
+--   La rev 1 copia la riga dalla rev 0, e A arriva a RIFIUTATO passando per
+--   l'emissione. D (ANNULLATO dalla bozza) resta senza righe. Il builder con
+--   le righe non restituisce la valuta: i riferimenti la leggono dalla testata.
+--   Le asserzioni contano documenti (numero, revisione), non righe: invariate.
 -- pgTAP test per Zero ERP
 --
 -- Test: regressione bug di vista "la vecchia revisione EMESSO riemerge come
@@ -88,22 +96,27 @@ SELECT plan(13);
 --   dbops.fn_pgtap_crea_preventivo, che col contesto gia' aperto riusa
 --   l'azienda di chi agisce e le lega un cliente nuovo: emittente e BA vanno
 --   d'accordo per costruzione. Il builder porta la rev 0 allo stato del caso
---   (EMESSO, o ANNULLATO per D) per la matrice: l'emissione oggi non pretende
---   righe, e il test non ne ha bisogno. ⛔ Cio' che il builder scrive si legge
---   in un'istruzione SEPARATA.
+--   (EMESSO, o ANNULLATO per D) per la matrice. ⛔ Cio' che il builder scrive
+--   si legge in un'istruzione SEPARATA.
+-- ⚠️ rev 2026-10-25 (giro 6): l'emissione pretende una riga attiva (guard di
+--   transizione): le rev 0 EMESSO vengono dal builder con le righe, che
+--   costruisce la testata con dbops.fn_pgtap_crea_preventivo. D esce dalla
+--   bozza verso ANNULLATO, che righe non ne chiede.
 CREATE TEMP TABLE tmp_ra_a AS
-SELECT * FROM dbops.fn_pgtap_crea_preventivo('dash revisione attiva A', 'EMESSO');
+SELECT * FROM dbops.fn_pgtap_crea_preventivo_con_righe('dash revisione attiva A', 'EMESSO');
 CREATE TEMP TABLE tmp_ra_b AS
-SELECT * FROM dbops.fn_pgtap_crea_preventivo('dash revisione attiva B', 'EMESSO');
+SELECT * FROM dbops.fn_pgtap_crea_preventivo_con_righe('dash revisione attiva B', 'EMESSO');
 CREATE TEMP TABLE tmp_ra_c AS
-SELECT * FROM dbops.fn_pgtap_crea_preventivo('dash revisione attiva C', 'EMESSO');
+SELECT * FROM dbops.fn_pgtap_crea_preventivo_con_righe('dash revisione attiva C', 'EMESSO');
 CREATE TEMP TABLE tmp_ra_d AS
 SELECT * FROM dbops.fn_pgtap_crea_preventivo('dash revisione attiva D', 'ANNULLATO');
 
 CREATE TEMP TABLE tmp_ra_refs AS
 SELECT
   a.billing_account_id,
-  a.valuta_id,
+  -- rev 2026-10-25: il builder con le righe non restituisce la valuta; si
+  --   legge dalla testata che ha costruito.
+  (SELECT p.valuta_id FROM vendite.preventivi p WHERE p.id = a.preventivo_id) AS valuta_id,
   a.emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE) AS st_emesso_id,

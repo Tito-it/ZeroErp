@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO DEL PREVENTIVO NON RIPETE LA REGOLA DELLE RIGHE
+#   Brief: brief-modello-documento-vendita §8 (giro 6).
+#
+#   La regola «almeno una riga attiva per emettere» (E_PREV_NESSUNA_RIGA_ATTIVA)
+#   e' una condizione del passaggio: sta nel guard di transizione (20261025-49),
+#   come vuole la guida del modello §7, e da li' vale su qualunque strada. Il
+#   verbo (20261025-42, gia' applicato) la portava ancora: qui esce, nello
+#   stesso giro. Nessun altro cambio: firma, perimetro, permesso, scrittura.
+#
+#   Corpo di partenza: 20261025-42, uguale al vivo (verificato su dbdev).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261025-50-update-fn-cambia-stato-preventivo-righe-al-guard-mctit.yaml
+
+  - changeSet:
+      id: 20261025-50-update-fn-cambia-stato-preventivo-righe-al-guard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_cambia_stato_preventivo senza la regola delle righe all'emissione, che sta nel
+        guard di transizione (20261025-49). Brief: brief-modello-documento-vendita §8.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_cambia_stato_preventivo'
+                 AND p.pronargs = 2;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_cambia_stato_preventivo(
+                  p_preventivo_id vendite.preventivi.id%TYPE,
+                  p_stato         config.stati_doc_preventivi.codice_interno%TYPE)
+               RETURNS TABLE(preventivo_id    vendite.preventivi.id%TYPE,
+                             stato_precedente config.stati_doc_preventivi.codice_interno%TYPE,
+                             stato_nuovo      config.stati_doc_preventivi.codice_interno%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente      config.user_override_azioni.auth_user_id%TYPE;
+                  v_stato_da    config.stati_doc_preventivi.codice_interno%TYPE;
+                  v_stato_da_id vendite.preventivi.stato_doc_preventivo_id%TYPE;
+                  v_stato_a_id  config.stati_doc_preventivi.id%TYPE;
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: il verbo di ogni cambio di stato manuale di un
+                  --   preventivo (modello del documento: prima riga comune,
+                  --   scrittura comune). Matrice, condizioni dell'emissione,
+                  --   prezzi all'accettazione, annullabilita' e legami li
+                  --   giudicano i guard della tabella, all'UPDATE.
+                  -- Ritorna: preventivo_id, stato_precedente, stato_nuovo
+                  --   (codice_interno).
+                  -- ==========================================================
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametri.
+                  IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_cambia_stato_preventivo',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('param', 'p_preventivo_id', 'value', p_preventivo_id),
+                          NULL::uuid,
+                          'p_preventivo_id = ' || COALESCE(p_preventivo_id::text, 'NULL'));
+                  END IF;
+
+                  -- 2. La testata FOR UPDATE, nel perimetro (predicato della
+                  --    policy: DEFINER). Fuori perimetro come inesistente.
+                  SELECT p.stato_doc_preventivo_id, s.codice_interno
+                    INTO v_stato_da_id, v_stato_da
+                    FROM vendite.preventivi p
+                    JOIN config.stati_doc_preventivi s ON s.id = p.stato_doc_preventivo_id
+                   WHERE p.id = p_preventivo_id
+                     AND script.fn_scope_ef_whitelist_via_preventivo(v_utente, p.id)
+                     FOR UPDATE OF p;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_cambia_stato_preventivo',
+                          'E_PREV_NOT_FOUND', jsonb_build_object('id', p_preventivo_id), NULL::uuid,
+                          p_preventivo_id::text);
+                  END IF;
+
+                  -- 3. Lo stato chiesto: il codice di uno stato attivo.
+                  v_stato_a_id := script.fn_doc_stato_id('vendite.preventivi'::regclass, p_stato);
+                  IF v_stato_a_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_cambia_stato_preventivo',
+                          'E_STATO_WORKFLOW_NON_TROVATO',
+                          jsonb_build_object('codice', p_stato),
+                          NULL::uuid,
+                          COALESCE(p_stato, 'NULL'));
+                  END IF;
+
+                  -- 4. Prima riga comune: passaggio di processo, azione.
+                  PERFORM script.fn_guard_passaggio(v_utente, 'vendite.preventivi'::regclass,
+                                                    v_stato_da_id, v_stato_a_id);
+
+                  -- 5. Lo stato, attraverso la porta. I guard della tabella
+                  --    giudicano matrice, righe e condizioni dell'emissione
+                  --    (rev 2026-10-25, 20261025-50: le righe nel guard di
+                  --    transizione), prezzi all'accettazione, annullabilita' e
+                  --    legami.
+                  PERFORM script.fn_doc_scrivi_stato('vendite.preventivi'::regclass,
+                                                     p_preventivo_id, v_stato_a_id);
+
+                  RETURN QUERY SELECT p_preventivo_id, v_stato_da, p_stato;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_stato character varying)
+                IS 'VERBO di ogni cambio di stato manuale di un preventivo (modello del documento, brief-modello-documento-vendita §8). Permesso: dalla riga del passaggio (config.transizioni_stati_preventivi.azione_processo_codename: emetti_preventivo su DRAFT -> EMESSO, EMESSO -> ANNULLATO e ACCETTATO -> ANNULLATO) con script.fn_guard_passaggio, prima di ogni scrittura; un passaggio di processo (ACCETTATO <-> EVASO della proiezione dello smistamento, EMESSO -> SCADUTO) chiesto qui: E_DOC_PASSAGGIO_DI_PROCESSO; gli altri passaggi al permesso sul documento, che controlla il backend. SECURITY DEFINER con search_path bloccato: la testata si prende FOR UPDATE col predicato della policy nella WHERE (script.fn_scope_ef_whitelist_via_preventivo; fuori perimetro E_PREV_NOT_FOUND, no-leak). Lo stato chiesto per codice_interno (script.fn_doc_stato_id; nessuno stato attivo: E_STATO_WORKFLOW_NON_TROVATO). Lo stato lo scrive script.fn_doc_scrivi_stato attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo), e i guard della tabella giudicano il resto: matrice (E_PREV_TRANSIZIONE_NON_AMMESSA), righe e condizioni dell''emissione (vendite.trgfn_preventivi_guard_transizione), prezzi all''accettazione, annullabilita'' e legami. Ritorna preventivo_id, stato_precedente, stato_nuovo (codice_interno). rev 2026-10-25 (20261025-42): il verbo comune; firma (id, stato) senza p_user (user_update lo scrive il trigger di audit); ritirate dal corpo le copie della matrice e dell''annullabilita''. Storia precedente: analisi-hardcoded-codice §3a #1 (2026-06-28), solo presenza righe (2026-07-16), brief-db-vie-uscita-operatore (2026-08-04/05), brief-db-be-terzo-lato-presidio-codici §11.2 (2026-08-06). rev 2026-10-25 (20261025-50): la regola delle righe all''emissione esce dal verbo e sta nel guard di transizione (20261025-49), la sede del passaggio.';

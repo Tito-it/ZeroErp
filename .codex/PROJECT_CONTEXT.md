@@ -2,6 +2,8 @@
 
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
+>
+> Ultima revisione: 2026-10-25.
 
 ## Identità del Progetto
 
@@ -235,17 +237,21 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
-- **Il reso costruito nei pgTAP** (aperto il 2026-10-25, `work-in-progress/brief-db-pgtap-reso-costruito.md`):
-  il builder di fixture del reso confermato, con la bolla di ri-consegna, e il ritiro delle ~20 copie scritte a
-  mano. È il seguito di `work-done/brief-db-pgtap-bolla-e-reso-costruiti` (chiuso il 2026-10-25: la bolla da
-  ordine ha il suo builder, `dbops.fn_pgtap_crea_ddt_da_ordine`, e 36 pgTAP non ricopiano più la sua strada).
+- ✅ **Il reso costruito nei pgTAP: chiuso il 2026-10-25** (`work-done/brief-db-pgtap-reso-costruito.md`,
+  seguito di `work-done/brief-db-pgtap-bolla-e-reso-costruiti`): i pgTAP non ricopiano più la strada del reso
+  confermato, della bolla di ri-consegna, dell'ordine con righe, della bolla senza ordine e dell'attività fatturata;
+  ognuna ha il suo builder in `dbops` (`fn_pgtap_crea_reso`, `_ddt_riconsegna`, `_ordine_con_righe`,
+  `_ddt_senza_ordine`, `fn_pgtap_fattura_attivita`). DB `20261025-05`, `-06`, `-31…-36`; pgTAP portati: 29 nel
+  giro del reso, 64 nel D-4; verdi come app.
 - **Una sola grammatica per i tipi di documento** (aperto il 2026-10-18,
   `work-in-progress/brief-db-grammatica-unica-documenti.md`): lo stesso tipo di documento ha più nomi
   (`config.tipi_entita`, `config.sorgenti`, la grammatica delle testate, le partizioni delle note) e chi passa
   dall'uno all'altro traduce. Direzione decisa da Tid (strada 3 dell'A-8-ter): un vocabolario solo, nessun ponte.
-  Lotti 0, 1 e 2a (le testate: `DDT_VENDITA`, `ORDINE_VENDITA`, `OFFERTA_COMMERCIALE`…) chiusi su DB, BE e FE
-  il 2026-10-19; restano i sotto-giri 2b … 2e, il lotto 3 (note) e il 4 (chiusura). Lo stato è nel blocco
-  «Chi riparte» del brief.
+  Lotti 0, 1 e 2a … 2e (testate, origine e destinazione, numeratori, aree, chiavi del push) e §13.6 chiusi su
+  DB, BE e FE e in `main` (2026-10-19 … 21); il ponte di `fn_articolo_riga_contesto` è ritirato. Restano il
+  lotto 3 (note: piano nel §14, attende il via di Tid) e il 4 (presidio, archiviazione). Non dipende dal
+  brief del modello del documento: lì i BB prendono la tabella (`regclass`), qui il nome del tipo. Lo stato è
+  nel blocco «Chi riparte» del brief.
 - **Type checker del backend (D2-b): chiuso il 2026-10-09** (`work-done/piano-be-type-checker.md`;
   `0ffe7b7c3`, `ebc54fc56`): mypy col plugin Django in CI, a cricchetto (`backend/mypy.ini`,
   `backend/mypy.baseline.json`, `scripts/check_mypy_baseline.py`; sede `docs/it/dev/sicurezza-e-qualita-statica.md`

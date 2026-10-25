@@ -27,7 +27,10 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: ""
+            # 2026-10-25 (20261025-38): "NULL", non "": la cella vuota sarebbe '' e
+            # la FK di azione_processo_codename la rifiuterebbe (brief-modello-
+            # documento-vendita §7.5). Nessun'altra cella del CSV e' vuota.
+            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }
@@ -42,3 +45,6 @@ databaseChangeLog:
               - column: { name: user_insert, type: STRING }
               - column: { name: data_update, type: STRING }
               - column: { name: user_update, type: STRING }
+              # 2026-10-25 (20261025-38, brief-modello-documento-vendita §8): l'azione
+              # del passaggio (M-3). Va dichiarata qui, o la cella del CSV non la governa.
+              - column: { name: azione_processo_codename, type: STRING }

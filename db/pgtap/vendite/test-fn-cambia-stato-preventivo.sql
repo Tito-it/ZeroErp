@@ -1,5 +1,14 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): il verbo ha la
+--   firma a DUE argomenti (id, stato): p_user e' uscito perche' user_update lo
+--   scrive il trigger di audit. L'emissione chiede l'azione di processo
+--   emetti_preventivo: la si concede all'utente di contesto
+--   (dbops.fn_pgtap_concedi_azione). Matrice e righe non le giudica piu' il
+--   corpo del verbo ma il guard di transizione, con gli stessi codici: i test
+--   7 e 8 asseriscono ora QUEL rifiuto (E_PREV_TRANSIZIONE_NON_AMMESSA,
+--   E_PREV_NESSUNA_RIGA_ATTIVA) invece di «qualunque errore» — con la firma
+--   vecchia passavano sull'errore di funzione inesistente.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_cambia_stato_preventivo
 -- ------------------------------------------------------------
@@ -47,6 +56,13 @@ SELECT set_config(
      FROM config.user_emittenti_fiscali uef
     ORDER BY uef.auth_user_id LIMIT 1),
   true
+);
+-- ⭐ rev 2026-10-25 (giro 6): l'emissione (DRAFT -> EMESSO, test 4, 9b, 10)
+--   chiede l'azione di processo emetti_preventivo, e il verbo la controlla
+--   sull'utente di contesto. Si concede a quello appena fissato.
+SELECT dbops.fn_pgtap_concedi_azione(
+  nullif(current_setting('app.current_user_id', true), '')::integer,
+  'emetti_preventivo'
 );
 -- ============================================================
 -- 1) Funzione presente
@@ -218,7 +234,7 @@ SELECT ok(
 -- ============================================================
 SELECT lives_ok(
     format(
-      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''EMESSO'', ''pgtap'')',
+      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''EMESSO'')',
       (
         SELECT id
         FROM tmp_cs_prev1
@@ -231,7 +247,7 @@ SELECT lives_ok(
 -- ============================================================
 SELECT lives_ok(
     format(
-      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''ACCETTATO'', ''pgtap'')',
+      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''ACCETTATO'')',
       (
         SELECT id
         FROM tmp_cs_prev1
@@ -283,7 +299,7 @@ SELECT *
 FROM ins;
 SELECT lives_ok(
     format(
-      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''ANNULLATO'', ''pgtap'')',
+      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''ANNULLATO'')',
       (
         SELECT id
         FROM tmp_cs_prev_ann
@@ -349,17 +365,16 @@ SELECT p.id,
   jsonb_build_object('test_scope', 'pgtap_cambia_stato')
 FROM tmp_cs_prev2 p,
   tmp_cs_refs r;
-SELECT throws_ok(
+SELECT throws_like(
     format(
-      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''ACCETTATO'', ''pgtap'')',
+      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''ACCETTATO'')',
       (
         SELECT id
         FROM tmp_cs_prev2
       )
     ),
-    NULL,
-    NULL,
-    '7. DRAFT -> ACCETTATO vietata (non in matrice)'
+    '%Transizione del preventivo non ammessa%',
+    '7. DRAFT -> ACCETTATO vietata (non in matrice: E_PREV_TRANSIZIONE_NON_AMMESSA dal guard di transizione)'
   );
 -- ============================================================
 -- 8) DRAFT -> EMESSO vietata senza righe attive
@@ -399,17 +414,16 @@ CREATE TEMP TABLE tmp_cs_prev3 AS WITH ins AS (
 SELECT *
 FROM ins;
 -- Nessuna riga inserita
-SELECT throws_ok(
+SELECT throws_like(
     format(
-      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''EMESSO'', ''pgtap'')',
+      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''EMESSO'')',
       (
         SELECT id
         FROM tmp_cs_prev3
       )
     ),
-    NULL,
-    NULL,
-    '8. DRAFT -> EMESSO vietata senza righe attive'
+    '%senza righe attive%',
+    '8. DRAFT -> EMESSO vietata senza righe attive (E_PREV_NESSUNA_RIGA_ATTIVA dal guard di transizione)'
   );
 -- ============================================================
 -- 9a) Premessa: il preventivo di prova ha totale_documento = 0
@@ -484,7 +498,7 @@ SELECT is(
 
 SELECT lives_ok(
     format(
-      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''EMESSO'', ''pgtap'')',
+      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''EMESSO'')',
       (
         SELECT id
         FROM tmp_cs_prev4
@@ -559,7 +573,7 @@ UPDATE config.stati_doc_preventivi
  WHERE codice_interno IN ('DRAFT', 'EMESSO');
 SELECT lives_ok(
     format(
-      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''EMESSO'', ''pgtap'')',
+      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''EMESSO'')',
       (
         SELECT id
         FROM tmp_cs_prev5

@@ -82,7 +82,6 @@ db/pgtap/vendite/test-porta-oneri-contatore-cieco-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-porta-oneri-giro-completo-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-porta-oneri-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-preventivi-guard-emissione-iva.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-preventivi-guard-transizione-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-refactor-qta-operativa-preventivi-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-registri-log-orario-reale.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-registri-per-emittente-v1.sql	ERRORE_FIXTURE

@@ -7,11 +7,12 @@
 -- cantiere «vie d'uscita per l'operatore», 20260804-33/34/35; capability
 -- push/ordine gated dal residuo):
 -- 1) Preventivo inesistente → NULL
--- 2) Preventivo ACCETTATO (senza righe) → solo 'annulla' (EVASO automatico
---    escluso; push/genera gated dal residuo). Asserito come insieme di chiavi.
+-- 2) Preventivo ACCETTATO (una riga di merce) → 'annulla' + 'genera_ordine'
+--    (EVASO automatico escluso; push/genera gated dal residuo). Asserito come
+--    insieme di chiavi.
 -- 3) Preventivo DRAFT, azione ANNULLATO → key='annulla' valorizzato (regressione bug meta={})
 -- 4) Preventivo DRAFT, azione ANNULLATO → label_key='vendite.preventivi.azione_annulla' valorizzato
--- 5) Preventivo ACCETTATO senza righe → can_push_commessa=false, reason NESSUNA_RIGA_COMMESSA
+-- 5) Preventivo ACCETTATO senza righe di commessa → can_push_commessa=false, reason NESSUNA_RIGA_COMMESSA
 --    (rev 2026-10-08: il preventivo ha sempre il BA — brief-db-istanza-nasce-col-ba R-2 —
 --    e il motivo SENZA_BILLING_ACCOUNT non e' piu' raggiungibile)
 -- 6) Preventivo DRAFT → 2 azioni manuali (emetti + annulla)
@@ -21,6 +22,16 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
 --   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
 --   preventivo dei test 2-5 nasceva gia' ACCETTATO).
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): l'emissione
+--   chiede almeno una riga attiva, e il preventivo ACCETTATO «senza righe» non
+--   e' piu' uno stato ammesso. La riga (una, di merce, 1 x 10) e lo stato li
+--   scrive dbops.fn_pgtap_crea_preventivo_con_righe sulla testata del test.
+--   ⚠️ ATTESA DEL TEST 2 CAMBIATA: la riga di merce e' residuo d'ordine e
+--   accende genera_ordine (gated dal residuo, come dice il test). Il caso
+--   «ACCETTATO senza alcun residuo» il modello non lo da' piu': senza residuo
+--   il preventivo va in EVASO, e una riga che non sia ne' merce ne' commessa
+--   (natura CONTRATTO) il preventivo non la ammette. I test 5 e 8 non
+--   cambiano: righe di commessa non ce ne sono.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -81,8 +92,10 @@ SELECT
 
 -- Preventivo ACCETTATO (fixture per test 2-5)
 -- ⚠️ rev 2026-10-24 (brief-modello-documento-vendita N-1): nasce DRAFT e va ad
---   ACCETTATO (DRAFT -> EMESSO -> ACCETTATO) con dbops.fn_pgtap_porta_a_stato,
---   sotto i guard veri: senza righe non hanno motivi da sollevare.
+--   ACCETTATO (DRAFT -> EMESSO -> ACCETTATO) sotto i guard veri.
+-- ⚠️ rev 2026-10-25 (§8, giro 6): con una riga di merce, scritta in bozza da
+--   dbops.fn_pgtap_crea_preventivo_con_righe, che poi porta lo stato: senza
+--   righe l'emissione e' rifiutata (E_PREV_NESSUNA_RIGA_ATTIVA).
 CREATE TEMP TABLE tmp_prev_aa_accettato AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -105,7 +118,8 @@ WITH ins AS (
 SELECT * FROM ins;
 
 DO $porta$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_prev_aa_accettato), 'ACCETTATO');
+  PERFORM dbops.fn_pgtap_crea_preventivo_con_righe('aa accettato', 'ACCETTATO',
+            p_preventivo_id => (SELECT id FROM tmp_prev_aa_accettato));
 END $porta$;
 
 -- Preventivo DRAFT (fixture per test 6-7)
@@ -140,7 +154,7 @@ SELECT is(
 );
 
 -- ============================================================
--- TEST 2) Preventivo ACCETTATO (senza righe/BA) → solo 'annulla'
+-- TEST 2) Preventivo ACCETTATO (una riga di merce) → 'annulla' + 'genera_ordine'
 --
 --   rev 04-08-2026 — ⚠️ ATTESA CAMBIATA, e non e' una regressione.
 --   Fino al 2026-08-04 questo test pretendeva **0 azioni**, con la nota
@@ -152,8 +166,11 @@ SELECT is(
 --   da ACCETTATO e' esattamente lo scopo di quel cantiere.
 --   Il test era rimasto indietro rispetto alla decisione.
 --
---   Restano escluse: ACCETTATO→EVASO (manuale=false), push_commessa e
---   genera_ordine (gated dal residuo, che su fixture vuota non c'e').
+--   Restano escluse: ACCETTATO→EVASO (manuale=false) e push_commessa
+--   (gated dal residuo di commessa, che con la sola riga di merce non c'e').
+--   rev 2026-10-25 (§8, giro 6): genera_ordine ora c'e' — la riga di merce
+--   e' residuo d'ordine. Prima il preventivo era vuoto e l'attesa era
+--   ["annulla"]: uno stato che il modello non ammette piu'.
 --
 --   ⚠️ Si asserisce l'INSIEME delle chiavi, non il conteggio: un
 --   `= 1` sarebbe passato anche con l'azione sbagliata, e questo test
@@ -169,8 +186,8 @@ SELECT is(
             script.fn_available_actions_preventivo(p.id)->'available_actions'
           ) AS elem
   ),
-  '["annulla"]'::jsonb,
-  'fn_available_actions_preventivo ACCETTATO senza righe/BA: solo ''annulla'''
+  '["annulla", "genera_ordine"]'::jsonb,
+  'fn_available_actions_preventivo ACCETTATO con una riga di merce: ''annulla'' e ''genera_ordine'''
 );
 
 -- ============================================================
@@ -207,7 +224,8 @@ SELECT ok(
 );
 
 -- ============================================================
--- TEST 5) Preventivo ACCETTATO senza righe →
+-- TEST 5) Preventivo ACCETTATO senza righe di commessa (rev 2026-10-25: una
+--         riga di merce, prima nessuna riga) →
 --         can_push_commessa=false (rev 12-06-2026: capability con
 --         residuo + testata) con reason NESSUNA_RIGA_COMMESSA,
 --         can_edit_testata=true (dal 2026-10-10: in ACCETTATO note e
@@ -226,7 +244,7 @@ SELECT ok(
       AND (script.fn_available_actions_preventivo(p.id)->'non_editable_fields') @> '["billing_account_id","termine_pagamento_id"]'
      FROM tmp_prev_aa_accettato p
   ),
-  'fn_available_actions_preventivo ACCETTATO senza righe: can_push_commessa=false, reason NESSUNA_RIGA_COMMESSA'
+  'fn_available_actions_preventivo ACCETTATO senza righe di commessa: can_push_commessa=false, reason NESSUNA_RIGA_COMMESSA'
 );
 
 -- ============================================================
@@ -263,7 +281,8 @@ SELECT ok(
 -- dal FE (brief-i18n-radici-uniformi). Una chiave rimasta piatta non da'
 -- errore: da' testo mancante. Qui si copre entrambe le sorgenti che il DB
 -- emette: la label_key (dal seed transizioni, via DRAFT) e la reason_key
--- (dal corpo della capability, via ACCETTATO senza BA).
+-- (dal corpo della capability, via ACCETTATO senza righe di commessa e, per
+-- genera_ordine, via DRAFT — rev 2026-10-25, §8 giro 6).
 -- ============================================================
 SELECT ok(
   (SELECT bool_and(k LIKE 'vendite.preventivi.%')
@@ -282,6 +301,13 @@ SELECT ok(
        UNION ALL
        SELECT script.fn_available_actions_preventivo(p.id)->>'can_genera_ordine_reason_key'
          FROM tmp_prev_aa_accettato p
+       UNION ALL
+       -- rev 2026-10-25 (§8, giro 6): sull'ACCETTATO con la riga di merce
+       --   genera_ordine e' acceso e il suo reason_key e' NULL (il WHERE lo
+       --   scarta). Perche' la guardia non perda quella sorgente, il
+       --   reason_key di genera_ordine si legge anche dal DRAFT (non_accettato).
+       SELECT script.fn_available_actions_preventivo(p.id)->>'can_genera_ordine_reason_key'
+         FROM tmp_prev_aa_draft p
      ) q
     WHERE k IS NOT NULL),
   '8) label_key (seed) e reason_key (capability) sotto vendite.preventivi.*'

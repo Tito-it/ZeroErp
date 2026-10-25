@@ -1,10 +1,10 @@
-id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_update
-1,1,2,t,"{""action_key"":""emetti"",""label_key"":""vendite.preventivi.azione_emetti"",""requires_confirm"":false,""manuale"":true,""requires_righe"":true}",2026-04-03 00:00:00+02,SEED,2026-07-16 00:00:00+02,mctit
-2,1,9,t,"{""action_key"":""annulla"",""label_key"":""vendite.preventivi.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
-3,2,4,t,"{""action_key"":""accetta"",""label_key"":""vendite.preventivi.azione_accetta"",""requires_confirm"":false,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED
-4,2,5,t,"{""action_key"":""rifiuta"",""label_key"":""vendite.preventivi.azione_rifiuta"",""requires_confirm"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED
-5,2,7,t,"{""manuale"":false}",2026-04-03 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED
-6,2,9,t,"{""action_key"":""annulla"",""label_key"":""vendite.preventivi.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
-7,4,9,t,"{""action_key"":""annulla"",""label_key"":""vendite.preventivi.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
-8,4,10,t,"{""manuale"":false}",2026-05-10 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED
-9,10,4,t,"{""manuale"":false}",2026-10-11 00:00:00+02,mctit,2026-10-11 00:00:00+02,mctit
+id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_update,azione_processo_codename
+1,1,2,t,"{""action_key"":""emetti"",""label_key"":""vendite.preventivi.azione_emetti"",""requires_confirm"":false,""manuale"":true,""requires_righe"":true}",2026-04-03 00:00:00+02,SEED,2026-07-16 00:00:00+02,mctit,emetti_preventivo
+2,1,9,t,"{""action_key"":""annulla"",""label_key"":""vendite.preventivi.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit,NULL
+3,2,4,t,"{""action_key"":""accetta"",""label_key"":""vendite.preventivi.azione_accetta"",""requires_confirm"":false,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED,NULL
+4,2,5,t,"{""action_key"":""rifiuta"",""label_key"":""vendite.preventivi.azione_rifiuta"",""requires_confirm"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED,NULL
+5,2,7,t,"{""manuale"":false}",2026-04-03 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED,NULL
+6,2,9,t,"{""action_key"":""annulla"",""label_key"":""vendite.preventivi.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit,emetti_preventivo
+7,4,9,t,"{""action_key"":""annulla"",""label_key"":""vendite.preventivi.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit,emetti_preventivo
+8,4,10,t,"{""manuale"":false}",2026-05-10 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED,NULL
+9,10,4,t,"{""manuale"":false}",2026-10-11 00:00:00+02,mctit,2026-10-11 00:00:00+02,mctit,NULL

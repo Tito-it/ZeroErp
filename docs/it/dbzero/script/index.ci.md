@@ -90,6 +90,7 @@ search:
 - [fn_data_consegna_ammessa](manual/fn_data_consegna_ammessa.md) — (nata il 2026-10-13, dal collaudo)
 - [fn_data_operativa](manual/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
 - [fn_disdetta_cliente](manual/fn_disdetta_cliente.md) — (rev 2026-08-21)
+- [fn_doc_azione_passaggio](manual/fn_doc_azione_passaggio.md)
 - [fn_doc_colonna_modificabile](manual/fn_doc_colonna_modificabile.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_doc_date_consegna_anteriori](manual/fn_doc_date_consegna_anteriori.md) — (nata il 2026-10-13, dal collaudo)
 - [fn_doc_lock_colonna_bloccata](manual/fn_doc_lock_colonna_bloccata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
@@ -98,6 +99,7 @@ search:
 - [fn_doc_passaggio](manual/fn_doc_passaggio.md)
 - [fn_doc_riga_modificabile](manual/fn_doc_riga_modificabile.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-3)
 - [fn_doc_scrivi_stato](manual/fn_doc_scrivi_stato.md)
+- [fn_doc_stato_id](manual/fn_doc_stato_id.md)
 - [fn_doc_stato_modello](manual/fn_doc_stato_modello.md)
 - [fn_doc_testata_in_stato](manual/fn_doc_testata_in_stato.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 2)
 - [fn_elimina_credenziale](manual/fn_elimina_credenziale.md) — (scritta il 06-10-2026)
@@ -234,6 +236,7 @@ search:
 - [fn_sorgente_chiave_id](manual/fn_sorgente_chiave_id.md) — (scritta il 05-10-2026)
 - [fn_sorgente_chiave_uuid](manual/fn_sorgente_chiave_uuid.md) — (scritta il 05-10-2026)
 - [fn_sqlstate_di_ambiente](manual/fn_sqlstate_di_ambiente.md) — (latest review 16-10-2026)
+- [fn_stato_emissione_id](manual/fn_stato_emissione_id.md)
 - [fn_stato_id_da_iso2](manual/fn_stato_id_da_iso2.md) — (18-10-2026 — decisione D-1 di Tid)
 - [fn_stato_proposto_id](manual/fn_stato_proposto_id.md) — (18-10-2026 — decisione D-1 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
 - [fn_stato_veste](manual/fn_stato_veste.md)

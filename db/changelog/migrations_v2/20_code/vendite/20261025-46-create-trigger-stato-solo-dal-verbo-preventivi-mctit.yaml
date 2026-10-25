@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA SUL PREVENTIVO
+#   Brief: brief-modello-documento-vendita §8 (giro 6; S-1 b di Tid,
+#   2026-10-25). Stesso BB e stessa fascia di bolla e reso (20261025-13).
+#
+#   Lo stato del preventivo si cambia solo dai suoi verbi, che scrivono con
+#   script.fn_doc_scrivi_stato: vendite.fn_cambia_stato_preventivo (e
+#   vendite.fn_annulla_preventivo, che lo chiama) per i passaggi manuali,
+#   vendite.fn_preventivo_proietta_stato_smistamento per ACCETTATO <-> EVASO.
+#   Un UPDATE diretto, anche del backend: E_DOC_STATO_SOLO_DAL_VERBO.
+#
+#   Ordine nella fascia _a05_: trg_preventivi_a05_lock_fuori_bozza_upd scatta
+#   prima (l < s), come sulla bolla: il lock legge lo stato VECCHIO.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261025-46-create-trigger-stato-solo-dal-verbo-preventivi-mctit.yaml
+
+  - changeSet:
+      id: 20261025-46-create-trigger-stato-solo-dal-verbo-preventivi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta script.trgfn_doc_stato_solo_dal_verbo (BEFORE UPDATE OF colonna di stato, _a05_)
+        su vendite.preventivi. Brief: brief-modello-documento-vendita §8 (S-1 b).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_doc_stato_solo_dal_verbo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_preventivi_a05_stato_solo_dal_verbo_upd
+                  BEFORE UPDATE OF stato_doc_preventivo_id ON vendite.preventivi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_stato_solo_dal_verbo();
+
+              COMMENT ON TRIGGER trg_preventivi_a05_stato_solo_dal_verbo_upd ON vendite.preventivi IS
+                  'La porta (BB script.trgfn_doc_stato_solo_dal_verbo): lo stato del preventivo si cambia solo dai suoi verbi (vendite.fn_cambia_stato_preventivo, vendite.fn_annulla_preventivo; ACCETTATO <-> EVASO da vendite.fn_preventivo_proietta_stato_smistamento), che scrivono con script.fn_doc_scrivi_stato. Un UPDATE diretto: E_DOC_STATO_SOLO_DAL_VERBO. Fascia _a05_. Brief: brief-modello-documento-vendita §8 (S-1 b, Tid 2026-10-25).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_a05_stato_solo_dal_verbo_upd ON vendite.preventivi;

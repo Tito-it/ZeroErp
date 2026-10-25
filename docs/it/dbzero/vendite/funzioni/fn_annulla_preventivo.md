@@ -58,9 +58,12 @@ BEGIN
     -- 3. Conferma e ritiro: il BB apre la porta e la lascia aperta.
     v_legami := vendite.fn_documento_ritira_legami('PREVENTIVO', p_preventivo_id, p_legami_confermati);
 
-    -- 4. Lo stato. I guard della tabella fanno il resto: matrice,
-    --    freni (righe di commessa EMESSA, figli vivi), avviso.
-    PERFORM vendite.fn_cambia_stato_preventivo(p_preventivo_id, 'ANNULLATO', NULL);
+    -- 4. Lo stato, dal verbo di stato (rev 2026-10-25, 20261025-43:
+    --    firma senza p_user). I guard della tabella fanno il resto:
+    --    matrice, freni (righe di commessa EMESSA, figli vivi), avviso.
+    --    L'azione del passaggio (emetti_preventivo sull'annullo
+    --    dell'emesso e dell'accettato) la chiede la sua prima riga.
+    PERFORM vendite.fn_cambia_stato_preventivo(p_preventivo_id, 'ANNULLATO');
 
     -- 5. Porta chiusa.
     PERFORM set_config('zeroerp.doc_ritira_legami', '', true);
@@ -70,7 +73,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_annulla_preventivo(p_preventivo_id bigint, p_legami_confermati integer)
-IS 'VERBO (2026-10-11, brief-db-annullo-documento-con-legami D-1/D-4): annulla un preventivo. Testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_preventivo; fuori perimetro E_PREV_NOT_FOUND). Conferma e ritiro dal BB vendite.fn_documento_ritira_legami: chi conferma DICHIARA quanti legami ha visto (p_legami_confermati, le righe di vendite.fn_documento_legami(''PREVENTIVO'', id): righe di commessa NON_EMESSA); se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI. Poi lo stato passa ad ANNULLATO (i guard della tabella applicano matrice e freni) e la porta del ritiro si chiude. UNA transazione. Senza legami non c''e'' niente da confermare. Ritorna i legami confermati. SECURITY DEFINER con search_path bloccato: la porta del ritiro vuole il proprietario. EXECUTE solo all''app.';
+IS 'VERBO (2026-10-11, brief-db-annullo-documento-con-legami D-1/D-4): annulla un preventivo. Testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_preventivo; fuori perimetro E_PREV_NOT_FOUND). Conferma e ritiro dal BB vendite.fn_documento_ritira_legami: chi conferma DICHIARA quanti legami ha visto (p_legami_confermati, le righe di vendite.fn_documento_legami(''PREVENTIVO'', id): righe di commessa NON_EMESSA); se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI. Poi lo stato passa ad ANNULLATO dal verbo di stato vendite.fn_cambia_stato_preventivo (la riga del passaggio chiede emetti_preventivo sull''annullo dell''emesso e dell''accettato; i guard della tabella applicano matrice e freni) e la porta del ritiro si chiude. UNA transazione. Senza legami non c''e'' niente da confermare. Ritorna i legami confermati. SECURITY DEFINER con search_path bloccato: la porta del ritiro vuole il proprietario. EXECUTE solo all''app. rev 2026-10-25 (20261025-43, brief-modello-documento-vendita §8): il verbo di stato con la firma (id, stato).';
 ```
 
 </div>

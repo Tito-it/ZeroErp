@@ -37,6 +37,13 @@
 --       -> OK (trigger no-op per OLD != PENDING)
 --   10. DRAFT -> ANNULLATO con riga PENDING -> OK (via d'uscita, D-2)
 --
+-- ⚠️ rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): lo stato del
+--   preventivo si cambia solo dal verbo vendite.fn_cambia_stato_preventivo; un
+--   UPDATE diretto lo ferma la porta (E_DOC_STATO_SOLO_DAL_VERBO) prima del
+--   guard di transizione. I passaggi dei test 1, 2, 3 e 10 si chiedono al verbo,
+--   che arriva al guard e prende il suo motivo; l'operatore riceve
+--   emetti_preventivo, il permesso dell'emissione. Attese invariate.
+--
 -- Setup: 4 preventivi + righe con stati diversi pre-impostati, sul mondo
 -- costruito (dbops.fn_pgtap_crea_mondo_cliente) e un articolo costruito
 -- (dbops.fn_pgtap_crea_articolo).
@@ -183,10 +190,17 @@ $fixture$;
 -- ⚠️ throws_like sulla FRASE e non throws_ok(..., NULL, NULL): quella forma
 --   passava con QUALUNQUE errore, anche uno della fixture.
 -- =========================================================
+-- ⚠️ rev 2026-10-25 (giro 6): i passaggi si chiedono al VERBO
+--   vendite.fn_cambia_stato_preventivo, che arriva al guard di transizione:
+--   un UPDATE diretto lo ferma prima la porta (E_DOC_STATO_SOLO_DAL_VERBO).
+--   L'operatore riceve emetti_preventivo: si prova il prezzo, non il permesso.
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_preventivo');
+END $az$;
+
 SELECT throws_like(
     format(
-        $sql$ UPDATE vendite.preventivi SET stato_doc_preventivo_id = %L::bigint WHERE id = %L::bigint $sql$,
-        (SELECT stato_emesso_id FROM _t_ctx),
+        $sql$ SELECT * FROM vendite.fn_cambia_stato_preventivo(%L::bigint, 'EMESSO') $sql$,
         (SELECT preventivo_id FROM _t_prev WHERE tag = 'p_pending')
     ),
     '%prezzi ancora in attesa di approvazione%',
@@ -196,14 +210,12 @@ SELECT throws_like(
 -- 2) Il controllo dell'1: coi prezzi approvati il preventivo esce dalla
 --    bozza ed e' accettabile. Prima l'emissione, poi la verifica sull'ultimo
 --    passo.
-UPDATE vendite.preventivi
-   SET stato_doc_preventivo_id = (SELECT stato_emesso_id FROM _t_ctx)
- WHERE id = (SELECT preventivo_id FROM _t_prev WHERE tag = 'p_approved');
+SELECT * FROM vendite.fn_cambia_stato_preventivo(
+    (SELECT preventivo_id FROM _t_prev WHERE tag = 'p_approved'), 'EMESSO');
 
 SELECT lives_ok(
     format(
-        $sql$ UPDATE vendite.preventivi SET stato_doc_preventivo_id = %L::bigint WHERE id = %L::bigint $sql$,
-        (SELECT stato_accettato_id FROM _t_ctx),
+        $sql$ SELECT * FROM vendite.fn_cambia_stato_preventivo(%L::bigint, 'ACCETTATO') $sql$,
         (SELECT preventivo_id FROM _t_prev WHERE tag = 'p_approved')
     ),
     '2. DRAFT -> EMESSO -> ACCETTATO con riga APPROVED -> OK'
@@ -214,8 +226,7 @@ SELECT lives_ok(
 --    buco: un prezzo rifiutato dal responsabile usciva col documento.
 SELECT throws_like(
     format(
-        $sql$ UPDATE vendite.preventivi SET stato_doc_preventivo_id = %L::bigint WHERE id = %L::bigint $sql$,
-        (SELECT stato_emesso_id FROM _t_ctx),
+        $sql$ SELECT * FROM vendite.fn_cambia_stato_preventivo(%L::bigint, 'EMESSO') $sql$,
         (SELECT preventivo_id FROM _t_prev WHERE tag = 'p_rejected')
     ),
     '%prezzi rifiutati dal responsabile%',
@@ -313,9 +324,7 @@ SELECT lives_ok(
 -- =========================================================
 SELECT lives_ok(
     format(
-        $sql$ UPDATE vendite.preventivi SET stato_doc_preventivo_id = (
-                  SELECT id FROM config.stati_doc_preventivi WHERE codice_interno = 'ANNULLATO' LIMIT 1
-              ) WHERE id = %L::bigint $sql$,
+        $sql$ SELECT * FROM vendite.fn_cambia_stato_preventivo(%L::bigint, 'ANNULLATO') $sql$,
         (SELECT preventivo_id FROM _t_prev WHERE tag = 'p_rejected')
     ),
     '10. DRAFT -> ANNULLATO con riga REJECTED -> OK (via d''uscita, D-2)'

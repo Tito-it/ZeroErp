@@ -12,6 +12,10 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
 --   portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano gia' CONFERMATO
 --   l'ordine del test 13, con una riga ora scritta dal test, ed EMESSO il preventivo del 18).
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): il preventivo del test 18 si
+--   emette con una riga (merce, 1 x 10) da dbops.fn_pgtap_crea_preventivo_con_righe
+--   (p_preventivo_id): l'emissione senza righe e' rifiutata. La testata resta a mano (nasce
+--   con l'emittente di A, e' la premessa di D3); il test legge l'emittente, non le righe.
 --
 -- Elenco test (plan 18):
 --   LA FORMA
@@ -330,7 +334,9 @@ WITH ins AS (
     RETURNING id)
 SELECT id FROM ins;
 -- rev 2026-10-24: il preventivo nasce DRAFT e passa a EMESSO per la matrice.
-DO $x$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM _prev), 'EMESSO'); END $x$;
+-- rev 2026-10-25 (§8, giro 6): con una riga (merce, 1 x 10) scritta in bozza dal builder,
+--   sotto il contesto dell'operatore A: senza righe l'emissione e' rifiutata.
+DO $x$ BEGIN PERFORM dbops.fn_pgtap_crea_preventivo_con_righe('default emittente', 'EMESSO', p_preventivo_id => (SELECT id FROM _prev)); END $x$;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m WHERE lato = 'S')); END $ctx$;
 -- ⚠️ il verbo in un'istruzione SEPARATA dalla lettura: nella stessa istruzione la
 --   riga appena scritta non e' nella snapshot e la lettura torna NULL.

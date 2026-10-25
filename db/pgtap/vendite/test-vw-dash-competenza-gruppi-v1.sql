@@ -8,6 +8,11 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
 --   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
 --   preventivo nasceva gia' ACCETTATO).
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): il preventivo
+--   si emette con una riga (merce, 1 x 10) da
+--   dbops.fn_pgtap_crea_preventivo_con_righe (p_preventivo_id): l'emissione
+--   senza righe e' rifiutata. Conteggi e valori dei test leggono le righe
+--   della commessa, non del preventivo: non cambiano.
 -- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): il mondo si
 --   COSTRUISCE (azienda A col suo operatore, cliente, articolo servizio; per il
 --   test 8 un'azienda B) invece di pescare «il primo BA / articolo / emittente /
@@ -113,9 +118,12 @@ SELECT
     WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1)                AS stato_contr_draft_id;
 
 -- ⚠️ rev 2026-10-24: il preventivo nasce in bozza (lo stato non si scrive: lo
---   mette il trigger della nascita) e va ad ACCETTATO con
---   dbops.fn_pgtap_porta_a_stato, sotto i guard veri: senza righe non hanno
---   motivi da sollevare.
+--   mette il trigger della nascita) e va ad ACCETTATO sotto i guard veri.
+-- ⚠️ rev 2026-10-25 (§8, giro 6): con una riga (merce, 1 x 10) scritta in
+--   bozza da dbops.fn_pgtap_crea_preventivo_con_righe, che poi porta lo stato:
+--   senza righe l'emissione e' rifiutata (E_PREV_NESSUNA_RIGA_ATTIVA). I
+--   valori dei gruppi si leggono dalle righe di COMMESSA (100 cad.), non da
+--   quella del preventivo: la riga in piu' non li tocca.
 CREATE TEMP TABLE tmp_vg_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -131,7 +139,8 @@ WITH ins AS (
 SELECT * FROM ins;
 
 DO $porta$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_vg_prev), 'ACCETTATO');
+  PERFORM dbops.fn_pgtap_crea_preventivo_con_righe('vgruppi', 'ACCETTATO',
+            p_preventivo_id => (SELECT id FROM tmp_vg_prev));
 END $porta$;
 
 -- Contratto VERO per il gruppo C (rev 2026-10-13): basta la testata in bozza.

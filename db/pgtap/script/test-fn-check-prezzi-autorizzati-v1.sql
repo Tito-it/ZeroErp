@@ -88,6 +88,12 @@
 --   emetti_ddt e si nasconde a chi non l'ha; il file prova il prezzo, non il permesso, quindi
 --   l'operatore riceve emetti_ddt prima del test 33. Il 35 emette con dbops.fn_pgtap_porta_a_stato
 --   al posto dell'UPDATE diretto, che la porta ora rifiuta prima del guard. Attese invariate.
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): anche «Emetti» del preventivo porta
+--   il permesso emetti_preventivo e si nasconde a chi non l'ha: l'operatore lo riceve prima del
+--   test 9. L'11 e il 12 chiedono il passaggio al verbo vendite.fn_cambia_stato_preventivo al
+--   posto dell'UPDATE diretto, che la porta ora rifiuta prima del guard: il verbo arriva al guard
+--   di transizione, che solleva il suo motivo. Il preventivo «rev» (39-42, skip) si emette con
+--   dbops.fn_pgtap_porta_a_stato. Attese invariate.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): le due testate della bolla (VENDITA,
 --   CONTO_VISIONE, con gli indirizzi) da dbops.fn_pgtap_crea_ddt; restano a mano le righe kit col
 --   componente di ogni documento (il caso) e le testate degli ordini, che portano la riga kit.
@@ -296,6 +302,13 @@ SELECT is(
 -- =========================================================
 -- 9-16) Preventivo: capability e guard di transizione
 -- =========================================================
+-- rev 2026-10-25 (giro 6): si prova il prezzo, non il permesso — l'operatore
+--   in sessione riceve emetti_preventivo, senza il quale «Emetti» non
+--   comparirebbe (9) e il verbo rifiuterebbe col permesso (11-12).
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_preventivo');
+END $az$;
+
 SELECT is(
     (SELECT a ->> 'reason_key'
        FROM jsonb_array_elements(script.fn_available_actions_preventivo(
@@ -315,16 +328,14 @@ SELECT is(
 );
 
 SELECT throws_like(
-    format('UPDATE vendite.preventivi SET stato_doc_preventivo_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'EMESSO'),
+    format($$SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, 'EMESSO')$$,
            (SELECT prev_id FROM _p WHERE tag = 'pendente')),
     '%prezzi ancora in attesa di approvazione%',
     '11) DRAFT -> EMESSO con un prezzo in attesa: BLOCCA'
 );
 
 SELECT lives_ok(
-    format('UPDATE vendite.preventivi SET stato_doc_preventivo_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'EMESSO'),
+    format($$SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, 'EMESSO')$$,
            (SELECT prev_id FROM _p WHERE tag = 'emesso')),
     '12) DRAFT -> EMESSO con prezzi autorizzati: PASSA (controllo dell''11)'
 );
@@ -797,9 +808,9 @@ SELECT is(
 --   sulla nuova l'attesa non finiva piu'. Decisione di Tid del 2026-09-24:
 --   prima l'esito, poi la revisione. Approvato e rifiutato si ricopiano.
 -- =========================================================
-UPDATE vendite.preventivi
-   SET stato_doc_preventivo_id = (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'EMESSO')
- WHERE id = (SELECT prev_id FROM _p WHERE tag = 'rev');
+-- rev 2026-10-25 (giro 6): l'emissione col verbo (fn_pgtap_porta_a_stato), non
+--   con un UPDATE diretto, che la porta rifiuta.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT prev_id FROM _p WHERE tag = 'rev'), 'EMESSO');
 
 -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui §4.5, decisione
 --   di Tid): SKIP MOTIVATO dei test 39-42. Il caso si costruiva scrivendo

@@ -11,6 +11,11 @@
 --   pescavano il primo billing account, il primo emittente, l'articolo piu'
 --   recente e il primo utente di config.user_emittenti_fiscali: su un database
 --   ricostruito non ci sono.
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): il preventivo
+--   ACCETTATO del test 9 viene da dbops.fn_pgtap_crea_preventivo_con_righe. Lo
+--   stato ora passa dal verbo sotto la porta, e l'emissione (DRAFT -> EMESSO,
+--   sulla strada verso ACCETTATO) chiede almeno una riga attiva: senza righe
+--   la fixture si fermava su E_PREV_NESSUNA_RIGA_ATTIVA. L'attesa non cambia.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_crea_revisione_preventivo
 -- ------------------------------------------------------------
@@ -241,21 +246,19 @@ SELECT throws_ok(
 -- 9) Revisione da ACCETTATO vietata (rev 03-05-2026)
 --    Setup: nuovo preventivo portato ad ACCETTATO.
 --    ⚠️ rev 2026-10-24: nasce DRAFT e va ad ACCETTATO (DRAFT -> EMESSO ->
---    ACCETTATO) con dbops.fn_pgtap_porta_a_stato, sotto i guard veri: senza
---    righe non hanno motivi da sollevare. Prima nasceva gia' ACCETTATO con
+--    ACCETTATO) sotto i guard veri. Prima nasceva gia' ACCETTATO con
 --    un INSERT diretto, che il trigger della nascita ora rifiuta.
+--    ⚠️ rev 2026-10-25 (giro 6): l'emissione chiede una riga attiva, e la
+--    scrive dbops.fn_pgtap_crea_preventivo_con_righe, che porta anche ad
+--    ACCETTATO (prima: fn_pgtap_crea_preventivo + porta_a_stato, senza righe).
 -- ============================================================
 CREATE TEMP TABLE tmp_rv_b_accettato AS
-SELECT * FROM dbops.fn_pgtap_crea_preventivo('revisione accettato');
+SELECT * FROM dbops.fn_pgtap_crea_preventivo_con_righe('revisione accettato', 'ACCETTATO');
 
 CREATE TEMP TABLE tmp_rv_prev_accettato AS
 SELECT p.id, p.uid, p.numero
   FROM vendite.preventivi p
   JOIN tmp_rv_b_accettato b ON b.preventivo_id = p.id;
-
-DO $porta$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_rv_prev_accettato), 'ACCETTATO');
-END $porta$;
 
 SELECT throws_ok(
   format(

@@ -2,8 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-**Riparte: team DB**, con la chiusura (§5.5). Lato DB chiuso (giro 1 applicato su dbdev e sullo
-scratch il 2026-10-25, pgTAP verde); fatte anche le richieste FE e BE del §6 (2026-10-25).
+**Riparte: nessuno — brief chiuso e archiviato il 2026-10-25.** Lato DB applicato su dbdev e sullo scratch,
+pgTAP verde; richieste FE e BE del §6 fatte ed entrate su `Tito-dev` (`bd74f1660`, PR #1945).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -11,11 +11,12 @@ scratch il 2026-10-25, pgTAP verde); fatte anche le richieste FE e BE del §6 (2
 | 2 | ✅ Tid | D1-D8, poi il via (2026-10-25) | §4 | 1 |
 | 3 | ✅ team DB | Giro 1: `20261025-23`…`-28`, cinque codici, pgTAP, guide e manuali | §5 | 2 |
 | 4 | ✅ Tid | Apply su dbdev e scratch, corsa pgTAP verde (2026-10-25) | §5.6 | 3 |
-| 5 | ✅ team FE | Il campo civico non accetta `0` né negativi; civico e dettagli accendono il campo in errore | §6.1 | — |
+| 5 | ✅ team FE | Il campo civico non accetta negativi (`:min="0"`, non `"1"`: motivo nel §6.3; lo `0` lo rifiuta il DB col campo acceso); civico e dettagli accendono il campo in errore | §6.1, §6.3 | — |
 | 6 | ✅ team BE | I codici nuovi arrivano leggibili al drawer (D6 in modifica, D4/D8 in creazione) | §6.2 | — |
-| 7 | **team DB** | Chiusura: blocco «Chi riparte», archiviazione | §5.5 | 5, 6 |
+| 7 | ✅ team DB | Chiusura: blocco «Chi riparte», archiviazione (2026-10-25) | §5.5 | 5, 6 |
 
-Decisioni aperte di Tid: nessuna. Lavoro DB committato (2026-10-25); lavoro BE/FE del §6 da committare.
+Decisioni aperte di Tid: nessuna. Lavoro DB e BE/FE committato (2026-10-25); da committare solo
+questo documento archiviato.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-25. **A chi:** Tid; poi il team DB; il §6.1 al team FE, il §6.2 al team BE.
 > **Origine:** revisione di `docs/it/postgresql/intro.md` (2026-10-24/25): l'esempio sull'indice di

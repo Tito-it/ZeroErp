@@ -10,6 +10,7 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
 --   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
 --   preventivo dei test 18-20 nasceva gia' ACCETTATO).
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): il preventivo dei test 18-20 si emette con una riga (1 x 10) da dbops.fn_pgtap_crea_preventivo_con_righe (p_preventivo_id): l'emissione senza righe e' rifiutata; la testata col flag resta a mano, nessuna attesa conta righe o importi.
 -- ------------------------------------------------------------
 -- Indice test (1..20):
 --  1) colonna fatturazione_immediata presente su vendite.ordini
@@ -493,11 +494,14 @@ WITH ins AS (
 SELECT * FROM ins;
 
 -- ⚠️ rev 2026-10-24: il preventivo nasce in bozza (lo stato non si scrive: lo
---   mette il trigger della nascita) e va ad ACCETTATO con
---   dbops.fn_pgtap_porta_a_stato, sotto i guard veri: senza righe non hanno
---   motivi da sollevare.
+--   mette il trigger della nascita) e va ad ACCETTATO sotto i guard veri.
+-- ⚠️ rev 2026-10-25 (§8, giro 6): con una riga (1 x 10) scritta in bozza da
+--   dbops.fn_pgtap_crea_preventivo_con_righe, che poi porta lo stato: senza
+--   righe l'emissione e' rifiutata (E_PREV_NESSUNA_RIGA_ATTIVA). La testata
+--   col flag resta a mano, e' il caso.
 DO $porta$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_prev_fi), 'ACCETTATO');
+  PERFORM dbops.fn_pgtap_crea_preventivo_con_righe('fi simmetria', 'ACCETTATO',
+            p_preventivo_id => (SELECT id FROM tmp_prev_fi));
 END $porta$;
 
 -- 18) prima del push: modificabile
