@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1130, di cui 122 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1135, di cui 122 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -906,8 +906,16 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_INDIRIZZO_CAMPO_ALTRA_FORMA": "DATO_ERRATO",
     # Guard anagrafiche.trgfn_indirizzi_guard_forma_libera (2026-10-18): il CAP (config.codici_postali) dell'indirizzo libero non e' del suo comune. Contesto campo codice_postale_id; VARIADIC il CAP e il nome del comune. D-2 di Tid, brief-db-processi-accensione-per-ambiente §6.11.
     "E_INDIRIZZO_CAP_ALTRO_COMUNE": "DATO_ERRATO",
+    # Guard anagrafiche.trgfn_indirizzi_dettaglio_guard_chiave (2026-10-25, brief-db-unicita-civico-indirizzi-dettaglio D2-a), z10 dopo il normalize: civico <= 0 su anagrafiche.indirizzi_dettaglio. SNC = civico NULL, una forma sola. · DATO_ERRATO: si corregge il numero o si svuota il campo. · CAMPO: civico. · VALORI: il civico scritto. Rete: chk_indirizzi_dettaglio_civico_positivo.
+    "E_INDIRIZZO_CIVICO_NON_POSITIVO": "DATO_ERRATO",
     # Guard anagrafiche.trgfn_indirizzi_guard_forma_libera (2026-10-18): il comune dell'indirizzo libero non e' dello stato dell'indirizzo, letto dalla catena config.comuni -> province -> regioni -> stati; anche a catena interrotta (provincia senza regione), perche' non si puo' dire che lo sia. Contesto campo comune_id, con comune_id, stato_id e stato_del_comune; VARIADIC il nome del comune e dello stato. D-2 di Tid, brief-db-processi-accensione-per-ambiente §6.11.
     "E_INDIRIZZO_COMUNE_ALTRO_STATO": "DATO_ERRATO",
+    # Guard anagrafiche.trgfn_indirizzi_dettaglio_guard_chiave (2026-10-25, brief-db-unicita-civico-indirizzi-dettaglio D6), solo in UPDATE: la modifica porta la riga sulla chiave di un'altra (stradario, civico, estensione, palazzina, scala, piano, interno). La modifica sul posto vale «correggo l'indirizzo per tutti» (riga condivisa). Precedente: E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA. · DATO_ERRATO. · Nessun campo: e' l'indirizzo intero. · VALORI: l'indirizzo esistente (indirizzo_normalizzato); nel contesto indirizzo_dettaglio_id e indirizzo_dettaglio_id_esistente. Rete: uq_indirizzi_dettaglio_norm_v2 (23505 nella corsa concorrente).
+    "E_INDIRIZZO_DETTAGLIO_DUPLICATO": "DATO_ERRATO",
+    # BB anagrafiche.fn_get_or_create_indirizzo_dettaglio (2026-10-25, brief-db-unicita-civico-indirizzi-dettaglio): l'INSERT ha urtato uq_indirizzi_dettaglio_norm_v2 ma la ri-lettura con la stessa chiave non trova la riga. Invariante rotta (isolamento piu' stretto di READ COMMITTED, o chiave del lookup disallineata dall'indice): prima il BB restituiva NULL in silenzio. · TECNICO: niente da correggere per l'operatore. · VALORI: l'indirizzo normalizzato cercato; nel contesto la chiave.
+    "E_INDIRIZZO_DETTAGLIO_NON_RILETTO": "TECNICO",
+    # Guard anagrafiche.trgfn_indirizzi_dettaglio_guard_chiave (2026-10-25, brief-db-unicita-civico-indirizzi-dettaglio D8, proposta di Tid): estensione_civico, palazzina, scala, piano o interno senza nemmeno una lettera o una cifra, giudicati dopo il normalize (gli spazi da soli sono gia' NULL). · DATO_ERRATO. · CAMPO: la colonna rifiutata (la prima nell'ordine estensione, palazzina, scala, piano, interno). · VALORI: il campo come lo legge una persona, poi il valore. Rete: chk_indirizzi_dettaglio_dettaglio_leggibile.
+    "E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE": "DATO_ERRATO",
     # Un indirizzo d'anagrafica sul documento non e' del suo cliente (2026-10-11, brief-db-indirizzi-documento-seguono-il-cliente, D-1 e D-3 di Tid). Due sedi, un predicato (script.fn_indirizzo_documento_fuori_cliente): il guard di scrittura vendite.trgfn_doc_indirizzi_guard_cliente sulle sei vendite.*_indirizzi, e il motivo d'emissione script.fn_check_indirizzi_documento_cliente, letto dai gate di DDT (vendite.trgfn_ddt_guard_indirizzi_obbligatori), preventivo (fn_check_preventivo_emettibile), offerta e contratto (guard di transizione e capability). Sostituisce il guard d'origine del backend (upsert_indirizzo_documento). · DATO_ERRATO: si corregge scegliendo un indirizzo del cliente, o scrivendone uno a mano (una-tantum). · CAMPO: tipo_indirizzo_id. · VALORI: il tipo d'indirizzo leggibile (Consegna, Fatturazione...). Nel contesto il motivo macchina: ALTRO_CLIENTE (ruolo diverso) o ALTRA_FORNITURA (indirizzo legato a un'istanza che non e' quella del documento).
     "E_INDIRIZZO_DOC_NON_DEL_CLIENTE": "DATO_ERRATO",
     # Guard DB all'emissione DDT (tipi obbligatori dell'ambito mancanti): · il FE previene (Conferma disabilitata), il trigger resta la fonte · di verita'.
@@ -918,6 +926,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_INDIRIZZO_LIBERO_INCOMPLETO": "DATO_ERRATO",
     "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": "DATO_ERRATO",
     "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": "NON_TROVATO",
+    # BB anagrafiche.fn_get_or_create_indirizzo_dettaglio (2026-10-25, brief-db-unicita-civico-indirizzi-dettaglio D4): lo stradario esiste ma non si risolve in script.vw_indirizzo_completo (JOIN obbligatori su comune, provincia, CAP; config.comuni.provincia_id e' nullable), e fn_build_indirizzo_normalizzato restituisce tutti gli OUT NULL. Prima l'esito era un 23502 tecnico (via_norm NOT NULL); e il lookup con quei valori restituirebbe in silenzio l'id di una riga SNC nuda della via, se ce ne fosse una (nasce solo da scritture senza trigger). · DATO_ERRATO: si completa la via nell'elenco o se ne sceglie un'altra. · CAMPO: stradario_id. · VALORI: lo stradario_id.
+    "E_INDIRIZZO_VIA_NON_RISOLTA": "DATO_ERRATO",
     "E_INVALID_ID": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_INVALID_SNAPSHOT": "TECNICO",

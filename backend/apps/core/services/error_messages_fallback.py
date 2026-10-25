@@ -615,7 +615,13 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ID_FISCALI_DIVERSI": "Il parent account appartiene a un identificativo fiscale diverso.",
     "E_INDIRIZZO_CAMPO_ALTRA_FORMA": "Per questo indirizzo comune e CAP vengono dall'elenco: localita', codice postale e regione non si compilano.",
     "E_INDIRIZZO_CAP_ALTRO_COMUNE": "Il CAP scelto non e' del comune dell'indirizzo.",
+    # brief-db-unicita-civico-indirizzi-dettaglio (2026-10-25): la chiave
+    # dell'indirizzo fisico, il «trova o crea» e la modifica per tutti.
+    "E_INDIRIZZO_CIVICO_NON_POSITIVO": "Il numero civico deve essere maggiore di zero. Per un indirizzo senza numero civico si lascia vuoto il campo.",
     "E_INDIRIZZO_COMUNE_ALTRO_STATO": "Il comune scelto non e' dello stato dell'indirizzo.",
+    "E_INDIRIZZO_DETTAGLIO_DUPLICATO": "Esiste gia' un indirizzo uguale: la modifica ne creerebbe un doppione.",
+    "E_INDIRIZZO_DETTAGLIO_NON_RILETTO": "L'indirizzo risulta gia' presente, ma non si riesce a rileggerlo. Riprovare l'operazione.",
+    "E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE": "Estensione, palazzina, scala, piano e interno vogliono almeno una lettera o una cifra.",
     # brief-db-indirizzi-documento-seguono-il-cliente (2026-10-11): l'indirizzo
     # preso dall'anagrafica non e' del cliente del documento.
     "E_INDIRIZZO_DOC_NON_DEL_CLIENTE": "Un indirizzo del documento non e' del suo cliente: viene dall'anagrafica di un altro cliente, o di una fornitura diversa. Sceglilo fra quelli del cliente del documento.",
@@ -624,6 +630,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_INDIRIZZO_LIBERO_INCOMPLETO": "Indirizzo incompleto: manca un campo della sua forma (via, stato, e poi comune e CAP oppure la localita').",
     "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": "Indirizzo obbligatorio mancante per questo tipo soggetto.",
     "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": "Indirizzo anagrafico non trovato: ricaricare gli indirizzi del cliente.",
+    "E_INDIRIZZO_VIA_NON_RISOLTA": "La via scelta non e' completa nell'elenco delle vie: manca il comune, la provincia o il CAP.",
     "E_INVALID_ID": "ID non valido.",
     "E_INVITO_OPERATORE": "Operatore non invitabile.",
     "E_INVITO_PORTALE": "Invito portale non inviabile.",

@@ -367,6 +367,13 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_IDEMPOTENCY_IN_PROGRESS": "show_retry_dialog",  # classe CONFLITTO_STATO
     "E_IDENTITA_NON_ATTIVA": "redirect_login",  # classe NON_AUTENTICATO
     "E_ID_FISCALI_DIVERSI": "highlight_form_fields",  # classe DATO_ERRATO
+    # trgfn_indirizzi_dettaglio_guard_chiave (brief-db-unicita-civico-
+    # indirizzi-dettaglio, 2026-10-25): il guard dice il campo, ed e' un
+    # input del form indirizzo (civico, estensione, palazzina, scala, piano,
+    # interno). Il doppione (D6) e la via non risolta (D4) restano al banner:
+    # il primo e' l'indirizzo intero, la seconda si corregge nell'elenco vie.
+    "E_INDIRIZZO_CIVICO_NON_POSITIVO": "highlight_form_fields",  # classe DATO_ERRATO
+    "E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE": "highlight_form_fields",  # classe DATO_ERRATO
     # Indirizzi documento (BB _indirizzi_documento_helpers, 5 domini):
     # sollevato da script.fn_snapshot_indirizzo (flusso picker) quando
     # origine_indirizzo_id non esiste piu' in anagrafiche.indirizzi.

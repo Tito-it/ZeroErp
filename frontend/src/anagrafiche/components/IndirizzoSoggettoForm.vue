@@ -8,13 +8,12 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
-import InputMaiuscolo from '../../core/components/InputMaiuscolo.vue'
-import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
 import { STATUS_ICONS } from '../../core/constants'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
+import CivicoDettaglioCampi from './CivicoDettaglioCampi.vue'
 import StradarioAutocomplete from './StradarioAutocomplete.vue'
 import StradarioGeneraleAutocomplete from './StradarioGeneraleAutocomplete.vue'
 import { isFormaCatalogo, statoDi } from '../composables/indirizzoLibero'
@@ -36,7 +35,10 @@ const props = defineProps({
   addressNotFound: { type: Boolean, default: false },
   tipiEsistenti: { type: Array, default: () => [] },
   comuneInitialItem: { type: Object, default: null },
-  disabled: { type: Boolean, default: false }
+  disabled: { type: Boolean, default: false },
+  // I nomi dei campi che il backend chiede di correggere (`campiErrati` del
+  // drawer padre): il guard del civico li manda per civico e dettagli.
+  campiErrati: { type: Array, default: () => [] }
 })
 
 defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
@@ -205,32 +207,7 @@ const viaNoResultsGenerale = computed(() =>
       </template>
 
       <!-- Civico e dettagli -->
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_civico') }}</label>
-          <InputNumber v-model="form.civico" :use-grouping="false" :disabled="disabled" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_estensione') }}</label>
-          <InputMaiuscolo v-model="form.estensione_civico" :disabled="disabled" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_palazzina') }}</label>
-          <InputText v-model="form.palazzina" :disabled="disabled" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_scala') }}</label>
-          <InputText v-model="form.scala" :disabled="disabled" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_piano') }}</label>
-          <InputText v-model="form.piano" :disabled="disabled" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_interno') }}</label>
-          <InputText v-model="form.interno" :disabled="disabled" />
-        </div>
-      </div>
+      <CivicoDettaglioCampi :form="form" :campi-errati="campiErrati" :disabled="disabled" />
 
       <Message v-if="viaNoResultsLocale" severity="warn" size="small" class="mt-1">
         {{ t('indirizzi.via_non_trovata_crea_nuovo') }}
