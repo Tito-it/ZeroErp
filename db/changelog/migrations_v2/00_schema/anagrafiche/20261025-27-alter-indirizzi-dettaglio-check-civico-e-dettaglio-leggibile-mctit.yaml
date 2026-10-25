@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RETI DELLA CHIAVE DELL'INDIRIZZO: CIVICO POSITIVO, DETTAGLIO LEGGIBILE
+#   Brief: brief-db-unicita-civico-indirizzi-dettaglio §4 (D2-a e D8 di Tid,
+#   2026-10-25).
+#
+#   * chk_indirizzi_dettaglio_civico_positivo: civico NULL (SNC) o > 0;
+#   * chk_indirizzi_dettaglio_dettaglio_leggibile: estensione, palazzina,
+#     scala, piano e interno NULL o con almeno una lettera o una cifra. Vale
+#     anche per la stringa vuota, che il normalize porta a NULL (20261025-23)
+#     e che 20261025-26 ha gia' riscritto: per questo viene DOPO.
+#
+# -- IL CHECK RESTA LA RETE, IL GUARD PARLA ------------------------------------
+#   Il rifiuto con codice e campo lo da' anagrafiche.trgfn_indirizzi_dettaglio_guard_chiave
+#   (20261025-24), che gira dopo il normalize. I CHECK presidiano le strade che i
+#   trigger non percorrono (COPY con trigger spenti). Una riga presente che non li
+#   rispetta ferma la migrazione: si corregge a mano (D7).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261025-27-alter-indirizzi-dettaglio-check-civico-e-dettaglio-leggibile-mctit.yaml
+
+  - changeSet:
+      id: 20261025-27-alter-indirizzi-dettaglio-check-civico-e-dettaglio-leggibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.indirizzi_dettaglio: CHECK di rete chk_indirizzi_dettaglio_civico_positivo
+        (civico NULL o > 0, D2-a) e chk_indirizzi_dettaglio_dettaglio_leggibile (le cinque colonne
+        strutturali NULL o con una lettera o una cifra, D8). Il rifiuto parlante e' del guard
+        20261025-24. Brief: brief-db-unicita-civico-indirizzi-dettaglio §4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.indirizzi_dettaglio
+                DROP CONSTRAINT IF EXISTS chk_indirizzi_dettaglio_civico_positivo;
+              ALTER TABLE anagrafiche.indirizzi_dettaglio
+                ADD CONSTRAINT chk_indirizzi_dettaglio_civico_positivo
+                CHECK (civico IS NULL OR civico > 0);
+
+              ALTER TABLE anagrafiche.indirizzi_dettaglio
+                DROP CONSTRAINT IF EXISTS chk_indirizzi_dettaglio_dettaglio_leggibile;
+              ALTER TABLE anagrafiche.indirizzi_dettaglio
+                ADD CONSTRAINT chk_indirizzi_dettaglio_dettaglio_leggibile
+                CHECK (
+                      (estensione_civico IS NULL OR estensione_civico ~ '[[:alnum:]]')
+                  AND (palazzina         IS NULL OR palazzina         ~ '[[:alnum:]]')
+                  AND (scala             IS NULL OR scala             ~ '[[:alnum:]]')
+                  AND (piano             IS NULL OR piano             ~ '[[:alnum:]]')
+                  AND (interno           IS NULL OR interno           ~ '[[:alnum:]]')
+                );
+
+              COMMENT ON CONSTRAINT chk_indirizzi_dettaglio_civico_positivo ON anagrafiche.indirizzi_dettaglio IS
+                'Rete del civico: NULL (senza numero, SNC) o > 0. Il rifiuto con codice e campo lo da'' anagrafiche.trgfn_indirizzi_dettaglio_guard_chiave (E_INDIRIZZO_CIVICO_NON_POSITIVO); questo vincolo presidia le scritture che non passano dai trigger. Brief: brief-db-unicita-civico-indirizzi-dettaglio D2-a (2026-10-25).';
+              COMMENT ON CONSTRAINT chk_indirizzi_dettaglio_dettaglio_leggibile ON anagrafiche.indirizzi_dettaglio IS
+                'Rete del dettaglio del civico: estensione, palazzina, scala, piano e interno NULL o con almeno una lettera o una cifra (rifiuta la stringa vuota e i valori di soli caratteri speciali). Il rifiuto con codice e campo lo da'' anagrafiche.trgfn_indirizzi_dettaglio_guard_chiave (E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE). Brief: brief-db-unicita-civico-indirizzi-dettaglio D8 (2026-10-25).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE anagrafiche.indirizzi_dettaglio DROP CONSTRAINT IF EXISTS chk_indirizzi_dettaglio_dettaglio_leggibile;
+              ALTER TABLE anagrafiche.indirizzi_dettaglio DROP CONSTRAINT IF EXISTS chk_indirizzi_dettaglio_civico_positivo;

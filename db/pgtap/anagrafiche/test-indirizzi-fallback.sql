@@ -165,15 +165,7 @@ upsert AS (
         TRUE,
         FALSE
     FROM dati d
-    ON CONFLICT (
-        stradario_id,
-        civico,
-        COALESCE(estensione_civico, ''::character varying),
-        COALESCE(palazzina, ''::character varying),
-        COALESCE(scala, ''::character varying),
-        COALESCE(piano, ''::character varying),
-        COALESCE(interno, ''::character varying)
-    )
+    ON CONFLICT (stradario_id, civico, estensione_civico, palazzina, scala, piano, interno)
     DO UPDATE
        SET data_update = now(),
            user_update = CURRENT_USER

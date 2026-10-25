@@ -70,7 +70,7 @@ SELECT plan(8);
 -- Costanti per il test (TEMP TABLE)
 -- (le teniamo, anche se non le usiamo più in pulizia)
 -- =========================================================
--- ⚠️ rev 2026-08-18: il CIVICO e' unico per corsa. uq_indirizzi_dettaglio_norm
+-- ⚠️ rev 2026-08-18: il CIVICO e' unico per corsa. uq_indirizzi_dettaglio_norm_v2
 --   e' UNIQUE su (stradario_id, civico, estensione, palazzina, scala, piano...):
 --   con un civico fisso la corsa sbatteva sul dettaglio lasciato dal COMMIT
 --   della corsa precedente, che non si puo' cancellare perche' nel frattempo e'
@@ -173,7 +173,7 @@ WITH nuovo_indirizzo_dettaglio AS (
     SELECT
         s.id,                            -- stradario_id
         -- ⚠️ civico UNICO PER CORSA: e' questa la colonna dentro
-        --   uq_indirizzi_dettaglio_norm, non civico_norm.
+        --   uq_indirizzi_dettaglio_norm_v2, non civico_norm.
         k.civico_norm_test::integer,     -- civico numerico, diverso a ogni corsa
         NULL,                            -- estensione_civico
         k.palazzina_test,

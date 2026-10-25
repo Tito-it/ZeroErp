@@ -64,7 +64,7 @@ SELECT plan(6);
 -- 0) Costanti per indirizzo_dettaglio di test
 -- =========================================================
 -- ⚠️ Civico UNICO PER CORSA: con un civico fisso l'indirizzo_dettaglio
---   sarebbe di qualcun altro (uq_indirizzi_dettaglio_norm).
+--   sarebbe di qualcun altro (uq_indirizzi_dettaglio_norm_v2).
 CREATE TEMP TABLE tmp_costanti_indirizzo_unique AS
 SELECT
     'VIA TEST UNIQUE RES'::text AS via_norm_test,

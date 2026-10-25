@@ -23,6 +23,7 @@
 > * [anagrafiche.fn_build_indirizzo_normalizzato](/dbzero/anagrafiche/funzioni/fn_build_indirizzo_normalizzato) — la normalizzazione, unica sorgente
 > * [anagrafiche.trgfn_indirizzi_dettaglio_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize)
 > * [anagrafiche.trgfn_indirizzi_dettaglio_protect_update](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_protect_update)
+> * [anagrafiche.trgfn_indirizzi_dettaglio_guard_chiave](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_guard_chiave) — la chiave del civico, con codice e campo
 > * [maintenance.proc_bump_indirizzi_dettaglio](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio)
 > * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 
@@ -38,9 +39,9 @@ La tabella **`anagrafiche.indirizzi_dettaglio`** contiene il dettaglio degli ind
   `civic_geoloc` memorizza il punto del singolo civico, `street_geoloc` la posizione media della via. Per le ricerche spaziali sul civico c'è un indice **GiST** su `civic_geoloc`.
 * **Indirizzo normalizzato**
   Un trigger `BEFORE INSERT OR UPDATE` delega a `fn_build_indirizzo_normalizzato` e scrive:
-  * le colonne strutturali normalizzate (`UPPER` + `BTRIM`); l'estensione prende il prefisso `/` (`A` → `/A`);
+  * le colonne strutturali normalizzate (`UPPER` + `BTRIM`, un testo vuoto diventa `NULL`); l'estensione prende il prefisso `/` (`A` → `/A`);
   * `via_norm`: tipo toponimo + nome della via, in maiuscolo;
-  * `civico_norm`: numero + estensione, oppure **`SNC`** (senza numero civico) quando il civico è `NULL` o `0`;
+  * `civico_norm`: numero + estensione, oppure **`SNC`** (senza numero civico) quando il civico è `NULL`;
   * `indirizzo_normalizzato`: la stringa completa (via, civico, palazzina, scala, piano, interno), usata per i confronti testuali e per la ricerca con l'indice GIN trigram.
 
 ---
@@ -67,16 +68,19 @@ Quando cambia la via stessa (per esempio il toponimo), i civici si rinormalizzan
 
 ### Unicità del civico
 
-L'indice `uq_indirizzi_dettaglio_norm` (definizione esatta nella sezione Indici della pagina) è costruito sulla **chiave naturale**: `stradario_id`, `civico` e, nella forma `COALESCE(…, '')`, `estensione_civico`, `palazzina`, `scala`, `piano`, `interno`. Lavora sui valori **già normalizzati** dal trigger.
+Ogni indirizzo fisico è **una riga sola**. L'indice `uq_indirizzi_dettaglio_norm_v2` (definizione esatta nella sezione Indici della pagina) è sulla **chiave naturale**, le sette colonne nude: `stradario_id`, `civico`, `estensione_civico`, `palazzina`, `scala`, `piano`, `interno`, ed è **`NULLS NOT DISTINCT`**: due civici `SNC` (civico `NULL`) con lo stesso dettaglio collidono. Lavora sui valori **già normalizzati** dal trigger, dove il vuoto ha una forma sola (`NULL`).
 
-Il «trova o crea» è `fn_get_or_create_indirizzo_dettaglio`: cerca per la stessa chiave (`civico IS NOT DISTINCT FROM`, `COALESCE` sulle altre colonne), crea se non trova e, su `unique_violation`, rilegge.
+La chiave la giudica il guard `trgfn_indirizzi_dettaglio_guard_chiave`, dopo la normalizzazione, con un codice e il campo:
 
-> ⚠️ **Limiti noti (verificati il 25 ottobre 2026, da correggere)**: la correzione è nel
-> [brief-db-unicita-civico-indirizzi-dettaglio](/dev/work-in-progress/brief-db-unicita-civico-indirizzi-dettaglio).
->
-> * **Civico senza numero non coperto dall'indice**: `civico` è nullable ed entra nell'indice senza `COALESCE` né `NULLS NOT DISTINCT`, quindi due civici `SNC` con lo stesso dettaglio sulla stessa via non collidono. Il lookup del «trova o crea» li evita in sequenza, ma due inserimenti concorrenti, o un `INSERT` diretto, creano la riga gemella; da lì il lookup ne sceglie una senza errore.
-> * **`civico = 0` e `civico NULL`** sono entrambi `SNC` (stesso `indirizzo_normalizzato`) ma restano due chiavi diverse, sia nell'indice sia nel lookup.
-> * **Il lookup confronta i parametri grezzi coi valori salvati normalizzati**: un'estensione passata come `A` (salvata `/A`) o un interno in minuscolo non trovano la riga esistente; l'`INSERT` urta l'indice e la ri-lettura fallisce di nuovo, così la funzione restituisce `NULL` invece dell'id.
+| Regola | Codice | Rete |
+| --- | --- | --- |
+| il civico, se c'è, è maggiore di zero: «senza numero» è il civico vuoto | `E_INDIRIZZO_CIVICO_NON_POSITIVO` | `chk_indirizzi_dettaglio_civico_positivo` |
+| estensione, palazzina, scala, piano e interno hanno almeno una lettera o una cifra | `E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE` | `chk_indirizzi_dettaglio_dettaglio_leggibile` |
+| una modifica non porta la riga sulla chiave di un'altra (la frase nomina quella esistente) | `E_INDIRIZZO_DETTAGLIO_DUPLICATO` | l'indice |
+
+La modifica sul posto di una riga vuol dire «correggo l'indirizzo per tutti quelli che lo usano». Un `UPDATE` che non tocca la chiave non viene giudicato.
+
+Il «trova o crea» è `fn_get_or_create_indirizzo_dettaglio`: passa i parametri per `fn_build_indirizzo_normalizzato` (la stessa normalizzazione del trigger), cerca con `IS NOT DISTINCT FROM` su tutte le colonne, crea se non trova e, su `unique_violation`, rilegge. Restituisce sempre un id: riattiva una riga trovata disattivata, e si ferma con `E_INDIRIZZO_VIA_NON_RISOLTA` se la via non si risolve nella catena comune → provincia → CAP.
 
 ---
 

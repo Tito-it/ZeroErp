@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# HELPER DI FIXTURE pgTAP: L'ON CONFLICT SEGUE L'INDICE NUOVO
+#   dbops.fn_pgtap_crea_indirizzo_dettaglio(p_etichetta). Brief:
+#   brief-db-unicita-civico-indirizzi-dettaglio §5.2 (censimento degli
+#   scrittori diretti).
+#
+#   L'ON CONFLICT nominava l'espressione esatta di uq_indirizzi_dettaglio_norm
+#   (civico nudo + cinque COALESCE). 20261025-26 la sostituisce con
+#   uq_indirizzi_dettaglio_norm_v2 sulle sette colonne nude NULLS NOT DISTINCT:
+#   senza un indice che combaci, l'INSERT morirebbe con «non c'e' un vincolo
+#   unique corrispondente alla specifica ON CONFLICT», e con lui ogni fixture
+#   che ne ha bisogno. Ora l'arbitro sono le colonne. Il resto invariato
+#   (corpo da 20260915-19, uguale alla doc auto-generata).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261025-28-update-fn-pgtap-crea-indirizzo-dettaglio-on-conflict-v2-mctit.yaml
+
+  - changeSet:
+      id: 20261025-28-update-fn-pgtap-crea-indirizzo-dettaglio-on-conflict-v2
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_indirizzo_dettaglio: l'ON CONFLICT passa alle sette colonne nude di
+        uq_indirizzi_dettaglio_norm_v2 (20261025-26). Brief:
+        brief-db-unicita-civico-indirizzi-dettaglio §5.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_indirizzo_dettaglio(
+                  p_etichetta text DEFAULT 'pgTAP'   -- etichetta libera: nessuna colonna di cui sia il riflesso
+              )
+               RETURNS anagrafiche.indirizzi_dettaglio.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un indirizzo (anagrafiche.indirizzi_dettaglio)
+              --   FABBRICANDOLO, non cercandolo: e' dato di macchina, e su un database
+              --   ricostruito da zero non ce n'e' nessuno; config.stradario invece e' seed.
+              --   Etichette diverse -> indirizzi diversi; la stessa etichetta -> lo stesso id.
+              -- Uso:
+              --   v_ind := dbops.fn_pgtap_crea_indirizzo_dettaglio('magazzino A');
+              DECLARE
+                  v_stradario_id config.stradario.id%TYPE;
+                  v_id           anagrafiche.indirizzi_dettaglio.id%TYPE;
+              BEGIN
+                  -- Il primo stradario di seed: uno vale l'altro, serve solo come ancora.
+                  SELECT s.id INTO v_stradario_id
+                    FROM config.stradario s
+                   ORDER BY s.id
+                   LIMIT 1;
+                  IF v_stradario_id IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_crea_indirizzo_dettaglio: config.stradario e'' vuoto — e'' un seed di 80_data, non un dato di macchina';
+                  END IF;
+
+                  -- via_norm, civico_norm e indirizzo_normalizzato li calcola il trigger
+                  -- BEFORE INSERT (trgfn_indirizzi_dettaglio_normalize). L'arbitro
+                  -- dell'ON CONFLICT sono le colonne di uq_indirizzi_dettaglio_norm_v2
+                  -- (NULLS NOT DISTINCT), sui valori normalizzati dal trigger.
+                  INSERT INTO anagrafiche.indirizzi_dettaglio (stradario_id, civico, interno, altro)
+                  VALUES (v_stradario_id, 99999, left(p_etichetta, 10), 'Fixture pgTAP: ' || p_etichetta)
+                  ON CONFLICT (stradario_id, civico, estensione_civico,
+                               palazzina, scala, piano, interno)
+                  DO UPDATE SET data_update = now()
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_indirizzo_dettaglio(text)
+              IS 'Helper di fixture pgTAP: fabbrica un anagrafiche.indirizzi_dettaglio (civico 99999 sul primo stradario di seed, interno = etichetta) e ne ritorna l''id; etichette diverse danno indirizzi diversi, la stessa etichetta lo stesso id (ON CONFLICT sulle colonne di uq_indirizzi_dettaglio_norm_v2, rev 2026-10-25). Esiste perche'' indirizzi_dettaglio e'' DATO DI MACCHINA: su un database ricostruito da zero non ce n''e'' nessuno, e una fixture che ne cerca uno «attivo» muore in ERRORE_FIXTURE senza eseguire un''asserzione — misurato il 2026-09-15 su quattro pgTAP di magazzino (magazzini.indirizzo_dettaglio_id e'' NOT NULL). ⚠️ Non e'' un indirizzo vero: un test che verifichi la normalizzazione o la geolocalizzazione si costruisce il suo.';
