@@ -55,6 +55,7 @@ from unittest.mock import MagicMock, patch
 
 from django.db import DatabaseError, IntegrityError
 
+from apps.core.tests._helpers.modello_documento_mockato import ModelloDocumentoMockatoMixin
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 
@@ -82,7 +83,7 @@ def _testata_default() -> dict[str, object]:
     }
 
 
-class ContrattiServiceTests(TestCase):
+class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # --- lista ---------------------------------------------------------
 
     # Scopo: senza data_da il service non applica default temporali impliciti.
@@ -1188,9 +1189,16 @@ class ContrattiServiceTests(TestCase):
     def test_cambia_stato_rifiuta_attivo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
+        # Lo stato di emissione lo dice il vocabolario (M-2): la domanda va al
+        # BB con la testata del contratto.
+        self.stato_chiesto_di_emissione()
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().cambia_stato(1, codice_interno="ATTIVO")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "codice_interno")
+        self.modello_documento.e_stato_di_emissione.assert_called_once_with(
+            "vendite.contratti", "ATTIVO",
+        )
         # Nessuna chiamata al repo: il guard scatta prima del lookup stato.
         repo_cls.return_value.update_stato.assert_not_called()
 

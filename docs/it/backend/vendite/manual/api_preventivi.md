@@ -193,22 +193,23 @@ tutti ritirati
 
 - Metodo: `POST`
 - Path: `/api/v1/vendite/preventivi/{id}/stato/`
-- Auth: `post_permission = "cambia_stato_preventivi"`
+- Auth: JWT, `model_permission = ("vendite", "preventivo")`, `post_passaggio` (BB `PassaggioDocumento`, modello del documento): l'azione la dice la **riga del passaggio** (stato corrente → `nuovo_stato`), la stessa che legge il verbo. Oggi l'annullo di un preventivo emesso o accettato chiede `emetti_preventivo`; gli altri passaggi il solo livello sul preventivo. Senza l'azione: 403 prima della transazione
 - Body JSON: `{ "nuovo_stato": "ACCETTATO", "fatturazione_immediata": false, "competenza_mese": "2026-11-01", "legami_confermati": 2 }`
-- Regole: delega a `vendite.fn_cambia_stato_preventivo()` che valida transizioni e prerequisiti
-- **Verso ACCETTATO** (da EMESSO, o ACCETTATO→ACCETTATO per correggere la modalità): `fatturazione_immediata` (booleano JSON) è **obbligatorio**, altrimenti 400 `E_PREV_VALIDAZIONE`; con `false` serve anche `competenza_mese` (data ISO, primo del mese), altrimenti 400; con `true` la competenza è forzata al mese corrente. I due campi si scrivono sulla testata nella stessa transazione del cambio stato. Sulle altre transizioni sono ignorati
+- Regole: delega al verbo `vendite.fn_cambia_stato_preventivo(id, stato)`; matrice, righe, prezzi e annullabilità li giudicano i guard della tabella
+- **Verso ACCETTATO** (da EMESSO, o su un ACCETTATO per correggere la modalità): `fatturazione_immediata` (booleano JSON) è **obbligatorio**, altrimenti 400 `E_PREV_VALIDAZIONE`; con `false` serve anche `competenza_mese` (data ISO, primo del mese), altrimenti 400; con `true` la competenza è forzata al mese corrente. I due campi si scrivono sulla testata nella stessa transazione del cambio stato. Su un preventivo **già ACCETTATO** si aggiornano solo i due campi: lo stato non cambia e il verbo non si chiama (risposta con `stato_precedente` = `stato_nuovo` = `ACCETTATO`). Sulle altre transizioni sono ignorati
 - Transizioni: EMESSO→ACCETTATO/RIFIUTATO/SCADUTO/ANNULLATO, BOZZA→ANNULLATO
-- **Transizione BOZZA→EMESSO non ammessa da questo endpoint** (refactor 2026-05-28): il service fail-fast con `E_PREV_VALIDAZIONE` (400) e indirizza all'endpoint dedicato `POST /<id>/emetti/` (§5b). Motivo: l'emissione deve orchestrare atomicamente cambio stato + generazione documento + allegati per garantire l'invariante "stato EMESSO ⇒ esiste un documento PDF persistito".
+- **Lo stato di emissione non si raggiunge da questo endpoint** (refactor 2026-05-28, M-2 del modello del documento): 400 `E_PREV_VALIDAZIONE` col campo `nuovo_stato`; si emette dall'endpoint dedicato `POST /<id>/emetti/` (§5b). Quale stato sia l'emissione lo dice il vocabolario (colonna `emissione` di `config.stati_doc_preventivi`), non il backend. Motivo: l'emissione deve orchestrare atomicamente cambio stato + generazione documento + allegati per garantire l'invariante "stato EMESSO ⇒ esiste un documento PDF persistito".
 - **Prezzi non autorizzati verso ACCETTATO**: la Regola 3 di `vendite.trgfn_preventivi_guard_transizione` rifiuta la transizione se una riga o un componente BoM attivo ha il prezzo `PENDING` o `REJECTED` (building block `script.fn_check_prezzi_autorizzati`, vedi `api_approvazioni_prezzo.md`): si attende l'esito, si corregge il prezzo o si toglie la riga. Annulla resta sempre ammesso.
 - **Verso ANNULLATO** passa sempre dal verbo `vendite.fn_annulla_preventivo`: con righe di commessa da emettere risponde `E_DOC_ANNULLO_CON_LEGAMI` (409, `confirm_and_retry`) finché il body non dichiara `legami_confermati` (intero, letto da `GET /{id}/legami/`). Risposta con la stessa forma di `fn_cambia_stato_preventivo` (`preventivo_id`, `stato_precedente`, `stato_nuovo`).
-- Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400), `E_DOC_PREZZO_PENDENTE` (409), `E_DOC_PREZZO_RIFIUTATO` (409), `E_PREV_VALIDAZIONE` (400: `nuovo_stato="EMESSO"`, modalità di fatturazione mancante verso ACCETTATO), `E_DOC_ANNULLO_CON_LEGAMI` (409, conferma)
+- Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400), `E_DOC_PREZZO_PENDENTE` (409), `E_DOC_PREZZO_RIFIUTATO` (409), `E_PREV_VALIDAZIONE` (400: lo stato di emissione, modalità di fatturazione mancante verso ACCETTATO), `E_DOC_ANNULLO_CON_LEGAMI` (409, conferma), `E_DOC_PASSAGGIO_DI_PROCESSO` (un passaggio che non si chiede a mano: ACCETTATO → EVASO, EMESSO → SCADUTO), `E_PREV_NOT_FOUND` (404, anche un preventivo fuori perimetro), 403 senza l'azione del passaggio
 
 ### 5-bis. Cambio stato dalla pratica `POST /api/v1/vendite/preventivi/da-pratica/{pratica_id}/stato/`
 
 «Accetta/Rifiuta» dentro la pratica: cambia lo stato del preventivo **ROOT** della
-pratica. Stesso permesso (`cambia_stato_preventivi`), stesso corpo
-(`nuovo_stato`, `fatturazione_immediata`, `competenza_mese`) e stesse regole e
-risposta di §5; il preventivo lo risolve il backend dal `pratica_id`. Pratica
+pratica. Stesso permesso (la riga del passaggio, sul preventivo ROOT: `post_passaggio`
+con `risolvi_documento`), stesso corpo (`nuovo_stato`, `fatturazione_immediata`,
+`competenza_mese`) e stesse regole e risposta di §5; il preventivo lo risolve il
+backend dal `pratica_id`. Pratica
 senza preventivo ROOT → 422 `E_VENDITA_PREVENTIVO_NON_COLLEGATO`. Il milestone
 della pratica avanza da sé (trigger DB `fn_reconcile_sorgente`).
 
@@ -229,7 +230,7 @@ Nuovo endpoint multipart 2026-05-28. Mirror del flusso offerta `POST /api/v1/ven
 - Path: `/api/v1/vendite/preventivi/{id}/emetti/`
 - Content-Type: `multipart/form-data`
 - Parser: `MultiPartParser`, `FormParser` (override del default DRF JSON-only)
-- Auth: JWT, `area_funzionale = "vendite"`, `post_permission = "cambia_stato_preventivi"` (riusa lo stesso permesso del cambio stato — l'emissione è anch'essa una transizione di dominio)
+- Auth: JWT, `area_funzionale = "vendite"`, livello sul preventivo, e l'azione dalla riga del passaggio DRAFT → EMESSO (`emetti_passaggio` della factory; oggi `emetti_preventivo`): 403 prima della transazione a chi non ce l'ha. Fino al 2026-10-25 `cambia_stato_preventivi`, spenta
 - Body multipart:
   - `template_documento_id` (int, opzionale) — id template documentale da usare. Se omesso, il motore documentale seleziona il template `is_default=true` per `(sorgente=PREVENTIVO, emittente_fiscale_id, tipo_documento_output_id)`
   - `tipo_documento_output_id` (int, opzionale) — id tipo output (PDF, ecc.). Se omesso, default del template

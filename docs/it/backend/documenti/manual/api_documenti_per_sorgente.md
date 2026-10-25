@@ -205,10 +205,14 @@ genera né l'anteprima né un documento nuovo.
 al modello (guida `modello-documento-di-vendita` §6) passa
 `emetti_passaggio=(testata, stato di emissione)`: la factory dichiara
 `post_passaggio` e la catena dei permessi legge l'azione dalla riga della matrice,
-la stessa del verbo. Oggi lo fa il **DDT** (`("vendite.ddt", "EMESSO")`, 2026-10-25).
-Il **preventivo** dichiara ancora `emetti_post_permission="cambia_stato_preventivi"`
-finché il suo giro del cantiere non lo porta al modello; offerte, contratti e
-ordini non dichiarano un'azione. Le due forme si escludono (errore all'import).
+la stessa del verbo. Oggi lo fanno il **DDT** (`("vendite.ddt", "EMESSO")`) e il
+**preventivo** (`("vendite.preventivi", "EMESSO")`), dal 2026-10-25; offerte,
+contratti e ordini non dichiarano un'azione (livello sul documento) finché il loro
+giro del cantiere non li porta al modello. `emetti_post_permission`, l'azione
+dichiarata a mano, è ritirato: il preventivo era l'ultimo a usarlo.
+⚠️ Lo stato di emissione è ancora scritto dal dominio (`STATO_EMESSO`): il verbo
+prende il codice, e il DB oggi dà solo l'id (`script.fn_stato_emissione_id`).
+Richiesta al team DB in brief-modello-documento-vendita §8.10.
 
 ## 6. Dove guardare nel codice
 

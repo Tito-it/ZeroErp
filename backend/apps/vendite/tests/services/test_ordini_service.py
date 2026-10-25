@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 from django.db import DatabaseError, IntegrityError
 from django.test import SimpleTestCase
 
+from apps.core.tests._helpers.modello_documento_mockato import ModelloDocumentoMockatoMixin
 from apps.core.services.error_manager import ServiceError
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.vendite.services import ordini_service
@@ -38,10 +39,11 @@ def _patch_atomic_noop(testcase) -> None:
     testcase.addCleanup(patcher.stop)
 
 
-class OrdiniServiceGuardsTests(SimpleTestCase):
+class OrdiniServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     """Guard di stato e not-found (mock repository)."""
 
     def setUp(self) -> None:
+        super().setUp()
         _patch_atomic_noop(self)
 
     @patch(_REPO)
@@ -183,6 +185,24 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         self.assertEqual(out["stato_precedente"], "CONFERMATO")
         repo.update_stato.assert_called_once_with(7, 8)
         repo.annulla.assert_not_called()
+
+    # M-2 (brief-modello-documento-vendita §8.7 punto 4, revoca l'opzione (i)
+    # del 2026-06-05): lo stato di emissione, letto dal vocabolario, dal cambio
+    # stato generico e' un 400 col campo; l'ordine si emette da «Emetti».
+    @patch(_REPO)
+    def test_cambia_stato_rifiuta_lo_stato_di_emissione(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.get_stato_id_by_codice.return_value = 2
+        self.stato_chiesto_di_emissione()
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.cambia_stato(7, "CONFERMATO")
+        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("field"), "stato_codice")
+        self.modello_documento.e_stato_di_emissione.assert_called_once_with(
+            "vendite.ordini", "CONFERMATO",
+        )
+        repo.update_stato.assert_not_called()
 
     # brief-db-annullo-documento-con-legami: ANNULLATO passa SEMPRE dal verbo,
     # con la dichiarazione della conferma (assente al primo tentativo).

@@ -36,6 +36,7 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
+from apps.core.tests._helpers.modello_documento_mockato import ModelloDocumentoMockatoMixin
 from apps.core.services.error_manager import ServiceError
 from apps.vendite.services import _annullo_con_legami as bb
 from apps.vendite.services import preventivi_service
@@ -161,7 +162,7 @@ class AnnulloConLegamiBBTests(SimpleTestCase):
         self.assertEqual(bb.legami_confermati("4", validation_code="E_X", function_name="t"), 4)
 
 
-class PreventivoAnnulloTests(SimpleTestCase):
+class PreventivoAnnulloTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     @patch(_PREV_REPO)
     def test_annullo_passa_dal_verbo(self, repo_cls) -> None:
         repo = repo_cls.return_value

@@ -29,6 +29,7 @@ from apps.config.sorgenti import (
 )
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import MAX_LIMIT
+from apps.core.services.documento_modello import rifiuta_stato_di_emissione
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
@@ -46,7 +47,7 @@ from apps.core.services.testata_guard import (
     testata_o_not_found,
 )
 from apps.core.services.value_normalizer import empty_to_none
-from apps.vendite.db.ordini_repository import OrdiniRepository
+from apps.vendite.db.ordini_repository import TESTATA_ORDINI, OrdiniRepository
 from apps.vendite.services._componenti_service_helpers import (
     dati_patch_componente,
     normalize_componenti_overrides,
@@ -660,6 +661,15 @@ def cambia_stato(
         code="E_ORD_VALIDAZIONE",
         message="stato_codice obbligatorio per il cambio stato.",
         function_name=f"{_FN}.cambia_stato",
+    )
+    # ⛔ Lo stato di emissione (CONFERMATO) NO (M-2, che revoca l'opzione (i)
+    #    del 2026-06-05): l'ordine si emette da «Emetti» (`/emetti/`), che
+    #    produce numero e PDF nella stessa transazione. Quale stato sia
+    #    l'emissione lo dice il vocabolario (BB `rifiuta_stato_di_emissione`,
+    #    brief-modello-documento-vendita §8.7 punto 4).
+    rifiuta_stato_di_emissione(
+        TESTATA_ORDINI, target, campo="stato_codice",
+        validation_code="E_ORD_VALIDAZIONE", function_name=f"{_FN}.cambia_stato",
     )
     stato_id = repo.get_stato_id_by_codice(target)
     ErrorManager.require(

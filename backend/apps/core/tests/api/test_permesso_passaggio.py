@@ -18,6 +18,9 @@ Indice test eseguiti:
  5) test_stato_dal_corpo                          — `stato_codice` del corpo, ripulito
  6) test_stato_dal_corpo_non_testo                — niente stato: None, nessuna lettura
  7) test_stato_fisso_ignora_il_corpo              — la rotta di un verbo ha il suo stato
+ 8) test_campo_stato_dichiarato                   — il corpo del preventivo porta `nuovo_stato`
+ 9) test_documento_risolto_dal_parametro          — la rotta porta la pratica, l'azione e' del preventivo
+10) test_documento_non_risolto                    — nessun documento: None, nessuna lettura
 """
 
 from unittest import TestCase
@@ -153,3 +156,48 @@ class PassaggioDocumentoTests(TestCase):
         repo_cls.return_value.azione_del_passaggio.assert_called_once_with(
             "vendite.resi", 42, "CONFERMATO",
         )
+
+    # Il preventivo porta lo stato chiesto in `nuovo_stato`: il campo lo
+    # dichiara la view, `stato_codice` non si guarda.
+    @patch(_REPO)
+    def test_campo_stato_dichiarato(self, repo_cls) -> None:
+        stato = PassaggioDocumento(
+            testata="vendite.preventivi", documento_kwarg="ddt_id", campo_stato="nuovo_stato",
+        )
+        repo_cls.return_value.azione_del_passaggio.return_value = "emetti_preventivo"
+
+        azione = stato.azione(_view(stato, {"nuovo_stato": "ANNULLATO", "stato_codice": "X"}))
+
+        self.assertEqual(azione, "emetti_preventivo")
+        repo_cls.return_value.azione_del_passaggio.assert_called_once_with(
+            "vendite.preventivi", 42, "ANNULLATO",
+        )
+
+    # La rotta porta un altro id (la pratica): il documento lo ricava la
+    # funzione dichiarata, e l'azione si legge sul documento risolto.
+    @patch(_REPO)
+    def test_documento_risolto_dal_parametro(self, repo_cls) -> None:
+        risolvi = MagicMock(return_value=900)
+        stato = PassaggioDocumento(
+            testata="vendite.preventivi", documento_kwarg="ddt_id", campo_stato="nuovo_stato",
+            risolvi_documento=risolvi,
+        )
+        repo_cls.return_value.azione_del_passaggio.return_value = "emetti_preventivo"
+
+        self.assertEqual(stato.azione(_view(stato, {"nuovo_stato": "ANNULLATO"})), "emetti_preventivo")
+        risolvi.assert_called_once_with(42)
+        repo_cls.return_value.azione_del_passaggio.assert_called_once_with(
+            "vendite.preventivi", 900, "ANNULLATO",
+        )
+
+    # Nessun documento dietro il parametro: decide il livello, e il 4xx lo da'
+    # il service.
+    @patch(_REPO)
+    def test_documento_non_risolto(self, repo_cls) -> None:
+        stato = PassaggioDocumento(
+            testata="vendite.preventivi", documento_kwarg="ddt_id", campo_stato="nuovo_stato",
+            risolvi_documento=MagicMock(return_value=None),
+        )
+
+        self.assertIsNone(stato.azione(_view(stato, {"nuovo_stato": "ANNULLATO"})))
+        repo_cls.assert_not_called()

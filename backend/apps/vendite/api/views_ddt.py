@@ -41,7 +41,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ddt_service
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
-from apps.vendite.db.ddt_repository import DdtRepository
+from apps.vendite.db.ddt_repository import TESTATA_DDT, DdtRepository
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.vendite.api._componenti_schema import (
     COMPONENTE_PATCH_REQUEST,
@@ -264,7 +264,7 @@ class ApiDdtCambiaStato(DomainAPIView):
     # L'azione del passaggio (stato corrente -> `stato_codice`) dalla riga della
     # matrice: l'annullo di una bolla emessa chiede `emetti_ddt`, gli altri il
     # solo livello sul documento (M-3, M-4).
-    post_passaggio = PassaggioDocumento(testata=ddt_service.TESTATA_DDT, documento_kwarg="ddt_id")
+    post_passaggio = PassaggioDocumento(testata=TESTATA_DDT, documento_kwarg="ddt_id")
 
     @extend_schema(
         request=CAMBIA_STATO_CON_CONFERMA_REQUEST,

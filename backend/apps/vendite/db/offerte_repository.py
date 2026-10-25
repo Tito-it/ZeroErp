@@ -40,6 +40,7 @@ from apps.core.db._helpers import (
     rows_to_list,
     sql_order_clause,
 )
+from apps.core.db.documento_modello_repository import DocumentoModelloRepository
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.righe_lista_mixin import RigheListaMixin
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
@@ -329,6 +330,11 @@ _FROM_JOINS_UTILITY = """
     LEFT JOIN config.tipi_utenze tu ON tu.id = ou.tipo_utenza_id
     LEFT JOIN config.classi_utenze clu ON clu.id = ou.classe_utenza_id
 """
+
+
+# La testata nella mappa del modello del documento (`script.fn_doc_stato_modello`):
+# la leggono il repository, il service e la catena dei permessi.
+TESTATA_OFFERTE = "vendite.offerte_commerciali"
 
 
 class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryMixin):
@@ -971,21 +977,12 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     # Lookup di supporto
     # =================================================================
 
-    # Scopo: Risolve l'id di uno stato documento offerta dal codice_interno.
-    #        Usato dal service per impostare stato iniziale (BOZZA) e per
-    #        risolvere lo stato target nelle transizioni manuali (annulla,
-    #        registra_esito, emetti).
+    # Scopo: L'id dello stato ATTIVO con quel codice_interno, o None: lo stato target nelle transizioni manuali (annulla, registra_esito, emetti).
+    #        ⭐ La traduzione la fa il lettore unico del DB
+    #        (`script.fn_doc_stato_id`, brief-modello-documento-vendita §8.7
+    #        punto 3): qui resta solo il nome della testata.
     def get_stato_id_by_codice(self, codice_interno: str) -> int | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id FROM config.stati_doc_offerte
-                 WHERE codice_interno = %s
-                """,
-                [codice_interno],
-            )
-            row = cursor.fetchone()
-            return None if row is None else int(row[0])
+        return DocumentoModelloRepository().stato_id(TESTATA_OFFERTE, codice_interno)
 
     # Scopo: La COPPIA della fornitura sulla testata (cliente, istanza,
     #        utility): serve a sapere se un aggiornamento la cambia, perche'

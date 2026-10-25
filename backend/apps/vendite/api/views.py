@@ -1832,7 +1832,7 @@ class ApiCommessaStato(DomainAPIView):
     # (prezzo, oneri, approvazione) erano gia' gated: asimmetria chiusa dal
     # 2026-07-27 (brief-db-permesso-cambio-stato-commessa). Un solo codename per
     # i tre verbi chiudi/riapri/annulla — post_permission gatta l'ENDPOINT, non
-    # la action_key; stesso schema di `cambia_stato_preventivi`. Ortogonale alle
+    # la action_key. Ortogonale alle
     # capability DB (enabled/reasons dicono se l'azione e' eseguibile ORA, il
     # permesso dice se quell'operatore puo' eseguirla): i due gate si sommano.
     # NB: il GET di lettura stato resta libero nell'area.

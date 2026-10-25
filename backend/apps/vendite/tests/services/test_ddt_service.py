@@ -97,6 +97,7 @@ from unittest.mock import patch
 from django.db import DatabaseError, IntegrityError
 from django.test import SimpleTestCase
 
+from apps.core.tests._helpers.modello_documento_mockato import ModelloDocumentoMockatoMixin
 from apps.core.services.error_manager import ServiceError
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.vendite.services import ddt_service
@@ -446,7 +447,7 @@ class DdtEliminaTests(SimpleTestCase):
         repo.delete_ddt.assert_called_once_with(7)
 
 
-class DdtCambiaStatoTests(SimpleTestCase):
+class DdtCambiaStatoTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     """cambia_stato data-driven + emetti (DRAFT->EMESSO)."""
 
     @patch(_REPO)
@@ -497,17 +498,33 @@ class DdtCambiaStatoTests(SimpleTestCase):
 
     # M-2 (brief-modello-documento-vendita §7.6): la bolla si emette solo da
     # «Emetti», che produce numero e PDF insieme. Dal cambio stato generico
-    # EMESSO e' un 400 col campo, e il verbo non parte.
+    # lo stato di emissione (letto dal vocabolario, §8.7) e' un 400 col campo,
+    # e il verbo non parte.
     @patch(_REPO)
     def test_cambia_stato_emesso_rifiutato(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
         repo.get_stato_id_by_codice.return_value = 2
+        self.stato_chiesto_di_emissione()
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(7, "EMESSO")
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
         self.assertEqual(cm.exception.context.get("field"), "stato_codice")
+        self.modello_documento.e_stato_di_emissione.assert_called_once_with(
+            "vendite.ddt", "EMESSO",
+        )
         repo.cambia_stato.assert_not_called()
+
+    # «Emetti» e' l'unica strada: la domanda sull'emissione non si fa.
+    @patch(_REPO)
+    def test_emetti_non_chiede_il_rifiuto(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_stato_id_by_codice.return_value = 2
+        repo.cambia_stato.return_value = []
+        ddt_service.emetti(7)
+        self.modello_documento.e_stato_di_emissione.assert_not_called()
+        repo.cambia_stato.assert_called_once_with(7, "EMESSO")
 
     @patch(_REPO)
     def test_emetti_transita_a_emesso_light(self, repo_cls) -> None:
@@ -985,7 +1002,7 @@ class DdtSatellitiTestataTests(SimpleTestCase):
 # lettura dei legami per la finestra. ⚠️ Le regole (bozza, riga evasa, residuo,
 # conteggio della conferma) sono del DB e qui sono mockate: questi test provano
 # il trasporto, non la regola.
-class DdtRigheEvaseTests(SimpleTestCase):
+class DdtRigheEvaseTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     @patch(_REPO)
     def test_annullo_passa_dal_verbo_senza_dichiarazione(self, repo_cls) -> None:
         repo = repo_cls.return_value
