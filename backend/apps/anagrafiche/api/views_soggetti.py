@@ -242,12 +242,9 @@ class SoggettiIndirizziDetailView(DomainAPIView):
     )
     # Scopo: Sostituisce indirizzo soggetto (delete vecchio + create nuovo).
     def put(self, request: Request, soggetto_id: str, indirizzo_soggetto_id: int) -> JsonResponse:
-        return handle_post_json(
-            request,
-            handler=lambda p: SoggettiService().replace_indirizzo_soggetto(
-                soggetto_id, indirizzo_soggetto_id, p
-            ),
-        )
+        return success_response(SoggettiService().replace_indirizzo_soggetto(
+            soggetto_id, indirizzo_soggetto_id, corpo_oggetto(request)
+        ))
 
     @extend_schema(
         responses={200: inline_serializer(name="DeleteIndirizzoResp", fields={"data": serializers.DictField()})},

@@ -553,11 +553,11 @@ class ApiResoDetail(DomainAPIView):
         responses={200: _RESO_RESPONSE},
     )
     # Scopo: Aggiorna testata reso (data, note, magazzino di rientro; quali in
-    #        quale stato lo decide il lock di testata del DB). PATCH usa
-    #        request.data (DRF ha gia' parsato il body).
+    #        quale stato lo decide il lock di testata del DB). Corpo da
+    #        `corpo_oggetto` (api.md §«Quando usare handle_post_json»).
     def patch(self, request: Request, reso_id: int) -> JsonResponse:
         return success_response(
-            resi_service.aggiorna_reso(int(reso_id), dict(corpo_oggetto(request))),
+            resi_service.aggiorna_reso(int(reso_id), corpo_oggetto(request)),
         )
 
     @extend_schema(
@@ -863,7 +863,7 @@ class ApiResoRigaRientroDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             resi_service.aggiorna_rientro(
-                int(reso_id), int(riga_id), int(rientro_id), dict(corpo_oggetto(request)),
+                int(reso_id), int(riga_id), int(rientro_id), corpo_oggetto(request),
             ),
         )
 
@@ -891,7 +891,7 @@ class ApiResoRigaDetail(DomainAPIView):
     def patch(self, request: Request, reso_id: int, riga_id: int) -> JsonResponse:
         return success_response(
             resi_service.aggiorna_riga(
-                int(reso_id), int(riga_id), dict(corpo_oggetto(request)),
+                int(reso_id), int(riga_id), corpo_oggetto(request),
             ),
         )
 

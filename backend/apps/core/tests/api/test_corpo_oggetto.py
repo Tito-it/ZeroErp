@@ -15,6 +15,8 @@ Indice test eseguiti:
 4) test_lista_di_coppie_rifiutata
 5) test_json_illeggibile_rifiutato
 6) test_patch_con_lista_e_un_400_nell_envelope
+7) test_patch_put_senza_modalita_forte_leggono_corpo_oggetto
+8) test_nessuna_copia_del_corpo
 """
 
 from unittest import TestCase
@@ -83,3 +85,58 @@ class PatchCorpoListaTests(TestCase):
         risposta = exception_to_error_response(ctx.exception)
         self.assertEqual(risposta.status_code, 400)
         self.assertIn(b"E_VALIDATION_INPUT", risposta.content)
+
+
+class DialettoPatchPutTests(TestCase):
+
+    # Scopo: ⛔ Una regola, un modo (Tid, 2026-10-25, api.md §«Quando usare
+    # handle_post_json»): una PATCH/PUT legge il corpo con `corpo_oggetto`;
+    # `handle_post_json` solo con la modalita' forte. Fino a quel giorno 16
+    # view parlavano l'altro dialetto (e `handle_detail_patch`, ritirato).
+    # ⚠️ Il presidio legge il CODICE: una view nuova scritta col vecchio
+    #    dialetto funziona uguale, e la copia rientrerebbe senza errore.
+    def test_patch_put_senza_modalita_forte_leggono_corpo_oggetto(self):
+        import ast
+        from pathlib import Path
+
+        apps = Path(__file__).resolve().parents[3]
+        trovate = []
+        for f in apps.rglob("*.py"):
+            if "tests" in f.parts:
+                continue
+            sorgente = f.read_text(errors="ignore")
+            for nodo in ast.walk(ast.parse(sorgente)):
+                if not (isinstance(nodo, ast.FunctionDef) and nodo.name in ("patch", "put")):
+                    continue
+                for chiamata in ast.walk(nodo):
+                    if (
+                        isinstance(chiamata, ast.Call)
+                        and getattr(chiamata.func, "id", None) == "handle_post_json"
+                        and not any(
+                            k.arg == "require_idempotency_key"
+                            and isinstance(k.value, ast.Constant) and k.value.value is True
+                            for k in chiamata.keywords
+                        )
+                    ):
+                        trovate.append(f"{f.relative_to(apps)}:{chiamata.lineno}")
+        self.assertEqual(trovate, [])
+
+    # ⛔ `corpo_oggetto` restituisce gia' un dict: `dict(corpo_oggetto(...))` e'
+    #    una seconda forma della stessa riga (ritirata il 2026-10-25, 30 copie,
+    #    ok Tid). Unica eccezione: il corpo multipart degli asset, dove `dict()`
+    #    su un `QueryDict` serve a tenere le liste di valori.
+    def test_nessuna_copia_del_corpo(self):
+        import re
+        from pathlib import Path
+
+        apps = Path(__file__).resolve().parents[3]
+        copia = re.compile(r"dict\(corpo_oggetto\(")
+        ammessi = {"documenti/api/views.py"}
+        trovate = [
+            f"{f.relative_to(apps)}:{n}"
+            for f in apps.rglob("*.py")
+            if "tests" not in f.parts
+            for n, riga in enumerate(f.read_text(errors="ignore").splitlines(), 1)
+            if copia.search(riga) and str(f.relative_to(apps)) not in ammessi
+        ]
+        self.assertEqual(trovate, [])

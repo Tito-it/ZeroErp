@@ -830,7 +830,7 @@ class ApiOffertaEccezioneComponenteDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             OfferteService().update_componente_eccezione(
-                offerta_id, eccezione_id, componente_id, dict(corpo_oggetto(request)),
+                offerta_id, eccezione_id, componente_id, corpo_oggetto(request),
                 auth_user_id=get_actor_user_id(request),
             )
         )

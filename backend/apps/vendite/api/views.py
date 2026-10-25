@@ -12,7 +12,6 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import (
     UnitaDiLavoro,
     get_scope_user_id,
-    handle_detail_patch,
     handle_post_json,
 )
 from apps.core.services.coda_lavori.repository import (
@@ -31,6 +30,7 @@ from apps.ui.api.export_helpers import build_export_response, parse_export_forma
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.db.vendite_repository import VenditeRepository
 from apps.core.api.payload_validators import (
+    corpo_oggetto,
     pagina_da_query,
     optional_bool,
     optional_int,
@@ -1966,7 +1966,7 @@ class ApiCommessaDetail(DomainAPIView):
     # Scopo: Aggiorna via PATCH la testata leggibile e risponde col dettaglio
     #        aggiornato (lo stesso payload di `/stato/`).
     def patch(self, request: Request, commessa_id: int) -> JsonResponse:
-        return handle_detail_patch(request, aggiorna_commessa_testata, commessa_id)
+        return success_response(aggiorna_commessa_testata(commessa_id, corpo_oggetto(request)))
 
 
 class ApiCommessaRegistro(DomainAPIView):

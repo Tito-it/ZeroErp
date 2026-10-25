@@ -15,7 +15,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.openapi_params import parametri_finestra
-from apps.core.api.payload_validators import pagina_da_query, qp_bool_optional
+from apps.core.api.payload_validators import corpo_oggetto, pagina_da_query, qp_bool_optional
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
@@ -124,4 +124,4 @@ class ConfigTableRecordDetailView(_PermessoSullOggettoMixin, DomainAPIView):
 
     @extend_schema(request=_RECORD_REQUEST, operation_id="core_config_tables_records_partial_update", responses={200: inline_serializer(name="ConfigRecordUpdateResp", fields={"data": serializers.DictField()})})
     def patch(self, request: Request, rel: str, pk: int) -> JsonResponse:
-        return handle_post_json(request, handler=lambda p: ConfigCrudService().update_record(rel, pk, p))
+        return success_response(ConfigCrudService().update_record(rel, pk, corpo_oggetto(request)))

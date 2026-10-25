@@ -231,7 +231,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
         #        il magazzino (si sceglie alla nascita).
         def patch(self, request: Request, doc_id: int) -> JsonResponse:
             return success_response(
-                magazzino_service.aggiorna_documento(codice, doc_id, dict(corpo_oggetto(request)))
+                magazzino_service.aggiorna_documento(codice, doc_id, corpo_oggetto(request))
             )
 
         @extend_schema(
@@ -392,7 +392,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
         # Scopo: Aggiorna via PATCH una riga (parziale; `null` azzera un nullable).
         def patch(self, request: Request, doc_id: int, riga_id: int) -> JsonResponse:
             return success_response(
-                magazzino_service.aggiorna_riga(codice, doc_id, riga_id, dict(corpo_oggetto(request)))
+                magazzino_service.aggiorna_riga(codice, doc_id, riga_id, corpo_oggetto(request))
             )
 
         @extend_schema(

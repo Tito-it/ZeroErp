@@ -33,8 +33,7 @@ dichiarato.
   `ModelViewSet`, niente router DRF.
 * Errori centralizzati: `ServiceError`, `ErrorManager`, `ErrorTranslator`, il
   registro `error_policies` (generato dal catalogo DB) e il middleware API.
-* Helper di view in `apps/core/api/endpoint_helpers.py` (`handle_post_json`,
-  `handle_detail_patch`, …) e attributi dichiarativi sulle view
+* Helper di view in `apps/core/api/endpoint_helpers.py` (`handle_post_json`, …) e attributi dichiarativi sulle view
   (`area_funzionale`, `model_permission`, `post_permission`,
   `is_search_endpoint`, `skip_area_check`, `require_idempotency_key`).
 * Test per app in `tests/api/`, `tests/services/` e, dove serve, `tests/db/`
@@ -66,7 +65,7 @@ Fuori dai test Django: `ruff` (`ruff.toml`), gitleaks, l'header di licenza
 Non hanno (ancora) un presidio automatico. In revisione si guarda:
 
 * **base view e helper**: che un endpoint nuovo usi la base view giusta e
-  `handle_post_json` / `handle_detail_patch` quando il caso rientra nel pattern;
+  `handle_post_json` per le POST (e per PATCH/PUT/DELETE in modalità forte), `corpo_oggetto` per le altre PATCH/PUT;
 * **`try/except Exception` nelle view**: un'eccezione generica nasconde il
   codice d'errore giusto. Dove serve davvero (una scrittura best-effort, un
   canale che non deve mai far fallire la risposta) va motivata nel commento;

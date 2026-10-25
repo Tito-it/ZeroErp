@@ -236,11 +236,10 @@ class ApiDdtDetail(DomainAPIView):
     )
     # Scopo: Aggiorna testata DDT. Quali campi si cambiano in quale stato lo
     #        decide il lock di testata del DB (`trg_ddt_a05_lock_fuori_bozza_upd`).
-    #        PATCH usa request.data (DRF ha gia' parsato il body;
-    #        handle_post_json rileggerebbe il raw consumato).
+    #        Corpo da `corpo_oggetto` (api.md §«Quando usare handle_post_json»).
     def patch(self, request: Request, ddt_id: int) -> JsonResponse:
         return success_response(
-            ddt_service.aggiorna_ddt(int(ddt_id), dict(corpo_oggetto(request))),
+            ddt_service.aggiorna_ddt(int(ddt_id), corpo_oggetto(request)),
         )
 
     @extend_schema(
@@ -398,7 +397,7 @@ class ApiDdtRigaDetail(DomainAPIView):
     def patch(self, request: Request, ddt_id: int, riga_id: int) -> JsonResponse:
         return success_response(
             ddt_service.aggiorna_riga(
-                int(ddt_id), int(riga_id), dict(corpo_oggetto(request)),
+                int(ddt_id), int(riga_id), corpo_oggetto(request),
                 auth_user_id=get_actor_user_id(request),
             ),
         )
@@ -484,7 +483,7 @@ class ApiDdtRigaPrelievoDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             ddt_service.aggiorna_prelievo(
-                int(ddt_id), int(riga_id), int(prelievo_id), dict(corpo_oggetto(request)),
+                int(ddt_id), int(riga_id), int(prelievo_id), corpo_oggetto(request),
             ),
         )
 
@@ -565,7 +564,7 @@ class ApiDdtRigaComponenteDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             ddt_service.update_componente(
-                int(ddt_id), int(riga_id), int(componente_id), dict(corpo_oggetto(request)),
+                int(ddt_id), int(riga_id), int(componente_id), corpo_oggetto(request),
                 auth_user_id=get_actor_user_id(request),
             ),
         )

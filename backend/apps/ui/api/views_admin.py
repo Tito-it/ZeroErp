@@ -242,7 +242,7 @@ class ApiAdminPresetDetailView(DomainAPIView):
     # Scopo: Aggiorna campi mutabili di un preset.
     def patch(self, request: Request, preset_id: int) -> JsonResponse:
         result = ListaPresetAdminService().update_preset(
-            request.user, preset_id, dict(corpo_oggetto(request)),
+            request.user, preset_id, corpo_oggetto(request),
         )
         return success_response(result)
 
@@ -284,7 +284,7 @@ class ApiAdminPresetColonneView(DomainAPIView):
     # Scopo: Replace atomico della composizione del preset.
     def put(self, request: Request, preset_id: int) -> JsonResponse:
         result = ListaPresetAdminService().replace_preset_colonne(
-            preset_id, dict(corpo_oggetto(request))
+            preset_id, corpo_oggetto(request)
         )
         return success_response(result)
 
@@ -427,7 +427,7 @@ class ApiAdminListaDefinizioneAdminDetailView(AdminAPIView):
     #        sono mutabili: codice cambia con UNIQUE check DB.
     def patch(self, request: Request, lista_id: int) -> JsonResponse:
         result = ListaDefinizioneAdminService().update_definizione(
-            request.user, lista_id, dict(corpo_oggetto(request)),
+            request.user, lista_id, corpo_oggetto(request),
         )
         return success_response(result)
 
@@ -500,7 +500,7 @@ class ApiAdminListaColonnaDetailView(AdminAPIView):
     #        (per spostare una colonna fra liste, cancellarla e ricrearla).
     def patch(self, request: Request, colonna_id: int) -> JsonResponse:
         result = ListaColonnaAdminService().update_colonna(
-            request.user, colonna_id, dict(corpo_oggetto(request)),
+            request.user, colonna_id, corpo_oggetto(request),
         )
         return success_response(result)
 
