@@ -131,7 +131,10 @@ _V = PayloadValidator(validation_code="E_DDT_VALIDAZIONE")
 # Gli id della controparte che il payload puo' portare: si coerciscono a
 # intero (un valore non numerico e' un 400 col campo, non un 500 da `int()`).
 _ID_CONTROPARTE: tuple[str, ...] = ("billing_account_id", "destinatario_soggetto_ruolo_id")
-_STATO_EMESSO = "EMESSO"
+# La testata nel modello del documento e lo stato di emissione: li legge anche
+# la catena dei permessi (`PassaggioDocumento` delle view), dalla stessa sede.
+TESTATA_DDT = "vendite.ddt"
+STATO_EMESSO = "EMESSO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 
 # Whitelist campi testata accettati in create (null_vs_empty -> None).
@@ -474,8 +477,8 @@ def elimina_ddt(ddt_id: int) -> dict[str, Any]:
     return {"ddt_id": ddt_id, "deleted": deleted}
 
 
-# Scopo: Esegue una transizione di stato data-driven del DDT (es. EMESSO,
-#        SPEDITO, CONSEGNATO, RESO, ANNULLATO). Generico: lo stato destinazione
+# Scopo: Esegue una transizione di stato data-driven del DDT (SPEDITO,
+#        CONSEGNATO, ANNULLATO). Generico: lo stato destinazione
 #        arriva dal codice interno (`available_actions[].target_state` della fn
 #        capabilities). Ogni passaggio va al DB per un verbo
 #        (`vendite.fn_cambia_stato_ddt`, Lotto 3 R-1): l'ammissibilita' la
@@ -492,9 +495,23 @@ def elimina_ddt(ddt_id: int) -> dict[str, Any]:
 #        il DB risponde E_DOC_ANNULLO_CON_LEGAMI (`confirm_and_retry`). Una
 #        bolla senza legami si annulla senza dichiarazione. Il verbo ritira i
 #        legami e passa da `fn_cambia_stato_ddt` (matrice, permesso, storno).
+#        ⛔ EMESSO NO (M-2, brief-modello-documento-vendita §7.6): la bolla si
+#        emette solo da `emetti`, cioe' da «Emetti», che produce numero e PDF
+#        nella stessa transazione. Dal cambio stato generico e' un 400.
 def cambia_stato(
     ddt_id: int, stato_codice: str | None,
     *, legami_confermati: Any = None,
+) -> dict[str, Any]:
+    return _passa_a(
+        ddt_id, stato_codice, legami_confermati=legami_confermati, emissione=False,
+    )
+
+
+# Scopo: Il corpo comune di `cambia_stato` ed `emetti`. `emissione` dice se la
+#        chiamata viene da «Emetti», l'unica strada che porta a EMESSO.
+def _passa_a(
+    ddt_id: int, stato_codice: str | None,
+    *, legami_confermati: Any, emissione: bool,
 ) -> dict[str, Any]:
     repo = DdtRepository()
     # Guard esistenza leggero: serve solo lo stato corrente, non la testata
@@ -511,6 +528,13 @@ def cambia_stato(
         bool(target),
         code="E_DDT_VALIDAZIONE",
         message="stato_codice obbligatorio per il cambio stato.",
+        context={"field": "stato_codice"},
+        function_name=f"{_FN}.cambia_stato",
+    )
+    ErrorManager.require(
+        emissione or target != STATO_EMESSO,
+        code="E_DDT_VALIDAZIONE",
+        message="La bolla si emette solo da «Emetti», che assegna il numero e genera il documento.",
         context={"field": "stato_codice"},
         function_name=f"{_FN}.cambia_stato",
     )
@@ -551,7 +575,7 @@ def cambia_stato(
 #        + count righe) non va materializzato nella sezione critica — il FE
 #        ricarica comunque il detail dopo l'emissione.
 def emetti(ddt_id: int) -> dict[str, Any]:
-    return cambia_stato(ddt_id, _STATO_EMESSO)
+    return _passa_a(ddt_id, STATO_EMESSO, legami_confermati=None, emissione=True)
 
 
 # ══════════════════════════════════════════════════════════

@@ -468,13 +468,14 @@ class DdtRepository(
             return cursor.rowcount > 0
 
     # Scopo: Cambia stato della bolla dal verbo DB `vendite.fn_cambia_stato_ddt`
-    #        (Lotto 3 D-L3-e): permesso (`emetti_ddt` per l'emissione e
-    #        l'annullo di una bolla emessa, `registra_magazzino` per la consegna
-    #        di un trasferimento), matrice e guard di sempre, e — se la bolla
+    #        (Lotto 3 D-L3-e, sul verbo comune dal 2026-10-25): il permesso del
+    #        passaggio dalla riga della matrice (`emetti_ddt` per l'emissione e
+    #        l'annullo di una bolla emessa), `registra_magazzino` per la consegna
+    #        di un trasferimento, matrice e guard di sempre, e — se la bolla
     #        muove merce — prelievi automatici e movimenti di magazzino nella
-    #        stessa transazione. ⛔ Mai un `UPDATE` diretto dello stato: su una
-    #        bolla che muove merce la porta del registro lo rifiuta
-    #        (E_DDT_STATO_SOLO_DA_VERBO). Fuori perimetro: E_DDT_NOT_FOUND.
+    #        stessa transazione. ⛔ Mai un `UPDATE` diretto dello stato: la porta
+    #        comune lo rifiuta su ogni bolla (E_DOC_STATO_SOLO_DAL_VERBO). Fuori
+    #        perimetro: E_DDT_NOT_FOUND.
     # Ritorna: i movimenti scritti (movimento_id, prelievo_id, qta); nessuno se
     #          il passaggio non tocca il registro.
     def cambia_stato(self, ddt_id: int, stato_codice: str) -> list[dict[str, Any]]:

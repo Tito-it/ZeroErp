@@ -271,7 +271,8 @@ class DdtCambiaStatoDbTests(unittest.TestCase):
         ddt_id = self._bolla(self.art_l, 4)
         riga_ddt = ddt_service.get_prelievi(ddt_id)["voci"][0]["ddt_riga_id"]
         prelievo = ddt_service.crea_prelievo(ddt_id, riga_ddt, {"qta": "4", "lotto_id": self.lotto_b})
-        for stato in ("EMESSO", "SPEDITO", "CONSEGNATO"):
+        ddt_service.emetti(ddt_id)
+        for stato in ("SPEDITO", "CONSEGNATO"):
             ddt_service.cambia_stato(ddt_id, stato)
         with connection.cursor() as cur:
             cur.execute("SELECT id FROM config.tipi_reso WHERE codice_interno = 'RESO_A_CREDITO'")

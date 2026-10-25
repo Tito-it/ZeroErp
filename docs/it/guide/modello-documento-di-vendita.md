@@ -233,8 +233,7 @@ possono sbagliarla in un altro modo.
 
 Stato al 25 ottobre 2026. ✅ = segue la regola; ❌ = non ancora, con che cosa fa oggi. La riga di un
 documento cambia quando quel documento viene portato al modello (§11). Bolla e reso sono stati portati
-il 25 ottobre 2026; il backend allinea il suo controllo nel suo giro (403 dalla riga del passaggio,
-emissione solo da «Emetti»).
+il 25 ottobre 2026, database e backend (403 dalla riga del passaggio, emissione solo da «Emetti»).
 
 | Documento | Nasce in bozza (§3) | Matrice in tabella (§4) | Verbo di stato (§5) | Azione sul passaggio (§6) | Emissione (§7) | Annullo (§8) |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -242,7 +241,7 @@ emissione solo da «Emetti»).
 | Offerta | ✅ | ✅ (tabella `config.stati_doc_offerte_transizioni`, nome fuori serie) | ❌ `UPDATE` dal backend; gli stati di partenza sono ripetuti in Python | ❌ nessuna azione | ✅ | ❌ da accettata, con un controllo suo (`fn_check_offerta_annullabile`) invece dell'avviso dei legami |
 | Contratto | ✅ | ❌ passaggi scritti nel guard; la tabella la legge solo la capability | ❌ `UPDATE` dal backend | ❌ nessuna azione | ✅ | ❌ `fn_annulla_contratto` scrive lo stato da sé |
 | Ordine | ✅ | ✅ | ❌ `UPDATE` dal backend | ❌ nessuna azione | ❌ anche la conferma e il cambio stato generico portano a confermato | ❌ `fn_annulla_ordine` scrive lo stato da sé |
-| DDT | ✅ | ✅ | ✅ `fn_cambia_stato_ddt` sul verbo comune, con la porta | ✅ `emetti_ddt` sulla riga di emissione e annullo dell'emesso; `registra_magazzino` nel verbo, per l'operazione di magazzino | ❌ anche il cambio stato generico porta a emesso (backend, in richiesta) | ✅ `fn_annulla_ddt` → verbo di stato |
+| DDT | ✅ | ✅ | ✅ `fn_cambia_stato_ddt` sul verbo comune, con la porta | ✅ `emetti_ddt` sulla riga di emissione e annullo dell'emesso; `registra_magazzino` nel verbo, per l'operazione di magazzino | ✅ solo da «Emetti»: il cambio stato generico rifiuta emesso | ✅ `fn_annulla_ddt` → verbo di stato |
 | Reso | ✅ | ✅ | ✅ `fn_conferma_reso`, `fn_annulla_reso` sul verbo comune, con la porta | ✅ `conferma_reso` sulla riga di conferma e annullo del confermato | — la conferma fa da emissione | ✅ verbo |
 | Commessa | ✅ | ✅ (tabella in `vendite`, non in `config`) | ✅ `fn_cambia_stato_commessa`, ma senza il controllo del permesso | ❌ `cambia_stato_commessa` su ogni passaggio, controllata solo dal backend | — nasce dalla push | ✅ `fn_annulla_commessa` → verbo di stato |
 | Fattura | ✅ | ✅ (`config.stati_doc_fiscale_transizioni`, con passaggi solo del lotto e solo della fattura singola) | ❌ funzioni della pipeline; lo stato del lotto con `UPDATE` | ❌ azioni della pipeline, controllate solo dal backend | — la pipeline | — il ritorno del lotto in bozza |

@@ -6,8 +6,8 @@
 #        cambio stato data-driven, push singolo a commessa). Clone
 #        strutturale di views_ordini: la transizione di stato e' enforced dal
 #        trigger DB trgfn_ddt_guard_transizione; il service traduce gli errori
-#        P0001 in ServiceError -> envelope uniforme. Nessun post_permission
-#        (solo area_funzionale, come ordini). Numero assegnato a EMESSO dal
+#        P0001 in ServiceError -> envelope uniforme. Il permesso del cambio
+#        stato dalla riga del passaggio (`post_passaggio`, M-3). Numero assegnato a EMESSO dal
 #        trigger DB (non passato dal client). L'EMISSIONE (DRAFT->EMESSO +
 #        genera PDF, multipart) vive in `ddt_documenti_views.ApiDdtEmetti`
 #        (mirror ordini).
@@ -24,6 +24,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
+from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     paginated_envelope,
@@ -252,14 +253,18 @@ class ApiDdtDetail(DomainAPIView):
 
 class ApiDdtCambiaStato(DomainAPIView):
     """POST /api/v1/vendite/ddt/<ddt_id>/cambia-stato/ — transizione di stato
-    data-driven (SPEDITO / CONSEGNATO / RESO / ANNULLATO). Body: `stato_codice`
-    (= `target_state` dell'azione). L'ammissibilita' e' validata dal trigger
+    data-driven (SPEDITO / CONSEGNATO / ANNULLATO; EMESSO solo da `emetti/`).
+    Body: `stato_codice` (= `target_state` dell'azione). L'ammissibilita' e' validata dal trigger
     guard DB. Verso ANNULLATO, una bolla con legami risponde
     E_DOC_ANNULLO_CON_LEGAMI (`confirm_and_retry`) finche' il corpo non
     dichiara `legami_confermati` (letto da `…/legami/`)."""
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "ddt")
+    # L'azione del passaggio (stato corrente -> `stato_codice`) dalla riga della
+    # matrice: l'annullo di una bolla emessa chiede `emetti_ddt`, gli altri il
+    # solo livello sul documento (M-3, M-4).
+    post_passaggio = PassaggioDocumento(testata=ddt_service.TESTATA_DDT, documento_kwarg="ddt_id")
 
     @extend_schema(
         request=CAMBIA_STATO_CON_CONFERMA_REQUEST,

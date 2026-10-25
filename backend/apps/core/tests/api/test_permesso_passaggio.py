@@ -1,0 +1,155 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test unitari del BB `PassaggioDocumento` e del suo ramo in
+#        `ZeroERPPermission.valuta`: l'azione di un cambio di stato letta dalla
+#        riga del passaggio (M-3, brief-modello-documento-vendita §7.6).
+#        Repository e resolver mockati: la lettura vera e' provata in
+#        `core/tests/db/test_documento_modello_repository_db`.
+# ------------------------------------------------------------
+
+"""
+Indice test eseguiti:
+ 1) test_azione_concessa_consente_senza_livello  — decide l'azione, il livello non si guarda
+ 2) test_azione_negata                           — AZIONE_NEGATA con l'azione della riga
+ 3) test_riga_senza_azione_ricade_sul_livello     — None: livello sul documento
+ 4) test_sulla_classe_nega                        — senza richiesta, PASSAGGIO_SENZA_RICHIESTA
+ 5) test_stato_dal_corpo                          — `stato_codice` del corpo, ripulito
+ 6) test_stato_dal_corpo_non_testo                — niente stato: None, nessuna lettura
+ 7) test_stato_fisso_ignora_il_corpo              — la rotta di un verbo ha il suo stato
+"""
+
+from unittest import TestCase
+from unittest.mock import MagicMock, patch
+
+from apps.core.api.permissions import MotivoDiniego, PassaggioDocumento, ZeroERPPermission
+from apps.core.tests.api.test_permissions import _mock_view
+
+_REPO = "apps.core.api.permissions.DocumentoModelloRepository"
+_RESOLVER = "apps.core.api.permissions.PermissionResolver"
+
+
+def _utente() -> MagicMock:
+    user = MagicMock()
+    user.id = 7
+    user.is_superuser = False
+    return user
+
+
+# Scopo: una view finta che dichiara il passaggio sulla POST, con l'id nel
+#        percorso e il corpo dato.
+def _view(passaggio: PassaggioDocumento, corpo: object | None = None) -> MagicMock:
+    view = _mock_view(area="vendite")
+    view.model_permission = ("vendite", "ddt")
+    view.post_passaggio = passaggio
+    view.kwargs = {"ddt_id": 42}
+    view.request.data = corpo if corpo is not None else {}
+    return view
+
+
+_CAMBIO = PassaggioDocumento(testata="vendite.ddt", documento_kwarg="ddt_id")
+
+
+class PassaggioNellaCatenaTests(TestCase):
+
+    def _valuta(self, view: object) -> object:
+        return ZeroERPPermission.valuta(_utente(), view, method="POST", cache={})
+
+    @patch(_RESOLVER)
+    @patch(_REPO)
+    def test_azione_concessa_consente_senza_livello(self, repo_cls, resolver) -> None:
+        resolver.is_super_admin.return_value = False
+        repo_cls.return_value.azione_del_passaggio.return_value = "emetti_ddt"
+        resolver.check_azione.return_value = True
+
+        esito = self._valuta(_view(_CAMBIO, {"stato_codice": "ANNULLATO"}))
+
+        self.assertTrue(esito.consentito)
+        repo_cls.return_value.azione_del_passaggio.assert_called_once_with(
+            "vendite.ddt", 42, "ANNULLATO",
+        )
+        resolver.check_azione.assert_called_once()
+        self.assertEqual(resolver.check_azione.call_args.args[1], "emetti_ddt")
+        resolver.get_livello_oggetto.assert_not_called()
+
+    @patch(_RESOLVER)
+    @patch(_REPO)
+    def test_azione_negata(self, repo_cls, resolver) -> None:
+        resolver.is_super_admin.return_value = False
+        repo_cls.return_value.azione_del_passaggio.return_value = "emetti_ddt"
+        resolver.check_azione.return_value = False
+
+        esito = self._valuta(_view(_CAMBIO, {"stato_codice": "ANNULLATO"}))
+
+        self.assertFalse(esito.consentito)
+        self.assertIs(esito.motivo, MotivoDiniego.AZIONE_NEGATA)
+        self.assertEqual(esito.azione, "emetti_ddt")
+
+    @patch(_RESOLVER)
+    @patch(_REPO)
+    def test_riga_senza_azione_ricade_sul_livello(self, repo_cls, resolver) -> None:
+        resolver.is_super_admin.return_value = False
+        repo_cls.return_value.azione_del_passaggio.return_value = None
+        resolver.get_area_schema_db.return_value = "vendite"
+        resolver.get_livello_oggetto.return_value = "LETTURA"
+
+        esito = self._valuta(_view(_CAMBIO, {"stato_codice": "SPEDITO"}))
+
+        self.assertFalse(esito.consentito)
+        self.assertIs(esito.motivo, MotivoDiniego.LIVELLO_INSUFFICIENTE)
+        resolver.check_azione.assert_not_called()
+        resolver.get_livello_oggetto.assert_called_once()
+
+    @patch(_RESOLVER)
+    @patch(_REPO)
+    def test_sulla_classe_nega(self, repo_cls, resolver) -> None:
+        resolver.is_super_admin.return_value = False
+
+        class _ViewCambio:
+            area_funzionale = "vendite"
+            model_permission = ("vendite", "ddt")
+            post_passaggio = _CAMBIO
+
+        esito = self._valuta(_ViewCambio)
+
+        self.assertFalse(esito.consentito)
+        self.assertIs(esito.motivo, MotivoDiniego.PASSAGGIO_SENZA_RICHIESTA)
+        repo_cls.assert_not_called()
+
+
+class PassaggioDocumentoTests(TestCase):
+
+    @patch(_REPO)
+    def test_stato_dal_corpo(self, repo_cls) -> None:
+        repo_cls.return_value.azione_del_passaggio.return_value = "emetti_ddt"
+
+        azione = _CAMBIO.azione(_view(_CAMBIO, {"stato_codice": "  ANNULLATO "}))
+
+        self.assertEqual(azione, "emetti_ddt")
+        repo_cls.return_value.azione_del_passaggio.assert_called_once_with(
+            "vendite.ddt", 42, "ANNULLATO",
+        )
+
+    # Un numero o un vuoto non sono uno stato: decide il livello, e il 400 col
+    # campo lo da' il service.
+    @patch(_REPO)
+    def test_stato_dal_corpo_non_testo(self, repo_cls) -> None:
+        for corpo in ({"stato_codice": 5}, {"stato_codice": "  "}, {}):
+            with self.subTest(corpo=corpo):
+                self.assertIsNone(_CAMBIO.azione(_view(_CAMBIO, corpo)))
+        repo_cls.assert_not_called()
+
+    @patch(_REPO)
+    def test_stato_fisso_ignora_il_corpo(self, repo_cls) -> None:
+        conferma = PassaggioDocumento(
+            testata="vendite.resi", documento_kwarg="ddt_id", stato_chiesto="CONFERMATO",
+        )
+        repo_cls.return_value.azione_del_passaggio.return_value = "conferma_reso"
+
+        azione = conferma.azione(_view(conferma, {"stato_codice": "ANNULLATO"}))
+
+        self.assertEqual(azione, "conferma_reso")
+        repo_cls.return_value.azione_del_passaggio.assert_called_once_with(
+            "vendite.resi", 42, "CONFERMATO",
+        )

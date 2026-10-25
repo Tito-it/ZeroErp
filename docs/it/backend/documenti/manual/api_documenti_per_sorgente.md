@@ -201,14 +201,14 @@ non scrivono — `anteprima/` compresa — perché solo la lista ha
 `is_search_endpoint`. Chi ha la sola lettura vede e scarica i documenti, ma non
 genera né l'anteprima né un documento nuovo.
 
-⚠️ **Un'asimmetria da decidere, non un difetto accertato.** Fra i cinque domini
-che espongono `emetti/`, **solo `preventivi` dichiara anche un permesso di
-processo** (`emetti_post_permission="cambia_stato_preventivi"`). Offerte,
-contratti, ordini e DDT delegano la transizione al service di dominio senza
-dichiarare un'azione di processo sulla view. Se emettere un DDT deve pesare
-quanto cambiare stato a un preventivo, mancano quattro dichiarazioni; se non
-deve, allora e' il preventivo l'eccezione e va scritto perche'. **Segnalato il
-2026-08-19, non modificato.**
+⭐ **Il permesso dell'emissione dalla riga del passaggio.** Un documento portato
+al modello (guida `modello-documento-di-vendita` §6) passa
+`emetti_passaggio=(testata, stato di emissione)`: la factory dichiara
+`post_passaggio` e la catena dei permessi legge l'azione dalla riga della matrice,
+la stessa del verbo. Oggi lo fa il **DDT** (`("vendite.ddt", "EMESSO")`, 2026-10-25).
+Il **preventivo** dichiara ancora `emetti_post_permission="cambia_stato_preventivi"`
+finché il suo giro del cantiere non lo porta al modello; offerte, contratti e
+ordini non dichiarano un'azione. Le due forme si escludono (errore all'import).
 
 ## 6. Dove guardare nel codice
 
