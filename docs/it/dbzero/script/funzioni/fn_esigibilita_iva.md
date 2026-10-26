@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_esigibilita_iva(p_iva_per_cassa boolean, p_cliente_split_payment character, p_cliente_partita_iva text, p_iva_id integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

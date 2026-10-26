@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_fail_lotto_task_run(p_task_run_id bigint, p_error_code character varying, p_error_message text, p_meta jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

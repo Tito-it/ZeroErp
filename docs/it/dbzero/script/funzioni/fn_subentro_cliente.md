@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_subentro_cliente(p_pdp_id bigint, p_data_attivazione date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

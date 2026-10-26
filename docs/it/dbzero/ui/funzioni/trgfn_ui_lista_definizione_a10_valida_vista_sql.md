@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_ui_lista_definizione_a10_valida_vista_sql()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

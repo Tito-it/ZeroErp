@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_login_attesa_secondi(p_fallimenti integer, p_tetto integer, p_attesa_base_secondi integer, p_attesa_max_secondi integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_pipeline_task_policy(p_pipeline_id bigint, p_task_code character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

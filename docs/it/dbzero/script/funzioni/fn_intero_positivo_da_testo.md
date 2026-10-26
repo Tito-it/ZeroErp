@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_intero_positivo_da_testo(p_valore text, p_parametro character varying, p_chi text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

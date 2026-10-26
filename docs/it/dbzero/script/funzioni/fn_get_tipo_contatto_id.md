@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_tipo_contatto_id(p_cod_int_tipo_contatto character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

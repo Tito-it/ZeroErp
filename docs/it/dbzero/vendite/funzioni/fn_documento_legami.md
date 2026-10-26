@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_documento_legami(p_documento character varying, p_id bigint)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

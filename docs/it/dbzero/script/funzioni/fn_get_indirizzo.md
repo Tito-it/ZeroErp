@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_indirizzo(p_soggetto_ruolo_id bigint, p_tipo_codice character varying, p_istanza_utility_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_crea_famiglia_documento(p_codice_interno character varying, p_descrizione character varying, p_colonna_numero text, p_colonna_billing_account text, p_colonna_serie text, p_prefisso_default character varying, p_lunghezza_default integer, p_attivo boolean, p_meta jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

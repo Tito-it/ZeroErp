@@ -4,6 +4,8 @@
 CREATE FUNCTION trgfn_ordini_righe_guard_data_consegna_spedita()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

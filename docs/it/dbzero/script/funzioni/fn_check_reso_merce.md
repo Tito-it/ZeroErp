@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_check_reso_merce(p_reso vendite.resi)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

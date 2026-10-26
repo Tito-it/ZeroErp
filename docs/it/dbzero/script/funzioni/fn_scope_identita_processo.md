@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_scope_identita_processo(p_auth_user_id integer, p_processo_codice text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

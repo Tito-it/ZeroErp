@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_cleanup_triggers_suffix_2(p_dry_run boolean, p_schema text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

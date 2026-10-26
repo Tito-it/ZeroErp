@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_indirizzo_documento_fuori_cliente(p_origine_indirizzo_id bigint, p_origine_soggetto_ruolo_id bigint, p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

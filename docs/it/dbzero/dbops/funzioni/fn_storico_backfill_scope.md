@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_storico_backfill_scope(p_schema_base text, p_table_base text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

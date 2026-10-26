@@ -4,6 +4,8 @@
 CREATE FUNCTION trgfn_regioni_guard_sigla_province()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

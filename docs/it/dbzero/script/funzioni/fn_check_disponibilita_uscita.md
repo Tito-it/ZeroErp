@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_disponibilita_uscita(p_magazzino_id bigint, p_articolo_id uuid, p_qta_uscita numeric, p_sorgente_tipo_id bigint, p_sorgente_riga bigint, p_sorgente_uid uuid, p_lotto_id bigint, p_asset_id bigint, p_ignora_blocchi boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_segment_key(p_sorgente character varying, p_uid text, p_riga bigint, p_mese date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

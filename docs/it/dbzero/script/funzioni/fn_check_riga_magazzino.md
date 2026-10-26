@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_riga_magazzino(p_magazzino_id bigint, p_articolo_id uuid, p_lotto_id bigint, p_asset_id bigint, p_ubicazione_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

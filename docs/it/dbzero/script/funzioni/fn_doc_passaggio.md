@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_doc_passaggio(p_testata regclass, p_stato_da_id bigint, p_stato_a_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

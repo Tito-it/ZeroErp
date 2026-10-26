@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_pgtap_crea_emittente_operatore(p_sigla character varying, p_processo_codice text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_ensure_logconn()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `postgres`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

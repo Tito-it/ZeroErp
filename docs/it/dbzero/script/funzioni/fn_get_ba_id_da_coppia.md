@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_ba_id_da_coppia(p_istanza_utility_id bigint, p_utility_id integer)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

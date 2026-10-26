@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_stato_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

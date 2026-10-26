@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_commesse_attivita_guard_tipo_doc_emittibile()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb, p_data date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

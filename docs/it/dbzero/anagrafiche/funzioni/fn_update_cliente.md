@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_update_cliente(p_cliente_id bigint, p_ba_categoria_cliente_id smallint, p_cliente_fields jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

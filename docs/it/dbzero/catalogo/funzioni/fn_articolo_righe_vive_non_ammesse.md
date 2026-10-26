@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_articolo_righe_vive_non_ammesse(p_articolo_id uuid)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

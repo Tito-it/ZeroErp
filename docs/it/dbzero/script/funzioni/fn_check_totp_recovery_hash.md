@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_totp_recovery_hash(p_hash jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

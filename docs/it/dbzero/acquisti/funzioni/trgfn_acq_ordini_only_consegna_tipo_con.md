@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_acq_ordini_only_consegna_tipo_con()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_resolve_lotto_utility_emittente(p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_scope text, p_caller text, p_check_emittente_attivo boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

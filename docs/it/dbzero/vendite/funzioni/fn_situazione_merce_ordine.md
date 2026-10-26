@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_situazione_merce_ordine(p_ddt_ids bigint[], p_ordine_ids bigint[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

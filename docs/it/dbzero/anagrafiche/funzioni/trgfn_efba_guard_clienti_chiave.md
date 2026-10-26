@@ -4,6 +4,8 @@
 CREATE FUNCTION trgfn_efba_guard_clienti_chiave()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

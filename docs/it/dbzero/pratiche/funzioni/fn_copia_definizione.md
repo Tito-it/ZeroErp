@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_copia_definizione(p_sorgente_id integer, p_emittente_dest bigint, p_provenance boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

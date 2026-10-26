@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_list_fatturazione_pipeline_steps(p_tipo_lotto text, p_utility_id integer, p_tipo_doc_fiscale_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

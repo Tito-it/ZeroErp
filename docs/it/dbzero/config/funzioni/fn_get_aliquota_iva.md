@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_aliquota_iva(p_iva_id integer, p_stato_id integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_processo_acceso_su_valori(p_canale text, p_obsoleto_dal date, p_spegnibile boolean, p_acceso_in_sviluppo boolean, p_acceso_in_produzione boolean, p_acceso_a_mano boolean, p_ambiente text, p_accendibile_in_produzione boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

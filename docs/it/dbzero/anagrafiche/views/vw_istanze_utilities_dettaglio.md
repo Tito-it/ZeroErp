@@ -1,6 +1,8 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/vw_istanze_utilities_dettaglio.md" %}
 # 🔍 View `vw_istanze_utilities_dettaglio`
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

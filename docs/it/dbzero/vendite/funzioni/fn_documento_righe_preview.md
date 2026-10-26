@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_documento_righe_preview(p_documento character varying, p_documento_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

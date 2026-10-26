@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_scope_ef_whitelist_via_offerta_eccezione(p_auth_user_id integer, p_eccezione_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

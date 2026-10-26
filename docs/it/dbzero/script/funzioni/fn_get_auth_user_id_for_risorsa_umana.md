@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_auth_user_id_for_risorsa_umana(p_risorsa_umana_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

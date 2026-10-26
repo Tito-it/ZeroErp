@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_riferimento_gruppo_fatturabile(p_gruppo_key text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

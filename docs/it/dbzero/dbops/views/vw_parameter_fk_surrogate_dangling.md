@@ -5,6 +5,8 @@
 >
 > Diagnostica: parametri (default + override) il cui valore non esiste nel target del registry FK-surrogata. Output non vuoto = righe da risolvere manualmente. Sorgente: config.parameters + config.parameter_overrides.
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

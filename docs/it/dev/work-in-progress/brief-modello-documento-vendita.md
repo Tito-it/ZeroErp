@@ -74,6 +74,9 @@ ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committa
 | 4-bis-decies-sexies-bis | **Tid** ⏭️ | Commit del passaggio BE del giro 9 (il lettore `stato_id` ritirato, ok di Tid 2026-10-26) | §13.8 | 4-bis-decies-sexies |
 | 4-bis-decies-septies-bis | team DB | Richiesta (priorità bassa, ok di Tid 2026-10-26): numero e link della revisione precedente nella finestra dell'annullo dell'offerta | §13.9 | — |
 | 4-bis-decies-septies | **Tid** | Il dato `emetti_offerta` (ed `emetti_contratto`, `emetti_ordine`) ai profili su dbdev | §13.7 | — |
+| 4-bis-undecies | ✅ **Tid** → team DB | Il via al giro 10: la commessa, ricognizione (2026-10-26). Non aspetta il BE (§5) | §14 | 4-bis-decies-quinquies |
+| 4-bis-undecies-bis | ✅ team DB | Giro 10, la commessa: ricognizione, piano, domande | §14 | 4-bis-undecies |
+| 4-bis-undecies-ter | **Tid** ⏭️ | C-1 e C-4 decise (2026-10-26); C-2, C-3 e il via allo sviluppo | §14.3 | 4-bis-undecies-bis |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
@@ -81,6 +84,7 @@ ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committa
 | 5-ter | **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, il censimento dei gate delle azioni per riga; quando, lo decide Tid | §12 | — |
 
 Decisioni aperte di Tid: quando fare D-N1 (§12, riga 5-ter). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Lavoro da committare (`dev/backend-tid`): il passaggio BE del giro 9 (§13.8) e questo brief. Il giro 9 DB è committato (`52e18d887`). Committati: il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`; il merge `2f5da4bed` ne aveva perso la tabella e il blocco «Chi riparte», ricomposti il 2026-10-26), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
+Decisioni aperte di Tid: C-2 e C-3 del giro della commessa (§14.3; C-1 e C-4 decise) e il via allo sviluppo; quando fare D-N1 (§12, riga 5-ter). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Lavoro da committare (`dev/db-tid`): il giro 9 (§13.4, applicato e verde) e questo brief. Committati: il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`; il merge `2f5da4bed` ne aveva perso la tabella e il blocco «Chi riparte», ricomposti il 2026-10-26), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -2572,3 +2576,102 @@ o la riga del passaggio dichiara anche dove la motivazione è **ammessa** (oggi 
 il verbo rifiuta il resto, o la colonna si scrive solo dove la riga la chiede. Ricaduta BE attesa: togliere il
 controllo di `registra_esito` quando il verbo lo fa.
 
+## 14. Giro 10: la commessa al modello — ricognizione e piano (2026-10-26)
+
+✅ **Via di Tid il 2026-10-26** («procedi con ricognizione»): la ricognizione della commessa, il giro dopo l'offerta
+(W-1). Lo sviluppo parte con le risposte alle domande del §14.3.
+
+### 14.1 Com'è oggi (dbdev, CSV e `backend/`, 2026-10-26)
+
+* **Vocabolario** `vendite.stati_commessa` (schema `vendite`, non `config`): BOZZA (`iniziale`), APERTA,
+  IN_ESECUZIONE, PRONTA_FATTURAZIONE (`emittibile`: la pescano le attività fatturabili), CHIUSA (`chiude_commessa`),
+  ANNULLATA (`is_abortito`, `chiude_commessa`). Ha `fase`, `modificabile`, `emittibile`, `chiude_commessa`; **non** ha
+  `emissione`: la commessa non si stampa e nasce dalla push dei documenti a monte (guida §7, §10).
+* **Matrice** `vendite.transizioni_stati_commessa`, dodici righe; ⛔ **non ha** `azione_processo_codename`. Manuali:
+  «rendi pronta» (BOZZA, APERTA, IN_ESECUZIONE → PRONTA_FATTURAZIONE), «riapri» (PRONTA_FATTURAZIONE →
+  IN_ESECUZIONE), «chiudi» (PRONTA_FATTURAZIONE, IN_ESECUZIONE → CHIUSA), «annulla» (da BOZZA, APERTA, IN_ESECUZIONE,
+  PRONTA_FATTURAZIONE). Di processo (`manuale = false`): BOZZA → APERTA e APERTA → IN_ESECUZIONE. La mappa del modello
+  la conosce già (`fn_doc_stato_modello`).
+* **Guard di transizione** `trgfn_commesse_guard_transizione`: ✅ **legge già la matrice**
+  (`E_COMMESSA_STATO_TRANSIZIONE_INVALIDA`); poi le condizioni per destinazione, dalle loro `fn_check_*`
+  (`fn_check_commessa_pronta_fatturazione`, `fn_check_commessa_chiudibile`, `fn_check_commessa_annullabile`), legate ai
+  codici `'PRONTA_FATTURAZIONE'`, `'CHIUSA'`, `'ANNULLATA'`. Restano.
+* **Verbo di stato** `vendite.fn_cambia_stato_commessa(p_commessa_id, p_nuovo_stato, p_user)`: c'è, ma è **il verbo di
+  prima del modello**: INVOKER, senza il predicato del perimetro, senza la prima riga comune (né azione, né «passaggio
+  di processo», né lo stato che ha già: `E_DOC_GIA_NELLO_STATO` non c'è), scrive con un `UPDATE` suo, e ha il
+  parametro `p_user` che gli altri verbi hanno perso (il preventivo l'ha perso nel giro 6, `20261025-43`). È l'unico
+  scrittore della colonna (letto il 2026-10-26 su tutte le funzioni); lo chiamano:
+  * il backend (`CommesseRepository.cambia_stato_commessa`, dal `POST .../commesse/<id>/stato/`);
+  * `vendite.fn_annulla_commessa` (DEFINER, conferma i legami: ✅ già sul modello dell'annullo), con il letterale
+    `'ANNULLATA'`;
+  * `vendite.fn_rendi_commessa_emittibile`, **il ponte della push**: dopo un invio riuscito approva le righe di quel
+    giro e porta la testata a PRONTA_FATTURAZIONE, **passando dalle righe «rendi pronta», che sono manuali**. Un
+    passaggio che l'operatore chiede e che il sistema fa come conseguenza dell'invio, sulla stessa riga della matrice.
+* ⚠️ **Due passaggi di processo senza chi li scrive.** BOZZA → APERTA e APERTA → IN_ESECUZIONE sono in matrice, ma
+  nessuna funzione e nessun punto del backend li chiede (letto il 2026-10-26 sul codice; la guida delle commesse li
+  elenca come «automatiche, push/ponte emittibilità»). Fatto datato, non un motivo: su dbdev nessuna commessa è in
+  APERTA o IN_ESECUZIONE.
+* **Azione**: `cambia_stato_commessa` («Cambia stato commessa (chiudi/riapri/annulla)») a catalogo, chiesta dal solo
+  backend (`post_permission` della view dello stato) su **ogni** passaggio, compreso l'annullo della bozza. Il DB non la
+  conosce.
+* **Copie BE delle regole DB** (`commesse_service.cambia_stato_commessa`): la «difesa applicativa» che ammette solo lo
+  stato di una `available_action` abilitata ripete due regole del DB: il passaggio di processo non si chiede a mano (la
+  prima riga comune, `E_DOC_PASSAGGIO_DI_PROCESSO`, quando il verbo ce l'avrà) e le condizioni delle `fn_check_*` (il
+  guard). Nasceva perché il verbo non rifiuta i passaggi di processo.
+* **Capability** `fn_available_actions_commessa`: dalla matrice coi motivi; nessun filtro sull'azione; motivi legati ai
+  codici di destinazione.
+* **Numero**: la commessa ha il suo codice alla nascita; non si emette, quindi la regola §7 non la riguarda.
+* **Gemello d'acquisto**: nessuno.
+* **pgTAP** (conteggio del 2026-10-26, per dimensionare il porting): 9 file scrivono lo stato con un `UPDATE` diretto,
+  20 chiamano `fn_cambia_stato_commessa`, 53 usano il builder `dbops.fn_pgtap_crea_commessa`, che porta lo stato con
+  `dbops.fn_pgtap_porta_a_stato` (oggi un `UPDATE`, con la porta il verbo).
+
+### 14.2 Il piano
+
+| Pezzo | Che cosa |
+| --- | --- |
+| matrice | colonna `azione_processo_codename` su `vendite.transizioni_stati_commessa`, valori dal CSV secondo C-1; mirror con la colonna (⚠️ `nullValue`) |
+| verbo | `vendite.fn_cambia_stato_commessa` portato al verbo comune, gemello di quello del contratto: DEFINER col predicato del perimetro (`fn_scope_ef_whitelist_via_commessa`), `fn_doc_stato_id`, `fn_guard_passaggio`, `fn_doc_scrivi_stato`; la firma secondo C-4 |
+| ponte della push | secondo C-2 |
+| passaggi senza causa | secondo C-3 |
+| porta | `trgfn_doc_stato_solo_dal_verbo` montato `_a05_` su `vendite.commesse`; `fn_pgtap_porta_a_stato` conosce il verbo |
+| annullo | `fn_annulla_commessa` chiama il verbo nuovo; lo stato d'annullo dal vocabolario (`fn_stato_abortito_id`) |
+| guard | resta com'è (legge già la matrice) |
+| capability | permesso ⇒ nascondi; il motivo dell'annullo legato a `is_abortito`, quello di PRONTA_FATTURAZIONE a `emittibile`; CHIUSA resta sul codice (`chiude_commessa` vale anche per ANNULLATA) |
+| fixture | i 9 `UPDATE` diretti al verbo o alla fixture; i 20 chiamanti del verbo secondo C-4; nessun builder nuovo |
+| guida | §10 riga della commessa; la guida delle commesse (macchina di transizioni) rimanda al modello |
+
+**Richiesta al BE** (col percorso intero, a giro DB provato): il 403 dalla riga del passaggio (`PassaggioDocumento`)
+al posto di `post_permission = "cambia_stato_commessa"` su ogni passaggio; la «difesa applicativa» si ritira (la dice
+il verbo); il repository segue la firma (C-4); la guida delle commesse e `api_commessa_stato.md`.
+
+### 14.3 Domande per Tid
+
+* **C-1. L'azione della commessa.** La guida §6 vuole un'azione sola, sui passaggi pesanti. La commessa non si emette:
+  i suoi passaggi pesanti sono quelli che la mandano in fatturazione o la chiudono. Proposta: **riusare**
+  `cambia_stato_commessa` (c'è già, i profili che oggi cambiano lo stato la hanno) sulle righe «rendi pronta»,
+  «riapri», «chiudi» e sull'annullo di una commessa non in bozza; l'annullo della bozza senza azione (M-4, come gli
+  altri documenti). Cambio visibile: oggi l'annullo della bozza chiede l'azione (dal backend), domani no.
+  Alternativa: un'azione nuova (`emetti_commessa`?) per simmetria di nome coi gemelli; costa un dato da concedere a
+  tutti i profili che oggi lavorano.
+* **C-2. Il ponte della push.** La push porta la commessa a PRONTA_FATTURAZIONE come conseguenza di un invio
+  riuscito, sulle stesse righe che l'operatore chiede con «rendi pronta». Proposta: `fn_rendi_commessa_emittibile`
+  scrive lo stato con la **sola seconda metà** del verbo (`fn_doc_scrivi_stato`), DEFINER, come le proiezioni di
+  preventivo, ordine e offerta: il permesso è quello della push (`run_commesse_push`, `push_commessa_preventivi`), non
+  quello del passaggio manuale; la matrice e le condizioni le giudica il guard come oggi. Alternativa: il ponte passa
+  dal verbo intero, e chi lancia la push deve avere anche l'azione di C-1.
+* **C-3. I due passaggi di processo senza causa** (BOZZA → APERTA, APERTA → IN_ESECUZIONE). Proposta: **fuori da questo
+  giro**, dichiarati come divergenza nella riga della commessa della guida §10 («passaggi di processo che nessuno
+  scrive»): il verbo li rifiuterà comunque se chiesti a mano. Se APERTA e IN_ESECUZIONE servono ancora, e a chi, è una
+  domanda sul vocabolario della commessa, non sul modello del cambio di stato. Alternativa: ritirarli qui (righe della
+  matrice spente), con gli stati che restano raggiungibili solo da «riapri».
+* **C-4. La firma del verbo.** Proposta: `fn_cambia_stato_commessa(p_commessa_id, p_stato)` **senza `p_user`**, come
+  il preventivo nel giro 6: chi scrive lo dice l'audit dalla sessione. Cambio di firma (DROP + CREATE): si portano i
+  chiamanti DB (annullo, ponte), il repository BE e i 20 pgTAP. Alternativa: tenere `p_user` (ignorato o usato per
+  `user_update`), firma invariata.
+
+D-N1 (le azioni di riga) resta fuori senza una tua decisione: le righe di commessa (approva, annulla attività) ne
+sarebbero un caso.
+
+✅ **Decise da Tid il 2026-10-26: C-1 e C-4 come da proposta.** C-2 e C-3 aperte (Tid ha chiesto una spiegazione più
+semplice).

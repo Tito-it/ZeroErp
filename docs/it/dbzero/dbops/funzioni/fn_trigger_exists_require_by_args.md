@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_trigger_exists_require_by_args(p_child_rel regclass, p_parent_schema text, p_parent_table text, p_parent_attivo_col text, p_fk_col text, p_parent_ref_col text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

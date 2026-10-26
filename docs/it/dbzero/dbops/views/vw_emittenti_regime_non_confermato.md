@@ -5,6 +5,8 @@
 >
 > Gli emittenti fiscali attivi il cui regime fiscale nessuno ha confermato (regime_fiscale_confermato_il NULL): il regime e' quello del default RF01 (D-1) o di un cambio senza conferma. DEVE restare VUOTA. ⛔ Copre un guasto che non assomiglia a un errore: un emittente in IVA per cassa lasciato a RF01 emette tutte le fatture a esigibilita' immediata. Tutti i regimi e non solo RF01: un regime non confermato e' un regime che nessuno ha dichiarato, qualunque codice abbia. Si svuota confermando il regime dal form dell'emittente. Brief: brief-db-esigibilita-iva-per-cassa-emittente (D-1, D-11).
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

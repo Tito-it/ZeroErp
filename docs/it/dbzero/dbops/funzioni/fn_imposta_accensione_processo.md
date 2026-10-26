@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_imposta_accensione_processo(p_processo_codice text, p_acceso boolean, p_motivo text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

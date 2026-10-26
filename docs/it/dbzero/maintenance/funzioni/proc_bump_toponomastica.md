@@ -5,6 +5,8 @@
 CREATE PROCEDURE proc_bump_toponomastica(IN p_toponomastica_id integer, IN p_descrizione text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

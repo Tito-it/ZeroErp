@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_accoda_stampe_lotto(p_lotto_id bigint, p_tipo_documento_output_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

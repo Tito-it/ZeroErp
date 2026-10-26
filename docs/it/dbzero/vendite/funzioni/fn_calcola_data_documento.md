@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_calcola_data_documento(p_registro_id bigint, p_competenza_mese date, p_serie character varying, p_data_dichiarata date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

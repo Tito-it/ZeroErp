@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_totp_disabilita_device(p_auth_user_id integer, p_motivo text)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

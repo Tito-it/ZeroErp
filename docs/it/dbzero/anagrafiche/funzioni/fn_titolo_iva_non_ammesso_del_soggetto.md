@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_titolo_iva_non_ammesso_del_soggetto(p_soggetto_id uuid, p_tipo_soggetto_dettaglio_id bigint)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

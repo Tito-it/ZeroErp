@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_doc_testata_in_stato(p_tabella regclass, p_stato text, p_sempre jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

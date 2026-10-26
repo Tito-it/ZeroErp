@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_documento_lineage_legami(p_archi text[], p_from_tipo_ids bigint[], p_from_uids text[], p_to_tipo_ids bigint[], p_to_uids text[])
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

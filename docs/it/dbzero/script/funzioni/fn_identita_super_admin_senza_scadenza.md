@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_identita_super_admin_senza_scadenza(p_identita_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

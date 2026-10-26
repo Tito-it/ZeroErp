@@ -5,6 +5,8 @@
 >
 > Vista dati societari con decodifiche forma giuridica e provincia, include identificativi tecnici. destinatario_fe e' il canale FE (P = PEC, C = codice SDI), codice_sdi il codice (rev 20261010-38).
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

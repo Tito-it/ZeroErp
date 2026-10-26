@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_drop_triggers_by_function_args(p_rel regclass, p_func_schema text, p_func_name text, VARIADIC p_args text[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

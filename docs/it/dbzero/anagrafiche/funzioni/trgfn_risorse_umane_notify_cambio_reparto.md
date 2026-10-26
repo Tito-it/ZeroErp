@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_risorse_umane_notify_cambio_reparto()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

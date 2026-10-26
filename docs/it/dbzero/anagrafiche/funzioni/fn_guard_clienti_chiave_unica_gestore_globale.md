@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_guard_clienti_chiave_unica_gestore_globale()
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

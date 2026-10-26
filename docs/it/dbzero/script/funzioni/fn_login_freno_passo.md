@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_login_freno_passo(p_tentativi_prima integer, p_bloccato_fino_a_prima timestamp with time zone, p_adesso timestamp with time zone, p_max_tentativi integer, p_blocco_minuti integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

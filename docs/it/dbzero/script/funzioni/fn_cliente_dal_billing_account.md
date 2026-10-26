@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_cliente_dal_billing_account(p_billing_account_id bigint, p_soggetto_ruolo_id bigint, p_utility_id integer, p_documento text, p_colonna_ruolo text, p_tx_id uuid, OUT soggetto_ruolo_id bigint, OUT utility_id integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_listino_cambiabile(p_documento character varying, p_documento_id bigint, p_listino_da bigint, p_listino_a bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

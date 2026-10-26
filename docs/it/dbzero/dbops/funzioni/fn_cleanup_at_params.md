@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_cleanup_at_params(p_schema text, p_table text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

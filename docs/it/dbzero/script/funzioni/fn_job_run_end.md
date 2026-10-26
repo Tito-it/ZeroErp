@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_job_run_end(p_id bigint, p_ok boolean, p_message text, p_rows_affected bigint, p_error_code text, p_error_detail text, p_meta jsonb, p_lock_key text, p_sqlstate text)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

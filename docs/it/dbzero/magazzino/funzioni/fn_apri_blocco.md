@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_apri_blocco(p_magazzino_id bigint, p_articolo_id uuid, p_qta numeric, p_soggetto_ruolo_id bigint, p_nota text, p_lotto_id bigint, p_asset_id bigint, p_ubicazione_id bigint)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

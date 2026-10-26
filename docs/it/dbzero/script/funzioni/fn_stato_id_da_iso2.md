@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_stato_id_da_iso2(p_iso2 text, p_chi text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>
