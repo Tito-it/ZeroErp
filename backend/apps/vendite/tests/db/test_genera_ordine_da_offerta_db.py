@@ -19,7 +19,11 @@
 #
 # ⭐ Il mondo si COSTRUISCE (regola zero), come nel pgTAP: cliente, listino con
 #    una versione in vigore da oggi, un articolo MERCE, un'offerta con una riga
-#    AGGIUNTA nella combinazione di default dell'articolo, portata ad ACCETTATA.
+#    AGGIUNTA nella combinazione di default dell'articolo, portata ad ACCETTATA
+#    dalla fixture `dbops.fn_pgtap_porta_a_stato`, che passa dal verbo
+#    dell'offerta e concede all'operatore l'azione dei passaggi
+#    (`emetti_offerta`). ⛔ Fino al 2026-10-26 un UPDATE diretto dello stato:
+#    ora la porta lo rifiuta (brief-modello-documento-vendita §13.6 punto 8).
 #    Tutto in transazione ANNULLATA.
 # ------------------------------------------------------------
 """
@@ -76,10 +80,7 @@ _RIGA = (
     " JOIN vendite.fn_articolo_erogazioni(ar.id) ae ON ae.e_default"
     " WHERE ar.id = (SELECT id FROM _a)"
 )
-_PORTA_A = (
-    "UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id ="
-    " (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = %s) WHERE id = %s"
-)
+_PORTA_A = "SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali'::regclass, %s, %s)"
 
 
 class GeneraOrdineDaOffertaDbTests(unittest.TestCase):
@@ -102,15 +103,14 @@ class GeneraOrdineDaOffertaDbTests(unittest.TestCase):
         return esito
 
     # Scopo: un'offerta con la sua riga, nello stato dato (BOZZA o ACCETTATA,
-    #        passando da EMESSA come vuole la state machine); ritorna l'id.
+    #        per il percorso della matrice); ritorna l'id.
     @staticmethod
     def _offerta(cur, stato: str = "ACCETTATA") -> int:
         cur.execute(_OFFERTA)
         offerta_id = cur.fetchone()[0]
         cur.execute(_RIGA, [offerta_id])
         if stato == "ACCETTATA":
-            cur.execute(_PORTA_A, ["EMESSA", offerta_id])
-            cur.execute(_PORTA_A, ["ACCETTATA", offerta_id])
+            cur.execute(_PORTA_A, [offerta_id, "ACCETTATA"])
         return offerta_id
 
     # Scopo: il codice del rifiuto, su un savepoint: la transazione del mondo
@@ -185,7 +185,9 @@ class GeneraOrdineDaOffertaDbTests(unittest.TestCase):
         self.assertEqual(self._nel_mondo(azione).code, "E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI")
 
     # 6. Senza documenti vivi l'offerta accettata si annulla: nessun «solo da
-    #    BOZZA» nel service.
+    #    BOZZA» nel service. ⚠️ L'annullo dell'accettata chiede `emetti_offerta`
+    #    (O-1): l'operatore la ha dalla fixture, che gliel'ha concessa per
+    #    emettere.
     def test_annullo_da_accettata_senza_documenti_vivi(self):
         def azione(cur):
             offerta_id = self._offerta(cur)

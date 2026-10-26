@@ -11,6 +11,7 @@
 
 from django.urls import path
 
+from apps.vendite.api.legami_views import ApiOffertaLegami
 from apps.vendite.api.lineage_views import ApiOffertaPassaggi
 from apps.vendite.api.note_views import (
     ApiOffertaNoteDetail,
@@ -104,6 +105,13 @@ urlpatterns = [
         "<int:offerta_id>/annulla/",
         ApiOffertaAnnulla.as_view(),
         name="vendite-offerta-annulla",
+    ),
+    # I legami per la finestra di conferma dell'annullo (O-4): la revisione
+    # precedente che torna emessa.
+    path(
+        "<int:offerta_id>/legami/",
+        ApiOffertaLegami.as_view(),
+        name="vendite-offerta-legami",
     ),
     # Revisioni (Step 6-7 brief DB, atterrati 2026-05-25).
     path(

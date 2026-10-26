@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: Dialog multi-modalita' per registrare l'esito di un'offerta.
 //        Modalita' (state machine asimmetrica, piano BE+FE §C3):
-//          - ACCETTATA  da EMESSA  (motivazione opzionale)
+//          - ACCETTATA  da EMESSA  (nessuna motivazione: il BE la rifiuta, 400)
 //          - RIFIUTATA  da EMESSA  (motivazione obbligatoria, "no del cliente")
 //          - ANNULLATA  da BOZZA o da ACCETTATA (motivazione obbligatoria,
 //                       "ritiro da noi"; da ACCETTATA solo senza documenti vivi
@@ -10,12 +10,21 @@
 //        Il dialog non sceglie la modalita': la riceve via prop dal drawer
 //        (che la passa in base al bottone cliccato). Single source of truth
 //        della state machine = OffertaDrawer.drawerActions computed.
+//        ⭐ Nemmeno l'obbligo della motivazione: lo dice la riga del passaggio
+//        (`requires_motivazione` dell'azione della capability), la stessa che
+//        il verbo DB fa rispettare (E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA, O-3 di
+//        brief-modello-documento-vendita §13). Fino al 2026-10-26 era un
+//        elenco di modalita' scritto qui.
+//        ⭐ Il campo c'e' solo dove la riga lo chiede: una motivazione
+//        facoltativa non ha dove andare (l'accettazione non ha una colonna che
+//        la tenga, e fino al 2026-10-26 il backend la scartava in silenzio).
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppDialog from '../../../../core/components/AppDialog.vue'
 import Message from 'primevue/message'
 import Textarea from 'primevue/textarea'
 import { useFotografiaDialog } from '../../../../core/composables/useFotografiaDialog'
+import { STATO_OFFERTA } from '../../constants'
 
 const { t } = useI18n()
 
@@ -23,7 +32,9 @@ const props = defineProps({
   visible: Boolean,
   offerta: { type: Object, default: null },
   // 'ACCETTATA' | 'RIFIUTATA' | 'ANNULLATA'
-  modalita: { type: String, default: 'ACCETTATA' },
+  modalita: { type: String, default: STATO_OFFERTA.ACCETTATA },
+  // `requires_motivazione` dell'azione che apre il dialog (capability).
+  motivazioneObbligatoria: { type: Boolean, default: false },
   loading: Boolean,
 })
 const emit = defineEmits(['update:visible', 'confirm'])
@@ -34,24 +45,20 @@ watch(() => props.visible, (val) => {
   if (val) motivazione.value = ''
 })
 
-const motivazioneObbligatoria = computed(
-  () => props.modalita === 'RIFIUTATA' || props.modalita === 'ANNULLATA',
-)
-
 const titolo = computed(() => {
   switch (props.modalita) {
-    case 'ACCETTATA': return t('vendite.offerte.esito_accettata_titolo')
-    case 'RIFIUTATA': return t('vendite.offerte.esito_rifiutata_titolo')
-    case 'ANNULLATA': return t('vendite.offerte.esito_annullata_titolo')
+    case STATO_OFFERTA.ACCETTATA: return t('vendite.offerte.esito_accettata_titolo')
+    case STATO_OFFERTA.RIFIUTATA: return t('vendite.offerte.esito_rifiutata_titolo')
+    case STATO_OFFERTA.ANNULLATA: return t('vendite.offerte.esito_annullata_titolo')
     default: return ''
   }
 })
 
 const messaggio = computed(() => {
   switch (props.modalita) {
-    case 'ACCETTATA': return t('vendite.offerte.esito_accettata_messaggio')
-    case 'RIFIUTATA': return t('vendite.offerte.esito_rifiutata_messaggio')
-    case 'ANNULLATA': return t('vendite.offerte.esito_annullata_messaggio')
+    case STATO_OFFERTA.ACCETTATA: return t('vendite.offerte.esito_accettata_messaggio')
+    case STATO_OFFERTA.RIFIUTATA: return t('vendite.offerte.esito_rifiutata_messaggio')
+    case STATO_OFFERTA.ANNULLATA: return t('vendite.offerte.esito_annullata_messaggio')
     default: return ''
   }
 })
@@ -60,27 +67,27 @@ const messaggio = computed(() => {
 // (RIFIUTATA/ANNULLATA). L'icona resta il check standard (FormFooter); a
 // distinguere l'azione bastano colore + label.
 const saveSeverity = computed(
-  () => props.modalita === 'ACCETTATA' ? null : 'danger',
+  () => props.modalita === STATO_OFFERTA.ACCETTATA ? null : 'danger',
 )
 
 const labelConferma = computed(() => {
   switch (props.modalita) {
-    case 'ACCETTATA': return t('vendite.offerte.esito_accettata_conferma')
-    case 'RIFIUTATA': return t('vendite.offerte.esito_rifiutata_conferma')
-    case 'ANNULLATA': return t('vendite.offerte.esito_annullata_conferma')
+    case STATO_OFFERTA.ACCETTATA: return t('vendite.offerte.esito_accettata_conferma')
+    case STATO_OFFERTA.RIFIUTATA: return t('vendite.offerte.esito_rifiutata_conferma')
+    case STATO_OFFERTA.ANNULLATA: return t('vendite.offerte.esito_annullata_conferma')
     default: return ''
   }
 })
 
 const canConfirm = computed(() => {
-  if (motivazioneObbligatoria.value && !motivazione.value.trim()) return false
+  if (props.motivazioneObbligatoria && !motivazione.value.trim()) return false
   return true
 })
 
 function onConfirm() {
   emit('confirm', {
     esito: props.modalita,
-    motivazione: motivazione.value.trim(),
+    motivazione: props.motivazioneObbligatoria ? motivazione.value.trim() : null,
   })
 }
 
@@ -109,23 +116,21 @@ const fotografia = useFotografiaDialog(() => ({ motivazione: motivazione.value }
       <span v-if="offerta.billing_account_display"> · {{ offerta.billing_account_display }}</span>
     </div>
 
-    <div class="form-field" style="margin-top: 1rem;">
+    <div v-if="props.motivazioneObbligatoria" class="form-field" style="margin-top: 1rem;">
       <label>
         {{ t('vendite.offerte.field_motivazione') }}
-        <span v-if="motivazioneObbligatoria">*</span>
+        <span>*</span>
       </label>
       <Textarea
         v-model="motivazione"
         rows="4"
         autoResize
-        :placeholder="motivazioneObbligatoria
-          ? t('vendite.offerte.field_motivazione_required_placeholder')
-          : t('vendite.offerte.field_motivazione_optional_placeholder')"
+        :placeholder="t('vendite.offerte.field_motivazione_required_placeholder')"
       />
     </div>
 
     <Message
-      v-if="motivazioneObbligatoria"
+      v-if="props.motivazioneObbligatoria"
       severity="warn"
       :closable="false"
       size="small"

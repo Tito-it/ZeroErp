@@ -140,9 +140,10 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
     return res.data.data
   }
 
-  // BOZZA o ACCETTATA -> ANNULLATA. Motivazione obbligatoria.
-  async function annulla(id, { motivazione }) {
-    const res = await annullaOfferta(id, { motivazione })
+  // BOZZA o ACCETTATA -> ANNULLATA. Motivazione obbligatoria; `dichiarazione`
+  // e' la conferma dei legami (la revisione precedente che torna emessa).
+  async function annulla(id, { motivazione, dichiarazione = {} }) {
+    const res = await annullaOfferta(id, { motivazione, dichiarazione })
     emitDataChanged(TAB_ENTITIES.OFFERTA_COMMERCIALE, id)
     return res.data.data
   }

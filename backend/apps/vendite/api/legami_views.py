@@ -4,7 +4,7 @@
 # Doc: Python
 # Scopo: Factory della API view «legami» dei documenti vendita che si
 #        annullano con conferma (bolla, ordine, preventivo, contratto,
-#        commessa) + le cinque view di dominio. Il flusso e' lo stesso per tutti: cambiano
+#        commessa, offerta) + le sei view di dominio. Il flusso e' lo stesso per tutti: cambiano
 #        i nomi OpenAPI, il kwarg URL e il lettore del service (che legge
 #        prima la testata del suo documento: 404 col codice del dominio).
 #        Stessa architettura di lineage_views.
@@ -15,6 +15,8 @@
 # backend e' `services/_annullo_con_legami.legami_del_documento`.
 # La commessa (brief-db-annullo-a-valle-riapre-a-monte D-2, 2026-10-12) e' la
 # quinta: annullarla riapre a monte cio' che l'ha riempita.
+# L'offerta (brief-modello-documento-vendita §13, O-4 di Tid, 2026-10-26) e' la
+# sesta: annullare una revisione fa tornare emessa la revisione precedente.
 
 from __future__ import annotations
 
@@ -107,6 +109,11 @@ def _commessa(documento_id: int) -> dict[str, Any]:
     return commesse_service.get_legami(documento_id)
 
 
+def _offerta(documento_id: int) -> dict[str, Any]:
+    from apps.vendite.services.offerte_service import OfferteService
+    return OfferteService().get_legami(documento_id)
+
+
 ApiDdtLegami = build_legami_view(
     schema_prefix="Ddt", url_kwarg="ddt_id", lettore=_ddt,
     model_permission=("vendite", "ddt"),
@@ -126,4 +133,8 @@ ApiContrattoLegami = build_legami_view(
 ApiCommessaLegami = build_legami_view(
     schema_prefix="Commessa", url_kwarg="commessa_id", lettore=_commessa,
     model_permission=None,
+)
+ApiOffertaLegami = build_legami_view(
+    schema_prefix="Offerta", url_kwarg="offerta_id", lettore=_offerta,
+    model_permission=("vendite", "offerta_commerciale"),
 )

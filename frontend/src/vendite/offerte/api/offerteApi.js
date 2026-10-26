@@ -63,7 +63,9 @@ export function emettiOfferta(id, { allegati = [], templateId = null } = {}) {
   })
 }
 
-// EMESSA -> ACCETTATA o RIFIUTATA. Motivazione obbligatoria su RIFIUTATA.
+// EMESSA -> ACCETTATA o RIFIUTATA. Motivazione obbligatoria su RIFIUTATA: lo
+// dice la riga del passaggio, al verbo DB (E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA).
+// Su ACCETTATA niente motivazione: una non vuota e' un 400 col campo.
 export function registraEsitoOfferta(id, { esito, motivazione }) {
   return api.post(`${BASE}/${id}/registra-esito/`, {
     esito,
@@ -74,8 +76,11 @@ export function registraEsitoOfferta(id, { esito, motivazione }) {
 // BOZZA o ACCETTATA -> ANNULLATA (ritiro da noi). Motivazione obbligatoria.
 // Non e' ammesso annullare da EMESSA (state machine asimmetrica: dopo
 // l'emissione, o accetta il cliente o rifiuta, o si riemette come revisione).
-export function annullaOfferta(id, { motivazione }) {
-  return api.post(`${BASE}/${id}/annulla/`, { motivazione })
+// `dichiarazione`: la conferma dell'annullo di una revisione, che fa tornare
+// emessa la precedente (`{ legami_confermati }`, brief-modello-documento-vendita
+// §13, O-4). Al primo tentativo e' vuota (`useForzaturaConfermata`).
+export function annullaOfferta(id, { motivazione, dichiarazione = {} }) {
+  return api.post(`${BASE}/${id}/annulla/`, { motivazione, ...dichiarazione })
 }
 
 // --- Revisioni ---

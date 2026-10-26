@@ -6,8 +6,8 @@
 #        e preventivo costruiti: l'azione che il backend chiede prima della
 #        transazione e' quella della riga della matrice
 #        (`script.fn_doc_azione_passaggio`, M-3), dallo stato CORRENTE del
-#        documento; codice -> id dello stato e stato di emissione dai lettori
-#        unici (`script.fn_doc_stato_id`, `script.fn_stato_emissione_id`,
+#        documento; stato di emissione e d'annullo dai lettori unici
+#        (`script.fn_stato_emissione_id`, `script.fn_stato_abortito_id`,
 #        `script.fn_doc_stato_codice`). E' la
 #        giuntura che i test unitari (repository mockato) non vedono.
 # Note: ⚠️ Le azioni e gli stati di emissione attesi sono quelli del seed di
@@ -23,7 +23,7 @@ Indice test eseguiti:
 4) test_testata_fuori_mappa — errore di cablaggio: E_SCRIPT_CHIAMATA_NON_VALIDA dal DB
 5) test_preventivo_in_bozza — emissione: `emetti_preventivo`; annullo di una bozza: nessuna (M-4)
 6) test_stato_di_emissione — il vocabolario dice l'emissione; reso e codici ignoti no
-7) test_stato_id — codice -> id dello stato attivo, None per un codice ignoto
+7) (ritirato il 2026-10-26 con `DocumentoModelloRepository.stato_id`, §13.8)
 8) test_ordine_in_bozza — conferma: `emetti_ordine`; annullo di una bozza: nessuna (M-4)
 9) test_stato_di_emissione_composto — id e codice dell'emissione, dal vocabolario; reso: None
 10) test_stato_di_annullo — le otto testate: lo stato `is_abortito` del vocabolario, e solo quello
@@ -115,15 +115,6 @@ class PermessoPassaggioDbTests(unittest.TestCase):
                                 ("vendite.resi", "CONFERMATO")):
             with self.subTest(testata=testata, codice=codice):
                 self.assertFalse(self.repo.e_stato_di_emissione(testata, codice))
-
-    def test_stato_id(self) -> None:
-        with connection.cursor() as cur:
-            cur.execute(
-                "SELECT id FROM config.stati_doc_ddt WHERE codice_interno = 'EMESSO' AND attivo",
-            )
-            atteso = cur.fetchone()[0]
-        self.assertEqual(self.repo.stato_id("vendite.ddt", "EMESSO"), atteso)
-        self.assertIsNone(self.repo.stato_id("vendite.ddt", "INESISTENTE"))
 
     def test_ordine_in_bozza(self) -> None:
         with connection.cursor() as cur:

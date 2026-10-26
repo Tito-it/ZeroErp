@@ -15,33 +15,36 @@ Indice test eseguiti:
 6)  crea_offerta_richiede_validita_dal
 7)  crea_offerta_ok_setta_stato_bozza                 [Step 5: no codice]
 8)  aggiorna_offerta_su_emessa_decide_il_db + aggiorna_offerta_utility_su_emessa_decide_il_db
-9)  emetti_da_non_bozza_fallisce
-10) registra_accettazione_da_bozza_fallisce
-11) registra_rifiuto_senza_motivazione_fallisce
-12) registra_rifiuto_da_bozza_fallisce_c3
+9)  emetti_secondo_emetti_lo_rifiuta_il_verbo       [§13.6: lo stato lo giudica il verbo]
+    (+ emetti_offerta_inesistente_e_404)
+10) registra_accettazione_da_bozza_la_rifiuta_il_db
+11) registra_rifiuto_senza_motivazione_la_rifiuta_il_db (+ motivazione_non_stringa_e_400)
+12) registra_rifiuto_da_bozza_lo_rifiuta_il_db_c3
 13) annulla_da_emessa_lo_rifiuta_il_db (+ annulla_da_accettata_arriva_al_db,
     annulla_offerta_inesistente_e_404)
-14) annulla_da_bozza_ok_passa_motivazione
+14) annulla_da_bozza_ok_passa_motivazione (+ annulla_revisione_chiede_e_poi_riceve_la_conferma,
+    annulla_corpo_malformato_e_400, get_legami_legge_prima_la_testata)
 15) crea_eccezione_su_emessa_fallisce
 16) crea_utility_duplicato_mappato
 17) emetti_ok                                         [happy path]
 18) registra_accettazione_ok                          [happy path]
 19) registra_esito_routing_accettata                  [routing service]
-20) registra_esito_routing_rifiutata_richiede_motivazione
+    (+ registra_esito_accettata_con_motivazione_e_400)
+20) registra_esito_routing_rifiutata_motivazione_al_verbo
 21) registra_esito_invalido
 22) aggiorna_offerta_payload_vuoto_fallisce           [fix #3]
 23) aggiorna_offerta_ok                               [happy path]
 24) crea_eccezione_ok                                 [happy path]
 25) aggiorna_eccezione_ownership_violata              [security]
 26) emetti_trigger_db_codice_propagato                [fix #1]
-27) crea_revisione_da_bozza_fallisce                  [Step 7]
-28) crea_revisione_da_accettata_fallisce              [Step 7]
+27) crea_revisione_stato_lo_dice_il_db                [Step 7, §13.6]
+28) crea_revisione_offerta_inesistente_404            [Step 7, §13.6]
 29) crea_revisione_ok_passa_user_e_legge_nuova       [Step 7]
 30) crea_revisione_trigger_db_codice_propagato        [Step 7]
 31) list_revisioni_offerta_inesistente_404            [Step 7]
 32) list_revisioni_ok_passa_id_al_repo                [Step 7]
-33) push_a_contratto_da_emessa_fallisce               [Step 8]
-34) push_a_contratto_da_bozza_fallisce                [Step 8]
+33) push_a_contratto_stato_lo_dice_il_db              [Step 8, §13.6]
+34) push_a_contratto_offerta_inesistente_404          [Step 8, §13.6]
 35) push_a_contratto_ok_costruisce_result             [Step 8]
 36) push_a_contratto_idempotenza_codice_propagato     [Step 8: pattern A]
 37) push_a_contratto_con_pratica_passa_pratica_id     [Step 8]
@@ -259,7 +262,6 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         # Lo stato non si passa: lo mette il DB, lo stato iniziale del
         # vocabolario (brief-modello-documento-vendita P-2).
         self.assertNotIn("stato_doc_offerta_id", call)
-        repo.get_stato_id_by_codice.assert_not_called()
         # `revisione_numero` non viene passato (default DB = 1).
         self.assertNotIn("revisione_numero", call)
         # `codice` NON deve mai arrivare al repo (Step 5: trigger DB).
@@ -302,46 +304,111 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # --- transizioni di stato -----------------------------------------
 
-    # Scopo: emetti da stato != BOZZA -> 422.
+    # Scopo: «Emetti» su un'offerta gia' emessa: lo stato di partenza lo
+    #        giudica il verbo (E_DOC_GIA_NELLO_STATO), non il service. ⛔ Fino
+    #        al 2026-10-26 lo anticipava un «solo da BOZZA» Python
+    #        (brief-modello-documento-vendita §13.6 punto 4).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_emetti_da_non_bozza_fallisce(self, repo_cls):
+    def test_emetti_secondo_emetti_lo_rifiuta_il_verbo(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_codice.return_value = "EMESSA"
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
         self.emissione_del_documento("EMESSA")
+        repo.cambia_stato.side_effect = DatabaseError(
+            "E_DOC_GIA_NELLO_STATO: Il documento e' gia' nello stato EMESSA",
+        )
         with self.assertRaises(ServiceError) as cm:
             OfferteService().emetti(1)
-        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(cm.exception.code, "E_DOC_GIA_NELLO_STATO")
+        # Un rifiuto che non e' della motivazione non accende il suo campo.
+        self.assertIsNone(cm.exception.fields)
+        repo.get_stato_codice.assert_called_once_with(1)
 
-    # Scopo: registra_accettazione da BOZZA -> 422 (richiede EMESSA).
+    # Scopo: «Emetti» su un'offerta che non c'e': il 404 del service
+    #        (E_VENDITE_NOT_FOUND), lo stesso di annullo, revisione e push; il
+    #        verbo non si chiama.
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_registra_accettazione_da_bozza_fallisce(self, repo_cls):
+    def test_emetti_offerta_inesistente_e_404(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_codice.return_value = "BOZZA"
+        self.emissione_del_documento("EMESSA")
+        repo_cls.return_value.get_stato_codice.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().emetti(1)
+        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+        repo_cls.return_value.cambia_stato.assert_not_called()
+
+    # Scopo: registra_accettazione da BOZZA: la matrice la rifiuta al verbo
+    #        (E_OFFERTA_TRANSIZIONE_NON_AMMESSA), col suo codice.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_registra_accettazione_da_bozza_la_rifiuta_il_db(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.cambia_stato.side_effect = DatabaseError(
+            "E_OFFERTA_TRANSIZIONE_NON_AMMESSA: BOZZA -> ACCETTATA",
+        )
         with self.assertRaises(ServiceError) as cm:
             OfferteService().registra_accettazione(1)
-        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(cm.exception.code, "E_OFFERTA_TRANSIZIONE_NON_AMMESSA")
+        repo.cambia_stato.assert_called_once_with(1, "ACCETTATA", None)
 
-    # Scopo: registra_rifiuto senza motivazione -> guard non_empty_string.
+    # Scopo: registra_rifiuto senza motivazione: la motivazione vuota arriva al
+    #        verbo come assente, e l'obbligo lo dice la riga del passaggio
+    #        (E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA, O-3). ⛔ Fino al 2026-10-26 era
+    #        `guard_non_empty_string` qui.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_registra_rifiuto_senza_motivazione_fallisce(self, repo_cls):
+    def test_registra_rifiuto_senza_motivazione_la_rifiuta_il_db(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_codice.return_value = "EMESSA"
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.cambia_stato.side_effect = DatabaseError(
+            "E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA: serve una motivazione",
+        )
         with self.assertRaises(ServiceError) as cm:
-            OfferteService().registra_rifiuto(1, motivazione="")
-        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+            OfferteService().registra_rifiuto(1, motivazione="   ")
+        self.assertEqual(cm.exception.code, "E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA")
+        # Il verbo nomina la colonna (`motivazione_rifiuto`): al client va il
+        # campo della richiesta.
+        self.assertEqual(cm.exception.fields, ("motivazione",))
+        repo.cambia_stato.assert_called_once_with(1, "RIFIUTATA", None)
 
-    # Scopo (C3): registra_rifiuto da BOZZA -> 422 (rifiuto solo da EMESSA).
+    # Scopo: una motivazione che non e' una stringa e' un 400 col campo, prima
+    #        del verbo (non un 500 dal cast del DB).
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_registra_rifiuto_da_bozza_fallisce_c3(self, repo_cls):
+    def test_registra_rifiuto_motivazione_non_stringa_e_400(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_codice.return_value = "BOZZA"
         with self.assertRaises(ServiceError) as cm:
-            OfferteService().registra_rifiuto(1, motivazione="non valida")
+            OfferteService().registra_rifiuto(1, motivazione=42)
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        repo_cls.return_value.cambia_stato.assert_not_called()
+
+    # Scopo (C3): registra_rifiuto da BOZZA: la matrice lo rifiuta al verbo.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_registra_rifiuto_da_bozza_lo_rifiuta_il_db_c3(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.cambia_stato.side_effect = DatabaseError(
+            "E_OFFERTA_TRANSIZIONE_NON_AMMESSA: BOZZA -> RIFIUTATA",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().registra_rifiuto(1, motivazione="  non valida ")
+        self.assertEqual(cm.exception.code, "E_OFFERTA_TRANSIZIONE_NON_AMMESSA")
+        repo.cambia_stato.assert_called_once_with(1, "RIFIUTATA", "non valida")
 
     # Scopo: annulla da EMESSA -> il rifiuto e' del DB (transizione non
     #        ammessa) e arriva col SUO codice. ⛔ Fino al 2026-10-21 il service
@@ -357,17 +424,17 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "EMESSA"
-        repo.get_stato_id_by_codice.return_value = 6
-        repo.update_stato.side_effect = DatabaseError(
+        repo.annulla.side_effect = DatabaseError(
             "E_OFFERTA_TRANSIZIONE_NON_AMMESSA: EMESSA -> ANNULLATA",
         )
         with self.assertRaises(ServiceError) as cm:
             OfferteService().annulla(1, motivazione="ripensamento interno")
         self.assertEqual(cm.exception.code, "E_OFFERTA_TRANSIZIONE_NON_AMMESSA")
-        repo.update_stato.assert_called_once()
+        repo.annulla.assert_called_once()
 
-    # Scopo: annulla da ACCETTATA: il service arriva al DB (nessuno stato di
-    #        partenza scritto qui).
+    # Scopo: annulla da ACCETTATA: il service arriva al verbo d'annullo
+    #        (nessuno stato di partenza ne' stato d'annullo scritto qui), senza
+    #        dichiarazione al primo tentativo.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
     def test_annulla_da_accettata_arriva_al_db(self, repo_cls, _atomic):
@@ -377,16 +444,13 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "ACCETTATA"
-        repo.get_stato_id_by_codice.return_value = 6
-        repo.get_offerta.return_value = _make_offerta_dict(stato_codice="ANNULLATA")
+        repo.get_offerta.return_value = _make_offerta_dict('ANNULLATA')
         repo.list_eccezioni.return_value = []
         repo.get_utility.return_value = None
 
         OfferteService().annulla(1, motivazione="il cliente ci ripensa")
 
-        repo.update_stato.assert_called_once_with(
-            1, 6, motivazione_rifiuto="il cliente ci ripensa"
-        )
+        repo.annulla.assert_called_once_with(1, "il cliente ci ripensa", None)
 
     # Scopo: annulla di un'offerta che non c'e' (o fuori perimetro): 404.
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
@@ -397,9 +461,9 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         with self.assertRaises(ServiceError) as cm:
             OfferteService().annulla(1, motivazione="x")
         self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
-        repo_cls.return_value.update_stato.assert_not_called()
+        repo_cls.return_value.annulla.assert_not_called()
 
-    # Scopo: annulla da BOZZA OK passa motivazione al repository.
+    # Scopo: annulla da BOZZA OK passa la motivazione (normalizzata) al verbo.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
     def test_annulla_da_bozza_ok_passa_motivazione(self, repo_cls, _atomic):
@@ -409,16 +473,74 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "BOZZA"
-        repo.get_stato_id_by_codice.return_value = 6
-        repo.get_offerta.return_value = _make_offerta_dict(stato_codice="ANNULLATA")
+        repo.get_offerta.return_value = _make_offerta_dict('ANNULLATA')
         repo.list_eccezioni.return_value = []
         repo.get_utility.return_value = None
 
         OfferteService().annulla(1, motivazione="  errore impostazione  ")
 
-        repo.update_stato.assert_called_once_with(
-            1, 6, motivazione_rifiuto="errore impostazione"
-        )
+        repo.annulla.assert_called_once_with(1, "errore impostazione", None)
+
+    # Scopo (O-4): l'annullo di una revisione senza conferma lo rifiuta il DB
+    #        con E_DOC_ANNULLO_CON_LEGAMI (`confirm_and_retry`), e il codice
+    #        arriva com'e'; la conferma dichiara i legami visti, e il verbo li
+    #        riceve.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_annulla_revisione_chiede_e_poi_riceve_la_conferma(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_offerta.return_value = _make_offerta_dict('ANNULLATA')
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = None
+        repo.annulla.side_effect = [
+            DatabaseError("E_DOC_ANNULLO_CON_LEGAMI: Annullando OFC-2 si riaprono 1 legami"),
+            1,
+        ]
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().annulla(1, motivazione="errore")
+        self.assertEqual(cm.exception.code, "E_DOC_ANNULLO_CON_LEGAMI")
+
+        OfferteService().annulla(1, motivazione="errore", legami_confermati=1)
+        self.assertEqual(repo.annulla.call_args.args, (1, "errore", 1))
+
+    # Scopo: la dichiarazione non intera e la motivazione non stringa sono un
+    #        400 col campo, prima del verbo.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_annulla_corpo_malformato_e_400(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        for kwargs in (
+            {"motivazione": "x", "legami_confermati": "tanti"},
+            {"motivazione": ["x"]},
+        ):
+            with self.subTest(**{k: repr(v) for k, v in kwargs.items()}):
+                with self.assertRaises(ServiceError) as cm:
+                    OfferteService().annulla(1, **kwargs)
+                self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        repo_cls.return_value.annulla.assert_not_called()
+
+    # Scopo: i legami per la finestra: prima la testata (404 del dominio),
+    #        poi il BB col codice della sorgente.
+    @patch("apps.vendite.services.offerte_service.legami_del_documento")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_get_legami_legge_prima_la_testata(self, repo_cls, legami):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_stato_codice.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().get_legami(1)
+        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+        legami.assert_not_called()
+
+        repo_cls.return_value.get_stato_codice.return_value = "BOZZA"
+        legami.return_value = {"legami": 1}
+        self.assertEqual(OfferteService().get_legami(1), {"legami": 1})
+        legami.assert_called_once_with("OFFERTA_COMMERCIALE", 1)
 
     # --- eccezioni ----------------------------------------------------
 
@@ -473,7 +595,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # --- happy path -----------------------------------------------------
 
-    # Scopo: emetti BOZZA -> EMESSA: un solo cambio stato. ⛔ Nessuna
+    # Scopo: emetti BOZZA -> EMESSA: un solo cambio stato, dal verbo. ⛔ Nessuna
     #        scrittura di `listino_versione_id` dal service: la congela il guard
     #        DB nella stessa scrittura (brief-db-offerta-emissione-ed-erogazione
     #        A-R1). Fino al 2026-10-07 il service la fissava prima, in Python.
@@ -485,20 +607,17 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "BOZZA"
-        repo.get_stato_id_by_codice.return_value = 2
         # Lo stato di emissione dal vocabolario (§8.11 B-4), non `StatoOfferta.EMESSA`.
         self.emissione_del_documento("EMESSA")
-        repo.get_offerta.return_value = _make_offerta_dict("EMESSA")
+        repo.get_offerta.return_value = _make_offerta_dict('EMESSA')
         repo.list_eccezioni.return_value = []
         repo.get_utility.return_value = None
 
         OfferteService().emetti(1)
 
         repo.update_offerta.assert_not_called()
-        repo.update_stato.assert_called_once_with(1, 2, motivazione_rifiuto=None)
+        repo.cambia_stato.assert_called_once_with(1, "EMESSA", None)
         self.modello_documento.stato_di_emissione.assert_called_once_with("vendite.offerte_commerciali")
-        repo.get_stato_id_by_codice.assert_called_once_with("EMESSA")
 
     # Scopo: registra_accettazione EMESSA -> ACCETTATA, no motivazione.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
@@ -509,15 +628,13 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "EMESSA"
-        repo.get_stato_id_by_codice.return_value = 3
-        repo.get_offerta.return_value = _make_offerta_dict("ACCETTATA")
+        repo.get_offerta.return_value = _make_offerta_dict('ACCETTATA')
         repo.list_eccezioni.return_value = []
         repo.get_utility.return_value = None
 
         OfferteService().registra_accettazione(1)
 
-        repo.update_stato.assert_called_once_with(1, 3, motivazione_rifiuto=None)
+        repo.cambia_stato.assert_called_once_with(1, "ACCETTATA", None)
 
     # Scopo: registra_esito routing: ACCETTATA delega a registra_accettazione.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
@@ -528,26 +645,54 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "EMESSA"
-        repo.get_stato_id_by_codice.return_value = 3
-        repo.get_offerta.return_value = _make_offerta_dict("ACCETTATA")
+        repo.get_offerta.return_value = _make_offerta_dict('ACCETTATA')
         repo.list_eccezioni.return_value = []
         repo.get_utility.return_value = None
 
-        OfferteService().registra_esito(1, esito="ACCETTATA")
+        # Vuota vale assente: e' cio' che manda il dialog senza il campo.
+        OfferteService().registra_esito(1, esito="ACCETTATA", motivazione="  ")
 
-        # ACCETTATA -> id stato risolto (3), no motivazione
-        repo.update_stato.assert_called_once_with(1, 3, motivazione_rifiuto=None)
+        # ACCETTATA -> il codice al verbo, nessuna motivazione.
+        repo.cambia_stato.assert_called_once_with(1, "ACCETTATA", None)
 
-    # Scopo: registra_esito routing: RIFIUTATA con motivazione obbligatoria.
+    # Scopo: una motivazione con ACCETTATA e' un 400 col campo, non si perde in
+    #        silenzio: l'accettazione non ha una colonna che la tenga.
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_registra_esito_routing_rifiutata_richiede_motivazione(self, repo_cls):
+    def test_registra_esito_accettata_con_motivazione_e_400(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+        from apps.core.services.error_translator import ErrorTranslator
+
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().registra_esito(1, esito="ACCETTATA", motivazione="ottimo prezzo")
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ErrorTranslator.to_api_error(cm.exception).fields, ("motivazione",))
+        repo_cls.return_value.cambia_stato.assert_not_called()
+
+    # Scopo: registra_esito routing: RIFIUTATA porta la motivazione al verbo
+    #        (assente = None); l'obbligo lo dice il DB.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_registra_esito_routing_rifiutata_motivazione_al_verbo(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_codice.return_value = "EMESSA"
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_offerta.return_value = _make_offerta_dict('RIFIUTATA')
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = None
+
+        OfferteService().registra_esito(1, esito="RIFIUTATA", motivazione=" prezzo alto ")
+        repo.cambia_stato.assert_called_once_with(1, "RIFIUTATA", "prezzo alto")
+
+        repo.cambia_stato.reset_mock()
+        repo.cambia_stato.side_effect = DatabaseError(
+            "E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA: serve una motivazione",
+        )
         with self.assertRaises(ServiceError) as cm:
-            OfferteService().registra_esito(1, esito="RIFIUTATA", motivazione="")
-        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+            OfferteService().registra_esito(1, esito="RIFIUTATA")
+        self.assertEqual(cm.exception.code, "E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA")
+        repo.cambia_stato.assert_called_once_with(1, "RIFIUTATA", None)
 
     # Scopo: registra_esito esito non valido -> 422.
     def test_registra_esito_invalido(self):
@@ -632,12 +777,10 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "BOZZA"
-        repo.get_stato_id_by_codice.return_value = 2
         # Lo stato di emissione dal vocabolario (§8.11 B-4), non `StatoOfferta.EMESSA`.
         self.emissione_del_documento("EMESSA")
         # Simula il P0001 sollevato dal trigger guard transizione.
-        repo.update_stato.side_effect = DatabaseError(
+        repo.cambia_stato.side_effect = DatabaseError(
             "E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO: "
             "listino_versione_id IS NULL su passaggio BOZZA->EMESSA"
         )
@@ -649,25 +792,36 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # --- revisioni (Step 6-7) ----------------------------------------
 
-    # Scopo: crea_revisione da BOZZA -> 422 (guard applicativo EMESSA).
+    # Scopo: crea_revisione da uno stato che non la ammette: la rifiuta la fn
+    #        DB (E_OFFERTA_REVISIONE_STATO_NON_AMMESSO), col suo codice. ⛔ Fino
+    #        al 2026-10-26 la anticipava `_assert_stato_corrente` (§13.6 punto 4).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_crea_revisione_da_bozza_fallisce(self, repo_cls):
+    def test_crea_revisione_stato_lo_dice_il_db(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_codice.return_value = "BOZZA"
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.crea_revisione.side_effect = DatabaseError(
+            "E_OFFERTA_REVISIONE_STATO_NON_AMMESSO: stato BOZZA non ammesso"
+        )
         with self.assertRaises(ServiceError) as cm:
             OfferteService().crea_revisione(1)
-        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(cm.exception.code, "E_OFFERTA_REVISIONE_STATO_NON_AMMESSO")
+        repo.crea_revisione.assert_called_once()
 
-    # Scopo: crea_revisione da ACCETTATA -> 422 (stato terminale).
+    # Scopo: crea_revisione di un'offerta che non c'e' (o fuori perimetro): 404.
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_crea_revisione_da_accettata_fallisce(self, repo_cls):
+    def test_crea_revisione_offerta_inesistente_404(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_codice.return_value = "ACCETTATA"
+        repo_cls.return_value.get_stato_codice.return_value = None
         with self.assertRaises(ServiceError) as cm:
             OfferteService().crea_revisione(1)
-        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+        repo_cls.return_value.crea_revisione.assert_not_called()
 
     # Scopo: crea_revisione OK da EMESSA: chiama fn DB, legge la rev.N+1
     #        via get_offerta(new_id).
@@ -749,25 +903,35 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # --- push a contratto (Step 8) -----------------------------------
 
-    # Scopo: push da EMESSA -> 422 (richiesto ACCETTATA).
+    # Scopo: push da uno stato diverso da ACCETTATA: lo rifiuta il verbo
+    #        (E_OFFERTA_PUSH_STATO_NON_AMMESSO), col suo codice. ⛔ Fino al
+    #        2026-10-26 lo anticipava `_assert_stato_corrente` (§13.6 punto 4).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_push_a_contratto_da_emessa_fallisce(self, repo_cls):
+    def test_push_a_contratto_stato_lo_dice_il_db(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_codice.return_value = "EMESSA"
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "EMESSA"
+        repo.push_a_contratto.side_effect = DatabaseError(
+            "E_OFFERTA_PUSH_STATO_NON_AMMESSO: stato EMESSA non ammesso"
+        )
         with self.assertRaises(ServiceError) as cm:
             OfferteService().push_a_contratto(1)
-        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(cm.exception.code, "E_OFFERTA_PUSH_STATO_NON_AMMESSO")
 
-    # Scopo: push da BOZZA -> 422.
+    # Scopo: push di un'offerta che non c'e' (o fuori perimetro): 404.
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_push_a_contratto_da_bozza_fallisce(self, repo_cls):
+    def test_push_a_contratto_offerta_inesistente_404(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_codice.return_value = "BOZZA"
+        repo_cls.return_value.get_stato_codice.return_value = None
         with self.assertRaises(ServiceError) as cm:
             OfferteService().push_a_contratto(1)
-        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+        repo_cls.return_value.push_a_contratto.assert_not_called()
 
     # Scopo: push ok costruisce OffertaPushResult con id+numero+uid del nuovo
     #        contratto letto da get_contratto_minimal.

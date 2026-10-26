@@ -4,8 +4,8 @@
 # Doc: Python
 # Scopo: Accesso DB al modello del documento (guida
 #        `modello-documento-di-vendita.md` §6): l'azione di processo che un
-#        passaggio di stato chiede, la traduzione codice -> id dello stato e lo
-#        stato di emissione, letti dai lettori unici del DB
+#        passaggio di stato chiede, lo stato di emissione e quello d'annullo,
+#        letti dai lettori unici del DB
 #        (`script.fn_doc_azione_passaggio`, `script.fn_doc_stato_id`,
 #        `script.fn_stato_emissione_id`, `script.fn_stato_abortito_id`,
 #        `script.fn_doc_stato_codice`), gli stessi che usano i verbi e le
@@ -64,17 +64,11 @@ class DocumentoModelloRepository:
             row = cursor.fetchone()
         return str(row[0]) if row and row[0] is not None else None
 
-    # Scopo: L'id dello stato ATTIVO con quel codice nel vocabolario della
-    #        testata, o None (nessuno stato attivo con quel codice: l'errore lo
-    #        decide il chiamante). Uno stato spento non e' una destinazione (U-3).
-    def stato_id(self, testata: str, codice: str) -> int | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT script.fn_doc_stato_id(%s::regclass, %s)",
-                [testata, codice],
-            )
-            row = cursor.fetchone()
-        return int(row[0]) if row and row[0] is not None else None
+    # ⛔ `stato_id(testata, codice)` (codice -> id dello stato attivo) e'
+    #    ritirato il 2026-10-26 (ok Tid, brief-modello-documento-vendita §13.8):
+    #    i suoi consumatori (`get_stato_id_by_codice` di ordini, DDT, contratti,
+    #    offerte) sono spariti quando i verbi hanno preso il codice e controllano
+    #    da se' che lo stato esista.
 
     # Scopo: Lo stato chiesto (codice) e' lo stato di emissione della testata?
     #        False anche per un documento che non si emette (vocabolario senza

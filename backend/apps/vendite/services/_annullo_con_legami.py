@@ -4,8 +4,8 @@
 # Doc: Python
 # Scopo: L'annullo di un documento con legami, lato backend: la lettura dei
 #        legami per la finestra di conferma e la dichiarazione che la conferma
-#        porta al verbo. Per bolla, ordine, preventivo, contratto e
-#        commessa.
+#        porta al verbo. Per bolla, ordine, preventivo, contratto,
+#        commessa e offerta.
 # ------------------------------------------------------------
 
 # PERCHE' ESISTE (brief-db-annullo-documento-con-legami, D-4 di Tid, 2026-10-11).
@@ -26,6 +26,13 @@
 #    e annullarla riapre a monte (il documento o il consumo tornano da mandare,
 #    il reso da accreditare) o annulla (gli oneri). Stesso lettore, stesso
 #    avviso, stessa finestra: un meccanismo solo.
+# ⭐ L'offerta e' entrata con brief-modello-documento-vendita §13 (O-4 di Tid,
+#    2026-10-26): il suo legame e' la revisione precedente, superata, che torna
+#    emessa quando si annulla l'ultima revisione viva (Regola 6: un annullo che
+#    riapre altro si conferma). ⚠️ La revisione precedente non e' un nodo del
+#    lineage (nessun arco offerta -> offerta): il suo nome resta None, e la
+#    finestra mostra il solo tipo, senza link — com'e' scritto qui sotto per
+#    ogni legame che il lineage non vede.
 # ⛔ La regola non sta qui: che cosa e' un legame, quanti sono, se la conferma
 #    corrisponde lo dice il DB (`vendite.fn_documento_legami`, lo stesso lettore
 #    di avviso e verbo). Qui si legge e si trasporta.
@@ -54,6 +61,7 @@ from apps.core.services.payload_helpers import PayloadValidator
 #    elenco o un codice corto (che il DB rifiuterebbe solo a runtime).
 DocumentoLegami = Literal[
     "DDT_VENDITA", "ORDINE_VENDITA", "PREVENTIVO", "CONTRATTO", "COMMESSA",
+    "OFFERTA_COMMERCIALE",
 ]
 
 # ⛔ Lo stato di destinazione dei verbi di annullo NON si scrive qui: fino al

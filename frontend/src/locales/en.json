@@ -3257,12 +3257,14 @@
       "riga_senza_qta": "line {riga} becomes available again",
       "commessa": "a line to be issued is cancelled",
       "provenienza": "can be converted again",
+      "revisione_precedente": "the previous revision is issued again",
       "spiegazione": "If you confirm, the document is cancelled and these become available again: quantities to ship, lines to order, job lines, the offer to convert.",
       "commessa_da_mandare": "can be sent to a job again · lines: {n}",
       "commessa_da_accreditare": "is to be credited again · lines: {n}",
       "si_annulla": "What is cancelled",
       "oneri_annullati": "charges cancelled with the job: {n}",
       "spiegazione_commessa": "If you confirm, the job is cancelled: the lines not yet issued leave the job, the documents they come from can be sent to a job again, the return is to be credited again, the charges are cancelled.",
+      "spiegazione_offerta": "If you confirm, this revision is cancelled and the previous revision becomes again the offer issued to the customer.",
       "nessun_legame": "The links with other documents are no longer there: if you confirm, the document is cancelled without withdrawing anything."
     },
     "listini": {
@@ -3663,7 +3665,6 @@
       "field_param_2_txt": "Param 2 (text)",
       "field_motivazione": "Reason",
       "field_motivazione_required_placeholder": "Explain the decision (required)...",
-      "field_motivazione_optional_placeholder": "Optional notes...",
       "azione_emetti": "Issue",
       "azione_annulla": "Cancel offer",
       "azione_accetta": "Accept",

@@ -357,7 +357,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # brief-db-annullo-documento-con-legami (2026-10-11): l'avviso unico
     # dell'annullo di un documento con legami (bolla, ordine, preventivo,
     # contratto). Sostituisce E_DDT_ANNULLO_CON_LEGAMI, che resta per il diario.
-    "E_DOC_ANNULLO_CON_LEGAMI": "Annullando il documento si riaprono i suoi legami con altri documenti: quantita' da spedire, righe da ordinare, righe di commessa o l'offerta da cui nasce. Serve una conferma.",
+    "E_DOC_ANNULLO_CON_LEGAMI": "Annullando il documento si riaprono i suoi legami con altri documenti: quantita' da spedire, righe da ordinare o da mandare in commessa, accrediti di reso, l'offerta da cui nasce o la revisione precedente di un'offerta. Serve una conferma.",
     "E_DOC_CLIENTE_DIVERSO_DA_BA": "Il cliente o la utility non corrispondono al billing account del documento: lasciali vuoti, li mette il billing account.",
     "E_DOC_CLIENTE_DIVERSO_DA_SORGENTE": "Il cliente deve essere quello del documento da cui nasce.",
     "E_DOC_DATA_OLTRE_CONSEGNA_RIGHE": "La data del documento non puo' andare oltre una data di consegna gia' scritta su una riga.",
@@ -956,6 +956,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO": "Impossibile emettere l'offerta: il listino di riferimento non ha una versione in vigore oggi.",
     "E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA": "Impossibile emettere: la versione di listino non è attiva.",
     "E_OFFERTA_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente selezionato.",
+    "E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA": "Per rifiutare o annullare l'offerta serve una motivazione.",
     "E_OFFERTA_NON_TROVATA": "Offerta non trovata.",
     "E_OFFERTA_ORDINE_GIA_GENERATO": "Questa offerta ha già generato un ordine.",
     "E_OFFERTA_PUSH_STATO_NON_AMMESSO": "Push a contratto non ammesso: l'offerta deve essere ACCETTATA.",
