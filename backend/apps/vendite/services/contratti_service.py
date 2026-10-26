@@ -43,7 +43,6 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import DatabaseError, IntegrityError, transaction
 
 from apps.config.sorgenti import SORGENTE_CONTRATTO
-from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.services.documento_modello import (
     e_stato_di_annullo,
@@ -81,6 +80,7 @@ from apps.core.services.payload_helpers import (
 from apps.core.services.partitioned_note_service import contatori_documento
 from apps.vendite.db.note_repositories import NOTE_REPO_CONTRATTO
 from apps.vendite.db.contratti_repository import (
+    STATO_CESSATO,
     TESTATA_CONTRATTI,
     _ORDER_COLS_CONTRATTI,
     ContrattiRepository,
@@ -880,34 +880,26 @@ class ContrattiService:
     # Cambio stato
     # =================================================================
 
-    # Scopo: Cambia lo stato del contratto al codice_interno richiesto.
-    #        Se target=CESSATO viene applicata la regola fail-safe data-driven
-    #        (analoga a listini-versioni, vedi feedback_stato_terminale_con_data):
-    #          - valido_al obbligatorio (no cessazione "senza data")
-    #          - valido_al >= valido_dal: lo giudica il DB (guard comune
-    #            delle date, E_DATA_AL_MINORE_DAL col campo valido_al)
-    #          - valido_al < oggi -> VIETATO: cessazione retroattiva
-    #            rifiutata dal guard DB trgfn_contratti_guard_transizione_stato
-    #            (la UI blocca a monte con min-date = oggi).
-    #          - valido_al == oggi -> cessazione IMMEDIATA: applica
-    #            entrambi PATCH+UPDATE in transazione atomica (la data di fine
-    #            validita' = oggi conferma il passaggio a CESSATO).
-    #          - valido_al > oggi -> CESSAZIONE PROGRAMMATA: applica
-    #            solo PATCH valido_al; lo stato resta ATTIVO. Il job
-    #            notturno DB allineera' lo stato a CESSATO quando la data
-    #            scade. Coerente con il principio "data = fonte di verita'
-    #            operativa, stato = flag informativo eventualmente stantio".
-    #        Per le altre transizioni (DRAFT->ATTIVO, ecc.) e per cessazioni
-    #        senza valido_al, il flusso e' lineare (UPDATE stato + opzionale
-    #        PATCH valido_al). L'attivazione di un contratto "senza_listino"
-    #        privo di righe AGGIUNTA e' bloccata dai trigger DB del refactor
-    #        2026-05-15 (E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE, lock
-    #        post-attivazione su listino_versione_id): traduciamo i P0001
-    #        in ServiceError parlanti via `_KNOWN_DB_ERROR_MARKERS`.
-    #        ⭐ ANNULLATO passa SEMPRE dal verbo `vendite.fn_annulla_contratto`
-    #        (brief-db-annullo-documento-con-legami): con legami il DB rifiuta
-    #        (E_DOC_ANNULLO_CON_LEGAMI, `confirm_and_retry`) finche' la
-    #        richiesta non dichiara `legami_confermati`, letto da `get_legami`.
+    # Scopo: Cambia lo stato del contratto al codice_interno richiesto, dal
+    #        verbo che lo scrive (brief-modello-documento-vendita §11.6):
+    #          - lo stato d'annullo (dal vocabolario) passa SEMPRE da
+    #            `vendite.fn_annulla_contratto` (brief-db-annullo-documento-con-
+    #            legami): con legami il DB rifiuta (E_DOC_ANNULLO_CON_LEGAMI,
+    #            `confirm_and_retry`) finche' la richiesta non dichiara
+    #            `legami_confermati`, letto da `get_legami`;
+    #          - la cessazione (`STATO_CESSATO`) passa da
+    #            `vendite.fn_cessa_contratto` con la sua data, e decide lui:
+    #            senza data, data passata, oggi (data e stato) o futura (solo la
+    #            data, `programmata`: lo stato lo chiude il job sugli scaduti);
+    #          - ogni altro stato dal verbo di stato
+    #            `vendite.fn_cambia_stato_contratto`, che giudica matrice,
+    #            condizioni, lo stato che non c'e' e quello che il contratto ha
+    #            gia'.
+    #        ⛔ Fino al 2026-10-26 qui c'erano due copie Python della
+    #        cessazione — la data obbligatoria e la scelta programmata/immediata
+    #        — e la scrittura di `valido_al` prima dello stato (Y-3).
+    # Ritorna: il dettaglio del contratto; per la cessazione anche
+    #          `programmata` (lo stato non e' cambiato, lo chiudera' il job).
     def cambia_stato(
         self,
         contratto_id: int,
@@ -931,83 +923,41 @@ class ContrattiService:
         #    la transizione lascerebbe il contratto ATTIVO senza PDF. Quale
         #    stato sia l'emissione lo dice il vocabolario (BB
         #    `rifiuta_stato_di_emissione`, brief-modello-documento-vendita §8.7
-        #    punto 4). cambia_stato resta per CESSATO, ANNULLATO, SOSPESO.
+        #    punto 4).
         rifiuta_stato_di_emissione(
             TESTATA_CONTRATTI, codice_norm, campo="codice_interno",
             validation_code=E_VENDITE_VALIDATION, function_name="contratti_service.cambia_stato",
         )
-        target_stato_id = self._repo.get_stato_id_by_codice(codice_norm)
+        # La data accompagna solo la cessazione: con un altro stato non ha un
+        # verbo che la scriva, e scartarla in silenzio direbbe al client che e'
+        # stata presa.
         ErrorManager.require(
-            target_stato_id is not None,
+            valido_al is None or codice_norm == STATO_CESSATO,
             code=E_VENDITE_VALIDATION,
-            message=f"Stato '{codice_interno}' non configurato.",
-            context={"codice_interno": codice_interno},
+            message="La data di cessazione si indica solo per cessare il contratto.",
+            context={"field": "valido_al", "codice_interno": codice_norm},
         )
-        assert target_stato_id is not None
         # Esistenza col lettore leggero: qui serve solo che il contratto ci sia.
         self._get_contratto_or_raise(contratto_id, op="cambia_stato", getter=self._repo.get_stato_codice)
 
+        contesto = {"contratto_id": contratto_id, "codice_interno": codice_norm}
         # L'annullo (lo stato d'annullo del vocabolario) dal suo verbo.
         if e_stato_di_annullo(TESTATA_CONTRATTI, codice_norm):
             confermati = dichiarazione_legami(
                 legami_confermati, validation_code=E_VENDITE_VALIDATION,
                 function_name="contratti_service.cambia_stato",
             )
-            with self._map_db_errors(
-                {"contratto_id": contratto_id, "codice_interno": codice_norm},
-                fallback_message="Violazione vincolo DB su annullo contratto.",
-            ):
+            with self._map_db_errors(contesto, fallback_message="Violazione vincolo DB su annullo contratto."):
                 self._repo.annulla(contratto_id, confermati)
             return self.get_contratto(contratto_id)
 
-        # Pre-validazione data-driven per CESSATO (regola fail-safe):
-        # - valido_al obbligatorio (valido_al >= valido_dal lo giudica il DB)
-        # - se valido_al > today -> cessazione programmata (no cambio stato);
-        #   valido_al == today -> immediata (transizione a CESSATO)
-        cessazione_programmata = False
-        if codice_norm == "CESSATO":
-            ErrorManager.require(
-                valido_al is not None,
-                code=E_VENDITE_VALIDATION,
-                message="Data cessazione obbligatoria.",
-                detail=(
-                    "Per portare il contratto in stato CESSATO e' necessaria "
-                    "la data di cessazione (valido_al)."
-                ),
-                context={"contratto_id": contratto_id},
-            )
-            assert valido_al is not None
-            # Cessazione programmata: data STRETTAMENTE futura (> oggi) -> NON
-            # cambiamo lo stato. Applichiamo solo PATCH valido_al e lasciamo
-            # che il job notturno DB allinei lo stato quando la data scade.
-            # Data == oggi -> cessazione IMMEDIATA: transizione a CESSATO subito
-            # (il guard DB la ammette per valido_al >= oggi; e' la data
-            # di fine validita' a confermare). Data < oggi e' retroattiva e
-            # viene rifiutata dal guard DB `trgfn_contratti_guard_transizione_stato`
-            # (la UI la blocca gia' con min-date = oggi).
-            if valido_al > oggi_aziendale():
-                cessazione_programmata = True
+        if codice_norm == STATO_CESSATO:
+            with self._map_db_errors(contesto, fallback_message="Violazione vincolo DB su cessazione contratto."):
+                esito = self._repo.cessa(contratto_id, valido_al)
+            return {**self.get_contratto(contratto_id), "programmata": bool(esito["programmata"])}
 
-        with self._map_db_errors(
-            {"contratto_id": contratto_id, "codice_interno": codice_norm},
-            fallback_message="Violazione vincolo DB su cambio stato.",
-        ):
-            with transaction.atomic():
-                if valido_al is not None:
-                    self._repo.update_contratto(contratto_id, {"valido_al": valido_al})
-                if cessazione_programmata:
-                    # Solo PATCH valido_al, niente UPDATE stato. Il chiamante
-                    # ricevera' lo stato corrente invariato + valido_al
-                    # programmato; FE distingue scenario via valido_al > today.
-                    pass
-                else:
-                    updated = self._repo.update_stato(contratto_id, target_stato_id)
-                    ErrorManager.require(
-                        updated,
-                        code=E_VENDITE_NOT_FOUND,
-                        message="Contratto non trovato.",
-                        context={"contratto_id": contratto_id},
-                    )
+        with self._map_db_errors(contesto, fallback_message="Violazione vincolo DB su cambio stato."):
+            self._repo.cambia_stato(contratto_id, codice_norm)
         return self.get_contratto(contratto_id)
 
     # Scopo: I legami del contratto per la finestra di conferma dell'annullo
@@ -1041,20 +991,15 @@ class ContrattiService:
         #    conferma della stampa: «Attiva» restava acceso (collaudo di Tid).
         #    L'EXCLUDE `ex_contratti_no_overlap` resta la difesa dura.
         # Lo stato di emissione dal vocabolario (V-2, brief-modello-documento-
-        # vendita §8.11 B-4): fino al 2026-10-25 il letterale "ATTIVO". Il
-        # contratto scrive ancora la colonna (l'id): il verbo arriva col suo giro.
+        # vendita §8.11 B-4), scritto dal verbo di stato (§11.6): permesso
+        # dalla riga del passaggio, il contratto che non c'e', un secondo
+        # «Emetti» (E_DOC_GIA_NELLO_STATO) li giudica il DB.
         stato = stato_di_emissione(TESTATA_CONTRATTI, function_name="contratti_service.emetti")
         with self._map_db_errors(
             {"contratto_id": contratto_id, "codice_interno": stato.codice},
             fallback_message="Violazione vincolo DB su attivazione contratto.",
         ):
-            updated = self._repo.update_stato(contratto_id, stato.id)
-            ErrorManager.require(
-                updated,
-                code=E_VENDITE_NOT_FOUND,
-                message="Contratto non trovato.",
-                context={"contratto_id": contratto_id},
-            )
+            self._repo.cambia_stato(contratto_id, stato.codice)
         return self.get_contratto(contratto_id)
 
     # =================================================================

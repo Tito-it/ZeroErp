@@ -28,6 +28,7 @@ Indice test eseguiti:
 15) test_cambia_stato_annullo_con_conferma — legami_confermati propagato al service
 16) test_legami_ok                — 200 GET legami della bolla (mock service)
 17) test_riga_qta_evasa_ok        — 200 POST verbo quantita' evasa, payload propagato
+18) test_emetti_rifiutato_non_genera_il_documento — 409 dal verbo, nessun PDF
 """
 
 from unittest.mock import ANY, Mock, patch
@@ -35,6 +36,7 @@ from unittest.mock import ANY, Mock, patch
 from django.test import SimpleTestCase
 
 
+from apps.core.services.service_errors import ServiceError
 from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
@@ -151,6 +153,25 @@ class TestDdtApi(JwtMockedApiTest):
         kwargs = doc_svc_cls.return_value.genera_documento.call_args.kwargs
         self.assertEqual(kwargs["emittente_fiscale_id"], 11)
         self.assertEqual(kwargs["sorgente_tipo_id"], 5)
+
+    # Il secondo «Emetti» lo rifiuta il verbo (E_DOC_GIA_NELLO_STATO,
+    # brief-modello-documento-vendita §9.10): la view genera il documento solo
+    # DOPO il verbo, quindi un rifiuto non lascia un secondo PDF. La view e' la
+    # factory comune di `sorgente_documenti_views`: vale per ogni documento.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_VIEW_ATOMIC)
+    @patch(_DOC_GEN_SVC)
+    @patch(_DOC_VIEW_SVC)
+    def test_emetti_rifiutato_non_genera_il_documento(
+        self, svc_mod, doc_svc_cls, _atomic, _auth,
+    ) -> None:
+        svc_mod.emetti.side_effect = ServiceError(
+            code="E_DOC_GIA_NELLO_STATO", message="Il documento e' gia' nello stato EMESSO",
+        )
+        resp = self.client.post(f"{_BASE}7/emetti/", data={})
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.json()["error"]["code"], "E_DOC_GIA_NELLO_STATO")
+        doc_svc_cls.return_value.genera_documento.assert_not_called()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.cambia_stato")

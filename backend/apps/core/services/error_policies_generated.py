@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1137, di cui 122 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1139, di cui 122 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -393,6 +393,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # ⚠️ RITIRATO il 2026-10-10
     "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE": "CONFLITTO_STATO",
     "E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE": "CONFLITTO_STATO",
+    # Verbo della cessazione vendite.fn_cessa_contratto (2026-10-26, 20261026-06, brief-modello-documento-vendita §11, Y-3): la cessazione e' chiesta senza la data di fine. Prende il posto del controllo Python di contratti_service.cambia_stato («Data cessazione obbligatoria», E_VENDITE_VALIDATION). DATO_ERRATO col campo valido_al: e' un campo della richiesta da compilare. Nessun valore: la frase e' chiusa.
+    "E_CONTRATTO_CESSAZIONE_SENZA_DATA": "DATO_ERRATO",
     "E_CONTRATTO_CLASSE_TIPO_INCOERENTE": "DATO_ERRATO",
     # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6. · Ritirato il 2026-10-10 (brief-db-guard-emittente-ba-unico, D-1 di Tid): i sei documenti sollevano E_DOC_EMITTENTE_BA_INCOERENTE dal BB script.trgfn_doc_guard_emittente_ba. Resta a catalogo per i messaggi gia' scritti nel log.
     # ⚠️ RITIRATO il 2026-10-10
@@ -431,7 +433,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA": "NON_ESEGUIBILE",
     "E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI": "DATO_ERRATO",
     "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI": "DATO_ERRATO",
-    # Guard cessazione contratti (trgfn_contratti_guard_transizione_stato, · rev 2026-05-14): la transizione manuale ATTIVO -> CESSATO non ammette · valido_al retroattivo. Il job notturno pgAgent (`fn_apply_chiusura · _scadenze` via GUC `app.cessazione_automatica`) e' invece autorizzato · a cessare con valido_al passato.
+    # Verbo della cessazione vendite.fn_cessa_contratto (dal 2026-10-26, 20261026-06, brief-modello-documento-vendita §11, Y-2/Y-3): la data di cessazione chiesta e' nel passato (niente riscrittura storica). Fino al 2026-10-26 lo sollevava il guard di transizione (trgfn_contratti_guard_transizione_stato, rev 2026-05-14) sulla cessazione manuale, distinta dal job con la GUC app.cessazione_automatica: GUC ritirata, perche' la poteva accendere chiunque. Il verbo della cessazione e' l'unico che scrive la data, e la regola sta li'. Campo valido_al.
     "E_CONTRATTO_VALIDO_AL_RETROATTIVO": "CONFLITTO_STATO",
     "E_CORE_PROFILE_NOT_FOUND": "NON_TROVATO",
     "E_CORE_VALIDATION": "DATO_ERRATO",
@@ -613,6 +615,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOC_FORNITURA_FUORI_TESTATA": "TECNICO",
     # vendite.fn_get_fornitura_da_anagrafica (coppia istanza/utility NULL) e vendite.fn_doc_fornitura_da_anagrafica (id del documento NULL o <= 0) chiamate senza il dato che le definisce (2026-10-12, brief-db-indirizzi-documento-seguono-il-cliente). Chiamante rotto: se ne accorge chi guarda dbops.error_log, mai l'operatore. Codice proprio e non E_PARAMETRO_INVALIDO, che e' uno split rimandato e non si riusa su punti nuovi. VARIADIC: la funzione, il dato mancante.
     "E_DOC_FORNITURA_PARAMETRO_MANCANTE": "TECNICO",
+    # BB script.fn_guard_passaggio, la prima riga del verbo di stato (2026-10-26, 20261026-01, brief-modello-documento-vendita §9.8 e §9.10, scelta di Tid): il verbo e' chiesto con lo stato che il documento ha gia' (un secondo «Emetti», una seconda conferma) e la matrice non ha la riga X -> X. Il guard di transizione non lo vede, perche' lo stato non cambia: lo rifiuta il verbo, prima di ogni suo lavoro. Comune a ogni documento sul modello (ordine, preventivo, bolla, reso e quelli dei giri dopo): per questo non e' il codice di transizione del singolo documento. CONFLITTO_STATO (409): la richiesta e' fondata ma lo stato di oggi la rende vuota, tipicamente un doppio invio. Valori: il codice_interno dello stato (script.fn_doc_stato_codice), come le frasi di transizione dei documenti; il contesto porta testata e stati.
+    "E_DOC_GIA_NELLO_STATO": "CONFLITTO_STATO",
     # Famiglia 1, l'identita' della testata (data, valuta, tasso di cambio, anno, serie, registro, revisione del preventivo): non cambia fuori bozza. BB vendite.trgfn_doc_testata_lock_fuori_bozza, montato su ddt, resi, ordini, preventivi, offerte_commerciali, contratti (D-1, D-2, D-7 di Tid, 2026-10-10, brief-db-testata-dopo-emissione). CONFLITTO_STATO come gli altri lock fuori bozza; VARIADIC lo stato. Il numero ha i suoi guard (protect_num, lock di colonna) e qui non e' nominato.
     "E_DOC_IDENTITA_FUORI_BOZZA": "CONFLITTO_STATO",
     # script.fn_check_listino_cambiabile, sollevato da script.trgfn_doc_guard_listino_con_righe su vendite.contratti e vendite.offerte_commerciali (2026-10-11, brief-db-testata-dopo-emissione §11, R-DB-4 e D-11 di Tid): un listino nuovo, messo dove non c'era o sostituito, su un documento con righe attive, che sono state caricate contro il listino di prima. Sostituisce E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE (solo contratto, solo backend) e vale anche per l'offerta, che ha le stesse righe. Fuori bozza parla prima il lock di testata (E_DOC_CONDIZIONI_FUORI_BOZZA). · VALORI: l'etichetta del documento e il numero di righe attive. Campo listino_id (canale COLUMN).
@@ -1204,7 +1208,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Framework FK-surrogata config.parameter_fk_surrogate (DB 2026-05-02): · dispatcher su parameters/parameter_overrides che valida default_value · contro la chiave naturale stabile (di norma codice_interno) della · tabella di catalogo target. Sostituisce il guard ad-hoc deprecato · E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID (mantenuto a livello DB · per retro-compat ma non mappato qui: i nuovi inserimenti finiscono · sempre sui codici 422/423 del framework).
     "E_PARAMETER_DEFAULT_VALUE_INVALID": "DATO_ERRATO",
     "E_PARAMETER_NOT_FOUND": "NON_TROVATO",
-    # Guard config.trgfn_parameter_overrides_guard_ammette_override (a05, 20261025-84): un override su un parametro con config.parameters.ammette_override = false, anche spento. Prima veniva accettato e ignorato, perche' il lettore di quei parametri guarda il default. DATO_ERRATO: rimedia chi scrive, cambiando il default. Parla prima del dispatcher FK-surrogata (E_PARAMETER_OVERRIDE_VALUE_INVALID). VARIADIC: il codice del parametro. Brief: brief-db-parametri-senza-override (D-1, 2026-10-25).
+    # Guard config.trgfn_parameter_overrides_guard_ammette_override (a05, 20261025-84): un override su un parametro con config.parameters.ammette_override = false, anche spento. Prima veniva accettato e ignorato, perche' il lettore di quei parametri guarda il default. DATO_ERRATO: e' la richiesta a essere sbagliata, non lo stato della risorsa. Il valore lo stabilisce la configurazione del sistema (il CSV di 80_data, cioe' un rilascio: l'applicazione non scrive il default), quindi chi riceve l'errore non personalizza e si rivolge all'amministratore del sistema (rev 2026-10-26, §6.7 del brief). Parla prima del dispatcher FK-surrogata (E_PARAMETER_OVERRIDE_VALUE_INVALID). VARIADIC: il codice del parametro. Brief: brief-db-parametri-senza-override (D-1, 2026-10-25).
     "E_PARAMETER_OVERRIDE_NON_AMMESSO": "DATO_ERRATO",
     # Guard config.trgfn_parameters_guard_ammette_override (a10, 20261025-85): un parametro passa da ammette_override = true a false mentre ha override, accesi o spenti. CONFLITTO_STATO: il valore nuovo puo' essere giusto, sono gli override esistenti a non ammetterlo. Lo scrive un CSV o un amministratore; campo ammette_override nel contesto. VARIADIC: il codice del parametro, il numero di override. Brief: brief-db-parametri-senza-override (D-1, 2026-10-25).
     "E_PARAMETER_OVERRIDE_PRESENTI": "CONFLITTO_STATO",

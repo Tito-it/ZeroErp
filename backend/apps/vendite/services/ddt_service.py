@@ -539,18 +539,8 @@ def _passa_a(
             TESTATA_DDT, target, campo="stato_codice",
             validation_code="E_DDT_VALIDAZIONE", function_name=f"{_FN}.cambia_stato",
         )
-    # ⚠️ «Lo stato esiste?» resta qui, e non e' una copia superflua: il verbo
-    #    della bolla tratta uno stato sconosciuto come chiamata malformata
-    #    (E_VENDITE_CHIAMATA_NON_VALIDA, TECNICO: un 500), i gemelli di ordine e
-    #    preventivo con E_STATO_WORKFLOW_NON_TROVATO. Si ritira quando il verbo
-    #    risponde come i gemelli (richiesta al team DB, brief §9.9).
-    stato_id = repo.get_stato_id_by_codice(target)
-    ErrorManager.require(
-        stato_id is not None,
-        code="E_DDT_VALIDAZIONE",
-        message=f"Stato '{target}' non configurato in config.stati_doc_ddt.",
-        function_name=f"{_FN}.cambia_stato",
-    )
+    # «Lo stato esiste?» lo dice il verbo (E_STATO_WORKFLOW_NON_TROVATO, come
+    # i gemelli: brief-modello-documento-vendita §9.10): qui non ce n'e' una copia.
     # L'annullo (lo stato d'annullo del vocabolario) dal suo verbo.
     if e_stato_di_annullo(TESTATA_DDT, target):
         confermati = dichiarazione_legami(

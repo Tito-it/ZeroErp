@@ -223,14 +223,12 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_CONTRATTO_NON_TROVATO": "show_error_banner",  # classe NON_TROVATO
     "E_CONTRATTO_RIGA_NON_TROVATA": "show_error_banner",  # classe NON_TROVATO
     # Guard DB transizione stato contratti (trgfn_contratti_a10_guard_
-    # transizione_stato, landed 2026-04-26). Rifiuta transizioni non
-    # ammesse: DRAFT->ATTIVO consentita; ATTIVO->CESSATO consentita
-    # SOLO con valido_al < oggi; CESSATO terminale; altre vietate.
-    # Il service applicativo ha la stessa regola fail-safe data-driven:
-    # se l'utente sceglie data futura nel dialog "Cessa contratto", il
-    # service NON chiama update_stato (cessazione programmata) — il job
-    # notturno applica CESSATO quando la data scade. Questo trigger
-    # interviene su bypass del service (UPDATE diretto via psql).
+    # transizione_stato, landed 2026-04-26): rifiuta le transizioni che la
+    # matrice non ammette. Dal 2026-10-26 lo stato lo scrivono solo i verbi
+    # (fn_cambia_stato_contratto, fn_cessa_contratto, fn_annulla_contratto);
+    # la regola della data di cessazione (obbligatoria, non retroattiva,
+    # futura = programmata) sta nel verbo della cessazione, non qui
+    # (brief-modello-documento-vendita §11.6).
     "E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA": "show_toast_error",  # classe CONFLITTO_STATO
     "E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI": "highlight_form_fields",  # classe DATO_ERRATO
     "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI": "highlight_form_fields",  # classe DATO_ERRATO

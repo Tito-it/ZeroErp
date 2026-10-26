@@ -24,7 +24,7 @@ Indice test eseguiti:
 3) OrdineCambiaStatoDbTests.test_conferma_senza_righe — il rifiuto del guard, col suo codice (C-2)
 4) OrdineCambiaStatoDbTests.test_lo_stato_di_emissione_e_un_400 — M-2 dal vocabolario
 5) OrdineCambiaStatoDbTests.test_annullo_della_bozza — senza azione (M-4), dal verbo d'annullo
-6) OrdineCambiaStatoDbTests.test_conferma_due_volte — rifiutata (oggi dal service: difetto DB X -> X, §9.8)
+6) OrdineCambiaStatoDbTests.test_conferma_due_volte — rifiutata dal verbo, E_DOC_GIA_NELLO_STATO (§9.10)
 7) OrdineCambiaStatoDbTests.test_conferma_ordine_inesistente — il 404 dal verbo
 8) OrdineCambiaStatoDbTests.test_stato_inesistente — il rifiuto del verbo, col suo codice (§9.9)
 """
@@ -117,17 +117,14 @@ class OrdineCambiaStatoDbTests(unittest.TestCase):
         self.assertEqual(out["stato_precedente"], "DRAFT")
         self.assertEqual(self._stato(), "ANNULLATO")
 
-    # La seconda conferma e' rifiutata. ⚠️ Oggi la ferma il service
-    # (E_ORD_STATO_TRANSIZIONE): il verbo comune accetta CONFERMATO ->
-    # CONFERMATO (difetto DB, brief-modello-documento-vendita §9.8). Quando il
-    # DB lo chiude, il codice atteso diventa quello della matrice e il
-    # controllo del service si ritira.
+    # La seconda conferma la rifiuta il verbo, dalla prima riga: il documento
+    # e' gia' nello stato chiesto (brief-modello-documento-vendita §9.10).
     def test_conferma_due_volte(self) -> None:
         self._concedi_emetti_ordine()
         ordini_service.conferma(self.ordine_id)
         with self.assertRaises(ServiceError) as cm:
             ordini_service.conferma(self.ordine_id)
-        self.assertEqual(cm.exception.code, "E_ORD_STATO_TRANSIZIONE")
+        self.assertEqual(cm.exception.code, "E_DOC_GIA_NELLO_STATO")
         self.assertEqual(self._stato(), "CONFERMATO")
 
     def test_conferma_ordine_inesistente(self) -> None:

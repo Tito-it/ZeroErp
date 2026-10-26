@@ -5882,7 +5882,7 @@
       "level_categoria_cliente": "Categoria cliente",
       "level_user": "Utente",
       "per_tutti": "Uguale per tutti",
-      "per_tutti_hint": "Questo parametro vale per tutti e non si personalizza: si cambia il valore di default."
+      "per_tutti_hint": "Questo parametro vale per tutti e non si personalizza: lo stabilisce la configurazione del sistema, per cambiarlo ci si rivolge all'amministratore."
     },
     "documenti": {
       "tab_modelli": "Modelli documenti",
