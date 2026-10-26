@@ -3257,12 +3257,14 @@
       "riga_senza_qta": "riga {riga} torna disponibile",
       "commessa": "una riga da emettere torna annullata",
       "provenienza": "torna trasformabile",
+      "revisione_precedente": "la revisione precedente torna emessa",
       "spiegazione": "Confermando, il documento si annulla e queste cose tornano disponibili: quantità da spedire, righe da ordinare, righe di commessa, l'offerta da trasformare.",
       "commessa_da_mandare": "torna da mandare in commessa · righe: {n}",
       "commessa_da_accreditare": "torna da accreditare · righe: {n}",
       "si_annulla": "Che cosa si annulla",
       "oneri_annullati": "oneri che si annullano con la commessa: {n}",
       "spiegazione_commessa": "Confermando, la commessa si annulla: le righe non ancora emesse escono dalla commessa, i documenti da cui vengono tornano da mandare in commessa, il reso torna da accreditare, gli oneri si annullano.",
+      "spiegazione_offerta": "Confermando, questa revisione si annulla e la revisione precedente torna a essere l'offerta emessa al cliente.",
       "nessun_legame": "I legami con altri documenti non ci sono più: confermando, il documento si annulla senza ritirare niente."
     },
     "listini": {
@@ -3663,7 +3665,6 @@
       "field_param_2_txt": "Parametro 2 (testo)",
       "field_motivazione": "Motivazione",
       "field_motivazione_required_placeholder": "Motiva la decisione (obbligatorio)...",
-      "field_motivazione_optional_placeholder": "Note opzionali...",
       "azione_emetti": "Emetti",
       "azione_annulla": "Annulla offerta",
       "azione_accetta": "Accetta",

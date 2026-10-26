@@ -14,6 +14,9 @@
 #        con allegati) — la route `documenti/genera/` NON e' esposta (il
 #        factory la produce, urls_offerte non la cabla). Gli allegati restano
 #        aggiungibili anche dopo l'emissione via `documenti/<id>/allegati/`.
+#        L'azione la dice la riga della matrice verso lo stato di emissione
+#        (`emetti_offerta` su BOZZA -> EMESSA), non questa view
+#        (`emetti_passaggio`, brief-modello-documento-vendita §13.6 punto 5).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -29,7 +32,7 @@ from apps.documenti.api.sorgente_documenti_views import (
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
-from apps.vendite.db.offerte_repository import OfferteRepository
+from apps.vendite.db.offerte_repository import TESTATA_OFFERTE, OfferteRepository
 from apps.vendite.services.offerte_service import OfferteService
 
 
@@ -47,8 +50,8 @@ def _doc_service() -> DocumentGenerationService:
     return DocumentGenerationService()
 
 
-# Scopo: Closure di dominio: emissione BOZZA->EMESSA (il trigger DB verifica
-#        listino_versione_id + versione ATTIVA). Patchabile nei test come
+# Scopo: Closure di dominio: emissione BOZZA->EMESSA dal verbo di stato (il
+#        guard DB congela la versione di listino). Patchabile nei test come
 #        offerte_documenti_views.OfferteService.
 def _emetti_call(request: Request, offerta_id: int) -> dict[str, Any]:
     return OfferteService().emetti(offerta_id)
@@ -64,6 +67,7 @@ _views = build_documenti_sorgente_views(
     emetti_call=_emetti_call,
     emetti_response_key="offerta",
     model_permission=("vendite", "offerta_commerciale"),
+    emetti_passaggio=TESTATA_OFFERTE,
 )
 
 ApiOffertaEmetti = _views.emetti

@@ -24,6 +24,7 @@
 //  4) finche' la lettura non arriva, la conferma e' spenta
 //  5) la lettura va al documento del chiamante (basePath + id)
 //  6) le tre forme: riga, provenienza, commessa
+//  6-bis) offerta: la revisione precedente torna emessa
 //  7) commessa: righe contate per documento, oneri a parte, dichiara il numero del lettore
 //  8) commessa: documenti senza nome dal lineage restano distinti
 //  8-bis) commessa: i consumi si nominano dall'origine (codice della sorgente)
@@ -123,6 +124,23 @@ describe('DocumentoAnnulloLegamiDialog — la dichiarazione', () => {
     rispostaLegami = legami([legame({ riga_nr: 1 })])
     await montaDialog()
     expect(chiamate).toEqual([['/vendite/ordini', 7]])
+  })
+
+  // ⭐ L'offerta (brief-modello-documento-vendita §13, O-4): il legame e' la
+  //    revisione precedente, una PROVENIENZA che non «torna trasformabile» ma
+  //    «torna emessa»; senza nome dal lineage, senza link.
+  it('offerta: la revisione precedente torna emessa', async () => {
+    rispostaLegami = legami([
+      legame({ origine: 'OFFERTA_COMMERCIALE', natura: 'PROVENIENZA', origine_id: 5, origine_riga_id: null,
+        origine_tipo_codice_interno: 'OFFERTA_COMMERCIALE', origine_codice: null, qta: null }),
+    ], 'OFFERTA_COMMERCIALE')
+    const wrapper = await montaDialog()
+    const testo = wrapper.text()
+    expect(testo).toContain('vendite.annullo_legami.revisione_precedente')
+    expect(testo).not.toContain('vendite.annullo_legami.provenienza')
+    expect(testo).toContain('vendite.annullo_legami.spiegazione_offerta')
+    wrapper.findComponent(CorniceFinta).vm.$emit('save')
+    expect(wrapper.emitted('conferma')).toEqual([[{ legami_confermati: 1 }]])
   })
 
   it('le tre forme: riga, provenienza, commessa', async () => {

@@ -37,6 +37,7 @@ import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelec
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useContatoreNote } from '../../../core/composables/useContatoreNote'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
+import { useForzaturaConfermata } from '../../../core/composables/useForzaturaConfermata'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
@@ -79,6 +80,7 @@ import OffertaEmissioneDialog from './dialogs/OffertaEmissioneDialog.vue'
 import OffertaEsitoDialog from './dialogs/OffertaEsitoDialog.vue'
 import OffertaPushDialog from './dialogs/OffertaPushDialog.vue'
 import OffertaSuccessioneDialog from './dialogs/OffertaSuccessioneDialog.vue'
+import DocumentoAnnulloLegamiDialog from '../../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
 // Riuso read-only del drawer contratti per ispezionare il contratto sovrapposto
 // dal dialog di successione (righe comprese). Read-only forzato via prop.
 import ContrattoDrawer from '../../components/ContrattoDrawer.vue'
@@ -219,7 +221,9 @@ const noteDrawerVisible = ref(false)
 const contatoreNote = useContatoreNote(() => detail.value)
 const emissioneDialogVisible = ref(false)
 const esitoDialogVisible = ref(false)
-const esitoDialogModalita = ref('ACCETTATA') // ACCETTATA | RIFIUTATA | ANNULLATA
+const esitoDialogModalita = ref(STATO_OFFERTA.ACCETTATA) // ACCETTATA | RIFIUTATA | ANNULLATA
+// L'obbligo della motivazione dalla riga del passaggio (`requires_motivazione`).
+const esitoDialogMotivazioneObbligatoria = ref(false)
 const pushDialogVisible = ref(false)
 // Dialog "contratto gia' generato" — aperto se l'offerta ha gia' un contratto
 // collegato (detail.contratto_id valorizzato dal BE, idempotenza Pattern A).
@@ -596,9 +600,9 @@ function reloadRevisioni() {
 // Un'azione spenta (`enabled:false`, es. «Genera ordine» con una riga che non
 // va in un ordine) arriva come pulsante disabilitato col tooltip del motivo
 // (`mapAvailableActionsToDrawerActions`): il click non arriva qui.
-// `requires_motivazione` arriva dalla fn DB ma non viene letta qui: la
-// motivazione obbligatoria e' enforced dal dialog esito + dal BE
-// (motivazione_rifiuto NOT NULL su RIFIUTATA/ANNULLATA).
+// `requires_motivazione` arriva dalla fn DB (la riga del passaggio) e va al
+// dialog esito, che segna il campo obbligatorio; a farla rispettare e' il verbo
+// DB (E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA, brief-modello-documento-vendita §13).
 function onActionDispatch(action) {
   switch (action.key) {
     case 'emetti':
@@ -610,6 +614,7 @@ function onActionDispatch(action) {
       // target_state della fn DB e' lo stato di destinazione (ANNULLATA /
       // ACCETTATA / RIFIUTATA). Coincide con la modalita' del dialog esito.
       esitoDialogModalita.value = action.target_state
+      esitoDialogMotivazioneObbligatoria.value = action.requires_motivazione === true
       esitoDialogVisible.value = true
       return
     case 'crea_revisione':
@@ -718,21 +723,45 @@ async function handleEmissioneConferma(payload = {}) {
   }
 }
 
+// ⭐ L'annullo e' un gesto CONFERMABILE (O-4, brief-modello-documento-vendita
+//    §13): annullare l'ultima revisione viva fa tornare emessa la precedente,
+//    e il DB lo rifiuta (`confirm_and_retry`) finche' chi conferma non dichiara
+//    quanti legami ha visto; la domanda la porta a video
+//    `DocumentoAnnulloLegamiDialog`. La motivazione resta nella chiamata da
+//    ripetere. Accetta e rifiuta restano su `execute`.
+const annullo = useForzaturaConfermata()
+const { richiestaConferma: domandaAnnullo } = annullo
+
+async function dopoEsito() {
+  esitoDialogVisible.value = false
+  await refreshDetail()
+  await reloadRevisioni()
+}
+
 async function handleEsitoConferma({ esito, motivazione }) {
-  let action
-  if (esito === 'ANNULLATA') {
-    action = () => store.annulla(props.offertaId, { motivazione })
-  } else {
-    action = () => store.registraEsito(props.offertaId, { esito, motivazione })
+  const opts = { successMessage: t('vendite.offerte.esito_salvato') }
+  if (esito === STATO_OFFERTA.ANNULLATA) {
+    // Primo tentativo SEMPRE senza dichiarazione.
+    const result = await annullo.esegui(
+      (dichiarazione) => store.annulla(props.offertaId, { motivazione, dichiarazione }),
+      opts,
+    )
+    if (result !== null) await dopoEsito()
+    // La domanda del DB: la finestra dei legami prende il posto del dialog.
+    else if (domandaAnnullo.value !== null) esitoDialogVisible.value = false
+    return
   }
-  const result = await execute(action, {
-    successMessage: t('vendite.offerte.esito_salvato'),
-  })
-  if (result !== null) {
-    esitoDialogVisible.value = false
-    await refreshDetail()
-    await reloadRevisioni()
-  }
+  const result = await execute(
+    () => store.registraEsito(props.offertaId, { esito, motivazione }), opts,
+  )
+  if (result !== null) await dopoEsito()
+}
+
+// Scopo: l'operatore ha visto i legami e conferma l'annullo: si ripete la
+//        chiamata DICHIARANDO quanti erano.
+async function onConfermaAnnullo(dichiarazione) {
+  const result = await annullo.conferma(dichiarazione)
+  if (result !== null) await dopoEsito()
 }
 
 async function handlePushConferma({ praticaId }) {
@@ -1258,8 +1287,24 @@ const footerDrawer = useFooterDocumento({
       v-model:visible="esitoDialogVisible"
       :offerta="detail"
       :modalita="esitoDialogModalita"
-      :loading="loading"
+      :motivazione-obbligatoria="esitoDialogMotivazioneObbligatoria"
+      :loading="loading || annullo.loading.value"
       @confirm="handleEsitoConferma"
+    />
+    <!-- La conferma dell'annullo di una revisione (la precedente torna
+         emessa): aperta dalla domanda del DB, chiusa dalla conferma o dalla
+         rinuncia. -->
+    <DocumentoAnnulloLegamiDialog
+      v-if="offertaId"
+      :visible="domandaAnnullo !== null"
+      base-path="/vendite/offerte"
+      :doc-id="offertaId"
+      :header="t('vendite.offerte.esito_annullata_titolo')"
+      :domanda="domandaAnnullo"
+      :loading="annullo.loading.value"
+      :readonly="parentReadonly"
+      @conferma="onConfermaAnnullo"
+      @cancel="annullo.annulla()"
     />
     <OffertaPushDialog
       v-model:visible="pushDialogVisible"

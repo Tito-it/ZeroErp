@@ -4,10 +4,11 @@
 # Doc: Python
 # Scopo: API views per vendite.offerte_commerciali (CRUD iniziale).
 #        Espone: testata + cambio stato (emetti/registra-esito/annulla) +
-#        eccezioni + utility 1:1. State machine enforced dal trigger DB
-#        trgfn_offerte_commerciali_guard_transizione; il service traduce
-#        gli errori P0001 in ServiceError che il middleware converte in
-#        error envelope uniforme.
+#        eccezioni + utility 1:1. Lo stato lo scrivono i verbi DB
+#        (`fn_cambia_stato_offerta`, `fn_annulla_offerta`, brief-modello-
+#        documento-vendita §13); il permesso del passaggio dalla riga della
+#        matrice (`PassaggioDocumento`); il service traduce gli errori P0001
+#        in ServiceError che il middleware converte in error envelope uniforme.
 #
 #        Stato 2026-05-25: tutti gli endpoint del ciclo offerta esposti.
 #        Codice `OFC-*` automatico via trigger DB; `crea-revisione/`,
@@ -25,6 +26,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
@@ -43,7 +45,7 @@ from apps.vendite.api._riga_erogazioni_views import RigaErogazioniView
 from apps.vendite.api.indirizzi_documento_views import (
     build_indirizzi_documento_views,
 )
-from apps.vendite.db.offerte_repository import OffertaRigheListaRepository
+from apps.vendite.db.offerte_repository import TESTATA_OFFERTE, OffertaRigheListaRepository
 from apps.vendite.services import offerte_service
 from apps.vendite.services.offerte_service import OfferteService
 from apps.core.api.openapi_params import param_ricerca_full
@@ -106,17 +108,29 @@ _ECCEZIONE_PATCH_REQUEST = schema_da_contratto(
 _ESITO_REQUEST = inline_serializer(
     name="VenditeOffertaEsitoReq",
     fields={
-        # Esito cliente da EMESSA: ACCETTATA (motivazione opzionale) oppure
-        # RIFIUTATA (motivazione obbligatoria).
+        # Esito cliente da EMESSA: ACCETTATA (motivazione non usata) oppure
+        # RIFIUTATA (motivazione obbligatoria: lo dice la riga del passaggio,
+        # al verbo, E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA).
         "esito": serializers.ChoiceField(choices=["ACCETTATA", "RIFIUTATA"]),
-        "motivazione": serializers.CharField(required=False, allow_blank=True),
+        "motivazione": serializers.CharField(required=False, allow_blank=True, allow_null=True),
     },
 )
 
 
 _ANNULLA_REQUEST = inline_serializer(
     name="VenditeOffertaAnnullaReq",
-    fields={"motivazione": serializers.CharField()},
+    fields={
+        "motivazione": serializers.CharField(
+            help_text="Obbligatoria (E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA, dalla riga del passaggio).",
+        ),
+        "legami_confermati": serializers.IntegerField(
+            required=False, allow_null=True,
+            help_text=(
+                "Quanti legami si sono visti nella finestra di conferma (la revisione "
+                "precedente che torna emessa). Assente al primo tentativo."
+            ),
+        ),
+    },
 )
 
 
@@ -363,6 +377,12 @@ class ApiOffertaDetail(DomainAPIView):
 class ApiOffertaRegistraEsito(DomainAPIView):
     area_funzionale = "vendite"
     model_permission = ("vendite", "offerta_commerciale")
+    # L'azione del passaggio (stato corrente -> `esito`) dalla riga della
+    # matrice, la stessa che legge il verbo: oggi accetta e rifiuta non ne
+    # hanno, e decide il livello sul documento (M-3, guida §6; §13.6 punto 5).
+    post_passaggio = PassaggioDocumento(
+        testata=TESTATA_OFFERTE, documento_kwarg="offerta_id", campo_stato="esito",
+    )
 
     @extend_schema(
         request=_ESITO_REQUEST,
@@ -388,6 +408,13 @@ class ApiOffertaRegistraEsito(DomainAPIView):
 class ApiOffertaAnnulla(DomainAPIView):
     area_funzionale = "vendite"
     model_permission = ("vendite", "offerta_commerciale")
+    # L'azione dalla riga del passaggio verso lo stato d'annullo, chiesto al
+    # vocabolario a ogni richiesta: l'annullo dell'accettata chiede
+    # `emetti_offerta`, quello della bozza il solo livello sul documento
+    # (M-3, M-4; §13.6 punto 5).
+    post_passaggio = PassaggioDocumento(
+        testata=TESTATA_OFFERTE, documento_kwarg="offerta_id", stato_del_modello="annullo",
+    )
 
     @extend_schema(
         request=_ANNULLA_REQUEST,
@@ -396,14 +423,21 @@ class ApiOffertaAnnulla(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: -> ANNULLATA, da BOZZA o da ACCETTATA. Motivazione obbligatoria.
-    #        Da quali stati e a quali condizioni lo dice il DB (transizioni e
-    #        guard: da ACCETTATA, nessun contratto o ordine vivo a valle).
+    # Scopo: -> ANNULLATA, da BOZZA o da ACCETTATA, dal verbo
+    #        `vendite.fn_annulla_offerta`. Motivazione obbligatoria (la dice il
+    #        DB). Da quali stati e a quali condizioni lo dice il DB (transizioni
+    #        e guard: da ACCETTATA, nessun contratto o ordine vivo a valle).
+    #        L'annullo di una revisione che riapre la precedente si conferma:
+    #        il primo tentativo risponde E_DOC_ANNULLO_CON_LEGAMI
+    #        (`confirm_and_retry`), il secondo dichiara `legami_confermati`.
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
         body = corpo_oggetto(request)
-        motivazione = body.get("motivazione", "")
         return success_response(
-            OfferteService().annulla(offerta_id, motivazione=motivazione)
+            OfferteService().annulla(
+                offerta_id,
+                motivazione=body.get("motivazione"),
+                legami_confermati=body.get("legami_confermati"),
+            )
         )
 
 
