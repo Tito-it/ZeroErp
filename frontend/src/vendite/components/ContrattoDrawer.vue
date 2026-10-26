@@ -646,8 +646,8 @@ useCambioClienteDocumento({
 // con `default_date` e `min_date` arrivati dal BE
 // (script.fn_available_actions_contratto).
 //
-// Comportamento data-driven (allineato col guard DB
-// `trgfn_contratti_guard_transizione_stato`):
+// Comportamento data-driven (lo decide il verbo DB `vendite.fn_cessa_contratto`,
+// brief-modello-documento-vendita §11.6; qui solo l'anteprima):
 // - data <  oggi  -> VIETATO (cessazione retroattiva: il DB rifiuta). La UI
 //                    blocca a monte con min-date = oggi, niente scelta retroattiva.
 // - data == oggi  -> cessazione IMMEDIATA: stato passa subito a CESSATO
@@ -692,14 +692,20 @@ function openCessaDialog(action) {
 // programmata lo dice il verbo del DB (`programmata`, brief-modello-documento-
 // vendita §11.6). `cessazioneProgrammata` qui sopra resta solo l'anteprima del
 // dialog, prima della conferma.
+// ⚠️ L'esito si legge dall'azione store, NON dal ritorno di `execute`: il
+//    dettaglio del contratto ha un campo `data` (la data del documento), e
+//    `execute` lo scambia per l'envelope e ritorna quella stringa — così
+//    `programmata` risultava sempre assente e il toast diceva «immediata».
 async function onConfermaCessazione() {
   const validoAl = toDateString(cessaDialogData.value)
   const targetState = cessaDialogAction.value?.target_state || STATO_CONTRATTO.CESSATO
-  const result = await execute(
-    () => store.cambiaStato(props.contrattoId, targetState, { validoAl }),
-  )
-  if (result !== null) {
-    notify.success(result?.programmata
+  let esito = null
+  await execute(async () => {
+    esito = await store.cambiaStato(props.contrattoId, targetState, { validoAl })
+    return esito
+  })
+  if (esito) {
+    notify.success(esito.programmata
       ? t('vendite.contratti.cessa_dialog_success_programmata', { data: validoAl })
       : t('vendite.contratti.cessa_dialog_success_immediata'))
     cessaDialogVisible.value = false
