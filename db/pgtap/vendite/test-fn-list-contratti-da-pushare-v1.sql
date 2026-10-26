@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): il contratto del test 3 si attiva con dbops.fn_pgtap_porta_a_stato, non piu' con l'UPDATE diretto dello stato che la porta del contratto ora rifiuta.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_contratti_da_pushare
 -- ------------------------------------------------------------
@@ -162,9 +163,8 @@ SELECT * FROM ins;
 --   in cui ci si arriva.
 --   ⚠️ Il secondo contratto del file nasceva gia' in DRAFT e resta com'e': li'
 --   la sequenza era gia' quella giusta.
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT stato_attivo_id FROM tmp_refs_contr)
- WHERE id = (SELECT id FROM tmp_contratto);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, id, 'ATTIVO')
+  FROM tmp_contratto;
 
 CREATE TEMP TABLE tmp_result_contr AS
 SELECT *

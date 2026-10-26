@@ -1,6 +1,6 @@
 # Guida — Contratto GUC `app.*`
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 26 ottobre 2026
 >
 > **Destinatari**: backend Django (authentication class, middleware), autori di funzioni DB e policy RLS
 >
@@ -48,8 +48,8 @@ Il backend Django li scrive nella authentication class, a ogni richiesta autenti
 
 > ⚠️ Nel namespace `app.*` **convivono altre GUC che non fanno parte di questo contratto**:
 > le scrive una funzione o un processo per il tempo della propria transazione, come parametri
-> di contesto (`app.cessazione_automatica`, `app.registrazione_tardiva_riga_id`). Non sono
-> identità e non vanno confuse con quelle della tabella qui sotto.
+> di contesto (`app.registrazione_tardiva_riga_id`). Non sono identità e non vanno confuse
+> con quelle della tabella qui sotto.
 
 ---
 

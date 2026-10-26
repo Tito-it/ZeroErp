@@ -1,5 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): il contratto ha la porta sulla colonna di
+--   stato e l'attivazione chiede emetti_contratto. Concessa all'operatore del contesto prima del 18
+--   (senza, «Attiva» e' nascosta e la reason esce NULL); 19 e 20 passano dal verbo
+--   vendite.fn_cambia_stato_contratto (prima UPDATE diretti, ora fermati dalla porta). Stessi
+--   esiti attesi.
 -- rev 2026-10-25 (brief-modello-documento-vendita §9): l'ordine ha la porta sulla colonna di stato
 --   e la conferma chiede emetti_ordine. Concessa all'operatore del contesto prima del 28 (senza,
 --   «Conferma» e' nascosta e la reason esce NULL); 29 e 30 passano dal verbo
@@ -434,6 +439,9 @@ SELECT is(
     '17) contratto: una RIGA con prezzo in attesa (prima contavano solo i componenti) da'' un motivo'
 );
 
+-- rev 2026-10-26 (§11): permesso => nascondi; con l'azione «Attiva» c'e', spento dal motivo.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_contratto');
+
 SELECT is(
     (SELECT (a ->> 'reason_key') || ' / reasons=' || jsonb_typeof(a -> 'reasons')
        FROM jsonb_array_elements(script.fn_available_actions_contratto(
@@ -444,16 +452,14 @@ SELECT is(
 );
 
 SELECT throws_like(
-    format('UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno = 'ATTIVO'),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$q$,
            (SELECT contratto_id FROM _c WHERE tag = 'rifiutato')),
     '%prezzi rifiutati dal responsabile%',
     '19) DRAFT -> ATTIVO con una riga REJECTED: BLOCCA (prima passava)'
 );
 
 SELECT lives_ok(
-    format('UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno = 'ATTIVO'),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$q$,
            (SELECT contratto_id FROM _c WHERE tag = 'pulito')),
     '20) DRAFT -> ATTIVO con prezzi autorizzati: PASSA (controllo del 19)'
 );

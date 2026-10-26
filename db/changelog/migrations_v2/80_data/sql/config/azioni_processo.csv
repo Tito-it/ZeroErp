@@ -40,3 +40,4 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 39,2,conferma_reso,Conferma o annulla un reso (se fa rientrare merce carica o storna il magazzino),t,t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit,TUTTO
 40,2,emetti_preventivo,Emette un preventivo o annulla un preventivo emesso o accettato,f,t,{},2026-10-25 00:00:00+02,mctit,2026-10-25 00:00:00+02,mctit,TUTTO
 41,2,emetti_ordine,Emette (conferma) un ordine o annulla un ordine confermato,f,t,{},2026-10-25 00:00:00+02,mctit,2026-10-25 00:00:00+02,mctit,TUTTO
+42,2,emetti_contratto,Attiva (emette) un contratto o lo cessa (anche con una data futura: la cessazione programmata),f,t,{},2026-10-26 00:00:00+01,mctit,2026-10-26 00:00:00+01,mctit,TUTTO

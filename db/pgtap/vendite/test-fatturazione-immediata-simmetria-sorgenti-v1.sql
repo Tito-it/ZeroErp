@@ -5,6 +5,7 @@
 --       + presidio di immutabilita' dopo il push in commessa
 -- Brief: brief-db-emissione-fattura-per-documento-sorgente PARTE B (step B6)
 -- Changeset coperti: 20260727-01..09
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): il contratto ATTIVO dei test 9-10 si attiva con dbops.fn_pgtap_porta_a_stato, non piu' con l'UPDATE diretto dello stato che la porta del contratto ora rifiuta.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): il DDT SPEDITO del test 10 dal builder dbops.fn_pgtap_crea_ddt_da_ordine (trigger SPEDITO, causale VENDITA); restano a mano gli ordini col flag (6-8, 14-17: nessuna bolla, il flag e' il caso), il contratto e il preventivo.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): righe e conferma dei due ordini col flag da dbops.fn_pgtap_crea_ordine_con_righe (p_ordine_id, 1 x 10): la testata col flag resta a mano, e' il caso; tolte dai riferimenti le colonne senza lettori (iva, stato confermato dell'ordine, stato accettato del preventivo).
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
@@ -284,11 +285,8 @@ SELECT c.id, r.articolo_id, 50, 'UNA_TANTUM',
        jsonb_build_object('test_scope', 'pgtap_fi_simmetria_ctr')
   FROM tmp_ctr_fi c, tmp_refs_fi r;
 
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT s.id FROM config.stati_doc_contratti s
-                                  WHERE s.codice_interno = 'ATTIVO' AND s.attivo IS TRUE
-                                  ORDER BY s.id LIMIT 1)
- WHERE id = (SELECT id FROM tmp_ctr_fi);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, id, 'ATTIVO')
+  FROM tmp_ctr_fi;
 
 -- Il DDT: ordine 1 @10 trigger SPEDITO, bolla SPEDITA causale VENDITA, dal builder.
 CREATE TEMP TABLE tmp_ddt_fi AS

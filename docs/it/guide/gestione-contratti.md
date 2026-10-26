@@ -1,6 +1,6 @@
 # Guida — Gestione Contratti vendita
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 26 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -177,8 +177,22 @@ da `config.transizioni_stati_contratti`:
 | `CESSATO`   | Contratto scaduto o terminato                                 | No (terminale)              |
 | `ANNULLATO` | Bozza annullata prima dell'attivazione (`is_abortito = true`) | No (terminale)              |
 
-La transizione `ATTIVO → CESSATO` può essere **automatica** (job notturno quando
-`valido_al < CURRENT_DATE`) o **manuale** (operatore che chiude anticipatamente).
+La transizione `ATTIVO → CESSATO` può essere **automatica** (la chiusura per
+scadenza, quando la data di fine è passata) o **manuale** (operatore che chiude il
+contratto). La cessazione manuale chiede sempre la **data di fine**, e la data decide:
+
+| Data di cessazione | Che cosa succede |
+| --- | --- |
+| oggi | il contratto passa subito a `CESSATO` |
+| futura | **cessazione programmata**: si scrive solo la data, il contratto resta `ATTIVO` fino a quel giorno e la chiusura per scadenza lo cessa il giorno dopo |
+| passata | rifiutata (`E_CONTRATTO_VALIDO_AL_RETROATTIVO`): non si riscrive la storia del contratto |
+| mancante | rifiutata (`E_CONTRATTO_CESSAZIONE_SENZA_DATA`) |
+
+Attivazione e cessazione chiedono l'azione `emetti_contratto` (chi non ce l'ha non vede
+«Attiva» né «Cessa»); l'annullo della bozza chiede solo il permesso sul contratto. I
+passaggi ammessi sono quelli della matrice `config.transizioni_stati_contratti`, e lo
+stato si cambia solo dalle operazioni del contratto (il
+[modello del documento di vendita](/guide/modello-documento-di-vendita), §5-§6).
 
 La transizione `DRAFT → ANNULLATO` è sempre ammessa: una bozza non ancora
 attivata può essere annullata in qualsiasi momento. Un contratto ANNULLATO non
@@ -441,7 +455,8 @@ variazione globale) passa per tre gate:
    │ usa STADIO 1      │
    └────────┬──────────┘
             │
-            │ valido_al scaduto (job notturno) oppure cessazione manuale
+            │ cessazione con la data di oggi, oppure data di fine passata
+            │ (chiusura per scadenza); una data futura la programma
             │
    ┌────────▼──────────┐
    │      CESSATO      │

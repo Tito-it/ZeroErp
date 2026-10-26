@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §9.10): test 13 nuovo, la seconda conferma
+--   (20261026-01, E_DOC_GIA_NELLO_STATO); i test 13-16 passano a 14-17.
 -- pgTAP test per Zero ERP
 --
 -- Test: l'ordine sul modello del documento, e lo stato d'annullo dal vocabolario
@@ -18,17 +20,17 @@
 --   - chi non ha emetti_ordine non vede «Conferma» e il verbo glielo rifiuta;
 --     l'annullo della bozza non chiede azioni;
 --   - con l'azione il verbo conferma; un passaggio di processo chiesto al
---     verbo e' rifiutato; l'annullo del confermato passa dal verbo d'annullo;
+--     verbo e' rifiutato, e cosi' la seconda conferma (E_DOC_GIA_NELLO_STATO); l'annullo del confermato passa dal verbo d'annullo;
 --   - l'evasione (bolla dall'ordine) porta l'ordine in EVASO o
 --     PARZIALMENTE_EVASO attraverso la porta;
 --   - la porta: un UPDATE diretto dello stato e' rifiutato.
 --
--- ⚠️ DIPENDE DAL RUOLO (test 16): la porta chiede anche che chi scrive sia il
+-- ⚠️ DIPENDE DAL RUOLO (test 17): la porta chiede anche che chi scrive sia il
 --   proprietario della tabella. Come applicazione (il runner) e' verde; da
 --   owner (la prova dell'SQL estratto prima dell'apply) e' rosso per
 --   costruzione. Per questo sta in coda.
 --
--- Elenco test (plan 16):
+-- Elenco test (plan 17):
 --   1) gli oggetti: verbo DEFINER, lettore, proiezione DEFINER, porta montata
 --   2) indice unico parziale e CHECK «attivo» sugli otto vocabolari
 --   3) fn_stato_abortito_id: per ogni testata della mappa, lo stato is_abortito del vocabolario
@@ -41,10 +43,11 @@
 --  10) capability con emetti_ordine: «Conferma» c'e'
 --  11) il verbo con emetti_ordine conferma l'ordine
 --  12) un passaggio di processo chiesto al verbo (CONFERMATO -> EVASO)
---  13) l'annullo del confermato dal verbo d'annullo: ANNULLATO
---  14) l'evasione piena: l'ordine e' EVASO, attraverso la porta
---  15) l'evasione parziale: l'ordine e' PARZIALMENTE_EVASO
---  16) UPDATE diretto dello stato: E_DOC_STATO_SOLO_DAL_VERBO   [rosso da owner]
+--  13) la seconda conferma dal verbo: E_DOC_GIA_NELLO_STATO
+--  14) l'annullo del confermato dal verbo d'annullo: ANNULLATO
+--  15) l'evasione piena: l'ordine e' EVASO, attraverso la porta
+--  16) l'evasione parziale: l'ordine e' PARZIALMENTE_EVASO
+--  17) UPDATE diretto dello stato: E_DOC_STATO_SOLO_DAL_VERBO   [rosso da owner]
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -53,7 +56,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(16);
+SELECT plan(17);
 
 -- 1) Gli oggetti e la loro forma
 SELECT is(
@@ -204,7 +207,17 @@ SELECT throws_like(
     'un passaggio di processo (CONFERMATO -> EVASO) chiesto al verbo: E_DOC_PASSAGGIO_DI_PROCESSO'
 );
 
--- 13) L'annullo del confermato: dal verbo d'annullo, che chiama il verbo di stato
+-- 13) La seconda conferma: la matrice non ha CONFERMATO -> CONFERMATO, e il
+--     guard di transizione non la vede (lo stato non cambia). La rifiuta la
+--     prima riga del verbo (brief §9.8: era il «solo da DRAFT» del service).
+SELECT throws_like(
+    format($$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'CONFERMATO')$$,
+           (SELECT ordine_id FROM t_ord)),
+    'Il documento è già nello stato CONFERMATO%',
+    'la seconda conferma dell''ordine, dal verbo: E_DOC_GIA_NELLO_STATO'
+);
+
+-- 14) L'annullo del confermato: dal verbo d'annullo, che chiama il verbo di stato
 -- ⚠️ Il verbo in un'istruzione sua: una lettura nella stessa istruzione
 --    vedrebbe la fotografia di prima della chiamata.
 SELECT vendite.fn_annulla_ordine((SELECT ordine_id FROM t_ord));
@@ -216,7 +229,7 @@ SELECT is(
     'l''annullo di un ordine confermato, con emetti_ordine: ANNULLATO dal verbo di stato'
 );
 
--- 14-15) L'evasione: la bolla dall'ordine porta l'ordine in EVASO o in
+-- 15-16) L'evasione: la bolla dall'ordine porta l'ordine in EVASO o in
 --        PARZIALMENTE_EVASO, scritto dalla proiezione attraverso la porta.
 CREATE TEMP TABLE t_pieno AS
 SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgTAP ordine al modello evaso', 'EMESSO',
@@ -242,7 +255,7 @@ SELECT is(
     'l''evasione parziale: l''ordine e'' PARZIALMENTE_EVASO'
 );
 
--- 16) [rosso da owner] Un UPDATE diretto dello stato, anche con la GUC accesa
+-- 17) [rosso da owner] Un UPDATE diretto dello stato, anche con la GUC accesa
 --     dall'applicazione: la porta chiede anche il proprietario.
 SELECT set_config('zeroerp.doc_cambio_stato',
                   'vendite.ordini'::regclass::oid::text || ':' || (SELECT ordine_id FROM t_pieno)::text,

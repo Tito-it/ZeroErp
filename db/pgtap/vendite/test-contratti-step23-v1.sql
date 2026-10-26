@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): il contratto ha la porta sulla colonna di
+--   stato (E_DOC_STATO_SOLO_DAL_VERBO). Le due attivazioni del setup (ATT, LV) passano dalla
+--   fixture dbops.fn_pgtap_porta_a_stato (il verbo, con emetti_contratto concessa); i test 4 e 5
+--   dal verbo vendite.fn_cambia_stato_contratto (prima UPDATE diretti dello stato); il 4 con
+--   throws_like sulla frase di E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE (P0001 da solo passerebbe
+--   anche su un rifiuto del verbo). Stessi esiti attesi.
 -- pgTAP test per Zero ERP
 --
 -- Test: Step 2.3 — Trigger freeze listino_versione_id + lock post-attivazione
@@ -121,9 +127,10 @@ SELECT ca.id, a.id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM'
  WHERE ca.numero = 'PGTAP_S23_ATT' AND a.rn = 1;
 
 -- Transizione ATT → ATTIVO (freeze trigger scatta: listino_id NULL + riga AGGIUNTA → ok)
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id_attivo FROM tmp_s23_ctx)
- WHERE numero = 'PGTAP_S23_ATT';
+-- rev 2026-10-26 (§11): dalla fixture degli stati (il verbo), non con un UPDATE.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.id, 'ATTIVO')
+  FROM vendite.contratti c
+ WHERE c.numero = 'PGTAP_S23_ATT';
 
 -- Contratto NEG_PURO: DRAFT, senza listino, senza righe (per test 4)
 INSERT INTO vendite.contratti(
@@ -172,9 +179,10 @@ SELECT 'PGTAP_S23_LV',
 -- Transizione LV → ATTIVO nel fixture (condizionale: solo se versione attiva disponibile).
 -- Il freeze trigger imposta listino_versione_id dal risultato della ricerca versione.
 -- Se versione non trovata il test 6 fa skip.
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id_attivo FROM tmp_s23_ctx)
- WHERE numero = 'PGTAP_S23_LV'
+-- rev 2026-10-26 (§11): dalla fixture degli stati (il verbo), non con un UPDATE.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.id, 'ATTIVO')
+  FROM vendite.contratti c
+ WHERE c.numero = 'PGTAP_S23_LV'
    AND EXISTS (SELECT 1 FROM tmp_s23_lv WHERE versione_id IS NOT NULL);
 
 -- ============================================================
@@ -235,12 +243,10 @@ SELECT ok(
 -- ============================================================
 -- 4) DRAFT→ATTIVO senza listino, senza righe AGGIUNTA -> errore
 -- ============================================================
-SELECT throws_ok(
-    $$UPDATE vendite.contratti
-         SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')
-       WHERE numero = 'PGTAP_S23_NEG_PURO'$$,
-    'P0001',
-    NULL,
+SELECT throws_like(
+    $$SELECT * FROM vendite.fn_cambia_stato_contratto(
+          (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_S23_NEG_PURO'), 'ATTIVO')$$,
+    '%senza listino: impossibile attivare senza almeno una riga AGGIUNTA%',
     '4) DRAFT→ATTIVO senza listino + nessuna AGGIUNTA -> errore E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE'
 );
 
@@ -248,9 +254,8 @@ SELECT throws_ok(
 -- 5) DRAFT→ATTIVO senza listino + AGGIUNTA con prezzo -> ok
 -- ============================================================
 SELECT lives_ok(
-    $$UPDATE vendite.contratti
-         SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')
-       WHERE numero = 'PGTAP_S23_NEG_OK'$$,
+    $$SELECT * FROM vendite.fn_cambia_stato_contratto(
+          (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_S23_NEG_OK'), 'ATTIVO')$$,
     '5) DRAFT→ATTIVO senza listino + AGGIUNTA con prezzo -> ok (freeze non blocca)'
 );
 

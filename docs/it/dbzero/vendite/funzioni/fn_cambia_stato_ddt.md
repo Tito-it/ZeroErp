@@ -64,18 +64,21 @@ BEGIN
 
     SELECT s.codice_interno INTO v_da FROM config.stati_doc_ddt s WHERE s.id = v_ddt.stato_doc_ddt_id;
     -- rev 2026-10-25 (20261025-44): codice -> id dal lettore comune.
+    -- rev 2026-10-26 (20261026-02): lo stato sconosciuto come i gemelli
+    -- (fn_cambia_stato_ordine, fn_cambia_stato_preventivo).
     v_stato_a_id := script.fn_doc_stato_id('vendite.ddt'::regclass, p_stato);
     IF v_stato_a_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_cambia_stato_ddt',
-            'E_VENDITE_CHIAMATA_NON_VALIDA',
-            jsonb_build_object('detail', 'stato di destinazione inesistente o spento', 'p_stato', p_stato),
-            NULL::uuid, 'vendite.fn_cambia_stato_ddt',
-            'p_stato (codice_interno di config.stati_doc_ddt, attivo)');
+            'E_STATO_WORKFLOW_NON_TROVATO',
+            jsonb_build_object('codice', p_stato),
+            NULL::uuid,
+            COALESCE(p_stato, 'NULL'));
     END IF;
 
     -- Il permesso del passaggio, prima di scrivere qualunque cosa: dalla
     -- sua riga della matrice (M-3). Un passaggio di processo chiesto qui
-    -- (CONSEGNATO <-> RESO, dei verbi del reso) si ferma qui.
+    -- (CONSEGNATO <-> RESO, dei verbi del reso) si ferma qui, e cosi' lo
+    -- stato che la bolla ha gia' (rev 2026-10-26, 20261026-01).
     PERFORM script.fn_guard_passaggio(v_utente, 'vendite.ddt'::regclass,
                                       v_ddt.stato_doc_ddt_id, v_stato_a_id);
 
@@ -145,7 +148,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_cambia_stato_ddt(p_ddt_id bigint, p_stato character varying)
-IS 'VERBO di ogni cambio di stato manuale di una bolla (modello «una scrittura = un verbo»; modello del documento, brief-modello-documento-vendita §7). Permesso: dalla riga del passaggio (config.transizioni_stati_ddt.azione_processo_codename: emetti_ddt su DRAFT -> EMESSO e EMESSO -> ANNULLATO) con script.fn_guard_passaggio, prima di ogni scrittura; un passaggio di processo (CONSEGNATO <-> RESO, dei verbi del reso) chiesto qui: E_DOC_PASSAGGIO_DI_PROCESSO; gli altri passaggi al permesso sul documento, che controlla il backend. In piu'' registra_magazzino alla consegna di una bolla di trasferimento che muove merce: il permesso dell''operazione di magazzino dentro il passaggio (T-4 di Tid). SECURITY DEFINER con search_path bloccato: la testata si prende FOR UPDATE con il predicato della policy nella WHERE (fuori perimetro E_DDT_NOT_FOUND, no-leak). Lo stato chiesto per codice_interno (script.fn_doc_stato_id), lo stato di emissione dal vocabolario (script.fn_stato_emissione_id). Lo stato lo scrive script.fn_doc_scrivi_stato attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo), con la matrice e tutti i guard di sempre. Su una bolla che muove merce: all''emissione solleva il primo motivo di script.fn_check_ddt_merce, crea i prelievi automatici e scrive le uscite (vendite.fn_posta_ddt USCITA); alla consegna di un trasferimento scrive le entrate (ARRIVO); all''annullo di una bolla emessa storna i movimenti dei suoi prelievi (magazzino.fn_storna_movimenti_sorgente). UNA transazione. Ritorna (movimento_id, prelievo_id, qta). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt; il posting in vendite dal 2026-10-01 (brief-db-magazzino-registro-anello-interno); rev 2026-10-25 (20261025-16) il verbo comune; rev 2026-10-25 (20261025-44) i lettori comuni di codice -> id e dello stato di emissione; rev 2026-10-25 (20261025-78, §9, Z-3) l''annullo dell''emessa riconosciuto dallo stato d''annullo del vocabolario (script.fn_stato_abortito_id), non dal letterale ''ANNULLATO''.';
+IS 'VERBO di ogni cambio di stato manuale di una bolla (modello «una scrittura = un verbo»; modello del documento, brief-modello-documento-vendita §7). Permesso: dalla riga del passaggio (config.transizioni_stati_ddt.azione_processo_codename: emetti_ddt su DRAFT -> EMESSO e EMESSO -> ANNULLATO) con script.fn_guard_passaggio, prima di ogni scrittura; un passaggio di processo (CONSEGNATO <-> RESO, dei verbi del reso) chiesto qui: E_DOC_PASSAGGIO_DI_PROCESSO; gli altri passaggi al permesso sul documento, che controlla il backend. In piu'' registra_magazzino alla consegna di una bolla di trasferimento che muove merce: il permesso dell''operazione di magazzino dentro il passaggio (T-4 di Tid). SECURITY DEFINER con search_path bloccato: la testata si prende FOR UPDATE con il predicato della policy nella WHERE (fuori perimetro E_DDT_NOT_FOUND, no-leak). Lo stato chiesto per codice_interno (script.fn_doc_stato_id: uno stato che il vocabolario non ha o ha spento -> E_STATO_WORKFLOW_NON_TROVATO, come i gemelli), lo stato di emissione dal vocabolario (script.fn_stato_emissione_id). Lo stato lo scrive script.fn_doc_scrivi_stato attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo), con la matrice e tutti i guard di sempre. Su una bolla che muove merce: all''emissione solleva il primo motivo di script.fn_check_ddt_merce, crea i prelievi automatici e scrive le uscite (vendite.fn_posta_ddt USCITA); alla consegna di un trasferimento scrive le entrate (ARRIVO); all''annullo di una bolla emessa storna i movimenti dei suoi prelievi (magazzino.fn_storna_movimenti_sorgente). UNA transazione. Ritorna (movimento_id, prelievo_id, qta). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt; il posting in vendite dal 2026-10-01 (brief-db-magazzino-registro-anello-interno); rev 2026-10-25 (20261025-16) il verbo comune; rev 2026-10-25 (20261025-44) i lettori comuni di codice -> id e dello stato di emissione; rev 2026-10-25 (20261025-78, §9, Z-3) l''annullo dell''emessa riconosciuto dallo stato d''annullo del vocabolario (script.fn_stato_abortito_id), non dal letterale ''ANNULLATO''; rev 2026-10-26 (20261026-02, §9.9) lo stato sconosciuto risponde E_STATO_WORKFLOW_NON_TROVATO (era E_VENDITE_CHIAMATA_NON_VALIDA), e lo stato che la bolla ha gia'' lo rifiuta la prima riga (E_DOC_GIA_NELLO_STATO, 20261026-01).';
 ```
 
 </div>

@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): A esce dalla bozza (1-bis) con dbops.fn_pgtap_porta_a_stato, non piu' con l'UPDATE diretto dello stato che la porta del contratto ora rifiuta.
 --
 -- Test: vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id,
 --       p_chiudi_contratto_esistente) — percorso SUCCESSIONE su overlap.
@@ -135,12 +136,11 @@ SELECT ok(
 -- ⭐ A ESCE DALLA BOZZA: senza, non partecipa all'overlap (vedi testata).
 --   DRAFT -> ATTIVO e' una transizione ammessa da
 --   config.transizioni_stati_contratti, quindi passa dal guard di transizione
---   invece di aggirarlo.
+--   invece di aggirarlo. Dal giro 8 (porta sul contratto) dalla fixture, che
+--   passa dal verbo vendite.fn_cambia_stato_contratto.
 -- ============================================================
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti
-                                  WHERE codice_interno = 'ATTIVO')
- WHERE id = (SELECT contratto_id FROM tmp_pushsucc_a);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, contratto_id, 'ATTIVO')
+  FROM tmp_pushsucc_a;
 
 -- ⚠️ Si verifica che la promozione abbia davvero acceso la partecipazione:
 --   se un domani la colonna generata cambiasse formula, i test 2-5

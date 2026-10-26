@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto CON_ATTIVA passa da
+--   dbops.fn_pgtap_porta_a_stato (il verbo del contratto), non da un UPDATE dello stato: la porta lo
+--   ferma. Nessuna attesa cambiata.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i due ordini da dbops.fn_pgtap_crea_ordine_con_righe in bozza (2 x 10 sull'articolo X, trigger SPEDITO); a mano restano l'indirizzo scritto in bozza (premessa dei satelliti) e la conferma che lo segue, il preventivo (fuori dalle tre strade del giro) e il listino.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): gli ambiti degli indirizzi col codice della sorgente (ORDINE_VENDITA, PREVENTIVO, CONTRATTO); 'DDT' in pg_temp.righe e' un argomento della grammatica dei montaggi e resta.
 -- pgTAP test per Zero ERP
@@ -467,9 +470,9 @@ BEGIN
 END
 $con$;
 
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')
- WHERE id = pg_temp.doc('CON_ATTIVA');
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione dal verbo
+--   (la porta ferma l'UPDATE diretto dello stato).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, pg_temp.doc('CON_ATTIVA'), 'ATTIVO');
 
 SELECT is(
     (SELECT c.listino_versione_id FROM vendite.contratti c WHERE c.id = pg_temp.doc('CON_ATTIVA')),

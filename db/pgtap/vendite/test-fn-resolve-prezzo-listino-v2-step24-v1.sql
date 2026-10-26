@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): i quattro contratti (OV, ESC, AGG, LV) si attivano
+--   con dbops.fn_pgtap_porta_a_stato (il verbo del contratto), non con un UPDATE dello stato: la porta
+--   lo ferma. Nessuna attesa cambiata.
 -- pgTAP test per Zero ERP
 --
 -- Test: Step 2.4 — fn_resolve_prezzo_listino_v2 con tipo_eccezione
@@ -147,9 +150,10 @@ SELECT ca.id, a.id, 'OVERRIDE', 111.00, pg_temp.qta(a.id), NULL
   FROM vendite.contratti ca, tmp_v2_arts a
  WHERE ca.numero = 'PGTAP_V2_OV' AND a.rn = 1;
 
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id_attivo FROM tmp_v2_ctx)
- WHERE numero = 'PGTAP_V2_OV';
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione dal verbo
+--   (la porta ferma l'UPDATE diretto dello stato).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.id, 'ATTIVO')
+  FROM vendite.contratti c WHERE c.numero = 'PGTAP_V2_OV';
 
 -- -------------------------------------------------------
 -- Contratto per test 4 (ESCLUSIONE): DRAFT → riga → ATTIVO
@@ -169,9 +173,10 @@ SELECT ca.id, a.id, 'ESCLUSIONE', NULL
   FROM vendite.contratti ca, tmp_v2_arts a
  WHERE ca.numero = 'PGTAP_V2_ESC' AND a.rn = 2;
 
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id_attivo FROM tmp_v2_ctx)
- WHERE numero = 'PGTAP_V2_ESC';
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione dal verbo
+--   (la porta ferma l'UPDATE diretto dello stato).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.id, 'ATTIVO')
+  FROM vendite.contratti c WHERE c.numero = 'PGTAP_V2_ESC';
 
 -- -------------------------------------------------------
 -- Contratto per test 5 (AGGIUNTA): DRAFT, no listino → riga AGGIUNTA → ATTIVO
@@ -191,9 +196,10 @@ SELECT ca.id, a.id, 'AGGIUNTA', 222.00, pg_temp.qta(a.id), NULL
   FROM vendite.contratti ca, tmp_v2_arts a
  WHERE ca.numero = 'PGTAP_V2_AGG' AND a.rn = 1;
 
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id_attivo FROM tmp_v2_ctx)
- WHERE numero = 'PGTAP_V2_AGG';
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione dal verbo
+--   (la porta ferma l'UPDATE diretto dello stato).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.id, 'ATTIVO')
+  FROM vendite.contratti c WHERE c.numero = 'PGTAP_V2_AGG';
 
 -- -------------------------------------------------------
 -- Contratto per test 6-7 (CONTRATTO_LISTINO + versione fissata):
@@ -210,9 +216,10 @@ SELECT 'PGTAP_V2_LV',
    AND (SELECT versione_id FROM tmp_v2_lv LIMIT 1) IS NOT NULL;
 
 -- Transizione a ATTIVO (freeze setta listino_versione_id se versione trovata)
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id_attivo FROM tmp_v2_ctx)
- WHERE numero = 'PGTAP_V2_LV';
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione dal verbo
+--   (la porta ferma l'UPDATE diretto dello stato).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.id, 'ATTIVO')
+  FROM vendite.contratti c WHERE c.numero = 'PGTAP_V2_LV';
 
 -- ============================================================
 SELECT plan(9);

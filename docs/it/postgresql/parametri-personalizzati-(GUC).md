@@ -1,6 +1,6 @@
 # Parametri personalizzati (GUC) in PostgreSQL
 
-> **Ultimo aggiornamento**: 24 ottobre 2026
+> **Ultimo aggiornamento**: 26 ottobre 2026
 >
 > **Destinatari**: chi scrive funzioni, trigger o verbi del database, e chi configura un'installazione
 >
@@ -70,9 +70,10 @@ policy RLS, le funzioni di scope e i trigger di audit li leggono.
 Tutto il resto — da dove viene ogni valore, l'invariante «tutto o niente», che cosa succede quando
 mancano, come si diagnostica — sta in un posto solo: [Contratto GUC `app.*`](/guide/contratto-guc-app).
 
-Nello stesso prefisso vivono anche due **porte** (`app.cessazione_automatica`,
-`app.registrazione_tardiva_riga_id`): funzionano come quelle `zeroerp.*` qui sotto, non sono identità
-e non fanno parte del contratto. Una porta nuova si chiama `zeroerp.*`.
+Nello stesso prefisso vive anche una **porta** (`app.registrazione_tardiva_riga_id`): funziona come
+quelle `zeroerp.*` qui sotto, non è identità e non fa parte del contratto. Una porta nuova si chiama
+`zeroerp.*`. (`app.cessazione_automatica`, la seconda, è ritirata dal 2026-10-26: la poteva accendere
+chiunque, e la cessazione del contratto passa dai suoi verbi.)
 
 ### `zeroerp.*` — le porte
 
@@ -154,7 +155,6 @@ successiva. Significato, provenienza e regole in [Contratto GUC `app.*`](/guide/
 
 | GUC                                  | Chi la apre                                   | Che cosa lascia passare                                                    |
 | ------------------------------------ | --------------------------------------------- | -------------------------------------------------------------------------- |
-| `app.cessazione_automatica`          | `dbops.fn_apply_chiusura_scadenze`            | la chiusura per scadenza: i guard di transizione la distinguono da una manuale |
 | `app.registrazione_tardiva_riga_id`  | `pagamenti.fn_posta_riga_tardiva`             | quella sola riga, sul guard della distinta finale                           |
 
 ⚠️ **Residuo**: `app.session_key` lo legge `script.fn_get_parameter_di_sessione` (livello «sessione»

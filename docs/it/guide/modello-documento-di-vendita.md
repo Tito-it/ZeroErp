@@ -1,6 +1,6 @@
 # Guida — Il modello del documento di vendita
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 26 ottobre 2026
 >
 > **Destinatari**: chi lavora su un documento di vendita o d'acquisto — sviluppatori database,
 > backend, frontend e analisti funzionali. Prima di cambiare come un documento nasce, cambia stato,
@@ -153,6 +153,13 @@ di tutta la sua merce). Sono le righe con `manuale = false`: le capability non l
 verbo le rifiuta se chieste a mano (`E_DOC_PASSAGGIO_DI_PROCESSO`), e le scrive solo il verbo che ne
 è la causa, con la sola seconda metà.
 
+**Lo stato che il documento ha già.** Chiedere al verbo lo stato in cui il documento si trova (un
+secondo «Emetti», la stessa conferma inviata due volte) non è un passaggio: la matrice non ha la riga
+X → X, e il verbo lo rifiuta nella prima riga, prima di ogni suo lavoro, con lo stesso codice per
+tutti i documenti (`E_DOC_GIA_NELLO_STATO`). Il guard di transizione invece guarda solo i cambi di
+stato, e lascia passare un `UPDATE` che riscrive lo stesso stato: la regola è del verbo, non di ogni
+scrittura della testata.
+
 ---
 
 ## 6. Chi può: il permesso sul passaggio
@@ -249,13 +256,15 @@ il 25 ottobre 2026, database e backend (403 dalla riga del passaggio, emissione 
 preventivo è stato portato lo stesso giorno lato database; il backend lo segue (il 403 dalla riga del
 passaggio e l'emissione letta dal vocabolario). L'ordine è stato portato lo stesso giorno lato database;
 il backend lo segue (la conferma e il cambio di stato dal verbo, il 403 dalla riga del passaggio, il
-ritiro della conferma senza «Emetti»).
+ritiro della conferma senza «Emetti»). Il contratto è stato portato il 26 ottobre 2026 lato database;
+il backend lo segue (l'attivazione e la cessazione dai verbi, il 403 dalla riga del passaggio, la
+cessazione programmata decisa dal database).
 
 | Documento | Nasce in bozza (§3) | Matrice in tabella (§4) | Verbo di stato (§5) | Azione sul passaggio (§6) | Emissione (§7) | Annullo (§8) |
 | --- | --- | --- | --- | --- | --- | --- |
 | Preventivo | ✅ | ✅ | ✅ `fn_cambia_stato_preventivo` sul verbo comune, con la porta; ACCETTATO ↔ EVASO dalla proiezione dello smistamento | ✅ `emetti_preventivo` su emissione e annullo dell'emesso e dell'accettato (backend allineato il 2026-10-25: il 403 dalla riga del passaggio) | ✅ solo da «Emetti»; le righe sul passaggio, nel guard | ✅ `fn_annulla_preventivo` → verbo di stato |
 | Offerta | ✅ | ✅ (tabella `config.stati_doc_offerte_transizioni`, nome fuori serie) | ❌ `UPDATE` dal backend; gli stati di partenza sono ripetuti in Python | ❌ nessuna azione | ✅ | ❌ da accettata, con un controllo suo (`fn_check_offerta_annullabile`) invece dell'avviso dei legami |
-| Contratto | ✅ | ❌ passaggi scritti nel guard; la tabella la legge solo la capability | ❌ `UPDATE` dal backend | ❌ nessuna azione | ✅ | ❌ `fn_annulla_contratto` scrive lo stato da sé |
+| Contratto | ✅ | ✅ | ✅ `fn_cambia_stato_contratto` sul verbo comune, con la porta; la cessazione con la sua data da `fn_cessa_contratto` (oggi: cessa; futura: programmata), quella per scadenza da `fn_cessa_contratti_scaduti` | ✅ `emetti_contratto` sull'attivazione e sulla cessazione | ✅ solo da «Emetti». ⚠️ Il numero si assegna alla nascita, non all'emissione: divergenza dichiarata, tema a parte | ✅ `fn_annulla_contratto` → verbo di stato |
 | Ordine | ✅ | ✅ | ✅ `fn_cambia_stato_ordine` sul verbo comune, con la porta; l'evasione (confermato ↔ parzialmente evaso ↔ evaso) dalla proiezione delle bolle | ✅ `emetti_ordine` sulla conferma e sull'annullo del confermato | ✅ solo da «Emetti» (la conferma senza PDF è ritirata dal 2026-10-25). ⚠️ Il numero si assegna alla nascita, non all'emissione: divergenza dichiarata, tema a parte | ✅ `fn_annulla_ordine` → verbo di stato |
 | DDT | ✅ | ✅ | ✅ `fn_cambia_stato_ddt` sul verbo comune, con la porta | ✅ `emetti_ddt` sulla riga di emissione e annullo dell'emesso; `registra_magazzino` nel verbo, per l'operazione di magazzino | ✅ solo da «Emetti»: il cambio stato generico rifiuta emesso | ✅ `fn_annulla_ddt` → verbo di stato |
 | Reso | ✅ | ✅ | ✅ `fn_conferma_reso`, `fn_annulla_reso` sul verbo comune, con la porta | ✅ `conferma_reso` sulla riga di conferma e annullo del confermato | — la conferma fa da emissione | ✅ verbo |

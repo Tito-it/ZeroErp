@@ -28,7 +28,7 @@
 > domanda vive in [linee-guida-sql §12.5.6](../../linee-guida-sql.md) e il lavoro
 > è passato a
 > [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md)
-> §11, D-N1 (Tid, 2026-10-26): non si segue da qui.
+> §12, D-N1 (Tid, 2026-10-26): non si segue da qui.
 >
 > **Stato slice per slice nel §27.**
 >

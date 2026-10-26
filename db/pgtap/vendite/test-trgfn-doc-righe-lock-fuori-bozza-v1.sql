@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): pg_temp.lr_mk_contratto porta lo stato dal verbo
+--   (la porta ferma l'UPDATE diretto): ATTIVO da dbops.fn_pgtap_porta_a_stato, CESSATO da
+--   vendite.fn_cessa_contratto con la data di oggi; il contratto cessato (test 18) nasce nell'anno della
+--   data operativa invece del 2072 (la cessazione vuole valido_al arrivata). Nessuna attesa cambiata.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): il DDT in bozza da dbops.fn_pgtap_crea_ddt_senza_ordine (DRAFT), gli ordini in bozza/confermato da dbops.fn_pgtap_crea_ordine_con_righe (pg_temp.lr_mk_ordine); l'attivita' ALLOCATA del test 8 da dbops.fn_pgtap_crea_commessa (con la ROOT) e dbops.fn_pgtap_crea_commessa_attivita con la sorgente vera DDT_VENDITA (E-3: ritirata la forma ibrida sorgente COMMESSA + chiave della bolla scritta a mano); restano a mano i contratti e le prove sulle righe (sono il caso).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (DDT emesso e consegnato); restano scritti a mano il DDT in bozza senza ordine, gli ordini in bozza/confermato e i contratti (sono il caso: le porte delle righe per stato).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
@@ -240,11 +244,16 @@ BEGIN
   INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa, tipo_erogazione)
   VALUES (v_con, r.articolo_id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM')
   RETURNING id INTO v_riga;
+  -- rev 2026-10-26 (brief-modello-documento-vendita §11): lo stato dal verbo (la
+  --   porta ferma l'UPDATE diretto). L'attivazione da porta_a_stato; la
+  --   cessazione da vendite.fn_cessa_contratto con la data di oggi (verso
+  --   CESSATO il guard vuole valido_al arrivata: il contratto cessato nasce
+  --   quindi nell'anno della data operativa, vedi la chiamata).
   IF p_fino_a IN ('ATTIVO', 'CESSATO') THEN
-    UPDATE vendite.contratti SET stato_doc_contratto_id = r.stato_con_attivo_id WHERE id = v_con;
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, v_con, 'ATTIVO');
   END IF;
   IF p_fino_a = 'CESSATO' THEN
-    UPDATE vendite.contratti SET stato_doc_contratto_id = r.stato_con_cessato_id WHERE id = v_con;
+    PERFORM 1 FROM vendite.fn_cessa_contratto(v_con, script.fn_data_operativa());
   END IF;
   RETURN QUERY SELECT v_con, v_riga;
 END $$ LANGUAGE plpgsql;
@@ -308,7 +317,11 @@ BEGIN
   INSERT INTO tmp_fix VALUES ('con_bozza', c.contratto_id);
   SELECT * INTO c FROM pg_temp.lr_mk_contratto('PGTAP_LR_ATTIVO', 'ATTIVO', 2071);
   INSERT INTO tmp_fix VALUES ('con_attivo', c.contratto_id), ('con_attivo_riga', c.contratto_riga_id);
-  SELECT * INTO c FROM pg_temp.lr_mk_contratto('PGTAP_LR_CESSATO', 'CESSATO', 2072);
+  -- rev 2026-10-26 (§11): l'anno della data operativa, non 2072 — la cessazione
+  --   vuole valido_al arrivata, e valido_dal non puo' seguirla. Disgiunto dal
+  --   2070 e 2071 degli altri due (ex_contratti_no_overlap).
+  SELECT * INTO c FROM pg_temp.lr_mk_contratto('PGTAP_LR_CESSATO', 'CESSATO',
+                                               extract(year FROM script.fn_data_operativa())::int);
   INSERT INTO tmp_fix VALUES ('con_cessato_riga', c.contratto_riga_id);
 END $fix$;
 

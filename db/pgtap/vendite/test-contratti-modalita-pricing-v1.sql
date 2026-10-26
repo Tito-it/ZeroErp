@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): il contratto ha la porta sulla colonna di
+--   stato (E_DOC_STATO_SOLO_DAL_VERBO). L'attivazione del setup del test 4 passa dalla fixture
+--   dbops.fn_pgtap_porta_a_stato (il verbo, con emetti_contratto concessa); prima un UPDATE
+--   diretto dello stato. Stessi esiti attesi.
 -- pgTAP test per Zero ERP
 --
 -- Test: contratti — combinazioni listino/variazione globale (modello unificato).
@@ -142,9 +146,10 @@ SELECT lives_ok(
 );
 
 -- Ora si attiva il contratto: da qui in poi il pricing e' congelato.
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT stato_id FROM tmp_ctx_stato_attivo)
- WHERE numero = 'PGTAP_CONTR_A';
+-- rev 2026-10-26 (§11): dalla fixture degli stati (il verbo), non con un UPDATE.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.id, 'ATTIVO')
+  FROM vendite.contratti c
+ WHERE c.numero = 'PGTAP_CONTR_A';
 
 -- 4) Dopo l'attivazione, le righe sono bloccate
 --    ⚠️ Lo SQLSTATE si passa: `throws_ok` senza accetta QUALUNQUE errore, e qui

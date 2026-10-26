@@ -7,6 +7,7 @@
 -- ChangeSet: 20261013-16 … -23
 -- Segnalazione: smoke BE su dbdev del 2026-10-13 (push batch CONTRATTO in
 --   ERRORE, «tipo_consumo non valido: UNA_TANTUM», commessa rimasta vuota).
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): i due contratti (della madre e quello aperto) si attivano con dbops.fn_pgtap_porta_a_stato, non piu' con l'UPDATE diretto dello stato che la porta del contratto ora rifiuta.
 -- ------------------------------------------------------------
 -- Indice test (plan 12):
 --  A — la forma
@@ -134,9 +135,8 @@ WITH ins AS (
 )
 SELECT * FROM ins;
 
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT stato_attivo_id FROM tmp_pc_refs)
- WHERE id = (SELECT id FROM tmp_pc_contratto);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, id, 'ATTIVO')
+  FROM tmp_pc_contratto;
 
 -- La commessa del cliente, come la apre il push.
 CREATE TEMP TABLE tmp_pc_commessa AS
@@ -336,9 +336,8 @@ WITH ins AS (
 )
 SELECT * FROM ins;
 
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT stato_attivo_id FROM tmp_pc_refs)
- WHERE id = (SELECT id FROM tmp_pc_aperto);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, id, 'ATTIVO')
+  FROM tmp_pc_aperto;
 
 CREATE TEMP TABLE tmp_pc_aperto_lista AS
 SELECT to_jsonb(x) AS v
