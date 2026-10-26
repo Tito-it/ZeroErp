@@ -1,0 +1,165 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AVVISO DELL'ANNULLO CONOSCE L'OFFERTA
+#   Brief: brief-modello-documento-vendita §13 (giro 9; O-4 di Tid,
+#   2026-10-26).
+#
+#   vendite.trgfn_doc_guard_annullo_con_legami accetta il montaggio
+#   OFFERTA_COMMERCIALE (il trigger nasce in 20261026-24). Annullare la
+#   revisione di un'offerta che fa tornare emessa la precedente, per qualunque
+#   strada, senza la conferma del verbo (vendite.fn_annulla_offerta):
+#   E_DOC_ANNULLO_CON_LEGAMI.
+#
+#   Corpo dalla definizione viva (dbdev, 2026-10-26); firma e proprieta' dal
+#   20261019-68. I montaggi esistenti non si toccano.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261026-23-update-trgfn-doc-guard-annullo-con-legami-offerta-mctit.yaml
+
+  - changeSet:
+      id: 20261026-23-update-trgfn-doc-guard-annullo-con-legami-offerta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_doc_guard_annullo_con_legami: + il montaggio OFFERTA_COMMERCIALE. Brief:
+        brief-modello-documento-vendita §13 (O-4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_documento_legami';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_doc_guard_annullo_con_legami()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+
+              -- =========================================================
+              -- Scopo: l'AVVISO. Entrare in uno stato abortito con legami
+              --   e' rifiutato con E_DOC_ANNULLO_CON_LEGAMI; l'annullo vero
+              --   passa dal verbo del documento, dopo la conferma. Vedi
+              --   l'intestazione del changeSet.
+              -- Montaggio: [0] documento, [1] colonna di stato,
+              --   [2] vocabolario degli stati.
+              -- rev 2026-10-26 (20261026-23, brief-modello-documento-vendita
+              --   §13, O-4): + OFFERTA_COMMERCIALE (montato in 20261026-24).
+              -- =========================================================
+              DECLARE
+                  -- Nomi dal montaggio e righe come jsonb: il BB serve
+                  -- tabelle diverse, nessuna colonna da ancorare.
+                  v_documento   text;
+                  v_col_stato   text;
+                  v_vocabolario text;
+                  v_id          bigint;
+                  v_stato_new   bigint;
+                  v_stato_old   bigint;
+                  v_entra       boolean;
+                  v_esce        boolean;
+                  -- CONTEGGI di legami: nessuna colonna da ancorare.
+                  v_legami      integer;
+                  v_consumi     integer;
+                  v_etichetta   text;
+              BEGIN
+                  v_documento   := TG_ARGV[0];
+                  v_col_stato   := TG_ARGV[1];
+                  v_vocabolario := TG_ARGV[2];
+
+                  IF TG_OP <> 'UPDATE' OR TG_NARGS <> 3
+                     OR v_documento NOT IN ('DDT_VENDITA', 'ORDINE_VENDITA', 'PREVENTIVO', 'CONTRATTO', 'COMMESSA', 'OFFERTA_COMMERCIALE')
+                     OR NOT (to_jsonb(NEW) ? v_col_stato) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('trigger', TG_NAME,
+                                             'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                             'evento',  TG_OP,
+                                             'tg_argv', TG_ARGV),
+                          NULL::uuid, 'vendite.trgfn_doc_guard_annullo_con_legami',
+                          'montaggio: BEFORE UPDATE, [0] documento (DDT_VENDITA, ORDINE_VENDITA, PREVENTIVO, CONTRATTO, COMMESSA, OFFERTA_COMMERCIALE), [1] colonna di stato, [2] vocabolario');
+                  END IF;
+
+                  v_stato_new := (to_jsonb(NEW) ->> v_col_stato)::bigint;
+                  v_stato_old := (to_jsonb(OLD) ->> v_col_stato)::bigint;
+
+                  IF v_stato_new IS NOT DISTINCT FROM v_stato_old THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- is_abortito dal vocabolario: un secondo stato abortito e'
+                  -- coperto da solo. Solo l'INGRESSO conta.
+                  EXECUTE format(
+                      'SELECT COALESCE(bool_or(s.is_abortito) FILTER (WHERE s.id = $1), false),'
+                      '       COALESCE(bool_or(s.is_abortito) FILTER (WHERE s.id = $2), false)'
+                      '  FROM %s s WHERE s.id IN ($1, $2)', v_vocabolario::regclass)
+                     INTO v_entra, v_esce
+                    USING v_stato_new, v_stato_old;
+
+                  IF NOT v_entra OR v_esce THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_id := (to_jsonb(NEW) ->> 'id')::bigint;
+
+                  SELECT count(*)::integer,
+                         -- rev 2026-10-12: «da ritirare» e' tutto cio' che non e'
+                         -- PROVENIENZA (CONSUMO e, sulla commessa, ANNULLO: l'onere che
+                         -- si annulla con lei). Per i quattro documenti di prima e' lo
+                         -- stesso conteggio: le loro nature sono CONSUMO e PROVENIENZA.
+                         (count(*) FILTER (WHERE l.natura <> 'PROVENIENZA'))::integer
+                    INTO v_legami, v_consumi
+                    FROM vendite.fn_documento_legami(v_documento, v_id) AS l;
+
+                  -- Nessun legame: si annulla come sempre. Solo provenienza e
+                  -- porta aperta: la conferma c'e' stata, si passa.
+                  IF v_legami = 0
+                     OR (v_consumi = 0
+                         AND vendite.fn_doc_porta_ritiro_ammette(v_documento, v_id,
+                                                                 TG_RELID::regclass)) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT t.etichetta INTO v_etichetta
+                    FROM script.fn_get_stato_testata_documento(v_documento, v_id) AS t;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite', TG_NAME::text, 'E_DOC_ANNULLO_CON_LEGAMI',
+                      jsonb_build_object('documento', v_documento,
+                                         'id',        v_id,
+                                         'legami',    v_legami,
+                                         'consumi',   v_consumi),
+                      (to_jsonb(NEW) ->> 'tx_id')::uuid,
+                      COALESCE(v_etichetta, v_documento || ' #' || v_id::text),
+                      v_legami::text);
+                  RETURN NEW;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_doc_guard_annullo_con_legami()
+                IS 'BB (2026-10-11, brief-db-annullo-documento-con-legami D-1/D-4/D-5): l''AVVISO. Entrare in uno stato abortito (is_abortito dal vocabolario) con legami (vendite.fn_documento_legami) e'' rifiutato con E_DOC_ANNULLO_CON_LEGAMI (valori: etichetta del documento, numero di legami; contesto documento, id, legami, consumi), su ogni strada che cambia lo stato. L''annullo vero passa dal verbo del documento (vendite.fn_annulla_ddt, fn_annulla_ordine, fn_annulla_preventivo, fn_annulla_contratto), che fa confermare, ritira i CONSUMI e apre la porta. Un consumo ancora presente rifiuta sempre; la sola PROVENIENZA (l''offerta di contratto e ordine, che non si ritira) passa con la porta del ritiro aperta per la testata (vendite.fn_doc_porta_ritiro_ammette), cioe'' dopo la conferma. Fascia _m10_: dopo i guard _a10_ (matrice, righe di commessa EMESSA, figli vivi), perche'' prima parla cio'' che vieta e poi cio'' che chiede conferma. Montaggio: BEFORE UPDATE, [0] documento (DDT, ORDINE, PREVENTIVO, CONTRATTO), [1] colonna di stato, [2] vocabolario; sbagliato: E_VENDITE_CHIAMATA_NON_VALIDA. Generalizza la Regola 4 di vendite.trgfn_ddt_guard_transizione e prende il posto del ritiro automatico dalla commessa (vendite.trgfn_doc_ritira_commessa_attivita). ⭐ rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte, D-2 di Tid): + COMMESSA (montato su vendite.commesse, 20261012-21; verbo vendite.fn_annulla_commessa). Il conteggio di cio'' che va ritirato prima dell''annullo e'' ogni legame che non e'' PROVENIENZA: CONSUMO e, sulla commessa, ANNULLO (l''onere, che non riapre niente ma si annulla con lei). Per i quattro documenti di prima e'' lo stesso numero. Sulla commessa, a valle della matrice e di script.fn_check_commessa_annullabile (trgfn_commesse_guard_transizione, _a10_): prima parlano le righe EMESSA, poi la conferma. ⭐ rev 2026-10-19 (20261019-68, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. ⭐ rev 2026-10-26 (20261026-23, brief-modello-documento-vendita §13, O-4 di Tid): + OFFERTA_COMMERCIALE (montato su vendite.offerte_commerciali, 20261026-24; verbo vendite.fn_annulla_offerta). Il legame dell''offerta e'' la revisione precedente che torna emessa, di PROVENIENZA: passa con la porta del ritiro aperta, cioe'' dopo la conferma. Sull''offerta, a valle del guard di transizione (_a10_), che solleva prima i documenti vivi (script.fn_check_offerta_annullabile).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

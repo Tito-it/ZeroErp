@@ -2,6 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): A esce dalla bozza (1-bis) con dbops.fn_pgtap_porta_a_stato, non piu' con l'UPDATE diretto dello stato che la porta del contratto ora rifiuta.
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta si cambia solo dal verbo; le offerte A, B, C arrivano ad ACCETTATA con dbops.fn_pgtap_porta_a_stato invece dei due UPDATE di stato.
 --
 -- Test: vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id,
 --       p_chiudi_contratto_esistente) — percorso SUCCESSIONE su overlap.
@@ -103,14 +104,10 @@ SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id,
             ('C', '2099-01-01'::date, '2099-12-31'::date)
        ) AS v(tag, dal, al);
 
--- Transizioni BOZZA -> EMESSA -> ACCETTATA (guard transizione richiede i passi)
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_pushsucc_ctx)
- WHERE meta->>'pgtap_succ' IN ('A','B','C');
-
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_pushsucc_ctx)
- WHERE meta->>'pgtap_succ' IN ('A','B','C');
+-- Transizioni BOZZA -> EMESSA -> ACCETTATA, dal verbo (rev 2026-10-26, giro 9)
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', o.id, 'ACCETTATA')
+  FROM vendite.offerte_commerciali o
+ WHERE o.meta->>'pgtap_succ' IN ('A','B','C');
 
 -- Push offerta A (baseline): crea il contratto incumbent
 CREATE TEMP TABLE tmp_pushsucc_a AS

@@ -15,7 +15,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 2026-05-24)
+(latest review 2026-10-26)
 
 `config.stati_doc_offerte_transizioni` definisce la **matrice delle transizioni ammesse**
 tra gli stati del ciclo di vita delle offerte commerciali. Pattern identico a
@@ -32,13 +32,23 @@ rendendo le regole configurabili senza rilasciare codice.
 (addendum A2 — `BOZZA→RIFIUTATA` rimossa perche' semanticamente incongrua:
 `RIFIUTATA` e' il "no del cliente", non un ritiro interno)
 
-| id | Da stato | A stato | Manuale | Descrizione |
-|----|----------|---------|:-------:|-------------|
-| 1 | BOZZA (1) | EMESSA (2) | Si' | Emissione al cliente; congela `listino_versione_id` |
-| 2 | BOZZA (1) | ANNULLATA (6) | Si' | Ritiro interno prima o durante bozza (A2) |
-| 3 | EMESSA (2) | ACCETTATA (3) | Si' | Accettazione cliente; innesca push a contratto |
-| 4 | EMESSA (2) | RIFIUTATA (4) | Si' | Rifiuto cliente |
-| 5 | EMESSA (2) | SUPERATA (5) | No | Automatico: trigger revisione (Step 6) |
+| id | Da stato | A stato | Manuale | Azione di processo | Motivazione | Descrizione |
+|----|----------|---------|:-------:|--------------------|:-----------:|-------------|
+| 1 | BOZZA (1) | EMESSA (2) | Si' | `emetti_offerta` | — | Emissione al cliente; congela `listino_versione_id` |
+| 2 | BOZZA (1) | ANNULLATA (6) | Si' | — | obbligatoria | Ritiro interno prima o durante bozza (A2) |
+| 3 | EMESSA (2) | ACCETTATA (3) | Si' | — | — | Accettazione cliente; innesca push a contratto |
+| 4 | EMESSA (2) | RIFIUTATA (4) | Si' | — | obbligatoria | Rifiuto cliente |
+| 5 | EMESSA (2) | SUPERATA (5) | No | — | — | Automatico: nasce una revisione (la proiezione delle revisioni vive) |
+| 6 | SUPERATA (5) | EMESSA (2) | No | — | — | Automatico: si annulla l'ultima revisione viva (dal 2026-08-28) |
+| 7 | ACCETTATA (3) | ANNULLATA (6) | Si' | `emetti_offerta` | obbligatoria | Offerta accettata che non si trasforma (dal 2026-10-21) |
+
+⭐ **Dal 2026-10-26** (`brief-modello-documento-vendita` §13): la colonna
+`azione_processo_codename` dice l'azione di processo che il passaggio chiede (`NULL` = basta il
+permesso sull'offerta; la leggono il verbo, il backend e la capability, guida del modello §6), e
+`requires_motivazione` nel `meta` non disegna più solo il campo: la fa rispettare il verbo
+[`vendite.fn_cambia_stato_offerta`](/dbzero/vendite/funzioni/fn_cambia_stato_offerta)
+(`E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA`). Il nome della tabella resta fuori serie (le altre matrici si
+chiamano `transizioni_stati_*`): divergenza dichiarata, nessuna regola dipende dal nome.
 
 ```text
 BOZZA ──────> EMESSA ──────> ACCETTATA ──> (push → contratto DRAFT)
@@ -48,7 +58,8 @@ BOZZA ──────> EMESSA ──────> ACCETTATA ──> (push →
   └──> ANNULLATA  (ritiro interno)
 ```
 
-**Stati terminali senza transizioni uscenti**: ACCETTATA, RIFIUTATA, SUPERATA, ANNULLATA.
+**Stati terminali senza transizioni uscenti**: RIFIUTATA, ANNULLATA. ACCETTATA si annulla
+(id 7), SUPERATA rientra in automatico (id 6).
 
 ---
 
@@ -96,9 +107,10 @@ per costruire i bottoni azione nella UI.
 | `label_key` | `text` | Chiave i18n per il label del bottone Vue (`$t(label_key)`) |
 | _(icona e colore)_ | — | Non sono dati del DB: il frontend li sceglie dall'`action_key` (mappa verbo → aspetto in `core/`, icona e `severity`). Il colore è uscito dal `meta` il 2026-09-28 |
 | `requires_confirm` | `boolean` | `true` → mostra dialog di conferma prima di eseguire |
+| `requires_motivazione` | `boolean` | `true` → il passaggio si chiede con la motivazione: la capability disegna il campo, il verbo la pretende |
 | `manuale` | `boolean` | `false` = transizione automatica (trigger); esclusa dalla lista UI |
 
-Le transizioni automatiche (id 5, EMESSA → SUPERATA) hanno `meta = {"manuale": false}`.
+Le transizioni automatiche (id 5 e 6, il superamento e il rientro) hanno `meta = {"manuale": false}`.
 
 ---
 

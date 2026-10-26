@@ -24,7 +24,7 @@
 
 ### 🎯 Scopo Principale
 
-(rev 2026-05-25)
+(rev 2026-05-25; ultima revisione 2026-10-26)
 
 `vendite.fn_crea_revisione_offerta(p_offerta_id, p_user)` crea una **nuova
 revisione** (rev.N+1) di un'offerta commerciale, copiando testata, eccezioni
@@ -68,9 +68,11 @@ attive coi loro componenti e utility (1:1). Il pattern riusa concettualmente
   revisione SUPERATA: di competenza del dominio approvazioni (livello applicativo).*
 - **Utility copiata**: 1:1, un solo record per offerta (UNIQUE `offerta_id`).
 - **Marcatura padre SUPERATA**: gestita automaticamente dal trigger
-  `trg_offerte_commerciali_z90_revisione_ins` (AFTER INSERT, Step 6), non da
-  questa funzione. La transizione `EMESSA → SUPERATA` è ammessa in
-  `config.stati_doc_offerte_transizioni`.
+  `trg_offerte_commerciali_z90_revisione_ins` (AFTER INSERT), non da questa
+  funzione. Dal 2026-10-26 il trigger chiama la proiezione
+  [`vendite.fn_offerta_proietta_stato_revisione`](/dbzero/vendite/funzioni/fn_offerta_proietta_stato_revisione),
+  che scrive lo stato del padre attraverso la porta (lo stato si cambia solo dai
+  verbi). La transizione `EMESSA → SUPERATA` è di processo nella matrice.
 
 ---
 
@@ -110,9 +112,10 @@ fn_crea_revisione_offerta
   └─ INSERT testata rev.N+1 (BOZZA)
        ├─ BEFORE INSERT: trgfn_offerte_commerciali_gen_codice → assegna OFC-*
        └─ AFTER INSERT:  trg_offerte_commerciali_z90_revisione_ins
-                           └─ UPDATE rev.N → SUPERATA
-                                └─ BEFORE UPDATE: trgfn_offerte_commerciali_guard_transizione
-                                                    └─ controlla EMESSA→SUPERATA → ammessa ✓
+                           └─ fn_offerta_proietta_stato_revisione(rev.N)
+                                └─ fn_doc_scrivi_stato: rev.N → SUPERATA, attraverso la porta
+                                     └─ BEFORE UPDATE: trgfn_offerte_commerciali_guard_transizione
+                                                         └─ controlla EMESSA→SUPERATA → ammessa ✓
 ```
 
 ---

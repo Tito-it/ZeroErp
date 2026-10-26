@@ -214,6 +214,23 @@ def gen_table_md(schema, table, cur):
 def _fuori_dalla_ricerca(lines):
     return ["<div data-search-exclude markdown>", ""] + lines + ["", "</div>"]
 
+# ⚠️ La sicurezza si scrive SEMPRE, anche nel caso di default.
+#   `pg_get_functiondef` stampa `SECURITY DEFINER` solo quando c'e', e
+#   l'INVOKER (default) non compare da nessuna parte: chi legge la pagina deve
+#   dedurlo dall'assenza di una riga dentro un corpo di centinaia. L'owner
+#   serve perche' in DEFINER e' lui a decidere permessi e RLS.
+def _sicurezza_funzione_md(row):
+    if row["prosecdef"]:
+        return (
+            f"> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi "
+            f"dell'owner `{row['owner']}`: GRANT e RLS sono i suoi, non quelli "
+            "di chi la chiama."
+        )
+    return (
+        "> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i "
+        f"privilegi di chi la chiama; owner `{row['owner']}`."
+    )
+
 def gen_function_md(schema, func, cur):
     # ⚠️ UNA PAGINA PER NOME, UN BLOCCO PER FIRMA (2026-10-14). Prima la query
     #   chiudeva con `LIMIT 1` e senza `ORDER BY`: di due firme dello stesso
@@ -228,7 +245,9 @@ def gen_function_md(schema, func, cur):
                p.prokind,  -- 'f' function, 'p' procedure
                pg_get_function_identity_arguments(p.oid) AS args,
                pg_get_functiondef(p.oid) AS defn,
-               obj_description(p.oid, 'pg_proc') AS obj_comment
+               obj_description(p.oid, 'pg_proc') AS obj_comment,
+               p.prosecdef,
+               pg_get_userbyid(p.proowner) AS owner
         FROM pg_proc p
         JOIN pg_namespace n ON p.pronamespace = n.oid
         WHERE n.nspname = %s AND p.proname = %s
@@ -244,6 +263,8 @@ def gen_function_md(schema, func, cur):
             "```sql",
             f"CREATE {kind_verb} {row['proname']}({row['args']})",
             "```",
+            "",
+            _sicurezza_funzione_md(row),
             "\n**Definizione completa:**\n",
         ]
         corpo = [
@@ -392,7 +413,8 @@ def gen_view_md(schema, view, cur):
     # nasconde piu' il fatto che la vista gira in security_invoker (RLS).
     cur.execute(
         """
-        SELECT c.reloptions
+        SELECT c.reloptions,
+               pg_get_userbyid(c.relowner) AS owner
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = %s AND c.relname = %s AND c.relkind IN ('v', 'm')
@@ -417,6 +439,26 @@ def gen_view_md(schema, view, cur):
             "reloption non visibile in `pg_get_viewdef`, riportata qui "
             "esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE "
             "VIEW`, altrimenti PostgreSQL la azzera.\n"
+        )
+    # Come per le funzioni, il default si scrive: una vista senza
+    # security_invoker (o con =false) legge le tabelle sotto come il suo owner,
+    # e la RLS che vale e' quella dell'owner, non di chi interroga la vista.
+    invoker = any(
+        o.split('=', 1)[0] == 'security_invoker'
+        and o.split('=', 1)[1].lower() in ('true', 'on', '1', 'yes')
+        for o in sec_opts
+    )
+    owner = opt_row['owner'] if opt_row else '?'
+    if invoker:
+        lines.append(
+            "> 🔓 **Sicurezza**: `security_invoker` — le tabelle sotto si "
+            f"leggono con i privilegi e la RLS di chi interroga; owner `{owner}`.\n"
+        )
+    else:
+        lines.append(
+            "> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle "
+            f"sotto si leggono con i privilegi dell'owner `{owner}`, e la RLS "
+            "che vale e' la sua, non quella di chi interroga.\n"
         )
 
     if is_matview:

@@ -6,6 +6,9 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): le offerte dei test 8 e 9
 --   nascono in bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima
 --   nascevano gia' RIFIUTATA e ACCETTATA).
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta si
+--   cambia solo dal verbo; le offerte ACCETTATA (test 2) ed EMESSA (test 7) si portano
+--   avanti con dbops.fn_pgtap_porta_a_stato invece dell'UPDATE di stato.
 -- pgTAP test per Zero ERP
 --
 -- Test: vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id) (Step 8).
@@ -128,14 +131,9 @@ INSERT INTO vendite.offerte_commerciali_utilities (
 SELECT acc.id, ctx.istanza_utility_id, ctx.utility_id
   FROM tmp_push_offerta_acc acc, tmp_push_ctx ctx;
 
--- BOZZA -> EMESSA -> ACCETTATA
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_push_ctx)
- WHERE id = (SELECT id FROM tmp_push_offerta_acc);
-
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_push_ctx)
- WHERE id = (SELECT id FROM tmp_push_offerta_acc);
+-- BOZZA -> EMESSA -> ACCETTATA, dal verbo (rev 2026-10-26, giro 9)
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', a.id, 'ACCETTATA')
+  FROM tmp_push_offerta_acc a;
 
 -- Offerta in BOZZA (per test 6)
 CREATE TEMP TABLE tmp_push_offerta_bozza AS
@@ -166,9 +164,8 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_push_ctx)
- WHERE id = (SELECT id FROM tmp_push_offerta_emessa);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', e.id, 'EMESSA')
+  FROM tmp_push_offerta_emessa e;
 
 -- Offerta in RIFIUTATA (per test 8): nasce in BOZZA e arriva a RIFIUTATA per
 -- la matrice (BOZZA -> EMESSA -> RIFIUTATA), rev 2026-10-24.

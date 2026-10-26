@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'emissione dell'offerta del test 18 da dbops.fn_pgtap_porta_a_stato (il verbo), non con un UPDATE diretto: la porta dell'offerta lo rifiuta. Le attese non cambiano.
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): l'emissione della bolla (16, 17) da dbops.fn_pgtap_porta_a_stato (il verbo), che solleva lo stesso errore del guard degli indirizzi: lo stato della bolla non si cambia piu' con un UPDATE diretto (E_DOC_STATO_SOLO_DAL_VERBO). Le attese non cambiano.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): test 1 con gli ambiti col codice della sorgente.
 -- pgTAP test per Zero ERP
@@ -411,9 +412,7 @@ INSERT INTO vendite.offerte_commerciali_indirizzi (offerta_id, tipo_indirizzo_id
 SELECT o.rev1, t.id, '{"via": "Via della Residenza 2", "citta": "Roma"}'
   FROM _o o, config.tipi_indirizzi t WHERE t.codice_interno = 'RES';
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'EMESSA')
- WHERE id = (SELECT rev1 FROM _o);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', (SELECT rev1 FROM _o), 'EMESSA');
 
 ALTER TABLE _o ADD COLUMN rev2 bigint;
 UPDATE _o SET rev2 = vendite.fn_crea_revisione_offerta(rev1, 'pgtap');

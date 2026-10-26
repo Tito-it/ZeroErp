@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'offerta e' portata al modello. Test 9 e
+--   10: la porta anche sull'offerta, sei testate.
+-- ⚠️ Attesa cambiata: test 9 (la lista dichiarata + vendite.offerte_commerciali) e 10 (il conteggio
+--   5 -> 6), perche' il giro 9 monta la porta sull'offerta (20261026-26).
 -- rev 2026-10-26 (brief-modello-documento-vendita §11, giro 8): il contratto e' portato al modello. Test 9 e
 --   10: la porta anche sul contratto, cinque testate (attese cambiate: la lista dichiarata e il
 --   conteggio 4 -> 5).
@@ -64,7 +68,7 @@
 --   6) il lettore: DRAFT->EMESSO manuale con emetti_ddt; CONSEGNATO->RESO di processo
 --   7) il lettore: un passaggio fuori matrice -> nessuna riga
 --   8) il lettore su un documento non ancora portato al modello: chiamata non valida
---   9) montaggio della porta: bolla, reso, preventivo (giro 6), ordine (giro 7) e contratto (giro 8), e nessun'altra testata
+--   9) montaggio della porta: bolla, reso, preventivo (giro 6), ordine (giro 7), contratto (giro 8) e offerta (giro 9), e nessun'altra testata
 --  10) montaggio della porta: BEFORE UPDATE OF la colonna di stato della mappa
 --  11) le due porte del registro ritirate (E_DDT_/E_RESO_STATO_SOLO_DA_VERBO
 --      obsoleti, nessuna funzione li solleva piu')
@@ -206,8 +210,8 @@ SELECT is(
     (SELECT array_agg(x::oid ORDER BY x::oid)
        FROM unnest(ARRAY['vendite.ddt'::regclass, 'vendite.resi'::regclass,
                          'vendite.preventivi'::regclass, 'vendite.ordini'::regclass,
-                         'vendite.contratti'::regclass]) x),
-    'la porta e'' montata su bolla, reso, preventivo, ordine e contratto, e su nessun''altra testata'
+                         'vendite.contratti'::regclass, 'vendite.offerte_commerciali'::regclass]) x),
+    'la porta e'' montata su bolla, reso, preventivo, ordine, contratto e offerta, e su nessun''altra testata'
 );
 
 SELECT is(
@@ -217,7 +221,7 @@ SELECT is(
       WHERE p.def LIKE '%BEFORE UPDATE OF ' || m.colonna_stato || ' ON %'
         AND p.def LIKE '%FOR EACH ROW%'
         AND p.nome LIKE 'trg\_%\_a05\_stato\_solo\_dal\_verbo\_upd'),
-    5,
+    6,
     'la porta: BEFORE UPDATE OF la colonna di stato della mappa, per riga, fascia _a05_'
 );
 

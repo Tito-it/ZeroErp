@@ -1,6 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta si
+--   cambia solo dal verbo; rev.1 arriva in EMESSA con dbops.fn_pgtap_porta_a_stato invece
+--   dell'UPDATE di stato. Il trigger ora proietta lo stato con
+--   vendite.fn_offerta_proietta_stato_revisione: l'effetto visibile provato e' lo stesso.
 --
 -- Test: trigger revisione trg_offerte_commerciali_z90_revisione_ins (Step 6).
 --       AFTER INSERT: quando viene inserita rev.N+1 con revisione_padre_id != NULL,
@@ -50,7 +54,7 @@ SELECT
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')   AS stato_emessa_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'SUPERATA') AS stato_superata_id;
 
--- Rev.1: inserita in stato EMESSA (simuliamo: BOZZA -> EMESSA via UPDATE)
+-- Rev.1: inserita in BOZZA e portata in EMESSA dal verbo
 CREATE TEMP TABLE tmp_rev_trg_rev1 AS
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
@@ -67,9 +71,8 @@ WITH ins AS (
 SELECT id FROM ins;
 
 -- Porta rev.1 in EMESSA (perché la transizione EMESSA->SUPERATA è quella che il trigger esegue)
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_rev_trg_ctx)
- WHERE id = (SELECT id FROM tmp_rev_trg_rev1);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', r.id, 'EMESSA')
+  FROM tmp_rev_trg_rev1 r;
 
 -- ============================================================
 -- 1) Trigger z90_revisione_ins esiste

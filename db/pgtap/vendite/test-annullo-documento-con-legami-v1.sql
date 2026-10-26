@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'offerta della fixture
+--   (pg_temp.al_mk_offerta) arriva ACCETTATA dal verbo, con dbops.fn_pgtap_porta_a_stato, non con
+--   due UPDATE diretti dello stato: la porta dell'offerta li ferma. Attese invariate.
 -- rev 2026-10-26 (brief-modello-documento-vendita §11, giro 8): il test 14 («13) …») annullava il
 --   contratto con un UPDATE diretto dello stato, che ora la porta ferma (E_DOC_STATO_SOLO_DAL_VERBO).
 --   Passa dal verbo di stato vendite.fn_cambia_stato_contratto (DRAFT -> ANNULLATO: nessuna
@@ -282,8 +285,8 @@ BEGIN
             WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA' LIMIT 1));
   INSERT INTO vendite.offerte_commerciali_utilities (offerta_id, istanza_utility_id, utility_id)
   VALUES (v_off, r.istanza_utility_id, r.utility_id);
-  UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = r.off_emessa_id WHERE id = v_off;
-  UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = r.off_accettata_id WHERE id = v_off;
+  -- rev 2026-10-26 (giro 9): lo stato dal verbo, con la fixture (la porta rifiuta l'UPDATE).
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', v_off, 'ACCETTATA');
   INSERT INTO tmp_al_fix VALUES (p_chiave || '_off', v_off);
 END $$ LANGUAGE plpgsql;
 

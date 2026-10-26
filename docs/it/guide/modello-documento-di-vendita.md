@@ -250,7 +250,7 @@ possono sbagliarla in un altro modo.
 
 ## 10. A che punto è ogni documento
 
-Stato al 25 ottobre 2026. ✅ = segue la regola; ❌ = non ancora, con che cosa fa oggi. La riga di un
+Stato al 26 ottobre 2026. ✅ = segue la regola; ❌ = non ancora, con che cosa fa oggi. La riga di un
 documento cambia quando quel documento viene portato al modello (§11). Bolla e reso sono stati portati
 il 25 ottobre 2026, database e backend (403 dalla riga del passaggio, emissione solo da «Emetti»). Il
 preventivo è stato portato lo stesso giorno lato database; il backend lo segue (il 403 dalla riga del
@@ -258,12 +258,14 @@ passaggio e l'emissione letta dal vocabolario). L'ordine è stato portato lo ste
 il backend lo segue (la conferma e il cambio di stato dal verbo, il 403 dalla riga del passaggio, il
 ritiro della conferma senza «Emetti»). Il contratto è stato portato il 26 ottobre 2026 lato database;
 il backend lo segue (l'attivazione e la cessazione dai verbi, il 403 dalla riga del passaggio, la
-cessazione programmata decisa dal database).
+cessazione programmata decisa dal database). L'offerta è stata portata il 26 ottobre 2026 lato database;
+il backend la segue (l'emissione, l'esito e l'annullo dai verbi, il 403 dalla riga del passaggio, la
+motivazione chiesta dal database, la conferma dei legami all'annullo di una revisione).
 
 | Documento | Nasce in bozza (§3) | Matrice in tabella (§4) | Verbo di stato (§5) | Azione sul passaggio (§6) | Emissione (§7) | Annullo (§8) |
 | --- | --- | --- | --- | --- | --- | --- |
 | Preventivo | ✅ | ✅ | ✅ `fn_cambia_stato_preventivo` sul verbo comune, con la porta; ACCETTATO ↔ EVASO dalla proiezione dello smistamento | ✅ `emetti_preventivo` su emissione e annullo dell'emesso e dell'accettato (backend allineato il 2026-10-25: il 403 dalla riga del passaggio) | ✅ solo da «Emetti»; le righe sul passaggio, nel guard | ✅ `fn_annulla_preventivo` → verbo di stato |
-| Offerta | ✅ | ✅ (tabella `config.stati_doc_offerte_transizioni`, nome fuori serie) | ❌ `UPDATE` dal backend; gli stati di partenza sono ripetuti in Python | ❌ nessuna azione | ✅ | ❌ da accettata, con un controllo suo (`fn_check_offerta_annullabile`) invece dell'avviso dei legami |
+| Offerta | ✅ | ✅ (tabella `config.stati_doc_offerte_transizioni`: il nome fuori serie è una divergenza dichiarata, nessuna regola dipende dal nome) | ✅ `fn_cambia_stato_offerta` sul verbo comune, con la porta, e con la motivazione obbligatoria dove la riga del passaggio la chiede (rifiuto, annulli); il superamento e il ritorno della revisione precedente dalla proiezione delle revisioni vive | ✅ `emetti_offerta` sull'emissione e sull'annullo dell'accettata | ✅ solo da «Emetti». ⚠️ Il numero si assegna alla nascita, non all'emissione: divergenza dichiarata, tema a parte | ✅ `fn_annulla_offerta` → verbo di stato; prima ciò che vieta (un contratto o un ordine vivo, `fn_check_offerta_annullabile`), poi la conferma: la revisione precedente che torna emessa è un legame |
 | Contratto | ✅ | ✅ | ✅ `fn_cambia_stato_contratto` sul verbo comune, con la porta; la cessazione con la sua data da `fn_cessa_contratto` (oggi: cessa; futura: programmata), quella per scadenza da `fn_cessa_contratti_scaduti` | ✅ `emetti_contratto` sull'attivazione e sulla cessazione | ✅ solo da «Emetti». ⚠️ Il numero si assegna alla nascita, non all'emissione: divergenza dichiarata, tema a parte | ✅ `fn_annulla_contratto` → verbo di stato |
 | Ordine | ✅ | ✅ | ✅ `fn_cambia_stato_ordine` sul verbo comune, con la porta; l'evasione (confermato ↔ parzialmente evaso ↔ evaso) dalla proiezione delle bolle | ✅ `emetti_ordine` sulla conferma e sull'annullo del confermato | ✅ solo da «Emetti» (la conferma senza PDF è ritirata dal 2026-10-25). ⚠️ Il numero si assegna alla nascita, non all'emissione: divergenza dichiarata, tema a parte | ✅ `fn_annulla_ordine` → verbo di stato |
 | DDT | ✅ | ✅ | ✅ `fn_cambia_stato_ddt` sul verbo comune, con la porta | ✅ `emetti_ddt` sulla riga di emissione e annullo dell'emesso; `registra_magazzino` nel verbo, per l'operazione di magazzino | ✅ solo da «Emetti»: il cambio stato generico rifiuta emesso | ✅ `fn_annulla_ddt` → verbo di stato |

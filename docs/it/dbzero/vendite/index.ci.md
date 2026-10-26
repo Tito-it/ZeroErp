@@ -65,7 +65,7 @@ search:
 - [note_offerte_commerciali](manual/note_offerte_commerciali.md) — (rev 2026-05-24)
 - [note_ordini](manual/note_ordini.md) — `vendite.note_ordini` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
 - [note_preventivo](manual/note_preventivo.md) — `vendite.note_preventivo` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
-- [offerte_commerciali](manual/offerte_commerciali.md) — (rev 2026-05-24)
+- [offerte_commerciali](manual/offerte_commerciali.md) — (rev 2026-05-24; ultima revisione 2026-10-26)
 - [offerte_commerciali_eccezioni](manual/offerte_commerciali_eccezioni.md) — (rev 2026-05-24)
 - [offerte_commerciali_eccezioni_componenti](manual/offerte_commerciali_eccezioni_componenti.md) — (rev 2026-05-26)
 - [offerte_commerciali_indirizzi](manual/offerte_commerciali_indirizzi.md) — Snapshot degli indirizzi collegati alla testata di un'**offerta commerciale**, uno per tipo (univocità `offerta_id, tipo_indirizzo_id`). Struttura **identica** alle altre tabelle `*_indirizzi` documento (snapshot JSONB congelato + `origine_indirizzo_id` / `origine_soggetto_ruolo_id` soft FK `SET NULL`, `tx_id`).
@@ -104,6 +104,7 @@ search:
 - [fn_annulla_commessa](manual/fn_annulla_commessa.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-1, D-2, D-3, D-7)
 - [fn_annulla_commessa_attivita](manual/fn_annulla_commessa_attivita.md) — (rev 2026-07-28)
 - [fn_annulla_lotto_da_draft](manual/fn_annulla_lotto_da_draft.md) — (latest review 23-09-2026)   La funzione **`vendite.fn_annulla_lotto_da_draft()`** effettua il **rollback tecnico** di un lotto in stato **DRAFT**, eliminando i documenti generati dal draft, ripristinando le righe di `attivita_fatturabili` e **chiudendo** il lotto portandolo ad **ANNULLATA**.
+- [fn_annulla_offerta](manual/fn_annulla_offerta.md)
 - [fn_annulla_reso](manual/fn_annulla_reso.md) — (rev 2026-07-13)
 - [fn_applica_fondi_fattura](manual/fn_applica_fondi_fattura.md) — (latest review 15-08-2026)
 - [fn_applica_fondi_lotto](manual/fn_applica_fondi_lotto.md) — (latest review 15-08-2026)
@@ -116,6 +117,7 @@ search:
 - [fn_calcola_data_documento](manual/fn_calcola_data_documento.md) — **Che data porta un documento emesso su questo registro?**
 - [fn_cambia_stato_commessa](manual/fn_cambia_stato_commessa.md) — (rev 2026-06-07) `vendite.fn_cambia_stato_commessa(p_commessa_id, p_nuovo_stato, p_user)` è l'**entrypoint sanzionato (DB-first)** per cambiare lo stato di una commessa: risolve il codice stato in id, esegue l'`UPDATE` e ritorna lo stato da/a.
 - [fn_cambia_stato_contratto](manual/fn_cambia_stato_contratto.md)
+- [fn_cambia_stato_offerta](manual/fn_cambia_stato_offerta.md)
 - [fn_cambia_stato_ordine](manual/fn_cambia_stato_ordine.md)
 - [fn_cambia_stato_preventivo](manual/fn_cambia_stato_preventivo.md) — (latest review 03-04-2026) `vendite.fn_cambia_stato_preventivo(p_preventivo_id, p_nuovo_stato, p_user)` esegue la **transizione di stato** di un preventivo vendita, validando la transizione tramite la matrice configurabile `config.transizioni_stati_preventivi`.
 - [fn_cancel_lotto_task_run](manual/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
@@ -143,7 +145,7 @@ search:
 - [fn_contratto_sovrapposto](manual/fn_contratto_sovrapposto.md) — `vendite.fn_contratto_sovrapposto(...)` risponde a una sola domanda, **senza modificare nulla**: *«per questo cliente/utility e in questo periodo esiste già un contratto attivo?»*. È il **rilevamento** del meccanismo generico di successione contratti (il "chiudi il vecchio e apri il nuovo").
 - [fn_coppie_fattura_scoperte](manual/fn_coppie_fattura_scoperte.md) — (18-10-2026 — R-BE-14, decisioni D-14a … D-14d di Tid, `brief-db-processi-accensione-per-ambiente` §6.14)
 - [fn_crea_famiglia_documento](manual/fn_crea_famiglia_documento.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
-- [fn_crea_revisione_offerta](manual/fn_crea_revisione_offerta.md) — (rev 2026-05-25)
+- [fn_crea_revisione_offerta](manual/fn_crea_revisione_offerta.md) — (rev 2026-05-25; ultima revisione 2026-10-26)
 - [fn_crea_revisione_preventivo](manual/fn_crea_revisione_preventivo.md) — (latest review 14-09-2026) `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione** di un preventivo vendita: copia testata, righe attive, componenti BoM e indirizzi. L'attivazione della revisione non e' piu' gestita qui: il flag `is_revision_attiva` e' stato rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendite.vw_preventivi`.
 - [fn_create_contratto](manual/fn_create_contratto.md) — (latest review 12-10-2026)
 - [fn_create_fatturazione_lotto](manual/fn_create_fatturazione_lotto.md) — (latest review 27-01-2026) La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e inizializza lo stato documento a **DRAFT**.
@@ -152,7 +154,7 @@ search:
 - [fn_ddt_riga_componenti_preview](manual/fn_ddt_riga_componenti_preview.md)
 - [fn_ddt_vincoli_cliente](manual/fn_ddt_vincoli_cliente.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-1)
 - [fn_diagnostica_gruppi_fatturabili](manual/fn_diagnostica_gruppi_fatturabili.md) — (latest review 15-08-2026)
-- [fn_documento_legami](manual/fn_documento_legami.md) — (2026-10-11, brief-db-annullo-documento-con-legami, D-4)
+- [fn_documento_legami](manual/fn_documento_legami.md) — (2026-10-11, brief-db-annullo-documento-con-legami, D-4; ultima revisione 2026-10-26)
 - [fn_documento_lineage](manual/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
 - [fn_documento_lineage_archi](manual/fn_documento_lineage_archi.md) — (rev 2026-10-11)
 - [fn_documento_lineage_legami](manual/fn_documento_lineage_legami.md) — (nata il 2026-10-13, richiesta R-17/R-18 del backend, dal collaudo)
@@ -228,6 +230,7 @@ search:
 - [fn_numero_documento_fattura](manual/fn_numero_documento_fattura.md) — **È la sede unica che dice come si scrive il numero di una fattura.**
 - [fn_offerta_eccezione_componenti_init](manual/fn_offerta_eccezione_componenti_init.md)
 - [fn_offerta_eccezione_componenti_preview](manual/fn_offerta_eccezione_componenti_preview.md)
+- [fn_offerta_proietta_stato_revisione](manual/fn_offerta_proietta_stato_revisione.md)
 - [fn_offerta_righe_espanse](manual/fn_offerta_righe_espanse.md)
 - [fn_offerta_righe_preview](manual/fn_offerta_righe_preview.md) — (funzione nata il 2026-10-04, `20261004-72`)
 - [fn_ordine_ha_residuo_evasione](manual/fn_ordine_ha_residuo_evasione.md) — (rev 2026-07-13 — **reso-aware**)
@@ -367,7 +370,7 @@ search:
 - [trgfn_offerte_commerciali_default_valuta](manual/trgfn_offerte_commerciali_default_valuta.md) — (rev 2026-08-21)
 - [trgfn_offerte_commerciali_gen_codice](manual/trgfn_offerte_commerciali_gen_codice.md) — (rev 2026-08-21)
 - [trgfn_offerte_commerciali_guard_transizione](manual/trgfn_offerte_commerciali_guard_transizione.md) — (rev 2026-09-24 — il prezzo non autorizzato; rev 2026-08-21 — funzione rev 2026-05-25)
-- [trgfn_offerte_commerciali_revisione](manual/trgfn_offerte_commerciali_revisione.md) — (rev 2026-05-24)
+- [trgfn_offerte_commerciali_revisione](manual/trgfn_offerte_commerciali_revisione.md) — (rev 2026-05-24; ultima revisione 2026-10-26)
 - [trgfn_ordini_ful_guard_consistenza](manual/trgfn_ordini_ful_guard_consistenza.md) — La trigger function `vendite.trgfn_ordini_ful_guard_consistenza()` protegge la coerenza delle righe fulfillment ordine↔DDT e impedisce over-fulfillment.
 - [trgfn_ordini_gen_numero](manual/trgfn_ordini_gen_numero.md) — (rev 2026-08-31, sera)
 - [trgfn_ordini_guard_transizione](manual/trgfn_ordini_guard_transizione.md) — (rev 2026-09-24 — Regola 5, il prezzo non autorizzato; rev 2026-06-05)

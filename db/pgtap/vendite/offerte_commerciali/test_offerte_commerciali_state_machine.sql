@@ -33,6 +33,18 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): l'offerta dello slot F
 --   nasce in bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima
 --   nasceva gia' ACCETTATA).
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta
+--   si cambia solo dal verbo vendite.fn_cambia_stato_offerta (la porta rifiuta l'UPDATE
+--   con E_DOC_STATO_SOLO_DAL_VERBO). Gli slot D, E, H arrivano in EMESSA con
+--   dbops.fn_pgtap_porta_a_stato; le transizioni provate (test 2-10) si chiedono al verbo,
+--   che passa dallo stesso guard di transizione a10. Al verbo si passa la motivazione dove
+--   la matrice la chiede (BOZZA->ANNULLATA, EMESSA->RIFIUTATA). All'utente del contesto si
+--   concede l'azione emetti_offerta (BOZZA->EMESSA): il test prova la macchina a stati, non
+--   il permesso. Il passaggio di processo (E_DOC_PASSAGGIO_DI_PROCESSO) e la motivazione
+--   obbligatoria si provano in vendite/test-offerta-al-modello-v1.
+-- ⚠️ Attesa cambiata: test 2-10 provavano la transizione con l'UPDATE diretto dello stato,
+--   che ora la porta rifiuta sempre; provano la stessa transizione, con lo stesso esito
+--   atteso, chiesta al verbo di stato.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -41,6 +53,9 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(10);
+
+-- Il test prova la macchina a stati, non il permesso: l'azione di processo di BOZZA->EMESSA.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_offerta');
 
 -- ============================================================
 -- Setup fixture: contesti di riferimento
@@ -150,9 +165,9 @@ WITH ins AS (
 )
 INSERT INTO tmp_sm_ids SELECT 'D', id FROM ins;
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_sm_ctx)
- WHERE id = (SELECT offerta_id FROM tmp_sm_ids WHERE slot = 'D');
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id, 'EMESSA')
+  FROM tmp_sm_ids i
+ WHERE i.slot = 'D';
 
 -- Slot E: BOZZA poi portata in EMESSA (test 6+7: EMESSA->ACCETTATA + data_accettazione)
 WITH ins AS (
@@ -168,9 +183,9 @@ WITH ins AS (
 )
 INSERT INTO tmp_sm_ids SELECT 'E', id FROM ins;
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_sm_ctx)
- WHERE id = (SELECT offerta_id FROM tmp_sm_ids WHERE slot = 'E');
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id, 'EMESSA')
+  FROM tmp_sm_ids i
+ WHERE i.slot = 'E';
 
 -- Slot F: ACCETTATA (test 8: ACCETTATA->EMESSA fails). Nasce in BOZZA e
 -- arriva ad ACCETTATA per la matrice, sotto il guard di transizione
@@ -219,9 +234,9 @@ WITH ins AS (
 )
 INSERT INTO tmp_sm_ids SELECT 'H', id FROM ins;
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_sm_ctx)
- WHERE id = (SELECT offerta_id FROM tmp_sm_ids WHERE slot = 'H');
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id, 'EMESSA')
+  FROM tmp_sm_ids i
+ WHERE i.slot = 'H';
 
 -- ============================================================
 -- 1) Trigger guard esiste
@@ -244,9 +259,7 @@ SELECT ok(
 -- ============================================================
 SELECT throws_ok(
     format(
-        $q$UPDATE vendite.offerte_commerciali
-              SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_sm_ctx)
-            WHERE id = %s$q$,
+        $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
         (SELECT offerta_id FROM tmp_sm_ids WHERE slot = 'A')
     ),
     'P0001', NULL,
@@ -262,9 +275,7 @@ SELECT CASE
     THEN skip('3) skip: nessuna listini_versioni con stato <> ATTIVA disponibile nel seed')
     ELSE throws_ok(
         format(
-            $q$UPDATE vendite.offerte_commerciali
-                  SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_sm_ctx)
-                WHERE id = %s$q$,
+            $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
             (SELECT offerta_id FROM tmp_sm_ids WHERE slot = 'B')
         ),
         'P0001', NULL,
@@ -277,9 +288,7 @@ END;
 -- ============================================================
 SELECT lives_ok(
     format(
-        $q$UPDATE vendite.offerte_commerciali
-              SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_sm_ctx)
-            WHERE id = %s$q$,
+        $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
         (SELECT offerta_id FROM tmp_sm_ids WHERE slot = 'C')
     ),
     '4) BOZZA->EMESSA con versione listino ATTIVA -> ok'
@@ -290,9 +299,7 @@ SELECT lives_ok(
 -- ============================================================
 SELECT throws_ok(
     format(
-        $q$UPDATE vendite.offerte_commerciali
-              SET stato_doc_offerta_id = (SELECT stato_bozza_id FROM tmp_sm_ctx)
-            WHERE id = %s$q$,
+        $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'BOZZA', NULL)$q$,
         (SELECT offerta_id FROM tmp_sm_ids WHERE slot = 'D')
     ),
     'P0001', NULL,
@@ -304,9 +311,7 @@ SELECT throws_ok(
 -- ============================================================
 SELECT lives_ok(
     format(
-        $q$UPDATE vendite.offerte_commerciali
-              SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_sm_ctx)
-            WHERE id = %s$q$,
+        $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'ACCETTATA', NULL)$q$,
         (SELECT offerta_id FROM tmp_sm_ids WHERE slot = 'E')
     ),
     '6) EMESSA->ACCETTATA -> ok'
@@ -327,9 +332,7 @@ SELECT ok(
 -- ============================================================
 SELECT throws_ok(
     format(
-        $q$UPDATE vendite.offerte_commerciali
-              SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_sm_ctx)
-            WHERE id = %s$q$,
+        $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
         (SELECT offerta_id FROM tmp_sm_ids WHERE slot = 'F')
     ),
     'P0001', NULL,
@@ -341,9 +344,7 @@ SELECT throws_ok(
 -- ============================================================
 SELECT lives_ok(
     format(
-        $q$UPDATE vendite.offerte_commerciali
-              SET stato_doc_offerta_id = (SELECT stato_annullata_id FROM tmp_sm_ctx)
-            WHERE id = %s$q$,
+        $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'ANNULLATA', 'pgTAP: ritiro da parte nostra')$q$,
         (SELECT offerta_id FROM tmp_sm_ids WHERE slot = 'G')
     ),
     '9) BOZZA->ANNULLATA -> ok (addendum A2: ritiro da parte nostra)'
@@ -354,9 +355,7 @@ SELECT lives_ok(
 -- ============================================================
 SELECT lives_ok(
     format(
-        $q$UPDATE vendite.offerte_commerciali
-              SET stato_doc_offerta_id = (SELECT stato_rifiutata_id FROM tmp_sm_ctx)
-            WHERE id = %s$q$,
+        $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'RIFIUTATA', 'pgTAP: rifiuto del cliente')$q$,
         (SELECT offerta_id FROM tmp_sm_ids WHERE slot = 'H')
     ),
     '10) EMESSA->RIFIUTATA -> ok + data_rifiuto valorizzata'
