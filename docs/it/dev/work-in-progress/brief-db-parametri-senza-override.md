@@ -2,10 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-26
 
-**Riparte: Tid**, con l'apply del CSV di §6.6 (`VENDITE_DASHBOARD_RITARDO_DATA_MINIMA` senza
-override, scritto il 2026-10-26 su ok di Tid); **in parallelo il team DB** con la
-riformulazione del rimedio di `E_PARAMETER_OVERRIDE_NON_AMMESSO` (§6.7). BE-1…BE-3, FE-1 e
-FE-2 sono fatti (§6.5).
+**Riparte: Tid**, con l'apply dei due CSV degli errori (il rimedio nuovo di
+`E_PARAMETER_OVERRIDE_NON_AMMESSO`, §6.8); poi **il BE/FE** allinea ripiego e avviso del drawer
+(7-ter), e il brief si archivia. Tutto il resto è fatto: DB, BE-1…BE-3, FE-1, FE-2, §6.6
+applicato.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -18,16 +18,19 @@ FE-2 sono fatti (§6.5).
 | 4 | ✅ **Tid** | Apply e corsa pgTAP: verdi (2026-10-25) | §6.4 | 3 |
 | 5 | ✅ BE / FE | BE-1…BE-3 (lista, codici, i due test Django), FE-1 e FE-2 (form override, default societari), 2026-10-26 | §6.5 | 4 |
 | 6 | ✅ BE, ok Tid | `VENDITE_DASHBOARD_RITARDO_DATA_MINIMA` senza override (CSV), 2026-10-26 | §6.6 | 5 |
-| 7 | **Tid** | Apply del punto 6 | §6.6 | 6 |
-| 7-bis | **team DB** | Riformulare il rimedio (e la `note`) di `E_PARAMETER_OVERRIDE_NON_AMMESSO`: oggi indica un'azione che l'app non offre | §6.7 | — |
-| 7-ter | BE / FE | Allineare al testo nuovo il ripiego (`error_messages_fallback.py`) e l'avviso del drawer (`config.impostazioni.per_tutti_hint`) | §6.7 | 7-bis |
-| 8 | **Tid** | Archiviazione in `work-done/` | — | 7, 7-ter |
+| 7 | ✅ **Tid** | Apply del punto 6 (verificato 2026-10-26: mirror `RERAN`, parametro a `false`) | §6.6 | 6 |
+| 7-bis | ✅ team DB | Rimedio e `note` di `E_PARAMETER_OVERRIDE_NON_AMMESSO` riscritti, guida allineata (2026-10-26) | §6.8 | — |
+| 7-bis-ii | **Tid** ⏭️ | Apply dei due CSV degli errori (mirror `20260614-08`) | §6.8 | 7-bis |
+| 7-ter | BE / FE | Allineare al testo nuovo il ripiego (`error_messages_fallback.py`) e l'avviso del drawer (`config.impostazioni.per_tutti_hint`) | §6.7, §6.8 | 7-bis-ii |
+| 8 | **Tid** | Archiviazione in `work-done/` | §6.9 | 7-ter |
 
 Decisioni aperte di Tid: **nessuna**. §6.6 non chiede una decisione: la famiglia del parametro è
 già decisa, D-1 di
 [brief-db-parametro-data-minima-ritardo-dashboard](../work-done/brief-db-parametro-data-minima-ritardo-dashboard.md)
-(2026-10-09, «nessun override»). Manca solo la colonna che la dice. Il giro DB è committato (`1b2e26556`); il giro BE/FE di §6.5 e il CSV di §6.6 sono **da
-committare**, su `dev/backend-tid`.
+(2026-10-09, «nessun override»). Manca solo la colonna che la dice. Committati: il giro DB (`1b2e26556`), il giro BE/FE di §6.5 e il CSV di §6.6 (`611b27179`, in
+`Tito-dev`). **Da committare**: §6.8 (i due CSV degli errori, la guida, questo brief). ⚠️ Gli
+stessi due CSV hanno modifiche del cantiere contratto (brief-modello-documento-vendita §11), non
+ancora committate: vanno nello stesso commit o si separano a mano.
 
 **Brief vicini verificati (2026-10-24):** nessuno sul tema. Nominano le stesse tabelle
 [valutazione-modello-di-dominio-db](valutazione-modello-di-dominio-db.md) (i timestamp delle due
@@ -441,3 +444,25 @@ portata.
 consultazione (`config.impostazioni.per_tutti_hint`, `it.json`/`en.json`) oggi dicono «si cambia
 il valore di default». Si allineano al testo nuovo **dopo** il DB, per non avere due versioni del
 rimedio.
+
+### 6.8 Il rimedio riscritto (team DB, 2026-10-26)
+
+Richiesta di §6.7, fatta. In `messaggi_errore.csv` la `soluzione` di
+`E_PARAMETER_OVERRIDE_NON_AMMESSO` ora dice: «Il valore è uguale per tutti e lo stabilisce la
+configurazione del sistema: per cambiarlo ci si rivolge all'amministratore del sistema.»
+Messaggio e causa restano. In `codici_errore.csv` la `note` dice perché (`DATO_ERRATO`: è la
+richiesta a essere sbagliata; il default lo scrive il CSV, cioè un rilascio, non l'applicazione).
+La guida parametri (§«Due famiglie») ripeteva il rimedio vecchio: allineata. Nessun changeSet
+nuovo: lo carica il mirror `20260614-08` (`runOnChange`).
+
+**Per il 7-ter** (BE/FE, dopo l'apply): il ripiego in `error_messages_fallback.py` e
+`config.impostazioni.per_tutti_hint` (`it.json`/`en.json`) dicono la stessa cosa del testo nuovo:
+il valore è uguale per tutti, lo stabilisce la configurazione del sistema, per cambiarlo ci si
+rivolge all'amministratore.
+
+### 6.9 Archiviazione (dopo il 7-ter)
+
+Nessun debito residuo: il brief si sposta in `work-done/` senza aprirne uno nuovo. Da sistemare
+nello stesso passo: i link relativi del brief (`../work-done/…` diventano locali, `../../guide/…`
+restano) e i rimandi al brief per percorso: al 2026-10-26 uno solo,
+`docs/it/backend/core/manual/api_parameter_settings.md` (gli YAML lo citano per nome).

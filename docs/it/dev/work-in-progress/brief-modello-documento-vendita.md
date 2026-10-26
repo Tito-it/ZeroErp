@@ -1,8 +1,8 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-25 (giro 7: DB e BE fatti, §9.7; difetto DB X → X, §9.8)
+## ⏭️ Chi riparte — aggiornato al 2026-10-26 (giro 8, il contratto: DB applicato e verde, §11.5; tocca al BE, §11.6)
 
-**Riparte: Tid**, col commit del giro BE (§9.7, §9.8) e il dato `emetti_ordine` ai profili; poi il **team DB** sul difetto emerso nel §9.8 (il verbo comune accetta il passaggio allo stesso stato: un secondo «Emetti» passa), prima del giro 8, il contratto. Giro 7 (l'ordine): DB applicato e verde (Tid, 2026-10-25). Giro 6, il preventivo (§8): DB applicato e verde, BE fatto (§8.10) tranne il ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committato su DB e BE (`4351164c1`, PR #1943).
+**Riparte: il team BE**, sulle richieste del §9.10 (cinque punti) e del §11.6 (sette punti), in un passaggio solo; **Tid** col dato `emetti_contratto` ai profili e col via al giro dell'offerta, che non aspetta il BE (§5). Il giro 8 (il contratto) è applicato e verde (Tid, 2026-10-26). Il giro DB del §9.10 è applicato e verde (Tid, 2026-10-26). Giro 7 (l'ordine): DB applicato e verde (Tid, 2026-10-25). Giro 6, il preventivo (§8): DB applicato e verde, BE fatto (§8.10) tranne il ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committato su DB e BE (`4351164c1`, PR #1943).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -43,17 +43,25 @@
 | 4-bis-septies-octies | ✅ **Tid** | Migrazione applicata e corsa pgTAP verde (2026-10-25). Resta un dato: `emetti_ordine` ai profili su dbdev | §9.5, §9.6 | 4-bis-septies-septies |
 | 4-bis-octies | ✅ team BE | Un passaggio solo, B-1 … B-6 del §8.11 e C-1 … C-6 del §9.6, fatto il 2026-10-25 | §9.7 | 4-bis-septies-bis |
 | 4-bis-octies-bis | ✅ team BE | I due residui del §9.7: l'annullo dal vocabolario fatto; il «solo da DRAFT» sospeso su un difetto DB | §9.8 | 4-bis-octies |
-| 4-bis-octies-ter | **Tid** ⏭️ | Commit del giro BE (`dev/backend-tid`); `emetti_ordine` ai profili su dbdev; via al team DB per il difetto X → X | §9.8 | 4-bis-octies-bis |
-| 4-bis-octies-quater | team DB | Il verbo comune rifiuta il passaggio allo stesso stato (difetto del modello, priorità alta); il verbo della bolla risponde a uno stato sconosciuto come i gemelli | §9.8, §9.9 | 4-bis-octies-ter |
-| 4-bis-nonies | **Tid** → team DB | Il via al giro 8: il contratto (ordine dei giri di W-1). Non aspetta il BE (§5) | §5 | 4-bis-septies-octies |
+| 4-bis-octies-ter | ✅ **Tid** | Commit del giro BE (`8023974de`, PR #1953); via al team DB per il difetto X → X (2026-10-26). Il dato `emetti_ordine` ai profili su dbdev: non verificato qui | §9.8 | 4-bis-octies-bis |
+| 4-bis-octies-quater | ✅ team DB / **Tid** | Prima riga o guard di transizione: Tid sceglie la prima riga col codice comune (2026-10-26). Scritti `20261026-01` (X → X, `E_DOC_GIA_NELLO_STATO`) e `-02` (bolla, stato sconosciuto come i gemelli); 3 pgTAP estesi, regressione su 40 file senza differenze | §9.10 | 4-bis-octies-ter |
+| 4-bis-octies-quinquies | ✅ **Tid** | Apply di `20261026-01`, `-02` e dei CSV degli errori; corsa pgTAP come app: verdi (2026-10-26) | §9.10 | 4-bis-octies-quater |
+| 4-bis-octies-sexies | team BE ⏭️ | Richiesta del §9.10, punti 1-5: policy del codice nuovo, ritiro di `_assert_stato` e del controllo della bolla, test del secondo «Emetti» | §9.10 | 4-bis-octies-quinquies |
+| 4-bis-nonies | ✅ **Tid** → team DB | Il via al giro 8: il contratto (ordine dei giri di W-1), 2026-10-26. Non aspetta il BE (§5) | §5 | 4-bis-septies-octies |
+| 4-bis-nonies-bis | ✅ team DB | Giro 8, il contratto: ricognizione, piano, domande | §11 | 4-bis-nonies |
+| 4-bis-nonies-ter | ✅ **Tid** | Y-1 … Y-4 come da proposta, e il via allo sviluppo (2026-10-26) | §11.3 | 4-bis-nonies-bis |
+| 4-bis-nonies-quater | ✅ team DB / **Tid** | Giro 8 scritto (`-03` … `-13`, CSV) e provato in transazione; 18 pgTAP portati, 2 ritirati (Tid: 11 e 12 del sovrapposto), regressione su 68 file senza peggioramenti | §11.4, §11.5 | 4-bis-nonies-ter |
+| 4-bis-nonies-quinquies | ✅ **Tid** | Apply del giro 8 e corsa pgTAP come app: verdi (2026-10-26). Il dato `emetti_contratto` ai profili su dbdev: non verificato qui | §11.5 | 4-bis-nonies-quater |
+| 4-bis-nonies-sexies | team BE ⏭️ | Richiesta del §11.6 (sette punti), insieme a quella del §9.10 | §11.6 | 4-bis-nonies-quinquies |
+| 4-bis-decies | **Tid** → team DB | Il via al giro 9: l'offerta (ordine dei giri di W-1). Non aspetta il BE (§5) | §5 | 4-bis-nonies-quinquies |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 | 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1, il blocco «origine» della stampa della fattura, da decidere nel giro della fattura; D-G2, la prova a video del lotto 2b | §10 | — |
-| 5-ter | **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, il censimento dei gate delle azioni per riga; quando, lo decide Tid | §11 | — |
+| 5-ter | **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, il censimento dei gate delle azioni per riga; quando, lo decide Tid | §12 | — |
 
-Decisioni aperte di Tid: nessuna in questo brief (W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md), E-1 … E-3); il difetto X → X va al team DB (§9.8). Da sapere (§8.10, §9.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine. Lavoro da committare (`dev/backend-tid`): il giro BE del §9.7, §9.8 e §9.9.
-Committati: il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
+Decisioni aperte di Tid: quando fare D-N1 (§12, riga 5-ter); il via al giro dell'offerta. W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine. Lavoro da committare (`dev/db-tid`): il giro DB del §9.10 (due changeSet, due CSV, tre pgTAP, guida e pagina manuale) e il giro 8 (undici changeSet, il mirror e quattro CSV, un pgTAP nuovo e diciannove portati, guide e pagine manuali).
+Committati: il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -1789,6 +1797,96 @@ il giro DB di `brief-db-parametri-senza-override` applicato su dbdev durante la 
 policy) e il guard nuovo sugli override che rifiuta le fixture di `test_parameter_overrides_db` (5) e
 `test_accessi_db` (1). Tocca al passaggio BE di quel brief.
 
+### 9.10 Il difetto X → X e lo stato sconosciuto della bolla (team DB, 2026-10-26)
+
+**La scelta (Tid, 2026-10-26): il rifiuto sta nella prima riga del verbo, con un codice comune.** Erano
+due le sedi possibili:
+
+| | Prima riga (`script.fn_guard_passaggio`), codice comune | Guard di transizione, codice del documento |
+| --- | --- | --- |
+| Dove | una funzione, per tutti i documenti sul modello e per quelli dei giri dopo | una riga in quattro guard, e in ogni giro futuro |
+| Quando parla | prima di ogni lavoro del verbo | alla scrittura, dopo il lavoro fra le due metà |
+| Codice | `E_DOC_GIA_NELLO_STATO`, nuovo | quello di transizione di ciascun documento |
+
+Il secondo modo avrebbe fatto parlare tardi la bolla: un secondo «Emetti» rifà i controlli della merce
+(`fn_check_ddt_merce`, che riprova i prelievi già consumati) prima della scrittura, e un motivo sbagliato,
+come la giacenza, poteva arrivare prima della risposta giusta. La richiesta del §9.8 chiedeva il codice del
+documento: è cambiato per questo motivo.
+
+**Che cosa resta della scorciatoia «stato invariato» nei guard:** tutta. Il guard di transizione giudica i
+**cambi** di stato e lascia passare un `UPDATE` che riscrive lo stesso stato (il salvataggio della riga
+intera, `test-ritiro-alla-chiusura-documento-v1` 7). Il verbo chiesto con lo stato che il documento ha già
+lo vede solo la prima riga. Sono due giudici che non si toccano, e la matrice resta l'unica fonte: una riga
+X → X, se un giorno ci fosse, sarebbe un passaggio come gli altri.
+
+**Scritto:**
+
+| ChangeSet / file | Che cosa |
+| --- | --- |
+| `20261026-01-update-fn-guard-passaggio-stesso-stato` | nessuna riga per il passaggio e stato chiesto = stato di oggi: `E_DOC_GIA_NELLO_STATO` («Il documento è già nello stato %s: non c'è niente da cambiare.», il codice dello stato da `script.fn_doc_stato_codice`) |
+| `20261026-02-update-fn-cambia-stato-ddt-stato-sconosciuto` | §9.9: uno stato che il vocabolario della bolla non ha risponde `E_STATO_WORKFLOW_NON_TROVATO`, con lo stesso contesto e lo stesso valore dei gemelli. Il guard dei parametri NULL o vuoti resta tecnico |
+| `codici_errore.csv`, `messaggi_errore.csv` | `E_DOC_GIA_NELLO_STATO`, `CONFLITTO_STATO` (409), id 1399; la `causa` di `E_STATO_WORKFLOW_NON_TROVATO` elenca i quattro verbi che lo sollevano |
+| guida del modello §5, pagina manuale di `fn_guard_passaggio` | la regola, scritta come stato attuale |
+
+**Uniforme per costruzione, non per copia.** La regola vale per ogni documento che passa dal verbo comune:
+oggi ordine, preventivo, bolla e reso. Contratto, offerta, commessa e fattura non ci passano ancora, e lo
+stesso buco è aperto lì (letto il 2026-10-26: `vendite.fn_cambia_stato_commessa` fa l'`UPDATE` senza la prima
+riga, e il guard di transizione della commessa esce a stato invariato). Non si chiude documento per documento:
+si chiude **portandoli al verbo comune** nel loro giro (il contratto per primo), senza una riga in più. Nel
+giro di ognuno, un pgTAP prova il secondo passaggio allo stesso stato.
+
+Nella frase lo stato e non il documento: chi la legge è sul documento, e l'etichetta da `config.sorgenti`
+sarebbe stata la terza copia della stessa lettura (porta e nascita nello stato iniziale la fanno già).
+
+**Applicato e verde (Tid, 2026-10-26):** migrazione su dbdev e corsa pgTAP come app.
+
+**Provato prima dell'apply (2026-10-26),** sullo scratch `zeroerp_ruoli` come `zeroerp_owner`: SQL estratto dai changeSet e
+righe dei CSV, nella transazione annullata di ogni pgTAP (scratch rimasto pulito, md5 delle due funzioni
+uguali a prima).
+
+| pgTAP | Con | Senza | Test nuovi |
+| --- | --- | --- | --- |
+| `script/test-doc-verbo-comune-e-porta-v1` (plan 20 → 24) | 22/24 | 19/24 | 19 secondo «Emetti» della bolla, 20 secondo annullo del reso, 22 bolla con uno stato che non c'è: rossi senza. 21, un `UPDATE` che riscrive lo stesso stato passa: verde in tutte e due, è l'invariante |
+| `vendite/test-ordine-al-modello-v1` (16 → 17) | 16/17 | 15/17 | 13 seconda conferma dell'ordine: senza, passa |
+| `script/test-doc-lettori-stato-e-preventivo-al-modello-v1` (22 → 23) | 22/23 | 21/23 | 19 secondo «Emetti» del preventivo: senza, passa |
+
+Gli unici rossi «con» sono i test della porta che lo dichiarano: rossi da owner, verdi come app.
+
+**Regressione:** 40 pgTAP che chiamano i verbi (`fn_cambia_stato_*`, verbi del reso e d'annullo,
+`fn_guard_passaggio`), prima e dopo: asserzioni eseguite, `ok` e `not ok` uguali su tutti e 40. Due muoiono
+nella fixture in tutte e due le corse, `vendite/test-fn-cambia-stato-preventivo` e
+`vendite/test-preventivi-guard-emissione-iva` (il billing account, già in tutte e due le baseline come
+`ERRORE_FIXTURE`): letti a mano, nessuno chiede lo stato che il documento ha già. I builder delle fixture
+non lo chiedono mai: il percorso di `dbops.fn_pgtap_porta_a_stato` da uno stato a sé stesso è vuoto.
+
+**Attese cambiate, dichiarate:**
+
+* la seconda conferma del reso risponde `E_DOC_GIA_NELLO_STATO` e non più `E_RESO_STATO_NON_CONFERMABILE`, e
+  il secondo annullo `E_DOC_GIA_NELLO_STATO` e non più `E_RESO_STATO_NON_ANNULLABILE`: la prima riga viene
+  prima del controllo del reso. Da tutti gli altri stati i due codici del reso restano;
+* l'annullo di un ordine, di una bolla o di un preventivo già annullato (`fn_annulla_ordine`,
+  `fn_annulla_ddt`, `fn_annulla_preventivo`) passava senza errore e senza cambiare niente: ora risponde
+  `E_DOC_GIA_NELLO_STATO`;
+* la bolla con uno stato che non c'è: `E_STATO_WORKFLOW_NON_TROVATO` (`NON_TROVATO`) invece di
+  `E_VENDITE_CHIAMATA_NON_VALIDA` (`TECNICO`).
+
+**Richiesta al team BE, dopo l'apply (elenco chiuso):**
+
+1. il codice nuovo `E_DOC_GIA_NELLO_STATO` (`CONFLITTO_STATO`): la policy rigenerata e il ripiego in
+   `error_messages_fallback.py`, come per ogni codice nuovo (i due presidi della policy);
+2. ordine: si ritira il controllo `_assert_stato` dalla conferma (§9.8 punto 2); `test_conferma_due_volte`
+   si aspetta `E_DOC_GIA_NELLO_STATO`;
+3. un test DB per preventivo e bolla: il secondo «Emetti» è rifiutato con `E_DOC_GIA_NELLO_STATO`, e non
+   nasce un secondo PDF;
+4. bolla (§9.9): si ritirano il controllo di `ddt_service._passa_a` e `DdtRepository.get_stato_id_by_codice`;
+   il test sul DB dello stato che non c'è si aspetta `E_STATO_WORKFLOW_NON_TROVATO`;
+5. il commento di `resi_service.conferma_reso` elenca i guard della funzione madre: si aggiunge la seconda
+   conferma, `E_DOC_GIA_NELLO_STATO`.
+
+Da sapere, nessuna modifica attesa: il ramo «no-op» del cambio stato del preventivo (ACCETTATO →
+ACCETTATO, §8.7 punto 5), se chiamasse ancora il verbo, riceverebbe `E_DOC_GIA_NELLO_STATO` e non più
+`E_PREV_TRANSIZIONE_NON_AMMESSA`.
+
 ## 10. Ereditati da brief-db-grammatica-unica-documenti (2026-10-25)
 
 Il brief della grammatica unica si è chiuso il 2026-10-25 (lotto 4, il presidio) ed è in
@@ -1807,7 +1905,188 @@ Il brief della grammatica unica si è chiuso il 2026-10-25 (lotto 4, il presidio
   preventivo misto (tag Ordine/Commessa, «Smista tutto» / «Smista selezionate», il routing verso ordine e
   commessa).
 
-## 11. Ereditato da brief-design-note-credito-resi (2026-10-26)
+## 11. Giro 8: il contratto al modello — ricognizione e piano (2026-10-26)
+
+✅ **Via di Tid il 2026-10-26** alla ricognizione del contratto, il primo dei giri dopo l'ordine (W-1). Lo
+sviluppo parte con le risposte alle domande del §11.3.
+
+### 11.1 Com'è oggi (doc auto-generata, dbdev e `backend/`, 2026-10-26)
+
+* **Vocabolario e matrice.** `config.stati_doc_contratti`: DRAFT (iniziale, `is_bozza`), ATTIVO (emissione),
+  CESSATO (terminale, esito positivo), ANNULLATO (`is_abortito`). Matrice `config.transizioni_stati_contratti`,
+  tre righe, tutte **manuali**: DRAFT → ATTIVO «attiva», DRAFT → ANNULLATO «annulla», ATTIVO → CESSATO «cessa»
+  (`requires_date`). La matrice **non ha** la colonna `azione_processo_codename`.
+* **Guard di transizione** `trgfn_contratti_guard_transizione_stato`: ⛔ **non legge la matrice.** I passaggi
+  ammessi sono scritti negli `IF` (DRAFT → ATTIVO, DRAFT → ANNULLATO, ATTIVO → CESSATO), e la tabella la legge
+  solo la capability: è la «seconda matrice» della guida §4. Poi le condizioni dei passaggi, che restano: verso
+  ATTIVO prezzi autorizzati, indirizzi del cliente, righe, contratto sovrapposto; ATTIVO → CESSATO chiede
+  `valido_al`, e manuale non retroattiva (`E_CONTRATTO_VALIDO_AL_RETROATTIVO`). Codice del rifiuto:
+  `E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA`. Il trigger ha già il `WHEN` sullo stato che cambia.
+* **Verbo di stato: non c'è.** Lo stato lo scrivono:
+  * il **backend** con un `UPDATE` (`ContrattiRepository.update_stato`), da `contratti_service.emetti` («Emetti»,
+    con il PDF nella stessa transazione) e da `cambia_stato` (la cessazione);
+  * `vendite.fn_annulla_contratto` (DEFINER, ritira i legami) con un `UPDATE` suo e il letterale `'ANNULLATO'`;
+  * il **job notturno** `dbops.fn_apply_chiusura_scadenze` (INVOKER, gira come `zeroerp_job`, che non è
+    membro del proprietario): ATTIVO → CESSATO dei contratti con `valido_al` scaduto, con un `UPDATE`
+    dinamico. Il framework è generico (`dbops.automazione_chiusura_scadenze`: contratti e versioni di
+    listino). Accende la GUC `app.cessazione_automatica`, e il guard su quella GUC ammette la data passata.
+    ⚠️ La GUC la può accendere qualunque sessione, anche l'applicazione: oggi chiunque scriva lo stato a mano
+    con quella GUC cessa un contratto con una data passata.
+* **La cessazione programmata sta in Python.** `cambia_stato` verso CESSATO: `valido_al` obbligatorio; se è
+  futura scrive solo la data e lascia lo stato ATTIVO (lo chiuderà il job); se è oggi scrive data e stato. La
+  regola «futura = programmata, oggi = immediata» e il «valido_al obbligatorio» sono decisioni di dominio
+  fuori dal database, e il secondo ripete il guard. `fn_chiudi_contratto_per_successione` (il rinnovo
+  dall'offerta) scrive solo `valido_al`: è una cessazione programmata anche lei.
+* **Chi crea:** `fn_push_offerta_a_contratto` e la `create` del backend; nascono in DRAFT dal trigger della
+  nascita. Nessuno crea o attiva un contratto senza «Emetti».
+* **Azione: nessuna** a catalogo per il contratto.
+* **Numero alla nascita.** `trgfn_contratti_gen_codice` numera all'INSERT (e a un UPDATE che svuota il
+  numero), come l'ordine (Z-4): la guida §7 lo vuole all'emissione.
+* **Capability** `fn_available_actions_contratto`: dalla matrice, coi motivi; nessun filtro sull'azione.
+* **Backend, da sapere:** `cambia_stato` dichiara «resta per CESSATO, ANNULLATO, SOSPESO», e i test del
+  service usano SOSPESO; il vocabolario non ha SOSPESO (letto il 2026-10-26).
+* **pgTAP:** 21 file scrivono lo stato del contratto con un `UPDATE` diretto, il builder
+  `dbops.fn_pgtap_crea_contratto` (12 file) costruisce ATTIVO con un `UPDATE`, 3 file provano il job su
+  contratti. Conteggio del 2026-10-26, per dimensionare il porting.
+
+### 11.2 Il piano
+
+| Pezzo | Che cosa |
+| --- | --- |
+| matrice | colonna `azione_processo_codename` su `config.transizioni_stati_contratti` (FK alla chiave stabile), valori dal CSV secondo Y-1; mirror con la colonna (⚠️ `nullValue`) |
+| guard | `trgfn_contratti_guard_transizione_stato` legge la matrice (Regola 1 come ordine e preventivo); gli `IF` dei passaggi si ritirano, le condizioni restano; il ramo «automatica» secondo Y-2 |
+| azione | secondo Y-1 |
+| verbo | NUOVO `vendite.fn_cambia_stato_contratto(p_contratto_id, p_stato)`, gemello di ordine e preventivo: DEFINER col predicato del perimetro (`fn_scope_ef_whitelist_via_contratto`), `fn_doc_stato_id`, `fn_guard_passaggio` (anche lo stato che ha già), `fn_doc_scrivi_stato` |
+| cessazione | secondo Y-2 e Y-3 |
+| porta | `trgfn_doc_stato_solo_dal_verbo` montato `_a05_` su `vendite.contratti`; la fixture `fn_pgtap_porta_a_stato` conosce il verbo |
+| annullo | `fn_annulla_contratto` chiama il verbo, lo stato d'annullo dal vocabolario (`fn_stato_abortito_id`) |
+| capability | il passaggio con l'azione si nasconde a chi non ce l'ha (stessa forma degli altri) |
+| fixture | `fn_pgtap_crea_contratto` costruisce ATTIVO dal verbo; i 21 `UPDATE` diretti portati al verbo o al builder; i 3 test del job secondo Y-2 |
+| guida | §10, riga del contratto; la guida dei contratti rimanda al modello |
+
+**Richiesta al BE** (col percorso intero, a giro DB provato): `ContrattiRepository.update_stato` si ritira;
+«Emetti» e la cessazione chiamano il verbo; il 403 dalla riga del passaggio (`PassaggioDocumento`); la
+cessazione programmata secondo Y-3; SOSPESO, che non esiste, esce da commento e test.
+
+### 11.3 Domande per Tid
+
+✅ **Decise da Tid il 2026-10-26: Y-1, Y-2, Y-3, Y-4 come da proposta; via allo sviluppo.**
+
+* **Y-1. L'azione del contratto.** Proposta: azione **nuova** `emetti_contratto` («attiva un contratto o lo
+  cessa») sulle righe DRAFT → ATTIVO e ATTIVO → CESSATO; DRAFT → ANNULLATO senza azione (M-4, come le altre
+  bozze). È la guida §6 e il gemello di `emetti_ordine`: la cessazione è un passaggio pesante (ferma la
+  fatturazione). ⚠️ Nessun profilo la riceve dai seed: concederla è un dato, su dbdev lo fai tu. Alternativa:
+  l'azione sulla sola attivazione, la cessazione col solo permesso sul documento.
+* **Y-2. La cessazione automatica del job.** Con la porta il job non scrive più lo stato con l'`UPDATE` (non è
+  il proprietario). Proposta: per le testate della mappa del modello, il framework scrive attraverso la
+  scrittura comune, da un pezzo `SECURITY DEFINER` (la versione di listino resta com'è fino al suo giro); la
+  GUC `app.cessazione_automatica` si **ritira**. La regola si divide fra i due verbi: il guard chiede solo
+  `valido_al`; il verbo manuale rifiuta la data passata; il job cessa solo i contratti scaduti. Così chiude
+  anche il buco della GUC che chiunque può accendere. Alternativa: la porta riconosce il job come secondo
+  scrittore, e la GUC resta.
+* **Y-3. La cessazione programmata nel database.** Proposta: un verbo di cessazione,
+  `vendite.fn_cessa_contratto(p_contratto_id, p_valido_al)`, decide lui: data passata → rifiuto; oggi →
+  data e CESSATO dal verbo di stato; futura → solo la data (il job la chiuderà). Il backend chiama solo
+  quello, e le due copie Python (la data obbligatoria, la scelta programmata/immediata) si ritirano.
+  `fn_chiudi_contratto_per_successione` resta com'è (scrive una data futura, è già il caso «programmata»).
+  Alternativa: la scelta resta nel backend, il verbo di stato riceve solo CESSATO.
+* **Y-4. Il numero alla nascita.** Come Z-4 per l'ordine. Proposta: **fuori da questo giro**, dichiarato
+  come divergenza nella riga del contratto della guida §10.
+
+### 11.4 Scritto (2026-10-26)
+
+| ChangeSet / file | Che cosa |
+| --- | --- |
+| `20261026-03-alter-transizioni-contratti-azione-processo` | colonna `azione_processo_codename` su `config.transizioni_stati_contratti`, FK al catalogo delle azioni |
+| CSV `azioni_processo` (id 42), `transizioni_stati_contratti`, mirror `20260528-06` | `emetti_contratto` a catalogo; sulle righe DRAFT → ATTIVO e ATTIVO → CESSATO (Y-1); mirror con la colonna e `nullValue: "NULL"` |
+| `-04-update-trgfn-contratti-guard-transizione-matrice` | il guard legge la matrice (gli `IF` dei passaggi si ritirano); verso CESSATO `valido_al` valorizzata **e arrivata** (`<= fn_data_operativa()`) per chiunque; la GUC `app.cessazione_automatica` non si legge più (Y-2) |
+| `-05-create-fn-cambia-stato-contratto` | il verbo di stato, gemello di quello dell'ordine |
+| `-06-create-fn-cessa-contratto` | la cessazione con la sua data (Y-3): senza data `E_CONTRATTO_CESSAZIONE_SENZA_DATA`; prima riga comune; la strada dalla matrice; data passata `E_CONTRATTO_VALIDO_AL_RETROATTIVO`; oggi → CESSATO; futura → solo la data, `programmata = true` |
+| `-07-create-fn-cessa-contratti-scaduti` | il verbo del job (Y-2): ATTIVO con `valido_al` passata, nel perimetro della sessione, → CESSATO dalla scrittura comune |
+| `-08-update-fn-apply-chiusura-scadenze-verbo-di-chiusura` | il framework: per una testata sotto la porta chiama il suo verbo di chiusura (oggi il contratto); sotto la porta senza verbo, `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA`; la GUC si ritira |
+| `-09-update-fn-annulla-contratto-verbo-comune` | l'annullo passa dal verbo di stato, lo stato d'annullo dal vocabolario |
+| `-10-create-trigger-stato-solo-dal-verbo-contratti` | la porta sul contratto |
+| `-11-update-fn-available-actions-contratto-permesso-del-passaggio` | permesso ⇒ nascondi; l'attivazione dal vocabolario (`emissione`) |
+| `-12`, `-13` (fixture) | `fn_pgtap_porta_a_stato` conosce il verbo del contratto; il builder attiva da lì |
+| CSV errori | `E_CONTRATTO_CESSAZIONE_SENZA_DATA` (nuovo, `DATO_ERRATO`, id 1400); `E_CONTRATTO_VALIDO_AL_RETROATTIVO` cambia sede (dal guard al verbo della cessazione); la `causa` di `E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA` riscritta sulla matrice |
+| doc | guida del modello §10 (riga del contratto), guida dei contratti §3.1, linee guida SQL §7c, le due pagine delle GUC, pagina manuale del guard; pagine manuali nuove dei tre verbi |
+
+**Una precisazione su Y-2, dichiarata.** La proposta diceva «il guard chiede solo `valido_al`». Scritto, il
+guard chiede `valido_al` **arrivata**: altrimenti il cambio di stato generico verso CESSATO, con una data
+futura già scritta, cesserebbe un contratto prima della sua fine, scavalcando la cessazione programmata. Con
+la data arrivata le strade dicono la stessa cosa: la cessazione di oggi, il job sugli scaduti, e il cambio di
+stato generico solo dove il job arriverebbe comunque.
+
+**Firme e tipi** (rilievo di Tid, 2026-10-26): i corpi presi dal vivo (`-08`, `-09`, `-11`, `-13`) avevano la
+firma sciolta nei tipi base da `pg_get_functiondef`; firma e `RETURNS TABLE` ripresi ancorati dall'ultimo
+YAML di ciascuna, con `SECURITY INVOKER` esplicito. I `DECLARE` nudi rimasti sono dei corpi esistenti e
+sono valori calcolati (conteggi, SQL dinamico, jsonb) o id della fixture polimorfa, dichiarati nei loro
+commenti.
+
+### 11.5 Prova e regressione (2026-10-26)
+
+Sullo scratch `zeroerp_ruoli` come `zeroerp_owner`: SQL estratto dei changeSet `-03` … `-13` e seed simulato
+(azione, matrice, codice nuovo), nella transazione annullata di ogni file.
+
+* **Nuovo** `vendite/test-contratto-al-modello-v1` (22): 21/22 da owner; il rosso è il 22, la porta, dichiarato
+  «rosso da owner».
+* **Regressione, prima del porting:** 64 file che toccano lo stato del contratto, il suo builder, la capability,
+  l'annullo o il job. 18 cambiavano, tutti per le tre cause attese: la porta (l'`UPDATE` diretto dello stato),
+  permesso ⇒ nascondi (senza `emetti_contratto` «Attiva» non c'è), la cessazione con data futura via cambio di
+  stato. Tre erano già tronchi prima del giro, identici dopo (`test-documenti-canali-sync-v1`,
+  `test-fn-resolve-prezzo-listino-v2-classe-da-contratto-v1`, `test-fn-resolve-prezzo-listino-v2-v1`).
+* **Porting dei 18** (tre agenti in parallelo, ogni file provato col file composto) e di
+  `script/test-doc-verbo-comune-e-porta-v1` (la porta su cinque testate: test 9 e 10). Attese cambiate,
+  dichiarate in testa ai file:
+  * `test-contratti-guard-transizione-stato-v1` (9 → 12): il 4 («ATTIVO → CESSATO con data futura ammesso»)
+    ora è rifiutato, con 4b e 4c sulla cessazione programmata da `fn_cessa_contratto`; il 5 (retroattiva) lo
+    rifiuta il verbo della cessazione; il 9 (la GUC) diventa il job, col 10 nuovo;
+  * `test-contratto-attiva-spento-se-sovrapposto-v1` (24 → 22): **11 e 12 ritirati** (Tid, 2026-10-26).
+    Provavano la quintupla di NEW in un `UPDATE` che cambiava date e stato insieme: con la porta lo stato lo
+    scrive solo la scrittura comune, che tocca la sola colonna di stato, e il caso non ha più una strada. Il
+    contratto cessato e il suo gemello vanno nel passato (un CESSATO con data futura non è più raggiungibile);
+  * `test-trgfn-doc-righe-lock-fuori-bozza-v1`: il contratto cessato nasce nell'anno della data operativa
+    (prima nel 2072), per la stessa ragione; cambia il dato, non l'attesa.
+* **Regressione finale:** 68 file (i 64, il nuovo, e i pgTAP del modello di
+  ordine, preventivo e verbo comune), in sequenza. **56 verdi pieni**, tutte le asserzioni eseguite. Gli altri
+  12, ciascuno identico prima e dopo dove il file non è cambiato:
+  * rossi da owner dichiarati (la porta, la GUC accesa a mano): `test-contratto-al-modello-v1` 22,
+    `test-ordine-al-modello-v1` 17, `test-doc-lettori-stato-e-preventivo-al-modello-v1` 23,
+    `test-doc-verbo-comune-e-porta-v1` 23 e 24, `test-annullo-documento-con-legami-v1` 30;
+  * rossi già prima del giro, uguali dopo: `test-capability-annulla-aspetto-e-stato-leggibile-v1` (3),
+    `test-contratti-utilities-guard-tipo-classe-v1` (6), `test-fn-contratto-righe-preview-nuovi-campi-v1` (1),
+    `test-listini-versioni-guard-transizione-stato-v1` (7); tronchi già prima, uguali dopo:
+    `test-documenti-canali-sync-v1`, `test-fn-resolve-prezzo-listino-v2-classe-da-contratto-v1`,
+    `test-fn-resolve-prezzo-listino-v2-v1`.
+
+  La misura che conta (come app) arriva dalla corsa di Tid dopo l'apply.
+* **Applicato e verde (Tid, 2026-10-26):** migrazione su dbdev e corsa pgTAP come app.
+
+### 11.6 Richiesta al team BE (elenco chiuso, dopo l'apply)
+
+1. **«Emetti»** (`contratti_service.emetti`): lo stato dal verbo `vendite.fn_cambia_stato_contratto(id,
+   'ATTIVO')`, nella stessa transazione del PDF; `ContrattiRepository.update_stato` si ritira (la porta
+   rifiuta l'`UPDATE`).
+2. **La cessazione** (`cambia_stato` verso CESSATO): chiama `vendite.fn_cessa_contratto(id, valido_al)` e
+   restituisce `programmata`. Si ritirano le due copie Python: la data obbligatoria (ora
+   `E_CONTRATTO_CESSAZIONE_SENZA_DATA`, campo `valido_al`) e la scelta programmata/immediata, con la scrittura
+   di `valido_al` prima dello stato.
+3. **Il 403 dalla riga del passaggio** (`PassaggioDocumento`) su «Emetti» e sulla cessazione: chiedono
+   `emetti_contratto`. L'annullo della bozza no.
+4. **Codici nuovi nella policy**: `E_CONTRATTO_CESSAZIONE_SENZA_DATA` (`DATO_ERRATO`) e, se non è già fatto col
+   §9.10, `E_DOC_GIA_NELLO_STATO`; il ripiego in `error_messages_fallback.py`.
+5. **SOSPESO**, che il vocabolario non ha, esce dal commento di `cambia_stato` e dai test del service.
+6. **Test Django** che scrivono lo stato del contratto con un `UPDATE` o si aspettano la cessazione con data
+   futura via cambio di stato: si portano al verbo e alla cessazione programmata.
+7. **Doc** `docs/it/backend/vendite/manual/api_contratti.md` (riga ~1127): la chiusura dei contratti scaduti
+   non usa più la GUC `app.cessazione_automatica`, ma il verbo `vendite.fn_cessa_contratti_scaduti`.
+
+Da sapere, nessuna modifica attesa: l'handler della coda `chiusura_scadenze_handler` chiama ancora
+`dbops.fn_apply_chiusura_scadenze()` e riceve lo stesso jsonb; un secondo «Emetti» o «Cessa» risponde
+`E_DOC_GIA_NELLO_STATO`. ⚠️ `emetti_contratto` non lo riceve nessun profilo dai seed: senza, nessuno attiva
+o cessa un contratto. Concederla è un dato, su dbdev lo fa Tid.
+
+## 12. Ereditato da brief-design-note-credito-resi (2026-10-26)
 
 Su indicazione di Tid (2026-10-26) il tema passa a questo brief, che tratta le azioni dei documenti sul modello.
 
@@ -1818,3 +2097,16 @@ Su indicazione di Tid (2026-10-26) il tema passa a questo brief, che tratta le a
   accredito già emesso, ed è uscito solo in collaudo. Il lavoro: azione per azione, la sua sede
   (`script.fn_check_<azione>` + colonna di blocco nella vista di riga) e il FE che la legge (`disabled` +
   `tooltip`). Da fare prima che lo trovi il prossimo collaudo. DB + FE; quando, lo decide Tid.
+
+**Coerenza col cantiere, letta dal team DB (2026-10-26).** Il tema sta bene qui: è il §12.5 delle linee guida
+applicato alle azioni di riga, la stessa regola «permesso ⇒ nascondi, stato ⇒ disabilita col motivo» che i
+giri portano sulle azioni di documento. Due cose da sapere quando si decide il quando:
+* **è un tema su tutti i documenti** (le righe di preventivo, ordine, bolla, reso, contratto, offerta,
+  commessa, fattura). Il fermo allentato (PROJECT_CONTEXT, scelta C del 2026-10-25) ammette un tema
+  trasversale se poggia su un pezzo comune già fatto, e ferma quello da ricopiare documento per documento:
+  una `fn_check_<azione>` per azione è proprio da ricopiare. Le strade sono due: ogni giro porta anche le
+  azioni di riga del suo documento (offerta, commessa, fattura, listino; per i documenti già portati, un
+  giro di recupero), oppure prima un pezzo comune che legga le azioni di riga e poi il censimento;
+* **il censimento si fa sulla struttura**, non sulle righe di oggi: le azioni di riga si contano dalle viste
+  di riga e dalle capability che le espongono, e un'azione senza sede è un debito anche se oggi non ha
+  ancora sbagliato in collaudo.

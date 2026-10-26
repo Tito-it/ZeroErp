@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 26 ottobre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -775,7 +775,14 @@ La generalizzazione del guard transizione e' rinviata: serviranno almeno tre cas
 **Casi gia' applicati**:
 
 * `vendite.listini_versioni` (VARCHAR, ciclo `BOZZA -> ATTIVA -> CHIUSA`)
-* `vendite.contratti` (FK, ciclo `DRAFT -> ATTIVO -> CESSATO`; `SOSPESO` esiste come codice ma fuori scope)
+* `vendite.contratti` (FK, ciclo `DRAFT -> ATTIVO -> CESSATO`)
+
+⭐ **Una testata sotto la porta del modello del documento** (dal 2026-10-26: il contratto) non si chiude
+con l'`UPDATE` dinamico, che la porta rifiuterebbe: il framework chiama il **verbo di chiusura** della
+testata (`vendite.fn_cessa_contratti_scaduti`), che scrive lo stato dalla scrittura comune. Una testata
+sotto la porta senza verbo di chiusura e' una configurazione non valida
+(`E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA`). La regola del modello sta nella
+[guida del modello del documento](/guide/modello-documento-di-vendita), §5.
 
 **Riferimento**: `docs/it/dev/work-done/automazione-chiusure-scadenze.md`.
 

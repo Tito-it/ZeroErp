@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §11, giro 8): il test 14 («13) …») annullava il
+--   contratto con un UPDATE diretto dello stato, che ora la porta ferma (E_DOC_STATO_SOLO_DAL_VERBO).
+--   Passa dal verbo di stato vendite.fn_cambia_stato_contratto (DRAFT -> ANNULLATO: nessuna
+--   azione); il guard dell'annullo da' lo stesso rifiuto. Attesa invariata.
 -- rev 2026-10-25 (brief-modello-documento-vendita §9, giro 7): il test 7 annullava l'ordine
 --   con un UPDATE diretto dello stato, che ora la porta ferma (E_DOC_STATO_SOLO_DAL_VERBO).
 --   Passa dal verbo di stato vendite.fn_cambia_stato_ordine (DRAFT -> ANNULLATO: nessuna
@@ -46,7 +50,7 @@
 --  11) ordine CONFERMATO: il verbo stacca la riga anche fuori bozza (la porta nel lock)
 --  C — caso 3: offerta -> contratto (D-3, D-6)
 --  12) il legame del contratto e' l'offerta, di PROVENIENZA
---  13) l'annullo diretto del contratto e' rifiutato
+--  13) l'annullo dal verbo di stato, senza la conferma dei legami, e' rifiutato
 --  14) confermato: contratto ANNULLATO, offerta_id resta, snapshot abortito
 --  15) l'offerta torna trasformabile: documenti vivi zero, capability accesa
 --  16) un secondo push dalla stessa offerta crea il contratto
@@ -369,10 +373,9 @@ SELECT ok(
   '12) il legame del contratto e'' l''offerta da cui nasce, di PROVENIENZA');
 
 SELECT pg_temp.al_prova('13_contr_diretto',
-  format('UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE id = %s',
-         (SELECT contr_annullato_id FROM tmp_al_refs), pg_temp.al_fix('c1_contr')));
+  format($q$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ANNULLATO')$q$, pg_temp.al_fix('c1_contr')));
 SELECT ok(pg_temp.al_rifiuto('13_contr_diretto', 'Serve una conferma'),
-  '13) l''annullo diretto del contratto e'' rifiutato: E_DOC_ANNULLO_CON_LEGAMI');
+  '13) l''annullo del contratto dal verbo di stato, senza la conferma dei legami, e'' rifiutato: E_DOC_ANNULLO_CON_LEGAMI');
 
 SELECT vendite.fn_annulla_contratto(pg_temp.al_fix('c1_contr'), 1);
 SELECT ok(

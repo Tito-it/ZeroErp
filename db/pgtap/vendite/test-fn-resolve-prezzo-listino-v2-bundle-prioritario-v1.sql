@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto passa da
+--   dbops.fn_pgtap_porta_a_stato (il verbo del contratto), non da un UPDATE dello stato: la porta lo
+--   ferma. Nessuna attesa cambiata.
 -- pgTAP test per Zero ERP
 --
 -- Test: fn_resolve_prezzo_listino_v2 — logica bundle-prioritario
@@ -256,9 +259,10 @@ SELECT (SELECT id FROM tmp_bnd_contratto), pg_temp.art('F2'), 'OVERRIDE', 999.00
   FROM (SELECT (SELECT 1 FROM vendite.fn_articolo_erogazioni(pg_temp.art('F2')) e
                  WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA') AS qta) q;
 
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')
- WHERE id = (SELECT id FROM tmp_bnd_contratto);
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): lo stato del contratto
+--   si cambia solo dal suo verbo (la porta ferma l'UPDATE diretto): l'attivazione
+--   passa da porta_a_stato, sotto il guard di transizione.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, (SELECT id FROM tmp_bnd_contratto), 'ATTIVO');
 
 -- =========================================================
 -- 7) CONTRATTO_OVERRIDE + padre_contesto: override batte bundle

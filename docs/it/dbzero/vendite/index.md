@@ -122,11 +122,14 @@ search:
 - [fn_build_gruppo_fatturabile_key](funzioni/fn_build_gruppo_fatturabile_key.md) — Costruire la chiave del **gruppo fatturabile** di una riga di commessa. È l'**unica fonte di verità** della chiave: la usano sia l'elenco che l'operatore legge, sia i filtri che l'emissione applica. Se la forma cambiasse qui, cambierebbe ovunque insieme.
 - [fn_calcola_data_documento](funzioni/fn_calcola_data_documento.md) — **Che data porta un documento emesso su questo registro?**
 - [fn_cambia_stato_commessa](funzioni/fn_cambia_stato_commessa.md) — (rev 2026-06-07) `vendite.fn_cambia_stato_commessa(p_commessa_id, p_nuovo_stato, p_user)` è l'**entrypoint sanzionato (DB-first)** per cambiare lo stato di una commessa: risolve il codice stato in id, esegue l'`UPDATE` e ritorna lo stato da/a.
+- [fn_cambia_stato_contratto](funzioni/fn_cambia_stato_contratto.md)
 - [fn_cambia_stato_ddt](funzioni/fn_cambia_stato_ddt.md)
 - [fn_cambia_stato_ordine](funzioni/fn_cambia_stato_ordine.md)
 - [fn_cambia_stato_preventivo](funzioni/fn_cambia_stato_preventivo.md) — (latest review 03-04-2026) `vendite.fn_cambia_stato_preventivo(p_preventivo_id, p_nuovo_stato, p_user)` esegue la **transizione di stato** di un preventivo vendita, validando la transizione tramite la matrice configurabile `config.transizioni_stati_preventivi`.
 - [fn_cancel_lotto_task_run](funzioni/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
 - [fn_cancella_fondo_fattura](funzioni/fn_cancella_fondo_fattura.md) — (latest review 14-09-2026)
+- [fn_cessa_contratti_scaduti](funzioni/fn_cessa_contratti_scaduti.md)
+- [fn_cessa_contratto](funzioni/fn_cessa_contratto.md)
 - [fn_check_commessa_sorgente_emittente_omogeneo](funzioni/fn_check_commessa_sorgente_emittente_omogeneo.md)
 - [fn_check_contratto_provenienza](funzioni/fn_check_contratto_provenienza.md) — (rev 2026-10-21, richiesta del backend sullo smoke del raggruppamento per contratto, decisione di Tid D-1)
 - [fn_check_ddt_riga_richiede_prezzo](funzioni/fn_check_ddt_riga_richiede_prezzo.md) — (creata 2026-08-19 — brief-ddt-righe-senza-prezzo §9 slice C)
@@ -347,7 +350,7 @@ search:
 - [trgfn_contratti_default_valuta](funzioni/trgfn_contratti_default_valuta.md) — (rev 2026-08-21)
 - [trgfn_contratti_freeze_listino_versione](funzioni/trgfn_contratti_freeze_listino_versione.md) — Il modello unificato prevede che un contratto ATTIVO abbia una versione listino **fissa e immutabile**: dal momento dell'attivazione il resolver prezzi legge sempre quella versione, anche se il listino ha versioni successive. Questo garantisce stabilità del pricing per tutta la durata del contratto.
 - [trgfn_contratti_gen_codice](funzioni/trgfn_contratti_gen_codice.md) — La trigger function `vendite.trgfn_contratti_gen_codice()` genera automaticamente `numero` contratto quando il valore non viene fornito.
-- [trgfn_contratti_guard_transizione_stato](funzioni/trgfn_contratti_guard_transizione_stato.md) — (latest review 24-09-2026 — il prezzo non autorizzato dal building block; 12-05-2026 — aggiunto check PENDING componenti BoM CASO A)
+- [trgfn_contratti_guard_transizione_stato](funzioni/trgfn_contratti_guard_transizione_stato.md) — (latest review 26-10-2026 — i passaggi dalla matrice, la GUC della cessazione automatica ritirata; 24-09-2026 — il prezzo non autorizzato dal building block; 12-05-2026 — aggiunto check PENDING componenti BoM CASO A)
 - [trgfn_contratti_normalize](funzioni/trgfn_contratti_normalize.md) — La trigger function `vendite.trgfn_contratti_normalize()` completa i dati minimi del contratto in insert quando il numero documento e` presente.
 - [trgfn_contratti_set_categoria_cliente_snapshot](funzioni/trgfn_contratti_set_categoria_cliente_snapshot.md) — (rev 2026-08-21)
 - [trgfn_contratti_snapshot_precontrattuali](funzioni/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 12/10/26)

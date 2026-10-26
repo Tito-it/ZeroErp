@@ -11,6 +11,7 @@
 --       ⚠️ rev 2026-10-19 (20261019-22, brief-db-grammatica-unica-documenti
 --       lotto 1): p_documento ancorato a config.sorgenti.codice_interno, la
 --       firma passa da text a character varying (test 2).
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto (19, 20a, 21a) dal verbo vendite.fn_cambia_stato_contratto, non piu' con l'UPDATE diretto dello stato che la porta ora rifiuta; prima del 18 si concede emetti_contratto, senza la quale la capability nasconde «Attiva». Nessuna attesa cambiata.
 --
 --       ⭐ Il test 8 e' il difetto del collaudo: un'offerta in BOZZA senza
 --       versione fissata, su un listino che una versione in vigore ce l'ha,
@@ -327,6 +328,10 @@ DO $fx$ BEGIN
                                     (SELECT versione_scad FROM tmp_cl_ctx));
 END $fx$;
 
+-- ⚠️ «Attiva» e' dell'azione emetti_contratto: senza, la capability lo
+--   nasconde e il verbo risponde E_PERMESSO_NEGATO (giro 8).
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_contratto');
+
 SELECT is(
     pg_temp.azione(script.fn_available_actions_contratto(
         (SELECT contratto_id FROM tmp_cl_ctr WHERE slot = 'C1')), 'ATTIVO') ->> 'reason_key',
@@ -335,8 +340,7 @@ SELECT is(
 
 SELECT is(
     pg_temp.codice(format(
-        'UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE id = %s',
-        (SELECT stato_attivo_id FROM tmp_cl_ctx),
+        $$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$$,
         (SELECT contratto_id FROM tmp_cl_ctr WHERE slot = 'C1'))),
     'E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO',
     '19) …e l''attivazione e'' rifiutata: prima passava con la versione NULL');
@@ -345,8 +349,7 @@ SELECT is(
 --   la fotografia di prima del verbo.
 SELECT is(
     pg_temp.codice(format(
-        'UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE id = %s',
-        (SELECT stato_attivo_id FROM tmp_cl_ctx),
+        $$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$$,
         (SELECT contratto_id FROM tmp_cl_ctr WHERE slot = 'C2'))),
     'NESSUN ERRORE',
     '20a) listino in vigore: l''attivazione passa');
@@ -361,8 +364,7 @@ SELECT is(
 --   la fotografia di prima del verbo.
 SELECT is(
     pg_temp.codice(format(
-        'UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE id = %s',
-        (SELECT stato_attivo_id FROM tmp_cl_ctx),
+        $$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$$,
         (SELECT contratto_id FROM tmp_cl_ctr WHERE slot = 'C3'))),
     'NESSUN ERRORE',
     '21a) versione gia'' fissata, anche CHIUSA: l''attivazione passa');

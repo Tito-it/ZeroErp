@@ -35,6 +35,9 @@ AS $function$
 --   Q-2): p_offerta_id, il figlio nasce dalla push.
 -- rev 2026-10-24 (20261024-33, R-2): periodo, data e listino del
 --   test, alla madre.
+-- rev 2026-10-26 (20261026-13, brief-modello-documento-vendita §11):
+--   ATTIVO dal verbo, per la fixture degli stati (con la porta un
+--   UPDATE dello stato e' rifiutato).
 DECLARE
     v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
     v_ef_sr_id  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
@@ -145,13 +148,10 @@ BEGIN
 
     -- 4. Lo stato, per la strada dell'applicazione.
     IF p_stato_codice_interno = 'ATTIVO' THEN
-        -- Il guard di transizione giudica: prezzi, indirizzi,
-        -- righe, contratto sovrapposto.
-        UPDATE vendite.contratti k
-           SET stato_doc_contratto_id = (SELECT s.id
-                                           FROM config.stati_doc_contratti s
-                                          WHERE s.codice_interno = 'ATTIVO')
-         WHERE k.id = v_contratto;
+        -- Il verbo, dalla fixture degli stati (rev 2026-10-26): concede
+        -- l'azione del passaggio all'operatore. Il guard di transizione
+        -- giudica: prezzi, indirizzi, righe, contratto sovrapposto.
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, v_contratto, 'ATTIVO');
     ELSIF p_stato_codice_interno = 'ANNULLATO' THEN
         -- Il verbo. I legami (un figlio ha la sua offerta) si
         -- dichiarano come fa chi conferma: contati dalla sede unica.
@@ -174,7 +174,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_contratto(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_offerta_id bigint, p_valido_dal date, p_valido_al date, p_data date, p_listino_id bigint)
-IS 'Fixture pgTAP (e smoke): un CONTRATTO del mondo in una chiamata — azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata nello stato scelto — e ritorna tutte le chiavi. ⭐ Nasce dalla MADRE di produzione vendite.fn_create_contratto (numero, testata DRAFT, indirizzo di default), con l''emittente di chi agisce dichiarato. ⚠️ Terzo parametro: il billing account di un cliente gia'' costruito (per esempio quello di una commessa, perche'' un contratto citato da una riga deve essere del BA della sua commessa); viene verificato, e un BA di un''altra azienda solleva. ⭐ Quarto parametro: l''offerta da cui il contratto nasce, dalla push vendite.fn_push_offerta_a_contratto (stato ACCETTATA e idempotenza li giudica lei; listino, indirizzi, righe e utility dall''offerta), sul cliente dell''offerta: un billing account diverso solleva. Quinto-ottavo parametro (rev 20261024-33): periodo (valido_dal, valido_al), data e listino del test, passati alla madre; NULL = quelli della madre, e con ATTIVO senza listino il builder ne costruisce uno del mondo; insieme al figlio di un''offerta sollevano (li decide la push). Stati (D-2 di Tid, 2026-10-21): DRAFT; ATTIVO per la strada del guard di transizione (senza righe nessun motivo scatta; un secondo ATTIVO sovrapposto sullo stesso BA lo rifiuta il modello); ANNULLATO dal verbo vendite.fn_annulla_contratto, con i legami dichiarati da vendite.fn_documento_legami (il figlio ha la sua offerta). ⛔ CESSATO e ogni altro codice sollevano prima di scrivere: CESSATO vuole valido_al e passa da ATTIVO, e'' il caso del test. ⛔ NON scrive righe, eccezioni ne'' scheda di fornitura. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Richiesta BE R-1 del 2026-10-21 (smoke-group-attivita-contratto). Rev 2026-10-22: il billing account del terzo parametro lo verifica il building block dbops.fn_pgtap_cliente_ba_del_mondo (regola del 2, estratto alla terza copia). Rev 2026-10-24 (20261024-28, brief-modello-documento-vendita Q-2): il figlio di un''offerta, DROP + CREATE; 20261024-33 (R-2): periodo, data e listino. Rev 2026-10-24 (20261024-40, §4-octies): col billing account del test non costruisce piu'' un cliente in piu'' (dbops.fn_pgtap_cliente_del_builder).';
+IS 'Fixture pgTAP (e smoke): un CONTRATTO del mondo in una chiamata — azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata nello stato scelto — e ritorna tutte le chiavi. ⭐ Nasce dalla MADRE di produzione vendite.fn_create_contratto (numero, testata DRAFT, indirizzo di default), con l''emittente di chi agisce dichiarato. ⚠️ Terzo parametro: il billing account di un cliente gia'' costruito (per esempio quello di una commessa, perche'' un contratto citato da una riga deve essere del BA della sua commessa); viene verificato, e un BA di un''altra azienda solleva. ⭐ Quarto parametro: l''offerta da cui il contratto nasce, dalla push vendite.fn_push_offerta_a_contratto (stato ACCETTATA e idempotenza li giudica lei; listino, indirizzi, righe e utility dall''offerta), sul cliente dell''offerta: un billing account diverso solleva. Quinto-ottavo parametro (rev 20261024-33): periodo (valido_dal, valido_al), data e listino del test, passati alla madre; NULL = quelli della madre, e con ATTIVO senza listino il builder ne costruisce uno del mondo; insieme al figlio di un''offerta sollevano (li decide la push). Stati (D-2 di Tid, 2026-10-21): DRAFT; ATTIVO per la strada del guard di transizione (senza righe nessun motivo scatta; un secondo ATTIVO sovrapposto sullo stesso BA lo rifiuta il modello); ANNULLATO dal verbo vendite.fn_annulla_contratto, con i legami dichiarati da vendite.fn_documento_legami (il figlio ha la sua offerta). ⛔ CESSATO e ogni altro codice sollevano prima di scrivere: CESSATO vuole valido_al e passa da ATTIVO, e'' il caso del test. ⛔ NON scrive righe, eccezioni ne'' scheda di fornitura. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Richiesta BE R-1 del 2026-10-21 (smoke-group-attivita-contratto). Rev 2026-10-22: il billing account del terzo parametro lo verifica il building block dbops.fn_pgtap_cliente_ba_del_mondo (regola del 2, estratto alla terza copia). Rev 2026-10-24 (20261024-28, brief-modello-documento-vendita Q-2): il figlio di un''offerta, DROP + CREATE; 20261024-33 (R-2): periodo, data e listino. Rev 2026-10-24 (20261024-40, §4-octies): col billing account del test non costruisce piu'' un cliente in piu'' (dbops.fn_pgtap_cliente_del_builder). rev 2026-10-26 (20261026-13, brief-modello-documento-vendita §11): ATTIVO dal verbo del contratto, attraverso dbops.fn_pgtap_porta_a_stato (la porta rifiuta l''UPDATE dello stato; la fixture concede emetti_contratto all''operatore).';
 ```
 
 </div>

@@ -1,6 +1,6 @@
 # Guida — Configurazione e Gestione Parametri
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 26 ottobre 2026
 >
 > **Destinatari**: sviluppatori database e backend
 >
@@ -94,7 +94,8 @@ Il database fa rispettare la famiglia in due versi:
 
 * un override su un parametro che vale per tutti si rifiuta, anche se spento, con
   `E_PARAMETER_OVERRIDE_NON_AMMESSO` («Il parametro … vale per tutti e non si personalizza»). Il
-  rimedio è cambiare il valore di default;
+  valore lo stabilisce la configurazione del sistema, cioè il CSV di `80_data`: l'applicazione non
+  scrive il default, e chi riceve l'errore si rivolge all'amministratore del sistema;
 * un parametro con override non diventa «per tutti» finché ne ha, accesi o spenti:
   `E_PARAMETER_OVERRIDE_PRESENTI`. Prima si tolgono gli override, poi si cambia la famiglia.
 

@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto passa da
+--   dbops.fn_pgtap_porta_a_stato (il verbo del contratto), non da un UPDATE dello stato: la porta lo
+--   ferma. Nessuna attesa cambiata.
 -- pgTAP test per Zero ERP
 --
 -- Test: una riga di contratto o di offerta che si fattura (ogni tipo che non e'
@@ -351,9 +354,9 @@ SELECT is(
 --   A in lista e il 21 la sua erogazione in meta: ora A non si lista. La
 --   proiezione in meta.tipo_erogazione la tengono vendite/test-push-contratto-
 --   dalla-madre-v1 (3) e vendite/test-fn-list-contratti-da-pushare-v1 (3, 5).
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')
- WHERE id = (SELECT id FROM tmp_ero_contratto);
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione dal verbo
+--   (la porta ferma l'UPDATE diretto dello stato).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, (SELECT id FROM tmp_ero_contratto), 'ATTIVO');
 
 CREATE TEMP TABLE tmp_ero_push AS
 SELECT * FROM vendite.fn_list_contratti_da_pushare(

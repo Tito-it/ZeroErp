@@ -1,0 +1,245 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DI TRANSIZIONE DEL CONTRATTO LEGGE LA MATRICE
+#   Brief: brief-modello-documento-vendita §11 (giro 8; Y-2 di Tid,
+#   2026-10-26). Stampo della Regola 1: il guard di ordine e preventivo.
+#
+# ── LA MATRICE, NON GLI IF ──────────────────────────────────────────
+#   I passaggi ammessi erano scritti negli IF (DRAFT -> ATTIVO, DRAFT ->
+#   ANNULLATO, ATTIVO -> CESSATO), e config.transizioni_stati_contratti la
+#   leggeva solo la capability: una seconda matrice (guida del modello §4). Ora
+#   la Regola 1 e' la riga ATTIVA della matrice; il codice del rifiuto resta
+#   E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA.
+#
+# ── LA CESSAZIONE: UNA DATA GIA' ARRIVATA, SENZA LA GUC ─────────────
+#   Verso CESSATO il contratto deve avere valido_al, ed essere arrivato a quella
+#   data (valido_al <= data operativa). Vale per chiunque scriva lo stato: il
+#   verbo della cessazione (vendite.fn_cessa_contratto), che scrive lo stato
+#   solo quando la data e' oggi, e il job (vendite.fn_cessa_contratti_scaduti),
+#   che cessa quelli gia' scaduti. Un cambio di stato generico verso CESSATO con
+#   una data futura e' rifiutato: la cessazione con una data futura e'
+#   programmata e la scrive il verbo della cessazione (solo la data).
+#   ⛔ Si ritira la GUC app.cessazione_automatica: la poteva accendere qualunque
+#   sessione, e apriva la cessazione con una data passata a chi la accendeva.
+#   Con la porta (20261026-10) lo stato lo scrivono solo i verbi, e la regola
+#   della data passata («niente riscrittura storica») la applica il verbo della
+#   cessazione, che e' l'unico a SCRIVERE la data (E_CONTRATTO_VALIDO_AL_RETROATTIVO).
+#
+#   Le condizioni dell'attivazione (prezzi, indirizzi, righe, sovrapposto)
+#   restano com'erano. Corpo dalla doc auto-generata
+#   (vendite/funzioni/trgfn_contratti_guard_transizione_stato). Il trigger ha
+#   gia' il WHEN sullo stato che cambia: lo stato invariato non arriva qui.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261026-04-update-trgfn-contratti-guard-transizione-matrice-mctit.yaml
+
+  - changeSet:
+      id: 20261026-04-update-trgfn-contratti-guard-transizione-matrice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard di transizione del contratto: i passaggi dalla matrice
+        (config.transizioni_stati_contratti), non dagli IF; verso CESSATO valido_al
+        arrivata (<= data operativa) per chiunque, la GUC app.cessazione_automatica
+        ritirata. Brief: brief-modello-documento-vendita §11 (Y-2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: enforcement DB-first del grafo transizioni stato contratto.
+              --   La transizione (OLD.stato -> NEW.stato) e' ammessa solo se
+              --   presente e attiva in config.transizioni_stati_contratti (letto
+              --   dalla matrice, nessun grafo scritto qui: rev 2026-10-26,
+              --   20261026-04). Poi le condizioni dei passaggi:
+              --   ->CESSATO: valido_al valorizzata e arrivata (<= data operativa);
+              --   ->ATTIVO: prezzi autorizzati, indirizzi del cliente, righe
+              --   ammesse, nessun contratto vincolante sovrapposto.
+              -- Aggiornato 2026-05-12: check PENDING componenti.
+              -- Aggiornato 2026-05-14: no-retroattiva su cessazione manuale.
+              -- Aggiornato 2026-05-20: DRAFT->ANNULLATO ammessa.
+              -- Aggiornato 2026-09-24: il controllo del prezzo all'attivazione passa
+              --   dal building block script.fn_check_prezzi_autorizzati — righe E
+              --   componenti, PENDING E REJECTED (brief-db-preventivi-congelamento-
+              --   pricing, D-4/D-5).
+              -- Aggiornato 2026-10-11: ->ATTIVO solleva anche il primo motivo di
+              --   script.fn_check_indirizzi_documento_cliente — un indirizzo d'anagrafica
+              --   che non e' del cliente del contratto (brief-db-indirizzi-documento-
+              --   seguono-il-cliente, D-3).
+              -- Aggiornato 2026-10-20: ->ATTIVO solleva per ultimo il motivo di
+              --   script.fn_check_contratto_sovrapposto — un contratto vincolante
+              --   sovrapposto sulla quintupla dell'EXCLUDE (richiesta BE del 2026-10-19).
+              -- Aggiornato 2026-10-21: ->ATTIVO solleva, dopo gli indirizzi e prima del
+              --   sovrapposto, il primo motivo di script.fn_check_righe_documento — una
+              --   riga che la regola intera non ammette piu' (brief-db-offerta-emissione-
+              --   ed-erogazione §I.2, H-R4).
+              -- Aggiornato 2026-10-26 (20261026-04, brief-modello-documento-vendita
+              --   §11, Y-2): i passaggi dalla matrice; la cessazione chiede una data
+              --   arrivata a chiunque, la GUC app.cessazione_automatica e' ritirata.
+              --   La data passata la rifiuta il verbo della cessazione, che e'
+              --   l'unico a scriverla (vendite.fn_cessa_contratto).
+              DECLARE
+                  v_codice_da config.stati_doc_contratti.codice_interno%TYPE;
+                  v_codice_a  config.stati_doc_contratti.codice_interno%TYPE;
+                  v_ammessa   boolean := false;
+              BEGIN
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_doc_contratto_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_doc_contratto_id THEN codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM config.stati_doc_contratti
+                   WHERE id IN (OLD.stato_doc_contratto_id, NEW.stato_doc_contratto_id);
+
+                  -- Regola 1: la transizione deve esistere ed essere attiva in matrice.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.transizioni_stati_contratti t
+                       WHERE t.stato_da_id = OLD.stato_doc_contratto_id
+                         AND t.stato_a_id  = NEW.stato_doc_contratto_id
+                         AND t.attivo IS TRUE
+                  ) INTO v_ammessa;
+
+                  -- La cessazione: la data di fine c'e' ed e' arrivata. Una data
+                  -- futura e' una cessazione programmata (solo la data, dal verbo
+                  -- della cessazione): lo stato lo scrivera' il job, quando scade.
+                  IF v_ammessa AND v_codice_a = 'CESSATO' THEN
+                      v_ammessa := NEW.valido_al IS NOT NULL
+                                   AND NEW.valido_al <= (SELECT script.fn_data_operativa());
+                  END IF;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA',
+                          jsonb_build_object('contratto_id', NEW.id, 'numero', NEW.numero,
+                              'stato_da', v_codice_da, 'stato_a', v_codice_a,
+                              'valido_al', NEW.valido_al),
+                          NEW.tx_id, NEW.id::text,
+                          coalesce(v_codice_da, 'NULL'),
+                          coalesce(v_codice_a,  'NULL'),
+                          coalesce(NEW.valido_al::text, 'NULL')
+                      );
+                  END IF;
+
+                  -- Prezzi non autorizzati (rev 2026-09-24): un contratto con un prezzo
+                  -- che nessuno ha autorizzato — in attesa o rifiutato, su righe o
+                  -- componenti BoM attivi — non si attiva (D-1, D-4).
+                  --
+                  -- ⭐ Il predicato e' il building block script.fn_check_prezzi_autorizzati,
+                  --   lo STESSO che fn_available_actions_contratto usa per spegnere
+                  --   «Attiva»: qui si solleva soltanto.
+                  -- ⚠️ Fino a questa revisione il controllo guardava i SOLI componenti
+                  --   PENDING: una riga con un prezzo in attesa, o un prezzo rifiutato,
+                  --   passavano. E sollevava E_COMPONENTE_PREZZO_PENDENTE, il codice del
+                  --   guard PER RIGA dei componenti — che resta suo.
+                  -- ⚠️ Sulla DESTINAZIONE: oggi ci si arriva solo da DRAFT (lo dice la
+                  --   matrice).
+                  IF v_codice_a = 'ATTIVO' THEN
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database', TG_NAME::text,
+                          script.fn_check_prezzi_autorizzati('vendite.contratti'::regclass, NEW.id),
+                          NULL,
+                          NEW.tx_id,
+                          jsonb_build_object(
+                              'contratto_id', NEW.id,
+                              'numero',       NEW.numero,
+                              'stato_da',     v_codice_da,
+                              'stato_a',      v_codice_a));
+                  END IF;
+
+                  -- Indirizzi del cliente (rev 2026-10-11, brief-db-indirizzi-documento-
+                  -- seguono-il-cliente, D-3 di Tid): il cliente del contratto (BA/istanza)
+                  -- si cambia in DRAFT, e un indirizzo d'anagrafica del cliente di prima, o
+                  -- di una fornitura che il contratto non ha piu', non si attiva.
+                  -- ⭐ Il predicato e' script.fn_check_indirizzi_documento_cliente, lo
+                  --   stesso che fn_available_actions_contratto somma per spegnere «Attiva»,
+                  --   dopo listino e prezzi: lo stesso ordine qui.
+                  IF v_codice_a = 'ATTIVO' THEN
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database', TG_NAME::text,
+                          script.fn_check_indirizzi_documento_cliente('CONTRATTO', NEW.id),
+                          'tipo_indirizzo_id',
+                          NEW.tx_id,
+                          jsonb_build_object(
+                              'contratto_id', NEW.id,
+                              'numero',       NEW.numero,
+                              'stato_da',     v_codice_da,
+                              'stato_a',      v_codice_a));
+                  END IF;
+
+                  -- Le righe (rev 2026-10-21, brief-db-offerta-emissione-ed-erogazione
+                  -- §I.2, H-R4): la regola di una riga dipende da dati che stanno fuori
+                  -- dalla riga (il listino operativo, il vocabolario del perimetro), e i
+                  -- guard di riga la giudicano solo quando la riga si scrive. Le righe gia'
+                  -- scritte le intercetta l'attivazione (R-6, A-5 di brief-db-articoli-
+                  -- ammessi-per-documento). In DRAFT le righe si correggono: nessuna uscita
+                  -- nuova serve.
+                  -- ⭐ Il predicato e' script.fn_check_righe_documento, lo stesso che
+                  --   fn_available_actions_contratto somma per spegnere «Attiva», dopo gli
+                  --   indirizzi: lo stesso ordine qui.
+                  IF v_codice_a = 'ATTIVO' THEN
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database', TG_NAME::text,
+                          script.fn_check_righe_documento('CONTRATTO', NEW.id),
+                          'articolo_id',
+                          NEW.tx_id,
+                          jsonb_build_object(
+                              'contratto_id', NEW.id,
+                              'numero',       NEW.numero,
+                              'stato_da',     v_codice_da,
+                              'stato_a',      v_codice_a));
+                  END IF;
+
+                  -- Contratto vincolante sovrapposto (rev 2026-10-20, richiesta BE del
+                  -- 2026-10-19): un periodo che si sovrappone a un contratto non in bozza e
+                  -- non abortito dello stesso cliente, punto di fornitura, utility e ambito
+                  -- non si attiva. Fin qui lo fermava solo l'EXCLUDE ex_contratti_no_overlap,
+                  -- con un 23P01 che non nomina il contratto in conflitto: l'EXCLUDE resta la
+                  -- difesa dura, il codice parlante arriva da qui.
+                  -- ⭐ Il predicato e' script.fn_check_contratto_sovrapposto, lo stesso che
+                  --   fn_available_actions_contratto somma per ultimo per spegnere «Attiva»:
+                  --   lo stesso ordine qui.
+                  -- ⚠️ La quintupla e' quella di NEW: un UPDATE che porta ad ATTIVO
+                  --   cambiando le date nella stessa istruzione si giudica sulle date nuove
+                  --   (la riga salvata e' ancora quella di ieri).
+                  -- ⚠️ Nessun campo: il rimedio sta nelle date o nell'altro contratto, non
+                  --   in un input solo.
+                  IF v_codice_a = 'ATTIVO' THEN
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database', TG_NAME::text,
+                          script.fn_check_contratto_sovrapposto(
+                              NEW.billing_account_id, NEW.istanza_utility_id, NEW.utility_id,
+                              NEW.ambito, NEW.valido_dal, NEW.valido_al),
+                          NULL,
+                          NEW.tx_id,
+                          jsonb_build_object(
+                              'contratto_id', NEW.id,
+                              'numero',       NEW.numero,
+                              'stato_da',     v_codice_da,
+                              'stato_a',      v_codice_a));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
+              IS 'Trigger function: controlla transizioni stato contratto. Regola 1 (rev 2026-10-26, 20261026-04, brief-modello-documento-vendita §11, Y-2): la transizione e'' ammessa solo se presente e attiva in config.transizioni_stati_contratti (prima i passaggi erano scritti negli IF, e la matrice la leggeva solo la capability); altrimenti E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA. ->CESSATO: valido_al valorizzata e arrivata (<= script.fn_data_operativa()), per chiunque scriva lo stato (il verbo della cessazione vendite.fn_cessa_contratto con la data di oggi, il job vendite.fn_cessa_contratti_scaduti con quelle scadute); altrimenti E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA. La GUC app.cessazione_automatica e'' ritirata; la data passata la rifiuta il verbo della cessazione, l''unico che la scrive (E_CONTRATTO_VALIDO_AL_RETROATTIVO). rev 2026-09-24: all''''ingresso in ATTIVO il controllo del prezzo passa dal building block script.fn_check_prezzi_autorizzati via fn_raise_primo_motivo_se_presente — righe E componenti BoM attivi, PENDING E REJECTED, codici E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO. Prima guardava i soli componenti PENDING e sollevava E_COMPONENTE_PREZZO_PENDENTE (che resta al guard per riga dei componenti). La capability fn_available_actions_contratto legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5). rev 2026-10-11 (brief-db-indirizzi-documento-seguono-il-cliente, D-3 di Tid): verso ATTIVO, dopo i prezzi, solleva il primo motivo di script.fn_check_indirizzi_documento_cliente(''CONTRATTO'', id) — E_INDIRIZZO_DOC_NON_DEL_CLIENTE, un indirizzo d''anagrafica che non e'' del cliente del contratto — nell''ordine della capability. rev 2026-10-20 (richiesta BE del 2026-10-19): verso ATTIVO, dopo gli indirizzi, solleva il primo motivo di script.fn_check_contratto_sovrapposto(NEW.quintupla) — E_CONTRATTO_OVERLAP_ESISTENTE col numero del contratto vincolante (ATTIVO o CESSATO) sovrapposto — nell''ordine della capability. L''EXCLUDE ex_contratti_no_overlap resta la difesa dura. rev 2026-10-21 (20261021-59, brief-db-offerta-emissione-ed-erogazione §I.2, H-R4): verso ATTIVO, dopo gli indirizzi e prima del sovrapposto, solleva il primo motivo di script.fn_check_righe_documento(''CONTRATTO'', id) — E_DOC_RIGA_NON_AMMESSA, una riga che la regola intera (articolo, erogazione, fonte) non ammette piu'' — nell''ordine della capability.';

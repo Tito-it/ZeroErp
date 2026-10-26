@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto (prima del 24) passa
+--   da dbops.fn_pgtap_porta_a_stato (il verbo del contratto), non da un UPDATE dello stato: la porta lo
+--   ferma. Nessuna attesa cambiata.
 -- pgTAP test per Zero ERP
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
 --   il documento passato ai lettori delle testate, ai legami e ai montaggi del
@@ -499,9 +502,9 @@ SELECT lives_ok(
            pg_temp.riga_contratto(pg_temp.doc('contratto'), 'P'), pg_temp.art('G')),
     '23) contratto in DRAFT: un componente si modifica');
 
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno = 'ATTIVO')
- WHERE id = pg_temp.doc('contratto');
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione dal verbo
+--   (la porta ferma l'UPDATE diretto dello stato).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, pg_temp.doc('contratto'), 'ATTIVO');
 
 SELECT alike(
     pg_temp.rifiuto(format($$UPDATE vendite.contratti_righe_componenti SET ordine = 5

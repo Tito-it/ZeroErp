@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §11, giro 8): il contratto e' portato al modello. Test 9 e
+--   10: la porta anche sul contratto, cinque testate (attese cambiate: la lista dichiarata e il
+--   conteggio 4 -> 5).
+-- rev 2026-10-26 (brief-modello-documento-vendita §9.10): test 19-22 nuovi, lo stato che il documento
+--   ha gia' (20261026-01) e lo stato sconosciuto della bolla (20261026-02); i due rossi da owner
+--   passano da 19-20 a 23-24 (restano in coda).
 -- rev 2026-10-25 (brief-modello-documento-vendita §9): l'ordine e' portato al modello. Test 8:
 --   il documento non ancora portato e' ora la fattura (portata per ultima fra i documenti della
 --   mappa; prima era l'ordine). Test 9 e 10: la porta anche sull'ordine, quattro testate (attese
@@ -30,9 +36,15 @@
 --   - il verbo chiede l'azione della riga (E_PERMESSO_NEGATO senza), rifiuta i
 --     passaggi di processo (E_DOC_PASSAGGIO_DI_PROCESSO), e con l'azione
 --     emette; una riga senza azione (annullo di un reso in bozza, M-4) passa;
---   - la capability nasconde il passaggio con l'azione a chi non ce l'ha.
+--   - la capability nasconde il passaggio con l'azione a chi non ce l'ha;
+--   - il verbo chiesto con lo stato che il documento ha gia' (la matrice non ha
+--     X -> X) e' rifiutato dalla prima riga, E_DOC_GIA_NELLO_STATO, prima dei
+--     controlli del verbo; un UPDATE che riscrive lo stesso stato resta lecito
+--     (la regola e' del verbo);
+--   - uno stato che il vocabolario della bolla non ha: E_STATO_WORKFLOW_NON_TROVATO,
+--     come i verbi di ordine e preventivo.
 --
--- ⚠️ DIPENDE DAL RUOLO (test 19 e 20): la porta chiede anche che chi scrive sia
+-- ⚠️ DIPENDE DAL RUOLO (test 23 e 24): la porta chiede anche che chi scrive sia
 --   il proprietario della tabella. Come applicazione (il runner) sono verdi; da
 --   owner (la prova dell'SQL estratto prima dell'apply) l'owner E' il
 --   proprietario e la sola GUC apre: rossi da owner per costruzione. Per
@@ -42,7 +54,7 @@
 -- rev 2026-10-25: test 2 e 9 confrontano regclass, non il loro testo (dipende dal
 --   search_path: come app il test 2 era rosso, «transizioni_stati_ddt» senza schema).
 --
--- Elenco test (plan 20):
+-- Elenco test (plan 24):
 --   1) i cinque BB esistono
 --   2) la mappa: bolla -> stato_doc_ddt_id, config.transizioni_stati_ddt
 --   3) la mappa: una tabella che non e' un documento -> nessuna riga
@@ -52,7 +64,7 @@
 --   6) il lettore: DRAFT->EMESSO manuale con emetti_ddt; CONSEGNATO->RESO di processo
 --   7) il lettore: un passaggio fuori matrice -> nessuna riga
 --   8) il lettore su un documento non ancora portato al modello: chiamata non valida
---   9) montaggio della porta: bolla, reso, preventivo (giro 6) e ordine (giro 7), e nessun'altra testata
+--   9) montaggio della porta: bolla, reso, preventivo (giro 6), ordine (giro 7) e contratto (giro 8), e nessun'altra testata
 --  10) montaggio della porta: BEFORE UPDATE OF la colonna di stato della mappa
 --  11) le due porte del registro ritirate (E_DDT_/E_RESO_STATO_SOLO_DA_VERBO
 --      obsoleti, nessuna funzione li solleva piu')
@@ -63,9 +75,14 @@
 --  16) capability della bolla: con emetti_ddt «Emetti» c'e'
 --  17) il verbo con emetti_ddt emette la bolla
 --  18) un passaggio di processo chiesto al verbo: E_DOC_PASSAGGIO_DI_PROCESSO
---  19) UPDATE diretto dello stato della bolla: E_DOC_STATO_SOLO_DAL_VERBO
+--  19) il secondo «Emetti» della bolla: E_DOC_GIA_NELLO_STATO
+--  20) il secondo annullo del reso: E_DOC_GIA_NELLO_STATO, prima del controllo
+--      dello stato del reso
+--  21) un UPDATE che riscrive lo stesso stato della bolla: passa
+--  22) il verbo della bolla con uno stato che non c'e': E_STATO_WORKFLOW_NON_TROVATO
+--  23) UPDATE diretto dello stato della bolla: E_DOC_STATO_SOLO_DAL_VERBO
 --      (anche con la GUC accesa dall'applicazione)          [rosso da owner]
---  20) la scrittura comune chiamata dall'applicazione: la porta la ferma
+--  24) la scrittura comune chiamata dall'applicazione: la porta la ferma
 --                                                          [rosso da owner]
 -- ------------------------------------------------------------
 
@@ -75,7 +92,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(20);
+SELECT plan(24);
 
 -- 1) Gli oggetti
 SELECT is(
@@ -188,8 +205,9 @@ SELECT is(
     (SELECT array_agg(tab::oid ORDER BY tab::oid) FROM t_porta),
     (SELECT array_agg(x::oid ORDER BY x::oid)
        FROM unnest(ARRAY['vendite.ddt'::regclass, 'vendite.resi'::regclass,
-                         'vendite.preventivi'::regclass, 'vendite.ordini'::regclass]) x),
-    'la porta e'' montata su bolla, reso, preventivo e ordine, e su nessun''altra testata'
+                         'vendite.preventivi'::regclass, 'vendite.ordini'::regclass,
+                         'vendite.contratti'::regclass]) x),
+    'la porta e'' montata su bolla, reso, preventivo, ordine e contratto, e su nessun''altra testata'
 );
 
 SELECT is(
@@ -199,7 +217,7 @@ SELECT is(
       WHERE p.def LIKE '%BEFORE UPDATE OF ' || m.colonna_stato || ' ON %'
         AND p.def LIKE '%FOR EACH ROW%'
         AND p.nome LIKE 'trg\_%\_a05\_stato\_solo\_dal\_verbo\_upd'),
-    4,
+    5,
     'la porta: BEFORE UPDATE OF la colonna di stato della mappa, per riga, fascia _a05_'
 );
 
@@ -287,7 +305,39 @@ SELECT throws_like(
     'un passaggio di processo (CONSEGNATO -> RESO) chiesto al verbo: E_DOC_PASSAGGIO_DI_PROCESSO'
 );
 
--- 19) [rosso da owner] Un UPDATE diretto dello stato, anche con la GUC accesa
+-- 19) Il secondo «Emetti»: la bolla e' EMESSA (test 17), la matrice non ha
+--     EMESSO -> EMESSO. Lo rifiuta la prima riga del verbo.
+SELECT throws_like(
+    format($$SELECT * FROM vendite.fn_cambia_stato_ddt(%s, 'EMESSO')$$, (SELECT ddt_id FROM t_bolla)),
+    'Il documento è già nello stato EMESSO%',
+    'il secondo «Emetti» della bolla, dal verbo: E_DOC_GIA_NELLO_STATO'
+);
+
+-- 20) Il secondo annullo del reso (annullato al test 15): parla la prima riga,
+--     prima del controllo dello stato del reso (E_RESO_STATO_NON_ANNULLABILE).
+SELECT throws_like(
+    format($$SELECT vendite.fn_annulla_reso(%s)$$, (SELECT reso_id FROM t_reso)),
+    'Il documento è già nello stato ANNULLATO%',
+    'il secondo annullo del reso: E_DOC_GIA_NELLO_STATO, dalla prima riga del verbo'
+);
+
+-- 21) La regola e' del verbo, non di ogni UPDATE: riscrivere lo stesso stato
+--     (un salvataggio della riga intera) non cambia niente e passa, porta e
+--     guard di transizione compresi.
+SELECT lives_ok(
+    format($$UPDATE vendite.ddt SET stato_doc_ddt_id = stato_doc_ddt_id WHERE id = %s$$,
+           (SELECT ddt_id FROM t_bolla)),
+    'un UPDATE che riscrive lo stesso stato della bolla: passa'
+);
+
+-- 22) Uno stato che il vocabolario non ha: la risposta dei gemelli
+SELECT throws_like(
+    format($$SELECT * FROM vendite.fn_cambia_stato_ddt(%s, 'PGTAP_INESISTENTE')$$, (SELECT ddt_id FROM t_bolla)),
+    'Stato di destinazione non trovato o non attivo: PGTAP_INESISTENTE%',
+    'il verbo della bolla con uno stato che non c''e'': E_STATO_WORKFLOW_NON_TROVATO, come ordine e preventivo'
+);
+
+-- 23) [rosso da owner] Un UPDATE diretto dello stato, anche con la GUC accesa
 --     dall'applicazione: la porta chiede anche il proprietario.
 SELECT set_config('zeroerp.doc_cambio_stato',
                   'vendite.ddt'::regclass::oid::text || ':' || (SELECT ddt_id FROM t_bolla)::text, true);
@@ -299,7 +349,7 @@ SELECT throws_like(
 );
 SELECT set_config('zeroerp.doc_cambio_stato', '', true);
 
--- 20) [rosso da owner] La scrittura comune chiamata dall'applicazione: da sola
+-- 24) [rosso da owner] La scrittura comune chiamata dall'applicazione: da sola
 --     non apre niente.
 SELECT throws_like(
     format($$SELECT script.fn_doc_scrivi_stato('vendite.ddt'::regclass, %s, %s)$$,

@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §9.10): test 19 nuovo, il secondo «Emetti»
+--   (20261026-01, E_DOC_GIA_NELLO_STATO); i test 19-22 passano a 20-23.
 -- pgTAP test per Zero ERP
 --
 -- Test: i lettori dello stato e il preventivo sul modello del documento
@@ -21,17 +23,17 @@
 --     sull'annullo dell'emesso e dell'accettato (U-1, U-2), e su nient'altro;
 --   - la domanda intera dice stati, emissione e riga del passaggio di un
 --     documento che si vede; nessuna riga per un documento che non c'e';
---   - il verbo chiede l'azione della riga, rifiuta i passaggi di processo e
---     l'emissione senza righe; l'annullo della bozza non chiede azioni;
+--   - il verbo chiede l'azione della riga, rifiuta i passaggi di processo,
+--     l'emissione senza righe e il secondo «Emetti» (E_DOC_GIA_NELLO_STATO); l'annullo della bozza non chiede azioni;
 --   - la capability nasconde il passaggio con l'azione a chi non ce l'ha;
 --   - la porta: un UPDATE diretto dello stato e' rifiutato.
 --
--- ⚠️ DIPENDE DAL RUOLO (test 22): la porta chiede anche che chi scrive sia il
+-- ⚠️ DIPENDE DAL RUOLO (test 23): la porta chiede anche che chi scrive sia il
 --   proprietario della tabella. Come applicazione (il runner) e' verde; da
 --   owner (la prova dell'SQL estratto prima dell'apply) e' rosso per
 --   costruzione. Per questo sta in coda.
 --
--- Elenco test (plan 22):
+-- Elenco test (plan 23):
 --   1) i tre lettori esistono
 --   2) fn_doc_stato_id: EMESSO del preventivo -> il suo id
 --   3) fn_doc_stato_id: un codice che non c'e' -> NULL
@@ -50,10 +52,11 @@
 --  16) il verbo senza emetti_preventivo: E_PERMESSO_NEGATO
 --  17) capability con emetti_preventivo: «Emetti» c'e'
 --  18) il verbo con emetti_preventivo emette il preventivo
---  19) un passaggio di processo chiesto al verbo (EMESSO -> SCADUTO)
---  20) l'emissione senza righe: E_PREV_NESSUNA_RIGA_ATTIVA
---  21) l'annullo di una bozza: nessuna azione, passa
---  22) UPDATE diretto dello stato: E_DOC_STATO_SOLO_DAL_VERBO   [rosso da owner]
+--  19) il secondo «Emetti» dal verbo: E_DOC_GIA_NELLO_STATO
+--  20) un passaggio di processo chiesto al verbo (EMESSO -> SCADUTO)
+--  21) l'emissione senza righe: E_PREV_NESSUNA_RIGA_ATTIVA
+--  22) l'annullo di una bozza: nessuna azione, passa
+--  23) UPDATE diretto dello stato: E_DOC_STATO_SOLO_DAL_VERBO   [rosso da owner]
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -62,7 +65,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(22);
+SELECT plan(23);
 
 -- 1) Gli oggetti
 SELECT is(
@@ -254,7 +257,17 @@ SELECT is(
     'il verbo con emetti_preventivo emette il preventivo, dalla scrittura comune'
 );
 
--- 19) EMESSO -> SCADUTO e' di processo (manuale = false): non si chiede a mano
+-- 19) Il secondo «Emetti»: la matrice non ha EMESSO -> EMESSO, e il guard di
+--     transizione non lo vede (lo stato non cambia). Lo rifiuta la prima riga
+--     del verbo, prima che il backend generi un secondo PDF (brief §9.8).
+SELECT throws_like(
+    format($$SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, 'EMESSO')$$,
+           (SELECT preventivo_id FROM t_prev)),
+    'Il documento è già nello stato EMESSO%',
+    'il secondo «Emetti» del preventivo, dal verbo: E_DOC_GIA_NELLO_STATO'
+);
+
+-- 20) EMESSO -> SCADUTO e' di processo (manuale = false): non si chiede a mano
 SELECT throws_like(
     format($$SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, 'SCADUTO')$$,
            (SELECT preventivo_id FROM t_prev)),
@@ -266,7 +279,7 @@ SELECT throws_like(
 CREATE TEMP TABLE t_vuoto AS
 SELECT * FROM dbops.fn_pgtap_crea_preventivo('pgTAP lettori e preventivo vuoto');
 
--- 20) L'emissione chiede almeno una riga attiva (con l'azione concessa)
+-- 21) L'emissione chiede almeno una riga attiva (con l'azione concessa)
 SELECT throws_like(
     format($$SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, 'EMESSO')$$,
            (SELECT preventivo_id FROM t_vuoto)),
@@ -274,7 +287,7 @@ SELECT throws_like(
     'l''emissione di un preventivo senza righe: E_PREV_NESSUNA_RIGA_ATTIVA'
 );
 
--- 21) L'annullo della bozza: riga senza azione (M-4)
+-- 22) L'annullo della bozza: riga senza azione (M-4)
 SELECT is(
     (SELECT v.stato_nuovo::text
        FROM vendite.fn_cambia_stato_preventivo((SELECT preventivo_id FROM t_vuoto), 'ANNULLATO') v),
@@ -282,7 +295,7 @@ SELECT is(
     'l''annullo di una bozza: nessuna azione, il verbo passa'
 );
 
--- 22) [rosso da owner] Un UPDATE diretto dello stato, anche con la GUC accesa
+-- 23) [rosso da owner] Un UPDATE diretto dello stato, anche con la GUC accesa
 --     dall'applicazione: la porta chiede anche il proprietario.
 SELECT set_config('zeroerp.doc_cambio_stato',
                   'vendite.preventivi'::regclass::oid::text || ':' || (SELECT preventivo_id FROM t_prev)::text,

@@ -8,6 +8,7 @@
 --       ordine» e' un verbo DB; da ACCETTATA si esce anche annullando.
 --       Brief: brief-db-offerta-emissione-ed-erogazione §I (decisioni I-D2…I-D5 di
 --       Tid del 2026-10-21; H-R1…H-R4 del §H), changeSet 20261021-52 … -61.
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto (22) dal verbo vendite.fn_cambia_stato_contratto, non piu' con l'UPDATE diretto dello stato che la porta ora rifiuta; prima del 21 si concede emetti_contratto, senza la quale la capability nasconde «Attiva». Nessuna attesa cambiata.
 --
 -- ⭐ Il caso del §H.1, costruito: righe scritte quando erano ammesse, che escono
 --   dal perimetro per un dato che sta FUORI dalla riga (qui il vocabolario della
@@ -398,6 +399,10 @@ SELECT is(
 -- ============================================================
 -- 21-22) Attivazione del contratto
 -- ============================================================
+-- ⚠️ «Attiva» e' dell'azione emetti_contratto: senza, la capability lo
+--   nasconde e il verbo risponde E_PERMESSO_NEGATO (giro 8).
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_contratto');
+
 SELECT ok(
     (SELECT (a ->> 'enabled')::boolean IS FALSE
             AND a -> 'reasons' @> '[{"reason": "RIGA_NON_AMMESSA"}]'::jsonb
@@ -408,8 +413,7 @@ SELECT ok(
 
 SELECT is(
     pg_temp.codice(format(
-        $$UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE id = %s$$,
-        (SELECT st_attivo FROM tmp_ra_ctx), pg_temp.doc('CTR'))),
+        $q$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$q$, pg_temp.doc('CTR'))),
     'E_DOC_RIGA_NON_AMMESSA',
     '22) …e l''attivazione e'' rifiutata con E_DOC_RIGA_NON_AMMESSA');
 
