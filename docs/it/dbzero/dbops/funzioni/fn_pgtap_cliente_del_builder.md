@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_pgtap_cliente_del_builder(p_etichetta text, p_billing_account_id bigint, p_chiamante text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

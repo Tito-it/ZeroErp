@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_soggetti_titoli_iva_movimenti_accumulatore()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

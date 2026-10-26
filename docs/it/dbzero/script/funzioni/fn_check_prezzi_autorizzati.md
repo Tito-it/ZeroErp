@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_prezzi_autorizzati(p_testata regclass, p_documento_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

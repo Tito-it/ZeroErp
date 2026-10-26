@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_pgtap_articolo_correggi_struttura(p_articolo_id uuid, p_campi jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

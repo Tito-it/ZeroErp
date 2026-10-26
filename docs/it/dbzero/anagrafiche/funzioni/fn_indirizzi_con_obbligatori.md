@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_indirizzi_con_obbligatori(p_indirizzi jsonb, p_tipi_obbligatori integer[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

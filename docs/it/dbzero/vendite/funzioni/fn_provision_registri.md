@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_provision_registri(p_emittente_soggetto_ruolo_id bigint, p_famiglia_documento character varying)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

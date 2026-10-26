@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_check_riga_erogazione(p_documento character varying, p_documento_id bigint, p_articolo_id uuid, p_tipo_eccezione vendite.tipo_eccezione_contratto, p_tipo_erogazione character varying, p_fonte character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

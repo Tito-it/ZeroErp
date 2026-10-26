@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_record_id_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp with time zone)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

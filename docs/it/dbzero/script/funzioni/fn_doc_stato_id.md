@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_doc_stato_id(p_testata regclass, p_codice text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

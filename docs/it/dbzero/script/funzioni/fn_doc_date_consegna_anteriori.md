@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_doc_date_consegna_anteriori(p_documento character varying, p_testata_id bigint, p_data_documento date, p_riga jsonb, p_riga_prima jsonb)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text, p_livello character, p_solo_attive boolean, p_solo_job_corrente boolean, p_limit integer, p_offset integer, p_order_by text, p_order_dir text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_pgtap_crea_fattura(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_spoglia_indirizzi boolean, p_spoglia_intestazione boolean, p_minimo boolean, p_totale_a_pagare numeric, p_termine_pagamento_id bigint, p_senza_utility boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_scope_note_shop_perimetro(p_perimetro bigint, p_target_tipo character varying, p_target_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_pgtap_crea_commessa(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_con_attivita boolean, p_con_sorgente_root boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

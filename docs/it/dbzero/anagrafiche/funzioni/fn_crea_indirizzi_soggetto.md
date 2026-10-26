@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_crea_indirizzi_soggetto(p_soggetto_id uuid, p_indirizzi jsonb, p_copia_obbligatori boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

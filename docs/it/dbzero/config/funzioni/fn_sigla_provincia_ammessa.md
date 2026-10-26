@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_sigla_provincia_ammessa(p_sigla character varying, p_stato_id integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

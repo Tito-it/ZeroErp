@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_imposta_data_documento_lotto(p_lotto_id bigint, p_data date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_reset_fondi_fattura(p_fattura_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE PROCEDURE proc_bump_indirizzi_dettaglio(IN p_stradario_id integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

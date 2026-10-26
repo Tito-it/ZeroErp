@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_annulla_ordine(p_ordine_id bigint, p_legami_confermati integer)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

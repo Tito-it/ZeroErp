@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_crea_contatto(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_campi jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

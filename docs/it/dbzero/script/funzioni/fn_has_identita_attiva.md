@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_has_identita_attiva(p_auth_user_id integer, p_ruolo_applicativo config.ruolo_applicativo)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

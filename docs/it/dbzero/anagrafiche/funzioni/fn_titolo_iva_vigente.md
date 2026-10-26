@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_titolo_iva_vigente(p_attivo boolean, p_valido_al date, p_oggi date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

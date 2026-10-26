@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_notify_cambio_reparto(p_risorsa_umana_id bigint, p_old_uo_id integer, p_new_uo_id integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

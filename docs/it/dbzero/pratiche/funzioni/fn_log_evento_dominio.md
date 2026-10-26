@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_log_evento_dominio(p_pratica_id bigint, p_flusso_id bigint, p_tipo_evento text, p_meta jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_dati_di_sviluppo_ammessi_su_valori(p_ambiente text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

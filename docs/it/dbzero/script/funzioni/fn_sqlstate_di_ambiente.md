@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_sqlstate_di_ambiente(p_sqlstate text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

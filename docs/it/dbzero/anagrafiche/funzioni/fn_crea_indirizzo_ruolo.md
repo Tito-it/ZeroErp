@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_crea_indirizzo_ruolo(p_soggetto_ruolo_id bigint, p_indirizzo jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

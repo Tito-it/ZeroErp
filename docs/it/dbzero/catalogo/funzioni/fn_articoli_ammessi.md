@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_articoli_ammessi(p_documento text, p_documento_id bigint, p_search text, p_limit integer, p_tipo_eccezione vendite.tipo_eccezione_contratto, p_articolo_padre_id uuid)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

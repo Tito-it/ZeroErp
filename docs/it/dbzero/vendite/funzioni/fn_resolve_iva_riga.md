@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_resolve_iva_riga(p_articolo_id uuid, p_data_riferimento date, p_imponibile numeric, p_billing_account_id bigint, p_utility_id integer, p_soggetto_id uuid, p_emittente_fiscale_id bigint, p_paese_emittente character, p_paese_cliente character, p_e_cessione_beni boolean, p_consumo boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

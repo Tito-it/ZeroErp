@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_consuma_plafond_titolo_iva_righe(p_titolo_iva_id bigint, p_fattura_id bigint, p_fattura_riga_ids bigint[], p_imponibili numeric[], p_data_movimento date, p_tx_id uuid)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

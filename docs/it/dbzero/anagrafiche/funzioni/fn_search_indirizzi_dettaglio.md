@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_search_indirizzi_dettaglio(p_stradario_id integer, p_civico integer, p_estensione_civico text, p_palazzina text, p_scala text, p_piano text, p_interno text, p_indirizzo_norm text, p_limit integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_contratto_sovrapposto(p_billing_account_id bigint, p_istanza_utility_id bigint, p_utility_id integer, p_ambito character varying, p_valido_dal date, p_valido_al date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

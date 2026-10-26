@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_identita_sr_perimetro(p_identita_id bigint, p_vesti config.ruolo_applicativo[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

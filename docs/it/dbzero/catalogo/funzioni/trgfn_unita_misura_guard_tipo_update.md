@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_unita_misura_guard_tipo_update()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

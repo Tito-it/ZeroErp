@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_or_create_fattura_header(p_lotto_id bigint, p_attivita_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

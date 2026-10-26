@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_set_documento_canale_stato(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_canale_codice character varying, p_stato_canale character varying, p_target_sorgente_tipo_id bigint, p_target_sorgente_uid text, p_motivo_blocco text, p_meta jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

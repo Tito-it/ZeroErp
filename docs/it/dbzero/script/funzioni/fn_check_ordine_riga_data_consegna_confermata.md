@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_check_ordine_riga_data_consegna_confermata(p_ordine_riga_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

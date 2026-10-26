@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_pratica_chiudibile(p_pratica_id bigint, p_escludi_template_id integer, p_escludi_flusso_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

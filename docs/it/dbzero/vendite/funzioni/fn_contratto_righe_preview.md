@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_contratto_righe_preview(p_contratto_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

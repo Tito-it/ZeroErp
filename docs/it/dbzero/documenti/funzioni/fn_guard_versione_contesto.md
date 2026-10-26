@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_guard_versione_contesto(p_template_versione_id bigint, p_versione_contesto integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

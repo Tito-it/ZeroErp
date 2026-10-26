@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_next_progressivo(p_registro_id bigint, p_data date, p_competenza_mese date, p_serie text, p_fattura_id bigint, p_famiglia_documento character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

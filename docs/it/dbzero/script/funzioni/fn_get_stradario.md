@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_stradario(p_comune_id integer, p_indirizzo text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

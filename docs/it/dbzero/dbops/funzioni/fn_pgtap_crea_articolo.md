@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_pgtap_crea_articolo(p_codice character varying, p_gestito boolean, p_requires_lotto boolean, p_requires_serial boolean, p_uom_id bigint, p_listino_tipologia_id smallint, p_is_composito boolean, p_is_solo_componente boolean, p_natura_vendita_id bigint, p_causale_onere_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

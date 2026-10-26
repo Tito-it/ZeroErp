@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_trigger_exists_by_name(p_rel regclass, p_trigger_name text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

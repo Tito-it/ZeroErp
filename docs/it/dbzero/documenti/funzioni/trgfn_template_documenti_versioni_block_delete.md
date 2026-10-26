@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_template_documenti_versioni_block_delete()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

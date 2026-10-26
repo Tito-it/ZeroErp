@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_indirizzi_by_soggetto(p_soggetto_id uuid)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

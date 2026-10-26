@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_rendi_commessa_emittibile(p_commessa_id bigint, p_righe_ids bigint[], p_user text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

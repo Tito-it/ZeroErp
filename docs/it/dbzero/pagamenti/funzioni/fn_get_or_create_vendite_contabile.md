@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date, p_ente_incasso_id bigint, p_lotto_id bigint, p_codice_stato_interno text, p_meta jsonb, p_origine character varying, p_emittente_fiscale_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

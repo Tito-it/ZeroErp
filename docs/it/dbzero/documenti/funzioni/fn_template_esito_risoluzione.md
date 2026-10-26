@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_template_esito_risoluzione(p_emittente_fiscale_id bigint, p_tipo_documento_output_id bigint, p_sorgente_tipo_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_cleanup_at_alla_nascita()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

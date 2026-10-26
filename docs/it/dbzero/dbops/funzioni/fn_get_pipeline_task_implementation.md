@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_pipeline_task_implementation(p_dominio_id bigint, p_task_code text, p_implementation_key text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

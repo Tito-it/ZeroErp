@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_veste_di_sistema(p_ruolo_applicativo config.ruolo_applicativo, p_tecnica boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

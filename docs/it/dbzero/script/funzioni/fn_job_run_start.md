@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_job_run_start(p_jobname text, p_origine character varying, p_stepname text, p_lock_key text, p_agent_host text, p_processo_codice text, p_auth_user_id integer)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

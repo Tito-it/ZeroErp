@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_resolve_livello_area(p_auth_user_id integer, p_area_schema_db character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

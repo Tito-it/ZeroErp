@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_componi_numero_documento(p_prefisso character varying, p_corpo text, p_progressivo bigint, p_lunghezza integer, p_suffisso character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

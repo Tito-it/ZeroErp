@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_lotto_da_emit_batch(p_emit_batch_id uuid)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

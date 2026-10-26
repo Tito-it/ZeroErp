@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_scrivi_movimento(p_magazzino_id bigint, p_articolo_id uuid, p_causale character varying, p_qta numeric, p_sorgente_tipo_id bigint, p_sorgente_riga bigint, p_sorgente_uid uuid, p_costo_unitario numeric, p_lotto_id bigint, p_asset_id bigint, p_ubicazione_id bigint, p_data_mov timestamp with time zone, p_transfer_uid uuid, p_storno_di_movimento_id bigint, p_meta jsonb)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

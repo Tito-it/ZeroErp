@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_sync_contabili_fondo_fattura(p_fattura_figlia_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

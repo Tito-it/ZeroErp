@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_check_righe_documento(p_documento character varying, p_documento_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

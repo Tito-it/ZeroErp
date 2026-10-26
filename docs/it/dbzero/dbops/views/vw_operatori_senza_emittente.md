@@ -5,6 +5,8 @@
 >
 > Diagnostica P-2a: operatori configurati a META' — identita' OPERATORE attiva, NON super admin, e nessuna riga in config.user_emittenti_fiscali. Dal fail-closed del 2026-08-18 queste persone non vedono NULLA, e il difetto non si annuncia: nessun errore, solo schermate vuote. ⚠️ DEVE restare a zero righe: una riga qui e' qualcuno che apre l'applicazione e non trova niente. Il super admin e' escluso di proposito (il suo scope passa da fn_is_super_admin). Per assegnare l'emittente mancante si usa la funzione di dominio script.fn_change_user_emittenti_scope(auth_user_id, ARRAY[ef_id]), non un INSERT a mano. Brief perimetro-emittente P-2a.
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

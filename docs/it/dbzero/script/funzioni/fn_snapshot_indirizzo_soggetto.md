@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_snapshot_indirizzo_soggetto(p_soggetto_id uuid, p_tipo_indirizzo_id integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

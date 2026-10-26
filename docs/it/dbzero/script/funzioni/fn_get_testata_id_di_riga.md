@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_testata_id_di_riga(p_documento character varying, p_riga_id bigint)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

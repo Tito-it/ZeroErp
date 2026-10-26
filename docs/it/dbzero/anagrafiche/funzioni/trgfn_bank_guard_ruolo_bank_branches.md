@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_bank_guard_ruolo_bank_branches()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

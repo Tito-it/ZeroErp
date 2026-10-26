@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_pgtap_cliente_ba_del_mondo(p_billing_account_id bigint, p_emittente_soggetto_ruolo_id bigint, p_chiamante text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

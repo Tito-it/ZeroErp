@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_articolo_correggi_struttura(p_articolo_id uuid, p_campi jsonb)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

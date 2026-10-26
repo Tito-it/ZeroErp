@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_accoda_email_sistema(p_destinatario character varying, p_oggetto text, p_corpo_html text, p_corpo_testo text, p_email_account_id integer, p_email_template_id integer, p_auth_user_id integer, p_contesto_json jsonb, p_unita_organizzativa_id integer, p_destinatari_cc text[], p_pratica_id bigint)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

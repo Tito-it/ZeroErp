@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_articoli_componenti_guard_is_composito()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

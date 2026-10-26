@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_forma_giuridica_ammessa(p_forma_giuridica_id bigint, p_tipo_soggetto_dettaglio_id bigint, p_oggi date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

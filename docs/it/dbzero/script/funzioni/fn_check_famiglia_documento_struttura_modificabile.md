@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_famiglia_documento_struttura_modificabile(p_famiglia_id integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

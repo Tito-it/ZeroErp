@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_diagnostica_gruppi_fatturabili(p_gruppi text[], p_competenza_mese date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

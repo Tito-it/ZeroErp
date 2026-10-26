@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_close_commessa_push_run(p_id bigint, p_stato character varying, p_risultato jsonb, p_durata_ms integer, p_source_types text[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

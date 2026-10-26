@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_slega_profilo_identita(p_profilo_accesso_id integer, p_identita_digitale_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

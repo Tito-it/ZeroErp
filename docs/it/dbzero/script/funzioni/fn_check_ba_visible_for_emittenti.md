@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_ba_visible_for_emittenti(p_billing_account_id bigint, p_emittente_ids bigint[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

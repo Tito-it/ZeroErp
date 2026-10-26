@@ -4,6 +4,8 @@
 >
 > PRESIDIO «nessun superuser al lavoro»: per ogni processo l'ULTIMA corsa del giornale, se il ruolo che si e' collegato (ruolo_sessione) e' un superuser. Deve restare vuota. Basta «superuser» e non «membro di zeroerp_job» perche' le procedure dei job sono chiamabili solo da proprietario, zeroerp_job e superuser (EXECUTE tolto a PUBLIC, 20261014-55), e il giornale non distingue pgAgent da ci_apply (origine PGAGENT di default, nessun application_name). Si giudica da pg_roles.rolsuper, mai dal nome. Esclusi ruolo_sessione NULL (non registrato) e ruoli che non esistono piu'. Brief: brief-db-ruoli-di-sistema D-5.
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

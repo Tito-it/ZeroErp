@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_parameter_full(p_code text, p_emittente_fiscale_id bigint, p_django_user_id integer, p_group_ids integer[], p_session_key text, p_function_name text, p_categoria_cliente_id smallint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

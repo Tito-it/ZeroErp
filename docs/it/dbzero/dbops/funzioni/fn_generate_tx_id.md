@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_generate_tx_id(p_generating_function text, p_session_info jsonb)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `postgres`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

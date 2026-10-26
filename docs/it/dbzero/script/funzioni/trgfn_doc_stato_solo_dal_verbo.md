@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_doc_stato_solo_dal_verbo()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

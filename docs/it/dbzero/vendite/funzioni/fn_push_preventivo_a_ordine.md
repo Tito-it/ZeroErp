@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_push_preventivo_a_ordine(p_preventivo_id bigint, p_righe_ids bigint[], p_pratica_id bigint, p_fatturazione_trigger character varying, p_flusso_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

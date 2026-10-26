@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_documento_lineage_sintesi(p_tipo_ids bigint[], p_uids text[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

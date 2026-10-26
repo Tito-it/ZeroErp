@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_upsert_commessa_attivita(p_commessa_id bigint, p_segment_key character varying, p_articolo_id uuid, p_istanza_utility_id bigint, p_data_attivita date, p_uom_id bigint, p_quantita numeric, p_competenza_mese date, p_competenza_dal date, p_competenza_al date, p_prezzo_snapshot numeric, p_prezzo_base_snapshot numeric, p_origine_prezzo character varying, p_tipo_variazione_applicata character varying, p_valore_variazione_applicata numeric, p_promo_id bigint, p_contratto_id bigint, p_categoria_cliente_id_snapshot smallint, p_classe_utenza_id_snapshot integer, p_qta_operativa numeric, p_uom_operativa_id bigint, p_factor_to_base numeric, p_posticipa_al date, p_tipo_doc_fiscale_id bigint, p_valuta_id integer, p_area_geografica_id bigint, p_listino_versione_id bigint, p_prezzo_bloccato boolean, p_pricing_mode character varying, p_prezzo_da_riallineare boolean, p_stato_approvazione character varying, p_stato_emissione character varying, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_tipo_movimento character varying, p_meta jsonb, p_causale_onere_id bigint, p_natura_doc_id bigint, p_fattura_riga_rettificata_id bigint, p_listino_riga_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

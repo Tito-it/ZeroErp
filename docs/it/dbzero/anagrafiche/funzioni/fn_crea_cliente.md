@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_crea_cliente(p_soggetto_id uuid, p_utility_id integer, p_campi jsonb, p_billing_account jsonb, p_contatto jsonb, p_indirizzi jsonb, p_billing_account_id bigint, p_istanza_utility_id bigint, p_istanza jsonb, p_emittente_soggetto_ruolo_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

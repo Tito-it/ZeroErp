@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_crea_distinta_correzione(p_contabile_id bigint, p_data_contabile date, p_motivo text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

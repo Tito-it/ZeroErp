@@ -9,6 +9,8 @@
 CREATE FUNCTION fn_pgtap_piva_libera()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>
@@ -76,6 +78,8 @@ IS 'Restituisce una partita IVA VALIDA (checksum verificato da script.fn_valida_
 ```sql
 CREATE FUNCTION fn_pgtap_piva_libera(p_skip integer)
 ```
+
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
 
 **Definizione completa:**
 

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_personalizza_template_standard(p_template_standard_id bigint, p_emittente_fiscale_id bigint, p_codice character varying, p_codice_interno character varying, p_descrizione text, p_is_default boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

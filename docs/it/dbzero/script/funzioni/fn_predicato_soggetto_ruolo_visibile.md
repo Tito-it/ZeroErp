@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_predicato_soggetto_ruolo_visibile(p_tipo_ruolo_id integer, p_alias_soggetto_ruolo text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

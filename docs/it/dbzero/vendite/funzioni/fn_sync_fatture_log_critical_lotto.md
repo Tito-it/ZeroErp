@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_sync_fatture_log_critical_lotto(p_fattura_ids bigint[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

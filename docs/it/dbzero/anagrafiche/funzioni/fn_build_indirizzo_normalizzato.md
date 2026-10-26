@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_build_indirizzo_normalizzato(p_stradario_id integer, p_civico integer, p_estensione character varying, p_palazzina character varying, p_scala character varying, p_piano character varying, p_interno character varying, OUT o_estensione_civico character varying, OUT o_palazzina character varying, OUT o_scala character varying, OUT o_piano character varying, OUT o_interno character varying, OUT o_via_norm text, OUT o_civico_norm text, OUT o_indirizzo_normalizzato text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

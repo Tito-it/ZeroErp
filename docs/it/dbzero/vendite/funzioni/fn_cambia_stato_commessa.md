@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_cambia_stato_commessa(p_commessa_id bigint, p_nuovo_stato character varying, p_user text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

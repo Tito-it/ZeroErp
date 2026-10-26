@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_classe_emittibilita_per_giro(p_classe text, p_trattenuta_da_lotti bigint[], p_lotto_corrente bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

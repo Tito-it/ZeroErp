@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_apply_cleanup_at(p_schema text, p_table text, p_cleanup_column text, p_base_ts_column text, p_ttl_days integer, p_apply_on_update boolean, p_dry_run boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>
