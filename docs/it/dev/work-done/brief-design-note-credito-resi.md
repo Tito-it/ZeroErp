@@ -24,7 +24,11 @@
 > [brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md)
 > (il chip che scrive «Fattura» sopra una nota di credito) e la domanda del
 > **§45.9.6** — le azioni **per riga** non hanno un censimento dei gate, mentre
-> le otto capability **di documento** ce l'hanno (`linee-guida-sql §12.4`).
+> le otto capability **di documento** ce l'hanno (`linee-guida-sql §12.4`). La
+> domanda vive in [linee-guida-sql §12.5.6](../../linee-guida-sql.md) e il lavoro
+> è passato a
+> [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md)
+> §11, D-N1 (Tid, 2026-10-26): non si segue da qui.
 >
 > **Stato slice per slice nel §27.**
 >
@@ -6184,7 +6188,8 @@ doveva presidiare.
 > la superficie dove il pulsante vive davvero — prendono una vista.
 > ✅ **BE e FE chiusi il 2026-08-26** (§45.9): `list_righe` legge la vista, le
 > tre chiavi ci sono, il pulsante è spento col motivo su **entrambi** i punti.
-> Resta la verifica in-app.
+> ✅ **Verifica in-app chiusa il 2026-08-26** (collaudo di Tid, 39 spunte su 39:
+> [verbale](collaudo-in-app-nota-credito-resi.md)).
 
 ### 45.1 Il caso, misurato
 

@@ -5368,6 +5368,7 @@
     "iscrizione_rea": "N. iscrizione REA",
     "capitale_sociale": "Capitale sociale",
     "socio_unico": "Socio unico",
+    "proposto_default": "Proposto dall'azienda",
     "su_unico": "Socio unico",
     "su_piu_soci": "Più soci",
     "liquidazione": "Stato liquidazione",
@@ -5879,7 +5880,9 @@
       "level_emittente": "Emittente",
       "level_group": "Gruppo",
       "level_categoria_cliente": "Categoria cliente",
-      "level_user": "Utente"
+      "level_user": "Utente",
+      "per_tutti": "Uguale per tutti",
+      "per_tutti_hint": "Questo parametro vale per tutti e non si personalizza: si cambia il valore di default."
     },
     "documenti": {
       "tab_modelli": "Modelli documenti",

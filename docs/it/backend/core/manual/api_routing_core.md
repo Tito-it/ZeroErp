@@ -81,7 +81,7 @@ Path relativi a `/api/v1/core/`. «—» = nessuna doc dedicata in questa cartel
 | `email/allegati/<int:allegato_id>/download/` | `EmailAllegatoDownloadView` | [api_email.md](api_email.md) |
 | `email/log/` | `EmailLogOperatoreListView` | [api_email.md](api_email.md) |
 | `email/log/stati/` | `EmailLogStatiLookupView` | [api_email.md](api_email.md) |
-| `parameters/defaults/` | `ParameterDefaultsView` | [api_parameters.md](api_parameters.md) |
+| `parameters/defaults/` | `ParameterDefaultsView` | [api_parameter_settings.md](api_parameter_settings.md) |
 | `parameters/settings/` | `ParameterSettingsView` | [api_parameter_settings.md](api_parameter_settings.md) |
 | `parameters/settings/override/` | `ParameterOverrideView` | [api_parameter_settings.md](api_parameter_settings.md) |
 | `parameters/settings/override/<int:override_id>/` | `ParameterOverrideDeleteView` | [api_parameter_settings.md](api_parameter_settings.md) |

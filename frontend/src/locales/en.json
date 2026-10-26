@@ -5368,6 +5368,7 @@
     "iscrizione_rea": "REA registration no.",
     "capitale_sociale": "Share capital",
     "socio_unico": "Sole shareholder",
+    "proposto_default": "Company default",
     "su_unico": "Sole shareholder",
     "su_piu_soci": "Multiple shareholders",
     "liquidazione": "Liquidation status",
@@ -5879,7 +5880,9 @@
       "level_emittente": "Issuer",
       "level_group": "Group",
       "level_categoria_cliente": "Customer category",
-      "level_user": "User"
+      "level_user": "User",
+      "per_tutti": "Same for everyone",
+      "per_tutti_hint": "This parameter applies to everyone and cannot be customised: change its default value instead."
     },
     "documenti": {
       "tab_modelli": "Document templates",
