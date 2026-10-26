@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_pgtap_azienda_di_chi_agisce(p_chiamante text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

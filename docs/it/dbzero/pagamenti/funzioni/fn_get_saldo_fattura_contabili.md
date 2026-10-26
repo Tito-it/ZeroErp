@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_saldo_fattura_contabili(p_fattura_id bigint, p_escludi_contabile_riga_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

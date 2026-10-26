@@ -5,6 +5,8 @@
 >
 > Dettaglio fornitore con soggetto, stato, valuta, modalita' e termine pagamento. Include id_fiscale_univoco_cf_piva per lista configurabile DEF-8. stato_codice_interno = codice_interno (logica), stato_codice = codice (display).
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

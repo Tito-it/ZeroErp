@@ -1,6 +1,8 @@
 {% include-markdown "it/dbzero/catalogo/manual/vw_articoli_uom_operativa_dettaglio.md" %}
 # 🔍 View `vw_articoli_uom_operativa_dettaglio`
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

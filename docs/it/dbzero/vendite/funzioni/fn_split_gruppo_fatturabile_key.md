@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_split_gruppo_fatturabile_key(p_gruppo_key text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

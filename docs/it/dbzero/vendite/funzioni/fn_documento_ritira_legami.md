@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_documento_ritira_legami(p_documento character varying, p_id bigint, p_legami_confermati integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

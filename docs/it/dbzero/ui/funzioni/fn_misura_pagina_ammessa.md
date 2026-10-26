@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_misura_pagina_ammessa(p_misura integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

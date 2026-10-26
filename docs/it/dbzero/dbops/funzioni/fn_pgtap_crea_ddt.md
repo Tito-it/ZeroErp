@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_pgtap_crea_ddt(p_billing_account_id bigint, p_destinatario_sr_id bigint, p_causale_codice character varying, p_magazzino_id bigint, p_magazzino_arrivo_id bigint, p_data date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

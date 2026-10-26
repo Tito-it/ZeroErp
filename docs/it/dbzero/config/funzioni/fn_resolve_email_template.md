@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_resolve_email_template(p_codice character varying, p_unita_organizzativa_id integer, p_tipo_prestazione_id integer, p_lingua character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

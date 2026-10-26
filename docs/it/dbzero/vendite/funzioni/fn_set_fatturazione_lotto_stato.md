@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_set_fatturazione_lotto_stato(p_lotto_id bigint, p_stato_lotto text, p_note text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

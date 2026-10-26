@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_vendite_contabili_righe_marca_fondo_eseguito()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

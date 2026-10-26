@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_calcola_tempo_netto_da_a(p_pratica_id bigint, p_flusso_da_id bigint, p_flusso_a_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

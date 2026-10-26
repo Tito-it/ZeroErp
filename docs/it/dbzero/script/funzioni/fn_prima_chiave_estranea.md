@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_prima_chiave_estranea(p_dati jsonb, p_ammesse text[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

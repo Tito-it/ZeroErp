@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_libera_blocco(p_blocco_id bigint, p_nota text)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

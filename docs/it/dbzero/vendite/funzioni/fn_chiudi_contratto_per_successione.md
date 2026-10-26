@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_chiudi_contratto_per_successione(p_contratto_esistente_id bigint, p_nuovo_valido_dal date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

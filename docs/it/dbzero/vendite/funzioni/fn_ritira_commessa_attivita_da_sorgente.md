@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_ritira_commessa_attivita_da_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_motivo text, p_commessa_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

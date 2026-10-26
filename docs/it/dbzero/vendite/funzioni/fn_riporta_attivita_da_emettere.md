@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_riporta_attivita_da_emettere(p_attivita_fatturabili_ids bigint[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

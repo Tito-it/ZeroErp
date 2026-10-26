@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_set_gucs_conn(p_user_id integer, p_session_key text, p_group_ids integer[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

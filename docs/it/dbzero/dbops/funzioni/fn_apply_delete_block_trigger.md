@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_apply_delete_block_trigger(p_schema text, p_table text, p_guc_key text, p_trigger_name text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

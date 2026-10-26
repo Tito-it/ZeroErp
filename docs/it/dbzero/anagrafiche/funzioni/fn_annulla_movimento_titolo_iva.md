@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_annulla_movimento_titolo_iva(p_movimento_id bigint, p_motivo character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

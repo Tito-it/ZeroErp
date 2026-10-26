@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_cleanup_token_scaduti(p_giorni_retention integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

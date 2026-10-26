@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_crea_emittente_fiscale(p_soggetto_id uuid, p_codice character varying, p_campi jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_set_runtime_task_run_esito(p_task_run_id bigint, p_task_stato text, p_error_code text, p_error_message text, p_meta jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

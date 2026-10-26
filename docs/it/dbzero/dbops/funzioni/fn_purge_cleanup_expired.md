@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_purge_cleanup_expired(p_schema text, p_table text, p_cleanup_column text, p_batch_limit integer, p_dry_run boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_ddt_riga_richiede_prezzo(p_riga_ddt_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

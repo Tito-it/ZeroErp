@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_magazzino_dell_emittente(p_magazzino_id bigint, p_emittente_fiscale_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

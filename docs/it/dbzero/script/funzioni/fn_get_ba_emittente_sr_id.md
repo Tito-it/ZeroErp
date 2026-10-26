@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_ba_emittente_sr_id(p_billing_account_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

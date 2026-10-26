@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_doc_colonna_modificabile(p_tabella regclass, p_colonna name, p_stato text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

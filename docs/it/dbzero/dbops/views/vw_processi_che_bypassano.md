@@ -5,6 +5,8 @@
 >
 > Ruoli APPLICATIVI (login, non superuser) con BYPASSRLS. ⚠️ NON dice «nessuno bypassa la RLS»: pgAgent bypassa per superuser e il proprietario delle tabelle per proprieta', e devono, perche' fanno DDL. Regola presidiata: ZERO righe con stato = NON_DICHIARATO. Le righe DEBITO_DICHIARATO sono la porta registrata come porta, con la fase in cui si chiude (6-bis): a regime la vista deve restare del tutto vuota. Brief: brief-db-processi-automatici-identita-e-perimetro §8.
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

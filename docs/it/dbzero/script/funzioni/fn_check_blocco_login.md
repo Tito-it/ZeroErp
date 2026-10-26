@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_blocco_login(p_auth_user_id integer, p_nome_digest bytea, p_provenienza inet)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

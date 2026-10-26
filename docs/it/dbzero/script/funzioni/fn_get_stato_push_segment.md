@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_stato_push_segment(p_segment_key character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

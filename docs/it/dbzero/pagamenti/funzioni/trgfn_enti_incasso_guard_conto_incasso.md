@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_enti_incasso_guard_conto_incasso()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

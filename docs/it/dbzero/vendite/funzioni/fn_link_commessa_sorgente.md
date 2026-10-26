@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_sorgente_riga bigint, p_meta jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

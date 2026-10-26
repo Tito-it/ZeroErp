@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_schema_match(p_rule_target text, p_schema text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

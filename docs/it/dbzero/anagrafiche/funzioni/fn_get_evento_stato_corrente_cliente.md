@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_evento_stato_corrente_cliente(p_cliente_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

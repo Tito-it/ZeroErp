@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_fix_lock_codice_interno_triggers(p_target_schema text, p_dry_run boolean, p_drop_old boolean, p_align_with_first_arg boolean, p_force_update_column text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

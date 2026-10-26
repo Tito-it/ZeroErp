@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_risorse_umane_sync_auth_user_active()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

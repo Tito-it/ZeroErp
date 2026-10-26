@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_guard_clienti_chiave_unica_di(p_billing_account_id bigint, p_istanza_utility_id bigint)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

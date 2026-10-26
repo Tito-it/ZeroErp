@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_schema_in_scope(p_rule_target text, p_schemas text[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_scrivi_riga_da_jsonb(p_tabella regclass, p_dati jsonb, p_dove jsonb, p_rileggi_per text[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

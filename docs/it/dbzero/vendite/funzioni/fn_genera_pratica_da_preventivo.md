@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_genera_pratica_da_preventivo(p_preventivo_id bigint, p_tipo_prestazione_id integer, p_priorita_id integer, p_descrizione text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

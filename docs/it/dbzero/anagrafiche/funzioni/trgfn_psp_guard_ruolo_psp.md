@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_psp_guard_ruolo_psp()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_pgtap_fattura_attivita(p_etichetta text, p_attivita_ids bigint[], p_lotto_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

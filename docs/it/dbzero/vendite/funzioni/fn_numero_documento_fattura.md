@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_numero_documento_fattura(p_numero bigint, p_serie character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

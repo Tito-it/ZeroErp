@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_pgtap_crea_pdp(p_utility_codice character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

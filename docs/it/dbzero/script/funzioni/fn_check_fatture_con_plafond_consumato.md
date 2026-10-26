@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_fatture_con_plafond_consumato(p_fatture_ids bigint[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

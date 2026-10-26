@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_documenti_generati_guard_versione_contesto()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

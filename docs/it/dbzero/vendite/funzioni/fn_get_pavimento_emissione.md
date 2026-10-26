@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_pavimento_emissione(p_registro_id bigint, p_competenza_mese date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_segna_esito_gruppo_lotto(p_lotto_id bigint, p_stato text, p_gruppo_key text, p_commessa_id bigint, p_errore_codice text, p_errore_messaggio text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

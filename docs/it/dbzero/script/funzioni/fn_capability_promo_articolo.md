@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_capability_promo_articolo(p_promo_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

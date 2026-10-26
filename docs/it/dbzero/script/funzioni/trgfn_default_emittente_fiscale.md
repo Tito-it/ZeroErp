@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_default_emittente_fiscale()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

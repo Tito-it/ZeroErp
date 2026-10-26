@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_contratti_set_categoria_cliente_snapshot()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

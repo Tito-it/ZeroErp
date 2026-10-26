@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_ricalcola_prezzo_padre_da_componenti(p_schema text, p_tab_padre text, p_tab_figli text, p_col_fk_padre text, p_riga_padre_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

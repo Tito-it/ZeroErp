@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_aggiungi_onere_commessa(p_commessa_id bigint, p_istanza_utility_id bigint, p_articolo_onere_id uuid, p_importo numeric, p_tipo_doc_fiscale_id bigint, p_motivo text, p_data_attivita date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

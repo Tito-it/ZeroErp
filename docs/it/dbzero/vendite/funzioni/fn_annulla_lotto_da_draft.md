@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_annulla_lotto_da_draft(p_lotto_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

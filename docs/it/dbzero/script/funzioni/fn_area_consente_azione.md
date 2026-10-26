@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_area_consente_azione(p_livello_area config.livello_accesso, p_livello_minimo config.livello_accesso)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

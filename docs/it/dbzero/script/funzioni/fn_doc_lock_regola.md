@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_doc_lock_regola(p_building_block text, p_argomenti text[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

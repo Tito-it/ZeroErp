@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

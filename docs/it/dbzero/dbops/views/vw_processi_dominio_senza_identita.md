@@ -5,6 +5,8 @@
 >
 > Processi DOMINIO che non possono dire CHI agisce, guardato nei TRE versi: processo senza utente tecnico, utente tecnico senza identita' OPERATORE col flag, identita' col flag che nessun processo rivendica. DEVE restare VUOTA. ⭐ Rev 2026-09-05 (R-E, strada B): il filtro sul canale include CODA_AUTOMATICA — un lavoro di coda messo in coda da una MACCHINA non ha un'identita' prestata da nessuno, quindi ne vuole una propria. ⚠️ I processi CODA «umani» restano esclusi, ed e' voluto: li' l'identita' la porta l'operatore che accoda, e dargliene una tecnica cancellerebbe il suo nome. Brief: brief-db-processi-automatici-residui-be, sezione 1-quater.
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

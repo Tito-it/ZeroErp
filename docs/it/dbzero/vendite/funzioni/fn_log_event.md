@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_log_event(p_entity_type text, p_entity_id bigint, p_event_code text, p_severity text, p_correlation_id uuid, p_payload jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

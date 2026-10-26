@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_doc_porta_ritiro_ammette(p_documento character varying, p_testata_id bigint, p_tabella regclass, p_cambiate text[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

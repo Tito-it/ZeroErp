@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric, p_articolo_id uuid, p_listino_versione_id bigint, p_listino_riga_id bigint, p_sorgente_codice character varying, p_sorgente_uid text, p_sorgente_riga_id bigint, p_quantita numeric, p_stato_approvazione character varying, p_stato_emissione character varying, p_competenza_dal date, p_competenza_al date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

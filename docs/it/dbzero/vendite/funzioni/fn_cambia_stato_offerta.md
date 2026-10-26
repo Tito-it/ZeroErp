@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_cambia_stato_offerta(p_offerta_id bigint, p_stato character varying, p_motivazione text)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

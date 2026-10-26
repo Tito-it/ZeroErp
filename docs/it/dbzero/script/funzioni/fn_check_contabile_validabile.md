@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_contabile_validabile(p_contabile_id bigint, p_importo_dichiarato numeric)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

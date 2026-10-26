@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_esigibilita_iva_documento(p_emittente_fiscale_id bigint, p_billing_account_id bigint, p_iva_id integer, p_regime_fiscale_rf character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

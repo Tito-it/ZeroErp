@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_crea_auth_user(p_username text, p_email text, p_password_hash text, p_first_name text, p_last_name text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

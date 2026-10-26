@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_imponibile_riga(p_quantita numeric, p_prezzo_unitario numeric, p_sconto_percentuale numeric)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

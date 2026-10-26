@@ -4,6 +4,8 @@
 CREATE FUNCTION trgfn_email_allegato_guard_solo_bozza()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

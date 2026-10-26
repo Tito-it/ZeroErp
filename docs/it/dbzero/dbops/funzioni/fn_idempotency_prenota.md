@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_idempotency_prenota(p_idempotency_key text, p_auth_user_id integer, p_endpoint text, p_request_id uuid, p_ripresa_ammessa boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

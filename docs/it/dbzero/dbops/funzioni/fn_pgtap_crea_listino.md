@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_pgtap_crea_listino(p_utility_id integer, p_etichetta text, p_valido_dal date, p_valido_al date)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

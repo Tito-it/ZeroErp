@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_user_emittenti_scope(p_auth_user_id integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

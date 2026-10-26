@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_crea_magazzino(p_codice character varying, p_descrizione character varying, p_indirizzo_dettaglio_id bigint, p_campi jsonb, p_emittente_fiscale_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

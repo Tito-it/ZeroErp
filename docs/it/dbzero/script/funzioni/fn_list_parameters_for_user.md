@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_list_parameters_for_user(p_django_user_id integer, p_group_ids integer[], p_emittente_fiscale_id bigint, p_categoria_cliente_id smallint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

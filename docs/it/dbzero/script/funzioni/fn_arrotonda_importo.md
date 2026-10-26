@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_arrotonda_importo(p_valore numeric, p_decimali integer, p_metodo text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

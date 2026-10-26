@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_crea_fornitore(p_soggetto_id uuid, p_campi jsonb, p_contatto jsonb, p_indirizzi jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>
