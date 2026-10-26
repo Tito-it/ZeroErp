@@ -50,6 +50,7 @@
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 | 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1, il blocco «origine» della stampa della fattura, da decidere nel giro della fattura; D-G2, la prova a video del lotto 2b | §10 | — |
+| 5-ter | **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, il censimento dei gate delle azioni per riga; quando, lo decide Tid | §11 | — |
 
 Decisioni aperte di Tid: nessuna in questo brief (W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md), E-1 … E-3); il difetto X → X va al team DB (§9.8). Da sapere (§8.10, §9.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine. Lavoro da committare (`dev/backend-tid`): il giro BE del §9.7, §9.8 e §9.9.
 Committati: il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
@@ -1805,3 +1806,15 @@ Il brief della grammatica unica si è chiuso il 2026-10-25 (lotto 4, il presidio
   trasformabile», col link) e di una commessa con righe da reso e da consumi; il pannello di smistamento di un
   preventivo misto (tag Ordine/Commessa, «Smista tutto» / «Smista selezionate», il routing verso ordine e
   commessa).
+
+## 11. Ereditato da brief-design-note-credito-resi (2026-10-26)
+
+Su indicazione di Tid (2026-10-26) il tema passa a questo brief, che tratta le azioni dei documenti sul modello.
+
+* **D-N1 — il censimento dei gate delle azioni PER RIGA** (dal suo §45.9.6, archiviato in
+  [work-done](../work-done/brief-design-note-credito-resi.md); la regola e il debito stanno in
+  [linee-guida-sql §12.5](../../linee-guida-sql.md), §12.5.6 «Il censimento che non esiste»). Le capability di
+  documento hanno il loro censimento (§12.4), le azioni di riga no: «Annulla l'accredito» era acceso su un
+  accredito già emesso, ed è uscito solo in collaudo. Il lavoro: azione per azione, la sua sede
+  (`script.fn_check_<azione>` + colonna di blocco nella vista di riga) e il FE che la legge (`disabled` +
+  `tooltip`). Da fare prima che lo trovi il prossimo collaudo. DB + FE; quando, lo decide Tid.

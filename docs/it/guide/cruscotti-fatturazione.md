@@ -635,13 +635,22 @@ separato dalla fattura, con il legame riga↔riga verso ciò che corregge.
 | Verbo                   | Dove                                   | Cosa fa                                                                                                                                         |
 | ----------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Accredita**           | riga della coda · drawer del reso      | registra l'accredito dovuto: la riga esce dalla coda, la rettifica entra in commessa                                                            |
-| **Annulla l'accredito** | drawer del reso (riga già accreditata) | il caso «ho cliccato la riga sbagliata»: toglie la rettifica, l'accredito torna dovuto. Richiede un **motivo**, ed è l'unica traccia del perché |
+| **Annulla l'accredito** | drawer del reso (riga già accreditata) · riga della coda (accredito parziale) | il caso «ho cliccato la riga sbagliata»: toglie la rettifica, l'accredito torna dovuto. Richiede un **motivo**, ed è l'unica traccia del perché |
 
 ⚠️ **«Annulla l'accredito» e «annulla il documento» non sono la stessa cosa**, e
 confonderle manda sulla strada sbagliata: il primo agisce **a monte** del
 documento; per disfare una nota di credito già emessa si riporta il lotto in
 bozza — e la nota **viene rigenerata** al giro successivo, perché la merce resa
 non è cambiata.
+
+⛔ **L'accredito si annulla solo finché nessuna delle sue rettifiche è entrata in
+fatturazione**: presa da un lotto, agganciata a una riga di fattura o emessa.
+Basta una rettifica per bloccarlo tutto, perché un annullo a metà lascerebbe in
+coda un residuo che nessuno può più soddisfare. Da quel momento — ed è lo stato
+finale di ogni accredito — il pulsante è **spento** e dice perché («L'accredito è
+già stato emesso in fattura…»). Se la nota di credito non è ancora numerata, la
+strada è riportare il lotto in bozza: le rettifiche escono dalla fatturazione e
+l'accredito torna annullabile.
 
 ⛔ **Finché il reso ha un accredito registrato, il reso non si annulla**: il
 pulsante resta acceso ma spiega il perché. Prima si annulla l'accredito.
