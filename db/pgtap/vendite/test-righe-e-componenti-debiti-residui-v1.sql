@@ -54,6 +54,7 @@
 --    che gira: un trigger su una tabella del dominio lo potrebbe montare
 --    solo l'owner. La tabella temporanea punta a righe vere, e i lettori
 --    DEFINER del building block le risolvono come sulle tabelle del dominio.
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'emissione dell'offerta (test 23-24) da dbops.fn_pgtap_porta_a_stato (il verbo), non con un UPDATE diretto: la porta dell'offerta lo rifiuta. Le attese non cambiano.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i due ordini in bozza con la riga semplice da dbops.fn_pgtap_crea_ordine_con_righe ('DRAFT', p_righe con l'aliquota del test); restano a mano le transizioni (il test 1 prova porta_a_stato), la riga del test 7, preventivo e offerta coi componenti del kit.
 -- ------------------------------------------------------------
 
@@ -489,10 +490,8 @@ SELECT is(
 );
 
 -- L'offerta: emessa (la transizione non e' in esame, come nei test della
--- revisione dell'offerta), poi revisionata.
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'EMESSA')
- WHERE id = pg_temp.doc('OFFERTA');
+-- revisione dell'offerta: dal verbo, con la fixture), poi revisionata.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', pg_temp.doc('OFFERTA'), 'EMESSA');
 
 CREATE TEMP TABLE _rev_off AS
 SELECT vendite.fn_crea_revisione_offerta(pg_temp.doc('OFFERTA'), 'pgtap') AS offerta_id;

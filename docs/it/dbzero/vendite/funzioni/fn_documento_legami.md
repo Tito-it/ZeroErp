@@ -24,7 +24,8 @@ AS $function$
 --   del changeSet per la tabella dei legami.
 -- Parametri: p_documento e' il codice della sorgente del
 --   documento (DDT_VENDITA, ORDINE_VENDITA, PREVENTIVO, CONTRATTO,
---   COMMESSA), p_id la testata: polimorfa, tipo nudo.
+--   COMMESSA, OFFERTA_COMMERCIALE), p_id la testata: polimorfa,
+--   tipo nudo.
 -- Ritorna: origine e' il codice della sorgente dall'altra parte
 --   del legame (config.sorgenti.codice_interno), tranne ONERE:
 --   una riga di commessa senza sorgente per progetto, che non ha
@@ -40,6 +41,11 @@ AS $function$
 --   OFFERTA_COMMERCIALE, DDT -> DDT_VENDITA, CONSUMI ->
 --   ATTIVITA_CONSUMI), ancorato in RETURNS TABLE; nel ramo della
 --   commessa la traduzione dal codice della sorgente non c'e' piu'.
+-- rev 2026-10-26 (20261026-20, brief-modello-documento-vendita
+--   §13, O-4 di Tid): + OFFERTA_COMMERCIALE. Il legame e' la
+--   revisione precedente, superata, che torna emessa quando si
+--   annulla la sua ultima revisione viva (Regola 6: un annullo che
+--   riapre altro si conferma). PROVENIENZA: niente da ritirare.
 -- =========================================================
 DECLARE
     -- La sorgente di commessa del documento e la sua chiave
@@ -49,13 +55,13 @@ DECLARE
 BEGIN
     IF p_id IS NULL OR p_id <= 0
        OR p_documento IS NULL
-       OR p_documento NOT IN ('DDT_VENDITA', 'ORDINE_VENDITA', 'PREVENTIVO', 'CONTRATTO', 'COMMESSA') THEN
+       OR p_documento NOT IN ('DDT_VENDITA', 'ORDINE_VENDITA', 'PREVENTIVO', 'CONTRATTO', 'COMMESSA', 'OFFERTA_COMMERCIALE') THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'vendite.fn_documento_legami',
             'E_VENDITE_CHIAMATA_NON_VALIDA',
             jsonb_build_object('p_documento', p_documento, 'p_id', p_id),
             NULL::uuid, 'vendite.fn_documento_legami',
-            'documento (DDT_VENDITA, ORDINE_VENDITA, PREVENTIVO, CONTRATTO, COMMESSA) e id maggiore di zero');
+            'documento (DDT_VENDITA, ORDINE_VENDITA, PREVENTIVO, CONTRATTO, COMMESSA, OFFERTA_COMMERCIALE) e id maggiore di zero');
     END IF;
 
     IF p_documento = 'DDT_VENDITA' THEN
@@ -163,6 +169,36 @@ BEGIN
              ORDER BY ca.id;
         RETURN;
 
+    ELSIF p_documento = 'OFFERTA_COMMERCIALE' THEN
+        -- ⭐ rev 2026-10-26 (20261026-20, O-4 di Tid): la revisione
+        --   precedente (il padre, superato) torna emessa se questa e'
+        --   la sua ultima revisione viva: lo scrive la proiezione
+        --   vendite.fn_offerta_proietta_stato_revisione, all'annullo.
+        --   PROVENIENZA: niente da ritirare, si conferma. Nessun legame
+        --   se la revisione e' gia' annullata, se il padre non e'
+        --   superato o se un'altra revisione viva lo tiene superato:
+        --   l'annullo non riaprirebbe niente.
+        v_sorgente := 'OFFERTA_COMMERCIALE';
+        SELECT o.uid::text INTO v_uid FROM vendite.offerte_commerciali o WHERE o.id = p_id;
+
+        RETURN QUERY
+            SELECT NULL::bigint, NULL::integer, 'OFFERTA_COMMERCIALE'::character varying, 'PROVENIENZA'::text,
+                   o.revisione_padre_id, NULL::bigint, NULL::numeric
+              FROM vendite.offerte_commerciali o
+              JOIN config.stati_doc_offerte so ON so.id = o.stato_doc_offerta_id
+              JOIN vendite.offerte_commerciali pd ON pd.id = o.revisione_padre_id
+              JOIN config.stati_doc_offerte sp ON sp.id = pd.stato_doc_offerta_id
+             WHERE o.id = p_id
+               AND so.is_abortito IS FALSE
+               AND sp.is_superato IS TRUE
+               AND NOT EXISTS (
+                     SELECT 1
+                       FROM vendite.offerte_commerciali f
+                       JOIN config.stati_doc_offerte sf ON sf.id = f.stato_doc_offerta_id
+                      WHERE f.revisione_padre_id = o.revisione_padre_id
+                        AND f.id <> o.id
+                        AND sf.is_abortito IS FALSE);
+
     ELSE  -- CONTRATTO
         v_sorgente := 'CONTRATTO';
         SELECT c.uid::text INTO v_uid FROM vendite.contratti c WHERE c.id = p_id;
@@ -192,7 +228,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_documento_legami(p_documento character varying, p_id bigint)
-IS 'I legami di un documento, una riga per legame (2026-10-11, brief-db-annullo-documento-con-legami D-4): che cosa si riapre se lo annullo, e dove. p_documento: DDT, ORDINE, PREVENTIVO, CONTRATTO, COMMESSA (codici dei lettori di testata). origine/natura: ORDINE e RESO (consumi della bolla: fulfillment e ponte di ri-consegna), PREVENTIVO (consumo dell''ordine: ordini_righe.preventivo_riga_id), OFFERTA (PROVENIENZA di ordine e contratto: resta sul documento annullato, l''offerta torna trasformabile perche'' l''unicita'' vale sui vivi), COMMESSA (righe di commessa NON_EMESSA spinte dal documento). Le righe EMESSA non sono legami: bloccano (script.fn_check_sorgente_chiudibile). riga_id/riga_nr: la riga del documento, NULL per testata e commessa; origine_id: la testata (o la commessa) dall''altra parte; origine_riga_id: la sua riga. Niente etichette: il nome lo da'' il lineage. Lettore unico di: guard vendite.trgfn_doc_guard_annullo_con_legami (avviso), BB vendite.fn_documento_ritira_legami (conferma e ritiro), finestra di conferma del backend. Generalizza e sostituisce vendite.fn_ddt_legami. Documento sconosciuto: E_VENDITE_CHIAMATA_NON_VALIDA. SECURITY DEFINER con search_path bloccato: avviso (guard, come l''app), conferma (verbo DEFINER) e finestra (backend) contano la stessa cosa anche dove la RLS dei legami ne nasconderebbe una parte. EXECUTE solo all''app. ⭐ rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte, D-1/D-2/D-7 di Tid): + COMMESSA, a valle di tutto cio'' che la riempie. Un legame per riga NON_EMESSA della commessa (riga_id = la riga di commessa): con sorgente, il documento che l''ha spinta (PREVENTIVO, ORDINE, CONTRATTO, DDT) o il consumo (CONSUMI), natura CONSUMO, torna da mandare; RETTIFICA (sourceless), il RESO del suo accredito (origine_riga_id = la riga di reso), natura CONSUMO, il reso torna da accreditare; ONERE (sourceless), natura ANNULLO: niente a monte, la riga si annulla con la commessa. origine_id dal resolver unico della sorgente polimorfa (vendite.fn_get_sorgente_documento_ref). Le righe EMESSA non sono legami: bloccano (script.fn_check_commessa_annullabile). rev 2026-10-12 (20261012-28): via il ramo MANUALE. Una riga senza sorgente e'' ONERE o RETTIFICA per vincolo di tabella (chk_commesse_attivita_senza_sorgente_onere_rettifica, 20261012-27, decisione di Tid): prima lo garantiva solo la disciplina di chi scrive, e una NORMALE senza sorgente rendeva la commessa non annullabile. ⭐ rev 2026-10-19 (20261019-51, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato). La colonna origine resta nel vocabolario V7 fino al 2b. ⭐ rev 2026-10-19 (20261019-95, brief-db-grammatica-unica-documenti lotto 2b, G-1 e G-3 di Tid): origine e'' il codice della sorgente dall''altra parte del legame (ORDINE -> ORDINE_VENDITA, RESO -> RESO_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE; nel ramo della commessa DDT -> DDT_VENDITA, CONSUMI -> ATTIVITA_CONSUMI), ancorato a config.sorgenti.codice_interno%TYPE nel RETURNS TABLE: il tipo passa da text a character varying (DROP + CREATE). Resta fuori dalle sorgenti solo ONERE, la riga di commessa senza sorgente per progetto. Dove sopra si legge un codice corto di origine, oggi vale il codice della sorgente.';
+IS 'I legami di un documento, una riga per legame (2026-10-11, brief-db-annullo-documento-con-legami D-4): che cosa si riapre se lo annullo, e dove. p_documento: DDT, ORDINE, PREVENTIVO, CONTRATTO, COMMESSA (codici dei lettori di testata). origine/natura: ORDINE e RESO (consumi della bolla: fulfillment e ponte di ri-consegna), PREVENTIVO (consumo dell''ordine: ordini_righe.preventivo_riga_id), OFFERTA (PROVENIENZA di ordine e contratto: resta sul documento annullato, l''offerta torna trasformabile perche'' l''unicita'' vale sui vivi), COMMESSA (righe di commessa NON_EMESSA spinte dal documento). Le righe EMESSA non sono legami: bloccano (script.fn_check_sorgente_chiudibile). riga_id/riga_nr: la riga del documento, NULL per testata e commessa; origine_id: la testata (o la commessa) dall''altra parte; origine_riga_id: la sua riga. Niente etichette: il nome lo da'' il lineage. Lettore unico di: guard vendite.trgfn_doc_guard_annullo_con_legami (avviso), BB vendite.fn_documento_ritira_legami (conferma e ritiro), finestra di conferma del backend. Generalizza e sostituisce vendite.fn_ddt_legami. Documento sconosciuto: E_VENDITE_CHIAMATA_NON_VALIDA. SECURITY DEFINER con search_path bloccato: avviso (guard, come l''app), conferma (verbo DEFINER) e finestra (backend) contano la stessa cosa anche dove la RLS dei legami ne nasconderebbe una parte. EXECUTE solo all''app. ⭐ rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte, D-1/D-2/D-7 di Tid): + COMMESSA, a valle di tutto cio'' che la riempie. Un legame per riga NON_EMESSA della commessa (riga_id = la riga di commessa): con sorgente, il documento che l''ha spinta (PREVENTIVO, ORDINE, CONTRATTO, DDT) o il consumo (CONSUMI), natura CONSUMO, torna da mandare; RETTIFICA (sourceless), il RESO del suo accredito (origine_riga_id = la riga di reso), natura CONSUMO, il reso torna da accreditare; ONERE (sourceless), natura ANNULLO: niente a monte, la riga si annulla con la commessa. origine_id dal resolver unico della sorgente polimorfa (vendite.fn_get_sorgente_documento_ref). Le righe EMESSA non sono legami: bloccano (script.fn_check_commessa_annullabile). rev 2026-10-12 (20261012-28): via il ramo MANUALE. Una riga senza sorgente e'' ONERE o RETTIFICA per vincolo di tabella (chk_commesse_attivita_senza_sorgente_onere_rettifica, 20261012-27, decisione di Tid): prima lo garantiva solo la disciplina di chi scrive, e una NORMALE senza sorgente rendeva la commessa non annullabile. ⭐ rev 2026-10-19 (20261019-51, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato). La colonna origine resta nel vocabolario V7 fino al 2b. ⭐ rev 2026-10-19 (20261019-95, brief-db-grammatica-unica-documenti lotto 2b, G-1 e G-3 di Tid): origine e'' il codice della sorgente dall''altra parte del legame (ORDINE -> ORDINE_VENDITA, RESO -> RESO_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE; nel ramo della commessa DDT -> DDT_VENDITA, CONSUMI -> ATTIVITA_CONSUMI), ancorato a config.sorgenti.codice_interno%TYPE nel RETURNS TABLE: il tipo passa da text a character varying (DROP + CREATE). Resta fuori dalle sorgenti solo ONERE, la riga di commessa senza sorgente per progetto. Dove sopra si legge un codice corto di origine, oggi vale il codice della sorgente. ⭐ rev 2026-10-26 (20261026-20, brief-modello-documento-vendita §13, O-4 di Tid): + OFFERTA_COMMERCIALE. Il legame dell''offerta e'' la revisione precedente (origine OFFERTA_COMMERCIALE, natura PROVENIENZA, origine_id = il padre): superata, torna emessa quando si annulla la sua ultima revisione viva, e lo scrive la proiezione vendite.fn_offerta_proietta_stato_revisione. Nessun legame se la revisione e'' gia'' annullata, se il padre non e'' superato o se un''altra revisione viva lo tiene superato. Il rientro non e'' piu'' silenzioso: chi annulla conferma (Regola 6), col verbo vendite.fn_annulla_offerta.';
 ```
 
 </div>

@@ -1,0 +1,207 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I PASSAGGI DI PROCESSO DELLA REVISIONE: UNA PROIEZIONE
+#   Brief: brief-modello-documento-vendita §13 (giro 9; O-2 di Tid,
+#   2026-10-26). Gemella delle proiezioni del preventivo (20261025-45) e
+#   dell'ordine (20261025-79).
+#
+# ── CHE COSA FA ─────────────────────────────────────────────────────
+#   Lo stato di un'offerta che ha revisioni e' la conseguenza delle sue
+#   revisioni vive (non annullate), non una scelta di chi scrive:
+#   - una revisione viva e il padre non e' superato -> lo stato di
+#     superamento (is_superato);
+#   - nessuna revisione viva e il padre e' superato -> lo stato di
+#     emissione (emissione = true; prima il letterale 'EMESSA' del trigger del
+#     rientro);
+#   - altrimenti niente: lo stato e' gia' quello che le revisioni dicono.
+#   Scrive con la sola seconda meta' del verbo comune
+#   (script.fn_doc_scrivi_stato), attraverso la porta: i due passaggi sono di
+#   processo (manuale = false) e la prima riga del verbo li rifiuterebbe.
+#
+# ── UNA PRECISAZIONE SU O-2, DICHIARATA ─────────────────────────────
+#   La proposta diceva «il padre EMESSA con una revisione viva -> superato».
+#   Scritto, la condizione e' «non superato»: il superamento si chiede anche
+#   da un altro stato, e lo rifiuta la matrice (il guard di transizione,
+#   E_OFFERTA_TRANSIZIONE_NON_AMMESSA), come prima l'UPDATE del trigger. Con
+#   «solo da EMESSA» un INSERT di una revisione su un padre in bozza (fuori da
+#   vendite.fn_crea_revisione_offerta, che gia' lo rifiuta) sarebbe passato
+#   in silenzio, lasciando una revisione viva accanto a un padre vivo.
+#
+# ── CHI LA CHIAMA ───────────────────────────────────────────────────
+#   I due trigger _z90_ della testata, che prendono la causa su ogni strada
+#   (20261026-18, -19): la nascita di una revisione e l'annullo di una
+#   revisione. La regola «nessun rientro con una figlia viva» resta nel guard
+#   di transizione, che vale per chiunque scriva.
+#
+# ── PERCHE' SECURITY DEFINER ────────────────────────────────────────
+#   La porta vuole il proprietario. Le revisioni ereditano l'emittente del
+#   padre (fn_crea_revisione_offerta), quindi chi scrive la figlia vede il
+#   padre; da proprietaria la proiezione legge le figlie senza policy: lo
+#   stato e' la conseguenza delle revisioni, non di cio' che vede chi chiama.
+#   EXECUTE all'applicazione: i trigger girano come chi scrive.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261026-17-create-fn-offerta-proietta-stato-revisione-mctit.yaml
+
+  - changeSet:
+      id: 20261026-17-create-fn-offerta-proietta-stato-revisione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        NUOVO vendite.fn_offerta_proietta_stato_revisione(padre): il superamento e il rientro di
+        un'offerta dalle sue revisioni vive, con la scrittura comune (script.fn_doc_scrivi_stato),
+        SECURITY DEFINER. Brief: brief-modello-documento-vendita §13 (O-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_doc_scrivi_stato', 'fn_stato_emissione_id');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_offerta_proietta_stato_revisione(
+                  p_offerta_id vendite.offerte_commerciali.id%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- =========================================================
+              -- Scopo: portare un'offerta nello stato che le sue revisioni
+              --   vive dicono.
+              --   revisione viva, non superata      -> superamento;
+              --   nessuna revisione viva, superata  -> emissione;
+              --   ogni altro caso                   -> niente.
+              --   La transizione passa dalla matrice
+              --   (trgfn_offerte_commerciali_guard_transizione).
+              -- Consumatori: vendite.trgfn_offerte_commerciali_revisione
+              --   (nascita di una revisione), vendite.trgfn_offerte_
+              --   commerciali_rientro_padre (annullo di una revisione).
+              -- Brief: brief-modello-documento-vendita §13 (O-2).
+              -- =========================================================
+              DECLARE
+                  v_superato     config.stati_doc_offerte.is_superato%TYPE;
+                  v_target_id    config.stati_doc_offerte.id%TYPE;
+                  -- Esito di un predicato e un conteggio: nessuna colonna
+                  -- da ancorare.
+                  v_viva         boolean;
+                  v_n_stati      integer;
+              BEGIN
+                  IF p_offerta_id IS NULL OR p_offerta_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_offerta_proietta_stato_revisione',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_offerta_id', p_offerta_id),
+                          NULL::uuid, 'vendite.fn_offerta_proietta_stato_revisione',
+                          'p_offerta_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- Lo stato di oggi. Offerta assente: niente.
+                  SELECT s.is_superato
+                    INTO v_superato
+                    FROM vendite.offerte_commerciali o
+                    JOIN config.stati_doc_offerte s ON s.id = o.stato_doc_offerta_id
+                   WHERE o.id = p_offerta_id;
+
+                  IF NOT FOUND THEN
+                      RETURN;
+                  END IF;
+
+                  -- Una revisione viva: una figlia il cui stato non e'
+                  -- d'annullo (una revisione abortita non rimpiazza nessuno).
+                  v_viva := EXISTS (
+                      SELECT 1
+                        FROM vendite.offerte_commerciali f
+                        JOIN config.stati_doc_offerte sf ON sf.id = f.stato_doc_offerta_id
+                       WHERE f.revisione_padre_id = p_offerta_id
+                         AND sf.is_abortito IS FALSE);
+
+                  IF v_viva AND NOT COALESCE(v_superato, false) THEN
+                      -- ⛔ Guard sull'ARITA' (dal trigger della revisione,
+                      --   20260828-11): zero righe e due righe sono lo stesso
+                      --   difetto, il catalogo non dice quale.
+                      SELECT count(*), min(s.id)
+                        INTO v_n_stati, v_target_id
+                        FROM config.stati_doc_offerte s
+                       WHERE s.is_superato IS TRUE
+                         AND s.attivo      IS TRUE;
+
+                      IF v_n_stati <> 1 THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', 'vendite.fn_offerta_proietta_stato_revisione',
+                              'E_CONFIG_MANCANTE',
+                              jsonb_build_object('tabella', 'config.stati_doc_offerte',
+                                                 'colonna', 'is_superato',
+                                                 'attesi',  1,
+                                                 'trovati', v_n_stati),
+                              NULL::uuid,
+                              'config.stati_doc_offerte: atteso esattamente uno stato attivo '
+                              || 'con is_superato = true, trovati ' || v_n_stati::text);
+                      END IF;
+
+                  ELSIF NOT v_viva AND COALESCE(v_superato, false) THEN
+                      -- Lo stato da cui una revisione nasce: quello
+                      -- d'emissione, dal vocabolario (vendite.fn_crea_
+                      -- revisione_offerta revisiona solo un'offerta emessa).
+                      v_target_id := script.fn_stato_emissione_id('vendite.offerte_commerciali'::regclass);
+
+                      IF v_target_id IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', 'vendite.fn_offerta_proietta_stato_revisione',
+                              'E_CONFIG_MANCANTE',
+                              jsonb_build_object('tabella', 'config.stati_doc_offerte',
+                                                 'colonna', 'emissione',
+                                                 'attesi',  1,
+                                                 'trovati', 0),
+                              NULL::uuid,
+                              'config.stati_doc_offerte: nessuno stato con emissione = true '
+                              || 'per il rientro del padre');
+                      END IF;
+
+                  ELSE
+                      RETURN;
+                  END IF;
+
+                  -- Il target e' sempre diverso dallo stato di oggi (rami
+                  -- sopra). La matrice e il rientro senza figlie vive li
+                  -- giudica il guard di transizione, all'UPDATE.
+                  PERFORM script.fn_doc_scrivi_stato('vendite.offerte_commerciali'::regclass,
+                                                     p_offerta_id, v_target_id);
+              END;
+              $function$;
+
+              -- DEFINER: EXECUTE all'applicazione, perche' la chiamano i
+              -- trigger della testata, che girano come chi scrive.
+              REVOKE EXECUTE ON FUNCTION vendite.fn_offerta_proietta_stato_revisione(
+                  vendite.offerte_commerciali.id%TYPE) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_offerta_proietta_stato_revisione(
+                  vendite.offerte_commerciali.id%TYPE) TO zeroerp_app;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_offerta_proietta_stato_revisione(vendite.offerte_commerciali.id%TYPE)
+                IS 'BB dei passaggi di PROCESSO dell''offerta (manuale = false), brief-modello-documento-vendita §13 (O-2, Tid 2026-10-26): porta un''offerta nello stato che le sue revisioni vive (figlie non abortite) dicono. Una revisione viva e l''offerta non superata: lo stato di superamento (is_superato, guard sull''arita'': E_CONFIG_MANCANTE). Nessuna revisione viva e l''offerta superata: lo stato di emissione (script.fn_stato_emissione_id; prima il letterale ''EMESSA''). Altrimenti niente. Scrive con script.fn_doc_scrivi_stato attraverso la porta; la matrice e la regola «nessun rientro con una figlia viva» (E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA) le giudica il guard di transizione. La chiamano i trigger _z90_ della testata: vendite.trgfn_offerte_commerciali_revisione (nascita di una revisione) e vendite.trgfn_offerte_commerciali_rientro_padre (annullo di una revisione). SECURITY DEFINER (la porta vuole il proprietario; lo stato e'' la conseguenza delle revisioni, non di cio'' che vede chi chiama); EXECUTE all''applicazione, perche'' i trigger girano come chi scrive. Gemella di vendite.fn_preventivo_proietta_stato_smistamento e vendite.fn_ordine_proietta_stato_evasione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_offerta_proietta_stato_revisione(vendite.offerte_commerciali.id%TYPE);

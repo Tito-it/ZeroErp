@@ -27,6 +27,12 @@
 --   ⚠️ Ne discende che questo file NON esercita nessuna policy RLS: la
 --   copertura RLS del dominio offerte sta negli altri file della cartella.
 --
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato
+--   dell'offerta dal verbo — i due padri si emettono con
+--   dbops.fn_pgtap_porta_a_stato invece dell'UPDATE di stato, che la porta ora
+--   rifiuta. Il superamento del padre lo fa ora la proiezione
+--   (vendite.fn_offerta_proietta_stato_revisione), che porta lo stesso guard.
+--
 -- Indice test (1..4):
 --   1)  Setup fixture: un'offerta EMESSA revisionabile
 --   2)  Catalogo SANO: l'inserimento della revisione porta il padre a SUPERATA
@@ -95,9 +101,9 @@ WITH ins AS (
     RETURNING id)
 SELECT id FROM ins;
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_gc_ctx)
- WHERE id = (SELECT id FROM tmp_gc_padre);
+-- rev 2026-10-26 (giro 9): l'emissione dal verbo, non con un UPDATE di stato.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', p.id, 'EMESSA')
+  FROM tmp_gc_padre p;
 
 SELECT ok(
     (SELECT o.stato_doc_offerta_id = ctx.stato_emessa_id
@@ -143,9 +149,9 @@ WITH ins AS (
     RETURNING id)
 SELECT id FROM ins;
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_gc_ctx)
- WHERE id = (SELECT id FROM tmp_gc_padre2);
+-- rev 2026-10-26 (giro 9): l'emissione dal verbo, non con un UPDATE di stato.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', p.id, 'EMESSA')
+  FROM tmp_gc_padre2 p;
 
 -- ============================================================
 -- 3) ZERO stati di superamento. Prima: v_stato_superata_id restava NULL e

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta (pg_temp.stato_offerta, prima dell'1 e del 19) dal verbo con dbops.fn_pgtap_porta_a_stato, non con un UPDATE diretto: la porta dell'offerta lo rifiuta. Le attese non cambiano.
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto (prima del 24) passa
 --   da dbops.fn_pgtap_porta_a_stato (il verbo del contratto), non da un UPDATE dello stato: la porta lo
 --   ferma. Nessuna attesa cambiata.
@@ -197,13 +198,13 @@ RETURNS bigint LANGUAGE sql STABLE AS $fx$
   SELECT id FROM tmp_rg2_doc WHERE chiave = p_chiave;
 $fx$;
 
--- Scopo: porta un'offerta allo stato chiesto (UPDATE diretto: la transizione
---   non e' in esame, come nei test del push e della revisione).
+-- Scopo: porta un'offerta allo stato chiesto (la transizione non e' in esame,
+--   come nei test del push e della revisione): dal verbo, con la fixture
+--   dbops.fn_pgtap_porta_a_stato (rev 2026-10-26, giro 9: la porta rifiuta
+--   l'UPDATE diretto).
 CREATE OR REPLACE FUNCTION pg_temp.stato_offerta(p_id bigint, p_stato text)
 RETURNS void LANGUAGE sql AS $fx$
-  UPDATE vendite.offerte_commerciali
-     SET stato_doc_offerta_id = (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = p_stato)
-   WHERE id = p_id;
+  SELECT NULL::void FROM dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', p_id, p_stato);
 $fx$;
 
 -- Le due righe della rev1: X al limite della scala, P composito.

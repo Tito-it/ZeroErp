@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Catalogo stati documento per vendite.offerte_commerciali. Cinque stati: BOZZA (editabile), EMESSA (proposta al cliente), ACCETTATA (terminale positivo), RIFIUTATA (terminale negativo), SUPERATA (terminale tecnico, set dal trigger trgfn_offerte_commerciali_revisione). codice_interno e' immutabile (lock via script.trgfn_lock_columns). Le transizioni ammesse sono configurate in config.stati_doc_offerte_transizioni (creata in Step 4). Pattern identico a config.stati_doc_contratti; senza is_abortito perche' le offerte non usano temporal-UNIQUE ne' is_abortito_snapshot. rev 2026-05-24.
+> Vocabolario degli stati di vendite.offerte_commerciali: BOZZA (iniziale, modificabile), EMESSA (emissione: proposta al cliente), ACCETTATA, RIFIUTATA (terminale), SUPERATA (terminale, is_superato: una revisione l'ha rimpiazzata) e ANNULLATA (terminale, is_abortito). I verbi leggono dal vocabolario lo stato iniziale, quello d'emissione, quello d'annullo e quello di superamento (iniziale, emissione, is_abortito, is_superato), non i codici. codice_interno e' immutabile (script.trgfn_lock_columns). I passaggi ammessi sono la matrice config.stati_doc_offerte_transizioni. Brief: brief-modello-documento-vendita §13 (rev 2026-10-26; prima del giro il commento diceva cinque stati e nessun is_abortito).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

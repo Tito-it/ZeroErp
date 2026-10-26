@@ -19,6 +19,9 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): l'offerta del test 7
 --   nasce in bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima
 --   nasceva gia' ACCETTATA).
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato
+--   dell'offerta dal verbo — rev.1 si emette con dbops.fn_pgtap_porta_a_stato
+--   invece dell'UPDATE di stato, che la porta ora rifiuta.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -178,9 +181,9 @@ INSERT INTO vendite.offerte_commerciali_utilities (
 SELECT r1.id, ctx.istanza_utility_id, ctx.utility_id
   FROM tmp_rev_fn_rev1 r1, tmp_rev_fn_ctx ctx;
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_rev_fn_ctx)
- WHERE id = (SELECT id FROM tmp_rev_fn_rev1);
+-- rev 2026-10-26 (giro 9): l'emissione dal verbo, non con un UPDATE di stato.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', r1.id, 'EMESSA')
+  FROM tmp_rev_fn_rev1 r1;
 
 -- ============================================================
 -- 2) Setup OK

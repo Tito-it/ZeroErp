@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO D'ANNULLO DELL'OFFERTA
+#   Brief: brief-modello-documento-vendita §13 (giro 9; O-3, O-4 di Tid,
+#   2026-10-26). Stampo: vendite.fn_annulla_contratto (20261026-09).
+#
+# ── CHE COSA FA ─────────────────────────────────────────────────────
+#   Come gli altri verbi d'annullo (guida del modello §8):
+#   1. prima cio' che vieta: un contratto o un ordine vivo nato dall'offerta
+#      (script.fn_check_offerta_annullabile, dentro il BB della conferma);
+#   2. poi la conferma dei legami: la revisione precedente che torna emessa
+#      (vendite.fn_documento_legami, ramo OFFERTA_COMMERCIALE, 20261026-20).
+#      Chi annulla DICHIARA quanti legami ha visto (p_legami_confermati);
+#   3. poi il verbo di stato, vendite.fn_cambia_stato_offerta (20261026-16),
+#      con la motivazione (O-3: obbligatoria, la riga del passaggio la
+#      chiede); lo stato d'annullo dal vocabolario (script.fn_stato_abortito_id).
+#      Il rientro della revisione precedente lo scrive la proiezione, dal
+#      trigger dell'annullo (20261026-19).
+#   Prima l'annullo passava da un UPDATE del backend, e il rientro del padre
+#   era silenzioso: ora si conferma (Regola 6).
+#
+# ── FIRMA ───────────────────────────────────────────────────────────
+#   (p_offerta_id, p_motivazione, p_legami_confermati), come O-4 l'ha decisa.
+#   p_legami_confermati e' un CONTEGGIO: tipo nudo, DEFAULT NULL come negli
+#   altri verbi d'annullo (senza legami non c'e' niente da confermare).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261026-25-create-fn-annulla-offerta-mctit.yaml
+
+  - changeSet:
+      id: 20261026-25-create-fn-annulla-offerta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        NUOVO vendite.fn_annulla_offerta(id, motivazione, legami_confermati): prima cio' che vieta,
+        poi la conferma dei legami (la revisione precedente che torna emessa), poi il verbo di
+        stato con la motivazione. SECURITY DEFINER. Brief: brief-modello-documento-vendita §13 (O-4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname IN ('fn_cambia_stato_offerta', 'fn_documento_ritira_legami');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_annulla_offerta(
+                  p_offerta_id        vendite.offerte_commerciali.id%TYPE,
+                  p_motivazione       vendite.offerte_commerciali.motivazione_rifiuto%TYPE,
+                  p_legami_confermati integer DEFAULT NULL)
+               RETURNS integer
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- =========================================================
+              -- Scopo: annullare un'offerta. Con legami (la revisione
+              --   precedente che torna emessa): conferma dal BB
+              --   vendite.fn_documento_ritira_legami, poi lo stato col verbo
+              --   di stato, che chiede la motivazione.
+              --   p_legami_confermati e' un CONTEGGIO: tipo nudo. Vedi
+              --   l'intestazione del changeSet.
+              -- Ritorna: i legami confermati (0 se non ce n'erano).
+              -- =========================================================
+              DECLARE
+                  v_utente  config.user_override_azioni.auth_user_id%TYPE;
+                  v_trovato boolean;
+                  -- CONTEGGIO dei legami confermati.
+                  v_legami  integer;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametri.
+                  IF p_offerta_id IS NULL OR p_offerta_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_annulla_offerta',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_offerta_id', p_offerta_id),
+                          NULL::uuid, 'vendite.fn_annulla_offerta',
+                          'p_offerta_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- 2. La testata FOR UPDATE, nel perimetro (predicato della
+                  --    policy: DEFINER). Fuori perimetro come inesistente.
+                  SELECT true
+                    INTO v_trovato
+                    FROM vendite.offerte_commerciali t
+                   WHERE t.id = p_offerta_id
+                     AND script.fn_scope_ef_whitelist_via_offerta(v_utente, t.id)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_annulla_offerta',
+                          'E_OFFERTA_NON_TROVATA', jsonb_build_object('id', p_offerta_id), NULL::uuid,
+                          p_offerta_id::text);
+                  END IF;
+
+                  -- 3. Prima cio' che vieta, poi la conferma: il BB apre la
+                  --    porta e la lascia aperta.
+                  v_legami := vendite.fn_documento_ritira_legami('OFFERTA_COMMERCIALE', p_offerta_id,
+                                                                 p_legami_confermati);
+
+                  -- 4. Lo stato, dal verbo di stato, con la motivazione (O-3):
+                  --    lo stato d'annullo dal vocabolario. La prima riga del
+                  --    verbo dice lo stato che ha gia' e l'azione (emetti_offerta
+                  --    sull'annullo dell'accettata); i guard della tabella fanno
+                  --    il resto: matrice, documenti vivi, avviso.
+                  PERFORM vendite.fn_cambia_stato_offerta(
+                      p_offerta_id,
+                      script.fn_doc_stato_codice('vendite.offerte_commerciali'::regclass,
+                                                 script.fn_stato_abortito_id('vendite.offerte_commerciali'::regclass)),
+                      p_motivazione);
+
+                  -- 5. Porta chiusa.
+                  PERFORM set_config('zeroerp.doc_ritira_legami', '', true);
+
+                  RETURN v_legami;
+              END;
+              $function$;
+
+              -- DEFINER: EXECUTE solo all'applicazione, come gli altri verbi d'annullo.
+              REVOKE EXECUTE ON FUNCTION vendite.fn_annulla_offerta(
+                  vendite.offerte_commerciali.id%TYPE, vendite.offerte_commerciali.motivazione_rifiuto%TYPE,
+                  integer) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_annulla_offerta(
+                  vendite.offerte_commerciali.id%TYPE, vendite.offerte_commerciali.motivazione_rifiuto%TYPE,
+                  integer) TO zeroerp_app;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_annulla_offerta(
+                  vendite.offerte_commerciali.id%TYPE, vendite.offerte_commerciali.motivazione_rifiuto%TYPE,
+                  integer)
+                IS 'VERBO d''annullo dell''offerta (brief-modello-documento-vendita §13, O-3 e O-4 di Tid, 2026-10-26). Testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_offerta; fuori perimetro E_OFFERTA_NON_TROVATA). Dal BB vendite.fn_documento_ritira_legami: prima cio'' che vieta (script.fn_check_offerta_annullabile: un contratto o un ordine vivo nato dall''offerta, E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI), poi la conferma: chi annulla DICHIARA quanti legami ha visto (p_legami_confermati, le righe di vendite.fn_documento_legami(''OFFERTA_COMMERCIALE'', id): la revisione precedente, superata, che torna emessa); se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI. Poi lo stato d''annullo (dal vocabolario) col verbo di stato vendite.fn_cambia_stato_offerta, con la motivazione (obbligatoria: E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA) e l''azione del passaggio (emetti_offerta sull''annullo dell''accettata); la revisione precedente torna emessa dalla proiezione vendite.fn_offerta_proietta_stato_revisione. Poi la porta del ritiro si chiude. UNA transazione. Ritorna i legami confermati. SECURITY DEFINER con search_path bloccato; EXECUTE solo all''app.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_annulla_offerta(
+                  vendite.offerte_commerciali.id%TYPE, vendite.offerte_commerciali.motivazione_rifiuto%TYPE,
+                  integer);

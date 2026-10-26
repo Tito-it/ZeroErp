@@ -14,6 +14,9 @@
 --       non porta piu' una riga fuori dal perimetro (test 14-15, che prima la usavano
 --       per COSTRUIRE quella riga). Il test 22 passa da K a C: il kit non ha piu' due
 --       fonti nella stessa erogazione.
+--       rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato
+--       dell'offerta del push dalla fixture dbops.fn_pgtap_porta_a_stato (il verbo),
+--       non piu' con due UPDATE diretti: la porta li rifiuta.
 --
 -- ⭐ TUTTO COSTRUITO: cliente ENE (la prima utility: ammette CONSUMO, QUOTA_FISSA,
 --   IMPOSTA, ONERE_SISTEMA), listino, articoli. Gli articoli prendono qui la
@@ -309,12 +312,9 @@ INSERT INTO vendite.offerte_commerciali_eccezioni
        (offerta_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
 VALUES ((SELECT id FROM tmp_eda_off), pg_temp.art('R2'), 'AGGIUNTA', 10, 1);
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')
- WHERE id = (SELECT id FROM tmp_eda_off);
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'ACCETTATA')
- WHERE id = (SELECT id FROM tmp_eda_off);
+-- Lo stato dell'offerta dal verbo (la porta rifiuta l'UPDATE diretto): la
+-- fixture cammina BOZZA → EMESSA → ACCETTATA e concede da se' emetti_offerta.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', (SELECT id FROM tmp_eda_off), 'ACCETTATA');
 
 CREATE TEMP TABLE tmp_eda_push AS
 SELECT vendite.fn_push_offerta_a_contratto((SELECT id FROM tmp_eda_off), NULL::bigint, false) AS contratto_id;

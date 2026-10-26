@@ -23,6 +23,18 @@
 --         B) rev1 EMESSA + rev2 BOZZA (VIVA)           => rientro manuale vietato
 --         C) offerta singola BOZZA -> ANNULLATA        => nessun effetto
 --
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato
+--   dell'offerta dal verbo — emissioni con dbops.fn_pgtap_porta_a_stato, annulli
+--   con vendite.fn_annulla_offerta (motivazione obbligatoria), invece degli
+--   UPDATE di stato che la porta ora rifiuta.
+-- ⚠️ Attesa cambiata: test 4-6, il gesto non e' piu' un UPDATE che fa rientrare
+--   il padre in silenzio. Con O-4 il padre che torna EMESSA e' un legame
+--   dell'annullo della revisione: si annulla con vendite.fn_annulla_offerta
+--   confermando 1 legame. Le tre asserzioni sul risultato restano le stesse.
+-- ⚠️ Attesa cambiata: test 7, il rientro manuale lo rifiuta il verbo come
+--   passaggio di processo (E_DOC_PASSAGGIO_DI_PROCESSO), perche' l'UPDATE
+--   diretto non arriva piu' al guard di transizione: lo ferma la porta.
+--
 -- Indice test (1..9):
 --   1)  Struttura: trigger trg_offerte_commerciali_z90_rientro_padre_upd presente
 --   2)  Seed: transizione SUPERATA->EMESSA attiva e NON manuale
@@ -30,7 +42,7 @@
 --   4)  A: annullata la revisione, il padre torna EMESSA
 --   5)  A: il lineage ha di nuovo un'offerta attiva (era il difetto)
 --   6)  A: il rientro NON riscrive data_emissione
---   7)  B: rientro manuale con una revisione viva -> E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA
+--   7)  B: rientro manuale con una revisione viva -> E_DOC_PASSAGGIO_DI_PROCESSO (dal verbo)
 --   8)  C: annullamento di un'offerta senza padre -> nessun rientro, nessun effetto
 --   9)  Il codice errore nuovo e' registrato a catalogo, con messaggio
 -- ------------------------------------------------------------
@@ -166,9 +178,9 @@ WITH ins AS (
     RETURNING id)
 SELECT id FROM ins;
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_rp_ctx)
- WHERE id = (SELECT id FROM tmp_rp_a1);
+-- rev 2026-10-26 (giro 9): l'emissione dal verbo, non con un UPDATE di stato.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', r.id, 'EMESSA')
+  FROM tmp_rp_a1 r;
 
 -- ⚠️ data_emissione fissata a un valore DISTINTO da now(): dentro una
 --    transazione now() e' costante, quindi confrontare "prima e dopo" senza
@@ -192,9 +204,12 @@ SELECT id FROM ins;
 
 -- Il gesto in prova: l'operatore annulla la revisione (BOZZA -> ANNULLATA,
 -- l'unica transizione di annullamento che il catalogo ammette).
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_annullata_id FROM tmp_rp_ctx)
- WHERE id = (SELECT id FROM tmp_rp_a2);
+-- ⚠️ rev 2026-10-26 (giro 9, O-4): il rientro non e' piu' silenzioso. Il padre
+--   che torna EMESSA e' un LEGAME dell'annullo (vendite.fn_documento_legami:
+--   una riga, PROVENIENZA): l'annullo passa dal verbo vendite.fn_annulla_offerta,
+--   che chiede la motivazione e la conferma di quel legame (1).
+SELECT vendite.fn_annulla_offerta(a2.id, 'pgTAP: revisione annullata', 1)
+  FROM tmp_rp_a2 a2;
 
 -- ============================================================
 -- 4) Il padre e' rientrato in EMESSA.
@@ -250,9 +265,9 @@ WITH ins AS (
     RETURNING id)
 SELECT id FROM ins;
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_rp_ctx)
- WHERE id = (SELECT id FROM tmp_rp_b1);
+-- rev 2026-10-26 (giro 9): l'emissione dal verbo, non con un UPDATE di stato.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', r.id, 'EMESSA')
+  FROM tmp_rp_b1 r;
 
 INSERT INTO vendite.offerte_commerciali (
     emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
@@ -266,18 +281,23 @@ SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id,
 -- ============================================================
 -- 7) ⭐ La transizione ora ESISTE, quindi la porta va chiusa da una regola:
 --    con una revisione figlia ancora viva il rientro e' rifiutato, da
---    chiunque lo tenti. SQLSTATE esplicito: senza, throws_ok accetterebbe
---    qualunque errore — compresa una FK rotta o un typo.
+--    chiunque lo tenti.
+--    ⚠️ rev 2026-10-26 (giro 9): un UPDATE di stato lo ferma ormai la porta
+--    (E_DOC_STATO_SOLO_DAL_VERBO, P0001 anche lei: throws_ok sul solo SQLSTATE
+--    sarebbe verde per la ragione sbagliata). Chi tenta il rientro a mano lo
+--    chiede al verbo, e il verbo lo rifiuta perche' SUPERATA -> EMESSA e' un
+--    passaggio di PROCESSO (E_DOC_PASSAGGIO_DI_PROCESSO): lo scrive solo la
+--    proiezione vendite.fn_offerta_proietta_stato_revisione, che con una
+--    revisione viva non lo chiede. La regola E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA
+--    resta nel guard di transizione, dietro la porta.
 -- ============================================================
-SELECT throws_ok(
+SELECT throws_like(
     format(
-      'UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = %s WHERE id = %s',
-      (SELECT stato_emessa_id FROM tmp_rp_ctx),
+      $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
       (SELECT id FROM tmp_rp_b1)
     ),
-    'P0001',
-    NULL,
-    '7) B: rientro manuale con una revisione viva -> errore di dominio (P0001)'
+    '%non si chiede a mano%',
+    '7) B: rientro manuale con una revisione viva -> rifiutato dal verbo (E_DOC_PASSAGGIO_DI_PROCESSO)'
 );
 
 -- ============================================================
@@ -305,9 +325,10 @@ SELECT o.id, o.stato_doc_offerta_id
  WHERE o.id = (SELECT id FROM tmp_rp_b1)
     OR o.revisione_padre_id = (SELECT id FROM tmp_rp_b1);
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_annullata_id FROM tmp_rp_ctx)
- WHERE id = (SELECT id FROM tmp_rp_c);
+-- rev 2026-10-26 (giro 9): l'annullo dal verbo, con la motivazione; nessun
+--   legame da confermare (NULL), perche' C non ha padre.
+SELECT vendite.fn_annulla_offerta(c.id, 'pgTAP: offerta annullata', NULL)
+  FROM tmp_rp_c c;
 
 SELECT is(
     (SELECT ROW(

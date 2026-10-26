@@ -19,7 +19,7 @@
 >
 > • `vendite.trgfn_offerte_commerciali_guard_transizione` — guard state machine ✅ (Step 4)
 > • `vendite.trgfn_offerte_commerciali_gen_codice` — generazione `OFC-NNNNNNN` ✅ (Step 5)
-> • `vendite.trgfn_offerte_commerciali_revisione` — marca padre SUPERATA all'INSERT rev.N+1 ✅ (Step 6)
+> • `vendite.trgfn_offerte_commerciali_revisione` — all'INSERT rev.N+1 chiama la proiezione che marca il padre SUPERATA ✅ (Step 6; dal 2026-10-26 `vendite.fn_offerta_proietta_stato_revisione`)
 > • [`vendite.fn_crea_revisione_offerta`](/dbzero/vendite/funzioni/fn_crea_revisione_offerta) — crea revisione N+1 ✅ (Step 7)
 > • [`vendite.fn_push_offerta_a_contratto`](/dbzero/vendite/funzioni/fn_push_offerta_a_contratto) — push idempotente a contratto DRAFT ✅ (Step 8)
 
@@ -27,7 +27,7 @@
 
 ### 🎯 Scopo Principale
 
-(rev 2026-05-24)
+(rev 2026-05-24; ultima revisione 2026-10-26)
 
 `vendite.offerte_commerciali` e' la **testata dell'offerta commerciale**: il documento
 pre-contrattuale che propone al cliente condizioni quadro per una specifica utility,
@@ -84,9 +84,16 @@ La simmetria strutturale con `vendite.contratti` e' intenzionale e garantisce ch
 | EMESSA   | SUPERATA   | trigger (fn_crea_revisione) | Stato terminale tecnico; rev.N+1 diventa la nuova offerta |
 
 Stati terminali immutabili: **RIFIUTATA**, **ANNULLATA**. **SUPERATA** ha il solo rientro
-automatico (SUPERATA → EMESSA, quando la revisione si annulla). **ACCETTATA** non e' terminale:
+automatico (SUPERATA → EMESSA, quando si annulla l'ultima revisione viva; dal 2026-10-26 l'annullo
+di quella revisione si conferma, perché riapre il padre). **ACCETTATA** non e' terminale:
 si trasforma in un contratto o in un ordine, oppure si annulla (`brief-db-offerta-emissione-ed-erogazione`
 §H.3, H-R3).
+
+⭐ **Dal 2026-10-26** (`brief-modello-documento-vendita` §13) lo stato si cambia solo dai verbi:
+[`vendite.fn_cambia_stato_offerta`](/dbzero/vendite/funzioni/fn_cambia_stato_offerta) (con la
+motivazione obbligatoria dove la matrice la chiede), [`vendite.fn_annulla_offerta`](/dbzero/vendite/funzioni/fn_annulla_offerta)
+e, per i due passaggi automatici, [`vendite.fn_offerta_proietta_stato_revisione`](/dbzero/vendite/funzioni/fn_offerta_proietta_stato_revisione).
+Un aggiornamento diretto della colonna di stato è rifiutato (`E_DOC_STATO_SOLO_DAL_VERBO`).
 
 #### Timestamp di transizione
 

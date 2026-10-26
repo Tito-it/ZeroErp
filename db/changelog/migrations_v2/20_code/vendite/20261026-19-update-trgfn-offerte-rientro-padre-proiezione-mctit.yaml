@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ANNULLO DI UNA REVISIONE CHIAMA LA PROIEZIONE
+#   Brief: brief-modello-documento-vendita §13 (giro 9; O-2, O-4 di Tid,
+#   2026-10-26).
+#
+#   Il trigger resta (AFTER UPDATE OF stato_doc_offerta_id, _z90_): prende la
+#   causa su ogni strada, cioe' una revisione che ENTRA in uno stato d'annullo.
+#   Perde:
+#   - l'UPDATE del padre, che la porta fermerebbe (il trigger gira come chi
+#     scrive): lo scrive la proiezione, vendite.fn_offerta_proietta_stato_
+#     revisione (20261026-17);
+#   - le due condizioni sul padre (superato, nessun'altra figlia viva): le
+#     decide la proiezione, dalle revisioni vive;
+#   - il letterale 'EMESSA' dello stato di ritorno: la proiezione lo legge dal
+#     vocabolario (emissione).
+#   Il rientro non e' piu' silenzioso (O-4): chi annulla una revisione che fa
+#   tornare emessa la precedente lo conferma, come legame dell'annullo
+#   (vendite.fn_documento_legami, ramo OFFERTA_COMMERCIALE, 20261026-20).
+#
+#   Corpo dalla doc auto-generata (vendite/funzioni/trgfn_offerte_commerciali_
+#   rientro_padre). Trigger invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261026-19-update-trgfn-offerte-rientro-padre-proiezione-mctit.yaml
+
+  - changeSet:
+      id: 20261026-19-update-trgfn-offerte-rientro-padre-proiezione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_offerte_commerciali_rientro_padre: all'annullo di una revisione chiama la
+        proiezione vendite.fn_offerta_proietta_stato_revisione sul padre, invece dell'UPDATE col
+        letterale 'EMESSA'. Brief: brief-modello-documento-vendita §13 (O-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_offerta_proietta_stato_revisione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: quando una revisione di offerta viene ANNULLATA, il padre
+              --   torna nello stato che le sue revisioni vive dicono: fuori dal
+              --   superamento se non ne resta nessuna. Lo decide e lo scrive la
+              --   proiezione vendite.fn_offerta_proietta_stato_revisione.
+              -- E' l'inverso di trgfn_offerte_commerciali_revisione: la regola di
+              --   dominio e' «una revisione abortita non rimpiazza nessuno».
+              -- rev 2026-10-26 (20261026-19, brief-modello-documento-vendita §13,
+              --   O-2): le condizioni sul padre, l'UPDATE e il letterale dello stato
+              --   passano alla proiezione, che scrive attraverso la porta. Qui
+              --   resta la causa: una revisione che entra in uno stato d'annullo.
+              BEGIN
+                  -- (1) Interessa solo il momento in cui lo stato DIVENTA di annullamento.
+                  --     Un UPDATE che lascia lo stato invariato, o che si muove fra due
+                  --     stati non abortiti, non ha niente a che vedere col rientro.
+                  IF NEW.stato_doc_offerta_id IS NOT DISTINCT FROM OLD.stato_doc_offerta_id THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF NOT EXISTS (
+                      SELECT 1 FROM config.stati_doc_offerte s
+                       WHERE s.id = NEW.stato_doc_offerta_id
+                         AND s.is_abortito IS TRUE
+                  ) OR EXISTS (
+                      SELECT 1 FROM config.stati_doc_offerte s
+                       WHERE s.id = OLD.stato_doc_offerta_id
+                         AND s.is_abortito IS TRUE
+                  ) THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- (2) Deve essere una revisione: senza padre non c'e' niente da riportare.
+                  IF NEW.revisione_padre_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- (3) Il padre, dalle sue revisioni vive. ⚠️ Ricorsione: la
+                  --     proiezione riaccende questo trigger sul padre, che entra in
+                  --     uno stato non abortito e si ferma alla condizione (1).
+                  PERFORM vendite.fn_offerta_proietta_stato_revisione(NEW.revisione_padre_id);
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre()
+              IS 'AFTER UPDATE OF stato_doc_offerta_id su vendite.offerte_commerciali (_z90_): quando una revisione ENTRA in uno stato d''annullo (is_abortito), chiama la proiezione vendite.fn_offerta_proietta_stato_revisione sul padre, che lo riporta dal superamento allo stato d''emissione (vocabolario) se non gli resta nessuna revisione viva, attraverso la porta. La regola «nessun rientro con una figlia viva» resta nel guard di transizione. Chi annulla la revisione lo conferma prima: il padre che torna emesso e'' un legame dell''annullo (vendite.fn_documento_legami, vendite.fn_annulla_offerta; O-4). rev 2026-10-26 (20261026-19, brief-modello-documento-vendita §13, O-2): prima scriveva il padre con un UPDATE suo e il letterale ''EMESSA'', e decideva qui le condizioni sul padre.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

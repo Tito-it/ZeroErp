@@ -1,9 +1,13 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-26 (giro 8, il contratto: DB e BE fatti, §11.7; da committare)
+## ⏭️ Chi riparte — aggiornato al 2026-10-26 (giro 9, l'offerta: DB applicato e verde; tocca al BE, §13.6, §13.7)
 
-**Riparte: Tid**, col commit del passaggio BE (§11.7), col dato `emetti_contratto` ai profili (senza, nessuno
-attiva o cessa un contratto) e col via al giro dell'offerta, che non aspetta il BE (§5). Il **team DB** ha una
+**Riparte: il team BE**, sulla richiesta del §13.6: dopo l'apply del giro 9 (applicato e verde, Tid 2026-10-26)
+«Emetti», l'esito e l'annullo dell'offerta sono rifiutati dalla porta, perché passano ancora da
+`OfferteRepository.update_stato` (§13.7). **Tid**, col dato `emetti_offerta` ai profili e col dato
+`emetti_contratto` **ed** `emetti_ordine` ai profili su dbdev: letto il 2026-10-26, nessun profilo le ha, quindi
+in collaudo nessuno attiva o cessa un contratto né conferma un ordine (§11.7, «Stato letto dal team DB»).
+Il passaggio BE del §11.7 è committato (`fe041a1a1`, `0a08565be`, PR #1956). Il **team DB** ha una
 richiesta a priorità bassa: il lettore dello stato di cessazione (§11.7). Il giro 8 (il contratto) è applicato e
 verde (Tid, 2026-10-26); le richieste al BE del §9.10 e del §11.6 sono fatte (§11.7). Giro 7 (l'ordine): DB
 applicato e verde (Tid, 2026-10-25). Giro 6, il preventivo (§8): DB applicato e verde, BE fatto (§8.10) tranne il
@@ -58,18 +62,23 @@ ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committa
 | 4-bis-nonies-quater | ✅ team DB / **Tid** | Giro 8 scritto (`-03` … `-13`, CSV) e provato in transazione; 18 pgTAP portati, 2 ritirati (Tid: 11 e 12 del sovrapposto), regressione su 68 file senza peggioramenti | §11.4, §11.5 | 4-bis-nonies-ter |
 | 4-bis-nonies-quinquies | ✅ **Tid** | Apply del giro 8 e corsa pgTAP come app: verdi (2026-10-26). Il dato `emetti_contratto` ai profili su dbdev: non verificato qui | §11.5 | 4-bis-nonies-quater |
 | 4-bis-nonies-sexies | ✅ team BE | Richiesta del §11.6 (sette punti), insieme a quella del §9.10 (2026-10-26); fuori elenco il messaggio della cessazione nel frontend e la pulizia dello smoke dei listini | §11.7 | 4-bis-nonies-quinquies |
-| 4-bis-nonies-septies | **Tid** ⏭️ | Commit del passaggio BE; il dato `emetti_contratto` ai profili su dbdev | §11.7 | 4-bis-nonies-sexies |
+| 4-bis-nonies-septies | ✅ **Tid** | Commit del passaggio BE (`fe041a1a1`, `0a08565be`, PR #1956), 2026-10-26 | §11.7 | 4-bis-nonies-sexies |
+| 4-bis-nonies-septies-bis | **Tid** ⏭️ | Il dato `emetti_contratto` ed `emetti_ordine` ai profili su dbdev: letto il 2026-10-26, nessun profilo le ha | §11.7 | — |
 | 4-bis-nonies-octies | team DB | Il lettore dello stato di cessazione (priorità bassa); poi il BE ritira `STATO_CESSATO` | §11.7 | — |
-| 4-bis-decies | **Tid** → team DB | Il via al giro 9: l'offerta (ordine dei giri di W-1). Non aspetta il BE (§5) | §5 | 4-bis-nonies-quinquies |
+| 4-bis-decies | ✅ **Tid** → team DB | Il via al giro 9: l'offerta (ordine dei giri di W-1), 2026-10-26. Non aspetta il BE (§5) | §5 | 4-bis-nonies-quinquies |
+| 4-bis-decies-bis | ✅ team DB | Giro 9, l'offerta: ricognizione, piano, domande; corretta la lettura dell'annullo del §8.12 (D-4) | §13 | 4-bis-decies |
+| 4-bis-decies-ter | ✅ **Tid** | O-1 … O-6 come da proposta, e il via allo sviluppo (2026-10-26); D-N1 non entra nel giro | §13.3 | 4-bis-decies-bis |
+| 4-bis-decies-quater | ✅ team DB | Giro 9 scritto (`-14` … `-28`, CSV) e provato in transazione; 25/25 il pgTAP nuovo, 24 pgTAP portati, regressione su 61 file senza peggioramenti | §13.4, §13.5 | 4-bis-decies-ter |
+| 4-bis-decies-quinquies | ✅ **Tid** | Apply del giro 9 e corsa pgTAP come app: verdi (2026-10-26) | §13.7 | 4-bis-decies-quater |
+| 4-bis-decies-sexies | team BE ⏭️ | Richiesta del §13.6 (nove punti); che cosa è rotto adesso sul backend, §13.7 | §13.6, §13.7 | 4-bis-decies-quinquies |
+| 4-bis-decies-septies | **Tid** | Il dato `emetti_offerta` (ed `emetti_contratto`, `emetti_ordine`) ai profili su dbdev | §13.7 | — |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 | 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1, il blocco «origine» della stampa della fattura, da decidere nel giro della fattura; D-G2, la prova a video del lotto 2b | §10 | — |
 | 5-ter | **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, il censimento dei gate delle azioni per riga; quando, lo decide Tid | §12 | — |
 
-Decisioni aperte di Tid: O-1 … O-6 del giro dell'offerta (§13.3) e il via allo sviluppo; quando fare D-N1 (§12, riga 5-ter). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine. Lavoro da committare (`dev/db-tid`): solo questo brief (§13). Committati: il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
-Decisioni aperte di Tid: quando fare D-N1 (§12, riga 5-ter); il via al giro dell'offerta. W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (§11.7). Lavoro da committare (`dev/backend-tid`): il passaggio BE del §11.7 (§9.10 e §11.6, il messaggio della cessazione nel frontend, lo smoke dei listini, `api_contratti.md`).
-Committati: il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
+Decisioni aperte di Tid: quando fare D-N1 (§12, riga 5-ter). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Lavoro da committare (`dev/db-tid`): il giro 9 (§13.4, applicato e verde) e questo brief. Committati: il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`; il merge `2f5da4bed` ne aveva perso la tabella e il blocco «Chi riparte», ricomposti il 2026-10-26), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -2156,6 +2165,20 @@ atteso, già noti); vitest di `vendite` (157 verdi); ruff, eslint, oxlint puliti
 Lo smoke non è stato lanciato. ⚠️ Senza `emetti_contratto` concessa al profilo nessuno attiva o cessa un contratto:
 per il collaudo a video serve il dato su dbdev.
 
+**Stato letto dal team DB (2026-10-26, dopo il commit).** Il passaggio è committato in due pezzi: `fe041a1a1`
+(i punti sopra) e `0a08565be`, un ritocco fuori elenco, non descritto sopra:
+* `ContrattoDrawer`: l'esito della cessazione si legge dal ritorno dell'azione dello store, non da quello di
+  `execute`. Il dettaglio del contratto ha un campo `data` (la data del documento) che `execute` scambiava per
+  l'envelope: `programmata` risultava sempre assente e il messaggio diceva «immediata» anche per una cessazione
+  programmata;
+* `error_ui_overrides.py`: il commento di `E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA` dice che la regola della data
+  sta nel verbo della cessazione, non più nel guard.
+
+Su dbdev, letto da `config.profili_accesso_azioni`: `emetti_ddt` su 2 profili, `emetti_preventivo` ed
+`emetti_fattura` su 1, **`emetti_contratto` ed `emetti_ordine` su nessuno**. È un dato, non un difetto del
+modello (i seed non le concedono, come per le altre): lo concede Tid. Resta aperta la richiesta al DB del
+lettore dello stato di cessazione (riga 4-bis-nonies-octies, priorità bassa).
+
 ## 12. Ereditato da brief-design-note-credito-resi (2026-10-26)
 
 Su indicazione di Tid (2026-10-26) il tema passa a questo brief, che tratta le azioni dei documenti sul modello.
@@ -2293,3 +2316,149 @@ finestra dei legami secondo O-4.
 
 D-N1 (§12, le azioni di riga) resta aperta e non entra in questo giro senza una tua decisione: le righe
 dell'offerta (eccezioni, componenti, approvazione del prezzo) ne sarebbero il primo caso.
+
+✅ **Decise da Tid il 2026-10-26**: O-1 … O-6 come da proposta, e il via allo sviluppo. D-N1 **non** entra in
+questo giro.
+
+### 13.4 Scritto (2026-10-26)
+
+| ChangeSet / file | Che cosa |
+| --- | --- |
+| `20261026-14-alter-stati-doc-offerte-transizioni-azione-processo` | colonna `azione_processo_codename` sulla matrice dell'offerta, FK al catalogo delle azioni |
+| `-15-comment-stati-doc-offerte-vocabolario` | il commento stantio del vocabolario («cinque stati», «senza is_abortito») riscritto |
+| CSV `azioni_processo` (id 43), `stati_doc_offerte_transizioni`, mirror `20260524-22` | `emetti_offerta` a catalogo; sulle righe BOZZA → EMESSA e ACCETTATA → ANNULLATA (O-1); mirror con la colonna e `nullValue: "NULL"` |
+| `-16-create-fn-cambia-stato-offerta` | il verbo di stato, gemello di quello del contratto, con la motivazione (O-3): obbligatoria dove la riga ha `requires_motivazione`, scritta in `motivazione_rifiuto` prima dello stato; vuota o di soli spazi = assente |
+| `-17-create-fn-offerta-proietta-stato-revisione` | la proiezione dei due passaggi di processo (O-2), DEFINER, con la scrittura comune; lo stato di ritorno dal vocabolario (`emissione`) |
+| `-18`, `-19` | i due trigger `_z90_` della revisione restano come chiamanti della proiezione: via i loro `UPDATE`, il guard sull'arità e il letterale `'EMESSA'` |
+| `-20` … `-23` | il ramo `OFFERTA_COMMERCIALE` nei quattro pezzi comuni dell'annullo con legami (O-4): `fn_documento_legami` (il padre superato che torna emesso, PROVENIENZA), `fn_documento_ritira_legami` (prima `fn_check_offerta_annullabile`, poi la conferma), `fn_doc_porta_ritiro_ammette`, `trgfn_doc_guard_annullo_con_legami` |
+| `-24-create-trigger-guard-annullo-con-legami-offerte` | l'avviso dell'annullo montato sull'offerta (`_m10_`) |
+| `-25-create-fn-annulla-offerta` | il verbo d'annullo `(id, motivazione, legami_confermati)`, come O-4 |
+| `-26-create-trigger-stato-solo-dal-verbo-offerte` | la porta sull'offerta |
+| `-27-update-fn-available-actions-offerta-permesso-del-passaggio` | permesso ⇒ nascondi; i motivi dell'emissione e dell'annullo legati al vocabolario (`emissione`, `is_abortito`) |
+| `-28-update-fn-pgtap-porta-a-stato-offerta` | la fixture conosce il verbo dell'offerta, con una motivazione sua dove la riga la chiede |
+| CSV errori | `E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA` (nuovo, `DATO_ERRATO`, id 1401); `E_DOC_ANNULLO_CON_LEGAMI`: nota, frase e soluzione nominano la revisione precedente dell'offerta |
+| doc | guida del modello §10 (riga dell'offerta, intro); guida delle offerte (§3.1, §4.1, §4.4 nuovo, §12); pagine manuali nuove dei tre oggetti nuovi; aggiornate quelle del trigger della revisione, della matrice, del vocabolario, della testata, di `fn_crea_revisione_offerta` e di `fn_documento_legami` |
+
+**Una precisazione su O-2, dichiarata.** La proposta diceva «il padre EMESSA con una revisione viva → superato».
+Scritto, la condizione è «**non superato**» con una revisione viva: il superamento si chiede anche da un altro stato
+e lo rifiuta la matrice (`E_OFFERTA_TRANSIZIONE_NON_AMMESSA`), come faceva l'`UPDATE` del vecchio trigger. Con «solo
+da EMESSA» una revisione inserita su un padre in bozza (fuori da `fn_crea_revisione_offerta`, che già lo rifiuta)
+sarebbe passata in silenzio. Provato (test 23 del pgTAP nuovo).
+
+**Da sapere.** `E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA` resta nel guard di transizione, per chiunque scriva, ma
+dall'applicazione non si raggiunge più: la proiezione non chiede il rientro con una revisione viva, e la scrittura
+comune dall'applicazione la ferma la porta. Il legame dell'offerta ripete in anticipo la domanda della proiezione
+(«questo annullo riaprirà il padre?» contro «il padre ha revisioni vive?»): due domande sulla stessa regola,
+dichiarato nel changeSet `-20`. La motivazione scritta su un passaggio che non la chiede si scrive lo stesso (O-3
+alla lettera: «la riceve e la scrive»); oggi il backend la manda solo per rifiuto e annullo.
+
+### 13.5 Prova e regressione (2026-10-26)
+
+Sullo scratch `zeroerp_ruoli` come `zeroerp_owner`: SQL estratto dei changeSet `-14` … `-28` e seed simulato
+(azione, matrice, codice nuovo), nella transazione annullata di ogni file. L'SQL estratto passa intero; le
+preCondition contate a parte tornano.
+
+* **Nuovo** `vendite/test-offerta-al-modello-v1` (25): **25/25 da owner**. Il 25 (la porta) è verde anche da owner:
+  l'`UPDATE` diretto non accende la GUC della scrittura comune.
+* **Regressione, prima del porting:** 61 file che muovono lo stato dell'offerta o toccano i pezzi cambiati (legami,
+  annullo, porta, passaggio, capability, fixture). 24 cambiavano, per due cause attese: la porta (l'`UPDATE` diretto
+  dello stato, in fixture) e permesso ⇒ nascondi (senza `emetti_offerta` «Emetti» e «Annulla» dall'accettata non ci
+  sono).
+* **Porting dei 24** (tre agenti in parallelo, ogni file provato col file composto): l'`UPDATE` di stato diventa il
+  verbo o `dbops.fn_pgtap_porta_a_stato`; dove il file prova lo stato e non il permesso, la fixture concede
+  `emetti_offerta`, dichiarato. Attese cambiate, dichiarate in testa ai file:
+  * `test-offerte-rientro-padre-revisione-annullata`: 4-6, il padre non rientra in silenzio, l'annullo della revisione
+    passa da `fn_annulla_offerta` con la conferma (O-4), stesso esito; 7, il rientro chiesto a mano con una revisione
+    viva lo rifiuta il verbo come passaggio di processo (prima un `throws_ok` sul solo P0001 di un `UPDATE`, che oggi
+    sarebbe verde per la porta, cioè per la ragione sbagliata);
+  * `test_offerte_commerciali_state_machine`: le transizioni dei test 2-10 si chiedono al verbo, stesso esito
+    atteso, con la motivazione dove serve;
+  * `test-doc-verbo-comune-e-porta-v1`: 9 e 10, l'offerta entra fra le testate con la porta (da 5 a 6 montaggi).
+* **Regressione finale**, in sequenza, sui 61 file col giro 9: **60 identici al prima**, con tutte le asserzioni
+  eseguite; il nuovo da rosso a 25/25. Restano gli stessi rossi di prima, uguali prima e dopo: da owner
+  `test-contratto-al-modello-v1` 22, `test-ordine-al-modello-v1` 17, `test-doc-verbo-comune-e-porta-v1` 23 e 24,
+  `test-annullo-documento-con-legami-v1` 30; già rossi o tronchi prima del giro
+  `test-capability-annulla-aspetto-e-stato-leggibile-v1` (2, 4, 8), `test-fn-available-actions-ddt-reason-catch-all-v1`
+  18, `test-ddt-righe-evase-dall-ordine-v1` 43, `test-esecutivi-ba-coppia-v1` 39, `test-vw-situazione-merce-ordine-v1`
+  11, `test-guard-uscita-commessa-v1` (tronco a 4/18).
+* Scratch verificato pulito dopo le corse (nessun oggetto nuovo, trigger della revisione ancora quello vivo).
+* Fuori tema, segnalato da un agente e non toccato: `test_offerte_eccezioni_componenti` elenca 1..26 in testa con
+  `plan(27)`.
+
+La misura che conta (come app) arriva dalla corsa di Tid dopo l'apply.
+
+### 13.6 Richiesta al team BE (elenco chiuso, dopo l'apply)
+
+Percorso letto il 2026-10-26: `offerte_service`, `offerte_repository`, `views_offerte`, `offerte_documenti_views`,
+`urls_offerte`, `legami_views`, i test Django e il frontend dell'annullo con legami.
+
+1. **«Emetti»** (`OfferteService.emetti`): lo stato dal verbo `vendite.fn_cambia_stato_offerta(id, <stato
+   d'emissione dal vocabolario>, NULL)`, nella stessa transazione del PDF.
+2. **L'esito** (`registra_esito`, `registra_accettazione`, `registra_rifiuto`): dal verbo, con la motivazione per il
+   rifiuto. La motivazione obbligatoria la dice il database (`E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA`, campo
+   `motivazione_rifiuto`): si ritira `guard_non_empty_string` sul campo `motivazione` (rifiuto e annullo).
+3. **L'annullo** (`POST /annulla/`): `vendite.fn_annulla_offerta(id, motivazione, legami_confermati)`; il corpo della
+   richiesta porta `legami_confermati`, come contratto, ordine e preventivo. Nuova rotta
+   `GET /offerte/<id>/legami/` da `legami_views.build_legami_view` (il lettore è `fn_documento_legami
+   ('OFFERTA_COMMERCIALE', id)`), e `get_legami` nel service.
+4. **`OfferteRepository.update_stato`** si ritira (la porta rifiuta l'`UPDATE`), con `_assert_stato_corrente` davanti
+   ai passaggi e i cinque insiemi di stati del service (`_STATI_EDITABILI`, `_STATI_DA_EMESSA`, `_STATI_PUSHABILI`,
+   `_ESITI_AMMESSI_DA_EMESSA`, `_STATI_TERMINALI`) dove ripetono la matrice o i guard delle madri (revisione, push,
+   ordine), che rifiutano già da sé. Dove un insieme serve ad altro (per esempio la validazione dell'`esito` in
+   ingresso), resta, dichiarato.
+5. **Il 403 dalla riga del passaggio** (`PassaggioDocumento`) su «Emetti» e sull'annullo dell'accettata: chiedono
+   `emetti_offerta`. Accetta, rifiuta e l'annullo della bozza restano al permesso sul documento.
+6. **Codici nella policy**: `E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA` (`DATO_ERRATO`, 400, campo `motivazione_rifiuto`),
+   col ripiego in `error_messages_fallback.py`; le frasi nuove di `E_DOC_ANNULLO_CON_LEGAMI`.
+7. **Frontend**: l'annullo dell'offerta passa dalla finestra comune dei legami
+   (`_shared/annullo/DocumentoAnnulloLegamiDialog`, `legamiApi`), come gli altri documenti: chi annulla una revisione
+   vede che la precedente torna emessa e conferma. «Emetti» e «Annulla» dall'accettata si nascondono a chi non ha
+   l'azione (lo dice già la capability).
+8. **Test Django** che scrivono lo stato dell'offerta con un `UPDATE` (`tests/db/test_genera_ordine_da_offerta_db.py`,
+   riga ~80) o che passano da `update_stato` (`tests/services/test_offerte_service.py`): al verbo o alla capability;
+   test nuovi sul DB per «Emetti» senza azione, rifiuto senza motivazione, annullo di una revisione con e senza
+   conferma.
+9. **Doc** `docs/it/backend/vendite/manual/api_offerte.md`: stati, permessi, motivazione, legami dell'annullo.
+
+Da sapere: ⚠️ `emetti_offerta` non la riceve nessun profilo dai seed: senza, nessuno emette un'offerta né annulla
+un'accettata. Concederla è un dato, su dbdev lo fa Tid. Il numero alla nascita (O-6) e il nome della matrice (O-5)
+restano fuori, dichiarati nella guida §10.
+
+### 13.7 Applicato e verde; il backend dopo l'apply (2026-10-26)
+
+**Applicato e verde (Tid, 2026-10-26):** migrazione del giro 9 su dbdev e corsa pgTAP come app.
+
+**Verifica del backend, letta dal team DB dopo l'apply** (il codice di `dev/backend-tid` com'è, nessun commit BE
+dopo `0a08565be`). Le correzioni BE già fatte sull'offerta nei giri 6-8 — lo stato d'emissione dal vocabolario
+(`stato_di_emissione`, V-2/B-4 del §8.11), l'id dello stato dal lettore `fn_doc_stato_id`
+(`OfferteRepository.get_stato_id_by_codice`), l'annullo senza stato di partenza scritto in Python
+(`annulla`, `expected_from=None`, H-R3) — sono giuste nel merito, ma arrivano tutte allo stesso punto,
+`OfferteService._cambia_stato_manuale` → `OfferteRepository.update_stato`, cioè un `UPDATE` della colonna di stato.
+**Dopo l'apply quell'`UPDATE` lo rifiuta la porta** (`E_DOC_STATO_SOLO_DAL_VERBO`). Da adesso, su dbdev:
+
+| Strada | Codice BE | Esito oggi | Punto del §13.6 |
+| --- | --- | --- | --- |
+| «Emetti» (`POST /offerte/<id>/emetti/`, factory dei documenti) | `OfferteService.emetti` → `_cambia_stato_manuale` | rifiutato dalla porta, il PDF non nasce (la transazione si annulla) | 1, 5 (manca `emetti_passaggio`) |
+| Esito (`POST /registra-esito/`, accetta e rifiuta) | `registra_esito` → `registra_accettazione` / `registra_rifiuto` | rifiutato dalla porta | 2 |
+| Annullo (`POST /annulla/`) | `annulla` | rifiutato dalla porta; e senza `legami_confermati` l'annullo di una revisione non avrebbe comunque la conferma | 3 |
+| Crea revisione, push a contratto, genera ordine | `crea_revisione`, `push_a_contratto` e il verbo dell'ordine | **funzionano**: lo stato del padre lo scrive la proiezione dentro il DB | — (resta `_assert_stato_corrente` davanti, punto 4) |
+
+Cosa resta valido delle correzioni di prima, e cosa si ritira col §13.6:
+* `stato_di_emissione` resta: dà il **codice** dello stato d'emissione da passare al verbo (punto 1);
+* `get_stato_id_by_codice` si ritira: il verbo prende il codice, non l'id (punto 4, con `update_stato`);
+* `annulla` senza stato di partenza resta come scelta, ma passa da `fn_annulla_offerta` con la motivazione e
+  `legami_confermati` (punto 3); `guard_non_empty_string` si ritira (punto 2);
+* `_cambia_stato_manuale` si riduce al verbo (o sparisce): la difesa applicativa sugli stati di partenza
+  (`expected_from`) ripete la matrice (punto 4).
+
+Fuori dal backend, sempre da sapere: il frontend chiama `annullaOfferta(id, { motivazione })`
+(`vendite/offerte/api/offerteApi.js`) senza la finestra dei legami (punto 7); i test Django
+`tests/services/test_offerte_service.py` (che passano da `update_stato`) e `tests/db/test_genera_ordine_da_offerta_db.py`
+(un `UPDATE` di stato nella fixture, riga ~80) ora sono rossi o lo diventano sul DB reale (punto 8). Nessuno smoke
+scrive lo stato dell'offerta (cercato in `backend/scripts/tests`).
+
+⚠️ Dato su dbdev: `emetti_offerta` (con `emetti_contratto` ed `emetti_ordine`) a nessun profilo finché Tid non le
+concede: anche col BE portato, senza il dato nessuno emette un'offerta.
+
+Il §13.6 resta l'elenco chiuso del passaggio BE: nessun punto nuovo, la tabella sopra dice solo che cosa è rotto
+**adesso**, nell'attesa (rotture BE accettate fino a fine cantiere).

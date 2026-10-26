@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'emissione di OFF_EMETTI (prima del 13) dal
+--   verbo vendite.fn_cambia_stato_offerta, con emetti_offerta concessa all'utente del contesto, non con
+--   un UPDATE dello stato: la porta dell'offerta lo ferma. Nessuna attesa cambiata.
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto CON_ATTIVA passa da
 --   dbops.fn_pgtap_porta_a_stato (il verbo del contratto), non da un UPDATE dello stato: la porta lo
 --   ferma. Nessuna attesa cambiata.
@@ -399,9 +402,11 @@ SELECT is(
     '12) offerta BOZZA: fornitura e indirizzi modificabili, motivazione_rifiuto non fra i non modificabili (R-DB-2)'
 );
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'EMESSA')
- WHERE id = pg_temp.doc('OFF_EMETTI');
+-- L'emissione dal verbo dell'offerta (rev 2026-10-26, giro 9: la porta rifiuta
+-- l'UPDATE diretto); l'azione emetti_offerta all'utente del contesto: il test
+-- prova il congelamento, non il permesso.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_offerta');
+SELECT * FROM vendite.fn_cambia_stato_offerta(pg_temp.doc('OFF_EMETTI'), 'EMESSA', NULL);
 
 SELECT is(
     (SELECT o.listino_versione_id FROM vendite.offerte_commerciali o WHERE o.id = pg_temp.doc('OFF_EMETTI')),

@@ -1,5 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'offerta ha la porta sulla colonna
+--   di stato e l'emissione chiede emetti_offerta. Concessa all'operatore del contesto prima del 22
+--   (senza, «Emetti» e' nascosta e la reason esce NULL); 23 e 24 passano dal verbo
+--   vendite.fn_cambia_stato_offerta (prima UPDATE diretti, ora fermati dalla porta). Stessi
+--   esiti attesi.
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): il contratto ha la porta sulla colonna di
 --   stato e l'attivazione chiede emetti_contratto. Concessa all'operatore del contesto prima del 18
 --   (senza, «Attiva» e' nascosta e la reason esce NULL); 19 e 20 passano dal verbo
@@ -540,6 +545,9 @@ SELECT is(
     '21) offerta: un''eccezione col prezzo in attesa da'' un motivo'
 );
 
+-- rev 2026-10-26 (§13): permesso => nascondi; con l'azione «Emetti» c'e', spento dal motivo.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_offerta');
+
 SELECT is(
     (SELECT a ->> 'reason_key'
        FROM jsonb_array_elements(script.fn_available_actions_offerta(
@@ -550,16 +558,14 @@ SELECT is(
 );
 
 SELECT throws_like(
-    format('UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'EMESSA'),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
            (SELECT offerta_id FROM _o WHERE tag = 'pendente')),
     '%prezzi ancora in attesa di approvazione%',
     '23) BOZZA -> EMESSA con un prezzo in attesa: BLOCCA (prima passava)'
 );
 
 SELECT lives_ok(
-    format('UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'EMESSA'),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
            (SELECT offerta_id FROM _o WHERE tag = 'kit')),
     '24) BOZZA -> EMESSA con prezzi autorizzati: PASSA (controllo del 23)'
 );

@@ -1,0 +1,45 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL COMMENTO DEL VOCABOLARIO DELL'OFFERTA, RISCRITTO
+#   Brief: brief-modello-documento-vendita §13.1 (giro 9).
+#
+#   Il commento del 2026-05-24 diceva «cinque stati» e «senza is_abortito»:
+#   stantio. ANNULLATA c'e' (is_abortito), e il vocabolario dichiara anche
+#   lo stato iniziale, quello d'emissione e quello di superamento, che i
+#   verbi leggono al posto dei letterali.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261026-15-comment-stati-doc-offerte-vocabolario-mctit.yaml
+
+  - changeSet:
+      id: 20261026-15-comment-stati-doc-offerte-vocabolario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Commento di config.stati_doc_offerte riscritto sul vocabolario di oggi (sei stati,
+        iniziale, emissione, is_superato, is_abortito). Brief: brief-modello-documento-vendita §13.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: stati_doc_offerte }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE config.stati_doc_offerte IS
+                  'Vocabolario degli stati di vendite.offerte_commerciali: BOZZA (iniziale, modificabile), EMESSA (emissione: proposta al cliente), ACCETTATA, RIFIUTATA (terminale), SUPERATA (terminale, is_superato: una revisione l''ha rimpiazzata) e ANNULLATA (terminale, is_abortito). I verbi leggono dal vocabolario lo stato iniziale, quello d''emissione, quello d''annullo e quello di superamento (iniziale, emissione, is_abortito, is_superato), non i codici. codice_interno e'' immutabile (script.trgfn_lock_columns). I passaggi ammessi sono la matrice config.stati_doc_offerte_transizioni. Brief: brief-modello-documento-vendita §13 (rev 2026-10-26; prima del giro il commento diceva cinque stati e nessun is_abortito).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;
