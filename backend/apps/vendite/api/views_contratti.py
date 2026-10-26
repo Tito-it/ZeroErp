@@ -20,6 +20,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
@@ -39,7 +40,7 @@ from apps.vendite.api._riga_erogazioni_views import RigaErogazioniView
 from apps.vendite.api.indirizzi_documento_views import (
     build_indirizzi_documento_views,
 )
-from apps.vendite.db.contratti_repository import ContrattoRigheListaRepository
+from apps.vendite.db.contratti_repository import TESTATA_CONTRATTI, ContrattoRigheListaRepository
 from apps.vendite.services import contratti_service
 from apps.vendite.services.contratti_service import ContrattiService
 from apps.core.api.openapi_params import param_ricerca_full
@@ -300,7 +301,10 @@ _CONTRATTO_STATO_REQUEST = inline_serializer(
         "codice_interno": serializers.CharField(),
         "valido_al": serializers.DateField(
             required=False, allow_null=True,
-            help_text="Opzionale: data fine validita' (cessazione contestuale al cambio stato).",
+            help_text=(
+                "Verso CESSATO: la data di cessazione (oggi = immediata, futura = "
+                "programmata). Con un altro stato e' un 400."
+            ),
         ),
         "legami_confermati": serializers.IntegerField(
             required=False, allow_null=True,
@@ -313,6 +317,12 @@ _CONTRATTO_STATO_REQUEST = inline_serializer(
 class ApiContrattoCambiaStato(DomainAPIView):
     area_funzionale = "vendite"
     model_permission = ("vendite", "contratto")
+    # L'azione del passaggio (stato corrente -> `codice_interno`) dalla riga
+    # della matrice: la cessazione chiede `emetti_contratto`, l'annullo della
+    # bozza il solo livello sul documento (M-3, M-4; §11.6 punto 3).
+    post_passaggio = PassaggioDocumento(
+        testata=TESTATA_CONTRATTI, documento_kwarg="contratto_id", campo_stato="codice_interno",
+    )
 
     @extend_schema(
         request=_CONTRATTO_STATO_REQUEST,
@@ -321,11 +331,9 @@ class ApiContrattoCambiaStato(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Cambia stato del contratto (DRAFT -> ATTIVO -> CESSATO).
-    #        Se valido_al e' fornito, applica anche PATCH valido_al nella
-    #        stessa transazione (caso d'uso: dialog "Cessa contratto" che
-    #        chiede la data al click). Trigger DB fa fail-fast su
-    #        attivazione modalita' C incompleta.
+    # Scopo: Cambia stato del contratto: la cessazione con la sua data
+    #        (`valido_al`, dialog «Cessa contratto»; la risposta dice se e'
+    #        `programmata`) e l'annullo. L'attivazione passa da «Emetti».
     def post(self, request: Request, contratto_id: int) -> JsonResponse:
         body = corpo_oggetto(request)
         codice = body.get("codice_interno", "")

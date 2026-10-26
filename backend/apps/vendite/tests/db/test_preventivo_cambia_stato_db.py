@@ -21,13 +21,14 @@ Indice test eseguiti:
 1) PreventivoCambiaStatoDbTests.test_accettazione_dal_verbo
 2) PreventivoCambiaStatoDbTests.test_accettato_si_aggiorna_senza_il_verbo — §8.7 punto 5
 3) PreventivoCambiaStatoDbTests.test_lo_stato_di_emissione_e_un_400 — M-2 dal vocabolario
+4) PreventivoCambiaStatoDbTests.test_il_secondo_emetti_e_rifiutato — §9.10
 """
 from __future__ import annotations
 
 import unittest
 from datetime import date
 
-from django.db import connection
+from django.db import DatabaseError, connection, transaction
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
@@ -93,4 +94,16 @@ class PreventivoCambiaStatoDbTests(unittest.TestCase):
             preventivi_service.cambia_stato(self.preventivo_id, "EMESSO")
         self.assertEqual(cm.exception.code, "E_PREV_VALIDAZIONE")
         self.assertEqual(cm.exception.context.get("field"), "nuovo_stato")
+        self.assertEqual(self._stato()[0], "EMESSO")
+
+    # Il preventivo del mondo nasce EMESSO: un «Emetti» su di lui e' il secondo,
+    # e lo rifiuta la prima riga del verbo (brief-modello-documento-vendita
+    # §9.10). Il service non traduce: il codice viaggia nel campo dedicato
+    # dell'eccezione, e il PDF non nasce perche' la view lo genera solo dopo
+    # il verbo, nella stessa transazione.
+    def test_il_secondo_emetti_e_rifiutato(self) -> None:
+        with self.assertRaises(DatabaseError) as cm, transaction.atomic():
+            preventivi_service.emetti(self.preventivo_id)
+        diag = getattr(cm.exception.__cause__, "diag", None)
+        self.assertEqual(getattr(diag, "constraint_name", None), "E_DOC_GIA_NELLO_STATO")
         self.assertEqual(self._stato()[0], "EMESSO")

@@ -256,6 +256,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE": "Modifica del listino bloccata: ci sono righe gia' caricate contro questo contesto pricing. Elimina prima le righe oppure annulla il contratto e creane uno nuovo.",
     "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE": "Il contratto e' ATTIVO: listino, versione listino, variazione globale ed eccezioni sono congelati. Per modifiche sostanziali creare un nuovo contratto.",
     "E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE": "Categoria cliente congelata alla creazione del contratto: non modificabile.",
+    "E_CONTRATTO_CESSAZIONE_SENZA_DATA": "Per cessare il contratto serve la data di fine.",
     "E_CONTRATTO_CLASSE_TIPO_INCOERENTE": "La classe utenza scelta non appartiene al tipo utenza indicato.",
     "E_CONTRATTO_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente selezionato.",
     "E_CONTRATTO_EMITTENTE_NON_RISOLTO": "Nessun emittente fiscale attivo: selezionalo in alto o indicalo nella richiesta.",
@@ -365,6 +366,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # brief-db-testata-dopo-emissione (fase 2, 2026-10-10): la testata dopo la
     # bozza, un codice per famiglia di colonne. Il lock e' il BB di testata.
     "E_DOC_EMITTENTE_IMMUTABILE": "L'azienda che emette il documento si sceglie alla creazione e non si cambia, nemmeno in bozza.",
+    "E_DOC_GIA_NELLO_STATO": "Il documento e' gia' nello stato chiesto: non c'e' niente da cambiare.",
     "E_DOC_IDENTITA_FUORI_BOZZA": "Data, valuta e numerazione del documento si scelgono solo in bozza.",
     "E_DOC_CONDIZIONI_FUORI_BOZZA": "In questo stato le condizioni commerciali del documento non si cambiano piu': annulla il documento e rifallo, oppure creane una nuova revisione.",
     "E_DOC_CLIENTE_FUORI_BOZZA": "Il cliente del documento si sceglie solo in bozza: se e' sbagliato, annulla il documento e creane uno nuovo.",
@@ -993,7 +995,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PANNELLO_TABELLA_NON_AMMESSA": "Tabella non gestita dal pannello di configurazione.",
     "E_PARAMETER_DEFAULT_VALUE_INVALID": "Valore di default parametro non valido: deve esistere nella tabella di catalogo associata.",
     "E_PARAMETER_NOT_FOUND": "Parametro di sistema non trovato.",
-    "E_PARAMETER_OVERRIDE_NON_AMMESSO": "Questo parametro vale per tutti e non si personalizza: si cambia il valore di default.",
+    "E_PARAMETER_OVERRIDE_NON_AMMESSO": "Questo parametro vale per tutti e non si personalizza: lo stabilisce la configurazione del sistema, per cambiarlo ci si rivolge all'amministratore.",
     "E_PARAMETER_OVERRIDE_PRESENTI": "Il parametro ha ancora personalizzazioni: non puo' diventare uguale per tutti.",
     "E_PARAMETER_OVERRIDE_VALUE_INVALID": "Override parametro non valido: il valore deve esistere nella tabella di catalogo associata.",
     "E_PARAMETER_VALIDATION": "Valore parametro non valido.",

@@ -5882,7 +5882,7 @@
       "level_categoria_cliente": "Customer category",
       "level_user": "User",
       "per_tutti": "Same for everyone",
-      "per_tutti_hint": "This parameter applies to everyone and cannot be customised: change its default value instead."
+      "per_tutti_hint": "This parameter applies to everyone and cannot be customised: it is set by the system configuration; to change it, contact the system administrator."
     },
     "documenti": {
       "tab_modelli": "Document templates",

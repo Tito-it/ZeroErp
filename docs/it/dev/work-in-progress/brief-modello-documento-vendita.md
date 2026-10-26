@@ -1,8 +1,13 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-26 (giro 8, il contratto: DB applicato e verde, §11.5; tocca al BE, §11.6)
+## ⏭️ Chi riparte — aggiornato al 2026-10-26 (giro 8, il contratto: DB e BE fatti, §11.7; da committare)
 
-**Riparte: il team BE**, sulle richieste del §9.10 (cinque punti) e del §11.6 (sette punti), in un passaggio solo; **Tid** col dato `emetti_contratto` ai profili e col via al giro dell'offerta, che non aspetta il BE (§5). Il giro 8 (il contratto) è applicato e verde (Tid, 2026-10-26). Il giro DB del §9.10 è applicato e verde (Tid, 2026-10-26). Giro 7 (l'ordine): DB applicato e verde (Tid, 2026-10-25). Giro 6, il preventivo (§8): DB applicato e verde, BE fatto (§8.10) tranne il ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committato su DB e BE (`4351164c1`, PR #1943).
+**Riparte: Tid**, col commit del passaggio BE (§11.7), col dato `emetti_contratto` ai profili (senza, nessuno
+attiva o cessa un contratto) e col via al giro dell'offerta, che non aspetta il BE (§5). Il **team DB** ha una
+richiesta a priorità bassa: il lettore dello stato di cessazione (§11.7). Il giro 8 (il contratto) è applicato e
+verde (Tid, 2026-10-26); le richieste al BE del §9.10 e del §11.6 sono fatte (§11.7). Giro 7 (l'ordine): DB
+applicato e verde (Tid, 2026-10-25). Giro 6, il preventivo (§8): DB applicato e verde, BE fatto (§8.10) tranne il
+ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committato su DB e BE (`4351164c1`, PR #1943).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -46,13 +51,15 @@
 | 4-bis-octies-ter | ✅ **Tid** | Commit del giro BE (`8023974de`, PR #1953); via al team DB per il difetto X → X (2026-10-26). Il dato `emetti_ordine` ai profili su dbdev: non verificato qui | §9.8 | 4-bis-octies-bis |
 | 4-bis-octies-quater | ✅ team DB / **Tid** | Prima riga o guard di transizione: Tid sceglie la prima riga col codice comune (2026-10-26). Scritti `20261026-01` (X → X, `E_DOC_GIA_NELLO_STATO`) e `-02` (bolla, stato sconosciuto come i gemelli); 3 pgTAP estesi, regressione su 40 file senza differenze | §9.10 | 4-bis-octies-ter |
 | 4-bis-octies-quinquies | ✅ **Tid** | Apply di `20261026-01`, `-02` e dei CSV degli errori; corsa pgTAP come app: verdi (2026-10-26) | §9.10 | 4-bis-octies-quater |
-| 4-bis-octies-sexies | team BE ⏭️ | Richiesta del §9.10, punti 1-5: policy del codice nuovo, ritiro di `_assert_stato` e del controllo della bolla, test del secondo «Emetti» | §9.10 | 4-bis-octies-quinquies |
+| 4-bis-octies-sexies | ✅ team BE | Richiesta del §9.10, punti 1-5: policy del codice nuovo, ritiro di `_assert_stato` e del controllo della bolla, test del secondo «Emetti» (2026-10-26) | §11.7 | 4-bis-octies-quinquies |
 | 4-bis-nonies | ✅ **Tid** → team DB | Il via al giro 8: il contratto (ordine dei giri di W-1), 2026-10-26. Non aspetta il BE (§5) | §5 | 4-bis-septies-octies |
 | 4-bis-nonies-bis | ✅ team DB | Giro 8, il contratto: ricognizione, piano, domande | §11 | 4-bis-nonies |
 | 4-bis-nonies-ter | ✅ **Tid** | Y-1 … Y-4 come da proposta, e il via allo sviluppo (2026-10-26) | §11.3 | 4-bis-nonies-bis |
 | 4-bis-nonies-quater | ✅ team DB / **Tid** | Giro 8 scritto (`-03` … `-13`, CSV) e provato in transazione; 18 pgTAP portati, 2 ritirati (Tid: 11 e 12 del sovrapposto), regressione su 68 file senza peggioramenti | §11.4, §11.5 | 4-bis-nonies-ter |
 | 4-bis-nonies-quinquies | ✅ **Tid** | Apply del giro 8 e corsa pgTAP come app: verdi (2026-10-26). Il dato `emetti_contratto` ai profili su dbdev: non verificato qui | §11.5 | 4-bis-nonies-quater |
-| 4-bis-nonies-sexies | team BE ⏭️ | Richiesta del §11.6 (sette punti), insieme a quella del §9.10 | §11.6 | 4-bis-nonies-quinquies |
+| 4-bis-nonies-sexies | ✅ team BE | Richiesta del §11.6 (sette punti), insieme a quella del §9.10 (2026-10-26); fuori elenco il messaggio della cessazione nel frontend e la pulizia dello smoke dei listini | §11.7 | 4-bis-nonies-quinquies |
+| 4-bis-nonies-septies | **Tid** ⏭️ | Commit del passaggio BE; il dato `emetti_contratto` ai profili su dbdev | §11.7 | 4-bis-nonies-sexies |
+| 4-bis-nonies-octies | team DB | Il lettore dello stato di cessazione (priorità bassa); poi il BE ritira `STATO_CESSATO` | §11.7 | — |
 | 4-bis-decies | **Tid** → team DB | Il via al giro 9: l'offerta (ordine dei giri di W-1). Non aspetta il BE (§5) | §5 | 4-bis-nonies-quinquies |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
@@ -60,8 +67,8 @@
 | 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1, il blocco «origine» della stampa della fattura, da decidere nel giro della fattura; D-G2, la prova a video del lotto 2b | §10 | — |
 | 5-ter | **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, il censimento dei gate delle azioni per riga; quando, lo decide Tid | §12 | — |
 
-Decisioni aperte di Tid: quando fare D-N1 (§12, riga 5-ter); il via al giro dell'offerta. W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine. Lavoro da committare (`dev/db-tid`): il giro DB del §9.10 (due changeSet, due CSV, tre pgTAP, guida e pagina manuale) e il giro 8 (undici changeSet, il mirror e quattro CSV, un pgTAP nuovo e diciannove portati, guide e pagine manuali).
-Committati: il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
+Decisioni aperte di Tid: quando fare D-N1 (§12, riga 5-ter); il via al giro dell'offerta. W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (§11.7). Lavoro da committare (`dev/backend-tid`): il passaggio BE del §11.7 (§9.10 e §11.6, il messaggio della cessazione nel frontend, lo smoke dei listini, `api_contratti.md`).
+Committati: il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -2085,6 +2092,68 @@ Da sapere, nessuna modifica attesa: l'handler della coda `chiusura_scadenze_hand
 `dbops.fn_apply_chiusura_scadenze()` e riceve lo stesso jsonb; un secondo «Emetti» o «Cessa» risponde
 `E_DOC_GIA_NELLO_STATO`. ⚠️ `emetti_contratto` non lo riceve nessun profilo dai seed: senza, nessuno attiva
 o cessa un contratto. Concederla è un dato, su dbdev lo fa Tid.
+
+### 11.7 Fatto dal team BE (2026-10-26): §9.10 punti 1-5 e §11.6 punti 1-7, in un passaggio solo
+
+**§9.10 — il passaggio allo stato che il documento ha già.**
+
+1. `E_DOC_GIA_NELLO_STATO` (`CONFLITTO_STATO`, 409) ed `E_CONTRATTO_CESSAZIONE_SENZA_DATA` (`DATO_ERRATO`, 400):
+   policy rigenerata dal catalogo (`genera_error_policies`, con git allineato al DB) e ripiego senza segnaposto in
+   `error_messages_fallback.py`. Nello stesso giro la rigenerazione ha preso la nota nuova di
+   `E_PARAMETER_OVERRIDE_NON_AMMESSO` (`31881207e`, brief-db-parametri-senza-override §6.8): classe invariata.
+2. Ordine: `_assert_stato` ritirato dalla conferma. Seconda conferma e ordine inesistente li dice il verbo
+   (`E_DOC_GIA_NELLO_STATO`, `E_ORD_NOT_FOUND`). `test_conferma_due_volte` (DB) si aspetta il codice nuovo; il test
+   unitario della seconda conferma prova che il codice del verbo passa e che lo step della pratica non si chiude.
+3. Secondo «Emetti»: test sul DB per la bolla (rifiutato con `E_DOC_GIA_NELLO_STATO` **prima** dei controlli della
+   merce, giacenza invariata) e per il preventivo (il codice nel campo dedicato dell'eccezione). Che non nasca un
+   secondo PDF lo prova la view, che è la factory comune di tutti i documenti: un rifiuto del verbo risponde 409 e
+   `genera_documento` non parte (`test_ddt_api.test_emetti_rifiutato_non_genera_il_documento`).
+4. Bolla: ritirati il controllo «lo stato esiste?» di `ddt_service._passa_a` e `DdtRepository.get_stato_id_by_codice`;
+   lo stato che non c'è lo dice il verbo (`E_STATO_WORKFLOW_NON_TROVATO`), con un test sul DB.
+5. `resi_service`: i commenti di `conferma_reso` e `annulla_reso` nominano la seconda conferma e il secondo annullo.
+
+**§11.6 — il contratto.**
+
+1. «Emetti» scrive lo stato dal verbo `fn_cambia_stato_contratto` (lo stato di emissione dal vocabolario);
+   `ContrattiRepository.update_stato` e `get_stato_id_by_codice` ritirati.
+2. La cessazione chiama `fn_cessa_contratto(id, valido_al)` e la risposta porta `programmata`. Ritirate le due copie
+   Python (data obbligatoria, scelta programmata/immediata) e la PATCH di `valido_al` prima dello stato. Gli altri
+   stati vanno al verbo di stato, che giudica anche lo stato che non c'è. ⚠️ **Una regola nuova, dichiarata**:
+   `valido_al` con uno stato diverso da `CESSATO` è un 400 col campo. Prima veniva scritta con una PATCH accanto a
+   qualunque passaggio; ora nessun verbo la scriverebbe, e scartarla in silenzio direbbe al client che è stata presa.
+3. Il 403 dalla riga del passaggio: `emetti_passaggio=TESTATA_CONTRATTI` sulla view di «Emetti», `post_passaggio`
+   (campo `codice_interno`) sul cambio stato; l'annullo della bozza resta al permesso sul documento.
+4. Codici nella policy: vedi §9.10 punto 1.
+5. SOSPESO uscito da commento e test.
+6. Test Django portati: i test del service passano dai verbi (cessazione oggi e futura, i tre rifiuti del verbo, lo
+   stato sconosciuto, l'annullo); test nuovo sul DB `vendite/tests/db/test_contratto_cambia_stato_db.py` (7: «Emetti»,
+   senza azione, secondo «Emetti», cessazione oggi e programmata, senza data e retroattiva, annullo della bozza).
+   `test_contratto_attiva_sovrapposto_db` concede `emetti_contratto`. `test_date_validita_guard_comune_db` ora cessa
+   un contratto **ATTIVO**: da bozza la cessazione non ha più strada (il verbo guarda la matrice prima della data).
+7. `api_contratti.md`: stati, cessazione, permessi e risposta del cambio stato, auth di «Emetti».
+
+**Fuori dall'elenco, nello stesso passaggio.**
+
+* **Frontend**, `ContrattoDrawer`: il messaggio dell'esito della cessazione legge `programmata` dalla risposta. Il
+  calcolo locale «data futura = programmata» resta solo come anteprima nel dialog, prima della conferma.
+* **Smoke** `smoke-test-listini-v5.sh`: tolto l'`UPDATE` diretto dello stato dei contratti dalla pulizia iniziale.
+  La porta ora lo rifiuta, e girava nello stesso `psql -c` delle altre pulizie: il rifiuto le avrebbe annullate
+  tutte, in silenzio. Tolta anche la cessazione senza data della pulizia finale. I contratti li chiude già
+  `smoke_chiudi_contratti`, all'inizio e all'uscita.
+
+**Richiesta al team DB (priorità bassa, scelta di Tid 2026-10-26: «fai a) e segnala al DB»).** Lo stato della
+cessazione non ha un lettore nel vocabolario, come invece hanno l'emissione e l'annullo: `fn_cessa_contratto`
+lo scrive come letterale (`v_cessato := 'CESSATO'`), e così `fn_cessa_contratti_scaduti`
+(`fn_doc_stato_id(..., 'CESSATO')`). Per instradare la cessazione al suo verbo, il backend ha dovuto ricopiare lo
+stesso letterale (`contratti_repository.STATO_CESSATO`, dichiarato). Si chiede un lettore dello stato di
+cessazione, cioè l'esito positivo terminale (per esempio una colonna o un `esito` sul vocabolario, letto da una
+funzione gemella di `fn_stato_abortito_id`), usato dai due verbi. Ricaduta BE dopo l'apply: `STATO_CESSATO`
+si ritira e il service chiede al lettore.
+
+**Provato:** suite completa sul DB reale (`ZEROERP_TEST_DB_E2E=1`), **6975 test verdi** (1 saltato, 1 fallimento
+atteso, già noti); vitest di `vendite` (157 verdi); ruff, eslint, oxlint puliti; mypy col cricchetto a 0 rilievi.
+Lo smoke non è stato lanciato. ⚠️ Senza `emetti_contratto` concessa al profilo nessuno attiva o cessa un contratto:
+per il collaudo a video serve il dato su dbdev.
 
 ## 12. Ereditato da brief-design-note-credito-resi (2026-10-26)
 

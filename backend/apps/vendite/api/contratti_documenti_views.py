@@ -11,9 +11,10 @@
 #
 #        Emissione (`POST emetti/`, multipart): DRAFT->ATTIVO + genera
 #        documento + allegati in transazione atomica. Se il render fallisce,
-#        il rollback annulla l'attivazione (stato resta DRAFT). Niente
-#        post_permission: allineato ad ApiContrattoCambiaStato (transizioni
-#        contratti su area-level senza azione di processo dedicata).
+#        il rollback annulla l'attivazione (stato resta DRAFT). L'azione la
+#        dice la riga della matrice verso lo stato di emissione
+#        (`emetti_contratto` su DRAFT -> ATTIVO), non questa view
+#        (`emetti_passaggio`, brief-modello-documento-vendita §11.6).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from apps.documenti.api.sorgente_documenti_views import (
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
-from apps.vendite.db.contratti_repository import ContrattiRepository
+from apps.vendite.db.contratti_repository import TESTATA_CONTRATTI, ContrattiRepository
 from apps.vendite.services.contratti_service import ContrattiService
 
 
@@ -63,6 +64,9 @@ _views = build_documenti_sorgente_views(
     doc_service=_doc_service,
     emetti_call=_emetti_call,
     emetti_response_key="contratto",
+    # ⭐ Il 403 dalla stessa riga che legge il verbo (M-3, §11.6 punto 3); lo
+    #    stato di emissione lo dice il vocabolario a ogni richiesta.
+    emetti_passaggio=TESTATA_CONTRATTI,
     model_permission=("vendite", "contratto"),
 )
 

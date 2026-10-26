@@ -33,12 +33,17 @@ TestEmissioneAllegatiContratto (refactor 2026-05-28):
     service.emetti + genera_documento(allegati=...) in transazione atomica
 21) test_get_documento_allegati_list_ok — GET allegati: lista file (princ. + all.)
 22) test_post_documento_allegati_upload_ok — POST allegati: append multipart
+
+ContrattoPassaggioTests (brief-modello-documento-vendita §11.6):
+23) test_emetti_e_cambia_stato_dichiarano_il_passaggio — il 403 dalla riga
 """
 
 import json
+from datetime import date
 from unittest.mock import Mock, patch
 
 from django.core.cache import cache
+from django.test import SimpleTestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.core.tests._helpers.jwt_mock import ClientApi
@@ -286,15 +291,21 @@ class TestCambiaStato(_BaseApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC)
     def test_post_cambia_stato_ok(self, svc_cls, _auth):
-        svc_cls.return_value.cambia_stato.return_value = {"id": 1, "stato_codice": "ATTIVO"}
+        # La cessazione con la sua data: la data arriva al service come `date`,
+        # e `programmata` (deciso dal verbo del DB) torna al client (§11.6).
+        svc_cls.return_value.cambia_stato.return_value = {
+            "id": 1, "stato_codice_interno": "ATTIVO", "programmata": True,
+        }
         resp = self.client.post(
             _BASE + "1/cambia-stato/",
-            data=json.dumps({"codice_interno": "ATTIVO"}),
+            data=json.dumps({"codice_interno": "CESSATO", "valido_al": "2026-12-31"}),
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)
+        self.assertIs(resp.json()["data"]["programmata"], True)
         kwargs = svc_cls.return_value.cambia_stato.call_args.kwargs
-        self.assertEqual(kwargs["codice_interno"], "ATTIVO")
+        self.assertEqual(kwargs["codice_interno"], "CESSATO")
+        self.assertEqual(kwargs["valido_al"], date(2026, 12, 31))
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC)
@@ -516,3 +527,24 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
         self.assertEqual(len(args[2]), 1)
         self.assertEqual(args[2][0]["mime_type"], "application/pdf")
         self.assertEqual(args[2][0]["file_name"], "extra.pdf")
+
+
+class ContrattoPassaggioTests(SimpleTestCase):
+    # Scopo: «Emetti» e il cambio stato del contratto leggono l'azione dalla
+    #        riga del passaggio (`emetti_contratto` su attivazione e
+    #        cessazione; l'annullo della bozza nessuna), non la dichiarano:
+    #        nessun `post_permission` accanto (M-3, §11.6 punto 3).
+    def test_emetti_e_cambia_stato_dichiarano_il_passaggio(self) -> None:
+        from apps.core.api.permissions import PassaggioDocumento
+        from apps.vendite.api.contratti_documenti_views import ApiContrattoEmetti
+        from apps.vendite.api.views_contratti import ApiContrattoCambiaStato
+
+        self.assertEqual(ApiContrattoEmetti.post_passaggio, PassaggioDocumento(
+            testata="vendite.contratti", documento_kwarg="sorgente_id", stato_del_modello="emissione",
+        ))
+        self.assertEqual(ApiContrattoCambiaStato.post_passaggio, PassaggioDocumento(
+            testata="vendite.contratti", documento_kwarg="contratto_id", campo_stato="codice_interno",
+        ))
+        for view in (ApiContrattoEmetti, ApiContrattoCambiaStato):
+            with self.subTest(view=view.__name__):
+                self.assertIsNone(getattr(view, "post_permission", None))

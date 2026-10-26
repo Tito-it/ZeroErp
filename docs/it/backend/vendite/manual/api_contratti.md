@@ -332,16 +332,23 @@ Il tipo ammesso è solo `PERCENTUALE`: `VALORE_FISSO` è rifiutato prima (400
 ```
 
 - `codice_interno` (obbligatorio): stato di destinazione.
-- `valido_al` (ISO date, facoltativo): data di fine validità, scritta nella
-  stessa transazione. **Obbligatorio verso `CESSATO`** (`400
-  E_VENDITE_VALIDATION`). Con `valido_al` **futuro** la cessazione è
-  **programmata**: si scrive solo la data, lo stato resta e lo porta a
-  `CESSATO` il job notturno alla scadenza. Data passata →
-  `E_CONTRATTO_VALIDO_AL_RETROATTIVO` (409).
+- `valido_al` (ISO date): la data di cessazione, **solo verso `CESSATO`**; con un
+  altro stato è un `400 E_VENDITE_VALIDATION` col campo. La cessazione la decide
+  il verbo `vendite.fn_cessa_contratto`: oggi → `CESSATO` subito; futura →
+  **programmata** (si scrive solo la data, lo stato resta e lo porta a `CESSATO`
+  il job alla scadenza); senza data → `E_CONTRATTO_CESSAZIONE_SENZA_DATA` (400,
+  campo `valido_al`); passata → `E_CONTRATTO_VALIDO_AL_RETROATTIVO` (409).
 - `legami_confermati` (int): solo verso `ANNULLATO`, vedi sotto.
 
 Risposta `200`: il **dettaglio completo** del contratto (stessa forma del
-`GET /<id>/`, `capabilities` comprese), anche sull'annullo.
+`GET /<id>/`, `capabilities` comprese), anche sull'annullo. Verso `CESSATO` porta
+anche `programmata` (bool): `true` se lo stato non è cambiato e lo chiuderà il job.
+
+Permesso: l'azione la dice la riga del passaggio (`PassaggioDocumento`): la
+cessazione chiede `emetti_contratto` (403 senza), l'annullo della bozza il solo
+permesso sul documento. Uno stato che il vocabolario non ha →
+`E_STATO_WORKFLOW_NON_TROVATO` (404); lo stato che il contratto ha già →
+`E_DOC_GIA_NELLO_STATO` (409).
 
 Verso `ANNULLATO` passa sempre dal verbo `vendite.fn_annulla_contratto`: su un
 contratto con legami (offerta d'origine, righe di commessa da emettere) risponde
@@ -356,19 +363,13 @@ una riga per legame di `vendite.fn_documento_legami` con `origine` (codice di `c
 dal lineage (`origine_tipo_codice_interno`, `origine_codice`). `legami` e' il
 numero da dichiarare. Alimenta la finestra di conferma dell'annullo.
 
-Stati ammessi via questo endpoint: `SOSPESO`, `CESSATO`, `ANNULLATO` e
-ritorni `→ DRAFT` ammessi dal modello. **`ATTIVO` non è ammesso da questo
-endpoint** (refactor 2026-05-28): il service fail-fast con
-`E_VENDITE_VALIDATION` (400) e indirizza all'endpoint dedicato
-`POST /<id>/emetti/` (sezione seguente). Motivo: l'attivazione deve
-orchestrare atomicamente cambio stato + generazione documento + allegati
-per garantire l'invariante "stato ATTIVO ⇒ esiste un documento PDF
-persistito".
-
-Le altre transizioni (`DRAFT → SOSPESO`, `ATTIVO → SOSPESO`,
-`SOSPESO → ATTIVO`, ecc.) restano gestite da questo endpoint. La
-transizione `* → ATTIVO` dovrà comunque passare per `/emetti/` (anche da
-SOSPESO, per coerenza con l'invariante documentale).
+Stati ammessi via questo endpoint: `CESSATO` e `ANNULLATO`, più ciò che la
+matrice `config.transizioni_stati_contratti` ammette in futuro (il verbo di
+stato la legge). **`ATTIVO` non è ammesso da questo endpoint**: il service
+risponde `E_VENDITE_VALIDATION` (400) e indirizza a `POST /<id>/emetti/`
+(sezione seguente), perché l'attivazione deve orchestrare atomicamente cambio
+stato + generazione documento + allegati ("stato ATTIVO ⇒ esiste un documento
+PDF persistito").
 
 ### Attivazione DRAFT→ATTIVO `POST /api/v1/vendite/contratti/<id>/emetti/`
 
@@ -379,9 +380,11 @@ Nuovo endpoint multipart 2026-05-28. Mirror del flusso offerta/preventivo
 - Metodo: `POST`
 - Content-Type: `multipart/form-data`
 - Parser: `MultiPartParser`, `FormParser`
-- Auth: JWT, `area_funzionale = "vendite"`. Nessun `post_permission`
-  specifico (allineato al cambio stato contratti — l'autorizzazione è a
-  livello area, non azione di processo dedicata)
+- Auth: JWT, `area_funzionale = "vendite"`. L'azione la dice la riga del
+  passaggio verso lo stato di emissione (`PassaggioDocumento`): chiede
+  `emetti_contratto`, 403 senza. Lo stato lo scrive il verbo
+  `vendite.fn_cambia_stato_contratto`; un secondo «Emetti» →
+  `E_DOC_GIA_NELLO_STATO` (409), senza un secondo PDF
 - Body multipart:
   - `template_documento_id` (int, opzionale)
   - `tipo_documento_output_id` (int, opzionale)
@@ -1122,6 +1125,9 @@ alle righe di contratto via `target_riga_id`.
   `trgfn_contratti_righe_componenti_guard_pending`, droppato il 2026-08-04.
 
 **Stati** gestiti via `config.stati_doc_contratti`
-(DRAFT/ATTIVO/SOSPESO/CESSATO). Cessazione manuale solo con
-`valido_al >= CURRENT_DATE`; il job pgAgent `fn_apply_chiusura_scadenze`
-chiude i contratti scaduti via GUC `app.cessazione_automatica='true'`.
+(DRAFT/ATTIVO/CESSATO/ANNULLATO), scritti solo dai verbi: «Emetti» dal verbo di
+stato `vendite.fn_cambia_stato_contratto`, la cessazione da
+`vendite.fn_cessa_contratto` con la sua data (oggi = immediata, futura =
+programmata, passata rifiutata), l'annullo da `vendite.fn_annulla_contratto`. Il
+job `fn_apply_chiusura_scadenze` chiude i contratti scaduti col verbo
+`vendite.fn_cessa_contratti_scaduti`.
