@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1135, di cui 122 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1137, di cui 122 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1204,6 +1204,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Framework FK-surrogata config.parameter_fk_surrogate (DB 2026-05-02): · dispatcher su parameters/parameter_overrides che valida default_value · contro la chiave naturale stabile (di norma codice_interno) della · tabella di catalogo target. Sostituisce il guard ad-hoc deprecato · E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID (mantenuto a livello DB · per retro-compat ma non mappato qui: i nuovi inserimenti finiscono · sempre sui codici 422/423 del framework).
     "E_PARAMETER_DEFAULT_VALUE_INVALID": "DATO_ERRATO",
     "E_PARAMETER_NOT_FOUND": "NON_TROVATO",
+    # Guard config.trgfn_parameter_overrides_guard_ammette_override (a05, 20261025-84): un override su un parametro con config.parameters.ammette_override = false, anche spento. Prima veniva accettato e ignorato, perche' il lettore di quei parametri guarda il default. DATO_ERRATO: rimedia chi scrive, cambiando il default. Parla prima del dispatcher FK-surrogata (E_PARAMETER_OVERRIDE_VALUE_INVALID). VARIADIC: il codice del parametro. Brief: brief-db-parametri-senza-override (D-1, 2026-10-25).
+    "E_PARAMETER_OVERRIDE_NON_AMMESSO": "DATO_ERRATO",
+    # Guard config.trgfn_parameters_guard_ammette_override (a10, 20261025-85): un parametro passa da ammette_override = true a false mentre ha override, accesi o spenti. CONFLITTO_STATO: il valore nuovo puo' essere giusto, sono gli override esistenti a non ammetterlo. Lo scrive un CSV o un amministratore; campo ammette_override nel contesto. VARIADIC: il codice del parametro, il numero di override. Brief: brief-db-parametri-senza-override (D-1, 2026-10-25).
+    "E_PARAMETER_OVERRIDE_PRESENTI": "CONFLITTO_STATO",
     "E_PARAMETER_OVERRIDE_VALUE_INVALID": "DATO_ERRATO",
     "E_PARAMETER_VALIDATION": "DATO_ERRATO",
     "E_PARAMETRI_TABELLA": "NON_TROVATO",

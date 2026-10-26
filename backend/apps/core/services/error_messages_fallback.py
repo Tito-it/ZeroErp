@@ -993,6 +993,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PANNELLO_TABELLA_NON_AMMESSA": "Tabella non gestita dal pannello di configurazione.",
     "E_PARAMETER_DEFAULT_VALUE_INVALID": "Valore di default parametro non valido: deve esistere nella tabella di catalogo associata.",
     "E_PARAMETER_NOT_FOUND": "Parametro di sistema non trovato.",
+    "E_PARAMETER_OVERRIDE_NON_AMMESSO": "Questo parametro vale per tutti e non si personalizza: si cambia il valore di default.",
+    "E_PARAMETER_OVERRIDE_PRESENTI": "Il parametro ha ancora personalizzazioni: non puo' diventare uguale per tutti.",
     "E_PARAMETER_OVERRIDE_VALUE_INVALID": "Override parametro non valido: il valore deve esistere nella tabella di catalogo associata.",
     "E_PARAMETER_VALIDATION": "Valore parametro non valido.",
     "E_PARAMETRI_TABELLA": "Il valore indicato non corrisponde a nessun record.",

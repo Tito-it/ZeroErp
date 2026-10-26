@@ -75,3 +75,24 @@ describe('useDatiSocietariForm — stato intero per il verbo DB', () => {
     expect(ds.toPayload().data_costituzione).toBeNull()
   })
 })
+
+// ⭐ brief-db-parametri-senza-override FE-2: socio unico e liquidazione li
+// propone il DB (default con l'override dell'emittente). Il form non li scrive:
+// partono NULL finche' l'operatore non sceglie.
+describe('useDatiSocietariForm — i default li propone il DB', () => {
+  it('form nuovo e reset: socio unico e liquidazione partono NULL', () => {
+    const ds = useDatiSocietariForm({ formeGiuridiche: ref(FORME) })
+    expect(ds.toPayload()).toMatchObject({ socio_unico: null, liquidazione: null })
+    ds.form.socio_unico = 'SM'
+    ds.reset()
+    expect(ds.toPayload()).toMatchObject({ socio_unico: null, liquidazione: null })
+  })
+
+  it('in modifica restano i valori del DB, e un dato assente resta NULL', () => {
+    const ds = useDatiSocietariForm({ formeGiuridiche: ref(FORME) })
+    ds.populate({ forma_giuridica_id: 1, socio_unico: 'SM', liquidazione: 'LS' })
+    expect(ds.toPayload()).toMatchObject({ socio_unico: 'SM', liquidazione: 'LS' })
+    ds.populate({ forma_giuridica_id: 1 })
+    expect(ds.toPayload()).toMatchObject({ socio_unico: null, liquidazione: null })
+  })
+})

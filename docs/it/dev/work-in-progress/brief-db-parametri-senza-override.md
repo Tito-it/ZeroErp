@@ -1,9 +1,11 @@
 # Brief DB — I parametri che non ammettono override
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-25
+## ⏭️ Chi riparte — aggiornato al 2026-10-26
 
-**Riparte: il BE**, con la richiesta di §5.2 (BE-1…BE-3, poi FE-1 e FE-2). Il giro DB è applicato
-e verde (Tid, 2026-10-25, §6.4).
+**Riparte: Tid**, con l'apply del CSV di §6.6 (`VENDITE_DASHBOARD_RITARDO_DATA_MINIMA` senza
+override, scritto il 2026-10-26 su ok di Tid); **in parallelo il team DB** con la
+riformulazione del rimedio di `E_PARAMETER_OVERRIDE_NON_AMMESSO` (§6.7). BE-1…BE-3, FE-1 e
+FE-2 sono fatti (§6.5).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -14,13 +16,18 @@ e verde (Tid, 2026-10-25, §6.4).
 | 2-quater | ✅ **Tid** | D-3 (a: un CSV solo) e D-4 (emittente dalla sessione), 2026-10-25 | §4 | 2-ter |
 | 3 | ✅ team DB | ChangeSet, CSV, pgTAP, guida (2026-10-25) | §5, §6 | il via |
 | 4 | ✅ **Tid** | Apply e corsa pgTAP: verdi (2026-10-25) | §6.4 | 3 |
-| 5 | **BE / FE** | BE-1…BE-3 (lista, codici, i due test Django), FE-1 e FE-2 (form override, default societari) | §5.2 | 4 |
-| 6 | **Tid** | Archiviazione in `work-done/` | — | 5 |
+| 5 | ✅ BE / FE | BE-1…BE-3 (lista, codici, i due test Django), FE-1 e FE-2 (form override, default societari), 2026-10-26 | §6.5 | 4 |
+| 6 | ✅ BE, ok Tid | `VENDITE_DASHBOARD_RITARDO_DATA_MINIMA` senza override (CSV), 2026-10-26 | §6.6 | 5 |
+| 7 | **Tid** | Apply del punto 6 | §6.6 | 6 |
+| 7-bis | **team DB** | Riformulare il rimedio (e la `note`) di `E_PARAMETER_OVERRIDE_NON_AMMESSO`: oggi indica un'azione che l'app non offre | §6.7 | — |
+| 7-ter | BE / FE | Allineare al testo nuovo il ripiego (`error_messages_fallback.py`) e l'avviso del drawer (`config.impostazioni.per_tutti_hint`) | §6.7 | 7-bis |
+| 8 | **Tid** | Archiviazione in `work-done/` | — | 7, 7-ter |
 
-Decisioni aperte di Tid: **nessuna** (gli scostamenti di §6.2 sono applicati così). Lavoro da
-committare: tutto il giro DB (§6.1), questo brief e la guida
-[Configurazione e gestione parametri](../../guide/configurazione-e-gestione-parametri.md).
-⚠️ Finché il BE non fa BE-3, due test Django sono rossi per costruzione.
+Decisioni aperte di Tid: **nessuna**. §6.6 non chiede una decisione: la famiglia del parametro è
+già decisa, D-1 di
+[brief-db-parametro-data-minima-ritardo-dashboard](../work-done/brief-db-parametro-data-minima-ritardo-dashboard.md)
+(2026-10-09, «nessun override»). Manca solo la colonna che la dice. Il giro DB è committato (`1b2e26556`); il giro BE/FE di §6.5 e il CSV di §6.6 sono **da
+committare**, su `dev/backend-tid`.
 
 **Brief vicini verificati (2026-10-24):** nessuno sul tema. Nominano le stesse tabelle
 [valutazione-modello-di-dominio-db](valutazione-modello-di-dominio-db.md) (i timestamp delle due
@@ -358,3 +365,79 @@ Metro: `psql -v ON_ERROR_STOP=1`, exit, `not ok`, piano contro asserzioni esegui
 Applicato da Tid su dbdev; corsa pgTAP verde. Nel `databasechangelog`: `20261025-83`…`-88`
 `EXECUTED`, i mirror `20250715-01` e `20260825-12` `RERAN`. Sul DB: 11 parametri su 55 con
 `ammette_override = false`, la colonna senza `DEFAULT`.
+
+### 6.5 Il giro BE/FE (2026-10-26)
+
+| # | Fatto | Dove |
+| --- | --- | --- |
+| BE-1 | Il repository legge la lista con `SELECT *`: la colonna arriva senza cambi di codice. Dichiarata nella descrizione OpenAPI della lista e nel `help_text` di `parameter_code` dell'upsert; in [api_parameter_settings](../../backend/core/manual/api_parameter_settings.md) la chiave nella risposta e il 400 nuovo dell'upsert. Ritirato il doppione `api_parameters.md` (stessi quattro endpoint, ok Tid 2026-10-26): il poco che aveva in più — il 403 fra i codici, l'uso FE di `/defaults/` — è passato nella pagina che resta | `core/api/views_parameters.py`, `docs/it/backend/core/manual/` |
+| BE-2 | `genera_error_policies`: le due voci nuove (`DATO_ERRATO`, `CONFLITTO_STATO`), **nessuna classe spostata**. I due ripieghi senza segnaposto | `error_policies_generated.py`, `error_messages_fallback.py` |
+| BE-3 | I due test si **costruiscono** il parametro, con la famiglia dichiarata, invece di prendere il primo del seed per id: BB di test `crea_parametro_di_prova` (regola del 2, ok Tid 2026-10-26). Test nuovo: l'upsert su un parametro che vale per tutti riceve `E_PARAMETER_OVERRIDE_NON_AMMESSO` e non scrive niente | `core/tests/_helpers/parametro_di_prova.py`, `core/tests/db/test_parameter_overrides_db.py` (7), `amm_software/tests/db/test_accessi_db.py` |
+| FE-1 | `ammettePersonalizzazione(parameter)` in `core/utils/parameterLevel.js` (lista e drawer: due consumatori). La lista mostra il tag «Uguale per tutti»; il drawer si apre in **sola consultazione** (codice, descrizione, catena, l'avviso, footer «Chiudi»): né scope né valore. Solo `false` esclude, un campo assente lascia il rifiuto al DB | `ImpostazioniSearchTable.vue`, `ImpostazioniOverrideDrawer.vue`, `parameterLevel.spec.js`, catalogo BB FE |
+| FE-2 | Socio unico e liquidazione partono **NULL** in creazione e al reset, con il segnaposto «Proposto dall'azienda»: il verbo prende il default con l'override dell'emittente in sessione (D-2-bis, D-4). In modifica restano i valori del DB (`??`, non più `\|\| 'SU'`). Scartata la lettura dal DB per proporre il valore a video: sarebbe una seconda lettura della cascata, con l'emittente preso dal BE e non dalla GUC del verbo | `useDatiSocietariForm.js`, `DatiSocietariForm.vue`, spec |
+
+**Provato:** test DB dei due file (20) verdi; vitest completo e guard FE verdi; ESLint e ruff
+puliti sui file toccati. ⚠️ Smoke HTTP non eseguiti (login col secondo fattore).
+
+### 6.6 Richiesta al team DB: un lettore del default che il censimento non vedeva (2026-10-26)
+
+Il censimento di §2.1 ha letto le funzioni del DB (`pg_get_functiondef`). Il BE ha **un** lettore
+del default nudo, `ParameterService.get_default_date` (`ParameterRepository.get_default_value`,
+catalogo BB backend «Risoluzione dei parametri»), usato da `vendite_service` per
+`VENDITE_DASHBOARD_RITARDO_DATA_MINIMA`. La descrizione del parametro dice «uguale per tutti: si
+legge il default e NON si sovrascrive in `config.parameter_overrides`», ma nel CSV ha
+`ammette_override = true`. È il difetto di §1 punto 1, sulla parte del modello che il censimento
+non copriva: l'override si scrive, la lista lo mostra come valore attivo, nessuno lo legge.
+
+La famiglia è già decisa: D-1 di
+[brief-db-parametro-data-minima-ritardo-dashboard](../work-done/brief-db-parametro-data-minima-ritardo-dashboard.md)
+(2026-10-09), «nessun override: limite tecnico di consultazione, uguale per tutti». Quel giro è
+precedente alla colonna, e il giro di §6.1 non l'ha vista perché il lettore è nel BE.
+
+**Richiesta:** `ammette_override = false` per `VENDITE_DASHBOARD_RITARDO_DATA_MINIMA` in
+`parameters.csv`, e la descrizione senza la regola ripetuta (§3 punto 5). Ricaduta BE dopo
+l'apply: nessuna nel codice; la lista lo marcherà «Uguale per tutti» da sola.
+
+⚠️ Censimento BE (struttura, 2026-10-26): `get_default_value` ha un solo chiamante,
+`get_default_date`, e questo un solo parametro. Gli altri lettori BE passano dalla cascata.
+
+**Fatto (2026-10-26, ok di Tid alla modifica del CSV dal ramo BE):** in `parameters.csv` la riga
+del parametro ha `ammette_override = false` e la descrizione nella forma degli altri «vale per
+tutti» (il motivo resta, la regola ripetuta esce). Nessun changeSet nuovo: lo riscrive il mirror
+`20250715-01` (`runOnChange`). Sull'apply il guard inverso
+(`trgfn_parameters_guard_ammette_override`) rifiuta il passaggio se il parametro ha override,
+accesi o spenti (`E_PARAMETER_OVERRIDE_PRESENTI`). Fatto datato: su dbdev, il 2026-10-26, la
+tabella degli override non ha RLS e non ce n'è nessuno su questo parametro.
+
+### 6.7 Richiesta al team DB: il rimedio di `E_PARAMETER_OVERRIDE_NON_AMMESSO` (2026-10-26)
+
+Emersa dalla revisione del giro BE/FE (ok di Tid). In `messaggi_errore.csv` la riga di
+`E_PARAMETER_OVERRIDE_NON_AMMESSO` ha come rimedio «Cambiare il valore di default del parametro,
+che vale per tutti, invece di scrivere una personalizzazione», e la `note` in `codici_errore.csv`
+dice «rimedia chi scrive, cambiando il default».
+
+Chi riceve l'errore è l'operatore che prova a personalizzare dal drawer delle impostazioni, e
+**l'applicazione non ha una porta che scriva `config.parameters.default_value`** (struttura,
+2026-10-26: nessun endpoint BE, nessuna vista FE). Il default si cambia dal CSV di `80_data`,
+cioè con un rilascio. Il rimedio indica all'operatore un'azione che non può compiere.
+
+**Richiesta:**
+
+* `messaggi_errore.csv`, rimedio di `E_PARAMETER_OVERRIDE_NON_AMMESSO`: un testo che dica a chi lo
+  legge che cosa può fare davvero. Il valore è uguale per tutti e lo stabilisce la
+  configurazione del sistema: per cambiarlo ci si rivolge all'amministratore del sistema, non si
+  personalizza. Il messaggio («Il parametro %s vale per tutti e non si personalizza.») e la
+  spiegazione restano validi;
+* `codici_errore.csv`, la `note`: «rimedia chi scrive, cambiando il default» va riscritto nella
+  stessa forma. La classe `DATO_ERRATO` resta giusta: è la richiesta a essere sbagliata, non lo
+  stato della risorsa.
+
+`E_PARAMETER_OVERRIDE_PRESENTI` non ha questo difetto: lo incontra chi cambia `ammette_override`,
+cioè chi scrive il CSV, e il suo rimedio («togliere prima le personalizzazioni») è alla sua
+portata.
+
+**Ricaduta BE/FE dopo l'apply** (punto 7-ter): il ripiego senza segnaposto in
+`backend/apps/core/services/error_messages_fallback.py` e l'avviso del drawer in sola
+consultazione (`config.impostazioni.per_tutti_hint`, `it.json`/`en.json`) oggi dicono «si cambia
+il valore di default». Si allineano al testo nuovo **dopo** il DB, per non avere due versioni del
+rimedio.
