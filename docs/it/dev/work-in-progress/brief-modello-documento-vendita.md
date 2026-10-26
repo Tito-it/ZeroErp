@@ -67,6 +67,7 @@ ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committa
 | 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1, il blocco «origine» della stampa della fattura, da decidere nel giro della fattura; D-G2, la prova a video del lotto 2b | §10 | — |
 | 5-ter | **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, il censimento dei gate delle azioni per riga; quando, lo decide Tid | §12 | — |
 
+Decisioni aperte di Tid: O-1 … O-6 del giro dell'offerta (§13.3) e il via allo sviluppo; quando fare D-N1 (§12, riga 5-ter). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine. Lavoro da committare (`dev/db-tid`): solo questo brief (§13). Committati: il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
 Decisioni aperte di Tid: quando fare D-N1 (§12, riga 5-ter); il via al giro dell'offerta. W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (§11.7). Lavoro da committare (`dev/backend-tid`): il passaggio BE del §11.7 (§9.10 e §11.6, il messaggio della cessazione nel frontend, lo smoke dei listini, `api_contratti.md`).
 Committati: il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
 
@@ -1503,7 +1504,7 @@ la guida §10 segna ❌.
 | D-1 | Ordine (+ ordine d'acquisto, §5) | verbo di stato, azione sul passaggio, annullo dal verbo (`fn_annulla_ordine` scrive da sé) | matrice in tabella e colonna `emissione` già ci sono; da decidere qui `POST /ordini/<id>/conferma/` (M-2: chi conferma senza «Emetti»); l'ordine d'acquisto oggi non ha guard di transizione |
 | D-2 | Commessa | l'azione `cambia_stato_commessa` sulla riga del passaggio e controllata dal verbo (oggi solo dal backend) | il più piccolo: verbo, matrice e annullo ci sono; matrice in `vendite`, non in `config` |
 | D-3 | Contratto | matrice in tabella (oggi scritta nel guard), verbo, azione, annullo dal verbo | il backend scrive lo stato con `UPDATE` |
-| D-4 | Offerta | verbo, azione, annullo con l'avviso dei legami invece di `fn_check_offerta_annullabile`; il nome della matrice fuori serie (`stati_doc_offerte_transizioni`) | gli stati di partenza ripetuti in Python |
+| D-4 | Offerta | verbo, azione, annullo con l'avviso dei legami invece di `fn_check_offerta_annullabile` (⚠️ corretto nel §13.1: il check resta, è la metà «prima ciò che vieta»; manca l'avviso); il nome della matrice fuori serie (`stati_doc_offerte_transizioni`) | gli stati di partenza ripetuti in Python |
 | D-5 | Fattura | verbo al posto delle funzioni della pipeline e dell'`UPDATE` dello stato del lotto; azioni della pipeline sulla riga | il più lungo: tocca la pipeline di fatturazione |
 | D-6 | Versione di listino | vocabolario degli stati (oggi testo con `CHECK`), matrice in tabella (oggi nel guard e in Python), verbo | parte da zero |
 | D-7 | DDT d'acquisto | tutto | ⏸️ T-2 di Tid: aspetta il satellite per ambito (D-3 di analisi-simmetria-ordini-acquisto) |
@@ -2179,3 +2180,116 @@ giri portano sulle azioni di documento. Due cose da sapere quando si decide il q
 * **il censimento si fa sulla struttura**, non sulle righe di oggi: le azioni di riga si contano dalle viste
   di riga e dalle capability che le espongono, e un'azione senza sede è un debito anche se oggi non ha
   ancora sbagliato in collaudo.
+
+## 13. Giro 9: l'offerta al modello — ricognizione e piano (2026-10-26)
+
+✅ **Via di Tid il 2026-10-26** («puoi riprendere»), riga 4-bis-decies: la ricognizione dell'offerta, il giro dopo
+il contratto (W-1). Lo sviluppo parte con le risposte alle domande del §13.3.
+
+### 13.1 Com'è oggi (doc auto-generata, CSV e `backend/`, 2026-10-26)
+
+* **Vocabolario e matrice.** `config.stati_doc_offerte`: BOZZA (iniziale), EMESSA (emissione), ACCETTATA,
+  RIFIUTATA (terminale), SUPERATA (terminale, `is_superato`), ANNULLATA (terminale, `is_abortito`). Il commento
+  della tabella dice ancora «senza is_abortito»: stantio, la colonna c'è. Matrice
+  `config.stati_doc_offerte_transizioni`, sette righe: BOZZA → EMESSA «emetti», BOZZA → ANNULLATA «annulla»,
+  EMESSA → ACCETTATA «accetta», EMESSA → RIFIUTATA «rifiuta», ACCETTATA → ANNULLATA «annulla», tutte manuali;
+  EMESSA → SUPERATA e SUPERATA → EMESSA di **processo** (`manuale = false`). Rifiuto e i due annulli hanno
+  `requires_motivazione` nel `meta`: è l'unica matrice che lo usa. ⛔ La matrice **non ha** la colonna
+  `azione_processo_codename`, e il nome è fuori serie (le altre sono `transizioni_stati_*`).
+* **Guard di transizione** `trgfn_offerte_commerciali_guard_transizione`: ✅ **legge già la matrice**. Poi le
+  condizioni dei passaggi, che restano: il rientro da SUPERATA solo senza una revisione figlia viva
+  (`E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA`); all'emissione listino congelabile e congelamento, indirizzi del
+  cliente, righe; verso EMESSA e ACCETTATA i prezzi autorizzati (non sul rientro); verso ANNULLATA
+  `fn_check_offerta_annullabile`; le date dei passaggi. Codice del rifiuto: `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`.
+* **Verbo di stato: non c'è.** Lo stato lo scrivono:
+  * il **backend** con un `UPDATE` (`OfferteRepository.update_stato`, con `motivazione_rifiuto` nella stessa
+    istruzione), da `emetti`, `registra_esito` (accetta / rifiuta) e `annulla`;
+  * il trigger `trgfn_offerte_commerciali_revisione` (`_z90_`, AFTER INSERT): la revisione nuova porta il padre
+    EMESSA → SUPERATA con un `UPDATE`;
+  * il trigger `trgfn_offerte_commerciali_rientro_padre` (`_z90_`, AFTER UPDATE): l'annullo dell'ultima revisione
+    viva riporta il padre SUPERATA → EMESSA con un `UPDATE`, e lo stato di ritorno è il letterale `'EMESSA'`.
+  
+  ⚠️ Con la porta tutti e tre si fermano: i due trigger girano come chi scrive (la revisione nasce da
+  `fn_crea_revisione_offerta`, INVOKER), e la porta vuole il proprietario.
+* **Gli stati di partenza in Python** (`offerte_service`): `_STATI_EDITABILI` per «Emetti», `_STATI_DA_EMESSA`
+  per l'esito e la revisione, `_STATI_PUSHABILI` per il push, `_ESITI_AMMESSI_DA_EMESSA`, e `_STATI_TERMINALI`
+  (nessuno la legge). Ripetono la matrice e i guard delle madri (revisione, push, ordine), che rifiutano già da
+  sé. La motivazione obbligatoria del rifiuto e dell'annullo è solo in Python (`guard_non_empty_string`): il
+  `requires_motivazione` della matrice lo legge la capability per disegnare il campo, nessuno lo fa rispettare.
+* **Annullo: nessun verbo.** `POST /annulla/` passa da `update_stato`. Il guard rifiuta l'annullo con un
+  contratto o un ordine vivo nato dall'offerta (`fn_check_offerta_annullabile`): è la metà «prima ciò che vieta»
+  che hanno anche preventivo, ordine e commessa (`fn_check_*_annullabile`, D-3 di brief-db-annullo-documento-con-legami),
+  **non** una divergenza. ⚠️ Correzione del §8.12 (riga D-4) e della guida §10, che la davano per tale. Quello che
+  manca è l'altra metà: l'offerta non è fra i documenti di `fn_documento_legami` e il guard comune dell'annullo
+  non è montato sulla testata. E l'annullo di una revisione **riapre** il padre (SUPERATA → EMESSA) in silenzio:
+  vedi O-4.
+* **Azione: nessuna** a catalogo per l'offerta. Ogni passaggio chiede il solo permesso sul documento.
+* **Numero alla nascita.** `trgfn_offerte_commerciali_gen_codice` numera all'INSERT (OFC-*), ogni revisione col
+  suo: come ordine e contratto (Z-4, Y-4).
+* **Capability** `fn_available_actions_offerta`: dalla matrice, coi motivi; nessun filtro sull'azione; i motivi
+  per destinazione legati ai codici `'EMESSA'`, `'ACCETTATA'`, `'ANNULLATA'`.
+* **Gemello d'acquisto: nessuno.**
+* **pgTAP:** 29 file scrivono lo stato dell'offerta con un `UPDATE` diretto; nessun builder dell'offerta;
+  `dbops.fn_pgtap_porta_a_stato` non conosce la testata. Conteggio del 2026-10-26, per dimensionare il porting.
+
+### 13.2 Il piano
+
+| Pezzo | Che cosa |
+| --- | --- |
+| matrice | colonna `azione_processo_codename` su `config.stati_doc_offerte_transizioni` (FK alla chiave stabile), valori dal CSV secondo O-1; mirror con la colonna (⚠️ `nullValue`); il nome secondo O-5 |
+| azione | secondo O-1 |
+| verbo | NUOVO `vendite.fn_cambia_stato_offerta(p_offerta_id, p_stato, p_motivazione)`, gemello di quello del contratto: DEFINER col predicato del perimetro (`fn_scope_ef_whitelist_via_offerta`), `fn_doc_stato_id`, `fn_guard_passaggio`, la motivazione secondo O-3, `fn_doc_scrivi_stato` |
+| processo | i due passaggi della revisione secondo O-2 |
+| porta | `trgfn_doc_stato_solo_dal_verbo` montato `_a05_` su `vendite.offerte_commerciali`; la fixture `fn_pgtap_porta_a_stato` conosce il verbo |
+| annullo | NUOVO `vendite.fn_annulla_offerta`, secondo O-4; lo stato d'annullo dal vocabolario (`fn_stato_abortito_id`) |
+| guard | resta com'è (legge già la matrice); il letterale del rientro esce con O-2 |
+| capability | permesso ⇒ nascondi, come gli altri; emissione e annullo dal vocabolario (`emissione`, `is_abortito`) invece dei codici |
+| fixture | i 29 `UPDATE` diretti portati al verbo o a `fn_pgtap_porta_a_stato`; nessun builder nuovo (né trappola d'ordine né regola ricopiata) |
+| guida | §10, riga dell'offerta (con la correzione sull'annullo); la guida delle offerte rimanda al modello; il commento stantio di `config.stati_doc_offerte` |
+
+**Richiesta al BE** (col percorso intero, a giro DB provato): `OfferteRepository.update_stato` si ritira; «Emetti»,
+l'esito e l'annullo chiamano i verbi; il 403 dalla riga del passaggio (`PassaggioDocumento`); i cinque insiemi di
+stati del service e i `_assert_stato_corrente` davanti alle madri si ritirano; la motivazione secondo O-3; la
+finestra dei legami secondo O-4.
+
+### 13.3 Domande per Tid
+
+* **O-1. L'azione dell'offerta.** Proposta: azione **nuova** `emetti_offerta` («emette un'offerta o annulla
+  un'offerta accettata») sulle righe BOZZA → EMESSA e ACCETTATA → ANNULLATA; accetta e rifiuta col solo
+  permesso sul documento; BOZZA → ANNULLATA senza azione (M-4). È la guida §6 («l'emissione e l'annullo di un
+  documento emesso; spedito, accettato, rifiutato chiedono solo il permesso sul documento»), gemella di
+  `emetti_preventivo`. ⚠️ Nessun profilo la riceve dai seed: concederla è un dato, su dbdev lo fai tu.
+  Alternativa: l'azione anche su accetta e rifiuta, che oggi impegnano il cliente (ACCETTATA apre il push) —
+  sarebbe un'eccezione alla guida §6, quindi un cambio del modello.
+* **O-2. I passaggi di processo della revisione.** Proposta: **un building block** DEFINER,
+  `vendite.fn_offerta_proietta_stato_revisione(p_offerta_id)`, gemello delle proiezioni di preventivo e ordine:
+  il padre EMESSA con una revisione viva → lo stato di superamento (`is_superato`); il padre superato senza
+  revisioni vive → lo stato di emissione (vocabolario, non `'EMESSA'`); altrimenti niente. Scrive con la sola
+  seconda metà del verbo, attraverso la porta. I due trigger `_z90_` restano come **chiamanti** (prendono la causa
+  su ogni strada: l'INSERT di una revisione, l'annullo di una revisione) e perdono il loro `UPDATE`; la regola
+  «nessun rientro con una figlia viva» resta nel guard. Alternativa: la chiamano i verbi
+  (`fn_crea_revisione_offerta`, `fn_annulla_offerta`) e i trigger si ritirano; un INSERT di revisione fuori dal
+  verbo lascerebbe però due revisioni vive.
+* **O-3. La motivazione del rifiuto e dell'annullo.** Proposta: il verbo la riceve (`p_motivazione`) e la
+  scrive in `motivazione_rifiuto` nella stessa transazione, prima dello stato; se la riga del passaggio ha
+  `requires_motivazione`, senza motivazione rifiuta con un codice nuovo (`E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA`,
+  `DATO_ERRATO`). La regola passa dalla matrice al verbo, e la copia Python si ritira. Alternativa: il backend
+  scrive la motivazione con un `UPDATE` (il lock la ammette in BOZZA, EMESSA e ACCETTATA) e poi chiama il
+  verbo; la regola resta in Python.
+* **O-4. L'annullo e i legami.** Proposta: il verbo d'annullo `vendite.fn_annulla_offerta(p_offerta_id,
+  p_motivazione, p_legami_confermati)` come gli altri (prima ciò che vieta: `fn_check_offerta_annullabile`; poi
+  la conferma; poi il verbo di stato), e il **padre superato è un legame** dell'offerta che si annulla
+  (`fn_documento_legami`, ramo `OFFERTA_COMMERCIALE`; guard comune dell'annullo montato sulla testata): chi annulla
+  una revisione vede che la revisione precedente torna emessa, e conferma. È la Regola 6 («un annullo che riapre
+  altro si conferma»); il rientro lo fa poi la proiezione di O-2, niente da ritirare. Alternativa: il rientro
+  resta silenzioso e il verbo non chiede conferma — è una **revoca** della Regola 6 per l'offerta, da scrivere
+  nella guida.
+* **O-5. Il nome della matrice.** Proposta: **fuori da questo giro**, dichiarato come divergenza nella riga
+  dell'offerta della guida §10. La mappa del modello (`fn_doc_stato_modello`) la trova per registrazione, e
+  nessuna regola dipende dal nome; la rinomina tocca il seed, il mirror, due file del backend e sei pgTAP, per un
+  guadagno di sola uniformità. Alternativa: rinominarla qui (`config.transizioni_stati_offerte`).
+* **O-6. Il numero alla nascita.** Come Z-4 e Y-4. Proposta: **fuori da questo giro**, dichiarato come
+  divergenza nella riga dell'offerta della guida §10.
+
+D-N1 (§12, le azioni di riga) resta aperta e non entra in questo giro senza una tua decisione: le righe
+dell'offerta (eccezioni, componenti, approvazione del prezzo) ne sarebbero il primo caso.
