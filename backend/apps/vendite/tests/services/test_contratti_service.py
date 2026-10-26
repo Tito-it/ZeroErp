@@ -720,137 +720,111 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         ContrattiService().update_utility(1, {"tipo_utenza_id": 5})
         repo.update_utility.assert_called_once()
 
-    # Scopo: cessazione immediata (valido_al passata) -> applica entrambi
-    #        in transazione: PATCH valido_al + UPDATE stato CESSATO.
-    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    # Scopo: la cessazione passa dal SUO verbo, `fn_cessa_contratto`, con la
+    #        data com'e': oggi o futura lo decide il DB, e la risposta porta
+    #        `programmata` (brief-modello-documento-vendita §11.6 punto 2).
+    #        Niente PATCH di `valido_al` prima, niente verbo di stato.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_cambia_stato_cessazione_immediata_data_passata(self, repo_cls, _atomic):
+    def test_cessazione_dal_suo_verbo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
-        ieri = oggi_aziendale() - timedelta(days=1)
-        repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 5  # CESSATO id
-        repo.update_contratto.return_value = True
-        repo.update_stato.return_value = True
-        repo.get_contratto.return_value = {
-            **_testata_default(),
-            "stato_codice_interno": "CESSATO",
-        }
-        repo.get_utility.return_value = None
-        repo.list_righe.return_value = []
+        for programmata in (False, True):
+            with self.subTest(programmata=programmata):
+                repo = repo_cls.return_value
+                repo.reset_mock()
+                repo.get_stato_codice.return_value = "ATTIVO"
+                repo.cessa.return_value = {
+                    "contratto_id": 1, "stato_precedente": "ATTIVO",
+                    "stato_nuovo": "ATTIVO" if programmata else "CESSATO",
+                    "programmata": programmata,
+                }
+                repo.get_contratto.return_value = _testata_default()
+                repo.get_utility.return_value = None
+                repo.list_righe.return_value = []
 
-        result = ContrattiService().cambia_stato(
-            1, codice_interno="CESSATO", valido_al=ieri,
-        )
+                result = ContrattiService().cambia_stato(
+                    1, codice_interno="CESSATO", valido_al=date(2026, 12, 31),
+                )
 
-        # update_contratto chiamato per valido_al, poi update_stato.
-        repo.update_contratto.assert_called_once_with(1, {"valido_al": ieri})
-        repo.update_stato.assert_called_once_with(1, 5)
-        self.assertEqual(result["stato_codice_interno"], "CESSATO")
+                repo.cessa.assert_called_once_with(1, date(2026, 12, 31))
+                repo.update_contratto.assert_not_called()
+                repo.cambia_stato.assert_not_called()
+                self.assertIs(result["programmata"], programmata)
 
-    # Scopo: cessazione PROGRAMMATA (valido_al futura) -> applica solo
-    #        PATCH valido_al, lo stato resta invariato. Il job notturno
-    #        DB allineera' a CESSATO quando la data scade.
-    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    # Scopo: i rifiuti della cessazione sono del verbo, e il loro codice passa
+    #        com'e': senza data (E_CONTRATTO_CESSAZIONE_SENZA_DATA, col campo),
+    #        data passata (E_CONTRATTO_VALIDO_AL_RETROATTIVO), una seconda
+    #        cessazione (E_DOC_GIA_NELLO_STATO). Il service non ne ha copie:
+    #        anche la richiesta senza data arriva al verbo.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_cambia_stato_cessazione_programmata_data_futura(self, repo_cls, _atomic):
+    def test_i_rifiuti_della_cessazione_li_dice_il_verbo(self, repo_cls):
+        from apps.core.tests.db_error_fakes import make_db_error
         from apps.vendite.services.contratti_service import ContrattiService
 
-        domani = oggi_aziendale() + timedelta(days=1)
-        repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 5
-        repo.update_contratto.return_value = True
-        repo.get_contratto.return_value = {
-            **_testata_default(),
-            "stato_codice_interno": "ATTIVO",  # stato resta ATTIVO post-call
-        }
-        repo.get_utility.return_value = None
-        repo.list_righe.return_value = []
+        for codice, valido_al in (
+            ("E_CONTRATTO_CESSAZIONE_SENZA_DATA", None),
+            ("E_CONTRATTO_VALIDO_AL_RETROATTIVO", date(2020, 1, 1)),
+            ("E_DOC_GIA_NELLO_STATO", date(2026, 12, 31)),
+        ):
+            with self.subTest(codice=codice):
+                repo = repo_cls.return_value
+                repo.reset_mock()
+                repo.get_stato_codice.return_value = "ATTIVO"
+                repo.cessa.side_effect = make_db_error("rifiuto del verbo", codice=codice)
 
-        result = ContrattiService().cambia_stato(
-            1, codice_interno="CESSATO", valido_al=domani,
-        )
+                with self.assertRaises(ServiceError) as ctx:
+                    ContrattiService().cambia_stato(1, codice_interno="CESSATO", valido_al=valido_al)
 
-        # Solo PATCH valido_al; UPDATE stato NON chiamato (programmazione).
-        repo.update_contratto.assert_called_once_with(1, {"valido_al": domani})
-        repo.update_stato.assert_not_called()
-        self.assertEqual(result["stato_codice_interno"], "ATTIVO")
+                self.assertEqual(ctx.exception.code, codice)
+                repo.cessa.assert_called_once_with(1, valido_al)
 
-    # Scopo: cessazione data ODIERNA -> cessazione IMMEDIATA. La data == oggi
-    #        non e' programmazione futura: il contratto passa subito a CESSATO
-    #        (e' la data di fine validita' a confermare). PATCH valido_al +
-    #        UPDATE stato entrambi chiamati. Solo data > oggi e' programmata.
-    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    # Scopo: la data accompagna solo la cessazione: con un altro stato e' un
+    #        400 col campo, e nessun verbo parte (prima veniva scritta con una
+    #        PATCH accanto a qualunque passaggio).
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_cambia_stato_cessazione_data_oggi_e_immediata(self, repo_cls, _atomic):
-        from apps.vendite.services.contratti_service import ContrattiService
-
-        oggi = oggi_aziendale()
-        repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 5
-        repo.update_contratto.return_value = True
-        repo.update_stato.return_value = True
-        repo.get_contratto.return_value = {
-            **_testata_default(),
-            "stato_codice_interno": "ATTIVO",
-        }
-        repo.get_utility.return_value = None
-        repo.list_righe.return_value = []
-
-        ContrattiService().cambia_stato(
-            1, codice_interno="CESSATO", valido_al=oggi,
-        )
-
-        # Data odierna = immediata: PATCH valido_al + UPDATE stato a CESSATO.
-        repo.update_contratto.assert_called_once_with(1, {"valido_al": oggi})
-        repo.update_stato.assert_called_once_with(1, 5)
-
-    # Scopo: cessazione SENZA valido_al rifiutata (data obbligatoria per
-    #        CESSATO: forza UI a passare dal dialog dedicato).
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_cambia_stato_cessato_senza_valido_al_rifiutato(self, repo_cls):
+    def test_valido_al_con_un_altro_stato_e_un_400(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 5
-
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().cambia_stato(1, codice_interno="CESSATO")
+            ContrattiService().cambia_stato(
+                1, codice_interno="ANNULLATO", valido_al=date(2026, 12, 31),
+            )
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-        self.assertIn("Data cessazione obbligatoria", ctx.exception.message)
-        repo.update_contratto.assert_not_called()
-        repo.update_stato.assert_not_called()
+        self.assertEqual(ctx.exception.context.get("field"), "valido_al")
+        repo.annulla.assert_not_called()
+        repo.cessa.assert_not_called()
+        repo.cambia_stato.assert_not_called()
 
-    # Scopo: cambia_stato senza valido_al -> non chiama update_contratto.
-    # NB refactor 2026-05-28: ATTIVO non passa piu' da cambia_stato (guard
-    # rinvia a /emetti/). Test riportato su ANNULLATO che non richiede valido_al.
-    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    # Scopo: uno stato che non e' ne' l'annullo ne' la cessazione va al verbo
+    #        di stato col suo codice: la matrice, lo stato che non c'e' e
+    #        quello che il contratto ha gia' li giudica il DB.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_cambia_stato_senza_valido_al_no_patch(self, repo_cls, _atomic):
+    def test_ogni_altro_stato_dal_verbo_di_stato(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 9  # SOSPESO id
         repo.get_stato_codice.return_value = "ATTIVO"
-        repo.update_stato.return_value = True
+        repo.cambia_stato.return_value = {
+            "contratto_id": 1, "stato_precedente": "ATTIVO", "stato_nuovo": "DRAFT",
+        }
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
 
-        ContrattiService().cambia_stato(1, codice_interno="SOSPESO")
+        ContrattiService().cambia_stato(1, codice_interno="DRAFT")
 
+        repo.cambia_stato.assert_called_once_with(1, "DRAFT")
+        repo.cessa.assert_not_called()
         repo.update_contratto.assert_not_called()
-        repo.update_stato.assert_called_once_with(1, 9)
 
     # brief-db-annullo-documento-con-legami: ANNULLATO passa SEMPRE dal verbo
     # `fn_annulla_contratto`, con la dichiarazione della conferma.
-    @patch("apps.vendite.services.contratti_service.transaction.atomic")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_annullo_passa_dal_verbo(self, repo_cls, _atomic):
+    def test_annullo_passa_dal_verbo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 4
         repo.get_stato_codice.return_value = "DRAFT"
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
@@ -859,27 +833,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         ContrattiService().cambia_stato(1, codice_interno="ANNULLATO", legami_confermati=2)
 
         repo.annulla.assert_called_once_with(1, 2)
-        repo.update_stato.assert_not_called()
-
-    # Scopo: cambia_stato con valido_al < valido_dal NON lo giudica il
-    #        service: la data arriva al DB, dove il guard comune delle date
-    #        risponde E_DATA_AL_MINORE_DAL col campo `valido_al` (provato sul
-    #        DB vero in apps/core/tests/db/test_date_validita_guard_comune_db).
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_cambia_stato_delega_ordine_date_al_db(self, repo_cls):
-        from apps.vendite.services.contratti_service import ContrattiService
-
-        repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 5  # CESSATO id
-        repo.get_contratto.return_value = {
-            **_testata_default(),
-            "valido_dal": date(2026, 6, 1),
-        }
-
-        ContrattiService().cambia_stato(
-            1, codice_interno="CESSATO", valido_al=date(2026, 1, 1),
-        )
-        repo.update_contratto.assert_called_once_with(1, {"valido_al": date(2026, 1, 1)})
+        repo.cambia_stato.assert_not_called()
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_update_contratto_campi_vuoto_fallisce(self, repo_cls):
@@ -1178,17 +1132,22 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
     # --- cambio stato --------------------------------------------------
 
+    # Lo stato che il vocabolario non ha lo dice il verbo di stato, col codice
+    # dei gemelli: il service non ne ha una copia (§11.6).
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_cambia_stato_codice_sconosciuto(self, repo_cls):
+        from apps.core.tests.db_error_fakes import make_db_error
         from apps.vendite.services.contratti_service import ContrattiService
 
-        repo_cls.return_value.get_stato_id_by_codice.return_value = None
-
-        # Uso un codice non riconosciuto qualsiasi (non ATTIVO che ora ha
-        # un guard dedicato che fa scattare prima del lookup).
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "ATTIVO"
+        repo.cambia_stato.side_effect = make_db_error(
+            "Stato di destinazione non trovato", codice="E_STATO_WORKFLOW_NON_TROVATO",
+        )
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().cambia_stato(1, codice_interno="FROBOZ")
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.code, "E_STATO_WORKFLOW_NON_TROVATO")
+        repo.cambia_stato.assert_called_once_with(1, "FROBOZ")
 
     # Scopo: refactor 2026-05-28 - cambia_stato non gestisce piu' ATTIVO.
     # L'invariante "ATTIVO => almeno una versione PDF" e' garantita dal
@@ -1209,8 +1168,8 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.modello_documento.e_stato_di_emissione.assert_called_once_with(
             "vendite.contratti", "ATTIVO",
         )
-        # Nessuna chiamata al repo: il guard scatta prima del lookup stato.
-        repo_cls.return_value.update_stato.assert_not_called()
+        # Nessun verbo: il guard scatta prima.
+        repo_cls.return_value.cambia_stato.assert_not_called()
 
     # Scopo: marker DB "contratto senza listino e nessuna AGGIUNTA" -> codice
     # specifico E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE. Test riportato su
@@ -1222,7 +1181,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo = repo_cls.return_value
         # Lo stato di emissione dal vocabolario (§8.11 B-4), non "ATTIVO".
         self.emissione_del_documento("ATTIVO", stato_id=2)
-        repo.update_stato.side_effect = DatabaseError(
+        repo.cambia_stato.side_effect = DatabaseError(
             "contratto senza listino e nessuna riga AGGIUNTA con prezzo: "
             "serve almeno un'AGGIUNTA prima di attivare."
         )
@@ -1231,9 +1190,10 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             ContrattiService().emetti(1)
         self.assertEqual(ctx.exception.code, "E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE")
 
-    # Scopo: `emetti()` thin wrapper sul repo che bypassa il guard di
-    # cambia_stato (l'orchestrazione atomic state+genera+allegati vive nella
-    # view ApiContrattoEmetti).
+    # Scopo: `emetti()` scrive lo stato di emissione (dal vocabolario) dal
+    # verbo di stato, col codice: niente UPDATE della colonna (la porta lo
+    # rifiuta, §11.6 punto 1). L'orchestrazione atomic stato+genera+allegati
+    # vive nella view ApiContrattoEmetti.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_emetti_delega_a_repo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
@@ -1241,16 +1201,17 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo = repo_cls.return_value
         # Lo stato di emissione dal vocabolario (§8.11 B-4), non "ATTIVO".
         self.emissione_del_documento("ATTIVO", stato_id=2)
-        repo.update_stato.return_value = True
+        repo.cambia_stato.return_value = {
+            "contratto_id": 1, "stato_precedente": "DRAFT", "stato_nuovo": "ATTIVO",
+        }
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
 
         ContrattiService().emetti(1)
 
-        repo.update_stato.assert_called_once_with(1, 2)
+        repo.cambia_stato.assert_called_once_with(1, "ATTIVO")
         self.modello_documento.stato_di_emissione.assert_called_once_with("vendite.contratti")
-        repo.get_stato_id_by_codice.assert_not_called()
 
     # Scopo: la sovrapposizione la rifiuta il guard della transizione del DB
     #        (2026-10-19, `script.fn_check_contratto_sovrapposto`) col codice del
@@ -1264,7 +1225,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo = repo_cls.return_value
         # Lo stato di emissione dal vocabolario (§8.11 B-4), non "ATTIVO".
         self.emissione_del_documento("ATTIVO", stato_id=2)
-        repo.update_stato.side_effect = make_db_error(
+        repo.cambia_stato.side_effect = make_db_error(
             "Il periodo si sovrappone al contratto CNT0000027, gia' vincolante.",
             codice="E_CONTRATTO_OVERLAP_ESISTENTE",
         )

@@ -50,7 +50,7 @@ DdtEliminaTests
 DdtCambiaStatoTests
 14) test_cambia_stato_ok                    — valida il codice, poi il verbo col codice
 15) test_cambia_stato_codice_vuoto          — E_DDT_VALIDAZIONE
-16) test_cambia_stato_codice_inesistente    — E_DDT_VALIDAZIONE
+16) test_cambia_stato_codice_inesistente    — E_STATO_WORKFLOW_NON_TROVATO dal verbo
 16b) test_cambia_stato_emesso_rifiutato     — EMESSO solo da «Emetti» (M-2): 400, nessun verbo
 17) test_emetti_transita_a_emesso_light      — la stessa transizione a EMESSO, ritorno light (no reload)
 
@@ -277,7 +277,6 @@ class DdtCreaTests(SimpleTestCase):
         # Lo stato non si passa: lo mette il DB, lo stato iniziale del
         # vocabolario (brief-modello-documento-vendita P-2).
         self.assertNotIn("stato_doc_ddt_id", kwargs)
-        repo.get_stato_id_by_codice.assert_not_called()
         # Lo slot di default lo riempie il DB, sul DDT appena nato (R-BE-1).
         repo.riempi_indirizzo_default.assert_called_once_with(7)
 
@@ -291,7 +290,6 @@ class DdtCreaTests(SimpleTestCase):
             ddt_service.crea_ddt({"billing_account_id": 3, "utility_id": 1})
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
         self.assertEqual(cm.exception.context.get("unknown_keys"), ["utility_id"])
-        repo.get_stato_id_by_codice.assert_not_called()
         repo.create_ddt.assert_not_called()
 
     @patch(_REPO)
@@ -460,14 +458,12 @@ class DdtCambiaStatoTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
         # (get_stato_codice), non la testata completa.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.get_stato_id_by_codice.return_value = 6
         repo.cambia_stato.return_value = []
         out = ddt_service.cambia_stato(7, "SPEDITO")
         self.assertEqual(out["stato"], "SPEDITO")
         self.assertEqual(out["stato_precedente"], "DRAFT")
         self.assertEqual(out["movimenti_scritti"], 0)
         repo.get_ddt.assert_not_called()
-        repo.get_stato_id_by_codice.assert_called_once_with("SPEDITO")
         # Il verbo prende il CODICE dello stato (Lotto 3 R-1), non l'id.
         repo.cambia_stato.assert_called_once_with(7, "SPEDITO")
 
@@ -492,13 +488,18 @@ class DdtCambiaStatoTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
 
     @patch(_REPO)
     def test_cambia_stato_codice_inesistente(self, repo_cls) -> None:
+        # Lo stato che il vocabolario non ha lo dice il verbo, col codice dei
+        # gemelli (brief-modello-documento-vendita §9.10): il service non ne ha
+        # una copia, e il codice del catalogo passa com'e'.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.get_stato_id_by_codice.return_value = None
+        repo.cambia_stato.side_effect = DatabaseError(
+            "E_STATO_WORKFLOW_NON_TROVATO: stato INESISTENTE",
+        )
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(7, "INESISTENTE")
-        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
-        repo.cambia_stato.assert_not_called()
+        self.assertEqual(cm.exception.code, "E_STATO_WORKFLOW_NON_TROVATO")
+        repo.cambia_stato.assert_called_once_with(7, "INESISTENTE")
 
     # M-2 (brief-modello-documento-vendita §7.6): la bolla si emette solo da
     # «Emetti», che produce numero e PDF insieme. Dal cambio stato generico
@@ -508,7 +509,6 @@ class DdtCambiaStatoTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     def test_cambia_stato_emesso_rifiutato(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.get_stato_id_by_codice.return_value = 2
         self.stato_chiesto_di_emissione()
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(7, "EMESSO")
@@ -525,7 +525,6 @@ class DdtCambiaStatoTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
         self.emissione_del_documento("EMESSO")
-        repo.get_stato_id_by_codice.return_value = 2
         repo.cambia_stato.return_value = []
         ddt_service.emetti(7)
         self.modello_documento.e_stato_di_emissione.assert_not_called()
@@ -540,7 +539,6 @@ class DdtCambiaStatoTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
         # documentale; il FE ricarica il detail dopo.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.get_stato_id_by_codice.return_value = 2
         # Lo stato di emissione dal vocabolario (§8.11 B-3), non un letterale.
         self.emissione_del_documento("EMESSO")
         # Una bolla che muove merce: il verbo ritorna le uscite scritte.
@@ -551,7 +549,6 @@ class DdtCambiaStatoTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
         out = ddt_service.emetti(7)
 
         self.modello_documento.stato_di_emissione.assert_called_once_with("vendite.ddt")
-        repo.get_stato_id_by_codice.assert_called_once_with("EMESSO")
         repo.cambia_stato.assert_called_once_with(7, "EMESSO")
         self.assertEqual(out["movimenti_scritti"], 1)
         repo.get_ddt.assert_not_called()
@@ -1015,7 +1012,6 @@ class DdtRigheEvaseTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     def test_annullo_passa_dal_verbo_senza_dichiarazione(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "EMESSO"
-        repo.get_stato_id_by_codice.return_value = 9
         out = ddt_service.cambia_stato(7, "ANNULLATO")
         repo.annulla.assert_called_once_with(7, None)
         repo.cambia_stato.assert_not_called()
@@ -1026,7 +1022,6 @@ class DdtRigheEvaseTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     def test_annullo_con_dichiarazione(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.get_stato_id_by_codice.return_value = 9
         ddt_service.cambia_stato(7, "ANNULLATO", legami_confermati="2")
         repo.annulla.assert_called_once_with(7, 2)
 
@@ -1034,7 +1029,6 @@ class DdtRigheEvaseTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     def test_annullo_dichiarazione_non_numerica(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.get_stato_id_by_codice.return_value = 9
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(7, "ANNULLATO", legami_confermati="due")
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
@@ -1045,7 +1039,6 @@ class DdtRigheEvaseTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     def test_annullo_con_legami_codice_del_db(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "EMESSO"
-        repo.get_stato_id_by_codice.return_value = 9
         repo.annulla.side_effect = DatabaseError(
             "E_DOC_ANNULLO_CON_LEGAMI: annullando DDT 12 si riaprono 2 legami",
         )

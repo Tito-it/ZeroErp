@@ -53,18 +53,22 @@ class OrdiniServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
             ordini_service.get_ordine(99)
         self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
 
-    # Ordine gia' CONFERMATO: la conferma non e' ammessa. ⚠️ Lo dice il
-    # service, non il DB: il verbo comune oggi accetta CONFERMATO -> CONFERMATO
-    # (difetto DB, brief-modello-documento-vendita §9.8).
+    # Ordine gia' CONFERMATO: la seconda conferma la rifiuta il verbo, dalla
+    # prima riga (brief-modello-documento-vendita §9.10); il service non la
+    # pre-valida e non chiude lo step.
+    @patch(_COMPLETA_STEP)
     @patch(_REPO)
-    def test_conferma_stato_errato(self, repo_cls) -> None:
+    def test_conferma_due_volte_dal_verbo(self, repo_cls, mock_step) -> None:
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "CONFERMATO"
         self.emissione_del_documento("CONFERMATO")
+        repo.cambia_stato.side_effect = DatabaseError(
+            "E_DOC_GIA_NELLO_STATO: Il documento è già nello stato CONFERMATO",
+        )
         with self.assertRaises(ServiceError) as cm:
             ordini_service.conferma(7)
-        self.assertEqual(cm.exception.code, "E_ORD_STATO_TRANSIZIONE")
-        repo.cambia_stato.assert_not_called()
+        self.assertEqual(cm.exception.code, "E_DOC_GIA_NELLO_STATO")
+        repo.get_stato_codice.assert_not_called()
+        mock_step.assert_not_called()
 
     # La conferma e' lo stato di emissione letto dal vocabolario, scritto dal
     # verbo (§9.6 C-1, C-2): nessun letterale, nessun UPDATE, e le righe le

@@ -15,6 +15,7 @@ import { ref, watch, computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useNotify } from '../../core/composables/useNotify'
 import { useContatoreNote } from '../../core/composables/useContatoreNote'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
@@ -74,6 +75,7 @@ import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 const { t, te } = useI18n()
 const store = useContrattiStore()
 const { execute, loading, campiErrati } = useApiHandler()
+const notify = useNotify()
 // Readonly da permessi area (LETTURA/BLOCCATO). Si combina con isContractLocked
 // (stato post-DRAFT) per ottenere l'isReadonly effettivo del drawer.
 const parentReadonly = useInjectReadonly()
@@ -686,19 +688,20 @@ function openCessaDialog(action) {
   cessaDialogVisible.value = true
 }
 
+// Il messaggio dell'esito lo decide la risposta: se la cessazione e'
+// programmata lo dice il verbo del DB (`programmata`, brief-modello-documento-
+// vendita §11.6). `cessazioneProgrammata` qui sopra resta solo l'anteprima del
+// dialog, prima della conferma.
 async function onConfermaCessazione() {
   const validoAl = toDateString(cessaDialogData.value)
-  const programmata = cessazioneProgrammata.value
   const targetState = cessaDialogAction.value?.target_state || STATO_CONTRATTO.CESSATO
   const result = await execute(
     () => store.cambiaStato(props.contrattoId, targetState, { validoAl }),
-    {
-      successMessage: programmata
-        ? t('vendite.contratti.cessa_dialog_success_programmata', { data: validoAl })
-        : t('vendite.contratti.cessa_dialog_success_immediata'),
-    },
   )
   if (result !== null) {
+    notify.success(result?.programmata
+      ? t('vendite.contratti.cessa_dialog_success_programmata', { data: validoAl })
+      : t('vendite.contratti.cessa_dialog_success_immediata'))
     cessaDialogVisible.value = false
     await refreshDetail()
   }

@@ -2,10 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-26
 
-**Riparte: Tid**, con l'apply dei due CSV degli errori (il rimedio nuovo di
-`E_PARAMETER_OVERRIDE_NON_AMMESSO`, §6.8); poi **il BE/FE** allinea ripiego e avviso del drawer
-(7-ter), e il brief si archivia. Tutto il resto è fatto: DB, BE-1…BE-3, FE-1, FE-2, §6.6
-applicato.
+**Riparte: nessuno. Brief chiuso e archiviato il 2026-10-26.** Fatti: DB, BE-1…BE-3, FE-1,
+FE-2, §6.6 e §6.8 applicati, ripiego e avviso del drawer allineati (7-ter). Nessun debito residuo.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -20,22 +18,22 @@ applicato.
 | 6 | ✅ BE, ok Tid | `VENDITE_DASHBOARD_RITARDO_DATA_MINIMA` senza override (CSV), 2026-10-26 | §6.6 | 5 |
 | 7 | ✅ **Tid** | Apply del punto 6 (verificato 2026-10-26: mirror `RERAN`, parametro a `false`) | §6.6 | 6 |
 | 7-bis | ✅ team DB | Rimedio e `note` di `E_PARAMETER_OVERRIDE_NON_AMMESSO` riscritti, guida allineata (2026-10-26) | §6.8 | — |
-| 7-bis-ii | **Tid** ⏭️ | Apply dei due CSV degli errori (mirror `20260614-08`) | §6.8 | 7-bis |
-| 7-ter | BE / FE | Allineare al testo nuovo il ripiego (`error_messages_fallback.py`) e l'avviso del drawer (`config.impostazioni.per_tutti_hint`) | §6.7, §6.8 | 7-bis-ii |
-| 8 | **Tid** | Archiviazione in `work-done/` | §6.9 | 7-ter |
+| 7-bis-ii | ✅ **Tid** | Apply dei due CSV degli errori (verificato 2026-10-26: mirror `20260614-08` `RERAN`, rimedio nuovo su dbdev) | §6.8 | 7-bis |
+| 7-ter | ✅ BE / FE | Ripiego (`error_messages_fallback.py`) e avviso del drawer (`config.impostazioni.per_tutti_hint`, it/en) allineati al testo nuovo (2026-10-26) | §6.8 | 7-bis-ii |
+| 8 | ✅ BE, ok Tid | Archiviazione in `work-done/`, link relativi e rimando di `api_parameter_settings.md` sistemati (2026-10-26) | §6.9 | 7-ter |
 
 Decisioni aperte di Tid: **nessuna**. §6.6 non chiede una decisione: la famiglia del parametro è
 già decisa, D-1 di
-[brief-db-parametro-data-minima-ritardo-dashboard](../work-done/brief-db-parametro-data-minima-ritardo-dashboard.md)
+[brief-db-parametro-data-minima-ritardo-dashboard](brief-db-parametro-data-minima-ritardo-dashboard.md)
 (2026-10-09, «nessun override»). Manca solo la colonna che la dice. Committati: il giro DB (`1b2e26556`), il giro BE/FE di §6.5 e il CSV di §6.6 (`611b27179`, in
-`Tito-dev`). **Da committare**: §6.8 (i due CSV degli errori, la guida, questo brief). ⚠️ Gli
-stessi due CSV hanno modifiche del cantiere contratto (brief-modello-documento-vendita §11), non
-ancora committate: vanno nello stesso commit o si separano a mano.
+`Tito-dev`). Committato anche §6.8 (`31881207e`). **Da committare**: il 7-ter (ripiego, `it.json`,
+`en.json`), l'archiviazione di questo brief e il rimando in `api_parameter_settings.md`, su
+`dev/backend-tid`.
 
 **Brief vicini verificati (2026-10-24):** nessuno sul tema. Nominano le stesse tabelle
-[valutazione-modello-di-dominio-db](valutazione-modello-di-dominio-db.md) (i timestamp delle due
+[valutazione-modello-di-dominio-db](../work-in-progress/valutazione-modello-di-dominio-db.md) (i timestamp delle due
 tabelle, V-1, già chiuso) e
-[analisi-pratiche-valutazione-stato](analisi-pratiche-valutazione-stato.md) (gli override come
+[analisi-pratiche-valutazione-stato](../work-in-progress/analisi-pratiche-valutazione-stato.md) (gli override come
 modello per le definizioni di workflow): parlano d'altro. Il tema nasce dalla verifica della guida
 richiesta da Tid il 2026-10-24.
 
@@ -131,13 +129,13 @@ Richiesta da Tid: il giro non deve ripensare decisioni già prese. Ho letto i br
 | Punto | Decisione esistente | Esito |
 | --- | --- | --- |
 | La famiglia «senza override» | [guida parametri](../../guide/configurazione-e-gestione-parametri.md) §«Due famiglie» (24-10), che dichiara il difetto («il database non impedisce…») | completa: la regola scritta diventa colonna |
-| `SYSTEM_FUSO_ORARIO` | [un-solo-fuso-aziendale](../work-done/brief-be-db-fe-un-solo-fuso-aziendale.md) D-1: «default **nudo**, mai la cascata» | coerente |
-| `login_*` | [blocco-login-per-credenziale](../work-done/brief-db-blocco-login-per-credenziale.md) §2.4: parametri «**globali** come oggi» | coerente con D-2 |
+| `SYSTEM_FUSO_ORARIO` | [un-solo-fuso-aziendale](brief-be-db-fe-un-solo-fuso-aziendale.md) D-1: «default **nudo**, mai la cascata» | coerente |
+| `login_*` | [blocco-login-per-credenziale](brief-db-blocco-login-per-credenziale.md) §2.4: parametri «**globali** come oggi» | coerente con D-2 |
 | `tx_id_bypass_enabled` | [guida tx_id](../../guide/tx_id_implementation_guide.md): «bypass **globale**»; il bypass per sessione è la GUC `myapp.bypass_tx_id_check`, non un override | coerente con D-2 |
-| `attivita_fatturabili_require_commessa` | [gestione-commesse-v2](../work-done/gestione-commesse-v2.md): il parametro a `true`, nessuna parola sugli override | nuovo, non contraddice |
-| `dati_societari_default_*` | nessuna decisione sulla famiglia; [dati-societari-in-creazione](../work-done/brief-db-dati-societari-in-creazione.md): «hanno sempre un valore (default dai parametri)» | D-2-bis è nuova e coerente; vedi sotto |
-| Lettura di un valore *proposto* con la cascata dal contesto | `script.fn_get_parameter_di_sessione` (D-13a/b, [processi-accensione-per-ambiente](../work-done/brief-db-processi-accensione-per-ambiente.md) §6.12); primo lettore `fn_stato_proposto_id` | è il precedente per D-4 |
-| Lista dei parametri | [codici-sfilati-e-lista-parametri](../work-done/brief-db-codici-sfilati-e-lista-parametri.md) R-2: la lista mostra solo override di livello puro | si somma: sulle righe senza override i livelli restano NULL |
+| `attivita_fatturabili_require_commessa` | [gestione-commesse-v2](gestione-commesse-v2.md): il parametro a `true`, nessuna parola sugli override | nuovo, non contraddice |
+| `dati_societari_default_*` | nessuna decisione sulla famiglia; [dati-societari-in-creazione](brief-db-dati-societari-in-creazione.md): «hanno sempre un valore (default dai parametri)» | D-2-bis è nuova e coerente; vedi sotto |
+| Lettura di un valore *proposto* con la cascata dal contesto | `script.fn_get_parameter_di_sessione` (D-13a/b, [processi-accensione-per-ambiente](brief-db-processi-accensione-per-ambiente.md) §6.12); primo lettore `fn_stato_proposto_id` | è il precedente per D-4 |
+| Lista dei parametri | [codici-sfilati-e-lista-parametri](brief-db-codici-sfilati-e-lista-parametri.md) R-2: la lista mostra solo override di livello puro | si somma: sulle righe senza override i livelli restano NULL |
 
 **Tre fatti che il brief non vedeva.** Sono struttura, non conteggi.
 
@@ -393,7 +391,7 @@ legge il default e NON si sovrascrive in `config.parameter_overrides`», ma nel 
 non copriva: l'override si scrive, la lista lo mostra come valore attivo, nessuno lo legge.
 
 La famiglia è già decisa: D-1 di
-[brief-db-parametro-data-minima-ritardo-dashboard](../work-done/brief-db-parametro-data-minima-ritardo-dashboard.md)
+[brief-db-parametro-data-minima-ritardo-dashboard](brief-db-parametro-data-minima-ritardo-dashboard.md)
 (2026-10-09), «nessun override: limite tecnico di consultazione, uguale per tutti». Quel giro è
 precedente alla colonna, e il giro di §6.1 non l'ha vista perché il lettore è nel BE.
 
@@ -460,7 +458,7 @@ nuovo: lo carica il mirror `20260614-08` (`runOnChange`).
 il valore è uguale per tutti, lo stabilisce la configurazione del sistema, per cambiarlo ci si
 rivolge all'amministratore.
 
-### 6.9 Archiviazione (dopo il 7-ter)
+### 6.9 Archiviazione (fatta il 2026-10-26)
 
 Nessun debito residuo: il brief si sposta in `work-done/` senza aprirne uno nuovo. Da sistemare
 nello stesso passo: i link relativi del brief (`../work-done/…` diventano locali, `../../guide/…`

@@ -716,8 +716,10 @@ def elimina_rientro(reso_id: int, riga_id: int, rientro_id: int) -> dict[str, An
 #        `fn_conferma_reso`: numero dal trigger, riapertura residuo ordine,
 #        proiezione stato ordine, flip DDT->RESO se reso totale. Ritorno LIGHT
 #        (parita' ddt_service.emetti): il FE ricarica il detail dopo. I guard
-#        (esistenza E_RESO_NOT_FOUND, stato E_RESO_STATO_NON_CONFERMABILE,
-#        righe E_RESO_SENZA_RIGHE) sono nella fn madre — nessun pre-check
+#        (esistenza E_RESO_NOT_FOUND, seconda conferma E_DOC_GIA_NELLO_STATO
+#        dalla prima riga del verbo comune, gli altri stati
+#        E_RESO_STATO_NON_CONFERMABILE, righe E_RESO_SENZA_RIGHE) sono nella fn
+#        madre — nessun pre-check
 #        duplicato; lo stato di ritorno e' RILETTO dal DB, non asserito
 #        hardcoded (la transizione target vive nella matrice DB).
 def conferma_reso(reso_id: int) -> dict[str, Any]:
@@ -730,7 +732,8 @@ def conferma_reso(reso_id: int) -> dict[str, Any]:
 # Scopo: Annulla il reso (da DRAFT o CONFERMATO) via fn madre atomica
 #        `fn_annulla_reso`: post-conferma storna gli effetti; bloccato se gia'
 #        ri-spedito (E_RESO_ANNULLO_CON_RICONSEGNE). Guard nella fn madre
-#        (incl. E_RESO_NOT_FOUND); stato di ritorno riletto dal DB.
+#        (incl. E_RESO_NOT_FOUND, e il secondo annullo E_DOC_GIA_NELLO_STATO
+#        dalla prima riga del verbo comune); stato di ritorno riletto dal DB.
 def annulla_reso(reso_id: int) -> dict[str, Any]:
     repo = ResiRepository()
     with _db_errors("annulla_reso"):

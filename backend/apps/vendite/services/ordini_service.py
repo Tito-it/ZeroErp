@@ -613,16 +613,11 @@ def elimina_ordine(ordine_id: int) -> dict[str, Any]:
 #        (E_ORD_NESSUNA_RIGA), copia della Regola 2 del guard
 #        (E_ORDINE_CONFERMA_SENZA_RIGHE): ritirato, una regola in un livello
 #        solo (brief-modello-documento-vendita §9.6 C-2).
-#        ⚠️ Il «solo da DRAFT» (`_assert_stato`) NON e' una copia della
-#        matrice: il verbo comune accetta oggi un passaggio allo STESSO stato
-#        (CONFERMATO -> CONFERMATO passa, il guard salta la matrice quando lo
-#        stato non cambia), e senza questo controllo un secondo «Emetti»
-#        riconfermerebbe l'ordine e genererebbe un secondo PDF. Difetto DB
-#        dichiarato in brief-modello-documento-vendita §9.8: si ritira quando
-#        il verbo rifiuta il passaggio X -> X.
+#        Anche la seconda conferma la rifiuta il verbo, dalla sua prima riga
+#        (`E_DOC_GIA_NELLO_STATO`, brief-modello-documento-vendita §9.10), e
+#        l'ordine che non c'e' (`E_ORD_NOT_FOUND`): qui non ce n'e' una copia.
 def conferma(ordine_id: int, *, user: str | None = None) -> dict[str, Any]:
     repo = OrdiniRepository()
-    _assert_stato(repo, ordine_id, _STATI_MODIFICABILI, op="conferma")
     emissione = stato_di_emissione(TESTATA_ORDINI, function_name=f"{_FN}.conferma")
     # Atomico: conferma ordine + completamento dello step CONFERMA_ORDINE del
     # percorso pratica sono un'unita' di lavoro (o entrambi o nessuno).
