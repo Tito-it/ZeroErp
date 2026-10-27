@@ -76,42 +76,29 @@ SELECT has_table(
 -- ============================================================
 -- 3) Riferimenti minimi (con DUE aliquote distinte > 0)
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): il preventivo si COSTRUISCE
+--   (dbops.fn_pgtap_crea_preventivo: azienda di chi agisce, cliente col suo
+--   BA, testata in bozza, senza righe) e l'articolo pure
+--   (dbops.fn_pgtap_crea_articolo, merce semplice). Prima BA, articolo ed
+--   emittente si pescavano col primo id / l'ultimo inserito e la testata si
+--   INSERIVA a mano: da zero non c'era niente. Dal catalogo di seed restano
+--   stato, valuta e le due IVA.
+CREATE TEMP TABLE tmp_rr_pb AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('riepilogo iva');
+
 CREATE TEMP TABLE tmp_rr_refs AS
 SELECT
-  (SELECT ba.id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS billing_account_id,
-  (SELECT ba.utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS utility_id,
-  (SELECT ba.istanza_utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS istanza_utility_id,
-  (SELECT a.id
-     FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1
+  pb.billing_account_id,
+  pb.utility_id,
+  pb.istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo(
+    ('PGT-RIVA-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar, false
   ) AS articolo_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'DRAFT' AND s.attivo IS TRUE LIMIT 1
   ) AS stato_draft_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1
-  ) AS valuta_id,
-  -- emittente fiscale (richiesto da trigger BEFORE INSERT preventivi
-  -- quando GUC app.current_user_id e' vuota - contesto pgTAP).
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1
-  ) AS emittente_fiscale_id,
+  pb.valuta_id,
+  pb.emittente_fiscale_id,
   -- aliquota A: la piu' alta (di norma 22)
   (SELECT i.id FROM config.iva i
     WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
@@ -137,7 +124,8 @@ SELECT
                               FROM config.iva i2
                              WHERE i2.attivo IS TRUE)
     ORDER BY i.aliquota_iva DESC LIMIT 1
-  ) AS iva_b_aliquota;
+  ) AS iva_b_aliquota
+  FROM tmp_rr_pb pb;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL
@@ -154,28 +142,10 @@ SELECT ok(
 -- ============================================================
 -- 4) Setup preventivo DRAFT
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): la testata e' quella del builder (sopra),
+--   non piu' un INSERT a mano: qui non e' il caso sotto test.
 CREATE TEMP TABLE tmp_rr_prev AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev,
-    billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id,
-    stato_doc_preventivo_id, data,
-    emittente_fiscale_id,
-    storicizza, meta
-  )
-  SELECT
-    'PGTAP-RIVA-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0,
-    r.billing_account_id, r.istanza_utility_id, r.utility_id,
-    DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_draft_id, DATE '2026-06-01',
-    r.emittente_fiscale_id,
-    false, jsonb_build_object('test_scope', 'pgtap_riepilogo_iva')
-  FROM tmp_rr_refs r
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT preventivo_id AS id FROM tmp_rr_pb;
 
 SELECT is(
   (SELECT count(*)::int FROM vendite.preventivi_riepiloghi_iva

@@ -69,6 +69,16 @@ SELECT ok(
 -- ============================================================
 -- 3) Riferimenti minimi
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): il preventivo si COSTRUISCE
+--   (dbops.fn_pgtap_crea_preventivo: azienda di chi agisce, cliente col suo
+--   BA, testata in bozza, senza righe) e l'articolo pure
+--   (dbops.fn_pgtap_crea_articolo, merce semplice). Prima BA, articolo ed
+--   emittente si pescavano col primo id / l'ultimo inserito e la testata si
+--   INSERIVA a mano: da zero non c'era niente. Dal catalogo di seed restano
+--   stato, valuta e IVA. La testata resta la stessa di prima nel 4.
+CREATE TEMP TABLE tmp_rc_pb AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('ricalcola totali');
+
 CREATE TEMP TABLE tmp_rc_refs AS
 WITH iva_scelta AS (
   -- Una sola estrazione: id e aliquota vengono per forza dalla stessa riga.
@@ -79,47 +89,25 @@ WITH iva_scelta AS (
    LIMIT 1
 )
 SELECT
-  (SELECT ba.id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS billing_account_id,
-  (SELECT ba.utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS utility_id,
-  (SELECT ba.istanza_utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS istanza_utility_id,
-  (SELECT a.id
-     FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1
+  pb.billing_account_id,
+  pb.utility_id,
+  pb.istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo(
+    ('PGT-RC-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar, false
   ) AS articolo_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'DRAFT' AND s.attivo IS TRUE LIMIT 1
   ) AS stato_draft_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1
-  ) AS valuta_id,
-  -- emittente fiscale (richiesto da trigger BEFORE INSERT preventivi
-  -- quando GUC app.current_user_id e' vuota - contesto pgTAP).
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1
-  ) AS emittente_fiscale_id,
+  pb.valuta_id,
+  pb.emittente_fiscale_id,
   -- ⚠️ L'IVA si sceglie UNA volta sola, e da li' si proiettano id e aliquota.
   --   Prima erano due sotto-select indipendenti sullo stesso insieme: niente
   --   garantiva che pescassero la stessa riga, e il test avrebbe calcolato i
   --   totali attesi con l'aliquota di un'IVA diversa da quella messa in riga.
   --   Con due aliquote positive in catalogo il difetto e' gia' possibile oggi.
   (SELECT id           FROM iva_scelta) AS iva_id,
-  (SELECT aliquota_iva FROM iva_scelta) AS iva_aliquota;
+  (SELECT aliquota_iva FROM iva_scelta) AS iva_aliquota
+  FROM tmp_rc_pb pb;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL
@@ -135,28 +123,12 @@ SELECT ok(
 -- ============================================================
 -- 4) Setup preventivo DRAFT (totali iniziali = 0)
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): la testata e' quella del builder (sopra),
+--   non piu' un INSERT a mano: qui non e' il caso sotto test.
 CREATE TEMP TABLE tmp_rc_prev AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev,
-    billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id,
-    stato_doc_preventivo_id, data,
-    emittente_fiscale_id,
-    storicizza, meta
-  )
-  SELECT
-    'PGTAP-RC-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0,
-    r.billing_account_id, r.istanza_utility_id, r.utility_id,
-    DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_draft_id, DATE '2026-06-01',
-    r.emittente_fiscale_id,
-    false, jsonb_build_object('test_scope', 'pgtap_ricalcola')
-  FROM tmp_rc_refs r
-  RETURNING id, uid, numero
-)
-SELECT * FROM ins;
+SELECT p.id, p.uid, p.numero
+  FROM vendite.preventivi p
+ WHERE p.id = (SELECT preventivo_id FROM tmp_rc_pb);
 
 SELECT ok(
   (SELECT totale_imponibile = 0 AND totale_iva = 0 AND totale_documento = 0

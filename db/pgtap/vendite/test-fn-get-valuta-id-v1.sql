@@ -39,27 +39,26 @@ SELECT plan(10);
 -- SETUP DATI TEST
 -- ============================================================
 
--- Recupera riferimenti reali
+-- rev 2026-10-27 (lotto 4 di D7): i tre anelli della catena si COSTRUISCONO.
+--   Prima si pescavano il primo BA, il primo emittente attivo e il primo
+--   gestore: da zero non c'era nessuno dei tre, e la funzione moriva su
+--   E_CONFIG_MANCANTE gia' al test 2. Ora: il BA e' un cliente costruito,
+--   l'emittente e' quello dell'operatore del contesto, il gestore e' il
+--   singleton dell'installazione (prendi-o-costruisci).
+CREATE TEMP TABLE tmp_cli_valuta AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('fn_get_valuta_id');
+
+CREATE TEMP TABLE tmp_gestore_valuta AS
+SELECT * FROM dbops.fn_pgtap_crea_gestore('fn_get_valuta_id');
+
 CREATE TEMP TABLE tmp_refs_valuta AS
 SELECT
-  (
-    SELECT ba.id
-    FROM anagrafiche.billing_account ba
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS billing_account_id,
-  (
-    SELECT ef.soggetto_ruolo_id
-    FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE
-    ORDER BY ef.id
-    LIMIT 1
-  ) AS emittente_soggetto_ruolo_id,
+  (SELECT billing_account_id FROM tmp_cli_valuta) AS billing_account_id,
+  script.fn_pgtap_emittente_sr_operatore() AS emittente_soggetto_ruolo_id,
   (
     SELECT g.valuta_id
     FROM anagrafiche.gestori g
-    ORDER BY g.id
-    LIMIT 1
+    WHERE g.id = (SELECT gestore_id FROM tmp_gestore_valuta)
   ) AS gestore_valuta_id;
 
 -- ============================================================

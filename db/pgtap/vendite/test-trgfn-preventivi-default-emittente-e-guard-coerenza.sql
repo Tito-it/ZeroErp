@@ -62,23 +62,25 @@ CREATE TEMP TABLE _t_stato AS
 SELECT id AS stato_id FROM config.stati_doc_preventivi
  WHERE attivo = true ORDER BY id LIMIT 1;
 
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba: BA legato all'azienda di chi agisce);
+--   l'utente e' l'operatore del contesto e il suo emittente quello di
+--   script.fn_pgtap_emittente_operatore(). Prima si pescavano col primo id
+--   un BA, un utente django con emittente e «il primo» emittente attivo: da
+--   zero non c'era niente. Dal catalogo di seed resta solo lo stato.
+--   ⚠️ Il 3 passa l'emittente dell'operatore, lo stesso del default: senza
+--   una seconda azienda nel perimetro il «non sovrascrive» non si distingue
+--   (lo stesso valeva quando si pescava il primo emittente).
 CREATE TEMP TABLE _t_ba AS
-SELECT ba.id AS ba_id, ba.istanza_utility_id, ba.utility_id
-  FROM anagrafiche.billing_account ba
- WHERE ba.istanza_utility_id IS NOT NULL
-   AND ba.utility_id IS NOT NULL
- ORDER BY ba.id LIMIT 1;
+SELECT c.billing_account_id AS ba_id, c.istanza_utility_id, c.utility_id
+  FROM dbops.fn_pgtap_crea_cliente_ba('default emittente preventivi') c;
 
 CREATE TEMP TABLE _t_user_with_ef AS
-SELECT au.id AS user_id, uef.emittente_fiscale_id AS ef_id
-  FROM django.auth_user au
-  JOIN config.user_emittenti_fiscali uef ON uef.auth_user_id = au.id
- WHERE au.is_active = true
- ORDER BY au.id LIMIT 1;
+SELECT NULLIF(current_setting('app.current_user_id', true), '')::integer AS user_id,
+       script.fn_pgtap_emittente_operatore() AS ef_id;
 
 CREATE TEMP TABLE _t_ef AS
-SELECT ef.id AS ef_id FROM anagrafiche.emittenti_fiscali ef
- WHERE ef.attivo = true ORDER BY ef.id LIMIT 1;
+SELECT script.fn_pgtap_emittente_operatore() AS ef_id;
 
 -- ============================================================
 -- 1) Preflight: entrambi i trigger esistono.

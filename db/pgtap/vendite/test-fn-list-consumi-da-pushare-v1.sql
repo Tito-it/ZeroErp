@@ -50,14 +50,18 @@ SELECT ok(
 -- ============================================================
 -- 0b) Riferimenti minimi
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE. Prima si pescava
+--   il primo BA: da zero non c'era (test 2 rosso), e su un altro database
+--   poteva essere di un'azienda fuori dal perimetro dell'operatore, con
+--   l'INSERT del consumo respinto dalla RLS di attivita_consumi. Il BA
+--   costruito e' legato all'azienda di chi agisce. UoM e sorgente sono
+--   catalogo di seed; i consumi restano scritti a mano (nessun builder).
+CREATE TEMP TABLE tmp_cli_cons AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('fn_list_consumi_da_pushare');
+
 CREATE TEMP TABLE tmp_refs_cons AS
 SELECT
-  (SELECT ba.id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS billing_account_id,
+  (SELECT billing_account_id FROM tmp_cli_cons) AS billing_account_id,
   (SELECT u.id
      FROM catalogo.unita_misura u
     WHERE u.attivo IS TRUE

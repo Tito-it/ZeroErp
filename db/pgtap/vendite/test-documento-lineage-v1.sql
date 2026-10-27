@@ -349,15 +349,15 @@ SELECT is(
     0, 'invariante: nodo attivo -> frontiera attiva');
 
 -- ---- 21..24: guardie e default della funzione ----------------------------
-SELECT throws_ok(
+SELECT throws_like(
     $$ SELECT * FROM vendite.fn_documento_lineage(0::bigint, 'x', 'avanti') $$,
-    NULL::text, NULL::text, 'fn guard: p_tipo_id <= 0 solleva');
-SELECT throws_ok(
+    '%p_tipo_id non valido%', 'fn guard: p_tipo_id <= 0 solleva');
+SELECT throws_like(
     $$ SELECT * FROM vendite.fn_documento_lineage(1::bigint, '', 'avanti') $$,
-    NULL::text, NULL::text, 'fn guard: p_uid vuoto solleva');
-SELECT throws_ok(
+    '%p_uid non valido%', 'fn guard: p_uid vuoto solleva');
+SELECT throws_like(
     $$ SELECT * FROM vendite.fn_documento_lineage(1::bigint, 'x', 'laterale') $$,
-    NULL::text, NULL::text, 'fn guard: p_direzione non valida solleva');
+    '%p_direzione non valido%', 'fn guard: p_direzione non valida solleva');
 SELECT lives_ok(
     $$ SELECT * FROM vendite.fn_documento_lineage(
            (SELECT id FROM config.sorgenti WHERE codice_interno = 'PREVENTIVO'),

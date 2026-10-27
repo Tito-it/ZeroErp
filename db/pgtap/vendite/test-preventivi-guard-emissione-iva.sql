@@ -68,36 +68,32 @@ SELECT plan(9);
 -- ============================================================
 -- 0) Riferimenti
 -- ============================================================
--- ⚠️ L'emittente si DERIVA dal BA (come per l'ordine): il guard
---   trgfn_preventivi_guard_emittente_ba pretende la coerenza, e sceglierlo per
---   conto proprio farebbe fallire il test su un errore che non c'entra.
--- ⚠️ Il BA si sceglie UNA volta in una CTE e sotto la veste dell'operatore:
---   due sotto-select indipendenti potrebbero pescarne due diversi.
+-- rev 2026-10-27 (lotto 4 di D7): il preventivo si COSTRUISCE
+--   (dbops.fn_pgtap_crea_preventivo: azienda di chi agisce, cliente col suo
+--   BA, emittente coerente col BA, testata in bozza senza righe) e l'articolo
+--   pure (dbops.fn_pgtap_crea_articolo, merce semplice, non composito). Prima
+--   si pescavano col primo id un BA «con emittente» e un articolo non
+--   composito, e la testata si INSERIVA a mano: da zero non c'era niente.
+--   Dal catalogo di seed restano valuta, IVA e stati.
+CREATE TEMP TABLE tmp_pi_pb AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('emissione iva');
+
 CREATE TEMP TABLE tmp_pi_refs AS
-WITH ba AS (
-  SELECT b.id, b.istanza_utility_id, b.utility_id
-    FROM anagrafiche.billing_account b
-   WHERE b.utility_id IS NOT NULL
-     AND b.istanza_utility_id IS NOT NULL
-     AND anagrafiche.fn_get_emittente_fiscale_pk(b.id) IS NOT NULL
-   ORDER BY b.id
-   LIMIT 1
-)
-SELECT (SELECT id FROM ba)                                    AS billing_account_id,
-       (SELECT istanza_utility_id FROM ba)                    AS istanza_utility_id,
-       (SELECT utility_id FROM ba)                            AS utility_id,
-       anagrafiche.fn_get_emittente_fiscale_pk((SELECT id FROM ba)) AS emittente_fiscale_id,
-       (SELECT a.id FROM catalogo.articoli a
-         WHERE a.attivo IS TRUE
-           AND COALESCE(a.is_composito, FALSE) IS FALSE
-         ORDER BY a.id LIMIT 1)                               AS articolo_id,
-       (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
+SELECT pb.billing_account_id,
+       pb.istanza_utility_id,
+       pb.utility_id,
+       pb.emittente_fiscale_id,
+       dbops.fn_pgtap_crea_articolo(
+         ('PGT-PIVA-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar, false
+       )                                                      AS articolo_id,
+       pb.valuta_id,
        (SELECT i.id FROM config.iva i
          WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)        AS iva_id,
        (SELECT s.id FROM config.stati_doc_preventivi s
          WHERE s.codice_interno = 'DRAFT'  ORDER BY s.id LIMIT 1) AS stato_draft_id,
        (SELECT s.id FROM config.stati_doc_preventivi s
-         WHERE s.codice_interno = 'EMESSO' ORDER BY s.id LIMIT 1) AS stato_emesso_id;
+         WHERE s.codice_interno = 'EMESSO' ORDER BY s.id LIMIT 1) AS stato_emesso_id
+  FROM tmp_pi_pb pb;
 
 SELECT ok(
     (SELECT billing_account_id IS NOT NULL AND emittente_fiscale_id IS NOT NULL
@@ -113,21 +109,10 @@ SELECT ok(
 -- ⚠️ Padre e figlio in DUE istruzioni, non in una CTE sola: le CTE che scrivono
 --   condividono la stessa snapshot e una policy che risolve il perimetro dal
 --   padre non lo troverebbe.
+-- rev 2026-10-27 (lotto 4 di D7): la testata e' quella del builder (sopra),
+--   non piu' un INSERT a mano; la riga resta scritta qui, e' il caso.
 CREATE TEMP TABLE tmp_pi_prev AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-      numero, rev, billing_account_id, istanza_utility_id, utility_id,
-      validita_dal, validita_al, valuta_id,
-      stato_doc_preventivo_id, data, emittente_fiscale_id, storicizza, meta)
-  SELECT 'PGTAP-PREV-IVA', 0,
-         r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
-         r.stato_draft_id, DATE '2080-01-01', r.emittente_fiscale_id, false,
-         jsonb_build_object('test_scope', 'pgtap_preventivo_emissione_iva')
-    FROM tmp_pi_refs r
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT preventivo_id AS id FROM tmp_pi_pb;
 
 INSERT INTO vendite.preventivi_righe (
     preventivo_id, articolo_id, descrizione, quantita, qta_operativa,

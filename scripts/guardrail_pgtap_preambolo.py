@@ -162,6 +162,17 @@ def maschera(t: str) -> str:
 
 # Scopo: contare i `throws_ok` che non discriminano — secondo e terzo argomento
 #   entrambi NULL, cioe' «va bene qualunque errore».
+# Scopo: dire se un argomento e' un NULL, anche col cast (`NULL::text`).
+# ⚠️ Fino al 2026-10-27 il cancello riconosceva solo il NULL nudo: sette
+#   `throws_ok(..., NULL::text, NULL::text)` in cinque file erano fuori dal
+#   debito misurato. Hanno ricevuto il discriminante nello stesso giro.
+RX_NULL_CAST = re.compile(r"^NULL(\s*::\s*[\w ]+)?$", re.I)
+
+
+def e_null(arg: str) -> bool:
+    return bool(RX_NULL_CAST.match(arg.strip()))
+
+
 def throws_senza_discriminante(testo: str, mascherato: str) -> int:
     n = 0
     for mo in RX_THROWS.finditer(mascherato):
@@ -181,7 +192,7 @@ def throws_senza_discriminante(testo: str, mascherato: str) -> int:
                 start = i + 1
             i += 1
         if len(args) >= 3:
-            if args[1].strip().upper() == "NULL" and args[2].strip().upper() == "NULL":
+            if e_null(args[1]) and e_null(args[2]):
                 n += 1
     return n
 

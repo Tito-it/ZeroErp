@@ -67,6 +67,18 @@ SELECT ok(
 -- ============================================================
 -- Setup: riferimenti per test 4-10
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): cliente, preventivo e articolo si
+--   COSTRUISCONO. Prima si pescavano il primo BA con un emittente risolvibile
+--   e l'ultimo articolo attivo, e il preventivo si scriveva a mano su quel BA:
+--   da zero non c'erano, e la commessa moriva su «p_billing_account_id
+--   obbligatorio». Ora il preventivo (bozza) lo scrive il builder sul cliente
+--   dell'azienda di chi agisce, e la commessa nasce sul SUO billing account
+--   (la madre aggancia il documento alla commessa solo sullo stesso BA).
+--   L'articolo e' una merce semplice costruita. Sorgenti, UoM e valuta sono
+--   catalogo di seed.
+CREATE TEMP TABLE tmp_prev_build_sot AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('sorgente origine tipo doc');
+
 CREATE TEMP TABLE tmp_refs_sot AS
 SELECT
   -- ⚠️ PREVENTIVO resta: e' l'oggetto delle asserzioni 3/5/6 (tipo_doc_fiscale
@@ -87,31 +99,15 @@ SELECT
     AS sorgente_commessa_id,
   (SELECT s.tipo_doc_fiscale_id FROM config.sorgenti s WHERE s.codice = 'COMMESSA' AND s.attivo IS TRUE LIMIT 1)
     AS commessa_tipo_doc_id,
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)
+  (SELECT billing_account_id FROM tmp_prev_build_sot)
     AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)
+  (SELECT utility_id FROM tmp_prev_build_sot)
     AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)
+  (SELECT istanza_utility_id FROM tmp_prev_build_sot)
     AS istanza_utility_id,
-  (SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id) FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)
+  (SELECT emittente_soggetto_ruolo_id FROM tmp_prev_build_sot)
     AS emittente_soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)
+  dbops.fn_pgtap_crea_articolo('PGT-SOT-ART', false)
     AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)
     AS uom_id,
@@ -191,24 +187,11 @@ SELECT vendite.fn_link_commessa_sorgente(
 --   inventato ('EXT-SOT-...'), che commesse_attivita accettava; dal
 --   20261012-46 la madre aggancia il documento alla commessa con
 --   fn_link_commessa_sorgente, che ne pretende formato (uuid, key_selector
---   'uid') ed esistenza. L'emittente e' quello del billing account: lo
---   pretendono il guard emittente/BA e l'omogeneita' del link.
+--   'uid') ed esistenza.
+-- rev 2026-10-27 (lotto 4 di D7): la testata non si scrive piu' a mano qui:
+--   e' quella del builder (in setup), sul cui billing account nasce la commessa.
 CREATE TEMP TABLE tmp_prev_sot AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id,
-    emittente_fiscale_id, meta)
-  SELECT r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2026-07-01', DATE '2026-07-31', r.valuta_id,
-         (SELECT s.id FROM config.stati_doc_preventivi s
-           WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1),
-         (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-           WHERE ef.soggetto_ruolo_id = r.emittente_soggetto_ruolo_id),
-         jsonb_build_object('test_scope', 'pgtap_sorgente_origine')
-  FROM tmp_refs_sot r
-  RETURNING id, uid)
-SELECT * FROM ins;
+SELECT preventivo_id AS id, preventivo_uid AS uid FROM tmp_prev_build_sot;
 
 -- Upsert attivita con sorgente_tipo_id = PREVENTIVO (sorgente originale)
 CREATE TEMP TABLE tmp_ca_sot AS

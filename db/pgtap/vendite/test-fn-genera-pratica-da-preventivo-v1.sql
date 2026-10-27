@@ -23,8 +23,8 @@
 --                  cuore del fix: il bug era "pratica creata, link fallisce,
 --                  pratica orfana".
 --
--- Riusa un preventivo esistente con billing_account e un tipo_prestazione gia'
--- usato da pratiche reali (garantito valido per i guard/definizione). Idempotente:
+-- Costruisce il preventivo (rev 2026-10-27, lotto 4 di D7) e legge dal catalogo
+-- di seed un tipo_prestazione valido per i guard/definizione. Idempotente:
 -- BEGIN ... ROLLBACK.
 -- ------------------------------------------------------------
 
@@ -50,13 +50,21 @@ SELECT plan(7);
 -- =========================================================
 -- Precondizioni: preventivo con BA/emittente + tipo_prestazione valido
 -- =========================================================
+-- rev 2026-10-27 (lotto 4 di D7): il preventivo si COSTRUISCE
+--   (dbops.fn_pgtap_crea_preventivo: azienda di chi agisce, cliente col suo
+--   BA legato all'emittente, testata in bozza). Prima si pescava «il primo
+--   preventivo con BA ed emittente»: da zero non c'era, e la generazione
+--   moriva su «Preventivo non trovato». Il tipo_prestazione resta una
+--   lettura del catalogo di seed (20260422-05).
+CREATE TEMP TABLE tmp_prev_pb AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('genera pratica');
+
 CREATE TEMP TABLE tmp_prev AS
 SELECT p.id, p.uid, p.billing_account_id
 FROM vendite.preventivi p
-WHERE p.billing_account_id IS NOT NULL
-  AND anagrafiche.fn_get_emittente_fiscale_pk(p.billing_account_id) IS NOT NULL
-ORDER BY p.id
-LIMIT 1;
+WHERE p.id = (SELECT preventivo_id FROM tmp_prev_pb)
+  AND p.billing_account_id IS NOT NULL
+  AND anagrafiche.fn_get_emittente_fiscale_pk(p.billing_account_id) IS NOT NULL;
 
 SELECT is((SELECT count(*)::int FROM tmp_prev), 1,
           'Precondizione: esiste un preventivo con billing_account/emittente');
@@ -129,14 +137,19 @@ CREATE TRIGGER zzz_pgtap_fail_link
 CREATE TEMP TABLE cnt_before AS
 SELECT count(*)::int AS n FROM pratiche.pratiche;
 
+-- rev 2026-10-27 (lotto 4 di D7): il discriminante e' la frase del trigger
+--   iniettato (sonda: «caught: P0001: pgtap: fallimento iniettato sull'INSERT
+--   del link»). Con (NULL, NULL) passava su QUALUNQUE errore — anche su un
+--   preventivo non trovato, com'era da zero — e la prova di atomicita' non
+--   provava niente.
 SELECT throws_ok(
     $$ SELECT * FROM vendite.fn_genera_pratica_da_preventivo(
            (SELECT id FROM tmp_prev),
            (SELECT id FROM tmp_tipo),
            NULL,
            'pgTAP atomicita') $$,
-    NULL::text,
-    NULL::text,
+    'P0001',
+    'pgtap: fallimento iniettato sull''INSERT del link',
     'Atomicita'': il fallimento del link fa fallire l''intera chiamata');
 
 SELECT is(

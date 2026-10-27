@@ -39,20 +39,12 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(15);
 
--- ============================================================
--- Setup GUC app.current_user_id: il trigger trgfn_preventivi_default_emittente
--- richiede l'emittente fiscale dell'operatore loggato. In contesto pgTAP la GUC
--- e' vuota -> la valorizziamo con un utente che ha un emittente in
--- config.user_emittenti_fiscali, altrimenti l'INSERT su preventivi solleva
--- E_PREV_EMITTENTE_NON_RISOLTO. (Stesso pattern di test-fn-crea-revisione-preventivo.)
--- ============================================================
-SELECT set_config(
-  'app.current_user_id',
-  (SELECT uef.auth_user_id::text
-     FROM config.user_emittenti_fiscali uef
-    ORDER BY uef.auth_user_id LIMIT 1),
-  true
-);
+-- rev 2026-10-27 (lotto 4 di D7): niente piu' GUC fissata a mano. Prima
+--   app.current_user_id si puntava sul primo utente di
+--   config.user_emittenti_fiscali, scavalcando l'operatore del contesto; da
+--   zero non c'era nessuno, su dev era un utente qualunque. L'emittente di
+--   default dei documenti e' quello dell'operatore aperto da
+--   fn_pgtap_set_contesto_operatore().
 
 SELECT ok(
   EXISTS (
@@ -107,6 +99,15 @@ SELECT ok(
   'trigger su contratti presente'
 );
 
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba: BA legato all'azienda di chi agisce).
+--   Prima BA, ruolo, istanza e utility si pescavano col primo id: da zero non
+--   c'era niente. Le testate restano INSERT a mano: il trigger di sync che
+--   scatta sull'INSERT e' il caso. Dal catalogo di seed restano sorgenti e
+--   stati.
+CREATE TEMP TABLE tmp_canali_sync_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('canali sync');
+
 CREATE TEMP TABLE tmp_canali_sync_refs AS
 SELECT
   (SELECT id FROM config.sorgenti WHERE codice = 'PREVENTIVO' AND attivo IS TRUE ORDER BY id LIMIT 1) AS src_preventivo_id,
@@ -117,11 +118,12 @@ SELECT
   (SELECT id FROM config.stati_doc_ordini WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS stato_ordine_id,
   (SELECT id FROM config.stati_doc_ddt WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS stato_ddt_id,
   (SELECT id FROM config.stati_doc_contratti WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS stato_contratto_id,
-  (SELECT ba.id FROM anagrafiche.billing_account ba ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.soggetto_ruolo_id FROM anagrafiche.billing_account ba ORDER BY ba.id LIMIT 1) AS soggetto_ruolo_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba ORDER BY ba.id LIMIT 1) AS utility_id,
-  ('PGTAP-' || substr(md5(clock_timestamp()::text), 1, 18))::text AS token;
+  cli.billing_account_id,
+  cli.soggetto_ruolo_id,
+  cli.istanza_utility_id,
+  cli.utility_id,
+  ('PGTAP-' || substr(md5(clock_timestamp()::text), 1, 18))::text AS token
+FROM tmp_canali_sync_cli cli;
 
 SELECT ok(
   (
