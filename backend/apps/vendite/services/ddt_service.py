@@ -517,13 +517,11 @@ def _passa_a(
     *, legami_confermati: Any, emissione: bool,
 ) -> dict[str, Any]:
     repo = DdtRepository()
-    # Guard esistenza leggero: serve solo lo stato corrente, non la testata
-    # completa (vista + JOIN); la validazione della coppia e' del trigger DB.
-    stato_prec = testata_o_not_found(
-        repo.get_stato_codice, ddt_id,
-        code="E_DDT_NOT_FOUND", message="DDT non trovato.",
-        id_name="ddt_id", function_name=f"{_FN}.cambia_stato",
-    )
+    # ⛔ Nessun controllo «la bolla c'e'» qui (regola del 1, Tid 2026-10-27):
+    #    i verbi prendono la testata nel perimetro e rifiutano da se'
+    #    (E_DDT_NOT_FOUND). Lo stato di partenza serve solo alla risposta, e
+    #    il suo None (bolla che non c'e') non arriva al client.
+    stato_prec = repo.get_stato_codice(ddt_id)
     # Un valore non testuale (un numero nel JSON) e' «stato mancante», un 400:
     # fino al 2026-10-09 `.strip()` su un int era un 500.
     target = stato_codice.strip() if isinstance(stato_codice, str) else ""

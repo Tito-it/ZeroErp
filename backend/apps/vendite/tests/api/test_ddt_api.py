@@ -40,6 +40,7 @@ from apps.core.services.service_errors import ServiceError
 from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _SVC = "apps.vendite.services.ddt_service"
@@ -373,18 +374,6 @@ class DdtEmettiPermessoTests(SimpleTestCase):
                 self.assertIsNone(getattr(view, "post_permission", None))
 
 
-# Scopo: un operatore VERO per la catena: i test qui sopra autenticano un
-#        `Mock()`, il cui `is_superuser` e' vero, e la catena non viene mai
-#        attraversata. Qui si', con resolver e repository del passaggio
-#        mockati (la lettura vera: `vendite/tests/db/test_permesso_passaggio_db`).
-def _operatore() -> Mock:
-    user = Mock()
-    user.id = 31
-    user.is_superuser = False
-    user.is_authenticated = True
-    return user
-
-
 class DdtCambiaStatoPermessoDelPassaggioTests(JwtMockedApiTest):
     """Il 403 dalla riga del passaggio arriva prima del service (M-3)."""
 
@@ -393,7 +382,7 @@ class DdtCambiaStatoPermessoDelPassaggioTests(JwtMockedApiTest):
         self.client = ClientApi()
 
     # Senza l'azione della riga: 403, e il service non parte.
-    @patch(_AUTH, return_value=(_operatore(), None))
+    @patch(_AUTH, return_value=(operatore_di_prova(user_id=31), None))
     @patch("apps.core.api.permissions.DocumentoModelloRepository")
     @patch("apps.core.api.permissions.PermissionResolver")
     @patch(f"{_SVC}.cambia_stato")
@@ -414,7 +403,7 @@ class DdtCambiaStatoPermessoDelPassaggioTests(JwtMockedApiTest):
         mock_cs.assert_not_called()
 
     # Con l'azione: passa, e il livello d'area non si guarda.
-    @patch(_AUTH, return_value=(_operatore(), None))
+    @patch(_AUTH, return_value=(operatore_di_prova(user_id=31), None))
     @patch("apps.core.api.permissions.DocumentoModelloRepository")
     @patch("apps.core.api.permissions.PermissionResolver")
     @patch(f"{_SVC}.cambia_stato")
@@ -435,7 +424,7 @@ class DdtCambiaStatoPermessoDelPassaggioTests(JwtMockedApiTest):
 
     # Il corpo illeggibile lo legge la catena per prima: deve restare il 400
     # di sempre (`invalid_json`), non diventare un 403 o un 500.
-    @patch(_AUTH, return_value=(_operatore(), None))
+    @patch(_AUTH, return_value=(operatore_di_prova(user_id=31), None))
     @patch("apps.core.api.permissions.DocumentoModelloRepository")
     @patch("apps.core.api.permissions.PermissionResolver")
     @patch(f"{_SVC}.cambia_stato")

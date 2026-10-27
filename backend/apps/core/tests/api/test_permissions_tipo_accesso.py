@@ -27,7 +27,7 @@ Indice test (0..N):
  7. test_un_azione_non_rende_scrittura_una_get
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
@@ -38,6 +38,7 @@ from apps.core.api.permissions import (
     chiamata_in_scrittura,
 )
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 
 class _Standard(DomainAPIView):
@@ -57,14 +58,6 @@ class _Refuso(DomainAPIView):
 class _GetConAzione(DomainAPIView):
     area_funzionale = "pratiche"
     get_permission = "vede_cose_riservate"
-
-
-def _operatore() -> MagicMock:
-    user = MagicMock()
-    user.id = 3
-    user.is_authenticated = True
-    user.is_superuser = False
-    return user
 
 
 # Scopo: il resolver come lo vede la catena: operatore, non super admin,
@@ -96,17 +89,17 @@ class TipoAccessoTests(SimpleTestCase):
     def test_un_valore_fuori_dai_quattro_tipi_nega(self) -> None:
         self.assertIsNone(ZeroERPPermission.tipo_accesso(_Refuso, method="POST"))
         _resolver("TUTTO")
-        esito = ZeroERPPermission.valuta(_operatore(), _Refuso, method="POST", cache={})
+        esito = ZeroERPPermission.valuta(operatore_di_prova(user_id=3), _Refuso, method="POST", cache={})
         self.assertFalse(esito.consentito)
         self.assertIs(esito.motivo, MotivoDiniego.AZIONE_SCONOSCIUTA)
 
     def test_una_post_dichiarata_lettura_entra_con_lettura(self) -> None:
         _resolver("LETTURA")
         self.assertTrue(
-            ZeroERPPermission.valuta(_operatore(), _PostCheLegge, method="POST", cache={}).consentito
+            ZeroERPPermission.valuta(operatore_di_prova(user_id=3), _PostCheLegge, method="POST", cache={}).consentito
         )
         self.assertFalse(
-            ZeroERPPermission.valuta(_operatore(), _Standard, method="POST", cache={}).consentito
+            ZeroERPPermission.valuta(operatore_di_prova(user_id=3), _Standard, method="POST", cache={}).consentito
         )
 
     # E' cio' che fa il filtro dei tool: chiede all'ingresso dell'assistente
@@ -115,19 +108,19 @@ class TipoAccessoTests(SimpleTestCase):
         _resolver("LETTURA")
         self.assertFalse(
             ZeroERPPermission.valuta(
-                _operatore(), _PostCheLegge, method="POST", accesso="add", cache={},
+                operatore_di_prova(user_id=3), _PostCheLegge, method="POST", accesso="add", cache={},
             ).consentito
         )
         self.assertTrue(
             ZeroERPPermission.valuta(
-                _operatore(), _Standard, method="POST", accesso="view", cache={},
+                operatore_di_prova(user_id=3), _Standard, method="POST", accesso="view", cache={},
             ).consentito
         )
 
     def test_accesso_esplicito_non_valido_nega(self) -> None:
         _resolver("TUTTO")
         esito = ZeroERPPermission.valuta(
-            _operatore(), _Standard, method="GET", accesso="", cache={},
+            operatore_di_prova(user_id=3), _Standard, method="GET", accesso="", cache={},
         )
         self.assertIs(esito.motivo, MotivoDiniego.AZIONE_SCONOSCIUTA)
 

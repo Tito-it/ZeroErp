@@ -209,7 +209,7 @@ class OrdiniServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     def test_cambia_stato_ok(self, repo_cls) -> None:
         # Transizione generica: delega al verbo DB.
         repo = repo_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
+        repo.get_stato_codice.return_value = "CONFERMATO"
         out = ordini_service.cambia_stato(7, "EVASO")
         self.assertEqual(out["stato"], "EVASO")
         self.assertEqual(out["stato_precedente"], "CONFERMATO")
@@ -224,7 +224,7 @@ class OrdiniServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     @patch(_REPO)
     def test_cambia_stato_rifiuta_lo_stato_di_emissione(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.get_stato_codice.return_value = "DRAFT"
         self.stato_chiesto_di_emissione()
         with self.assertRaises(ServiceError) as cm:
             ordini_service.cambia_stato(7, "CONFERMATO")
@@ -240,7 +240,7 @@ class OrdiniServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     @patch(_REPO)
     def test_annullo_passa_dal_verbo(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.get_stato_codice.return_value = "DRAFT"
         out = ordini_service.cambia_stato(7, "ANNULLATO")
         repo.annulla.assert_called_once_with(7, None)
         repo.cambia_stato.assert_not_called()
@@ -251,7 +251,7 @@ class OrdiniServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     @patch(_REPO)
     def test_annullo_dichiarazione_non_numerica(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.get_stato_codice.return_value = "DRAFT"
         with self.assertRaises(ServiceError) as cm:
             ordini_service.cambia_stato(7, "ANNULLATO", legami_confermati="tre")
         self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
@@ -276,7 +276,7 @@ class OrdiniServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     @patch(_REPO)
     def test_cambia_stato_codice_inesistente(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.get_stato_codice.return_value = "DRAFT"
         repo.cambia_stato.side_effect = DatabaseError(
             "E_STATO_WORKFLOW_NON_TROVATO: INESISTENTE",
         )
@@ -285,12 +285,24 @@ class OrdiniServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_STATO_WORKFLOW_NON_TROVATO")
         repo.annulla.assert_not_called()
 
+    # L'ordine che non c'e' (o fuori perimetro) lo rifiuta il verbo, col suo
+    # codice (regola del 1, 2026-10-27): nessuna lettura della testata prima.
+    @patch(_REPO)
+    def test_cambia_stato_ordine_inesistente_dal_verbo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = None
+        repo.cambia_stato.side_effect = DatabaseError("E_ORD_NOT_FOUND: ordine 99")
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.cambia_stato(99, "EVASO")
+        self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
+        repo.get_ordine.assert_not_called()
+
     # Un numero nel JSON al posto del codice e' un 400 (stato mancante), non un
     # 500 da `.strip()` su un int (2026-10-09, trovato da mypy).
     @patch(_REPO)
     def test_cambia_stato_codice_non_testo(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.get_stato_codice.return_value = "DRAFT"
         with self.assertRaises(ServiceError) as cm:
             ordini_service.cambia_stato(7, 5)  # type: ignore[arg-type]
         self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")

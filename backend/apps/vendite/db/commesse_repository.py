@@ -767,27 +767,24 @@ class CommesseRepository(EventLogRepositoryMixin):
             raw = cursor.fetchall()
         return [(int(r[0]), [int(i) for i in r[1]]) for r in raw]
 
-    def cambia_stato_commessa(
-        self,
-        *,
-        commessa_id: int,
-        nuovo_stato: str,
-        user: str | None = None,
-    ) -> dict[str, Any]:
-        """Transizione di stato sanzionata della testata commessa (guard di
-        matrice + guard di dominio a DB). Restituisce {commessa_id, stato_da,
-        stato_a}. Wrapper di vendite.fn_cambia_stato_commessa."""
+    # Scopo: Il verbo del cambio di stato della commessa
+    #        (`vendite.fn_cambia_stato_commessa`, brief-modello-documento-
+    #        vendita §14): la prima riga comune (stato che ha gia', passaggio di
+    #        processo, azione della riga), poi la scrittura attraverso la
+    #        porta; matrice e condizioni le giudica il guard. Senza `p_user`
+    #        (C-4): chi scrive lo dice l'audit dalla sessione.
+    # Ritorna: {commessa_id, stato_da, stato_a} (codici).
+    def cambia_stato_commessa(self, *, commessa_id: int, nuovo_stato: str) -> dict[str, Any]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT commessa_id, stato_da, stato_a
                 FROM vendite.fn_cambia_stato_commessa(
                     p_commessa_id => %s,
-                    p_nuovo_stato => %s,
-                    p_user => %s
+                    p_stato => %s
                 )
                 """,
-                [commessa_id, nuovo_stato, user],
+                [commessa_id, nuovo_stato],
             )
             row = cursor.fetchone()
         assert row is not None
@@ -929,7 +926,9 @@ class CommesseRepository(EventLogRepositoryMixin):
         """`codice_interno` dello stato corrente della testata commessa, o None
         se inesistente. Usato dall'orchestratore CONFERMA_VENDITA per lo skip
         idempotente della transizione a PRONTA_FATTURAZIONE quando una commessa
-        multi-sorgente è già stata portata pronta da una sorgente precedente."""
+        multi-sorgente è già stata portata pronta da una sorgente precedente, e
+        come lettore leggero dell'esistenza (404) da `get_legami` e
+        `cambia_stato_commessa` del service."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """

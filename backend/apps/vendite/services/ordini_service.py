@@ -652,8 +652,11 @@ def cambia_stato(
     ordine_id: int, stato_codice: str | None, *, legami_confermati: Any = None,
 ) -> dict[str, Any]:
     repo = OrdiniRepository()
-    testata = _get_testata_or_raise(repo, ordine_id, op="cambia_stato")
-    stato_prec = testata.get("stato_codice_interno")
+    # ⛔ Nessun controllo «l'ordine c'e'» qui (regola del 1, Tid 2026-10-27):
+    #    i verbi prendono la testata nel perimetro e rifiutano da se'
+    #    (E_ORD_NOT_FOUND). Lo stato di partenza serve solo alla risposta, e
+    #    il suo None (ordine che non c'e') non arriva al client.
+    stato_prec = repo.get_stato_codice(ordine_id)
     # Un valore non testuale (un numero nel JSON) e' «stato mancante», un 400:
     # fino al 2026-10-09 `.strip()` su un int era un 500.
     target = stato_codice.strip() if isinstance(stato_codice, str) else ""

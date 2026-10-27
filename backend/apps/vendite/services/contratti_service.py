@@ -937,9 +937,9 @@ class ContrattiService:
             message="La data di cessazione si indica solo per cessare il contratto.",
             context={"field": "valido_al", "codice_interno": codice_norm},
         )
-        # Esistenza col lettore leggero: qui serve solo che il contratto ci sia.
-        self._get_contratto_or_raise(contratto_id, op="cambia_stato", getter=self._repo.get_stato_codice)
-
+        # ⛔ Nessun controllo «il contratto c'e'» qui (regola del 1, Tid
+        #    2026-10-27): annullo, cessazione e cambio di stato prendono la
+        #    testata nel perimetro e rifiutano da se' (E_CONTRATTO_NON_TROVATO).
         contesto = {"contratto_id": contratto_id, "codice_interno": codice_norm}
         # L'annullo (lo stato d'annullo del vocabolario) dal suo verbo.
         if e_stato_di_annullo(TESTATA_CONTRATTI, codice_norm):

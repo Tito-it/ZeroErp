@@ -1,11 +1,12 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-27 (giro 9, l'offerta: DB e BE fatti; giro 10, la commessa: DB applicato e verde, scratch da zero di nuovo verde; tocca al BE, §14.6)
+## ⏭️ Chi riparte — aggiornato al 2026-10-27 (giro 10, la commessa: DB applicato e verde, BE fatto e da committare, §14.7)
 
-**Riparte: il team BE**, sulla richiesta del §14.6 (la commessa, sette punti): dopo l'apply del giro 10 (applicato e
-verde, Tid 2026-10-26) il cambio di stato della commessa del backend si rompe, perché chiama il verbo con `p_user`
-(punto 1). Il passaggio BE del giro 9 è fatto e su `Tito-dev` (§13.8, PR #1961). **Tid**, col commit del giro DB
-10 (§14.4, §14.5); col dato `emetti_offerta` ai profili e col dato
+**Riparte: Tid**, col commit del passaggio BE del giro 10 (§14.7, i sette punti del §14.6 fatti il 2026-10-27, su
+`dev/backend-tid`) e con una decisione emersa nel giro (il parametro `permission` del mapper delle azioni, rimasto
+senza consumatori, §14.7). Il **team DB** ha in più una richiesta a priorità bassa: ritirare
+`E_COMMESSA_AZIONE_NON_AMMESSA`, che nessuno solleva più (§14.7). Il passaggio BE del giro 9 è su `Tito-dev` (§13.8,
+PR #1961); il giro DB 10 è committato (PR #1962). **Tid**, col dato `emetti_offerta` ai profili e col dato
 `emetti_contratto` **ed** `emetti_ordine` ai profili su dbdev: letto il 2026-10-26, nessun profilo le ha, quindi
 in collaudo nessuno attiva o cessa un contratto né conferma un ordine (§11.7, «Stato letto dal team DB»).
 Il passaggio BE del §11.7 è committato (`fe041a1a1`, `0a08565be`, PR #1956). Il **team DB** ha una
@@ -83,14 +84,19 @@ ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committa
 | 4-bis-undecies-quater | ✅ team DB | Giro 10 scritto (`-29` … `-36`, CSV) e provato in transazione; 20/20 il pgTAP nuovo, 21 pgTAP portati, regressione su 93 file senza peggioramenti | §14.4, §14.5 | 4-bis-undecies-ter |
 | 4-bis-undecies-quinquies | ✅ **Tid** | Passo a mano del §14.4, apply del giro 10 e corsa pgTAP come app: verdi (2026-10-26), coi quattro file portati dopo la prima corsa e la guard d'uscita riscritta (§14.5) | §14.4, §14.5 | 4-bis-undecies-quater |
 | 4-bis-undecies-quinquies-bis | ✅ **Tid** | I due passi per lo scratch da zero (`20261019-13`, `20261026-37`) applicati su dbdev (a vuoto) e ricostruzione dello scratch `zeroerp_ruoli` da zero passata; corsa pgTAP verde (2026-10-26/27) | §14.5 | 4-bis-undecies-quinquies |
-| 4-bis-undecies-sexies | team BE ⏭️ | Richiesta del §14.6 (sette punti): dopo l'apply il cambio di stato della commessa del backend si rompe (firma nuova) | §14.6 | 4-bis-undecies-quinquies |
+| 4-bis-undecies-sexies | ✅ team BE | Richiesta del §14.6 (sette punti) fatta il 2026-10-27: firma, 403 dalla riga, difesa ritirata, IN_ESECUZIONE, test, doc; fuori elenco il gate del drawer | §14.7 | 4-bis-undecies-quinquies |
+| 4-bis-undecies-septies | **Tid** ⏭️ | Commit del passaggio BE del giro 10 | §14.7 | 4-bis-undecies-sexies |
+| 4-bis-undecies-octies | **Tid** | Il parametro `permission` di `mapAvailableActionsToDrawerActions`, senza consumatori: ritirarlo o tenerlo | §14.7 | 4-bis-undecies-sexies |
+| 4-bis-undecies-nonies | team DB | Richiesta (priorità bassa): ritirare `E_COMMESSA_AZIONE_NON_AMMESSA` (`obsoleto_dal`); poi il BE toglie policy e ripiego | §14.7 | 4-bis-undecies-sexies |
+| 4-bis-undecies-decies | ✅ team BE | Revisione del giro: regola del 1 sui sei documenti, BB `operatore_di_prova`; da provare e committare col §14.7 | §14.8 | 4-bis-undecies-sexies |
+| 4-bis-undecies-undecies | team DB | Richieste (priorità bassa): R-1 `fn_crea_revisione_offerta` risponde 404 all'offerta che non c'è; R-2 lo stato d'accettazione nel vocabolario | §14.8 | — |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 | 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1, il blocco «origine» della stampa della fattura, da decidere nel giro della fattura; D-G2, la prova a video del lotto 2b | §10 | — |
 | 5-ter | **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, il censimento dei gate delle azioni per riga; quando, lo decide Tid | §12 | — |
 
-Decisioni aperte di Tid: quando fare D-N1 (§12, riga 5-ter). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Lavoro da committare: `dev/db-tid`, il giro 10 (§14.4, applicato e verde), i due passi per lo scratch da zero (`20261019-13`, `20261026-37`, §14.5, applicati e verdi) e questo brief. Committati: il passaggio BE del giro 9 (§13.8, PR #1961), il giro DB 9 (`52e18d887`, PR #1960), il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`; il merge `2f5da4bed` ne aveva perso la tabella e il blocco «Chi riparte», ricomposti il 2026-10-26), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
+Decisioni aperte di Tid: quando fare D-N1 (§12, riga 5-ter); il parametro `permission` del mapper delle azioni (§14.7). Da provare prima del commit: la revisione del §14.8 (suite non rilanciata). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Lavoro da committare: `dev/backend-tid`, il passaggio BE del giro 10 (§14.7) e questo brief. Committati: il giro DB 10 coi due passi per lo scratch da zero (PR #1962), il passaggio BE del giro 9 (§13.8, PR #1961), il giro DB 9 (`52e18d887`, PR #1960), il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`; il merge `2f5da4bed` ne aveva perso la tabella e il blocco «Chi riparte», ricomposti il 2026-10-26), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -2831,3 +2837,82 @@ la view dello stato (`views.py`, `post_permission = "cambia_stato_commessa"`), i
 
 Da sapere: nessun codice d'errore nuovo. `cambia_stato_commessa` la ha già un profilo su dbdev (letto il
 2026-10-26): chi oggi cambia lo stato continua a farlo.
+
+### 14.7 Fatto dal team BE (2026-10-27): §14.6 punti 1-7
+
+1. **La firma del verbo** (C-4): `CommesseRepository.cambia_stato_commessa(commessa_id, nuovo_stato)` chiama
+   `vendite.fn_cambia_stato_commessa(p_commessa_id => …, p_stato => …)`, senza `p_user`; il service e la view non
+   portano più l'utente.
+2. **Il 403 dalla riga del passaggio**: `ApiCommessaStato.post_passaggio = PassaggioDocumento(testata=TESTATA_COMMESSE,
+   documento_kwarg="commessa_id", campo_stato="nuovo_stato")` al posto di `post_permission = "cambia_stato_commessa"`.
+   L'annullo della bozza ricade sul livello sul documento (C-1, cambio visibile). Presidio
+   `test_passaggio_rotte`: la rotta `commesse/<int:commessa_id>/stato/` entra fra le attese.
+3. **La «difesa applicativa» ritirata**: `cambia_stato_commessa` non legge più la capability. L'esistenza la dice il
+   lettore leggero (`get_commessa_stato_codice`, 404 `E_COMMESSA_NOT_FOUND`, lo stesso di `get_legami`), che dà anche lo
+   `stato_da` della risposta dell'annullo; il resto il verbo, dentro `translate_db_errors`, col codice del DB
+   (`E_DOC_PASSAGGIO_DI_PROCESSO`, `E_DOC_GIA_NELLO_STATO`, `E_STATO_WORKFLOW_NON_TROVATO`, i codici del guard).
+4. **Il ponte della push**: nessuna modifica (firma invariata). Allineata la pagina `push_preventivo_handler.md`,
+   che descriveva ancora il passaggio a pronta col verbo del cambio di stato (stantia già da prima del giro).
+5. **IN_ESECUZIONE**: tolto da `STATO_COMMESSA_MAP` (`core/utils/severity.js`). ⚠️ **Correzione al punto 5**: la chiave
+   `stato_in_esecuzione` di `locales/*.json` **non è della commessa**, è dei lotti (`vendite.lotti.stato_in_esecuzione`,
+   letta da `LottiListView`): resta. La commessa non ha etichette sue per gli stati (le dà il DB).
+6. **Test Django**: service (verbo nella firma nuova, il rifiuto arriva col codice del DB senza la difesa, 404 dal
+   lettore leggero; ritirati i due test della difesa), API (azione della riga concessa e negata, riga senza azione →
+   livello sul documento, la view dichiara il passaggio), e nuovo `vendite/tests/db/test_commessa_cambia_stato_db.py`
+   (6, sul DB vero): l'azione delle righe, «riapri» senza azione (`E_PERMESSO_NEGATO`), «riapri» → APERTA (C-3), lo
+   stato che ha già, IN_ESECUZIONE rifiutato dal vocabolario, l'annullo della bozza senza azione.
+7. **Doc**: `api_commessa_stato.md` (passaggi e azione per riga, firma, codici, la proiezione della push); cataloghi BB
+   backend (`PassaggioDocumento` ha un consumatore in più; la voce del service riscritta) e frontend.
+
+**Fuori elenco, dichiarato.**
+* ⚠️ **Il gate del drawer.** `CommessaGestioneDrawer` passava `permission: 'cambia_stato_commessa'` al mapper delle
+  azioni (`mapAvailableActionsToDrawerActions`), che lo stampava su **ogni** pulsante di stato: dopo C-1 avrebbe
+  nascosto anche l'annullo della bozza a chi non ha l'azione, mentre il backend lo ammette. Ritirato: la capability
+  del giro 10 (`-35`) nasconde già il passaggio a chi non ha l'azione della sua riga (la stessa regola, una sede).
+  Il gate di «Sblocca commessa» della dashboard di competenza resta: porta a «rendi pronta», che l'azione la chiede.
+* L'operatore costruito da `dbops.fn_pgtap_crea_commessa` ha `cambia_stato_commessa` dal suo profilo (letto il
+  2026-10-27): il test DB nega l'azione con un override utente spento, scritto nel test (nessun builder `dbops` del
+  diniego: prima occorrenza).
+
+**Decisioni e richieste aperte, emerse nel giro.**
+* **Tid**: il parametro `permission` di `mapAvailableActionsToDrawerActions` resta **senza consumatori** (la commessa
+  era l'unica): ritirarlo (col suo test in `useDrawerActions.spec.js`), o tenerlo per un dominio non ancora sul
+  modello?
+* **Team DB** (priorità bassa): `E_COMMESSA_AZIONE_NON_AMMESSA` lo sollevava solo il backend, e non lo solleva più:
+  il codice resta a catalogo (`codici_errore.csv`, `messaggi_errore.csv`) senza chi lo usa. Da ritirare con
+  `obsoleto_dal`; dopo, il BE toglie policy e ripiego (`error_messages_fallback.py`) rigenerando dal catalogo.
+
+**Provato (2026-10-27):** suite completa sul DB reale (`ZEROERP_TEST_DB_E2E=1`), **6993 test verdi** (1 saltato, 1
+fallimento atteso, già noti); vitest di `core` e `vendite` (746 verdi, 108 file); ruff, eslint e oxlint sui file
+toccati, `guard:capability` puliti; mypy col cricchetto a 0 rilievi. Lo smoke non è stato lanciato: l'unico che tocca lo
+stato della commessa (`smoke-test-ordini-giro-commessa.sh`, l'annullo) chiedeva l'azione già prima e la chiede ancora
+(commessa non in bozza).
+
+### 14.8 Revisione BE del giro (2026-10-27): regola del 1, due richieste al team DB
+
+**Fatto dal team BE** (da committare, insieme al §14.7). ⚠️ Non ancora provato: la suite va rilanciata, il
+«Provato» del §14.7 vale per il passaggio di prima.
+* **Regola del 1** (Tid, 2026-10-27): un controllo «il documento c'è» davanti a un verbo che prende la testata nel
+  perimetro e rifiuta da sé con un codice di classe NON_TROVATO è la stessa regola in due sedi, spesso con due codici.
+  Ritirato dal cambio stato di commessa, ordine, bolla, contratto, preventivo e offerta (anche annullo, «Emetti» ed
+  esito dell'offerta), dal passaggio offerta → contratto e dall'approvazione delle attività di commessa. Verificati
+  prima gli undici verbi di stato, `fn_push_offerta_a_contratto` e `fn_approva_commessa_attivita` (INVOKER sotto la
+  RLS). Dove lo stato serve alla risposta o a una decisione si legge col lettore leggero senza sollevare. Cambiano i
+  codici del 404 (stessa classe, il frontend legge la classe): commessa `E_COMMESSA_NON_TROVATA`, contratto
+  `E_CONTRATTO_NON_TROVATO`, offerta `E_OFFERTA_NON_TROVATA`. I resi erano già così.
+* Commessa: le tre copie a mano del 404 (dettaglio, legami, porta oneri) dal BB `testata_o_not_found`.
+* `cambia_stato_commessa`: un `nuovo_stato` non testuale (`null`, un numero) arrivava al verbo come stringa
+  (`"None"`); ora è «stato mancante», 400, come lo legge `PassaggioDocumento`.
+* Test: BB `operatore_di_prova` (`core/tests/_helpers/`, regola del 2), ritira le copie in 21 file.
+
+**Richieste al team DB** (priorità bassa):
+* **R-1. `vendite.fn_crea_revisione_offerta`, l'offerta che non c'è**: risponde `E_PARAMETRO_INVALIDO` (400) per un
+  caso che è un 404, lo stesso difetto che `fn_push_offerta_a_contratto` ha corretto il 2026-08-06
+  (`E_OFFERTA_NON_TROVATA`). Finché resta così il service legge prima la testata (`crea_revisione`); allineata la
+  fn, il BE toglie quella lettura. Nella stessa fn lo stato da cui si revisiona è il letterale `'EMESSA'`: è lo
+  stato di emissione del vocabolario (`script.fn_stato_emissione_id`).
+* **R-2. Lo stato d'accettazione nel vocabolario**: il vocabolario dice iniziale, emissione e annullo, non
+  l'accettazione. Il backend la scrive come letterale: `preventivi_service.cambia_stato` (il ramo della modalità di
+  fatturazione: `"ACCETTATO"`, e `"EMESSO"`, che è l'emissione), `_STATI_FATTURABILI`, `_STATI_GENERA_PRATICA`;
+  per l'offerta `StatoOfferta.ACCETTATA`. Proposta: una colonna come `emissione`, col suo lettore, per preventivi e
+  offerte; poi il BE legge dal vocabolario, come per `rifiuta_stato_di_emissione` (§8.7).

@@ -143,7 +143,8 @@ Portare le attività della commessa da `stato_approvazione = BOZZA` ad `APPROVAT
   la fn DB è **idempotente**, seconda invocazione → 0).
 - `400`: `E_COMMESSA_VALIDATION` — `commessa_id`/`righe_ids` non validi
 - `403`: azione di processo non abilitata
-- `404`: `E_COMMESSA_NOT_FOUND` — commessa inesistente
+- `404`: `E_COMMESSA_NON_TROVATA` — commessa inesistente o fuori perimetro, dalla fn
+  (`INVOKER` sotto la RLS di `vendite.commesse`; dal 2026-10-27 il service non lo ridice)
 
 ### Regole
 

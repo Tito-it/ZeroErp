@@ -665,9 +665,12 @@ dicono le transizioni del DB, e un tentativo da un altro stato e' il 409
 `E_OFFERTA_TRANSIZIONE_NON_AMMESSA` del guard. Fino al 2026-10-21 c'era un
 pre-check «solo da BOZZA» (400 `E_VENDITE_VALIDATION`), che avrebbe rifiutato
 l'annullo da ACCETTATA. Offerta inesistente o fuori perimetro → 404
-`E_VENDITE_NOT_FOUND`, lo stesso codice di `/emetti/`, `/registra-esito/`,
-`/crea-revisione/`, `/push-contratto/` e `/legami/` (il service legge prima la
-testata; dal 2026-10-26 anche davanti al verbo di stato). ⛔ Dal 2026-10-26 nessun pre-check di stato nemmeno su
+`E_OFFERTA_NON_TROVATA`, dal verbo, come su `/emetti/`, `/registra-esito/` e
+`/push-contratto/`: dal 2026-10-27 il service non lo ridice col suo codice
+(regola del 1, Tid: i verbi prendono la testata nel perimetro). `/legami/` legge
+ancora prima la testata (404 `E_VENDITE_NOT_FOUND`: il lettore dei legami non
+applica il perimetro), e così `/crea-revisione/` finché la sua fn risponde
+all'offerta che non c'è con un 400 `E_PARAMETRO_INVALIDO` (richiesta al team DB). ⛔ Dal 2026-10-26 nessun pre-check di stato nemmeno su
 `/emetti/`, `/registra-esito/`, `/crea-revisione/` e `/push-contratto/`: li
 giudicano verbi e funzioni del DB.
 

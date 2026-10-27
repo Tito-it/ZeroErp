@@ -37,6 +37,7 @@ from apps.core.api.multi_veste_token_serializer import emetti_refresh_veste
 from django.db import DatabaseError
 
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 _BB = "apps.core.api.multi_veste_token_serializer"
 _VIEW = "apps.core.api.change_password_view"
@@ -57,10 +58,7 @@ def _token_base(user) -> RefreshToken:
 
 
 def _utente() -> MagicMock:
-    user = MagicMock()
-    user.id = 42
-    user.is_authenticated = True
-    user.is_superuser = False
+    user = operatore_di_prova(user_id=42)
     user.get_username.return_value = "alice"
     user.check_password.side_effect = lambda p: p == _VECCHIA
     return user
