@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL COMMENT DEL GUARD «COMPLETATO SOLO SE GUADAGNATO» NOMINA LA REGOLA DI OGGI
+#   Brief: brief-modello-documento-vendita §15 (giro 11, revisione delle guide).
+#
+#   Solo il COMMENT. Diceva «sulla colonna e non in fn_set_fatturazione_lotto_stato
+#   (...) quella funzione non la chiama nessuno»: la funzione e' ritirata da
+#   20261027-07 e i passaggi del job li giudica la matrice
+#   config.transizioni_stati_lotto_job col suo guard (20261027-06). Il testo
+#   e' quello vivo (doc auto-generata, 2026-10-27) con quella frase riscritta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261027-28-comment-trgfn-fatturazione-lotti-guard-completato-mctit.yaml
+
+  - changeSet:
+      id: 20261027-28-comment-trgfn-fatturazione-lotti-guard-completato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di vendite.trgfn_fatturazione_lotti_guard_completato: la regola dei passaggi del job
+        e' la matrice config.transizioni_stati_lotto_job, non la funzione ritirata. Brief:
+        brief-modello-documento-vendita §15.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_fatturazione_lotti_guard_stato_job';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_fatturazione_lotti_guard_completato()
+                IS 'Guard BEFORE UPDATE OF stato_lotto su vendite.fatturazione_lotti: COMPLETATO si rifiuta (E_LOTTO_COMPLETATO_NON_GUADAGNATO, TECNICO) se lo stato fiscale del lotto e'' abortito (config.stati_doc_fiscale.is_abortito, letto da NEW) o se la sede unica vendite.vw_lotti_segnalazioni_summary lo dice fermo — letto, non ricalcolato. ⭐ Sulla COLONNA e non in una funzione: il runner scrive stato_lotto con un UPDATE diretto. (rev 2026-10-27, 20261027-28: la funzione di allora, fn_set_fatturazione_lotto_stato, e'' ritirata da 20261027-07; i passaggi ammessi del job stanno nella matrice config.transizioni_stati_lotto_job, e li giudica trgfn_fatturazione_lotti_guard_stato_job. Questo guard resta la sola regola del fermo: COMPLETATO solo se guadagnato.) Nasce da LTF-0010972 (2026-09-12): un rilancio ha scritto COMPLETATO con due documenti ancora in ERRORE. ⚠️ Non chiude la porta dell''esito (ERRORE scritto su un lotto gia'' COMPLETATO): quella la sorveglia vw_lotti_chiusi_con_gruppi_in_errore. Solo UPDATE: un lotto che nasce COMPLETATO non ha righe figlie. Brief: brief-db-annullamento-chiude-la-vita §9.3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

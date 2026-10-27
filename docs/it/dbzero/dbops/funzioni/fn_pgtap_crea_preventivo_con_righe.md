@@ -52,7 +52,7 @@ BEGIN
           FROM vendite.preventivi p
          WHERE p.id = p_preventivo_id
            AND p.stato_doc_preventivo_id
-               = script.fn_stato_iniziale_id('config.stati_doc_preventivi'::regclass);
+               = script.fn_doc_stato_iniziale_id('vendite.preventivi'::regclass);
         IF NOT FOUND THEN
             RAISE EXCEPTION
                 'fn_pgtap_crea_preventivo_con_righe: preventivo id = % inesistente, invisibile o fuori bozza — le righe si scrivono in bozza',
@@ -92,7 +92,7 @@ BEGIN
     RETURNING id INTO v_riga_id;
 
     -- 3. Lo stato chiesto, per la matrice.
-    IF v_stato_id IS DISTINCT FROM script.fn_stato_iniziale_id('config.stati_doc_preventivi'::regclass) THEN
+    IF v_stato_id IS DISTINCT FROM script.fn_doc_stato_iniziale_id('vendite.preventivi'::regclass) THEN
         PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi'::regclass, v_preventivo,
                                              p_stato_codice_interno);
     END IF;
@@ -109,7 +109,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_preventivo_con_righe(p_etichetta text, p_stato_codice_interno character varying, p_preventivo_id bigint, p_prezzo numeric, p_articolo_id uuid)
-IS 'Fixture pgTAP: un PREVENTIVO con una riga valida per l''emissione (articolo di merce costruito o p_articolo_id, prima aliquota positiva del catalogo, quantita 1, prezzo 10 o p_prezzo), nello stato chiesto (secondo parametro, default EMESSO), per la strada vera: la riga in bozza, poi lo stato per la matrice con dbops.fn_pgtap_porta_a_stato (il verbo, sotto la porta). ⭐ Esiste per la REGOLA DEL DOMINIO che i test ricopiavano: l''emissione chiede almeno una riga attiva (vendite.trgfn_preventivi_guard_transizione), e prima della porta i test emettevano preventivi senza righe. La testata e'' nuova (dbops.fn_pgtap_crea_preventivo, che resta senza righe) o quella del test (p_preventivo_id: in bozza, altrimenti solleva). Restituisce testata, la riga scritta, articolo, BA, emittente, utente di contesto e stato. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Gemello di dbops.fn_pgtap_crea_ordine_con_righe. Brief: brief-modello-documento-vendita §8.';
+IS 'Fixture pgTAP: un PREVENTIVO con una riga valida per l''emissione (articolo di merce costruito o p_articolo_id, prima aliquota positiva del catalogo, quantita 1, prezzo 10 o p_prezzo), nello stato chiesto (secondo parametro, default EMESSO), per la strada vera: la riga in bozza, poi lo stato per la matrice con dbops.fn_pgtap_porta_a_stato (il verbo, sotto la porta). ⭐ Esiste per la REGOLA DEL DOMINIO che i test ricopiavano: l''emissione chiede almeno una riga attiva (vendite.trgfn_preventivi_guard_transizione), e prima della porta i test emettevano preventivi senza righe. La testata e'' nuova (dbops.fn_pgtap_crea_preventivo, che resta senza righe) o quella del test (p_preventivo_id: in bozza, altrimenti solleva). Restituisce testata, la riga scritta, articolo, BA, emittente, utente di contesto e stato. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Gemello di dbops.fn_pgtap_crea_ordine_con_righe. Brief: brief-modello-documento-vendita §8. Rev 2026-10-27 (20261027-31, brief-modello-documento-vendita §15.13): lo stato iniziale dalla testata (vendite.preventivi) con script.fn_doc_stato_iniziale_id, non dal vocabolario.';
 ```
 
 </div>

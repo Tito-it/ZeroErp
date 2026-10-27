@@ -103,7 +103,7 @@ BEGIN
           INTO v_ordine, v_uid, v_ba_id, v_cli_sr_id, v_ef_id
           FROM vendite.ordini o
          WHERE o.id = p_ordine_id
-           AND o.stato_doc_ordine_id = script.fn_stato_iniziale_id('config.stati_doc_ordini'::regclass);
+           AND o.stato_doc_ordine_id = script.fn_doc_stato_iniziale_id('vendite.ordini'::regclass);
         IF NOT FOUND THEN
             RAISE EXCEPTION
                 'fn_pgtap_crea_ordine_con_righe: ordine id = % inesistente, invisibile o fuori bozza — le righe si scrivono in bozza',
@@ -166,7 +166,7 @@ BEGIN
     END LOOP;
 
     -- 3. Lo stato chiesto, per la matrice.
-    IF v_stato_id IS DISTINCT FROM script.fn_stato_iniziale_id('config.stati_doc_ordini'::regclass) THEN
+    IF v_stato_id IS DISTINCT FROM script.fn_doc_stato_iniziale_id('vendite.ordini'::regclass) THEN
         PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini'::regclass, v_ordine, p_stato_codice_interno);
     END IF;
 
@@ -188,7 +188,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_ordine_con_righe(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_quantita numeric, p_prezzo numeric, p_articolo_id uuid, p_fatturazione_trigger character varying, p_data_ordine date, p_righe jsonb, p_ordine_id bigint)
-IS 'Fixture pgTAP: un ORDINE con le sue righe, nello stato chiesto (secondo parametro, default CONFERMATO), per la strada vera del dominio. ⭐ Esiste per la TRAPPOLA D''ORDINE che una trentina di file ricopiavano: testata in bozza con la data alla nascita, trigger di fatturazione riscritto in bozza (il normalize lo eredita dal billing account solo all''INSERT), righe in bozza con l''IVA, conferma per la matrice. COMPONE dbops.fn_pgtap_crea_ordine, che resta senza righe (D-1 di brief-db-righe-e-componenti-debiti-residui): la testata nasce da lui (terzo parametro: il billing account di un cliente gia'' costruito; p_data_ordine: la data, alla nascita). Le righe: una (p_quantita default 10, p_prezzo default 25, p_articolo_id) o piu'' (p_righe: array di oggetti con articolo_id, quantita, prezzo, sconto_percentuale, iva_id, descrizione, data_consegna_richiesta_cliente, data_consegna_confermata; una chiave sconosciuta solleva; con p_quantita/p_prezzo/p_articolo_id solleva). Articolo costruito (merce non gestita) e prima IVA attiva quando mancano; lo sconto si scrive solo se chiesto. Lo stato si raggiunge con dbops.fn_pgtap_porta_a_stato, sotto i guard veri; DRAFT lascia l''ordine in bozza con le righe. p_ordine_id: righe e stato su una testata in bozza costruita dal test (quando la testata e'' il caso), e allora cliente, data e trigger non si passano. Restituisce l''ordine, la PRIMA riga e il suo articolo, cliente, emittente, operatore e stato. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-pgtap-reso-costruito (E-1), 2026-10-25.';
+IS 'Fixture pgTAP: un ORDINE con le sue righe, nello stato chiesto (secondo parametro, default CONFERMATO), per la strada vera del dominio. ⭐ Esiste per la TRAPPOLA D''ORDINE che una trentina di file ricopiavano: testata in bozza con la data alla nascita, trigger di fatturazione riscritto in bozza (il normalize lo eredita dal billing account solo all''INSERT), righe in bozza con l''IVA, conferma per la matrice. COMPONE dbops.fn_pgtap_crea_ordine, che resta senza righe (D-1 di brief-db-righe-e-componenti-debiti-residui): la testata nasce da lui (terzo parametro: il billing account di un cliente gia'' costruito; p_data_ordine: la data, alla nascita). Le righe: una (p_quantita default 10, p_prezzo default 25, p_articolo_id) o piu'' (p_righe: array di oggetti con articolo_id, quantita, prezzo, sconto_percentuale, iva_id, descrizione, data_consegna_richiesta_cliente, data_consegna_confermata; una chiave sconosciuta solleva; con p_quantita/p_prezzo/p_articolo_id solleva). Articolo costruito (merce non gestita) e prima IVA attiva quando mancano; lo sconto si scrive solo se chiesto. Lo stato si raggiunge con dbops.fn_pgtap_porta_a_stato, sotto i guard veri; DRAFT lascia l''ordine in bozza con le righe. p_ordine_id: righe e stato su una testata in bozza costruita dal test (quando la testata e'' il caso), e allora cliente, data e trigger non si passano. Restituisce l''ordine, la PRIMA riga e il suo articolo, cliente, emittente, operatore e stato. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-pgtap-reso-costruito (E-1), 2026-10-25. Rev 2026-10-27 (20261027-33, brief-modello-documento-vendita §15.13): lo stato iniziale dalla testata (vendite.ordini) con script.fn_doc_stato_iniziale_id, non dal vocabolario.';
 ```
 
 </div>

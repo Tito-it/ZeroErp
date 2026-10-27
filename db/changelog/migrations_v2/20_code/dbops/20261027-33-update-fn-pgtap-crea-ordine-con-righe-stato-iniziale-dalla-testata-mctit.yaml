@@ -1,0 +1,252 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BUILDER LEGGE LO STATO INIZIALE DALLA TESTATA
+#   Brief: brief-modello-documento-vendita §15.13 (K-3, Tid 2026-10-27).
+#
+#   dbops.fn_pgtap_crea_ordine_con_righe leggeva lo stato iniziale passando il vocabolario
+#   (config.stati_doc_ordini) accanto alla testata (vendite.ordini): una copia della mappa
+#   script.fn_doc_stato_modello. Ora lo legge dalla testata con
+#   script.fn_doc_stato_iniziale_id (20261027-29). Nient'altro cambia.
+#
+#   Corpo dall'ultimo changeSet (20261025-31-create-fn-pgtap-crea-ordine-con-righe), verificato uguale al corpo
+#   vivo (pg_get_functiondef sullo scratch, 2026-10-27): la firma tiene i
+#   %TYPE che la doc auto-generata scioglie. Firma invariata; GRANT
+#   restano (CREATE OR REPLACE), il COMMENT riceve la sua riga «Rev».
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261027-33-update-fn-pgtap-crea-ordine-con-righe-stato-iniziale-dalla-testata-mctit.yaml
+
+  - changeSet:
+      id: 20261027-33-update-fn-pgtap-crea-ordine-con-righe-stato-iniziale-dalla-testata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_ordine_con_righe: lo stato iniziale dalla testata (vendite.ordini) con
+        script.fn_doc_stato_iniziale_id, non dal vocabolario.
+        Brief: brief-modello-documento-vendita §15.13.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_doc_stato_iniziale_id';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ordine_con_righe(
+                   -- l'etichetta e' un frammento di testo della fixture: tipo nudo.
+                   p_etichetta            text DEFAULT 'pgTAP'::text,
+                   p_stato_codice_interno config.stati_doc_ordini.codice_interno%TYPE DEFAULT 'CONFERMATO',
+                   p_billing_account_id   vendite.ordini.billing_account_id%TYPE DEFAULT NULL,
+                   p_quantita             vendite.ordini_righe.qta_operativa%TYPE DEFAULT NULL,
+                   p_prezzo               vendite.ordini_righe.prezzo_unitario%TYPE DEFAULT NULL,
+                   p_articolo_id          catalogo.articoli.id%TYPE DEFAULT NULL,
+                   p_fatturazione_trigger vendite.ordini.fatturazione_trigger%TYPE DEFAULT NULL,
+                   p_data_ordine          vendite.ordini.data%TYPE DEFAULT NULL,
+                   -- l'elenco delle righe della fixture, non una colonna.
+                   p_righe                jsonb DEFAULT NULL,
+                   p_ordine_id            vendite.ordini.id%TYPE DEFAULT NULL)
+               RETURNS TABLE(
+                   ordine_id                 vendite.ordini.id%TYPE,
+                   ordine_uid                vendite.ordini.uid%TYPE,
+                   ordine_riga_id            vendite.ordini_righe.id%TYPE,
+                   articolo_id               catalogo.articoli.id%TYPE,
+                   billing_account_id        vendite.ordini.billing_account_id%TYPE,
+                   cliente_soggetto_ruolo_id vendite.ordini.soggetto_ruolo_id%TYPE,
+                   emittente_fiscale_id      vendite.ordini.emittente_fiscale_id%TYPE,
+                   auth_user_id              anagrafiche.identita_digitali.auth_user_id%TYPE,
+                   stato_doc_ordine_id       vendite.ordini.stato_doc_ordine_id%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un ORDINE con le sue righe,
+              --   nello stato chiesto (default CONFERMATO), per la strada vera.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_o AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('consegne',
+              --              p_quantita => 10, p_prezzo => 20, p_fatturazione_trigger => 'CONSEGNATO');
+              --   -- due righe, la seconda con la data di consegna confermata:
+              --   SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('date', p_righe => jsonb_build_array(
+              --              jsonb_build_object('quantita', 10, 'prezzo', 20),
+              --              jsonb_build_object('quantita', 5, 'prezzo', 20,
+              --                                 'data_consegna_confermata', '2026-11-20')));
+              -- ⛔ Restituisce la PRIMA riga (ORDER BY riga_nr): con piu' righe il
+              --   test le legge da se'.
+              -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
+              --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_stato_id   config.stati_doc_ordini.id%TYPE;
+                  v_ordine     vendite.ordini.id%TYPE;
+                  v_uid        vendite.ordini.uid%TYPE;
+                  v_ba_id      vendite.ordini.billing_account_id%TYPE;
+                  v_cli_sr_id  vendite.ordini.soggetto_ruolo_id%TYPE;
+                  v_ef_id      vendite.ordini.emittente_fiscale_id%TYPE;
+                  v_user_id    anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_iva_id     config.iva.id%TYPE;
+                  v_righe      jsonb;      -- l'elenco normalizzato delle righe
+                  v_riga       jsonb;      -- una riga dell'elenco
+                  v_chiavi     text[];     -- chiavi sconosciute di una riga
+                  v_articolo   catalogo.articoli.id%TYPE;
+                  v_qta        vendite.ordini_righe.qta_operativa%TYPE;
+                  v_riga_nr    vendite.ordini_righe.riga_nr%TYPE;
+                  v_riga_id    vendite.ordini_righe.id%TYPE;
+              BEGIN
+                  -- 0. I parametri si giudicano PRIMA di costruire.
+                  SELECT s.id INTO v_stato_id
+                    FROM config.stati_doc_ordini s
+                   WHERE s.codice_interno = p_stato_codice_interno
+                     AND s.attivo IS TRUE;
+                  IF v_stato_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ordine_con_righe: nessuno stato attivo dell''ordine con codice_interno = %',
+                          coalesce(p_stato_codice_interno::text, 'NULL');
+                  END IF;
+
+                  IF p_righe IS NOT NULL THEN
+                      IF p_quantita IS NOT NULL OR p_prezzo IS NOT NULL OR p_articolo_id IS NOT NULL THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ordine_con_righe: p_righe insieme a p_quantita/p_prezzo/p_articolo_id — le righe stanno tutte in p_righe';
+                      END IF;
+                      IF jsonb_typeof(p_righe) IS DISTINCT FROM 'array' OR jsonb_array_length(p_righe) = 0 THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ordine_con_righe: p_righe dev''essere un array non vuoto di righe';
+                      END IF;
+                      v_righe := p_righe;
+                  ELSE
+                      v_righe := jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
+                          'quantita', COALESCE(p_quantita, 10),
+                          'prezzo', COALESCE(p_prezzo, 25),
+                          'articolo_id', p_articolo_id)));
+                  END IF;
+
+                  -- Una chiave che il builder non conosce e' un errore di battitura
+                  -- che altrimenti passerebbe in silenzio.
+                  FOR v_riga IN SELECT e FROM jsonb_array_elements(v_righe) e LOOP
+                      SELECT array_agg(k) INTO v_chiavi
+                        FROM jsonb_object_keys(v_riga) k
+                       WHERE k <> ALL (ARRAY['articolo_id', 'quantita', 'prezzo', 'sconto_percentuale',
+                                             'iva_id', 'descrizione', 'data_consegna_richiesta_cliente',
+                                             'data_consegna_confermata']);
+                      IF v_chiavi IS NOT NULL THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ordine_con_righe: chiavi di riga sconosciute: %', v_chiavi;
+                      END IF;
+                  END LOOP;
+
+                  IF p_ordine_id IS NOT NULL
+                     AND (p_billing_account_id IS NOT NULL OR p_fatturazione_trigger IS NOT NULL
+                          OR p_data_ordine IS NOT NULL) THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ordine_con_righe: con p_ordine_id cliente, data e trigger di fatturazione sono quelli della testata — non si passano';
+                  END IF;
+
+                  -- 1. La testata: quella del test, in bozza, o una nuova.
+                  IF p_ordine_id IS NOT NULL THEN
+                      SELECT o.id, o.uid, o.billing_account_id, o.soggetto_ruolo_id, o.emittente_fiscale_id
+                        INTO v_ordine, v_uid, v_ba_id, v_cli_sr_id, v_ef_id
+                        FROM vendite.ordini o
+                       WHERE o.id = p_ordine_id
+                         AND o.stato_doc_ordine_id = script.fn_doc_stato_iniziale_id('vendite.ordini'::regclass);
+                      IF NOT FOUND THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ordine_con_righe: ordine id = % inesistente, invisibile o fuori bozza — le righe si scrivono in bozza',
+                              p_ordine_id;
+                      END IF;
+                      v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  ELSE
+                      SELECT o.ordine_id, o.ordine_uid, o.billing_account_id,
+                             o.cliente_soggetto_ruolo_id, o.emittente_fiscale_id, o.auth_user_id
+                        INTO v_ordine, v_uid, v_ba_id, v_cli_sr_id, v_ef_id, v_user_id
+                        FROM dbops.fn_pgtap_crea_ordine(p_etichetta, 'DRAFT', p_billing_account_id, p_data_ordine) o;
+
+                      -- Il trigger di fatturazione e' una condizione della bozza.
+                      IF p_fatturazione_trigger IS NOT NULL THEN
+                          UPDATE vendite.ordini o
+                             SET fatturazione_trigger = p_fatturazione_trigger
+                           WHERE o.id = v_ordine;
+                      END IF;
+                  END IF;
+
+                  -- 2. Le righe, in bozza. Il catalogo di sistema si SCEGLIE, col suo ORDER BY.
+                  SELECT i.id INTO v_iva_id
+                    FROM config.iva i
+                   WHERE i.attivo IS TRUE
+                   ORDER BY i.id
+                   LIMIT 1;
+
+                  FOR v_riga IN SELECT e FROM jsonb_array_elements(v_righe) WITH ORDINALITY AS x(e, n) ORDER BY x.n LOOP
+                      v_qta := COALESCE((v_riga->>'quantita')::numeric, 10);
+                      -- L'articolo si costruisce: il catalogo, da zero, e' vuoto.
+                      v_articolo := COALESCE((v_riga->>'articolo_id')::uuid, dbops.fn_pgtap_crea_articolo(
+                          ('PGT-ORD-' || substr(md5(clock_timestamp()::text || v_ordine::text), 1, 12))::varchar,
+                          false));
+
+                      SELECT COALESCE(max(r.riga_nr), 0) + 1 INTO v_riga_nr
+                        FROM vendite.ordini_righe r
+                       WHERE r.ordine_id = v_ordine;
+
+                      INSERT INTO vendite.ordini_righe (
+                          ordine_id, riga_nr, articolo_id, descrizione,
+                          qta_operativa, quantita, prezzo_unitario, iva_id,
+                          data_consegna_richiesta_cliente, data_consegna_confermata, meta)
+                      VALUES (
+                          v_ordine, v_riga_nr, v_articolo,
+                          left(COALESCE(v_riga->>'descrizione', 'Fixture pgTAP: ' || p_etichetta), 150),
+                          v_qta, v_qta, COALESCE((v_riga->>'prezzo')::numeric, 25),
+                          COALESCE((v_riga->>'iva_id')::integer, v_iva_id),
+                          (v_riga->>'data_consegna_richiesta_cliente')::date,
+                          (v_riga->>'data_consegna_confermata')::date,
+                          jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
+                      RETURNING id INTO v_riga_id;
+
+                      -- Lo sconto ha un DEFAULT di tabella: si scrive solo se il test
+                      -- lo chiede (la sede del default resta il DDL).
+                      IF v_riga ? 'sconto_percentuale' THEN
+                          UPDATE vendite.ordini_righe r
+                             SET sconto_percentuale = (v_riga->>'sconto_percentuale')::numeric
+                           WHERE r.id = v_riga_id;
+                      END IF;
+                  END LOOP;
+
+                  -- 3. Lo stato chiesto, per la matrice.
+                  IF v_stato_id IS DISTINCT FROM script.fn_doc_stato_iniziale_id('vendite.ordini'::regclass) THEN
+                      PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini'::regclass, v_ordine, p_stato_codice_interno);
+                  END IF;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT o.id, o.uid, r.id, r.articolo_id, v_ba_id, v_cli_sr_id, v_ef_id, v_user_id,
+                         o.stato_doc_ordine_id
+                    FROM vendite.ordini o
+                    JOIN LATERAL (
+                        SELECT rr.id, rr.articolo_id
+                          FROM vendite.ordini_righe rr
+                         WHERE rr.ordine_id = o.id
+                         ORDER BY rr.riga_nr, rr.id
+                         LIMIT 1) r ON true
+                   WHERE o.id = v_ordine;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_ordine_con_righe(text,character varying,bigint,numeric,numeric,uuid,character varying,date,jsonb,bigint)
+                IS 'Fixture pgTAP: un ORDINE con le sue righe, nello stato chiesto (secondo parametro, default CONFERMATO), per la strada vera del dominio. ⭐ Esiste per la TRAPPOLA D''ORDINE che una trentina di file ricopiavano: testata in bozza con la data alla nascita, trigger di fatturazione riscritto in bozza (il normalize lo eredita dal billing account solo all''INSERT), righe in bozza con l''IVA, conferma per la matrice. COMPONE dbops.fn_pgtap_crea_ordine, che resta senza righe (D-1 di brief-db-righe-e-componenti-debiti-residui): la testata nasce da lui (terzo parametro: il billing account di un cliente gia'' costruito; p_data_ordine: la data, alla nascita). Le righe: una (p_quantita default 10, p_prezzo default 25, p_articolo_id) o piu'' (p_righe: array di oggetti con articolo_id, quantita, prezzo, sconto_percentuale, iva_id, descrizione, data_consegna_richiesta_cliente, data_consegna_confermata; una chiave sconosciuta solleva; con p_quantita/p_prezzo/p_articolo_id solleva). Articolo costruito (merce non gestita) e prima IVA attiva quando mancano; lo sconto si scrive solo se chiesto. Lo stato si raggiunge con dbops.fn_pgtap_porta_a_stato, sotto i guard veri; DRAFT lascia l''ordine in bozza con le righe. p_ordine_id: righe e stato su una testata in bozza costruita dal test (quando la testata e'' il caso), e allora cliente, data e trigger non si passano. Restituisce l''ordine, la PRIMA riga e il suo articolo, cliente, emittente, operatore e stato. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-pgtap-reso-costruito (E-1), 2026-10-25. Rev 2026-10-27 (20261027-33, brief-modello-documento-vendita §15.13): lo stato iniziale dalla testata (vendite.ordini) con script.fn_doc_stato_iniziale_id, non dal vocabolario.';

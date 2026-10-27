@@ -556,8 +556,13 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
 > 3. **cancella fisicamente** riepiloghi IVA, righe, log, note e **le fatture stesse**.
 > 4. **sblocca le righe** di `attivita_fatturabili` (`fattura_riga_id` → NULL,
 >    `fatturato` → false, lock rimosso): sopravvivono e restano pronte.
-> 5. **chiude il lotto**: `stato_doc_fiscale` = ANNULLATA, `stato_operativo` = CHIUSO,
->    `stato_lotto` = COMPLETATO.
+> 5. **chiude il lotto**: `stato_doc_fiscale` = ANNULLATA (dal verbo del lotto,
+>    `fn_cambia_stato_lotto`), `stato_operativo` = CHIUSO. ⛔ **`stato_lotto` non si
+>    tocca**: è lo stato del job e racconta **com'è andata la corsa**, non dov'è il
+>    documento. Un lotto andato in ERRORE e poi annullato resta ERRORE *e* ANNULLATA:
+>    due fatti veri, non una contraddizione. Scrivergli COMPLETATO direbbe «la corsa è
+>    andata bene» di un giro fallito o interrotto, e la matrice del job
+>    (`config.transizioni_stati_lotto_job`) quel passaggio da ERRORE non lo ammette.
 >
 > **Quel lotto è morto.** Per rifatturare serve un **lotto nuovo**, che ripescherà le
 > stesse righe `attivita_fatturabili` rimaste libere. Con **questo** verbo il lotto non

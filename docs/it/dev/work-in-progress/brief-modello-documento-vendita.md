@@ -1,8 +1,9 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-27 (giro 10, la commessa: DB e BE committati, PR #1962 e #1963; giro 11, la fattura: lo stato di lotto e fattura applicato su dbdev; le origini e il registro delle azioni di riga applicati su dbdev, pgTAP verdi; le origini della nota di credito (P-F7) applicate su dbdev, pgTAP verdi, §15.11; il giro DB 11 è tutto da committare)
+## ⏭️ Chi riparte — aggiornato al 2026-10-27 (giro 10, la commessa: DB e BE committati, PR #1962 e #1963; giro 11, la fattura: lo stato di lotto e fattura applicato su dbdev; le origini e il registro delle azioni di riga applicati su dbdev, pgTAP verdi; le origini della nota di credito (P-F7) applicate su dbdev, pgTAP verdi, §15.11; la revisione delle guide scritta, i due changeSet di soli commenti applicati su dbdev, §15.12; lo stato iniziale dalla testata, richiesta del BE, applicato su dbdev e verde, §15.13, tocca al BE; il giro DB 11 è tutto da committare)
 
-**Riparte: Tid**, sul giro 11 (la fattura): il commit del giro DB 11 su `dev/db-tid`. `20261027-01` … `-26` sono
+**Riparte: Tid**, sul giro 11 (la fattura): il commit del giro DB 11 su `dev/db-tid` (`20261027-01` … `-28` applicati
+su dbdev; `-27`, `-28` alle 17:55, letto dal `databasechangelog` il 2026-10-27). `20261027-01` … `-26` sono
 applicati su dbdev (`databasechangelog`, letto il 2026-10-27: `-26` alle 17:25, col CSV `sorgenti.csv`), pgTAP verdi
 e nessuna regressione (Tid, 2026-10-27), compresi `vendite/test-fattura-origini-nota-v1` (nuovo) e
 `vendite/test-fattura-origini-v1` (test 2 aggiornato). **Il
@@ -113,7 +114,12 @@ ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committa
 | 4-bis-duodecies-sexdecies | ✅ **Tid** | Q-F7: la nota cita fattura e reso, e il DDT e l'ordine del reso; il via a P-F7 (2026-10-27) | §15.11 | 4-bis-duodecies-quaterdecies |
 | 4-bis-duodecies-septendecies | ✅ team DB | P-F7 scritto: `20261027-26`, il CSV delle sorgenti, un pgTAP nuovo; provato in transazione | §15.11 | 4-bis-duodecies-sexdecies |
 | 4-bis-duodecies-octodecies | ✅ **Tid** | Apply di `20261027-26` col CSV `sorgenti.csv`, pgTAP verdi, nessuna regressione (2026-10-27) | §15.11 | 4-bis-duodecies-septendecies |
-| 4-bis-duodecies-novodecies | **Tid** ⏭️ | Il commit del giro DB 11 (`20261027-01` … `-26`, CSV, pgTAP, doc, brief) | §15 | 4-bis-duodecies-octodecies |
+| 4-bis-duodecies-novodecies | ✅ team DB | Revisione delle guide contro il giro 11: guide, linee guida SQL, pagine manuali; `-27`, `-28` (soli commenti) provati in transazione | §15.12 | 4-bis-duodecies-octodecies |
+| 4-bis-duodecies-vicies | ✅ **Tid** | Apply di `-27`, `-28` (2026-10-27) | §15.12 | 4-bis-duodecies-novodecies |
+| 4-bis-duodecies-unvicies | ✅ team DB | Richiesta BE: lo stato iniziale dalla testata, `20261027-29` … `-39` (K-3 nello stesso giro, via di Tid), un pgTAP nuovo; provati in transazione, regressione su 178 file invariata | §15.13 | 4-bis-duodecies-vicies |
+| 4-bis-duodecies-duovicies | ✅ **Tid** | Apply di `-29` … `-39`, pgTAP verdi (2026-10-27) | §15.13 | 4-bis-duodecies-unvicies |
+| 4-bis-duodecies-trevicies | **Tid** ⏭️ | Il commit del giro DB 11 (`20261027-01` … `-39`, CSV, pgTAP, doc, brief) | §15 | 4-bis-duodecies-duovicies |
+| 4-bis-duodecies-quattuorvicies | team BE | Lo stato iniziale dalla testata: `stato_iniziale(testata)` e «riporta in bozza» dalla riga | §15.13, §15.8 punto 3 | 4-bis-duodecies-duovicies |
 | 4-bis-duodecies-quindecies | team BE → FE | BE-1 … BE-3, poi FE-1 | §15.11.1, §15.11.2 | 4-bis-duodecies-quaterdecies |
 | 4-bis-duodecies-undecies | team BE | La richiesta del §15.8 (sette punti): il giro della pipeline dai verbi, il 403 dalla riga, le azioni ritirate | §15.8 | 4-bis-duodecies-octies |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
@@ -122,7 +128,8 @@ ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committa
 | 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1 ✅ deciso (c) nel giro 11 (§15.3); D-G2, la prova a video del lotto 2b | §10 | — |
 | 5-ter | ✅ **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, le azioni per riga: nel giro 11, con un pezzo standard (F-5, 2026-10-27); la forma del pezzo è Q-F5 | §12, §15 | — |
 
-Decisioni aperte di Tid: il parametro `permission` del mapper delle azioni (§14.7). Da provare: la revisione BE del §14.8 (suite non rilanciata, secondo il brief). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Lavoro da committare: `dev/db-tid`, il giro DB 11: `20261027-01` … `-20` (§15.6, applicati su dbdev), i CSV, 16 pgTAP portati e uno nuovo, più i nove portati dopo la corsa su dbdev (§15.7); `20261027-21` … `-25` (§15.11, applicati su dbdev, verdi), due pgTAP nuovi; `20261027-26` e il CSV delle sorgenti (P-F7, applicati su dbdev, verdi), un pgTAP nuovo e uno aggiornato; le guide (modello, linee guida SQL), le pagine manuali e questo brief (§15). Committati: il passaggio BE del giro 10 (§14.7, §14.8, `7901c668a`, PR #1963), il giro DB 10 coi due passi per lo scratch da zero (PR #1962), il passaggio BE del giro 9 (§13.8, PR #1961), il giro DB 9 (`52e18d887`, PR #1960), il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`; il merge `2f5da4bed` ne aveva perso la tabella e il blocco «Chi riparte», ricomposti il 2026-10-26), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
+Decisioni aperte di Tid: il parametro `permission` del mapper delle azioni (§14.7). Da provare: la revisione BE del §14.8 (suite non rilanciata, secondo il brief). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Lavoro da committare: `dev/db-tid`, il giro DB 11: `20261027-01` … `-20` (§15.6, applicati su dbdev), i CSV, 16 pgTAP portati e uno nuovo, più i nove portati dopo la corsa su dbdev (§15.7); `20261027-21` … `-25` (§15.11, applicati su dbdev, verdi), due pgTAP nuovi; `20261027-26` e il CSV delle sorgenti (P-F7, applicati su dbdev, verdi), un pgTAP nuovo e uno aggiornato; `-27`, `-28`
+(soli commenti, applicati su dbdev, §15.12) e la revisione delle guide; le guide (modello, linee guida SQL), le pagine manuali e questo brief (§15). Committati: il passaggio BE del giro 10 (§14.7, §14.8, `7901c668a`, PR #1963), il giro DB 10 coi due passi per lo scratch da zero (PR #1962), il passaggio BE del giro 9 (§13.8, PR #1961), il giro DB 9 (`52e18d887`, PR #1960), il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`; il merge `2f5da4bed` ne aveva perso la tabella e il blocco «Chi riparte», ricomposti il 2026-10-26), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -3243,7 +3250,9 @@ pipeline si rompe** (punto 1): la porta non lascia passare l'`UPDATE` dello stat
 3. **Il 403 dalla riga del passaggio** (`PassaggioDocumento`): «riporta in bozza» (`ApiRiportaLottoADraft`) e
    «numera» (le due view con `post_permission = "numera_fatture_lotti"`) chiedono l'azione della riga
    (`numera_fatture_lotti`); l'annullo della bozza (`ApiResetLottoDraft`) solo il permesso sul documento (Q-F2).
-   Via i `post_permission = "reset_lotto_draft"`.
+   Via i `post_permission = "reset_lotto_draft"`. Lo stato d'arrivo di «riporta in bozza» è lo stato iniziale del
+   lotto: lo legge `script.fn_doc_stato_iniziale_id(testata)`, aggiunto su richiesta del team BE (§15.13). Mancava
+   nella prima stesura di questo elenco.
 4. **Le azioni ritirate**: nessun riferimento a `reset_lotto_draft`, `genera_fattura`, `approva_fattura`,
    `emetti_fattura` come permesso (il task di pipeline `reset_lotto_draft` è un altro nome e resta).
 5. **Frontend**: si ritira `LOTTO_AZIONE_PERMESSO` per `numera`, `riporta_a_draft`, `annulla` (il permesso lo dice
@@ -3252,7 +3261,10 @@ pipeline si rompe** (punto 1): la porta non lascia passare l'`UPDATE` dello stat
 6. **Test Django** che scrivono lo stato di lotto o fattura con un `UPDATE`, usano `fn_set_fatturazione_lotto_stato`
    o `reset_lotto_draft` (`test_reset_lotto_draft_api.py`, `test_pipeline_repository.py`, `test_pipeline_runner.py`,
    `test_pipeline_step_executor.py`, `core/tests/api/test_permissions.py`): ai verbi e alle azioni nuove.
-7. **Doc** delle API del lotto: i permessi per passaggio.
+7. **Doc** delle API del lotto: i permessi per passaggio. Anche (revisione delle guide, 2026-10-27, §15.12):
+   `api_lotti_list.md` cita il CHECK `chk_fatturazione_lotti_stato_job`, che dal `-05` è la FK
+   `fk_fatturazione_lotti_stato_lotto`; `api_run_lotto_pipeline.md` cita la matrice di `set_lotto_job_stato`, che
+   col punto 2 si ritira; `api_reset_lotto_draft.md` il permesso `reset_lotto_draft` (punto 3).
 
 Da sapere: nessun codice d'errore nuovo. Il D-G1 (il riquadro «origine» della stampa) non è in questa richiesta:
 aspetta la risposta del §15.9.
@@ -3446,3 +3458,64 @@ Resta: il commit del giro DB 11 (Tid).
 * FE-1: un BB del pulsante di riga che, dato il codice dell'azione, legge dal registro le due colonne e da quelle il
   tooltip e lo stato del pulsante; «togli dal giro» è il primo consumatore. Le azioni per riga degli altri documenti
   si aggiungono con una riga di registro e la loro vista, senza un pulsante nuovo.
+
+### 15.12 Revisione delle guide contro il giro 11 (2026-10-27)
+
+Richiesta di Tid: le guide della fatturazione sono allineate al giro? Ci sono regole che lo contraddicono? Lette la
+guida della fatturazione, quella dei cruscotti, quella del modello, le linee guida SQL §12.5, le pagine manuali e le
+pagine API del lotto. Via di Tid alle correzioni; la prima dopo la spiegazione del perché (2026-10-27).
+
+| # | Dove | Che cosa non tornava | Fatto |
+| --- | --- | --- | --- |
+| 1 | guida della fatturazione, «Rollback di step», punto 5 | dice che l'annullo chiude il lotto con `stato_lotto = COMPLETATO` | ✅ (Tid, 2026-10-27) l'annullo non scrive `stato_lotto` dal 2026-09-07 (`20260907-08`, brief-db-esito-gruppo-lotto §24), per scelta: la guida era vecchia, non la funzione. Il punto 5 ora dice ANNULLATA dal verbo del lotto, CHIUSO, e lo stato del job lasciato com'era, col perché |
+| 2 | guida dei cruscotti §7.6 | le tre vie d'uscita non dicono chi le può usare | il paragrafo «Chi le può usare»: «riporta in lavorazione» col permesso di numerare, l'annullo col solo permesso sui lotti, il pulsante nascosto a chi non ce l'ha |
+| 3 | guida della fatturazione, la nota di credito | gli archi N e R sì, l'arco S (reso → nota) no; le origini della nota non rimandate | l'arco S e il rimando al §7 della guida del modello |
+| 4 | guida del modello §8 | «ogni documento ha un verbo d'annullo»: la fattura no (F-3) | l'eccezione, detta nel §8 |
+| 5 | linee guida SQL §12.5.1, §12.5.4 | «una colonna» per il motivo di riga; il registro ne vuole due (`reason`, `reason_key`) | allineate al §12.5.7 |
+| 6 | guida del modello, regole 3 e 5 | — | nessuna contraddizione: lo stato del job è dichiarato «non stato del documento», la fattura fuori da «Emetti» è dichiarata al §7 |
+| 7 | pagine manuali `azioni_processo`, `user_override_azioni` | le azioni ritirate senza «ritirata»; esempi con azioni ritirate | segnate ritirate; esempi con azioni vive |
+| 8 | commenti nel DB | il corpo di `fn_annulla_lotto_da_draft` e il COMMENT di `trgfn_fatturazione_lotti_guard_completato` citano come regola viva `fn_set_fatturazione_lotto_stato`, ritirata dal `-07` | `20261027-27` (corpo del `-15`, cambiano solo i commenti) e `20261027-28` (solo il COMMENT, dal testo vivo letto su dbdev) |
+| 9 | pagine API del lotto (team BE) | il CHECK ritirato, la matrice Python, il permesso ritirato | aggiunte al punto 7 del §15.8 |
+
+Prova di `-27` e `-28`: sullo scratch, SQL estratto in transazione annullata: il codice della funzione, tolti i
+commenti e gli spazi, è identico a prima; il suo COMMENT è invariato; quello del guard è il nuovo. **Applicati su dbdev** (Tid, 2026-10-27, 17:55): il corpo porta la rev del `-27`, il COMMENT del guard quella del `-28`.
+`ERRORE → COMPLETATO` resta vietato anche nella matrice nuova (CSV `transizioni_stati_lotto_job`, letto il
+2026-10-27): il commento lo dice.
+
+Resta, non toccato: la sorella `fn_riporta_lotto_a_draft` dice nel corpo «stato_lotto NON si tocca — ha una macchina
+a stati cablata»; la regola non è più cablata ma in tabella. Il senso resta giusto; un ritocco solo di commento,
+se Tid lo vuole.
+
+### 15.13 Lo stato iniziale dalla testata (richiesta del team BE, 2026-10-27; ✅ Tid: via, K-3 nello stesso giro)
+
+**La richiesta.** Il §15.8 punto 3 chiede «riporta in bozza» del lotto dalla riga del passaggio
+(`fn_doc_azione_passaggio(testata, id, stato_a)`), e lo stato d'arrivo è lo stato iniziale. Lo leggeva solo
+`script.fn_stato_iniziale_id(vocabolario)`: chi ha la testata avrebbe dovuto ricavare il vocabolario dalla mappa da
+sé (la composizione ritirata dal backend al §8.7 punto 3) o scrivere `'DRAFT'`. Un buco di questo elenco, non del BE.
+
+**Censimento dei chiamanti** (`pg_get_functiondef` sullo scratch, 2026-10-27). Di `fn_stato_iniziale_id` con un
+vocabolario scritto accanto a una testata della mappa (copia della mappa): i nove builder pgTAP. Restano sul lettore
+dal vocabolario, perché non hanno una testata della mappa: `script.trgfn_doc_stato_iniziale` (il vocabolario è un
+argomento del trigger, montato anche sugli acquisti, fuori mappa) e `vendite.fn_push_preventivo_a_ordine` (lo stato
+delle RIGHE dell'ordine, `ordini_righe.stato_doc_ordine_id`; la proposta in chat la contava fra le copie: sbagliato).
+
+**Scritto.**
+
+| # | changeSet | Che cosa |
+| --- | --- | --- |
+| K-1 | `20261027-29` | `script.fn_doc_stato_iniziale_id(regclass)`: vocabolario dalla mappa, fuori mappa `E_SCRIPT_CHIAMATA_NON_VALIDA`, la regola delegata a `fn_stato_iniziale_id` (NULL se non dichiarato). STABLE, SECURITY INVOKER. Nessun codice d'errore nuovo |
+| K-3 | `20261027-30` … `-38` | i builder `fn_pgtap_crea_preventivo`, `_preventivo_con_righe`, `_ordine`, `_ordine_con_righe`, `_ddt_da_ordine`, `_ddt_senza_ordine`, `_ddt_riconsegna`, `_commessa`, `_fattura` leggono lo stato iniziale dalla testata. Corpo dall'ultimo YAML (firma coi `%TYPE`), verificato uguale al corpo vivo; cambia solo quella chiamata; COMMENT con la riga «Rev» |
+| — | `20261027-39` | solo il COMMENT di `fn_stato_iniziale_id`: consumatori di oggi (citava `fn_pgtap_porta_a_stato`, che non la chiama) e il rimando al lettore dalla testata |
+| K-4 | pgTAP `script/test-doc-stato-iniziale-id-v1` | 6 test: forma; il lotto → lo stato iniziale di `config.stati_doc_fiscale`; le nove testate della mappa = `fn_stato_iniziale_id(vocabolario)`, mai NULL; fuori mappa e NULL → chiamata non valida; vocabolario senza iniziale → NULL |
+| K-5 | doc | pagina `manual/fn_doc_stato_iniziale_id`; guida del modello (Vedi anche, §4); §15.8 punto 3 |
+
+**Applicato su dbdev, pgTAP verdi** (Tid, 2026-10-27).
+
+**Prova** (scratch `zeroerp_ruoli`, owner, SQL estratto in transazione annullata, 2026-10-27): il pgTAP nuovo 6/6.
+Regressione sui 178 pgTAP che usano i nove builder, ciascuno senza e con l'SQL estratto: piano, ok e not ok identici
+in tutti; 13 file hanno rossi, gli stessi nelle due corse e tutti dichiarati «rosso da owner» (porta, GUC, scope
+RLS), in coda ai file e dopo le fixture.
+
+**Al team BE, dopo l'apply** (come da richiesta): `DocumentoModelloRepository.stato_iniziale(testata)` su
+`script.fn_doc_stato_iniziale_id`, e `PassaggioDocumento(stato_del_modello="iniziale")` su `ApiRiportaLottoADraft`
+(§15.8 punto 3).
