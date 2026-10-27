@@ -24,6 +24,8 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | ck_stati_doc_fiscale_transizioni_meta_manuale_dichiarato |  |
+| CHECK | ck_stati_doc_fiscale_transizioni_tipo_lotto_solo_processo |  |
 | FOREIGN KEY | fk_stati_doc_fiscale_transizioni_azioni_processo | azione_processo_codename |
 | FOREIGN KEY | fk_stati_doc_fiscale_transizioni_from | stato_from_id |
 | FOREIGN KEY | fk_stati_doc_fiscale_transizioni_to | stato_to_id |

@@ -1,6 +1,6 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-27 (giro 10, la commessa: DB e BE committati, PR #1962 e #1963; giro 11, la fattura: lo stato di lotto e fattura applicato su dbdev; le origini e il registro delle azioni di riga applicati su dbdev, pgTAP verdi; le origini della nota di credito (P-F7) applicate su dbdev, pgTAP verdi, §15.11; la revisione delle guide scritta, i due changeSet di soli commenti applicati su dbdev, §15.12; lo stato iniziale dalla testata, richiesta del BE, applicato su dbdev e verde, §15.13, tocca al BE; il giro DB 11 è tutto da committare)
+## ⏭️ Chi riparte — aggiornato al 2026-10-27 (giro 10, la commessa: DB e BE committati, PR #1962 e #1963; giro 11, la fattura: lo stato di lotto e fattura applicato su dbdev; le origini e il registro delle azioni di riga applicati su dbdev, pgTAP verdi; le origini della nota di credito (P-F7) applicate su dbdev, pgTAP verdi, §15.11; la revisione delle guide scritta, i due changeSet di soli commenti applicati su dbdev, §15.12; lo stato iniziale dalla testata, richiesta del BE, applicato su dbdev e verde, §15.13, tocca al BE; i passaggi permessi per riga, richiesta del BE, applicati e verdi, §15.14, tocca al BE; il giro DB 11 è tutto da committare)
 
 **Riparte: Tid**, sul giro 11 (la fattura): il commit del giro DB 11 su `dev/db-tid` (`20261027-01` … `-28` applicati
 su dbdev; `-27`, `-28` alle 17:55, letto dal `databasechangelog` il 2026-10-27). `20261027-01` … `-26` sono
@@ -118,7 +118,11 @@ ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committa
 | 4-bis-duodecies-vicies | ✅ **Tid** | Apply di `-27`, `-28` (2026-10-27) | §15.12 | 4-bis-duodecies-novodecies |
 | 4-bis-duodecies-unvicies | ✅ team DB | Richiesta BE: lo stato iniziale dalla testata, `20261027-29` … `-39` (K-3 nello stesso giro, via di Tid), un pgTAP nuovo; provati in transazione, regressione su 178 file invariata | §15.13 | 4-bis-duodecies-vicies |
 | 4-bis-duodecies-duovicies | ✅ **Tid** | Apply di `-29` … `-39`, pgTAP verdi (2026-10-27) | §15.13 | 4-bis-duodecies-unvicies |
-| 4-bis-duodecies-trevicies | **Tid** ⏭️ | Il commit del giro DB 11 (`20261027-01` … `-39`, CSV, pgTAP, doc, brief) | §15 | 4-bis-duodecies-duovicies |
+| 4-bis-duodecies-quinvicies | ✅ **Tid** | Richiesta BE dei passaggi permessi per riga: D-1 … D-4 come da proposta, via (2026-10-27) | §15.14 | — |
+| 4-bis-duodecies-sexvicies | ✅ team DB | `20261027-40` … `-50`, un pgTAP nuovo; provati in transazione, regressione su 78 file invariata | §15.14 | 4-bis-duodecies-quinvicies |
+| 4-bis-duodecies-septvicies | ✅ **Tid** | Apply di `-40` … `-50`, pgTAP verdi (2026-10-27) | §15.14 | 4-bis-duodecies-sexvicies |
+| 4-bis-duodecies-novvicies | **Tid** ⏭️ | Il commit del giro DB 11 (`20261027-01` … `-50`, CSV, pgTAP, doc, brief) | §15 | 4-bis-duodecies-septvicies |
+| 4-bis-duodecies-octvicies | team BE | `azioni_permesse` per riga della lista dei lotti | §15.14 | 4-bis-duodecies-septvicies |
 | 4-bis-duodecies-quattuorvicies | team BE | Lo stato iniziale dalla testata: `stato_iniziale(testata)` e «riporta in bozza» dalla riga | §15.13, §15.8 punto 3 | 4-bis-duodecies-duovicies |
 | 4-bis-duodecies-quindecies | team BE → FE | BE-1 … BE-3, poi FE-1 | §15.11.1, §15.11.2 | 4-bis-duodecies-quaterdecies |
 | 4-bis-duodecies-undecies | team BE | La richiesta del §15.8 (sette punti): il giro della pipeline dai verbi, il 403 dalla riga, le azioni ritirate | §15.8 | 4-bis-duodecies-octies |
@@ -3519,3 +3523,53 @@ RLS), in coda ai file e dopo le fixture.
 **Al team BE, dopo l'apply** (come da richiesta): `DocumentoModelloRepository.stato_iniziale(testata)` su
 `script.fn_doc_stato_iniziale_id`, e `PassaggioDocumento(stato_del_modello="iniziale")` su `ApiRiportaLottoADraft`
 (§15.8 punto 3).
+
+### 15.14 I passaggi permessi per riga di lista (richiesta del team BE, 2026-10-27; ✅ Tid: D-1 … D-4 come da proposta, via)
+
+**La richiesta.** La lista dei lotti non sa se l'operatore ha l'azione di un passaggio: il kebab propone «Numera»,
+«Riporta in lavorazione», «Annulla» a tutti, e il rifiuto arriva al clic. Completa, non revoca, la risposta del
+2026-08-04 (`work-done/risposta-db-azioni-lista-lotto` §3.3): il punto 2 («la riga ha già la verità che serve, lo
+stato») è caduto col `-19`, che legge il permesso dalla riga del passaggio; restano il punto 1 (niente capability
+intera per riga) e il punto 3 (il lettore è STABLE e non chiama `fn_check_*`).
+
+**Ricognizione.** Il predicato «passaggi manuali vivi dallo stato corrente, permesso => nascondi» era scritto in
+tutte e otto le `script.fn_available_actions_*` di vendita: il lettore chiesto sarebbe stato la nona copia. Le copie
+divergevano già sul default di `meta.manuale` mancante (`fn_doc_passaggio`, i `ck_*_meta_ui` e la bolla:
+manuale; lotto e commessa: di processo), e la capability del lotto filtrava anche `meta.tipo_lotto` contro la colonna
+del documento, condizione che un lettore generico non vede. Il permesso dipende da utente e azione, non dal
+documento.
+
+**Decisioni (Tid, 2026-10-27).** D-1: la firma riceve lo STATO (`p_stato_da_id`), non il documento. D-2: le otto
+capability passano al lettore nello stesso giro (regola del 2). D-3: vincolo, `meta.manuale` booleano dichiarato su
+ogni riga delle otto matrici. D-4: vincolo, `meta.tipo_lotto` solo sui passaggi di processo.
+
+**Scritto.**
+
+| # | changeSet | Che cosa |
+| --- | --- | --- |
+| K-1 | `20261027-40` | `script.fn_doc_azioni_permesse(p_testata regclass, p_stato_da_id bigint)` → `TABLE(stato_a_id, stato_a_codice, action_key, azione_processo_codename, meta)`, STABLE, INVOKER: matrice viva e filtro dalla mappa, manuale e azione da `fn_doc_passaggio`, permesso => nascondi (azione NULL resta). Stato NULL: nessuna riga; fuori mappa `E_SCRIPT_CHIAMATA_NON_VALIDA` |
+| K-2 | `-41` … `-48` | le otto capability leggono da K-1 (corpo dall'ultimo YAML, verificato uguale al vivo); restano loro il bottone (`action_key`, `label_key`), abilitazione e motivi, l'ordine. Il lotto ritira il filtro `tipo_lotto` (D-4) |
+| K-3 | `-49`, `-50` (`90_end`) | D-3 su otto matrici (`ck_<matrice>_meta_manuale_dichiarato`) e D-4 (`ck_stati_doc_fiscale_transizioni_tipo_lotto_solo_processo`); in `90_end` perché le righe le scrive il seed |
+| K-4 | pgTAP `script/test-doc-azioni-permesse-v1` | 11 test: forma; lotto EMESSA senza/con `numera_fatture_lotti` ({} / {numera, riporta_a_draft}); DRAFT → annulla senza azione e senza concessioni; equivalenza col predicato di prima su ogni stato delle otto testate, senza e con la concessione; stato NULL; fuori mappa; i due vincoli |
+| K-5 | doc | pagina `manual/fn_doc_azioni_permesse`; guida del modello (Vedi anche, §5 la dichiarazione di manuale, §6 capability e liste) |
+
+**Due difetti trovati in prova, corretti prima dell'apply riuscito.** Il CHECK di `-49` scritto
+`jsonb_typeof(meta -> 'manuale') = 'boolean'` lasciava passare la riga senza chiave (NULL ⇒ il CHECK passa): l'ha
+visto il test 10, ora `jsonb_exists(meta, 'manuale') AND …`. E l'operatore `?` fuori da un corpo dollar-quoted:
+l'apply di Tid si è fermato su `-49` («errore di sintassi a "$1"», il driver JDBC lo legge come segnaposto); ora
+`jsonb_exists` in `-49` e `-50`. Il `-49` fallito non aveva lasciato vincoli.
+
+**Applicato, pgTAP verdi** (Tid, 2026-10-27).
+
+**Prova** (scratch `zeroerp_ruoli`, owner, SQL estratto in transazione annullata, 2026-10-27): pgTAP nuovo 11/11.
+Regressione su 78 file (chi tocca le otto capability, le matrici, `fn_doc_passaggio`, il permesso, più i presidi
+trasversali: riferimenti morti, catalogo messaggi, rubinetto del primo motivo, catalogo presidi): piano, ok e not ok
+identici prima e dopo in tutti. L'apply di Tid (`-40` … `-48`, 19:39) è caduto a metà corsa: per i 36 file rimasti
+lo stato «prima» è stato ricostruito in transazione (gli otto corpi vecchi, senza il BB). I rossi sono gli stessi
+nelle due corse: «rosso da owner» (porta, GUC, scope RLS) e fixture che pescano cliente o utility dai dati
+(`billing_account`/`utility_id` obbligatori sullo scratch).
+
+**Al team BE, dopo l'apply.** La lista dei lotti chiama `script.fn_doc_azioni_permesse('vendite.fatturazione_lotti',
+l.stato_doc_fiscale_id)` per riga (lo stato della riga, non l'id: D-1) e porta `azioni_permesse` (le `action_key`);
+il kebab propone i verbi di stato solo se compaiono lì. Le altre liste possono adottarlo uguale, con la loro testata.
+Nessun codice d'errore nuovo. Le capability del dettaglio non cambiano contratto.

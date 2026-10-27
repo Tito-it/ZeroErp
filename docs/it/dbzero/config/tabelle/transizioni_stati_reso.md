@@ -23,6 +23,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | ck_transizioni_stati_reso_da_diverso_a |  |
+| CHECK | ck_transizioni_stati_reso_meta_manuale_dichiarato |  |
 | CHECK | ck_transizioni_stati_reso_meta_ui |  |
 | FOREIGN KEY | fk_transizioni_stati_reso_azioni_processo | azione_processo_codename |
 | FOREIGN KEY | fk_tsr_a | stato_a_id |

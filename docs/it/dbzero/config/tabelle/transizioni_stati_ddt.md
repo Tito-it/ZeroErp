@@ -23,6 +23,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | ck_transizioni_stati_ddt_da_diverso_a |  |
+| CHECK | ck_transizioni_stati_ddt_meta_manuale_dichiarato |  |
 | CHECK | ck_transizioni_stati_ddt_meta_ui |  |
 | FOREIGN KEY | fk_transizioni_stati_ddt_azioni_processo | azione_processo_codename |
 | FOREIGN KEY | fk_tsd_a | stato_a_id |

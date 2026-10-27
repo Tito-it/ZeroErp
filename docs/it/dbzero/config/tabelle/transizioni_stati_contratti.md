@@ -22,6 +22,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | ck_transizioni_stati_contratti_meta_manuale_dichiarato |  |
 | CHECK | ck_tsc_da_diverso_a |  |
 | FOREIGN KEY | fk_transizioni_stati_contratti_azioni_processo | azione_processo_codename |
 | FOREIGN KEY | fk_tsc_a | stato_a_id |

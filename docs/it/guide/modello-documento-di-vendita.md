@@ -25,6 +25,7 @@
 > * [script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id) — dal codice di uno stato al suo id, per ogni documento
 > * [script.fn_doc_stato_codice](/dbzero/script/funzioni/fn_doc_stato_codice) — il gemello inverso: dall'id di uno stato al suo codice
 > * [script.fn_doc_azione_passaggio](/dbzero/script/funzioni/fn_doc_azione_passaggio) — la domanda del backend: che cosa chiede questo passaggio?
+> * [script.fn_doc_azioni_permesse](/dbzero/script/funzioni/fn_doc_azioni_permesse) — i passaggi manuali che l'operatore può fare da uno stato: lo leggono le capability e le liste
 > * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) — il permesso dentro il verbo
 > * [script.fn_check_azione_processo](/dbzero/script/funzioni/fn_check_azione_processo) — la regola del permesso, la stessa per DB e backend
 > * [vendite.trgfn_doc_guard_annullo_con_legami](/dbzero/vendite/funzioni/trgfn_doc_guard_annullo_con_legami) — l'annullo di un documento con legami si conferma
@@ -155,6 +156,10 @@ sistema come conseguenza di un'altra operazione (la bolla passa a «Reso» quand
 di tutta la sua merce). Sono le righe con `manuale = false`: le capability non le propongono, il
 verbo le rifiuta se chieste a mano (`E_DOC_PASSAGGIO_DI_PROCESSO`), e le scrive solo il verbo che ne
 è la causa, con la sola seconda metà.
+Ogni riga della matrice **dichiara** se è manuale o di processo: una riga senza la dichiarazione non
+si scrive, perché chi la leggeva da sé l'avrebbe interpretata in due modi diversi. Per la stessa
+ragione una condizione sul tipo di lotto sta solo sui passaggi di processo: un passaggio manuale vale
+per ogni lotto, così la lista e il dettaglio propongono gli stessi bottoni.
 
 **Lo stato che il documento ha già.** Chiedere al verbo lo stato in cui il documento si trova (un
 secondo «Emetti», la stessa conferma inviata due volte) non è un passaggio: la matrice non ha la riga
@@ -178,7 +183,7 @@ permesso sul documento. La stessa riga la leggono tre punti, e nessuno dei tre d
 | --- | --- |
 | il **verbo** | la controlla ([`script.fn_guard_azione`](/dbzero/script/funzioni/fn_guard_azione)) e rifiuta con `E_PERMESSO_NEGATO` |
 | il **backend** | risponde 403 subito, prima di aprire la transazione, con le stesse funzioni del database: chiede, non decide una seconda volta |
-| le **capability** | nascondono il bottone a chi non ha l'azione |
+| le **capability** e le **liste** | nascondono il bottone a chi non ha l'azione: chiedono i passaggi permessi a [`script.fn_doc_azioni_permesse`](/dbzero/script/funzioni/fn_doc_azioni_permesse), una regola sola per il dettaglio e per la riga di una lista |
 
 Un punto unico è ciò che rende i permessi **configurabili**: un'azione scritta nel corpo di un verbo,
 o nel codice di una view, non la cambia nessuno senza un rilascio.

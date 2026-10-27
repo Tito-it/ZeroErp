@@ -24,6 +24,7 @@
 |------|------|---------|
 | CHECK | ck_transizioni_stati_comm_da_diverso_a |  |
 | CHECK | ck_transizioni_stati_comm_meta_ui |  |
+| CHECK | ck_transizioni_stati_commessa_meta_manuale_dichiarato |  |
 | FOREIGN KEY | fk_transizioni_stati_commessa_azioni_processo | azione_processo_codename |
 | FOREIGN KEY | fk_tsc_a | stato_a_id |
 | FOREIGN KEY | fk_tsc_da | stato_da_id |

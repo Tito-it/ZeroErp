@@ -53,11 +53,7 @@ DECLARE
     v_can_change   boolean := false;
     v_mot_annulla  jsonb;
     v_mot_riporta  jsonb;
-    -- L'utente della sessione, per l'azione del passaggio (rev 2026-10-27).
-    v_utente       config.user_override_azioni.auth_user_id%TYPE;
 BEGIN
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
-
     -- Stato corrente + tipo. LEFT JOIN: un lotto senza stato deve
     -- restare una riga (e non avere azioni), non sparire.
     SELECT fl.stato_doc_fiscale_id, sdf.codice_interno, fl.tipo_lotto
@@ -110,20 +106,11 @@ BEGIN
         '[]'::jsonb
     )
     INTO v_actions
-    FROM config.stati_doc_fiscale_transizioni t
-    JOIN config.stati_doc_fiscale sa ON sa.id = t.stato_to_id
-    -- L'azione del passaggio dal lettore unico (rev 2026-10-27, M-3).
-    CROSS JOIN LATERAL script.fn_doc_passaggio('vendite.fatturazione_lotti'::regclass,
-                                               t.stato_from_id, t.stato_to_id) pz
-    WHERE t.stato_from_id = v_stato_id
-      -- Permesso => nascondi: chi non ha l'azione del passaggio non vede il bottone.
-      AND (pz.azione_processo_codename IS NULL
-           OR script.fn_check_azione_processo(v_utente, pz.azione_processo_codename))
-      AND t.ammesso IS TRUE
-      AND t.solo_fattura IS FALSE
-      AND ((t.meta->>'tipo_lotto') IS NULL OR (t.meta->>'tipo_lotto') = v_tipo_lotto)
-      AND COALESCE((t.meta->>'manuale')::boolean, false) IS TRUE
-      AND (t.meta->>'action_key') IS NOT NULL
+    -- I passaggi manuali che l'utente puo' fare, dal BB comune (rev
+    -- 2026-10-27, 20261027-48, §15.14): matrice viva, manuale, permesso.
+    FROM script.fn_doc_azioni_permesse('vendite.fatturazione_lotti'::regclass, v_stato_id) t
+    JOIN config.stati_doc_fiscale sa ON sa.id = t.stato_a_id
+    WHERE (t.meta->>'action_key') IS NOT NULL
       AND (t.meta->>'label_key')  IS NOT NULL;
 
     -- can_change_state sulle sole azioni ABILITATE e sulle sole
@@ -167,7 +154,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_lotto(p_lotto_id bigint)
-IS 'Capability del lotto di fatturazione per il detail API: available_actions + can_change_state + stato_codice + tipo_lotto. Ottava della famiglia fn_available_actions_*, mirror di fn_available_actions_commessa. I verbi numera / riporta_a_draft / annulla nascono DATA-DRIVEN da config.stati_doc_fiscale_transizioni (meta seedato il 2026-08-04) con lo STESSO predicato del guard vivo vendite.trgfn_fatturazione_lotti_guard_stato (ammesso + solo_fattura=false + meta.tipo_lotto compatibile): matrice e pulsanti non possono divergere. La ristampa e'' cablata perche'' non e'' una transizione (stampare e'' leggere, I-4) ed e'' disponibile su lotto DEFINITIVA. ATTENZIONE CONTRATTO: la presenza di un''azione in available_actions NON significa eseguibile — i consumatori devono leggere enabled e mostrare reasons; enabled/reasons di annulla e riporta_a_draft arrivano dalle funzioni PURE script.fn_check_lotto_annullabile / _riportabile_a_draft, le STESSE usate dalle fn di mutazione per sollevare. can_change_state e'' calcolato sulle sole azioni ABILITATE e sulle sole transizioni (la ristampa non cambia stato). 🔴 NON espone avanza_step / rilancia_step: quel gate (step successivo + criticita'' + rilancio dello stesso step, D-Q p.1) vive in LottoPipelineRunner e ricostruirlo qui sarebbe una seconda copia della regola. Fallback NULL se il lotto non esiste. rev 2026-08-04. rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_fiscale.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulla ristampa, che non cambia stato. rev 2026-09-27 (20260927-10): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-07): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9). ⭐ rev 2026-10-27 (20261027-19, brief-modello-documento-vendita §15, M-3, Q-F1): un passaggio con un''azione di processo sulla sua riga della matrice (letta da script.fn_doc_passaggio: numera_fatture_lotti su numera e riporta in bozza) si NASCONDE a chi non ha l''azione (script.fn_check_azione_processo, utente da app.current_user_id): permesso => nascondi, stato => disabilita col motivo. Prima il permesso lo decideva il frontend con una sua mappa, che si ritira.';
+IS 'Capability del lotto di fatturazione per il detail API: available_actions + can_change_state + stato_codice + tipo_lotto. Ottava della famiglia fn_available_actions_*, mirror di fn_available_actions_commessa. I verbi numera / riporta_a_draft / annulla nascono DATA-DRIVEN da config.stati_doc_fiscale_transizioni (meta seedato il 2026-08-04) con lo STESSO predicato del guard vivo vendite.trgfn_fatturazione_lotti_guard_stato (ammesso + solo_fattura=false + meta.tipo_lotto compatibile): matrice e pulsanti non possono divergere. La ristampa e'' cablata perche'' non e'' una transizione (stampare e'' leggere, I-4) ed e'' disponibile su lotto DEFINITIVA. ATTENZIONE CONTRATTO: la presenza di un''azione in available_actions NON significa eseguibile — i consumatori devono leggere enabled e mostrare reasons; enabled/reasons di annulla e riporta_a_draft arrivano dalle funzioni PURE script.fn_check_lotto_annullabile / _riportabile_a_draft, le STESSE usate dalle fn di mutazione per sollevare. can_change_state e'' calcolato sulle sole azioni ABILITATE e sulle sole transizioni (la ristampa non cambia stato). 🔴 NON espone avanza_step / rilancia_step: quel gate (step successivo + criticita'' + rilancio dello stesso step, D-Q p.1) vive in LottoPipelineRunner e ricostruirlo qui sarebbe una seconda copia della regola. Fallback NULL se il lotto non esiste. rev 2026-08-04. rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_fiscale.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulla ristampa, che non cambia stato. rev 2026-09-27 (20260927-10): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-07): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9). ⭐ rev 2026-10-27 (20261027-19, brief-modello-documento-vendita §15, M-3, Q-F1): un passaggio con un''azione di processo sulla sua riga della matrice (letta da script.fn_doc_passaggio: numera_fatture_lotti su numera e riporta in bozza) si NASCONDE a chi non ha l''azione (script.fn_check_azione_processo, utente da app.current_user_id): permesso => nascondi, stato => disabilita col motivo. Prima il permesso lo decideva il frontend con una sua mappa, che si ritira. Rev 2026-10-27 (20261027-48, brief-modello-documento-vendita §15.14): i passaggi manuali permessi da script.fn_doc_azioni_permesse (matrice viva, manuale, permesso => nascondi); il filtro su meta.tipo_lotto si ritira, il vincolo 20261027-50 lo ammette solo sui passaggi di processo.';
 ```
 
 </div>
