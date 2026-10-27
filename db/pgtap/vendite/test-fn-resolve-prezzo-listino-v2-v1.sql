@@ -261,10 +261,12 @@ SELECT c.id, t.articolo_id, 42,
   FROM vendite.contratti c, tmp_ctx t
  WHERE c.numero = 'PGTAP_V5_CONTR';
 
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti
-                                  WHERE codice_interno = 'ATTIVO')
- WHERE numero = 'PGTAP_V5_CONTR';
+-- rev 2026-10-27 (brief-modello-documento-vendita §11, debito del giro 8): il contratto ha la
+--   porta sulla colonna di stato; l'attivazione passa dal verbo, che la fixture chiama con
+--   emetti_contratto concessa (prima un UPDATE diretto, ora fermato dalla porta).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.id, 'ATTIVO')
+  FROM vendite.contratti c
+ WHERE c.numero = 'PGTAP_V5_CONTR';
 
 SELECT is(
     (SELECT origine FROM vendite.fn_resolve_prezzo_listino_v2(

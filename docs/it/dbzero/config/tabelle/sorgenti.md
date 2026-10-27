@@ -26,6 +26,7 @@
 | label_selector | character varying(63) | YES |  |
 | etichetta | character varying(60) | NO |  |
 | apribile | boolean | NO |  |
+| citato_in_fattura | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

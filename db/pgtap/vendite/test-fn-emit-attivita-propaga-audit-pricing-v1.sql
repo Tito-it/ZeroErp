@@ -150,6 +150,10 @@ UPDATE vendite.commesse_attivita
  WHERE id = (SELECT commessa_attivita_id FROM tmp_ca_au);
 
 -- Porta in PRONTA_FATTURAZIONE (emittibile)
+-- rev 2026-10-27: il verbo della commessa chiede cambia_stato_commessa
+-- all'operatore del test (giro 10); senza, su un db dove l'operatore non ce l'ha,
+-- si ferma qui con E_PERMESSO_NEGATO.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT * FROM vendite.fn_cambia_stato_commessa(
   (SELECT commessa_id FROM tmp_commessa_au), 'PRONTA_FATTURAZIONE');
 

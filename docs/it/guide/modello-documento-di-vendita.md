@@ -1,6 +1,6 @@
 # Guida — Il modello del documento di vendita
 
-> **Ultimo aggiornamento**: 26 ottobre 2026
+> **Ultimo aggiornamento**: 27 ottobre 2026
 >
 > **Destinatari**: chi lavora su un documento di vendita o d'acquisto — sviluppatori database,
 > backend, frontend e analisti funzionali. Prima di cambiare come un documento nasce, cambia stato,
@@ -192,6 +192,13 @@ disfarlo. Gli altri passaggi (spedito, accettato, rifiutato…) chiedono solo il
 documento. Nessun documento fa eccezione. Separare un giorno l'annullo dall'emissione è un cambio di
 riga nella matrice, non un lavoro sul codice.
 
+**Le azioni per riga** (togliere un documento dal giro di un lotto, e domani quelle degli altri
+documenti) seguono la stessa regola in un'altra forma: un controllo del database dice perché il pulsante è
+spento, la funzione che esegue l'azione rifiuta con lo stesso motivo, e una vista porta il motivo su ogni
+riga. Il registro [`config.azioni_riga`](/dbzero/config/tabelle/azioni_riga) lega i tre pezzi, e il
+frontend legge da lì quali colonne mostrare. La regola completa è nelle
+[linee guida SQL](/linee-guida-sql) §12.5.
+
 ---
 
 ## 7. L'emissione
@@ -216,11 +223,34 @@ emesso.
 I documenti che non si stampano hanno il loro passaggio al posto dell'emissione: la commessa nasce
 dalla push dei documenti a monte, la fattura segue gli step della pipeline di fatturazione.
 
+La fattura ha una forma sua: **i pulsanti stanno sul lotto di fatturazione**, non sulla fattura. Il
+lotto si numera, si riporta in bozza, si annulla mentre è in bozza; da lì parte anche la stampa, e sulla
+fattura resta solo la ristampa. Lotto e fattura condividono vocabolario e matrice
+([`config.stati_doc_fiscale_transizioni`](/dbzero/config/tabelle/stati_doc_fiscale_transizioni), coi
+passaggi solo del lotto e solo della fattura). I passaggi manuali del lotto li scrive il suo verbo,
+[`vendite.fn_cambia_stato_lotto`](/dbzero/vendite/funzioni/fn_cambia_stato_lotto), chiamato da
+«riporta in bozza» e dall'annullo dopo la loro pulizia; l'avanzamento negli step lo scrive il giro della
+pipeline, [`vendite.fn_lotto_proietta_stato_step`](/dbzero/vendite/funzioni/fn_lotto_proietta_stato_step);
+la fattura cambia stato dal suo verbo,
+[`vendite.fn_fattura_proietta_stato`](/dbzero/vendite/funzioni/fn_fattura_proietta_stato), che oggi chiama
+solo la pipeline (tutti i passaggi della fattura sono di processo). Il permesso di «numera» si chiede quando
+l'operatore preme il pulsante; il lavoro accodato scrive come passaggio di processo.
+
+**Le origini della fattura.** Sulla fattura si citano i documenti a monte che il cliente riconosce — la
+bolla, l'ordine, il contratto, l'offerta, il preventivo; per una nota di credito la fattura che corregge e
+il reso —, non la commessa, che è un contenitore interno. Sono tutte sorgenti, di tipo diverso, e la
+regola è una sola. Li dà [`vendite.fn_fattura_origini`](/dbzero/vendite/funzioni/fn_fattura_origini), a
+stampa e dettaglio: parte dai genitori diretti del documento (al posto della commessa, i documenti delle
+righe fatturate) e ne risale la catena, senza mai ripassare dalla commessa. Quali tipi si citano lo dice
+il registro delle sorgenti, colonna `citato_in_fattura` ([`config.sorgenti`](/dbzero/config/tabelle/sorgenti)).
+
 ---
 
 ## 8. L'annullo
 
-Ogni documento ha un **verbo d'annullo**. Annullare un documento che ha consumato qualcosa di un
+Ogni documento ha un **verbo d'annullo**, tranne la fattura: una fattura numerata si storna con la nota
+di credito, e prima della numerazione la si toglie dal lotto (il lotto in bozza, invece, si annulla).
+Annullare un documento che ha consumato qualcosa di un
 altro — la bolla che ha evaso un ordine, l'ordine nato da un preventivo — restituisce ciò che aveva
 consumato: per questo non avviene in silenzio.
 
@@ -250,7 +280,7 @@ possono sbagliarla in un altro modo.
 
 ## 10. A che punto è ogni documento
 
-Stato al 26 ottobre 2026. ✅ = segue la regola; ❌ = non ancora, con che cosa fa oggi. La riga di un
+Stato al 27 ottobre 2026. ✅ = segue la regola; ❌ = non ancora, con che cosa fa oggi. La riga di un
 documento cambia quando quel documento viene portato al modello (§11). Bolla e reso sono stati portati
 il 25 ottobre 2026, database e backend (403 dalla riga del passaggio, emissione solo da «Emetti»). Il
 preventivo è stato portato lo stesso giorno lato database; il backend lo segue (il 403 dalla riga del
@@ -262,7 +292,9 @@ cessazione programmata decisa dal database). L'offerta è stata portata il 26 ot
 il backend la segue (l'emissione, l'esito e l'annullo dai verbi, il 403 dalla riga del passaggio, la
 motivazione chiesta dal database, la conferma dei legami all'annullo di una revisione). La commessa è stata
 portata il 26 ottobre 2026 lato database; il backend la segue (il 403 dalla riga del passaggio, la firma
-nuova del verbo).
+nuova del verbo). La fattura, col suo lotto, è stata portata il 27 ottobre 2026 lato database; il backend
+la segue (il 403 dalla riga del passaggio su «numera» e «riporta in bozza», il giro della pipeline dai
+verbi invece che con gli `UPDATE`, lo stato del job senza la sua copia delle regole).
 
 | Documento | Nasce in bozza (§3) | Matrice in tabella (§4) | Verbo di stato (§5) | Azione sul passaggio (§6) | Emissione (§7) | Annullo (§8) |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -273,12 +305,19 @@ nuova del verbo).
 | DDT | ✅ | ✅ | ✅ `fn_cambia_stato_ddt` sul verbo comune, con la porta | ✅ `emetti_ddt` sulla riga di emissione e annullo dell'emesso; `registra_magazzino` nel verbo, per l'operazione di magazzino | ✅ solo da «Emetti»: il cambio stato generico rifiuta emesso | ✅ `fn_annulla_ddt` → verbo di stato |
 | Reso | ✅ | ✅ | ✅ `fn_conferma_reso`, `fn_annulla_reso` sul verbo comune, con la porta | ✅ `conferma_reso` sulla riga di conferma e annullo del confermato | — la conferma fa da emissione | ✅ verbo |
 | Commessa | ✅ | ✅ (tabella in `vendite`, non in `config`) | ✅ `fn_cambia_stato_commessa` sul verbo comune, con la porta; il passaggio a pronta della push dalla proiezione `fn_commessa_proietta_stato_emittibile` | ✅ `cambia_stato_commessa` su «rendi pronta», «riapri», «chiudi» e sull'annullo di una commessa non in bozza | — nasce dalla push | ✅ `fn_annulla_commessa` → verbo di stato |
-| Fattura | ✅ | ✅ (`config.stati_doc_fiscale_transizioni`, con passaggi solo del lotto e solo della fattura singola) | ❌ funzioni della pipeline; lo stato del lotto con `UPDATE` | ❌ azioni della pipeline, controllate solo dal backend | — la pipeline | — il ritorno del lotto in bozza |
+| Fattura (col lotto) | ✅ | ✅ (`config.stati_doc_fiscale_transizioni`, con passaggi solo del lotto e solo della fattura singola) | ✅ il lotto `fn_cambia_stato_lotto` (passaggi manuali) e `fn_lotto_proietta_stato_step` (il giro), la fattura `fn_fattura_proietta_stato`, con la porta su entrambi | ✅ `numera_fatture_lotti` su «numera» e «riporta in bozza»; l'annullo della bozza senza azione | — la pipeline (numera) | — la nota di credito; prima della numerazione, «togli dal lotto»; il lotto in bozza si annulla |
 | Versione di listino | ❌ stato testo con `CHECK`, senza vocabolario | ❌ passaggi nel guard e ricopiati in Python | ❌ `UPDATE` dal backend | ❌ nessuna azione | — | — |
 | Ordine e DDT d'acquisto | ✅ | ❌ nessun guard di transizione | ❌ | ❌ | ❌ | ❌ |
 
-Le azioni a catalogo che nessuno usa — `genera_fattura`, `approva_fattura`, `emetti_fattura` — si
-sistemano col giro della fattura.
+Le azioni a catalogo che nessuno usava — `genera_fattura`, `approva_fattura`, `emetti_fattura` — sono
+ritirate col giro della fattura, insieme a `reset_lotto_draft` («riporta in bozza» chiede
+`numera_fatture_lotti`).
+
+Lo stato del **job** del lotto (in esecuzione, completato, errore: com'è andato il lavoro della pipeline)
+non è lo stato del documento, ma segue la stessa idea: i valori nel vocabolario
+[`config.stati_lotto_job`](/dbzero/config/tabelle/stati_lotto_job), i passaggi nella matrice
+[`config.transizioni_stati_lotto_job`](/dbzero/config/tabelle/transizioni_stati_lotto_job), una regola sola
+applicata dal guard a ogni scrittura.
 
 ---
 

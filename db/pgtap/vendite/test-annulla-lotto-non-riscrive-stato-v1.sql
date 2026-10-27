@@ -69,15 +69,18 @@ SELECT vendite.fn_get_or_create_lotto(
          p_emittente_soggetto_ruolo_id => (SELECT f.emittente_soggetto_ruolo_id FROM vendite.fatture f ORDER BY f.id LIMIT 1),
          p_tipo_lotto                  => 'MASSIVO') AS id;
 
--- ⭐ Lo stato si porta a ERRORE dalla PORTA UFFICIALE, non con un UPDATE: se un
---   domani la macchina a stati cambiasse, questa fixture lo direbbe invece di
---   costruire di nascosto uno stato che il dominio non ammette piu'.
-DO $rompi$
-BEGIN
-    PERFORM vendite.fn_set_fatturazione_lotto_stato(
-        (SELECT id FROM tmp_lotto_arw), 'ERRORE');
-END
-$rompi$;
+-- ⭐ Lo stato si porta a ERRORE sotto la REGOLA UFFICIALE: se un domani la
+--   macchina a stati cambiasse, questa fixture lo direbbe invece di costruire di
+--   nascosto uno stato che il dominio non ammette piu'.
+-- rev 2026-10-27 (brief-modello-documento-vendita §15, F-4): la regola non e' piu'
+--   in vendite.fn_set_fatturazione_lotto_stato (ritirata, 20261027-07) ma nella
+--   matrice config.transizioni_stati_lotto_job, che il guard
+--   vendite.trgfn_fatturazione_lotti_guard_stato_job applica a ogni scrittura:
+--   l'UPDATE e' la scrittura di sempre del runner, e IN_ESECUZIONE -> ERRORE e'
+--   ammesso. Attese invariate.
+UPDATE vendite.fatturazione_lotti
+   SET stato_lotto = 'ERRORE'
+ WHERE id = (SELECT id FROM tmp_lotto_arw);
 
 SELECT is(
     (SELECT stato_lotto FROM vendite.fatturazione_lotti

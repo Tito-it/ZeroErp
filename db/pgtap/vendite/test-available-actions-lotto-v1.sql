@@ -129,6 +129,13 @@ SELECT throws_ok(
 -- ============================================================
 -- Fixture: un lotto per ciascuno dei tre stati che espongono azioni
 -- ============================================================
+-- rev 2026-10-27 (brief-modello-documento-vendita §15, 20261027-19): permesso => nascondi.
+--   numera e riporta_a_draft hanno numera_fatture_lotti sulla loro riga della matrice, e
+--   fn_available_actions_lotto li NASCONDE a chi non ce l'ha: senza, l'8 vedrebbe {} e il 9
+--   un enabled NULL. Concessa all'operatore del test prima dei test di stato: le capability
+--   si misurano su chi PUO' agire. Attese invariate.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'numera_fatture_lotti');
+
 CREATE TEMP TABLE tmp_lotto_aal AS
 SELECT s.codice_interno AS stato,
        (SELECT fl.id

@@ -1,10 +1,10 @@
 id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,user_insert,data_update,user_update,livello_minimo_area
 1,2,genera_fatture_lotti,Genera fatture da lotti,t,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres,TUTTO
-2,2,genera_fattura,Genera singola fattura,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres,TUTTO
-3,2,approva_fattura,Approva fattura,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres,TUTTO
-4,2,emetti_fattura,Emetti fattura,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres,TUTTO
+2,2,genera_fattura,Genera singola fattura,f,f,{},2026-02-28 00:00:00+01,postgres,2026-10-27 00:00:00+01,mctit,TUTTO
+3,2,approva_fattura,Approva fattura,f,f,{},2026-02-28 00:00:00+01,postgres,2026-10-27 00:00:00+01,mctit,TUTTO
+4,2,emetti_fattura,Emetti fattura,f,f,{},2026-02-28 00:00:00+01,postgres,2026-10-27 00:00:00+01,mctit,TUTTO
 5,7,approva_rimessa,Approva rimessa di pagamento,f,f,{},2026-02-28 00:00:00+01,postgres,2026-08-25 00:00:00+02,mctit,TUTTO
-6,2,reset_lotto_draft,Reset lotto a stato DRAFT,t,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres,TUTTO
+6,2,reset_lotto_draft,Reset lotto a stato DRAFT,t,f,{},2026-03-01 00:00:00+01,postgres,2026-10-27 00:00:00+01,mctit,TUTTO
 7,2,reset_lotto_fattura_draft,Reset singola fattura lotto a DRAFT,t,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres,TUTTO
 8,2,run_commesse_push,Invio commesse a sistema esterno,f,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres,TUTTO
 9,2,prezzo_override_manuale,Modifica manuale prezzo,f,t,{},2026-04-17 00:00:00+02,postgres,2026-04-17 00:00:00+02,postgres,TUTTO
@@ -25,7 +25,7 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 24,12,sospendi_flusso,Sospensione flusso pratica,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres,TUTTO
 25,12,riattiva_flusso,Riattivazione flusso pratica sospeso,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres,TUTTO
 26,2,approva_attivita_commessa,Approva attivita di commessa per la fatturazione,f,t,{},2026-07-20 00:00:00+02,postgres,2026-07-20 00:00:00+02,postgres,TUTTO
-27,2,numera_fatture_lotti,Numerazione fiscale fatture di lotto (irreversibile),t,t,{},2026-07-20 00:00:00+02,postgres,2026-07-20 00:00:00+02,postgres,TUTTO
+27,2,numera_fatture_lotti,"Numera le fatture di un lotto (irreversibile) e lo riporta in bozza finche' non e' numerato",t,t,{},2026-07-20 00:00:00+02,postgres,2026-10-27 00:00:00+01,mctit,TUTTO
 28,13,code_manage,Gestione code di lavoro e stampa (vista e azioni cross-utente),f,t,{},2026-07-21 00:00:00+02,postgres,2026-07-21 00:00:00+02,postgres,TUTTO
 29,2,carica_voce_manuale,Carica voce manuale (onere) su commessa,f,t,{},2026-07-23 00:00:00+02,postgres,2026-07-23 00:00:00+02,postgres,TUTTO
 30,2,cambia_stato_commessa,"Rende pronta per la fatturazione una commessa, la riapre, la chiude o annulla una commessa non in bozza",t,t,{},2026-07-27 00:00:00+02,postgres,2026-10-26 00:00:00+01,mctit,TUTTO

@@ -6,6 +6,14 @@
 --       + constraint trigger DEFERRED su fatture / fatturazione_lotti /
 --         fatturazione_lotti_fatture
 -- Brief: brief-db-guard-coerenza-stato-lotto-fatture §4.2
+-- rev 2026-10-27 (brief-modello-documento-vendita §15, giro 11): con la porta sul lotto
+--   (20261027-18) lo stato si scrive dai verbi. Test 6: il lotto avanza dal giro della
+--   pipeline (vendite.fn_lotto_proietta_stato_step), come nell'incidente. Test 12: il lotto
+--   torna in bozza dal suo verbo (vendite.fn_cambia_stato_lotto), con l'azione del passaggio
+--   concessa, cosi' il rifiuto e' quello della coerenza (E_LOTTO_FATTURE_STATO_INCOERENTE)
+--   e non del permesso: throws_like sul messaggio invece di throws_ok P0001, che passava per
+--   qualunque errore.
+-- ⚠️ Attesa cambiata: test 12, da «qualunque P0001» al messaggio della coerenza.
 -- ------------------------------------------------------------
 -- Indice test
 --  1) Riferimenti minimi presenti
@@ -169,9 +177,9 @@ SELECT lives_ok(
 -- 6) IL CASO DELL'INCIDENTE: il lotto avanza, le fatture no.
 --    E' esattamente cio' che produce un dry-run della pipeline BE.
 -- ------------------------------------------------------------
-UPDATE vendite.fatturazione_lotti
-   SET stato_doc_fiscale_id = (SELECT stato_emessa_id FROM tmp_refs_glf)
- WHERE id = (SELECT lotto_id FROM tmp_lotto_glf);
+SELECT vendite.fn_lotto_proietta_stato_step(
+    (SELECT lotto_id FROM tmp_lotto_glf),
+    (SELECT stato_emessa_id FROM tmp_refs_glf));
 
 SELECT throws_ok(
   format('SELECT vendite.fn_guard_lotto_fatture_stato_coerente(%s)',
@@ -299,15 +307,14 @@ SELECT is(
 -- ------------------------------------------------------------
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT throws_ok(
-  format($q$ UPDATE vendite.fatturazione_lotti
-                SET stato_doc_fiscale_id = %s
-              WHERE id = %s $q$,
-         (SELECT stato_draft_id FROM tmp_refs_glf),
+-- L'azione di «riporta in bozza», perche' a rifiutare sia la coerenza e non il permesso.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'numera_fatture_lotti');
+
+SELECT throws_like(
+  format($q$ SELECT * FROM vendite.fn_cambia_stato_lotto(%s, 'DRAFT') $q$,
          (SELECT lotto_id FROM tmp_lotto_glf)),
-  'P0001',
-  NULL,
-  '12) Con constraint IMMEDIATE l''UPDATE che disallinea il lotto fallisce'
+  'Lotto %fattura/e con stato fiscale diverso da quello del lotto%',
+  '12) Con constraint IMMEDIATE il lotto che torna in bozza con le fatture avanti fallisce (coerenza)'
 );
 
 SET CONSTRAINTS ALL DEFERRED;

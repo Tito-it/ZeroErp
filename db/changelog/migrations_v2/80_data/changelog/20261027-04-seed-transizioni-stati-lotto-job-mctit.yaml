@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed config.transizioni_stati_lotto_job: i passaggi del job di un lotto.
+#   Brief: brief-modello-documento-vendita §15 (giro 11; F-4, Q-F4).
+#   Tabella: 20261027-02. La regola e' quella del backend, l'unico
+#   scrittore vivo (pipeline_repository.set_lotto_job_stato, 2026-10-27):
+#
+# id 1 | IN_ESECUZIONE(1) -> COMPLETATO(2)    | il giro e' andato bene
+# id 2 | IN_ESECUZIONE(1) -> ERRORE(3)        | il giro e' andato male
+# id 3 | COMPLETATO(2)    -> IN_ESECUZIONE(1) | un giro nuovo parte
+# id 4 | ERRORE(3)        -> IN_ESECUZIONE(1) | un giro nuovo parte
+# id 5 | COMPLETATO(2)    -> ERRORE(3)        | un rilancio andato male si marca
+#                                               (Tid, 2026-08-24)
+#
+#   ERRORE -> COMPLETATO non c'e': la conclusione si guadagna con un giro,
+#   che passa da IN_ESECUZIONE. La legge il guard
+#   vendite.trgfn_fatturazione_lotti_guard_stato_job (20261027-06).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261027-04-seed-transizioni-stati-lotto-job-mctit.yaml
+
+  - changeSet:
+      id: 20261027-04-seed-transizioni-stati-lotto-job
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: transizioni_stati_lotto_job
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/transizioni_stati_lotto_job.csv
+            tableName: transizioni_stati_lotto_job
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: stato_da_id, type: STRING }
+              - column: { name: stato_a_id, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update, type: STRING }

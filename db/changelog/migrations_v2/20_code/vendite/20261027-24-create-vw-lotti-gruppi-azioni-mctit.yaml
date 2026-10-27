@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE AZIONI DI RIGA DEI DOCUMENTI DI UN LOTTO: UNA VISTA DB
+#   Brief: brief-modello-documento-vendita §15.10 (giro 11; Q-F5 = vista DB di
+#   Tid, 2026-10-27).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Il motivo del pulsante «togli dal giro» spento la calcola il database
+#   (script.fn_check_documento_escludibile_da_giro), ma la colonna di riga
+#   la componeva il backend dentro la query dei documenti del lotto. Qui
+#   la composizione diventa una vista: il registro config.azioni_riga
+#   (20261027-23) la nomina come superficie e il presidio la verifica; il
+#   backend la legge invece di comporla (richiesta del §15.10).
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   Una riga per (lotto, documento): i documenti del lotto sono l'UNIONE del
+#   perimetro dichiarato (fatturazione_lotti_gruppi) e degli esiti
+#   (fatturazione_lotti_esiti), come nella query del backend. Le espressioni
+#   sono le stesse: il PRIMO motivo (l'ordine dell'array e' il contratto, la
+#   madre solleva quello) e n_trascinati solo dove l'azione e' viva.
+#   security_invoker: le tabelle sono sotto RLS, si leggono i soli lotti del
+#   proprio perimetro. Chi legge filtra per lotto_id: il predicato scende nei
+#   due rami dell'unione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261027-24-create-vw-lotti-gruppi-azioni-mctit.yaml
+
+  - changeSet:
+      id: 20261027-24-create-vw-lotti-gruppi-azioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_lotti_gruppi_azioni: per ogni documento di un lotto, le colonne di blocco
+        dell'azione «togli dal giro» e i documenti che verrebbero via insieme; la superficie del
+        registro config.azioni_riga. Brief: brief-modello-documento-vendita §15.10 (Q-F5).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_check_documento_escludibile_da_giro',
+                                   'fn_gruppi_trascinati_da_uscita');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW vendite.vw_lotti_gruppi_azioni
+              WITH (security_invoker = true) AS
+              WITH documenti AS (
+                  -- I documenti del lotto: il perimetro dichiarato UNITO agli
+                  -- esiti (un giro di massa non dichiara il perimetro).
+                  SELECT lg.lotto_id, lg.gruppo_key
+                    FROM vendite.fatturazione_lotti_gruppi lg
+                  UNION
+                  SELECT le.lotto_id, le.gruppo_key
+                    FROM vendite.fatturazione_lotti_esiti le
+              )
+              SELECT d.lotto_id,
+                     d.gruppo_key,
+                     -- Il PRIMO motivo: la madre solleva quello.
+                     chk.motivi -> 0 ->> 'reason'     AS uscita_blocco_reason,
+                     chk.motivi -> 0 ->> 'reason_key' AS uscita_blocco_reason_key,
+                     -- Quanti documenti vengono via insieme, solo dove
+                     -- l'azione e' viva: e' una conseguenza, non un motivo.
+                     CASE WHEN jsonb_array_length(chk.motivi) = 0
+                          THEN jsonb_array_length(
+                                   script.fn_gruppi_trascinati_da_uscita(d.lotto_id, d.gruppo_key))
+                     END AS n_trascinati
+                FROM documenti d
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_documento_escludibile_da_giro(d.lotto_id, d.gruppo_key)
+                           AS motivi
+                ) chk;
+
+              GRANT SELECT ON vendite.vw_lotti_gruppi_azioni TO zeroerp_app;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW vendite.vw_lotti_gruppi_azioni IS
+                  'Le AZIONI DI RIGA dei documenti di un lotto di fatturazione (Q-F5): una riga per (lotto_id, gruppo_key), sui documenti del lotto = perimetro dichiarato (fatturazione_lotti_gruppi) UNITO agli esiti (fatturazione_lotti_esiti). uscita_blocco_reason / uscita_blocco_reason_key: il PRIMO motivo di script.fn_check_documento_escludibile_da_giro (la stessa fn_check che vendite.fn_escludi_documento_da_giro chiama per rifiutare; NULL = si puo'' togliere). n_trascinati: quanti documenti vengono via insieme (script.fn_gruppi_trascinati_da_uscita), solo dove l''azione e'' viva. E'' la superficie dell''azione ESCLUDI_DOCUMENTO_DA_GIRO nel registro config.azioni_riga. security_invoker: i soli lotti del proprio perimetro. Si filtra per lotto_id. Prima la composizione stava nel repository del backend. Brief: brief-modello-documento-vendita §15.10 (Q-F5 = vista DB, Tid 2026-10-27).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_lotti_gruppi_azioni;

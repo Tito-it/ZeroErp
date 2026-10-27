@@ -162,9 +162,12 @@ SELECT c.id, t.istanza_utility_id, t.utility_id,
 --   quindi DRAFT, riceve la sua fornitura, e poi si ATTIVA con la transizione
 --   vera (il listino costruito ha una versione in vigore oggi). Prima nasceva
 --   ATTIVO e la fornitura gli si cancellava e riscriveva dopo.
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')
- WHERE numero = 'PGTAP_V5B_CONTR_WD';
+-- rev 2026-10-27 (brief-modello-documento-vendita §11, debito del giro 8): il contratto ha la
+--   porta sulla colonna di stato; l'attivazione passa dal verbo, che la fixture chiama con
+--   emetti_contratto concessa (prima un UPDATE diretto, ora fermato dalla porta).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.id, 'ATTIVO')
+  FROM vendite.contratti c
+ WHERE c.numero = 'PGTAP_V5B_CONTR_WD';
 
 -- 2) Test chiave: chiamo il resolver passando p_classe_utenza_id = NULL.
 -- Il resolver deve leggere la classe dal contratto, non dal parametro.
@@ -302,9 +305,10 @@ SELECT c.id, t.istanza_utility_id, t.utility_id,
 --   quindi DRAFT, riceve la sua fornitura, e poi si ATTIVA con la transizione
 --   vera (il listino costruito ha una versione in vigore oggi). Prima nasceva
 --   ATTIVO e la fornitura gli si cancellava e riscriveva dopo.
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')
- WHERE numero = 'PGTAP_V5B_CONTR_ND';
+-- rev 2026-10-27 (§11, debito del giro 8): dal verbo, come il contratto del test 2.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.id, 'ATTIVO')
+  FROM vendite.contratti c
+ WHERE c.numero = 'PGTAP_V5B_CONTR_ND';
 
 -- 4) Test: classe da contratto NULL -> fallback al parametro input
 SELECT is(

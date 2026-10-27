@@ -1,0 +1,216 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE ORIGINI DI UNA FATTURA: I DOCUMENTI A MONTE CHE SI CITANO
+#   Brief: brief-modello-documento-vendita §15.10 (giro 11; D-G1 = c, Q-F6 = b,
+#   P-3 di Tid, 2026-10-27).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Le righe di fattura non portano la sorgente: il legame passa dalle
+#   attivita' fatturabili alla riga di commessa, che porta il SUO documento
+#   (commesse_attivita.sorgente_tipo_id / sorgente_uid). Da quel documento il
+#   lineage all'indietro (vendite.fn_documento_lineage) risale il resto della
+#   catena (l'ordine da un preventivo, la bolla da un ordine). Si tengono i
+#   soli tipi che si citano (config.sorgenti.citato_in_fattura, 20261027-21).
+#
+# ── PERCHE' DALLE RIGHE E NON DALLA COMMESSA ───────────────────────
+#   Il lineage della fattura passa dalla commessa INTERA: risalendo da li' una
+#   fattura citerebbe tutti i documenti della commessa, anche quelli le cui
+#   righe sono in un'altra fattura (una commessa che raccoglie le bolle di
+#   mesi). Lo ha mostrato il pgTAP (db/pgtap/vendite/test-fattura-origini-v1,
+#   test 4): si parte dai documenti delle righe FATTURATE qui.
+#
+# ── LA CHIAVE ───────────────────────────────────────────────────────
+#   La riga di commessa porta <testata>.uid::text; il nodo del lineage la
+#   chiave di config.sorgenti.key_selector (id per ordine, contratto, bolla;
+#   uid per preventivo e offerta). Si traduce con un join alla tabella del
+#   documento (config.fn_sorgente_tabella), dal registro: nessun tipo scritto
+#   qui. Una tabella senza colonna uid: la chiave della riga e' gia' quella
+#   del nodo.
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   * livello 1 = il documento di una riga fatturata; i suoi antenati 1 + il
+#     loro livello nel lineage;
+#   * ogni documento una volta sola, col livello piu' vicino, anche da piu'
+#     righe o piu' commesse (P-3: l'unione);
+#   * fuori i documenti annullati (lo stato e' abortito);
+#   * fuori gli antenati raggiunti solo da legami RITIRATI (righe annullate,
+#     vendite.fn_documento_lineage_legami): non hanno portato nulla;
+#   * fuori i documenti che chi legge non vede (RLS): INVOKER, come il lineage;
+#   * ordine: livello, poi tipo, poi codice.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261027-22-create-fn-fattura-origini-mctit.yaml
+
+  - changeSet:
+      id: 20261027-22-create-fn-fattura-origini
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_fattura_origini(id fattura): i documenti a monte che la fattura cita (D-G1), dai
+        documenti delle righe fatturate e dal loro lineage all'indietro, filtrati da
+        config.sorgenti.citato_in_fattura. Brief: brief-modello-documento-vendita §15.10 (Q-F6 = b, P-3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname IN ('fn_documento_lineage', 'fn_documento_lineage_nodi');
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'config' AND table_name = 'sorgenti'
+                 AND column_name = 'citato_in_fattura';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_fattura_origini(
+                  p_fattura_id vendite.fatture.id%TYPE)
+               RETURNS TABLE(livello             integer,
+                             tipo_id             config.sorgenti.id%TYPE,
+                             tipo_codice_interno config.sorgenti.codice_interno%TYPE,
+                             etichetta           config.sorgenti.etichetta%TYPE,
+                             uid                 text,
+                             codice              text)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_doc     record;     -- un documento di una riga fatturata
+                  v_tab     record;     -- la sua tabella (config.fn_sorgente_tabella)
+                  v_chiave  text;       -- la sua chiave di nodo (key_selector)
+                  v_tipi    bigint[]  := ARRAY[]::bigint[];   -- i candidati: tipo,
+                  v_uids    text[]    := ARRAY[]::text[];     -- chiave
+                  v_livelli integer[] := ARRAY[]::integer[];  -- e livello, in parallelo
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: i documenti a monte che una fattura cita (D-G1):
+                  --   i documenti delle righe fatturate e i loro antenati,
+                  --   tenuti i tipi con config.sorgenti.citato_in_fattura.
+                  -- rev 2026-10-27 (20261027-22, brief-modello-documento-
+                  --   vendita §15.10): nasce.
+                  -- ==========================================================
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_fattura_origini',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_fattura_id', p_fattura_id),
+                          NULL::uuid, 'vendite.fn_fattura_origini',
+                          'p_fattura_id obbligatorio e maggiore di zero');
+                  END IF;
+
+                  -- I documenti delle righe FATTURATE qui: la riga di commessa
+                  -- porta il suo, con la chiave <testata>.uid::text.
+                  FOR v_doc IN
+                      SELECT DISTINCT ca.sorgente_tipo_id AS t, ca.sorgente_uid AS u,
+                                      s.codice_interno, s.key_selector
+                        FROM vendite.fatture_righe fr
+                        JOIN vendite.attivita_fatturabili af ON af.fattura_riga_id = fr.id
+                        JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
+                        JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
+                       WHERE fr.fattura_id = p_fattura_id
+                         AND ca.sorgente_uid IS NOT NULL
+                  LOOP
+                      -- La chiave del nodo, dal registro: join alla tabella del
+                      -- documento sulla sua uid. Senza colonna uid la chiave della
+                      -- riga e' gia' quella del nodo.
+                      SELECT ft.schema_tabella, ft.nome_tabella, ft.relid
+                        INTO v_tab
+                        FROM config.fn_sorgente_tabella(v_doc.codice_interno) ft;
+                      IF v_tab.relid IS NULL THEN
+                          CONTINUE;
+                      END IF;
+
+                      IF EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                                  WHERE a.attrelid = v_tab.relid AND a.attname = 'uid'
+                                    AND NOT a.attisdropped) THEN
+                          v_chiave := NULL;
+                          EXECUTE format('SELECT (x.%I)::text FROM %I.%I x WHERE x.uid::text = $1',
+                                         v_doc.key_selector, v_tab.schema_tabella, v_tab.nome_tabella)
+                             INTO v_chiave
+                            USING v_doc.u;
+                      ELSE
+                          v_chiave := v_doc.u;
+                      END IF;
+
+                      -- Un documento che chi legge non vede (RLS) non torna.
+                      CONTINUE WHEN v_chiave IS NULL;
+
+                      -- Il documento della riga, livello 1.
+                      v_tipi    := v_tipi    || v_doc.t;
+                      v_uids    := v_uids    || v_chiave;
+                      v_livelli := v_livelli || 1;
+
+                      -- I suoi antenati, livello 1 + il loro: un antenato
+                      -- raggiunto solo da legami ritirati non ha portato nulla.
+                      -- NULL = arco non censito, si tiene.
+                      SELECT v_tipi || coalesce(array_agg(x.t), ARRAY[]::bigint[]),
+                             v_uids || coalesce(array_agg(x.u), ARRAY[]::text[]),
+                             v_livelli || coalesce(array_agg(x.liv), ARRAY[]::integer[])
+                        INTO v_tipi, v_uids, v_livelli
+                        FROM (SELECT l.from_tipo_id AS t, l.from_uid AS u,
+                                     1 + min(l.livello) AS liv
+                                FROM vendite.fn_documento_lineage(v_doc.t, v_chiave, 'indietro') l
+                               GROUP BY l.from_tipo_id, l.from_uid
+                              HAVING bool_or(l.is_legame_ritirato IS NOT TRUE)) x;
+                  END LOOP;
+
+                  -- ⛔ Nessun candidato: si esce QUI. Con due array NULL o vuoti
+                  --   il lettore dei nodi non va chiamato (senza seme risponde
+                  --   con TUTTI i nodi del sistema).
+                  IF cardinality(v_tipi) = 0 THEN
+                      RETURN;
+                  END IF;
+
+                  -- Ogni documento citato una volta, col livello piu' vicino;
+                  -- la decorazione dal lettore dei nodi (fuori gli annullati e
+                  -- quelli che chi legge non vede).
+                  RETURN QUERY
+                  WITH c AS (
+                      SELECT a.t, a.u, min(a.liv) AS liv
+                        FROM unnest(v_tipi, v_uids, v_livelli) a(t, u, liv)
+                        JOIN config.sorgenti s ON s.id = a.t
+                       WHERE s.citato_in_fattura
+                       GROUP BY a.t, a.u
+                  )
+                  SELECT c.liv, s.id, s.codice_interno, s.etichetta, c.u, n.codice::text
+                    FROM c
+                    JOIN vendite.fn_documento_lineage_nodi(v_tipi, v_uids) n
+                      ON n.tipo_id = c.t AND n.uid = c.u
+                    JOIN config.sorgenti s ON s.id = c.t
+                   WHERE n.is_abortito IS NOT TRUE
+                   ORDER BY c.liv, s.codice_interno, n.codice, c.u;
+              END;
+              $function$;
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_fattura_origini(vendite.fatture.id%TYPE)
+                  TO zeroerp_app;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_fattura_origini(vendite.fatture.id%TYPE)
+                IS 'Le ORIGINI di una fattura (D-G1 = c, Q-F6 = b): i documenti commerciali a monte che la fattura cita — DDT, ordine, contratto, offerta, preventivo —, non la commessa, che per il cliente e'' un contenitore interno. Parte dalle righe FATTURATE: la riga di commessa di ogni attivita'' fatturabile porta il suo documento (commesse_attivita.sorgente_tipo_id / sorgente_uid, chiave <testata>.uid tradotta nella chiave del nodo con config.sorgenti.key_selector e un join alla tabella del documento); poi i suoi antenati dal lineage all''indietro (vendite.fn_documento_lineage). Non dalla commessa intera: una fattura citerebbe i documenti delle righe fatturate altrove. Tiene i soli tipi con config.sorgenti.citato_in_fattura: quali tipi si citano e'' un dato del registro. Regola: livello 1 = il documento di una riga fatturata, gli antenati 1 + il loro livello; ogni documento una volta, col livello piu'' vicino, anche da piu'' commesse (P-3, l''unione); fuori gli annullati (stato abortito), gli antenati raggiunti solo da legami ritirati (is_legame_ritirato: righe annullate) e i documenti che chi legge non vede (INVOKER, come il lineage). Ordine: livello, tipo, codice. Una fattura senza documenti a monte risponde zero righe. La leggono la stampa e il dettaglio della fattura. Brief: brief-modello-documento-vendita §15.10 (Tid 2026-10-27).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_fattura_origini(bigint);

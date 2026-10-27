@@ -3,6 +3,10 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: tutte le funzioni di risoluzione permessi e trigger
+-- rev 2026-10-27 (brief-modello-documento-vendita §15, giro 11): reset_lotto_draft e'
+--   ritirata (Q-F1: «riporta in bozza» chiede numera_fatture_lotti). Test 30: i codename
+--   della sezione I ancora vivi sono due, e reset_lotto_draft e' spenta.
+-- ⚠️ Attesa cambiata: test 30 (3 attivi -> 2 attivi + reset_lotto_draft spenta).
 --       defense-in-depth guard emittente scope.
 --
 -- Migrazione Fase 7 Chunk A (2026-04-29):
@@ -712,17 +716,16 @@ SELECT pg_temp.unset_disabilitato((SELECT identita_id FROM tmp_ctx));
 
 -- 30) Verifica che i 3 nuovi codename esistano
 SELECT is(
-    (SELECT count(*)::integer
+    (SELECT string_agg(permission_codename || ':' || attivo::text, ' ' ORDER BY permission_codename)
        FROM config.azioni_processo
       WHERE permission_codename IN (
               'reset_lotto_draft',
               'reset_lotto_fattura_draft',
               'run_commesse_push'
             )
-        AND attivo = true
     ),
-    3,
-    '30) Seed: 3 nuovi codename azioni_processo presenti e attivi'
+    'reset_lotto_draft:false reset_lotto_fattura_draft:true run_commesse_push:true',
+    '30) Seed: i codename della sezione I presenti; reset_lotto_draft ritirata (giro 11, Q-F1)'
 );
 
 -- ============================================================

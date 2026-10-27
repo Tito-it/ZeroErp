@@ -1,12 +1,19 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-27 (giro 10, la commessa: DB applicato e verde, BE fatto e da committare, §14.7)
+## ⏭️ Chi riparte — aggiornato al 2026-10-27 (giro 10, la commessa: DB e BE committati, PR #1962 e #1963; giro 11, la fattura: lo stato di lotto e fattura applicato su dbdev; le origini e il registro delle azioni di riga applicati su dbdev, pgTAP verdi; le origini della nota di credito (P-F7) applicate su dbdev, pgTAP verdi, §15.11; il giro DB 11 è tutto da committare)
 
-**Riparte: Tid**, col commit del passaggio BE del giro 10 (§14.7, i sette punti del §14.6 fatti il 2026-10-27, su
-`dev/backend-tid`) e con una decisione emersa nel giro (il parametro `permission` del mapper delle azioni, rimasto
-senza consumatori, §14.7). Il **team DB** ha in più una richiesta a priorità bassa: ritirare
-`E_COMMESSA_AZIONE_NON_AMMESSA`, che nessuno solleva più (§14.7). Il passaggio BE del giro 9 è su `Tito-dev` (§13.8,
-PR #1961); il giro DB 10 è committato (PR #1962). **Tid**, col dato `emetti_offerta` ai profili e col dato
+**Riparte: Tid**, sul giro 11 (la fattura): il commit del giro DB 11 su `dev/db-tid`. `20261027-01` … `-26` sono
+applicati su dbdev (`databasechangelog`, letto il 2026-10-27: `-26` alle 17:25, col CSV `sorgenti.csv`), pgTAP verdi
+e nessuna regressione (Tid, 2026-10-27), compresi `vendite/test-fattura-origini-nota-v1` (nuovo) e
+`vendite/test-fattura-origini-v1` (test 2 aggiornato). **Il
+team BE**: la richiesta del §15.8 (il giro della pipeline si rompe finché il runner non chiama il verbo di
+processo) e BE-1 … BE-3 del §15.11.1, ora sbloccati (apply fatto); poi **il team FE**, FE-1 (§15.11.2). Resta anche
+una decisione emersa nel giro 10 (il parametro
+`permission` del mapper delle azioni, rimasto senza consumatori, §14.7). Il passaggio BE del giro 10 (§14.7, §14.8)
+è su `Tito-dev` (PR #1963); la revisione del §14.8 il brief la dà ancora «da provare» (suite non rilanciata). Il
+**team DB** ha in più richieste a priorità bassa: ritirare `E_COMMESSA_AZIONE_NON_AMMESSA`, che nessuno solleva più
+(§14.7); R-1 e R-2 (§14.8). Il passaggio BE del giro 9 è su `Tito-dev` (§13.8, PR #1961); il giro DB 10 è
+committato (PR #1962). **Tid**, col dato `emetti_offerta` ai profili e col dato
 `emetti_contratto` **ed** `emetti_ordine` ai profili su dbdev: letto il 2026-10-26, nessun profilo le ha, quindi
 in collaudo nessuno attiva o cessa un contratto né conferma un ordine (§11.7, «Stato letto dal team DB»).
 Il passaggio BE del §11.7 è committato (`fe041a1a1`, `0a08565be`, PR #1956). Il **team DB** ha una
@@ -85,18 +92,37 @@ ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committa
 | 4-bis-undecies-quinquies | ✅ **Tid** | Passo a mano del §14.4, apply del giro 10 e corsa pgTAP come app: verdi (2026-10-26), coi quattro file portati dopo la prima corsa e la guard d'uscita riscritta (§14.5) | §14.4, §14.5 | 4-bis-undecies-quater |
 | 4-bis-undecies-quinquies-bis | ✅ **Tid** | I due passi per lo scratch da zero (`20261019-13`, `20261026-37`) applicati su dbdev (a vuoto) e ricostruzione dello scratch `zeroerp_ruoli` da zero passata; corsa pgTAP verde (2026-10-26/27) | §14.5 | 4-bis-undecies-quinquies |
 | 4-bis-undecies-sexies | ✅ team BE | Richiesta del §14.6 (sette punti) fatta il 2026-10-27: firma, 403 dalla riga, difesa ritirata, IN_ESECUZIONE, test, doc; fuori elenco il gate del drawer | §14.7 | 4-bis-undecies-quinquies |
-| 4-bis-undecies-septies | **Tid** ⏭️ | Commit del passaggio BE del giro 10 | §14.7 | 4-bis-undecies-sexies |
+| 4-bis-undecies-septies | ✅ **Tid** | Commit del passaggio BE del giro 10 (PR #1963, su `Tito-dev`) | §14.7 | 4-bis-undecies-sexies |
 | 4-bis-undecies-octies | **Tid** | Il parametro `permission` di `mapAvailableActionsToDrawerActions`, senza consumatori: ritirarlo o tenerlo | §14.7 | 4-bis-undecies-sexies |
 | 4-bis-undecies-nonies | team DB | Richiesta (priorità bassa): ritirare `E_COMMESSA_AZIONE_NON_AMMESSA` (`obsoleto_dal`); poi il BE toglie policy e ripiego | §14.7 | 4-bis-undecies-sexies |
 | 4-bis-undecies-decies | ✅ team BE | Revisione del giro: regola del 1 sui sei documenti, BB `operatore_di_prova`; da provare e committare col §14.7 | §14.8 | 4-bis-undecies-sexies |
 | 4-bis-undecies-undecies | team DB | Richieste (priorità bassa): R-1 `fn_crea_revisione_offerta` risponde 404 all'offerta che non c'è; R-2 lo stato d'accettazione nel vocabolario | §14.8 | — |
+| 4-bis-duodecies | ✅ **Tid** → team DB | Il via alla ricognizione del giro 11: la fattura (2026-10-27); come lavora (il lotto guida gli stati e la stampa) | §15.1 | — |
+| 4-bis-duodecies-bis | ✅ team DB | Giro 11: ricognizione (quattro assi di stato, scrittori, azioni esistenti) | §15.2 | 4-bis-duodecies |
+| 4-bis-duodecies-ter | ✅ **Tid** | F-0 (D-G1 = c) … F-5 (D-N1 nel giro, con un pezzo standard) | §15.3 | 4-bis-duodecies-bis |
+| 4-bis-duodecies-quater | ✅ **Tid** | Q-F1 … Q-F6 confermate come da proposta (2026-10-27) | §15.4 | 4-bis-duodecies-ter |
+| 4-bis-duodecies-quinquies | ✅ team DB | Piano del giro 11, con P-1 e P-2 | §15.5 | 4-bis-duodecies-quater |
+| 4-bis-duodecies-sexies | ✅ **Tid** | Il via allo sviluppo del giro 11, P-1 e P-2 come da proposta (2026-10-27) | §15.5 | 4-bis-duodecies-quinquies |
+| 4-bis-duodecies-septies | ✅ team DB | Giro 11, lo stato di lotto e fattura: `20261027-01` … `-20` e i CSV, provati in transazione sullo scratch; 279 + 202 pgTAP prima/dopo, 16 portati, uno nuovo (21/22, il 4 dopo il migrate) | §15.6, §15.7 | 4-bis-duodecies-sexies |
+| 4-bis-duodecies-octies | **Tid** ⏭️ | Il passo a mano su dbdev (i legami alle azioni ritirate), poi apply e corsa pgTAP come app | §15.7 | 4-bis-duodecies-septies |
+| 4-bis-duodecies-nonies | ✅ **Tid** | Q-F6 = (b), i documenti a monte; Q-F5 = la vista DB (2026-10-27) | §15.9 | — |
+| 4-bis-duodecies-decies | ✅ team DB | Il piano del lettore delle origini (D-G1) e del registro delle azioni di riga, con P-3 | §15.10 | 4-bis-duodecies-nonies |
+| 4-bis-duodecies-duodecies | ✅ **Tid** | Il via ai due pezzi del §15.10, `citato_in_fattura`, P-3 come da proposta; e i sette pgTAP del giro 10 (2026-10-27) | §15.10 | 4-bis-duodecies-decies |
+| 4-bis-duodecies-terdecies | ✅ team DB | Le origini (dalle righe fatturate, scostamento dichiarato) e il registro delle azioni di riga: `20261027-21` … `-25`, due pgTAP nuovi; provati in transazione | §15.11 | 4-bis-duodecies-duodecies |
+| 4-bis-duodecies-quaterdecies | ✅ **Tid** | Apply di `20261027-21` … `-25`, pgTAP verdi, nessuna regressione (2026-10-27) | §15.11 | 4-bis-duodecies-terdecies |
+| 4-bis-duodecies-sexdecies | ✅ **Tid** | Q-F7: la nota cita fattura e reso, e il DDT e l'ordine del reso; il via a P-F7 (2026-10-27) | §15.11 | 4-bis-duodecies-quaterdecies |
+| 4-bis-duodecies-septendecies | ✅ team DB | P-F7 scritto: `20261027-26`, il CSV delle sorgenti, un pgTAP nuovo; provato in transazione | §15.11 | 4-bis-duodecies-sexdecies |
+| 4-bis-duodecies-octodecies | ✅ **Tid** | Apply di `20261027-26` col CSV `sorgenti.csv`, pgTAP verdi, nessuna regressione (2026-10-27) | §15.11 | 4-bis-duodecies-septendecies |
+| 4-bis-duodecies-novodecies | **Tid** ⏭️ | Il commit del giro DB 11 (`20261027-01` … `-26`, CSV, pgTAP, doc, brief) | §15 | 4-bis-duodecies-octodecies |
+| 4-bis-duodecies-quindecies | team BE → FE | BE-1 … BE-3, poi FE-1 | §15.11.1, §15.11.2 | 4-bis-duodecies-quaterdecies |
+| 4-bis-duodecies-undecies | team BE | La richiesta del §15.8 (sette punti): il giro della pipeline dai verbi, il 403 dalla riga, le azioni ritirate | §15.8 | 4-bis-duodecies-octies |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
-| 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1, il blocco «origine» della stampa della fattura, da decidere nel giro della fattura; D-G2, la prova a video del lotto 2b | §10 | — |
-| 5-ter | **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, il censimento dei gate delle azioni per riga; quando, lo decide Tid | §12 | — |
+| 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1 ✅ deciso (c) nel giro 11 (§15.3); D-G2, la prova a video del lotto 2b | §10 | — |
+| 5-ter | ✅ **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, le azioni per riga: nel giro 11, con un pezzo standard (F-5, 2026-10-27); la forma del pezzo è Q-F5 | §12, §15 | — |
 
-Decisioni aperte di Tid: quando fare D-N1 (§12, riga 5-ter); il parametro `permission` del mapper delle azioni (§14.7). Da provare prima del commit: la revisione del §14.8 (suite non rilanciata). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Lavoro da committare: `dev/backend-tid`, il passaggio BE del giro 10 (§14.7) e questo brief. Committati: il giro DB 10 coi due passi per lo scratch da zero (PR #1962), il passaggio BE del giro 9 (§13.8, PR #1961), il giro DB 9 (`52e18d887`, PR #1960), il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`; il merge `2f5da4bed` ne aveva perso la tabella e il blocco «Chi riparte», ricomposti il 2026-10-26), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
+Decisioni aperte di Tid: il parametro `permission` del mapper delle azioni (§14.7). Da provare: la revisione BE del §14.8 (suite non rilanciata, secondo il brief). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Lavoro da committare: `dev/db-tid`, il giro DB 11: `20261027-01` … `-20` (§15.6, applicati su dbdev), i CSV, 16 pgTAP portati e uno nuovo, più i nove portati dopo la corsa su dbdev (§15.7); `20261027-21` … `-25` (§15.11, applicati su dbdev, verdi), due pgTAP nuovi; `20261027-26` e il CSV delle sorgenti (P-F7, applicati su dbdev, verdi), un pgTAP nuovo e uno aggiornato; le guide (modello, linee guida SQL), le pagine manuali e questo brief (§15). Committati: il passaggio BE del giro 10 (§14.7, §14.8, `7901c668a`, PR #1963), il giro DB 10 coi due passi per lo scratch da zero (PR #1962), il passaggio BE del giro 9 (§13.8, PR #1961), il giro DB 9 (`52e18d887`, PR #1960), il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`; il merge `2f5da4bed` ne aveva perso la tabella e il blocco «Chi riparte», ricomposti il 2026-10-26), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -2916,3 +2942,507 @@ stato della commessa (`smoke-test-ordini-giro-commessa.sh`, l'annullo) chiedeva 
   fatturazione: `"ACCETTATO"`, e `"EMESSO"`, che è l'emissione), `_STATI_FATTURABILI`, `_STATI_GENERA_PRATICA`;
   per l'offerta `StatoOfferta.ACCETTATA`. Proposta: una colonna come `emissione`, col suo lettore, per preventivi e
   offerte; poi il BE legge dal vocabolario, come per `rifiuta_stato_di_emissione` (§8.7).
+
+---
+
+## 15. Giro 11: la fattura al modello — ricognizione e domande (2026-10-27)
+
+Via di Tid alla ricognizione (2026-10-27), ordine dei giri di W-1. **Non** è ancora il via allo sviluppo: Tid
+chiede di chiarire prima i punti aperti (§15.4).
+
+### 15.1 Come lavora la fattura (Tid, 2026-10-27)
+
+La fattura non ha i pulsanti di processo degli altri documenti. **Il processo che muove gli stati è la gestione
+dei lotti**: i pulsanti stanno sul lotto (genera, numera, riporta in bozza, annulla), e da lì parte anche la stampa.
+Sulla fattura c'è solo la ristampa. Il giro quindi **non aggiunge un «Emetti» alla fattura**: porta al modello il
+lotto, e fa sì che le fatture lo seguano attraverso il verbo e non con un `UPDATE`. ⛔ Il processo dei lotti e della
+fattura (step, momenti, pulsanti), che sta nel backend, **non cambia** (Tid).
+
+### 15.2 Com'è oggi (doc auto-generata, CSV e `backend/`, 2026-10-27)
+
+**Quattro assi di stato**, non uno:
+
+| Asse | Dove | Valori | Chi lo scrive |
+| --- | --- | --- | --- |
+| Fiscale, del lotto | `fatturazione_lotti.stato_doc_fiscale_id` | vocabolario `config.stati_doc_fiscale` (DRAFT, EMESSA, DEFINITIVA, INVIATA, REGISTRATA, ANNULLATA), condiviso con la fattura | il runner BE con `UPDATE` (`pipeline_repository.update_lotto_stato_doc`); `fn_riporta_lotto_a_draft`, `fn_annulla_lotto_da_draft`, `fn_close_giornaliero_lotto` |
+| Fiscale, della fattura | `fatture.stato_doc_fiscale_id` | stesso vocabolario | `fn_sync_lotto_fatture_stato` (copia lo stato del lotto con `UPDATE`), `fn_numera_fattura_opz_emessa` (una fattura per volta, nello step numera), `fn_close_giornaliero_lotto` |
+| Job, del lotto | `fatturazione_lotti.stato_lotto` (testo + `CHECK`) | IN_ESECUZIONE, COMPLETATO, ERRORE | il runner BE con `UPDATE` (`set_lotto_job_stato`), **con i valori e i passaggi ricopiati in Python**; `vendite.fn_set_fatturazione_lotto_stato` è morta (solo due pgTAP) e ha una matrice che **dissente** (il BE ammette COMPLETATO → ERRORE, motivato nel commento; la funzione no) |
+| Operativo, del lotto | `fatturazione_lotti.stato_operativo` (testo + `CHECK`) | APERTO, CHIUSO | `fn_sync_lotto_fatture_stato` e `fn_close_giornaliero_lotto` (solo DB) |
+
+Più `fatturazione_lotti_fatture.stato_esecuzione` (avanzamento della singola fattura nel giro) e `stato_sdi_id`.
+
+**La matrice** `config.stati_doc_fiscale_transizioni` è una sola per lotto e fattura (`solo_lotto`, `solo_fattura`,
+e `meta.tipo_lotto` per il giornaliero). I due guard (`trgfn_fatturazione_lotti_guard_stato`,
+`trgfn_fatture_guard_stato`) la leggono già. Le righe con l'azione nel `meta` sono le tre manuali del lotto:
+`riporta_a_draft` (EMESSA → DRAFT), `numera` (EMESSA → DEFINITIVA), `annulla` (DRAFT → ANNULLATA).
+
+**Le azioni di processo che esistono già** (CSV `azioni_processo`), tutte controllate **solo** dal backend
+(`post_permission`):
+
+| Azione | Endpoint | Note |
+| --- | --- | --- |
+| `genera_fatture_lotti` | genera, rilancia | |
+| `numera_fatture_lotti` | numera (anche in coda, `FATTURAZIONE_NUMERA`) | «irreversibile» |
+| `reset_lotto_draft` | riporta il lotto in bozza | |
+| `reset_lotto_fattura_draft` | **toglie una fattura** pre-fiscale dal lotto | il nome è rimasto quello vecchio (la funzione DB è stata rinominata, URL e permesso no) |
+| `genera_fattura`, `approva_fattura`, `emetti_fattura` | nessuno | a catalogo, mai usate |
+
+**La fattura da sola.** Le righe `solo_fattura` della matrice (DRAFT → EMESSA, EMESSA → INVIATA/DEFINITIVA,
+DEFINITIVA → INVIATA, INVIATA → REGISTRATA) oggi le scrive solo la pipeline, fattura per fattura dentro il giro del
+lotto. **Nessuno scrive REGISTRATA**, e non c'è uno stato per lo scarto SDI: l'invio allo SDI non è ancora un
+processo (`fn_prepare_sdi_payload` prepara il tracciato, non registra l'esito).
+
+**Debiti nei corpi**, che il giro chiude senza bisogno di decisioni: i letterali `'EMESSA'` e `'INVIATA'` in
+`trgfn_fatture_guard_stato`, `fn_sync_lotto_fatture_stato` e `fn_numera_fattura_opz_emessa` (parametro di default);
+la «retrocessione» del giornaliero decisa confrontando `ordine`, mentre R-1 vuole avanti/indietro dal vocabolario.
+
+### 15.3 Decisioni di Tid (2026-10-27)
+
+| # | Domanda | Decisione |
+| --- | --- | --- |
+| F-0 / D-G1 | Il riquadro «origine» della stampa della fattura, che esce sempre vuoto (§10) | ✅ **(c)**: l'elenco dei documenti d'origine, letto dalle righe (`fatture_righe.sorgente_tipo_id`, `sorgente_uid`), es. «Rif.: DDT 12, DDT 15, Commessa 7» |
+| F-1 | La fattura cambia stato anche da sola, senza il lotto? | ✅ **Sì** (es. l'esito dello SDI): serve anche il verbo della singola fattura, non solo quello del lotto |
+| F-2 | Il permesso dei pulsanti del lotto | ✅ Chi gestisce il lotto deve avere l'azione per **numerare**, e la stessa per **riportare in bozza**; nome proposto da Tid `numera_fattura`. Le azioni mai usate (`genera_fattura`, `approva_fattura`, `emetti_fattura`) si **ritirano** |
+| F-3 | La fattura ha un annullo suo? | ✅ **No**: una fattura numerata si storna con la nota di credito; prima della numerazione la si toglie dal lotto |
+| F-4 | Lo stato del job (`stato_lotto`) | ✅ **Si allinea al DB**: una regola sola, nessuna copia nel backend. ⛔ Il processo dei lotti e della fattura non cambia |
+| F-5 / D-N1 | Le azioni per riga | ✅ Si correggono nel giro, ma **con un pezzo standard**: quando si passa agli altri documenti non si deve rimodificare niente |
+
+### 15.4 Da chiarire con Tid prima dello sviluppo
+
+* **Q-F1, il nome dell'azione (F-2).** Esiste già `numera_fatture_lotti` («irreversibile»), chiesta oggi da numera.
+  Proposta: **si tiene quella**, senza un nome nuovo (`numera_fattura` sarebbe un doppione, e chi ha già il
+  permesso nei profili lo perderebbe). Il «riporta in bozza» passa alla stessa azione e `reset_lotto_draft` si
+  ritira.
+* **Q-F2, gli altri pulsanti del lotto.** Restano da dire: **genera** e **rilancia** (`genera_fatture_lotti`, oggi
+  separata), l'**annullo del lotto in bozza** (riga 11: proposta, solo il permesso sui lotti, perché non c'è niente
+  di fiscale da disfare) e **togli la fattura dal lotto** (`reset_lotto_fattura_draft`: resta, ed è un'azione di
+  riga, Q-F5). Proposta: `genera_fatture_lotti` resta com'è (è la produzione, non un passaggio di stato pesante).
+* **Q-F3, la fattura da sola (F-1).** Oggi nessuno la fa muovere da sola, e lo stato dello scarto SDI non esiste.
+  Proposta: il giro scrive **il verbo della fattura** sulle righe `solo_fattura` che ci sono (chiamato dalla
+  pipeline al posto degli `UPDATE`), **senza** stati nuovi; l'esito dello SDI (registrata, scartata) lo aggiunge il
+  cantiere dell'invio allo SDI, sulla matrice e sul verbo già pronti.
+* **Q-F4, quali stati del lotto rientrano in F-4.** Proposta: lo stato del **job** (`stato_lotto`) prende una matrice
+  in tabella e un verbo DB unico scrittore (la regola del backend, COMPLETATO → ERRORE compreso, perché è quella
+  motivata); il runner chiama il verbo nei punti in cui oggi fa l'`UPDATE`, negli stessi momenti; la copia Python
+  si ritira, la funzione morta si riscrive o si ritira. Lo stato **operativo** (APERTO/CHIUSO) lo scrive già solo il
+  DB: fuori, salvo che Tid lo voglia dentro. Resta un `CHECK` sui testi o diventa un vocabolario come gli altri? Il
+  team DB propone il vocabolario, perché la matrice in tabella ha bisogno di id.
+* **Q-F5, il pezzo standard delle azioni per riga (F-5).** La forma per azione c'è già (linee guida SQL §12.5:
+  `script.fn_check_<azione>`, colonna di blocco nella vista di riga, FE `disabled` + `tooltip`). Manca ciò che la
+  rende ripetibile senza rimetterci mano: proposta del team DB, da discutere —
+  1. un **registro** delle azioni di riga (azione, vista che la espone, colonna di blocco, funzione di check, azione
+     di processo che la permette): è il censimento del §12.5.6, scritto una volta;
+  2. un **presidio pgTAP** che per ogni riga del registro verifica che la vista abbia la colonna e che la funzione
+     esista ed emetta il motivo;
+  3. **un BB FE** che costruisce il pulsante di riga leggendo colonna di blocco e motivo, al posto dei 44 componenti
+     che oggi lo fanno a mano (lato FE, richiesta al team).
+
+  Nel giro: le azioni di riga del lotto (togli la fattura, e quelle del drawer del lotto) passano per il registro;
+  gli altri documenti si iscrivono quando arriva il loro turno, senza toccare il pezzo comune.
+* **Q-F6, D-G1 (c) nel dettaglio.** La testata ha anche un suo `sorgente_tipo_id`/`sorgente_uid`: proposta,
+  l'elenco si legge **solo** dalle righe (una sede), distinti per documento, nell'ordine delle righe; la testata non
+  si aggiunge. Il lettore lo scrive il DB (nome dal lineage, come la finestra dell'annullo), il BE lo porta in
+  `get_fattura_testata`, il modello di stampa lo mostra.
+* **La nota di credito: non è una domanda.** L'accredito di un reso (`fn_accredita_riga_reso`) scrive solo la
+  riga di commessa negativa: «il documento NON nasce qui: nasce nel giro di fatturazione». La nota passa quindi dallo
+  stesso lotto e dalla stessa matrice, e il giro la copre senza lavoro in più (letto il 2026-10-27).
+
+✅ **Tid, 2026-10-27: Q-F1 … Q-F6 confermate come da proposta.** Il piano qui sotto le applica.
+
+### 15.5 Il piano
+
+Letto il 2026-10-27 sulla doc auto-generata, sui CSV e su `backend/`/`frontend/`. Già pronto dai giri prima: la
+mappa del modello (`script.fn_doc_stato_modello`) conosce **già** `vendite.fatture` e `vendite.fatturazione_lotti`,
+col filtro `solo_lotto`/`solo_fattura` sulla matrice condivisa; il verbo comune (`fn_doc_stato_id`,
+`fn_guard_passaggio`, `fn_doc_scrivi_stato`) e la porta (`trgfn_doc_stato_solo_dal_verbo`) servono così come sono.
+
+| Pezzo | Che cosa |
+| --- | --- |
+| matrice fiscale | colonna `azione_processo_codename` su `config.stati_doc_fiscale_transizioni` (FK al catalogo; senza, `fn_doc_passaggio` rifiuta la testata). CSV: `numera_fatture_lotti` sulle righe 3 (numera) e 2 (riporta in bozza), Q-F1; riga 11 (annullo della bozza) senza azione, Q-F2. ⚠️ `manuale` si legge da `meta` con **default true**: le righe di processo (1, 5 del lotto; 6 … 10 della fattura) oggi hanno `meta = {}` e risulterebbero manuali; il CSV le dichiara `"manuale": false`. Mirror con la colonna (⚠️ `nullValue`) |
+| catalogo azioni | `genera_fattura`, `approva_fattura`, `emetti_fattura` (F-2) e `reset_lotto_draft` (Q-F1) ritirate nel CSV. ⚠️ Se un profilo le ha, il guard ATTIVO ferma il migrate (come IN_ESECUZIONE nel §14.4): passo a mano prima, su dbdev; chi ha `reset_lotto_draft` riceve `numera_fatture_lotti` (dato, Tid), altrimenti perde il «riporta in bozza» |
+| verbo del lotto | `vendite.fn_cambia_stato_lotto(id, stato)` sul verbo comune, DEFINER col predicato del perimetro: i passaggi manuali (numera, riporta in bozza, annulla); dopo il lotto, le fatture lo seguono dal verbo della fattura |
+| verbo della fattura | `vendite.fn_cambia_stato_fattura(id, stato)`, stesso schema, sulle righe `solo_fattura` (F-1, Q-F3): nessuno stato nuovo, l'esito SDI arriva col suo cantiere |
+| passaggi di processo | chi è la causa scrive con `fn_doc_scrivi_stato` e basta (regola del verbo comune): `fn_sync_lotto_fatture_stato`, `fn_numera_fattura_opz_emessa`, `fn_close_giornaliero_lotto`, `fn_riporta_lotto_a_draft`, `fn_annulla_lotto_da_draft`. Lo step della pipeline che oggi il runner scrive con `UPDATE` (`update_lotto_stato_doc`) passa a una funzione DB di processo (nome nel giro), chiamata **negli stessi momenti**: il processo non cambia (F-4) |
+| porte | `trgfn_doc_stato_solo_dal_verbo` `_a05_` su `vendite.fatture` e `vendite.fatturazione_lotti`. Da censire nel giro: la GUC di manutenzione `zeroerp.maintenance_reset_lotto_draft`, che oggi scavalca il guard del lotto |
+| stato del job | vocabolario degli stati del job (IN_ESECUZIONE, COMPLETATO, ERRORE) e matrice in tabella con la regola del backend (COMPLETATO → ERRORE compreso, Q-F4); `fn_set_fatturazione_lotto_stato` riscritta su quella matrice e unica scrittrice, con la porta; la copia Python (`set_lotto_job_stato`) si ritira. Lo stato operativo resta fuori |
+| debiti dei corpi | `'EMESSA'`, `'INVIATA'` dal vocabolario; la «retrocessione» del giornaliero da `congela_fiscale` e non da `ordine` (R-1) |
+| capability | `fn_available_actions_lotto`: permesso ⇒ nascondi, letto dalla riga del passaggio (oggi il FE tiene la sua mappa azione → permesso, `LOTTO_AZIONE_PERMESSO`: è una copia, si ritira) |
+| azioni di riga (Q-F5) | registro delle azioni di riga, presidio pgTAP sul registro, iscritte le azioni di riga del lotto («togli dal giro», `reset_lotto_fattura_draft`: la sede in riga c'è già); richiesta FE per il BB del pulsante di riga |
+| origine (Q-F6) | lettore DB dei documenti d'origine di una fattura, dalle righe, distinti, nell'ordine delle righe, nome dal lineage |
+| fixture | 11 pgTAP scrivono lo stato di fattura o lotto con `UPDATE` diretto (letto il 2026-10-27): al verbo o a `dbops.fn_pgtap_porta_a_stato` |
+| guida | modello §10 (riga della fattura; le azioni a catalogo sistemate), guida della fatturazione, pagine manuali |
+
+**Due scelte tecniche, che il team DB propone (Tid le può cambiare):**
+
+* **P-1, la colonna dello stato del job.** Il vocabolario ha un id come gli altri; la colonna del lotto resta il
+  **codice** (`stato_lotto`), con una FK sul codice del vocabolario. La garanzia è la stessa (nessun valore fuori
+  vocabolario), il codice è la chiave naturale e i lettori in DB, BE e FE non si toccano. L'alternativa (colonna
+  `stato_lotto_id`) è più uniforme ma riscrive ogni lettore, per lo stesso risultato.
+* **P-2, «numera» è asincrona.** Il pulsante accoda un lavoro (`FATTURAZIONE_NUMERA`), e la scrittura la fa il job,
+  non l'utente. Il permesso si chiede **quando l'utente preme** (403 dalla riga del passaggio, come gli altri
+  documenti); il job scrive come passaggio di processo, di cui è la causa. Così il job non ha bisogno del permesso
+  dell'utente.
+
+**Richiesta al BE** (col percorso intero, a giro DB provato): il 403 dalla riga del passaggio (`PassaggioDocumento`)
+su numera e riporta in bozza, al posto dei `post_permission`; il runner chiama le funzioni DB dello stato fiscale e
+del job al posto degli `UPDATE`, negli stessi punti; si ritira la copia della matrice del job; `get_fattura_testata`
+porta l'elenco delle origini e il modello di stampa lo mostra; test e doc. **Al FE:** si ritira `LOTTO_AZIONE_PERMESSO`;
+il BB del pulsante di riga che legge il registro.
+
+### 15.6 Scritto (2026-10-27): lo stato di lotto e fattura al modello
+
+Via di Tid allo sviluppo (2026-10-27, «si ok procedi», con P-1 e P-2). Scritto e provato in transazione sullo
+scratch; **non applicato**. Il registro delle azioni di riga (Q-F5) e il lettore delle origini (Q-F6) **non sono
+scritti**: la ricognizione ha smentito una premessa di ciascuno, e tornano a Tid (§15.9).
+
+| ChangeSet / file | Che cosa |
+| --- | --- |
+| `20261027-01` (00_schema) | colonna `azione_processo_codename` su `config.stati_doc_fiscale_transizioni`, FK al catalogo |
+| CSV `stati_doc_fiscale_transizioni`, mirror `20260210-01` | `numera_fatture_lotti` sulle righe 2 (riporta in bozza) e 3 (numera), Q-F1; `manuale` dichiarato su ogni riga (`false` sulle righe di processo 1, 4, 5 e 6 … 10, che il lettore leggeva come manuali per default); il mirror passa a `nullValue: "NULL"` col token nelle celle |
+| CSV `azioni_processo` (id 2, 3, 4, 6, 27) | ritirate `genera_fattura`, `approva_fattura`, `emetti_fattura`, `reset_lotto_draft` (`attivo = false`); la descrizione di `numera_fatture_lotti` dice anche «riporta in bozza» |
+| `-02` (00_schema) | `config.stati_lotto_job` (vocabolario, `codice_interno` UNIQUE) e `config.transizioni_stati_lotto_job` (la matrice, CHECK da ≠ a) |
+| `-03`, `-04` (80_data), CSV | i tre stati del job e i cinque passaggi del backend (COMPLETATO → ERRORE compreso) |
+| `-05` (90_end) | FK `fk_fatturazione_lotti_stato_lotto` sul codice (P-1) al posto del CHECK `chk_fatturazione_lotti_stato_job`; in 90_end perché valida i lotti che ci sono, dopo il seed |
+| `-06` | `vendite.trgfn_fatturazione_lotti_guard_stato_job` (BEFORE UPDATE OF `stato_lotto`): la sola regola dei passaggi del job |
+| `-07` | DROP `vendite.fn_set_fatturazione_lotto_stato` (morta, in disaccordo col backend) |
+| `-08` | `vendite.fn_cambia_stato_lotto(id, stato)`: il verbo dei passaggi manuali del lotto, sul verbo comune, DEFINER |
+| `-09` | `vendite.fn_lotto_proietta_stato_step(id, stato_id)`: il giro della pipeline porta il lotto allo stato dello step (processo: stato di uno step della pipeline del suo tipo, mai lo stato iniziale) |
+| `-10` | `vendite.fn_fattura_proietta_stato(id, stato_id)`: il verbo della fattura (F-1, Q-F3), di processo; rifiuta un passaggio manuale |
+| `-11` … `-13` | sync, numerazione, chiusura del giornaliero scrivono lo stato dai verbi (`-09`, `-10`), una fattura per volta |
+| `-14`, `-15` | «riporta in bozza» e l'annullo chiamano il verbo del lotto dopo la pulizia; lo stato iniziale e quello d'annullo dal vocabolario (`iniziale`, `fn_stato_abortito_id`) |
+| `-16` | `trgfn_fatture_guard_stato`: via la «retrocessione GIORNALIERO» decisa da `ordine` (R-1), già coperta dalla matrice |
+| `-17`, `-18` | la porta su `vendite.fatture` e `vendite.fatturazione_lotti` |
+| `-19` | `script.fn_available_actions_lotto`: permesso ⇒ nascondi, dalla riga del passaggio |
+| `-20` | `dbops.fn_pgtap_porta_a_stato`: fattura e lotto coi loro verbi, anche sui passaggi di processo |
+| CSV `stati_check_dichiarazioni` | due righe ESENTE: `fatturazione_lotti.stato_operativo = ERRORE` (nessuno lo scrive; il presidio lo vedeva per coincidenza nella funzione ritirata) e `fatturazione_lotti_fatture.stato_esecuzione = ERRORE` (scritto dalla sync attraverso `fn_resolve_stato_esecuzione`) |
+| doc | guida del modello (§7 la forma della fattura, §10 la riga e l'intro, le azioni ritirate, lo stato del job); guida della fatturazione; pagine manuali nuove di `-06`, `-08`, `-09`, `-10` e delle due tabelle; tolta quella della funzione ritirata |
+
+**Scostamenti dal piano del §15.5, dichiarati.**
+* **Lo stato del job: un guard, non un verbo.** Il piano diceva «`fn_set_fatturazione_lotto_stato` riscritta e unica
+  scrittrice». Leggendola, fa una cosa in più del backend: riscrive lo `stato_esecuzione` delle fatture del lotto.
+  Farne lo scrittore avrebbe cambiato il processo (F-4 lo vieta). Quindi la regola sta in un guard sulla colonna, che
+  giudica ogni scrittura, il runner tiene il suo `UPDATE` e ritira la sua copia della regola; la funzione si ritira.
+* **«Il verbo della fattura» è di processo.** Oggi tutti i passaggi della fattura sono di processo: un verbo con la
+  prima riga (permesso) non avrebbe un passaggio da fare. Il verbo con la prima riga nascerà quando l'esito SDI
+  porterà passaggi manuali.
+* **«Riporta in bozza» su un lotto già in bozza** fa la sola pulizia, come prima: lì non c'è passaggio, quindi
+  niente permesso dalla riga (il backend chiede il permesso sul documento).
+* **Debiti che restano, dichiarati**: i letterali `'EMESSA'` (cancello all'emissione di `trgfn_fatture_guard_stato`,
+  default di `fn_numera_fattura_opz_emessa`) e `'INVIATA'` (chiusura del giornaliero nella sync): nessuna colonna
+  del vocabolario fiscale dice «lo stato dell'emissione» o «lo stato dell'invio», e aggiungerla è una scelta sul
+  vocabolario, non un ritocco. Il §15.2 li dava per chiusi nel giro: non lo sono.
+* **Fatto da sapere su P-2**: i lavori della coda girano con l'identità dell'operatore che li ha accodati
+  (`operator_identity_context`), quindi il job il permesso lo avrebbe. P-2 resta giusto per il batch notturno, che
+  non ha un operatore; la scelta non cambia.
+
+### 15.7 Prova e regressione (2026-10-27)
+
+Sullo scratch `zeroerp_ruoli` (owner), l'SQL estratto dei changeSet dopo la riga `BEGIN;` di ogni pgTAP, col seed
+dei CSV simulato (il loader di Liquibase, `nullValue` compreso, si prova solo all'apply).
+
+* **279 pgTAP che nominano lotti, fatture, la matrice fiscale o le azioni**, prima e dopo: verdi 225 prima, 217
+  dopo; 9 file cambiano esito, tutti spiegati e portati: 6 scrivevano lo stato con un `UPDATE` (ora dai verbi, attese
+  invariate), il presidio del verbo comune (porta su 9 testate; il documento «non ancora portato» diventa l'ordine
+  d'acquisto, fuori mappa), il presidio degli stati del CHECK (le due righe ESENTE), il presidio dei lock (la tabella
+  nuova `config.stati_lotto_job` chiede il lock del codice: lo monta `ci_apply`, rosso solo prima). Dopo il porting i
+  9 sono verdi, tranne i 2 «rossi da owner» di sempre del verbo comune.
+* **Il pgTAP nuovo** `vendite/test-fattura-lotto-al-modello-v1` (22 test): 21/22; il 4 (le azioni ritirate) legge il
+  CSV e diventa verde solo dopo il migrate.
+* ⚠️ **Sette pgTAP del censimento si fermano presto già prima** (fixture che prendono cliente o utility dai dati:
+  `test-stati-doc-transizioni-giornaliero`, `test-fn-list-emittibili-lane`, `test-fatture-righe-importo-e-kit-v1`,
+  `test-annulla-lotto-non-riscrive-stato-v1`, `test-lotti-attivita-stato-esecuzione-v2`,
+  `test-fatture-log-trigger-sync`, `test-lotti-gruppi-esito`): sullo scratch non arrivano alle righe che il giro
+  tocca, quindi la misura non le vede. Li ho portati leggendoli (gli `UPDATE` dello stato ai verbi; la funzione
+  ritirata alla scrittura del runner e al BB `fn_resolve_stato_esecuzione`); la prova vera è la corsa di Tid su
+  dbdev. Attese cambiate, dichiarate in testa ai file: `test-lotti-attivita-stato-esecuzione-v2` (7, 8, 10, 12) e
+  `test-stati-doc-transizioni-giornaliero` (3, da «qualunque errore» al messaggio del guard).
+* **Rossi solo prima del migrate**, perché leggono il CSV di `azioni_processo`: il 4 del pgTAP nuovo e il 30 di
+  `script/test-permessi-funzioni-risoluzione` (attesa cambiata: `reset_lotto_draft` spenta).
+  `config/test-permessi-user-overrides` usava `approva_fattura` per il suo override di prova: ora
+  `numera_fatture_lotti`.
+* **I presidi trasversali** di `dbops/`, `script/`, `config/` fuori dal censimento (202 file), prima e dopo: 186 verdi
+  in entrambe le corse, nessun file cambia esito.
+
+⚠️ **Su dbdev, PRIMA del migrate, un passo a mano (Tid).** Spegnere le quattro azioni lo rifiuta il guard di
+disattivazione: i profili e un utente le hanno ancora (provato su dbdev in transazione annullata il 2026-10-27:
+`config.profili_accesso_azioni` le lega ai profili 1-4, 9221, 9222; `config.user_override_azioni` ha tre righe
+dell'utente 6). Chi oggi «riporta in bozza» con `reset_lotto_draft` deve avere `numera_fatture_lotti` (letto: il solo
+profilo che l'ha abilitata, il 9222, ha già anche `numera_fatture_lotti`). Il passo:
+
+```sql
+BEGIN;
+-- chi aveva reset_lotto_draft abilitata riceve numera_fatture_lotti abilitata
+UPDATE config.profili_accesso_azioni pn SET abilitata = true
+  FROM config.profili_accesso_azioni pr
+  JOIN config.azioni_processo r ON r.id = pr.azione_id AND r.permission_codename = 'reset_lotto_draft'
+ WHERE pr.abilitata AND pn.profilo_accesso_id = pr.profilo_accesso_id
+   AND pn.azione_id = (SELECT id FROM config.azioni_processo WHERE permission_codename = 'numera_fatture_lotti');
+-- poi i legami alle quattro azioni ritirate
+DELETE FROM config.user_override_azioni
+ WHERE azione_id IN (SELECT id FROM config.azioni_processo
+                      WHERE permission_codename IN ('genera_fattura','approva_fattura','emetti_fattura','reset_lotto_draft'));
+DELETE FROM config.profili_accesso_azioni
+ WHERE azione_id IN (SELECT id FROM config.azioni_processo
+                      WHERE permission_codename IN ('genera_fattura','approva_fattura','emetti_fattura','reset_lotto_draft'));
+COMMIT;
+```
+
+In CI non serve: il database nasce da zero e nessun seed lega profili alle azioni.
+
+**Due rossi di dbdev, dopo l'apply (Tid, 2026-10-27), corretti nel test.**
+`test-lotti-attivita-stato-esecuzione-v2` 9 e 10: il porting aveva tolto la scrittura del ponte che la funzione
+ritirata faceva, e il lotto non era più fermo; il test ora scrive il ponte col BB della mappatura prima del 9. Il guard
+del COMPLETATO è intatto. `test-fn-list-emittibili-lane`: si fermava sul verbo della commessa (giro 10) per
+`E_PERMESSO_NEGATO`; il test ora concede `cambia_stato_commessa` all'operatore. Altri sette pgTAP del giro 10
+chiamavano quel verbo senza concederla: portati allo stesso modo col via di Tid (2026-10-27) —
+`test-fn-list-commesse-emittibili-fatturazione-immediata-v1`, `test-tipo-movimento-colonna-v1`,
+`test-vw-af-merce-per-riga-v1`, `test-porta-oneri-giro-completo-v1`, `test-porta-oneri-contatore-cieco-v1`,
+`test-fn-available-actions-commessa-v1`, `test-fn-emit-attivita-propaga-audit-pricing-v1`.
+
+⚠️ **`test-fn-available-actions-commessa-v1`, terzo rosso di dbdev (Tid, 2026-10-27): la concessione era nel posto
+sbagliato.** Il test 2 (BOZZA: `{annulla, rendi_pronta}`) vedeva `{annulla}`: dal `20261026-35`
+`fn_available_actions_commessa` **nasconde** il passaggio a chi non ha l'azione, e la concessione arrivava dopo, solo
+prima del verbo. Spostata nel setup, prima dei test di BOZZA: le capability si misurano su chi può agire. Negli altri
+sette file nessuna lettura di capability precede la concessione (grep, 2026-10-27).
+**Perché la regressione non l'ha visto**: sullo scratch tutti e otto i file si fermano nel setup
+(`p_billing_account_id` nullo: lo scratch non ha un billing account con emittente), prima e dopo. Rosso uguale = nessuna
+differenza, ma nessuna misura: questi otto si verificano **solo su dbdev**.
+
+**Altri quattro rossi di dbdev (corsa di Tid, 2026-10-27), corretti nel test, attese invariate.** Nessuno era
+nel censimento.
+
+* `test-available-actions-lotto-v1`, effetto del `-19` (permesso ⇒ nascondi): il file sceglie lotti veri di dbdev
+  e legge la capability con l'operatore del test, che non ha `numera_fatture_lotti`. Da EMESSA l'8 vedeva `{}` al
+  posto di `{numera, riporta_a_draft}`, e il 9 un `enabled` nullo. La concessione ora sta prima dei test di stato. Il
+  censimento non l'ha visto perché il file non scrive lo stato: lo legge.
+* Tre pgTAP **del giro 8**, rimasti indietro: attivavano il contratto con un `UPDATE` diretto, che la porta ferma
+  (`Lo stato del documento Contratto … si cambia solo dalle sue operazioni`). Ora passano da
+  `dbops.fn_pgtap_porta_a_stato` (che concede `emetti_contratto`).
+  * `test-fn-resolve-prezzo-listino-v2-v1` e `test-fn-resolve-prezzo-listino-v2-classe-da-contratto-v1`: il §11.5
+    li dava «tronchi già prima del giro, uguali dopo», quindi nessuno li aveva portati. Su dbdev arrivano fino alla
+    porta: se dopo il porting si fermano più avanti, è il troncamento di prima e va guardato a parte.
+  * `test-bozza-non-operativa-e-preview-contratto-v1`, **mancato dal censimento del giro 8**: la fixture di
+    PGTAP_MX_CNT passa da `fn_pgtap_porta_a_stato`. Il 3, l'attivazione rifiutata con un listino che ha solo la
+    bozza, chiama il verbo `vendite.fn_cambia_stato_contratto` con `emetti_contratto` concessa (senza, il rifiuto
+    sarebbe quello del permesso): stessa attesa, perché il rifiuto lo dà il guard di transizione che il verbo
+    attraversa.
+
+### 15.8 Richiesta al team BE (elenco chiuso, dopo l'apply)
+
+Percorso letto il 2026-10-27: `pipeline_runner._execute_pipeline_step`, `pipeline_repository.update_lotto_stato_doc`
+e `set_lotto_job_stato`, le view del lotto (`ApiResetLottoDraft`, `ApiRiportaLottoADraft`, le due di numera), il
+frontend (`useLottoAzioni.js`, `LottoDrawer.vue`), i test Django che li toccano. **Dopo l'apply il giro della
+pipeline si rompe** (punto 1): la porta non lascia passare l'`UPDATE` dello stato del lotto.
+
+1. **Lo stato dello step**: `update_lotto_stato_doc` chiama `vendite.fn_lotto_proietta_stato_step(lotto_id,
+   stato_doc_fiscale_id)`, nello stesso punto di `_execute_pipeline_step`. Nient'altro cambia nel runner.
+2. **Lo stato del job**: `set_lotto_job_stato` tiene il suo `UPDATE` (stessi momenti, stessa nota in `meta`) e ritira
+   la sua copia della regola (l'elenco dei tre valori e i passaggi ammessi): la dice il guard, con
+   `E_LOTTO_PARAMETRO_NON_COERENTE` (parametro `transizione_stato_lotto`); un valore fuori vocabolario lo rifiuta la FK.
+   Resta il no-op sullo stesso stato, se serve al runner.
+3. **Il 403 dalla riga del passaggio** (`PassaggioDocumento`): «riporta in bozza» (`ApiRiportaLottoADraft`) e
+   «numera» (le due view con `post_permission = "numera_fatture_lotti"`) chiedono l'azione della riga
+   (`numera_fatture_lotti`); l'annullo della bozza (`ApiResetLottoDraft`) solo il permesso sul documento (Q-F2).
+   Via i `post_permission = "reset_lotto_draft"`.
+4. **Le azioni ritirate**: nessun riferimento a `reset_lotto_draft`, `genera_fattura`, `approva_fattura`,
+   `emetti_fattura` come permesso (il task di pipeline `reset_lotto_draft` è un altro nome e resta).
+5. **Frontend**: si ritira `LOTTO_AZIONE_PERMESSO` per `numera`, `riporta_a_draft`, `annulla` (il permesso lo dice
+   la capability, che nasconde il bottone); restano i tre verbi della pipeline che il DB non espone (`avanza_step`,
+   `rigenera_bozza`, `rilancia_step`, con `genera_fatture_lotti`).
+6. **Test Django** che scrivono lo stato di lotto o fattura con un `UPDATE`, usano `fn_set_fatturazione_lotto_stato`
+   o `reset_lotto_draft` (`test_reset_lotto_draft_api.py`, `test_pipeline_repository.py`, `test_pipeline_runner.py`,
+   `test_pipeline_step_executor.py`, `core/tests/api/test_permissions.py`): ai verbi e alle azioni nuove.
+7. **Doc** delle API del lotto: i permessi per passaggio.
+
+Da sapere: nessun codice d'errore nuovo. Il D-G1 (il riquadro «origine» della stampa) non è in questa richiesta:
+aspetta la risposta del §15.9.
+
+### 15.9 Due premesse smentite dalla ricognizione: tornano a Tid
+
+* **Q-F6, le origini della fattura (D-G1 = c).** La proposta diceva «l'elenco si legge dalle righe». Le righe di
+  fattura **non portano la sorgente**: `fatture_righe.sorgente_tipo_id` è nullable e la pipeline non la scrive (letto
+  il 2026-10-27, struttura e dbdev); il legame passa dalle attività fatturabili (`attivita_fatturabili.fattura_riga_id`)
+  alla commessa, e da lì ai documenti a monte. Il lineage della fattura, all'indietro, dà **la commessa**. La domanda:
+  sulla carta, «origine» è
+  (a) la commessa (il primo passo del lineage), o
+  (b) i documenti commerciali a monte della commessa (DDT, ordine, contratto, preventivo…), risalendo il lineage oltre
+  la commessa, che per il cliente è un contenitore interno, o
+  (c) tutti e due.
+  Consiglio del team DB: **(b)**. Il cliente riconosce la bolla o l'ordine, non la commessa; ed è la forma della
+  fattura elettronica, che cita i DDT, l'ordine d'acquisto e il contratto.
+* **Q-F5, il registro delle azioni di riga.** La proposta diceva «la vista che la espone, la colonna di blocco».
+  L'unica azione di riga del lotto, «togli dal giro», prende il motivo del blocco da una `fn_check` (giusto), ma la
+  colonna di riga la compone **il backend**, in una query del repository (`pipeline_repository`,
+  `uscita_blocco_reason`): non c'è una vista DB da registrare. La domanda: nel giro si porta quella composizione in
+  una vista DB (il backend la legge da lì, come vuole la regola del §12.5), e il registro nasce con la vista come
+  superficie; oppure il registro ammette anche una superficie del backend (un nome, non verificabile dal presidio).
+  Consiglio del team DB: **la vista DB**. Altrimenti il presidio del registro non può verificare la superficie, cioè
+  proprio la parte che si dimentica.
+
+✅ **Tid, 2026-10-27: Q-F6 = (b), i documenti a monte; Q-F5 = la vista DB.** Il piano dei due pezzi è al §15.10.
+
+### 15.10 Il piano dei due pezzi rimasti (2026-10-27; ✅ Tid: via, nome della colonna e P-3 come da proposta)
+
+**Le origini (Q-F6 = b).** Il lineage all'indietro risale già oltre la commessa (`vendite.fn_documento_lineage`, fino
+a 10 livelli; il registro dei tipi è `config.sorgenti`). Manca **chi dice quali tipi si citano** in fattura: oggi
+nessuna colonna di `config.sorgenti` distingue un documento commerciale (DDT, ordine, contratto…) da un contenitore
+interno (la commessa, le attività). Scriverlo come elenco di codici nel lettore è il letterale che il modello vieta.
+
+| pezzo | cosa |
+| --- | --- |
+| vocabolario | `config.sorgenti.citato_in_fattura boolean NOT NULL DEFAULT false` (nome da confermare), `true` su DDT, ordine, contratto, offerta, preventivo; `false` su commessa, attività e righe. Il CSV di `sorgenti` col mirror |
+| lettore | `vendite.fn_fattura_origini(p_fattura_id)`: dal lineage all'indietro, i nodi con `citato_in_fattura`, distinti, ordinati per livello e poi per codice; restituisce tipo, uid, codice, etichetta, data del documento |
+| presidio | pgTAP: una fattura da commessa che nasce da un ordine e da un DDT cita i due e non la commessa; una fattura senza documenti a monte non cita nulla |
+| BE | richiesta: la stampa e il dettaglio della fattura leggono le origini dal lettore |
+
+**P-3 (da decidere).** Per una fattura che nasce da più commesse, le origini sono **l'unione**: ogni documento una
+volta sola. La fattura elettronica ammette più riferimenti per tipo, quindi l'unione non perde nulla.
+
+**Il registro delle azioni di riga (Q-F5 = vista DB).** La colonna di blocco di «togli dal giro» la compone oggi il
+repository del backend (`vendite_repository`, la query dei gruppi del lotto: `uscita_blocco_reason`,
+`uscita_blocco_reason_key`, `n_trascinati`, dalla `fn_check_documento_escludibile_da_giro`).
+
+| pezzo | cosa |
+| --- | --- |
+| vista | `vendite.vw_lotti_gruppi_azioni`: una riga per (lotto, gruppo), con le colonne di blocco dell'azione e `n_trascinati`, le stesse espressioni di oggi |
+| registro | `config.azioni_riga` (azione, vista superficie, colonna motivo, colonna chiave del motivo, `fn_check` che la madre chiama per rifiutare); prima riga «togli dal giro» |
+| presidio | pgTAP sul registro: ogni riga ha la vista, le due colonne e la `fn_check` vive; e la vista chiama la stessa `fn_check` della madre (dal viewdef) |
+| BE | richiesta: la query dei gruppi legge le colonne dalla vista e smette di comporle |
+| FE | richiesta: il pulsante di riga legge motivo e chiave dalle colonne nominate dal registro (un BB, non un pulsante per azione) |
+
+`reset_lotto_fattura_draft` (l'altra azione per riga del lotto) si iscrive nel registro solo se ha già una sede in
+riga; se non ce l'ha, resta fuori dal giro e si annota.
+
+### 15.11 Scritto (2026-10-27): le origini e il registro delle azioni di riga
+
+Provato in transazione sullo scratch (`zeroerp_ruoli`, giro 11 già applicato) e, per il lettore e la vista, sui dati di
+dbdev con una copia `pg_temp` in transazione annullata. **Applicato su dbdev** (Tid, 2026-10-27; `databasechangelog`
+letto lo stesso giorno): pgTAP verdi, compresi il presidio dei lock dopo il migrate e gli otto file della
+concessione rossi sullo scratch (§15.7); nessuna regressione.
+
+| changeSet | cosa |
+| --- | --- |
+| `00_schema/config/20261027-21` | `config.sorgenti.citato_in_fattura boolean NOT NULL DEFAULT false`; i valori nel CSV `sorgenti.csv` (mirror `20251002-21`, colonna aggiunta in place) |
+| `20_code/vendite/20261027-22` | `vendite.fn_fattura_origini(p_fattura_id)`, INVOKER, STABLE |
+| `00_schema/config/20261027-23` | `config.azioni_riga`, il registro |
+| `20_code/vendite/20261027-24` | `vendite.vw_lotti_gruppi_azioni`, security_invoker, GRANT SELECT all'app |
+| `80_data/changelog/20261027-25` | seed del registro dal CSV `azioni_riga.csv`: `ESCLUDI_DOCUMENTO_DA_GIRO` |
+
+pgTAP nuovi: `vendite/test-fattura-origini-v1` (10/10) e `config/test-azioni-riga-registro-v1` (7/7; provato anche
+contro un registro sbagliato: rossi i test 3, 5 e 6). Regressione sullo scratch, prima e dopo l'SQL del giro (365 file: i
+presidi trasversali e ogni pgTAP che tocca lineage, `config.sorgenti`, perimetro ed esiti dei lotti): **nessun file
+cambia esito** (294 verdi prima e dopo). Unico rosso nuovo, atteso: `dbops/test-lock-columns-convergenza` test 4
+(`config.azioni_riga CREA`), il trigger di lock su `codice_interno` lo monta l'automazione dopo il migrate, come per
+`config.stati_lotto_job`. Guardrail CI verdi; `guardrail_pgtap_preambolo` rosso su
+`config/test-grammatica-presidio-tipo-documento-v1` (committato, non di questo giro), e chiede di abbassare la soglia
+dei `throws_ok` senza discriminante a 112. Sette pgTAP del giro 10 portati: la concessione di
+`cambia_stato_commessa` all'operatore (§15.7). Documentazione: le pagine manuali di `fn_fattura_origini`,
+`vw_lotti_gruppi_azioni`, `azioni_riga`, la colonna in quella di `sorgenti`; la guida del modello (§6, §7); le linee
+guida SQL §12.5.7, il registro.
+
+**Scostamenti dal piano, dichiarati.**
+
+* ⚠️ **Le origini partono dalle righe fatturate, non dalla fattura.** Il piano diceva «dal lineage all'indietro della
+  fattura». Il pgTAP l'ha smentito: il lineage lega la fattura alla **commessa intera**, e risalendo da lì una fattura
+  cita i documenti di **tutta** la commessa, anche quelli le cui righe sono in un'altra fattura (una commessa che
+  raccoglie le bolle di più mesi le citerebbe tutte a ogni fattura). Sui dati di dbdev la fattura 23640 citava cinque
+  ordini; dalle righe ne cita uno. Il lettore parte dalle righe di commessa delle attività fatturate qui (ogni riga
+  porta il suo documento: livello 1) e risale il lineage da ciascuno (gli antenati: 1 + il loro livello). La chiave
+  della riga (`<testata>.uid`) si traduce in quella del nodo (`key_selector`) con un join alla tabella del documento,
+  letta dal registro (`config.fn_sorgente_tabella`): nessun tipo scritto nel lettore.
+* **Fuori gli antenati raggiunti solo da un legame ritirato** (`is_legame_ritirato`, righe annullate): regola non
+  scritta nel piano, è quella della sintesi del lineage (D-15).
+* **Il lettore non restituisce la data del documento** (il piano la elencava): il lettore dei nodi non la porta, e
+  aggiungerla tocca la grammatica dei nodi. Restituisce livello, tipo, etichetta, chiave e numero. Se la stampa la
+  vuole, è una richiesta a parte.
+* **Il presidio legge la dipendenza della vista da `pg_depend`**, non dal testo della vista: più solido.
+* **`reset_lotto_fattura_draft` non si iscrive**: è un permesso del backend (`post_permission` di due rotte), senza
+  una `fn_check` né una sede in riga nel database.
+* **P-3 provato su due ordini, non sullo stesso ordine**: un documento sta in una sola commessa aperta alla volta
+  (`fn_link_commessa_sorgente`), quindi «lo stesso documento da due commesse» non si costruisce; l'unicità la
+  garantisce l'aggregazione del lettore.
+
+**Domanda nuova per Tid — Q-F7, le origini della nota di credito.** Una nota di credito nasce da un reso (arco S) e
+rettifica una fattura (arco N). Oggi fattura e reso non hanno `citato_in_fattura`, quindi la nota non li cita; la
+fattura elettronica però vuole la fattura rettificata fra i riferimenti. Proposta del team DB: `citato_in_fattura` a
+`true` anche su FATTURA e RESO_VENDITA. Il lettore oggi parte dalle righe di commessa, e le righe di una nota non ci
+passano: andrebbe aggiunto il ramo delle righe rettificate (`fatture_righe.riga_rettificata_id`). Non scritto.
+
+**Q-F7 decisa da Tid (2026-10-27): sì, la nota di credito cita la fattura rettificata e il reso.** Il principio, nelle
+parole di Tid: *anche se di tipo diverso, sono sempre sorgenti*. Il lettore non deve avere un ramo «della nota di
+credito», ma una regola sola per ogni documento di vendita.
+
+Ricognizione (letture su dbdev, 2026-10-27; fatti datati, non motivi). La nota arriva ai suoi documenti per due archi
+del lineage, **entrambi a grana di riga**:
+* **N** (fattura → nota): da `fatture_righe.riga_rettificata_id`;
+* **S** (reso → nota): da `resi_righe_accrediti` → attività fatturabile → riga di fattura.
+
+Le righe di commessa delle note (accrediti, rettifiche) sono senza sorgente: è voluto. Per questo oggi il lettore non
+trova niente. L'unico arco a grana di commessa è **G** (commessa → fattura): è il motivo per cui il lettore parte
+dalle righe.
+
+**Piano P-F7 (via di Tid, 2026-10-27; la nota cita anche il DDT e l'ordine del reso):**
+1. `citato_in_fattura = true` su FATTURA e RESO_VENDITA (CSV `sorgenti.csv`).
+2. `vendite.fn_fattura_origini` con una regola sola:
+   * **livello 1** = i genitori diretti del documento nel lineage;
+   * l'arco G, che è a grana di commessa, si sostituisce coi documenti delle righe fatturate (come oggi);
+   * N e S entrano come sono.
+
+   Nessun tipo scritto nella funzione: l'eccezione è un arco, non un tipo.
+3. **La risalita non attraversa G.** Dalla fattura rettificata si risalirebbe alla commessa intera, cioè al difetto
+   del §15.11. Una fattura citata porta già i suoi riferimenti, quindi la nota cita lei e non i suoi antenati. Dal reso
+   invece si risale per R e H (reso → DDT → ordine) come per gli altri documenti.
+4. pgTAP:
+   * una nota da reso (cita reso e fattura, più il DDT del reso);
+   * una nota da correzione (cita solo la fattura);
+   * una fattura normale invariata;
+   * il caso «non attraversa G»: la fattura rettificata ha una commessa con un secondo ordine non fatturato, che la nota non cita.
+5. Guida §7, pagina manuale, `sorgenti.md`.
+
+Deciso col via: la nota cita anche il DDT e l'ordine arrivati dal reso (sono legami a grana di riga).
+
+**Scritto (2026-10-27): P-F7.** Provato in transazione sullo scratch e, per il lettore, sui dati di dbdev con una
+copia `pg_temp` in transazione annullata. **Applicato su dbdev** (Tid, 2026-10-27, `-26` EXECUTED alle 17:25 col CSV
+`sorgenti.csv`): pgTAP verdi, compresi `test-fattura-origini-nota-v1` e `test-fattura-origini-v1`, nessuna
+regressione.
+
+| changeSet / file | cosa |
+| --- | --- |
+| `20_code/vendite/20261027-26-update-fn-fattura-origini-sorgenti-di-ogni-tipo-mctit.yaml` | `vendite.fn_fattura_origini`: livello 1 = genitori diretti di ogni tipo (G sostituito dalle righe fatturate); risalita senza G e solo per legami vivi. Stessa firma (`CREATE OR REPLACE`) |
+| `80_data/sql/config/sorgenti.csv` | `citato_in_fattura = t` su FATTURA e RESO_VENDITA (il mirror `20251002-21` è già `runOnChange`) |
+| `db/pgtap/vendite/test-fattura-origini-nota-v1.sql` | nuovo, 8 test: nota da reso, nota di sola correzione, fattura ordinaria, la risalita che non attraversa G |
+| `db/pgtap/vendite/test-fattura-origini-v1.sql` | test 2: l'insieme citato ora ha sette tipi |
+
+Risultati:
+* scratch: `test-fattura-origini-nota-v1` 8/8, `test-fattura-origini-v1` 10/10;
+* mutante (risalita **attraverso** G): rossi i test 3, 4 e 7, e la nota cita le altre bolle e gli altri ordini
+  della commessa. ⚠️ Il primo mutante lasciava verde il 4: la bolla DB era legata alla commessa senza righe,
+  quindi con un legame ritirato, e la scartava il filtro dei legami vivi, non quello su G. Ora DB ha una riga
+  viva sulla commessa e la precondizione del test esige il legame vivo;
+* dbdev (`pg_temp`, letto il 2026-10-27): la nota 20024, che oggi non cita nulla, cita la fattura 835 e il reso 24
+  (livello 1), il DDT 140 (2) e l'ordine 240 (3). Fuori gli ordini 174 e 631 e il preventivo, raggiungibili solo
+  dalle commesse della fattura 835. Su 25 fatture ne cambia una sola, la nota;
+* guardrail CI verdi, tranne il preambolo, rosso su un file committato che non è di questo giro (§15.11).
+
+Scostamento dichiarato: la regola «solo legami vivi» ora vale sul **cammino** (ogni legame della risalita è vivo).
+Prima bastava che il documento avesse **un** legame vivo, anche se gli si arrivava da uno ritirato. È più stretta e
+più giusta; i test del `-22` restano verdi.
+
+Doc: la pagina manuale `fn_fattura_origini` (la regola, l'esempio della nota), `sorgenti.md`, la guida §7.
+Ricadute BE/FE: nessuna nuova. BE-1 legge la stessa funzione, che ora risponde anche per le note.
+
+Resta: il commit del giro DB 11 (Tid).
+
+#### 15.11.1 Richiesta al team BE (elenco chiuso, dopo l'apply)
+
+| # | cosa | dove |
+| --- | --- | --- |
+| BE-1 | Stampa e dettaglio della fattura leggono le origini da `vendite.fn_fattura_origini(fattura_id)` (livello, tipo, etichetta, chiave, numero), nell'ordine in cui arrivano | servizio della stampa fattura, serializer del dettaglio |
+| BE-2 | La query dei documenti del lotto legge `uscita_blocco_reason`, `uscita_blocco_reason_key` e `n_trascinati` da `vendite.vw_lotti_gruppi_azioni` (`LEFT JOIN` su `lotto_id`, `gruppo_key`) e toglie la `LATERAL` su `script.fn_check_documento_escludibile_da_giro` e la chiamata a `script.fn_gruppi_trascinati_da_uscita`; nomi delle colonne invariati | `vendite_repository.py` (query dei gruppi), con `test_lotto_gruppi_service`, che oggi cerca `AS uscita_blocco_reason` nell'SQL |
+| BE-3 | Il registro `config.azioni_riga` arriva al frontend in sola lettura (codice, colonna del motivo, colonna della chiave), nella forma che il team BE sceglie (endpoint o configurazione della lista) | — |
+
+#### 15.11.2 Richiesta al team FE (dopo BE-3)
+
+* FE-1: un BB del pulsante di riga che, dato il codice dell'azione, legge dal registro le due colonne e da quelle il
+  tooltip e lo stato del pulsante; «togli dal giro» è il primo consumatore. Le azioni per riga degli altri documenti
+  si aggiungono con una riga di registro e la loro vista, senza un pulsante nuovo.

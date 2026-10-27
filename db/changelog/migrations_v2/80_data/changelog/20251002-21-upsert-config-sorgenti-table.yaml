@@ -96,3 +96,11 @@ databaseChangeLog:
               #   Nessun NULL: ogni riga del CSV ha la sua etichetta, e il
               #   NOT NULL di 90_end lo pretende.
               - column: { name: etichetta, type: STRING }
+
+              # citato_in_fattura: il documento si cita fra le «origini» della
+              #   fattura (DDT, ordine, contratto, offerta, preventivo); la
+              #   commessa e le attivita' no, sono contenitori interni. Aggiunta
+              #   2026-10-27 (colonna da 20261027-21, brief-modello-documento-
+              #   vendita §15.10, Q-F6 = b). Loader esteso IN PLACE, come per
+              #   `etichetta`. Nessun NULL: la colonna e' NOT NULL DEFAULT false.
+              - column: { name: citato_in_fattura, type: BOOLEAN }

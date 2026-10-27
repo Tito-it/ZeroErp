@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AZIONE DEL LOTTO STA SULLA RIGA DEL PASSAGGIO (M-3)
+#   Brief: brief-modello-documento-vendita §15 (giro 11, la fattura; F-2,
+#   Q-F1, Q-F2 di Tid, 2026-10-27). Stessa colonna delle matrici degli altri
+#   documenti (20261025-08, -38, -73, 20261026-03, -14, -29).
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   La matrice fiscale e' una sola per lotto e fattura. I pulsanti stanno sul
+#   lotto: «numera» e «riporta in bozza» chiedono la stessa azione,
+#   numera_fatture_lotti (Q-F1); l'annullo del lotto in bozza solo il
+#   permesso sui lotti (Q-F2). Le righe della fattura sono tutte di processo
+#   (le scrive la pipeline): nessuna azione.
+#
+# ── LA COLONNA ──────────────────────────────────────────────────────
+#   azione_processo_codename, FK verso config.azioni_processo.permission_codename.
+#   NULL = nessuna azione. I valori stanno nel CSV della matrice (80_data,
+#   mirror 20260210-01), non qui (§11.2).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261027-01-alter-stati-doc-fiscale-transizioni-azione-processo-mctit.yaml
+
+  - changeSet:
+      id: 20261027-01-alter-stati-doc-fiscale-transizioni-azione-processo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Colonna azione_processo_codename (FK a config.azioni_processo.permission_codename,
+        NULL = nessuna azione) su config.stati_doc_fiscale_transizioni: l'azione di processo che
+        il passaggio chiede (M-3). Brief: brief-modello-documento-vendita §15.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: stati_doc_fiscale_transizioni }
+            - tableExists: { schemaName: config, tableName: azioni_processo }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_fiscale_transizioni
+                  ADD COLUMN azione_processo_codename varchar(100),
+                  ADD CONSTRAINT fk_stati_doc_fiscale_transizioni_azioni_processo
+                      FOREIGN KEY (azione_processo_codename)
+                      REFERENCES config.azioni_processo (permission_codename);
+
+              COMMENT ON COLUMN config.stati_doc_fiscale_transizioni.azione_processo_codename IS
+                  'L''azione di processo che questo passaggio chiede (config.azioni_processo.permission_codename); NULL = basta il permesso sul documento, che controlla il backend. La leggono i verbi (script.fn_guard_passaggio, E_PERMESSO_NEGATO), il backend (403 prima della transazione) e la capability del lotto (il bottone si nasconde a chi non ha l''azione), tutti da script.fn_doc_passaggio. numera_fatture_lotti su «numera» e «riporta in bozza» del lotto; l''annullo del lotto in bozza e le righe della fattura (tutte di processo) senza azione. Il valore sta nel CSV della matrice. Brief: brief-modello-documento-vendita §15 (M-3, F-2, Q-F1, Q-F2, Tid 2026-10-24/27).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_fiscale_transizioni DROP COLUMN IF EXISTS azione_processo_codename;

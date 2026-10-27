@@ -23,7 +23,7 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
 
 ---
 ### 🎯 Scopo Principale
-(latest update 24-01-2026)
+(latest update 27-10-2026)
 * Fornire un **catalogo univoco** delle sorgenti applicative utilizzate in:
 
   * tabelle di collegamento (es. note collegate a entità diverse),
@@ -166,6 +166,20 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
   > solo nel frontend: il backend di stampa non le legge, e una mappa in Python
   > sarebbe stata la seconda copia delle stesse parole. La stampa prende le
   > parole dal catalogo, come la fattura fa con `tipo_doc_fiscale.descrizione`.
+
+* **Citato in fattura** (`citato_in_fattura`) — *aggiunta 27-10-2026*, brief
+  `brief-modello-documento-vendita` §15.10, §15.11 (D-G1, Q-F6, Q-F7):
+
+  * `true` = un documento di questo tipo si cita fra le **origini** di una
+    fattura: DDT, ordine, contratto, offerta, preventivo; e (Q-F7) fattura e
+    reso, che una nota di credito cita quando corregge una fattura o accredita
+    un reso;
+  * `false` sui contenitori interni (commessa, attività), sulle righe, sugli
+    acquisti e sul magazzino;
+  * `boolean NOT NULL DEFAULT false`; il valore sta nel CSV;
+  * la legge [`vendite.fn_fattura_origini`](/dbzero/vendite/funzioni/fn_fattura_origini):
+    quali tipi si citano è un dato del registro, non un elenco di codici nella
+    funzione.
 
 * **Audit**:
 

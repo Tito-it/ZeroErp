@@ -201,9 +201,12 @@ SELECT 'PGTAP_MX_CNT', c.ba_id, c.istanza_utility_id, c.utility_id,
  --   anche dove il listino da copiare non c'e' (CI): senza listino non e' il caso del test.
  WHERE EXISTS (SELECT 1 FROM tmp_lst_mixed);
 
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id_attivo FROM tmp_bozza_ctx)
- WHERE numero = 'PGTAP_MX_CNT';
+-- rev 2026-10-27 (brief-modello-documento-vendita §11, debito del giro 8): il contratto ha la
+--   porta sulla colonna di stato; l'attivazione passa dal verbo, che la fixture chiama con
+--   emetti_contratto concessa (prima un UPDATE diretto, ora fermato dalla porta).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.id, 'ATTIVO')
+  FROM vendite.contratti c
+ WHERE c.numero = 'PGTAP_MX_CNT';
 
 -- -------------------------------------------------------
 -- Contratto PGTAP_GA_CNT: per test 5 (guard AGGIUNTA + BOZZA)
@@ -255,14 +258,19 @@ SELECT ok(
 -- ============================================================
 -- 3) Contratto con listino BOZZA-only: l'attivazione e' rifiutata
 --    (rev 2026-10-07, A-D2). Prima passava con la versione NULL.
+--    rev 2026-10-27 (§11, debito del giro 8): dal verbo vendite.fn_cambia_stato_contratto,
+--    con emetti_contratto concessa (senza, il rifiuto sarebbe il permesso e non il listino).
+--    Stessa attesa: il rifiuto lo dà il guard di transizione, che il verbo attraversa.
 -- ============================================================
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_contratto');
+
 SELECT CASE
     WHEN NOT EXISTS (SELECT 1 FROM vendite.contratti WHERE numero = 'PGTAP_BO_CNT')
     THEN skip('Fixture PGTAP_BO_CNT non creata - skip', 1)
     ELSE throws_like(
         format(
-            'UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE numero = %L',
-            (SELECT id_attivo FROM tmp_bozza_ctx), 'PGTAP_BO_CNT'),
+            $q$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$q$,
+            (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_BO_CNT')),
         '%Impossibile attivare il contratto%',
         '3) Listino BOZZA-only: attivazione rifiutata (E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO)'
     )

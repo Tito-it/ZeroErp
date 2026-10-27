@@ -2,6 +2,17 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: allineamento lotti/attivita stato_esecuzione (changeset 20260222-01..07)
+-- rev 2026-10-27 (brief-modello-documento-vendita §15, giro 11, F-4):
+--   vendite.fn_set_fatturazione_lotto_stato e' ritirata (20261027-07): nessuno la
+--   chiamava, e la regola dello stato del job sta nella matrice
+--   config.transizioni_stati_lotto_job, applicata dal guard a ogni scrittura. I test
+--   6, 9, 11 scrivono lo stato come lo scrive il runner (UPDATE, giudicato dal guard);
+--   i test 7, 8, 12 provano la mappatura stato del job -> stato_esecuzione sul BB che
+--   la fa per tutti, vendite.fn_resolve_stato_esecuzione (la funzione ritirata ne era
+--   una chiamante, come la sync del lotto).
+-- ⚠️ Attese cambiate: 7, 8, 12 guardano il BB e non piu' le righe del ponte (che la
+--   funzione ritirata riscriveva da se'); il 10 guarda il solo stato del lotto,
+--   perche' lo stato_esecuzione del ponte non lo scriveva il percorso vivo.
 -- ------------------------------------------------------------
 -- Indice test (1..15):
 -- 1) Riferimenti minimi presenti
@@ -9,13 +20,13 @@
 -- 3) attivita_fatturabili.stato_esecuzione nullable
 -- 4) CHECK stato_esecuzione ammette COMPLETED e rifiuta OK
 -- 5) stato_esecuzione=OK non ammesso su fatturazione_lotti_fatture
--- 6) fn_set_fatturazione_lotto_stato IN_ESECUZIONE
--- 7) Non critical -> RUNNING
--- 8) Critical -> ERRORE
+-- 6) COMPLETATO -> IN_ESECUZIONE, la scrittura del runner (rev 2026-10-27)
+-- 7) Il BB della mappatura: non critical, lotto IN_ESECUZIONE -> RUNNING
+-- 8) Il BB della mappatura: critical -> ERRORE
 -- 9) COMPLETATO RIFIUTATO con una fattura in ERRORE (rev 2026-09-23, 20260923-30)
--- 10) ...e niente e' cambiato: lotto IN_ESECUZIONE, critical ancora ERRORE
--- 11) tolta la fattura in errore, fn_set_fatturazione_lotto_stato COMPLETATO passa
--- 12) Non critical -> COMPLETED
+-- 10) ...e niente e' cambiato: lotto IN_ESECUZIONE
+-- 11) tolta la fattura in errore, COMPLETATO passa
+-- 12) Il BB della mappatura: non critical, lotto COMPLETATO -> COMPLETED
 -- 13) fn_resolve_lotto_utility_emittente risolve utility
 -- 14) fn_resolve_lotto_utility_emittente blocca utility incoerente
 -- 15) fn_resolve_stato_esecuzione: IN_ESECUZIONE -> RUNNING
@@ -268,38 +279,43 @@ UPDATE vendite.fatturazione_lotti
 
 SELECT lives_ok(
   $$
-  SELECT vendite.fn_set_fatturazione_lotto_stato(
-    p_lotto_id => (SELECT lotto_id FROM tmp_lotto_fat_las),
-    p_stato_lotto => 'IN_ESECUZIONE',
-    p_note => 'pgtap in esecuzione'
-  );
+  UPDATE vendite.fatturazione_lotti
+     SET stato_lotto = 'IN_ESECUZIONE'
+   WHERE id = (SELECT lotto_id FROM tmp_lotto_fat_las);
   $$,
-  'fn_set_fatturazione_lotto_stato IN_ESECUZIONE eseguita'
+  'COMPLETATO -> IN_ESECUZIONE ammesso dalla matrice (la scrittura del runner)'
 );
 
-SELECT ok(
-  (
-    SELECT lf.stato_esecuzione = 'RUNNING'
-    FROM vendite.fatturazione_lotti_fatture lf
-    JOIN tmp_fatture_las f ON f.id = lf.fattura_id
-    WHERE lf.lotto_id = (SELECT lotto_id FROM tmp_lotto_fat_las)
-      AND f.critical IS FALSE
-    LIMIT 1
-  ),
-  'Non critical -> RUNNING con lotto IN_ESECUZIONE'
+SELECT is(
+  vendite.fn_resolve_stato_esecuzione(
+    p_stato_source => (SELECT stato_lotto FROM vendite.fatturazione_lotti
+                        WHERE id = (SELECT lotto_id FROM tmp_lotto_fat_las)),
+    p_has_critical => false),
+  'RUNNING',
+  'Non critical -> RUNNING con lotto IN_ESECUZIONE (il BB della mappatura)'
 );
 
-SELECT ok(
-  (
-    SELECT lf.stato_esecuzione = 'ERRORE'
-    FROM vendite.fatturazione_lotti_fatture lf
-    JOIN tmp_fatture_las f ON f.id = lf.fattura_id
-    WHERE lf.lotto_id = (SELECT lotto_id FROM tmp_lotto_fat_las)
-      AND f.critical IS TRUE
-    LIMIT 1
-  ),
-  'Critical -> ERRORE con lotto IN_ESECUZIONE'
+SELECT is(
+  vendite.fn_resolve_stato_esecuzione(
+    p_stato_source => (SELECT stato_lotto FROM vendite.fatturazione_lotti
+                        WHERE id = (SELECT lotto_id FROM tmp_lotto_fat_las)),
+    p_has_critical => true),
+  'ERRORE',
+  'Critical -> ERRORE con lotto IN_ESECUZIONE (il BB della mappatura)'
 );
+
+-- ⛔ rev 2026-10-27: la fattura in ERRORE il 9 la deve TROVARE. Prima la scriveva
+--   la funzione ritirata (riscriveva il ponte col BB della mappatura); senza questa
+--   riga il lotto non e' fermo e il 9 non trova nulla da rifiutare. Il ponte si
+--   scrive col BB, come lo scriveva lei.
+UPDATE vendite.fatturazione_lotti_fatture lf
+   SET stato_esecuzione = vendite.fn_resolve_stato_esecuzione(
+         p_stato_source => (SELECT l.stato_lotto FROM vendite.fatturazione_lotti l
+                             WHERE l.id = lf.lotto_id),
+         p_has_critical => f.critical)
+  FROM tmp_fatture_las f
+ WHERE lf.fattura_id = f.id
+   AND lf.lotto_id = (SELECT lotto_id FROM tmp_lotto_fat_las);
 
 -- ⛔ REV 2026-09-23 (20260923-30, brief-db-annullamento-chiude-la-vita §9.3).
 --   Fino a quel giorno qui il lotto andava COMPLETATO con la fattura critica in
@@ -312,27 +328,19 @@ SELECT ok(
 --   vero con cui un lotto si sblocca.
 SELECT throws_like(
   $$
-  SELECT vendite.fn_set_fatturazione_lotto_stato(
-    p_lotto_id => (SELECT lotto_id FROM tmp_lotto_fat_las),
-    p_stato_lotto => 'COMPLETATO',
-    p_note => 'pgtap completato'
-  );
+  UPDATE vendite.fatturazione_lotti
+     SET stato_lotto = 'COMPLETATO'
+   WHERE id = (SELECT lotto_id FROM tmp_lotto_fat_las);
   $$,
   '%risultare completato%',
   'COMPLETATO rifiutato: nel lotto c''e'' una fattura in ERRORE (E_LOTTO_COMPLETATO_NON_GUADAGNATO)'
 );
 
-SELECT ok(
-  (
-    SELECT l.stato_lotto = 'IN_ESECUZIONE' AND lf.stato_esecuzione = 'ERRORE'
-    FROM vendite.fatturazione_lotti_fatture lf
-    JOIN tmp_fatture_las f ON f.id = lf.fattura_id
-    JOIN vendite.fatturazione_lotti l ON l.id = lf.lotto_id
-    WHERE lf.lotto_id = (SELECT lotto_id FROM tmp_lotto_fat_las)
-      AND f.critical IS TRUE
-    LIMIT 1
-  ),
-  'Rifiutato: il lotto resta IN_ESECUZIONE e la fattura critica resta ERRORE'
+SELECT is(
+  (SELECT l.stato_lotto FROM vendite.fatturazione_lotti l
+    WHERE l.id = (SELECT lotto_id FROM tmp_lotto_fat_las)),
+  'IN_ESECUZIONE',
+  'Rifiutato: il lotto resta IN_ESECUZIONE'
 );
 
 -- La fattura in errore esce dal lotto: da qui il lotto non e' piu' fermo.
@@ -344,25 +352,20 @@ DELETE FROM vendite.fatturazione_lotti_fatture lf
 
 SELECT lives_ok(
   $$
-  SELECT vendite.fn_set_fatturazione_lotto_stato(
-    p_lotto_id => (SELECT lotto_id FROM tmp_lotto_fat_las),
-    p_stato_lotto => 'COMPLETATO',
-    p_note => 'pgtap completato'
-  );
+  UPDATE vendite.fatturazione_lotti
+     SET stato_lotto = 'COMPLETATO'
+   WHERE id = (SELECT lotto_id FROM tmp_lotto_fat_las);
   $$,
-  'fn_set_fatturazione_lotto_stato COMPLETATO eseguita, tolta la fattura in errore'
+  'IN_ESECUZIONE -> COMPLETATO, tolta la fattura in errore'
 );
 
-SELECT ok(
-  (
-    SELECT lf.stato_esecuzione = 'COMPLETED'
-    FROM vendite.fatturazione_lotti_fatture lf
-    JOIN tmp_fatture_las f ON f.id = lf.fattura_id
-    WHERE lf.lotto_id = (SELECT lotto_id FROM tmp_lotto_fat_las)
-      AND f.critical IS FALSE
-    LIMIT 1
-  ),
-  'Non critical -> COMPLETED con lotto COMPLETATO'
+SELECT is(
+  vendite.fn_resolve_stato_esecuzione(
+    p_stato_source => (SELECT stato_lotto FROM vendite.fatturazione_lotti
+                        WHERE id = (SELECT lotto_id FROM tmp_lotto_fat_las)),
+    p_has_critical => false),
+  'COMPLETED',
+  'Non critical -> COMPLETED con lotto COMPLETATO (il BB della mappatura)'
 );
 
 SELECT is(

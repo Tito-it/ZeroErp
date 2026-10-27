@@ -87,6 +87,13 @@ SELECT vendite.fn_get_or_create_commessa(
   p_force_new => true
 ) AS commessa_id;
 
+-- rev 2026-10-27: l'operatore del test riceve cambia_stato_commessa (giro 10).
+-- Serve due volte: il verbo lo chiede (senza, E_PERMESSO_NEGATO), e dal 20261026-35
+-- fn_available_actions_commessa NASCONDE il passaggio a chi non ha l'azione, quindi
+-- senza permesso il test 2 vedrebbe {annulla} e non {annulla, rendi_pronta}.
+-- Qui, prima dei test di BOZZA: le capability si misurano su chi PUO' agire.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
+
 -- ============================================================
 -- STATO BOZZA (1)
 -- ============================================================
