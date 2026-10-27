@@ -1,27 +1,17 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-27 (giro 10, la commessa: DB e BE committati, PR #1962 e #1963; giro 11, la fattura: lo stato di lotto e fattura applicato su dbdev; le origini e il registro delle azioni di riga applicati su dbdev, pgTAP verdi; le origini della nota di credito (P-F7) applicate su dbdev, pgTAP verdi, §15.11; la revisione delle guide scritta, i due changeSet di soli commenti applicati su dbdev, §15.12; lo stato iniziale dalla testata, richiesta del BE, applicato su dbdev e verde, §15.13, tocca al BE; i passaggi permessi per riga, richiesta del BE, applicati e verdi, §15.14, tocca al BE; il giro DB 11 è tutto da committare)
+## ⏭️ Chi riparte — aggiornato al 2026-10-27 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16)
 
-**Riparte: Tid**, sul giro 11 (la fattura): il commit del giro DB 11 su `dev/db-tid` (`20261027-01` … `-28` applicati
-su dbdev; `-27`, `-28` alle 17:55, letto dal `databasechangelog` il 2026-10-27). `20261027-01` … `-26` sono
-applicati su dbdev (`databasechangelog`, letto il 2026-10-27: `-26` alle 17:25, col CSV `sorgenti.csv`), pgTAP verdi
-e nessuna regressione (Tid, 2026-10-27), compresi `vendite/test-fattura-origini-nota-v1` (nuovo) e
-`vendite/test-fattura-origini-v1` (test 2 aggiornato). **Il
-team BE**: la richiesta del §15.8 (il giro della pipeline si rompe finché il runner non chiama il verbo di
-processo) e BE-1 … BE-3 del §15.11.1, ora sbloccati (apply fatto); poi **il team FE**, FE-1 (§15.11.2). Resta anche
-una decisione emersa nel giro 10 (il parametro
-`permission` del mapper delle azioni, rimasto senza consumatori, §14.7). Il passaggio BE del giro 10 (§14.7, §14.8)
-è su `Tito-dev` (PR #1963); la revisione del §14.8 il brief la dà ancora «da provare» (suite non rilanciata). Il
-**team DB** ha in più richieste a priorità bassa: ritirare `E_COMMESSA_AZIONE_NON_AMMESSA`, che nessuno solleva più
-(§14.7); R-1 e R-2 (§14.8). Il passaggio BE del giro 9 è su `Tito-dev` (§13.8, PR #1961); il giro DB 10 è
-committato (PR #1962). **Tid**, col dato `emetti_offerta` ai profili e col dato
-`emetti_contratto` **ed** `emetti_ordine` ai profili su dbdev: letto il 2026-10-26, nessun profilo le ha, quindi
-in collaudo nessuno attiva o cessa un contratto né conferma un ordine (§11.7, «Stato letto dal team DB»).
-Il passaggio BE del §11.7 è committato (`fe041a1a1`, `0a08565be`, PR #1956). Il **team DB** ha una
-richiesta a priorità bassa: il lettore dello stato di cessazione (§11.7). Il giro 8 (il contratto) è applicato e
-verde (Tid, 2026-10-26); le richieste al BE del §9.10 e del §11.6 sono fatte (§11.7). Giro 7 (l'ordine): DB
-applicato e verde (Tid, 2026-10-25). Giro 6, il preventivo (§8): DB applicato e verde, BE fatto (§8.10) tranne il
-ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committato su DB e BE (`4351164c1`, PR #1943).
+**Riparte: il team DB**, sul giro 11 (la fattura), con la richiesta del §15.16 (decisione di Tid del 2026-10-27,
+D-S1 = forma 6): la versione 2 dello **standard** «Fattura di vendita» in forma 6 (le origini al posto di `origine`)
+e lo script una tantum per le copie degli emittenti su dbdev; e una domanda, D-S2, sulla superficie delle
+segnalazioni del lotto (scheda Critiche) fuori dal registro delle azioni di riga. Poi **Tid** (apply), poi il
+**team BE** (il builder della fattura in forma 6, nella sequenza del §15.16.3: non prima dell'apply). Il passaggio
+BE/FE del giro 11 è committato (§15.15; suite Django sul DB provvisto 7013 test, vitest 988, verdi). Il **team DB**
+ha in più richieste a priorità bassa: ritirare `E_COMMESSA_AZIONE_NON_AMMESSA` (§14.7); R-1 e R-2 (§14.8); il
+lettore dello stato di cessazione (§11.7). **Tid**, coi dati `emetti_offerta`, `emetti_contratto`, `emetti_ordine`
+ai profili su dbdev: letto il 2026-10-26, nessun profilo le ha, quindi in collaudo nessuno attiva o cessa un
+contratto né conferma un ordine (§11.7). Giri 5-10: chiusi e committati (dettaglio nelle righe della tabella).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -94,7 +84,7 @@ ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committa
 | 4-bis-undecies-quinquies-bis | ✅ **Tid** | I due passi per lo scratch da zero (`20261019-13`, `20261026-37`) applicati su dbdev (a vuoto) e ricostruzione dello scratch `zeroerp_ruoli` da zero passata; corsa pgTAP verde (2026-10-26/27) | §14.5 | 4-bis-undecies-quinquies |
 | 4-bis-undecies-sexies | ✅ team BE | Richiesta del §14.6 (sette punti) fatta il 2026-10-27: firma, 403 dalla riga, difesa ritirata, IN_ESECUZIONE, test, doc; fuori elenco il gate del drawer | §14.7 | 4-bis-undecies-quinquies |
 | 4-bis-undecies-septies | ✅ **Tid** | Commit del passaggio BE del giro 10 (PR #1963, su `Tito-dev`) | §14.7 | 4-bis-undecies-sexies |
-| 4-bis-undecies-octies | **Tid** | Il parametro `permission` di `mapAvailableActionsToDrawerActions`, senza consumatori: ritirarlo o tenerlo | §14.7 | 4-bis-undecies-sexies |
+| 4-bis-undecies-octies | ✅ **Tid** / team BE | Il parametro `permission` di `mapAvailableActionsToDrawerActions`: ritirato (ok Tid, 2026-10-27) | §14.7, §15.15 | 4-bis-undecies-sexies |
 | 4-bis-undecies-nonies | team DB | Richiesta (priorità bassa): ritirare `E_COMMESSA_AZIONE_NON_AMMESSA` (`obsoleto_dal`); poi il BE toglie policy e ripiego | §14.7 | 4-bis-undecies-sexies |
 | 4-bis-undecies-decies | ✅ team BE | Revisione del giro: regola del 1 sui sei documenti, BB `operatore_di_prova`; da provare e committare col §14.7 | §14.8 | 4-bis-undecies-sexies |
 | 4-bis-undecies-undecies | team DB | Richieste (priorità bassa): R-1 `fn_crea_revisione_offerta` risponde 404 all'offerta che non c'è; R-2 lo stato d'accettazione nel vocabolario | §14.8 | — |
@@ -105,7 +95,7 @@ ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committa
 | 4-bis-duodecies-quinquies | ✅ team DB | Piano del giro 11, con P-1 e P-2 | §15.5 | 4-bis-duodecies-quater |
 | 4-bis-duodecies-sexies | ✅ **Tid** | Il via allo sviluppo del giro 11, P-1 e P-2 come da proposta (2026-10-27) | §15.5 | 4-bis-duodecies-quinquies |
 | 4-bis-duodecies-septies | ✅ team DB | Giro 11, lo stato di lotto e fattura: `20261027-01` … `-20` e i CSV, provati in transazione sullo scratch; 279 + 202 pgTAP prima/dopo, 16 portati, uno nuovo (21/22, il 4 dopo il migrate) | §15.6, §15.7 | 4-bis-duodecies-sexies |
-| 4-bis-duodecies-octies | **Tid** ⏭️ | Il passo a mano su dbdev (i legami alle azioni ritirate), poi apply e corsa pgTAP come app | §15.7 | 4-bis-duodecies-septies |
+| 4-bis-duodecies-octies | ✅ **Tid** | Il passo a mano su dbdev (i legami alle azioni ritirate), poi apply e corsa pgTAP come app | §15.7 | 4-bis-duodecies-septies |
 | 4-bis-duodecies-nonies | ✅ **Tid** | Q-F6 = (b), i documenti a monte; Q-F5 = la vista DB (2026-10-27) | §15.9 | — |
 | 4-bis-duodecies-decies | ✅ team DB | Il piano del lettore delle origini (D-G1) e del registro delle azioni di riga, con P-3 | §15.10 | 4-bis-duodecies-nonies |
 | 4-bis-duodecies-duodecies | ✅ **Tid** | Il via ai due pezzi del §15.10, `citato_in_fattura`, P-3 come da proposta; e i sette pgTAP del giro 10 (2026-10-27) | §15.10 | 4-bis-duodecies-decies |
@@ -114,26 +104,36 @@ ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committa
 | 4-bis-duodecies-sexdecies | ✅ **Tid** | Q-F7: la nota cita fattura e reso, e il DDT e l'ordine del reso; il via a P-F7 (2026-10-27) | §15.11 | 4-bis-duodecies-quaterdecies |
 | 4-bis-duodecies-septendecies | ✅ team DB | P-F7 scritto: `20261027-26`, il CSV delle sorgenti, un pgTAP nuovo; provato in transazione | §15.11 | 4-bis-duodecies-sexdecies |
 | 4-bis-duodecies-octodecies | ✅ **Tid** | Apply di `20261027-26` col CSV `sorgenti.csv`, pgTAP verdi, nessuna regressione (2026-10-27) | §15.11 | 4-bis-duodecies-septendecies |
-| 4-bis-duodecies-novodecies | ✅ team DB | Revisione delle guide contro il giro 11: guide, linee guida SQL, pagine manuali; `-27`, `-28` (soli commenti) provati in transazione | §15.12 | 4-bis-duodecies-octodecies |
-| 4-bis-duodecies-vicies | ✅ **Tid** | Apply di `-27`, `-28` (2026-10-27) | §15.12 | 4-bis-duodecies-novodecies |
-| 4-bis-duodecies-unvicies | ✅ team DB | Richiesta BE: lo stato iniziale dalla testata, `20261027-29` … `-39` (K-3 nello stesso giro, via di Tid), un pgTAP nuovo; provati in transazione, regressione su 178 file invariata | §15.13 | 4-bis-duodecies-vicies |
+| 4-bis-duodecies-novodecies | ✅ **Tid** | Il commit del giro DB 11 fino a `-26`: PR #1964; `-27` … `-39` committati su `dev/db-tid` (`6455df27f`), mergiati in `dev/backend-tid` | §15 | 4-bis-duodecies-octodecies |
+| 4-bis-duodecies-novodecies-bis | ✅ team DB | Revisione delle guide contro il giro 11: guide, linee guida SQL, pagine manuali; `-27`, `-28` (soli commenti) provati in transazione | §15.12 | 4-bis-duodecies-octodecies |
+| 4-bis-duodecies-vicies-nonies | ✅ **Tid** | Apply di `-27`, `-28` (2026-10-27) | §15.12 | 4-bis-duodecies-novodecies-bis |
+| 4-bis-duodecies-unvicies | ✅ team DB | Richiesta BE: lo stato iniziale dalla testata, `20261027-29` … `-39` (K-3 nello stesso giro, via di Tid), un pgTAP nuovo; provati in transazione, regressione su 178 file invariata | §15.13 | 4-bis-duodecies-vicies-nonies |
 | 4-bis-duodecies-duovicies | ✅ **Tid** | Apply di `-29` … `-39`, pgTAP verdi (2026-10-27) | §15.13 | 4-bis-duodecies-unvicies |
 | 4-bis-duodecies-quinvicies | ✅ **Tid** | Richiesta BE dei passaggi permessi per riga: D-1 … D-4 come da proposta, via (2026-10-27) | §15.14 | — |
 | 4-bis-duodecies-sexvicies | ✅ team DB | `20261027-40` … `-50`, un pgTAP nuovo; provati in transazione, regressione su 78 file invariata | §15.14 | 4-bis-duodecies-quinvicies |
 | 4-bis-duodecies-septvicies | ✅ **Tid** | Apply di `-40` … `-50`, pgTAP verdi (2026-10-27) | §15.14 | 4-bis-duodecies-sexvicies |
-| 4-bis-duodecies-novvicies | **Tid** ⏭️ | Il commit del giro DB 11 (`20261027-01` … `-50`, CSV, pgTAP, doc, brief) | §15 | 4-bis-duodecies-septvicies |
-| 4-bis-duodecies-octvicies | team BE | `azioni_permesse` per riga della lista dei lotti | §15.14 | 4-bis-duodecies-septvicies |
-| 4-bis-duodecies-quattuorvicies | team BE | Lo stato iniziale dalla testata: `stato_iniziale(testata)` e «riporta in bozza» dalla riga | §15.13, §15.8 punto 3 | 4-bis-duodecies-duovicies |
-| 4-bis-duodecies-quindecies | team BE → FE | BE-1 … BE-3, poi FE-1 | §15.11.1, §15.11.2 | 4-bis-duodecies-quaterdecies |
-| 4-bis-duodecies-undecies | team BE | La richiesta del §15.8 (sette punti): il giro della pipeline dai verbi, il 403 dalla riga, le azioni ritirate | §15.8 | 4-bis-duodecies-octies |
+| 4-bis-duodecies-trevicies | ✅ **Tid** | Il commit del giro DB 11 (`20261027-27` … `-39`, pgTAP, doc, brief): `6455df27f`, mergiato in `dev/backend-tid` | §15 | 4-bis-duodecies-duovicies |
+| 4-bis-duodecies-novvicies | ✅ **Tid** | Il commit del giro DB 11, il resto: `-40` … `-50` in `241279d23` (PR #1966), in `dev/backend-tid` col fast-forward su `Tito-dev` (2026-10-27) | §15 | 4-bis-duodecies-septvicies |
+| 4-bis-duodecies-octvicies | ✅ team BE → FE | `azioni_permesse` per riga della lista dei lotti, poi il kebab che lo legge (fail-closed): fatto e committato il 2026-10-27 | §15.14, §15.15 | 4-bis-duodecies-septvicies |
+| 4-bis-duodecies-quattuorvicies | ✅ team BE | Lo stato iniziale dalla testata: `stato_iniziale(testata)` e «riporta in bozza» dalla riga (2026-10-27) | §15.13, §15.15 | 4-bis-duodecies-duovicies |
+| 4-bis-duodecies-quindecies | ✅ team BE → FE | BE-1 (il dettaglio; la stampa ferma su una decisione), BE-2, BE-3, FE-1 (2026-10-27) | §15.15 | 4-bis-duodecies-quaterdecies |
+| 4-bis-duodecies-undecies | ✅ team BE | La richiesta del §15.8 (sette punti), tranne il 403 di «riporta in bozza» (2026-10-27) | §15.15 | 4-bis-duodecies-octies |
+| 4-bis-duodecies-vicies-octies | ✅ team DB | Il lettore dello stato iniziale per testata (`script.fn_doc_stato_iniziale_id`, `20261027-29`), applicato e verde | §15.13 | 4-bis-duodecies-undecies |
+| 4-bis-duodecies-vicies-bis | ✅ **Tid** | La stampa delle origini: **forma 6** (D-S1, 2026-10-27), non `origini` accanto a `origine` | §15.15, §15.16 | 4-bis-duodecies-quindecies |
+| 4-bis-duodecies-vicies-ter | ✅ team BE | Il commit del passaggio BE/FE del giro 11 su `dev/backend-tid`, su richiesta di Tid (2026-10-27) | §15.15 | 4-bis-duodecies-undecies |
+| 4-bis-duodecies-vicies-quater | ✅ team BE | «Riporta in bozza» dalla riga del passaggio (`stato_del_modello="iniziale"`), 2026-10-27 | §15.13, §15.15 | 4-bis-duodecies-duovicies |
+| 4-bis-duodecies-vicies-septies | team BE | Il builder della fattura in forma 6 (`origini` al posto di `origine`), riavvio subito dopo l'apply | §15.16.3 | 4-bis-duodecies-trigies-bis |
+| 4-bis-duodecies-trigies | team DB ⏭️ | Richiesta del §15.16: lo standard «Fattura di vendita» v2 in forma 6, lo script una tantum per le copie degli emittenti; risposta a D-S2 | §15.16 | 4-bis-duodecies-vicies-bis |
+| 4-bis-duodecies-trigies-bis | **Tid** | Apply del giro del §15.16, poi la sequenza del §15.16.3 (riavvio BE, script una tantum) | §15.16.3 | 4-bis-duodecies-trigies |
+| 4-bis-duodecies-vicies-sexies | ✅ **Tid** → team DB | Il lettore `script.fn_doc_azioni_permesse` (scelta di Tid, 2026-10-27): fatto dal team DB, §15.14; il seguito BE/FE è 4-bis-duodecies-octvicies | §15.14, §15.15 | — |
+| 4-bis-duodecies-vicies-quinquies | team DB | Domanda D-S2: la superficie delle segnalazioni del lotto (scheda Critiche) che compone il motivo di «togli dal giro» fuori dal registro; Tid concorda che la scelta è del team DB (2026-10-27) | §15.15, §15.16 | — |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 | 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1 ✅ deciso (c) nel giro 11 (§15.3); D-G2, la prova a video del lotto 2b | §10 | — |
 | 5-ter | ✅ **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, le azioni per riga: nel giro 11, con un pezzo standard (F-5, 2026-10-27); la forma del pezzo è Q-F5 | §12, §15 | — |
 
-Decisioni aperte di Tid: il parametro `permission` del mapper delle azioni (§14.7). Da provare: la revisione BE del §14.8 (suite non rilanciata, secondo il brief). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Lavoro da committare: `dev/db-tid`, il giro DB 11: `20261027-01` … `-20` (§15.6, applicati su dbdev), i CSV, 16 pgTAP portati e uno nuovo, più i nove portati dopo la corsa su dbdev (§15.7); `20261027-21` … `-25` (§15.11, applicati su dbdev, verdi), due pgTAP nuovi; `20261027-26` e il CSV delle sorgenti (P-F7, applicati su dbdev, verdi), un pgTAP nuovo e uno aggiornato; `-27`, `-28`
-(soli commenti, applicati su dbdev, §15.12) e la revisione delle guide; le guide (modello, linee guida SQL), le pagine manuali e questo brief (§15). Committati: il passaggio BE del giro 10 (§14.7, §14.8, `7901c668a`, PR #1963), il giro DB 10 coi due passi per lo scratch da zero (PR #1962), il passaggio BE del giro 9 (§13.8, PR #1961), il giro DB 9 (`52e18d887`, PR #1960), il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`; il merge `2f5da4bed` ne aveva perso la tabella e il blocco «Chi riparte», ricomposti il 2026-10-26), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
+Decisioni aperte di Tid: nessuna sul giro 11. Al team DB: la richiesta del §15.16 (forma 6 della stampa fattura, D-S2). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Committati: il passaggio BE/FE del giro 11 (§15.15, `dev/backend-tid`, 2026-10-27), il giro DB 11 (fino a `-26` PR #1964; `-27` … `-39` in `6455df27f`; `-40` … `-50` in `241279d23`, PR #1966; tutto in `dev/backend-tid`), il passaggio BE del giro 10 (§14.7, §14.8, `7901c668a`, PR #1963), il giro DB 10 coi due passi per lo scratch da zero (PR #1962), il passaggio BE del giro 9 (§13.8, PR #1961), il giro DB 9 (`52e18d887`, PR #1960), il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -3573,3 +3573,119 @@ nelle due corse: «rosso da owner» (porta, GUC, scope RLS) e fixture che pescan
 l.stato_doc_fiscale_id)` per riga (lo stato della riga, non l'id: D-1) e porta `azioni_permesse` (le `action_key`);
 il kebab propone i verbi di stato solo se compaiono lì. Le altre liste possono adottarlo uguale, con la loro testata.
 Nessun codice d'errore nuovo. Le capability del dettaglio non cambiano contratto.
+
+### 15.15 Fatto dal team BE e FE (2026-10-27): §15.8, BE-1 … BE-3, FE-1
+
+Sul giro DB 11 già in `dev/backend-tid` (merge #1964). Da committare (Tid).
+
+| # | Che cosa | Dove |
+| --- | --- | --- |
+| §15.8.1 | Lo stato dello step dal verbo di processo: `update_lotto_stato_doc` chiama `vendite.fn_lotto_proietta_stato_step`, negli stessi punti del runner | `pipeline_repository.py` |
+| §15.8.2 | `set_lotto_job_stato` tiene `UPDATE`, nota in `meta` e no-op sullo stesso stato; la copia della regola (tre valori, passaggi) è ritirata: decidono la FK e il guard | `pipeline_repository.py` |
+| §15.8.3 | «Numera» di un lotto: `PassaggioDocumento` (testata `vendite.fatturazione_lotti`, arrivo `STATO_DEFINITIVA`, una costante sola per i tre letterali `'DEFINITIVA'` di service e handler). L'annullo della bozza: solo il livello sul documento. ⏸️ **«Riporta in bozza»: non fatto**, vedi sotto | `views.py`, `pipeline_service.py`, `fatturazione_numera_handler.py` |
+| §15.8.4 | Nessun riferimento alle quattro azioni ritirate come permesso (resta il nome del task di pipeline `reset_lotto_draft`, che è un'altra cosa); esempi nei commenti FE portati a `numera_fatture_lotti` | BE e FE |
+| §15.8.5 | `LOTTO_AZIONE_PERMESSO` tiene i soli tre verbi di pipeline; il parametro `permission` di `mapAvailableActionsToDrawerActions` ritirato (ok Tid, §14.7) | `useLottoAzioni.js`, `LottoDrawer.vue`, `useDrawerActions.js` |
+| §15.8.6 | Test portati: repository (regola del job → «non giudica», verbo dello step), API dell'annullo (livello sul documento), dichiarazioni dei due «numera», `test_permissions`; smoke `ritorno-lotto-a-draft` e `fattura-indirizzi-snapshot` (scrivevano lo stato con un `UPDATE`: ora dai verbi) | `apps/*/tests`, `scripts/tests` |
+| §15.8.7 | Doc API del lotto: permessi per passaggio | `api_reset_lotto_draft.md`, `api_fatturazione.md` |
+| BE-1 | Il dettaglio della fattura porta `origini` da `vendite.fn_fattura_origini` (ordine della funzione, fissato con `WITH ORDINALITY`); ⏸️ **la stampa no**, vedi sotto | `vendite_repository.list_fattura_origini`, `vendite_service`, `fatture_views` |
+| BE-2 | La query dei gruppi legge le tre colonne da `vendite.vw_lotti_gruppi_azioni`. ⚠️ Col filtro **costante** sul lotto (`(SELECT id FROM lotto)`): col join su `gr.lotto_id` la `UNION` della vista non riceveva il filtro e la check girava su ogni gruppo di ogni lotto visibile (EXPLAIN su dbdev, 2026-10-27) | `vendite_repository.py` |
+| BE-3 | Lookup dedicato `GET /core/lookup/azioni-riga/` (non il generico: niente `codice`, due colonne in più) | `views_lookup.py`, `lookup_repository.py`, `api_azioni_riga_lookup.md` |
+| FE-1 | BB `useAzioneRiga(codice)`: colonne dal registro, fail-closed; «togli dal giro» nelle sue tre superfici; `motivoUscitaBloccata` ritirata | `core/composables/useAzioneRiga.js` |
+
+**Prove (2026-10-27).** Test Django dei moduli toccati: 215 verdi, più la lettura del registro sul DB provvisto (`ZEROERP_TEST_DB_E2E=1`). Vitest: 179 verdi. Lint (ruff, eslint, oxlint), guard FE e cricchetto mypy: puliti. Sul DB vero, in transazione annullata: le origini della nota 20024 sono quelle del §15.11 (fattura 835, reso 24, DDT 140, ordine 240); il verbo dello step rifiuta lo stato iniziale e il guard del job uno stato fuori vocabolario, coi codici del DB. Smoke `ritorno-lotto-a-draft`: il giro avanza DRAFT → EMESSA dal verbo nuovo (caso 6). Gunicorn ricaricato. ⚠️ Suite completa **non** rilanciata.
+
+**Dopo il merge del §15.13 (2026-10-27), in più.**
+
+* `STATI_LOTTO`, lo specchio Python del CHECK `chk_fatturazione_lotti_stato_job`, ritirato: il CHECK non c'è più dal `-05`, e il presidio `test_specchi_dei_check_db` lo cercava ancora (sarebbe stato rosso sul DB provvisto). Il filtro `stato_lotto` della lista lotti legge `config.stati_lotto_job` con `richiedi_codice_a_vocabolario`. Pagine API `api_lotti_list.md`, `api_run_lotto_pipeline.md` (punto 7, aggiunte del §15.12).
+* Il «da provare» del §14.8: la suite completa, rilanciata, aveva **un** rosso — `test_ddt_service.test_cambia_stato_ddt_not_found`, della revisione del §14.8: la classe non montava il mock del modello e il service interrogava il DB. Corretto (`ModelloDocumentoMockatoMixin`). Suite completa: 6474 test, verde; sul DB provvisto (`ZEROERP_TEST_DB_E2E=1`) 7003 test, verde dopo una correzione: la colonna nuova `config.sorgenti.citato_in_fattura` (`-21`) non aveva l'etichetta del pannello di configurazione (`config_panel.campi`, it ed en; presidio `test_config_panel_registro_db`). Vitest: 980, verde.
+
+**Fermi, tornano a Tid.** (Esito: D-S1 e D-S2 al §15.16.)
+
+* ✅ **«Riporta in bozza»: fatto dopo il §15.13** (2026-10-27). `DocumentoModelloRepository.stato_iniziale(testata)` su `script.fn_doc_stato_iniziale_id`; `PassaggioDocumento(stato_del_modello="iniziale")` su `ApiRiportaLottoADraft`, via il `post_permission`. Provato sul DB vero: da un lotto EMESSA la riga chiede `numera_fatture_lotti`, da un lotto in bozza nessuna azione (decide il livello). Presidi: `test_passaggio_rotte` (le due rotte del lotto attese, e ogni rotta verso lo stato iniziale lo trova sul DB), `test_permesso_passaggio` 14, `test_permesso_passaggio_db` 11. Nessun `'DRAFT'` per dire «lo stato in cui si nasce» resta nel backend: quelli che restano dicono altro (stati modificabili dei service; la coppia DRAFT/EMESSA del runner = gli step pre-fiscali da rifare, candidata a `congela_fiscale`, fuori dal giro per F-4).
+* **BE-1, la stampa: una forma nuova del contesto.** Il builder porta `origine` (un oggetto, sempre vuoto: D-G1) e il modello standard stampa `fattura.origine.tipo`. Un elenco al suo posto è una chiave cambiata, cioè `CONTEXT_VERSION` 6, e il contratto del builder vuole che **nello stesso giro** nasca la versione del modello che la legge (seed del modello standard, team DB; e le versioni pubblicate su dbdev). Senza, la stampa si ferma sul guard della forma. Da decidere: forma 6 col modello (proposta del team BE), oppure `origini` in più accanto a `origine` senza cambiare forma, che lascia viva la chiave vuota.
+* **Una seconda superficie di «togli dal giro» fuori dal registro.** La lista delle segnalazioni del lotto (`pipeline_repository.list_lotto_segnalazioni`, scheda Critiche) compone ancora `uscita_blocco_reason` chiamando la check nel backend. La check è la stessa, quindi il motivo non diverge; ma il presidio del registro non vede questa superficie. Non portata alla vista: le righe delle segnalazioni non sono per costruzione le righe di `vw_lotti_gruppi_azioni` (perimetro ∪ esiti), e un `LEFT JOIN` vuoto direbbe «ammessa». Domanda per il team DB: una superficie registrata per le segnalazioni, o la vista che le copre.
+* **Kebab della lista lotti.** Tolto il permesso dalla mappa FE (§15.8.5), «Numera», «Riporta in lavorazione» e «Annulla» compaiono nel kebab anche a chi non ha l'azione; al clic `eseguiVerificato` rilegge la capability, che li nasconde, e avvisa «azione non più disponibile». Nessun gesto passa, ma la frase non dice «non hai il permesso». ✅ **Tid, 2026-10-27: si sistema con un lettore DB leggero.** Richiesta al team DB (data in chat): `script.fn_doc_azioni_permesse(p_testata, p_id)`, generico, gemello di `fn_doc_azione_passaggio` — i passaggi manuali dallo stato corrente che l'operatore può fare (`stato_a_codice`, `action_key` da `meta`, azione), con lo stesso predicato del permesso di `fn_available_actions_lotto` (`-19`), **senza** `fn_check_*`. Completa, non revoca, la scelta del 2026-08-04 (risposta-db-azioni-lista-lotto §3.3: niente capability intera per riga): lì «la riga ha già la verità che serve» era lo stato, e col permesso dalla riga del passaggio lo stato non basta più. Poi il BE porta `azioni_permesse` in riga nella lista lotti e il kebab propone i verbi di stato solo se compaiono lì (fail-closed). ✅ **Fatto dal team DB** (§15.14, `-40` … `-50`, applicato e verde): la firma riceve lo stato, non l'id (D-1), `fn_doc_azioni_permesse(p_testata, p_stato_da_id)`. ✅ **Fatto dal team BE e FE** (2026-10-27, 4-bis-duodecies-octvicies):
+  * BE: `azioni_permesse` (le `action_key`, ordinate; mai `null`) in coda a `_LOTTO_SELECT_COLS`, quindi in lista **e** nella testata del dettaglio, con `ARRAY(SELECT … FROM script.fn_doc_azioni_permesse(...))` nella proiezione: gira sulle sole righe della pagina, non entra nel `COUNT`. Misurato su dbdev: 101 lotti in ~40 ms, come prima. `TESTATA_LOTTI` spostata da `pipeline_repository` a `vendite_repository`, accanto alla lettura del lotto: l'import inverso era un ciclo (`pipeline_repository` → `commesse_repository` → `vendite_repository`). Pagina `api_lotti_list.md`.
+  * FE: `verbiPlausibili` prende i verbi di stato da `azioni_permesse`, solo le chiavi con una chiamata in `VERBI` e non di pipeline; campo assente → nessun verbo (fail-closed). `lottoNumerabile` (la casella di selezione) resta sullo stato: la numerazione di più lotti ha il suo `post_permission`. La ristampa resta su DEFINITIVA: non è un passaggio.
+  * Rifinitura dello stesso giro: la ristampa nel kebab non confronta più il codice dello stato con un `'DEFINITIVA'` scritto nel frontend, legge `ristampabile` della riga (posizione 29: lo stesso predicato con cui `ristampa_lotto` accetta, sulla costante `STATO_DEFINITIVA`, spostata accanto a `TESTATA_LOTTI` in `vendite_repository` per lo stesso ciclo d'import); fail-closed. Test nuovo `test_lotto_job_stato_db` (§15.8.2 sul DB vero: lo stato del job fuori vocabolario lo rifiuta il guard, col codice).
+  * Presidi: `test_lotto_row_mapping` (posizione 28), `test_lotto_azioni_permesse_db` (nuovo, gli esempi del pgTAP via `get_lotto` e `list_lotti`, operatore senza e con `numera_fatture_lotti`), `useLottoAzioni.spec.js` (nuovo, sei casi). Suite Django sul DB provvisto 7013, vitest 988 (rilanciate prima del commit, 2026-10-27), ruff/eslint/mypy puliti; gunicorn ricaricato.
+
+### 15.16 Richiesta al team DB: la stampa delle origini in forma 6, e D-S2 (team BE, 2026-10-27)
+
+**Decisioni di Tid (2026-10-27).**
+
+* **D-S1 = forma 6.** La fattura stampata porta la catena dei documenti di origine (`vendite.fn_fattura_origini`,
+  la stessa del dettaglio, BE-1) **al posto** della chiave `origine`, che oggi è sempre vuota (D-G1). Non la via
+  «`origini` accanto a `origine`»: lascerebbe nella stampa una chiave morta che sembra un dato.
+* **D-S2.** La superficie delle segnalazioni del lotto (scheda Critiche) fuori dal registro: Tid concorda che la
+  forma è del team DB (vedi §15.16.2).
+
+#### 15.16.1 Che cosa serve al team DB (forma 6)
+
+È il precedente dell'ordine in forma 3 ([brief-db-grammatica-unica-documenti §12.10](../work-done/brief-db-grammatica-unica-documenti.md)),
+con la regola dei modelli standard (Q-5: i changeSet di evoluzione scrivono **solo** sullo standard).
+
+**La forma 6 del contesto fattura** (la fissa il BE, è il contratto che il modello legge):
+
+| Chiave | Forma 5 (oggi) | Forma 6 |
+| --- | --- | --- |
+| `fattura.origine` | `{codice, tipo}`, sempre `None` / `None` | **tolta** |
+| `fattura.origini` | — | lista, nell'ordine di `vendite.fn_fattura_origini`; ogni elemento `{livello, tipo, etichetta, codice}` (`tipo` = `tipo_codice_interno`, `etichetta` = `config.sorgenti.etichetta`, `codice` può essere `None`); `[]` se la fattura non cita niente |
+
+Il resto del contesto non cambia. Il render è `StrictUndefined`: un modello in forma 5 che legge `fattura.origine`
+fallirebbe, ed è il motivo della forma nuova.
+
+**R-S1 — changeSet `80_data`: lo standard «Fattura di vendita» (`FATTURA_VENDITA`), versione 2.** Copia della
+pubblicata valida oggi (su dbdev la versione 1, id 3365, forma 5, letto il 2026-10-27), con la sola sezione
+«Origine documento» sostituita: oggi è il blocco `{% if fattura.origine.tipo or fattura.origine.codice %}` …
+`{% endif %}` (cinque occorrenze di `fattura.origine.`, seed `20261020-18`). Proposta di corpo (il team DB ne
+decide la grafica):
+
+```jinja
+{% if fattura.origini %}
+  <section class="section">
+    <div class="label">Documenti di origine</div>
+    <div class="box">
+      {% for o in fattura.origini %}
+        <div><strong>{{ o.etichetta }}</strong>{% if o.codice %}<span class="muted"> - {{ o.codice }}</span>{% endif %}</div>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+```
+
+`versione_contesto = 6`, pubblicata da `script.fn_data_operativa()`; sostituzione contata (le cinque occorrenze, né
+una di più né una di meno), idempotente, ferma su una bozza già presente — come il `20261020-25`.
+
+**R-S2 — script una tantum per le copie degli emittenti** (dati dell'applicazione, non un changeSet: come
+`sql-una-tantum-l2b2-copie-ordine-forma-3.sql`). Su dbdev, letto il 2026-10-27, due copie stampano la fattura e
+leggono `fattura.origine`: template 77 (versione 7, id 2334) e 2527 (versione 7, id 3097), entrambe in forma 5.
+Dopo il riavvio del BE in forma 6 non stampano più (409 `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`) finché non hanno
+una versione in forma 6. Lo script le cerca per criterio (modelli fattura degli emittenti la cui versione
+stampata è in forma 5 e legge `fattura.origine.`), sostituisce la stessa sezione, le porta alla forma 6 e le
+pubblica dalla data operativa; si ferma annullando tutto su una bozza attiva o su un conteggio diverso.
+
+**R-S3 — pgTAP**: lo standard v2 in forma 6, pubblicato, senza `fattura.origine.` nel corpo; e la regressione.
+
+#### 15.16.2 D-S2 — la scheda Critiche (domanda)
+
+`pipeline_repository.list_lotto_segnalazioni` compone `uscita_blocco_reason` chiamando la check nel backend: il
+motivo non diverge (la check è la stessa), ma il presidio del registro `config.azioni_riga` non vede questa
+superficie. Le righe delle segnalazioni non sono per costruzione quelle di `vendite.vw_lotti_gruppi_azioni`
+(perimetro ∪ esiti), e un `LEFT JOIN` vuoto direbbe «ammessa»: per questo il BE non l'ha portata alla vista.
+Due strade, la scelta è del team DB: **(a)** una superficie registrata per le segnalazioni; **(b)** la vista che
+copre anche le righe delle segnalazioni. Priorità bassa: oggi non sbaglia niente, è un buco nel presidio.
+
+#### 15.16.3 La sequenza (proposta, da confermare col team DB)
+
+1. Team DB: R-S1 … R-S3, provati in transazione.
+2. Tid: apply. Da qui lo standard v2 (forma 6) non stampa finché il builder produce la 5; le copie degli
+   emittenti in forma 5 stampano ancora.
+3. Team BE: il builder della fattura a `CONTEXT_VERSION = 6` (`origini` da `list_fattura_origini`, `origine`
+   tolta), test e doc; commit; riavvio del backend. Da qui stampa lo standard, le copie no.
+4. Tid: lo script una tantum (R-S2), **subito dopo** il riavvio. Le righe di coda di stampa finite in errore nella
+   finestra si rimettono in coda dalla gestione code.
+
+⚠️ Il builder non passa alla forma 6 **prima** dell'apply: col modello in forma 5 pubblicato, ogni stampa di
+fattura si fermerebbe al guard della forma (regola: il BE non va per primo sul contro-pezzo del DB).
+

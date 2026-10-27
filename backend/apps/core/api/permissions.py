@@ -94,8 +94,9 @@ _CONSENTITO = EsitoPermesso(consentito=True)
 #        stato_del_modello — lo stato di arrivo e' uno stato che il modello
 #        dice, letto dal vocabolario A OGNI RICHIESTA: "emissione" («Emetti»,
 #        B-2 di brief-modello-documento-vendita §8.11) o "annullo" (la rotta
-#        di un verbo d'annullo, §9.8). Un codice fissato alla definizione
-#        della view sarebbe un letterale spostato. ⛔ Esclusivo con
+#        di un verbo d'annullo, §9.8) o "iniziale" (lo stato in cui il
+#        documento nasce: «riporta in bozza» del lotto, §15.13). Un codice
+#        fissato alla definizione della view sarebbe un letterale spostato. ⛔ Esclusivo con
 #        `stato_chiesto`; un vocabolario che non lo dichiara -> None;
 #        campo_stato — il campo del corpo con lo stato chiesto (`stato_codice`;
 #        il preventivo usa `nuovo_stato`);
@@ -110,7 +111,7 @@ class PassaggioDocumento:
     stato_chiesto: str | None = None
     campo_stato: str = "stato_codice"
     risolvi_documento: Callable[[int], int | None] | None = None
-    stato_del_modello: Literal["emissione", "annullo"] | None = None
+    stato_del_modello: Literal["emissione", "annullo", "iniziale"] | None = None
 
     # Errore di cablaggio, quindi alla definizione della view e non a una
     # richiesta: due fonti dello stato chiesto non si sa quale valga.
@@ -142,11 +143,12 @@ class PassaggioDocumento:
             return None
         repo = DocumentoModelloRepository()
         if self.stato_del_modello is not None:
-            letto = (
-                repo.stato_di_emissione(self.testata)
-                if self.stato_del_modello == "emissione"
-                else repo.stato_di_annullo(self.testata)
-            )
+            lettori = {
+                "emissione": repo.stato_di_emissione,
+                "annullo": repo.stato_di_annullo,
+                "iniziale": repo.stato_iniziale,
+            }
+            letto = lettori[self.stato_del_modello](self.testata)
             if letto is None:
                 return None
             stato = letto.codice

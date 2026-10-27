@@ -74,6 +74,8 @@ def _riga(override: dict[int, object] | None = None):
         # ⚠️ Diverso da `emittente_soggetto_ruolo_id` (72): sono due id del
         #    progetto che NON coincidono, e uno scambio si deve vedere.
         9,                              # 27 emittente_fiscale_id
+        ["numera", "riporta_a_draft"],  # 28 azioni_permesse
+        True,                           # 29 ristampabile
     ]
     for i, v in (override or {}).items():
         riga[i] = v
@@ -113,6 +115,12 @@ class MapLottoRowTests(SimpleTestCase):
         self.assertEqual(r["n_esiti_completati"], 3)
         # La PK dell'emittente (2026-09-27), accanto al soggetto-ruolo.
         self.assertEqual(r["emittente_fiscale_id"], 9)
+        # I passaggi permessi dallo stato (§15.14, 2026-10-27): una lista, non
+        # l'array del driver.
+        self.assertEqual(r["azioni_permesse"], ["numera", "riporta_a_draft"])
+        self.assertIs(r["ristampabile"], True)
+        # Lotto senza stato (LEFT JOIN vuoto): NULL non e' «si ristampa».
+        self.assertIs(VenditeRepository._map_lotto_row(_riga({29: None}))["ristampabile"], False)
 
     # 1. ⛔ IL DIFETTO STORICO, scritto in negativo: `riaperto` deve dipendere
     #    SOLO dalla sua colonna. Le due righe qui sotto sono i due casi veri

@@ -28,10 +28,9 @@ Indice test eseguiti:
 18) VenditePipelineRepositoryUnitTests.test_complete_lotto_task_run_calls_sql_function
 19) VenditePipelineRepositoryUnitTests.test_fail_lotto_task_run_calls_sql_function_with_error_params
 20) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_updates_only_stato_lotto
-21) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_rejects_invalid_target_state
-22) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_rejects_invalid_transition
+21) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_non_giudica_il_passaggio
+22) VenditePipelineRepositoryUnitTests.test_update_lotto_stato_doc_passa_dal_verbo_di_processo
 22b) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_completato_puo_andare_in_errore
-22c) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_errore_non_va_in_completato
 23) VenditePipelineRepositoryUnitTests.test_list_lotto_task_runs_maps_rows
 24) VenditePipelineRepositoryUnitTests.test_popola_fatture_rettifiche_chiama_la_fn_e_ritorna_le_coppie
 25) VenditePipelineRepositoryUnitTests.test_popola_fatture_rettifiche_casta_id_a_intero
@@ -45,11 +44,9 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 from unittest import TestCase
 
-from django.test import override_settings
 from datetime import date
 from decimal import Decimal
 
-from apps.core.services.service_errors import ServiceError
 from apps.vendite.db.pipeline_repository import TaskExecutionMode, TaskRunResult, VenditePipelineRepository
 
 
@@ -497,50 +494,48 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         self.assertNotIn("stato_operativo", second_sql)
         self.assertEqual(second_params, ["COMPLETATO", "Pipeline completata", "Pipeline completata", 10])
 
-    # Scopo: Verifica che set_lotto_job_stato rifiuti uno stato target non valido.
-    # ⚠️ `ERROR_LOG_DB_ENABLED=True` riacceso apposta: questi due test
-    # verificano PROPRIO che il rifiuto finisca nel diario tecnico, e il recinto
-    # della suite (zeroerp_backend/test_runner.py) lo spegne per tutti. Nessuna
-    # scrittura vera: il cursore e' un mock.
-    @override_settings(ERROR_LOG_DB_ENABLED=True)
+    # Scopo: ⭐ LA REGOLA DEI PASSAGGI DEL JOB NON STA PIU' NEL BACKEND
+    #        (brief-modello-documento-vendita §15.8 punto 2, F-4, 2026-10-27).
+    #        Uno stato fuori vocabolario e un passaggio fuori matrice arrivano al
+    #        DB senza essere giudicati qui: li rifiutano la FK sul codice e il
+    #        guard `trgfn_fatturazione_lotti_guard_stato_job`
+    #        (`E_LOTTO_PARAMETRO_NON_COERENTE`). La regola si presidia dove sta:
+    #        `db/pgtap/vendite/test-fattura-lotto-al-modello-v1` (5 e 22,
+    #        ERRORE -> COMPLETATO rifiutato compreso).
+    # ⛔ Se tornasse un controllo qui, il caso sotto non arriverebbe all'UPDATE:
+    #    sarebbe la seconda sede della regola, ritirata apposta.
     @patch("apps.vendite.db.pipeline_repository.connection.cursor")
-    def test_set_lotto_job_stato_rejects_invalid_target_state(self, mocked_cursor_factory):
-        cursor = MagicMock()
-        cursor.__enter__.return_value = cursor
-        mocked_cursor_factory.return_value = cursor
-
-        repo = VenditePipelineRepository()
-        with self.assertRaises(ServiceError) as exc:
-            repo.set_lotto_job_stato(10, "DRAFT", "stato non ammesso")
-
-        self.assertEqual(exc.exception.code, "E_PIPELINE_STATO_LOTTO")
-        self.assertEqual(cursor.execute.call_count, 1)
-        execute_sql, _ = cursor.execute.call_args.args
-        self.assertIn("fn_log_error_only", execute_sql)
-
-    # Scopo: Verifica che set_lotto_job_stato applichi le transizioni ammesse dello stato tecnico lotto.
-    # ⚠️ `ERROR_LOG_DB_ENABLED=True` riacceso apposta: questi due test
-    # verificano PROPRIO che il rifiuto finisca nel diario tecnico, e il recinto
-    # della suite (zeroerp_backend/test_runner.py) lo spegne per tutti. Nessuna
-    # scrittura vera: il cursore e' un mock.
-    @override_settings(ERROR_LOG_DB_ENABLED=True)
-    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
-    def test_set_lotto_job_stato_rejects_invalid_transition(self, mocked_cursor_factory):
+    def test_set_lotto_job_stato_non_giudica_il_passaggio(self, mocked_cursor_factory):
         cursor = MagicMock()
         cursor.__enter__.return_value = cursor
         cursor.fetchone.return_value = ("ERRORE",)
         mocked_cursor_factory.return_value = cursor
 
         repo = VenditePipelineRepository()
-        with self.assertRaises(ServiceError) as exc:
-            repo.set_lotto_job_stato(10, "COMPLETATO", "transizione non valida")
+        repo.set_lotto_job_stato(10, "COMPLETATO", "scorciatoia")
 
-        self.assertEqual(exc.exception.code, "E_PIPELINE_STATO_LOTTO")
         self.assertEqual(cursor.execute.call_count, 2)
-        first_sql, _ = cursor.execute.call_args_list[0].args
-        second_sql, _ = cursor.execute.call_args_list[1].args
-        self.assertIn("SELECT stato_lotto", first_sql)
-        self.assertIn("fn_log_error_only", second_sql)
+        update_sql, params = cursor.execute.call_args_list[1].args
+        self.assertIn("UPDATE vendite.fatturazione_lotti", update_sql)
+        self.assertEqual(params[0], "COMPLETATO")
+
+    # Scopo: ⭐ LO STATO DELLO STEP PASSA DAL VERBO DI PROCESSO DEL DB
+    #        (`vendite.fn_lotto_proietta_stato_step`, §15.8 punto 1), mai da un
+    #        `UPDATE`: la porta `trgfn_doc_stato_solo_dal_verbo` lo rifiuterebbe,
+    #        e il giro della pipeline si fermerebbe al primo step.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_update_lotto_stato_doc_passa_dal_verbo_di_processo(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        mocked_cursor_factory.return_value = cursor
+
+        VenditePipelineRepository().update_lotto_stato_doc(10, 2)
+
+        cursor.execute.assert_called_once()
+        sql, params = cursor.execute.call_args.args
+        self.assertIn("vendite.fn_lotto_proietta_stato_step(%s, %s)", sql)
+        self.assertNotIn("UPDATE", sql)
+        self.assertEqual(params, [10, 2])
 
     # Scopo: ⭐ UN LOTTO COMPLETATO PUO' ESSERE MARCATO IN ERRORE.
     #
@@ -572,29 +567,6 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         self.assertIn("UPDATE vendite.fatturazione_lotti", update_sql)
         self.assertEqual(params[0], "ERRORE")
         self.assertEqual(params[-1], 6260)
-
-    # Scopo: ⛔ IL VERSO OPPOSTO RESTA CHIUSO, e non e' un'asimmetria da sanare.
-    #
-    #        «E' andata bene» e' una CONCLUSIONE e va guadagnata con un giro —
-    #        che passa da IN_ESECUZIONE e riporta il lotto a COMPLETATO da se'.
-    #        «E' andata male» e' un FATTO OSSERVATO: rifiutarne la registrazione
-    #        non lo rende meno vero, lo rende solo invisibile.
-    #
-    # ⚠️ Il test esiste per fermare chi, vedendo la coppia, volesse
-    #    «simmetrizzarla»: aprire questo verso permetterebbe di dichiarare
-    #    riuscito un lotto senza che nulla lo abbia verificato.
-    @override_settings(ERROR_LOG_DB_ENABLED=True)
-    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
-    def test_set_lotto_job_stato_errore_non_va_in_completato(self, mocked_cursor_factory):
-        cursor = MagicMock()
-        cursor.__enter__.return_value = cursor
-        cursor.fetchone.return_value = ("ERRORE",)
-        mocked_cursor_factory.return_value = cursor
-
-        repo = VenditePipelineRepository()
-        with self.assertRaises(ServiceError) as exc:
-            repo.set_lotto_job_stato(10, "COMPLETATO", "scorciatoia")
-        self.assertEqual(exc.exception.code, "E_PIPELINE_STATO_LOTTO")
 
     # Scopo: ⭐ IL BERSAGLIO sulla riga di segnalazione, e la mappatura POSIZIONALE
     #        che lo porta. Il repository non fa `SELECT *`: nomina le colonne e

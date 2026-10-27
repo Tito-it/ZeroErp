@@ -473,6 +473,30 @@ class LookupRepository:
             cursor.execute(sql)
             return rows_to_list(cursor)
 
+    # Scopo: IL REGISTRO DELLE AZIONI DI RIGA (`config.azioni_riga`), in sola
+    #        lettura: per ogni azione, le due colonne della sua superficie che
+    #        dicono perche' il pulsante e' spento (`colonna_motivo`, il codice;
+    #        `colonna_motivo_chiave`, la chiave i18n). Il frontend costruisce
+    #        il pulsante di riga leggendo da qui QUALI colonne guardare, invece
+    #        di scriverle in ogni componente (brief-modello-documento-vendita
+    #        §15.11.1, BE-3; F-5, Q-F5).
+    # ⛔ Lookup dedicato e non generico: la tabella non ha `codice` (solo
+    #    `codice_interno`), e servono due colonne oltre a quelle del contratto
+    #    generico, mentre la variante specializzata ne porta una.
+    # ⚠️ Solo le azioni ATTIVE: un'azione spenta non ha piu' un pulsante.
+    #    Superficie, `fn_check` e verbo restano al DB (il presidio pgTAP del
+    #    registro li verifica): al client servono solo i nomi delle colonne.
+    def list_azioni_riga(self) -> list[dict[str, Any]]:
+        sql = """
+            SELECT codice_interno, colonna_motivo, colonna_motivo_chiave
+              FROM config.azioni_riga
+             WHERE attivo IS TRUE
+             ORDER BY codice_interno
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql)
+            return rows_to_list(cursor)
+
     # Scopo: Ricerca vie su stradario_generale (senza comune/CAP) per autocomplete via nuova.
     # Chiama script.fn_search_stradario_generale(p_search, p_toponomastica_id, p_limit).
     # Restituisce stradario_generale_id, toponomastica_id, toponimo, denominazione, indirizzo_normalizzato.

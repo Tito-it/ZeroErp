@@ -90,7 +90,8 @@ import { useAuthStore } from '../../stores/auth'
 import { STATO_ESECUZIONE_LOTTO, LOTTO_SCHEDE } from '../constants'
 import { useSelezioneDocumentiLotto } from '../composables/useSelezioneDocumentiLotto'
 import { scegliRamoBanner, conteggiDaSegnalazioni } from '../_shared/lotti/ramoBannerLotto'
-import { motivoUscitaBloccata } from '../uscitaDalGiro'
+import { AZIONE_RIGA_USCITA_DAL_GIRO } from '../uscitaDalGiro'
+import { useAzioneRiga } from '../../core/composables/useAzioneRiga'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 import { useContrattoFiltriLocali } from '../../core/composables/useContrattoFiltriLocali'
 import GiornaleEntitaTab from '../_shared/giornale/GiornaleEntitaTab.vue'
@@ -108,6 +109,9 @@ const emit = defineEmits(['update:visible', 'changed'])
 // `te` serve a `mapAvailableActionsToDrawerActions`: chiave i18n mancante →
 // mostra il codice macchina invece del path (fail-visible).
 const { t, te } = useI18n()
+// «Togli dal giro»: il motivo del pulsante spento dalle colonne che il registro
+// delle azioni di riga nomina (FE-1). Lo stesso BB della casella di selezione.
+const uscitaDalGiro = useAzioneRiga(AZIONE_RIGA_USCITA_DAL_GIRO)
 const { execute, loading } = useApiHandler()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
@@ -739,7 +743,6 @@ const drawerActions = computed(() => {
     onAction: (action) => eseguiAzione(props.lottoId, action.key),
   }).map((a) => ({
     ...a,
-    ...(LOTTO_AZIONE_PERMESSO[a.key] ? { action: LOTTO_AZIONE_PERMESSO[a.key] } : {}),
     // La numerazione è uno STEP di pipeline: su un lotto fermo il runner la
     // rifiuta (`blocks_next_step`). Il DB non conosce le segnalazioni, quindi
     // questo disabilitato lo aggiunge chi ha il verdetto: noi, LEGGENDOLO. Non
@@ -963,7 +966,7 @@ function buildGruppoRowActions(row) {
     command: azione.esegui,
   }))
   if (isReadonly.value) return azioni
-  azioni.push(azioneEscludi(motivoUscitaBloccata(t, te, row), row))
+  azioni.push(azioneEscludi(uscitaDalGiro.motivo(row), row))
   return azioni
 }
 
@@ -1023,7 +1026,7 @@ function buildSegnalazioneRowActions(row) {
   return [azioneEscludi(
     // Il ramo senza documento è l'eccezione spiegata qui sopra.
     row.gruppo_key
-      ? motivoUscitaBloccata(t, te, row)
+      ? uscitaDalGiro.motivo(row)
       : t('vendite.lotti.segn_escludi_del_giro'),
     {
       gruppo_key: row.gruppo_key,

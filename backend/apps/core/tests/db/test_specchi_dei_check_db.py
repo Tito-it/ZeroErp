@@ -14,6 +14,10 @@
 # ⚠️ Gli specchi con un guardrail loro (`STATI_ESECUZIONE_*`,
 #    `test_esito_esecuzione_lotto_guardrail`) restano li': quel test prova
 #    anche l'invariante fra i due livelli, che qui non c'e'.
+# ⭐ Uno specchio si TOGLIE quando il vocabolario diventa una tabella: allora il
+#    filtro lo legge da li' (`richiedi_codice_a_vocabolario`) e non c'e' piu'
+#    niente da confrontare. Cosi' `STATI_LOTTO` (stato del job del lotto, oggi
+#    `config.stati_lotto_job`, 2026-10-27).
 # ------------------------------------------------------------
 
 """
@@ -32,12 +36,11 @@ from apps.vendite.db.commesse_repository import (
     STATI_EMISSIONE_ATTIVITA,
     TIPO_MOVIMENTO_VALUES,
 )
-from apps.vendite.db.vendite_repository import FASI_DOCUMENTO, STATI_LOTTO
+from apps.vendite.db.vendite_repository import FASI_DOCUMENTO
 
 
 # (tabella, CHECK, costante) — una riga per specchio.
 _SPECCHI: tuple[tuple[str, str, frozenset[str] | tuple[str, ...]], ...] = (
-    ("vendite.fatturazione_lotti", "chk_fatturazione_lotti_stato_job", STATI_LOTTO),
     ("vendite.commesse_attivita", "chk_commesse_attivita_stato_emissione", STATI_EMISSIONE_ATTIVITA),
     ("vendite.commesse_attivita", "chk_commesse_attivita_stato_approvazione", STATI_APPROVAZIONE_ATTIVITA),
     ("vendite.commesse_attivita", "chk_commesse_attivita_tipo_movimento", TIPO_MOVIMENTO_VALUES),

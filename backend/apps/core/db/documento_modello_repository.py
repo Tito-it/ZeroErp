@@ -4,10 +4,12 @@
 # Doc: Python
 # Scopo: Accesso DB al modello del documento (guida
 #        `modello-documento-di-vendita.md` §6): l'azione di processo che un
-#        passaggio di stato chiede, lo stato di emissione e quello d'annullo,
+#        passaggio di stato chiede, lo stato di emissione, quello d'annullo
+#        e quello iniziale,
 #        letti dai lettori unici del DB
 #        (`script.fn_doc_azione_passaggio`, `script.fn_doc_stato_id`,
 #        `script.fn_stato_emissione_id`, `script.fn_stato_abortito_id`,
+#        `script.fn_doc_stato_iniziale_id`,
 #        `script.fn_doc_stato_codice`), gli stessi che usano i verbi e le
 #        capability. Generico per ogni testata della mappa
 #        `script.fn_doc_stato_modello`: un documento portato al modello non
@@ -40,6 +42,9 @@ class StatoDocumento(NamedTuple):
 # ⛔ solo queste costanti, mai un valore che arriva da fuori.
 _LETTORE_EMISSIONE = "script.fn_stato_emissione_id"
 _LETTORE_ANNULLO = "script.fn_stato_abortito_id"
+# Lo stato in cui il documento nasce, letto dalla TESTATA (`20261027-29`,
+# brief-modello-documento-vendita §15.13): mai `'DRAFT'` scritto qui.
+_LETTORE_INIZIALE = "script.fn_doc_stato_iniziale_id"
 
 
 class DocumentoModelloRepository:
@@ -98,6 +103,13 @@ class DocumentoModelloRepository:
     #        su `fn_stato_abortito_id`.
     def stato_di_annullo(self, testata: str) -> StatoDocumento | None:
         return self._stato_del_modello(_LETTORE_ANNULLO, testata)
+
+    # Scopo: Lo stato iniziale della testata (id e codice), o None (il
+    #        vocabolario non ne dichiara uno). Gemello dei due sopra, su
+    #        `fn_doc_stato_iniziale_id` (§15.13): l'arrivo di «riporta in
+    #        bozza» del lotto.
+    def stato_iniziale(self, testata: str) -> StatoDocumento | None:
+        return self._stato_del_modello(_LETTORE_INIZIALE, testata)
 
     # Scopo: la lettura (id, codice) di uno stato del modello col suo lettore
     #        del DB. Una query sola per emissione e annullo: cambia il lettore.

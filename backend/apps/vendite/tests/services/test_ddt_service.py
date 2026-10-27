@@ -111,7 +111,7 @@ _ATOMIC = "apps.vendite.services.ddt_service.transaction.atomic"
 _PUSH_ONE = "apps.vendite.services.commesse_service.pr_run_commesse_push_one"
 
 
-class DdtServiceGuardsTests(SimpleTestCase):
+class DdtServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     """Guard di stato (E_DDT_STATO_TRANSIZIONE sulla testata, E_RIGA_DOC_NON_BOZZA
     sulle righe — lo stesso codice del BB a DB, decisione B del 2026-09-22) e
     not-found (E_DDT_NOT_FOUND)."""

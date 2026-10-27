@@ -232,6 +232,35 @@ class LookupTipiEntitaView(DomainAPIView):
         return success_response({"results": LookupRepository().list_tipi_entita()})
 
 
+class LookupAzioniRigaView(DomainAPIView):
+    """GET /api/v1/core/lookup/azioni-riga/ — il registro `config.azioni_riga`.
+
+    Lookup dedicato (api.md §Lookup dedicato): per ogni azione di riga, le
+    colonne della sua superficie col motivo del pulsante spento
+    (`colonna_motivo`) e la sua chiave i18n (`colonna_motivo_chiave`). Il BB
+    del pulsante di riga del frontend le legge da qui: un'azione di riga nuova
+    si aggiunge con una riga di registro, senza un pulsante nuovo
+    (brief-modello-documento-vendita §15.11.1, BE-3).
+    Cross-dominio (`skip_area_check`): il registro serve le liste di ogni
+    documento, non di un'area sola.
+    """
+    skip_area_check = True
+
+    @extend_schema(
+        responses={200: risposta_lookup("AzioniRigaLookupResponse", riga=inline_serializer(
+            name="AzioneRigaLookupRow",
+            fields={
+                "codice_interno": serializers.CharField(),
+                "colonna_motivo": serializers.CharField(),
+                "colonna_motivo_chiave": serializers.CharField(),
+            },
+        ))},
+    )
+    # Scopo: Restituisce le azioni di riga attive con le due colonne del motivo.
+    def get(self, request: Request) -> JsonResponse:
+        return success_response({"results": LookupRepository().list_azioni_riga()})
+
+
 class LookupSistemaCodiciView(DomainAPIView):
     """GET verifica configurazione sistema codici per schema/tabella/colonna."""
     skip_area_check = True

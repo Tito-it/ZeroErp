@@ -19,6 +19,7 @@ Indice test eseguiti:
 4) PassaggioRotteTests.test_emetti_chiede_lo_stato_al_vocabolario — «Emetti» senza stato fissato
 5) PassaggioTestataDbTests.test_la_testata_e_sul_modello — mappa + matrice con l'azione
 6) PassaggioTestataDbTests.test_emetti_ha_lo_stato_di_emissione — ogni «Emetti» sul modello si emette
+7) PassaggioTestataDbTests.test_iniziale_ha_lo_stato_iniziale — ogni rotta verso lo stato iniziale lo trova
 """
 from __future__ import annotations
 
@@ -63,7 +64,7 @@ class PassaggioRotteTests(SimpleTestCase):
             with self.subTest(rotta=rotta.percorso, metodo=metodo):
                 self.assertIsNone(getattr(rotta.view, f"{metodo}_permission", None))
 
-    # Il presidio non deve passare a vuoto: le rotte dei giri 5-10 ci sono.
+    # Il presidio non deve passare a vuoto: le rotte dei giri 5-11 ci sono.
     # ⚠️ Il contratto (giro 8) era sul modello ma non in questo elenco: entrato
     #    col giro 9 (brief-modello-documento-vendita §13.6). La commessa (giro
     #    10) non si emette: ha la sola rotta dello stato.
@@ -77,7 +78,10 @@ class PassaggioRotteTests(SimpleTestCase):
                      "<int:contratto_id>/cambia-stato/", "contratti/<int:sorgente_id>/emetti/",
                      "<int:offerta_id>/registra-esito/", "<int:offerta_id>/annulla/",
                      "offerte/<int:sorgente_id>/emetti/",
-                     "commesse/<int:commessa_id>/stato/"):
+                     "commesse/<int:commessa_id>/stato/",
+                     # giro 11, il lotto (§15.8 punto 3, §15.13)
+                     "lotti/<int:lotto_id>/numera/", "<int:lotto_id>/riporta-a-draft/",
+                     "lotti/<int:lotto_id>/reset-draft/"):
             with self.subTest(coda=coda):
                 self.assertTrue(any(p.endswith(coda) for p in percorsi), coda)
 
@@ -125,3 +129,14 @@ class PassaggioTestataDbTests(unittest.TestCase):
         for testata in testate:
             with self.subTest(testata=testata):
                 self.assertIsNotNone(repo.stato_di_emissione(testata))
+
+    # Lo stato iniziale che «riporta in bozza» chiede esiste per ogni testata
+    # che lo dichiara (§15.13): senza, `PassaggioDocumento` risponderebbe None
+    # e il passaggio passerebbe col solo livello sul documento.
+    def test_iniziale_ha_lo_stato_iniziale(self) -> None:
+        testate = sorted({p.testata for _, _, p in _dichiarazioni() if p.stato_del_modello == "iniziale"})
+        self.assertTrue(testate)
+        repo = DocumentoModelloRepository()
+        for testata in testate:
+            with self.subTest(testata=testata):
+                self.assertIsNotNone(repo.stato_iniziale(testata))

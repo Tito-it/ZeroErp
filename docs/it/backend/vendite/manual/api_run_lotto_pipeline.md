@@ -81,7 +81,9 @@ Endpoint applicativo che invoca il servizio Python `run_lotto_pipeline`.
   conclusione **ricalcola sempre** le segnalazioni (`evaluate_lotto_status`)
   prima di scrivere lo stato job: prima lo faceva solo quando c'erano step da
   eseguire, quindi una catena vuota concludeva `COMPLETATO` **senza aver contato
-  niente**. La matrice di `set_lotto_job_stato` vieta `ERRORE → COMPLETATO`
+  niente**. La matrice dello stato del job (`config.transizioni_stati_lotto_job`, giudicata
+  dal guard `trgfn_fatturazione_lotti_guard_stato_job`; fino al 2026-10-27 era
+  ricopiata in `set_lotto_job_stato`) vieta `ERRORE → COMPLETATO`
   apposta — *«è andata bene» è una conclusione, va guadagnata con un giro* — ma
   l'avvio scrive `IN_ESECUZIONE`, che da `ERRORE` è l'unica porta aperta: il
   divieto non veniva infranto, veniva **aggirato**. Caso reale non fuori catena:

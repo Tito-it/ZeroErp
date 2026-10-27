@@ -93,6 +93,13 @@ class ApiFatturaDetail(DomainAPIView):
                             "scadenze": serializers.ListField(
                                 child=serializers.DictField(),
                             ),
+                            # I documenti a monte che la fattura cita, dal
+                            # lettore del DB `vendite.fn_fattura_origini`:
+                            # livello, tipo_id, tipo_codice_interno,
+                            # etichetta, uid, codice. Lista vuota = nessuno.
+                            "origini": serializers.ListField(
+                                child=serializers.DictField(),
+                            ),
                             # Badge della barra azioni del drawer senza un
                             # secondo round-trip. Dict (non scalare) per
                             # reggere i prossimi contatori.

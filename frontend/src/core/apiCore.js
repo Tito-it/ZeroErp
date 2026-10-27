@@ -70,6 +70,15 @@ export function lookupTipiEntita() {
   return api.get(`${BASE}/lookup/tipi-entita/`)
 }
 
+// Scopo: il registro delle AZIONI DI RIGA (`config.azioni_riga`) — per ogni
+//        azione attiva, `codice_interno` e le due colonne della sua superficie
+//        col motivo del pulsante spento (`colonna_motivo`) e la sua chiave i18n
+//        (`colonna_motivo_chiave`). Lookup dedicato, envelope `{"results"}`.
+//        Lo legge il BB `useAzioneRiga`.
+export function lookupAzioniRiga() {
+  return api.get(`${BASE}/lookup/azioni-riga/`)
+}
+
 // --- Sistema codici ---
 
 export function lookupSistemaCodici(schema, tabella, colonna = 'codice') {

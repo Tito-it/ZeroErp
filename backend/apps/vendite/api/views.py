@@ -29,7 +29,7 @@ from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
-from apps.vendite.db.vendite_repository import VenditeRepository
+from apps.vendite.db.vendite_repository import STATO_DEFINITIVA, TESTATA_LOTTI, VenditeRepository
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     pagina_da_query,
@@ -607,7 +607,18 @@ class ApiLottoTaskRuns(DomainAPIView):
 
 class ApiResetLottoDraft(DomainAPIView):
     area_funzionale = "vendite"
-    post_permission = "reset_lotto_draft"
+    # ⭐ L'azione dalla riga del passaggio verso lo stato d'annullo, come ogni
+    #    verbo d'annullo (§9.8): l'arrivo lo dice il vocabolario a ogni
+    #    richiesta (`fn_stato_abortito_id`, lo stesso che legge
+    #    `fn_annulla_lotto_da_draft`). Oggi la riga DRAFT -> ANNULLATA non ha
+    #    azione (Q-F2 di brief-modello-documento-vendita §15.4) e decide il
+    #    livello sul documento; ma lo dice la MATRICE, non questa view: se la
+    #    riga prende un'azione, il gate la segue senza toccare il codice.
+    #    Prima chiedeva `reset_lotto_draft`, ritirata dal catalogo (§15.8 punto 3).
+    post_passaggio = PassaggioDocumento(
+        testata=TESTATA_LOTTI, documento_kwarg="lotto_id", stato_del_modello="annullo",
+    )
+
     @extend_schema(
         parameters=[
             OpenApiParameter(
@@ -657,13 +668,17 @@ class ApiRiportaLottoADraft(DomainAPIView):
     # task di pipeline: sta qui come endpoint e NON in `ALLOWED_TASK_FUNCTIONS`
     # (raccomandazione del team DB nel brief §4), esattamente come le due
     # funzioni di reset che le stanno accanto.
-    # Gate: riusa `reset_lotto_draft`, l'azione di processo dell'annullamento.
-    # E' la stessa classe di potere — cancellare fatture pre-fiscali di un
-    # lotto — e chi puo' annullare un lotto puo' a maggior ragione rimetterlo
-    # in lavorazione. Se un domani si volesse separare, serve un codename nuovo
-    # a catalogo: non si inventa qui.
+    # ⭐ L'azione dalla riga del passaggio EMESSA -> stato iniziale (M-3, Q-F1
+    #    di brief-modello-documento-vendita §15.4, §15.13): oggi
+    #    `numera_fatture_lotti`, la stessa di «numera». Lo stato d'arrivo lo
+    #    dice il vocabolario a ogni richiesta (`fn_doc_stato_iniziale_id`), mai
+    #    un `'DRAFT'` scritto qui. Su un lotto gia' in bozza (sola pulizia) la
+    #    riga non c'e': decide il livello sul documento. Prima chiedeva
+    #    `reset_lotto_draft`, ritirata dal catalogo.
     area_funzionale = "vendite"
-    post_permission = "reset_lotto_draft"
+    post_passaggio = PassaggioDocumento(
+        testata=TESTATA_LOTTI, documento_kwarg="lotto_id", stato_del_modello="iniziale",
+    )
 
     @extend_schema(
         parameters=[
@@ -2365,12 +2380,21 @@ class ApiFatturazioneApprovaCompetenza(DomainAPIView):
 class ApiFatturazioneNumeraLotto(DomainAPIView):
     """C-4: numerazione «Rendi definitive» di un singolo lotto EMESSA. Esegue lo
     step DEFINITIVA (numera_fatture + stampa_documenti_lotto che ACCODA, I-2):
-    l'endpoint NON chiama la stampa. Gate fiscale separato (I-7): permesso
-    `numera_fatture_lotti`, distinto da `genera_fatture_lotti`. Scope operatore:
-    lotto fuori scope/inesistente → 404; non EMESSA → errore parlante."""
+    l'endpoint NON chiama la stampa. Gate fiscale separato (I-7): l'azione del
+    passaggio EMESSA -> DEFINITIVA, oggi `numera_fatture_lotti`, distinta da
+    `genera_fatture_lotti`. Scope operatore: lotto fuori scope/inesistente →
+    404; non EMESSA → errore parlante."""
 
     area_funzionale = "vendite"
-    post_permission = "numera_fatture_lotti"
+    # ⭐ L'azione dalla riga del passaggio (M-3, brief-modello-documento-vendita
+    #    §15.8 punto 3), la stessa che leggono la capability del lotto e il verbo:
+    #    il permesso si chiede quando l'operatore preme (P-2); il giro che poi
+    #    scrive lo stato e' un passaggio di processo. Da uno stato che non e'
+    #    EMESSA la riga non c'e': decide il livello sul documento e il service
+    #    rifiuta col suo codice.
+    post_passaggio = PassaggioDocumento(
+        testata=TESTATA_LOTTI, documento_kwarg="lotto_id", stato_chiesto=STATO_DEFINITIVA,
+    )
 
     @extend_schema(
         parameters=[
@@ -2957,6 +2981,11 @@ class ApiFatturazioneNumera(DomainAPIView):
     BUSINESS della coda (competenza+scope, dedup dei numera VIVI)."""
 
     area_funzionale = "vendite"
+    # ⚠️ Qui il permesso resta dichiarato, e non e' una svista rispetto al
+    #    gemello di un lotto solo (`PassaggioDocumento`): la numerazione di
+    #    PERIMETRO non ha UN documento da cui leggere la riga del passaggio, ma
+    #    tutti i lotti EMESSA del mese. L'azione e' la stessa della riga
+    #    EMESSA -> DEFINITIVA (`numera_fatture_lotti`, Q-F1).
     post_permission = "numera_fatture_lotti"
 
     @extend_schema(

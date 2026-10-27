@@ -473,7 +473,7 @@ export const useAuthStore = defineStore('auth', () => {
     return getLivelloOggetto(appLabel, modelName) === LIVELLO_ACCESSO.BLOCCATO
   }
 
-  // Mappa azioni abilitate: { genera_fatture_lotti: true, reset_lotto_draft: false, ... }
+  // Mappa azioni abilitate: { genera_fatture_lotti: true, numera_fatture_lotti: false, ... }
   // Popolata da /me/ campo azioni_abilitate (fn_get_user_actions_map)
   const azioniAbilitate = computed(() => user.value?.azioni_abilitate || {})
 
