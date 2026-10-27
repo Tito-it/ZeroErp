@@ -56,7 +56,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_stato_iniziale_id(p_vocabolario regclass)
-IS 'L''id dello stato in cui un documento nasce, letto dal suo vocabolario degli stati (colonna iniziale = true). Unica sede da cui leggerlo: nessuno scrive ''DRAFT'' o ''BOZZA'' per dire «lo stato in cui si nasce». NULL se il vocabolario non lo dichiara (decide il chiamante); vocabolario NULL o senza la colonna iniziale: E_SCRIPT_CHIAMATA_NON_VALIDA. Consumatori: script.trgfn_doc_stato_iniziale (il trigger della nascita), vendite.fn_push_preventivo_a_ordine (stato delle righe dell''ordine), dbops.fn_pgtap_porta_a_stato. Brief: brief-modello-documento-vendita §4-ter (N-1, P-1).';
+IS 'L''id dello stato in cui un documento nasce, letto dal suo vocabolario degli stati (colonna iniziale = true). Unica sede della regola: nessuno scrive ''DRAFT'' o ''BOZZA'' per dire «lo stato in cui si nasce». NULL se il vocabolario non lo dichiara (decide il chiamante); vocabolario NULL o senza la colonna iniziale: E_SCRIPT_CHIAMATA_NON_VALIDA. Riceve il VOCABOLARIO: chi ha in mano una testata della mappa (script.fn_doc_stato_modello) legge con script.fn_doc_stato_iniziale_id, che delega qui. Consumatori: script.fn_doc_stato_iniziale_id, script.trgfn_doc_stato_iniziale (il trigger della nascita: il vocabolario e'' un suo argomento, montato anche sulle testate d''acquisto, fuori mappa), vendite.fn_push_preventivo_a_ordine (lo stato delle RIGHE dell''ordine). Brief: brief-modello-documento-vendita §4-ter (N-1, P-1); consumatori rivisti al §15.13 (2026-10-27).';
 ```
 
 </div>

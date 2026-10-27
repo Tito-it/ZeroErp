@@ -16,6 +16,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_annulla_lotto_da_draft(p_lotto_id bigint)
  RETURNS TABLE(updated_lotti integer, updated_attivita integer, deleted_fatture integer, deleted_righe integer, annullati_task_run integer)
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-27 (20261027-27): solo commenti; la regola del job e' la matrice
+--   config.transizioni_stati_lotto_job (vedi «stato_lotto NON SI TOCCA»).
 -- rev 2026-10-27 (20261027-15, brief-modello-documento-vendita §15): lo
 --   stato fiscale lo scrive il verbo del lotto, vendite.fn_cambia_stato_lotto,
 --   dopo la pulizia (la porta non lascia passare l'UPDATE); il passaggio
@@ -167,10 +169,13 @@ BEGIN
 
     -- ⛔ `stato_lotto` NON SI TOCCA (rev 2026-09-07). Fino a oggi questa riga
     --   ci scriveva 'COMPLETATO', e sono TRE regole infrante in una:
-    --     1. la macchina a stati la vieta — fn_set_fatturazione_lotto_stato
-    --        rifiuta ERRORE -> COMPLETATO («da ERRORE solo IN_ESECUZIONE») —
+    --     1. la macchina a stati la vietava — allora fn_set_fatturazione_lotto_stato
+    --        rifiutava ERRORE -> COMPLETATO («da ERRORE solo IN_ESECUZIONE») —
     --        e questo UPDATE diretto le passava dietro, quindi il guardiano
-    --        non vedeva nemmeno la transizione;
+    --        non vedeva nemmeno la transizione. Dal 2026-10-27 la regola sta
+    --        nella matrice config.transizioni_stati_lotto_job, applicata a ogni
+    --        scrittura da trgfn_fatturazione_lotti_guard_stato_job (la funzione
+    --        e' ritirata, 20261027-07): ERRORE -> COMPLETATO resta vietato;
     --     2. la sorella fn_riporta_lotto_a_draft dichiara nel proprio corpo
     --        «stato_lotto NON si tocca — ha una macchina a stati cablata», e
     --        l'intestazione qui sopra invoca la SIMMETRIA con lei come

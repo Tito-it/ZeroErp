@@ -19,6 +19,7 @@
 > * [script.fn_guard_passaggio](/dbzero/script/funzioni/fn_guard_passaggio) e [script.fn_doc_scrivi_stato](/dbzero/script/funzioni/fn_doc_scrivi_stato) — le due metà del verbo di stato
 > * [script.trgfn_doc_stato_solo_dal_verbo](/dbzero/script/funzioni/trgfn_doc_stato_solo_dal_verbo) — la porta: lo stato si cambia solo dal verbo
 > * [script.fn_stato_iniziale_id](/dbzero/script/funzioni/fn_stato_iniziale_id) — l'unico lettore dello stato iniziale di un vocabolario
+> * [script.fn_doc_stato_iniziale_id](/dbzero/script/funzioni/fn_doc_stato_iniziale_id) — lo stesso, a partire dal documento
 > * [script.fn_stato_emissione_id](/dbzero/script/funzioni/fn_stato_emissione_id) — l'unico lettore dello stato di emissione di un documento
 > * [script.fn_stato_abortito_id](/dbzero/script/funzioni/fn_stato_abortito_id) — l'unico lettore dello stato d'annullo di un documento
 > * [script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id) — dal codice di uno stato al suo id, per ogni documento
@@ -79,7 +80,9 @@ le salterebbe tutte: una bolla nata emessa è numerata e vuota, e dopo le righe 
 
 * **Quale sia lo stato iniziale lo dice il vocabolario**, con la colonna `iniziale`: uno stato solo
   per vocabolario, ed è attivo. Nessuno scrive `'DRAFT'` o `'BOZZA'` nel codice per dire «lo stato
-  in cui si nasce»: lo legge [`script.fn_stato_iniziale_id`](/dbzero/script/funzioni/fn_stato_iniziale_id).
+  in cui si nasce»: lo legge [`script.fn_stato_iniziale_id`](/dbzero/script/funzioni/fn_stato_iniziale_id),
+  e chi ha in mano il documento e non il vocabolario lo chiede a
+  [`script.fn_doc_stato_iniziale_id`](/dbzero/script/funzioni/fn_doc_stato_iniziale_id).
 * **Se chi crea non dice lo stato, il database mette l'iniziale**; se dice l'iniziale, passa; se dice
   un altro stato, l'errore è `E_DOC_STATO_INIZIALE_NON_VALIDO`. È un errore tecnico: nessuna maschera
   crea un documento già avanti, lo commette solo chi scrive il codice.

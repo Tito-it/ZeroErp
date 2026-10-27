@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: LO STATO INIZIALE DI UNA TESTATA
+#   Brief: brief-modello-documento-vendita §15.13 (giro 11, richiesta del
+#   team BE sul §15.8 punto 3). Gemello di script.fn_stato_emissione_id
+#   (20261025-40) e di script.fn_stato_abortito_id (20261025-74).
+#
+# ── CHE COSA DICE ───────────────────────────────────────────────────
+#   L'id dello stato iniziale nel vocabolario della testata, dalla mappa
+#   script.fn_doc_stato_modello. La regola (colonna iniziale = true) resta
+#   in script.fn_stato_iniziale_id, che riceve il vocabolario: qui si
+#   compone la mappa, non si ricopia la regola. Non e' un overload di
+#   quella: l'argomento e' regclass in tutte e due.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Chi ha in mano la testata (il backend, il passaggio «riporta in
+#   bozza» del lotto: EMESSA -> stato iniziale) non deve sapere quale
+#   vocabolario le corrisponde: e' la composizione sulla mappa ritirata
+#   dal backend al §8.7 punto 3.
+#
+# ── LE COPIE CHE SI RITIRANO ────────────────────────────────────────
+#   Il letterale del vocabolario accanto alla testata, nei builder pgTAP
+#   (20261027-30 … -38). Resta su script.fn_stato_iniziale_id chi ha in
+#   mano il vocabolario e non una testata della mappa: il trigger della
+#   nascita (il vocabolario e' un argomento del trigger, montato anche
+#   sulle testate d'acquisto, fuori mappa) e
+#   vendite.fn_push_preventivo_a_ordine (lo stato delle RIGHE dell'ordine,
+#   vendite.ordini_righe.stato_doc_ordine_id).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261027-29-create-fn-doc-stato-iniziale-id-mctit.yaml
+
+  - changeSet:
+      id: 20261027-29-create-fn-doc-stato-iniziale-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        BB script.fn_doc_stato_iniziale_id(regclass): l'id dello stato iniziale nel vocabolario di
+        una testata della mappa, delegando la regola a script.fn_stato_iniziale_id. Gemello di
+        script.fn_stato_emissione_id e script.fn_stato_abortito_id.
+        Brief: brief-modello-documento-vendita §15.13.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_doc_stato_modello', 'fn_stato_iniziale_id');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_doc_stato_iniziale_id(p_testata regclass)
+               RETURNS bigint
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- Il vocabolario di una qualunque testata della mappa:
+                  -- nessuna colonna comune a cui ancorarlo.
+                  v_vocabolario regclass;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: l'id dello stato iniziale della testata, dal suo
+                  --   vocabolario.
+                  -- Regole:
+                  --   - testata fuori mappa: il chiamante e' rotto,
+                  --     E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - lo stato iniziale lo dice script.fn_stato_iniziale_id
+                  --     (NULL se il vocabolario non ne dichiara).
+                  -- =========================================================
+                  SELECT m.vocabolario
+                    INTO v_vocabolario
+                    FROM script.fn_doc_stato_modello(p_testata) m;
+
+                  IF v_vocabolario IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_doc_stato_iniziale_id', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('testata', p_testata::text),
+                          NULL::uuid,
+                          'script.fn_doc_stato_iniziale_id',
+                          'p_testata: una testata della mappa del modello (script.fn_doc_stato_modello)');
+                  END IF;
+
+                  RETURN script.fn_stato_iniziale_id(v_vocabolario);
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_doc_stato_iniziale_id(p_testata regclass)
+                IS 'BB del modello del documento: l''id dello stato INIZIALE di una testata, letto dal suo vocabolario degli stati (la mappa e'' script.fn_doc_stato_modello; la regola, colonna iniziale = true, e'' script.fn_stato_iniziale_id, a cui delega). Unica sede da cui lo legge chi ha in mano una testata: nessuno scrive ''DRAFT'' per dire «lo stato in cui si nasce», ne'' il vocabolario che corrisponde alla testata. NULL se il vocabolario non lo dichiara; testata fuori mappa: E_SCRIPT_CHIAMATA_NON_VALIDA. Non e'' un overload di script.fn_stato_iniziale_id (stesso tipo d''argomento): quella resta per chi ha il vocabolario e non una testata della mappa (il trigger della nascita, le righe dell''ordine). Gemello di script.fn_stato_emissione_id e script.fn_stato_abortito_id. Consumatori: il backend («riporta in bozza» del lotto, lo stato di arrivo per la riga del passaggio), i builder pgTAP dbops.fn_pgtap_crea_preventivo, _preventivo_con_righe, _ordine, _ordine_con_righe, _ddt_da_ordine, _ddt_senza_ordine, _ddt_riconsegna, _commessa, _fattura. Brief: brief-modello-documento-vendita §15.13 (Tid 2026-10-27).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_doc_stato_iniziale_id(regclass);

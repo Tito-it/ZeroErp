@@ -120,6 +120,7 @@ search:
 - [fn_doc_scrivi_stato](funzioni/fn_doc_scrivi_stato.md)
 - [fn_doc_stato_codice](funzioni/fn_doc_stato_codice.md)
 - [fn_doc_stato_id](funzioni/fn_doc_stato_id.md)
+- [fn_doc_stato_iniziale_id](funzioni/fn_doc_stato_iniziale_id.md)
 - [fn_doc_stato_modello](funzioni/fn_doc_stato_modello.md)
 - [fn_doc_testata_in_stato](funzioni/fn_doc_testata_in_stato.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 2)
 - [fn_elimina_credenziale](funzioni/fn_elimina_credenziale.md) — (scritta il 06-10-2026)
