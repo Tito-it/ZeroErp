@@ -37,7 +37,66 @@ SELECT plan(4);
 -- Parte A: utility CON dimensione -> classe letta dal contratto
 -- =========================================================================
 
--- Precondizioni: BA su utility con dimensione + categoria + classe coerente + listino.
+-- rev 2026-10-27 (lotto 4 di D7): BA, listino, articolo, riga e contratto si
+--   COSTRUISCONO. Prima il BA si pescava (il primo con categoria su una utility
+--   con dimensione, ORDER BY ba.id LIMIT 1): da zero non c'era, e il file
+--   moriva sulla precondizione. Ora si sceglie dal catalogo di seed la UTILITY
+--   — con dimensione tipo/classe e una classe (config.tipi_utenze /
+--   config.classi_utenze), una tipologia di listino ammessa, e compatibile con
+--   l'emittente di chi agisce secondo config.utilities_tipi_ruolo (fail-open
+--   come script.fn_guard_utility_tipo_ruolo) — e su quella si costruisce il
+--   cliente (dbops.fn_pgtap_crea_cliente_ba, legato all'emittente di chi
+--   agisce). Listino e versione da dbops.fn_pgtap_crea_listino (prima INSERT a
+--   mano), la riga da dbops.fn_pgtap_listino_aggiungi_articoli, la testata
+--   DRAFT da dbops.fn_pgtap_crea_contratto (prima INSERT a mano col numero
+--   fisso). La fornitura (contratti_utilities) resta scritta qui: e' il caso.
+CREATE TEMP TABLE tmp_utility_wd AS
+SELECT u.id AS utility_id
+  FROM config.utilities u
+ WHERE EXISTS (SELECT 1
+                 FROM config.classi_utenze cu
+                 JOIN config.tipi_utenze tu ON tu.id = cu.tipo_utenza_id
+                WHERE tu.utility_id = u.id)
+   AND EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                WHERE ltu.utility_id = u.id AND ltu.attivo)
+   AND (NOT EXISTS (SELECT 1 FROM config.utilities_tipi_ruolo utr
+                     WHERE utr.utility_id = u.id AND utr.attivo IS TRUE
+                       AND utr.validita @> script.fn_data_operativa())
+        OR EXISTS (SELECT 1
+                     FROM config.utilities_tipi_ruolo utr
+                     JOIN anagrafiche.soggetti_ruoli sr
+                       ON sr.id = script.fn_pgtap_emittente_sr_operatore()
+                    WHERE utr.utility_id = u.id
+                      AND utr.tipo_ruolo_id = sr.tipo_ruolo_id
+                      AND utr.attivo IS TRUE
+                      AND utr.validita @> script.fn_data_operativa()))
+ ORDER BY u.id
+ LIMIT 1;
+
+CREATE TEMP TABLE tmp_cli_wd AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'classe da contratto WD', (SELECT utility_id FROM tmp_utility_wd));
+
+-- 2026-10-08 (§F.2): il listino si COSTRUISCE, della utility e dell'emittente
+--   del BA, con la prima tipologia che la utility ammette (guard
+--   trgfn_listini_guard_tipologia_utility).
+CREATE TEMP TABLE tmp_ctx_wd_versione AS
+SELECT l.listino_versione_id AS versione_id, l.listino_id, l.tipologia_id
+  FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_utility_wd), 'classe da contratto WD') l;
+
+CREATE TEMP TABLE tmp_ctx_wd_listino AS
+SELECT v.listino_id FROM tmp_ctx_wd_versione v;
+
+-- L'articolo del caso: costruito, con la tipologia del listino. Non e' il
+--   soggetto del test (lo e' la classe letta dal contratto).
+CREATE TEMP TABLE tmp_art_wd AS
+SELECT b.articolo_id
+  FROM dbops.fn_pgtap_crea_articolo(
+           'PGTAP-V5B-WD', false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_ctx_wd_versione)) AS b(articolo_id);
+
+-- In un'istruzione a parte dai builder: le righe che scrivono non sono
+-- visibili a una JOIN nella stessa istruzione che li chiama.
 CREATE TEMP TABLE tmp_ctx_wd AS
 SELECT
     ba.id                       AS ba_id,
@@ -46,15 +105,10 @@ SELECT
     ba.utility_id               AS utility_id,
     -- 2026-10-08 (§F.2): l'emittente del BA, non il primo per id.
     (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
-      WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id))                       AS emittente_srid,
-    -- 2026-10-08 (§F.2): l'articolo si costruisce qui sotto, con la prima tipologia
-    --   che la utility del BA ammette (come fn_pgtap_crea_listino).
-    NULL::uuid                  AS articolo_id,
-    NULL::bigint                AS uom_id,
-    (SELECT ltu.tipologia_id FROM config.listini_tipologie_utilities ltu
-       JOIN config.listini_tipologie lt ON lt.id = ltu.tipologia_id AND lt.attivo
-      WHERE ltu.utility_id = ba.utility_id AND ltu.attivo
-      ORDER BY lt.ordinamento, lt.id LIMIT 1) AS tipologia_id,
+      WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id)) AS emittente_srid,
+    a.id                        AS articolo_id,
+    a.uom_id                    AS uom_id,
+    a.listino_tipologia_id      AS tipologia_id,
     -- Classe dichiarata sul contratto (coerente con la utility del BA).
     (SELECT cu.id
        FROM config.classi_utenze cu
@@ -66,25 +120,10 @@ SELECT
        JOIN config.tipi_utenze tu ON tu.id = cu.tipo_utenza_id
       WHERE tu.utility_id = ba.utility_id
       ORDER BY cu.id LIMIT 1)                                          AS tipo_utenza_id
-  FROM anagrafiche.billing_account ba
- WHERE ba.categoria_cliente_id IS NOT NULL
-   AND EXISTS (
-       SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
-   )
-   -- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
-   --   contratto e' della sua utility e del suo emittente (guard nuovo). Listino e
-   --   articolo si COSTRUISCONO qui sotto, con una tipologia che la utility del BA
-   --   ammette (guard trgfn_listini_guard_tipologia_utility).
-   --   ⚠️ Due stesure dello stesso giorno, entrambe rosse su dbdev: prima si cercava
-   --   fra i dati un listino gia' coerente, poi un articolo dei dati con una tipologia
-   --   della utility del BA. Nessuno dei due c'era. L'articolo non e' il soggetto del
-   --   test (lo e' la classe letta dal contratto): si costruisce.
-   AND EXISTS (
-       SELECT 1 FROM config.listini_tipologie_utilities ltu
-        WHERE ltu.utility_id = ba.utility_id AND ltu.attivo
-   )
- ORDER BY ba.id
- LIMIT 1;
+  FROM tmp_cli_wd c
+  JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+  CROSS JOIN tmp_art_wd t
+  JOIN catalogo.articoli a ON a.id = t.articolo_id;
 
 -- 1) Precondizione con dimensione
 SELECT isnt(
@@ -93,69 +132,35 @@ SELECT isnt(
     '(precondizione) BA su utility con dimensione + classe coerente disponibile'
 );
 
--- Listino con versione attiva e riga (riusa struttura esistente o crea in-TX).
--- L'articolo del caso: costruito, con la tipologia del contesto.
-UPDATE tmp_ctx_wd SET articolo_id = dbops.fn_pgtap_crea_articolo('PGTAP-V5B-WD',
-    p_listino_tipologia_id => tipologia_id);
-UPDATE tmp_ctx_wd t
-   SET uom_id = (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = t.articolo_id);
-
--- 2026-10-08 (§F.2): il listino si COSTRUISCE, della tipologia dell'articolo, della
---   utility e dell'emittente del BA. Prima era il primo listino di quella tipologia,
---   di qualunque utility ed emittente.
-CREATE TEMP TABLE tmp_ctx_wd_listino AS
-WITH ins AS (
-    INSERT INTO vendite.listini (codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
-    SELECT 'PGTAP_V5B_WD_' || substr(md5(clock_timestamp()::text || random()::text), 1, 12),
-           'Fixture pgTAP: classe da contratto WD', t.utility_id, t.tipologia_id, t.emittente_srid
-      FROM tmp_ctx_wd t
-    RETURNING id)
-SELECT id AS listino_id FROM ins;
-
-INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
-SELECT l.listino_id, 'PGTAP_V5B_VER', script.fn_data_operativa(), script.fn_data_operativa() + 365, 'ATTIVA', TRUE
-  FROM tmp_ctx_wd_listino l
- WHERE NOT EXISTS (
-     SELECT 1 FROM vendite.listini_versioni lv
-      WHERE lv.listino_id = l.listino_id AND lv.attivo = TRUE
-        AND lv.validita @> script.fn_data_operativa()
- );
-
-CREATE TEMP TABLE tmp_ctx_wd_versione AS
-SELECT lv.id AS versione_id, lv.listino_id
-  FROM vendite.listini_versioni lv, tmp_ctx_wd_listino l
- WHERE lv.listino_id = l.listino_id
-   AND lv.attivo IS TRUE
-   AND lv.validita @> script.fn_data_operativa()
- ORDER BY lv.id DESC LIMIT 1;
-
-INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
-SELECT v.versione_id, t.articolo_id, t.uom_id, 100
-  FROM tmp_ctx_wd_versione v, tmp_ctx_wd t
-ON CONFLICT DO NOTHING;
+-- Riga di listino a 100. In un DO: una SELECT nuda stamperebbe una riga in
+-- mezzo al flusso TAP.
+DO $riga_wd$ BEGIN
+    PERFORM dbops.fn_pgtap_listino_aggiungi_articoli(
+        (SELECT versione_id FROM tmp_ctx_wd_versione),
+        ARRAY[(SELECT articolo_id FROM tmp_ctx_wd)],
+        100);
+END $riga_wd$;
 
 -- Contratto ATTIVO in modalita' A (con listino, senza variazione globale):
 -- nasce DRAFT e si attiva dopo la fornitura (rev 2026-10-11, sotto).
-INSERT INTO vendite.contratti(
-    numero, billing_account_id, istanza_utility_id, utility_id, stato_doc_contratto_id,
-    valido_dal, valido_al, listino_id)
-SELECT 'PGTAP_V5B_CONTR_WD', t.ba_id, t.istanza_utility_id, t.utility_id,
-       (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
-       script.fn_data_operativa(), script.fn_data_operativa() + 365, v.listino_id
-  FROM tmp_ctx_wd t, tmp_ctx_wd_versione v;
+CREATE TEMP TABLE tmp_contratto_wd AS
+SELECT k.contratto_id
+  FROM dbops.fn_pgtap_crea_contratto(
+           'classe da contratto WD', 'DRAFT', (SELECT ba_id FROM tmp_ctx_wd), NULL,
+           script.fn_data_operativa(), script.fn_data_operativa() + 365, NULL,
+           (SELECT listino_id FROM tmp_ctx_wd_listino)) k;
 
 -- Il trigger snapshot precontrattuali potrebbe aver creato la riga gia'.
 -- La pulisco e la re-inserisco con classe contrattualizzata nota.
 DELETE FROM vendite.contratti_utilities
- WHERE contratto_id = (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_V5B_CONTR_WD');
+ WHERE contratto_id = (SELECT contratto_id FROM tmp_contratto_wd);
 
 INSERT INTO vendite.contratti_utilities(
     contratto_id, istanza_utility_id, utility_id,
     tipo_utenza_id, classe_utenza_id)
-SELECT c.id, t.istanza_utility_id, t.utility_id,
+SELECT c.contratto_id, t.istanza_utility_id, t.utility_id,
        t.tipo_utenza_id, t.classe_contratto_id
-  FROM vendite.contratti c, tmp_ctx_wd t
- WHERE c.numero = 'PGTAP_V5B_CONTR_WD';
+  FROM tmp_contratto_wd c, tmp_ctx_wd t;
 
 -- ⛔ rev 2026-10-11 (brief-db-testata-dopo-emissione §11.7): la fornitura si
 --   scrive solo in bozza (lock dei satelliti, 20261011-24). Il contratto nasce
@@ -165,9 +170,11 @@ SELECT c.id, t.istanza_utility_id, t.utility_id,
 -- rev 2026-10-27 (brief-modello-documento-vendita §11, debito del giro 8): il contratto ha la
 --   porta sulla colonna di stato; l'attivazione passa dal verbo, che la fixture chiama con
 --   emetti_contratto concessa (prima un UPDATE diretto, ora fermato dalla porta).
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.id, 'ATTIVO')
-  FROM vendite.contratti c
- WHERE c.numero = 'PGTAP_V5B_CONTR_WD';
+-- In un DO: una SELECT nuda stamperebbe lo stato in mezzo al flusso TAP.
+DO $attiva_wd$ BEGIN
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.contratto_id, 'ATTIVO')
+       FROM tmp_contratto_wd c;
+END $attiva_wd$;
 
 -- 2) Test chiave: chiamo il resolver passando p_classe_utenza_id = NULL.
 -- Il resolver deve leggere la classe dal contratto, non dal parametro.
@@ -191,6 +198,54 @@ SELECT is(
 -- =========================================================================
 
 -- BA su utility commercio (no tipi_utenze).
+-- rev 2026-10-27 (lotto 4 di D7): come la parte A — la utility si sceglie dal
+--   seed (senza dimensione, tipologia ammessa, compatibile con l'emittente),
+--   cliente, listino, articolo, riga e testata si costruiscono (prima il BA si
+--   pescava, il listino e il contratto si scrivevano a mano).
+CREATE TEMP TABLE tmp_utility_nd AS
+SELECT u.id AS utility_id
+  FROM config.utilities u
+ WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+   AND EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                WHERE ltu.utility_id = u.id AND ltu.attivo)
+   AND (NOT EXISTS (SELECT 1 FROM config.utilities_tipi_ruolo utr
+                     WHERE utr.utility_id = u.id AND utr.attivo IS TRUE
+                       AND utr.validita @> script.fn_data_operativa())
+        OR EXISTS (SELECT 1
+                     FROM config.utilities_tipi_ruolo utr
+                     JOIN anagrafiche.soggetti_ruoli sr
+                       ON sr.id = script.fn_pgtap_emittente_sr_operatore()
+                    WHERE utr.utility_id = u.id
+                      AND utr.tipo_ruolo_id = sr.tipo_ruolo_id
+                      AND utr.attivo IS TRUE
+                      AND utr.validita @> script.fn_data_operativa()))
+ ORDER BY u.id
+ LIMIT 1;
+
+CREATE TEMP TABLE tmp_cli_nd AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'classe da contratto ND', (SELECT utility_id FROM tmp_utility_nd));
+
+-- 2026-10-08 (§F.2): il listino si COSTRUISCE, della utility e dell'emittente
+--   del BA, con la prima tipologia che la utility ammette (guard
+--   trgfn_listini_guard_tipologia_utility).
+CREATE TEMP TABLE tmp_ctx_nd_versione AS
+SELECT l.listino_versione_id AS versione_id, l.listino_id, l.tipologia_id
+  FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_utility_nd), 'classe da contratto ND') l;
+
+CREATE TEMP TABLE tmp_ctx_nd_listino AS
+SELECT v.listino_id FROM tmp_ctx_nd_versione v;
+
+-- L'articolo del caso: costruito, con la tipologia del listino. Non e' il
+--   soggetto del test (lo e' la classe letta dal contratto).
+CREATE TEMP TABLE tmp_art_nd AS
+SELECT b.articolo_id
+  FROM dbops.fn_pgtap_crea_articolo(
+           'PGTAP-V5B-ND', false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_ctx_nd_versione)) AS b(articolo_id);
+
+-- In un'istruzione a parte dai builder: le righe che scrivono non sono
+-- visibili a una JOIN nella stessa istruzione che li chiama.
 CREATE TEMP TABLE tmp_ctx_nd AS
 SELECT
     ba.id                       AS ba_id,
@@ -200,35 +255,15 @@ SELECT
     -- 2026-10-08 (§F.2): l'emittente del BA, non il primo per id.
     (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
       WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id)) AS emittente_srid,
-    -- 2026-10-08 (§F.2): l'articolo si costruisce qui sotto, con la prima tipologia
-    --   che la utility del BA ammette (come fn_pgtap_crea_listino).
-    NULL::uuid                  AS articolo_id,
-    NULL::bigint                AS uom_id,
-    (SELECT ltu.tipologia_id FROM config.listini_tipologie_utilities ltu
-       JOIN config.listini_tipologie lt ON lt.id = ltu.tipologia_id AND lt.attivo
-      WHERE ltu.utility_id = ba.utility_id AND ltu.attivo
-      ORDER BY lt.ordinamento, lt.id LIMIT 1) AS tipologia_id,
+    a.id                        AS articolo_id,
+    a.uom_id                    AS uom_id,
+    a.listino_tipologia_id      AS tipologia_id,
     -- Classe fittizia passata come parametro input (non esiste nel contratto).
     (SELECT id FROM config.classi_utenze ORDER BY id LIMIT 1) AS classe_input_id
-  FROM anagrafiche.billing_account ba
- WHERE ba.categoria_cliente_id IS NOT NULL
-   AND NOT EXISTS (
-       SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
-   )
-   -- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
-   --   contratto e' della sua utility e del suo emittente (guard nuovo). Listino e
-   --   articolo si COSTRUISCONO qui sotto, con una tipologia che la utility del BA
-   --   ammette (guard trgfn_listini_guard_tipologia_utility).
-   --   ⚠️ Due stesure dello stesso giorno, entrambe rosse su dbdev: prima si cercava
-   --   fra i dati un listino gia' coerente, poi un articolo dei dati con una tipologia
-   --   della utility del BA. Nessuno dei due c'era. L'articolo non e' il soggetto del
-   --   test (lo e' la classe letta dal contratto): si costruisce.
-   AND EXISTS (
-       SELECT 1 FROM config.listini_tipologie_utilities ltu
-        WHERE ltu.utility_id = ba.utility_id AND ltu.attivo
-   )
- ORDER BY ba.id
- LIMIT 1;
+  FROM tmp_cli_nd c
+  JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+  CROSS JOIN tmp_art_nd t
+  JOIN catalogo.articoli a ON a.id = t.articolo_id;
 
 -- 3) Precondizione no-dim
 SELECT isnt(
@@ -237,68 +272,34 @@ SELECT isnt(
     '(precondizione) BA su utility senza dimensione tipo/classe disponibile'
 );
 
--- L'articolo del caso: costruito, con la tipologia del contesto.
-UPDATE tmp_ctx_nd SET articolo_id = dbops.fn_pgtap_crea_articolo('PGTAP-V5B-ND',
-    p_listino_tipologia_id => tipologia_id);
-UPDATE tmp_ctx_nd t
-   SET uom_id = (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = t.articolo_id);
-
--- 2026-10-08 (§F.2): il listino si COSTRUISCE, della tipologia dell'articolo, della
---   utility e dell'emittente del BA. Prima era il primo listino di quella tipologia,
---   di qualunque utility ed emittente.
-CREATE TEMP TABLE tmp_ctx_nd_listino AS
-WITH ins AS (
-    INSERT INTO vendite.listini (codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
-    SELECT 'PGTAP_V5B_ND_' || substr(md5(clock_timestamp()::text || random()::text), 1, 12),
-           'Fixture pgTAP: classe da contratto ND', t.utility_id, t.tipologia_id, t.emittente_srid
-      FROM tmp_ctx_nd t
-    RETURNING id)
-SELECT id AS listino_id FROM ins;
-
-INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
-SELECT l.listino_id, 'PGTAP_V5B_VER_ND', script.fn_data_operativa(), script.fn_data_operativa() + 365, 'ATTIVA', TRUE
-  FROM tmp_ctx_nd_listino l
- WHERE NOT EXISTS (
-     SELECT 1 FROM vendite.listini_versioni lv
-      WHERE lv.listino_id = l.listino_id AND lv.attivo = TRUE
-        AND lv.validita @> script.fn_data_operativa()
- );
-
-CREATE TEMP TABLE tmp_ctx_nd_versione AS
-SELECT lv.id AS versione_id, lv.listino_id
-  FROM vendite.listini_versioni lv, tmp_ctx_nd_listino l
- WHERE lv.listino_id = l.listino_id
-   AND lv.attivo IS TRUE
-   AND lv.validita @> script.fn_data_operativa()
- ORDER BY lv.id DESC LIMIT 1;
-
-INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
-SELECT v.versione_id, t.articolo_id, t.uom_id, 100
-  FROM tmp_ctx_nd_versione v, tmp_ctx_nd t
-ON CONFLICT DO NOTHING;
+-- Riga di listino a 100 (in un DO, come sopra).
+DO $riga_nd$ BEGIN
+    PERFORM dbops.fn_pgtap_listino_aggiungi_articoli(
+        (SELECT versione_id FROM tmp_ctx_nd_versione),
+        ARRAY[(SELECT articolo_id FROM tmp_ctx_nd)],
+        100);
+END $riga_nd$;
 
 -- Contratto ATTIVO su utility commercio (contratti_utilities avra' classe NULL):
 -- nasce DRAFT e si attiva dopo la fornitura (rev 2026-10-11, sotto).
-INSERT INTO vendite.contratti(
-    numero, billing_account_id, istanza_utility_id, utility_id, stato_doc_contratto_id,
-    valido_dal, valido_al, listino_id)
-SELECT 'PGTAP_V5B_CONTR_ND', t.ba_id, t.istanza_utility_id, t.utility_id,
-       (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
-       script.fn_data_operativa(), script.fn_data_operativa() + 365, v.listino_id
-  FROM tmp_ctx_nd t, tmp_ctx_nd_versione v;
+CREATE TEMP TABLE tmp_contratto_nd AS
+SELECT k.contratto_id
+  FROM dbops.fn_pgtap_crea_contratto(
+           'classe da contratto ND', 'DRAFT', (SELECT ba_id FROM tmp_ctx_nd), NULL,
+           script.fn_data_operativa(), script.fn_data_operativa() + 365, NULL,
+           (SELECT listino_id FROM tmp_ctx_nd_listino)) k;
 
 -- Garantisco esistenza riga contratti_utilities con classe NULL
 -- (il trigger snapshot puo' averla creata o meno a seconda dei precontrattuali).
 DELETE FROM vendite.contratti_utilities
- WHERE contratto_id = (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_V5B_CONTR_ND');
+ WHERE contratto_id = (SELECT contratto_id FROM tmp_contratto_nd);
 
 INSERT INTO vendite.contratti_utilities(
     contratto_id, istanza_utility_id, utility_id,
     tipo_utenza_id, classe_utenza_id)
-SELECT c.id, t.istanza_utility_id, t.utility_id,
+SELECT c.contratto_id, t.istanza_utility_id, t.utility_id,
        NULL, NULL
-  FROM vendite.contratti c, tmp_ctx_nd t
- WHERE c.numero = 'PGTAP_V5B_CONTR_ND';
+  FROM tmp_contratto_nd c, tmp_ctx_nd t;
 
 -- ⛔ rev 2026-10-11 (brief-db-testata-dopo-emissione §11.7): la fornitura si
 --   scrive solo in bozza (lock dei satelliti, 20261011-24). Il contratto nasce
@@ -306,9 +307,11 @@ SELECT c.id, t.istanza_utility_id, t.utility_id,
 --   vera (il listino costruito ha una versione in vigore oggi). Prima nasceva
 --   ATTIVO e la fornitura gli si cancellava e riscriveva dopo.
 -- rev 2026-10-27 (§11, debito del giro 8): dal verbo, come il contratto del test 2.
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.id, 'ATTIVO')
-  FROM vendite.contratti c
- WHERE c.numero = 'PGTAP_V5B_CONTR_ND';
+-- In un DO: una SELECT nuda stamperebbe lo stato in mezzo al flusso TAP.
+DO $attiva_nd$ BEGIN
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.contratto_id, 'ATTIVO')
+       FROM tmp_contratto_nd c;
+END $attiva_nd$;
 
 -- 4) Test: classe da contratto NULL -> fallback al parametro input
 SELECT is(

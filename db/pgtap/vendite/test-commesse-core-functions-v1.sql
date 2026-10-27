@@ -107,58 +107,29 @@ SELECT throws_ok(
   'fn_link_commessa_sorgente valida input (commessa_id=0 -> errore)'
 );
 
+-- rev 2026-10-27 (lotto 4 di D7): il cliente e l'articolo si COSTRUISCONO
+--   (dbops.fn_pgtap_crea_cliente_ba, BA gia' legato all'azienda di chi
+--   agisce; dbops.fn_pgtap_crea_articolo, con la sua unita' di misura).
+--   Prima si pescavano con LIMIT 1, e su un database ricostruito da zero
+--   non c'erano. Le chiamate alla madre, sotto, restano.
+CREATE TEMP TABLE tmp_cli_commesse_core AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('commesse core');
+
+CREATE TEMP TABLE tmp_art_commesse_core AS
+SELECT dbops.fn_pgtap_crea_articolo(
+  ('PGT-CORE-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
+  false) AS articolo_id;
+
 CREATE TEMP TABLE tmp_refs_commesse_core AS
 SELECT
-  (
-    SELECT ba.id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS billing_account_id,
-  (
-    SELECT ba.utility_id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS utility_id,
-  (
-    SELECT ba.istanza_utility_id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS istanza_utility_id,
-  (
-    SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id)
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS emittente_soggetto_ruolo_id,
-  (
-    SELECT a.id
-    FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST
-    LIMIT 1
-  ) AS articolo_id,
-  (
-    SELECT u.id
-    FROM catalogo.unita_misura u
-    WHERE u.attivo IS TRUE
-    ORDER BY u.id
-    LIMIT 1
-  ) AS uom_id,
+  (SELECT billing_account_id FROM tmp_cli_commesse_core) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cli_commesse_core) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cli_commesse_core) AS istanza_utility_id,
+  (SELECT anagrafiche.fn_get_emittente_fiscale_id(billing_account_id)
+     FROM tmp_cli_commesse_core) AS emittente_soggetto_ruolo_id,
+  (SELECT articolo_id FROM tmp_art_commesse_core) AS articolo_id,
+  (SELECT a.uom_id FROM catalogo.articoli a
+    WHERE a.id = (SELECT articolo_id FROM tmp_art_commesse_core)) AS uom_id,
   (
     SELECT t.id
     FROM config.tipi_doc_fiscale t
@@ -370,34 +341,21 @@ SELECT ok(
 --   un'istruzione di scrittura al primo livello. Cio' che conta e' che le DUE
 --   scritture stiano in DUE istruzioni: e' il salto di snapshot che serve alla
 --   policy, non la forma della CTE.
+-- rev 2026-10-27 (lotto 4 di D7): il listino e la sua versione ATTIVA si
+--   COSTRUISCONO (dbops.fn_pgtap_crea_listino, emittente di chi agisce,
+--   tipologia ammessa per l'utility), in un'istruzione sua come sopra.
+--   Prima copiavano utility, tipologia ed emittente del primo listino
+--   attivo, che su un database ricostruito da zero non c'era.
+CREATE TEMP TABLE tmp_lst_core_build AS
+SELECT * FROM dbops.fn_pgtap_crea_listino(
+  (SELECT utility_id FROM tmp_refs_commesse_core),
+  'override documento', DATE '2026-01-01', DATE '2026-12-31');
+
 CREATE TEMP TABLE tmp_lst_core_update AS
-WITH codice AS (
-  SELECT ('LRC_CORE_' || substr(md5(clock_timestamp()::text), 1, 12))::varchar(64) AS code
-),
-ins AS (
-  INSERT INTO vendite.listini (codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
-  SELECT c.code, 'listino test override documento',
-         l.utility_id, l.tipologia_id, l.emittente_soggetto_ruolo_id
-  FROM codice c
-  CROSS JOIN LATERAL (
-    SELECT utility_id, tipologia_id, emittente_soggetto_ruolo_id
-    FROM vendite.listini
-    WHERE attivo = TRUE
-    ORDER BY id
-    LIMIT 1
-  ) l
-  RETURNING id
-)
-SELECT id FROM ins;
+SELECT listino_id AS id FROM tmp_lst_core_build;
 
 CREATE TEMP TABLE tmp_lst_v_core_update AS
-WITH ins AS (
-  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, stato)
-  SELECT l.id, 'V1', DATE '2026-01-01', DATE '2026-12-31', 'ATTIVA'
-  FROM tmp_lst_core_update l
-  RETURNING id
-)
-SELECT id FROM ins;
+SELECT listino_versione_id AS id FROM tmp_lst_core_build;
 
 CREATE TEMP TABLE tmp_upsert_core_update AS
 WITH lst_v AS (

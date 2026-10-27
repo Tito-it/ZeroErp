@@ -53,20 +53,28 @@ SELECT plan(7);
 --   riferimenti che avrebbero nel giro reale. Nessuna fattura attaccata: il
 --   lotto vuoto e' annullabile dal 2026-08-01, ed e' la fixture piu' leggera
 --   che esercita la stessa strada.
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba) e l'emittente e' quello di chi agisce
+--   (script.fn_pgtap_emittente_sr_operatore). Prima utility ed emittente si
+--   pescavano dal primo BA e dalla prima fattura: da zero non c'erano. La
+--   madre vendite.fn_get_or_create_lotto resta: e' il percorso vero.
+CREATE TEMP TABLE tmp_cli_arw AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('annulla lotto non riscrive stato');
+
 CREATE TEMP TABLE tmp_lotto_arw AS
 SELECT vendite.fn_get_or_create_lotto(
          p_competenza_mese             => (date_trunc('month', script.fn_data_operativa()) + interval '7 month')::date,
          p_tipo_doc_fiscale_id         => (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1),
-         p_utility_id                  => (SELECT ba.utility_id FROM anagrafiche.billing_account ba ORDER BY ba.id LIMIT 1),
-         p_emittente_soggetto_ruolo_id => (SELECT f.emittente_soggetto_ruolo_id FROM vendite.fatture f ORDER BY f.id LIMIT 1),
+         p_utility_id                  => (SELECT utility_id FROM tmp_cli_arw),
+         p_emittente_soggetto_ruolo_id => script.fn_pgtap_emittente_sr_operatore(),
          p_tipo_lotto                  => 'MASSIVO') AS id;
 
 CREATE TEMP TABLE tmp_lotto_sano_arw AS
 SELECT vendite.fn_get_or_create_lotto(
          p_competenza_mese             => (date_trunc('month', script.fn_data_operativa()) + interval '8 month')::date,
          p_tipo_doc_fiscale_id         => (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1),
-         p_utility_id                  => (SELECT ba.utility_id FROM anagrafiche.billing_account ba ORDER BY ba.id LIMIT 1),
-         p_emittente_soggetto_ruolo_id => (SELECT f.emittente_soggetto_ruolo_id FROM vendite.fatture f ORDER BY f.id LIMIT 1),
+         p_utility_id                  => (SELECT utility_id FROM tmp_cli_arw),
+         p_emittente_soggetto_ruolo_id => script.fn_pgtap_emittente_sr_operatore(),
          p_tipo_lotto                  => 'MASSIVO') AS id;
 
 -- ⭐ Lo stato si porta a ERRORE sotto la REGOLA UFFICIALE: se un domani la

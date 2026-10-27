@@ -146,20 +146,17 @@ SELECT is(
 -- FIXTURE COMUNI
 -- ============================================================
 
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba, BA legato all'azienda di chi agisce):
+--   prima il BA si pescava con LIMIT 1, e da zero non c'era.
+CREATE TEMP TABLE tmp_cli_guc AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('guard uscita commessa');
+
 CREATE TEMP TABLE tmp_refs_guc AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
+  (SELECT billing_account_id FROM tmp_cli_guc) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cli_guc) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cli_guc) AS istanza_utility_id,
   (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE
     ORDER BY a.data_insert DESC NULLS LAST LIMIT 1) AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE

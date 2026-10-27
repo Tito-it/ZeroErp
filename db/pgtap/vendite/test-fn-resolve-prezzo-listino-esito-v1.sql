@@ -55,34 +55,68 @@ SELECT plan(12);
 -- config.utilities_tipi_ruolo, e nessun contratto sull'istanza (un contratto
 -- porterebbe il resolver sullo STADIO 1, che qui non e' la strada in esame).
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): BA, listino, articolo e riga si COSTRUISCONO
+--   (prima si pescavano BA x articolo con ORDER BY ... LIMIT 1, e l'emittente
+--   era il primo di anagrafiche.emittenti_fiscali: da zero non c'era niente).
+--   Le tre condizioni restano, come scelta della utility sul catalogo e come
+--   proprieta' della costruzione — stessa ricetta di
+--   test-fn-resolve-prezzo-listino-v2-v1.sql:
+--   * utility senza dimensione tipo/classe e con una tipologia di listino;
+--   * utility compatibile con l'emittente di chi agisce secondo
+--     config.utilities_tipi_ruolo (fail-open come il guard: senza righe
+--     attive per la utility, nessun vincolo);
+--   * nessun contratto sull'istanza: il BA e' nuovo.
+--   L'emittente e' quello di chi agisce (script.fn_pgtap_emittente_sr_operatore),
+--   a cui il builder lega il BA e di cui dbops.fn_pgtap_crea_listino fa il listino.
+CREATE TEMP TABLE tmp_utility AS
+SELECT u.id AS utility_id
+  FROM config.utilities u
+ WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+   AND EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                WHERE ltu.utility_id = u.id AND ltu.attivo)
+   AND (NOT EXISTS (SELECT 1 FROM config.utilities_tipi_ruolo utr
+                     WHERE utr.utility_id = u.id AND utr.attivo IS TRUE
+                       AND utr.validita @> script.fn_data_operativa())
+        OR EXISTS (SELECT 1
+                     FROM config.utilities_tipi_ruolo utr
+                     JOIN anagrafiche.soggetti_ruoli sr
+                       ON sr.id = script.fn_pgtap_emittente_sr_operatore()
+                    WHERE utr.utility_id = u.id
+                      AND utr.tipo_ruolo_id = sr.tipo_ruolo_id
+                      AND utr.attivo IS TRUE
+                      AND utr.validita @> script.fn_data_operativa()))
+ ORDER BY u.id
+ LIMIT 1;
+
+CREATE TEMP TABLE tmp_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'resolver esito', (SELECT utility_id FROM tmp_utility));
+
+CREATE TEMP TABLE tmp_versione AS
+SELECT l.listino_versione_id AS versione_id, l.listino_id, l.tipologia_id
+  FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_utility), 'resolver esito') l;
+
+CREATE TEMP TABLE tmp_art AS
+SELECT b.articolo_id
+  FROM dbops.fn_pgtap_crea_articolo(
+           'PGTAP_ESITO_ART', false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_versione)) AS b(articolo_id);
+
+-- In un'istruzione a parte dai builder: le righe che scrivono non sono
+-- visibili a una JOIN nella stessa istruzione che li chiama.
 CREATE TEMP TABLE tmp_ctx AS
 SELECT
     ba.id                       AS ba_id,
     ba.categoria_cliente_id     AS categoria_id,
     ba.utility_id               AS utility_id,
-    (SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
-      WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS emittente_srid,
+    script.fn_pgtap_emittente_sr_operatore() AS emittente_srid,
     a.id                        AS articolo_id,
     a.uom_id                    AS uom_id,
     a.listino_tipologia_id      AS tipologia_id
-  FROM anagrafiche.billing_account ba
-  JOIN catalogo.articoli a
-    ON a.attivo IS TRUE
-   AND a.listino_tipologia_id IS NOT NULL
- WHERE ba.categoria_cliente_id IS NOT NULL
-   AND NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
-   AND EXISTS (
-       SELECT 1
-         FROM config.utilities_tipi_ruolo utr
-         JOIN anagrafiche.soggetti_ruoli sr
-           ON sr.id = (SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
-                        WHERE attivo IS TRUE ORDER BY id LIMIT 1)
-        WHERE utr.utility_id    = ba.utility_id
-          AND utr.tipo_ruolo_id = sr.tipo_ruolo_id
-          AND utr.attivo IS TRUE)
-   AND NOT EXISTS (SELECT 1 FROM vendite.contratti c WHERE c.istanza_utility_id = ba.istanza_utility_id)
- ORDER BY ba.id, a.id
- LIMIT 1;
+  FROM tmp_cli c
+  JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+  CROSS JOIN tmp_art t
+  JOIN catalogo.articoli a ON a.id = t.articolo_id;
 
 -- 1) La fixture deve aver trovato qualcosa: senza, i test 3/4/5 sarebbero
 --    verdi per sottrazione (confronterebbero NULL con NULL).
@@ -90,30 +124,14 @@ SELECT isnt(
     (SELECT count(*)::int FROM tmp_ctx), 0,
     '(precondizione) esiste un billing account/articolo su cui il resolver puo'' lavorare');
 
-CREATE TEMP TABLE tmp_listino AS
-SELECT l.id AS listino_id
-  FROM vendite.listini l, tmp_ctx t
- WHERE l.tipologia_id = t.tipologia_id AND l.attivo = TRUE
- ORDER BY l.id LIMIT 1;
-
-INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
-SELECT l.listino_id, 'PGTAP_ESITO_VER', script.fn_data_operativa(), script.fn_data_operativa() + 365, 'ATTIVA', TRUE
-  FROM tmp_listino l
- WHERE NOT EXISTS (
-     SELECT 1 FROM vendite.listini_versioni lv
-      WHERE lv.listino_id = l.listino_id AND lv.attivo = TRUE AND lv.validita @> script.fn_data_operativa())
-ON CONFLICT DO NOTHING;
-
-CREATE TEMP TABLE tmp_versione AS
-SELECT lv.id AS versione_id, lv.listino_id
-  FROM vendite.listini_versioni lv, tmp_listino l
- WHERE lv.listino_id = l.listino_id AND lv.attivo IS TRUE AND lv.validita @> script.fn_data_operativa()
- ORDER BY lv.id DESC LIMIT 1;
-
-INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
-SELECT v.versione_id, t.articolo_id, t.uom_id, 100
-  FROM tmp_versione v, tmp_ctx t
-ON CONFLICT DO NOTHING;
+-- Riga di listino a 100 (builder: una riga con la UoM base). In un DO: una
+-- SELECT nuda stamperebbe una riga in mezzo al flusso TAP.
+DO $riga$ BEGIN
+    PERFORM dbops.fn_pgtap_listino_aggiungi_articoli(
+        (SELECT versione_id FROM tmp_versione),
+        ARRAY[(SELECT articolo_id FROM tmp_ctx)],
+        100);
+END $riga$;
 
 INSERT INTO anagrafiche.categorie_clienti_listini(
     categoria_cliente_id, utility_id, emittente_soggetto_ruolo_id,
@@ -125,14 +143,13 @@ SELECT t.categoria_id, t.utility_id, t.emittente_srid, NULL, v.listino_id,
 
 -- Emittente NON mappato: un soggetto_ruolo che nella matrice non compare per
 -- nessuna combinazione. E' la via piu' corta a un caso «non risolvibile» senza
--- rompere niente. ORDER BY esplicito: la riga si sceglie, non si pesca.
+-- rompere niente.
+-- rev 2026-10-27 (lotto 4 di D7): e' il soggetto_ruolo del cliente appena
+--   costruito, che nella matrice non puo' comparire (prima il primo
+--   anagrafiche.soggetti_ruoli fuori dalla matrice, pescato per id).
 CREATE TEMP TABLE tmp_no_map AS
-SELECT sr.id AS srid
-  FROM anagrafiche.soggetti_ruoli sr
- WHERE NOT EXISTS (
-     SELECT 1 FROM anagrafiche.categorie_clienti_listini ccl
-      WHERE ccl.emittente_soggetto_ruolo_id = sr.id)
- ORDER BY sr.id LIMIT 1;
+SELECT c.soggetto_ruolo_id AS srid
+  FROM tmp_cli c;
 
 -- ============================================================
 -- 2) Il nucleo esiste, con la firma attesa.

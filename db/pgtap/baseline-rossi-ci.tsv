@@ -262,7 +262,6 @@ db/pgtap/vendite/test-fn-list-preventivi-da-pushare-v2.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-preventivo-ha-residuo-commessa-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-push-preventivo-a-ordine-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-resolve-iva-riga.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fn-resolve-prezzo-composito-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-resolve-prezzo-listino-esito-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-resolve-prezzo-listino-v2-classe-da-contratto-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-resolve-prezzo-listino-v2-step24-v1.sql	ERRORE_FIXTURE

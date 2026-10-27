@@ -104,17 +104,29 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(8);
 
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
+-- rev 2026-10-27 (lotto 4 di D7): via il vecchio «SET LOCAL app.current_user_id
+--   = '1'» (con ruolo OPERATORE): l'utente 1 da zero non esiste, e su dev e' un
+--   super admin senza azienda (la fattura moriva sulla RLS). Chi agisce e'
+--   l'operatore del contesto qui sopra. Il cliente e l'articolo si COSTRUISCONO:
+--   prima si pescavano il primo BA con emittente e l'ultimo articolo non
+--   composito, e da zero non c'erano. Ora il BA viene da
+--   dbops.fn_pgtap_crea_cliente_ba (legato all'azienda di chi agisce) e
+--   l'articolo da dbops.fn_pgtap_crea_articolo (servizio, non composito).
+--   Emittente e registro sono quelli dell'operatore. Restano letture di
+--   catalogo di SEED: unita_misura, valute, iva, tipi_doc_fiscale,
+--   stati_doc_fiscale, nature.
+--   ⚠️ Le testate restano scritte da nnc_mk_doc e non da
+--   dbops.fn_pgtap_crea_fattura: il builder non sceglie la natura del
+--   documento (FATTURA / NOTA_CREDITO), che qui si scrive alla nascita.
+CREATE TEMP TABLE tmp_cli_nnc AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('numera nota credito riferimento');
 
 CREATE TEMP TABLE tmp_refs_nnc AS
 SELECT
-  ba.id                                    AS billing_account_id,
-  ba.utility_id                            AS utility_id,
+  c.billing_account_id                     AS billing_account_id,
+  c.utility_id                             AS utility_id,
   script.fn_pgtap_emittente_sr_operatore() AS emittente_sr_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST, a.id DESC LIMIT 1)                            AS articolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-NNC-ART', false)                                    AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)            AS iva_id,
@@ -123,11 +135,7 @@ SELECT
   script.fn_pgtap_registro_fattura()                         AS registro_id,
   config.fn_get_natura_doc_fiscale_id('FATTURA')      AS natura_fattura_id,
   config.fn_get_natura_doc_fiscale_id('NOTA_CREDITO') AS natura_nc_id
-FROM anagrafiche.billing_account ba
-WHERE ba.utility_id IS NOT NULL
-  AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-ORDER BY ba.id
-LIMIT 1;
+FROM tmp_cli_nnc c;
 
 -- Un documento con una riga. `p_natura_id` distingue il padre dalla nota, ma
 -- la guardia NON lo legge: guarda le righe. Sta qui per realismo, non perche'

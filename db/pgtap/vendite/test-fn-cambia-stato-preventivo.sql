@@ -43,20 +43,12 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(11);
 -- ============================================================
--- Setup GUC app.current_user_id: il trigger trgfn_preventivi_default_emittente
--- richiede l'emittente fiscale dell'operatore loggato (GUC popolata in API da
--- JwtAuditAuthentication). In contesto pgTAP la GUC e' vuota -> la valorizziamo
--- con un utente che ha un emittente in config.user_emittenti_fiscali, altrimenti
--- l'INSERT su preventivi solleva E_PREV_EMITTENTE_NON_RISOLTO. (Stesso pattern di
--- test-fn-crea-revisione-preventivo.)
+-- rev 2026-10-27 (lotto 4 di D7): niente piu' GUC fissata a mano. Prima
+--   app.current_user_id si puntava sul primo utente di
+--   config.user_emittenti_fiscali, scavalcando l'operatore del contesto; da
+--   zero non c'era nessuno, su dev era un utente qualunque. L'utente e'
+--   l'operatore aperto da fn_pgtap_set_contesto_operatore().
 -- ============================================================
-SELECT set_config(
-  'app.current_user_id',
-  (SELECT uef.auth_user_id::text
-     FROM config.user_emittenti_fiscali uef
-    ORDER BY uef.auth_user_id LIMIT 1),
-  true
-);
 -- ⭐ rev 2026-10-25 (giro 6): l'emissione (DRAFT -> EMESSO, test 4, 9b, 10)
 --   chiede l'azione di processo emetti_preventivo, e il verbo la controlla
 --   sull'utente di contesto. Si concede a quello appena fissato.
@@ -80,37 +72,29 @@ SELECT ok(
 -- ============================================================
 -- 2) Riferimenti minimi
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): i preventivi si COSTRUISCONO
+--   (dbops.fn_pgtap_crea_preventivo: azienda di chi agisce, cliente col suo
+--   BA, testata in bozza senza righe; uno per caso, sotto) e l'articolo pure
+--   (dbops.fn_pgtap_crea_articolo, merce semplice). Prima BA e articolo si
+--   pescavano col primo id / l'ultimo inserito e le testate si INSERIVANO a
+--   mano: da zero non c'era niente. Dal catalogo di seed restano stati,
+--   valuta e IVA. Le righe restano scritte dal test.
+-- ⚠️ Il builder in un'istruzione sua: la riga che scrive non e' visibile
+--   a una JOIN nella stessa istruzione.
+CREATE TEMP TABLE tmp_cs_pb1 AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('cambia stato 1');
+CREATE TEMP TABLE tmp_cs_prev1 AS
+SELECT p.id, p.uid, p.numero, pb.billing_account_id, pb.utility_id,
+       pb.istanza_utility_id, pb.valuta_id
+  FROM tmp_cs_pb1 pb
+  JOIN vendite.preventivi p ON p.id = pb.preventivo_id;
+
 CREATE TEMP TABLE tmp_cs_refs AS
-SELECT (
-    SELECT ba.id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS billing_account_id,
-  (
-    SELECT ba.utility_id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS utility_id,
-  (
-    SELECT ba.istanza_utility_id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS istanza_utility_id,
-  (
-    SELECT a.id
-    FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST
-    LIMIT 1
+SELECT (SELECT billing_account_id FROM tmp_cs_prev1) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cs_prev1) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cs_prev1) AS istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo(
+    ('PGT-CS-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar, false
   ) AS articolo_id,
   (
     SELECT s.id
@@ -140,12 +124,7 @@ SELECT (
       AND s.attivo IS TRUE
     LIMIT 1
   ) AS stato_annullato_id,
-  (
-    SELECT v.id
-    FROM config.valute v
-    ORDER BY v.id
-    LIMIT 1
-  ) AS valuta_id,
+  (SELECT valuta_id FROM tmp_cs_prev1) AS valuta_id,
   (
     SELECT i.id
     FROM config.iva i
@@ -167,40 +146,7 @@ SELECT ok(
 -- ============================================================
 -- 3) Setup preventivo DRAFT con riga valida
 -- ============================================================
-CREATE TEMP TABLE tmp_cs_prev1 AS WITH ins AS (
-  INSERT INTO vendite.preventivi (
-      numero,
-      rev,
-      billing_account_id,
-      istanza_utility_id,
-      utility_id,
-      validita_dal,
-      validita_al,
-      valuta_id,
-      stato_doc_preventivo_id,
-      data,
-      storicizza,
-      meta
-    )
-  SELECT 'PGTAP-CS-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0,
-    r.billing_account_id,
-    r.istanza_utility_id,
-    r.utility_id,
-    DATE '2026-06-01',
-    DATE '2026-06-30',
-    r.valuta_id,
-    r.stato_draft_id,
-    DATE '2026-06-01',
-    false,
-    jsonb_build_object('test_scope', 'pgtap_cambia_stato')
-  FROM tmp_cs_refs r
-  RETURNING id,
-    uid,
-    numero
-)
-SELECT *
-FROM ins;
+-- rev 2026-10-27 (lotto 4 di D7): la testata e' costruita sopra (tmp_cs_prev1).
 -- Riga con quantita e prezzo > 0
 INSERT INTO vendite.preventivi_righe (
     preventivo_id,
@@ -263,40 +209,13 @@ SELECT lives_ok(
 --    si transita a EVASO. Si verifica la transizione verso ANNULLATO + guard
 --    "no commessa" su un preventivo DRAFT dedicato.
 -- ============================================================
-CREATE TEMP TABLE tmp_cs_prev_ann AS WITH ins AS (
-  INSERT INTO vendite.preventivi (
-      numero,
-      rev,
-      billing_account_id,
-      istanza_utility_id,
-      utility_id,
-      validita_dal,
-      validita_al,
-      valuta_id,
-      stato_doc_preventivo_id,
-      data,
-      storicizza,
-      meta
-    )
-  SELECT 'PGTAP-CSA-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0,
-    r.billing_account_id,
-    r.istanza_utility_id,
-    r.utility_id,
-    DATE '2026-06-01',
-    DATE '2026-06-30',
-    r.valuta_id,
-    r.stato_draft_id,
-    DATE '2026-06-01',
-    false,
-    jsonb_build_object('test_scope', 'pgtap_cambia_stato')
-  FROM tmp_cs_refs r
-  RETURNING id,
-    uid,
-    numero
-)
-SELECT *
-FROM ins;
+-- rev 2026-10-27 (lotto 4 di D7): testata dal builder, non piu' INSERT a mano.
+CREATE TEMP TABLE tmp_cs_pb_ann AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('cambia stato ann');
+CREATE TEMP TABLE tmp_cs_prev_ann AS
+SELECT p.id, p.uid, p.numero
+  FROM tmp_cs_pb_ann pb
+  JOIN vendite.preventivi p ON p.id = pb.preventivo_id;
 SELECT lives_ok(
     format(
       'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''ANNULLATO'')',
@@ -310,40 +229,13 @@ SELECT lives_ok(
 -- ============================================================
 -- 7) DRAFT -> ACCETTATO vietata (non in matrice transizioni)
 -- ============================================================
-CREATE TEMP TABLE tmp_cs_prev2 AS WITH ins AS (
-  INSERT INTO vendite.preventivi (
-      numero,
-      rev,
-      billing_account_id,
-      istanza_utility_id,
-      utility_id,
-      validita_dal,
-      validita_al,
-      valuta_id,
-      stato_doc_preventivo_id,
-      data,
-      storicizza,
-      meta
-    )
-  SELECT 'PGTAP-CS2-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0,
-    r.billing_account_id,
-    r.istanza_utility_id,
-    r.utility_id,
-    DATE '2026-06-01',
-    DATE '2026-06-30',
-    r.valuta_id,
-    r.stato_draft_id,
-    DATE '2026-06-01',
-    false,
-    jsonb_build_object('test_scope', 'pgtap_cambia_stato')
-  FROM tmp_cs_refs r
-  RETURNING id,
-    uid,
-    numero
-)
-SELECT *
-FROM ins;
+-- rev 2026-10-27 (lotto 4 di D7): testata dal builder, non piu' INSERT a mano.
+CREATE TEMP TABLE tmp_cs_pb2 AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('cambia stato 2');
+CREATE TEMP TABLE tmp_cs_prev2 AS
+SELECT p.id, p.uid, p.numero
+  FROM tmp_cs_pb2 pb
+  JOIN vendite.preventivi p ON p.id = pb.preventivo_id;
 -- Riga valida per prev2
 INSERT INTO vendite.preventivi_righe (
     preventivo_id,
@@ -379,40 +271,13 @@ SELECT throws_like(
 -- ============================================================
 -- 8) DRAFT -> EMESSO vietata senza righe attive
 -- ============================================================
-CREATE TEMP TABLE tmp_cs_prev3 AS WITH ins AS (
-  INSERT INTO vendite.preventivi (
-      numero,
-      rev,
-      billing_account_id,
-      istanza_utility_id,
-      utility_id,
-      validita_dal,
-      validita_al,
-      valuta_id,
-      stato_doc_preventivo_id,
-      data,
-      storicizza,
-      meta
-    )
-  SELECT 'PGTAP-CS3-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0,
-    r.billing_account_id,
-    r.istanza_utility_id,
-    r.utility_id,
-    DATE '2026-06-01',
-    DATE '2026-06-30',
-    r.valuta_id,
-    r.stato_draft_id,
-    DATE '2026-06-01',
-    false,
-    jsonb_build_object('test_scope', 'pgtap_cambia_stato')
-  FROM tmp_cs_refs r
-  RETURNING id,
-    uid,
-    numero
-)
-SELECT *
-FROM ins;
+-- rev 2026-10-27 (lotto 4 di D7): testata dal builder, non piu' INSERT a mano.
+CREATE TEMP TABLE tmp_cs_pb3 AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('cambia stato 3');
+CREATE TEMP TABLE tmp_cs_prev3 AS
+SELECT p.id, p.uid, p.numero
+  FROM tmp_cs_pb3 pb
+  JOIN vendite.preventivi p ON p.id = pb.preventivo_id;
 -- Nessuna riga inserita
 SELECT throws_like(
     format(
@@ -430,40 +295,13 @@ SELECT throws_like(
 -- 9b) DRAFT -> EMESSO AMMESSA con totale = 0 (regola rev 2026-07-16)
 --    (riga con prezzo = 0)
 -- ============================================================
-CREATE TEMP TABLE tmp_cs_prev4 AS WITH ins AS (
-  INSERT INTO vendite.preventivi (
-      numero,
-      rev,
-      billing_account_id,
-      istanza_utility_id,
-      utility_id,
-      validita_dal,
-      validita_al,
-      valuta_id,
-      stato_doc_preventivo_id,
-      data,
-      storicizza,
-      meta
-    )
-  SELECT 'PGTAP-CS4-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0,
-    r.billing_account_id,
-    r.istanza_utility_id,
-    r.utility_id,
-    DATE '2026-06-01',
-    DATE '2026-06-30',
-    r.valuta_id,
-    r.stato_draft_id,
-    DATE '2026-06-01',
-    false,
-    jsonb_build_object('test_scope', 'pgtap_cambia_stato')
-  FROM tmp_cs_refs r
-  RETURNING id,
-    uid,
-    numero
-)
-SELECT *
-FROM ins;
+-- rev 2026-10-27 (lotto 4 di D7): testata dal builder, non piu' INSERT a mano.
+CREATE TEMP TABLE tmp_cs_pb4 AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('cambia stato 4');
+CREATE TEMP TABLE tmp_cs_prev4 AS
+SELECT p.id, p.uid, p.numero
+  FROM tmp_cs_pb4 pb
+  JOIN vendite.preventivi p ON p.id = pb.preventivo_id;
 -- Riga con prezzo = 0 (totale sara' 0)
 INSERT INTO vendite.preventivi_righe (
     preventivo_id,
@@ -512,40 +350,13 @@ SELECT lives_ok(
 --     continuare a risolvere stato corrente e destinazione per `codice_interno`.
 --     Col vecchio codice la risoluzione di 'EMESSO' fallirebbe (E_STATO_SCONOSCIUTO).
 -- ============================================================
-CREATE TEMP TABLE tmp_cs_prev5 AS WITH ins AS (
-  INSERT INTO vendite.preventivi (
-      numero,
-      rev,
-      billing_account_id,
-      istanza_utility_id,
-      utility_id,
-      validita_dal,
-      validita_al,
-      valuta_id,
-      stato_doc_preventivo_id,
-      data,
-      storicizza,
-      meta
-    )
-  SELECT 'PGTAP-CS5-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0,
-    r.billing_account_id,
-    r.istanza_utility_id,
-    r.utility_id,
-    DATE '2026-06-01',
-    DATE '2026-06-30',
-    r.valuta_id,
-    r.stato_draft_id,
-    DATE '2026-06-01',
-    false,
-    jsonb_build_object('test_scope', 'pgtap_cambia_stato')
-  FROM tmp_cs_refs r
-  RETURNING id,
-    uid,
-    numero
-)
-SELECT *
-FROM ins;
+-- rev 2026-10-27 (lotto 4 di D7): testata dal builder, non piu' INSERT a mano.
+CREATE TEMP TABLE tmp_cs_pb5 AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('cambia stato 5');
+CREATE TEMP TABLE tmp_cs_prev5 AS
+SELECT p.id, p.uid, p.numero
+  FROM tmp_cs_pb5 pb
+  JOIN vendite.preventivi p ON p.id = pb.preventivo_id;
 -- Riga con quantita e prezzo > 0 (guard DRAFT->EMESSO soddisfatto)
 INSERT INTO vendite.preventivi_righe (
     preventivo_id,

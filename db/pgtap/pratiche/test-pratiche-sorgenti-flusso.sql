@@ -64,26 +64,22 @@ VALUES ('DA_ESEGUIRE', 'DA_ESEGUIRE', 'Da eseguire', true),
        ('COMPLETATO',  'COMPLETATO',  'Completato',  true)
 ON CONFLICT (codice_interno) DO NOTHING;
 
+-- Il cliente si COSTRUISCE (rev 2026-10-27, lotto 3 del cantiere «fixture
+--   che costruiscono»): prima BA e soggetto si pescavano con LIMIT 1, e su un
+--   database ricostruito da zero non c'erano — il file moriva nella fixture
+--   senza eseguire nessuna asserzione. Dal DB si legge solo il catalogo di seed.
+CREATE TEMP TABLE tmp_ps_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('pratiche sorgenti flusso');
+
 CREATE TEMP TABLE tmp_ps_refs AS
 SELECT
   script.fn_pgtap_emittente_operatore() AS emittente_id,
-  (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1)                              AS soggetto_id,
+  (SELECT soggetto_id FROM tmp_ps_cli)                                       AS soggetto_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA')     AS st_aperta,
   (SELECT id FROM config.priorita_pratiche WHERE codice_interno = 'NORMALE') AS priorita_id,
   (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'DA_ESEGUIRE') AS fl_da_eseguire,
   (SELECT id FROM config.sorgenti WHERE codice_interno = 'COMMESSA')         AS src_commessa,
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS ba_utility_id,
-  (SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id) FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS ba_emittente_sr_id;
+  (SELECT billing_account_id FROM tmp_ps_cli)                                AS billing_account_id;
 
 SELECT ok(
   (SELECT emittente_id IS NOT NULL AND soggetto_id IS NOT NULL
@@ -97,23 +93,15 @@ SELECT ok(
 -- NOTA 2026-07-18 (brief-db-guard-sorgente-polimorfa): il guard sorgente su
 -- pratiche_sorgenti valida formato ed esistenza della chiave, quindi le
 -- sorgenti fittizie 'prev-A1-001' non passano piu'. Le sorgenti sono ora
--- COMMESSE REALI (tipo COMMESSA, key_selector='id', chiave id::text) create
--- qui e rimosse nel cleanup (test 12): la meccanica flusso<->sorgente sotto
--- test e' identica qualunque sia il tipo.
+-- COMMESSE REALI (tipo COMMESSA, key_selector='id', chiave id::text), in
+-- bozza sul cliente costruito, scritte da dbops.fn_pgtap_crea_commessa e
+-- rimosse nel cleanup (test 12): la meccanica flusso<->sorgente sotto test
+-- e' identica qualunque sia il tipo.
 CREATE TEMP TABLE tmp_ps_src AS
-WITH ins AS (
-  INSERT INTO vendite.commesse (
-    codice, billing_account_id, utility_id, emittente_soggetto_ruolo_id
-  )
-  SELECT
-    ('TPS_' || t.tag || '_' || substr(md5(clock_timestamp()::text || t.tag), 1, 10))::varchar(64),
-    r.billing_account_id, r.ba_utility_id, r.ba_emittente_sr_id
-  FROM (VALUES ('X1'), ('X2'), ('X3'), ('X4'), ('Y1'), ('Y2')) AS t(tag)
-  CROSS JOIN tmp_ps_refs r
-  RETURNING id, codice
-)
-SELECT substring(codice FROM 'TPS_([XY][0-9])_') AS tag, id::text AS src_uid, id
-FROM ins;
+SELECT t.tag, c.commessa_id::text AS src_uid, c.commessa_id AS id
+FROM (VALUES ('X1'), ('X2'), ('X3'), ('X4'), ('Y1'), ('Y2')) AS t(tag)
+CROSS JOIN LATERAL dbops.fn_pgtap_crea_commessa(
+  'sorgenti flusso ' || t.tag, NULL, (SELECT billing_account_id FROM tmp_ps_refs)) c;
 
 -- =========================================================
 -- 1) Setup: tipo_prestazione + template (non obbligatorio, ripetibile) +
@@ -225,7 +213,7 @@ SELECT lives_ok(
 -- =========================================================
 -- 7) Secondo ROOT (uid diverso) sullo STESSO flusso -> throws
 -- =========================================================
-SELECT throws_ok(
+SELECT throws_like(
   format(
     'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
      VALUES (%s, %s, %L, ''ROOT'', %s)',
@@ -234,7 +222,7 @@ SELECT throws_ok(
     (SELECT src_uid FROM tmp_ps_src WHERE tag = 'X2'),
     (SELECT flusso_id FROM tmp_ps_fa1)
   ),
-  NULL, NULL,
+  '%uq_pratiche_sorgenti_flusso_root%',
   '7. Secondo ROOT sullo stesso flusso bloccato (max 1 ROOT/flusso)'
 );
 
@@ -284,7 +272,7 @@ SELECT lives_ok(
 -- =========================================================
 -- 11) [coerenza] ROOT su pratica A con flusso di pratica B -> throws (493)
 -- =========================================================
-SELECT throws_ok(
+SELECT throws_like(
   format(
     'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
      VALUES (%s, %s, %L, ''ROOT'', %s)',
@@ -293,7 +281,7 @@ SELECT throws_ok(
     (SELECT src_uid FROM tmp_ps_src WHERE tag = 'X4'),
     (SELECT flusso_id FROM tmp_ps_fb1)
   ),
-  NULL, NULL,
+  '%flusso indicato appartiene a un''altra pratica%',
   '11. ROOT con flusso di un''altra pratica bloccato (guard coerenza)'
 );
 

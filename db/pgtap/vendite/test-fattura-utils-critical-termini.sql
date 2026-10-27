@@ -88,26 +88,21 @@ SELECT * FROM existing
 UNION ALL
 SELECT * FROM ins;
 
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba, BA dell'azienda di chi agisce) e
+--   l'emittente e' quello dell'operatore di contesto, col suo registro.
+--   Prima il BA si pescava (l'ultimo inserito) e l'emittente da
+--   emittenti_fiscali_billing_account: da zero non c'era niente. La
+--   fattura resta scritta a mano: l'inserimento e' il test 2.
+CREATE TEMP TABLE tmp_cli_fu AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('fattura utils critical');
+
 CREATE TEMP TABLE tmp_refs_fu AS
-WITH ba AS (
-  SELECT b.id
-  FROM anagrafiche.billing_account b
-  ORDER BY b.data_insert DESC NULLS LAST
-  LIMIT 1
-)
 SELECT
   script.fn_pgtap_registro_fattura(
-    anagrafiche.fn_get_emittente_fiscale_id((SELECT id FROM ba))
+    script.fn_pgtap_emittente_sr_operatore()
   ) AS registro_id,
-  (
-    SELECT m.emittente_soggetto_ruolo_id
-    FROM anagrafiche.emittenti_fiscali_billing_account m
-    WHERE m.billing_account_id = (SELECT id FROM ba)
-       OR m.is_default IS TRUE
-    ORDER BY CASE WHEN m.billing_account_id = (SELECT id FROM ba) THEN 0 ELSE 1 END,
-             m.id
-    LIMIT 1
-  ) AS emittente_soggetto_ruolo_id,
+  script.fn_pgtap_emittente_sr_operatore() AS emittente_soggetto_ruolo_id,
   (
     SELECT id
     FROM config.tipi_doc_fiscale
@@ -126,7 +121,7 @@ SELECT
     FROM tmp_tp_default_fu t
     LIMIT 1
   ) AS tp_default_id,
-  (SELECT id FROM ba) AS billing_account_id;
+  (SELECT billing_account_id FROM tmp_cli_fu) AS billing_account_id;
 
 SELECT ok(
   (
@@ -309,6 +304,21 @@ SELECT is(
 -- monte del default risponde: niente termine sulla commessa e niente sul
 -- cliente del BA padre. Il criterio di selezione e' lo STESSO della catena,
 -- altrimenti il test misura un livello diverso da quello che crede.
+-- rev 2026-10-27 (lotto 4 di D7): l'attivita' si COSTRUISCE — commessa del
+--   cliente del test con una sua attivita' e la sorgente ROOT che
+--   l'emissione pretende (dbops.fn_pgtap_crea_commessa), emessa dalla madre della pipeline — e il filtro della catena resta, sulla
+--   sola attivita' costruita. Prima si pescava la prima attivita' del DB che
+--   passava il filtro: da zero non c'era (skip), su dev era una qualunque.
+CREATE TEMP TABLE tmp_cmm_fu AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa(
+  'fattura utils termini', NULL,
+  (SELECT billing_account_id FROM tmp_cli_fu), true, true);
+
+DO $emit$ BEGIN
+  PERFORM vendite.fn_emit_attivita_fatturabili_da_commessa(
+    p_commessa_id => (SELECT commessa_id FROM tmp_cmm_fu));
+END $emit$;
+
 CREATE TEMP TABLE tmp_att_fallback_fu AS
 SELECT a.id
   FROM vendite.attivita_fatturabili a
@@ -316,7 +326,8 @@ SELECT a.id
   JOIN anagrafiche.billing_account bap ON bap.id = COALESCE(ba.parent_account_id, ba.id)
   LEFT JOIN vendite.commesse c   ON c.id = a.commessa_id
   LEFT JOIN anagrafiche.clienti cl ON cl.istanza_utility_id = bap.istanza_utility_id
- WHERE c.termine_pagamento_id IS NULL
+ WHERE a.commessa_attivita_id = (SELECT attivita_id FROM tmp_cmm_fu)
+   AND c.termine_pagamento_id IS NULL
    AND cl.termine_pagamento_id IS NULL
  ORDER BY a.id
  LIMIT 1;

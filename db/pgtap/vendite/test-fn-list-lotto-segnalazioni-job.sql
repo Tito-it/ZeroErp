@@ -44,16 +44,18 @@ SELECT plan(8);
 -- ============================================================
 -- 0) Fixture
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba, gia' legato all'azienda di chi agisce):
+--   prima si pescava l'ultimo billing account del DB, e da zero non c'era.
+--   Tipo documento (dal ponte tipo->registro), valuta e stato restano letture
+--   di catalogo; registro ed emittente sono gia' quelli di chi agisce.
+CREATE TEMP TABLE tmp_cli_jb AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('lista segnalazioni lotto job');
+
 CREATE TEMP TABLE tmp_refs_jb AS
-WITH ba AS (
-  SELECT b.id, b.utility_id
-    FROM anagrafiche.billing_account b
-   ORDER BY b.data_insert DESC NULLS LAST, b.id DESC
-   LIMIT 1
-)
 SELECT script.fn_pgtap_registro_fattura() AS registro_id,
-       ba.id         AS billing_account_id,
-       ba.utility_id AS utility_id,
+       ba.billing_account_id AS billing_account_id,
+       ba.utility_id         AS utility_id,
        (SELECT m.tipo_doc_fiscale_id
           FROM vendite.tipi_doc_fiscale_registri m
           JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
@@ -62,7 +64,7 @@ SELECT script.fn_pgtap_registro_fattura() AS registro_id,
        script.fn_pgtap_emittente_sr_operatore() AS emittente_soggetto_ruolo_id,
        (SELECT id FROM config.stati_doc_fiscale
          WHERE codice_interno = 'DRAFT' AND attivo IS TRUE ORDER BY id LIMIT 1) AS stato_draft_id
-  FROM ba;
+  FROM tmp_cli_jb ba;
 
 CREATE TEMP TABLE tmp_lotto_jb AS
 SELECT vendite.fn_create_fatturazione_lotto(

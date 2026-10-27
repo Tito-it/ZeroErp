@@ -92,22 +92,22 @@ SELECT 'pgtap_riporta_da_emettere'::text          AS test_scope,
        uuidv7()                                   AS lock_batch_id,
        script.fn_pgtap_emittente_sr_operatore()   AS emittente_sr_id;
 
+-- rev 2026-10-27 (lotto 4 di D7): la commessa si COSTRUISCE
+--   (dbops.fn_pgtap_crea_commessa: cliente, BA dell'azienda di chi agisce e
+--   commessa aperta dalla madre, nello stato iniziale), e i riferimenti del
+--   cliente si leggono da li'. Prima il BA si pescava con LIMIT 1 e la commessa
+--   si INSERIVA a mano: da zero il BA non c'era. Righe di commessa, fattura e
+--   attivita' restano scritte a mano: sono il caso del test.
+CREATE TEMP TABLE tmp_cmm_rde AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa('riporta attivita da emettere');
+
 CREATE TEMP TABLE tmp_refs_rde AS
-WITH ba AS (
-  SELECT b.id, b.utility_id, b.istanza_utility_id
-    FROM anagrafiche.billing_account b
-   WHERE b.utility_id IS NOT NULL
-     AND b.istanza_utility_id IS NOT NULL
-     AND b.soggetto_ruolo_id IS NOT NULL
-   ORDER BY b.id
-   LIMIT 1
-)
 SELECT
   (SELECT id FROM config.stati_doc_fiscale
     WHERE upper(btrim(codice_interno)) = 'DRAFT' ORDER BY id LIMIT 1) AS stato_draft_id,
-  (SELECT id FROM ba)                 AS billing_account_id,
-  (SELECT utility_id FROM ba)         AS utility_id,
-  (SELECT istanza_utility_id FROM ba) AS istanza_utility_id,
+  (SELECT billing_account_id FROM tmp_cmm_rde) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cmm_rde)         AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cmm_rde) AS istanza_utility_id,
   (SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE AND a.is_composito = FALSE
     ORDER BY a.id LIMIT 1)            AS articolo_id,
@@ -139,15 +139,7 @@ SELECT ok(
 -- Fixture: una commessa, QUATTRO righe di commessa già EMESSA
 -- ============================================================
 CREATE TEMP TABLE tmp_commessa_rde AS
-WITH ins AS (
-  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                emittente_soggetto_ruolo_id, stato_commessa_id)
-  SELECT 'PGTAP-RDE-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id,
-         (SELECT emittente_sr_id FROM tmp_cost_rde), r.stato_commessa_id
-    FROM tmp_refs_rde r
-  RETURNING id)
-SELECT id FROM ins;
+SELECT commessa_id AS id FROM tmp_cmm_rde;
 
 CREATE TEMP TABLE tmp_ca_rde (slot text PRIMARY KEY, attivita_id bigint);
 

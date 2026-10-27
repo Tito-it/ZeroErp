@@ -47,26 +47,32 @@ SELECT id AS tipologia_id FROM config.listini_tipologie WHERE codice = 'PRODOTTI
 CREATE TEMP TABLE tmp_tipologia_servizi AS
 SELECT id AS tipologia_id FROM config.listini_tipologie WHERE codice = 'SERVIZI';
 
--- Seleziona un listino di tipologia PRODOTTI con versione attiva (qualsiasi).
--- Se non esiste, i test 2/3/4 finiscono in skip_unless equivalente via NOT FOUND.
+-- rev 2026-10-27 (lotto 4 di D7): listino PRODOTTI e articolo PRODOTTI si
+-- COSTRUISCONO (prima si pescavano con ORDER BY id LIMIT 1: da zero non
+-- c'erano, e le INSERT su tmp vuote passavano o fallivano a vuoto).
+-- Listino: dbops.fn_pgtap_crea_listino sull'utility BASE del seed, la cui
+-- prima tipologia ammessa e' PRODOTTI (config.listini_tipologie_utilities).
+-- Articolo: dbops.fn_pgtap_crea_articolo con tipologia PRODOTTI e la UoM
+-- del builder (prima attiva del seed).
 CREATE TEMP TABLE tmp_ctx_listino_prod AS
-SELECT l.id AS listino_id, lv.id AS listino_versione_id
-  FROM vendite.listini l
-  JOIN vendite.listini_versioni lv ON lv.listino_id = l.id
- WHERE l.tipologia_id = (SELECT tipologia_id FROM tmp_tipologia_prodotti)
-   AND lv.attivo IS TRUE
-   AND lv.validita @> script.fn_data_operativa()
- ORDER BY l.id, lv.id
- LIMIT 1;
+SELECT l.listino_id, l.listino_versione_id
+  FROM dbops.fn_pgtap_crea_listino(
+           (SELECT u.id FROM config.utilities u WHERE u.codice = 'BASE'),
+           'guard tipologia') l
+ WHERE l.tipologia_id = (SELECT tipologia_id FROM tmp_tipologia_prodotti);
 
--- Articolo con tipologia PRODOTTI attivo
+-- Articolo con tipologia PRODOTTI
 CREATE TEMP TABLE tmp_art_prod AS
-SELECT id AS articolo_id, uom_id
-  FROM catalogo.articoli
- WHERE listino_tipologia_id = (SELECT tipologia_id FROM tmp_tipologia_prodotti)
-   AND attivo IS TRUE
- ORDER BY id
- LIMIT 1;
+SELECT b.articolo_id, NULL::bigint AS uom_id
+  FROM dbops.fn_pgtap_crea_articolo(
+           'PGTAP_ART_PROD', false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_tipologia_prodotti)) AS b(articolo_id);
+-- La UoM in un'istruzione a parte: la riga scritta dal builder non e'
+-- visibile a una JOIN nella stessa istruzione che lo chiama.
+UPDATE tmp_art_prod t
+   SET uom_id = a.uom_id
+  FROM catalogo.articoli a
+ WHERE a.id = t.articolo_id;
 
 -- Articolo "di comodo" per i test negativi: creiamo un articolo senza tipologia
 -- e uno con tipologia diversa dentro la transazione, cosi' il ROLLBACK pulisce.
@@ -81,29 +87,30 @@ SELECT 'PGTAP_ART_SERV', 'Articolo SERVIZI pgtap',
 
 -- 1) articolo senza listino_tipologia_id -> E_ARTICOLO_TIPOLOGIA_MANCANTE
 -- fn_log_and_raise_error solleva con SQLSTATE P0001.
-SELECT throws_ok(
+-- rev 2026-10-27 (lotto 4 di D7): discriminante sulla frase del registro
+-- (prima throws_ok P0001 senza messaggio: qualunque P0001 passava).
+SELECT throws_like(
     $$INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
       SELECT lv.listino_versione_id,
              (SELECT id FROM catalogo.articoli WHERE codice = 'PGTAP_ART_NO_TIP'),
              (SELECT uom_id FROM tmp_art_prod),
              100
         FROM tmp_ctx_listino_prod lv$$,
-    'P0001',
-    NULL,
+    '%privo di listino_tipologia_id: non ammesso in listino tipizzato%',
     'Articolo senza listino_tipologia_id -> guard lo blocca (E_ARTICOLO_TIPOLOGIA_MANCANTE)'
 );
 
 -- 2) articolo con tipologia diversa (SERVIZI) vs listino PRODOTTI ->
 -- E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE
-SELECT throws_ok(
+-- rev 2026-10-27 (lotto 4 di D7): discriminante sulla frase del registro.
+SELECT throws_like(
     $$INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
       SELECT lv.listino_versione_id,
              (SELECT id FROM catalogo.articoli WHERE codice = 'PGTAP_ART_SERV'),
              (SELECT uom_id FROM tmp_art_prod),
              150
         FROM tmp_ctx_listino_prod lv$$,
-    'P0001',
-    NULL,
+    '%incompatibile con tipologia listino%',
     'Tipologia articolo diversa dal listino -> guard lo blocca (E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE)'
 );
 

@@ -49,9 +49,9 @@
 --
 -- ⚠️ TUTTI I CASI SONO COSTRUITI. Lotti e documenti li fabbrica la fixture:
 --   nessuna asserzione si appoggia a un lotto vero, che domani puo' essere
---   archiviato o corretto. L'unica cosa presa dai dati sono i due riferimenti
---   obbligatori del lotto (tipo documento ed emittente), letti da un lotto
---   esistente perche' devono stare nel perimetro dell'operatore.
+--   archiviato o corretto. rev 2026-10-27 (lotto 4 di D7): anche i lotti
+--   nascono dal builder (dbops.fn_pgtap_crea_lotto); prima tipo documento ed
+--   emittente si leggevano dall'ultimo lotto del DB.
 --
 -- ⛔ QUELLO CHE QUESTO FILE NON PROVA, E VA DETTO: il ritrovamento del
 --   documento PARTENDO DALLA COMMESSA quando la commessa lo alimenta davvero.
@@ -74,23 +74,20 @@ SELECT plan(13);
 -- ============================================================
 -- Fixture: due lotti — uno CON perimetro e uno SENZA
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): i lotti si COSTRUISCONO con
+--   dbops.fn_pgtap_crea_lotto (madre vera, azienda di chi agisce), il secondo
+--   e il terzo sullo stesso cliente del primo. Prima si scrivevano a mano coi
+--   riferimenti dell'ultimo lotto del DB: da zero non c'era, e la RLS
+--   rifiutava le righe di perimetro su un lotto fuori dall'operatore.
 CREATE TEMP TABLE tmp_esito AS
-SELECT l.tipo_doc_fiscale_id, l.emittente_soggetto_ruolo_id
-  FROM vendite.fatturazione_lotti l
- ORDER BY l.id DESC
- LIMIT 1;
+SELECT * FROM dbops.fn_pgtap_crea_lotto('lotti gruppi esito mirato');
 
 DO $fixture$
 DECLARE
     v_mirato vendite.fatturazione_lotti.id%TYPE;
     v_massa  vendite.fatturazione_lotti.id%TYPE;
 BEGIN
-    INSERT INTO vendite.fatturazione_lotti
-        (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id)
-    SELECT 'PGTAP-ESITO-MIRATO', date_trunc('month', script.fn_data_operativa())::date,
-           t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id
-      FROM tmp_esito t
-    RETURNING id INTO v_mirato;
+    SELECT t.lotto_id INTO v_mirato FROM tmp_esito t;
 
     -- Padre e figlio in DUE istruzioni: una CTE unica condividerebbe la stessa
     -- snapshot e la FK non troverebbe il padre.
@@ -100,12 +97,9 @@ BEGIN
 
     -- ⭐ Il secondo lotto NON ha righe di perimetro: e' un giro di massa, e
     --   fino al 2026-09-07 non aveva nessun posto dove essere marcato.
-    INSERT INTO vendite.fatturazione_lotti
-        (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id)
-    SELECT 'PGTAP-ESITO-MASSA', date_trunc('month', script.fn_data_operativa())::date,
-           t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id
-      FROM tmp_esito t
-    RETURNING id INTO v_massa;
+    SELECT l.lotto_id INTO v_massa
+      FROM dbops.fn_pgtap_crea_lotto('lotti gruppi esito massa', 'DRAFT',
+                                     (SELECT t.billing_account_id FROM tmp_esito t)) l;
 
     PERFORM set_config('pgtap.lotto', v_mirato::text, true);
     PERFORM set_config('pgtap.lotto_massa', v_massa::text, true);
@@ -377,13 +371,16 @@ DO $lotto_sano$
 DECLARE
     v_lotto_id vendite.fatturazione_lotti.id%TYPE;
 BEGIN
-    INSERT INTO vendite.fatturazione_lotti
-        (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
-         stato_lotto)
-    SELECT 'PGTAP-CONTRADDIZIONE', date_trunc('month', script.fn_data_operativa())::date,
-           t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id, 'COMPLETATO'
-      FROM tmp_esito t
-    RETURNING id INTO v_lotto_id;
+    -- rev 2026-10-27 (lotto 4 di D7): il lotto dal builder, poi COMPLETATO
+    --   per la strada del runner (IN_ESECUZIONE -> COMPLETATO, giudicata dal
+    --   guard della matrice config.transizioni_stati_lotto_job). Prima: INSERT
+    --   a mano gia' COMPLETATO, coi riferimenti pescati.
+    SELECT l.lotto_id INTO v_lotto_id
+      FROM dbops.fn_pgtap_crea_lotto('lotti gruppi esito chiuso', 'DRAFT',
+                                     (SELECT t.billing_account_id FROM tmp_esito t)) l;
+
+    UPDATE vendite.fatturazione_lotti SET stato_lotto = 'IN_ESECUZIONE' WHERE id = v_lotto_id;
+    UPDATE vendite.fatturazione_lotti SET stato_lotto = 'COMPLETATO'    WHERE id = v_lotto_id;
 
     -- Un lotto chiuso con un documento andato BENE: nessuna contraddizione.
     PERFORM vendite.fn_segna_esito_gruppo_lotto(

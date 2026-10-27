@@ -1,6 +1,9 @@
 # Qualità del database — indicatori e lezioni
 
-> **Ultima rilettura**: 23 ottobre 2026
+> **Ultima rilettura**: 27 ottobre 2026 — la suite pgTAP coi numeri del 27-10 (D7, lotti 3 e 4:
+> scratch da 147 a 24 rossi) e la scorecard rivista (Copertura test 4,5 → 5,5, Gestione del debito
+> 6 → 6,5; la Catena di verifica ferma, col rischio del registro CI riscritto); corretta la lettura di
+> `vw_codici_errore_da_dichiarare` (è la misura, non il debito) e il voto della Gestione del debito
 >
 > **Destinatari**: chi sviluppa sullo strato database (schema, funzioni, trigger, policy,
 > changeSet, pgTAP), e chi ogni tanto si chiede *«il database sta diventando più vero o
@@ -66,7 +69,10 @@ Vengono dalla valutazione del 2026-09/10: ognuna ha un caso vero dietro, nella l
   della regola (D11).
 * **Un registro di debito vale se scende**, e scende solo se ogni riga ha causa, rimedio e data.
   `vw_processi_che_bypassano` aveva una riga con la data di ritiro, ed è andato a zero quel
-  giorno; il registro dei codici da dichiarare non ha un verso, e cresce col catalogo.
+  giorno; anche il registro dei codici senza policy è a zero dal 07-08. ⛔ **Di una vista di presidio si
+  conta il registro, mai la misura**: `vw_codici_errore_da_dichiarare` cresce col catalogo perché
+  conta ogni codice che il DB può nominare, e contarla come debito è un errore già fatto tre
+  volte (correzione del 27-10).
 * **Un registro che non si aggiorna dalla misura del giorno mente a favore.** Il registro dei
   rossi della CI fermo a 361 mentre la CI ne vedeva 227: circa 130 file già verdi tollerati
   come rossi, la cui regressione non ferma un merge.
@@ -116,17 +122,17 @@ sta in git.
 
 ### Suite pgTAP
 
-| Indicatore | Verso | Chi lo presidia | 23-10 |
+| Indicatore | Verso | Chi lo presidia | 27-10 |
 | --- | --- | --- | --- |
-| file pgTAP | colore | la suite in `ci-validate` | 887 |
-| rossi noti in CI (`baseline-rossi-ci.tsv`) | ↓ | cancello in CI; scende **solo** con `pgtap-baseline-ci-rientrati.sh` sul log della corsa, il giorno stesso | 360 (292 `ERRORE_FIXTURE`, 68 `ASSERZIONE`) |
-| ultimo commit del registro della CI | non più vecchio dell'ultima corsa CI | ⚠️ nessun presidio | 20-10 (ultima misura CI registrata: 26-09, 227 rossi) |
-| rossi noti sullo scratch (`baseline-rossi-scratch.tsv`) | ↓ | `scripts/ci-local.sh` su `zeroerp_ruoli` | 147 (120 / 26 / 1 `SORGENTE_POLIMORFA`) |
-| rossi noti in sviluppo (`baseline-rossi.tsv`) | ↓ fino a 0 | la corsa su dbdev | 6 (5 / 1) |
-| soglia dei `throws_ok` senza discriminante | ↓, a cricchetto | `guardrail_pgtap_preambolo.py` | 115 |
+| file pgTAP | colore | la suite in `ci-validate` | 916 (887 al 23-10) |
+| rossi noti in CI (`baseline-rossi-ci.tsv`) | ↓ | cancello in CI; scende **solo** con `pgtap-baseline-ci-rientrati.sh` sul log della corsa, il giorno stesso | 359 (291 `ERRORE_FIXTURE`, 68 `ASSERZIONE`) |
+| ultimo commit del registro della CI | non più vecchio dell'ultima corsa CI | ⚠️ nessun presidio | 27-10, un test ritirato e nessun rientrato (ultima misura CI registrata: 26-09, 227 rossi) |
+| rossi noti sullo scratch (`baseline-rossi-scratch.tsv`) | ↓ | `scripts/ci-local.sh` su `zeroerp_ruoli` | 24 (4 `ERRORE_FIXTURE` / 20 `ASSERZIONE`); 147 al 20-10 |
+| rossi noti in sviluppo (`baseline-rossi.tsv`) | ↓ fino a 0 | la corsa su dbdev | 4 (3 / 1) |
+| soglia dei `throws_ok` senza discriminante | ↓, a cricchetto | `guardrail_pgtap_preambolo.py` | 110 (vede anche `NULL::text` dal 27-10) |
 | file con `pgtap-runner: owner` | si **legge**: ogni motivo dev'essere ancora vero | il motivo scritto nel file | 145 |
-| file con uno `skip()` | si **legge**: su un DB vuoto contano verdi | — | 122 |
-| file con l'utente `'1'` fisso | = 0 | — ⚠️ nessun presidio | 4 |
+| file con uno `skip()` | si **legge**: su un DB vuoto contano verdi | — | 119 |
+| file con l'utente `'1'` fisso | = 0 | — ⚠️ nessun presidio | 0 (4 al 23-10) |
 | schemi senza nessun file pgTAP | colore: dice dove il comportamento non è ancora scritto | — | `acquisti` |
 
 ### Registri e rubinetti
@@ -163,7 +169,7 @@ I messaggi per lingua li legge il gemello BE/FE: un numero, una sede.
 
 | Indicatore | Verso | Chi lo presidia | 23-10 |
 | --- | --- | --- | --- |
-| codici da dichiarare (`vw_codici_errore_da_dichiarare`) | ↓ — oggi **senza verso** | il digest dei presidi | 702 |
+| codici nominabili dal DB (`vw_codici_errore_da_dichiarare`) — ⛔ **misura, non debito** | colore: cresce col dominio | — (il debito è `codici_errore_senza_policy`, a **0**, presidiato da `test_error_codes_db_policy_guardrail`) | 702 |
 | FK senza indice fuori policy | ↓ | `vw_fk_con_indice_missing_policy` | 57 |
 | indici ridondanti per prefisso | = 0 | `vw_indici_ridondanti_prefisso` | 1 |
 | processi che bypassano la RLS | = 0 | `vw_processi_che_bypassano` | 0 |
@@ -183,23 +189,22 @@ I messaggi per lingua li legge il gemello BE/FE: un numero, una sede.
 
 ---
 
-## 3. La scorecard pesata — rilettura del 2026-10-23
+## 3. La scorecard pesata — rilettura del 2026-10-27
 
 Il **peso** è la conseguenza di un difetto nell'area. Un voto che si muove dice il suo perché;
-uno fermo dice che cosa lo tiene fermo. «Era» è il voto della rilettura precedente (26-09,
-nella lettura zero).
+uno fermo dice che cosa lo tiene fermo. «Era» è il voto della rilettura precedente (23-10).
 
 | Area | Peso | Voto | Era | Che cosa lo tiene dov'è |
 | --- | --- | --- | --- | --- |
-| Catena di verifica (CI) | 🔴 alto | **7,5** | 7,5 | Cancello vero dal 09-09; dal 15-10 la CI ricostruisce il DB col modello dei ruoli di sistema. Il registro della CI non è stato aggiornato dall'ultima misura: file già verdi tollerati come rossi |
+| Catena di verifica (CI) | 🔴 alto | **7,5** | 7,5 | Cancello vero dal 09-09; dal 15-10 la CI ricostruisce il DB col modello dei ruoli di sistema. Il registro della CI (359) non è stato aggiornato dall'ultima misura, e ora lo scratch ne vede rossi 24: più di 300 file verdi tollerati come rossi, la cui regressione non ferma il merge |
 | Perimetro dei dati (RLS) | 🔴 alto | **8** | 8 | Dominio documento e storico protetti, nessun processo che bypassa, perimetro una volta per istruzione. Aperti la catena delle istanze sotto RLS (D18) e le GUC di bypass (Q-2) |
-| Copertura test | 🔴 alto | **4,5** | 4 | Scratch col modello nuovo verde all'83%, baseline di sviluppo a 6. Il numero della CI è vecchio di un mese, `acquisti` è a zero, 122 file con `skip()` |
+| Copertura test | 🔴 alto | **5,5** | 4,5 | Sale: le migrazioni ricostruiscono da zero un sistema che passa la suite quasi intera (scratch 24 rossi su 916, 27-10), `pratiche` e `vendite` senza rossi di fixture, una decina di verdi falsi resi veri. Lo tengono: il numero della CI vecchio di un mese, `acquisti` a zero, 119 `skip()` e 145 runner `owner` non riletti |
 | Postura di sicurezza degli oggetti | 🟠 medio | **8** | 7,5 | Ruoli di sistema: un proprietario, `zeroerp_job`, nessun superuser al lavoro; rubinetti D6-bis a 16 e 4. Aperti Q-2 e D6-bis |
 | Simmetria del dominio | 🟠 medio | **non votata** | — | L'ordine di costruzione non si vota. Si presidia la regola: *ogni decisione su `vendite` vale per `acquisti`* — e dal 13-10 `vendite` ne ha prese altre (grammatica unica, modelli standard) |
 | Osservabilità dei presidi | 🟠 medio | **7,5** | 7 | Il presidio dei job dice la causa, la spia si spegne solo su un verdetto completo, le statistiche hanno un job che si verifica. Resta il rumore dei processi ritirati nella vista dei job |
-| Gestione del debito | 🟠 medio | **5,5** | 6 | I registri piccoli calano e il bypass è sparito alla data. I due grandi no: registro della CI fermo, codici da dichiarare senza verso (702) |
+| Gestione del debito | 🟠 medio | **6,5** | 6 | Sale: una voce aperta lavorata davvero (D7, lotti 3 e 4), e i registri piccoli calano (sviluppo 6 → 4, `throws_ok` 115 → 110, utente `'1'` a zero). Lo tengono il registro della CI fermo dal 26-09 e D18 e Q-2 ferme. *(⛔ 27-10: il 23-10 era 5,5, contando come debito i 702 codici della misura; corretto a 6)* |
 | Pattern trigger e automazioni | 🟡 basso | **7,5** | 7,5 | Automazioni dichiarative eccellenti; il guard per-figlia cresce con le figlie (D9) |
-| Error handling / codici errore | 🟡 basso | **8,5** | 8,5 | Contratto a tre lati presidiato. Sei `W_` senza messaggio, registro che sale |
+| Error handling / codici errore | 🟡 basso | **8,5** | 8,5 | Contratto a tre lati presidiato. Sei `W_` senza messaggio; la misura non vede i codici negli argomenti dei trigger (D24) |
 | Disciplina Liquibase | 🟡 basso | **9** | 9 | Divieti nati da incidenti, ognuno col suo guardrail. `logicalFilePath` senza presidio |
 | Documentazione | 🟡 basso | **8,5** | 8,5 | Copertura piena; sottile dove il dominio è sottile |
 | Naming | 🟡 basso | **8** | 8 | 94-99% sui vincoli; fase dei trigger al 68%; un vocabolario solo per i tipi di documento |

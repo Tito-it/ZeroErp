@@ -77,20 +77,32 @@ SELECT plan(7);
 
 -- ============================================================
 -- Riferimenti — per CHIAVE NATURALE, mai per id nudo.
+-- rev 2026-10-27 (lotto 4 di D7): i due emittenti si COSTRUISCONO
+--   (dbops.fn_pgtap_crea_emittente: nascendo, ciascuno fa nascere i propri
+--   registri e la mappatura, vendite.fn_provision_registri_emittente), e il
+--   billing account del test 5 si lega al secondo
+--   (dbops.fn_pgtap_crea_cliente_ba col terzo parametro). Prima il
+--   principale era «il» mapping is_default del DB e il secondo «il primo
+--   emittente diverso»: da zero non c'erano, e il test 3 moriva su
+--   E_CONFIG_MANCANTE. Tipo documento e natura restano letti dal catalogo
+--   di seed. I test 1-2 leggono TUTTA la configurazione per scelta
+--   (proprieta' globale, vedi la testata): non sono pesche.
 -- ============================================================
+CREATE TEMP TABLE tmp_ef_reg_principale AS
+SELECT e.soggetto_ruolo_id FROM dbops.fn_pgtap_crea_emittente() e;
+
+CREATE TEMP TABLE tmp_ef_reg_secondo AS
+SELECT e.soggetto_ruolo_id FROM dbops.fn_pgtap_crea_emittente() e;
+
+DO $t5$ BEGIN
+  PERFORM dbops.fn_pgtap_crea_cliente_ba(
+    'pgTAP registri t5', NULL, (SELECT soggetto_ruolo_id FROM tmp_ef_reg_secondo));
+END $t5$;
+
 CREATE TEMP TABLE tmp_ref_reg AS
 SELECT
-  (SELECT m.emittente_soggetto_ruolo_id
-     FROM anagrafiche.emittenti_fiscali_billing_account m
-    WHERE m.is_default IS TRUE)                                          AS ef_principale,
-  (SELECT ef.soggetto_ruolo_id
-     FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE
-      AND ef.soggetto_ruolo_id IS DISTINCT FROM
-          (SELECT m2.emittente_soggetto_ruolo_id
-             FROM anagrafiche.emittenti_fiscali_billing_account m2
-            WHERE m2.is_default IS TRUE)
-    ORDER BY ef.id LIMIT 1)                                              AS ef_secondo,
+  (SELECT soggetto_ruolo_id FROM tmp_ef_reg_principale)                 AS ef_principale,
+  (SELECT soggetto_ruolo_id FROM tmp_ef_reg_secondo)                    AS ef_secondo,
   (SELECT t.id FROM config.tipi_doc_fiscale t
     WHERE t.codice_interno = 'FRONTOFFICE' ORDER BY t.id LIMIT 1)        AS tipo_fo_id,
   (SELECT n.id FROM config.nature_doc_fiscale n

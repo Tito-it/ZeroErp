@@ -89,39 +89,34 @@ SELECT
     'pgtap_attivita_fatturabili'::text AS test_scope,
     uuidv7() AS sorgente_uid_unica;
 
+-- rev 2026-10-27 (lotto 4 di D7): commessa, cliente e articolo si
+--   COSTRUISCONO (dbops.fn_pgtap_crea_commessa, che costruisce il cliente
+--   col BA legato all'azienda di chi agisce; dbops.fn_pgtap_crea_articolo).
+--   Prima BA, articolo, stato ed emittente si pescavano con LIMIT 1, e su
+--   un database ricostruito da zero il BA non c'era. Dal DB resta solo il
+--   catalogo di seed (sorgenti, tipi documento, valute).
+CREATE TEMP TABLE tmp_cm_af AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa('attivita fatturabili');
+
+CREATE TEMP TABLE tmp_art_af AS
+SELECT dbops.fn_pgtap_crea_articolo(
+    ('PGT-AF-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
+    false) AS articolo_id;
+
 CREATE TEMP TABLE tmp_refs_af AS
--- rev 2026-08-18 (bonifica baseline): il billing account si sceglie UNA volta.
--- Prima articolo, istanza utility e billing account arrivavano da tre
--- `ORDER BY data_insert DESC LIMIT 1` indipendenti: nulla garantiva che
--- l'istanza appartenesse a quel BA.
-WITH ba AS (
-    SELECT b.id, b.utility_id, b.istanza_utility_id
-      FROM anagrafiche.billing_account b
-     WHERE b.utility_id IS NOT NULL
-       AND b.istanza_utility_id IS NOT NULL
-       AND b.soggetto_ruolo_id IS NOT NULL
-     ORDER BY b.id
-     LIMIT 1
-)
 SELECT
-    (SELECT id FROM ba)                 AS billing_account_id,
-    (SELECT utility_id FROM ba)         AS utility_id,
-    (SELECT istanza_utility_id FROM ba) AS istanza_utility_id,
-    (SELECT a.id
-       FROM catalogo.articoli a
-      WHERE a.attivo IS TRUE AND a.is_composito = FALSE
-      ORDER BY a.id
-      LIMIT 1) AS articolo_id,
+    (SELECT billing_account_id FROM tmp_cm_af)  AS billing_account_id,
+    (SELECT utility_id FROM tmp_cm_af)          AS utility_id,
+    (SELECT istanza_utility_id FROM tmp_cm_af)  AS istanza_utility_id,
+    (SELECT articolo_id FROM tmp_art_af)        AS articolo_id,
     (SELECT s2.id
        FROM config.sorgenti s2
       WHERE s2.attivo IS TRUE
       ORDER BY s2.id
       LIMIT 1) AS sorgente_tipo_id,
-    (SELECT u.id
-       FROM catalogo.unita_misura u
-      WHERE u.attivo IS TRUE
-      ORDER BY u.id
-      LIMIT 1) AS uom_id,
+    (SELECT a.uom_id
+       FROM catalogo.articoli a
+      WHERE a.id = (SELECT articolo_id FROM tmp_art_af)) AS uom_id,
     (SELECT t.id
        FROM config.tipi_doc_fiscale t
       WHERE t.attivo IS TRUE
@@ -130,17 +125,7 @@ SELECT
     (SELECT v.id
        FROM config.valute v
       ORDER BY v.id
-      LIMIT 1) AS valuta_id,
-    (SELECT sc.id
-       FROM vendite.stati_commessa sc
-      WHERE sc.attivo IS TRUE AND sc.codice_interno <> 'ANNULLATA'
-      ORDER BY sc.id
-      LIMIT 1) AS stato_commessa_id,
-    (SELECT ef.soggetto_ruolo_id
-       FROM anagrafiche.emittenti_fiscali ef
-      WHERE ef.attivo IS TRUE
-      ORDER BY ef.id
-      LIMIT 1) AS emittente_sr_id;
+      LIMIT 1) AS valuta_id;
 
 CREATE TEMP TABLE tmp_note_stile AS
 SELECT id AS id_stile
@@ -227,41 +212,39 @@ SELECT ok(
 -- Modello: test-vw-dash-competenza-v1 (INSERT diretti; non serve il giro di
 -- fn_get_or_create_commessa / fn_link_commessa_sorgente per una fixture).
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): la commessa e' quella costruita sopra
+--   (madre vendite.fn_get_or_create_commessa, in bozza), e le tredici
+--   attivita' le scrive dbops.fn_pgtap_crea_commessa_attivita, una per slot,
+--   ciascuna con la sua chiave: prima erano due INSERT a mano sui riferimenti
+--   pescati, che da zero non c'erano.
 CREATE TEMP TABLE tmp_commessa_af AS
-WITH ins AS (
-    INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                  emittente_soggetto_ruolo_id, stato_commessa_id)
-    SELECT 'PGTAP-AF-' || substr(md5(clock_timestamp()::text), 1, 8),
-           r.billing_account_id, r.utility_id, r.emittente_sr_id, r.stato_commessa_id
-      FROM tmp_refs_af r
-    RETURNING id)
-SELECT id FROM ins;
+SELECT commessa_id AS id FROM tmp_cm_af;
 
-CREATE TEMP TABLE tmp_ca_af AS
-WITH ins AS (
-    INSERT INTO vendite.commesse_attivita (
-        commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
-        uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
-        tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-        stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-    SELECT (SELECT id FROM tmp_commessa_af),
-           'PGTAPAF' || g.n || 'X' || substr(md5(clock_timestamp()::text), 1, 10),
-           r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
-           date_trunc('month', script.fn_data_operativa())::date,
-           date_trunc('month', script.fn_data_operativa())::date,
-           (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
-           r.tipo_doc_fiscale_id, r.valuta_id, 1.000000, 'FIXED',
-           -- BOZZA di proposito: righe di fixture non devono comparire nelle
-           -- corsie di emissione degli altri test.
-           'BOZZA', 'NON_EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-         ((SELECT id FROM tmp_commessa_af))::text
-      FROM tmp_refs_af r, generate_series(1, 13) AS g(n)
-    RETURNING id, segment_key)
-SELECT substring(segment_key FROM 'PGTAPAF([0-9]+)X')::int AS slot, id AS attivita_id
-  FROM ins;
+-- ⚠️ Un'istruzione per slot (il ciclo), non una LATERAL su generate_series:
+--   una chiamata che non dipende da g.n il planner la valuta UNA volta, e
+--   tredici slot avrebbero la stessa attivita'.
+CREATE TEMP TABLE tmp_ca_af (slot int, attivita_id bigint);
 
+DO $fx$
+BEGIN
+    FOR n IN 1..13 LOOP
+        INSERT INTO tmp_ca_af (slot, attivita_id)
+        SELECT n, x.attivita_id
+          FROM dbops.fn_pgtap_crea_commessa_attivita(
+              p_commessa_id        => (SELECT id FROM tmp_commessa_af),
+              p_prezzo_snapshot    => 1.000000,
+              p_articolo_id        => (SELECT articolo_id FROM tmp_refs_af),
+              -- BOZZA di proposito: righe di fixture non devono comparire
+              -- nelle corsie di emissione degli altri test.
+              p_stato_approvazione => 'BOZZA') AS x;
+    END LOOP;
+END
+$fx$;
+
+-- ⚠️ Si contano gli id DISTINTI, non le righe: tredici righe con la stessa
+--   attivita' (la trappola della LATERAL, sopra) passerebbero un count(*).
 SELECT is(
-    (SELECT count(*)::int FROM tmp_ca_af),
+    (SELECT count(DISTINCT attivita_id)::int FROM tmp_ca_af),
     13,
     'Fixture: 13 attivita di commessa distinte create'
 );

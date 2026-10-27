@@ -194,7 +194,7 @@ SELECT lives_ok(
 SELECT throws_like(
   $$UPDATE pratiche.template_flussi SET sequenza = 99
      WHERE definizione_id = (SELECT fork_id FROM tmp_wf2b_fork) AND codice = 'WF2B_A'$$,
-  '%per-emittente (congelata)%',
+  '%struttura congelata%',
   '6. UPDATE campo strutturale (sequenza) su fork pubblicato -> 514'
 );
 
@@ -204,7 +204,7 @@ SELECT throws_like(
 SELECT throws_like(
   $$INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, attivo, definizione_id)
     VALUES ((SELECT tp_id FROM tmp_wf2b_tp),'WF2B_NEW','Step nuovo',50,true,(SELECT fork_id FROM tmp_wf2b_fork))$$,
-  '%per-emittente (congelata)%',
+  '%struttura congelata%',
   '7. INSERT nuovo template nel fork pubblicato -> 514'
 );
 
@@ -214,7 +214,7 @@ SELECT throws_like(
 SELECT throws_like(
   $$DELETE FROM pratiche.template_flussi
      WHERE definizione_id = (SELECT fork_id FROM tmp_wf2b_fork) AND codice = 'WF2B_C'$$,
-  '%per-emittente (congelata)%',
+  '%struttura congelata%',
   '8. DELETE template dal fork pubblicato -> 514'
 );
 
@@ -227,7 +227,7 @@ SELECT throws_like(
       (SELECT id FROM pratiche.template_flussi WHERE definizione_id=(SELECT fork_id FROM tmp_wf2b_fork) AND codice='WF2B_C'),
       (SELECT id FROM pratiche.template_flussi WHERE definizione_id=(SELECT fork_id FROM tmp_wf2b_fork) AND codice='WF2B_A'),
       'POSITIVO')$$,
-  '%per-emittente (congelata)%',
+  '%struttura congelata%',
   '9. INSERT figlio (prerequisito) nel fork pubblicato -> 514'
 );
 
@@ -238,7 +238,7 @@ SELECT throws_like(
   $$UPDATE pratiche.template_flussi_prerequisiti SET esito_richiesto = 'NEGATIVO'
      WHERE template_flusso_id = (SELECT id FROM pratiche.template_flussi WHERE definizione_id=(SELECT fork_id FROM tmp_wf2b_fork) AND codice='WF2B_B')
        AND prerequisito_id   = (SELECT id FROM pratiche.template_flussi WHERE definizione_id=(SELECT fork_id FROM tmp_wf2b_fork) AND codice='WF2B_A')$$,
-  '%per-emittente (congelata)%',
+  '%struttura congelata%',
   '10. UPDATE figlio (prerequisito) del fork pubblicato -> 514'
 );
 
@@ -249,7 +249,7 @@ SELECT throws_like(
   $$DELETE FROM pratiche.formule_tempo
      WHERE template_flusso_da_id = (SELECT id FROM pratiche.template_flussi WHERE definizione_id=(SELECT fork_id FROM tmp_wf2b_fork) AND codice='WF2B_A')
        AND template_flusso_a_id  = (SELECT id FROM pratiche.template_flussi WHERE definizione_id=(SELECT fork_id FROM tmp_wf2b_fork) AND codice='WF2B_B')$$,
-  '%per-emittente (congelata)%',
+  '%struttura congelata%',
   '11. DELETE figlio (formula) del fork pubblicato -> 514'
 );
 

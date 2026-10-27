@@ -60,12 +60,19 @@ SELECT plan(6);
 -- Il lotto si crea con la funzione applicativa, cosi' nasce con lo stato e i
 -- riferimenti che avrebbe nel giro reale. Non gli si attacca nessuna fattura:
 -- e' esattamente il caso del difetto.
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba) e l'emittente e' quello di chi agisce
+--   (script.fn_pgtap_emittente_sr_operatore). Prima utility ed emittente si
+--   pescavano dal primo BA e dalla prima fattura: da zero non c'erano.
+CREATE TEMP TABLE tmp_cli_alv AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('annulla lotto vuoto');
+
 CREATE TEMP TABLE tmp_lotto_alv AS
 SELECT vendite.fn_get_or_create_lotto(
          p_competenza_mese             => (date_trunc('month', script.fn_data_operativa()) + interval '2 month')::date,
          p_tipo_doc_fiscale_id         => (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1),
-         p_utility_id                  => (SELECT ba.utility_id FROM anagrafiche.billing_account ba ORDER BY ba.id LIMIT 1),
-         p_emittente_soggetto_ruolo_id => (SELECT f.emittente_soggetto_ruolo_id FROM vendite.fatture f ORDER BY f.id LIMIT 1),
+         p_utility_id                  => (SELECT utility_id FROM tmp_cli_alv),
+         p_emittente_soggetto_ruolo_id => script.fn_pgtap_emittente_sr_operatore(),
          p_tipo_lotto                  => 'MASSIVO') AS id;
 
 SELECT ok(

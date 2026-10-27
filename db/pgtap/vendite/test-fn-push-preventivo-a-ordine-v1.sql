@@ -216,10 +216,10 @@ CREATE TRIGGER zzz_pgtap_fail_evaso
     BEFORE UPDATE ON vendite.preventivi
     FOR EACH ROW EXECUTE FUNCTION pg_temp.pgtap_fail_evaso();
 
-SELECT throws_ok(
+SELECT throws_like(
   format('SELECT vendite.fn_push_preventivo_a_ordine(%s)',
          (SELECT id FROM tmp_prev_atom)),
-  NULL::text, NULL::text,
+  '%fallimento iniettato sulla transizione EVASO%',
   '8a) la transizione EVASO fallita fa fallire l''intera chiamata'
 );
 

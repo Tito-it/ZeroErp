@@ -30,9 +30,9 @@
 --  - presidiare il verbo «togli un documento rotto dal giro», che esiste per
 --    non far tenere in ostaggio un lotto intero da un documento solo.
 --
--- ⚠️ TUTTI I CASI SONO COSTRUITI. L'unica cosa presa dai dati sono i due
---   riferimenti obbligatori del lotto (tipo documento ed emittente), letti da
---   un lotto esistente perche' devono stare nel perimetro dell'operatore.
+-- ⚠️ TUTTI I CASI SONO COSTRUITI, anche i due lotti (rev 2026-10-27, lotto 4
+--   di D7: prima tipo documento ed emittente si leggevano dall'ultimo lotto
+--   del DB).
 --
 -- ⛔ QUELLO CHE QUESTO FILE NON PROVA, E VA DETTO: il TRASCINAMENTO positivo —
 --   escludere un documento la cui bozza copre anche altri, e vedere gli altri
@@ -56,53 +56,29 @@ SELECT plan(22);
 -- ============================================================
 -- Fixture: un lotto con tre documenti — uno rotto, uno sano, uno gia' fuori
 -- ============================================================
-CREATE TEMP TABLE tmp_rif AS
-SELECT l.tipo_doc_fiscale_id, l.emittente_soggetto_ruolo_id
-  FROM vendite.fatturazione_lotti l
- ORDER BY l.id DESC
- LIMIT 1;
+-- rev 2026-10-27 (lotto 4 di D7): i due lotti si COSTRUISCONO
+--   (dbops.fn_pgtap_crea_lotto, azienda di chi agisce, stato raggiunto per la
+--   matrice). Prima si scrivevano a mano con tipo documento ed emittente
+--   pescati dall'ultimo lotto del DB: da zero non c'era, e fuori dal
+--   perimetro la RLS rifiutava gruppi ed esiti qui sotto.
+-- ⚠️ LO STATO SERVE: la check legge `congela_fiscale` FAIL-CLOSED
+--   (COALESCE(..., true)), quindi un lotto senza stato risulta «oltre il
+--   pre-fiscale» e blocca TUTTO. ⛔ `codice_interno`, mai un id.
+CREATE TEMP TABLE tmp_lotto AS
+SELECT l.lotto_id AS id FROM dbops.fn_pgtap_crea_lotto('uscita giro', 'DRAFT') l;
 
-CREATE TEMP TABLE tmp_lotto (id bigint);
-CREATE TEMP TABLE tmp_lotto_fiscale (id bigint);
+-- ⭐ UN SECONDO LOTTO, OLTRE IL PRE-FISCALE, per il test 18. Serve perche'
+--   il MOTIVO 1 (E_LOTTO_NON_PRE_FISCALE) non scatta mai sul lotto DRAFT
+--   qui sopra — ed e' proprio il motivo su cui la frase era sbagliata.
+--   ⛔ `codice_interno`, mai un id: DEFINITIVA e' uno degli stati con
+--   `congela_fiscale = true`, e il confine si legge dal flag.
+CREATE TEMP TABLE tmp_lotto_fiscale AS
+SELECT l.lotto_id AS id FROM dbops.fn_pgtap_crea_lotto('uscita giro fiscale', 'DEFINITIVA') l;
 
 DO $fixture$
 DECLARE
-    v_lotto          vendite.fatturazione_lotti.id%TYPE;
-    v_lotto_fiscale  vendite.fatturazione_lotti.id%TYPE;
+    v_lotto          vendite.fatturazione_lotti.id%TYPE := (SELECT id FROM tmp_lotto);
 BEGIN
-    -- ⚠️ LO STATO SERVE, e la prima stesura di questa fixture non lo metteva:
-    --   la check legge `congela_fiscale` FAIL-CLOSED (COALESCE(..., true)),
-    --   quindi un lotto senza stato risulta «oltre il pre-fiscale» e blocca
-    --   TUTTO. E' il comportamento voluto — non sapere in che stato e' il giro
-    --   non e' un buon motivo per lasciarci mettere le mani — ma rende il lotto
-    --   inutilizzabile come fixture. ⛔ `codice_interno`, mai un id.
-    INSERT INTO vendite.fatturazione_lotti
-        (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
-         stato_doc_fiscale_id)
-    SELECT 'PGTAP-USCITA-GIRO', date_trunc('month', script.fn_data_operativa())::date,
-           t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id,
-           (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT')
-      FROM tmp_rif t
-    RETURNING id INTO v_lotto;
-
-    INSERT INTO tmp_lotto VALUES (v_lotto);
-
-    -- ⭐ UN SECONDO LOTTO, OLTRE IL PRE-FISCALE, per il test 18. Serve perche'
-    --   il MOTIVO 1 (E_LOTTO_NON_PRE_FISCALE) non scatta mai sul lotto DRAFT
-    --   qui sopra — ed e' proprio il motivo su cui la frase era sbagliata.
-    --   ⛔ `codice_interno`, mai un id: DEFINITIVA e' uno degli stati con
-    --   `congela_fiscale = true`, e il confine si legge dal flag.
-    INSERT INTO vendite.fatturazione_lotti
-        (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
-         stato_doc_fiscale_id)
-    SELECT 'PGTAP-USCITA-GIRO-FISCALE', date_trunc('month', script.fn_data_operativa())::date,
-           t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id,
-           (SELECT s.id FROM config.stati_doc_fiscale s
-             WHERE s.codice_interno = 'DEFINITIVA')
-      FROM tmp_rif t
-    RETURNING id INTO v_lotto_fiscale;
-
-    INSERT INTO tmp_lotto_fiscale VALUES (v_lotto_fiscale);
 
     -- Il perimetro: tre documenti presi in carico.
     INSERT INTO vendite.fatturazione_lotti_gruppi (lotto_id, gruppo_key)

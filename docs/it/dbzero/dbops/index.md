@@ -202,7 +202,7 @@ search:
 - [vw_bersagli_non_dichiarati](views/vw_bersagli_non_dichiarati.md)
 - [vw_catalogo_oggetti](views/vw_catalogo_oggetti.md) — * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione. * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
 - [vw_coda_lavori_da_guardare](views/vw_coda_lavori_da_guardare.md) — (latest review 05-09-2026)
-- [vw_codici_errore_da_dichiarare](views/vw_codici_errore_da_dichiarare.md) — (rev 2026-08-21)
+- [vw_codici_errore_da_dichiarare](views/vw_codici_errore_da_dichiarare.md) — (rev 2026-10-27)
 - [vw_codici_errore_forme_condizione](views/vw_codici_errore_forme_condizione.md) — (rev 2026-09-07)
 - [vw_credenziali_da_sanare](views/vw_credenziali_da_sanare.md)
 - [vw_ddt_emessi_senza_scarico](views/vw_ddt_emessi_senza_scarico.md)

@@ -55,16 +55,19 @@ SELECT
   ('pgtap_las_' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'))::text AS test_scope,
   uuidv7() AS lock_batch_id;
 
+-- rev 2026-10-27 (lotto 4 di D7): cliente e articolo si COSTRUISCONO
+--   (dbops.fn_pgtap_crea_cliente_ba, dbops.fn_pgtap_crea_articolo) e
+--   l'emittente e' quello di chi agisce (script.fn_pgtap_emittente_sr_operatore).
+--   Prima BA, utility, emittente, istanza e articolo si pescavano dal primo BA
+--   con un emittente e dall'ultimo articolo del DB: da zero non c'erano. Tipo
+--   documento (dal ponte tipo->registro), valuta e stato sono letture di
+--   catalogo di seed; il registro lo scrive l'UPDATE qui sotto, per emittente.
+CREATE TEMP TABLE tmp_cli_las AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('lotti attivita stato esecuzione');
+
 CREATE TEMP TABLE tmp_refs_las AS
 SELECT
-  (
-    SELECT m.registro_id
-    FROM vendite.tipi_doc_fiscale_registri m
-    JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
-    WHERE t.attivo IS TRUE
-    ORDER BY m.id
-    LIMIT 1
-  ) AS registro_id,
+  NULL::bigint AS registro_id,
   (
     SELECT m.tipo_doc_fiscale_id
     FROM vendite.tipi_doc_fiscale_registri m
@@ -73,30 +76,9 @@ SELECT
     ORDER BY m.id
     LIMIT 1
   ) AS tipo_doc_fiscale_id,
-  (
-    SELECT ba.id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS billing_account_id,
-  (
-    SELECT ba.utility_id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS utility_id,
-  (
-    SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id)
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS emittente_soggetto_ruolo_id,
+  c.billing_account_id,
+  c.utility_id,
+  script.fn_pgtap_emittente_sr_operatore() AS emittente_soggetto_ruolo_id,
   (
     SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1
   ) AS valuta_id,
@@ -107,23 +89,9 @@ SELECT
     ORDER BY s.id
     LIMIT 1
   ) AS stato_draft_id,
-  (
-    SELECT a.id
-    FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST
-    LIMIT 1
-  ) AS articolo_id,
-  (
-    SELECT ba.istanza_utility_id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS istanza_utility_id;
-
+  dbops.fn_pgtap_crea_articolo('PGTAP-LAS-V2') AS articolo_id,
+  c.istanza_utility_id
+FROM tmp_cli_las c;
 
 -- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva.
 --   La riga sopra sceglieva «un registro qualunque» accanto a un emittente che

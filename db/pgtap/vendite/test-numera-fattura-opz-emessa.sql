@@ -38,31 +38,22 @@ CREATE TEMP TABLE tmp_costanti_nf AS
 SELECT
   'pgtap_numera_fattura'::text AS test_scope;
 
--- ⚠️ La terna (emittente, utility, billing account) si sceglie INSIEME, non a
---   tre pescate indipendenti. Il ricalcolo dei totali pretende una riga di
---   configurazione in anagrafiche.emittenti_fiscali_utilities per la coppia
---   (emittente, utility) e fallisce con E_CONFIG_MANCANTE se non c'e': prendere
---   l'ultimo emittente e l'ultimo BA separatamente li accoppia a caso, e il
---   test diventa una lotteria sui dati. Qui si parte DALLA configurazione e si
---   scende al BA che le corrisponde — la fixture seleziona sulla proprieta' che
---   le serve.
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba, BA dell'azienda di chi agisce) e
+--   l'emittente e' quello dell'operatore di contesto: la terna nasce coerente
+--   per costruzione. Prima si partiva da emittenti_fiscali_utilities e si
+--   scendeva al primo BA della stessa utility: da zero non c'era niente. Senza
+--   la riga (emittente, utility) il ricalcolo usa i parametri di sistema
+--   dell'utility (rev 20261021-17). Registro e fattura restano scritti a mano:
+--   sono i test 2 e 3.
+CREATE TEMP TABLE tmp_cli_nf AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('numera fattura opz emessa');
+
 CREATE TEMP TABLE tmp_refs_nf AS
-SELECT efu.emittente_soggetto_ruolo_id,
-       efu.utility_id,
-       (SELECT ba.id
-          FROM anagrafiche.billing_account ba
-         WHERE ba.utility_id = efu.utility_id
-         ORDER BY ba.id
-         LIMIT 1) AS billing_account_id
-  FROM anagrafiche.emittenti_fiscali_utilities efu
-  JOIN anagrafiche.emittenti_fiscali ef
-    ON ef.soggetto_ruolo_id = efu.emittente_soggetto_ruolo_id
-   AND ef.attivo IS TRUE
- WHERE efu.attivo IS TRUE
-   AND EXISTS (SELECT 1 FROM anagrafiche.billing_account ba
-                WHERE ba.utility_id = efu.utility_id)
- ORDER BY efu.emittente_soggetto_ruolo_id, efu.utility_id
- LIMIT 1;
+SELECT script.fn_pgtap_emittente_sr_operatore() AS emittente_soggetto_ruolo_id,
+       c.utility_id,
+       c.billing_account_id
+  FROM tmp_cli_nf c;
 
 SELECT ok(
   (SELECT count(*) = 1 FROM tmp_refs_nf

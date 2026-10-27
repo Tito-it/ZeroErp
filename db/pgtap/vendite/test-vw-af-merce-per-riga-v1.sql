@@ -49,8 +49,9 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(11);
 
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
+-- rev 2026-10-27 (lotto 4 di D7): via il vecchio «SET LOCAL app.current_user_id
+--   = '1'» (con ruolo OPERATORE): l'utente 1 da zero non esiste, e su dev e' un
+--   super admin senza azienda. Chi agisce e' l'operatore del contesto qui sopra.
 
 -- ============================================================
 -- 1-3) Struttura della vista
@@ -74,23 +75,22 @@ SELECT columns_are('vendite', 'vw_af_merce_per_riga',
 -- la vista non dereferenzia nulla, e cosi' il test non puo' collidere con
 -- righe di documento reali del DB di sviluppo.
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): il cliente e l'articolo si COSTRUISCONO.
+--   Prima si pescavano il primo BA con emittente e l'ultimo articolo non
+--   composito, e su un database ricostruito da zero non c'erano: ora il BA
+--   viene da dbops.fn_pgtap_crea_cliente_ba (legato all'azienda di chi agisce)
+--   e l'articolo da dbops.fn_pgtap_crea_articolo (merce semplice, non
+--   composito). Restano letture di catalogo di SEED: unita_misura,
+--   tipi_doc_fiscale, sorgenti, causali_onere.
+CREATE TEMP TABLE tmp_cli_afm AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('vw af merce per riga');
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
+  (SELECT billing_account_id FROM tmp_cli_afm)                          AS billing_account_id,
+  (SELECT utility_id FROM tmp_cli_afm)                                  AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cli_afm)                          AS istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-AFM-ART')                        AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo LIMIT 1) AS sorgente_root_id;

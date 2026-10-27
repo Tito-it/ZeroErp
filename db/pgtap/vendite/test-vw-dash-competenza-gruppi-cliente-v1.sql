@@ -66,16 +66,20 @@ SELECT plan(8);
 --   sotto-select indipendenti sullo stesso predicato possono pescare righe
 --   diverse quando il planner cambia.
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE. Prima si pescava
+--   il primo BA autonomo con un emittente risolvibile: da zero non c'era, e la
+--   commessa moriva su «p_billing_account_id obbligatorio». Il BA costruito e'
+--   autonomo per costruzione (il padre lo mettiamo noi, sotto) e legato
+--   all'azienda di chi agisce. Articolo onere e tipo documento restano letture
+--   del catalogo di seed (articoli_onere.csv, config.tipi_doc_fiscale).
+CREATE TEMP TABLE tmp_cf_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('dash competenza gruppi cliente');
+
 CREATE TEMP TABLE tmp_cf_ba AS
 SELECT ba.id, ba.utility_id, ba.istanza_utility_id, ba.soggetto_ruolo_id,
        ba.categoria_cliente_id, ba.codice, ba.parent_account_id
   FROM anagrafiche.billing_account ba
- WHERE ba.utility_id IS NOT NULL
-   AND ba.istanza_utility_id IS NOT NULL
-   AND ba.parent_account_id IS NULL          -- serve un BA autonomo: il padre lo mettiamo noi
-   AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
- ORDER BY ba.id
- LIMIT 1;
+ WHERE ba.id = (SELECT billing_account_id FROM tmp_cf_cli);
 
 CREATE TEMP TABLE tmp_cf_refs AS
 SELECT
@@ -121,38 +125,12 @@ SELECT vendite.fn_aggiungi_onere_commessa(
 --   nulla. Un test che non impostasse la sessione misurerebbe zero per il
 --   motivo sbagliato.
 -- ============================================================
-CREATE TEMP TABLE tmp_cf_op AS
-SELECT id.auth_user_id AS user_id
-  FROM anagrafiche.identita_digitali id
- WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-   AND id.attivo = true
-   AND NOT EXISTS (
-       SELECT 1 FROM config.profili_accesso_bindings pab
-       JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
-       WHERE pab.identita_digitale_id = id.id
-         AND pab.attivo = true
-         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso)
- ORDER BY id.id LIMIT 1;
-
--- Emittente EFFETTIVO della commessa, non quello pescato nei refs: e' quello
--- che la vista confronta.
-CREATE TEMP TABLE tmp_cf_ef AS
-SELECT ef.id AS emittente_fiscale_id
-  FROM anagrafiche.emittenti_fiscali ef
-  JOIN vendite.commesse c ON c.id = (SELECT commessa_id FROM tmp_cf_comm)
- WHERE ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
- ORDER BY ef.id
- LIMIT 1;
-
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_cf_op);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
-
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-SELECT (SELECT user_id FROM tmp_cf_op), (SELECT emittente_fiscale_id FROM tmp_cf_ef);
-
-SELECT set_config('app.current_user_id', (SELECT user_id::text FROM tmp_cf_op), true);
+-- rev 2026-10-27 (lotto 4 di D7): la sessione e' quella del CONTESTO, aperta in
+--   testa. Prima qui si pescava il primo operatore non super admin, gli si
+--   riscriveva il perimetro (config.user_emittenti_fiscali) sull'emittente
+--   della commessa e ci si ripuntava la GUC: era un utente pescato, e su un
+--   altro database poteva essere chiunque. Ora il BA e' dell'azienda di chi
+--   agisce, quindi l'emittente della commessa e' gia' nel suo perimetro.
 
 -- ============================================================
 -- TEST 1: la colonna che il -04 aggiunge alla vista base. Senza, il -05 non ha

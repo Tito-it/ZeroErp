@@ -89,25 +89,21 @@ SELECT ok(
 SELECT has_column('vendite', 'commesse_attivita', 'causale_onere_id',
     '5) colonna commesse_attivita.causale_onere_id presente');
 
--- ===== fixture: riferimenti reali seedati =====
+-- ===== fixture: riferimenti =====
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE con
+--   dbops.fn_pgtap_crea_cliente_ba (BA legato all'azienda di chi agisce);
+--   prima si pescava il primo BA con emittente, e su un database
+--   ricostruito da zero non c'era. L'emittente si deriva dal BA costruito.
+--   Restano letture di catalogo di SEED: tipi_doc_fiscale e articoli-onere.
+CREATE TEMP TABLE tmp_cli_po AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('porta oneri');
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id) FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS emittente_soggetto_ruolo_id,
+  (SELECT billing_account_id FROM tmp_cli_po) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cli_po) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cli_po) AS istanza_utility_id,
+  (SELECT anagrafiche.fn_get_emittente_fiscale_id(billing_account_id) FROM tmp_cli_po) AS emittente_soggetto_ruolo_id,
   (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT id FROM catalogo.articoli WHERE codice = 'ONERE_TRASFERTA') AS articolo_onere_id,
   (SELECT causale_onere_id FROM catalogo.articoli WHERE codice = 'ONERE_TRASFERTA') AS causale_attesa;

@@ -171,7 +171,7 @@ CREATE TEMP TABLE tmp_cnt_before AS
 SELECT count(*)::int AS n FROM vendite.contratti
  WHERE billing_account_id = (SELECT billing_account_id FROM tmp_ba);
 
-SELECT throws_ok(
+SELECT throws_like(
     $$ SELECT * FROM vendite.fn_create_contratto(
            jsonb_build_object(
                'billing_account_id',  (SELECT billing_account_id FROM tmp_ba),
@@ -182,8 +182,7 @@ SELECT throws_ok(
                'istanza_utility_id', (SELECT istanza_utility_id FROM tmp_ba),
                'utility_id',         (SELECT utility_id FROM tmp_ba),
                'classe_utenza_id',   999999)) $$,
-    NULL::text,
-    NULL::text,
+    '%senza dimensione tipo/classe%',
     'Atomicita'': INSERT utility invalido fa fallire l''intera chiamata');
 
 SELECT is(

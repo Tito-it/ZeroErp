@@ -112,11 +112,11 @@ CREATE TRIGGER zzz_pgtap_fail_dettaglio
     BEFORE INSERT ON anagrafiche.indirizzi_dettaglio
     FOR EACH ROW EXECUTE FUNCTION pg_temp.pgtap_fail_dettaglio();
 
-SELECT throws_ok(
+SELECT throws_like(
     $$ SELECT anagrafiche.fn_create_indirizzo(
            NULL, (SELECT topo_id FROM k), (SELECT via_atom FROM k),
            (SELECT comune_id FROM k), (SELECT cap_id FROM k), 30) $$,
-    NULL::text, NULL::text,
+    '%fallimento iniettato sull''INSERT del dettaglio%',
     'Atomicita'': il fallimento del dettaglio fa fallire l''intera chiamata');
 
 DROP TRIGGER zzz_pgtap_fail_dettaglio ON anagrafiche.indirizzi_dettaglio;

@@ -73,42 +73,22 @@ SELECT ok(
   'Tabella vendite.commesse_attivita_log presente'
 );
 
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba), l'emittente e' quello dell'operatore
+--   (script.fn_pgtap_emittente_sr_operatore) e l'articolo si costruisce
+--   (dbops.fn_pgtap_crea_articolo): prima si pescavano con LIMIT 1, e su un
+--   database ricostruito da zero non c'erano.
+CREATE TEMP TABLE tmp_cli_cs AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('schema commesse');
+
 CREATE TEMP TABLE tmp_refs_cs AS
 SELECT
-  (
-    SELECT ba.id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS billing_account_id,
-  (
-    SELECT ba.utility_id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS utility_id,
-  (
-    SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id)
-    FROM anagrafiche.billing_account ba
-    WHERE ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS emittente_soggetto_ruolo_id,
-  (
-    SELECT ba.istanza_utility_id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS istanza_utility_id,
-  (
-    SELECT a.id
-    FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST
-    LIMIT 1
+  (SELECT billing_account_id FROM tmp_cli_cs) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cli_cs) AS utility_id,
+  script.fn_pgtap_emittente_sr_operatore() AS emittente_soggetto_ruolo_id,
+  (SELECT istanza_utility_id FROM tmp_cli_cs) AS istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo(
+    ('PGT-CS-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar, false
   ) AS articolo_id,
   (
     SELECT u.id
@@ -164,33 +144,20 @@ SELECT throws_ok(
   'Check tipo_commessa invalido su commesse (chk_commesse_tipo)'
 );
 
+-- rev 2026-10-27 (lotto 4 di D7): le due commesse di fixture le apre il
+--   builder (dbops.fn_pgtap_crea_commessa, dalla madre) sul cliente costruito,
+--   non piu' un INSERT a mano coi riferimenti pescati.
 CREATE TEMP TABLE tmp_commessa_cs AS
-WITH ins AS (
-  INSERT INTO vendite.commesse (
-    codice, billing_account_id, utility_id, emittente_soggetto_ruolo_id
-  )
-  SELECT
-    c.codice1,
-    r.billing_account_id, r.utility_id, r.emittente_soggetto_ruolo_id
-  FROM tmp_codes_cs c CROSS JOIN tmp_refs_cs r
-  RETURNING id
-)
-SELECT id FROM ins;
+SELECT c.commessa_id AS id
+FROM dbops.fn_pgtap_crea_commessa(
+  'schema commesse 1', NULL, (SELECT billing_account_id FROM tmp_cli_cs)) c;
 
 -- Seconda commessa: serve come sorgente REALE distinta per il test
 -- "una sola ROOT" (il guard sorgente valida l'esistenza della chiave).
 CREATE TEMP TABLE tmp_commessa_cs2 AS
-WITH ins AS (
-  INSERT INTO vendite.commesse (
-    codice, billing_account_id, utility_id, emittente_soggetto_ruolo_id
-  )
-  SELECT
-    c.codice2,
-    r.billing_account_id, r.utility_id, r.emittente_soggetto_ruolo_id
-  FROM tmp_codes_cs c CROSS JOIN tmp_refs_cs r
-  RETURNING id
-)
-SELECT id FROM ins;
+SELECT c.commessa_id AS id
+FROM dbops.fn_pgtap_crea_commessa(
+  'schema commesse 2', NULL, (SELECT billing_account_id FROM tmp_cli_cs)) c;
 
 SELECT throws_ok(
   $$

@@ -171,8 +171,12 @@ misura(DO, "pagine manual/ / pagine auto-generate", f"{len(manual)} / {len(auto)
 
 # ── Catalogo (a richiesta) ─────────────────────────────────────────────────
 QUERY = [
-    ("Catalogo", "codici da dichiarare (vw_codici_errore_da_dichiarare)",
+    # ⛔ Misura, NON debito: conta ogni codice che il DB può nominare e cresce col dominio.
+    #    Il debito è codici_errore_senza_policy (a zero, presidiato dal test Django). Correzione 2026-10-27.
+    ("Catalogo", "codici nominabili dal DB — misura, non debito (vw_codici_errore_da_dichiarare)",
      "SELECT count(*) FROM dbops.vw_codici_errore_da_dichiarare"),
+    ("Catalogo", "codici senza policy — il debito (codici_errore_senza_policy, atteso 0)",
+     "SELECT count(*) FROM dbops.codici_errore_senza_policy"),
     ("Catalogo", "FK senza indice fuori policy (vw_fk_con_indice_missing_policy)",
      "SELECT count(*) FROM dbops.vw_fk_con_indice_missing_policy"),
     ("Catalogo", "indici ridondanti per prefisso (vw_indici_ridondanti_prefisso)",

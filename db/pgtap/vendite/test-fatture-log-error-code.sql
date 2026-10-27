@@ -45,20 +45,25 @@ SELECT plan(10);
 -- ============================================================
 -- 0) Riferimenti
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba) e il tipo documento si legge dal
+--   catalogo di seed config.tipi_doc_fiscale. Prima il BA era l'ultimo
+--   inserito nel DB e il tipo veniva dalla prima mappatura
+--   tipi_doc_fiscale_registri: da zero non c'erano.
+CREATE TEMP TABLE tmp_cli_ec AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('fatture log error code');
+
 CREATE TEMP TABLE tmp_refs_ec AS
 WITH ba AS (
-  SELECT b.id, b.utility_id
-    FROM anagrafiche.billing_account b
-   ORDER BY b.data_insert DESC NULLS LAST, b.id DESC
-   LIMIT 1
+  SELECT c.billing_account_id AS id, c.utility_id
+    FROM tmp_cli_ec c
 )
 SELECT script.fn_pgtap_registro_fattura() AS registro_id,
        ba.id                                        AS billing_account_id,
        ba.utility_id                                AS utility_id,
-       (SELECT m.tipo_doc_fiscale_id
-          FROM vendite.tipi_doc_fiscale_registri m
-          JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
-         WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS tipo_doc_fiscale_id,
+       (SELECT t.id
+          FROM config.tipi_doc_fiscale t
+         WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
        (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id,
        -- ⚠️ L'emittente non si pesca: si deriva da chi agisce, o le policy
        --    ef_whitelist negano fail-closed.
