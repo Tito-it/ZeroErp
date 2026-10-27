@@ -67,11 +67,7 @@ DECLARE
     v_mot_pronta    jsonb;
     v_mot_chiudi    jsonb;
     v_mot_annulla   jsonb;
-    -- L'utente della sessione, per l'azione del passaggio (rev 2026-10-26).
-    v_utente        config.user_override_azioni.auth_user_id%TYPE;
 BEGIN
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
-
     -- Stato corrente + flag governance (data-driven).
     SELECT c.stato_commessa_id, sc.codice_interno, sc.modificabile, sc.emittibile,
            sc.meta->>'nessuna_azione_key'
@@ -128,17 +124,11 @@ BEGIN
         '[]'::jsonb
     )
     INTO v_actions
-    FROM vendite.transizioni_stati_commessa t
+    -- I passaggi manuali che l'utente puo' fare, dal BB comune (rev
+    -- 2026-10-27, 20261027-47, §15.14): matrice viva, manuale, permesso.
+    FROM script.fn_doc_azioni_permesse('vendite.commesse'::regclass, v_stato_id) t
     JOIN vendite.stati_commessa sa ON sa.id = t.stato_a_id
-    -- L'azione del passaggio dal lettore unico (rev 2026-10-26, M-3).
-    CROSS JOIN LATERAL script.fn_doc_passaggio('vendite.commesse'::regclass, t.stato_da_id, t.stato_a_id) pz
-    WHERE t.stato_da_id = v_stato_id
-      AND t.attivo IS TRUE
-      -- Permesso => nascondi: chi non ha l'azione del passaggio non vede il bottone.
-      AND (pz.azione_processo_codename IS NULL
-           OR script.fn_check_azione_processo(v_utente, pz.azione_processo_codename))
-      AND COALESCE((t.meta->>'manuale')::boolean, false) IS TRUE
-      AND (t.meta->>'action_key') IS NOT NULL
+    WHERE (t.meta->>'action_key') IS NOT NULL
       AND (t.meta->>'label_key') IS NOT NULL;
 
     -- can_change_state sulle sole azioni ABILITATE: con le azioni
@@ -162,7 +152,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_commessa(p_commessa_id bigint)
-IS 'Capability della commessa per il detail/stato API: azioni manuali disponibili dallo stato corrente, con enabled/reasons dalle funzioni pure fn_check_commessa_pronta_fatturazione / _chiudibile / _annullabile — le stesse usate dal guard di transizione, cosi'' la UI non puo'' divergere. rev 2026-08-04: aggiunta la destinazione PRONTA_FATTURAZIONE, diventata azione manuale. rev 2026-08-06: + target_state_descrizione accanto a target_state (vendite.stati_commessa.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile — PRONTA_FATTURAZIONE e'' l''esempio piu'' netto della famiglia — e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari, anche accanto a un''azione ancora abilitata: la nota spiega lo STATO e non risponde a una barra vuota (decisione §5 di Tid, gia'' applicata a preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era fra i cinque che non emettevano affatto il campo mentre il drawer lo legge gia'': il cablaggio c''era ed era inerte. ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key: scripts/check_i18n_keys.py trova le chiavi seminate per quel nome, e rinominarla senza toccare il guard lo renderebbe verde per cecita''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare per presenza risponde vero per tutti i documenti, va guardato il valore. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3. rev 2026-09-27 (20260927-16): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-13): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9). ⭐ rev 2026-10-26 (20261026-35, brief-modello-documento-vendita §14, M-3, C-1): un passaggio con un''azione di processo sulla sua riga della matrice (letta da script.fn_doc_passaggio: cambia_stato_commessa su «rendi pronta», «riapri», «chiudi» e sull''annullo di una commessa non in bozza) si NASCONDE a chi non ha l''azione (script.fn_check_azione_processo, utente da app.current_user_id): permesso => nascondi, stato => disabilita col motivo. I motivi della destinazione emittibile e di quella d''annullo si legano al vocabolario (emittibile, is_abortito), non ai letterali.';
+IS 'Capability della commessa per il detail/stato API: azioni manuali disponibili dallo stato corrente, con enabled/reasons dalle funzioni pure fn_check_commessa_pronta_fatturazione / _chiudibile / _annullabile — le stesse usate dal guard di transizione, cosi'' la UI non puo'' divergere. rev 2026-08-04: aggiunta la destinazione PRONTA_FATTURAZIONE, diventata azione manuale. rev 2026-08-06: + target_state_descrizione accanto a target_state (vendite.stati_commessa.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile — PRONTA_FATTURAZIONE e'' l''esempio piu'' netto della famiglia — e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari, anche accanto a un''azione ancora abilitata: la nota spiega lo STATO e non risponde a una barra vuota (decisione §5 di Tid, gia'' applicata a preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era fra i cinque che non emettevano affatto il campo mentre il drawer lo legge gia'': il cablaggio c''era ed era inerte. ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key: scripts/check_i18n_keys.py trova le chiavi seminate per quel nome, e rinominarla senza toccare il guard lo renderebbe verde per cecita''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare per presenza risponde vero per tutti i documenti, va guardato il valore. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3. rev 2026-09-27 (20260927-16): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-13): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9). ⭐ rev 2026-10-26 (20261026-35, brief-modello-documento-vendita §14, M-3, C-1): un passaggio con un''azione di processo sulla sua riga della matrice (letta da script.fn_doc_passaggio: cambia_stato_commessa su «rendi pronta», «riapri», «chiudi» e sull''annullo di una commessa non in bozza) si NASCONDE a chi non ha l''azione (script.fn_check_azione_processo, utente da app.current_user_id): permesso => nascondi, stato => disabilita col motivo. I motivi della destinazione emittibile e di quella d''annullo si legano al vocabolario (emittibile, is_abortito), non ai letterali. Rev 2026-10-27 (20261027-47, brief-modello-documento-vendita §15.14): i passaggi manuali permessi da script.fn_doc_azioni_permesse (matrice viva, manuale, permesso => nascondi), non piu'' dal predicato ricopiato.';
 ```
 
 </div>

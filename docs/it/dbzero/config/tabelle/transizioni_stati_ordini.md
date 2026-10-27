@@ -24,6 +24,7 @@
 |------|------|---------|
 | CHECK | ck_transizioni_stati_ord_da_diverso_a |  |
 | CHECK | ck_transizioni_stati_ord_meta_ui |  |
+| CHECK | ck_transizioni_stati_ordini_meta_manuale_dichiarato |  |
 | FOREIGN KEY | fk_transizioni_stati_ordini_azioni_processo | azione_processo_codename |
 | FOREIGN KEY | fk_tso_a | stato_a_id |
 | FOREIGN KEY | fk_tso_da | stato_da_id |

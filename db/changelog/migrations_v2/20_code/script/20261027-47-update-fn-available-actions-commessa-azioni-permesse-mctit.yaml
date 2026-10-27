@@ -1,0 +1,198 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CAPABILITY COMMESSA LEGGE I PASSAGGI PERMESSI DAL BB COMUNE
+#   Brief: brief-modello-documento-vendita §15.14 (regola del 2, D-2 di
+#   Tid, 2026-10-27).
+#
+#   script.fn_available_actions_commessa scriveva da se' il predicato «passaggi manuali dallo
+#   stato corrente che l'utente puo' fare»: matrice viva, manuale, permesso
+#   del passaggio (script.fn_doc_passaggio + script.fn_check_azione_processo),
+#   l'utente della sessione. Ora li legge da
+#   script.fn_doc_azioni_permesse(vendite.commesse, stato) (20261027-40) e tiene
+#   solo cio' che e' suo: il bottone (action_key e label_key dichiarati),
+#   abilitazione e motivi, l'ordine.
+#   Equivalenza: il default di manuale divergeva fra le copie; il vincolo
+#   20261027-49 lo rende dichiarato su ogni riga.
+#
+#   Corpo dall'ultimo changeSet (20261026-35-update-fn-available-actions-commessa-permesso-del-passaggio), verificato uguale al corpo
+#   vivo (pg_get_functiondef sullo scratch, 2026-10-27). Firma invariata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261027-47-update-fn-available-actions-commessa-azioni-permesse-mctit.yaml
+
+  - changeSet:
+      id: 20261027-47-update-fn-available-actions-commessa-azioni-permesse
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_available_actions_commessa: i passaggi manuali permessi da script.fn_doc_azioni_permesse,
+        non piu' dal predicato ricopiato. Brief: brief-modello-documento-vendita §15.14.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_doc_azioni_permesse';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_commessa(p_commessa_id vendite.commesse.id%TYPE)
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo:
+              --   Capability della commessa per il detail/stato API. Mirror
+              --   data-driven di fn_available_actions_ordine, senza azioni
+              --   applicative (solo stato). Le transizioni utente
+              --   (meta.manuale=true + action_key/label_key) sono esposte come
+              --   bottoni; le automatiche no.
+              --   rev 2026-07-24: + enabled/reasons su chiudi/annulla, dalle
+              --   funzioni pure script.fn_check_commessa_chiudibile /
+              --   _annullabile — le STESSE che
+              --   vendite.trgfn_commesse_guard_transizione usa per sollevare
+              --   (sorgente unica: la UI non puo' divergere dal guard).
+              --   rev 2026-08-04: stessa cosa per l'ingresso in
+              --   PRONTA_FATTURAZIONE, che da oggi e' un'azione manuale
+              --   (brief-db-emittibilita-visibile-e-sbloccabile §3.3).
+              --   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+              --   dello stato di destinazione. Serve alla frase di conferma
+              --   «portare il documento nello stato X»: il codice_interno non e'
+              --   quella forma — PRONTA_FATTURAZIONE ne e' l'esempio piu' netto
+              --   — e tradurlo nel FE sarebbe una seconda copia del vocabolario
+              --   degli stati.
+              --   rev 2026-08-11: + stato_info_key, la nota che spiega cosa sta
+              --   succedendo quando il documento e' in uno stato chiuso. Arriva dal
+              --   `meta` dello stato, e viene emessa SEMPRE che lo stato la dichiari —
+              --   anche accanto a un'azione ancora abilitata: la nota spiega lo STATO,
+              --   non risponde a una barra vuota (decisione §5 di Tid, gia' applicata a
+              --   preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era
+              --   fra i cinque che non emettevano affatto il campo, mentre il drawer lo
+              --   legge gia': il cablaggio c'era ed era inerte.
+              --   ⚠️ La PROPRIETA' nel meta si chiama `nessuna_azione_key` mentre il
+              --   campo del blob si chiama `stato_info_key`. L'asimmetria e' voluta:
+              --   scripts/check_i18n_keys.py trova le chiavi seminate per QUEL nome
+              --   (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare
+              --   il guard lo renderebbe verde per cecita'.
+              --   ⚠️ Il campo e' SEMPRE presente nel blob, col valore a null quando non
+              --   si applica: filtrare per presenza risponde vero per tutti i documenti,
+              --   va guardato il valore.
+              --   brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.
+              DECLARE
+                  -- Tipi nudi solo per valori CALCOLATI (azioni e motivi jsonb, flag,
+                  -- motivi e chiavi i18n composti): nessuna colonna di cui siano il riflesso.
+                  v_stato_id      vendite.commesse.stato_commessa_id%TYPE;
+                  v_stato_cod     vendite.stati_commessa.codice_interno%TYPE;
+                  v_stato_info_key text;
+                  v_modificabile  vendite.stati_commessa.modificabile%TYPE;
+                  v_emittibile    vendite.stati_commessa.emittibile%TYPE;
+                  v_actions       jsonb;
+                  v_can_change    boolean := false;
+                  v_mot_pronta    jsonb;
+                  v_mot_chiudi    jsonb;
+                  v_mot_annulla   jsonb;
+              BEGIN
+                  -- Stato corrente + flag governance (data-driven).
+                  SELECT c.stato_commessa_id, sc.codice_interno, sc.modificabile, sc.emittibile,
+                         sc.meta->>'nessuna_azione_key'
+                    INTO v_stato_id, v_stato_cod, v_modificabile, v_emittibile, v_stato_info_key
+                    FROM vendite.commesse c
+                    JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id
+                   WHERE c.id = p_commessa_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Motivi ostativi alle destinazioni con regola di dominio,
+                  -- calcolati UNA VOLTA SOLA e riusati sotto per enabled e
+                  -- reasons. Le fn sono pure: ritornano [] quando e' lecito.
+                  v_mot_pronta  := script.fn_check_commessa_pronta_fatturazione(p_commessa_id);
+                  v_mot_chiudi  := script.fn_check_commessa_chiudibile(p_commessa_id);
+                  v_mot_annulla := script.fn_check_commessa_annullabile(p_commessa_id);
+
+                  -- Transizioni manuali (utente) disponibili dallo stato corrente.
+                  -- Filtri: attivo, manuale=true, presenza action_key/label_key.
+                  -- Le automatiche (manuale=false, senza action_key) sono escluse.
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              -- Forma leggibile della destinazione: la colonna
+                              -- accanto, nello stesso JOIN. Il FE non puo'
+                              -- derivarla dal codice (PRONTA_FATTURAZIONE).
+                              'target_state_descrizione', sa.descrizione,
+                              'label_key',        t.meta->>'label_key',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
+                              -- rev 2026-10-26 (20261026-35): la destinazione emittibile e
+                              -- quella d'annullo le dice il vocabolario (emittibile,
+                              -- is_abortito); CHIUSA resta sul codice (chiude_commessa vale
+                              -- anche per l'annullo).
+                              'enabled',          CASE
+                                                    WHEN sa.emittibile                  THEN jsonb_array_length(v_mot_pronta)  = 0
+                                                    WHEN sa.is_abortito                 THEN jsonb_array_length(v_mot_annulla) = 0
+                                                    WHEN sa.codice_interno = 'CHIUSA'   THEN jsonb_array_length(v_mot_chiudi)  = 0
+                                                    ELSE true
+                                                  END,
+                              'reasons',          CASE
+                                                    WHEN sa.emittibile                  THEN v_mot_pronta
+                                                    WHEN sa.is_abortito                 THEN v_mot_annulla
+                                                    WHEN sa.codice_interno = 'CHIUSA'   THEN v_mot_chiudi
+                                                    ELSE '[]'::jsonb
+                                                  END
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  -- I passaggi manuali che l'utente puo' fare, dal BB comune (rev
+                  -- 2026-10-27, 20261027-47, §15.14): matrice viva, manuale, permesso.
+                  FROM script.fn_doc_azioni_permesse('vendite.commesse'::regclass, v_stato_id) t
+                  JOIN vendite.stati_commessa sa ON sa.id = t.stato_a_id
+                  WHERE (t.meta->>'action_key') IS NOT NULL
+                    AND (t.meta->>'label_key') IS NOT NULL;
+
+                  -- can_change_state sulle sole azioni ABILITATE: con le azioni
+                  -- disabilitate presenti in lista, jsonb_array_length(v_actions) > 0
+                  -- sarebbe sempre true.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM jsonb_array_elements(v_actions) AS a
+                       WHERE COALESCE((a->>'enabled')::boolean, true) IS TRUE
+                  ) INTO v_can_change;
+
+                  RETURN jsonb_build_object(
+                      'available_actions', v_actions,
+                      'can_change_state',  v_can_change,
+                      'can_edit_righe',    v_modificabile,
+                      'is_emittibile',     v_emittibile,
+                      'stato_info_key',    v_stato_info_key,
+                      'stato_codice',      v_stato_cod
+                  );
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_available_actions_commessa(bigint)
+                IS 'Capability della commessa per il detail/stato API: azioni manuali disponibili dallo stato corrente, con enabled/reasons dalle funzioni pure fn_check_commessa_pronta_fatturazione / _chiudibile / _annullabile — le stesse usate dal guard di transizione, cosi'' la UI non puo'' divergere. rev 2026-08-04: aggiunta la destinazione PRONTA_FATTURAZIONE, diventata azione manuale. rev 2026-08-06: + target_state_descrizione accanto a target_state (vendite.stati_commessa.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile — PRONTA_FATTURAZIONE e'' l''esempio piu'' netto della famiglia — e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari, anche accanto a un''azione ancora abilitata: la nota spiega lo STATO e non risponde a una barra vuota (decisione §5 di Tid, gia'' applicata a preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era fra i cinque che non emettevano affatto il campo mentre il drawer lo legge gia'': il cablaggio c''era ed era inerte. ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key: scripts/check_i18n_keys.py trova le chiavi seminate per quel nome, e rinominarla senza toccare il guard lo renderebbe verde per cecita''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare per presenza risponde vero per tutti i documenti, va guardato il valore. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3. rev 2026-09-27 (20260927-16): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-13): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9). ⭐ rev 2026-10-26 (20261026-35, brief-modello-documento-vendita §14, M-3, C-1): un passaggio con un''azione di processo sulla sua riga della matrice (letta da script.fn_doc_passaggio: cambia_stato_commessa su «rendi pronta», «riapri», «chiudi» e sull''annullo di una commessa non in bozza) si NASCONDE a chi non ha l''azione (script.fn_check_azione_processo, utente da app.current_user_id): permesso => nascondi, stato => disabilita col motivo. I motivi della destinazione emittibile e di quella d''annullo si legano al vocabolario (emittibile, is_abortito), non ai letterali. Rev 2026-10-27 (20261027-47, brief-modello-documento-vendita §15.14): i passaggi manuali permessi da script.fn_doc_azioni_permesse (matrice viva, manuale, permesso => nascondi), non piu'' dal predicato ricopiato.';

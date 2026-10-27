@@ -24,6 +24,7 @@
 |------|------|---------|
 | CHECK | ck_transizioni_stati_prev_da_diverso_a |  |
 | CHECK | ck_transizioni_stati_prev_meta_ui |  |
+| CHECK | ck_transizioni_stati_preventivi_meta_manuale_dichiarato |  |
 | FOREIGN KEY | fk_transizioni_stati_prev_a | stato_a_id |
 | FOREIGN KEY | fk_transizioni_stati_prev_da | stato_da_id |
 | FOREIGN KEY | fk_transizioni_stati_preventivi_azioni_processo | azione_processo_codename |

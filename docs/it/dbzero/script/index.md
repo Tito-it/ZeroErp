@@ -109,6 +109,7 @@ search:
 - [fn_data_operativa](funzioni/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md) — (rev 2026-08-21)
 - [fn_doc_azione_passaggio](funzioni/fn_doc_azione_passaggio.md)
+- [fn_doc_azioni_permesse](funzioni/fn_doc_azioni_permesse.md)
 - [fn_doc_colonna_modificabile](funzioni/fn_doc_colonna_modificabile.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_doc_date_consegna_anteriori](funzioni/fn_doc_date_consegna_anteriori.md) — (nata il 2026-10-13, dal collaudo)
 - [fn_doc_indirizzi_sede](funzioni/fn_doc_indirizzi_sede.md)
