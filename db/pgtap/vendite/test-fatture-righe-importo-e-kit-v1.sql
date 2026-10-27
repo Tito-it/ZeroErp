@@ -249,10 +249,10 @@ UPDATE vendite.fatture
        cliente_snapshot   = '{"denominazione":"Cliente pgTAP"}'::jsonb
  WHERE id = (SELECT id FROM tmp_fattura_fri);
 
-UPDATE vendite.fatture SET stato_doc_fiscale_id = (SELECT stato_emessa FROM tmp_refs_fri)
- WHERE id = (SELECT id FROM tmp_fattura_fri);
-UPDATE vendite.fatture SET stato_doc_fiscale_id = (SELECT stato_definitiva FROM tmp_refs_fri)
- WHERE id = (SELECT id FROM tmp_fattura_fri);
+-- rev 2026-10-27 (brief-modello-documento-vendita §15): con la porta sulla fattura
+-- lo stato si scrive dal verbo della fattura, come lo scrive la pipeline.
+SELECT vendite.fn_fattura_proietta_stato((SELECT id FROM tmp_fattura_fri), (SELECT stato_emessa FROM tmp_refs_fri));
+SELECT vendite.fn_fattura_proietta_stato((SELECT id FROM tmp_fattura_fri), (SELECT stato_definitiva FROM tmp_refs_fri));
 
 SELECT throws_ok(
   $$ UPDATE vendite.fatture_righe SET qta = 5

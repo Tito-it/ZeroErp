@@ -1,6 +1,6 @@
 # Guida — Fatturazione (processo end-to-end)
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 27 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend e database
 >
@@ -71,7 +71,7 @@ Il processo è suddiviso su tre layer con responsabilità distinte:
 
 | Layer             | Responsabile                                                   | Esempi                                                                              |
 | ----------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| **PostgreSQL**    | Stato, regole di dominio, vincoli, log funzionali              | `fn_get_or_create_commessa`, `fn_set_fatturazione_lotto_stato`, trigger append-only |
+| **PostgreSQL**    | Stato, regole di dominio, vincoli, log funzionali              | `fn_get_or_create_commessa`, `fn_lotto_proietta_stato_step`, trigger append-only    |
 | **Python/Django** | Orchestrazione, sequencing, fan-out, gestione errori, API REST | `CommessaPushOrchestrator`, `LottoPipelineRunner`, `PipelineStepExecutor`           |
 | **API REST**      | Esposizione endpoint, validazione input, idempotenza request   | `/api/v1/vendite/pipeline/run/`, `/api/v1/vendite/commesse/push/run/`               |
 
@@ -422,7 +422,9 @@ erDiagram
 
 * [vendite.fn_resolve_fatturazione_pipeline_step](/dbzero/vendite/funzioni/fn_resolve_fatturazione_pipeline_step)
 * [vendite.fn_list_fatturazione_pipeline_steps](/dbzero/vendite/funzioni/fn_list_fatturazione_pipeline_steps)
-* [vendite.fn_set_fatturazione_lotto_stato](/dbzero/vendite/funzioni/fn_set_fatturazione_lotto_stato)
+* [vendite.fn_lotto_proietta_stato_step](/dbzero/vendite/funzioni/fn_lotto_proietta_stato_step)
+* [vendite.fn_cambia_stato_lotto](/dbzero/vendite/funzioni/fn_cambia_stato_lotto)
+* [vendite.fn_fattura_proietta_stato](/dbzero/vendite/funzioni/fn_fattura_proietta_stato)
 * [backend.execute_pipeline_step](/backend/vendite/funzioni/fn_execute_pipeline_step)
 * [backend.run_lotto_pipeline](/backend/vendite/funzioni/run_lotto_pipeline)
 * [vendite.fn_start_lotto_task_run](/dbzero/vendite/funzioni/fn_start_lotto_task_run)
@@ -636,7 +638,7 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
 ### Regole operative del modello lotti
 
 1. Lo step effettivo viene risolto con fallback configurativo (`utility + tipo_doc`, `utility`, `tipo_doc`, globale).
-2. Le transizioni tecniche del lotto sono governate da `fn_set_fatturazione_lotto_stato`.
+2. Lo stato del job del lotto (`IN_ESECUZIONE`, `COMPLETATO`, `ERRORE`) ha i passaggi nella matrice `config.transizioni_stati_lotto_job`, applicata dal suo guard a ogni scrittura; lo stato fiscale del lotto lo scrivono i suoi verbi (il giro della pipeline, «riporta in bozza», l'annullo), e quello della fattura il verbo della fattura. Il modello sta nella [guida del modello del documento di vendita](/guide/modello-documento-di-vendita).
 3. Ogni task-run deve essere tracciato con `tentativo` ed esito (`IN_ESECUZIONE`, `COMPLETATO`, `ERRORE`, `ANNULLATO`).
 4. Le policy runtime task (resume/reset/annullabilità) sono esterne alla sequenza step e risiedono in `fatturazione_pipeline_task_policy`.
 5. I task devono lavorare con input centrato sul `lotto_id`, recuperando il resto dal contesto lotto.
@@ -963,6 +965,17 @@ L'**arco N** (fattura rettificata → nota di credito) sta accanto all'arco R
 più profondo, quindi la nota avrebbe vinto sulla fattura stessa e **ogni riga di
 lista avrebbe cambiato frontiera** — senza errori e senza log, solo con un
 valore diverso.
+
+La nota che accredita un reso ha anche un secondo genitore: l'**arco S** (reso →
+nota di credito), letto dalle righe accreditate del reso
+(`resi_righe_accrediti` → attività fatturabile → riga della nota). N e S sono a
+grana di **riga**: la nota discende dalla fattura e dal reso che corregge, non
+dalla commessa intera.
+
+Per lo stesso motivo la nota **cita** come origini la fattura che corregge e il
+reso, e risalendo dal reso la sua bolla e il suo ordine: la regola delle origini,
+una per tutte le fatture, sta nella
+[guida del modello del documento di vendita](/guide/modello-documento-di-vendita) §7.
 
 ⚠️ **La nota di credito può però essere legittimamente la frontiera** di un
 ordine o di una commessa: ci si arriva con l'arco **G** (commessa → documento),

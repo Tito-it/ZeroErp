@@ -11,6 +11,13 @@
 --   1) riferimenti minimi presenti (stati + anagrafiche)
 --   2) lotto GIORNALIERO: 1->2 (DRAFT->EMESSA) AMMESSO (prima della fix era rifiutato)
 --   3) lotto GIORNALIERO: 1->8 (DRAFT->DEFINITIVA) NON ammesso (deprecato)
+--
+-- rev 2026-10-27 (brief-modello-documento-vendita §15, giro 11): con la porta sul lotto
+--   (20261027-18) lo stato si scrive dai verbi: i due passaggi li chiede il giro della
+--   pipeline (vendite.fn_lotto_proietta_stato_step), che e' chi li scrive davvero, e il
+--   guard di transizione li giudica come prima. Il 3 diventa throws_like sul messaggio del
+--   guard: con throws_ok «qualunque errore» sarebbe stato verde anche per la porta.
+-- ⚠️ Attesa cambiata: test 3, da «qualunque errore» a E_LOTTO_PARAMETRO_NON_COERENTE.
 -- ------------------------------------------------------------
 BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
@@ -56,8 +63,8 @@ CREATE TEMP TABLE tmp_g AS WITH ins AS (
 
 -- 2) 1->2 ora ammesso per il giornaliero (transizione universale)
 SELECT lives_ok(
-  format('UPDATE vendite.fatturazione_lotti SET stato_doc_fiscale_id = %s WHERE id = %s',
-         (SELECT emessa FROM tmp_r), (SELECT id FROM tmp_g)),
+  format('SELECT vendite.fn_lotto_proietta_stato_step(%s, %s)',
+         (SELECT id FROM tmp_g), (SELECT emessa FROM tmp_r)),
   'GIORNALIERO lotto 1->2 (DRAFT->EMESSA) ammesso'
 );
 
@@ -70,10 +77,10 @@ CREATE TEMP TABLE tmp_g2 AS WITH ins AS (
 ) SELECT * FROM ins;
 
 -- 3) 1->8 deprecato -> il guard solleva
-SELECT throws_ok(
-  format('UPDATE vendite.fatturazione_lotti SET stato_doc_fiscale_id = %s WHERE id = %s',
-         (SELECT definitiva FROM tmp_r), (SELECT id FROM tmp_g2)),
-  NULL, NULL,
+SELECT throws_like(
+  format('SELECT vendite.fn_lotto_proietta_stato_step(%s, %s)',
+         (SELECT id FROM tmp_g2), (SELECT definitiva FROM tmp_r)),
+  'Parametro non coerente con lotto esistente%',
   'GIORNALIERO lotto 1->8 (DRAFT->DEFINITIVA) NON ammesso (deprecato)'
 );
 

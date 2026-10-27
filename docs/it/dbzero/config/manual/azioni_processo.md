@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.azioni_processo`
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 27 ottobre 2026
 
 > 👀 **Vedi anche**
 >
@@ -57,11 +57,11 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 | permission_codename | descrizione | pericolosa | area | introdotta |
 |---------------------|-------------|------------|------|------------|
 | genera_fatture_lotti | Genera fatture da lotti | SI | vendite | seed iniziale |
-| genera_fattura | Genera singola fattura | NO | vendite | seed iniziale |
-| approva_fattura | Approva fattura | NO | vendite | seed iniziale |
-| emetti_fattura | Emetti fattura | NO | vendite | seed iniziale |
+| genera_fattura | ⛔ **Ritirata** il 2026-10-27 (`attivo = false`): a catalogo dal seed iniziale, nessuno la chiedeva — brief `brief-modello-documento-vendita` §15.3 (F-2) | NO | vendite | seed iniziale |
+| approva_fattura | ⛔ **Ritirata** il 2026-10-27 (`attivo = false`): mai usata (F-2) | NO | vendite | seed iniziale |
+| emetti_fattura | ⛔ **Ritirata** il 2026-10-27 (`attivo = false`): mai usata; la fattura non ha un «Emetti», i pulsanti stanno sul lotto (F-2) | NO | vendite | seed iniziale |
 | approva_rimessa | Approva rimessa di pagamento | NO | pagamenti | seed iniziale |
-| reset_lotto_draft | Reset lotto a stato DRAFT | SI | vendite | 2026-03-01 |
+| reset_lotto_draft | ⛔ **Ritirata** il 2026-10-27 (`attivo = false`): «riporta in bozza» chiede `numera_fatture_lotti`, dalla riga del passaggio nella matrice fiscale (Q-F1). ⚠️ Il task di pipeline `reset_lotto_draft` ha lo stesso nome ed è un'altra cosa: resta | SI | vendite | 2026-03-01 |
 | reset_lotto_fattura_draft | Reset singola fattura lotto a DRAFT | SI | vendite | 2026-03-01 |
 | run_commesse_push | Invio commesse a sistema esterno | NO | vendite | 2026-03-01 |
 | prezzo_override_manuale | Modifica manuale prezzo | NO | vendite | 2026-04-17 |

@@ -9,6 +9,11 @@
 --   uno stato definitivo: prima i documenti non conformi si tolgono dal lotto».
 --   changeSet 20261024-34 (invariante lotto <-> fatture) e 20261024-35 (guard
 --   di transizione del lotto). Completa D-Q (2026-07-31).
+-- rev 2026-10-27 (brief-modello-documento-vendita §15, giro 11): con la porta sul
+--   lotto (20261027-18) lo stato si scrive dai verbi. Il lotto avanza dal giro della
+--   pipeline (vendite.fn_lotto_proietta_stato_step), come nel processo vero; il test 5
+--   annulla col verbo del lotto (vendite.fn_cambia_stato_lotto, nessuna azione: Q-F2).
+--   Attese invariate.
 --
 -- Semantica attesa (il contratto, non l'implementazione):
 --   - (a) un lotto FERMO (vw_lotti_segnalazioni_summary.fermo) non entra in uno
@@ -76,9 +81,9 @@ CREATE OR REPLACE FUNCTION pg_temp.porta_lotto(p_codice text) RETURNS void
 LANGUAGE plpgsql AS $f$
 BEGIN
     SET CONSTRAINTS ALL DEFERRED;
-    UPDATE vendite.fatturazione_lotti
-       SET stato_doc_fiscale_id = (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno = p_codice)
-     WHERE id = (SELECT lotto_id FROM t_l);
+    PERFORM vendite.fn_lotto_proietta_stato_step(
+        (SELECT lotto_id FROM t_l),
+        (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno = p_codice));
     PERFORM vendite.fn_sync_lotto_fatture_stato(
         (SELECT lotto_id FROM t_l),
         (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno = p_codice));
@@ -133,9 +138,7 @@ SELECT * FROM dbops.fn_pgtap_crea_lotto(
     p_gruppo_key_trattenuto => 'PGTAP-LOTTO-FERMO');
 
 SELECT lives_ok(
-    format($$UPDATE vendite.fatturazione_lotti
-               SET stato_doc_fiscale_id = (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'ANNULLATA')
-             WHERE id = %s$$, (SELECT lotto_id FROM t_l2)),
+    format($$SELECT * FROM vendite.fn_cambia_stato_lotto(%s, 'ANNULLATA')$$, (SELECT lotto_id FROM t_l2)),
     '5) l''annullo di un lotto fermo resta ammesso: lo stato abortito non e'' «definitivo»'
 );
 

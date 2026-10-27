@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# QUALI DOCUMENTI SI CITANO IN FATTURA: UN DATO DEL REGISTRO
+#   Brief: brief-modello-documento-vendita §15.10 (giro 11; D-G1 = c, Q-F6 = b
+#   di Tid, 2026-10-27).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Le «origini» di una fattura sono i documenti commerciali a monte (DDT,
+#   ordine, contratto, offerta, preventivo), non la commessa, che per il
+#   cliente e' un contenitore interno. Il lineage all'indietro li trova tutti;
+#   chi dice QUALI si citano e' il registro dei tipi, non un elenco di codici
+#   nel lettore (vendite.fn_fattura_origini, 20261027-22).
+#
+# ── LA COLONNA ──────────────────────────────────────────────────────
+#   citato_in_fattura boolean NOT NULL DEFAULT false. I valori stanno nel CSV
+#   (80_data, mirror 20251002-21), non qui: il default false vale per ogni
+#   tipo finche' il CSV non dice altro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261027-21-alter-sorgenti-citato-in-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20261027-21-alter-sorgenti-citato-in-fattura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Colonna citato_in_fattura (boolean NOT NULL DEFAULT false) su config.sorgenti: il tipo di
+        documento si cita fra le origini della fattura. Brief: brief-modello-documento-vendita §15.10.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: sorgenti }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.sorgenti
+                  ADD COLUMN citato_in_fattura boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN config.sorgenti.citato_in_fattura IS
+                  'Il documento di questo tipo si cita fra le «origini» di una fattura (D-G1): true sui documenti commerciali che il cliente riconosce (DDT, ordine, contratto, offerta, preventivo), false sui contenitori interni (commessa, attivita''), sulle righe e sui documenti di acquisto e di magazzino. La legge vendite.fn_fattura_origini, che risale il lineage all''indietro e tiene i soli tipi con questo flag. Il valore sta nel CSV delle sorgenti. Brief: brief-modello-documento-vendita §15.10 (Q-F6 = b, Tid 2026-10-27).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.sorgenti DROP COLUMN IF EXISTS citato_in_fattura;

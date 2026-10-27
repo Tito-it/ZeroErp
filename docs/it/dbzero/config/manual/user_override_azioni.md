@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.user_override_azioni`
 
+> **Ultimo aggiornamento**: 27 ottobre 2026
+
 > 👀 **Vedi anche**
 >
 Architettura di riferimento:
@@ -37,9 +39,9 @@ La tabella **`config.user_override_azioni`** consente di **sovrascrivere l'abili
 
 ### Casi d'uso tipici
 
-* **GRANT individuale**: il reparto Tecnico non ha `approva_fattura`, ma il responsabile sì → override `abilitata = true`.
+* **GRANT individuale**: il reparto Tecnico non ha `approva_attivita_commessa`, ma il responsabile sì → override `abilitata = true`.
 * **DENY individuale**: il reparto Amministrazione ha `genera_fatture_lotti`, ma un operatore junior no → override `abilitata = false`.
-* **Delega temporanea**: un operatore sostituisce un collega per 2 settimane e riceve temporaneamente `emetti_fattura`.
+* **Delega temporanea**: un operatore sostituisce un collega per 2 settimane e riceve temporaneamente `numera_fatture_lotti`.
 
 ---
 

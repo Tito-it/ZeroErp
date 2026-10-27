@@ -609,10 +609,9 @@ SELECT results_eq(
 -- ⭐ IL VERSO OPPOSTO. Annullato il lotto, il documento torna fatturabile: e'
 --   il caso in cui `ultimo_esito` (rimasto COMPLETED) non cambia di una virgola
 --   e il verdetto invece si ribalta.
-UPDATE vendite.fatturazione_lotti
-   SET stato_doc_fiscale_id = (SELECT s.id FROM config.stati_doc_fiscale s
-                                WHERE s.codice_interno = 'ANNULLATA')
- WHERE id = (SELECT id FROM tmp_dc_lotto_vivo);
+-- rev 2026-10-27 (brief-modello-documento-vendita §15): con la porta sul lotto
+-- lo stato si scrive dal verbo del lotto (l'annullo della bozza, nessuna azione).
+SELECT * FROM vendite.fn_cambia_stato_lotto((SELECT id FROM tmp_dc_lotto_vivo), 'ANNULLATA');
 
 SELECT ok(
   (SELECT g.emissione_blocco_reason IS NULL

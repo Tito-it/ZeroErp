@@ -10,6 +10,11 @@
 --       montata su vendite.fatture (changeSet 20260731-12)
 -- Piano: piano-db-satelliti-fattura.md Fase 2.5, criterio allargato dal
 --        brief-db-snapshot-intestazione-fattura.md §3.5 (passo I.4)
+-- rev 2026-10-27 (brief-modello-documento-vendita §15, giro 11): con la porta sulla
+--   fattura (20261027-17) lo stato si scrive dal verbo della fattura,
+--   vendite.fn_fattura_proietta_stato: i passaggi dei test passano da li', e i guard
+--   (transizione, uscita dalla bozza) scattano come prima, nello stesso ordine. Il test 9
+--   (riscrivere lo stesso stato) resta un UPDATE: la porta lo lascia passare. Attese invariate.
 -- ------------------------------------------------------------
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): le fatture nascono in
 --   bozza; la «gia_fuori» si completa, si porta in EMESSA con
@@ -176,7 +181,7 @@ SELECT is(
 -- 3-4) A mani vuote non si esce dalla bozza, e si sa perche'.
 -- ============================================================
 SELECT throws_ok(
-  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+  format($$ SELECT vendite.fn_fattura_proietta_stato(%2$s, %1$s) $$,
          (SELECT stato_emessa_id FROM tmp_refs_gud),
          (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata')),
   'P0001', NULL,
@@ -184,7 +189,7 @@ SELECT throws_ok(
 );
 
 SELECT throws_like(
-  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+  format($$ SELECT vendite.fn_fattura_proietta_stato(%2$s, %1$s) $$,
          (SELECT stato_emessa_id FROM tmp_refs_gud),
          (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata')),
   '%indirizzi obbligatori mancanti: FATT%intestazione non congelata: emittente_snapshot, cliente_snapshot%',
@@ -202,7 +207,7 @@ SELECT f.id, r.fatt_id,
  WHERE f.caso = 'lavorata';
 
 SELECT throws_like(
-  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+  format($$ SELECT vendite.fn_fattura_proietta_stato(%2$s, %1$s) $$,
          (SELECT stato_emessa_id FROM tmp_refs_gud),
          (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata')),
   '%intestazione non congelata: emittente_snapshot, cliente_snapshot%',
@@ -219,7 +224,7 @@ UPDATE vendite.fatture
  WHERE id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata');
 
 SELECT throws_like(
-  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+  format($$ SELECT vendite.fn_fattura_proietta_stato(%2$s, %1$s) $$,
          (SELECT stato_emessa_id FROM tmp_refs_gud),
          (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata')),
   '%intestazione non congelata: emittente_snapshot, cliente_snapshot%',
@@ -237,7 +242,7 @@ UPDATE vendite.fatture
  WHERE id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata');
 
 SELECT throws_like(
-  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+  format($$ SELECT vendite.fn_fattura_proietta_stato(%2$s, %1$s) $$,
          (SELECT stato_emessa_id FROM tmp_refs_gud),
          (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata')),
   '%intestazione incompleta: manca la sede legale dell''emittente%',
@@ -255,7 +260,7 @@ UPDATE vendite.fatture
  WHERE id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata');
 
 SELECT lives_ok(
-  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+  format($$ SELECT vendite.fn_fattura_proietta_stato(%2$s, %1$s) $$,
          (SELECT stato_emessa_id FROM tmp_refs_gud),
          (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata')),
   '7) fattura completa: DRAFT -> EMESSA ammesso'
@@ -266,7 +271,7 @@ SELECT lives_ok(
 --    DRAFT tocca al guard di congelamento dei satelliti, non a questo.
 -- ============================================================
 SELECT lives_ok(
-  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+  format($$ SELECT vendite.fn_fattura_proietta_stato(%2$s, %1$s) $$,
          (SELECT stato_def_id FROM tmp_refs_gud),
          (SELECT id FROM tmp_fatture_gud WHERE caso = 'gia_fuori')),
   '8) fattura nuda gia'' in EMESSA: EMESSA -> DEFINITIVA ammesso'
@@ -297,7 +302,7 @@ SELECT lives_ok(
 --     direbbe «documento incompleto» su un problema che incompleto non e'.
 -- ============================================================
 SELECT throws_like(
-  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+  format($$ SELECT vendite.fn_fattura_proietta_stato(%2$s, %1$s) $$,
          (SELECT stato_def_id FROM tmp_refs_gud),
          (SELECT id FROM tmp_fatture_gud WHERE caso = 'intatta')),
   '%Parametro non coerente%',

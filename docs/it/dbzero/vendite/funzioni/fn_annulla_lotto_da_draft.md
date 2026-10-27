@@ -16,6 +16,12 @@ CREATE OR REPLACE FUNCTION vendite.fn_annulla_lotto_da_draft(p_lotto_id bigint)
  RETURNS TABLE(updated_lotti integer, updated_attivita integer, deleted_fatture integer, deleted_righe integer, annullati_task_run integer)
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-27 (20261027-15, brief-modello-documento-vendita §15): lo
+--   stato fiscale lo scrive il verbo del lotto, vendite.fn_cambia_stato_lotto,
+--   dopo la pulizia (la porta non lascia passare l'UPDATE); il passaggio
+--   non chiede un'azione (Q-F2: basta il permesso sui lotti). Lo stato
+--   d'annullo dal vocabolario (script.fn_stato_abortito_id), non dal
+--   letterale 'ANNULLATA'.
 -- Scopo: rollback tecnico di un lotto in DRAFT — cancella le
 --        fatture PRE-FISCALI (DRAFT/EMESSA), ripristina le
 --        attivita' e CHIUDE il lotto portandolo ad ANNULLATA.
@@ -59,6 +65,7 @@ DECLARE
     v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
     v_lotto_codice         vendite.fatturazione_lotti.codice%TYPE;
     v_annullata_id         config.stati_doc_fiscale.id%TYPE;
+    v_annullata_codice     config.stati_doc_fiscale.codice_interno%TYPE;
     v_uscita_motivo        vendite.fatturazione_lotti_esiti.uscita_motivo%TYPE;
     v_motivi               jsonb;
     v_fatture_ids          BIGINT[];
@@ -93,10 +100,13 @@ BEGIN
       INTO v_lock_batch_id, v_lotto_codice
       FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
 
-    SELECT s.id INTO v_annullata_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'ANNULLATA' AND s.attivo IS TRUE LIMIT 1;
+    -- Lo stato d'annullo dal vocabolario (rev 2026-10-27, guida del modello §8).
+    SELECT s.id, s.codice_interno INTO v_annullata_id, v_annullata_codice
+      FROM config.stati_doc_fiscale s
+     WHERE s.id = script.fn_stato_abortito_id('vendite.fatturazione_lotti'::regclass);
     IF v_annullata_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_annulla_lotto_da_draft', 'E_CONFIG_MANCANTE',
-            jsonb_build_object('codice_interno', 'ANNULLATA'), NULL::uuid, 'stato ANNULLATA non configurato');
+            jsonb_build_object('stati_doc_fiscale', 'is_abortito'), NULL::uuid, 'stato d''annullo del vocabolario fiscale non configurato');
     END IF;
 
     SELECT array_agg(lf.fattura_id) INTO v_fatture_ids
@@ -183,7 +193,10 @@ BEGIN
     --   vw_lotti_chiusi_con_gruppi_in_errore — un presidio che dichiara di
     --   dover poter restare vuoto.
     -- Brief: brief-db-esito-gruppo-lotto §22-§24.
-    UPDATE vendite.fatturazione_lotti SET stato_operativo = 'CHIUSO', stato_doc_fiscale_id = v_annullata_id, data_update = now(), user_update = current_user WHERE id = p_lotto_id;
+    -- rev 2026-10-27: lo stato fiscale dal verbo del lotto (la porta), lo
+    -- stato operativo con l'UPDATE di sempre.
+    PERFORM 1 FROM vendite.fn_cambia_stato_lotto(p_lotto_id, v_annullata_codice);
+    UPDATE vendite.fatturazione_lotti SET stato_operativo = 'CHIUSO', data_update = now(), user_update = current_user WHERE id = p_lotto_id;
     GET DIAGNOSTICS v_updated_lotti = ROW_COUNT;
 
     -- ⭐ rev 2026-09-23 — L'USCITA SI RACCONTA NEL GIORNALE, come fa
@@ -207,7 +220,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_annulla_lotto_da_draft(p_lotto_id bigint)
-IS 'Annullo di un lotto in DRAFT (MASSIVO e GIORNALIERO): precondizioni da script.fn_check_lotto_annullabile, cancella le fatture pre-fiscali e ripristina le attivita'' (fn_cleanup_fatture_by_ids), chiude i task run con esito ANNULLATO, porta il lotto a CHIUSO/ANNULLATA senza toccare stato_lotto (rev 2026-09-07). ⭐ rev 2026-09-23: chiude anche gli ESITI — ogni riga di vendite.fatturazione_lotti_esiti non ancora ESCLUSO passa a ESCLUSO con uscita_motivo «Annullo del lotto <codice>» (timbro dal trigger) — e scrive una riga I nel giornale (fase ANNULLO_LOTTO) col numero di documenti usciti. Un lotto annullato e'' VUOTO: nessun controllo deve escluderlo. ⚠️ La sorella fn_riporta_lotto_a_draft non chiude gli esiti, ed e'' voluto: il lotto resta vivo e il giro dopo li riscrive. Firma invariata (il backend legge le cinque colonne per posizione). Brief: brief-db-annullamento-chiude-la-vita §9.4.';
+IS 'Annullo di un lotto in DRAFT (MASSIVO e GIORNALIERO): precondizioni da script.fn_check_lotto_annullabile, cancella le fatture pre-fiscali e ripristina le attivita'' (fn_cleanup_fatture_by_ids), chiude i task run con esito ANNULLATO, porta il lotto a CHIUSO/ANNULLATA senza toccare stato_lotto (rev 2026-09-07). ⭐ rev 2026-09-23: chiude anche gli ESITI — ogni riga di vendite.fatturazione_lotti_esiti non ancora ESCLUSO passa a ESCLUSO con uscita_motivo «Annullo del lotto <codice>» (timbro dal trigger) — e scrive una riga I nel giornale (fase ANNULLO_LOTTO) col numero di documenti usciti. Un lotto annullato e'' VUOTO: nessun controllo deve escluderlo. ⚠️ La sorella fn_riporta_lotto_a_draft non chiude gli esiti, ed e'' voluto: il lotto resta vivo e il giro dopo li riscrive. Firma invariata (il backend legge le cinque colonne per posizione). Brief: brief-db-annullamento-chiude-la-vita §9.4. rev 2026-10-27 (20261027-15, brief-modello-documento-vendita §15): lo stato fiscale lo scrive il verbo del lotto, vendite.fn_cambia_stato_lotto, dopo la pulizia (la porta non lascia passare l''UPDATE); il passaggio DRAFT -> ANNULLATA non chiede un''azione (Q-F2). Lo stato d''annullo dal vocabolario (script.fn_stato_abortito_id), non dal letterale ANNULLATA.';
 ```
 
 </div>

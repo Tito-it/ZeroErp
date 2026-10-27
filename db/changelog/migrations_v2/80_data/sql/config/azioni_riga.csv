@@ -1,0 +1,2 @@
+id,codice_interno,descrizione,superficie,colonna_motivo,colonna_motivo_chiave,fn_check,verbo,attivo,meta,data_insert,user_insert,data_update,user_update
+1,ESCLUDI_DOCUMENTO_DA_GIRO,Togli un documento dal giro di fatturazione di un lotto,vendite.vw_lotti_gruppi_azioni,uscita_blocco_reason,uscita_blocco_reason_key,script.fn_check_documento_escludibile_da_giro,vendite.fn_escludi_documento_da_giro,t,{},2026-10-27 00:00:00+01,mctit,2026-10-27 00:00:00+01,mctit

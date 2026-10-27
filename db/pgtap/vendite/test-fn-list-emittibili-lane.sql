@@ -259,6 +259,10 @@ SELECT pg_temp.mk_att2(c.commessa_id, (SELECT doc_x FROM tmp_refs), DATE '2026-0
 FROM tmp_c c;
 
 -- Porta in stato emittibile A, B e (se esiste) C
+-- rev 2026-10-27: il verbo della commessa chiede cambia_stato_commessa
+-- all'operatore del test (giro 10); senza, su un db dove l'operatore non ce l'ha,
+-- si ferma qui con E_PERMESSO_NEGATO.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT * FROM vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_a), 'PRONTA_FATTURAZIONE');
 SELECT * FROM vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_b), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_cambia_stato_commessa(c.commessa_id, 'PRONTA_FATTURAZIONE') FROM tmp_c c;
@@ -533,10 +537,9 @@ SELECT ok(
 
 -- ⭐ IL VERSO OPPOSTO: annullato il lotto, il documento torna disponibile — e
 --   l'esito e' rimasto COMPLETED, cioe' non e' lui a decidere.
-UPDATE vendite.fatturazione_lotti
-   SET stato_doc_fiscale_id = (SELECT sdf.id FROM config.stati_doc_fiscale sdf
-                                WHERE sdf.codice_interno = 'ANNULLATA')
- WHERE id = (SELECT id FROM tmp_trat_lotto);
+-- rev 2026-10-27 (brief-modello-documento-vendita §15): con la porta sul lotto
+-- lo stato si scrive dal verbo del lotto (l'annullo della bozza, nessuna azione).
+SELECT * FROM vendite.fn_cambia_stato_lotto((SELECT id FROM tmp_trat_lotto), 'ANNULLATA');
 
 SELECT ok(
   EXISTS (

@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 26 ottobre 2026
+> **Ultimo aggiornamento**: 27 ottobre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -2566,7 +2566,7 @@ sola delle due forme.
 | --- | --- | --- |
 | chi decide | `script.fn_available_actions_<entità>` | `script.fn_check_<azione>(<id_riga>)` |
 | cosa torna | `available_actions[]` con `enabled`/`reason`/`reason_key` | `jsonb` — `[]` se ammesso, altrimenti array **ordinato** di `{codice, reason, reason_key, dettaglio, valori}` |
-| come arriva al FE | il detail porta il blob | **una colonna della vista di riga**, col `reason` del primo motivo (`NULL` = ammesso) |
+| come arriva al FE | il detail porta il blob | **due colonne della vista di riga**, il `reason` e la `reason_key` del primo motivo (`NULL` = ammesso), iscritte nel registro (§12.5.7) |
 | chi la legge | la barra azioni | il costruttore delle azioni di riga |
 
 ```sql
@@ -2655,7 +2655,8 @@ suo unico valore — `GIA_ACCREDITATO` — è **esattamente la condizione che
 ABILITA l'annullo**. Nella stessa colonna vorrebbe dire *«bottone A spento»* e
 *«bottone B acceso»* insieme.
 
-**Un verbo, una colonna**, con un nome che dice quale (`annullo_blocco_codice`).
+**Un verbo, le sue colonne** (il motivo e la sua chiave, §12.5.7), con un nome che dice quale verbo
+(`annullo_blocco_codice`); mai una colonna condivisa con un altro verbo.
 
 #### 12.5.5 ⚠️ Sull'altro lato il campo si chiama `tooltip`
 
@@ -2701,6 +2702,27 @@ dimostra che le altre siano sbagliate; dice che **nessuno ha ancora guardato**.
 Il censimento vero — azione per azione, con accanto la sua sede — è il lavoro che
 chiude questa sezione, e va fatto **prima** del prossimo collaudo che lo trovi da
 solo.
+
+#### 12.5.7 ⭐ Il registro: [`config.azioni_riga`](/dbzero/config/tabelle/azioni_riga)
+
+Dal 2026-10-27 (brief-modello-documento-vendita §15.10) il censimento ha una sede.
+Un'azione di riga si **iscrive** nel registro con i suoi tre pezzi: la superficie
+(la vista di riga), le due colonne del motivo (`reason` e `reason_key`), la
+`fn_check` e il verbo che rifiuta. Il presidio
+`db/pgtap/config/test-azioni-riga-registro-v1.sql` li verifica per **ogni** riga:
+la vista esiste ed è `security_invoker`, ha le due colonne, **dipende** dalla
+`fn_check` (`pg_depend` della regola), e il verbo la **chiama** (§12.5.2). Il
+frontend legge dal registro quali colonne mostrare.
+
+⛔ **Una colonna di blocco composta dal backend non si iscrive**: il presidio non
+può verificarla. Il motivo per riga sta in una **vista DB**, e il backend la legge
+(decisione di Tid del 2026-10-27, Q-F5). La prima riga del registro è «togli dal
+giro», su `vendite.vw_lotti_gruppi_azioni`: prima la colonna la componeva il
+repository del backend.
+
+⚠️ **Le azioni di riga che esistono già non sono ancora iscritte** (gli accrediti
+dei resi del §12.5.3, le 13 `fn_check` della tabella sopra): l'iscrizione è il
+lavoro di quando ciascun documento viene portato al modello.
 
 ### 12.6 ⭐ Un picker propone ciò che il guard accetta — leggendo la stessa check
 

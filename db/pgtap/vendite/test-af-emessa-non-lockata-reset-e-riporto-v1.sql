@@ -221,9 +221,10 @@ SELECT (vendite.fn_emit_attivita_fatturabili_da_commessa(
             p_commessa_id   => (SELECT commessa_id FROM tmp_ar),
             p_emit_batch_id => (SELECT lock_batch_id FROM tmp_ar_lotti WHERE caso = 'secondo'))).updated_rows;
 
-UPDATE vendite.fatturazione_lotti
-   SET stato_doc_fiscale_id = (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'ANNULLATA')
- WHERE id = (SELECT lotto_id FROM tmp_ar_lotti WHERE caso = 'secondo');
+-- rev 2026-10-27 (brief-modello-documento-vendita §15): con la porta sul lotto
+-- lo stato si scrive dal verbo del lotto, senza la pulizia della madre, come prima.
+SELECT * FROM vendite.fn_cambia_stato_lotto(
+    (SELECT lotto_id FROM tmp_ar_lotti WHERE caso = 'secondo'), 'ANNULLATA');
 
 SELECT is(
     (SELECT jsonb_array_length(script.fn_check_attivita_riportabile_da_emettere(ARRAY[(SELECT af_id FROM tmp_ar)]))),

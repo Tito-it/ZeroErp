@@ -1,6 +1,6 @@
 # Guida — Cruscotti fatturazione (le tre lenti)
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 27 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, operatori vendite/amministrazione,
 > sviluppatori backend/frontend.
@@ -504,6 +504,13 @@ si arriva anche dal pannello errori della Lente 1 (§7.5).
 **La regola per scegliere**: se il lavoro va rifatto, *Riporta in lavorazione*;
 se il problema è un documento solo, *Elimina dal lotto*; *Annulla lotto* è per
 un giro partito per sbaglio, che non deve produrre nulla.
+
+**Chi le può usare.** *Riporta in lavorazione* chiede lo **stesso permesso** di
+*Rendi definitive* (Numerazione fatture/lotti): chi può numerare può anche
+disfare ciò che non è ancora numerato. *Annulla lotto* chiede solo il permesso
+sui lotti, perché su un lotto in bozza non c'è niente di fiscale da disfare. Chi
+non ha il permesso **non vede** il pulsante. Il motivo per cui *Elimina dal lotto*
+è spento su una fattura compare sulla sua riga.
 
 > ⚠️ **Le due strade rimettono in coda allo stesso modo** — tutto il lotto, oppure
 > un documento solo — e la scelta fra loro è quella descritta qui sopra.
