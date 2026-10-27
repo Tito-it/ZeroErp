@@ -9,14 +9,19 @@ disfano il lavoro di un lotto, ma fanno cose opposte: il primo **chiude** il lot
 ## Contesto
 View `ApiResetLottoDraft` → `fn_annulla_lotto_da_draft`
 (`apps/vendite/services/pipeline_service.py` → `LottoResetService`) → funzione SQL
-`vendite.fn_annulla_lotto_da_draft`. URL e permesso conservano il nome storico
-«reset-draft»: sono contratti verso client e catalogo permessi.
+`vendite.fn_annulla_lotto_da_draft`. L'URL conserva il nome storico «reset-draft»:
+è un contratto verso i client.
 
 ## Input
 - Metodo: `POST`
 - Path: `/api/v1/vendite/lotti/{lotto_id}/reset-draft/`
 - Header: `Authorization: Bearer <access_token>`, `Idempotency-Key` (obbligatorio)
-- Permesso: `post_permission = "reset_lotto_draft"` (area `vendite`)
+- Permesso: l'azione della **riga del passaggio** verso lo stato d'annullo del
+  vocabolario (`PassaggioDocumento`, `stato_del_modello="annullo"`). Oggi la riga
+  DRAFT → ANNULLATA non ha azione, perché non c'è niente di fiscale da disfare (Q-F2
+  di brief-modello-documento-vendita, 2026-10-27), e decide il **livello sul
+  documento** (area `vendite`). Se la matrice le dà un'azione, il gate la segue.
+  Prima chiedeva `reset_lotto_draft`, ritirata dal catalogo.
 - Body JSON: vuoto
 
 ## Output
@@ -41,7 +46,13 @@ View `ApiResetLottoDraft` → `fn_annulla_lotto_da_draft`
 - View `ApiRiportaLottoADraft` → `fn_riporta_lotto_a_draft` → SQL
   `vendite.fn_riporta_lotto_a_draft`. È un'azione dell'operatore, non un task di
   pipeline.
-- Stesso permesso `reset_lotto_draft`, `Idempotency-Key` obbligatorio, body vuoto.
+- Permesso: l'azione della **riga del passaggio** EMESSA → stato iniziale (oggi
+  `numera_fatture_lotti`, la stessa di «numera», Q-F1), col BB
+  `PassaggioDocumento(stato_del_modello="iniziale")`: lo stato d'arrivo lo dice il DB
+  a ogni richiesta (`script.fn_doc_stato_iniziale_id`, brief-modello-documento-vendita
+  §15.13), mai un `'DRAFT'` scritto nel backend. Su un lotto già in bozza (sola
+  pulizia) la riga non c'è e basta il livello sul documento. Prima chiedeva
+  `reset_lotto_draft`, ritirata dal catalogo. `Idempotency-Key` obbligatorio, body vuoto.
 - È la via d'uscita da EMESSA, dove l'annullamento è rifiutato: il lotto torna in
   lavorazione e il giro successivo rifà lo step (`riaperto`). Precondizioni (tipo
   lotto, stato, nessuna fattura numerata) nella funzione DB.

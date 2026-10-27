@@ -27,6 +27,7 @@ Indice test eseguiti:
 8) test_ordine_in_bozza — conferma: `emetti_ordine`; annullo di una bozza: nessuna (M-4)
 9) test_stato_di_emissione_composto — id e codice dell'emissione, dal vocabolario; reso: None
 10) test_stato_di_annullo — le otto testate: lo stato `is_abortito` del vocabolario, e solo quello
+11) test_stato_iniziale_del_lotto — lo stato iniziale dalla testata del lotto (§15.13): `iniziale` del vocabolario fiscale
 """
 from __future__ import annotations
 
@@ -179,3 +180,15 @@ class PermessoPassaggioDbTests(unittest.TestCase):
                     )
                     self.assertFalse(self.repo.e_stato_di_annullo(testata, cur.fetchone()[0]))
         self.assertFalse(self.repo.e_stato_di_annullo("vendite.ordini", "INESISTENTE"))
+
+    # §15.13: l'arrivo di «riporta in bozza» del lotto e' lo stato in cui il
+    # documento nasce, letto dalla TESTATA (`fn_doc_stato_iniziale_id`) e uguale
+    # a quello che il vocabolario dichiara (`iniziale`), non scritto qui.
+    def test_stato_iniziale_del_lotto(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute("SELECT id, codice_interno FROM config.stati_doc_fiscale WHERE iniziale")
+            atteso = cur.fetchall()
+        self.assertEqual(len(atteso), 1)
+        stato = self.repo.stato_iniziale("vendite.fatturazione_lotti")
+        assert stato is not None
+        self.assertEqual((stato.id, stato.codice), (int(atteso[0][0]), atteso[0][1]))

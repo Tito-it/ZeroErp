@@ -39,10 +39,13 @@ import {
 import { MANAGE_ICONS } from '../../core/constants'
 import { aspettoAzione } from '../../core/aspettoAzioni'
 
-// Permesso di processo per verbo. La numerazione ha un gate fiscale SEPARATO
-// (I-7); annullamento e ritorno in lavorazione condividono `reset_lotto_draft`
-// (stessa classe di potere: cancellare fatture pre-fiscali); la ristampa non ne
-// ha — stampare è leggere (I-4).
+// Permesso di processo dei SOLI verbi di pipeline, che il DB non espone (vedi
+// testata). ⛔ Numera, riporta in bozza e annulla non stanno qui (ritirati il
+// 2026-10-27, brief-modello-documento-vendita §15.8 punto 5): il loro permesso
+// lo dice la riga del passaggio della matrice, e la capability del lotto
+// NASCONDE il verbo a chi non ce l'ha. Una copia qui era una seconda sede del
+// permesso, e prima della ritirata di `reset_lotto_draft` diceva gia' altro.
+// La ristampa non ha permesso — stampare è leggere (I-4).
 export const LOTTO_AZIONE_PERMESSO = {
   avanza_step: 'genera_fatture_lotti',
   // Stessa chiamata e stesso potere di `avanza_step`: cambia solo COME si
@@ -50,9 +53,6 @@ export const LOTTO_AZIONE_PERMESSO = {
   // direbbe che e' un'altra facolta', e non lo e'.
   rigenera_bozza: 'genera_fatture_lotti',
   rilancia_step: 'genera_fatture_lotti',
-  numera: 'numera_fatture_lotti',
-  annulla: 'reset_lotto_draft',
-  riporta_a_draft: 'reset_lotto_draft',
 }
 
 // Presentazione dei due verbi che il DB non espone (vedi testata): il resto
@@ -317,7 +317,9 @@ function verdettoRunner(res) {
   //
   //   È il prezzo di una chiamata sola, pagato solo quando l'operatore agisce
   //   davvero: la lista resta senza capability per riga (scelta del team DB,
-  //   §3.3 della risposta) e senza precondizioni ricopiate.
+  //   §3.3 della risposta) e senza precondizioni ricopiate. Porta il PERMESSO
+  //   (`azioni_permesse`, §15.14 — chi non ha l'azione non vede la voce), non il
+  //   VERDETTO: quello resta qui, al click.
   //
   //   ⛔ Le tre chiavi di pipeline non sono nel blob per costruzione — ma «non
   //   c'è un verdetto da chiedere» NON vuol dire «si procede diretti», ed è
@@ -432,12 +434,28 @@ function verdettoRunner(res) {
   //   diventarlo: dice cosa ha senso PROPORRE, mentre se l'azione si può fare
   //   davvero lo stabilisce il DB al click (`eseguiVerificato`). Tenerla qui,
   //   in una sede sola, è ciò che impedisce che ricompaia sparsa nei template.
+  //
+  //   ⭐ I VERBI DI STATO (numera, riporta in bozza, annulla) li dice la riga:
+  //   `azioni_permesse` sono i passaggi manuali che QUESTO operatore può fare
+  //   dallo stato del lotto (`script.fn_doc_azioni_permesse`,
+  //   brief-modello-documento-vendita §15.14), lo stesso lettore delle
+  //   capability del dettaglio. Prima si deducevano dal codice dello stato
+  //   (EMESSA → numera e riporta, DRAFT → annulla): il kebab proponeva
+  //   «Rendi definitive» anche a chi non aveva `numera_fatture_lotti`, e il
+  //   dettaglio lo nascondeva — lista e drawer si contraddicevano.
+  //   Fail-closed: un campo assente (riga vecchia) non propone niente.
+  //   ⚠️ Solo le chiavi che qui hanno una chiamata (`VERBI`), e non quelle di
+  //   pipeline: un passaggio nuovo a matrice senza verbo nel frontend non
+  //   diventa una voce che non saprebbe cosa chiamare.
   function verbiPlausibili(row) {
-    const stato = row?.stato_doc_fiscale_codice
+    const permesse = Array.isArray(row?.azioni_permesse) ? row.azioni_permesse : []
     const verbi = [...verbiPipeline(row)]
-    if (lottoNumerabile(row)) verbi.push('numera', 'riporta_a_draft')
-    if (stato === 'DEFINITIVA') verbi.push('ristampa')
-    if (stato === 'DRAFT') verbi.push('annulla')
+    verbi.push(...permesse.filter((k) => VERBI[k] && !VERBI_PIPELINE.includes(k)))
+    // La ristampa non è un passaggio di stato: stampare è leggere (I-4). Si
+    // legge `ristampabile` della riga, lo stesso predicato del gate del
+    // backend, e non il codice dello stato confrontato con un letterale.
+    // Fail-closed: un campo assente non propone la ristampa.
+    if (row?.ristampabile === true) verbi.push('ristampa')
     return verbi
   }
 

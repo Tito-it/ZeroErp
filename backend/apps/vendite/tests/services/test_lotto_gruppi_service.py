@@ -32,8 +32,8 @@
 #  11. test_export_non_pagina
 #  12. test_ogni_campo_sorgente_di_catalogo_e_una_chiave_della_riga
 #  13. test_pagina_vuota_ha_un_conteggio_di_riserva
-#  14. test_il_motivo_del_blocco_lo_da_la_check_non_lo_riscrive_la_query
-#  15. test_i_trascinati_si_contano_solo_dove_l_azione_e_viva
+#  14. test_il_motivo_del_blocco_si_legge_dalla_vista_non_si_compone
+#  15. test_i_trascinati_si_leggono_dalla_vista
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -307,41 +307,40 @@ class LottoGruppiServiceTests(SimpleTestCase):
         fn_list_lotto_gruppi(lotto_id=10657, max_rows=10_001)
         self.assertEqual(mock_lista.call_args.kwargs["max_rows"], 10_001)
 
-    # 14) ⭐ IL MOTIVO DEL PULSANTE SPENTO VIENE DALLA CHECK, e la query non lo
-    #     riscrive (§12.5.2 delle linee guida). E' la STESSA funzione che la
-    #     madre chiama per RIFIUTARE: cosi' il tooltip e l'errore non «coincidono
-    #     oggi» — non possono divergere.
+    # 14) ⭐ IL MOTIVO DEL PULSANTE SPENTO SI LEGGE DALLA SUPERFICIE DEL DB, e la
+    #     query non lo compone (brief-modello-documento-vendita §15.11.1, BE-2).
+    #     La vista `vendite.vw_lotti_gruppi_azioni` chiama la STESSA check che la
+    #     madre usa per RIFIUTARE, e lo verifica il presidio del registro
+    #     `config.azioni_riga`: tooltip ed errore non possono divergere.
+    # ⛔ Se la query tornasse a chiamare la check da se', la colonna avrebbe due
+    #    sedi, e una delle due il presidio del DB non la vede.
     # ⛔ E la colonna NOMINA IL VERBO (§12.5.4): su questa riga esiste gia' un
-    #    esito con il suo `errore_codice`, che risponde a un'ALTRA domanda —
-    #    «com'e' andata», non «si puo' togliere». Riusarla direbbe due cose
-    #    diverse nella stessa colonna.
+    #    esito con il suo `errore_codice`, che risponde a un'ALTRA domanda.
     @patch("apps.vendite.db.vendite_repository.fetch_paged_with_total")
-    def test_il_motivo_del_blocco_lo_da_la_check_non_lo_riscrive_la_query(
+    def test_il_motivo_del_blocco_si_legge_dalla_vista_non_si_compone(
         self, mock_fetch,
     ):
         mock_fetch.return_value = ([], 0)
         VenditeRepository().list_lotto_gruppi(lotto_id=10657, limit=25, offset=0)
         sql = mock_fetch.call_args.args[0]
-        self.assertIn("script.fn_check_documento_escludibile_da_giro", sql)
-        self.assertIn("AS uscita_blocco_reason", sql)
-        self.assertIn("AS uscita_blocco_reason_key", sql)
+        self.assertIn("vendite.vw_lotti_gruppi_azioni", sql)
+        self.assertIn("az.uscita_blocco_reason,", sql)
+        self.assertIn("az.uscita_blocco_reason_key,", sql)
+        self.assertNotIn("fn_check_documento_escludibile_da_giro(", sql)
         # ⛔ Nessun motivo scritto a mano nella query: se comparisse un
         #    letterale, sarebbe la seconda sede del vocabolario dei motivi.
         for reason in ("GIA_USCITO", "DOCUMENTO_NON_IN_ERRORE", "SENZA_ESITO"):
             self.assertNotIn(reason, sql)
 
-    # 15) ⚠️ I TRASCINATI SI CONTANO SOLO DOVE L'AZIONE E' VIVA. Su una riga
-    #     bloccata la conferma non si apre mai, quindi il numero non serve — e
-    #     la catena delle righe che lo produce non e' gratis.
-    # ⭐ Il `CASE` e' anche cio' che rende `None` distinguibile da `0`: «non e'
-    #    stato chiesto» e «non trascina nessuno» dicono cose diverse, e il
-    #    frontend deve poterle separare.
-    def test_i_trascinati_si_contano_solo_dove_l_azione_e_viva(self):
+    # 15) ⚠️ I TRASCINATI arrivano dalla stessa vista, che li conta solo dove
+    #     l'azione e' viva (`None` = «non e' stato chiesto», distinto da `0`).
+    #     La query non chiama piu' la catena delle righe da se'.
+    def test_i_trascinati_si_leggono_dalla_vista(self):
         with patch(
             "apps.vendite.db.vendite_repository.fetch_paged_with_total",
         ) as mock_fetch:
             mock_fetch.return_value = ([], 0)
             VenditeRepository().list_lotto_gruppi(lotto_id=10657, limit=25, offset=0)
             sql = mock_fetch.call_args.args[0]
-        self.assertIn("script.fn_gruppi_trascinati_da_uscita", sql)
-        self.assertIn("CASE WHEN jsonb_array_length(chk.motivi) = 0", sql)
+        self.assertIn("az.n_trascinati,", sql)
+        self.assertNotIn("fn_gruppi_trascinati_da_uscita(", sql)

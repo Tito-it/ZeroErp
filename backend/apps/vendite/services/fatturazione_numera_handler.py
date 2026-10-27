@@ -92,7 +92,7 @@ def fatturazione_numera_handler(
     # Import locali: evitano di caricare la catena pipeline al boot del modulo
     # (registrato in ready()); il core numera è l'unico punto di verità (I-1).
     from apps.vendite.db.pipeline_repository import VenditePipelineRepository
-    from apps.vendite.db.vendite_repository import VenditeRepository
+    from apps.vendite.db.vendite_repository import STATO_DEFINITIVA, VenditeRepository
     from apps.vendite.services import pipeline_service
 
     # Gate fiscale: risoluzione+guard dell'id EMESSA nel service layer (non nel
@@ -121,7 +121,7 @@ def fatturazione_numera_handler(
     # nasconderebbe fatture rimaste senza numero (smoke C-9, 2026-07-22:
     # lotti 106/107 EMESSA con fatture DRAFT «numerati» due volte no-op).
     definitiva_id = VenditePipelineRepository().get_stato_doc_fiscale_id(
-        "DEFINITIVA",
+        STATO_DEFINITIVA,
     )
     ErrorManager.require(
         definitiva_id is not None,

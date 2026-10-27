@@ -96,6 +96,7 @@ def _valore_summary(chiave: str, valore: Any) -> bool | int:
         return bool(valore)
     return int(valore or 0)
 
+
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
 
 # Chiave nel `meta` jsonb del lotto che porta la corsia (filtro fatturazione_immediata)
@@ -1045,18 +1046,26 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             return False
         return bool(row[0])
 
-    # Scopo: Aggiorna `lotto_job_stato` con i valori richiesti dal flusso corrente.
+    # Scopo: Scrive lo stato del JOB del lotto (`stato_lotto`) con la nota in `meta`.
+    #
+    # ⭐ LA REGOLA DEI PASSAGGI NON STA PIU' QUI (brief-modello-documento-vendita
+    #    §15.8 punto 2, F-4, 2026-10-27). La giudica il guard DB
+    #    `vendite.trgfn_fatturazione_lotti_guard_stato_job` sulla matrice
+    #    `config.transizioni_stati_lotto_job` (`E_LOTTO_PARAMETRO_NON_COERENTE`,
+    #    parametro `transizione_stato_lotto`); un valore fuori vocabolario lo
+    #    rifiuta la FK sul codice. Qui restavano i tre valori e i passaggi
+    #    ricopiati in Python: una seconda sede della stessa regola, ritirata.
+    # ⚠️ Un valore fuori vocabolario NON arriva alla FK: il guard (BEFORE)
+    #    lo rifiuta prima, come passaggio fuori matrice, col suo codice
+    #    (`E_LOTTO_PARAMETRO_NON_COERENTE`). Tradurre qui il 23503 sarebbe
+    #    codice morto (provato sul DB: `tests/db/test_lotto_job_stato_db`).
+    #
+    # ⭐ `COMPLETATO -> ERRORE` e' ammessa (decisione di Tid del 2026-08-24, lotto
+    #    6260): «e' andata male» e' un FATTO OSSERVATO e va registrato anche su un
+    #    lotto gia' COMPLETATO; «e' andata bene» invece si guadagna con un giro, che
+    #    passa da IN_ESECUZIONE. Ora e' una riga della matrice, non un `if` qui.
     def set_lotto_job_stato(self, lotto_id: int, stato: str, messaggio: str) -> None:
         stato_input = (stato or "").strip().upper()
-        if stato_input not in {"IN_ESECUZIONE", "COMPLETATO", "ERRORE"}:
-            ErrorManager.raise_error(
-                code="E_PIPELINE_STATO_LOTTO",
-                message="stato_lotto non valido.",
-                detail=f"stato_lotto non valido: {stato}",
-                context={"lotto_id": lotto_id, "stato_lotto": stato},
-                function_name="vendite.pipeline_repository.set_lotto_job_stato",
-                log_to_db=True,
-            )
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -1077,72 +1086,11 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     function_name="vendite.pipeline_repository.set_lotto_job_stato",
                     log_to_db=True,
                 )
+            # Stesso stato: nessuna scrittura, cosi' la nota in `meta` resta quella
+            # del passaggio che l'ha scritta.
             stato_corrente = str(row[0]) if row[0] is not None else ""
             if stato_corrente == stato_input:
                 return
-            # ⚠️ Oggi questo ramo e' IRRAGGIUNGIBILE, ed e' bene saperlo invece
-            #    di leggerlo come un presidio attivo: `stato_input` e' gia'
-            #    validato sui tre valori qui sopra, e `IN_ESECUZIONE ->
-            #    IN_ESECUZIONE` esce prima come no-op. Resta perche' e' la
-            #    regola che servirebbe il giorno in cui gli stati diventassero
-            #    quattro — non perche' stia bloccando qualcosa adesso.
-            if stato_corrente == "IN_ESECUZIONE" and stato_input not in {"COMPLETATO", "ERRORE"}:
-                ErrorManager.raise_error(
-                    code="E_PIPELINE_STATO_LOTTO",
-                    message="Transizione stato_lotto non ammessa.",
-                    detail=f"Transizione non ammessa: {stato_corrente} -> {stato_input}",
-                    context={
-                        "lotto_id": lotto_id,
-                        "stato_corrente": stato_corrente,
-                        "stato_target": stato_input,
-                    },
-                    function_name="vendite.pipeline_repository.set_lotto_job_stato",
-                    log_to_db=True,
-                )
-            if stato_corrente == "ERRORE" and stato_input != "IN_ESECUZIONE":
-                ErrorManager.raise_error(
-                    code="E_PIPELINE_STATO_LOTTO",
-                    message="Transizione stato_lotto non ammessa.",
-                    detail=f"Transizione non ammessa: {stato_corrente} -> {stato_input}",
-                    context={
-                        "lotto_id": lotto_id,
-                        "stato_corrente": stato_corrente,
-                        "stato_target": stato_input,
-                    },
-                    function_name="vendite.pipeline_repository.set_lotto_job_stato",
-                    log_to_db=True,
-                )
-            # ⭐ `COMPLETATO -> ERRORE` E' AMMESSA, e prima non lo era.
-            #
-            # 🔴 IL DIFETTO, misurato su un giro vero il 2026-08-23 (lotto 6260,
-            #    decisione di Tid il 2026-08-24). Un lotto gia' COMPLETATO
-            #    rilanciato e andato storto **non si poteva marcare**: il rifiuto
-            #    arrivava qui, l'eccezione usciva dal marcatore, e il lotto
-            #    restava COMPLETATO pur avendo una fattura che non si era
-            #    numerata. Cioe' un errore reale che il registro non poteva dire.
-            #
-            # ⚠️ E il divieto non proteggeva niente, perche' colpiva **solo**
-            #    quel caso: l'avvio del giro scrive `IN_ESECUZIONE` DENTRO la
-            #    transazione del giro, quindi un fallimento la rolla indietro e
-            #    il marcatore — che gira fuori transazione — ritrova lo stato
-            #    precedente. Il lotto era COMPLETATO non perche' fosse a posto,
-            #    ma perche' il fallimento aveva cancellato la prova di essere
-            #    partito.
-            #
-            # ⛔ NON si apre anche `ERRORE -> COMPLETATO`, e non e' un'asimmetria
-            #    da sanare: le due transizioni non sono la stessa cosa girata al
-            #    contrario. «E' andata bene» e' una CONCLUSIONE, e va guadagnata
-            #    con un giro — che infatti passa da `IN_ESECUZIONE` e riporta il
-            #    lotto a COMPLETATO da se'. «E' andata male» e' un FATTO
-            #    OSSERVATO: rifiutarne la registrazione non lo rende meno vero,
-            #    lo rende solo invisibile. E' la stessa regola del diario (D-12).
-            #
-            # ⭐ E lo spegnimento resta automatico: a fine di **ogni** giro il
-            #    runner ricalcola con `evaluate_lotto_status` — che conta le
-            #    segnalazioni ATTUALI — e riporta il lotto a COMPLETATO se non
-            #    ci sono piu' errori. Tolte le righe rotte e rilanciato, il
-            #    segnale si spegne da solo: nessuna seconda sede che decide lo
-            #    stato del lotto.
             cursor.execute(
                 """
                 UPDATE vendite.fatturazione_lotti
@@ -1355,18 +1303,21 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 [task_run_id, error_code, error_message, self._to_jsonb_param(meta)],
             )
 
-    # Scopo: Gestisce `update_lotto_stato_doc` nel flusso applicativo del modulo.
+    # Scopo: Porta il lotto nello stato fiscale dello step della pipeline.
+    #
+    # ⭐ Dal verbo di processo del DB, non con un `UPDATE` (brief-modello-documento-
+    #    vendita §15.8 punto 1, 2026-10-27): la porta `trgfn_doc_stato_solo_dal_verbo`
+    #    rifiuta ogni scrittura dello stato che non passi da un verbo.
+    #    `vendite.fn_lotto_proietta_stato_step` e' un passaggio di processo (lo
+    #    scrive il giro, che ne e' la causa, senza permesso dell'operatore);
+    #    rifiuta uno stato che non sia di uno step del tipo del lotto, e la matrice
+    #    la giudica il guard di transizione. Stessi momenti di prima: il processo
+    #    dei lotti non cambia (F-4).
     def update_lotto_stato_doc(self, lotto_id: int, stato_doc_fiscale_id: int) -> None:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                UPDATE vendite.fatturazione_lotti
-                SET stato_doc_fiscale_id = %s,
-                    data_update = now(),
-                    user_update = current_user
-                WHERE id = %s
-                """,
-                [stato_doc_fiscale_id, lotto_id],
+                "SELECT vendite.fn_lotto_proietta_stato_step(%s, %s)",
+                [lotto_id, stato_doc_fiscale_id],
             )
 
     # Scopo: Gestisce `close_giornaliero_lotto` nel flusso applicativo del modulo.

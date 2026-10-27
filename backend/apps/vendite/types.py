@@ -408,6 +408,14 @@ class LottoListRow(TypedDict):
     # perimetro per le liste aperte dal drawer del lotto, che lo chiedono come
     # `emittente_fiscale_id`. ⚠️ Non e' `emittente_soggetto_ruolo_id`.
     emittente_fiscale_id: int | None
+    # ⭐ Le `action_key` dei passaggi manuali che l'operatore della sessione puo'
+    # fare dallo stato del lotto (`script.fn_doc_azioni_permesse`, §15.14): il
+    # kebab propone un verbo di stato solo se compare qui. Il permesso, non il
+    # verdetto: le precondizioni restano del dettaglio.
+    azioni_permesse: list[str]
+    # Si ristampa da qui? Lo stesso predicato del gate di `ristampa_lotto`
+    # (`STATO_DEFINITIVA`): il kebab lo legge invece di confrontare il codice.
+    ristampabile: bool
     data_insert: str | None
     user_insert: str
     # Ragione sociale dell'emittente (P-4, Fase E). ⚠️ La ragione sociale e non

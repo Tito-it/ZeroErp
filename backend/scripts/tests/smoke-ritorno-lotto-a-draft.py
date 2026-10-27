@@ -148,13 +148,16 @@ with transaction.atomic():
         rollback=False,
         dry_run=False,
     )
+    # ⛔ Lo stato del lotto non si scrive con un `UPDATE` (2026-10-27,
+    #    brief-modello-documento-vendita §15.8): la porta del DB lo rifiuta. Si
+    #    passa dagli stessi tre passi del runner — il verbo dello step, le
+    #    fatture che lo seguono, lo stato del job giudicato dal guard.
+    emessa_id = repo.get_stato_doc_fiscale_id("EMESSA")
+    repo.set_lotto_job_stato(lotto_id, "IN_ESECUZIONE", "smoke: step EMESSA")
+    repo.update_lotto_stato_doc(lotto_id, emessa_id)
+    repo.sync_lotto_fatture_stato(lotto_id=lotto_id, stato_doc_fiscale_id=emessa_id)
+    repo.set_lotto_job_stato(lotto_id, "COMPLETATO", "smoke: giro completato")
     with connection.cursor() as cur:
-        cur.execute(
-            "UPDATE vendite.fatturazione_lotti SET stato_doc_fiscale_id ="
-            " (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno='EMESSA'),"
-            " stato_lotto = 'COMPLETATO' WHERE id = %s",
-            [lotto_id],
-        )
         righe_prima = righe_del_lotto(cur, lotto_id)
         check("0) precondizione: il lotto EMESSA ha righe fattura",
               righe_prima > 0 and stato_fiscale(cur, lotto_id) == "EMESSA",

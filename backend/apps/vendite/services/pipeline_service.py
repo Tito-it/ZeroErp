@@ -22,6 +22,9 @@ from apps.vendite.db.pipeline_repository import (
     SdiPayloadRow,
     VenditePipelineRepository,
 )
+# Solo la costante: il modulo e' gia' caricato da `pipeline_repository`
+# (via `commesse_repository`), il repository resta importato al bisogno.
+from apps.vendite.db.vendite_repository import STATO_DEFINITIVA
 from apps.vendite.services._fatturazione_job_helpers import JOB_TYPES_FATTURAZIONE_APP
 from apps.vendite.services._lotto_perimetro import lotto_visibile
 from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
@@ -447,7 +450,7 @@ def numera_lotto(
     # Esegue la catena fino a DEFINITIVA: da EMESSA è esattamente lo step
     # DEFINITIVA (numera + accoda stampa), poi si ferma (DEFINITIVA chiude il lotto).
     esito = run_lotto_pipeline_until_done(
-        lotto_id=lotto_id, fino_a_stato="DEFINITIVA",
+        lotto_id=lotto_id, fino_a_stato=STATO_DEFINITIVA,
     )
     # ⚠️ L'esito della dichiarazione viaggia con quello della numerazione, e non
     #    e' decorazione: `saltate_numerate` e `rate_rigenerate` sono le due
@@ -553,7 +556,7 @@ def ristampa_lotto(
     _get_lotto_in_stato(
         lotto_id=lotto_id,
         auth_user_id=auth_user_id,
-        stato_codice="DEFINITIVA",
+        stato_codice=STATO_DEFINITIVA,
         error_code="E_LOTTO_NON_RISTAMPABILE",
         error_message=(
             "Il lotto non è definitivo: la ristampa massiva è disponibile solo "

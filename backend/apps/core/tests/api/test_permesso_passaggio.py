@@ -24,6 +24,7 @@ Indice test eseguiti:
 11) test_emissione_letta_a_ogni_richiesta         — «Emetti»: lo stato dal vocabolario, il corpo no
 12) test_emissione_assente                        — documento che non si emette: None
 13) test_emissione_esclusiva_con_stato_fisso      — due fonti dello stato: errore di cablaggio
+14) test_iniziale_dal_lettore_della_testata       — «riporta in bozza»: lo stato iniziale dal DB, mai 'DRAFT'
 """
 
 from unittest import TestCase
@@ -230,6 +231,24 @@ class PassaggioDocumentoTests(TestCase):
 
         self.assertIsNone(emetti.azione(_view(emetti)))
         repo_cls.return_value.azione_del_passaggio.assert_not_called()
+
+    # «Riporta in bozza» del lotto (§15.13): l'arrivo e' lo stato iniziale,
+    # chiesto al lettore dalla testata a ogni richiesta.
+    @patch(_REPO)
+    def test_iniziale_dal_lettore_della_testata(self, repo_cls) -> None:
+        riporta = PassaggioDocumento(
+            testata="vendite.fatturazione_lotti", documento_kwarg="documento_id",
+            stato_del_modello="iniziale",
+        )
+        repo = repo_cls.return_value
+        repo.stato_iniziale.return_value = StatoDocumento(id=1, codice="DRAFT")
+        repo.azione_del_passaggio.return_value = "numera_fatture_lotti"
+
+        self.assertEqual(riporta.azione(_view(riporta)), "numera_fatture_lotti")
+        repo.stato_iniziale.assert_called_once_with("vendite.fatturazione_lotti")
+        repo.azione_del_passaggio.assert_called_with("vendite.fatturazione_lotti", 42, "DRAFT")
+        repo.stato_di_emissione.assert_not_called()
+        repo.stato_di_annullo.assert_not_called()
 
     def test_emissione_esclusiva_con_stato_fisso(self) -> None:
         with self.assertRaises(ValueError):

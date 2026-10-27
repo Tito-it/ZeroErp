@@ -260,9 +260,9 @@ class ZeroERPPermissionTests(TestCase):
         mock_resolver.is_super_admin.return_value = False
         mock_resolver.check_azione.return_value = False
         request = _mock_request(method="POST")
-        request.path = "/api/v1/vendite/lotti/123/reset-draft/"
+        request.path = "/api/v1/vendite/fatturazione/numera/"
         view = _mock_view(area="vendite")
-        view.post_permission = "reset_lotto_draft"
+        view.post_permission = "numera_fatture_lotti"
         self.perm.has_permission(request, view)
         mock_logger.warning.assert_called_once()
         log_msg = mock_logger.warning.call_args[0][0]
