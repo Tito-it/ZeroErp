@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AZIONE DELLA COMMESSA STA SULLA RIGA DEL PASSAGGIO (M-3)
+#   Brief: brief-modello-documento-vendita §14 (giro 10; C-1 di Tid,
+#   2026-10-26). Stessa colonna delle matrici degli altri documenti
+#   (20261025-08, -38, -73, 20261026-03, -14).
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   Una sola azione, sui passaggi pesanti (M-4, guida §6). La commessa non si
+#   emette: i suoi passaggi pesanti sono quelli che la mandano in fatturazione
+#   o la chiudono. L'azione e' quella che c'e' gia', cambia_stato_commessa
+#   (C-1), su «rendi pronta», «riapri», «chiudi» e sull'annullo di una
+#   commessa non in bozza; l'annullo della bozza chiede solo il permesso sul
+#   documento.
+#
+# ── LA COLONNA ──────────────────────────────────────────────────────
+#   azione_processo_codename, FK verso config.azioni_processo.permission_codename.
+#   NULL = nessuna azione. I valori stanno nel CSV della matrice (80_data,
+#   mirror 20260607-05), non qui (§11.2).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261026-29-alter-transizioni-stati-commessa-azione-processo-mctit.yaml
+
+  - changeSet:
+      id: 20261026-29-alter-transizioni-stati-commessa-azione-processo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Colonna azione_processo_codename (FK a config.azioni_processo.permission_codename,
+        NULL = nessuna azione) su vendite.transizioni_stati_commessa: l'azione di processo che
+        il passaggio chiede (M-3). Brief: brief-modello-documento-vendita §14.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: vendite, tableName: transizioni_stati_commessa }
+            - tableExists: { schemaName: config, tableName: azioni_processo }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.transizioni_stati_commessa
+                  ADD COLUMN azione_processo_codename varchar(100),
+                  ADD CONSTRAINT fk_transizioni_stati_commessa_azioni_processo
+                      FOREIGN KEY (azione_processo_codename)
+                      REFERENCES config.azioni_processo (permission_codename);
+
+              COMMENT ON COLUMN vendite.transizioni_stati_commessa.azione_processo_codename IS
+                  'L''azione di processo che questo passaggio chiede (config.azioni_processo.permission_codename); NULL = basta il permesso sul documento, che controlla il backend. La leggono i verbi (script.fn_guard_passaggio, E_PERMESSO_NEGATO), il backend (403 prima della transazione) e la capability (il bottone si nasconde a chi non ha l''azione), tutti da script.fn_doc_passaggio. Una sola azione, sui passaggi pesanti: cambia_stato_commessa su «rendi pronta», «riapri», «chiudi» e sull''annullo di una commessa non in bozza; l''annullo della bozza col solo permesso sul documento (guida del modello §6). Il valore sta nel CSV della matrice. Brief: brief-modello-documento-vendita §14 (M-3, C-1, Tid 2026-10-24/26).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.transizioni_stati_commessa DROP COLUMN IF EXISTS azione_processo_codename;

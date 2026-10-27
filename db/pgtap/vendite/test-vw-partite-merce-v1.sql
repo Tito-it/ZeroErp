@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): la commessa passa a PRONTA_FATTURAZIONE dal verbo vendite.fn_cambia_stato_commessa, che ora chiede l'azione cambia_stato_commessa: il test prova la vista, non il permesso, e la concede all'utente del contesto (dbops.fn_pgtap_concedi_azione). Attese invariate.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi dal builder dbops.fn_pgtap_crea_reso (quello sulla riga a mano con p_ddt_riga_id: la riga d'ordine resta NULL perche' non c'e' legame); resta scritto a mano il legame resi_righe_riconsegne verso la bolla in bozza (il caso del 7).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; restano scritti a mano la riga aggiunta alla bolla in bozza (il caso del 4/5/11) e i resi (giro 2).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
@@ -229,6 +230,8 @@ SELECT pg_temp.mk_af(script.fn_segment_key('ORDINE_VENDITA', (SELECT ordine_uid 
 SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_p1)::text, (SELECT ddt_riga_id FROM tmp_p2)), 6);
 SELECT pg_temp.mk_af(script.fn_segment_key('ORDINE_VENDITA', (SELECT ordine_uid FROM tmp_p5)::text, (SELECT ordine_riga_id FROM tmp_p5)), 3);
 
+-- Il test prova la vista, non il permesso: l'azione «rendi pronta» all'utente del contesto.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));
 

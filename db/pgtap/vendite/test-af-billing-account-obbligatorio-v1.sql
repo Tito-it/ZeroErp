@@ -9,6 +9,10 @@
 --   e il guard di coerenza BA/utility valida DAVVERO.
 --   ChangeSet: 20260910-25 (NOT NULL + backfill), 20260910-26 (guard).
 --   Brief: brief-db-perimetro-emittente-righe-documento.md §11.13
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): la commessa va
+--   a PRONTA_FATTURAZIONE da dbops.fn_pgtap_porta_a_stato (il verbo, con
+--   l'azione cambia_stato_commessa concessa dalla fixture), non piu' con un
+--   UPDATE dello stato, che la porta rifiuta;
 --
 -- Elenco test (plan 6):
 --   1) struttura: billing_account_id e' NOT NULL
@@ -177,10 +181,9 @@ SELECT vendite.fn_link_commessa_sorgente(
     p_sorgente_uid     => (SELECT commessa_id FROM _commessa)::text
 );
 
-UPDATE vendite.commesse
-   SET stato_commessa_id = (SELECT s.id FROM vendite.stati_commessa s
-                             WHERE s.codice_interno = 'PRONTA_FATTURAZIONE')
- WHERE id = (SELECT commessa_id FROM _commessa);
+-- Lo stato si cambia dal verbo (la porta, giro 10): la fixture cammina la
+--   matrice nei panni dell'operatore e gli concede da se' cambia_stato_commessa.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.commesse', (SELECT commessa_id FROM _commessa), 'PRONTA_FATTURAZIONE');
 
 CREATE TEMP TABLE _emit AS
 SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(

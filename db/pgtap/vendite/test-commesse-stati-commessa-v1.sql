@@ -3,12 +3,19 @@
 -- pgTAP test per Zero ERP
 -- Test: stati_commessa lookup + refactor FK + fn_list_commesse_emittibili
 -- (changeset 20260226-01..06)
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): IN_ESECUZIONE e' ritirato
+--   (attivo = false, C-3): gli stati attivi sono cinque.
+-- ⚠️ Attesa cambiata: test 4 (6 -> 5 stati attivi, e IN_ESECUZIONE fra i non attivi), perche' il
+--   giro 10 ritira IN_ESECUZIONE dal vocabolario della commessa.
+-- rev 2026-10-26 (giro 10, C-1, dopo la corsa di Tid su dbdev): prima di «rendi pronta» e «chiudi»
+--   l'azione cambia_stato_commessa all'utente del contesto; il file prova l'emittibilita', non il
+--   permesso. Sullo scratch il file e' tronco prima di quel punto (debito preesistente).
 -- ------------------------------------------------------------
 -- Indice test (1..18):
 --  1) Tabella vendite.stati_commessa presente
 --  2) FK commesse.stato_commessa_id presente
 --  3) Vecchia colonna commesse.stato_commessa rimossa
---  4) 6 stati_commessa presenti e attivi
+--  4) 5 stati_commessa presenti e attivi (IN_ESECUZIONE ritirato, giro 10)
 --  5) Flag chiude_commessa corretto (CHIUSA/ANNULLATA=true, altri=false)
 --  6) Flag emittibile corretto (solo PRONTA_FATTURAZIONE=true)
 --  7) Flag modificabile corretto (CHIUSA/ANNULLATA=false, altri=true)
@@ -82,9 +89,13 @@ SELECT ok(
 -- ============================================================
 
 SELECT is(
-  (SELECT count(*)::integer FROM vendite.stati_commessa WHERE attivo = true),
-  6,
-  '6 stati_commessa presenti e attivi'
+  (SELECT string_agg(codice_interno::text, ',' ORDER BY codice_interno)
+     FROM vendite.stati_commessa WHERE attivo = true)
+  || ' | ritirato: ' ||
+  (SELECT string_agg(codice_interno::text, ',' ORDER BY codice_interno)
+     FROM vendite.stati_commessa WHERE attivo = false),
+  'ANNULLATA,APERTA,BOZZA,CHIUSA,PRONTA_FATTURAZIONE | ritirato: IN_ESECUZIONE',
+  '5 stati_commessa presenti e attivi, IN_ESECUZIONE ritirato (giro 10)'
 );
 
 SELECT ok(
@@ -370,6 +381,10 @@ SELECT ok(
 --   dal guard 20260607-02 perche' esiste una riga APPROVATA+NON_EMESSA
 --   (creata dal test upsert sopra). Usa la fn entrypoint sanzionata.
 -- ============================================================
+
+-- rev 2026-10-26 (giro 10, C-1): «rendi pronta» e «chiudi» chiedono l'azione
+--   cambia_stato_commessa; il file prova l'emittibilita', non il permesso.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 
 SELECT * FROM vendite.fn_cambia_stato_commessa(
   (SELECT commessa_id FROM tmp_commessa_sc),

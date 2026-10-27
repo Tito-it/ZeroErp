@@ -4,7 +4,7 @@ cfgv==3.5.0
 charset-normalizer==3.5.2
 click==8.5.0
 colorama==0.4.6
-deepmerge==3.0.1
+deepmerge==4.0.0
 distlib==0.4.4
 EditorConfig==0.17.1
 filelock==4.2.4
@@ -27,7 +27,7 @@ psycopg-binary==3.3.6
 Pygments==2.21.0
 pymdown-extensions==12.3
 python-dateutil==3.0.0
-python-discovery==1.6.4
+python-discovery==1.6.5
 python-dotenv==1.2.4
 PyYAML==6.0.3
 requests==2.34.2
@@ -39,6 +39,6 @@ tomli==2.5.0
 typing_extensions==4.16.0
 tzdata==2026.5
 urllib3==2.8.0
-virtualenv==21.14.13
+virtualenv==21.15.0
 wcmatch==11.2
-zensical==0.0.72
+zensical==0.0.73

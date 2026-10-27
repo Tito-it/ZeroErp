@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): la commessa passa a PRONTA_FATTURAZIONE dal verbo vendite.fn_cambia_stato_commessa, che ora chiede l'azione cambia_stato_commessa: il test prova la vista, non il permesso, e la concede all'utente del contesto (dbops.fn_pgtap_concedi_azione). Attese invariate.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi dal builder dbops.fn_pgtap_crea_reso (pg_temp.mk_reso ritirata; quello sulla riga a mano con p_ddt_riga_id, la riga d'ordine resta NULL perche' non c'e' legame; i due di P4 sono due resi distinti sulla stessa riga, come prima); nulla della strada del reso resta scritto a mano.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (le due spedizioni del P6 con p_qta_da_evadere, poi p_ordine_id); restano scritti a mano la riga aggiunta alla bolla in bozza (il caso del 9) e i resi (giro 2).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
@@ -224,6 +225,8 @@ SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM t
 SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_p1)::text, (SELECT ddt_riga_id FROM tmp_p5_riga_ddt)), 6);
 -- P6: solo la spedizione A e' fatturata. La B no, di proposito.
 SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_a_uid FROM tmp_p6)::text, (SELECT ddt_a_riga FROM tmp_p6)), 4);
+-- Il test prova la vista, non il permesso: l'azione «rendi pronta» all'utente del contesto.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));
 

@@ -13,7 +13,7 @@
 --  2) Trigger guard transizione presente su vendite.commesse
 --  3) fn_cambia_stato_commessa presente
 --  4) fn_approva_commessa_attivita presente
---  5) Seed: 12 transizioni presenti
+--  5) Seed: 14 transizioni presenti, 8 attive (rev 2026-10-26)
 --  6) Seed: BOZZA->PRONTA_FATTURAZIONE (1->4) presente e attiva
 --  7) Transizione non in matrice rifiutata (BOZZA->CHIUSA)
 --  8) ->PRONTA_FATTURAZIONE senza righe approvate rifiutata
@@ -21,6 +21,15 @@
 -- 10) fn_approva_commessa_attivita idempotente (seconda chiamata ritorna 0)
 -- 11) ->PRONTA_FATTURAZIONE ammessa dopo approvazione righe
 -- 12) Commessa ora inclusa in fn_list_commesse_emittibili
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): matrice al
+--   modello del documento (C-3). Sullo scratch il file e' tronco al test 7 su
+--   «p_billing_account_id obbligatorio» (debito preesistente, non di questo
+--   giro); su dbdev arriva in fondo. Prima dei test 7-12 l'azione
+--   cambia_stato_commessa all'utente del contesto (C-1): il file prova la
+--   matrice, non il permesso (dopo la corsa di Tid del 2026-10-26).
+-- ⚠️ Attesa cambiata: test 5 da «12 transizioni» a «14 transizioni, 8 attive»,
+--   perche' il giro aggiunge PRONTA->APERTA (13, «riapri») e APERTA->CHIUSA (14,
+--   «chiudi») e spegne BOZZA->APERTA e ogni arco che nomina IN_ESECUZIONE (ritirato).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -92,10 +101,14 @@ SELECT ok(
 -- (CHIUSA era raggiungibile solo da PRONTA), e restava con la sola uscita
 -- ANNULLATA — a sua volta vietata dal guard se aveva righe emesse.
 -- La copertura dell'arco nuovo sta in test-guard-uscita-commessa-v1.sql.
+-- rev 2026-10-26 (giro 10): + PRONTA->APERTA (13) e APERTA->CHIUSA (14); spenti
+-- BOZZA->APERTA (1) e i cinque archi che nominano IN_ESECUZIONE (4, 7, 8, 9, 12).
+-- Si contano anche le attive: sono loro a decidere che cosa la macchina ammette.
 SELECT is(
-  (SELECT count(*)::int FROM vendite.transizioni_stati_commessa),
-  12,
-  'Seed: 12 transizioni presenti'
+  (SELECT format('totali=%s attive=%s', count(*), count(*) FILTER (WHERE attivo))
+     FROM vendite.transizioni_stati_commessa),
+  'totali=14 attive=8',
+  'Seed: 14 transizioni presenti, 8 attive'
 );
 
 SELECT ok(
@@ -215,6 +228,13 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'TSC')
 ) r;
+
+-- rev 2026-10-26 (giro 10, C-1): «rendi pronta» chiede l'azione
+--   cambia_stato_commessa. Il file prova la matrice e le condizioni, non il
+--   permesso: l'azione all'utente del contesto, PRIMA dei rifiuti attesi, che
+--   altrimenti scatterebbero per il permesso (P0001 anche lui) e sarebbero
+--   verdi per la ragione sbagliata.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 
 -- ============================================================
 -- TEST: transizione non in matrice rifiutata

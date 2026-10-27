@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): la commessa passa a PRONTA_FATTURAZIONE dal verbo vendite.fn_cambia_stato_commessa, che ora chiede l'azione cambia_stato_commessa: il test prova la vista, non il permesso, e la concede all'utente del contesto (dbops.fn_pgtap_concedi_azione). Attese invariate (l'11 resta rosso da owner, come prima).
 -- rev 2026-10-25 (brief-modello-documento-vendita §9, giro 7): l'annullo dell'ordine H (test 13) non e' piu' un UPDATE diretto dello stato, che la porta ferma (E_DOC_STATO_SOLO_DAL_VERBO): passa dal verbo d'annullo vendite.fn_annulla_ordine, con emetti_ordine concessa all'utente del contesto (l'annullo di un confermato la chiede). Attese invariate.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): gli ordini senza bolla (A, G, H) da dbops.fn_pgtap_crea_ordine_con_righe in pg_temp.mk_ordine (lo stato per parametro: ritirata la copia pg_temp.mk_ordine_stato); restano a mano l'annullo di H (il percorso del 13) e l'attivita' del kit di F (il caso del 10).
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso, la ri-consegna da dbops.fn_pgtap_crea_ddt_riconsegna (tutto il reso, consegnata); l'azione conferma_reso la concede il builder.
@@ -297,6 +298,8 @@ BEGIN
     p_tipo_movimento => 'NORMALE', 
     p_meta => '{}'::jsonb, p_causale_onere_id => NULL);
 END $mk$;
+-- Il test prova la vista, non il permesso: l'azione «rendi pronta» all'utente del contesto.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));
 

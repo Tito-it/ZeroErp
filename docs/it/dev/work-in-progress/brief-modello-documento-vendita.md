@@ -1,10 +1,11 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-26 (giro 9, l'offerta: DB applicato e verde, BE fatto; tocca a Tid, §13.8)
+## ⏭️ Chi riparte — aggiornato al 2026-10-27 (giro 9, l'offerta: DB e BE fatti; giro 10, la commessa: DB applicato e verde, scratch da zero di nuovo verde; tocca al BE, §14.6)
 
-**Riparte: Tid**, col commit del passaggio BE del giro 9 (§13.8, richiesta del §13.6 fatta per intero, suite
-verde; ritirato anche il lettore `stato_id`, ok di Tid). **Tid**, col dato
-`emetti_offerta` ai profili e col dato
+**Riparte: il team BE**, sulla richiesta del §14.6 (la commessa, sette punti): dopo l'apply del giro 10 (applicato e
+verde, Tid 2026-10-26) il cambio di stato della commessa del backend si rompe, perché chiama il verbo con `p_user`
+(punto 1). Il passaggio BE del giro 9 è fatto e su `Tito-dev` (§13.8, PR #1961). **Tid**, col commit del giro DB
+10 (§14.4, §14.5); col dato `emetti_offerta` ai profili e col dato
 `emetti_contratto` **ed** `emetti_ordine` ai profili su dbdev: letto il 2026-10-26, nessun profilo le ha, quindi
 in collaudo nessuno attiva o cessa un contratto né conferma un ordine (§11.7, «Stato letto dal team DB»).
 Il passaggio BE del §11.7 è committato (`fe041a1a1`, `0a08565be`, PR #1956). Il **team DB** ha una
@@ -71,20 +72,25 @@ ritiro di `STATO_EMESSO`, che aspetta il lettore. Il giro 5 è chiuso e committa
 | 4-bis-decies-quater | ✅ team DB | Giro 9 scritto (`-14` … `-28`, CSV) e provato in transazione; 25/25 il pgTAP nuovo, 24 pgTAP portati, regressione su 61 file senza peggioramenti | §13.4, §13.5 | 4-bis-decies-ter |
 | 4-bis-decies-quinquies | ✅ **Tid** | Apply del giro 9 e corsa pgTAP come app: verdi (2026-10-26) | §13.7 | 4-bis-decies-quater |
 | 4-bis-decies-sexies | ✅ team BE | Richiesta del §13.6 (nove punti) fatta il 2026-10-26: verbi, legami, 403 dalla riga, policy, frontend, test, doc | §13.8 | 4-bis-decies-quinquies |
-| 4-bis-decies-sexies-bis | **Tid** ⏭️ | Commit del passaggio BE del giro 9 (il lettore `stato_id` ritirato, ok di Tid 2026-10-26) | §13.8 | 4-bis-decies-sexies |
+| 4-bis-decies-sexies-bis | ✅ **Tid** | Commit del passaggio BE del giro 9 (il lettore `stato_id` ritirato, ok di Tid 2026-10-26): su `Tito-dev`, PR #1961 | §13.8 | 4-bis-decies-sexies |
 | 4-bis-decies-septies-bis | team DB | Richiesta (priorità bassa, ok di Tid 2026-10-26): numero e link della revisione precedente nella finestra dell'annullo dell'offerta | §13.9 | — |
+| 4-bis-decies-septies-ter | team DB | Richiesta (priorità bassa): dove la motivazione è AMMESSA sulla riga del passaggio, e il verbo dell'offerta rifiuta il resto (oggi la scrive su ogni passaggio) | §13.9 | — |
+| 4-bis-decies-septies-quater | team DB | Proposta (§13.9): la guida del modello dichiara decisa l'asimmetria offerta/preventivo sulla revisione (scelta di Tid del 2026-07-16), col rimando | §13.9 | — |
 | 4-bis-decies-septies | **Tid** | Il dato `emetti_offerta` (ed `emetti_contratto`, `emetti_ordine`) ai profili su dbdev | §13.7 | — |
 | 4-bis-undecies | ✅ **Tid** → team DB | Il via al giro 10: la commessa, ricognizione (2026-10-26). Non aspetta il BE (§5) | §14 | 4-bis-decies-quinquies |
 | 4-bis-undecies-bis | ✅ team DB | Giro 10, la commessa: ricognizione, piano, domande | §14 | 4-bis-undecies |
-| 4-bis-undecies-ter | **Tid** ⏭️ | C-1 e C-4 decise (2026-10-26); C-2, C-3 e il via allo sviluppo | §14.3 | 4-bis-undecies-bis |
+| 4-bis-undecies-ter | ✅ **Tid** | C-1 … C-4 (C-3: IN_ESECUZIONE si ritira, «riapri» → APERTA) e il via allo sviluppo (2026-10-26) | §14.3 | 4-bis-undecies-bis |
+| 4-bis-undecies-quater | ✅ team DB | Giro 10 scritto (`-29` … `-36`, CSV) e provato in transazione; 20/20 il pgTAP nuovo, 21 pgTAP portati, regressione su 93 file senza peggioramenti | §14.4, §14.5 | 4-bis-undecies-ter |
+| 4-bis-undecies-quinquies | ✅ **Tid** | Passo a mano del §14.4, apply del giro 10 e corsa pgTAP come app: verdi (2026-10-26), coi quattro file portati dopo la prima corsa e la guard d'uscita riscritta (§14.5) | §14.4, §14.5 | 4-bis-undecies-quater |
+| 4-bis-undecies-quinquies-bis | ✅ **Tid** | I due passi per lo scratch da zero (`20261019-13`, `20261026-37`) applicati su dbdev (a vuoto) e ricostruzione dello scratch `zeroerp_ruoli` da zero passata; corsa pgTAP verde (2026-10-26/27) | §14.5 | 4-bis-undecies-quinquies |
+| 4-bis-undecies-sexies | team BE ⏭️ | Richiesta del §14.6 (sette punti): dopo l'apply il cambio di stato della commessa del backend si rompe (firma nuova) | §14.6 | 4-bis-undecies-quinquies |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 | 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1, il blocco «origine» della stampa della fattura, da decidere nel giro della fattura; D-G2, la prova a video del lotto 2b | §10 | — |
 | 5-ter | **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, il censimento dei gate delle azioni per riga; quando, lo decide Tid | §12 | — |
 
-Decisioni aperte di Tid: quando fare D-N1 (§12, riga 5-ter). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Lavoro da committare (`dev/backend-tid`): il passaggio BE del giro 9 (§13.8) e questo brief. Il giro 9 DB è committato (`52e18d887`). Committati: il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`; il merge `2f5da4bed` ne aveva perso la tabella e il blocco «Chi riparte», ricomposti il 2026-10-26), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
-Decisioni aperte di Tid: C-2 e C-3 del giro della commessa (§14.3; C-1 e C-4 decise) e il via allo sviluppo; quando fare D-N1 (§12, riga 5-ter). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Lavoro da committare (`dev/db-tid`): il giro 9 (§13.4, applicato e verde) e questo brief. Committati: il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`; il merge `2f5da4bed` ne aveva perso la tabella e il blocco «Chi riparte», ricomposti il 2026-10-26), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
+Decisioni aperte di Tid: quando fare D-N1 (§12, riga 5-ter). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Lavoro da committare: `dev/db-tid`, il giro 10 (§14.4, applicato e verde), i due passi per lo scratch da zero (`20261019-13`, `20261026-37`, §14.5, applicati e verdi) e questo brief. Committati: il passaggio BE del giro 9 (§13.8, PR #1961), il giro DB 9 (`52e18d887`, PR #1960), il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`; il merge `2f5da4bed` ne aveva perso la tabella e il blocco «Chi riparte», ricomposti il 2026-10-26), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -2469,6 +2475,8 @@ concede: anche col BE portato, senza il dato nessuno emette un'offerta.
 Il §13.6 resta l'elenco chiuso del passaggio BE: nessun punto nuovo, la tabella sopra dice solo che cosa è rotto
 **adesso**, nell'attesa (rotture BE accettate fino a fine cantiere).
 
+✅ **Risolto dal passaggio BE del §13.8** (2026-10-26): le tre strade passano dai verbi.
+
 ### 13.8 Fatto dal team BE (2026-10-26): §13.6 punti 1-9
 
 1. **«Emetti»**: `OfferteService.emetti` chiama `vendite.fn_cambia_stato_offerta(id, <stato di emissione dal
@@ -2673,5 +2681,153 @@ il verbo); il repository segue la firma (C-4); la guida delle commesse e `api_co
 D-N1 (le azioni di riga) resta fuori senza una tua decisione: le righe di commessa (approva, annulla attività) ne
 sarebbero un caso.
 
-✅ **Decise da Tid il 2026-10-26: C-1 e C-4 come da proposta.** C-2 e C-3 aperte (Tid ha chiesto una spiegazione più
-semplice).
+✅ **Decise da Tid il 2026-10-26: C-1, C-2 e C-4 come da proposta; C-3 come sotto; via allo sviluppo.**
+
+**C-3, decisa (Tid, 2026-10-26):** lo stato **IN_ESECUZIONE si ritira** («lavorazione in corso» è dello stato del
+processo, non del documento: tema a parte, sotto). **«Riapri» porta ad APERTA**, che diventa «riaperta dopo essere
+stata pronta»: da lì «rendi pronta», «chiudi» (oggi partiva da IN_ESECUZIONE) e «annulla» con l'azione. Il passaggio
+di processo BOZZA → APERTA, che nessuno scrive, si spegne. Nessuna decisione precedente sul significato dei due stati
+(sono del primo seed, giugno 2026; «riapri» del 2026-06-16, `13f7d34cf`): non è una revoca.
+
+**C-3, l'idea di Tid (2026-10-26).** IN_ESECUZIONE dovrebbe dire «un processo sta lavorando la commessa»: mentre un
+processo la lavora (da bozza ad aperta, da aperta a pronta…), la commessa passa in esecuzione, così si vede che il
+lavoro è in corso; oppure uno stato a parte. Lettura del team DB, da decidere:
+* «lavorazione in corso» è lo stato **del processo**, non del documento, e una sede c'è già per la push:
+  `vendite.commesse_push_log`, una riga per giro in IN_ESECUZIONE finché il giro non chiude (anche quando muore a
+  metà). Oggi però è per giro, non per commessa: il giro sa le sue commesse solo dentro `risultato.perimetro`;
+* come stato del documento avrebbe tre problemi di forma: il processo lavora in una transazione, e gli altri vedono
+  lo stato «in esecuzione» solo se il processo lo committa prima di lavorare; se il processo muore, la commessa resta
+  in esecuzione e qualcuno deve riportarla indietro; e lo stato di prima (bozza, aperta) va ricordato per tornarci;
+* proposta: la commessa **mostra** «lavorazione in corso» leggendola dal processo (una capability che guarda il giro
+  aperto che la tocca), e il vocabolario dice cosa la commessa **è**. È un tema suo (legame giro ↔ commessa, e cosa
+  vogliono dire APERTA e IN_ESECUZIONE), fuori da questo giro.
+
+### 14.4 Scritto (2026-10-26)
+
+| ChangeSet / file | Che cosa |
+| --- | --- |
+| `20261026-29-alter-transizioni-stati-commessa-azione-processo` | colonna `azione_processo_codename` sulla matrice della commessa, FK al catalogo delle azioni |
+| CSV `transizioni_stati_commessa`, mirror `20260607-05` | C-1: `cambia_stato_commessa` sulle righe 2, 5 («rendi pronta»), 6, 11 (annullo non in bozza), 10 («chiudi»); C-3: spente le righe 1 (BOZZA → APERTA) e 4, 7, 8, 9, 12 (IN_ESECUZIONE); nuove la 13 («riapri», PRONTA_FATTURAZIONE → APERTA) e la 14 («chiudi», APERTA → CHIUSA); mirror con la colonna e `nullValue: "NULL"` |
+| CSV `stati_commessa` | IN_ESECUZIONE `attivo = false` (C-3) |
+| CSV `azioni_processo` (id 30) | la descrizione di `cambia_stato_commessa` dice i passaggi nuovi |
+| `-30-replace-fn-cambia-stato-commessa-verbo-comune` | il verbo sul verbo comune, DEFINER col predicato del perimetro, firma `(id, stato)` senza `p_user` (C-4): DROP + CREATE |
+| `-31-create-fn-commessa-proietta-stato-emittibile` | la proiezione del passaggio della push allo stato emittibile (C-2), DEFINER, con la scrittura comune; lo stato dal vocabolario (`emittibile`) |
+| `-32-update-fn-rendi-commessa-emittibile-proiezione` | il ponte della push chiama la proiezione (prima il verbo col letterale `'PRONTA_FATTURAZIONE'`) |
+| `-33-update-fn-annulla-commessa-verbo-comune` | l'annullo chiama il verbo nella firma nuova, lo stato d'annullo dal vocabolario |
+| `-34-create-trigger-stato-solo-dal-verbo-commesse` | la porta sulla commessa |
+| `-35-update-fn-available-actions-commessa-permesso-del-passaggio` | permesso ⇒ nascondi; i motivi legati a `emittibile` e `is_abortito`; CHIUSA resta sul codice |
+| `-36-update-fn-pgtap-porta-a-stato-commessa` | la fixture conosce il verbo della commessa |
+| doc | guida del modello §10 (riga della commessa, intro); guida delle commesse (stati, passaggi); pagine manuali del verbo (riscritta), della matrice, del vocabolario, del ponte; nuova quella della proiezione |
+
+⚠️ **Su dbdev, PRIMA del migrate, un passo a mano (Tid).** I CSV si caricano in ordine di nome: il mirror del
+vocabolario (`20260226-07`) gira prima di quello della matrice (`20260607-05`). Spegnere IN_ESECUZIONE mentre le
+righe della matrice che lo nominano sono ancora attive lo rifiuta il guard ATTIVO del vocabolario
+(`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, provato sullo scratch il 2026-10-26), e il migrate si ferma su un changeSet di
+febbraio. La correzione non può stare in un changeSet nuovo (§11.2, e girerebbe comunque dopo il mirror di
+febbraio): è un dato, e si fa prima del migrate:
+
+```sql
+UPDATE vendite.transizioni_stati_commessa SET attivo = false WHERE id IN (4, 7, 8, 9, 12);
+```
+
+Poi il migrate porta la matrice al CSV (le stesse righe spente, più le altre). In CI non serve: il database nasce da
+zero e il vocabolario si carica con un `INSERT`, che il guard non guarda. Nessuna commessa su dbdev è in
+IN_ESECUZIONE (letto il 2026-10-26), altrimenti lo stesso guard avrebbe chiesto anche di spostarle.
+
+### 14.5 Prova e regressione (2026-10-26)
+
+Sullo scratch `zeroerp_ruoli` (col giro 9) come `zeroerp_owner`: SQL estratto dei changeSet `-29` … `-36` e seed
+simulato **nell'ordine di dbdev**, col passo a mano del §14.4 prima del mirror del vocabolario, nella transazione
+annullata di ogni file. Senza il passo il seed si ferma su `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (provato).
+
+* **Nuovo** `vendite/test-commessa-al-modello-v1` (20): **20/20 da owner**.
+* **Regressione, prima del porting:** 93 file che toccano lo stato, la matrice, il vocabolario, il builder, la
+  capability, l'annullo o il ponte della commessa (più i presidi del modello). 21 cambiavano, per tre cause attese:
+  la porta (l'`UPDATE` diretto in fixture), C-1 (l'azione su «rendi pronta» e sull'annullo fuori dalla bozza, in
+  fixture che provano altro), C-3 (stati e righe della matrice contati; una commessa APERTA costruita senza righe,
+  che ora si raggiunge solo da «riapri»).
+* **Porting dei 21** (tre agenti in parallelo, ogni file provato col file composto). Attese cambiate, dichiarate in
+  testa ai file:
+  * `test-doc-verbo-comune-e-porta-v1` 9 e 10: la commessa entra fra le testate con la porta (7 montaggi);
+  * `test-commesse-stati-commessa-v1` 4: l'elenco degli stati attivi, IN_ESECUZIONE ritirato;
+  * `test-commesse-transizioni-stati-v1` 5: 14 righe, 8 attive;
+  * `test-guard-uscita-commessa-v1` 3: l'uscita dal vicolo cieco è APERTA → CHIUSA;
+  * `test-annullo-commessa-rettifica-v1` 2 e `test-annullo-commessa-v1` 19: stesso esito, la strada è il verbo
+    (con l'`UPDATE` diretto la porta parlava prima del motivo che il test vuole vedere).
+* **Regressione finale**, in sequenza, sui 93 file col giro 10: **92 identici al prima**, con tutte le asserzioni
+  eseguite fin dove arrivavano prima; il nuovo da rosso a 20/20. Restano i rossi e i tronchi di prima, uguali.
+* ⚠️ **Debito dichiarato, non di questo giro.** Diversi file della commessa sono **tronchi già prima del giro**
+  («Parametro non valido: p_billing_account_id obbligatorio», «valore nullo in billing_account_id»): fra gli altri
+  `test-commesse-stati-commessa-v1`, `test-commesse-transizioni-stati-v1`, `test-guard-uscita-commessa-v1`,
+  `test-fn-available-actions-commessa-v1`, `test-attivita-fatturabili`, `test-commesse-schema-v1`. Le parti che
+  oggi non si raggiungono non sono state portate: in `test-guard-uscita-commessa-v1` i test 10, 11 e 14a passano
+  ancora da IN_ESECUZIONE; in `test-commesse-stati-commessa-v1` due chiamate al verbo chiederanno l'azione. Chi
+  ripara il troncamento le porta.
+* Scratch verificato pulito dopo le corse.
+
+La misura che conta (come app) arriva dalla corsa di Tid dopo l'apply.
+
+**Dopo l'apply e la corsa di Tid (2026-10-26).** Due file, tronchi sullo scratch ma completi su dbdev, si fermavano
+sulle chiamate al verbo oltre il punto in cui lo scratch li tronca: `test-commesse-stati-commessa-v1` («rendi
+pronta» e «chiudi» senza l'azione) e `test-commesse-transizioni-stati-v1` (11 e 12). Portati: l'azione
+`cambia_stato_commessa` all'utente del contesto prima dei passaggi. Nel secondo anche un verde per la ragione
+sbagliata: il test 8 («→ PRONTA senza righe approvate rifiutata», un `throws_ok` sul solo P0001) sarebbe scattato
+per il permesso; con l'azione concessa prima, rifiuta per la regola delle righe. Cercati nello stesso giro gli
+altri file con la stessa trappola dietro un rosso preesistente: portati `test-commessa-pronta-fatturazione-v1` (6 e
+7 dal verbo; il 7 asserisce la frase di `E_COMMESSA_NESSUNA_RIGA_APPROVATA`, non più il solo P0001) e
+`test-trigger-af-commessa-aware-v1` (la commessa a pronta dalla fixture). Non provabili sullo scratch (tronchi
+prima): la misura è la corsa di Tid. ⚠️ Resta `test-guard-uscita-commessa-v1`: gli scenari B, C e D costruiscono
+una commessa in IN_ESECUZIONE (BOZZA → APERTA → IN_ESECUZIONE), che non esiste più; vanno riscritti sul modello
+nuovo (la commessa riaperta, APERTA) da chi ripara il suo troncamento, con i casi del vicolo cieco ripensati.
+
+**La guard d'uscita riscritta (2026-10-26).** `test-guard-uscita-commessa-v1` costruiva gli scenari B, C, D in
+IN_ESECUZIONE; ora partono dalla commessa riaperta (APERTA, da PRONTA con «riapri»): [B] il vicolo cieco è la
+commessa riaperta e tutta emessa (la riga va a PRONTA, l'emissione vera la marca EMESSA, poi «riapri»), [C] riaperta
+con una riga emessa e una da emettere, [D] riaperta senza righe emesse. Attese invariate.
+
+**Applicato e verde (Tid, 2026-10-26):** passo a mano, migrazione del giro 10 (con `20261019-13` e `20261026-37`) e
+corsa pgTAP come app.
+
+**Fuori tema, emerso ricostruendo lo scratch (Tid, 2026-10-26).** `ci-local.sh --fresh` si ferma su
+`00_schema/vendite/20261020-32` (brief-db-grammatica-unica-documenti, G-5): toglie `fk_registri_fatturazione_famiglia`
+senza `IF EXISTS`, ma da zero quella FK nasce solo in `90_end/20260830-16`, dopo. E la rimette subito, mentre da zero
+deve restare spenta durante `80_data` (i seed dei registri girano prima di quello delle famiglie). Il `-32` è
+committato e applicato: non si tocca. Due passi suoi: `20261019-13` crea la FK se manca (prima del `-32`; un buco
+di una data passata, fuori regola e dichiarato: il master autogenerato in modalità stretta non ammette un suffisso
+come «-31a», e il 20-10 non ha numeri liberi prima del 32); `20261026-37` la toglie se `20260830-16` non è ancora
+registrato, cioè da zero, e la rimette `90_end`. Su dbdev girano tutti e due a vuoto (FK presente, `20260830-16`
+eseguito: letto il 2026-10-26). Provato sullo scratch fermo prima del `-32`, in transazione: FK presente dopo il
+`-13`, il `-32` passa, assente dopo il `-37`.
+
+✅ **Applicato e verde (Tid, 2026-10-26/27).** Su dbdev `20261019-13` e `20261026-37` sono registrati (a vuoto); lo
+scratch `zeroerp_ruoli` si è ricostruito da zero fino in fondo (i 37 changeSet del 2026-10-26 registrati, il
+vocabolario degli stati seminato: letto il 2026-10-27); corsa pgTAP verde, compresa la guard d'uscita riscritta.
+
+### 14.6 Richiesta al team BE (elenco chiuso, dopo l'apply)
+
+Percorso letto il 2026-10-26: `commesse_service.cambia_stato_commessa`, `CommesseRepository.cambia_stato_commessa`,
+la view dello stato (`views.py`, `post_permission = "cambia_stato_commessa"`), il ponte della push
+(`_rendi_commessa_emittibile`), i test Django, il frontend.
+
+1. **La firma del verbo** (C-4): `CommesseRepository.cambia_stato_commessa` chiama
+   `vendite.fn_cambia_stato_commessa(p_commessa_id, p_stato)`, senza `p_user` (oggi `p_nuovo_stato =>` e
+   `p_user =>`: dopo l'apply la funzione con quei nomi non c'è più, e il cambio di stato della commessa si rompe).
+2. **Il 403 dalla riga del passaggio** (`PassaggioDocumento`) al posto di `post_permission = "cambia_stato_commessa"`
+   su ogni passaggio: «rendi pronta», «riapri», «chiudi» e l'annullo di una commessa non in bozza chiedono
+   l'azione; **l'annullo della bozza no** (C-1, cambio visibile).
+3. **La «difesa applicativa»** di `cambia_stato_commessa` (lo stato ammesso solo se è una `available_action`
+   abilitata) si ritira: ripeteva due regole del DB, che ora le dice il verbo (il passaggio di processo chiesto a
+   mano, `E_DOC_PASSAGGIO_DI_PROCESSO`) e il guard (le condizioni). Resta la lettura della capability per i
+   `404`, se serve.
+4. **Il ponte della push** (`_rendi_commessa_emittibile` → `fn_rendi_commessa_emittibile`): nessuna modifica, firma
+   invariata; da sapere che il passaggio a pronta non chiede più l'azione del passaggio manuale (C-2).
+5. **IN_ESECUZIONE ritirato** (C-3): l'etichetta (`stato_in_esecuzione` in `locales/it.json`) e il colore
+   (`core/utils/severity.js`) della commessa restano senza uno stato che li usi: si tolgono, o restano dichiarati
+   per lo storico. «Riapri» porta ad APERTA: la capability lo dice già (`target_state`).
+6. **Test Django** che chiamano il verbo con `p_user`, usano IN_ESECUZIONE o si aspettano il 403 sull'annullo della
+   bozza (`tests/api/test_commesse_api.py`, `tests/services/test_commesse_service.py`): alla firma e alla matrice
+   nuove.
+7. **Doc** `api_commessa_stato.md`: i passaggi, i permessi per passaggio, la firma.
+
+Da sapere: nessun codice d'errore nuovo. `cambia_stato_commessa` la ha già un profilo su dbdev (letto il
+2026-10-26): chi oggi cambia lo stato continua a farlo.

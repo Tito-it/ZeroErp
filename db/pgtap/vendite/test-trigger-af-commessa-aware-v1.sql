@@ -13,6 +13,10 @@
 --  6) Normalize: competenza_mese AF corretta (non sovrascritta)
 --  7) Normalize: tipo_doc_fiscale_id risolto anche su riga da commessa
 --  8) Normalize: valuta_id risolta anche su riga da commessa
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): la porta sulla
+--   commessa rifiuta l'UPDATE diretto dello stato; la commessa va a
+--   PRONTA_FATTURAZIONE con dbops.fn_pgtap_porta_a_stato (il verbo, l'azione la
+--   concede la fixture). Attese invariate.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -208,9 +212,8 @@ SELECT vendite.fn_link_commessa_sorgente(
 );
 
 -- Porta commessa in stato PRONTA_FATTURAZIONE (emittibile=true)
-UPDATE vendite.commesse
-SET stato_commessa_id = 4
-WHERE id = (SELECT commessa_id FROM tmp_commessa_tca);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.commesse', (SELECT commessa_id FROM tmp_commessa_tca),
+                                     'PRONTA_FATTURAZIONE');
 
 -- Esegui emit: crea righe AF con commessa_attivita_id NOT NULL
 CREATE TEMP TABLE tmp_emit_tca AS

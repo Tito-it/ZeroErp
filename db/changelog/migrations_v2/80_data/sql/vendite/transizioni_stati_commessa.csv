@@ -1,13 +1,15 @@
-id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_update
-1,1,2,t,"{""manuale"":false}",2026-06-07 00:00:00+02,SEED,2026-06-07 00:00:00+02,SEED
-2,1,4,t,"{""action_key"":""rendi_pronta"",""label_key"":""vendite.commesse.azione_rendi_pronta"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-08-04 00:00:00+02,mctit
-3,1,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.commesse.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
-4,2,3,t,"{""manuale"":false}",2026-06-07 00:00:00+02,SEED,2026-06-07 00:00:00+02,SEED
-5,2,4,t,"{""action_key"":""rendi_pronta"",""label_key"":""vendite.commesse.azione_rendi_pronta"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-08-04 00:00:00+02,mctit
-6,2,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.commesse.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
-7,3,4,t,"{""action_key"":""rendi_pronta"",""label_key"":""vendite.commesse.azione_rendi_pronta"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-08-04 00:00:00+02,mctit
-8,3,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.commesse.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
-9,4,3,t,"{""action_key"":""riapri"",""label_key"":""vendite.commesse.azione_riapri"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-06-16 00:00:00+02,mctit
-10,4,5,t,"{""action_key"":""chiudi"",""label_key"":""vendite.commesse.azione_chiudi"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-06-16 00:00:00+02,mctit
-11,4,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.commesse.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
-12,3,5,t,"{""action_key"":""chiudi"",""label_key"":""vendite.commesse.azione_chiudi"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-07-24 00:00:00+02,mctit,2026-07-24 00:00:00+02,mctit
+id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_update,azione_processo_codename
+1,1,2,f,"{""manuale"":false}",2026-06-07 00:00:00+02,SEED,2026-10-26 00:00:00+01,mctit,NULL
+2,1,4,t,"{""action_key"":""rendi_pronta"",""label_key"":""vendite.commesse.azione_rendi_pronta"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-10-26 00:00:00+01,mctit,cambia_stato_commessa
+3,1,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.commesse.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit,NULL
+4,2,3,f,"{""manuale"":false}",2026-06-07 00:00:00+02,SEED,2026-10-26 00:00:00+01,mctit,NULL
+5,2,4,t,"{""action_key"":""rendi_pronta"",""label_key"":""vendite.commesse.azione_rendi_pronta"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-10-26 00:00:00+01,mctit,cambia_stato_commessa
+6,2,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.commesse.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-10-26 00:00:00+01,mctit,cambia_stato_commessa
+7,3,4,f,"{""action_key"":""rendi_pronta"",""label_key"":""vendite.commesse.azione_rendi_pronta"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-10-26 00:00:00+01,mctit,NULL
+8,3,6,f,"{""action_key"":""annulla"",""label_key"":""vendite.commesse.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-10-26 00:00:00+01,mctit,NULL
+9,4,3,f,"{""action_key"":""riapri"",""label_key"":""vendite.commesse.azione_riapri"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-10-26 00:00:00+01,mctit,NULL
+10,4,5,t,"{""action_key"":""chiudi"",""label_key"":""vendite.commesse.azione_chiudi"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-10-26 00:00:00+01,mctit,cambia_stato_commessa
+11,4,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.commesse.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-07 00:00:00+02,SEED,2026-10-26 00:00:00+01,mctit,cambia_stato_commessa
+12,3,5,f,"{""action_key"":""chiudi"",""label_key"":""vendite.commesse.azione_chiudi"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-07-24 00:00:00+02,mctit,2026-10-26 00:00:00+01,mctit,NULL
+13,4,2,t,"{""action_key"":""riapri"",""label_key"":""vendite.commesse.azione_riapri"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-10-26 00:00:00+01,mctit,2026-10-26 00:00:00+01,mctit,cambia_stato_commessa
+14,2,5,t,"{""action_key"":""chiudi"",""label_key"":""vendite.commesse.azione_chiudi"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-10-26 00:00:00+01,mctit,2026-10-26 00:00:00+01,mctit,cambia_stato_commessa
