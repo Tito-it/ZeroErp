@@ -6,16 +6,17 @@ Sulla risorsa `stato` di una commessa:
 
 - **GET** — stato, contatori aggregati e **capability** (azioni di stato ammesse), per
   dashboard e monitoraggio avanzamento;
-- **POST** — applica un'**azione di stato utente** (chiudi / riapri / annulla).
+- **POST** — applica un'**azione di stato utente** (rendi pronta / riapri / chiudi / annulla).
 
 ## Contesto
 
 - GET → servizio Python `fn_get_commessa_stato` (`apps.vendite.services.commesse_service`):
   contatori da `CommesseRepository.get_commessa_stato()` + capability da
   `CommesseRepository.get_capabilities()` (`script.fn_available_actions_commessa`).
-- POST → servizio `cambia_stato_commessa`: difesa applicativa (azione ammessa solo se in
-  `capabilities.available_actions`) + `CommesseRepository.cambia_stato_commessa()`
-  (`vendite.fn_cambia_stato_commessa`, guard di matrice a DB). ⭐ Verso `ANNULLATA` passa
+- POST → servizio `cambia_stato_commessa` → `CommesseRepository.cambia_stato_commessa()`
+  (`vendite.fn_cambia_stato_commessa(p_commessa_id, p_stato)`, il verbo del modello del
+  documento: brief-modello-documento-vendita §14). Il permesso lo legge la view dalla riga
+  del passaggio (§«POST» sotto). ⭐ Verso `ANNULLATA` passa
   **sempre** dal verbo `vendite.fn_annulla_commessa` (`CommesseRepository.annulla()`): vedi
   §«L'annullo, con la conferma dei legami» sotto.
 
@@ -118,8 +119,10 @@ espone, non più i soli 3 contatori. In dettaglio:
 - `capabilities` (2026-06-16): blob data-driven da `script.fn_available_actions_commessa`
   (pattern gemello di ordini/preventivi/offerte/contratti):
   - `available_actions`: array delle **azioni di stato utente** ammesse dallo stato
-    corrente (transizioni `meta.manuale=true` della matrice), ognuna con `key`
-    (`chiudi`/`riapri`/`annulla`), `target_state` (codice stato destinazione),
+    corrente (transizioni `meta.manuale=true` della matrice) **che l'operatore ha il
+    permesso di chiedere** (dal 2026-10-26: un passaggio la cui riga porta un'azione si
+    nasconde a chi non ce l'ha), ognuna con `key`
+    (`rendi_pronta`/`riapri`/`chiudi`/`annulla`), `target_state` (codice stato destinazione),
     `label_key` (i18n), `requires_confirm`, `outlined` — pensate per
     renderizzare i pulsanti FE senza logica cablata (icona e colore li sceglie il
     frontend dal `key`). Array vuoto negli stati terminali;
@@ -172,10 +175,22 @@ Regole:
 - Metodo: `POST`
 - Path: `/api/v1/vendite/commesse/<commessa_id>/stato/`
 - Header: `Authorization: Bearer <token>` + **`Idempotency-Key` obbligatoria**
-- Permesso: area `vendite` + `post_permission = "cambia_stato_commessa"` (un solo codename per chiudi/riapri/annulla; senza → `403 E_PERMISSION_DENIED`). Si somma alle capability DB: il permesso dice se l'operatore può, la capability se l'azione è eseguibile ora. Il `GET` resta libero nell'area.
+- Permesso: **dalla riga del passaggio** (`post_passaggio = PassaggioDocumento(testata="vendite.commesse", documento_kwarg="commessa_id", campo_stato="nuovo_stato")`, M-3; dal 2026-10-27, brief-modello-documento-vendita §14.6): la catena legge l'azione della riga della matrice dallo stato corrente a `nuovo_stato`, prima della transazione. Oggi:
+
+  | Passaggio | Azione |
+  | --- | --- |
+  | «rendi pronta» (BOZZA, APERTA → PRONTA_FATTURAZIONE) | `cambia_stato_commessa` |
+  | «riapri» (PRONTA_FATTURAZIONE → APERTA) | `cambia_stato_commessa` |
+  | «chiudi» (PRONTA_FATTURAZIONE, APERTA → CHIUSA) | `cambia_stato_commessa` |
+  | annullo di una commessa non in bozza | `cambia_stato_commessa` |
+  | annullo della bozza | nessuna: il livello sul documento (C-1, M-4) |
+
+  Senza l'azione della riga → `403 E_PERMISSION_DENIED`, e il service non parte. ⚠️ Cambio visibile del 2026-10-27: fino ad allora un `post_permission = "cambia_stato_commessa"` la chiedeva su **ogni** passaggio, compreso l'annullo della bozza. Il `GET` resta libero nell'area.
 - Body JSON:
   - `nuovo_stato` (string) — **codice stato di destinazione** (`target_state` preso da una
-    delle `capabilities.available_actions`, es. `CHIUSA` / `IN_ESECUZIONE` / `ANNULLATA`).
+    delle `capabilities.available_actions`, es. `PRONTA_FATTURAZIONE` / `APERTA` / `CHIUSA` /
+    `ANNULLATA`). IN_ESECUZIONE è ritirato (C-3): chiesto, il verbo risponde
+    `E_STATO_WORKFLOW_NON_TROVATO`.
   - `legami_confermati` (int, facoltativo) — solo verso `ANNULLATA`, alla **conferma**:
     quanti legami l'operatore ha visto (`GET …/legami/`). Assente al primo tentativo.
 
@@ -189,16 +204,19 @@ Output `200`:
 Errori:
 
 - `400` `E_COMMESSA_VALIDATION` — `commessa_id` ≤ 0 o `nuovo_stato` mancante;
-- `404` `E_COMMESSA_NOT_FOUND` — commessa inesistente;
-- `409` `E_COMMESSA_AZIONE_NON_AMMESSA` — `nuovo_stato` non è tra le azioni utente ammesse
-  (difesa applicativa: respinge anche le transizioni **automatiche** — ponte
-  push/emittibilità — che il guard DB accetterebbe);
+- `404` `E_COMMESSA_NON_TROVATA` — commessa inesistente o fuori perimetro, dal verbo (dal
+  2026-10-27 il service non lo ridice con `E_COMMESSA_NOT_FOUND`: regola del 1, Tid);
+- `404` `E_STATO_WORKFLOW_NON_TROVATO` — `nuovo_stato` non è uno stato attivo della commessa;
+- `409` `E_DOC_GIA_NELLO_STATO` — la commessa ha già lo stato chiesto;
+- `409` `E_DOC_PASSAGGIO_DI_PROCESSO` — un passaggio di processo chiesto a mano (prima riga
+  comune del verbo). ⛔ Ritirata il 2026-10-27 la «difesa applicativa» del service
+  (`E_COMMESSA_AZIONE_NON_AMMESSA`, lo stato ammesso solo se era una `available_action`
+  abilitata): ripeteva queste regole e quelle del guard, che ora il verbo dice da sé;
 - `409` `E_DOC_ANNULLO_CON_LEGAMI` (`ui_action = confirm_and_retry`) — annullo di una commessa
   con righe non ancora emesse, senza la conferma o con un numero di legami che non
   corrisponde: è una **domanda**, non un rifiuto (§sotto);
 - `409` `E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE` — righe già emesse: l'annullo è vietato, e il
-  verbo lo dice **prima** della conferma. Nella capability l'azione è spenta col motivo,
-  quindi dal frontend arriva come `E_COMMESSA_AZIONE_NON_AMMESSA`;
+  verbo lo dice **prima** della conferma. Nella capability l'azione è spenta col motivo;
 - `409` `E_COMMESSA_STATO_TRANSIZIONE_INVALIDA` / `409` `E_COMMESSA_NESSUNA_RIGA_APPROVATA`
   — sollevati dal guard DB se la coppia non è in matrice / precondizione non soddisfatta.
 
@@ -280,17 +298,24 @@ no): commessa inesistente o fuori perimetro → `count: 0`, `rows: []`, non 404.
 - `commessa_id` deve essere > 0, altrimenti errore di validazione.
 - GET: stato, flag di governance e contatori calcolati nel DB in un round-trip
   (`fn_get_commessa_stato`) + capability da `fn_available_actions_commessa`.
-- POST: la transizione effettiva e le precondizioni di matrice restano a
-  `fn_cambia_stato_commessa` (guard DB); il service aggiunge la difesa applicativa
-  "azione tra le available_actions" (impedisce di forzare via API le transizioni
-  automatiche, che il guard DB non distingue dal flag `manuale`).
+- POST: il permesso dalla riga del passaggio (view); tutto il resto lo dice il verbo
+  `fn_cambia_stato_commessa` (o `fn_annulla_commessa`), anche l'esistenza nel perimetro
+  (`404 E_COMMESSA_NON_TROVATA`). Il lettore leggero (`get_commessa_stato_codice`) resta
+  solo per lo `stato_da` della risposta dell'annullo. Il verbo di stato: la prima riga comune (stato che ha già, passaggio di
+  processo, azione), poi la scrittura attraverso la porta, dove il guard giudica matrice e
+  condizioni. Firma **senza `p_user`** (C-4): chi scrive lo dice l'audit dalla sessione.
+- Il passaggio a pronta della **push** non passa da qui: lo scrive la proiezione
+  `vendite.fn_commessa_proietta_stato_emittibile` (dal ponte
+  `fn_rendi_commessa_emittibile`), col permesso della push e non con l'azione del passaggio
+  manuale (C-2).
 - Implementa il pattern standard `handle_post_json` (POST) / `success_response` (GET).
 
 ## Dipendenze DB
 
 - `vendite.fn_get_commessa_stato` (stato + contatori)
 - `script.fn_available_actions_commessa` (capability / azioni di stato)
-- `vendite.fn_cambia_stato_commessa` (transizione sanzionata, guard di matrice)
+- `vendite.fn_cambia_stato_commessa(bigint, varchar)` (il verbo: prima riga comune, porta, guard)
+- `script.fn_doc_azione_passaggio` (l'azione della riga, per il `403` della view)
 - `vendite.fn_annulla_commessa` (verbo dell'annullo: conferma, ritiro dei legami, stato)
 - `vendite.fn_documento_legami` (lettore unico dei legami: avviso, verbo, finestra)
 - `vendite.commesse`, `vendite.commesse_attivita`, `vendite.transizioni_stati_commessa`,

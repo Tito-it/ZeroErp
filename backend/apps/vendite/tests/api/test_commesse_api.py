@@ -22,8 +22,10 @@ Indice test eseguiti:
 13) VenditeCommesseApiTests.test_get_commessa_attivita_con_filtri
 14) VenditeCommesseApiTests.test_run_commesse_push_post_permission_allowed
 15) VenditeCommesseApiTests.test_run_commesse_push_post_permission_denied
-15-bis) VenditeCommesseApiTests.test_commessa_stato_post_permission_allowed
-15-ter) VenditeCommesseApiTests.test_commessa_stato_post_permission_denied
+15-bis) VenditeCommesseApiTests.test_commessa_stato_azione_della_riga_concessa
+15-ter) VenditeCommesseApiTests.test_commessa_stato_azione_della_riga_negata
+15-quater) VenditeCommesseApiTests.test_commessa_stato_riga_senza_azione_livello_sul_documento
+15-quinquies) VenditeCommesseApiTests.test_commessa_stato_dichiara_il_passaggio
 16) VenditeCommesseApiTests.test_post_commessa_attivita_approva_ok
 17) VenditeCommesseApiTests.test_post_commessa_attivita_approva_selezione
 18) VenditeCommesseApiTests.test_post_commessa_attivita_approva_requires_jwt
@@ -55,6 +57,7 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.api.constants import DEFAULT_LIMIT
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 
 class VenditeCommesseApiTests(JwtMockedApiTest):
@@ -297,10 +300,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
     def test_run_commesse_push_post_permission_allowed(
         self, mocked_push, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
     ):
-        user = Mock()
-        user.id = 42
-        user.is_superuser = False
-        user.is_authenticated = True
+        user = operatore_di_prova(user_id=42)
         mock_auth.return_value = (user, None)
         mocked_push.return_value = {
             "stato": "COMPLETATO", "dry_run": False,
@@ -327,10 +327,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
     def test_run_commesse_push_post_permission_denied(
         self, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
     ):
-        user = Mock()
-        user.id = 42
-        user.is_superuser = False
-        user.is_authenticated = True
+        user = operatore_di_prova(user_id=42)
         mock_auth.return_value = (user, None)
         response = self.client.post(
             "/api/v1/vendite/commesse/push/run/",
@@ -343,27 +340,29 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
         self.assertEqual(mock_azione.call_args.args[1], "run_commesse_push")
 
     # ------------------------------------------------------------------ #
-    # POST /api/v1/vendite/commesse/<id>/stato/ — post_permission        #
+    # POST /api/v1/vendite/commesse/<id>/stato/ — dalla riga del passaggio #
     # ------------------------------------------------------------------ #
+    # L'azione la legge la catena dalla riga della matrice (`PassaggioDocumento`,
+    # M-3, brief-modello-documento-vendita §14.6 punto 2): il repository del
+    # passaggio e' mockato, la lettura vera la prova
+    # `vendite/tests/db/test_commessa_cambia_stato_db`.
 
-    # Scopo: post_permission="cambia_stato_commessa" consente la transizione
-    #        con azione abilitata (il GET di lettura stato resta libero).
+    # Scopo: con l'azione della riga (qui «chiudi») la transizione passa, e
+    #        l'azione chiesta e' quella che la riga dice.
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.api.permissions.DocumentoModelloRepository")
     @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=True)
     @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
     @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
     @patch("apps.vendite.api.views.cambia_stato_commessa")
-    def test_commessa_stato_post_permission_allowed(
-        self, mocked_cambia, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
+    def test_commessa_stato_azione_della_riga_concessa(
+        self, mocked_cambia, mock_auth, _mock_ruolo, _mock_app, mock_azione, repo_cls, _mock_load, _mock_save
     ):
-        user = Mock()
-        user.id = 42
-        user.is_superuser = False
-        user.is_authenticated = True
-        mock_auth.return_value = (user, None)
-        mocked_cambia.return_value = {"commessa_id": 1, "stato_codice_interno": "CHIUSA"}
+        mock_auth.return_value = (operatore_di_prova(user_id=42), None)
+        repo_cls.return_value.azione_del_passaggio.return_value = "cambia_stato_commessa"
+        mocked_cambia.return_value = {"commessa_id": 1, "stato_da": "PRONTA_FATTURAZIONE", "stato_a": "CHIUSA"}
         response = self.client.post(
             "/api/v1/vendite/commesse/1/stato/",
             data=json.dumps({"nuovo_stato": "CHIUSA"}),
@@ -371,26 +370,28 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
             headers={"Idempotency-Key": "idem-stato-ok-1"},
         )
         self.assertEqual(response.status_code, 200)
+        repo_cls.return_value.azione_del_passaggio.assert_called_once_with("vendite.commesse", 1, "CHIUSA")
         mock_azione.assert_called_once()
         self.assertEqual(mock_azione.call_args.args[1], "cambia_stato_commessa")
+        mocked_cambia.assert_called_once_with(
+            commessa_id=1, nuovo_stato="CHIUSA", legami_confermati=None,
+        )
 
-    # Scopo: senza l'azione abilitata la transizione e' negata (403) e il
-    #        service NON viene invocato — chiudere/annullare e' irreversibile.
+    # Scopo: senza l'azione della riga la transizione e' negata (403) e il
+    #        service NON viene invocato.
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.api.permissions.DocumentoModelloRepository")
     @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=False)
     @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
     @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
     @patch("apps.vendite.api.views.cambia_stato_commessa")
-    def test_commessa_stato_post_permission_denied(
-        self, mocked_cambia, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
+    def test_commessa_stato_azione_della_riga_negata(
+        self, mocked_cambia, mock_auth, _mock_ruolo, _mock_app, mock_azione, repo_cls, _mock_load, _mock_save
     ):
-        user = Mock()
-        user.id = 42
-        user.is_superuser = False
-        user.is_authenticated = True
-        mock_auth.return_value = (user, None)
+        mock_auth.return_value = (operatore_di_prova(user_id=42), None)
+        repo_cls.return_value.azione_del_passaggio.return_value = "cambia_stato_commessa"
         response = self.client.post(
             "/api/v1/vendite/commesse/1/stato/",
             data=json.dumps({"nuovo_stato": "ANNULLATA"}),
@@ -401,6 +402,47 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
         mock_azione.assert_called_once()
         self.assertEqual(mock_azione.call_args.args[1], "cambia_stato_commessa")
         mocked_cambia.assert_not_called()
+
+    # Scopo: C-1, cambio visibile — l'annullo della bozza e' una riga senza
+    #        azione: decide il livello sul documento, `cambia_stato_commessa`
+    #        non si chiede (prima il `post_permission` la chiedeva sempre).
+    @patch("apps.core.api.permissions.save_user_cache")
+    @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.api.permissions.DocumentoModelloRepository")
+    @patch("apps.core.api.permissions.PermissionResolver")
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    @patch("apps.vendite.api.views.cambia_stato_commessa")
+    def test_commessa_stato_riga_senza_azione_livello_sul_documento(
+        self, mocked_cambia, mock_auth, resolver, repo_cls, _mock_load, _mock_save,
+    ):
+        mock_auth.return_value = (operatore_di_prova(user_id=42), None)
+        resolver.is_super_admin.return_value = False
+        resolver.get_area_schema_db.return_value = "vendite"
+        resolver.get_livello_area.return_value = "TUTTO"
+        mock_azione, mock_livello = resolver.check_azione, resolver.get_livello_area
+        repo_cls.return_value.azione_del_passaggio.return_value = None
+        mocked_cambia.return_value = {"commessa_id": 1, "stato_da": "BOZZA", "stato_a": "ANNULLATA"}
+        response = self.client.post(
+            "/api/v1/vendite/commesse/1/stato/",
+            data=json.dumps({"nuovo_stato": "ANNULLATA"}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-stato-bozza-1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_azione.assert_not_called()
+        mock_livello.assert_called()
+        mocked_cambia.assert_called_once()
+
+    # Scopo: la view legge l'azione dalla riga, non la dichiara: nessun
+    #        `post_permission` accanto (M-3, §14.6 punto 2).
+    def test_commessa_stato_dichiara_il_passaggio(self) -> None:
+        from apps.core.api.permissions import PassaggioDocumento
+        from apps.vendite.api.views import ApiCommessaStato
+
+        self.assertEqual(ApiCommessaStato.post_passaggio, PassaggioDocumento(
+            testata="vendite.commesse", documento_kwarg="commessa_id", campo_stato="nuovo_stato",
+        ))
+        self.assertIsNone(getattr(ApiCommessaStato, "post_permission", None))
 
     # ------------------------------------------------------------------ #
     # POST /api/v1/vendite/commesse/<id>/attivita/approva/ (A-1)         #
@@ -518,10 +560,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
     def test_approva_competenza_post_permission_allowed(
         self, mocked_massiva, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
     ):
-        user = Mock()
-        user.id = 42
-        user.is_superuser = False
-        user.is_authenticated = True
+        user = operatore_di_prova(user_id=42)
         user.username = "op1"
         mock_auth.return_value = (user, None)
         mocked_massiva.return_value = {
@@ -547,10 +586,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
     def test_commessa_attivita_approva_post_permission_denied(
         self, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
     ):
-        user = Mock()
-        user.id = 42
-        user.is_superuser = False
-        user.is_authenticated = True
+        user = operatore_di_prova(user_id=42)
         mock_auth.return_value = (user, None)
         response = self.client.post(
             "/api/v1/vendite/commesse/42/attivita/approva/",
@@ -655,10 +691,7 @@ class VenditeCommessaOneriApiTests(JwtMockedApiTest):
     def test_post_onere_permission_denied(
         self, mocked_service, mock_auth, _mock_sa, _mock_ruolo, mock_azione, _mock_load, _mock_save,
     ):
-        user = Mock()
-        user.id = 42
-        user.is_superuser = False
-        user.is_authenticated = True
+        user = operatore_di_prova(user_id=42)
         mock_auth.return_value = (user, None)
 
         response = self._post_oneri(key="idem-onere-deny")
@@ -678,10 +711,7 @@ class VenditeCommessaOneriApiTests(JwtMockedApiTest):
     def test_post_onere_permission_allowed(
         self, mocked_service, mock_auth, _mock_sa, _mock_ruolo, mock_azione, _mock_load, _mock_save,
     ):
-        user = Mock()
-        user.id = 42
-        user.is_superuser = False
-        user.is_authenticated = True
+        user = operatore_di_prova(user_id=42)
         mock_auth.return_value = (user, None)
         mocked_service.return_value = {
             "commessa_id": 42, "attivita_id": 5150, "importo": "150.00",
@@ -708,10 +738,7 @@ class VenditeCommessaOneriApiTests(JwtMockedApiTest):
     def test_endpoint_prezzo_richiedono_permesso_override(
         self, mock_auth, _mock_sa, _mock_ruolo, mock_azione, _mock_load, _mock_save,
     ):
-        user = Mock()
-        user.id = 42
-        user.is_superuser = False
-        user.is_authenticated = True
+        user = operatore_di_prova(user_id=42)
         mock_auth.return_value = (user, None)
 
         percorsi = (

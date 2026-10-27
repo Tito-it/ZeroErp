@@ -493,17 +493,16 @@ async function salvaOnere() {
 
 // ------------------------------------------------------------------ stato (capabilities)
 // Azioni di stato utente dal blob capabilities (transizioni manuali).
-// `permission`: chiudi/annulla portano la commessa in uno stato TERMINALE
-// irreversibile (esce per sempre dal giro di fatturazione) → dal 2026-07-27
-// l'endpoint esige `cambia_stato_commessa` e qui il gate FE nasconde i pulsanti
-// a chi non ha l'azione, invece di farlo scoprire con un 403. Un solo codename
-// per i tre verbi: il permesso gatta l'endpoint, non la singola transizione.
+// ⛔ Nessun gate `permission` qui (ritirato il 2026-10-27,
+// brief-modello-documento-vendita §14): il permesso e' della RIGA del
+// passaggio, e la capability nasconde gia' l'azione a chi non ce l'ha. Un
+// codename su ogni pulsante nascondeva anche l'annullo della bozza, che
+// l'azione non la chiede (C-1).
 const stateActions = computed(() => mapAvailableActionsToDrawerActions({
   availableActions: capabilities.value.available_actions ?? [],
   t,
   te,
   readonly: isReadonly,
-  permission: 'cambia_stato_commessa',
   onAction: (action) => {
     confirmAction({
       header: t('vendite.commesse.stato_header'),

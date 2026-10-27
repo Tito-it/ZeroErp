@@ -88,7 +88,8 @@ Indice test eseguiti:
 54) test_list_righe_con_testata_delega_al_repo — caso felice: delega invariata
 55) test_annullo_passa_dal_verbo — ANNULLATO via fn_annulla_preventivo, con e senza dichiarazione
 56) test_annullo_dichiarazione_non_numerica — legami_confermati non intero → E_PREV_VALIDAZIONE col campo
-57) test_annullo_preventivo_inesistente — E_PREV_NOT_FOUND prima del verbo
+57) test_annullo_preventivo_inesistente — E_PREV_NOT_FOUND dal verbo (regola del 1)
+57-bis) test_accetta_preventivo_inesistente — accettazione senza stato: il ramo si salta, E_PREV_NOT_FOUND dal verbo
 58) test_annullo_con_legami_codice_del_db — il rifiuto del verbo esce col suo codice (confirm_and_retry)
 59) test_cambia_stato_errore_db_senza_codice — errore DB senza codice → 400 del dominio
 60) test_get_legami_dopo_la_testata — «leggi prima la testata», poi il BB legami_del_documento
@@ -122,6 +123,7 @@ from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_attivazioni,
     normalize_componenti_overrides,
 )
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 
 # Wrapper helper test-only: i `TestNormalizeComponenti*` chiamano l'helper
@@ -463,9 +465,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         from datetime import date
         from apps.vendite.services.preventivi_service import cambia_stato
 
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "EMESSO",
-        }
+        self.mock_repo.get_stato_codice.return_value = "EMESSO"
         self.mock_repo.cambia_stato.return_value = {"status": "ok"}
         cambia_stato(1, "ACCETTATO", fatturazione_immediata=True,
                      competenza_mese=date(2026, 7, 15))  # ignorata
@@ -482,9 +482,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         from datetime import date
         from apps.vendite.services.preventivi_service import cambia_stato
 
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "EMESSO",
-        }
+        self.mock_repo.get_stato_codice.return_value = "EMESSO"
         self.mock_repo.cambia_stato.return_value = {"status": "ok"}
         cambia_stato(1, "ACCETTATO", fatturazione_immediata=False,
                      competenza_mese=date(2026, 8, 1))
@@ -496,9 +494,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     def test_cambia_stato_accettato_senza_immediata_bloccato(self):
         from apps.vendite.services.preventivi_service import cambia_stato
 
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "EMESSO",
-        }
+        self.mock_repo.get_stato_codice.return_value = "EMESSO"
         with self.assertRaises(ServiceError) as ctx:
             cambia_stato(1, "ACCETTATO")
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
@@ -509,9 +505,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     def test_cambia_stato_accettato_non_immediata_senza_competenza_bloccato(self):
         from apps.vendite.services.preventivi_service import cambia_stato
 
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "EMESSO",
-        }
+        self.mock_repo.get_stato_codice.return_value = "EMESSO"
         with self.assertRaises(ServiceError) as ctx:
             cambia_stato(1, "ACCETTATO", fatturazione_immediata=False,
                          competenza_mese=None)
@@ -547,9 +541,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         from datetime import date
         from apps.vendite.services.preventivi_service import cambia_stato
 
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "ACCETTATO",
-        }
+        self.mock_repo.get_stato_codice.return_value = "ACCETTATO"
         out = cambia_stato(1, "ACCETTATO", fatturazione_immediata=False,
                            competenza_mese=date(2026, 9, 1))
         kwargs = self.mock_repo.update_preventivo.call_args.kwargs
@@ -590,14 +582,33 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         self.assertEqual(cm.exception.context.get("field"), "legami_confermati")
         self.mock_repo.annulla.assert_not_called()
 
+    # Il preventivo che non c'e' (o fuori perimetro) lo rifiuta il verbo, col
+    # suo codice (regola del 1, 2026-10-27): il service non lo ridice.
     def test_annullo_preventivo_inesistente(self):
+        from django.db import DatabaseError
+
         from apps.vendite.services.preventivi_service import cambia_stato
 
         self.mock_repo.get_stato_codice.return_value = None
+        self.mock_repo.annulla.side_effect = DatabaseError("E_PREV_NOT_FOUND: preventivo 99")
         with self.assertRaises(ServiceError) as cm:
             cambia_stato(99, "ANNULLATO")
         self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
-        self.mock_repo.annulla.assert_not_called()
+        self.mock_repo.annulla.assert_called_once_with(99, None)
+
+    # Accettare un preventivo che non c'e': il ramo dei parametri si salta
+    # (nessuno stato da leggere) e lo rifiuta il verbo.
+    def test_accetta_preventivo_inesistente(self):
+        from django.db import DatabaseError
+
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.get_stato_codice.return_value = None
+        self.mock_repo.cambia_stato.side_effect = DatabaseError("E_PREV_NOT_FOUND: preventivo 99")
+        with self.assertRaises(ServiceError) as cm:
+            cambia_stato(99, "ACCETTATO")
+        self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
+        self.mock_repo.update_preventivo.assert_not_called()
 
     # ⭐ Il rifiuto del verbo arriva col SUO codice, tradotto dal BB del
     #    dominio: e' il comportamento che la finestra riconosce.
@@ -2159,8 +2170,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "valore_variazione_applicata": None,
         }
         # User non superuser, azione NON abilitata
-        mock_user = MagicMock()
-        mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_user_model.return_value.objects.get.return_value = mock_user
         mock_perm.check_azione.return_value = False
 
@@ -2226,8 +2236,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "tipo_variazione_applicata": None,
             "valore_variazione_applicata": None,
         }
-        mock_user = MagicMock()
-        mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_user_model.return_value.objects.get.return_value = mock_user
         mock_perm.check_azione.return_value = True  # L1 ok
         # L2: limite sconto 15% -> sconto 10% ammesso.
@@ -2261,8 +2270,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "tipo_variazione_applicata": None,
             "valore_variazione_applicata": None,
         }
-        mock_user = MagicMock()
-        mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_user_model.return_value.objects.get.return_value = mock_user
         mock_perm.check_azione.return_value = True  # L1 ok
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")  # limite
@@ -2298,8 +2306,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "tipo_variazione_applicata": None,
             "valore_variazione_applicata": None,
         }
-        mock_user = MagicMock()
-        mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_user_model.return_value.objects.get.return_value = mock_user
         mock_perm.check_azione.return_value = True  # L1 ok
         # Maggiorazione: limite 5% per il secondo parametro.
@@ -2379,8 +2386,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "tipo_variazione_applicata": None,
             "valore_variazione_applicata": None,
         }
-        mock_user = MagicMock()
-        mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_user_model.return_value.objects.get.return_value = mock_user
         mock_perm.check_azione.return_value = True
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")
@@ -2424,8 +2430,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "tipo_variazione_applicata": None,
             "valore_variazione_applicata": None,
         }
-        mock_user = MagicMock()
-        mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_user_model.return_value.objects.get.return_value = mock_user
         mock_perm.check_azione.return_value = True  # L1 ok
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")
@@ -2474,8 +2479,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "tipo_variazione_applicata": None,
             "valore_variazione_applicata": None,
         }
-        mock_user = MagicMock()
-        mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_user_model.return_value.objects.get.return_value = mock_user
         mock_perm.check_azione.return_value = True
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")
@@ -2516,8 +2520,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "tipo_variazione_applicata": None,
             "valore_variazione_applicata": None,
         }
-        mock_user = MagicMock()
-        mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_user_model.return_value.objects.get.return_value = mock_user
         mock_perm.check_azione.return_value = True
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("20")
@@ -2564,8 +2567,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "tipo_variazione_applicata": None,
             "valore_variazione_applicata": None,
         }
-        mock_user = MagicMock()
-        mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_user_model.return_value.objects.get.return_value = mock_user
         mock_perm.check_azione.return_value = True
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")

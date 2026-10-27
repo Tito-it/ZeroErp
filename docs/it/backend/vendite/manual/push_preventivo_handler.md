@@ -65,7 +65,9 @@ def execute(self, flusso_id: int, pratica_id: int,
    **richiesta solo se il ramo scatta**), scrive `fatturazione_immediata`+
    `competenza_mese` sul preventivo, poi
    `pr_run_commesse_push_one(sorgente_codice='PREVENTIVO')` →
-   `fn_approva_commessa_attivita` → `fn_cambia_stato_commessa(...'PRONTA_FATTURAZIONE')`
+   il ponte `fn_rendi_commessa_emittibile` (approva le righe di quell'invio e porta la
+   commessa allo stato emittibile con la proiezione `fn_commessa_proietta_stato_emittibile`,
+   non col verbo del passaggio manuale: C-2 di brief-modello-documento-vendita §14)
    → aggancio `pratiche_sorgenti` (preventivo `ROOT` + commessa `COLLEGATO`);
 7. **gate EVASO (D6)**: preventivo → `EVASO` **solo se** `preventivo_ha_residuo_ordine`
    è falso (transizione esplicita, senza swallow);
@@ -97,10 +99,9 @@ non scatta).
   `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`), non entrano nel preventivo.
 - L'ordine generato resta **DRAFT**: ha un ciclo proprio (ordine→DDT→fattura),
   confermato separatamente. Solo la **commessa** va a `PRONTA_FATTURAZIONE`.
-- **Coordinamento futuro** (commessa multi-sorgente, brief
+- Commessa multi-sorgente (brief
   [brief-db-commesse-multi-sorgente.md](../../../dev/work-done/brief-db-commesse-multi-sorgente.md)):
-  alla consegna B, `cambia_stato_commessa(PRONTA)` va reso idempotente (commessa
-  già PRONTA portata da altra sorgente). Oggi non raggiungibile.
+  una commessa già pronta, portata da un'altra sorgente, il ponte non la ritenta.
 
 ## Dipendenze DB
 
@@ -108,6 +109,6 @@ non scatta).
   `vendite.fn_preventivo_ha_residuo_ordine`
 - ramo servizi: `pr_run_commesse_push_one` → `fn_get_or_create_commessa` /
   `fn_upsert_commessa_attivita`; `vendite.fn_list_preventivi_da_pushare`
-  (natura-aware); `vendite.fn_approva_commessa_attivita`,
-  `vendite.fn_cambia_stato_commessa`
+  (natura-aware); `vendite.fn_rendi_commessa_emittibile` (con
+  `vendite.fn_commessa_proietta_stato_emittibile`)
 - comune: `pratiche.fn_log_evento_dominio`, `vendite.fn_cambia_stato_preventivo`

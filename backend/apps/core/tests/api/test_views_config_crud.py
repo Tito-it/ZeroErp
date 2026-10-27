@@ -36,6 +36,7 @@ from apps.core.api.views_config_crud import (
     ConfigTablesListView,
 )
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 _VOCE = "apps.core.api.views_config_crud.TabelleGestibiliRepository.voce"
 
@@ -44,14 +45,6 @@ def _voce(rel: str, app_label: str, model_name: str, *, pannello: bool = True) -
     schema, table = rel.split(".", 1)
     return {"rel": rel, "schema": schema, "table": table, "app_label": app_label,
             "model_name": model_name, "lookup": True, "pannello": pannello}
-
-
-def _operatore() -> MagicMock:
-    user = MagicMock()
-    user.id = 3
-    user.is_authenticated = True
-    user.is_superuser = False
-    return user
 
 
 # Scopo: il resolver come lo vede la catena: operatore, non super admin,
@@ -112,7 +105,7 @@ class CatenaSullOggettoTests(SimpleTestCase):
     def test_il_livello_si_chiede_sull_oggetto_e_sulla_sua_area(self, _voce_m) -> None:
         resolver = _resolver()
         esito = ZeroERPPermission.valuta(
-            _operatore(), _view(ConfigTableRecordsView, "magazzino.causali"),
+            operatore_di_prova(user_id=3), _view(ConfigTableRecordsView, "magazzino.causali"),
             method="GET", cache={},
         )
         self.assertTrue(esito.consentito)
@@ -133,7 +126,7 @@ class CatenaSullOggettoTests(SimpleTestCase):
         ):
             with self.subTest(metodo=metodo):
                 esito = ZeroERPPermission.valuta(
-                    _operatore(), _view(classe, "magazzino.causali"), method=metodo, cache={},
+                    operatore_di_prova(user_id=3), _view(classe, "magazzino.causali"), method=metodo, cache={},
                 )
                 self.assertFalse(esito.consentito)
                 self.assertIs(esito.motivo, MotivoDiniego.LIVELLO_INSUFFICIENTE)
@@ -145,7 +138,7 @@ class CatenaSullOggettoTests(SimpleTestCase):
     def test_senza_oggetto_resta_l_area_della_classe(self, _voce_m) -> None:
         resolver = _resolver()
         esito = ZeroERPPermission.valuta(
-            _operatore(), _view(ConfigTableRecordsView, "x.y"), method="POST", cache={},
+            operatore_di_prova(user_id=3), _view(ConfigTableRecordsView, "x.y"), method="POST", cache={},
         )
         self.assertTrue(esito.consentito)
         self.assertEqual(resolver.get_livello_area.call_args.args[1], "config")
@@ -159,7 +152,7 @@ class CatenaSullOggettoTests(SimpleTestCase):
         _resolver()
         for classe in (ConfigTableMetadataView, ConfigTableRecordsView, ConfigTableRecordDetailView):
             with self.subTest(view=classe.__name__):
-                esito = ZeroERPPermission.valuta(_operatore(), classe, method="GET", cache={})
+                esito = ZeroERPPermission.valuta(operatore_di_prova(user_id=3), classe, method="GET", cache={})
                 self.assertFalse(esito.consentito)
                 self.assertIs(esito.motivo, MotivoDiniego.OGGETTO_SENZA_RICHIESTA)
         voce_m.assert_not_called()

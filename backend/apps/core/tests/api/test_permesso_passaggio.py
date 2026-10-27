@@ -32,16 +32,10 @@ from unittest.mock import MagicMock, patch
 from apps.core.api.permissions import MotivoDiniego, PassaggioDocumento, ZeroERPPermission
 from apps.core.db.documento_modello_repository import StatoDocumento
 from apps.core.tests.api.test_permissions import _mock_view
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 _REPO = "apps.core.api.permissions.DocumentoModelloRepository"
 _RESOLVER = "apps.core.api.permissions.PermissionResolver"
-
-
-def _utente() -> MagicMock:
-    user = MagicMock()
-    user.id = 7
-    user.is_superuser = False
-    return user
 
 
 # Scopo: una view finta che dichiara il passaggio sulla POST, con l'id nel
@@ -62,7 +56,7 @@ _CAMBIO = PassaggioDocumento(testata="vendite.ddt", documento_kwarg="documento_i
 class PassaggioNellaCatenaTests(TestCase):
 
     def _valuta(self, view: object) -> object:
-        return ZeroERPPermission.valuta(_utente(), view, method="POST", cache={})
+        return ZeroERPPermission.valuta(operatore_di_prova(user_id=7), view, method="POST", cache={})
 
     @patch(_RESOLVER)
     @patch(_REPO)

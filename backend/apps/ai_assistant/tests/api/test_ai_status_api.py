@@ -20,10 +20,11 @@
 import json
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from apps.ai_assistant.api.views import AIStatusView
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 
 # ⚠️ La richiesta NON e' un MagicMock: la view usa la cache permessi della
@@ -31,10 +32,7 @@ from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 #    attributi — su un MagicMock ogni attributo esisterebbe gia', e la cache
 #    sarebbe un mock invece di un dizionario.
 def _richiesta() -> SimpleNamespace:
-    user = MagicMock()
-    user.id = 5
-    user.is_authenticated = True
-    user.is_superuser = False
+    user = operatore_di_prova(user_id=5)
     return SimpleNamespace(user=user)
 
 

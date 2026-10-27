@@ -8,6 +8,7 @@ from rest_framework.request import Request
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.permissions import PassaggioDocumento
 
 from apps.core.api.endpoint_helpers import (
     UnitaDiLavoro,
@@ -82,6 +83,7 @@ from apps.vendite.services.commesse_service import (
     fn_variazione_prezzo_eccezionale,
     pr_run_commesse_push,
 )
+from apps.vendite.db.commesse_repository import TESTATA_COMMESSE
 from apps.vendite.db.pipeline_repository import LOTTO_LISTE_PAGINA_MAX
 from apps.vendite.services.pipeline_service import (
     finestra_numerazione,
@@ -1825,18 +1827,15 @@ class ApiCommessePushLog(DomainAPIView):
 
 class ApiCommessaStato(DomainAPIView):
     area_funzionale = "vendite"
-    # Il POST cambia lo stato della commessa: CHIUSA e ANNULLATA sono terminali
-    # irreversibili (nessun arco uscente in matrice, emittibile=false) → la
-    # commessa esce per sempre dal giro di fatturazione. Prima era protetto dal
-    # solo controllo d'area, mentre azioni reversibili della stessa entita'
-    # (prezzo, oneri, approvazione) erano gia' gated: asimmetria chiusa dal
-    # 2026-07-27 (brief-db-permesso-cambio-stato-commessa). Un solo codename per
-    # i tre verbi chiudi/riapri/annulla — post_permission gatta l'ENDPOINT, non
-    # la action_key. Ortogonale alle
-    # capability DB (enabled/reasons dicono se l'azione e' eseguibile ORA, il
-    # permesso dice se quell'operatore puo' eseguirla): i due gate si sommano.
+    # L'azione del passaggio (stato corrente -> `nuovo_stato`) dalla riga della
+    # matrice (M-3, brief-modello-documento-vendita §14.6 punto 2): «rendi
+    # pronta», «riapri», «chiudi» e l'annullo di una commessa non in bozza
+    # chiedono `cambia_stato_commessa`; l'annullo della bozza il solo livello
+    # sul documento (C-1, M-4). Prima un `post_permission` su ogni passaggio.
     # NB: il GET di lettura stato resta libero nell'area.
-    post_permission = "cambia_stato_commessa"
+    post_passaggio = PassaggioDocumento(
+        testata=TESTATA_COMMESSE, documento_kwarg="commessa_id", campo_stato="nuovo_stato",
+    )
     @extend_schema(
         responses={
             200: inline_serializer(
@@ -1914,17 +1913,16 @@ class ApiCommessaStato(DomainAPIView):
             )
         },
     )
-    # Scopo: Azione di stato utente (chiudi/riapri/annulla) sulla commessa.
-    #        L'annullo con righe NON_EMESSA si conferma: la seconda richiesta
-    #        porta `legami_confermati` (brief-db-annullo-a-valle-riapre-a-monte).
+    # Scopo: Azione di stato utente (rendi pronta/riapri/chiudi/annulla) sulla
+    #        commessa. L'annullo con righe NON_EMESSA si conferma: la seconda
+    #        richiesta porta `legami_confermati` (brief-db-annullo-a-valle-
+    #        riapre-a-monte).
     def post(self, request: Request, commessa_id: int) -> JsonResponse:
-        # Scopo: applica la transizione richiesta con difesa applicativa nel service.
+        # Scopo: applica la transizione richiesta dal verbo del DB.
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            user = getattr(request.user, "username", None) or None
             return cambia_stato_commessa(
                 commessa_id=commessa_id,
-                nuovo_stato=str(payload.get("nuovo_stato", "")),
-                user=user,
+                nuovo_stato=payload.get("nuovo_stato"),
                 legami_confermati=payload.get("legami_confermati"),
             )
 

@@ -33,6 +33,7 @@ from unittest.mock import Mock, patch
 from django.core.cache import cache
 from django.test import Client
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 
 _LOTTO_ROW = {
@@ -202,10 +203,7 @@ class VenditeLottiListApiTests(JwtMockedApiTest):
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
     @patch("apps.vendite.api.views.fn_list_lotti")
     def test_list_lotti_scope_emittente_non_superuser(self, mocked_list, mock_auth, _mock_perm):
-        user = Mock()
-        user.id = 42
-        user.is_superuser = False
-        user.is_authenticated = True
+        user = operatore_di_prova(user_id=42)
         mock_auth.return_value = (user, None)
         mocked_list.return_value = _LIST_RESPONSE
         self.client.get("/api/v1/vendite/lotti/")
@@ -269,10 +267,7 @@ class VenditeLottoDetailApiTests(JwtMockedApiTest):
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
     @patch("apps.vendite.api.views.fn_get_lotto")
     def test_get_lotto_detail_scope_non_superuser(self, mocked_get, mock_auth, _mock_perm):
-        user = Mock()
-        user.id = 77
-        user.is_superuser = False
-        user.is_authenticated = True
+        user = operatore_di_prova(user_id=77)
         mock_auth.return_value = (user, None)
         mocked_get.return_value = _LOTTO_ROW
         self.client.get("/api/v1/vendite/lotti/42/")

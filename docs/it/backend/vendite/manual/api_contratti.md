@@ -348,7 +348,9 @@ Permesso: l'azione la dice la riga del passaggio (`PassaggioDocumento`): la
 cessazione chiede `emetti_contratto` (403 senza), l'annullo della bozza il solo
 permesso sul documento. Uno stato che il vocabolario non ha →
 `E_STATO_WORKFLOW_NON_TROVATO` (404); lo stato che il contratto ha già →
-`E_DOC_GIA_NELLO_STATO` (409).
+`E_DOC_GIA_NELLO_STATO` (409). Contratto inesistente o fuori perimetro →
+`E_CONTRATTO_NON_TROVATO` (404), dal verbo: dal 2026-10-27 il service non lo
+ridice (regola del 1, Tid).
 
 Verso `ANNULLATO` passa sempre dal verbo `vendite.fn_annulla_contratto`: su un
 contratto con legami (offerta d'origine, righe di commessa da emettere) risponde
@@ -428,7 +430,7 @@ Nuovo endpoint multipart 2026-05-28. Mirror del flusso offerta/preventivo
     (422)
   - Template documento applicabile (`PUBBLICATA` valido alla data)
 - Errori:
-  - `E_VENDITE_NOT_FOUND` (404) — contratto inesistente
+  - `E_CONTRATTO_NON_TROVATO` (404) — contratto inesistente o fuori perimetro, dal verbo
   - `E_VENDITE_VALIDATION` (400) — contratto non in DRAFT
   - `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` (422) — forma senza_listino
     senza righe valorizzate

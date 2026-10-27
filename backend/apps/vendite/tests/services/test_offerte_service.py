@@ -325,21 +325,26 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(cm.exception.code, "E_DOC_GIA_NELLO_STATO")
         # Un rifiuto che non e' della motivazione non accende il suo campo.
         self.assertIsNone(cm.exception.fields)
-        repo.get_stato_codice.assert_called_once_with(1)
+        # Regola del 1: nessun lettore davanti al verbo.
+        repo.get_stato_codice.assert_not_called()
 
-    # Scopo: «Emetti» su un'offerta che non c'e': il 404 del service
-    #        (E_VENDITE_NOT_FOUND), lo stesso di annullo, revisione e push; il
-    #        verbo non si chiama.
+    # Scopo: «Emetti» su un'offerta che non c'e' (o fuori perimetro): il 404 e'
+    #        del verbo, col suo codice (regola del 1, 2026-10-27).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_emetti_offerta_inesistente_e_404(self, repo_cls):
+    def test_emetti_offerta_inesistente_e_404(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
         self.emissione_del_documento("EMESSA")
-        repo_cls.return_value.get_stato_codice.return_value = None
+        repo_cls.return_value.cambia_stato.side_effect = DatabaseError(
+            "E_OFFERTA_NON_TROVATA: offerta 1",
+        )
         with self.assertRaises(ServiceError) as cm:
             OfferteService().emetti(1)
-        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
-        repo_cls.return_value.cambia_stato.assert_not_called()
+        self.assertEqual(cm.exception.code, "E_OFFERTA_NON_TROVATA")
+        repo_cls.return_value.get_stato_codice.assert_not_called()
 
     # Scopo: registra_accettazione da BOZZA: la matrice la rifiuta al verbo
     #        (E_OFFERTA_TRANSIZIONE_NON_AMMESSA), col suo codice.
@@ -452,16 +457,22 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
         repo.annulla.assert_called_once_with(1, "il cliente ci ripensa", None)
 
-    # Scopo: annulla di un'offerta che non c'e' (o fuori perimetro): 404.
+    # Scopo: annulla di un'offerta che non c'e' (o fuori perimetro): il 404 e'
+    #        del verbo, col suo codice (regola del 1, 2026-10-27).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_annulla_offerta_inesistente_e_404(self, repo_cls):
+    def test_annulla_offerta_inesistente_e_404(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_codice.return_value = None
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo_cls.return_value.annulla.side_effect = DatabaseError(
+            "E_OFFERTA_NON_TROVATA: offerta 1",
+        )
         with self.assertRaises(ServiceError) as cm:
             OfferteService().annulla(1, motivazione="x")
-        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
-        repo_cls.return_value.annulla.assert_not_called()
+        self.assertEqual(cm.exception.code, "E_OFFERTA_NON_TROVATA")
+        repo_cls.return_value.get_stato_codice.assert_not_called()
 
     # Scopo: annulla da BOZZA OK passa la motivazione (normalizzata) al verbo.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
@@ -922,16 +933,22 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             OfferteService().push_a_contratto(1)
         self.assertEqual(cm.exception.code, "E_OFFERTA_PUSH_STATO_NON_AMMESSO")
 
-    # Scopo: push di un'offerta che non c'e' (o fuori perimetro): 404.
+    # Scopo: push di un'offerta che non c'e' (o fuori perimetro): il 404 e'
+    #        della fn, col suo codice (regola del 1, 2026-10-27).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_push_a_contratto_offerta_inesistente_404(self, repo_cls):
+    def test_push_a_contratto_offerta_inesistente_404(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_codice.return_value = None
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo_cls.return_value.push_a_contratto.side_effect = DatabaseError(
+            "E_OFFERTA_NON_TROVATA: offerta 1",
+        )
         with self.assertRaises(ServiceError) as cm:
             OfferteService().push_a_contratto(1)
-        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
-        repo_cls.return_value.push_a_contratto.assert_not_called()
+        self.assertEqual(cm.exception.code, "E_OFFERTA_NON_TROVATA")
+        repo_cls.return_value.get_stato_codice.assert_not_called()
 
     # Scopo: push ok costruisce OffertaPushResult con id+numero+uid del nuovo
     #        contratto letto da get_contratto_minimal.

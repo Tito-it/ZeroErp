@@ -26,6 +26,7 @@ Indice test eseguiti:
 15b) update_contratto_variazione_none_azzera — `null` sul tipo AZZERA (tre stati del PATCH, BB `extract_optional_enum`)
 15c) create_contratto_ambito_fuori_vocabolario_nomina_il_campo — `ambito` via `require_enum`: campo nel context, non-stringa e' un 400
 16) cambia_stato_codice_sconosciuto
+16-bis) cambia_stato_contratto_inesistente_dal_verbo (regola del 1)
 17) cambia_stato_modalita_C_senza_righe_tradotto
 18) cambia_stato_ok
 19) create_riga_modalita_C_senza_prezzo_tradotto
@@ -58,6 +59,7 @@ from django.db import DatabaseError, IntegrityError
 from apps.core.tests._helpers.modello_documento_mockato import ModelloDocumentoMockatoMixin
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 
 def _testata_default() -> dict[str, object]:
@@ -1037,8 +1039,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo = repo_cls.return_value
         repo.get_contratto.return_value = _testata_default()
         # Mock user non-superuser
-        user_mock = MagicMock()
-        user_mock.is_superuser = False
+        user_mock = operatore_di_prova()
         mock_get_user_model.return_value.objects.get.return_value = user_mock
         # Soglia max sconto 10%
         mock_param_service.return_value.get_emittente_fiscale_id_for_user.return_value = 5
@@ -1140,7 +1141,6 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "ATTIVO"
         repo.cambia_stato.side_effect = make_db_error(
             "Stato di destinazione non trovato", codice="E_STATO_WORKFLOW_NON_TROVATO",
         )
@@ -1148,6 +1148,22 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             ContrattiService().cambia_stato(1, codice_interno="FROBOZ")
         self.assertEqual(ctx.exception.code, "E_STATO_WORKFLOW_NON_TROVATO")
         repo.cambia_stato.assert_called_once_with(1, "FROBOZ")
+
+    # Il contratto che non c'e' (o fuori perimetro) lo rifiuta il verbo, col
+    # suo codice (regola del 1, 2026-10-27): nessuna lettura della testata prima.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_cambia_stato_contratto_inesistente_dal_verbo(self, repo_cls):
+        from apps.core.tests.db_error_fakes import make_db_error
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.cambia_stato.side_effect = make_db_error(
+            "Contratto non trovato", codice="E_CONTRATTO_NON_TROVATO",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().cambia_stato(99, codice_interno="SOSPESO")
+        self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_TROVATO")
+        repo.get_stato_codice.assert_not_called()
 
     # Scopo: refactor 2026-05-28 - cambia_stato non gestisce piu' ATTIVO.
     # L'invariante "ATTIVO => almeno una versione PDF" e' garantita dal

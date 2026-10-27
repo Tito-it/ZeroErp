@@ -19,6 +19,7 @@ from unittest.mock import Mock, patch
 
 from django.test import Client
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 
 class VenditeResetLottoFatturaDraftApiTests(JwtMockedApiTest):
@@ -88,10 +89,7 @@ class VenditeResetLottoFatturaDraftApiTests(JwtMockedApiTest):
     def test_reset_lotto_fattura_draft_post_permission_allowed(
         self, mocked_service, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
     ):
-        user = Mock()
-        user.id = 42
-        user.is_superuser = False
-        user.is_authenticated = True
+        user = operatore_di_prova(user_id=42)
         mock_auth.return_value = (user, None)
         mocked_service.return_value = {
             "updated_attivita": 1, "deleted_fatture": 1, "deleted_righe": 1,
@@ -117,10 +115,7 @@ class VenditeResetLottoFatturaDraftApiTests(JwtMockedApiTest):
     def test_reset_lotto_fattura_draft_post_permission_denied(
         self, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
     ):
-        user = Mock()
-        user.id = 42
-        user.is_superuser = False
-        user.is_authenticated = True
+        user = operatore_di_prova(user_id=42)
         mock_auth.return_value = (user, None)
         response = self.client.post(
             "/api/v1/vendite/lotti/10/fatture/22/reset-draft/",

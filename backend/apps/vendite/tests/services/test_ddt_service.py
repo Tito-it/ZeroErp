@@ -151,11 +151,15 @@ class DdtServiceGuardsTests(SimpleTestCase):
 
     @patch(_REPO)
     def test_cambia_stato_ddt_not_found(self, repo_cls) -> None:
-        # Guard esistenza leggero: stato corrente None -> E_DDT_NOT_FOUND.
-        repo_cls.return_value.get_stato_codice.return_value = None
+        # La bolla che non c'e' (o fuori perimetro) la rifiuta il verbo, col
+        # suo codice (regola del 1, 2026-10-27): il service non lo ridice.
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = None
+        repo.cambia_stato.side_effect = DatabaseError("E_DDT_NOT_FOUND: ddt 99")
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(99, "SPEDITO")
         self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+        repo.cambia_stato.assert_called_once_with(99, "SPEDITO")
 
     @patch(_REPO)
     def test_aggiorna_ddt_fuori_bozza_decide_il_db(self, repo_cls) -> None:

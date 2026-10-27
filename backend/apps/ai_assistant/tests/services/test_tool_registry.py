@@ -34,7 +34,7 @@
 
 import unittest
 from typing import Any
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import ANY, patch
 
 from rest_framework.permissions import IsAuthenticated
 
@@ -43,6 +43,7 @@ from apps.ai_assistant.tools.base import AITool, EndpointGemello
 from apps.core.api.base_views import AdminAPIView, DomainAPIView
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 
 class _DummyTool(AITool):
@@ -87,17 +88,6 @@ def _tool(name: str, view: type, metodo: str = "GET") -> _DummyTool:
         name=name, description="d", input_schema={},
         endpoint=EndpointGemello(view, metodo),
     )
-
-
-# Scopo: un operatore autenticato, non superuser Django. Un `MagicMock` nudo
-#        avrebbe `is_superuser` vero (attributo auto-creato) e passerebbe
-#        ogni controllo per il bypass: il test sarebbe verde per sottrazione.
-def _operatore(*, is_superuser: bool = False) -> MagicMock:
-    user = MagicMock()
-    user.id = 7
-    user.is_authenticated = True
-    user.is_superuser = is_superuser
-    return user
 
 
 def _mock_livello(livello_map: dict[str, str]):
@@ -162,7 +152,7 @@ class TestToolRegistry(unittest.TestCase):
             _tool("t_pratiche", _PraticheView), _tool("t_vendite", _VenditeView),
         ])
 
-        names = [t.name for t in tool_registry.get_tools_for_user(_operatore())]
+        names = [t.name for t in tool_registry.get_tools_for_user(operatore_di_prova(user_id=7))]
         self.assertIn("t_pratiche", names)
         self.assertNotIn("t_vendite", names)
 
@@ -172,7 +162,7 @@ class TestToolRegistry(unittest.TestCase):
         self.mock_livello.side_effect = _mock_livello({"pratiche": "BLOCCATO", **_AI_TUTTO})
         tool_registry.register_tool(_tool("t_bloccato", _PraticheView))
 
-        self.assertEqual(tool_registry.get_tools_for_user(_operatore()), [])
+        self.assertEqual(tool_registry.get_tools_for_user(operatore_di_prova(user_id=7)), [])
 
     # Scopo: Un gemello POST chiede `add`, che `LETTURA` non concede.
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
@@ -180,7 +170,7 @@ class TestToolRegistry(unittest.TestCase):
         self.mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA", **_AI_TUTTO})
         tool_registry.register_tool(_tool("t_write", _PraticheView, "POST"))
 
-        self.assertEqual(tool_registry.get_tools_for_user(_operatore()), [])
+        self.assertEqual(tool_registry.get_tools_for_user(operatore_di_prova(user_id=7)), [])
 
     # Scopo: Un gemello `skip_area_check` (lookup cross-dominio) si apre come
     #        lo apre la UI: senza nessun livello d'area.
@@ -188,7 +178,7 @@ class TestToolRegistry(unittest.TestCase):
     def test_gemello_skip_area_check_disponibile_senza_livelli(self, _mock_disabled):
         tool_registry.register_tool(_tool("t_lookup", _LookupView))
 
-        tools = tool_registry.get_tools_for_user(_operatore())
+        tools = tool_registry.get_tools_for_user(operatore_di_prova(user_id=7))
         self.assertEqual([t.name for t in tools], ["t_lookup"])
         # Nessun livello di DOMINIO: l'unico chiesto e' quello sull'assistente.
         self.assertEqual(
@@ -203,7 +193,7 @@ class TestToolRegistry(unittest.TestCase):
             _tool("t_disabled", _PraticheView), _tool("t_enabled", _PraticheView),
         ])
 
-        names = [t.name for t in tool_registry.get_tools_for_user(_operatore())]
+        names = [t.name for t in tool_registry.get_tools_for_user(operatore_di_prova(user_id=7))]
         self.assertNotIn("t_disabled", names)
         self.assertIn("t_enabled", names)
 
@@ -221,23 +211,23 @@ class TestToolRegistry(unittest.TestCase):
     def test_is_allowed_read_tool_lettura(self, _mock_disabled):
         self.mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA", **_AI_TUTTO})
         t = _tool("t_r", _PraticheView)
-        self.assertTrue(tool_registry.is_tool_allowed_for_user(_operatore(), t))
+        self.assertTrue(tool_registry.is_tool_allowed_for_user(operatore_di_prova(user_id=7), t))
 
     # Scopo: area BLOCCATO → negato.
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
     def test_is_allowed_blocked(self, _mock_disabled):
         self.mock_livello.side_effect = _mock_livello({"pratiche": "BLOCCATO", **_AI_TUTTO})
         t = _tool("t_b", _PraticheView)
-        self.assertFalse(tool_registry.is_tool_allowed_for_user(_operatore(), t))
+        self.assertFalse(tool_registry.is_tool_allowed_for_user(operatore_di_prova(user_id=7), t))
 
     # Scopo: gemello POST → richiede TUTTO (LETTURA negato, TUTTO permesso).
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
     def test_is_allowed_write_requires_tutto(self, _mock_disabled):
         t = _tool("t_w", _PraticheView, "POST")
         self.mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA", **_AI_TUTTO})
-        self.assertFalse(tool_registry.is_tool_allowed_for_user(_operatore(), t))
+        self.assertFalse(tool_registry.is_tool_allowed_for_user(operatore_di_prova(user_id=7), t))
         self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO", **_AI_TUTTO})
-        self.assertTrue(tool_registry.is_tool_allowed_for_user(_operatore(), t))
+        self.assertTrue(tool_registry.is_tool_allowed_for_user(operatore_di_prova(user_id=7), t))
 
     # Scopo: tool in blacklist → negato anche con permessi pieni.
     def test_is_allowed_blacklist(self):
@@ -245,7 +235,7 @@ class TestToolRegistry(unittest.TestCase):
         t = _tool("t_disabled", _PraticheView)
         self.assertFalse(
             tool_registry.is_tool_allowed_for_user(
-                _operatore(), t, disabled={"t_disabled"}
+                operatore_di_prova(user_id=7), t, disabled={"t_disabled"}
             )
         )
 
@@ -260,9 +250,9 @@ class TestToolRegistry(unittest.TestCase):
         t = _tool("t_act", _PraticaStatoView, "POST")
 
         self.mock_check_azione.return_value = False
-        self.assertFalse(tool_registry.is_tool_allowed_for_user(_operatore(), t))
+        self.assertFalse(tool_registry.is_tool_allowed_for_user(operatore_di_prova(user_id=7), t))
         self.mock_check_azione.return_value = True
-        self.assertTrue(tool_registry.is_tool_allowed_for_user(_operatore(), t))
+        self.assertTrue(tool_registry.is_tool_allowed_for_user(operatore_di_prova(user_id=7), t))
         self.mock_check_azione.assert_called_with(
             ANY, "cambia_stato_pratica", cache=ANY,
         )
@@ -279,16 +269,16 @@ class TestToolRegistry(unittest.TestCase):
         self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO", **_AI_TUTTO})
         t = _tool("t_admin", _AdminView)
 
-        self.assertFalse(tool_registry.is_tool_allowed_for_user(_operatore(), t))
+        self.assertFalse(tool_registry.is_tool_allowed_for_user(operatore_di_prova(user_id=7), t))
         self.mock_is_super_admin.return_value = True
-        self.assertTrue(tool_registry.is_tool_allowed_for_user(_operatore(), t))
+        self.assertTrue(tool_registry.is_tool_allowed_for_user(operatore_di_prova(user_id=7), t))
 
     # Scopo: il superuser Django passa, come passa dalla UI.
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
     def test_is_allowed_superuser_django_come_la_ui(self, _mock_disabled):
         t = _tool("t_su", _PraticheView, "POST")
         self.assertTrue(
-            tool_registry.is_tool_allowed_for_user(_operatore(is_superuser=True), t)
+            tool_registry.is_tool_allowed_for_user(operatore_di_prova(user_id=7, is_superuser=True), t)
         )
 
     # Scopo: una permission class senza `valuta` non si sa valutare fuori da
@@ -297,4 +287,4 @@ class TestToolRegistry(unittest.TestCase):
     def test_is_allowed_permission_class_non_valutabile_nega(self, _mock_disabled):
         self.mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO", **_AI_TUTTO})
         t = _tool("t_nv", _NonValutabileView)
-        self.assertFalse(tool_registry.is_tool_allowed_for_user(_operatore(), t))
+        self.assertFalse(tool_registry.is_tool_allowed_for_user(operatore_di_prova(user_id=7), t))

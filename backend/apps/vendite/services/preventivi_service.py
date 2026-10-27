@@ -690,8 +690,10 @@ def cambia_stato(
     # sull'aggiornamento di un ACCETTATO (finche' il preventivo e' fatturabile,
     # vedi _STATI_FATTURABILI). Su altre transizioni i parametri sono ignorati.
     if nuovo_stato == "ACCETTATO":
-        testata = _get_testata_or_raise(repo, preventivo_id, op="cambia_stato")
-        stato_attuale = testata["stato_codice_interno"]
+        # Lo stato corrente decide se servono i due parametri. Un preventivo
+        # che non c'e' (None) salta il ramo e lo rifiuta il verbo
+        # (E_PREV_NOT_FOUND, regola del 1).
+        stato_attuale = repo.get_stato_codice(preventivo_id)
         if stato_attuale in ("EMESSO", "ACCETTATO"):
             ErrorManager.require(
                 fatturazione_immediata is not None,
@@ -736,11 +738,10 @@ def cambia_stato(
             legami_confermati, validation_code=E_PREV_VALIDAZIONE,
             function_name=f"{_FN}.cambia_stato",
         )
-        stato_prec = testata_o_not_found(
-            repo.get_stato_codice, preventivo_id,
-            code="E_PREV_NOT_FOUND", message="Preventivo non trovato.",
-            id_name="preventivo_id", function_name=f"{_FN}.cambia_stato",
-        )
+        # Lo stato di partenza per la risposta: il verbo d'annullo rende i soli
+        # legami. «Il preventivo c'e'» lo dice il verbo (E_PREV_NOT_FOUND,
+        # regola del 1), e il None di qui non arriva al client.
+        stato_prec = repo.get_stato_codice(preventivo_id)
         with _db_errors("cambia_stato"):
             repo.annulla(preventivo_id, confermati)
         return {

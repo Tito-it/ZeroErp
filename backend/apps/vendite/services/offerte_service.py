@@ -859,6 +859,11 @@ class OfferteService:
     #        (`E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`); qui solo l'esistenza
     #        (404). ⛔ Fino al 2026-10-26 lo ripeteva `_assert_stato_corrente`
     #        (brief-modello-documento-vendita §13.6 punto 4).
+    #        ⚠️ L'esistenza resta qui, a differenza del push (regola del 1),
+    #        perche' la fn sull'offerta che non c'e' risponde
+    #        E_PARAMETRO_INVALIDO, un 400: si toglie quando il DB rispondera'
+    #        E_OFFERTA_NON_TROVATA (richiesta al team DB, brief-modello-
+    #        documento-vendita §14.8).
     def crea_revisione(
         self, offerta_id: int, *, user: str | None = None
     ) -> dict[str, Any]:
@@ -889,7 +894,10 @@ class OfferteService:
     #        `chiudi_esistente=True`, che chiude il vecchio per successione).
     #
     #        Lo stato di partenza (ACCETTATA) lo dice il verbo
-    #        (`E_OFFERTA_PUSH_STATO_NON_AMMESSO`); qui solo l'esistenza (404).
+    #        (`E_OFFERTA_PUSH_STATO_NON_AMMESSO`), e anche l'esistenza: la fn
+    #        e' INVOKER sotto la RLS dell'offerta e risponde
+    #        E_OFFERTA_NON_TROVATA (404). ⛔ Nessun controllo qui (regola del
+    #        1, Tid 2026-10-27).
     def push_a_contratto(
         self,
         offerta_id: int,
@@ -900,7 +908,6 @@ class OfferteService:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         if pratica_id is not None:
             self._v.guard_positive_int(pratica_id, field="pratica_id")
-        self._get_offerta_or_raise(offerta_id, op="push_a_contratto", getter=self._repo.get_stato_codice)
         with self._db_errors(
             {
                 "offerta_id": offerta_id,
@@ -985,8 +992,8 @@ class OfferteService:
             legami_confermati, validation_code=E_VENDITE_VALIDATION,
             function_name="offerte_service.annulla",
         )
-        # Esistenza col lettore leggero: il 404 del dominio prima del verbo.
-        self._get_offerta_or_raise(offerta_id, op="annulla", getter=self._repo.get_stato_codice)
+        # «L'offerta c'e'» lo dice il verbo (E_OFFERTA_NON_TROVATA, regola del
+        # 1): qui nessuna copia.
         with self._db_errors(
             {"offerta_id": offerta_id},
             fallback_message="Annullo offerta non consentito.",
@@ -1650,11 +1657,12 @@ class OfferteService:
     #        factory di «Emetti» ci mette il PDF). Perimetro, stato di
     #        partenza, permesso del passaggio, motivazione e condizioni li
     #        giudica il DB.
-    #        ⭐ L'esistenza col lettore leggero, come in `annulla`, revisione e
-    #        push (e nel cambio stato del contratto): l'offerta che non c'e' e'
-    #        UN codice, `E_VENDITE_NOT_FOUND`, da ogni rotta del service. Il
-    #        verbo la ricontrolla nel perimetro (E_OFFERTA_NON_TROVATA), ma a
-    #        quel punto e' solo la difesa del DB.
+    #        ⛔ Nessun controllo «l'offerta c'e'» qui (regola del 1, Tid
+    #        2026-10-27): il verbo prende la testata nel perimetro e rifiuta
+    #        da se' (E_OFFERTA_NON_TROVATA, 404). Fino al 2026-10-27 un
+    #        lettore lo ridiceva col codice del service (E_VENDITE_NOT_FOUND),
+    #        per avere «un codice da ogni rotta»: lo stesso fatto in due sedi,
+    #        e il frontend legge la classe, non il codice.
     #        ⛔ Fino al 2026-10-26 era `_cambia_stato_manuale`: uno stato di
     #        partenza scritto in Python (`expected_from`), l'id dello stato dal
     #        lettore e un UPDATE diretto (`update_stato`), che la porta ora
@@ -1663,7 +1671,6 @@ class OfferteService:
         self, offerta_id: int, *, stato_codice: str, motivazione: str | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        self._get_offerta_or_raise(offerta_id, op="_cambia_stato", getter=self._repo.get_stato_codice)
         with self._db_errors(
             {"offerta_id": offerta_id, "stato_codice": stato_codice},
             fallback_message="Cambio stato offerta non consentito.",
