@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10):
+--   la commessa del caso 7 nasce APERTA con l'attivita' del builder (p_con_attivita
+--   => true, prima false): BOZZA -> APERTA e' spenta, APERTA si raggiunge solo da
+--   PRONTA_FATTURAZIONE («riapri»), e PRONTA_FATTURAZIONE vuole una riga APPROVATA
+--   e non emessa. La riga del builder ha la sua sorgente, non l'ordine: il guard
+--   del caso 7 lo ferma ancora e solo la riga EMESSA scritta sotto. Attese invariate.
 -- rev 2026-10-25 (brief-modello-documento-vendita §9): l'ordine ha la porta sulla colonna di
 --   stato. Le transizioni provate passano dal verbo vendite.fn_cambia_stato_ordine (con
 --   emetti_ordine concessa all'operatore costruito), che arriva al guard di transizione:
@@ -252,13 +258,14 @@ SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('guard transizione F', 'CONFE
 --   passava solo perche' l'ordine non aveva BA, e il guard «una commessa, un
 --   emittente» non aveva niente da confrontare.
 -- rev 2026-10-24 (Q-2): la testata dal builder, sul billing account dell'ordine,
---   portata ad APERTA per la matrice. ⚠️ p_con_attivita => false: la riga che
---   conta e' quella EMESSA scritta sotto, e una riga APPROVATA del builder
---   sarebbe lavoro in piu' che il caso non dichiara.
+--   portata ad APERTA per la matrice. ⚠️ p_con_attivita => true (giro 10): APERTA
+--   passa da PRONTA_FATTURAZIONE, che vuole una riga APPROVATA e non emessa;
+--   la riga che conta per il guard resta quella EMESSA scritta sotto (la riga
+--   del builder non nasce dall'ordine).
 CREATE TEMP TABLE tmp_gt_com AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa(
     'guard transizione ordini', 'APERTA',
-    (SELECT billing_account_id FROM tmp_gt_cli), false);
+    (SELECT billing_account_id FROM tmp_gt_cli), true);
 
 INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
 SELECT (SELECT commessa_id FROM tmp_gt_com),

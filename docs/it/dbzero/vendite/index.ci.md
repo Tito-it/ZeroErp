@@ -89,10 +89,10 @@ search:
 - [resi_righe_riconsegne](manual/resi_righe_riconsegne.md) — (rev 2026-07-13)
 - [resi_righe_rientri](manual/resi_righe_rientri.md) — (rev 2026-09-29 — Lotto 3-bis del magazzino)
 - [resi_righe_rinunce](manual/resi_righe_rinunce.md) — (rev 2026-07-26)
-- [stati_commessa](manual/stati_commessa.md) — (latest review 26-02-2026)   `vendite.stati_commessa` e` la lookup centrale degli stati lifecycle della commessa.
+- [stati_commessa](manual/stati_commessa.md) — (latest review 26-10-2026)   `vendite.stati_commessa` e` la lookup centrale degli stati lifecycle della commessa.
 - [tipi_doc_fiscale_registri](manual/tipi_doc_fiscale_registri.md) — (latest review 27-01-2026) La tabella **`vendite.tipi_doc_fiscale_registri`** definisce il mapping **tipo documento fiscale → registro di fatturazione**, necessario per la numerazione e la contabilizzazione dei documenti.
 - [tipi_fondi_fattura](manual/tipi_fondi_fattura.md) — (latest review 10-02-2026)   `vendite.tipi_fondi_fattura` definisce il **catalogo delle tipologie di fondo fattura** (addebiti/accrediti fatture precedenti, canone RAI, ecc.). Serve a normalizzare i motivi di addebito/accredito extra rispetto alle righe standard.
-- [transizioni_stati_commessa](manual/transizioni_stati_commessa.md) — (rev 2026-06-07) `vendite.transizioni_stati_commessa` definisce la **matrice delle transizioni ammesse** tra gli stati della commessa. Pattern identico a `config.transizioni_stati_ordini` / `config.transizioni_stati_preventivi`, ma collocato in schema `vendite` perché lì vive la tabella stati di riferimento `vendite.stati_commessa` (a differenza di preventivi/ordini, i cui stati sono in `config.stati_doc_*`).
+- [transizioni_stati_commessa](manual/transizioni_stati_commessa.md) — (rev 2026-06-07; ultima revisione 2026-10-26) `vendite.transizioni_stati_commessa` definisce la **matrice delle transizioni ammesse** tra gli stati della commessa. Pattern identico a `config.transizioni_stati_ordini` / `config.transizioni_stati_preventivi`, ma collocato in schema `vendite` perché lì vive la tabella stati di riferimento `vendite.stati_commessa` (a differenza di preventivi/ordini, i cui stati sono in `config.stati_doc_*`).
 
 ## ⚙️ Funzioni (manuale)
 - [fn_accoda_stampe_lotto](manual/fn_accoda_stampe_lotto.md) — (rev 2026-08-21)
@@ -115,7 +115,7 @@ search:
 - [fn_build_fattura_key](manual/fn_build_fattura_key.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_build_fattura_key()`** costruisce la **chiave logica** di aggregazione documento a partire da una riga di `attivita_fatturabili`.
 - [fn_build_gruppo_fatturabile_key](manual/fn_build_gruppo_fatturabile_key.md) — Costruire la chiave del **gruppo fatturabile** di una riga di commessa. È l'**unica fonte di verità** della chiave: la usano sia l'elenco che l'operatore legge, sia i filtri che l'emissione applica. Se la forma cambiasse qui, cambierebbe ovunque insieme.
 - [fn_calcola_data_documento](manual/fn_calcola_data_documento.md) — **Che data porta un documento emesso su questo registro?**
-- [fn_cambia_stato_commessa](manual/fn_cambia_stato_commessa.md) — (rev 2026-06-07) `vendite.fn_cambia_stato_commessa(p_commessa_id, p_nuovo_stato, p_user)` è l'**entrypoint sanzionato (DB-first)** per cambiare lo stato di una commessa: risolve il codice stato in id, esegue l'`UPDATE` e ritorna lo stato da/a.
+- [fn_cambia_stato_commessa](manual/fn_cambia_stato_commessa.md)
 - [fn_cambia_stato_contratto](manual/fn_cambia_stato_contratto.md)
 - [fn_cambia_stato_offerta](manual/fn_cambia_stato_offerta.md)
 - [fn_cambia_stato_ordine](manual/fn_cambia_stato_ordine.md)
@@ -135,6 +135,7 @@ search:
 - [fn_cleanup_fatture_by_ids](manual/fn_cleanup_fatture_by_ids.md) — (latest review 03-08-2026)  
 - [fn_close_commessa_push_run](manual/fn_close_commessa_push_run.md) — `vendite.fn_close_commessa_push_run` **chiude** il giro aperto in testa alla corsa: gli scrive sopra l'esito, il risultato per handler e la durata.
 - [fn_close_giornaliero_lotto](manual/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
+- [fn_commessa_proietta_stato_emittibile](manual/fn_commessa_proietta_stato_emittibile.md)
 - [fn_commessa_viva_di_sorgente](manual/fn_commessa_viva_di_sorgente.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-12 e D-14)
 - [fn_complete_lotto_task_run](manual/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
 - [fn_componi_numero_documento](manual/fn_componi_numero_documento.md) — (rev 2026-08-31, sera)
@@ -252,7 +253,7 @@ search:
 - [fn_push_offerta_a_contratto](manual/fn_push_offerta_a_contratto.md) — (rev6 2026-06-08 — guard **mutua esclusività** offerta→contratto/ordine; rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 - [fn_push_preventivo_a_ordine](manual/fn_push_preventivo_a_ordine.md) — (latest review 08-07-2026)
 - [fn_regime_fiscale_fattura](manual/fn_regime_fiscale_fattura.md)
-- [fn_rendi_commessa_emittibile](manual/fn_rendi_commessa_emittibile.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-10)
+- [fn_rendi_commessa_emittibile](manual/fn_rendi_commessa_emittibile.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-10; ultima revisione 2026-10-26)
 - [fn_reset_fondi_fattura](manual/fn_reset_fondi_fattura.md) — (latest review 22-08-2026)
 - [fn_resi_da_accreditare](manual/fn_resi_da_accreditare.md) — (latest review 2026-09-21)
 - [fn_resi_riga_accreditato_partita](manual/fn_resi_riga_accreditato_partita.md) — (rev 2026-08-18)

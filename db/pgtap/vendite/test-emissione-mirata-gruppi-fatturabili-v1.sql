@@ -8,6 +8,9 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
 --   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
 --   preventivo nasceva gia' ACCETTATO).
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): il passaggio a
+--   PRONTA_FATTURAZIONE dal verbo chiede l'azione cambia_stato_commessa: il file
+--   prova le discovery filtrate, non il permesso, e la concede all'utente del contesto.
 -- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): il preventivo
 --   ROOT si emette con una riga (merce, 1 x 10) da
 --   dbops.fn_pgtap_crea_preventivo_con_righe (p_preventivo_id): l'emissione
@@ -402,6 +405,10 @@ SELECT is(
 --   La transizione e' ammessa perche' restano righe APPROVATA+NON_EMESSA
 --   (le 2 del gruppo contratto).
 -- ============================================================
+-- rev 2026-10-26 (giro 10): «rendi pronta» chiede l'azione cambia_stato_commessa
+-- (brief-modello-documento-vendita §14, C-1); questo file prova il filtro per gruppi, non il
+-- permesso: la si concede all'utente del contesto.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT vendite.fn_cambia_stato_commessa(
   (SELECT commessa_id FROM tmp_gr_comm), 'PRONTA_FATTURAZIONE');
 

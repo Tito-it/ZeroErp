@@ -23,6 +23,14 @@
 --   6. La transizione, quando il check e' pulito, passa davvero
 --   7. La transizione, quando il check non e' pulito, viene RIFIUTATA
 --
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): la porta sulla
+--   commessa rifiuta l'UPDATE diretto dello stato. I test 6 e 7 passano dal verbo
+--   vendite.fn_cambia_stato_commessa, con l'azione cambia_stato_commessa
+--   all'utente del contesto (il file prova la regola delle righe pronte, non il
+--   permesso).
+-- ⚠️ Attesa precisata: test 7 da throws_ok sul solo P0001 a throws_like sulla
+--   frase di E_COMMESSA_NESSUNA_RIGA_APPROVATA: col solo P0001 sarebbe verde
+--   anche per la porta o per il permesso, cioe' per la ragione sbagliata.
 -- FIXTURE COSTRUITA, NON PESCATA. Le due commesse di prova nascono qui dentro
 -- copiando i riferimenti di una commessa esistente (billing account, utility,
 -- emittente): cosi' i sei casi valgono anche su un database appena creato, e
@@ -195,9 +203,9 @@ SELECT is(
 -- ============================================================
 -- 6) La transizione lecita passa e rende la commessa emittibile
 -- ============================================================
-UPDATE vendite.commesse
-   SET stato_commessa_id = (SELECT id FROM vendite.stati_commessa WHERE codice_interno = 'PRONTA_FATTURAZIONE')
- WHERE id = (SELECT com_a FROM _fx);
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
+
+SELECT * FROM vendite.fn_cambia_stato_commessa((SELECT com_a FROM _fx), 'PRONTA_FATTURAZIONE');
 
 SELECT ok(
     (SELECT sc.codice_interno = 'PRONTA_FATTURAZIONE' AND sc.emittibile IS TRUE
@@ -210,12 +218,10 @@ SELECT ok(
 -- ============================================================
 -- 7) La transizione non lecita viene rifiutata dal guard
 -- ============================================================
-SELECT throws_ok(
-    format($$UPDATE vendite.commesse
-                SET stato_commessa_id = (SELECT id FROM vendite.stati_commessa WHERE codice_interno = 'PRONTA_FATTURAZIONE')
-              WHERE id = %s$$, (SELECT com_b FROM _fx)),
-    'P0001',
-    NULL,
+SELECT throws_like(
+    format($$SELECT * FROM vendite.fn_cambia_stato_commessa(%s, 'PRONTA_FATTURAZIONE')$$,
+           (SELECT com_b FROM _fx)),
+    '%impossibile passare a PRONTA_FATTURAZIONE senza almeno una riga approvata%',
     '7. Commessa senza righe pronte: il guard rifiuta il passaggio a PRONTA_FATTURAZIONE'
 );
 

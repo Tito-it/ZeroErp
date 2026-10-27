@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): test 2, l'annullo «diretto» non e'
+--   piu' un UPDATE dello stato (la porta lo ferma prima, E_DOC_STATO_SOLO_DAL_VERBO, e il motivo D-3
+--   non si vedrebbe): e' il verbo vendite.fn_annulla_commessa senza conferma dei legami, che prova
+--   prima cio' che vieta. L'attesa resta E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la commessa da dbops.fn_pgtap_crea_commessa (sorgente ROOT), la riga della bolla da dbops.fn_pgtap_crea_commessa_attivita (sorgente DDT_VENDITA), la fattura agganciata da dbops.fn_pgtap_fattura_attivita (ritirato il blocco DO $fatt$); il reset a mano con la GUC diventa il verbo vero vendite.fn_cleanup_fatture_by_ids, che rifiuta (E_FATTURE_RIGHE_RETTIFICATE): le sei attese sono riscritte sullo stato del modello (E-4), vedi sotto.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso a credito dal builder dbops.fn_pgtap_crea_reso (che concede da se' conferma_reso); resta scritta a mano la commessa con la fattura, che e' il caso del test.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano il reso a credito (giro 2) e la commessa con la fattura, che sono il caso del test.
@@ -34,7 +38,7 @@
 -- Indice test (plan 6):
 --   1) fixture: la commessa ha un legame, la rettifica (RESO, con la riga di
 --      reso); la riga della bolla e' fatturata, non e' un legame
---   2) l'annullo diretto e' rifiutato: E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE
+--   2) l'annullo senza conferma (il verbo) e' rifiutato: E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE
 --   3) confermato il legame, il verbo rifiuta lo stesso (D-3)
 --   4) il rifiuto non tocca niente: commessa viva, rettifica NON_EMESSA,
 --      ponte intero, nessun ACCREDITO_ANNULLATO
@@ -73,8 +77,7 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
 CREATE TEMP TABLE tmp_acr AS
 SELECT
   c.billing_account_id,
-  dbops.fn_pgtap_crea_articolo('PGT-ACR-MERCE', false) AS articolo_id,
-  (SELECT s.id FROM vendite.stati_commessa s WHERE s.codice_interno = 'ANNULLATA')                                   AS cm_annullata_id
+  dbops.fn_pgtap_crea_articolo('PGT-ACR-MERCE', false) AS articolo_id
 FROM tmp_acr_cli c;
 
 CREATE TEMP TABLE tmp_acr_fix(chiave text PRIMARY KEY, id bigint);
@@ -180,11 +183,12 @@ SELECT 'accreditato_prima', vendite.fn_resi_riga_accreditato_partita(pg_temp.acr
 
 -- ⚠️ ATTESA CAMBIATA (E-4): era E_DOC_ANNULLO_CON_LEGAMI. Con la riga
 --   fatturata EMESSA scatta prima D-3 (script.fn_check_commessa_annullabile).
+-- ⚠️ Giro 10: lo stato non si scrive piu' con un UPDATE (la porta). L'annullo
+--   senza conferma dei legami e' il verbo: D-3 viene prima della conferma.
 SELECT is(
-  pg_temp.acr_esito(format('UPDATE vendite.commesse SET stato_commessa_id = %s WHERE id = %s',
-                           (SELECT cm_annullata_id FROM tmp_acr), pg_temp.acr('cm'))),
+  pg_temp.acr_esito(format('SELECT vendite.fn_annulla_commessa(%s)', pg_temp.acr('cm'))),
   'P0001|E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE',
-  '2) l''annullo diretto e'' rifiutato: la commessa ha una riga gia'' emessa (D-3)');
+  '2) l''annullo senza conferma dei legami e'' rifiutato: la commessa ha una riga gia'' emessa (D-3)');
 
 -- ⚠️ ATTESA CAMBIATA (E-4): il verbo restituiva i due legami. Confermato il
 --   legame che c'e', rifiuta lo stesso: una commessa che ha prodotto una

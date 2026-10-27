@@ -260,7 +260,9 @@ ritiro della conferma senza «Emetti»). Il contratto è stato portato il 26 ott
 il backend lo segue (l'attivazione e la cessazione dai verbi, il 403 dalla riga del passaggio, la
 cessazione programmata decisa dal database). L'offerta è stata portata il 26 ottobre 2026 lato database;
 il backend la segue (l'emissione, l'esito e l'annullo dai verbi, il 403 dalla riga del passaggio, la
-motivazione chiesta dal database, la conferma dei legami all'annullo di una revisione).
+motivazione chiesta dal database, la conferma dei legami all'annullo di una revisione). La commessa è stata
+portata il 26 ottobre 2026 lato database; il backend la segue (il 403 dalla riga del passaggio, la firma
+nuova del verbo).
 
 | Documento | Nasce in bozza (§3) | Matrice in tabella (§4) | Verbo di stato (§5) | Azione sul passaggio (§6) | Emissione (§7) | Annullo (§8) |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -270,7 +272,7 @@ motivazione chiesta dal database, la conferma dei legami all'annullo di una revi
 | Ordine | ✅ | ✅ | ✅ `fn_cambia_stato_ordine` sul verbo comune, con la porta; l'evasione (confermato ↔ parzialmente evaso ↔ evaso) dalla proiezione delle bolle | ✅ `emetti_ordine` sulla conferma e sull'annullo del confermato | ✅ solo da «Emetti» (la conferma senza PDF è ritirata dal 2026-10-25). ⚠️ Il numero si assegna alla nascita, non all'emissione: divergenza dichiarata, tema a parte | ✅ `fn_annulla_ordine` → verbo di stato |
 | DDT | ✅ | ✅ | ✅ `fn_cambia_stato_ddt` sul verbo comune, con la porta | ✅ `emetti_ddt` sulla riga di emissione e annullo dell'emesso; `registra_magazzino` nel verbo, per l'operazione di magazzino | ✅ solo da «Emetti»: il cambio stato generico rifiuta emesso | ✅ `fn_annulla_ddt` → verbo di stato |
 | Reso | ✅ | ✅ | ✅ `fn_conferma_reso`, `fn_annulla_reso` sul verbo comune, con la porta | ✅ `conferma_reso` sulla riga di conferma e annullo del confermato | — la conferma fa da emissione | ✅ verbo |
-| Commessa | ✅ | ✅ (tabella in `vendite`, non in `config`) | ✅ `fn_cambia_stato_commessa`, ma senza il controllo del permesso | ❌ `cambia_stato_commessa` su ogni passaggio, controllata solo dal backend | — nasce dalla push | ✅ `fn_annulla_commessa` → verbo di stato |
+| Commessa | ✅ | ✅ (tabella in `vendite`, non in `config`) | ✅ `fn_cambia_stato_commessa` sul verbo comune, con la porta; il passaggio a pronta della push dalla proiezione `fn_commessa_proietta_stato_emittibile` | ✅ `cambia_stato_commessa` su «rendi pronta», «riapri», «chiudi» e sull'annullo di una commessa non in bozza | — nasce dalla push | ✅ `fn_annulla_commessa` → verbo di stato |
 | Fattura | ✅ | ✅ (`config.stati_doc_fiscale_transizioni`, con passaggi solo del lotto e solo della fattura singola) | ❌ funzioni della pipeline; lo stato del lotto con `UPDATE` | ❌ azioni della pipeline, controllate solo dal backend | — la pipeline | — il ritorno del lotto in bozza |
 | Versione di listino | ❌ stato testo con `CHECK`, senza vocabolario | ❌ passaggi nel guard e ricopiati in Python | ❌ `UPDATE` dal backend | ❌ nessuna azione | — | — |
 | Ordine e DDT d'acquisto | ✅ | ❌ nessun guard di transizione | ❌ | ❌ | ❌ | ❌ |

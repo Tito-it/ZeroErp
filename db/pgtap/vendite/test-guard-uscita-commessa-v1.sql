@@ -44,21 +44,44 @@
 -- Indice test (1..17):
 --   1   script.fn_check_commessa_chiudibile presente
 --   2   script.fn_check_commessa_annullabile presente
---   3   matrice: arco IN_ESECUZIONE->CHIUSA (3->5) presente, attivo e manuale
+--   3   matrice: arco APERTA->CHIUSA (2->5) presente, attivo e manuale (rev 2026-10-26)
 --   4   codici errore 558/559 presenti a catalogo
 --   5   [A] _chiudibile: motivo 559 con righe APPROVATE+NON_EMESSE
 --   6   [A] ->CHIUSA con righe pendenti rifiutata
 --   7   [A] capabilities: azione chiudi presente con enabled=false
 --   8   [A] capabilities: reasons di chiudi porta il reason_key
 --   9   [B] _chiudibile: [] quando non resta nulla di pendente
---  10   [B] capabilities in IN_ESECUZIONE: chiudi esposta ed enabled=true
---  11   [B] ->CHIUSA da IN_ESECUZIONE ammessa  <- chiude il vicolo cieco
+--  10   [B] capabilities in APERTA: chiudi esposta ed enabled=true
+--  11   [B] ->CHIUSA da APERTA ammessa  <- chiude il vicolo cieco
 --  12   [C] _annullabile: motivo 558 con righe EMESSE
 --  13   [C] ->ANNULLATA con righe emesse rifiutata
---  14a  [C] da IN_ESECUZIONE: annulla e chiudi spente, rendi_pronta accesa
+--  14a  [C] da APERTA: annulla e chiudi spente, rendi_pronta accesa
 --  14   [C] SKIP dichiarato: lo scenario «tutte spente» e' uscito dal modello (D-5)
 --  15   [D] ->ANNULLATA senza righe emesse ammessa (dal verbo con conferma, rev 2026-10-12)
 --  16   fn_get_commessa_stato espone commessa_codice e cliente_display
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): IN_ESECUZIONE
+--   ritirato (C-3); il test 3 guarda l'arco che chiude il vicolo cieco nel
+--   modello nuovo, APERTA->CHIUSA. Sullo scratch il file si tronca al test 5 su
+--   «p_billing_account_id obbligatorio» (la fixture prende il cliente dai dati:
+--   debito preesistente, non di questo giro); su dbdev arriva in fondo.
+-- rev 2026-10-26 (giro 10, dopo la corsa di Tid su dbdev): gli scenari B, C, D
+--   erano costruiti in IN_ESECUZIONE (BOZZA -> APERTA -> IN_ESECUZIONE), che non
+--   esiste piu'. La commessa intermedia ora e' APERTA, la commessa RIAPERTA:
+--   ci si arriva da PRONTA_FATTURAZIONE con «riapri», e a PRONTA serve una riga
+--   approvata da emettere. Quindi:
+--   [B] il vicolo cieco e' la commessa riaperta e TUTTA EMESSA (la riga va a
+--       PRONTA, l'emissione la marca EMESSA, poi «riapri»): niente di pendente,
+--       «chiudi» la fa uscire;
+--   [C] la commessa riaperta con una riga EMESSA e una APPROVATA da emettere;
+--   [D] la commessa riaperta senza righe emesse: la riga da emettere e' il suo
+--       legame, l'annullo confermato passa.
+--   L'azione cambia_stato_commessa all'utente del contesto in testa: il file
+--   prova i guard d'uscita, non il permesso (C-1).
+--   Attese dei test invariate; cambiano lo stato di partenza (APERTA invece di
+--   IN_ESECUZIONE) e le frasi dei test 10, 11, 14a che lo nominano.
+-- ⚠️ Attesa cambiata: test 3 da IN_ESECUZIONE->CHIUSA (3->5) ad APERTA->CHIUSA
+--   (2->5), perche' IN_ESECUZIONE e' ritirato (attivo = false, arco 12 spento) e
+--   la riapertura ora porta in APERTA: la sua uscita verso CHIUSA e' l'arco 14.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -77,6 +100,10 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
+-- rev 2026-10-26 (giro 10, C-1): «rendi pronta», «riapri», «chiudi» e l'annullo
+--   fuori dalla bozza chiedono l'azione; il file prova i guard d'uscita.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
+
 SELECT plan(18);
 
 -- ============================================================
@@ -91,19 +118,21 @@ SELECT has_function('script', 'fn_check_commessa_annullabile',
 
 -- L'arco che chiude il vicolo cieco: senza, una commessa riaperta e tutta
 -- emessa non ha piu' uscite se non ANNULLATA (che il guard vieta).
+-- rev 2026-10-26: la riapertura porta in APERTA (IN_ESECUZIONE e' ritirato),
+-- quindi l'arco e' APERTA->CHIUSA.
 SELECT ok(
   EXISTS (
     SELECT 1
       FROM vendite.transizioni_stati_commessa t
       JOIN vendite.stati_commessa sd ON sd.id = t.stato_da_id
       JOIN vendite.stati_commessa sa ON sa.id = t.stato_a_id
-     WHERE sd.codice_interno = 'IN_ESECUZIONE'
+     WHERE sd.codice_interno = 'APERTA'
        AND sa.codice_interno = 'CHIUSA'
        AND t.attivo IS TRUE
        AND (t.meta->>'action_key') = 'chiudi'
        AND COALESCE((t.meta->>'manuale')::boolean, false) IS TRUE
   ),
-  '3) matrice: arco IN_ESECUZIONE->CHIUSA presente, attivo e manuale');
+  '3) matrice: arco APERTA->CHIUSA presente, attivo e manuale');
 
 SELECT is(
   (SELECT count(*)::int FROM config.messaggi_errore
@@ -241,9 +270,11 @@ SELECT is(
   '8) capabilities: reasons di chiudi porta il reason_key per il tooltip');
 
 -- ============================================================
--- [B] IN_ESECUZIONE senza pendenti (una sola riga in BOZZA).
---     E' il caso del vicolo cieco: prima di questo brief non poteva
---     ne' andare a PRONTA (nessuna approvata) ne' a CHIUSA (arco assente).
+-- [B] La commessa RIAPERTA e tutta emessa: niente di pendente.
+--     E' il caso del vicolo cieco: non puo' andare a PRONTA (nessuna
+--     riga da emettere) e senza l'arco APERTA->CHIUSA non potrebbe
+--     chiudersi. rev 2026-10-26 (giro 10): prima era IN_ESECUZIONE con
+--     una riga in BOZZA; IN_ESECUZIONE e' ritirato.
 -- ============================================================
 
 CREATE TEMP TABLE tmp_b AS SELECT pg_temp.fx_commessa('guard_uscita_B') AS commessa_id;
@@ -251,9 +282,19 @@ CREATE TEMP TABLE tmp_b AS SELECT pg_temp.fx_commessa('guard_uscita_B') AS comme
 DO $setup$
 DECLARE v_id vendite.commesse.id%TYPE := (SELECT commessa_id FROM tmp_b);
 BEGIN
-  PERFORM pg_temp.fx_riga(v_id, 'SEG-GUC-B1', 'BOZZA', 'NON_EMESSA');
+  -- La ROOT, che l'emissione pretende: la commessa radice di se' stessa.
+  PERFORM vendite.fn_link_commessa_sorgente(
+    p_commessa_id      => v_id,
+    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s
+                            WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE),
+    p_sorgente_uid     => v_id::text);
+  PERFORM pg_temp.fx_riga(v_id, 'SEG-GUC-B1', 'APPROVATA', 'NON_EMESSA');
+  PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'PRONTA_FATTURAZIONE');
+  -- L'emissione marca la riga EMESSA: la strada vera, non un UPDATE.
+  PERFORM * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
+    p_commessa_id => v_id, p_only_approved => true, p_dry_run => false);
+  -- «Riapri»: la commessa riaperta, tutta emessa.
   PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'APERTA');
-  PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'IN_ESECUZIONE');
 END
 $setup$;
 
@@ -269,16 +310,17 @@ SELECT is(
               -> 'available_actions') AS a
     WHERE a ->> 'key' = 'chiudi'),
   true,
-  '10) capabilities: in IN_ESECUZIONE chiudi e'' esposta e abilitata (arco nuovo)');
+  '10) capabilities: in APERTA chiudi e'' esposta e abilitata');
 
 SELECT lives_ok(
   $$ SELECT * FROM vendite.fn_cambia_stato_commessa(
        (SELECT commessa_id FROM tmp_b), 'CHIUSA') $$,
-  '11) ->CHIUSA da IN_ESECUZIONE ammessa: il vicolo cieco e'' chiuso');
+  '11) ->CHIUSA da APERTA ammessa: il vicolo cieco e'' chiuso');
 
 -- ============================================================
--- [C] IN_ESECUZIONE con una riga EMESSA + una APPROVATA/NON_EMESSA.
---     Entrambe le uscite manuali sono ostruite -> can_change_state=false.
+-- [C] La commessa RIAPERTA con una riga EMESSA + una APPROVATA/NON_EMESSA.
+--     Entrambe le uscite manuali sono ostruite. rev 2026-10-26 (giro 10):
+--     prima IN_ESECUZIONE; ora la commessa riaperta (PRONTA, poi «riapri»).
 -- ============================================================
 
 CREATE TEMP TABLE tmp_c AS SELECT pg_temp.fx_commessa('guard_uscita_C') AS commessa_id;
@@ -288,8 +330,8 @@ DECLARE v_id vendite.commesse.id%TYPE := (SELECT commessa_id FROM tmp_c);
 BEGIN
   PERFORM pg_temp.fx_riga(v_id, 'SEG-GUC-C1', 'APPROVATA', 'EMESSA');
   PERFORM pg_temp.fx_riga(v_id, 'SEG-GUC-C2', 'APPROVATA', 'NON_EMESSA');
+  PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'PRONTA_FATTURAZIONE');
   PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'APERTA');
-  PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'IN_ESECUZIONE');
 END
 $setup$;
 
@@ -338,7 +380,7 @@ SELECT throws_ok(
   '13) ->ANNULLATA con righe EMESSE rifiutata');
 
 -- Discriminante del ricalcolo: TUTTE le azioni manuali da IN_ESECUZIONE
--- sono disabilitate. Col vecchio jsonb_array_length(actions) > 0 questo
+-- (dal 2026-10-26 da APERTA, la commessa riaperta) sono disabilitate. Col vecchio jsonb_array_length(actions) > 0 questo
 -- test fallirebbe.
 --
 -- ⚠️ Adeguamento 2026-08-04 (brief-db-emittibilita-visibile-e-sbloccabile,
@@ -386,7 +428,7 @@ SELECT is(
        script.fn_available_actions_commessa((SELECT commessa_id FROM tmp_c))
          -> 'available_actions') e),
   '{"annulla": false, "chiudi": false, "rendi_pronta": true}'::jsonb,
-  '14a) da IN_ESECUZIONE: annulla e chiudi spente, rendi_pronta accesa');
+  '14a) da APERTA: annulla e chiudi spente, rendi_pronta accesa');
 
 -- 14) ⛔ SKIP DICHIARATO, non asserzione indebolita.
 --     Questo test nasceva per distinguere «azioni presenti ma tutte spente»
@@ -399,7 +441,9 @@ SELECT is(
 SELECT skip('14) can_change_state con tutte le azioni spente: scenario ritirato dal NOT NULL sull''emittente (20260826-41), in attesa di D-5 — brief-db-emittente-commessa-invariante §7.12', 1);
 
 -- ============================================================
--- [D] IN_ESECUZIONE senza righe emesse -> annullamento lecito
+-- [D] La commessa RIAPERTA senza righe emesse -> annullamento lecito.
+--     rev 2026-10-26 (giro 10): prima IN_ESECUZIONE con una riga in BOZZA;
+--     ora la riga e' quella da emettere che l'ha portata a PRONTA.
 -- ============================================================
 
 CREATE TEMP TABLE tmp_d AS SELECT pg_temp.fx_commessa('guard_uscita_D') AS commessa_id;
@@ -407,9 +451,9 @@ CREATE TEMP TABLE tmp_d AS SELECT pg_temp.fx_commessa('guard_uscita_D') AS comme
 DO $setup$
 DECLARE v_id vendite.commesse.id%TYPE := (SELECT commessa_id FROM tmp_d);
 BEGIN
-  PERFORM pg_temp.fx_riga(v_id, 'SEG-GUC-D1', 'BOZZA', 'NON_EMESSA');
+  PERFORM pg_temp.fx_riga(v_id, 'SEG-GUC-D1', 'APPROVATA', 'NON_EMESSA');
+  PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'PRONTA_FATTURAZIONE');
   PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'APERTA');
-  PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'IN_ESECUZIONE');
 END
 $setup$;
 

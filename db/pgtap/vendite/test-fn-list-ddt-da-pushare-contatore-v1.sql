@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): il passaggio a PRONTA_FATTURAZIONE dal verbo chiede l'azione cambia_stato_commessa: il file prova il contatore, non il permesso, e la concede all'utente del contesto.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi dal builder dbops.fn_pgtap_crea_reso (pg_temp.mk_reso ritirata), la bolla di ri-consegna di D da dbops.fn_pgtap_crea_ddt_riconsegna (via indirizzo e causale a mano); nulla della strada del reso resta scritto a mano.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (le due spedizioni di F con p_qta_da_evadere e p_ordine_id; ritirate pg_temp.mk_partita_ordine, mk_ddt_consegnato, mk_partita); il reso (pg_temp.mk_reso) resta scritto a mano (giro 2), la bolla di ri-consegna di D resta del verbo fn_genera_ddt_riconsegna (con causale e indirizzo) e va a CONSEGNATO per la matrice.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
@@ -177,6 +178,10 @@ SELECT * FROM dbops.fn_pgtap_crea_reso('lister F', (SELECT ddt_id FROM tmp_f1), 
 -- Fatturazione: CA per C (DDT_C, 7) e D (DDT_orig_D, 10) -> emit.
 SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_c)::text, (SELECT ddt_riga_id FROM tmp_c)), 7);
 SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_d)::text, (SELECT ddt_riga_id FROM tmp_d)), 10);
+-- rev 2026-10-26 (giro 10): «rendi pronta» chiede l'azione cambia_stato_commessa
+-- (brief-modello-documento-vendita §14, C-1); questo file prova il contatore dei DDT da pushare, non il
+-- permesso: la si concede all'utente del contesto.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));
 

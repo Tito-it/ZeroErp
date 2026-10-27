@@ -10,7 +10,7 @@
 ---
 
 ### 🎯 Scopo Principale
-(2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-10)
+(2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-10; ultima revisione 2026-10-26)
 
 Dopo un invio in commessa, rende la commessa **emittibile**: approva le righe di
 **questo** invio e porta la commessa a `PRONTA_FATTURAZIONE`. Prima lo faceva il
@@ -33,8 +33,11 @@ conosce solo chi orchestra l'invio.
 
 ### Lo stato
 
-* Già `PRONTA_FATTURAZIONE`: il cambio non si tenta (la matrice non ammette lo
-  stesso stato in partenza e in arrivo).
+* Dal 2026-10-26 (`brief-modello-documento-vendita` §14, C-2) lo stato lo scrive la
+  proiezione [`vendite.fn_commessa_proietta_stato_emittibile`](/dbzero/vendite/funzioni/fn_commessa_proietta_stato_emittibile):
+  lo stato emittibile dal vocabolario, con la sola scrittura comune. È la conseguenza
+  dell'invio: non chiede l'azione `cambia_stato_commessa` del passaggio manuale «rendi pronta».
+* Già emittibile: il cambio non si tenta.
 * `CHIUSA` o `ANNULLATA`: il cambio si tenta e la matrice rifiuta. Non si invia
   in una commessa chiusa.
 

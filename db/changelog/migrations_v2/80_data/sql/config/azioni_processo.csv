@@ -28,7 +28,7 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 27,2,numera_fatture_lotti,Numerazione fiscale fatture di lotto (irreversibile),t,t,{},2026-07-20 00:00:00+02,postgres,2026-07-20 00:00:00+02,postgres,TUTTO
 28,13,code_manage,Gestione code di lavoro e stampa (vista e azioni cross-utente),f,t,{},2026-07-21 00:00:00+02,postgres,2026-07-21 00:00:00+02,postgres,TUTTO
 29,2,carica_voce_manuale,Carica voce manuale (onere) su commessa,f,t,{},2026-07-23 00:00:00+02,postgres,2026-07-23 00:00:00+02,postgres,TUTTO
-30,2,cambia_stato_commessa,Cambia stato commessa (chiudi/riapri/annulla),t,t,{},2026-07-27 00:00:00+02,postgres,2026-07-27 00:00:00+02,postgres,TUTTO
+30,2,cambia_stato_commessa,"Rende pronta per la fatturazione una commessa, la riapre, la chiude o annulla una commessa non in bozza",t,t,{},2026-07-27 00:00:00+02,postgres,2026-10-26 00:00:00+01,mctit,TUTTO
 31,2,accredita_riga_reso,Accredita riga di reso (genera la rettifica per la nota di credito),t,t,{},2026-08-18 00:00:00+02,mctit,2026-08-18 00:00:00+02,mctit,TUTTO
 32,7,registra_distinta,Registra la distinta contabile (crea i movimenti: irreversibile),t,t,{},2026-08-25 00:00:00+02,mctit,2026-08-25 00:00:00+02,mctit,TUTTO
 33,2,riporta_da_emettere,Riporta da emettere le attivita fatturabili residue,f,t,{},2026-08-26 00:00:00+02,mctit,2026-08-26 00:00:00+02,mctit,TUTTO

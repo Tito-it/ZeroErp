@@ -1,0 +1,269 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FIXTURE DEGLI STATI CONOSCE IL VERBO DELLA COMMESSA
+#   Brief: brief-modello-documento-vendita §14 (giro 10).
+#
+#   Con la porta sulla commessa (20261026-34) ogni passo della fixture e' il
+#   verbo della commessa, vendite.fn_cambia_stato_commessa (20261026-30), con
+#   l'azione del passaggio concessa all'utente del contesto (lo fa gia' il
+#   corpo per ogni testata con la porta).
+#
+#   Corpo dalla definizione viva (dbdev, 2026-10-26). Firma invariata.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261026-36-update-fn-pgtap-porta-a-stato-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20261026-36-update-fn-pgtap-porta-a-stato-commessa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_porta_a_stato: la commessa sotto la porta col suo verbo
+        (vendite.fn_cambia_stato_commessa). Brief: brief-modello-documento-vendita §14.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_cambia_stato_commessa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_porta_a_stato(p_testata regclass, p_id bigint, p_stato text)
+               RETURNS text
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: portare una testata di fixture nello stato voluto per
+              --   le transizioni della sua matrice, dopo che il test le ha
+              --   scritto in bozza cio' che i passaggi pretendono (righe,
+              --   indirizzi, prezzi…).
+              -- Uso:
+              --   SELECT dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO')
+              --     FROM tmp_ordine o;
+              -- rev 2026-10-24 (20261024-22, brief-modello-documento-vendita
+              --   N-1): tutte le testate con una matrice, non piu' solo ordine
+              --   e preventivo. Un documento nasce in bozza (trigger della
+              --   nascita) e si porta avanti da qui.
+              -- rev 2026-10-24 (20261024-30, R-4): anche il lotto di
+              --   fatturazione, VUOTO (con fatture si muove col verbo
+              --   vendite.fn_sync_lotto_fatture_stato).
+              -- rev 2026-10-25 (20261025-19, §7): la mappa da
+              --   script.fn_doc_stato_modello; dove c'e' la porta ogni passo e'
+              --   il verbo del documento, sui soli passaggi manuali, con l'azione
+              --   del passaggio concessa all'utente del contesto.
+              -- rev 2026-10-25 (20261025-48, §8): il preventivo ha la porta
+              --   (verbo vendite.fn_cambia_stato_preventivo); lo stato voluto
+              --   da script.fn_doc_stato_id.
+              -- rev 2026-10-25 (20261025-82, §9): l'ordine ha la porta (verbo
+              --   vendite.fn_cambia_stato_ordine). L'evasione (EVASO,
+              --   PARZIALMENTE_EVASO) e' di processo: non e' nel percorso, si
+              --   costruisce evadendo (dbops.fn_pgtap_crea_ddt_da_ordine).
+              -- rev 2026-10-26 (20261026-12, §11): il contratto ha la porta
+              --   (verbo vendite.fn_cambia_stato_contratto). CESSATO vuole
+              --   valido_al arrivata: la scrive il test prima di chiederlo.
+              -- rev 2026-10-26 (20261026-28, §13): l'offerta ha la porta (verbo
+              --   vendite.fn_cambia_stato_offerta). Dove la riga del passaggio
+              --   chiede la motivazione (rifiuto, annulli) la fixture ne passa una
+              --   sua. SUPERATA e' di processo: si costruisce creando una revisione
+              --   (vendite.fn_crea_revisione_offerta). L'annullo con legami (la
+              --   revisione precedente che torna emessa) passa da
+              --   vendite.fn_annulla_offerta, non da qui.
+              -- rev 2026-10-26 (20261026-36, §14): la commessa ha la porta (verbo
+              --   vendite.fn_cambia_stato_commessa, firma senza p_user). Lo stato
+              --   emittibile della push si costruisce anche da qui, dal passaggio
+              --   manuale «rendi pronta» (il test scrive prima le righe approvate).
+              DECLARE
+                  v_col       text;       -- colonna di stato della testata
+                  v_stati     regclass;   -- catalogo degli stati
+                  v_matrice   regclass;   -- matrice delle transizioni
+                  v_col_da    text;       -- colonna «da» della matrice
+                  v_col_a     text;       -- colonna «a» della matrice
+                  v_col_vivo  text;       -- colonna «passaggio ammesso» della matrice
+                  v_filtro    text;       -- condizione in piu' sui passaggi, letterale della mappa
+                  v_porta     boolean;    -- la testata ha la porta: i passi sono verbi
+                  -- Id e codici di stato di uno qualunque dei
+                  -- vocabolari della mappa: bigint e testo in tutti, nessuna
+                  -- colonna comune a cui ancorarli (%TYPE[] non e' sintassi valida).
+                  v_target    bigint;
+                  v_corrente  bigint;
+                  v_percorso  bigint[];
+                  v_passo     bigint;
+                  v_da        bigint;
+                  v_codice    text;
+                  v_utente    config.user_override_azioni.auth_user_id%TYPE;
+                  v_azione    config.azioni_processo.permission_codename%TYPE;
+                  v_n         integer;    -- righe toccate (ROW_COUNT): un conteggio
+              BEGIN
+                  -- ── Il documento: errore del CHIAMANTE, non un dato ────────
+                  -- ⚠️ La fattura: la matrice ha anche i passaggi del LOTTO
+                  --   (solo_lotto = true), che il guard della fattura singola
+                  --   (vendite.trgfn_fatture_guard_stato) non ammette. Il
+                  --   filtro della mappa li toglie.
+                  SELECT m.colonna_stato, m.vocabolario, m.matrice, m.colonna_da, m.colonna_a,
+                         m.colonna_vivo, m.filtro
+                    INTO v_col, v_stati, v_matrice, v_col_da, v_col_a, v_col_vivo, v_filtro
+                    FROM script.fn_doc_stato_modello(p_testata) m;
+
+                  IF NOT FOUND THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_porta_a_stato: documento non gestito: % (noti: le testate della mappa script.fn_doc_stato_modello)',
+                          p_testata;
+                  END IF;
+
+                  IF p_id IS NULL OR p_id <= 0 THEN
+                      RAISE EXCEPTION 'fn_pgtap_porta_a_stato: id testata non valido: %', p_id;
+                  END IF;
+
+                  -- La porta: dal catalogo, non da un elenco.
+                  v_porta := EXISTS (
+                      SELECT 1 FROM pg_catalog.pg_trigger t
+                       WHERE t.tgrelid = p_testata
+                         AND t.tgfoid  = 'script.trgfn_doc_stato_solo_dal_verbo()'::regprocedure
+                         AND NOT t.tgisinternal);
+                  IF v_porta THEN
+                      -- Il percorso, sotto la porta: i soli passaggi manuali.
+                      v_filtro := v_filtro || ' AND COALESCE((t.meta ->> ''manuale'')::boolean, true)';
+                      IF p_testata NOT IN ('vendite.ddt'::regclass, 'vendite.resi'::regclass,
+                                           'vendite.preventivi'::regclass, 'vendite.ordini'::regclass,
+                                           'vendite.contratti'::regclass, 'vendite.offerte_commerciali'::regclass,
+                                       'vendite.commesse'::regclass) THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_porta_a_stato: % ha la porta ma la fixture non conosce il suo verbo',
+                              p_testata;
+                      END IF;
+                  END IF;
+
+                  -- ── Lo stato voluto, per codice_interno ──────────────────
+                  v_target := script.fn_doc_stato_id(p_testata, p_stato);
+                  IF v_target IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_porta_a_stato: nessuno stato attivo con codice_interno = % in %',
+                          p_stato, v_stati;
+                  END IF;
+
+                  -- ── Lo stato corrente: la testata deve esserci e vedersi ──
+                  EXECUTE format('SELECT t.%I FROM %s t WHERE t.id = $1', v_col, p_testata)
+                     INTO v_corrente USING p_id;
+                  IF v_corrente IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_porta_a_stato: % id = % non esiste o non e'' visibile',
+                          p_testata, p_id;
+                  END IF;
+
+                  -- ── Il percorso piu' corto nella matrice attiva ──────────
+                  -- ⚠️ Niente cicli: uno stato gia' visitato non si rivisita.
+                  --   A parita' di lunghezza, gli id minori: un ordine scelto.
+                  EXECUTE format($q$
+                      WITH RECURSIVE p(stato, percorso) AS (
+                          SELECT $1::bigint, ARRAY[$1::bigint]
+                          UNION ALL
+                          SELECT t.%2$I::bigint, p.percorso || t.%2$I::bigint
+                            FROM p
+                            JOIN %3$s t ON t.%1$I = p.stato AND t.%4$I IS TRUE %6$s
+                            JOIN %5$s s ON s.id = t.%2$I AND s.attivo IS TRUE
+                           WHERE NOT (t.%2$I = ANY (p.percorso))
+                      )
+                      SELECT p.percorso FROM p
+                       WHERE p.stato = $2
+                       ORDER BY cardinality(p.percorso), p.percorso
+                       LIMIT 1$q$, v_col_da, v_col_a, v_matrice, v_col_vivo, v_stati, v_filtro)
+                     INTO v_percorso USING v_corrente, v_target;
+
+                  IF v_percorso IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_porta_a_stato: nessun percorso nella matrice % da stato id % a %',
+                          v_matrice, v_corrente, p_stato;
+                  END IF;
+
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- ── Il cammino: un passo alla volta, dai guard veri ──────
+                  v_da := v_corrente;
+                  FOREACH v_passo IN ARRAY v_percorso[2:] LOOP
+                      IF v_porta THEN
+                          -- L'azione del passaggio (M-3) all'utente del contesto:
+                          -- la fixture porta lo stato, non prova il permesso.
+                          SELECT p.azione_processo_codename INTO v_azione
+                            FROM script.fn_doc_passaggio(p_testata, v_da, v_passo) p;
+                          IF v_azione IS NOT NULL AND v_utente IS NOT NULL THEN
+                              PERFORM dbops.fn_pgtap_concedi_azione(v_utente, v_azione);
+                          END IF;
+
+                          EXECUTE format('SELECT s.codice_interno FROM %s s WHERE s.id = $1', v_stati)
+                             INTO v_codice USING v_passo;
+
+                          IF p_testata = 'vendite.ddt'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_ddt(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.preventivi'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_preventivo(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.ordini'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_ordine(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.contratti'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_contratto(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.commesse'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_commessa(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.offerte_commerciali'::regclass THEN
+                              -- La motivazione dove la riga del passaggio la chiede.
+                              PERFORM 1 FROM vendite.fn_cambia_stato_offerta(
+                                  p_id, v_codice,
+                                  (SELECT CASE WHEN COALESCE((t.meta ->> 'requires_motivazione')::boolean, false)
+                                               THEN 'Fixture pgTAP' END
+                                     FROM config.stati_doc_offerte_transizioni t
+                                    WHERE t.stato_da_id = v_da AND t.stato_a_id = v_passo AND t.attivo IS TRUE));
+                          ELSIF v_codice = 'CONFERMATO' THEN
+                              PERFORM vendite.fn_conferma_reso(p_id);
+                          ELSIF v_codice = 'ANNULLATO' THEN
+                              PERFORM vendite.fn_annulla_reso(p_id);
+                          ELSE
+                              RAISE EXCEPTION
+                                  'fn_pgtap_porta_a_stato: nessun verbo del reso porta a %', v_codice;
+                          END IF;
+                      ELSE
+                          EXECUTE format('UPDATE %s SET %I = $1 WHERE id = $2', p_testata, v_col)
+                            USING v_passo, p_id;
+                          GET DIAGNOSTICS v_n = ROW_COUNT;
+                          IF v_n <> 1 THEN
+                              RAISE EXCEPTION
+                                  'fn_pgtap_porta_a_stato: UPDATE di % id = % verso stato id % ha toccato % righe',
+                                  p_testata, p_id, v_passo, v_n;
+                          END IF;
+                      END IF;
+                      v_da := v_passo;
+                  END LOOP;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  EXECUTE format('SELECT s.codice_interno FROM %s t JOIN %s s ON s.id = t.%I WHERE t.id = $1',
+                                 p_testata, v_stati, v_col)
+                     INTO v_codice USING p_id;
+                  RETURN v_codice;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_pgtap_porta_a_stato(regclass, bigint, text)
+                IS 'Fixture pgTAP: porta una testata di vendita dallo stato corrente allo stato p_stato (codice_interno) per il percorso piu'' corto della sua matrice dei passaggi, sotto i guard veri: le condizioni d''uscita dalla bozza (righe, indirizzi, prezzi…) le scrive prima il test. La mappa delle testate (colonna di stato, vocabolario, matrice, filtro della fattura e del lotto) la legge da script.fn_doc_stato_modello. Testate senza la porta: un UPDATE per passo, tutti i passaggi della matrice (la fattura i soli solo_lotto = false, il lotto VUOTO i soli solo_fattura = false; un lotto con fatture si muove col verbo vendite.fn_sync_lotto_fatture_stato). Testate con la porta (script.trgfn_doc_stato_solo_dal_verbo montato, letto dal catalogo): ogni passo e'' il verbo del documento — bolla vendite.fn_cambia_stato_ddt, preventivo vendite.fn_cambia_stato_preventivo, reso vendite.fn_conferma_reso / vendite.fn_annulla_reso — sui soli passaggi manuali (quelli di processo li scrive il verbo che ne e'' la causa), e l''azione del passaggio (script.fn_doc_passaggio) viene CONCESSA all''utente del contesto con dbops.fn_pgtap_concedi_azione: la fixture porta lo stato, non prova il permesso. Restituisce il codice_interno dello stato raggiunto. Un documento nasce solo nello stato iniziale (script.trgfn_doc_stato_iniziale): una fixture che vuole un documento avanti lo crea e lo porta avanti da qui. Errori del chiamante (testata non gestita, id, stato o percorso inesistenti, porta senza verbo noto): RAISE EXCEPTION. rev 2026-10-24: tutte le testate (brief-modello-documento-vendita N-1); 20261024-30: il lotto di fatturazione (R-4); 20261025-19: la mappa comune e i verbi sotto la porta (§7). 20261025-48: il preventivo sotto la porta col suo verbo; lo stato voluto da script.fn_doc_stato_id (§8). 20261025-82: l''ordine sotto la porta col suo verbo (vendite.fn_cambia_stato_ordine); EVASO e PARZIALMENTE_EVASO sono di processo e non si raggiungono da qui: si costruiscono evadendo (dbops.fn_pgtap_crea_ddt_da_ordine) (§9). rev 2026-10-26 (20261026-12, brief-modello-documento-vendita §11): il contratto ha la porta, ogni passo e'' il suo verbo (vendite.fn_cambia_stato_contratto); CESSATO vuole valido_al arrivata, che scrive il test. rev 2026-10-26 (20261026-28, brief-modello-documento-vendita §13): l''offerta ha la porta, ogni passo e'' il suo verbo (vendite.fn_cambia_stato_offerta), con una motivazione della fixture dove la riga del passaggio la chiede (rifiuto, annulli). SUPERATA e'' di processo: si costruisce creando una revisione; l''annullo con legami passa da vendite.fn_annulla_offerta. rev 2026-10-26 (20261026-36, brief-modello-documento-vendita §14): la commessa ha la porta, ogni passo e'' il suo verbo (vendite.fn_cambia_stato_commessa, firma senza p_user).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

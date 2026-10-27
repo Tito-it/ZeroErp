@@ -21,6 +21,9 @@
 --
 -- rev 2026-10-24 (20261024-41, brief-modello-documento-vendita §4-octies): la
 --   sorgente (la chiave dal costruttore del dominio), gli stati, la quantita' e il periodo.
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): la commessa
+--   va a PRONTA_FATTURAZIONE da dbops.fn_pgtap_porta_a_stato (il verbo), non
+--   piu' con un UPDATE dello stato, che la porta rifiuta;
 -- Elenco test (plan 14):
 --   1) la funzione esiste con la firma dichiarata (cinque argomenti)
 --   2) l'attivita' esiste sulla commessa, APPROVATA e NON_EMESSA
@@ -106,10 +109,9 @@ SELECT vendite.fn_link_commessa_sorgente(
                             WHERE s.codice_interno = 'COMMESSA' AND s.attivo),
     p_sorgente_uid     => (SELECT commessa_id FROM t_c)::text);
 
-UPDATE vendite.commesse
-   SET stato_commessa_id = (SELECT s.id FROM vendite.stati_commessa s
-                             WHERE s.codice_interno = 'PRONTA_FATTURAZIONE')
- WHERE id = (SELECT commessa_id FROM t_c);
+-- Lo stato si cambia dal verbo (la porta, giro 10): la fixture cammina la
+-- matrice e concede da se' l'azione cambia_stato_commessa.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.commesse', (SELECT commessa_id FROM t_c), 'PRONTA_FATTURAZIONE');
 
 CREATE TEMP TABLE t_emit AS
 SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(

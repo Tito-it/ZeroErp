@@ -1,6 +1,6 @@
 # Guida Tecnica – API Commesse (DB layer)
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 26 ottobre 2026
 >
 > Destinatari: sviluppatori backend e database di Zero ERP
 >
@@ -50,11 +50,11 @@ SORGENTI (preventivi / ordini / consumi / ...)
 
 ### Stati
 
-| ID  | Codice              | chiude | emittibile | modificabile |
-| --- | ------------------- | ------ | ---------- | ------------ |
+| ID  | Codice              | chiude | emittibile | modificabile | |
+| --- | ------------------- | ------ | ---------- | ------------ | --- |
 | 1   | BOZZA               | false  | false      | true         |
 | 2   | APERTA              | false  | false      | true         |
-| 3   | IN_ESECUZIONE       | false  | false      | true         |
+| 3   | IN_ESECUZIONE       | false  | false      | true         | ⛔ ritirato il 2026-10-26 (spento) |
 | 4   | PRONTA_FATTURAZIONE | false  | true       | true         |
 | 5   | CHIUSA              | true   | false      | false        |
 | 6   | ANNULLATA           | true   | false      | false        |
@@ -76,14 +76,29 @@ Lo stato della testata vive **solo** nella FK `stato_commessa_id` (nessuna colon
   se `(OLD, NEW)` non è in matrice → `E_COMMESSA_STATO_TRANSIZIONE_INVALIDA` (472); per
   `→ PRONTA_FATTURAZIONE` richiede ≥1 riga APPROVATA+NON_EMESSA, altrimenti
   `E_COMMESSA_NESSUNA_RIGA_APPROVATA` (473);
-* entrypoint sottile `fn_cambia_stato_commessa(p_commessa_id, p_nuovo_stato, p_user)`:
-  risolve codice→id e fa l'UPDATE, delegando la validazione al trigger.
+* il verbo [`fn_cambia_stato_commessa(p_commessa_id, p_stato)`](/dbzero/vendite/funzioni/fn_cambia_stato_commessa),
+  sul verbo comune del modello (§5 della guida del modello): chiede l'azione del passaggio, rifiuta
+  i passaggi di processo chiesti a mano e lo stato che la commessa ha già, e scrive lo stato
+  attraverso la porta. Un aggiornamento diretto della colonna di stato è rifiutato.
 
-Transizioni attualmente in matrice: `BOZZA→{APERTA,PRONTA,ANNULLATA}`,
-`APERTA→{IN_ESECUZIONE,PRONTA,ANNULLATA}`, `IN_ESECUZIONE→{PRONTA,ANNULLATA}`,
-`PRONTA→{IN_ESECUZIONE,CHIUSA,ANNULLATA}`. Il flag `meta.manuale` distingue le
-transizioni *automatiche* (push/ponte emittibilità) da quelle *utente*; il guard non lo
-filtra (valida solo l'ammissibilità della coppia).
+I passaggi (dal 2026-10-26, `brief-modello-documento-vendita` §14):
+
+| Da | A | Azione | Chi |
+| --- | --- | --- | --- |
+| BOZZA | PRONTA_FATTURAZIONE | «rendi pronta», `cambia_stato_commessa` | l'operatore; o la push, dopo un invio riuscito, senza l'azione |
+| BOZZA | ANNULLATA | «annulla», nessuna azione | l'operatore |
+| PRONTA_FATTURAZIONE | APERTA | «riapri», `cambia_stato_commessa` | l'operatore |
+| PRONTA_FATTURAZIONE | CHIUSA | «chiudi», `cambia_stato_commessa` | l'operatore |
+| PRONTA_FATTURAZIONE | ANNULLATA | «annulla», `cambia_stato_commessa` | l'operatore |
+| APERTA | PRONTA_FATTURAZIONE | «rendi pronta», `cambia_stato_commessa` | l'operatore; o la push |
+| APERTA | CHIUSA | «chiudi», `cambia_stato_commessa` | l'operatore |
+| APERTA | ANNULLATA | «annulla», `cambia_stato_commessa` | l'operatore |
+
+APERTA è la commessa **riaperta** dopo essere stata pronta. IN_ESECUZIONE è ritirato: «una
+lavorazione in corso» è lo stato del processo che lavora la commessa, non della commessa, e il giro
+della push lo registra già in `commesse_push_log`. Il passaggio della push a pronta lo scrive
+[`fn_commessa_proietta_stato_emittibile`](/dbzero/vendite/funzioni/fn_commessa_proietta_stato_emittibile):
+è la conseguenza dell'invio, e il permesso è quello della push.
 
 Le **azioni di stato utente** (chiudi / riapri / annulla) sono **esposte**: le
 calcola

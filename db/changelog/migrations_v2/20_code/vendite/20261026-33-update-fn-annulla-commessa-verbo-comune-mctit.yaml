@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ANNULLO DELLA COMMESSA SUL VERBO NUOVO
+#   Brief: brief-modello-documento-vendita §14 (giro 10). Stampo:
+#   vendite.fn_annulla_contratto (20261026-09).
+#
+#   Il verbo di stato ha la firma nuova (20261026-30, senza p_user): l'annullo
+#   lo chiama con due argomenti, e lo stato d'annullo lo legge dal vocabolario
+#   (script.fn_stato_abortito_id), non dal letterale 'ANNULLATA'.
+#
+#   Corpo dalla definizione viva (dbdev, 2026-10-26); firma ancorata dal
+#   20261012-23; proprieta' ripetute (DEFINER, search_path).
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261026-33-update-fn-annulla-commessa-verbo-comune-mctit.yaml
+
+  - changeSet:
+      id: 20261026-33-update-fn-annulla-commessa-verbo-comune
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_annulla_commessa: il verbo di stato nella firma nuova, lo stato d'annullo dal
+        vocabolario. Brief: brief-modello-documento-vendita §14.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_cambia_stato_commessa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_annulla_commessa(
+                  p_commessa_id        vendite.commesse.id%TYPE,
+                  p_legami_confermati  integer DEFAULT NULL)
+              RETURNS integer
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- =========================================================
+              -- Scopo: annullare una commessa. Con legami: prima cio' che
+              --   vieta, poi conferma e ritiro dal BB
+              --   vendite.fn_documento_ritira_legami, poi lo stato.
+              --   p_legami_confermati e' un CONTEGGIO: tipo nudo. Vedi
+              --   l'intestazione del changeSet.
+              -- Ritorna: i legami confermati (0 se non ce n'erano).
+              -- =========================================================
+              DECLARE
+                  v_utente  config.user_override_azioni.auth_user_id%TYPE;
+                  -- Esito della presa della testata (SELECT true): un flag, nessuna
+                  -- colonna di cui sia il riflesso.
+                  v_trovato boolean;
+                  -- CONTEGGIO dei legami confermati.
+                  v_legami  integer;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametri.
+                  IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_annulla_commessa',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_commessa_id', p_commessa_id),
+                          NULL::uuid, 'vendite.fn_annulla_commessa',
+                          'p_commessa_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- 2. La testata FOR UPDATE, nel perimetro (predicato della
+                  --    policy: DEFINER). Fuori perimetro come inesistente.
+                  SELECT true
+                    INTO v_trovato
+                    FROM vendite.commesse t
+                   WHERE t.id = p_commessa_id
+                     AND script.fn_scope_ef_whitelist_via_commessa(v_utente, t.id)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_annulla_commessa',
+                          'E_COMMESSA_NON_TROVATA',
+                          jsonb_build_object('p_commessa_id', p_commessa_id), NULL::uuid,
+                          p_commessa_id::text);
+                  END IF;
+
+                  -- 3. Prima cio' che vieta (righe EMESSA), poi conferma e ritiro:
+                  --    il BB apre la porta e la lascia aperta.
+                  v_legami := vendite.fn_documento_ritira_legami('COMMESSA', p_commessa_id, p_legami_confermati);
+
+                  -- 4. Lo stato, dal verbo di stato (rev 2026-10-26, 20261026-33,
+                  --    brief-modello-documento-vendita §14): firma senza p_user (C-4),
+                  --    lo stato d'annullo dal vocabolario, non dal letterale. La prima
+                  --    riga del verbo chiede l'azione del passaggio (cambia_stato_commessa
+                  --    sull'annullo di una commessa non in bozza, C-1); i guard della
+                  --    tabella fanno il resto: matrice, motivi, avviso (che con le righe
+                  --    ritirate non ha piu' niente da dire).
+                  PERFORM vendite.fn_cambia_stato_commessa(
+                      p_commessa_id,
+                      script.fn_doc_stato_codice('vendite.commesse'::regclass,
+                                                 script.fn_stato_abortito_id('vendite.commesse'::regclass)));
+
+                  -- 5. Porta chiusa.
+                  PERFORM set_config('zeroerp.doc_ritira_legami', '', true);
+
+                  RETURN v_legami;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_annulla_commessa(vendite.commesse.id%TYPE, integer)
+                IS 'VERBO (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte D-1/D-2/D-3/D-7 di Tid): annulla una commessa. Testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_commessa; fuori perimetro E_COMMESSA_NON_TROVATA). Dal BB vendite.fn_documento_ritira_legami: prima i motivi che vietano (script.fn_check_commessa_annullabile, righe EMESSA: E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE), poi la conferma — chi conferma DICHIARA quanti legami ha visto (p_legami_confermati, le righe di vendite.fn_documento_legami(''COMMESSA'', id): le righe NON_EMESSA); se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI — poi il ritiro: righe con sorgente ANNULLATA col registro (il documento o il consumo torna da mandare, il preventivo EVASO torna ACCETTATO dal trigger delle righe), accrediti annullati (il reso torna da accreditare), oneri annullati. Poi lo stato passa ad ANNULLATA (vendite.fn_cambia_stato_commessa: matrice e guard) e la porta del ritiro si chiude. L''ordine non cambia stato (D-6): torna solo da mandare. UNA transazione. Senza legami non c''e'' niente da confermare. Ritorna i legami confermati. SECURITY DEFINER con search_path bloccato. EXECUTE solo all''app. ⭐ rev 2026-10-26 (20261026-33, brief-modello-documento-vendita §14): lo stato dal verbo di stato vendite.fn_cambia_stato_commessa nella firma nuova (senza p_user, C-4), che chiede l''azione del passaggio (cambia_stato_commessa sull''annullo di una commessa non in bozza, C-1); lo stato d''annullo dal vocabolario (script.fn_stato_abortito_id, script.fn_doc_stato_codice) invece del letterale ''ANNULLATA''.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

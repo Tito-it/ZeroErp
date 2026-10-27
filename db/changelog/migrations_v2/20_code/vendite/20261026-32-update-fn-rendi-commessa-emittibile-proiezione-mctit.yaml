@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PONTE DELLA PUSH PASSA DALLA PROIEZIONE
+#   Brief: brief-modello-documento-vendita §14 (giro 10; C-2 di Tid,
+#   2026-10-26).
+#
+#   vendite.fn_rendi_commessa_emittibile approva le righe dell'invio e porta
+#   la commessa allo stato emittibile. La seconda meta' passa alla proiezione
+#   vendite.fn_commessa_proietta_stato_emittibile (20261026-31): lo stato dal
+#   vocabolario e la sola scrittura comune, senza l'azione del passaggio
+#   manuale. Prima chiamava vendite.fn_cambia_stato_commessa col letterale
+#   'PRONTA_FATTURAZIONE', che dal 20261026-30 ha un'altra firma e chiede
+#   l'azione.
+#
+#   Corpo dalla definizione viva (dbdev, 2026-10-26); firma ancorata dal
+#   20261012-16; proprieta' ripetute.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261026-32-update-fn-rendi-commessa-emittibile-proiezione-mctit.yaml
+
+  - changeSet:
+      id: 20261026-32-update-fn-rendi-commessa-emittibile-proiezione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_rendi_commessa_emittibile: lo stato emittibile dalla proiezione
+        vendite.fn_commessa_proietta_stato_emittibile. Brief: brief-modello-documento-vendita §14 (C-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_commessa_proietta_stato_emittibile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_rendi_commessa_emittibile(
+                  p_commessa_id vendite.commesse.id%TYPE,
+                  p_righe_ids   bigint[] DEFAULT NULL,
+                  p_user        vendite.commesse.user_update%TYPE DEFAULT NULL)
+              RETURNS integer
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: dopo un invio in commessa, approvare le righe
+              --   dell'invio e portare la commessa a PRONTA_FATTURAZIONE.
+              --   p_righe_ids: array di id (%TYPE[] non esiste). Vedi
+              --   l'intestazione del changeSet.
+              -- Ritorna: le righe approvate (un CONTEGGIO).
+              -- =========================================================
+              DECLARE
+                  -- CONTEGGIO delle righe approvate.
+                  v_approvate integer := 0;
+              BEGIN
+                  IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_rendi_commessa_emittibile',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_commessa_id', p_commessa_id),
+                          NULL::uuid, 'vendite.fn_rendi_commessa_emittibile',
+                          'p_commessa_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- 1. Le righe dell'invio. Array vuoto: nessuna riga di questo
+                  --    invio e' atterrata, niente da approvare.
+                  IF p_righe_ids IS NULL OR cardinality(p_righe_ids) > 0 THEN
+                      v_approvate := vendite.fn_approva_commessa_attivita(
+                                         p_commessa_id, p_righe_ids, p_user);
+                  END IF;
+
+                  -- 2. La testata, nello stato emittibile del vocabolario. rev
+                  --    2026-10-26 (20261026-32, brief-modello-documento-vendita §14,
+                  --    C-2): e' la conseguenza dell'invio, non una scelta di chi lo
+                  --    lancia: la scrive la proiezione, con la sola scrittura comune
+                  --    (prima il verbo di stato col letterale 'PRONTA_FATTURAZIONE'). Gia'
+                  --    emittibile: niente; CHIUSA o ANNULLATA: la matrice rifiuta forte.
+                  PERFORM vendite.fn_commessa_proietta_stato_emittibile(p_commessa_id);
+
+                  RETURN COALESCE(v_approvate, 0);
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_rendi_commessa_emittibile(vendite.commesse.id%TYPE, bigint[], vendite.commesse.user_update%TYPE)
+                IS 'Madre (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte D-10 di Tid): dopo un invio in commessa approva le righe dell''invio (vendite.fn_approva_commessa_attivita) e porta la commessa a PRONTA_FATTURAZIONE (vendite.fn_cambia_stato_commessa). Prima lo faceva il backend (commesse_service._rendi_commessa_emittibile), che ora la chiama. p_righe_ids: NULL = nessun filtro; vuoto = nessuna riga di questo invio atterrata, niente approvazione ma la testata va comunque a PRONTA_FATTURAZIONE; pieno = le sole righe dell''invio (non si approvano le righe BOZZA di terzi). Gia'' PRONTA_FATTURAZIONE: il cambio non si tenta (la matrice non ammette da = a); CHIUSA o ANNULLATA: si tenta e la matrice rifiuta (non si invia in una commessa chiusa). Una madre e non un trigger: «le righe di questo invio» le conosce solo chi orchestra l''invio. SECURITY INVOKER. Ritorna le righe approvate. ⭐ rev 2026-10-26 (20261026-32, brief-modello-documento-vendita §14, C-2 di Tid): la testata la porta allo stato emittibile la proiezione vendite.fn_commessa_proietta_stato_emittibile, con la sola scrittura comune: il passaggio della push e'' la conseguenza dell''invio e non chiede l''azione cambia_stato_commessa del passaggio manuale «rendi pronta». Prima chiamava il verbo di stato col letterale ''PRONTA_FATTURAZIONE''.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

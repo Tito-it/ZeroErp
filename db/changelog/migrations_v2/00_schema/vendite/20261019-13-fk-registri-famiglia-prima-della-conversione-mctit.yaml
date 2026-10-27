@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FK DEI REGISTRI C'E' QUANDO IL -32 LA TOGLIE (database da zero)
+#   Scritto il 2026-10-26 (brief-modello-documento-vendita, nota del giro 10:
+#   la ricostruzione dello scratch zeroerp_ruoli si e' fermata qui).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   00_schema/vendite/20261020-32 (brief-db-grammatica-unica-documenti, G-5)
+#   toglie fk_registri_fatturazione_famiglia senza IF EXISTS, per convertire le
+#   due colonne. Su dbdev la FK c'era (90_end/20260830-16 era gia' passato) e il
+#   migrate e' andato. Su un database ricostruito da zero l'ordine e' PER FASE:
+#   tutto 00_schema prima di 90_end, quindi al -32 la FK non esiste ancora, e il
+#   migrate si ferma («il vincolo ... non esiste»).
+#
+# ── IL RIMEDIO ──────────────────────────────────────────────────────
+#   Il -32 e' committato e applicato: non si tocca (checksum). Gli si da' la
+#   condizione che pretende, in un passo suo che gira PRIMA: la FK si crea se
+#   manca. Su dbdev c'e': non fa niente. Da zero le due tabelle sono vuote, la FK
+#   nasce senza dati da validare, il -32 la toglie e la rimette.
+#   Il seguito, cioe' che da zero la FK non deve restare accesa durante 80_data
+#   (i seed dei registri girano prima di quello delle famiglie), lo fa
+#   20261026-37.
+#
+# ── IL NUMERO, FUORI REGOLA E DICHIARATO ────────────────────────────
+#   Deve girare PRIMA di 20261020-32 nel master autogenerato, che ordina per
+#   (data, numero) e in modalita' stretta rifiuta due file con la stessa coppia:
+#   un suffisso («-31a») non basta. Il 20-10 non ha numeri liberi prima del 32 su
+#   tutti i livelli. Quindi un buco di una data passata, 20261019-13, libero
+#   ovunque: contro la regola «si riempie solo il buco di oggi», perche' qui e' la
+#   posizione a decidere. Fra 20261019-13 e 20261020-32 nessun changeSet tocca la
+#   FK o le due colonne (cercato il 2026-10-26). Su dbdev gira al prossimo migrate,
+#   a vuoto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261019-13-fk-registri-famiglia-prima-della-conversione-mctit.yaml
+
+  - changeSet:
+      id: 20261019-13-fk-registri-famiglia-prima-della-conversione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea fk_registri_fatturazione_famiglia se manca, prima di 20261020-32 che la toglie senza
+        IF EXISTS: da zero la FK nasce in 90_end (20260830-16), dopo. Idempotente: su dbdev non fa
+        niente. Brief: brief-modello-documento-vendita (nota del giro 10).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: vendite, tableName: registri_fatturazione }
+            - tableExists: { schemaName: vendite, tableName: famiglie_documento }
+            - columnExists: { schemaName: vendite, tableName: registri_fatturazione, columnName: famiglia_documento }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $fk$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint
+                                  WHERE conname  = 'fk_registri_fatturazione_famiglia'
+                                    AND conrelid = 'vendite.registri_fatturazione'::regclass) THEN
+                      ALTER TABLE vendite.registri_fatturazione
+                        ADD CONSTRAINT fk_registri_fatturazione_famiglia
+                        FOREIGN KEY (famiglia_documento) REFERENCES vendite.famiglie_documento (codice_interno);
+                  END IF;
+              END
+              $fk$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

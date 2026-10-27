@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10):
+--   la commessa del caso 7 nasce APERTA con l'attivita' del builder (p_con_attivita
+--   => true, prima false): BOZZA -> APERTA e' spenta, APERTA si raggiunge solo da
+--   PRONTA_FATTURAZIONE («riapri»), che vuole una riga APPROVATA e non emessa.
+--   La prova legge solo l'attivita' fatturabile della riga DDT (_af7 filtra per
+--   commessa_attivita_id). Attese invariate.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): le righe e la conferma dei due
 --   ordini da dbops.fn_pgtap_crea_ordine_con_righe (p_ordine_id, 2 x 10): la testata col suo
 --   termine resta a mano, e' la premessa del caso. Il test 7 non pesca piu' «un'attivita' nata
@@ -383,7 +389,7 @@ SELECT * FROM dbops.fn_pgtap_crea_ddt_senza_ordine('termini ddt',
     p_billing_account_id => (SELECT billing_account_id FROM _m));
 CREATE TEMP TABLE _com7 AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa('termini ddt', 'APERTA',
-    (SELECT billing_account_id FROM _m), false, p_con_sorgente_root => true);
+    (SELECT billing_account_id FROM _m), true, p_con_sorgente_root => true);
 CREATE TEMP TABLE _ca7 AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
     p_commessa_id      => (SELECT commessa_id FROM _com7),

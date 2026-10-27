@@ -16,7 +16,7 @@ Approfondimento funzioni:
 
 ---
 ### 🎯 Scopo Principale
-(rev 2026-06-07)
+(rev 2026-06-07; ultima revisione 2026-10-26)
 `vendite.transizioni_stati_commessa` definisce la **matrice delle transizioni ammesse**
 tra gli stati della commessa. Pattern identico a `config.transizioni_stati_ordini` /
 `config.transizioni_stati_preventivi`, ma collocato in schema `vendite` perché lì vive
@@ -36,31 +36,38 @@ senza rilasciare codice.
 
 ### Matrice transizioni configurata
 
-| id | Da | A | Note |
-|----|----|---|------|
-| 1 | BOZZA (1) | APERTA (2) | avvio commessa |
-| 2 | BOZZA (1) | PRONTA_FATTURAZIONE (4) | salto del percorso push |
-| 3 | BOZZA (1) | ANNULLATA (6) | |
-| 4 | APERTA (2) | IN_ESECUZIONE (3) | |
-| 5 | APERTA (2) | PRONTA_FATTURAZIONE (4) | salto del percorso push |
-| 6 | APERTA (2) | ANNULLATA (6) | |
-| 7 | IN_ESECUZIONE (3) | PRONTA_FATTURAZIONE (4) | |
-| 8 | IN_ESECUZIONE (3) | ANNULLATA (6) | |
-| 9 | PRONTA_FATTURAZIONE (4) | IN_ESECUZIONE (3) | riapertura pre-fattura |
-| 10 | PRONTA_FATTURAZIONE (4) | CHIUSA (5) | |
-| 11 | PRONTA_FATTURAZIONE (4) | ANNULLATA (6) | |
+(rev 2026-10-26, `brief-modello-documento-vendita` §14: IN_ESECUZIONE ritirato, «riapri» verso APERTA,
+«chiudi» da APERTA, l'azione di processo sulla riga del passaggio)
+
+| id | Da | A | Attiva | Azione | Note |
+|----|----|---|:---:|---|------|
+| 1 | BOZZA (1) | APERTA (2) | no | — | spenta: passaggio di processo che nessuno scriveva |
+| 2 | BOZZA (1) | PRONTA_FATTURAZIONE (4) | sì | `cambia_stato_commessa` | «rendi pronta»; anche la push, senza l'azione |
+| 3 | BOZZA (1) | ANNULLATA (6) | sì | — | l'annullo della bozza |
+| 4 | APERTA (2) | IN_ESECUZIONE (3) | no | — | IN_ESECUZIONE ritirato |
+| 5 | APERTA (2) | PRONTA_FATTURAZIONE (4) | sì | `cambia_stato_commessa` | «rendi pronta»; anche la push |
+| 6 | APERTA (2) | ANNULLATA (6) | sì | `cambia_stato_commessa` | |
+| 7 | IN_ESECUZIONE (3) | PRONTA_FATTURAZIONE (4) | no | — | IN_ESECUZIONE ritirato |
+| 8 | IN_ESECUZIONE (3) | ANNULLATA (6) | no | — | IN_ESECUZIONE ritirato |
+| 9 | PRONTA_FATTURAZIONE (4) | IN_ESECUZIONE (3) | no | — | sostituita dalla 13 |
+| 10 | PRONTA_FATTURAZIONE (4) | CHIUSA (5) | sì | `cambia_stato_commessa` | |
+| 11 | PRONTA_FATTURAZIONE (4) | ANNULLATA (6) | sì | `cambia_stato_commessa` | |
+| 12 | IN_ESECUZIONE (3) | CHIUSA (5) | no | — | sostituita dalla 14 |
+| 13 | PRONTA_FATTURAZIONE (4) | APERTA (2) | sì | `cambia_stato_commessa` | «riapri» |
+| 14 | APERTA (2) | CHIUSA (5) | sì | `cambia_stato_commessa` | «chiudi» della commessa riaperta |
 
 ```text
-BOZZA ---> APERTA ---> IN_ESECUZIONE ---> PRONTA_FATTURAZIONE ---> CHIUSA
-  |          |             |                    |  ^
-  |          |             |                    +--+  (riapertura PRONTA -> IN_ESECUZIONE)
-  +----------+-------------+--------------------+--> ANNULLATA
-  (salti diretti BOZZA/APERTA -> PRONTA_FATTURAZIONE: percorso push)
+BOZZA ----------------> PRONTA_FATTURAZIONE ----> CHIUSA
+  |                       |     ^      \
+  |                riapri v     | rendi \--> ANNULLATA
+  |                      APERTA --------> CHIUSA / ANNULLATA
+  +--> ANNULLATA
 ```
 
-`CHIUSA` e `ANNULLATA` sono terminali (nessuna transizione in uscita). I salti diretti
-`BOZZA/APERTA → PRONTA_FATTURAZIONE` servono al percorso push: una commessa nata da un
-preventivo accettato è già confermata e non deve attraversare gli stati intermedi.
+APERTA è la commessa **riaperta** dopo essere stata pronta. `CHIUSA` e `ANNULLATA` sono
+terminali. La colonna `azione_processo_codename` dice l'azione di processo che il passaggio
+chiede (`NULL` = basta il permesso sulla commessa); la leggono il verbo, il backend e la
+capability (guida del modello §6).
 
 ---
 
@@ -89,11 +96,10 @@ manuali (imposto dal CHECK `ck_transizioni_stati_comm_meta_ui`).
 | `requires_confirm` | `boolean` | No | `true` → dialog di conferma prima di eseguire |
 | `manuale` | `boolean` | No | `false` = transizione automatica/di processo, esclusa dalla lista UI. Default: `true` |
 
-**Stato attuale del seed**: tutte le 11 righe hanno `meta = {"manuale": false}`. I metadati UI
-(action_key/label_key) sono rinviati a quando esisterà una UI commesse /
-`fn_available_actions_commessa`; `manuale=false` soddisfa il CHECK e marca le transizioni
-come di processo. All'introduzione della UI, arricchire il `meta` delle transizioni manuali.
-
+**Stato attuale del seed** (2026-10-26): le righe manuali («rendi pronta», «riapri», «chiudi»,
+«annulla») hanno `action_key` e `label_key` e le legge
+[`script.fn_available_actions_commessa`](/dbzero/script/funzioni/fn_available_actions_commessa);
+le due di processo (`manuale = false`) sono spente.
 ---
 
 ### Regole operative
