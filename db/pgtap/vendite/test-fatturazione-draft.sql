@@ -50,37 +50,36 @@ SELECT
   uuidv7() AS lock_batch_id,
   uuidv7() AS sorgente_uid;
 
+-- rev 2026-10-27 (lotto 4 di D7): commessa e riga di commessa si
+--   COSTRUISCONO (dbops.fn_pgtap_crea_commessa: cliente, BA dell'azienda di
+--   chi agisce, commessa aperta dalla madre; dbops.fn_pgtap_crea_commessa_attivita:
+--   la riga in BOZZA, scritta dalla madre). BA, utility, istanza, emittente,
+--   stato, articolo e uom si leggono da li'. Prima BA, articolo ed emittente
+--   si pescavano con LIMIT 1 e commessa e riga si INSERIVANO a mano: da zero
+--   il BA non c'era. L'attivita' fatturabile resta scritta a mano: e' il test 2.
+CREATE TEMP TABLE tmp_cmm_fd AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa('fatturazione draft');
+
+CREATE TEMP TABLE tmp_ca_build_fd AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+  p_commessa_id        => (SELECT commessa_id FROM tmp_cmm_fd),
+  p_prezzo_snapshot    => 1,
+  p_stato_approvazione => 'BOZZA');
+
 CREATE TEMP TABLE tmp_refs_fd AS
--- Il billing account si sceglie UNA volta: utility e istanza vengono dalla
--- stessa riga, non da tre LIMIT 1 scorrelati.
-WITH ba AS (
-  SELECT b.id, b.utility_id, b.istanza_utility_id
-    FROM anagrafiche.billing_account b
-   WHERE b.utility_id IS NOT NULL
-     AND b.istanza_utility_id IS NOT NULL
-     AND b.soggetto_ruolo_id IS NOT NULL
-   ORDER BY b.id
-   LIMIT 1
-)
 SELECT
-  (SELECT id FROM ba)                 AS billing_account_id,
-  (SELECT utility_id FROM ba)         AS utility_id,
-  (SELECT istanza_utility_id FROM ba) AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE
-    ORDER BY a.id LIMIT 1)            AS articolo_id,
+  (SELECT billing_account_id FROM tmp_cmm_fd) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cmm_fd)         AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cmm_fd) AS istanza_utility_id,
+  (SELECT articolo_id FROM tmp_ca_build_fd)   AS articolo_id,
   (SELECT s2.id FROM config.sorgenti s2
     WHERE s2.attivo IS TRUE ORDER BY s2.id LIMIT 1) AS sorgente_tipo_id,
-  (SELECT u.id FROM catalogo.unita_misura u
-    WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)   AS uom_id,
+  (SELECT uom_id FROM tmp_ca_build_fd)        AS uom_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t
     WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)   AS tipo_doc_fiscale_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT sc.id FROM vendite.stati_commessa sc
-    WHERE sc.attivo IS TRUE AND sc.codice_interno <> 'ANNULLATA'
-    ORDER BY sc.id LIMIT 1)           AS stato_commessa_id,
-  (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_sr_id;
+  (SELECT stato_commessa_id FROM tmp_cmm_fd)  AS stato_commessa_id,
+  (SELECT emittente_soggetto_ruolo_id FROM tmp_cmm_fd) AS emittente_sr_id;
 
 SELECT ok(
   (SELECT articolo_id IS NOT NULL
@@ -101,34 +100,10 @@ SELECT ok(
 -- commessa_id / commessa_attivita_id (NOT NULL + guard a10).
 -- ============================================================
 CREATE TEMP TABLE tmp_commessa_fd AS
-WITH ins AS (
-  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                emittente_soggetto_ruolo_id, stato_commessa_id)
-  SELECT 'PGTAP-FD-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id, r.emittente_sr_id, r.stato_commessa_id
-    FROM tmp_refs_fd r
-  RETURNING id)
-SELECT id FROM ins;
+SELECT commessa_id AS id FROM tmp_cmm_fd;
 
 CREATE TEMP TABLE tmp_ca_fd AS
-WITH ins AS (
-  INSERT INTO vendite.commesse_attivita (
-    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
-    uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
-    tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-  SELECT (SELECT id FROM tmp_commessa_fd),
-         'PGTAP-FD-SEG-' || substr(md5(clock_timestamp()::text), 1, 12),
-         r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
-         date_trunc('month', script.fn_data_operativa())::date,
-         date_trunc('month', script.fn_data_operativa())::date,
-         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
-         r.tipo_doc_fiscale_id, r.valuta_id, 1.000000, 'FIXED',
-         'BOZZA', 'NON_EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-         ((SELECT id FROM tmp_commessa_fd))::text
-    FROM tmp_refs_fd r
-  RETURNING id)
-SELECT id FROM ins;
+SELECT attivita_id AS id FROM tmp_ca_build_fd;
 
 -- ============================================================
 -- 1) Inserimento attivita_fatturabili di test

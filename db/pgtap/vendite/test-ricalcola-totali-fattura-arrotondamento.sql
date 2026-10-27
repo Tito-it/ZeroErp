@@ -38,29 +38,24 @@ SELECT plan(6);
 CREATE TEMP TABLE tmp_costanti_rt AS
 SELECT 'pgtap_ricalcola_totali_arrotondamento'::text AS test_scope;
 
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba, BA dell'azienda di chi agisce) e
+--   l'emittente e' quello dell'operatore di contesto. Prima il BA era l'ultimo
+--   inserito e l'emittente si pescava da emittenti_fiscali_billing_account (o
+--   il default): da zero non c'era niente. Configurazione e fattura restano
+--   scritte a mano: sono il caso del test.
+CREATE TEMP TABLE tmp_cli_rt AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('ricalcola totali arrotondamento');
+
 CREATE TEMP TABLE tmp_refs_rt AS
-WITH ba AS (
-  SELECT b.id, b.utility_id
-  FROM anagrafiche.billing_account b
-  ORDER BY b.data_insert DESC NULLS LAST
-  LIMIT 1
-)
 SELECT
-  (SELECT id FROM vendite.registri_fatturazione WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS registro_id,
-  (SELECT id FROM ba) AS billing_account_id,
-  (SELECT utility_id FROM ba) AS utility_id,
+  NULL::bigint AS registro_id,
+  c.billing_account_id,
+  c.utility_id,
   (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id,
-  (
-    SELECT m.emittente_soggetto_ruolo_id
-    FROM anagrafiche.emittenti_fiscali_billing_account m
-    WHERE m.billing_account_id = (SELECT id FROM ba)
-       OR m.is_default IS TRUE
-    ORDER BY CASE WHEN m.billing_account_id = (SELECT id FROM ba) THEN 0 ELSE 1 END,
-             m.id
-    LIMIT 1
-  ) AS emittente_soggetto_ruolo_id;
-
+  script.fn_pgtap_emittente_sr_operatore() AS emittente_soggetto_ruolo_id
+FROM tmp_cli_rt c;
 
 -- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva.
 --   La riga sopra sceglieva «un registro qualunque» accanto a un emittente che

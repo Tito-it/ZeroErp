@@ -72,61 +72,31 @@ SELECT plan(6);
 CREATE TEMP TABLE tmp_gre_costanti AS
 SELECT 'pgtap_guard_registro_emittente'::text AS test_scope;
 
--- ⚠️ La terna (emittente, utility, billing account) si sceglie INSIEME, non a
---   tre pescate indipendenti: si parte DALLA configurazione
---   emittenti_fiscali_utilities e si scende al BA che le corrisponde.
+-- rev 2026-10-27 (lotto 4 di D7): i DUE emittenti e il cliente si
+--   COSTRUISCONO. L'emittente della fattura e il suo cliente nascono insieme
+--   da dbops.fn_pgtap_crea_mondo_cliente: il file non apre un contesto
+--   (marcatore in testa), quindi il builder prende il ramo «nessun contesto»,
+--   costruisce l'azienda col suo operatore e apre il contesto su di lui — lo
+--   stesso su dev e da zero; con il runner owner la RLS resta comunque fuori.
+--   L'ALTRO emittente nasce da dbops.fn_pgtap_crea_emittente. Prima la terna
+--   (emittente, utility, BA) si pescava da emittenti_fiscali_utilities e dal
+--   primo BA, e il secondo emittente si montava sul primo soggetto libero del
+--   DB: da zero non c'era niente. I due registri e le fatture restano scritti
+--   a mano: sono il caso del test.
+CREATE TEMP TABLE tmp_gre_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('guard registro emittente');
+
 CREATE TEMP TABLE tmp_gre_refs AS
-SELECT efu.emittente_soggetto_ruolo_id,
-       efu.utility_id,
-       (SELECT ba.id
-          FROM anagrafiche.billing_account ba
-         WHERE ba.utility_id = efu.utility_id
-         ORDER BY ba.id
-         LIMIT 1) AS billing_account_id,
+SELECT m.emittente_soggetto_ruolo_id,
+       m.utility_id,
+       m.billing_account_id,
        (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
        (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT' ORDER BY id LIMIT 1) AS stato_draft_id,
        (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id
-  FROM anagrafiche.emittenti_fiscali_utilities efu
-  JOIN anagrafiche.emittenti_fiscali ef
-    ON ef.soggetto_ruolo_id = efu.emittente_soggetto_ruolo_id
-   AND ef.attivo IS TRUE
- WHERE efu.attivo IS TRUE
-   AND EXISTS (SELECT 1 FROM anagrafiche.billing_account ba
-                WHERE ba.utility_id = efu.utility_id)
- ORDER BY efu.emittente_soggetto_ruolo_id, efu.utility_id
- LIMIT 1;
+  FROM tmp_gre_mondo m;
 
--- ⚠️ IL SECONDO EMITTENTE SI COSTRUISCE, non si cerca: un test che iterasse su
---   quelli che ci sono passerebbe a vuoto su un database ricostruito da zero,
---   cioe' in CI — la forma classica del «verde per sottrazione».
--- ⚠️ `codice_interno = 'EF'` e NON il `codice`, che e' modificabile dall'utente.
--- ⚠️ La natura del soggetto non e' libera: trgfn_soggetti_ruoli_guard_natura_ammessa
---   pretende che il tipo soggetto sia fra quelli ammessi per il ruolo.
 CREATE TEMP TABLE tmp_gre_altro_ef AS
-WITH sogg AS (
-  SELECT s.id
-    FROM anagrafiche.soggetti s
-    JOIN config.tipi_soggetto_dettaglio tsd ON tsd.id = s.tipo_soggetto_dettaglio_id
-    JOIN config.tipi_ruoli_nature_ammesse na ON na.tipo_soggetto_id = tsd.tipo_soggetto_id
-    JOIN config.tipi_ruoli tr ON tr.id = na.tipo_ruolo_id AND tr.codice_interno = 'EF'
-   WHERE s.attivo IS TRUE
-     AND NOT EXISTS (SELECT 1 FROM anagrafiche.soggetti_ruoli sr
-                      WHERE sr.soggetto_id = s.id AND sr.tipo_ruolo_id = tr.id)
-   ORDER BY s.id
-   LIMIT 1
-), ruolo AS (
-  INSERT INTO anagrafiche.soggetti_ruoli (soggetto_id, tipo_ruolo_id)
-  SELECT sogg.id, (SELECT id FROM config.tipi_ruoli WHERE codice_interno = 'EF')
-    FROM sogg
-  RETURNING id AS soggetto_ruolo_id
-), ins AS (
-  INSERT INTO anagrafiche.emittenti_fiscali (soggetto_ruolo_id, codice, brand_meta)
-  SELECT r.soggetto_ruolo_id, 'PGTAPGRE',
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_gre_costanti))
-    FROM ruolo r
-  RETURNING soggetto_ruolo_id
-)
-SELECT soggetto_ruolo_id FROM ins;
+SELECT soggetto_ruolo_id FROM dbops.fn_pgtap_crea_emittente();
 
 -- Due registri: uno dell'emittente della fattura, uno dell'ALTRO.
 CREATE TEMP TABLE tmp_gre_reg AS

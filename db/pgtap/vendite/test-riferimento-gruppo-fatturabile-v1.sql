@@ -30,15 +30,15 @@
 --   `ORDINE_VENDITA:01a06ce4-35a6-721a-9cd8-9da48bf77626`. La chiave serve al
 --   PULSANTE, non all'occhio: ora accanto esce `ORD0036004`.
 --
--- ⚠️ I casi 1-15 SONO COSTRUITI. L'unica cosa presa dai dati sono i due
---   riferimenti obbligatori del lotto (tipo documento ed emittente) e l'id
---   della sorgente ORDINE_VENDITA, che e' catalogo.
+-- ⚠️ TUTTI I CASI SONO COSTRUITI. L'unica cosa presa dai dati e' l'id della
+--   sorgente ORDINE_VENDITA, che e' catalogo di seed.
 --
--- ⚠️ I casi 7 e 16 sono DATA-DEPENDENT e lo dichiarano con uno skip motivato:
---   il primo vuole un ordine vero (il numero lo tiene il documento, non la
---   chiave), il secondo vuole una riga nella dashboard Competenza. ⛔ Su un
---   database ricostruito da zero saltano, e la loro copertura vale ZERO — non
---   «parziale». Il verso costruibile del riferimento e' il test 5.
+-- rev 2026-10-27 (lotto 4 di D7): i casi 7 e 16 erano DATA-DEPENDENT (uno
+--   skip motivato su un database senza esiti di lotto ne' righe in dashboard):
+--   ora il 7 costruisce un ordine vero (dbops.fn_pgtap_crea_ordine) e ne
+--   compone la chiave con fn_build_gruppo_fatturabile_key, il 16 costruisce
+--   una commessa con un'attivita' (dbops.fn_pgtap_crea_commessa) e legge la
+--   SUA riga di dashboard. Gli skip restano come rete, ma da zero non scattano.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -120,16 +120,21 @@ SELECT is(
 -- ============================================================
 -- 7 — ⭐ il verso che conta: un documento vero da' il suo NUMERO
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): l'ordine si COSTRUISCE e la chiave si
+--   compone dalla gemella vera; prima si pescava l'ultimo esito di lotto con
+--   una chiave di documento, e da zero non ce n'era nessuno (skip).
+CREATE TEMP TABLE tmp_ordine_rif AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine('riferimento gruppo');
+
 CREATE TEMP TABLE tmp_doc_vero AS
-SELECT e.gruppo_key,
+SELECT k.gruppo_key,
        (SELECT d.documento_numero
-          FROM vendite.fn_split_gruppo_fatturabile_key(e.gruppo_key) sp,
+          FROM vendite.fn_split_gruppo_fatturabile_key(k.gruppo_key) sp,
                LATERAL vendite.fn_get_sorgente_documento_ref(
                    sp.sorgente_tipo_id, sp.sorgente_uid) d) AS numero
-  FROM vendite.fatturazione_lotti_esiti e
- WHERE e.gruppo_key LIKE '%:%'
- ORDER BY e.id DESC
- LIMIT 1;
+  FROM tmp_ordine_rif o, tmp_sorgente t,
+       LATERAL (SELECT vendite.fn_build_gruppo_fatturabile_key(
+                           t.id, o.ordine_uid::text, NULL) AS gruppo_key) k;
 
 SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_doc_vero WHERE numero IS NOT NULL)
@@ -143,28 +148,18 @@ END;
 -- ============================================================
 -- FIXTURE — un lotto con due documenti e tre critiche
 -- ============================================================
-CREATE TEMP TABLE tmp_rif AS
-SELECT l.tipo_doc_fiscale_id, l.emittente_soggetto_ruolo_id
-  FROM vendite.fatturazione_lotti l
- ORDER BY l.id DESC
- LIMIT 1;
-
-CREATE TEMP TABLE tmp_lotto (id bigint);
+-- rev 2026-10-27 (lotto 4 di D7): il lotto si COSTRUISCE
+--   (dbops.fn_pgtap_crea_lotto, DRAFT, mese della data operativa, azienda di
+--   chi agisce). Prima tipo documento ed emittente si pescavano dall'ultimo
+--   lotto del DB: da zero non c'era, e il lotto scritto a mano fuori dal
+--   perimetro faceva rifiutare dalla RLS gli esiti qui sotto.
+CREATE TEMP TABLE tmp_lotto AS
+SELECT l.lotto_id AS id FROM dbops.fn_pgtap_crea_lotto('riferimento') l;
 
 DO $fixture$
 DECLARE
-    v_lotto vendite.fatturazione_lotti.id%TYPE;
+    v_lotto vendite.fatturazione_lotti.id%TYPE := (SELECT id FROM tmp_lotto);
 BEGIN
-    INSERT INTO vendite.fatturazione_lotti
-        (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
-         stato_doc_fiscale_id)
-    SELECT 'PGTAP-RIFERIMENTO', date_trunc('month', script.fn_data_operativa())::date,
-           t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id,
-           (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT')
-      FROM tmp_rif t
-    RETURNING id INTO v_lotto;
-
-    INSERT INTO tmp_lotto VALUES (v_lotto);
 
     -- Due documenti presi in carico. ⚠️ NESSUNA riga di perimetro: cosi' il
     --   test 15 prova che il denominatore viene dagli ESITI — col perimetro
@@ -276,12 +271,18 @@ SELECT is(
 -- passare dalla chiave vorrebbe dire risolvere due volte per riga.
 -- ⚠️ Questo test prova che OGGI coincidono, non che non possano divergere: e'
 --   un ripiego dichiarato, non un pareggio.
+-- rev 2026-10-27 (lotto 4 di D7): la riga di dashboard si COSTRUISCE (una
+--   commessa con un'attivita', dbops.fn_pgtap_crea_commessa) e si legge
+--   SOLO quella; prima si pescavano le prime cinque righe visibili, e da zero
+--   non ce n'era nessuna (skip).
+CREATE TEMP TABLE tmp_commessa_dash AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa('riferimento dashboard', NULL, NULL, true);
+
 CREATE TEMP TABLE tmp_dash AS
 SELECT g.gruppo_key, g.riferimento
   FROM vendite.vw_dash_competenza_gruppi g
  WHERE g.gruppo_key IS NOT NULL
- ORDER BY g.gruppo_key
- LIMIT 5;
+   AND g.commessa_id = (SELECT commessa_id FROM tmp_commessa_dash);
 
 SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_dash)

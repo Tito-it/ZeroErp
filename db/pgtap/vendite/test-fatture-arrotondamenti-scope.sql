@@ -36,6 +36,15 @@ SELECT plan(6);
 -- ============================================================
 -- 1) Setup riferimenti base
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba, BA dell'azienda di chi agisce) e
+--   l'emittente e' quello dell'operatore di contesto; tipo documento e valuta
+--   si leggono dal catalogo di seed per codice. Prima si pescava il primo BA e
+--   l'emittente con id = 32 fisso: da zero non c'erano. La premessa «scope
+--   assente» resta, sul BA costruito.
+CREATE TEMP TABLE tmp_cli_arrotondamenti AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('arrotondamenti scope');
+
 CREATE TEMP TABLE tmp_refs_arrotondamenti AS
 SELECT ba.id AS billing_account_id,
   u.id AS utility_id,
@@ -44,19 +53,11 @@ SELECT ba.id AS billing_account_id,
   v.id AS valuta_id
 FROM anagrafiche.billing_account ba
   JOIN config.utilities u ON u.id = ba.utility_id
-  JOIN config.tipi_doc_fiscale tdf ON tdf.id = 1 -- Assumendo che il valore di default sia 1
-  JOIN anagrafiche.emittenti_fiscali ef ON ef.id = 32
-  JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
-  JOIN config.valute v ON v.id = 1 -- Assumendo che il valore di default sia 1
--- 🔴 SCOPE DAVVERO ASSENTE, aggiunto il 2026-08-18.
---   Il test 2 si chiama «Get saldo scope assente = 0» ma i riferimenti erano
---   scelti senza chiedere che lo scope fosse assente: prendevano il primo
---   billing account e basta. Su quella combinazione un saldo c'era (-0.02), e
---   il test falliva dicendo il vero.
---   ⚠️ E' la premessa che mancava, non l'asserzione a essere sbagliata: senza
---   questa condizione il caso «assente» non veniva mai attraversato, e il test
---   passava o falliva a seconda dei dati del giorno.
-WHERE NOT EXISTS (
+  JOIN config.tipi_doc_fiscale tdf ON tdf.codice_interno = 'FRONTOFFICE'
+  JOIN anagrafiche.soggetti_ruoli sr ON sr.id = script.fn_pgtap_emittente_sr_operatore()
+  JOIN config.valute v ON v.codice = 'EUR'
+WHERE ba.id = (SELECT billing_account_id FROM tmp_cli_arrotondamenti)
+  AND NOT EXISTS (
     SELECT 1
       FROM vendite.fatture_arrotondamenti_scope s
      WHERE s.billing_account_id = ba.id

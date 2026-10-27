@@ -96,29 +96,25 @@ SELECT ok(
 -- Fixture: una commessa con un ONERE e una RETTIFICA
 -- ============================================================
 
+-- rev 2026-10-27 (lotto 4 di D7): il cliente e l'articolo si COSTRUISCONO.
+--   Prima si pescavano il primo BA con emittente e l'ultimo articolo attivo, e
+--   su un database ricostruito da zero non c'erano: ora il BA viene da
+--   dbops.fn_pgtap_crea_cliente_ba (legato all'azienda di chi agisce, emittente
+--   derivato dal BA) e l'articolo da dbops.fn_pgtap_crea_articolo (servizio,
+--   non gestito a magazzino). Restano letture di catalogo di SEED:
+--   tipi_doc_fiscale, articolo-onere, unita_misura.
+CREATE TEMP TABLE tmp_cli_rnp AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('rettifica non annullabile');
+
 CREATE TEMP TABLE tmp_refs_rnp AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id) FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS emittente_soggetto_ruolo_id,
+  (SELECT billing_account_id FROM tmp_cli_rnp) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cli_rnp) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cli_rnp) AS istanza_utility_id,
+  (SELECT anagrafiche.fn_get_emittente_fiscale_id(billing_account_id) FROM tmp_cli_rnp) AS emittente_soggetto_ruolo_id,
   (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT id FROM catalogo.articoli WHERE codice = 'ONERE_TRASFERTA') AS articolo_onere_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.codice IS NOT NULL
-    ORDER BY a.data_insert DESC NULLS LAST, a.id LIMIT 1) AS articolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-RNP-ART', false) AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id;
 
 CREATE TEMP TABLE tmp_com_rnp AS

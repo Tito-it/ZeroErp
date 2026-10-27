@@ -35,39 +35,28 @@ CREATE TEMP TABLE tmp_costanti_sls AS
 SELECT (
     'pgtap_sync_lotto_stato_' || to_char(clock_timestamp(), 'YYMMDDHH24MISS')
   )::text AS test_scope;
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba) e l'emittente e' quello di chi agisce
+--   (script.fn_pgtap_emittente_sr_operatore); il tipo documento si legge dal
+--   catalogo di seed config.tipi_doc_fiscale. Prima BA, utility ed emittente
+--   si pescavano dal primo billing account con un emittente, e tipo/registro
+--   dalla prima mappatura tipi_doc_fiscale_registri: da zero non c'erano.
+CREATE TEMP TABLE tmp_cli_sls AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('sync lotto fatture stato');
+
+-- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE: dal 2026-08-30
+--   vendite.trgfn_fatture_guard_registro_emittente non ammette «un registro
+--   qualunque». L'helper risponde con il registro di QUESTO emittente,
+--   creandolo se non ce n'e' uno — la riga vive nella transazione del test.
 CREATE TEMP TABLE tmp_refs_sls AS
-SELECT (
-    SELECT m.registro_id
-    FROM vendite.tipi_doc_fiscale_registri m
-      JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
+SELECT script.fn_pgtap_registro_fattura(script.fn_pgtap_emittente_sr_operatore()) AS registro_id,
+  (SELECT billing_account_id FROM tmp_cli_sls) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cli_sls) AS utility_id,
+  (
+    SELECT t.id
+    FROM config.tipi_doc_fiscale t
     WHERE t.attivo IS TRUE
-    ORDER BY m.id
-    LIMIT 1
-  ) AS registro_id,
-  (
-    SELECT ba.id
-    FROM anagrafiche.billing_account ba
-    WHERE -- ba.attivo IS TRUE and
-      ba.utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS billing_account_id,
-  (
-    SELECT ba.utility_id
-    FROM anagrafiche.billing_account ba
-    WHERE -- ba.attivo IS TRUE and
-      ba.utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS utility_id,
-  (
-    SELECT m.tipo_doc_fiscale_id
-    FROM vendite.tipi_doc_fiscale_registri m
-      JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
-    WHERE t.attivo IS TRUE
-    ORDER BY m.id
+    ORDER BY t.id
     LIMIT 1
   ) AS tipo_doc_fiscale_id,
   (
@@ -80,15 +69,7 @@ SELECT (
     ORDER BY (v.iso_code <> 'EUR'), v.id
     LIMIT 1
   ) AS valuta_id,
-  (
-    SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id)
-    FROM anagrafiche.billing_account ba
-    WHERE -- ba.attivo IS TRUE and
-      ba.utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS emittente_soggetto_ruolo_id,
+  script.fn_pgtap_emittente_sr_operatore() AS emittente_soggetto_ruolo_id,
   (
     SELECT s.id
     FROM config.stati_doc_fiscale s
@@ -98,13 +79,6 @@ SELECT (
     LIMIT 1
   ) AS stato_draft_id;
 
--- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva.
---   La riga sopra sceglieva «un registro qualunque» accanto a un emittente che
---   viene da un'altra parte: che i due coincidessero era un CASO, e dal
---   2026-08-30 vendite.trgfn_fatture_guard_registro_emittente non lo ammette
---   piu'. L'helper risponde con il registro di QUESTO emittente, creandolo se
---   non ce n'e' uno — la riga vive nella transazione del test.
-UPDATE tmp_refs_sls SET registro_id = script.fn_pgtap_registro_fattura(emittente_soggetto_ruolo_id);
 SELECT ok(
     (
       SELECT registro_id IS NOT NULL

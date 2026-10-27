@@ -46,26 +46,21 @@ SELECT 'pgtap_ricalcola_iva'::text AS test_scope;
 --   se non la trova. Prendendo «l'emittente piu' recente» e «il BA piu' recente»
 --   la coppia risultante non era configurata, e il test si fermava a meta'.
 --   Ora si parte DALLA configurazione e si sceglie un BA con quella utility.
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba, BA dell'azienda di chi agisce) e
+--   l'emittente e' quello dell'operatore di contesto. Prima la coppia
+--   (emittente, utility) si pescava da emittenti_fiscali_utilities e il BA era
+--   l'ultimo inserito con quella utility: da zero non c'era niente. Senza la
+--   riga (emittente, utility) il ricalcolo usa i parametri di sistema
+--   dell'utility (rev 20261021-17). Registro, fattura e lotto restano scritti
+--   a mano: sono i test 2, 3 e 9.
+CREATE TEMP TABLE tmp_cli_iva AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('ricalcola riepiloghi iva');
+
 CREATE TEMP TABLE tmp_refs_iva AS
-WITH cfg AS (
-  SELECT efu.emittente_soggetto_ruolo_id, efu.utility_id
-    FROM anagrafiche.emittenti_fiscali_utilities efu
-   WHERE efu.attivo IS TRUE
-     AND EXISTS (SELECT 1 FROM anagrafiche.billing_account ba
-                  WHERE ba.utility_id = efu.utility_id)
-   ORDER BY efu.emittente_soggetto_ruolo_id, efu.utility_id
-   LIMIT 1
-)
-SELECT (
-    SELECT emittente_soggetto_ruolo_id FROM cfg
-  ) AS emittente_soggetto_ruolo_id,
-  (
-    SELECT ba.id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id = (SELECT utility_id FROM cfg)
-    ORDER BY ba.data_insert DESC NULLS LAST
-    LIMIT 1
-  ) AS billing_account_id,
+SELECT
+  script.fn_pgtap_emittente_sr_operatore() AS emittente_soggetto_ruolo_id,
+  (SELECT billing_account_id FROM tmp_cli_iva) AS billing_account_id,
   (
     SELECT id
     FROM config.iva
@@ -87,11 +82,10 @@ SELECT (
     ORDER BY id
     LIMIT 1
   ) AS stato_doc_fiscale_id,
-  -- 3b.3: l'utility della configurazione va portata IN TESTATA. Il ricalcolo
-  -- non la deduce piu' da lotto/BA, la legge da vendite.fatture.utility_id:
-  -- prenderla da `cfg` e non dal BA e' cio' che tiene la coppia
-  -- (emittente, utility) esattamente quella scelta qui sopra.
-  (SELECT utility_id FROM cfg) AS utility_id;
+  -- 3b.3: l'utility va portata IN TESTATA. Il ricalcolo non la deduce piu'
+  -- da lotto/BA, la legge da vendite.fatture.utility_id: e' quella del
+  -- cliente costruito.
+  (SELECT utility_id FROM tmp_cli_iva) AS utility_id;
 SELECT ok(
     (
       SELECT emittente_soggetto_ruolo_id IS NOT NULL

@@ -1,6 +1,6 @@
 # Migliorie generali da test valutazione
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-23
+## ⏭️ Chi riparte — aggiornato al 2026-10-27
 
 **Riparte: Tid**, con le decisioni che tengono ferme le voci aperte di §3. Nessuna voce è in
 lavorazione: tutte aspettano una decisione o un via.
@@ -14,10 +14,28 @@ lavorazione: tutte aspettano una decisione o un via.
 | 5 | Tid | D7: i test legati a dati di macchina; il ramo «ultimo SUPER_ADMIN» | §3 D7 | — |
 | 6 | team DB | D24 (la vista del presidio C2 e i `tgargs`), D6-bis, D11-bis, D16: lavori senza decisioni aperte | §3 | il via di Tid |
 | 7 | Tid | una corsa CI su `Tito-dev` con `pgtap-baseline-ci-rientrati.sh` lo stesso giorno: il registro della CI è fermo | §3 D7 | — |
+| 8 | Tid | D7 lotto 4, famiglia 2 (fatture, lotti e registri, 37 file): prova su dev; due girano da owner | §3 D7 | — |
+| 9 | team DB | D7 lotto 4, famiglie 3-5; poi i registri per la famiglia 2 | §3 D7 | la prova della famiglia 2 |
 
 Decisioni aperte di Tid: righe 1-5. Lavoro da committare: il riallineamento del 2026-10-23 di questo
-documento.
+documento, il lotto 3 di D7 (due pgTAP di `pratiche`, la soglia `throws_ok`, i due registri) e il
+lotto 4 in corso (2026-10-27).
 
+> ⛔ **Corretto il 2026-10-27 — `vw_codici_errore_da_dichiarare` NON è un registro del debito.**
+> È la **misura** del terzo lato: conta ogni codice `E_*` che un corpo PL/pgSQL vivo può
+> nominare, e cresce a ogni regola nuova e legittima (716 su dbdev il 27-10). Il debito è il suo
+> registro, `dbops.codici_errore_senza_policy`, **a zero dal 2026-08-07**: il cancello
+> `test_error_codes_db_policy_guardrail` (in CI con `ZEROERP_TEST_DB_E2E=1`) fa rosso il giorno
+> stesso un codice nuovo senza policy. Fino al 23-10 questo documento ha letto 508 → 545 → 702
+> come «un registro che cresce senza verso», e ne ha tolto mezzo punto alla Gestione del debito.
+> La lettura era già stata corretta una volta, da
+> `work-done/brief-db-un-destinatario-per-i-presidi.md` («non è un registro: è la misura») e da
+> `work-done/brief-db-presidi-cosa-significa-cosa-fare.md` §5.3 («il suo numero non è il
+> debito»), ed è rientrata. Corretti la testata, §2.3, §3 D11 e D24, §5 e §7 D11; Gestione del
+> debito da 5,5 a **6**. ⛔ **Di una vista di presidio si conta il registro, mai la misura**: la
+> natura sta in `dbops.presidi` (colonna della natura: `CANCELLO`) e nel `COMMENT` della vista.
+> Il rischio vero sul terzo lato è un altro, ed è in §3 D24.
+>
 > Due valutazioni dello **strato DB**, a sette mesi di distanza.
 >
 > * **febbraio 2026** — voto sintetico 8.9/10, «design production-ready». Rimane
@@ -58,8 +76,9 @@ documento.
 > **360** (un test ritirato il 20-10, nessun rientrato certificato); `baseline-rossi-scratch.tsv`
 > a **147** (120 `ERRORE_FIXTURE`, 26 `ASSERZIONE`, 1 `SORGENTE_POLIMORFA`; ultimo aggiornamento il
 > 20-10, sullo scratch `zeroerp_ruoli`); `SOGLIA_THROWS_SENZA_DISCRIMINANTE` ferma a **115**;
-> `baseline-smoke.tsv` a **2** su 52 script; `rls_perimetro_debito` a **6**; codici da dichiarare
-> **702** su 1.126; `vw_processi_che_bypassano` a **zero**. ⚠️ Ancora nessuna misura nuova della
+> `baseline-smoke.tsv` a **2** su 52 script; `rls_perimetro_debito` a **6**; `codici_errore_senza_policy` a
+> **zero** *(qui stava «codici da dichiarare 702 su 1.126»: è la misura, non il debito — correzione
+> del 27-10 in testa)*; `vw_processi_che_bypassano` a **zero**. ⚠️ Ancora nessuna misura nuova della
 > CI dopo quella del 26-09.
 >
 > ✅ **Numeri rimisurati il 2026-10-13** (repo al commit `2bda3ee3b`) — i registri
@@ -77,7 +96,8 @@ documento.
 > `pgtap-baseline-ci-rientrati.sh` lanciato sul log di **questa** corsa, il
 > giorno stesso. `rls_perimetro_debito` ha **6** righe nel suo seed CSV (13-10;
 > 7 al 20-09). Il numero che sta solo nel catalogo del database
-> (`vw_codici_errore_da_dichiarare` 545) è del 20-09: la data è accanto.
+> (`vw_codici_errore_da_dichiarare` 545) è del 20-09: la data è accanto. *(⛔ 27-10: quel
+> numero è la misura, non il debito — correzione in testa.)*
 >
 > ⭐ **Aggiunto il 2026-10-04 — §2-bis, la valutazione qualitativa del
 > design**: modello dati, logica nelle funzioni, trigger/RLS, governo. Fino a
@@ -222,9 +242,16 @@ progetto e vanno considerate un asset, non uno strumento.
 (`dbops.vw_codici_errore_da_dichiarare`) e il «rubinetto» che impedisce a un
 codice di allargare il proprio significato.
 
-⚠️ **Il registro non cala: cresce.** 545 codici su 897 risultano non dichiarati
-lato applicativo — erano 508 su 852 l'08-09. Vedi §3 D11. *(2026-10-23: **702** su
-1.126. La quota resta intorno al 60%: il registro cresce col catalogo, non ha un verso.)*
+✅ **Il registro del terzo lato è a zero dal 2026-08-07** (`dbops.codici_errore_senza_policy`,
+141 → 0 in tre giorni), e il cancello `test_error_codes_db_policy_guardrail` lo tiene lì: un
+codice nuovo che il database può nominare senza una policy è rosso in CI il giorno stesso.
+
+⛔ **Corretto il 2026-10-27.** Qui stava scritto «il registro non cala: cresce», con 508 → 545 →
+**702** codici «non dichiarati lato applicativo». Quel numero è il conteggio della **misura**
+`vw_codici_errore_da_dichiarare` — ogni codice `E_*` che un corpo PL/pgSQL vivo può nominare —
+e ognuno di quei codici ha la sua policy, altrimenti la CI sarebbe rossa. Cresce col dominio, ed
+è giusto che cresca. Il punto debole vero è il limite di lettura della misura: non vede i codici
+passati negli argomenti di un trigger (§3 D24).
 
 ⛔ **Sei codici vivi non hanno nessun messaggio.** Tutti `AVVISO`, tutti nominati
 da esattamente una funzione: `W_FONDO_ESEGUITO_NON_RESETTABILE`,
@@ -763,12 +790,82 @@ lasciato
 * ⏳ **i 18 rossi del lotto 2**, da guardare uno per uno (elenco nel brief, §11
   «Stato di chiusura»; ⚠️ per nome sono 19, scarto di uno da riconciliare), più
   i 3 del lotto 1 da riconciliare (16 + 21 + 3 = 40 su 43);
-* ⏳ **lotto 3** — `pratiche` (37 a registro, quasi tutti verdi nella simulazione
-  del 20-09) — e **lotto 4** — `vendite` (211), a famiglie: dash, resi,
-  fatture, DDT, preventivi;
+* ✅ **lotto 3** — `pratiche`, chiuso il 2026-10-27 (test verdi, Tid): 37 file nel registro della CI. Sullo scratch
+  `zeroerp_ruoli` il registro ne dava rossi solo **2** (20-10): gli altri 35 aspettano soltanto la
+  corsa CI che li certifica (punto sopra). I due sono stati rimessi in piedi il 2026-10-27,
+  verdi sullo scratch come app, con tutte le asserzioni del piano eseguite:
+  * `test-pratiche-sorgenti-flusso` (`ERRORE_FIXTURE`): pescava BA e soggetto con `LIMIT 1`.
+    Ora il cliente lo costruisce `dbops.fn_pgtap_crea_cliente_ba`, e le sei commesse-sorgente
+    `dbops.fn_pgtap_crea_commessa`. Nello stesso giro i suoi due `throws_ok(…, NULL, NULL)`
+    hanno ricevuto il discriminante (sonda: tutti e due morivano per la ragione giusta), e
+    la soglia del cancello è scesa a **110**;
+  * `test-workflow-definizioni-fase2b` (`ASSERZIONE` sullo scratch): sei `throws_like`
+    cercavano una frase di `TEMPLATE_DEFINIZIONE_CONGELATA` che il registro dei messaggi non
+    ha più. Ora cercano «struttura congelata», come il file fratello
+    `test-definizione-ritirata-edit-freeze`. ⚠️ Sulla baseline di sviluppo il file è
+    `ERRORE_FIXTURE`, un'altra causa che sullo scratch non si vede: la dirà la corsa su dev.
+
+  I due file sono usciti dai registri di sviluppo e dello scratch; dal registro della CI li toglie
+  la corsa CI, con gli altri 35.
+* 🟡 **lotto 4** — `vendite`, avviato il 2026-10-27. Fatto datato: 210 file nel registro della CI,
+  **88** rossi nel registro dello scratch (76 `ERRORE_FIXTURE`, 12 `ASSERZIONE`). Gli altri,
+  già verdi da zero, aspettano solo la corsa CI. Si lavora per famiglia, con la stessa ricetta
+  del lotto 3: il cliente lo costruisce `dbops.fn_pgtap_crea_cliente_ba`; le chiamate alla madre
+  restano (sono il percorso vero); la commessa e l'attività scritte a mano passano a
+  `fn_pgtap_crea_commessa` / `_commessa_attivita`, salvo dove l'`INSERT` è il caso sotto test.
+  1. ✅ **commesse e attività** (23 file, tutti morti sul BA pescato e NULL da zero): riscritti e
+     verdi su dev e sullo scratch il 2026-10-27 (Tid), fuori dai due registri. Nello stesso giro sono emersi tre verdi falsi o fragili:
+     * `test-fn-list-commessa-attivita-provenienza-v1`, test 14: da zero finiva in `skip()`.
+       Ora l'ordine lo costruisce `fn_pgtap_crea_ordine`, e il test verifica davvero;
+     * `test-attivita-fatturabili`: «13 attività distinte» contava righe, non id. Ora conta gli id
+       distinti (una `LATERAL` sul builder ne avrebbe date tredici uguali);
+     * `test-commessa-pronta-fatturazione-v1`: con la commessa costruita, i test 2-4 erano rossi
+       perché `fn_available_actions_commessa` nasconde «rendi pronta» a chi non ha l'azione
+       (`20261026-35`), e il file la concedeva solo prima del test 6. Ora la concede prima del 2.
+       Con la commessa pescata, nessuno se n'era accorto;
+     * ⚠️ lo stesso file, verde sullo scratch, era rosso su dev: impersonava «il primo super admin
+       attivo» di `django.auth_user`. Sullo scratch non ne trovava nessuno, svuotava il contesto e il
+       builder apriva un mondo suo; su dev trovava l'utente 1, senza azienda, e il builder si
+       fermava. Tolta l'impersonazione: l'operatore del test vede le sue commesse. ⭐ La lezione vale
+       per tutto il lotto: **lo scratch da solo non prova un file che pesca ancora qualcosa**, perché
+       là la pesca non fallisce, cambia strada.
+  2. 🟡 **fatture, lotti e registri** (37 file `ERRORE_FIXTURE`), avviata il 2026-10-27. Le cause
+     sullo scratch: BA o utility pescati e NULL, registro di fatturazione senza emittente, lotti di
+     un'altra azienda rifiutati dalla RLS, `tipo_doc_fiscale` letto da una fattura che non c'è,
+     l'utente `'1'` fisso (porta oneri, `vw-af-merce-per-riga`, `numera-nota-credito-riferimento`).
+     Riscritti il 2026-10-27: tutti verdi sullo scratch, con il piano intero eseguito e nessuno
+     `skip`; due (`fatture-guard-registro-emittente`, `registri-per-emittente-v1`) girano da owner,
+     come dichiarano in testa. Pesche rimaste: solo catalogo di seed. Manca la prova di Tid su dev.
+     Emerso nello stesso giro:
+     * ⭐ **un verde per il vincolo sbagliato**: il test 16 di `fatture-righe-importo-e-kit-v1`
+       dichiarava il CHECK di coerenza del kit, ma la riga di prova non aveva l'articolo e
+       scattava `chk_fatture_righe_kit_articolo`. Ora la riga ha l'articolo e il test cerca
+       `chk_fatture_righe_kit_coerente` (sonda); gli altri cinque `throws_ok` del file hanno
+       ricevuto il loro discriminante;
+     * dove da zero finivano in `skip`, ora i test girano: `gruppo-key-segnalazioni` 14-15,
+       `riferimento-gruppo-fatturabile` 7 e 16, `fattura-utils-critical-termini` 12,
+       `fn-list-emittibili-lane` 8;
+     * ⚠️ **punto cieco del cancello `throws_ok`**: `guardrail_pgtap_preambolo.py` conta solo
+       `NULL, NULL` nudi, e non vede `NULL::text, NULL::text`. Al 2026-10-27 sono 7 asserzioni
+       senza discriminante in 5 file (`test-fn-create-indirizzo-v1`, `test-fn-create-contratto-v1`,
+       `test-fn-genera-pratica-da-preventivo-v1`, `test-fn-push-preventivo-a-ordine-v1`,
+       `test-documento-lineage-v1`), fuori dal debito misurato. Rimedio: il cancello riconosce
+       anche la forma col cast, e le 7 ricevono il discriminante nello stesso giro, così la soglia
+       non sale;
+     * da guardare su dev: i lotti che i builder aprono per l'azienda dell'operatore nel mese
+       corrente (`uscita-documento-dal-giro`, `riferimento-gruppo-fatturabile`,
+       `registri-log-orario-reale`; `emittibili-lane` a luglio 2026) potrebbero incontrare un
+       lotto vero sulla stessa chiave; e `vw-af-merce-per-riga` filtra la vista per id di riga
+       sintetici (9000xx) senza il documento del test: una riga vera con lo stesso id darebbe
+       due righe alla sottoquery;
+  3. ⏳ **preventivi e ordini** (preventivi, canali, valuta, ordini);
+  4. ⏳ **listini e prezzi** (`fn_resolve_prezzo_*`, guard di listino);
+  5. ⏳ **dash e viste**, e i rossi `ASSERZIONE` rimasti, uno per uno.
 * ⏳ **le copie a mano dei documenti di vendita** (2026-10-07): un ordine scritto
   a mano in 54 pgTAP, un preventivo in 40, una commessa in 36, un'attività di
-  commessa in 32. I builder ci sono (`dbops.fn_pgtap_crea_ordine`, `_preventivo`,
+  commessa in 32. Al 2026-10-27, contando i soli `INSERT INTO vendite.<tabella> (` letterali
+  fuori dai commenti (metodo diverso da quello del 07-10, quindi non confrontabile), i file sono
+  18 per l'ordine, 46 per il preventivo, 16 per la commessa e 21 per l'attività. I builder ci sono (`dbops.fn_pgtap_crea_ordine`, `_preventivo`,
   `_commessa`, `_commessa_attivita`): si migrano con il lotto 4, per famiglia
   ([brief-db-fixture-rls-documenti-costruiti.md](../work-done/brief-db-fixture-rls-documenti-costruiti.md)
   §6);
@@ -920,7 +1017,7 @@ al 2026-09-08, salvo dove è scritta un'altra data:
 
 | Registro                                   | Oggi (2026-10-23, dove non è scritto altrimenti)                                           |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `dbops.vw_codici_errore_da_dichiarare`     | **702** su 1.126 codici (545 su 897 al 20-09, 508 su 852 all'08-09)                        |
+| `dbops.codici_errore_senza_policy`         | ✅ **0** dal 2026-08-07 — ⛔ *non* il conteggio di `vw_codici_errore_da_dichiarare` (702 al 23-10), che è la misura: vedi sotto |
 | `db/pgtap/baseline-rossi-ci.tsv`           | **360** file (292 `ERRORE_FIXTURE`, 68 `ASSERZIONE`), fermo dal 2026-09-22 salvo un test ritirato il 20-10 — nato il 09-09 con 407; la CI del 26-09 misura **227 rossi su 714**: il registro scende con `pgtap-baseline-ci-rientrati.sh` (D7) |
 | `SOGLIA_THROWS_SENZA_DISCRIMINANTE`        | **115**, ferma dal 13-10 (117 al 26-09, 129 all'08-09)                                     |
 | `dbops.vw_fk_con_indice_missing_policy`    | **57**, fermo dall'08-09                                                                   |
@@ -933,19 +1030,21 @@ al 2026-09-08, salvo dove è scritta un'altra data:
 | `dbops.vw_processi_che_bypassano`          | ✅ **0** dal 2026-10-15 (era 1, dichiarato con la data di ritiro: ritirato nei tempi)      |
 
 ⭐ L'ultima riga è l'unica fatta bene: **una** voce, con il motivo e il momento in
-cui sparisce — ✅ ed è sparita quando diceva. Le prime quattro sono liste lunghe, e la guida sui presidi dice
+cui sparisce — ✅ ed è sparita quando diceva. Le tre liste lunghe (i rossi della CI, la soglia `throws_ok`, le FK senza indice) no, e la guida sui presidi dice
 esattamente perché è un problema: *«il registro nasce piccolo. Se parte con
 trenta righe, nessuno lo leggerà»*. `rls_perimetro_debito` è nato nella forma
 giusta — ogni riga con la sua ragione — ed è calato di due terzi nel cantiere
 che l'ha aperto.
 
-⚠️ **E uno di questi registri cresce: i codici.** 508 → **545** su 897 (08-09 →
-20-09) → **702** su 1.126 (23-10) mentre `rls_perimetro_debito` scendeva. Il motivo è strutturale e sta
-nella forma: gli altri hanno una **causa** e un **rimedio** (riscrivere la
-fixture, discriminare l'asserzione, armare la RLS), il registro dei codici
-misura il *terzo lato* — le dichiarazioni dell'applicativo — che si allarga a
-ogni dominio nuovo. Non è un presidio che mente: è un presidio **senza un
-verso**, ed è esattamente ciò che D11 chiede di dargli.
+⛔ **Corretto il 2026-10-27 — i codici non sono un registro che cresce.** Qui stava scritto che
+508 → 545 → 702 era «un presidio senza un verso». Era la lettura sbagliata: 702 è il numero di
+righe della **misura** `vw_codici_errore_da_dichiarare` (ogni codice che il DB può nominare), non
+del debito. Il registro è `dbops.codici_errore_senza_policy`, **a zero dal 2026-08-07**, e il verso
+ce l'ha: il cancello `test_error_codes_db_policy_guardrail` è rosso su un codice nuovo senza policy
+(verso 1), su una voce del registro che l'ha ottenuta (verso 2) e su una che nessuno nomina più
+(verso 3). È, con `vw_processi_che_bypassano`, il secondo registro portato a zero nei tempi.
+⛔ **Per non ricadere: di una vista di presidio si conta il registro, mai la misura.** La natura
+sta in `dbops.presidi` (questa vista è `CANCELLO`) e nel `COMMENT` della vista.
 
 ⚠️ Le due baseline pgTAP meritano una riga a parte: i file `ERRORE_FIXTURE`
 (292 in CI e 6 in sviluppo al 13-10) non eseguono **nessuna**
@@ -1034,6 +1133,16 @@ per conto suo: per la vista quel sito non esiste.
 ancora in `test_ui_action_e_canale_campi.py`. Ogni BB trigger nuovo col codice negli argomenti
 allarga la cecità senza fare rumore.
 
+⚠️ **La stessa cecità tocca il cancello delle policy** (verificato il 2026-10-27 su dbdev,
+correggendo D11). `test_error_codes_db_policy_guardrail` legge `vw_codici_errore_da_dichiarare`,
+che cerca i letterali nel **corpo**: un codice che arriva solo da `tgargs` non c'è. Fatto datato:
+**30** codici `E_*` stanno solo negli argomenti di un trigger e la misura non li vede (la regex ne
+trova 32, ma `E_VENDITA` ed `E_EVASO` sono pezzi di `NATURE_VENDITA` e `PARZIALMENTE_EVASO`).
+Oggi **tutti e 30 hanno la loro policy**, quindi nessun buco. Ma un codice nuovo passato così a un
+BB trigger, senza policy, **non farebbe rosso il verso 1**: è l'unico punto in cui il registro a
+zero dei codici può essere ottimista. Insegnare `tgargs` alla misura chiude tutti e due i presidi,
+C2 e le policy, con lo stesso lavoro.
+
 ### 🟠 D31 — Le righe di contratto CANONE, ORARIO e CONSUMO non hanno la loro generazione
 
 Trovato il 2026-10-13 dalla segnalazione BE del push batch CONTRATTO (un contratto senza scadenza
@@ -1089,7 +1198,7 @@ il brief d'origine è archiviato in `work-done/` (V-3 di Tid, §8.11).
 
 ---
 
-## 5. Scorecard — pesata, non mediata (2026-09-08; voti rivisti il 2026-10-23)
+## 5. Scorecard — pesata, non mediata (2026-09-08; voti rivisti il 2026-10-23; Gestione del debito corretta il 2026-10-27)
 
 Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione. La colonna
 «prima» è il voto del 2026-09-26 (la «Simmetria del dominio» non è votata dal 04-10).
@@ -1102,9 +1211,9 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | **Postura di sicurezza degli oggetti** | 🟠 medio | 7,5    | **8/10**      | I ruoli di sistema (15-10): un solo proprietario, `zeroerp_job` per i processi, presidio «nessun superuser al lavoro», `zeroerp_log` nella fase dei ruoli (D35). I rubinetti di D6-bis scesi a 16 e 4. Non di più finché Q-2 e D6-bis restano aperti |
 | **Simmetria del dominio**              | 🟠 medio | —      | **non votata** | Che lo strato di comportamento di `acquisti` arrivi dopo è l'ordine di costruzione (§4). Resta vero, ed è in D8, il punto **sul modello**: le decisioni prese su `vendite` (dal 13-10 anche grammatica unica, modelli di documento standard, emissione dell'offerta) valgono anche per `acquisti`, e lì non sono scritte |
 | **Osservabilità dei presidi**          | 🟠 medio | 7      | **7,5/10**    | Ogni riga del presidio dei job dice la sua causa (`brief-db-presidio-job-run-a-chi-tocca`), una spia si spegne solo con un verdetto completo (`brief-db-intermittente-e-verdetto-completo`), il giornale registra il ruolo della corsa, le statistiche hanno un job con autoverifica (D15). Non 8 per il residuo di D10: i processi ritirati nella vista dei job |
-| **Gestione del debito**                | 🟠 medio | 6      | **5,5/10**    | Il registro col verso giusto ha funzionato (il bypass, ritirato nei tempi) e quelli piccoli calano (smoke 7 → 2, baseline di sviluppo 7 → 6). Scende di mezzo punto perché i due grandi stanno peggio: il registro della CI è fermo da un mese, i codici da dichiarare sono saliti a 702, e dal 13-10 nessuna voce aperta di questo registro è stata lavorata (§3) |
+| **Gestione del debito**                | 🟠 medio | 6      | **6/10**      | I registri col verso giusto hanno funzionato (il bypass, ritirato nei tempi; i codici senza policy, a zero dal 07-08) e quelli piccoli calano (smoke 7 → 2, baseline di sviluppo 7 → 6). Non sale perché il registro della CI è fermo da un mese e dal 13-10 nessuna voce aperta di questo registro è stata lavorata (§3). *(⛔ 27-10: il 23-10 era 5,5, sulla lettura sbagliata dei «702 codici da dichiarare», che sono la misura e non il debito)* |
 | **Pattern trigger e automazioni**      | 🟡 basso | 7,5    | **7,5/10**    | Framework `ci_apply` eccellente; la forma per-figlia continua a crescere (816 trigger da due funzioni, 50 su `catalogo.articoli`), la fase sale al 68% solo perché i trigger nuovi nascono con lei (D9) |
-| **Error handling / codici errore**     | 🟡 basso | 8,5    | **8,5/10**    | Contratto a tre lati esplicito e presidiato, e la grammatica unica dà un nome solo al tipo di documento anche nelle eccezioni (lotto 1). Il registro sale e i sei `W_` sono ancora senza messaggio (D11-bis) |
+| **Error handling / codici errore**     | 🟡 basso | 8,5    | **8,5/10**    | Contratto a tre lati esplicito e presidiato, e la grammatica unica dà un nome solo al tipo di documento anche nelle eccezioni (lotto 1). Il registro dei codici senza policy è a zero; i sei `W_` sono ancora senza messaggio (D11-bis), e la misura non vede i codici negli argomenti dei trigger (D24) |
 | **Disciplina Liquibase**               | 🟡 basso | 9      | **9/10**      | Oltre 5.700 changeSet in `migrations_v2` (23-10; 3.354 all'08-09), cancelli dedicati nati da incidenti reali |
 | **Documentazione**                     | 🟡 basso | 8,5    | **8,5/10**    | Copertura piena; sottile dove il dominio è sottile |
 | **Naming**                             | 🟡 basso | 8      | **8/10**      | 94-99% sui vincoli; 68% sulla fase dei trigger, che è la voce con conseguenze; un vocabolario solo per i tipi di documento (grammatica unica) |
@@ -1203,7 +1312,8 @@ rossi in CI.
       di composizione e i lotti 1 e 2 (22-24/09) — **227 rossi su 714** in
       CI il 26-09, contro 407 su 601 il 09-09; sullo scratch `zeroerp_ruoli` 147 su 887 (20-10).
       ⏳ Resta (§3 D7): la corsa CI che certifica i rientrati (registro **fermo a 360**), i 18
-      rossi del lotto 2, i lotti 3 (`pratiche`) e 4 (`vendite`), i file con l'utente
+      rossi del lotto 2, il lotto 3 (`pratiche`: i due rossi dello scratch rimessi in piedi il 27-10, gli altri
+      35 aspettano la corsa CI), il lotto 4 (`vendite`), i file con l'utente
       `'1'` (4 al 23-10), i 5 `ERRORE_FIXTURE` della baseline di sviluppo (6 file al 23-10), due decisioni
       per Tid e due cancelli da disegnare.
 * [x] **D13** — ✅ chiuso il 2026-09-13: changeSet `20260913-01/02/03`
@@ -1535,8 +1645,9 @@ sul database di sviluppo (16 al 12-09, 12 col giro 2 di D7 il 24-09), e
 `db/pgtap/baseline-rossi-ci.tsv` da **403 a 361** (22-09; la misura da zero
 della CI del 26-09 è a 227: le righe rientrate sono da togliere). ⭐ È la forma che la guida prescrive e che
 qui ha funzionato: registro piccolo, ogni voce con il motivo, e un cantiere che
-lo abbassa mentre passa. ⚠️ E ce n'è uno che invece **cresce** — `vw_codici_errore_da_dichiarare`,
-508 → 545 su 897: è il registro **senza un verso** (§3 D11).
+lo abbassa mentre passa. *(⛔ Corretto il 2026-10-27: qui si diceva che `vw_codici_errore_da_dichiarare` «cresce» — 508 →
+545 su 897 — come un registro senza verso. È la misura, non il registro; il registro,
+`codici_errore_senza_policy`, è a zero dal 07-08: §3 D11.)*
 
 #### La soglia `throws_ok`: 129 → 123, e il test che era verde per l'errore sbagliato
 

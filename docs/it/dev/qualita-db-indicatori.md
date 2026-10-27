@@ -1,6 +1,7 @@
 # Qualità del database — indicatori e lezioni
 
-> **Ultima rilettura**: 23 ottobre 2026
+> **Ultima rilettura**: 27 ottobre 2026 — corretta la lettura di
+> `vw_codici_errore_da_dichiarare` (è la misura, non il debito) e il voto della Gestione del debito
 >
 > **Destinatari**: chi sviluppa sullo strato database (schema, funzioni, trigger, policy,
 > changeSet, pgTAP), e chi ogni tanto si chiede *«il database sta diventando più vero o
@@ -66,7 +67,10 @@ Vengono dalla valutazione del 2026-09/10: ognuna ha un caso vero dietro, nella l
   della regola (D11).
 * **Un registro di debito vale se scende**, e scende solo se ogni riga ha causa, rimedio e data.
   `vw_processi_che_bypassano` aveva una riga con la data di ritiro, ed è andato a zero quel
-  giorno; il registro dei codici da dichiarare non ha un verso, e cresce col catalogo.
+  giorno; anche il registro dei codici senza policy è a zero dal 07-08. ⛔ **Di una vista di presidio si
+  conta il registro, mai la misura**: `vw_codici_errore_da_dichiarare` cresce col catalogo perché
+  conta ogni codice che il DB può nominare, e contarla come debito è un errore già fatto tre
+  volte (correzione del 27-10).
 * **Un registro che non si aggiorna dalla misura del giorno mente a favore.** Il registro dei
   rossi della CI fermo a 361 mentre la CI ne vedeva 227: circa 130 file già verdi tollerati
   come rossi, la cui regressione non ferma un merge.
@@ -163,7 +167,7 @@ I messaggi per lingua li legge il gemello BE/FE: un numero, una sede.
 
 | Indicatore | Verso | Chi lo presidia | 23-10 |
 | --- | --- | --- | --- |
-| codici da dichiarare (`vw_codici_errore_da_dichiarare`) | ↓ — oggi **senza verso** | il digest dei presidi | 702 |
+| codici nominabili dal DB (`vw_codici_errore_da_dichiarare`) — ⛔ **misura, non debito** | colore: cresce col dominio | — (il debito è `codici_errore_senza_policy`, a **0**, presidiato da `test_error_codes_db_policy_guardrail`) | 702 |
 | FK senza indice fuori policy | ↓ | `vw_fk_con_indice_missing_policy` | 57 |
 | indici ridondanti per prefisso | = 0 | `vw_indici_ridondanti_prefisso` | 1 |
 | processi che bypassano la RLS | = 0 | `vw_processi_che_bypassano` | 0 |
@@ -197,9 +201,9 @@ nella lettura zero).
 | Postura di sicurezza degli oggetti | 🟠 medio | **8** | 7,5 | Ruoli di sistema: un proprietario, `zeroerp_job`, nessun superuser al lavoro; rubinetti D6-bis a 16 e 4. Aperti Q-2 e D6-bis |
 | Simmetria del dominio | 🟠 medio | **non votata** | — | L'ordine di costruzione non si vota. Si presidia la regola: *ogni decisione su `vendite` vale per `acquisti`* — e dal 13-10 `vendite` ne ha prese altre (grammatica unica, modelli standard) |
 | Osservabilità dei presidi | 🟠 medio | **7,5** | 7 | Il presidio dei job dice la causa, la spia si spegne solo su un verdetto completo, le statistiche hanno un job che si verifica. Resta il rumore dei processi ritirati nella vista dei job |
-| Gestione del debito | 🟠 medio | **5,5** | 6 | I registri piccoli calano e il bypass è sparito alla data. I due grandi no: registro della CI fermo, codici da dichiarare senza verso (702) |
+| Gestione del debito | 🟠 medio | **6** | 6 | I registri piccoli calano, il bypass è sparito alla data, i codici senza policy sono a zero dal 07-08. Lo tiene fermo il registro della CI, non aggiornato dall'ultima misura. *(⛔ 27-10: il 23-10 era 5,5, contando come debito i 702 codici della misura)* |
 | Pattern trigger e automazioni | 🟡 basso | **7,5** | 7,5 | Automazioni dichiarative eccellenti; il guard per-figlia cresce con le figlie (D9) |
-| Error handling / codici errore | 🟡 basso | **8,5** | 8,5 | Contratto a tre lati presidiato. Sei `W_` senza messaggio, registro che sale |
+| Error handling / codici errore | 🟡 basso | **8,5** | 8,5 | Contratto a tre lati presidiato. Sei `W_` senza messaggio; la misura non vede i codici negli argomenti dei trigger (D24) |
 | Disciplina Liquibase | 🟡 basso | **9** | 9 | Divieti nati da incidenti, ognuno col suo guardrail. `logicalFilePath` senza presidio |
 | Documentazione | 🟡 basso | **8,5** | 8,5 | Copertura piena; sottile dove il dominio è sottile |
 | Naming | 🟡 basso | **8** | 8 | 94-99% sui vincoli; fase dei trigger al 68%; un vocabolario solo per i tipi di documento |

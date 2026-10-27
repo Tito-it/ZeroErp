@@ -71,46 +71,29 @@ SELECT ok(
   'parametro attivita_fatturabili_require_commessa presente'
 );
 
+-- rev 2026-10-27 (lotto 4 di D7): il cliente e l'articolo si COSTRUISCONO
+--   (dbops.fn_pgtap_crea_cliente_ba, BA gia' legato all'azienda di chi
+--   agisce; dbops.fn_pgtap_crea_articolo, con la sua unita' di misura).
+--   Prima si pescavano con LIMIT 1, e su un database ricostruito da zero
+--   non c'erano. Le chiamate alla madre, sotto, restano.
+CREATE TEMP TABLE tmp_guard_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('guardrail commessa');
+
+CREATE TEMP TABLE tmp_guard_art AS
+SELECT dbops.fn_pgtap_crea_articolo(
+  ('PGT-GRD-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
+  false) AS articolo_id;
+
 CREATE TEMP TABLE tmp_guard_refs AS
 SELECT
-  (
-    SELECT ba.id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS billing_account_id,
-  (
-    SELECT ba.utility_id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS utility_id,
-  (
-    SELECT ba.istanza_utility_id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS istanza_utility_id,
-  (
-    SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id)
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS emittente_soggetto_ruolo_id,
-  (SELECT id FROM catalogo.articoli WHERE attivo IS TRUE ORDER BY data_insert DESC NULLS LAST LIMIT 1) AS articolo_id,
-  (SELECT id FROM catalogo.unita_misura WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS uom_id,
+  (SELECT billing_account_id FROM tmp_guard_cli) AS billing_account_id,
+  (SELECT utility_id FROM tmp_guard_cli) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_guard_cli) AS istanza_utility_id,
+  (SELECT anagrafiche.fn_get_emittente_fiscale_id(billing_account_id)
+     FROM tmp_guard_cli) AS emittente_soggetto_ruolo_id,
+  (SELECT articolo_id FROM tmp_guard_art) AS articolo_id,
+  (SELECT a.uom_id FROM catalogo.articoli a
+    WHERE a.id = (SELECT articolo_id FROM tmp_guard_art)) AS uom_id,
   (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id,
   (SELECT id FROM config.sorgenti WHERE codice_interno = 'COMMESSA' LIMIT 1) AS src_preventivo_id;

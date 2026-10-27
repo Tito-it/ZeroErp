@@ -93,20 +93,28 @@ SELECT is(
 
 -- ============================================================
 -- FIXTURE — un lotto con almeno una fattura, visibile all'operatore.
--- ⚠️ Qui l'`ORDER BY … LIMIT 1` non scommette: il test scrive le PROPRIE
---    righe di registro, quindi ogni lotto con una fattura e' un soggetto
---    valido. Non c'e' una condizione «che rende il caso significativo» da
---    aggiungere, e va detto invece di lasciarlo supporre.
+-- rev 2026-10-27 (lotto 4 di D7): lotto e fattura si COSTRUISCONO
+--   (dbops.fn_pgtap_crea_fattura, poi dbops.fn_pgtap_crea_lotto sullo stesso
+--   cliente) e si legano col ponte. Prima si pescava l'ultimo lotto del DB
+--   con una fattura: da zero non ce n'era, e il primo fn_log_event moriva
+--   su un lotto NULL. Il test scrive comunque le PROPRIE righe di registro:
+--   ogni lotto con una fattura e' un soggetto valido.
 -- ============================================================
+CREATE TEMP TABLE tmp_fattura_r1 AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('registri orario reale');
+
+CREATE TEMP TABLE tmp_lotto_r1 AS
+SELECT * FROM dbops.fn_pgtap_crea_lotto(
+         'registri orario reale', 'DRAFT',
+         (SELECT billing_account_id FROM tmp_fattura_r1));
+
+INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id, stato_doc_fiscale_id)
+SELECT l.lotto_id, f.fattura_id, f.stato_doc_fiscale_id
+  FROM tmp_lotto_r1 l, tmp_fattura_r1 f;
+
 CREATE TEMP TABLE tmp_refs_r1 AS
-SELECT fl.id AS lotto_id,
-       (SELECT lf.fattura_id
-          FROM vendite.fatturazione_lotti_fatture lf
-         WHERE lf.lotto_id = fl.id ORDER BY lf.fattura_id LIMIT 1) AS fattura_id
-  FROM vendite.fatturazione_lotti fl
- WHERE EXISTS (SELECT 1 FROM vendite.fatturazione_lotti_fatture lf WHERE lf.lotto_id = fl.id)
- ORDER BY fl.id DESC
- LIMIT 1;
+SELECT l.lotto_id, f.fattura_id
+  FROM tmp_lotto_r1 l, tmp_fattura_r1 f;
 
 -- ⚠️ Le tre scritture in ISTRUZIONI SEPARATE, ed e' il soggetto del test: e'
 --    proprio fra statement diversi che `now()` dava lo stesso valore e

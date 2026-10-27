@@ -54,31 +54,29 @@ SELECT plan(7);
 -- =========================================================
 -- 0) Riferimenti: un billing account su cui l'operatore SCRIVE davvero
 -- =========================================================
--- ⚠️ Il BA si sceglie fra quelli il cui emittente DERIVATO coincide con
---   quello dell'operatore di contesto: e' l'unico su cui la policy
---   rls_commesse_ef_whitelist lo lascia scrivere, e una fixture che scrive
---   dove l'applicazione non scrive non e' una fixture, e' un falso.
--- ⚠️ ORDER BY esplicito: un LIMIT 1 senza non verifica, scommette.
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba, BA gia' legato all'azienda di chi
+--   agisce: l'unico su cui la policy rls_commesse_ef_whitelist lo lascia
+--   scrivere), e l'emittente estraneo e' un'ALTRA azienda costruita
+--   (dbops.fn_pgtap_crea_emittente_operatore). Prima si pescavano con
+--   LIMIT 1, e su un database ricostruito da zero non c'erano.
+CREATE TEMP TABLE tmp_cli_emitt_inv AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('emittente invariante');
+
+CREATE TEMP TABLE tmp_altra_emitt_inv AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
 CREATE TEMP TABLE tmp_refs_emitt_inv AS
 SELECT
-    ba.id                                            AS billing_account_id,
-    ba.utility_id                                    AS utility_id,
+    c.billing_account_id                             AS billing_account_id,
+    c.utility_id                                     AS utility_id,
     script.fn_pgtap_emittente_sr_operatore()         AS emittente_sr_ok,
-    -- Un soggetto_ruolo QUALUNQUE diverso dall'emittente dell'operatore.
-    -- Non deve essere un emittente vero: il guard confronta due
-    -- soggetti_ruoli, e la sola FK in gioco e' fk_commesse_emittente verso
-    -- anagrafiche.soggetti_ruoli.
-    (SELECT sr.id
-       FROM anagrafiche.soggetti_ruoli sr
-      WHERE sr.id <> script.fn_pgtap_emittente_sr_operatore()
-      ORDER BY sr.id
-      LIMIT 1)                                       AS emittente_sr_estraneo
-  FROM anagrafiche.billing_account ba
- WHERE ba.utility_id IS NOT NULL
-   AND anagrafiche.fn_get_emittente_fiscale_id(ba.id)
-       = script.fn_pgtap_emittente_sr_operatore()
- ORDER BY ba.id
- LIMIT 1;
+    -- Un soggetto_ruolo diverso dall'emittente dell'operatore: il guard
+    -- confronta due soggetti_ruoli, e la sola FK in gioco e'
+    -- fk_commesse_emittente verso anagrafiche.soggetti_ruoli.
+    a.soggetto_ruolo_id                              AS emittente_sr_estraneo
+  FROM tmp_cli_emitt_inv c
+ CROSS JOIN tmp_altra_emitt_inv a;
 
 SELECT ok(
     (SELECT billing_account_id IS NOT NULL

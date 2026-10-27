@@ -90,7 +90,12 @@ RADICE = pathlib.Path(__file__).resolve().parent.parent / "db" / "pgtap"
 #   `throws_ok(..., NULL, NULL)` sull'UPDATE di partecipa_qta e
 #   determina_qta_padre, colonne ritirate da brief-db-bom-flag-quantita-e-kit-in-fattura
 #   (commit b808393db, 2026-10-02): le asserzioni sono uscite con loro.
-SOGLIA_THROWS_SENZA_DISCRIMINANTE = 115
+# 2026-10-27: 115 -> 110. Due discriminate in
+#   db/pgtap/pratiche/test-pratiche-sorgenti-flusso.sql (lotto 3 del cantiere
+#   D7): la sonda le ha trovate giuste — l'indice uq_pratiche_sorgenti_flusso_root
+#   e il guard di coerenza pratica<->flusso — e ora lo dicono. Le altre tre
+#   erano gia' calate in giri precedenti senza abbassare la soglia.
+SOGLIA_THROWS_SENZA_DISCRIMINANTE = 110
 
 RX_BEGIN = re.compile(r"^\s*BEGIN\s*;", re.M)
 RX_SETC = re.compile(r"SET\s+CONSTRAINTS\s+ALL\s+IMMEDIATE", re.I)

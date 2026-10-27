@@ -24,7 +24,7 @@
 --      anche un label_selector
 --  12) il resolver risponde UNA riga anche con parametri NULL (mai zero)
 --  13) il resolver risponde UNA riga anche su una sorgente inesistente
---  14) spot-check dati veri (skip-abile): un ORDINE risolve id E numero
+--  14) spot-check su un ORDINE costruito: risolve id E numero
 --  15) fixture: riga SOURCELESS -> sorgente_documento_numero NULL
 --  16) fixture: riga SOURCELESS -> gruppo_key = 'MAN:<commessa_id>'
 --  17) fixture: la riga sourceless NON sparisce dalla lista
@@ -172,31 +172,29 @@ SELECT is(
 );
 
 -- ============================================================
--- 14  Spot-check sui dati veri (skip-abile)
+-- 14  Spot-check su un ordine costruito
 -- ============================================================
--- ⚠️ Dipende dai dati, quindi si salta invece di fallire su un DB ricostruito
---   da zero — dove gli ordini non ci sono. Quando c'e', verifica la cosa che
---   nessuna asserzione di forma puo' verificare: che la traduzione FUNZIONI.
+-- Verifica la cosa che nessuna asserzione di forma puo' verificare: che la
+--   traduzione FUNZIONI su un ordine vero.
+-- rev 2026-10-27 (lotto 4 di D7): l'ordine lo costruisce
+--   dbops.fn_pgtap_crea_ordine. Prima si pescava con LIMIT 1 e, da zero, il
+--   test finiva in skip(): verde senza aver verificato niente.
 
 CREATE TEMP TABLE tmp_ord_lcp AS
 SELECT o.uid, o.numero
-  FROM vendite.ordini o
- WHERE o.numero IS NOT NULL
- ORDER BY o.id
- LIMIT 1;
+  FROM dbops.fn_pgtap_crea_ordine('provenienza attivita') b
+  JOIN vendite.ordini o ON o.id = b.ordine_id;
 
-SELECT CASE WHEN (SELECT count(*) FROM tmp_ord_lcp) = 0
-  THEN skip('14. nessun ordine con numero: spot-check saltato', 1)
-  ELSE is(
-    (SELECT r.documento_numero
-       FROM tmp_ord_lcp t
-       CROSS JOIN LATERAL vendite.fn_get_sorgente_documento_ref(
-           (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
-           t.uid::text) r),
-    (SELECT t.numero::text FROM tmp_ord_lcp t),
-    '14. su un ordine vero il resolver restituisce il numero leggibile'
-  )
-END;
+SELECT is(
+  (SELECT r.documento_numero
+     FROM tmp_ord_lcp t
+     CROSS JOIN LATERAL vendite.fn_get_sorgente_documento_ref(
+         (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
+         t.uid::text) r),
+  -- ⚠️ Un ordine senza numero non deve passare per NULL = NULL.
+  (SELECT COALESCE(t.numero::text, '<ordine costruito senza numero>') FROM tmp_ord_lcp t),
+  '14. su un ordine vero il resolver restituisce il numero leggibile'
+);
 
 -- ============================================================
 -- Fixture: una commessa con una riga SOURCELESS
@@ -209,26 +207,18 @@ END;
 --   sorgente la rifiuta il vincolo chk_commesse_attivita_senza_sorgente_onere_rettifica
 --   (20261012-27), e il caso non esiste piu' nel modello.
 
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba, BA legato all'azienda di chi agisce):
+--   prima il billing account si pescava con LIMIT 1, e su un database
+--   ricostruito da zero non c'era.
+CREATE TEMP TABLE tmp_cli_lcp AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('list commessa attivita provenienza');
+
 CREATE TEMP TABLE tmp_refs_lcp AS
 SELECT
-  (SELECT ba.id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
+  (SELECT billing_account_id FROM tmp_cli_lcp) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cli_lcp) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cli_lcp) AS istanza_utility_id,
   -- ⚠️ Un articolo con codice E descrizione: sono le due colonne sotto esame,
   --   e sceglierlo senza guardarle renderebbe il test 15 verde per caso.
   (SELECT a.id FROM catalogo.articoli a

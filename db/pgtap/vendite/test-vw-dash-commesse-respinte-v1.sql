@@ -76,23 +76,32 @@ SELECT ok(
 -- ============================================================
 -- Fixture — sei respinte, costruite
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba) e l'emittente e' quello di chi agisce
+--   (script.fn_pgtap_emittente_sr_operatore). Prima utility ed emittente si
+--   pescavano dal primo BA e dalla prima fattura: da zero non c'erano.
+CREATE TEMP TABLE tmp_cli_resp AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('dash commesse respinte');
+
 CREATE TEMP TABLE tmp_lotto_resp AS
 SELECT vendite.fn_get_or_create_lotto(
          p_competenza_mese             => (date_trunc('month', script.fn_data_operativa()) + interval '5 month')::date,
          p_tipo_doc_fiscale_id         => (SELECT id FROM config.tipi_doc_fiscale
                                             WHERE attivo IS TRUE ORDER BY id LIMIT 1),
-         p_utility_id                  => (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-                                            ORDER BY ba.id LIMIT 1),
-         p_emittente_soggetto_ruolo_id => (SELECT f.emittente_soggetto_ruolo_id FROM vendite.fatture f
-                                            ORDER BY f.id LIMIT 1),
+         p_utility_id                  => (SELECT utility_id FROM tmp_cli_resp),
+         p_emittente_soggetto_ruolo_id => script.fn_pgtap_emittente_sr_operatore(),
          p_tipo_lotto                  => 'MASSIVO') AS id;
 
 -- Sei commesse vere, per avere un `commessa_codice` che non sia NULL.
+-- rev 2026-10-27 (lotto 4 di D7): le sei commesse si COSTRUISCONO
+--   (dbops.fn_pgtap_crea_commessa, sul cliente qui sopra): prima erano le
+--   prime sei del DB, e da zero non ce n'era nessuna.
 CREATE TEMP TABLE tmp_commesse_resp AS
-SELECT c.id, row_number() OVER (ORDER BY c.id) AS n
-  FROM vendite.commesse c
- ORDER BY c.id
- LIMIT 6;
+SELECT c.commessa_id AS id, g.n
+  FROM generate_series(1, 6) AS g(n)
+  CROSS JOIN LATERAL dbops.fn_pgtap_crea_commessa(
+                       'commessa respinta ' || g.n, NULL,
+                       (SELECT billing_account_id FROM tmp_cli_resp)) c;
 
 -- Le righe di log: e' la forma che `item_failed` scrive nel giro reale —
 -- status 'C', il commessa_id nel `meta->'context'`, il codice in `meta`.
