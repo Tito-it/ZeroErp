@@ -296,7 +296,11 @@ if [ "$UPDATE" -eq 1 ]; then
     grep -v '^#' "$BASELINE" 2>/dev/null > "$TMP"
     while IFS= read -r f; do
       [ -z "$f" ] && continue
-      grep -v "^$(basename "$f")"$'\t' "$TMP" > "$TMP.f" && mv "$TMP.f" "$TMP"
+      # ⚠️ `|| true`: togliere l'ULTIMA riga lascia grep senza output, che
+      #    esce 1 — con `&& mv` la riga restava, e l'ultimo non-verde non
+      #    rientrava mai (2026-10-28).
+      { grep -v "^$(basename "$f")"$'\t' "$TMP" || true; } > "$TMP.f"
+      mv "$TMP.f" "$TMP"
     done <<< "$FILES"
     cat "$CORRENTE" >> "$TMP"; sort -o "$TMP" "$TMP"
   fi

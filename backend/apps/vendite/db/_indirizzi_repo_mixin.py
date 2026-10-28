@@ -24,14 +24,14 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import coerce_jsonb_dict, row_to_dict, rows_to_list
+from apps.core.db._helpers import row_to_dict, rows_to_list
 
 
-# Scopo: Il driver restituisce il jsonb `snapshot` come stringa raw: qui viene
-#        normalizzato a dict in TUTTE le uscite del mixin, cosi' service e FE
-#        lavorano sempre con un oggetto (mai doppio parsing client-side).
+# Scopo: `snapshot` sempre oggetto in TUTTE le uscite del mixin: lo decodifica
+#        il lettore comune, qui il NULL diventa `{}` (service e FE lavorano con
+#        un oggetto).
 def _snapshot_to_dict(row: dict[str, Any]) -> dict[str, Any]:
-    row["snapshot"] = coerce_jsonb_dict(row.get("snapshot"))
+    row["snapshot"] = row.get("snapshot") or {}
     return row
 
 

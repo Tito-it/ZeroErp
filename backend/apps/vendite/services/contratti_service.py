@@ -1331,7 +1331,7 @@ class ContrattiService:
         # psycopg ritorna `meta` JSONB della riga esistente come stringa JSON
         # invece di dict — `dict(str)` solleverebbe TypeError "dictionary
         # update sequence". Stesso pattern coerce gia' applicato in altri
-        # repo (_decode_jsonb in commesse_repository, coerceJsonbToObject FE).
+        # repo (`jsonb_out` in commesse_repository, coerceJsonbToObject FE).
         if prezzo_meta:
             base_meta = data.get("meta") or fallback_meta or {}
             if isinstance(base_meta, str):

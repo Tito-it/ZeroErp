@@ -1203,26 +1203,16 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             )
             row = cursor.fetchone()
         assert row is not None
-        policy_meta: Any = row[5]
-        run_meta: Any = row[6]
-        if isinstance(policy_meta, str):
-            try:
-                policy_meta = json.loads(policy_meta)
-            except json.JSONDecodeError:
-                policy_meta = {}
-        if isinstance(run_meta, str):
-            try:
-                run_meta = json.loads(run_meta)
-            except json.JSONDecodeError:
-                run_meta = {}
         return TaskExecutionMode(
             execution_mode=str(row[0]),
             annullabile=bool(row[1]),
             resume_mode=str(row[2]) if row[2] is not None else "",
             last_task_stato=row[3],
             last_tentativo=None if row[4] is None else int(row[4]),
-            policy_meta=policy_meta if isinstance(policy_meta, dict) else {},
-            run_meta=run_meta if isinstance(run_meta, dict) else {},
+            # Lettura per posizione: il jsonb arriva come testo, e il NULL (o un
+            # valore non-oggetto) vale «nessun meta».
+            policy_meta=coerce_jsonb_dict(row[5]),
+            run_meta=coerce_jsonb_dict(row[6]),
         )
 
     # Scopo: Apre un nuovo task run in stato IN_ESECUZIONE delegando al DB.
@@ -1714,19 +1704,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         if not row:
             return []
 
-        value = row[0]
-        if isinstance(value, list):
-            return value
-        if isinstance(value, str):
-            # In alcuni ambienti il jsonb puo` arrivare serializzato come stringa.
-            try:
-                decoded = json.loads(value)
-            except json.JSONDecodeError:
-                return []
-            if isinstance(decoded, list):
-                return decoded
-            return []
-        return []
+        # Lettura per posizione: il jsonb arriva come testo (`jsonb_out`).
+        value = jsonb_out(row[0])
+        return value if isinstance(value, list) else []
 
     # Scopo: Gestisce `has_step_processes` nel flusso applicativo del modulo.
     def has_step_processes(
@@ -1990,15 +1970,10 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 [fattura_id],
             )
             righe = rows_to_list(cursor)
-        # ⛔ Il driver restituisce `jsonb` come STRINGA. Senza questa coercion
-        #    il servizio farebbe `dict("{...}")` sul `meta` e — a seconda della
-        #    stringa — o solleverebbe un `ValueError` grezzo in mezzo a un giro
-        #    fiscale, o produrrebbe un dizionario di CARATTERI. E' la stessa
-        #    trappola gia' pagata su `list_attivita_da_fatturare`, dove il
-        #    commento la racconta: i test mockati non la vedono, perche'
-        #    iniettano gia' dei dict.
+        # `meta` arriva decodificato dal lettore comune (il servizio ci fa
+        # `dict(...)`): qui resta solo il NULL, che diventa `{}`.
         for riga in righe:
-            riga["meta"] = coerce_jsonb_dict(riga.get("meta"))
+            riga["meta"] = riga.get("meta") or {}
         return righe
 
     # Scopo: La SECONDA parte di una riga spezzata dal plafond.
@@ -2992,7 +2967,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 "lotto_id": None if r["lotto_id"] is None else int(r["lotto_id"]),
                 "stato": str(r["stato"]),
                 "tentativi": int(r["tentativi"]),
-                "ultimo_errore": jsonb_out(r["ultimo_errore"]),
+                "ultimo_errore": r["ultimo_errore"],
                 "documento_id": (
                     None if r["documento_id"] is None else int(r["documento_id"])
                 ),

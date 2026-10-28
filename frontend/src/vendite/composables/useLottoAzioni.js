@@ -37,6 +37,7 @@ import {
   runLottoPipeline,
 } from '../api/lotti'
 import { MANAGE_ICONS } from '../../core/constants'
+import { azioniPermesse } from '../../core/utils/azioniPermesse'
 import { aspettoAzione } from '../../core/aspettoAzioni'
 
 // Permesso di processo dei SOLI verbi di pipeline, che il DB non espone (vedi
@@ -448,7 +449,7 @@ function verdettoRunner(res) {
   //   pipeline: un passaggio nuovo a matrice senza verbo nel frontend non
   //   diventa una voce che non saprebbe cosa chiamare.
   function verbiPlausibili(row) {
-    const permesse = Array.isArray(row?.azioni_permesse) ? row.azioni_permesse : []
+    const permesse = azioniPermesse(row)
     const verbi = [...verbiPipeline(row)]
     verbi.push(...permesse.filter((k) => VERBI[k] && !VERBI_PIPELINE.includes(k)))
     // La ristampa non è un passaggio di stato: stampare è leggere (I-4). Si

@@ -322,7 +322,7 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
     #        componenti esposti di un kit come LISTA (`[]` fuori dai kit: il
     #        template scorre `riga.componenti` senza chiedersi se c'e').
     #        `componenti` arriva gia' decodificato dal repository
-    #        (`_righe_jsonb`): NULL fuori dai kit. Forma 3: i numeri di un
+    #        (il lettore comune decodifica i jsonb): NULL fuori dai kit. Forma 3: i numeri di un
     #        componente seguono le regole della riga (prezzo e sconto come
     #        misure, importo come importo); su un DESCRITTIVO sono NULL e
     #        restano NULL — e' cio' che dice al template «nel totale del kit».

@@ -357,6 +357,9 @@ problemi diversi. Unificarli peggiorerebbe la leggibilità.
   refactor retroattivo cambierebbe firme e cascata sui caller. Tecnico
   (adattamento psycopg), non business logic. *(Eventuale: esporre `parse_jsonb_value`
   pubblico in `_helpers.py` solo per NUOVI repository, on-demand.)*
+
+  > ⚠️ **Aggiornamento 2026-10-28** (brief-modello-documento-vendita §15.17.3): `_parse_jsonb_field` è ritirato. I lettori a dizionari di `apps/core/db/_helpers.py` decodificano da soli le colonne jsonb, dal tipo che il cursore dichiara; le letture per posizione usano `jsonb_out`.
+
 - **Search/pagination in `views_lookup` ×3** — vedi D2: non è duplicazione di
   logica ma debito di *mancata adozione* di un BB esistente.
 

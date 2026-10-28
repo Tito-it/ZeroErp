@@ -100,13 +100,10 @@ class DashboardRepository:
             row = cursor.fetchone()
         if not row:
             return None
-        configurazione = row[1]
-        # Difesa contro adapter che non auto-deserializza JSONB.
-        if isinstance(configurazione, str):
-            configurazione = json.loads(configurazione)
         return {
             "id": row[0],
-            "configurazione": configurazione,
+            # Lettura per posizione: il jsonb arriva come testo.
+            "configurazione": jsonb_out(row[1]),
             "preset_base_id": row[2],
             "preset_base_data_update": row[3],
             "data_insert": row[4],

@@ -28,8 +28,10 @@ Indice test:
  4) test_lettura_completa_nello_stesso_ordine
  5) test_la_ricerca_nomina_la_lista_della_fattura
  6) test_i_documenti_con_tabella_non_cambiano
- 7) test_i_componenti_arrivano_come_lista_nei_due_percorsi (2026-10-01)
- 8) test_le_altre_righe_non_si_decodificano (2026-10-01)
+
+I test 7-8 (i componenti decodificati dal mixin, 2026-10-01) sono passati al
+lettore comune il 2026-10-28: la decodifica dei jsonb la fa `rows_to_list` dal
+tipo della colonna (`apps/core/tests/db/test_rows_to_list_jsonb.py`).
 """
 
 import unittest
@@ -95,46 +97,3 @@ class RigheFatturaListaTests(unittest.TestCase):
         sql, _, _ = _pagina(OrdiniRepository, order_by="", order_dir=None)
         self.assertIn("v.ordine_id = %s AND v.attivo IS TRUE", sql)
         self.assertIn("ORDER BY v.riga_nr ASC NULLS FIRST, v.id ASC", sql)
-
-# Il kit come lo rende il cursor fuori dall'ORM: `componenti` e' TESTO JSON.
-_KIT_GREZZO = {
-    "riga_key": "K:835:abc", "tipo_riga": "KIT_PADRE",
-    "componenti": '[{"descrizione": "Pezzo A", "quantita": 2}]',
-}
-_NORMALE_GREZZA = {"riga_key": "R:1", "tipo_riga": "NORMALE", "componenti": None}
-
-
-class ComponentiDecodificatiTests(unittest.TestCase):
-    # 7. Consegnati come stringa, i componenti li scorreva un carattere alla
-    #    volta chi li leggeva: il drawer fattura disegnava una riga «— · —»
-    #    per carattere sotto il kit, e le note di riga facevano `.map` su una
-    #    stringa (2026-10-01, prima fattura con un kit su dbdev). La pagina e
-    #    la lettura completa passano dallo stesso punto, e si provano tutte e due.
-    def test_i_componenti_arrivano_come_lista_nei_due_percorsi(self):
-        attesi = [{"descrizione": "Pezzo A", "quantita": 2}]
-        with patch.object(
-            _righe_repo_mixin, "fetch_paged_with_total",
-            return_value=([dict(_KIT_GREZZO), dict(_NORMALE_GREZZA)], 2),
-        ):
-            righe, totale = FattureRepository().list_righe_pagina(835, limit=10)
-        self.assertEqual(totale, 2)
-        self.assertEqual(righe[0]["componenti"], attesi)
-        self.assertIsNone(righe[1]["componenti"])
-
-        with patch.object(_righe_repo_mixin, "connection"), patch.object(
-            _righe_repo_mixin, "rows_to_list", return_value=[dict(_KIT_GREZZO)],
-        ):
-            righe = FattureRepository().list_righe(835)
-        self.assertEqual(righe[0]["componenti"], attesi)
-
-    # 8. Un documento che non dichiara colonne jsonb consegna le righe come
-    #    le legge: il default e' vuoto.
-    def test_le_altre_righe_non_si_decodificano(self):
-        self.assertEqual(OrdiniRepository._righe_jsonb, ())
-        grezza = {"id": 1, "componenti": "[]"}
-        with patch.object(
-            _righe_repo_mixin, "fetch_paged_with_total", return_value=([dict(grezza)], 1),
-        ):
-            righe, _ = OrdiniRepository().list_righe_pagina(7, limit=10)
-        self.assertEqual(righe[0]["componenti"], "[]")
-

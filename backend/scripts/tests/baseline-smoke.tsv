@@ -1,4 +1,2 @@
 # smoke non-verdi noti — rigenerato da scripts/smoke-baseline.sh
 # ⚠️ registro di DEBITO, non lista di eccezioni: deve calare.
-smoke-nota-credito-resi.py	SENZA_MATERIA
-smoke-test-resi-vendita.sh	ASSERZIONE

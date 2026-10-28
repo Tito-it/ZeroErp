@@ -9,7 +9,7 @@
 Indice test eseguiti:
 1) VenditePipelineRepositoryUnitTests.test_get_step_processes_returns_list_from_jsonb_list
 2) VenditePipelineRepositoryUnitTests.test_get_step_processes_decodes_jsonb_string_list
-3) VenditePipelineRepositoryUnitTests.test_get_step_processes_returns_empty_on_invalid_json
+3) VenditePipelineRepositoryUnitTests.test_get_step_processes_returns_empty_on_null_or_non_list
 4) VenditePipelineRepositoryUnitTests.test_run_prepare_sdi_payload_lotto_task_maps_rows
 5) VenditePipelineRepositoryUnitTests.test_run_prepare_sdi_payload_lotto_task_returns_empty_list
 6) VenditePipelineRepositoryUnitTests.test_log_fattura_inserts_with_explicit_critical
@@ -90,24 +90,30 @@ class VenditePipelineRepositoryUnitTests(TestCase):
 
         self.assertEqual(processi, [{"task": "generate_fatture_righe"}])
 
-    # Scopo: Verifica il caso `test_get_step_processes_returns_empty_on_invalid_json`.
+    # Scopo: Verifica il caso `test_get_step_processes_returns_empty_on_null_or_non_list`.
+    #        Il NULL e un jsonb che non e' una lista valgono «nessun processo».
+    #        (Il JSON illeggibile non si prova piu' dal 2026-10-28: una colonna
+    #        jsonb non lo contiene, e `jsonb_out` su un JSON rotto esplode di
+    #        proposito.)
     @patch("apps.vendite.db.pipeline_repository.connection.cursor")
-    def test_get_step_processes_returns_empty_on_invalid_json(self, mocked_cursor_factory):
-        cursor = MagicMock()
-        cursor.__enter__.return_value = cursor
-        cursor.fetchone.return_value = ("not-a-json",)
-        mocked_cursor_factory.return_value = cursor
+    def test_get_step_processes_returns_empty_on_null_or_non_list(self, mocked_cursor_factory):
+        for valore in (None, '{"step": 1}'):
+            with self.subTest(valore=valore):
+                cursor = MagicMock()
+                cursor.__enter__.return_value = cursor
+                cursor.fetchone.return_value = (valore,)
+                mocked_cursor_factory.return_value = cursor
 
-        repo = VenditePipelineRepository()
-        processi = repo.get_step_processes(
-            1,
-            tipo_lotto="MASSIVO",
-            utility_id=None,
-            tipo_doc_fiscale_id=None,
-            rollback=False,
-        )
+                repo = VenditePipelineRepository()
+                processi = repo.get_step_processes(
+                    1,
+                    tipo_lotto="MASSIVO",
+                    utility_id=None,
+                    tipo_doc_fiscale_id=None,
+                    rollback=False,
+                )
 
-        self.assertEqual(processi, [])
+                self.assertEqual(processi, [])
 
     # Scopo: Verifica il caso `test_run_prepare_sdi_payload_lotto_task_maps_rows`.
     @patch("apps.vendite.db.pipeline_repository.connection.cursor")

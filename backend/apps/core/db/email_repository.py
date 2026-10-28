@@ -16,15 +16,6 @@ from typing import Any
 from django.db import connection
 
 
-# Scopo: Parsa un campo JSONB che psycopg2 potrebbe restituire come stringa.
-def _parse_jsonb_field(row: dict[str, Any], field: str) -> None:
-    val = row.get(field)
-    if isinstance(val, str):
-        try:
-            row[field] = json.loads(val)
-        except (json.JSONDecodeError, TypeError):
-            pass
-
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.email_constants import AMBITO_SISTEMA
 from apps.core.db._helpers import (
@@ -186,10 +177,7 @@ class EmailRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [account_id])
-            result = row_to_dict(cursor)
-            if result:
-                _parse_jsonb_field(result, "meta")
-            return result
+            return row_to_dict(cursor)
 
     # Scopo: Crea un nuovo account email. La password SMTP viene crittografata.
     def create_account(
@@ -361,10 +349,7 @@ class EmailRepository:
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
-        rows, total = fetch_paged_with_total(sql, params, offset=offset)
-        for r in rows:
-            _parse_jsonb_field(r, "variabili_disponibili")
-        return rows, total
+        return fetch_paged_with_total(sql, params, offset=offset)
 
     # Scopo: Dettaglio singolo template email per ID (incluso corpo).
     def get_template(self, template_id: int) -> dict[str, Any] | None:
@@ -382,10 +367,7 @@ class EmailRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [template_id])
-            result = row_to_dict(cursor)
-            if result:
-                _parse_jsonb_field(result, "variabili_disponibili")
-            return result
+            return row_to_dict(cursor)
 
     # Scopo: Crea un nuovo template email.
     def create_template(

@@ -127,8 +127,14 @@ class GeneraOrdineDaOffertaDbTests(unittest.TestCase):
             out = ordini_service.crea_ordine_da_offerta(offerta_id)
             cur.execute(
                 "SELECT o.documento_origine_tipo, o.documento_origine_id, o.numero, s.codice_interno,"
-                " (SELECT count(*) FROM vendite.ordini_righe r WHERE r.ordine_id = o.id),"
-                " (SELECT max(r.prezzo_unitario) FROM vendite.ordini_righe r WHERE r.ordine_id = o.id)"
+                # La riga della MERCE dell'offerta. ⚠️ Dal giro 12 la versione
+                # del listino ha anche la riga d'appoggio della fixture (un
+                # articolo suo, brief-modello-documento-vendita §16.4), che
+                # l'ordine espande accanto: come nel pgTAP delle offerte.
+                " (SELECT count(*) FROM vendite.ordini_righe r"
+                "   WHERE r.ordine_id = o.id AND r.articolo_id = (SELECT id FROM _a)),"
+                " (SELECT max(r.prezzo_unitario) FROM vendite.ordini_righe r"
+                "   WHERE r.ordine_id = o.id AND r.articolo_id = (SELECT id FROM _a))"
                 " FROM vendite.ordini o JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id"
                 " WHERE o.id = %s",
                 [out["ordine_id"]],

@@ -40,7 +40,8 @@ import csv
 import re
 from pathlib import Path
 from unittest import TestCase
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from apps.core.services.error_manager import ServiceError
 from apps.pagamenti.db import pagamenti_repository as repo_mod
@@ -137,6 +138,8 @@ class EnteIncassoScrittureTests(TestCase):
     l'UPDATE no, e la lettura la serviva come STRINGA (il driver restituisce
     jsonb come testo e `_shape` non la decodificava). Nessun errore: un
     contratto che in ingresso vuole un oggetto e in uscita da' una stringa.
+    Dal 2026-10-28 la lettura la decodifica il lettore comune (`rows_to_list`,
+    dal tipo della colonna): `_shape` e' ritirato.
     """
 
     def test_regole_match_esce_castata_a_jsonb(self):
@@ -146,8 +149,20 @@ class EnteIncassoScrittureTests(TestCase):
         self.assertEqual(clause, "regole_match = %s::jsonb")
         self.assertEqual(params, ['{"a": 1}'])
 
+    # Il dettaglio del canale col cursore come lo da' il driver: le due colonne
+    # jsonb (tipo 3802) come testo.
     def test_regole_match_si_legge_come_oggetto(self):
-        riga = PagamentiRepository._shape({"regole_match": '{"a": 1}', "meta": "{}"})
+        cursore = MagicMock()
+        cursore.description = [
+            SimpleNamespace(name="id", type_code=20),
+            SimpleNamespace(name="regole_match", type_code=3802),
+            SimpleNamespace(name="meta", type_code=3802),
+        ]
+        cursore.fetchall.return_value = [(7, '{"a": 1}', "{}")]
+        with patch.object(repo_mod, "connection") as conn:
+            conn.cursor.return_value.__enter__.return_value = cursore
+            riga = PagamentiRepository().get_ente_incasso(7)
+        assert riga is not None
         self.assertEqual(riga["regole_match"], {"a": 1})
         self.assertEqual(riga["meta"], {})
 

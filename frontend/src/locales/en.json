@@ -3337,7 +3337,6 @@
       "aggiungi_versione": "Add version",
       "aggiungi_riga": "Add row",
       "attiva": "Activate",
-      "attiva_no_righe": "Add at least one price row before activating",
       "chiudi": "Close",
       "test_prezzo": "Test price",
       "esegui_test": "Run test",
@@ -3387,6 +3386,11 @@
       "attivazione_valido_al_prima": "Valid to (before)",
       "attivazione_valido_al_dopo": "Valid to (after)",
       "conferma_attivazione": "Confirm and activate",
+      "chiusura_programmata_al": "Closing scheduled: the version stays active until {data} inclusive, then the job closes it.",
+      "azione_reason": {
+        "versione_spenta": "The version is switched off: switch it back on before activating it.",
+        "versione_senza_righe": "The version has no prices: add at least one row before activating it."
+      },
       "elimina_versione": "Delete version",
       "versione_eliminata": "Version deleted",
       "elimina_listino": "Delete price list (never used)",

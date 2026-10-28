@@ -1054,6 +1054,9 @@ Non c'è logica business da salvare nei task — sono gusci vuoti.
 | `_decode_jsonb` / `_to_jsonb_param`                                                       | `attivita_pipeline_repository.py`   | Già estratti in §11 refactor                                 |
 | Error logger pattern                                                                      | `attivita_pipeline_error_logger.py` | Pattern riusato su step 0 e commessa                         |
 
+> ⚠️ **Aggiornamento 2026-10-28** (brief-modello-documento-vendita §15.17.3): `_decode_jsonb` è ritirato. Le letture per posizione usano il BB `jsonb_out` di `apps/core/db/_helpers.py`; le letture a dizionari (`row_to_dict`, `rows_to_list`, `fetch_paged_with_total`) decodificano i jsonb da sole.
+
+
 ### 20.3 Cosa NON serve più (candidato eliminazione)
 
 | Componente                              | File                                 | Motivo                                                                  |
@@ -1556,6 +1559,9 @@ La FASE 4.5 (rettifiche) precede le API per non esporre un ciclo prezzi incomple
 **File da creare:** `backend/apps/vendite/db/commesse_repository.py`
 
 - [x] Struttura classe `CommesseRepository` con `_to_jsonb_param` e `_decode_jsonb`
+
+  > ⚠️ **Aggiornamento 2026-10-28** (brief-modello-documento-vendita §15.17.3): `_decode_jsonb` è ritirato. Le letture per posizione usano il BB `jsonb_out` di `apps/core/db/_helpers.py`; le letture a dizionari (`row_to_dict`, `rows_to_list`, `fetch_paged_with_total`) decodificano i jsonb da sole.
+
 - [x] `get_or_create_commessa(...)` — wrappa `fn_get_or_create_commessa`
 - [x] `link_sorgente(...)` — wrappa `fn_link_commessa_sorgente`
 - [x] `upsert_attivita(CommessaAttivitaInput)` — wrappa `fn_upsert_commessa_attivita`

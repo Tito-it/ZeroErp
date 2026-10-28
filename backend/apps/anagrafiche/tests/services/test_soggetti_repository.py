@@ -3,16 +3,18 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Test unitari repository soggetti.
-#        Verifica normalizzazione campo `ruoli` (jsonb_agg) che psycopg
-#        in alcune configurazioni ritorna come stringa anziche' lista.
+#        Il campo `ruoli` (jsonb_agg): il driver lo consegna come TESTO, il
+#        lettore comune lo decodifica dal tipo della colonna (2026-10-28), il
+#        repository fa del NULL una lista vuota.
 # ------------------------------------------------------------
 
 """
 Indice test eseguiti:
-1) test_list_soggetti_normalizes_ruoli_string_to_list — psycopg ritorna ruoli come stringa JSON
-2) test_list_soggetti_keeps_ruoli_list_unchanged       — psycopg ritorna ruoli gia' lista
+1) test_list_soggetti_normalizes_ruoli_string_to_list — ruoli jsonb come testo → lista
+2) test_list_soggetti_keeps_ruoli_list_unchanged       — ruoli gia' lista, non toccata
 3) test_list_soggetti_handles_ruoli_none               — ruoli None → lista vuota
-4) test_list_soggetti_handles_ruoli_malformed_string   — JSON malformato → lista vuota fail-safe
+(4, JSON malformato → lista vuota, ritirato il 2026-10-28: una colonna jsonb
+non lo contiene, e il lettore comune su un JSON illeggibile esplode di proposito.)
 """
 
 from unittest import TestCase
@@ -30,6 +32,8 @@ def _mock_cursor_with_row(mocked_cursor_factory, ruoli_value):
     for name in ("id", "ragione_sociale_completa", "ruoli", "total_count"):
         col = MagicMock()
         col.name = name
+        # `ruoli` e' un jsonb_agg: il tipo che il driver dichiara (3802).
+        col.type_code = 3802 if name == "ruoli" else 25
         descr.append(col)
     cursor.description = descr
     cursor.fetchall.return_value = [
@@ -43,7 +47,7 @@ class SoggettiRepositoryListRuoliTests(TestCase):
 
     @patch("apps.anagrafiche.db.soggetti_repository.connection.cursor")
     def test_list_soggetti_normalizes_ruoli_string_to_list(self, mocked_factory):
-        """Caso reale: psycopg ritorna ruoli come stringa JSON → deve diventare list."""
+        """Caso reale: il driver consegna il jsonb come testo → il lettore comune lo fa lista."""
         ruoli_str = '[{"soggetto_ruolo_id": 1, "codice": "CL", "descrizione": "Cliente"}]'
         _mock_cursor_with_row(mocked_factory, ruoli_str)
 
@@ -69,15 +73,6 @@ class SoggettiRepositoryListRuoliTests(TestCase):
     def test_list_soggetti_handles_ruoli_none(self, mocked_factory):
         """ruoli None (caso degenere) → lista vuota."""
         _mock_cursor_with_row(mocked_factory, None)
-
-        results, _ = SoggettiRepository().list_soggetti()
-
-        self.assertEqual(results[0]["ruoli"], [])
-
-    @patch("apps.anagrafiche.db.soggetti_repository.connection.cursor")
-    def test_list_soggetti_handles_ruoli_malformed_string(self, mocked_factory):
-        """Stringa JSON malformata → fail-safe a lista vuota, non solleva."""
-        _mock_cursor_with_row(mocked_factory, "{not valid json")
 
         results, _ = SoggettiRepository().list_soggetti()
 

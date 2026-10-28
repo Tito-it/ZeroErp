@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1140, di cui 122 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1144, di cui 123 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -989,9 +989,19 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Lock di colonna (dbops.automation_lock_columns) su vendite.listini_righe.articolo_id, uom_id e listino_versione_id (decisione di Tid, 2026-10-15): articolo, unita' di misura e versione sono l'IDENTITA' di una riga di listino. Il backend la trattava gia' cosi' (RIGA_UPDATE_COLUMNS esclude articolo_id e uom_id; l'UPDATE e' sempre nel perimetro della versione), il DB no. E' il lato della riga di listino della regola che vendite.trgfn_attivita_guard_listino_riga tiene sulle righe che la citano: cambiarne articolo o unita' di misura renderebbe incoerenti le righe di commessa e le attivita' fatturabili che la citano. Per cambiarli: eliminare la riga e crearne una nuova. * CONFLITTO_STATO come gli altri lock (E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE). * Il VARIADIC porta il nome della colonna, come nella famiglia dei lock.
     "E_LISTINO_RIGA_IDENTITA_IMMUTABILE": "CONFLITTO_STATO",
     "E_LISTINO_TIPOLOGIA_UTILITY": "DATO_ERRATO",
+    # Guard vendite.trgfn_listini_versioni_guard_per_stato (BEFORE UPDATE su vendite.listini_versioni; L-5, brief-modello-documento-vendita §16, giro 12, Tid 2026-10-28): fuori dalla BOZZA un campo della versione non si cambia (ATTIVA: solo valido_al; CHIUSA: niente). Nomina il primo campo cambiato. Prende il posto di E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI (le date di una CHIUSA) e della regola del backend (listini_service._VERSIONE_PATCH_ALLOWED_BY_STATE).
+    "E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE": "CONFLITTO_STATO",
+    # RITIRATO il 2026-10-28 (brief-modello-documento-vendita §16, giro 12, Tid 2026-10-28, L-5): le date di una versione CHIUSA erano una meta' della regola «che cosa si cambia di una versione, stato per stato». La dice ora vendite.trgfn_listini_versioni_guard_per_stato col codice E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE; vendite.trgfn_listini_versioni_guard_date_chiusa e' ritirata. Il messaggio resta per il diario.
+    # ⚠️ RITIRATO il 2026-10-28
     "E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI": "CONFLITTO_STATO",
     # Resolver pricing v5 (fn_resolve_prezzo_listino_v2, rev 2026-05-13 · bundle-prioritario): versione listino non trovata o non attiva · alla data del documento. Indica un mismatch fra il listino eletto · (contratto o categoria) e la disponibilita' di una versione · operativa per quel periodo. · 404 -> 422 (audit 2026-08-06). Non era un «non trovato»: il · listino c'e', la query di `fn_resolve_prezzo_listino_v2` cerca una · versione `attivo = TRUE AND stato IN (ATTIVA, CHIUSA)` valida ALLA · DATA, e non ne trova. La richiesta si capisce e non si puo' · eseguire: e' la definizione del 422. Allineato al fratello · `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA`, che dice quasi la · stessa cosa ed era gia' 422.
     "E_LISTINO_VERSIONE_NON_ATTIVA": "NON_ESEGUIBILE",
+    # Guard vendite.trgfn_listini_versioni_guard_per_stato (BEFORE DELETE su vendite.listini_versioni; L-5, brief-modello-documento-vendita §16, giro 12, Tid 2026-10-28): si cancella solo una versione in BOZZA; una ATTIVA o CHIUSA e' stata visibile ai prezzi (decisione O2 di sviluppo-listini-v2). Prima la regola stava nel backend (listini_service.fn_delete_versione).
+    "E_LISTINO_VERSIONE_NON_ELIMINABILE": "CONFLITTO_STATO",
+    # Secondo motivo di script.fn_check_versione_listino_attivabile (L-4, brief-modello-documento-vendita §16, giro 12, Tid 2026-10-28): la versione non ha prezzi (nessuna riga attiva e nessun composito con prezzo bundle) e non si attiva. Lo sollevano il verbo vendite.fn_attiva_versione_listino e il guard di transizione; lo mostra vendite.vw_listini_versioni_azioni. Prima il controllo stava nel backend (listini_repository.count_active_righe_versione, E_VENDITE_VALIDATION).
+    "E_LISTINO_VERSIONE_SENZA_RIGHE": "NON_ESEGUIBILE",
+    # Primo motivo di script.fn_check_versione_listino_attivabile (L-4, brief-modello-documento-vendita §16, giro 12, Tid 2026-10-28): la versione di listino e' spenta (attivo = false) e non si attiva. Lo sollevano il verbo vendite.fn_attiva_versione_listino e il guard vendite.trgfn_listini_versioni_guard_transizione_stato; lo mostra la superficie vendite.vw_listini_versioni_azioni. Prima il controllo stava nel backend (listini_service._plan_versione_state_change, E_VENDITE_VALIDATION).
+    "E_LISTINO_VERSIONE_SPENTA": "NON_ESEGUIBILE",
     "E_LOCK_COLUMNS": "TECNICO",
     # Login rifiutato da script.fn_check_blocco_login per l'attesa crescente sulla credenziale: oltre il tetto di fallimenti consecutivi (da qualunque provenienza) ogni tentativo deve aspettare, e questo e' arrivato prima. Rallenta senza chiudere: il titolare aspetta al piu' login_attesa_max_secondi. Il segnaposto sono i secondi rimanenti, riempiti dalla funzione (secondi_rimanenti anche nel contesto). ⚠️ 403 e NON 429: il login del frontend intercetta il 429 prima di leggere il codice e perderebbe i secondi. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale).
     "E_LOGIN_ATTESA": "NON_PERMESSO",
@@ -2030,6 +2040,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_INVALID_SNAPSHOT",
         "E_ISTANZA_UTILITY_SENZA_UTILITY",
         "E_KIT_QUANTITA_DISOMOGENEE",
+        "E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI",
         "E_NUMERAZIONE_IMMUTABILE",
         "E_OFFERTA_EMITTENTE_BA_INCOERENTE",
         "E_ONERE_CAUSALE_NON_VALIDA",

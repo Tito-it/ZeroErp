@@ -1002,6 +1002,9 @@ interfaccia pubblica). Riduce il rischio di evoluzione inconsistente tra i blocc
 
 - `attivita_pipeline_repository.py`: aggiunto `_decode_jsonb` statico; applicato in tutti e 4 i metodi elencati.
 
+> ⚠️ **Aggiornamento 2026-10-28** (brief-modello-documento-vendita §15.17.3): `_decode_jsonb` è ritirato. Le letture per posizione usano il BB `jsonb_out` di `apps/core/db/_helpers.py`; le letture a dizionari (`row_to_dict`, `rows_to_list`, `fetch_paged_with_total`) decodificano i jsonb da sole.
+
+
 ### §11.5 Wrappare `list_sorgenti_abilitate` in funzione DB
 
 **Contesto**: `list_sorgenti_abilitate` esegue SELECT diretto su

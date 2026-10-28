@@ -18,11 +18,13 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../core/constants'
-import { PRICING_ACTIONS } from '../constants'
-import { statoVersioneListinoSeverity, statoVersioneVisibile } from '../../core/utils/severity'
+import { PASSAGGI_VERSIONE_LISTINO, PRICING_ACTIONS, STATO_VERSIONE_LISTINO } from '../constants'
+import { passaggioPermesso } from '../../core/utils/azioniPermesse'
+import { statoVersioneListinoSeverity } from '../../core/utils/severity'
 import { displayDate } from '../../core/utils/date'
 import { deleteVersione, deleteListino } from '../api/listini'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useAzioneRiga } from '../../core/composables/useAzioneRiga'
 // eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -62,6 +64,20 @@ const store = useListiniStore()
 const { execute } = useApiHandler()
 const isBlocked = useInjectBlocked()
 const { confirmDelete } = useConfirmAction()
+
+// ⭐ «Attiva» dal modello del documento (giro 12, FE-L1 di
+//    brief-modello-documento-vendita §16.5):
+//    - PERMESSO ⇒ nascondi: la voce c'è solo se il passaggio è tra quelli che
+//      l'operatore può fare dallo stato della versione (`azioni_permesse`, dal
+//      lettore del DB che applica l'azione `attiva_listino`; BB
+//      `passaggioPermesso`, fail-closed: un campo assente non apre niente).
+//    - STATO ⇒ spegni col motivo: il motivo è il primo della stessa `fn_check`
+//      con cui il verbo rifiuta, nelle colonne che il registro delle azioni di
+//      riga dichiara per `ATTIVA_VERSIONE_LISTINO` (BB `useAzioneRiga`).
+//    ⛔ Prima la voce si spegneva qui sul conteggio delle righe (`righe_count`):
+//    una copia della regola, che non sapeva della versione spenta.
+const AZIONE_RIGA_ATTIVA_VERSIONE = 'ATTIVA_VERSIONE_LISTINO'
+const attivazione = useAzioneRiga(AZIONE_RIGA_ATTIVA_VERSIONE)
 // Fase 5.F2: TestResolverDialog e' uno strumento DIAGNOSTICO (sviluppatori
 // + admin). Non e' azione operativa: gate rigido su SUPER_ADMIN per non
 // confondere gli operatori. Future: estendere a un'azione processo dedicata
@@ -240,21 +256,23 @@ function buildListinoActions(data) {
   ]
 }
 
-// Scopo: azioni di riga della versione listino nell'expansion (fino a 6, filtrate per stato visibile).
-//        Lo stato visibile e` data-driven: una versione con valido_al < oggi e` trattata
-//        come CHIUSA anche se in DB risulta ancora ATTIVA (job notturno non ancora passato).
+// Scopo: azioni di riga della versione listino nell'expansion, secondo lo stato
+//        del DATABASE (giro 12, FE-L2): fra la fine e il passaggio del job una
+//        versione è ATTIVA con la chiusura programmata, e si mostra così.
+//        ⛔ Ritirato lo «stato visibile» (`statoVersioneVisibile`), che la
+//        dichiarava CHIUSA dalla data: una seconda regola della chiusura.
 function buildVersioneActions(ver, listino) {
-  const statoVisibile = statoVersioneVisibile(ver)
-  const isBozza = statoVisibile === 'BOZZA'
-  const isAttiva = statoVisibile === 'ATTIVA'
+  const isBozza = ver.stato === STATO_VERSIONE_LISTINO.BOZZA
+  const isAttiva = ver.stato === STATO_VERSIONE_LISTINO.ATTIVA
   return [
     {
       key: 'attiva',
-      label: ver.righe_count ? t('vendite.listini.attiva') : t('vendite.listini.attiva_no_righe'),
+      label: t('vendite.listini.attiva'),
       icon: MANAGE_ICONS.PUBLISH,
       severity: 'primary',
-      visible: isBozza,
-      disabled: !ver.righe_count,
+      visible: passaggioPermesso(ver, PASSAGGI_VERSIONE_LISTINO.ATTIVA),
+      disabled: attivazione.bloccata(ver),
+      tooltip: attivazione.motivo(ver),
       command: () => onAttivaVersione(ver, listino.id),
     },
     {
@@ -397,9 +415,13 @@ onMounted(() => store.fetchList())
               <template #body="{ data: ver }">{{ displayDate(ver.valido_al) || '—' }}</template>
             </Column>
             <Column field="righe_count" :header="t('vendite.listini.col_righe')" style="width: 80px;" />
-            <Column :header="t('vendite.listini.col_stato')" style="width: 90px;">
+            <Column :header="t('vendite.listini.col_stato')" style="width: 110px;">
               <template #body="{ data: ver }">
-                <Tag :value="statoVersioneVisibile(ver)" :severity="statoVersioneListinoSeverity(statoVersioneVisibile(ver))" />
+                <Tag :value="ver.stato" :severity="statoVersioneListinoSeverity(ver.stato)" />
+                <!-- La chiusura programmata la dice il backend (ATTIVA con la
+                     fine scritta): il job la chiude quando la fine passa. -->
+                <i v-if="ver.chiusura_programmata" :class="MANAGE_ICONS.CLOSE" class="ml-05 app-text-muted"
+                  v-tooltip.top="t('vendite.listini.chiusura_programmata_al', { data: displayDate(ver.valido_al) })" />
               </template>
             </Column>
             <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">

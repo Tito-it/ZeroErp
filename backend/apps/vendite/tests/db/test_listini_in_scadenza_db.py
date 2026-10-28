@@ -55,10 +55,12 @@ class ListiniInScadenzaDbTests(unittest.TestCase):
                     )
                     listino_id, versione_id, _tipologia = cur.fetchone()
                     if successore:
+                        # Nasce BOZZA (lo stato iniziale, giro 12): lo stato
+                        # non si scrive.
                         cur.execute(
                             "INSERT INTO vendite.listini_versioni"
-                            " (listino_id, codice_versione, valido_dal, valido_al, stato)"
-                            " VALUES (%s, 'PGTAP_V2', %s::date + 6, NULL, 'BOZZA')",
+                            " (listino_id, codice_versione, valido_dal, valido_al)"
+                            " VALUES (%s, 'PGTAP_V2', %s::date + 6, NULL)",
                             [listino_id, oggi],
                         )
                 righe = [
