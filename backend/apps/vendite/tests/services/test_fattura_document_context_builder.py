@@ -234,7 +234,7 @@ class BuildContextFatturaTests(SimpleTestCase):
     # 1-ter. Forma 2: il kit e' UNA riga col totale, e i suoi componenti
     #        esposti stanno DENTRO (`componenti`, lista di dict con la
     #        quantita' formattata). Il repository li consegna gia' decodificati
-    #        (`_righe_jsonb`, provato in test_righe_fattura_lista). Nessuna riga
+    #        (il lettore comune, provato in test_rows_to_list_jsonb). Nessuna riga
     #        KIT_COMPONENTE di primo livello.
     def test_build_context_kit_porta_i_componenti_dentro(self) -> None:
         builder, _, _ = _builder([

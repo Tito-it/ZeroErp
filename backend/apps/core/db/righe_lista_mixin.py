@@ -49,7 +49,6 @@ from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
     fetch_paged_with_total,
-    jsonb_out,
     limiti_pagina,
     rows_to_list,
     sql_order_clause,
@@ -87,10 +86,6 @@ class RigheListaMixin:
     - ``_righe_funzione``: nome FQN di una funzione ``fn(padre_id)`` che
       restituisce le righe, al posto di ``_righe_vista`` e
       ``_righe_fk_documento`` (default ``None``);
-    - ``_righe_jsonb``: colonne jsonb della sorgente, consegnate DECODIFICATE
-      (default nessuna). Fuori dall'ORM il cursor le rende come testo: una
-      lista consegnata come stringa la scorre un carattere alla volta chi la
-      legge (il drawer fattura, 2026-10-01).
 
     E il gancio ``_righe_filtri`` per i filtri PROPRI di una lista (la distinta
     ha «in vigore al»): vedi sotto.
@@ -107,7 +102,6 @@ class RigheListaMixin:
     _righe_chiave: str = "id"
     _righe_solo_attive: bool = True
     _righe_ordine_documento_extra: tuple[str, ...] = ()
-    _righe_jsonb: tuple[str, ...] = ()
 
     # Scopo: una sorgente sola per classe. Vista e funzione insieme non si
     #        rifiutano da sole: vincerebbe la funzione in silenzio, e la vista
@@ -172,16 +166,6 @@ class RigheListaMixin:
     def _righe_where(conditions: list[str]) -> str:
         return f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
-    # Scopo: le colonne `_righe_jsonb` da testo a oggetto, NULL compreso
-    #        (`jsonb_out`: un JSON rotto esplode, il tipo della colonna lo
-    #        garantisce). Una sede per le due letture.
-    def _decodifica_jsonb(self, righe: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        for riga in righe:
-            for colonna in self._righe_jsonb:
-                if colonna in riga:
-                    riga[colonna] = jsonb_out(riga[colonna])
-        return righe
-
     # Scopo: una PAGINA delle righe del padre, per la lista configurabile:
     #        ricerca libera dal catalogo, ordinamento dalla whitelist, ordine
     #        del padre quando nessuno chiede altro, filtri propri della lista
@@ -235,7 +219,7 @@ class RigheListaMixin:
             fallback_count_sql=f"SELECT COUNT(*) {from_where}",  # stesso FROM/WHERE della pagina
             fallback_params=params,
         )
-        return self._decodifica_jsonb(righe), totale
+        return righe, totale
 
 
 class RigheListaCompletaMixin(RigheListaMixin):
@@ -264,4 +248,4 @@ class RigheListaCompletaMixin(RigheListaMixin):
         """  # noqa: S608 — sorgente, FK e colonne d'ordine sono attributi di classe costanti; valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            return self._decodifica_jsonb(rows_to_list(cursor))
+            return rows_to_list(cursor)

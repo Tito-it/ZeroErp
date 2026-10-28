@@ -36,6 +36,77 @@ logger = logging.getLogger(__name__)
 # `9999-12-31`), aggiornare qui — punto unico di drift.
 _SQL_DATE_INFINITY = "'infinity'::date"
 
+# La testata della versione di listino nella mappa del modello del documento
+# (`script.fn_doc_stato_modello`, giro 12 di brief-modello-documento-vendita
+# §16): la leggono la catena dei permessi (`PassaggioDocumento`) e la
+# proiezione della riga di versione (`azioni_permesse`).
+TESTATA_LISTINI_VERSIONI = "vendite.listini_versioni"
+
+# Lo stato che il verbo dell'attivazione scrive (`vendite.fn_attiva_versione_listino`,
+# la sua costante `c_attiva`): la rotta del cambio stato lo instrada al verbo.
+# ⚠️ Gli altri confronti coi codici (le scadenze qui sotto) leggono il codice dal
+#    vocabolario `config.stati_doc_listino_versioni`, come le funzioni del DB.
+STATO_VERSIONE_ATTIVA = "ATTIVA"
+STATO_VERSIONE_BOZZA = "BOZZA"
+
+# Le colonne della versione, una volta sola per lista e dettaglio.
+# ⭐ Lo stato e' il CODICE del vocabolario (dal 2026-10-28 la colonna e'
+#    `stato_doc_listino_versione_id`, L-1): il campo della risposta resta
+#    `stato`, il contratto col client non cambia.
+# `righe_count` = N standalone + M compositi distinti (modello unificato BoM
+# 2026-05-13): un composito vive in `listini_righe_componenti` come N righe
+# figlio, ma in UX conta come UNA riga "articolo" della versione.
+# ⭐ `azioni_permesse`: i passaggi manuali che QUESTO operatore puo' fare dallo
+#    stato della versione (`script.fn_doc_azioni_permesse`, che applica il
+#    permesso della riga del passaggio: chi non ha `attiva_listino` non vede
+#    «Attiva»). Stato NULL -> nessuna riga -> array vuoto.
+# ⭐ `attivazione_blocco_reason` / `_key`: perche' «Attiva» e' spento, dalla
+#    superficie dell'azione di riga `ATTIVA_VERSIONE_LISTINO`
+#    (`vendite.vw_listini_versioni_azioni`, il primo motivo della stessa
+#    `fn_check` con cui il verbo rifiuta). Prima il frontend lo deduceva da
+#    `righe_count`.
+# ⭐ `chiusura_programmata`: la versione e' ATTIVA con la fine scritta, quindi
+#    il job la chiude quando la fine passa (L-2). Fra la fine e il passaggio del
+#    job la versione e' ATTIVA con `valido_al` passato: la lista la mostra cosi',
+#    e non piu' come CHIUSA dedotta dalla data nel frontend.
+_SELECT_VERSIONE = f"""
+    SELECT
+        v.id,
+        v.listino_id,
+        v.codice_versione,
+        v.valido_dal,
+        v.valido_al,
+        s.codice_interno AS stato,
+        v.meta,
+        v.attivo,
+        v.data_insert,
+        v.user_insert,
+        v.data_update,
+        v.user_update,
+        (
+            SELECT COUNT(*)
+              FROM vendite.listini_righe r
+             WHERE r.listino_versione_id = v.id
+        ) + (
+            SELECT COUNT(DISTINCT lrc.articolo_padre_id)
+              FROM vendite.listini_righe_componenti lrc
+             WHERE lrc.listino_versione_id = v.id
+        ) AS righe_count,
+        ARRAY(
+            SELECT ap.action_key
+              FROM script.fn_doc_azioni_permesse(
+                       '{TESTATA_LISTINI_VERSIONI}'::regclass, v.stato_doc_listino_versione_id) ap
+             ORDER BY ap.action_key
+        ) AS azioni_permesse,
+        az.attivazione_blocco_reason,
+        az.attivazione_blocco_reason_key,
+        (s.codice_interno = '{STATO_VERSIONE_ATTIVA}' AND v.valido_al IS NOT NULL)
+            AS chiusura_programmata
+      FROM vendite.listini_versioni v
+      JOIN config.stati_doc_listino_versioni s ON s.id = v.stato_doc_listino_versione_id
+      LEFT JOIN vendite.vw_listini_versioni_azioni az ON az.versione_id = v.id
+"""  # noqa: S608 — costanti di modulo TESTATA_LISTINI_VERSIONI e STATO_VERSIONE_ATTIVA
+
 
 # `attivo` e' NUCLEO: lo stato ordina sempre. Aggiunta in anticipo sul seed
 # della lista listini (passata unica 2026-08-01, richiesta del team DB).
@@ -327,37 +398,12 @@ class ListiniRepository:
             return cursor.rowcount > 0
 
     # Scopo: Restituisce le versioni del listino con conteggio righe e
-    # ordinamento stabile. `righe_count` = N standalone + M compositi
-    # distinti (modello unificato BoM 2026-05-13): un articolo composito
-    # vive in `listini_righe_componenti` come N righe figlio, ma in UX
-    # conta come UNA riga "articolo" della versione.
+    # ordinamento stabile. Le colonne sono quelle di `_SELECT_VERSIONE`.
     def list_versioni(self, listino_id: int) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT
-                    v.id,
-                    v.listino_id,
-                    v.codice_versione,
-                    v.valido_dal,
-                    v.valido_al,
-                    v.stato,
-                    v.meta,
-                    v.attivo,
-                    v.data_insert,
-                    v.user_insert,
-                    v.data_update,
-                    v.user_update,
-                    (
-                        SELECT COUNT(*)
-                          FROM vendite.listini_righe r
-                         WHERE r.listino_versione_id = v.id
-                    ) + (
-                        SELECT COUNT(DISTINCT lrc.articolo_padre_id)
-                          FROM vendite.listini_righe_componenti lrc
-                         WHERE lrc.listino_versione_id = v.id
-                    ) AS righe_count
-                  FROM vendite.listini_versioni v
+                f"""
+                {_SELECT_VERSIONE}
                  WHERE v.listino_id = %s
                  ORDER BY v.valido_dal DESC, v.id DESC
                 """,
@@ -366,35 +412,12 @@ class ListiniRepository:
             return rows_to_list(cursor)
 
     # Scopo: Restituisce il dettaglio singolo della versione verificando
-    # l'appartenenza al listino. Stessa semantica `righe_count` di
-    # `list_versioni`: standalone + compositi distinti.
+    # l'appartenenza al listino. Stesse colonne di `list_versioni`.
     def get_versione(self, listino_id: int, versione_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT
-                    v.id,
-                    v.listino_id,
-                    v.codice_versione,
-                    v.valido_dal,
-                    v.valido_al,
-                    v.stato,
-                    v.meta,
-                    v.attivo,
-                    v.data_insert,
-                    v.user_insert,
-                    v.data_update,
-                    v.user_update,
-                    (
-                        SELECT COUNT(*)
-                          FROM vendite.listini_righe r
-                         WHERE r.listino_versione_id = v.id
-                    ) + (
-                        SELECT COUNT(DISTINCT lrc.articolo_padre_id)
-                          FROM vendite.listini_righe_componenti lrc
-                         WHERE lrc.listino_versione_id = v.id
-                    ) AS righe_count
-                  FROM vendite.listini_versioni v
+                f"""
+                {_SELECT_VERSIONE}
                  WHERE v.listino_id = %s
                    AND v.id = %s
                 """,
@@ -435,7 +458,8 @@ class ListiniRepository:
     # Scopo: Clona una versione esistente in una nuova versione BOZZA dello stesso
     #        listino, copiando tutte le righe attive della sorgente. La nuova versione
     #        prende i dati di testata dal payload (codice_versione, valido_dal,
-    #        valido_al); meta e attivo derivano dai default DB. Restituisce
+    #        valido_al); meta e attivo derivano dai default DB, lo stato dal guard
+    #        della nascita (lo stato iniziale del vocabolario, N-1). Restituisce
     #        l'id della nuova versione. Esegue tutto in transazione gestita dal caller.
     def clone_versione(
         self,
@@ -446,7 +470,8 @@ class ListiniRepository:
         # Guardrail atomicità (review 2026-07-08): INSERT testata + INSERT righe clonate
         # resi self-atomici (o versione+righe complete o rollback). Nested=savepoint.
         with transaction.atomic(), connection.cursor() as cursor:
-            # 1) INSERT testata nuova versione, stato BOZZA forzato.
+            # 1) INSERT testata nuova versione: nasce BOZZA dal guard della
+            #    nascita, lo stato non si scrive (giro 12, BE-L3).
             #    ⛔ Whitelist RIGIDA (BB `execute_dynamic_insert`): attivo/meta
             #    NON si clonano, e il payload li ha gia' tolti il service
             #    (`fn_clone_versione`, `clonable_fields`). Qui non si scartano
@@ -454,10 +479,8 @@ class ListiniRepository:
             target_versione_id = int(
                 execute_dynamic_insert(
                     "vendite.listini_versioni",
-                    {"listino_id": listino_id, **target_data, "stato": "BOZZA"},
-                    allowed={
-                        "listino_id", "codice_versione", "valido_dal", "valido_al", "stato",
-                    },
+                    {"listino_id": listino_id, **target_data},
+                    allowed={"listino_id", "codice_versione", "valido_dal", "valido_al"},
                 )["id"]
             )
 
@@ -552,13 +575,17 @@ class ListiniRepository:
 
         return target_versione_id
 
-    # Scopo: Elimina una versione e le sue righe in cascata. Usato solo per
-    #        versioni in stato BOZZA: il guard di stato e' nel service. La cascade
-    #        sulle righe e` esplicita perche' la FK puo' non avere ON DELETE CASCADE
-    #        (le righe ATTIVE non vanno mai cancellate, qui si parla solo di BOZZA).
-    #        Cascade su 2 tabelle figlie:
+    # Scopo: Elimina una versione e le sue righe in cascata. Se si puo' eliminare
+    #        lo dice il DB (L-5, giro 12): il guard per stato della versione
+    #        (`trgfn_listini_versioni_guard_per_stato`, E_LISTINO_VERSIONE_NON_ELIMINABILE
+    #        fuori dalla BOZZA) e i guard delle righe; prima la regola stava nel
+    #        service. La cascade sulle righe e` esplicita perche' le FK sono
+    #        NO ACTION. Cascade su 2 tabelle figlie:
     #          - `listini_righe` (standalone)
     #          - `listini_righe_componenti` (compositi, modello unificato 2026-05-13)
+    #        ⚠️ Le righe si cancellano PRIMA della versione, quindi fuori dalla
+    #        BOZZA rifiutano per primi i guard delle righe, coi loro codici
+    #        (brief-modello-documento-vendita §16.8: richiesta al team DB).
     def delete_versione(self, listino_id: int, versione_id: int) -> bool:
         # Guardrail atomicità (review 2026-07-08): 3 DELETE a cascata (componenti +
         # righe + versione) resi self-atomici. Nested=savepoint se caller ha atomic.
@@ -582,100 +609,57 @@ class ListiniRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Restituisce le versioni candidate all'auto-close quando si attiva
-    #        una nuova versione (decisione D3). Sono le versioni dello stesso
-    #        listino con `attivo = TRUE`, `valido_dal < nuova.valido_dal`, e la
-    #        cui `validita` (daterange) si sovrappone al nuovo intervallo. La
-    #        versione che si sta per attivare viene esclusa per id. Il filtro
-    #        si basa sulla validita` E sullo stato 'ATTIVA' (regola §6 brief
-    #        2026-05-16): l'autoclose tocca solo versioni operative. Le BOZZA
-    #        in cantiere si cancellano manualmente, non si chiudono per
-    #        scadenza (sono preparazione, non versione operativa).
-    def find_versioni_per_autoclose(
-        self,
-        listino_id: int,
-        exclude_versione_id: int,
-        nuova_valido_dal: date,
-    ) -> list[dict[str, Any]]:
+    # Scopo: Le versioni che l'attivazione di `versione_id` chiuderebbe, con la
+    #        fine che prenderebbero: l'anteprima del dialogo di conferma (`dry_run`).
+    #        Il lettore e' lo stesso che il verbo usa per chiuderle
+    #        (`vendite.fn_versioni_listino_da_chiudere`, decisione D3 di
+    #        sviluppo-listini-v2): quello che si mostra e' quello che si fa.
+    #        Prima la regola era qui (`find_versioni_per_autoclose`), ritirata
+    #        nel giro 12 (BE-L2).
+    # Ritorna: [{versione_id, codice_versione, valido_dal, valido_al_prima, valido_al_dopo}].
+    def versioni_da_chiudere(self, versione_id: int) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT
-                    id,
-                    codice_versione,
-                    valido_dal,
-                    valido_al
-                  FROM vendite.listini_versioni
-                 WHERE listino_id = %s
-                   AND id <> %s
-                   AND attivo IS TRUE
-                   AND stato = 'ATTIVA'
-                   AND valido_dal < %s
-                   AND validita && daterange(%s, NULL, '[)')
-                 ORDER BY valido_dal
-                """,
-                [listino_id, exclude_versione_id, nuova_valido_dal, nuova_valido_dal],
+                "SELECT * FROM vendite.fn_versioni_listino_da_chiudere(%s)",
+                [versione_id],
             )
             return rows_to_list(cursor)
 
-    # Scopo: Aggiorna solo il valido_al di una versione (usato dall'auto-close
-    #        all'attivazione: chiude la precedente al giorno prima della nuova
-    #        decorrenza). Operazione atomica usata dentro una transazione caller.
-    #        Filtra anche per listino_id come safety guard contro chiamate errate.
-    def set_versione_valido_al(self, *, listino_id: int, versione_id: int, valido_al: date) -> bool:
+    # Scopo: Attiva la versione dal verbo `vendite.fn_attiva_versione_listino`
+    #        (L-3, L-4, giro 12): decide lui, in una transazione — perimetro,
+    #        passaggio e azione `attiva_listino`, i motivi che vietano (spenta,
+    #        senza prezzi), la chiusura delle precedenti, lo stato attraverso la
+    #        porta. Prima tutto questo era nel service (`_plan_versione_state_change`,
+    #        `count_active_righe_versione`, `set_versione_valido_al`,
+    #        `change_versione_state`), ritirati.
+    # Ritorna: {versione_id, stato_precedente, stato_nuovo, versioni_chiuse}.
+    def attiva_versione(self, versione_id: int) -> dict[str, Any]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                UPDATE vendite.listini_versioni
-                   SET valido_al = %s
-                 WHERE listino_id = %s
-                   AND id = %s
-                """,
-                [valido_al, listino_id, versione_id],
+                "SELECT * FROM vendite.fn_attiva_versione_listino(%s)",
+                [versione_id],
             )
-            return cursor.rowcount > 0
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
-    # Scopo: Aggiorna lo stato della versione con check di appartenenza al listino.
-    def change_versione_state(self, listino_id: int, versione_id: int, stato: str) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE vendite.listini_versioni
-                   SET stato = %s
-                 WHERE listino_id = %s
-                   AND id = %s
-                """,
-                [stato, listino_id, versione_id],
-            )
-            return cursor.rowcount > 0
-
-    # Scopo: Conta le righe prezzo ATTIVE della versione per guard di
-    # pubblicazione (BOZZA → ATTIVA richiede >= 1 riga). Somma standalone
-    # + compositi distinti (modello unificato BoM 2026-05-13). Senza
-    # contare i compositi un listino di soli compositi non si potrebbe mai
-    # attivare.
-    def count_active_righe_versione(self, versione_id: int) -> int:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    (
-                        SELECT COUNT(*)
-                          FROM vendite.listini_righe
-                         WHERE listino_versione_id = %s
-                           AND attivo IS TRUE
-                    ) + (
-                        SELECT COUNT(DISTINCT articolo_padre_id)
-                          FROM vendite.listini_righe_componenti
-                         WHERE listino_versione_id = %s
-                           AND attivo IS TRUE
-                    )
-                """,
-                [versione_id, versione_id],
-            )
-            row = cursor.fetchone()
-        assert row is not None
-        return int(row[0])
+    # Scopo: L'anteprima dell'attivazione (`dry_run`): le versioni che il verbo
+    #        chiuderebbe, lette PRIMA di chiamarlo, e poi il verbo stesso in un
+    #        savepoint che si annulla. Cosi' l'anteprima rifiuta con gli stessi
+    #        codici del gesto (spenta, senza prezzi, gia' attiva, azione
+    #        `attiva_listino`) e niente resta scritto.
+    #        ⚠️ Fino al 2026-10-28 l'anteprima leggeva il solo lettore: proponeva
+    #        nel dialogo la chiusura delle precedenti per una versione che il
+    #        verbo avrebbe poi rifiutato.
+    # Ritorna: le righe di `versioni_da_chiudere`.
+    def anteprima_attivazione(self, versione_id: int) -> list[dict[str, Any]]:
+        with transaction.atomic():
+            da_chiudere = self.versioni_da_chiudere(versione_id)
+            self.attiva_versione(versione_id)
+            # ⚠️ Ultima istruzione del blocco: dentro un atomic marcato per il
+            #    rollback Django vieta altre query.
+            transaction.set_rollback(True)
+        return da_chiudere
 
     # Scopo: Restituisce le righe della versione listino con display fields
     #        articolo/UoM, paginazione server-side e search sull'articolo.
@@ -1030,10 +1014,12 @@ class ListiniRepository:
 
     # Scopo: Lista versioni operativamente ATTIVE oggi che scadono entro `giorni`
     #        e non hanno una versione successiva (BOZZA o operativa) che subentra.
-    #        Filtro operativo: stato='ATTIVA' + `validita @> fn_data_operativa()` (regola
-    #        §6 brief 2026-05-16: la BOZZA e' preparazione, non versione operativa,
-    #        quindi non genera alert di scadenza). Per il "successore che
-    #        subentrera`" sono ammesse sia BOZZA sia operative future.
+    #        La versione in vigore oggi la dice il DB
+    #        (`vendite.fn_listino_versione_in_vigore`, regola §6 brief 2026-05-16:
+    #        la BOZZA e' preparazione, non versione operativa, quindi non genera
+    #        alert di scadenza); lo stato del successore si legge dal vocabolario
+    #        (giro 12, BE-L1). Per il "successore che subentrera`" sono ammesse
+    #        sia BOZZA sia operative future.
     def listini_in_scadenza(self, giorni: int) -> list[dict[str, Any]]:
         filtro_scadenza = self._filter_versioni_in_scadenza()
         with connection.cursor() as cursor:
@@ -1053,14 +1039,15 @@ class ListiniRepository:
                   FROM vendite.listini_versioni v
                   JOIN vendite.listini l ON l.id = v.listino_id
                   LEFT JOIN config.utilities u ON u.id = l.utility_id
-                 WHERE v.validita @> (SELECT script.fn_data_operativa())
-                   AND v.attivo IS TRUE
-                   AND v.stato = 'ATTIVA'
+                 WHERE v.id = vendite.fn_listino_versione_in_vigore(
+                                  v.listino_id, (SELECT script.fn_data_operativa()))
                    AND l.attivo IS TRUE
                    AND {filtro_scadenza}
                    AND NOT EXISTS (
                        SELECT 1
                          FROM vendite.listini_versioni succ
+                         JOIN config.stati_doc_listino_versioni ss
+                           ON ss.id = succ.stato_doc_listino_versione_id
                         WHERE succ.listino_id = v.listino_id
                           AND succ.id != v.id
                           AND succ.attivo IS TRUE
@@ -1068,12 +1055,12 @@ class ListiniRepository:
                           -- scadenza: `valido_dal = valido_al + 1`, cioe' `>`.
                           AND succ.valido_dal > v.valido_al
                           AND (
-                              succ.stato = 'BOZZA'
+                              ss.codice_interno = '{STATO_VERSIONE_BOZZA}'
                               OR succ.validita && daterange(v.valido_al + 1, NULL, '[)')
                           )
                    )
                  ORDER BY v.valido_al ASC, l.codice
-                """,  # noqa: S608 — filtro letterale da _filter_versioni_in_scadenza, valori come parametri
+                """,  # noqa: S608 — filtro letterale da _filter_versioni_in_scadenza e costante STATO_VERSIONE_BOZZA, valori come parametri
                 {"giorni": giorni},
             )
             return rows_to_list(cursor)

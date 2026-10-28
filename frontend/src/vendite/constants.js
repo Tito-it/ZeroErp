@@ -97,6 +97,23 @@ export const STATO_APPROVAZIONE_ATTIVITA = Object.freeze({
   RIFIUTATA: 'RIFIUTATA',
 })
 
+// Stato di una versione di listino: il codice del vocabolario
+// `config.stati_doc_listino_versioni` (`stato` nella risposta del backend).
+// La mappa cromatica vive in `core/utils/severity.js`
+// (`STATO_VERSIONE_LISTINO_MAP`) e va tenuta allineata a mano.
+export const STATO_VERSIONE_LISTINO = Object.freeze({
+  BOZZA: 'BOZZA',
+  ATTIVA: 'ATTIVA',
+  CHIUSA: 'CHIUSA',
+})
+
+// Le `action_key` dei passaggi manuali della versione di listino (meta della
+// matrice `config.transizioni_stati_listino_versioni`), come arrivano in
+// `azioni_permesse`. Oggi uno solo: BOZZA -> ATTIVA.
+export const PASSAGGI_VERSIONE_LISTINO = Object.freeze({
+  ATTIVA: 'attiva',
+})
+
 // Codici azione di processo (`config.azioni_processo.permission_codename`).
 // Usati con `auth.isActionAllowed(...)` per gating UI lato FE.
 export const PRICING_ACTIONS = Object.freeze({

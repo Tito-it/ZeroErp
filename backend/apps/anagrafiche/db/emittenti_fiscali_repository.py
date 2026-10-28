@@ -26,7 +26,6 @@ from apps.core.db._helpers import (
     sql_order_clause,
     sql_tiebreak_direction,
     fetch_paged_with_total,
-    jsonb_out,
     row_to_dict,
 )
 
@@ -458,16 +457,10 @@ class EmittentiFiscaliBillingAccountRepository:
         """  # noqa: S608
         params.extend([limit, offset])
         rows, total = fetch_paged_with_total(sql, params, offset=offset)
-        # ⚠️ `jsonb_out` e non il valore grezzo: fuori dall'ORM psycopg 3
-        #    consegna i jsonb come `str`, e un array servito come stringa
-        #    arriverebbe al client come `"[{\"famiglia\": ...}]"` — che nel
-        #    template non fallisce, si limita a non iterare. E' la regola del
-        #    catalogo BB («da usare in OGNI lettura raw di colonne jsonb»).
-        # ⭐ NULL resta NULL: sulla riga del gestore globale non c'e' storia, e
-        #    `[]` direbbe «nessun documento» invece di «questa domanda non si
-        #    applica».
-        for row in rows:
-            row["rimozione_blocco_storia"] = jsonb_out(row["rimozione_blocco_storia"])
+        # ⭐ `rimozione_blocco_storia` arriva decodificata dal lettore comune
+        #    (`fetch_paged_with_total`), e il NULL resta NULL: sulla riga del
+        #    gestore globale non c'e' storia, e `[]` direbbe «nessun documento»
+        #    invece di «questa domanda non si applica».
         return rows, total
 
     # Scopo: Inserisce un mapping BA per l'emittente.

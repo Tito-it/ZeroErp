@@ -214,8 +214,14 @@ build_ddt_consegnato() {
             "{\"articolo_id\": \"$ARTICOLO_ID\", \"descrizione\": \"Riga $i smoke reso\", \"qta_operativa\": \"5\", \"prezzo_unitario\": \"80.00\"}"
         check "[$label] add riga $i" 200 || return 1
     done
-    do_curl POST "/api/v1/vendite/ordini/${oid}/conferma/" '{}'
-    check "[$label] conferma ordine" 200 || return 1
+    # L'ordine si conferma solo emettendolo (DRAFT -> CONFERMATO + documento):
+    # `/conferma/` e' ritirata dal 2026-10-25 (brief-modello-documento-vendita
+    # §9.6 C-4), e fino al 2026-10-28 lo smoke la usava (404).
+    smoke_emetti ordini "$oid"
+    if [[ "$SMOKE_EMETTI_SENZA_MODELLO" == "1" ]]; then
+        SENZA_MODELLO="gli ordini"; return 1
+    fi
+    check "[$label] ordine -> CONFERMATO (/emetti/)" 200 || return 1
     do_curl POST "/api/v1/vendite/ordini/${oid}/genera-ddt/" '{}'
     check "[$label] genera-ddt (evasione)" 200 "data.ddt_id" || return 1
     DDT_ID="$EXTRACTED"
@@ -231,7 +237,7 @@ build_ddt_consegnato() {
     # smoke lo usava.
     smoke_emetti ddt "$DDT_ID"
     if [[ "$SMOKE_EMETTI_SENZA_MODELLO" == "1" ]]; then
-        SENZA_MODELLO_DDT=1; return 1
+        SENZA_MODELLO="le bolle"; return 1
     fi
     check "[$label] DDT -> EMESSO (/emetti/)" 200 || return 1
     do_curl GET "/api/v1/vendite/ddt/${DDT_ID}/"
@@ -254,11 +260,11 @@ build_ddt_consegnato() {
 # ============================================================
 echo ""; echo "== PART A — ordine -> DDT CONSEGNATO (2 righe) =="
 DDT_ID=""; ORDINE_ID=""
-SENZA_MODELLO_DDT=0
+SENZA_MODELLO=""
 if ! build_ddt_consegnato 2 "A"; then
-    if [[ "$SENZA_MODELLO_DDT" == "1" ]]; then
+    if [[ -n "$SENZA_MODELLO" ]]; then
         echo ""
-        echo "Smoke non conclusivo: nessun modello di documento per le bolle dell'emittente"
+        echo "Smoke non conclusivo: nessun modello di documento per ${SENZA_MODELLO} dell'emittente"
         echo "attivo (Configurazione → modelli documento): nessuna bolla emessa, nessun reso."
         echo " Risultato: ${PASS} OK / ${FAIL} FAIL (interrotto alla PART A)"
         [[ "$FAIL" -eq 0 ]] && exit 0 || exit 1
@@ -306,7 +312,9 @@ do_curl GET "/api/v1/vendite/resi/${RESO_ID}/"
 check "GET reso detail" 200 || true
 RSTATO=$(json_get "$LAST_BODY" "data.stato_codice_interno")
 [[ "$RSTATO" == "DRAFT" ]] && log_ok "reso stato=DRAFT" || log_fail "reso atteso DRAFT, trovato '$RSTATO'"
-CAN_EDIT=$(json_get "$LAST_BODY" "data.can_edit_righe")
+# Le capability stanno SOTTO `capabilities` (api.md §«Il blob sta SOTTO
+# `capabilities`»): fino al 2026-10-28 lo smoke le leggeva in testa a `data`.
+CAN_EDIT=$(json_get "$LAST_BODY" "data.capabilities.can_edit_righe")
 [[ "$CAN_EDIT" == "True" || "$CAN_EDIT" == "true" ]] && log_ok "can_edit_righe=true in DRAFT (editabile)" \
     || log_fail "can_edit_righe atteso true in DRAFT, trovato '$CAN_EDIT'"
 
@@ -335,15 +343,23 @@ OSTATO=$(json_get "$LAST_BODY" "data.stato_codice_interno")
 [[ "$OSTATO" == "PARZIALMENTE_EVASO" ]] && log_ok "ordine riaperto -> PARZIALMENTE_EVASO" \
     || log_info "ordine stato='$OSTATO' (atteso PARZIALMENTE_EVASO se la riga riconsegna riapre residuo)"
 
-# 14. Coda da-accreditare: contiene la riga a credito del reso
-do_curl GET "/api/v1/vendite/resi/da-accreditare/?data_da=2020-01-01"
+# 14. Coda da-accreditare: il reso NON ci entra. La coda e' il conto della
+#     partita di merce (accredito_dovuto = fatturati - tenuti > 0, vista
+#     vendite.vw_resi_da_accreditare, forma dal 2026-07-18), non il tipo di reso:
+#     qui la merce resa non e' mai stata fatturata, quindi non c'e' niente da
+#     accreditare. Fino al 2026-10-28 lo smoke si aspettava la forma vecchia
+#     («ogni riga a credito confermata»). Il caso positivo (merce fatturata,
+#     poi resa) lo prova smoke-nota-credito-resi.py, che la fattura se la emette.
+#     ⚠️ Filtrata per DDT: la coda intera e' paginata, e una riga che sta su
+#     un'altra pagina darebbe uno zero per sottrazione.
+do_curl GET "/api/v1/vendite/resi/da-accreditare/?data_da=2020-01-01&ddt_id=${DDT_MISTO}"
 check "GET coda da-accreditare" 200 || true
 IN_ACC=$(echo "$LAST_BODY" | python3 -c "
 import sys,json
 d=json.load(sys.stdin).get('data',{}); rows=d.get('results',d) if isinstance(d,dict) else d
 print(sum(1 for r in (rows or []) if str(r.get('reso_id'))=='$RESO_ID'))" 2>/dev/null)
-[[ "${IN_ACC:-0}" -ge 1 ]] 2>/dev/null && log_ok "coda accrediti: riga a credito del reso presente ($IN_ACC)" \
-    || log_fail "coda accrediti: attesa >=1 riga del reso $RESO_ID, trovate '${IN_ACC:-0}'"
+[[ "$IN_ACC" == "0" ]] && log_ok "coda accrediti: reso su merce non fatturata assente (niente da accreditare)" \
+    || log_fail "coda accrediti: il reso $RESO_ID su merce non fatturata non deve esserci, trovate '${IN_ACC}'"
 
 # 15. Coda da-riconsegnare: riga per-riconsegna, stato DA_RICONSEGNARE, residuo>0
 do_curl GET "/api/v1/vendite/resi/da-riconsegnare/?data_da=2020-01-01"

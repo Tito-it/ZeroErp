@@ -25,7 +25,6 @@ Indice test eseguiti:
 """
 from __future__ import annotations
 
-import json
 import unittest
 from decimal import Decimal
 
@@ -112,7 +111,7 @@ class CreateDdtDbTests(unittest.TestCase):
                     self.assertIs(riga["fatturazione_immediata"], False)
                     # dict -> ::jsonb, riletto come oggetto.
                     self.assertEqual(riga["meta_tipo"], "object")
-                    # ⚠️ Il cursore Django rende il jsonb come TESTO: si decodifica qui.
-                    self.assertEqual(json.loads(riga["meta"]), _META)
+                    # Il jsonb arriva decodificato dal lettore comune (`row_to_dict`).
+                    self.assertEqual(riga["meta"], _META)
             finally:
                 transaction.set_rollback(True)

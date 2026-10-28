@@ -674,7 +674,7 @@ class CodaLavoriRepository:
                 "priorita": int(r["priorita"]),
                 "tentativi": int(r["tentativi"]),
                 "max_tentativi": int(r["max_tentativi"]),
-                "ultimo_errore": jsonb_out(r["ultimo_errore"]),
+                "ultimo_errore": r["ultimo_errore"],
                 "run_after": iso_or_none(r["run_after"]),
                 # ⭐ QUANDO E' STATO IMMESSO A SISTEMA, ed e' un fatto diverso da
                 #    `started_at`: il primo lo scrive chi accoda, il secondo il
@@ -687,7 +687,7 @@ class CodaLavoriRepository:
                 "started_at": iso_or_none(r["started_at"]),
                 "ended_at": iso_or_none(r["ended_at"]),
                 "job_run_id": None if r["job_run_id"] is None else int(r["job_run_id"]),
-                "result": jsonb_out(r["result"]),
+                "result": r["result"],
                 "archiviato": bool(r["archiviato"]),
                 "archiviato_il": iso_or_none(r["archiviato_il"]),
                 "archiviato_da": r["archiviato_da"],

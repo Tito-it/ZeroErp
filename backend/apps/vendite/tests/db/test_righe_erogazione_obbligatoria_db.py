@@ -51,15 +51,18 @@ _FIXTURE = (
     "CREATE TEMP TABLE _l AS SELECT * FROM dbops.fn_pgtap_crea_listino("
     " (SELECT utility_id FROM _m), 'EROGOBB', '2020-01-01'::date, '2020-12-31'::date)",
     "CREATE TEMP TABLE _v AS WITH ins AS ("
-    " INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)"
-    " SELECT listino_id, 'EROGOBB_V2', '2021-01-01'::date, 'BOZZA' FROM _l RETURNING id"
+    " INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)"
+    " SELECT listino_id, 'EROGOBB_V2', '2021-01-01'::date FROM _l RETURNING id"
     ") SELECT id FROM ins",
     "CREATE TEMP TABLE _a AS SELECT dbops.fn_pgtap_crea_articolo('EROGOBB-ART',"
     " p_listino_tipologia_id => (SELECT tipologia_id FROM _l)) AS id",
     "INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)"
     " SELECT (SELECT id FROM _v), ar.id, ar.uom_id, 100.00"
     " FROM catalogo.articoli ar WHERE ar.id = (SELECT id FROM _a)",
-    "UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM _v)",
+    # Nasce BOZZA e si attiva dal verbo, con le righe gia' scritte (giro 12,
+    # brief-modello-documento-vendita §16: lo stato non si scrive a mano).
+    "SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass,"
+    " (SELECT id FROM _v), 'ATTIVA')",
 )
 
 _CONTRATTO = (

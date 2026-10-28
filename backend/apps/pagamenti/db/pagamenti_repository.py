@@ -35,7 +35,6 @@ from apps.core.db._helpers import (
     fetch_paged_with_total,
     sql_lateral_primo_motivo,
     sql_order_clause,
-    jsonb_out,
     rows_to_list,
     sql_order_direction,
     sql_tiebreak_direction,
@@ -806,7 +805,11 @@ ENTI_INCASSO_SORT_COLUMNS: dict[str, str] = {
     "centro_descrizione": "centro_descrizione",
 }
 
-# Colonne jsonb che il driver restituisce come stringa fuori dall'ORM.
+# Colonne jsonb scritte da questo repository (`jsonb=` dei BB di scrittura). In
+# lettura le decodifica il lettore comune (`rows_to_list`, dal tipo della
+# colonna, 2026-10-28): fino ad allora le decodificava `_shape` da questo
+# elenco, ed era la sua ragione d'essere — i difetti qui sotto ne sono la
+# storia.
 # ⚠️ `elimina_blocco_dettaglio` e' l'oggetto coi NOMI dei parametri della frase
 #    i18n del cestino spento: servito come stringa non fallisce — il frontend
 #    si limita a non trovarci le chiavi, e la frase esce coi segnaposto dentro.
@@ -1023,7 +1026,7 @@ class PagamentiRepository:
             limit=limit,
             offset=offset,
         )
-        return [cast(DistintaRow, self._shape(row)) for row in rows], total
+        return [cast(DistintaRow, row) for row in rows], total
 
     # Scopo: Dettaglio di una distinta (testata + display + totali derivati).
     # Risultato: None se non esiste — o se il perimetro non la lascia vedere,
@@ -1055,7 +1058,7 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id)])
             rows = rows_to_list(cursor)
-        return cast(DistintaDettaglioRow, self._shape(rows[0])) if rows else None
+        return cast(DistintaDettaglioRow, rows[0]) if rows else None
 
     # ══════════════════════════════════════════════════════════════
     #  Distinte — scrittura
@@ -1202,7 +1205,7 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id)])
             rows = rows_to_list(cursor)
-        return [cast(RigaContabileRow, self._shape(row)) for row in rows]
+        return [cast(RigaContabileRow, row) for row in rows]
 
     # Scopo: Le righe attive di una distinta come LISTA — pagina + totale in
     #        una valutazione, ordinamento dalla whitelist.
@@ -1265,7 +1268,7 @@ class PagamentiRepository:
             offset=offset,
             dopo_pagina=_sql_con_elimina,
         )
-        return [cast(RigaContabileRow, self._shape(row)) for row in rows], total
+        return [cast(RigaContabileRow, row) for row in rows], total
 
     # Scopo: QUANTE righe attive di una distinta stanno in uno stato — il numero
     #        accanto a «Mostra scartate (N)» (BE-2, la forma di
@@ -1298,7 +1301,7 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(riga_id)])
             rows = rows_to_list(cursor)
-        return cast(RigaContabileRow, self._shape(rows[0])) if rows else None
+        return cast(RigaContabileRow, rows[0]) if rows else None
 
     # Scopo: Crea una riga sotto una distinta — coi fatti E la destinazione.
     # ⚠️ Lo stato si risolve dal catalogo per codice: gli id sono smallint
@@ -1880,7 +1883,7 @@ class PagamentiRepository:
             offset=offset,
             dopo_pagina=_sql_con_elimina,
         )
-        return [cast(RigaCodaRow, self._shape(row)) for row in rows], total
+        return [cast(RigaCodaRow, row) for row in rows], total
 
     # Scopo: L'elenco delle rate uscite dalla banda di capienza.
     # ⭐ Senza questo elenco la forzatura sarebbe «un modo per nascondere, non
@@ -1994,7 +1997,7 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(ente_id)])
             rows = rows_to_list(cursor)
-        return self._shape(rows[0]) if rows else None
+        return rows[0] if rows else None
 
     # Scopo: L'emittente indicato e' dentro il perimetro di chi sta chiedendo?
     # 🔴 Serve perche' `anagrafiche.soggetti_ruoli_conti_bancari` ha la row
@@ -2278,7 +2281,7 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(sistemazione_id)])
             rows = rows_to_list(cursor)
-        return self._shape(rows[0]) if rows else None
+        return rows[0] if rows else None
 
     # Scopo: Gli atti registrati su un documento.
     # ⭐ Sono PIU' DI UNO per natura: si puo' rimborsare una parte e riportare il
@@ -2516,19 +2519,3 @@ class PagamentiRepository:
         )
         return rows[0]
 
-    # ══════════════════════════════════════════════════════════════
-    #  Mapping di riga
-    # ══════════════════════════════════════════════════════════════
-
-    # Scopo: Normalizza le colonne jsonb lette da cursor RAW (il driver le
-    #        restituisce come stringa fuori dall'ORM: senza questo, il primo
-    #        `.get()` del consumatore esplode su una `str`).
-    # Nota: una funzione sola per testata e riga — erano due copie identiche, e
-    #       due copie della stessa normalizzazione divergono alla prima colonna
-    #       jsonb che se ne aggiunge.
-    @staticmethod
-    def _shape(row: dict[str, Any]) -> dict[str, Any]:
-        for col in _JSONB_COLS:
-            if col in row:
-                row[col] = jsonb_out(row[col])
-        return row

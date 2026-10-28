@@ -316,7 +316,18 @@ righe della matrice attive (`listini_tipologie_utilities.attivo = true`).
 | **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/` |
 
 Restituisce `{ "count": <n>, "results": [ ... ] }` (collezione completa, non
-paginata): per ogni versione i dati principali e `righe_count`.
+paginata): per ogni versione i dati principali e `righe_count`. La stessa forma
+ha il dettaglio (§3.3).
+
+Campi dal modello del documento (giro 12, brief-modello-documento-vendita §16,
+2026-10-28):
+
+| Campo | Cosa dice |
+|---|---|
+| `stato` | il codice dello stato (`BOZZA`, `ATTIVA`, `CHIUSA`) dal vocabolario `config.stati_doc_listino_versioni`: e' lo stato **del DB**, nessuna deduzione dalle date |
+| `azioni_permesse` | le `action_key` dei passaggi che **l'operatore** puo' fare dallo stato della versione (`script.fn_doc_azioni_permesse`, che applica l'azione della riga del passaggio). Oggi solo `attiva`, da BOZZA, a chi ha `attiva_listino`. Permesso ⇒ nascondi |
+| `attivazione_blocco_reason` · `attivazione_blocco_reason_key` | perche' «Attiva» e' spento (codice macchina e chiave i18n del primo motivo di `script.fn_check_versione_listino_attivabile`, la stessa con cui il verbo rifiuta), da `vendite.vw_listini_versioni_azioni`; `null` = niente lo vieta. Sono le colonne che il registro `config.azioni_riga` dichiara per `ATTIVA_VERSIONE_LISTINO` |
+| `chiusura_programmata` | la versione e' ATTIVA con `valido_al` scritto: il job la porta a CHIUSA quando la fine passa. Fra la fine e il job resta ATTIVA, e si mostra cosi' |
 
 ### 3.2 Crea versione
 
@@ -349,11 +360,10 @@ paginata): per ogni versione i dati principali e `righe_count`.
 | **Metodo** | `PATCH` |
 | **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/` |
 
-#### Campi ammessi per stato (whitelist)
+#### Campi modificabili per stato
 
-I campi modificabili dipendono dallo **stato corrente** della versione. Il backend
-applica una whitelist fail-fast: qualsiasi campo non ammesso nel payload provoca
-un errore `400 E_VENDITE_VALIDATION` senza eseguire l'UPDATE.
+Li decide il DB (L-5, giro 12): il guard `vendite.trgfn_listini_versioni_guard_per_stato`.
+Il backend non filtra per stato e trasporta il rifiuto.
 
 | Stato versione | Campi modificabili |
 |---|---|
@@ -370,7 +380,9 @@ edit + activate).
 
 #### Errori tipici
 
-- `400` `E_VENDITE_VALIDATION` con `detail` che elenca i campi non ammessi e quelli consentiti
+- `409` `E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE` (dal DB): il campo non si cambia
+  nello stato della versione; la frase nomina il primo campo. Fino al 2026-10-28 era un
+  `400 E_VENDITE_VALIDATION` del backend
 - `404` `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND`
 
 ### 3.5 Clona versione
@@ -394,7 +406,8 @@ viene toccata.
 | `valido_al` | date | No | Data fine validita`, NULL = aperta |
 
 `meta` e `attivo`, se spediti, vengono validati e poi **ignorati**: la nuova
-versione nasce in stato BOZZA con `attivo=true` e `meta` vuoto. Altre chiavi →
+versione nasce in stato BOZZA (lo stato iniziale, dal guard della nascita: il
+backend non lo scrive) con `attivo=true` e `meta` vuoto. Altre chiavi →
 `400 E_VENDITE_VALIDATION`. Le righe vengono copiate
 con `attivo=true` (le righe non attive della sorgente sono escluse).
 
@@ -425,7 +438,8 @@ queste continuano a basarsi sullo snapshot in `commesse_attivita` /
 | **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/` |
 
 Elimina una versione **solo se in stato `BOZZA`**, con tutte le sue righe in
-cascata. Versioni `ATTIVA` o `CHIUSA` sono storiche e non eliminabili.
+cascata. Versioni `ATTIVA` o `CHIUSA` sono storiche e non eliminabili: lo decide
+il DB (L-5, giro 12), non il backend.
 
 Risposta (200):
 
@@ -435,7 +449,12 @@ Risposta (200):
 
 Errori tipici:
 
-- `400` `E_VENDITE_VALIDATION` se la versione non e` BOZZA
+- `409` `E_LISTINO_VERSIONE_NON_ELIMINABILE` (dal guard per stato della versione)
+- ⚠️ Le righe si cancellano **prima** della versione (le FK sono NO ACTION), quindi
+  su una versione non in bozza puo' rifiutare per primo il guard delle righe, col
+  suo codice (`E_RIGA_LISTINO_PROPAGATA`, `E_RIGA_LISTINO_VERSIONE_CHIUSA`). E il
+  guard dei componenti blocca sempre la DELETE: una BOZZA con un composito oggi
+  non si elimina. Richiesta al team DB: brief-modello-documento-vendita §16.8
 - `404` `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND`
 
 ### 3.7 Cambia stato versione
@@ -444,6 +463,10 @@ Errori tipici:
 |---|---|
 | **Metodo** | `POST` |
 | **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/stato/` |
+
+È l'**attivazione** (BOZZA → ATTIVA), l'unico passaggio manuale della matrice
+`config.transizioni_stati_listino_versioni`. Decide il verbo
+`vendite.fn_attiva_versione_listino` (giro 12, L-3 e L-4, 2026-10-28).
 
 #### Body JSON
 
@@ -456,37 +479,38 @@ Errori tipici:
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `stato` | string | Si | `ATTIVA` o `CHIUSA` (transizione di stato) |
-| `dry_run` | bool | No | Se `true`, esegue tutte le validazioni e calcola l'auto-close ma non scrive nulla. Restituisce un envelope di preview. Default `false`. ⚠️ Solo il booleano JSON `true` attiva la preview: qualunque altro valore (anche `"true"`) vale `false` |
+| `stato` | string | Si | solo `ATTIVA`. ATTIVA → CHIUSA e' di processo: si programma con `valido_al` (§3.4) e la scrive il job a fine scaduta |
+| `dry_run` | bool | No | Se `true`, non scrive nulla e restituisce l'anteprima delle versioni che verrebbero chiuse. Default `false`. ⚠️ Solo il booleano JSON: un altro valore (anche `"true"`) e' un `400` sul campo |
 
-#### Regole specifiche
+Altre chiavi → `400 E_VENDITE_VALIDATION`.
 
-- Stati ammessi:
-  - `BOZZA`
-  - `ATTIVA`
-  - `CHIUSA`
-- Transizioni ammesse:
-  - `BOZZA -> ATTIVA`
-  - `ATTIVA -> CHIUSA`
-- Per `BOZZA -> ATTIVA` deve esistere almeno una riga **attiva** nella versione.
-- Overlap temporali e unicita` restano governati dai vincoli DB su `vendite.listini_versioni`.
+#### Il permesso
 
-#### Auto-close della versione precedente (decisione D3)
+La view dichiara `post_passaggio = PassaggioDocumento(vendite.listini_versioni,
+"ver_id", campo_stato="stato")`: l'azione la legge dalla riga del passaggio
+(`attiva_listino`), prima della transazione, anche per il `dry_run`. Senza
+l'azione: `403`.
 
-Quando si esegue `BOZZA -> ATTIVA`, il backend cerca le altre versioni dello
-stesso listino in stato `ATTIVA + attivo` con `valido_dal < nuova.valido_dal`
-e che si **sovrappongono** al nuovo intervallo (`valido_al IS NULL` oppure
-`valido_al >= nuova.valido_dal`). Per ognuna, nella **stessa transazione DB**:
+#### Che cosa fa il verbo, in una transazione
 
-1. Imposta `precedente.valido_al = nuova.valido_dal - 1`
-2. Attiva la nuova versione
+1. la versione nel perimetro dell'utente, presa `FOR UPDATE`;
+2. la riga comune del passaggio: gia' attiva → `E_DOC_GIA_NELLO_STATO`; l'azione;
+3. il primo motivo che vieta (`script.fn_check_versione_listino_attivabile`):
+   versione spenta, nessun prezzo;
+4. la chiusura delle precedenti (decisione D3): le versioni ATTIVE e accese dello
+   stesso listino, con decorrenza precedente e periodo che tocca la nuova, prendono
+   `valido_al = nuova.valido_dal - 1`;
+5. lo stato ATTIVA attraverso la porta.
 
-L'ordine e` necessario per non urtare il vincolo `ex_listini_versioni_no_overlap`
-(GIST exclusion). Senza l'auto-close, l'attivazione fallirebbe per overlap.
+Prima (fino al 2026-10-28) tutto questo era nel backend.
 
 #### Modalita` `dry_run` (preview UI)
 
-Con `dry_run: true`, la chiamata non scrive nel DB e restituisce:
+Con `dry_run: true` il verbo gira in un **savepoint annullato**: la chiamata
+rifiuta con gli stessi codici dell'attivazione vera (vedi «Errori tipici»), non
+lascia scritto niente e restituisce l'elenco che il verbo chiuderebbe, dallo
+**stesso lettore** del verbo (`vendite.fn_versioni_listino_da_chiudere`): quello
+che si mostra e' quello che si fa.
 
 ```json
 {
@@ -507,15 +531,20 @@ Con `dry_run: true`, la chiamata non scrive nel DB e restituisce:
 }
 ```
 
-Il frontend usa questa preview per il dialog di conferma attivazione, mostrando
-all'operatore l'elenco delle versioni che verranno auto-chiuse e la nuova
-`valido_al` calcolata.
+⚠️ Fino al 2026-10-28 l'anteprima leggeva il solo lettore e non verificava i
+motivi: a un client senza il pulsante spento proponeva la chiusura delle
+precedenti per un'attivazione che il verbo avrebbe poi rifiutato.
+
+Senza `dry_run` la risposta è il dettaglio della versione riletto (§3.3).
 
 #### Errori tipici
 
-- `404` `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND`
-- `400` `E_VENDITE_VALIDATION` per transizione non ammessa o versione senza righe attive
-- `409` `E_VENDITE_LISTINO_VERSIONE_OVERLAP` se il pattern auto-close fallisce e il vincolo `ex_listini_versioni_no_overlap` viene urtato (pattern simmetrico a `E_VENDITE_CONTRATTO_OVERLAP` / `E_VENDITE_PROMO_OVERLAP`)
+- `400` `E_VENDITE_VALIDATION`: `stato` diverso da `ATTIVA`, chiave fuori elenco, `dry_run` non booleano
+- `403`: l'operatore non ha l'azione `attiva_listino`
+- `404` `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND`: la versione non è di quel listino, o è fuori perimetro
+- `409` `E_DOC_GIA_NELLO_STATO`: la versione è già attiva
+- `422` `E_LISTINO_VERSIONE_SPENTA`, `E_LISTINO_VERSIONE_SENZA_RIGHE`: i motivi del verbo
+- `409` `E_VENDITE_LISTINO_VERSIONE_OVERLAP` se il vincolo `ex_listini_versioni_no_overlap` viene urtato
 
 ---
 

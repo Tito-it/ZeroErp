@@ -571,7 +571,7 @@ class UiAdminRepository:
         ) + " ORDER BY p.ambito, p.codice, p.id"
         with connection.cursor() as cursor:
             cursor.execute(sql, [lista_id])
-            return [self._normalize_preset_jsonb(r) for r in rows_to_list(cursor)]
+            return rows_to_list(cursor)
 
     # Scopo: Conta i preset di una lista con lo STESSO perimetro di
     #        `list_preset_by_lista` (`p.lista_id = %s`), senza passare dalle
@@ -598,8 +598,7 @@ class UiAdminRepository:
         )
         with connection.cursor() as cursor:
             cursor.execute(sql, [preset_id])
-            riga = row_to_dict(cursor)
-            return self._normalize_preset_jsonb(riga) if riga is not None else None
+            return row_to_dict(cursor)
 
     # Scopo: Crea preset (testata). I campi `lista_id`/`ambito`/refs sono
     #        obbligatori e validati dal service; FK + CHECK ambito_refs
@@ -875,18 +874,3 @@ class UiAdminRepository:
                 [permesso_id],
             )
             return cursor.rowcount > 0
-
-    # =================================================================
-    # Helpers privati
-    # =================================================================
-
-    # Scopo: Normalizza i campi JSONB (`ordinamento_default`,
-    #        `filtri_default`) garantendo dict/list anche quando
-    #        l'adapter ritorna stringa serializzata.
-    @staticmethod
-    def _normalize_preset_jsonb(row: dict[str, Any]) -> dict[str, Any]:
-        for key in ("ordinamento_default", "filtri_default"):
-            value = row.get(key)
-            if isinstance(value, str):
-                row[key] = json.loads(value)
-        return row

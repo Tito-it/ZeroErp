@@ -12,6 +12,7 @@ from types import MappingProxyType
 from typing import Any
 
 from django.db import connection
+from psycopg.postgres import types as _tipi_postgres
 
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
@@ -58,22 +59,77 @@ def corsa_conclusa(
     }
 
 
+# Gli OID dei tipi che il backend Django per psycopg 3 consegna come TESTO fuori
+# dall'ORM: `jsonb` come `str`, `jsonb[]` come lista di `str`. Il `json` (114)
+# arriva gia' decodificato e non serve toccarlo (provato su dbdev, 2026-10-28).
+# Gli OID dal registro dei tipi di psycopg, non scritti a mano.
+_OID_JSONB = _tipi_postgres["jsonb"].oid
+_OID_JSONB_ARRAY = _tipi_postgres["jsonb"].array_oid
+
+
+# Scopo: Le colonne del cursore, coi decodificatori delle colonne jsonb.
+#        Ritorna (nomi, {indice: decodifica}): la decodifica e' scelta dal TIPO
+#        che il DB dichiara in `cursor.description`, non da un elenco di nomi.
+# ⭐ E' la sede unica della regola «il jsonb arriva come testo» per i lettori a
+#    dizionari (`row_to_dict`, `rows_to_list`, `extract_paginated` e chi li usa):
+#    chi scrive una query non deve ricordarsi di decodificare. Fino al
+#    2026-10-28 se lo ricordava ogni punto da se', e chi se ne dimenticava
+#    consegnava `meta` come testo alle API e ai modelli di stampa, o rifiutava
+#    la ristampa fedele di ogni documento (brief-modello-documento-vendita
+#    §15.17.3).
+# ⚠️ Le letture PER POSIZIONE (`fetchone()`/`fetchall()` letti a indice)
+#    restano fuori: ricevono ancora il testo e decodificano da se'.
+def _colonne_e_decodifiche(cursor) -> tuple[list[str], dict[int, Any]]:
+    nomi: list[str] = []
+    decodifiche: dict[int, Any] = {}
+    for i, c in enumerate(cursor.description):
+        nomi.append(c.name)
+        # `getattr`: un descrittore senza tipo (i cursori finti dei test) non
+        # ha colonne jsonb da decodificare.
+        tipo = getattr(c, "type_code", None)
+        if tipo == _OID_JSONB:
+            decodifiche[i] = jsonb_out
+        elif tipo == _OID_JSONB_ARRAY:
+            decodifiche[i] = _jsonb_array_out
+    return nomi, decodifiche
+
+
+# Scopo: un `jsonb[]` (lista di testi JSON) con ogni elemento decodificato;
+#        NULL e gli elementi NULL restano `None`.
+def _jsonb_array_out(value: Any) -> Any:
+    if value is None:
+        return None
+    return [jsonb_out(v) for v in value]
+
+
+# Scopo: una riga del cursore come dict, coi jsonb decodificati.
+def _riga_dict(nomi: list[str], decodifiche: dict[int, Any], row: Any) -> dict[str, Any]:
+    riga = dict(zip(nomi, row, strict=True))
+    for i, decodifica in decodifiche.items():
+        riga[nomi[i]] = decodifica(row[i])
+    return riga
+
+
 def row_to_dict(cursor) -> dict[str, Any] | None:
     """Converte la riga corrente (fetchone) in dict {colonna: valore}.
 
-    Restituisce None se non ci sono righe.
+    Restituisce None se non ci sono righe. Le colonne jsonb arrivano
+    decodificate (vedi `_colonne_e_decodifiche`).
     """
     row = cursor.fetchone()
     if row is None:
         return None
-    cols = [c.name for c in cursor.description]
-    return dict(zip(cols, row, strict=True))
+    nomi, decodifiche = _colonne_e_decodifiche(cursor)
+    return _riga_dict(nomi, decodifiche, row)
 
 
 def rows_to_list(cursor) -> list[dict[str, Any]]:
-    """Converte tutte le righe (fetchall) in lista di dict."""
-    cols = [c.name for c in cursor.description]
-    return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
+    """Converte tutte le righe (fetchall) in lista di dict.
+
+    Le colonne jsonb arrivano decodificate (vedi `_colonne_e_decodifiche`).
+    """
+    nomi, decodifiche = _colonne_e_decodifiche(cursor)
+    return [_riga_dict(nomi, decodifiche, row) for row in cursor.fetchall()]
 
 
 def coerce_jsonb_dict(value: Any) -> dict[str, Any]:
@@ -410,8 +466,10 @@ def call_jsonb_fn(fn_name: str, *args: Any) -> dict[str, Any]:
 
     Ritorna `{}` se la fn ritorna NULL (entita inesistente — il caller
     deve aver gia' verificato l'esistenza via get_<entita>).
-    `psycopg3` adatta jsonb a dict; il branch `isinstance(payload, str)`
-    copre solo i backend che ritornano il payload serializzato come testo.
+    ⚠️ Il backend Django per psycopg 3 consegna il jsonb come TESTO fuori
+    dall'ORM: il branch `isinstance(payload, str)` e' la decodifica di
+    sempre, non un caso raro (lettura per posizione, fuori da
+    `_colonne_e_decodifiche`).
 
     Esempio:
         capabilities = call_jsonb_fn(
@@ -899,14 +957,15 @@ def extract_paginated(cursor) -> tuple[list[dict[str, Any]], int]:
     rows = cursor.fetchall()
     if not rows:
         return [], 0
-    cols = [c.name for c in cursor.description]
+    cols, decodifiche = _colonne_e_decodifiche(cursor)
     tc_idx = cols.index("total_count")
     total_count = rows[0][tc_idx]
-    col_idx = {c: i for i, c in enumerate(cols) if c != "total_count"}
-    results = [
-        {c: row[i] for c, i in col_idx.items()}
-        for row in rows
-    ]
+    # La riga come in `rows_to_list` (jsonb decodificati), meno il totale.
+    results = []
+    for row in rows:
+        riga = _riga_dict(cols, decodifiche, row)
+        del riga["total_count"]
+        results.append(riga)
     return results, total_count
 
 

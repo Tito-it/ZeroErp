@@ -48,7 +48,6 @@ from apps.core.db._helpers import (
     add_ricerca_full_condition,
     sql_order_clause,
     fetch_paged_with_total,
-    jsonb_out,
     row_to_dict,
     rows_to_list,
 )
@@ -97,13 +96,6 @@ _ORDER_DEFAULT = "codice_interno"
 _RICERCA = RicercaFull(
     "vendite.famiglie_documento",
     ("codice", "descrizione", "prefisso_default"),
-)
-
-# Colonne jsonb: il backend Django per psycopg 3 le consegna come `str`.
-_COLONNE_JSONB: tuple[str, ...] = (
-    "meta",
-    "rimozione_blocco_dettaglio",
-    "struttura_blocco_dettaglio",
 )
 
 # I parametri della madre, NELL'ORDINE della sua firma.
@@ -171,15 +163,6 @@ _CAMPI_UPDATE: tuple[str, ...] = (
 )
 
 
-# Scopo: decodifica le colonne jsonb della vista, preservando i NULL.
-def _decodifica_jsonb(righe: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    for riga in righe:
-        for col in _COLONNE_JSONB:
-            if col in riga:
-                riga[col] = jsonb_out(riga[col])
-    return righe
-
-
 class FamiglieDocumentoRepository:
     """Accesso DB al catalogo delle famiglie di documento."""
 
@@ -225,7 +208,7 @@ class FamiglieDocumentoRepository:
         """  # noqa: S608
         params.extend([limit, offset])
         righe, totale = fetch_paged_with_total(sql, params, offset=offset)
-        return _decodifica_jsonb(righe), totale
+        return righe, totale
 
     # Scopo: il dettaglio di una famiglia. `None` se non esiste.
     def get_famiglia(self, famiglia_id: int) -> dict[str, Any] | None:
@@ -234,7 +217,7 @@ class FamiglieDocumentoRepository:
             riga = row_to_dict(cursor)
         if riga is None:
             return None
-        return _decodifica_jsonb([riga])[0]
+        return riga
 
     # Scopo: la famiglia per codice interno — serve a chi ha in mano il codice e
     #        non l'id (i registri si agganciano per `codice_interno`).
@@ -247,7 +230,7 @@ class FamiglieDocumentoRepository:
             riga = row_to_dict(cursor)
         if riga is None:
             return None
-        return _decodifica_jsonb([riga])[0]
+        return riga
 
     # Scopo: «questa famiglia ammette le regole fiscali?» — cioe' i limiti di
     #        emissione e una politica data non neutra sul suo registro.

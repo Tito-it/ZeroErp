@@ -29,7 +29,6 @@ Indice test eseguiti:
 """
 from __future__ import annotations
 
-import json
 import unittest
 from datetime import date
 
@@ -108,8 +107,8 @@ class CreateOrdineDbTests(unittest.TestCase):
                     self.assertIs(riga["fatturazione_immediata"], False)
                     self.assertEqual(riga["canale_origine"], "ADMIN")
                     self.assertEqual(riga["meta_tipo"], "object")
-                    # ⚠️ Il cursore Django rende il jsonb come TESTO.
-                    self.assertEqual(json.loads(riga["meta"]), _META)
+                    # Il jsonb arriva decodificato dal lettore comune (`row_to_dict`).
+                    self.assertEqual(riga["meta"], _META)
 
                     # (b) Gli opzionali None: `data` al DEFAULT, il trigger
                     #     eredita `fatturazione_trigger`, `meta` None -> {}.
@@ -122,6 +121,6 @@ class CreateOrdineDbTests(unittest.TestCase):
                     self.assertEqual(riga["data"], oggi)
                     self.assertIn(riga["fatturazione_trigger"], {"CONFERMATO", "SPEDITO", "CONSEGNATO"})
                     self.assertEqual(riga["emittente_fiscale_id"], mondo["emittente_fiscale_id"])
-                    self.assertEqual(json.loads(riga["meta"]), {})
+                    self.assertEqual(riga["meta"], {})
             finally:
                 transaction.set_rollback(True)

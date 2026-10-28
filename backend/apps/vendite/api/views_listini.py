@@ -19,8 +19,10 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.payload_validators import corpo_oggetto, paginated_envelope, parse_list_params, qp_bool_optional, qp_int_optional, qp_int_strict, qp_str
 from apps.core.api.success_responses import success_response
+from apps.vendite.db.listini_repository import TESTATA_LISTINI_VERSIONI
 from apps.vendite.services.listini_service import (
     fn_alert_scadenze,
     fn_applica_variazione_percentuale,
@@ -356,6 +358,13 @@ class ApiListinoVersioneDetail(DomainAPIView):
 class ApiListinoVersioneStato(DomainAPIView):
     area_funzionale = "vendite"
     model_permission = ("vendite", "listino")
+    # L'azione del passaggio (stato corrente -> `stato` del corpo) dalla riga
+    # della matrice: l'attivazione chiede `attiva_listino` (giro 12, L-3,
+    # BE-L2). Vale anche per l'anteprima (`dry_run`): e' l'anteprima di un
+    # gesto, e chi non puo' farlo non lo vede proporre.
+    post_passaggio = PassaggioDocumento(
+        testata=TESTATA_LISTINI_VERSIONI, documento_kwarg="ver_id", campo_stato="stato",
+    )
 
     @extend_schema(
         request=_VERSIONE_STATO_REQUEST,
@@ -366,7 +375,8 @@ class ApiListinoVersioneStato(DomainAPIView):
             )
         },
     )
-    # Scopo: Cambia lo stato operativo della versione del listino.
+    # Scopo: Attiva la versione del listino dal verbo del DB (o ne da'
+    #        l'anteprima con `dry_run`).
     def post(self, request: Request, listino_id: int, ver_id: int) -> JsonResponse:
         return handle_post_json(
             request,
