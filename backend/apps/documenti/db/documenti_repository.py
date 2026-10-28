@@ -25,6 +25,7 @@ from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
     fetch_paged_with_total,
+    jsonb_out,
     rows_to_list,
     sql_order_clause,
 )
@@ -1560,7 +1561,16 @@ class DocumentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             results = rows_to_list(cursor)
-        return results[0] if results else None
+        if not results:
+            return None
+        documento = results[0]
+        # ⛔ Il cursore RAW di psycopg 3 consegna il jsonb come `str`: senza la
+        #    decodifica la ristampa fedele vede un contesto che non e' un
+        #    dizionario e rifiuta OGNI documento («senza contesto congelato»).
+        #    I test del service lo passavano gia' decodificato, e non lo
+        #    vedevano (2026-10-28).
+        documento["context_json"] = jsonb_out(documento["context_json"])
+        return documento
 
     # Scopo: Versione template per id SENZA filtri di stato ne' di template.
     #        E' la lettura della ristampa fedele: la versione pinnata sul

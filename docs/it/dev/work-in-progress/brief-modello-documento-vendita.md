@@ -125,7 +125,8 @@ contratto né conferma un ordine (§11.7). Giri 5-10: chiusi e committati (detta
 | 4-bis-duodecies-vicies-bis | ✅ **Tid** | La stampa delle origini: **forma 6** (D-S1, 2026-10-27), non `origini` accanto a `origine` | §15.15, §15.16 | 4-bis-duodecies-quindecies |
 | 4-bis-duodecies-vicies-ter | ✅ team BE | Il commit del passaggio BE/FE del giro 11 su `dev/backend-tid`, su richiesta di Tid (2026-10-27) | §15.15 | 4-bis-duodecies-undecies |
 | 4-bis-duodecies-vicies-quater | ✅ team BE | «Riporta in bozza» dalla riga del passaggio (`stato_del_modello="iniziale"`), 2026-10-27 | §15.13, §15.15 | 4-bis-duodecies-duovicies |
-| 4-bis-duodecies-vicies-septies | team BE ⏭️ | Il builder della fattura in forma 6 (`origini` al posto di `origine`), riavvio subito dopo l'apply | §15.16.3 | 4-bis-duodecies-trigies-bis |
+| 4-bis-duodecies-vicies-septies | ✅ team BE | Il builder della fattura in forma 6 (`origini` al posto di `origine`, BE-S1) e la scheda Critiche dalla vista (BE-S2), riavvio (2026-10-28) | §15.16.3, §15.17.2 | 4-bis-duodecies-trigies-bis |
+| 4-bis-duodecies-trigies-septies | **Tid** ⏭️ | Lo script una tantum K-S2 sulle copie degli emittenti, subito dopo il riavvio del BE; poi il commit di BE-S1, BE-S2 | §15.16.3, §15.17.2 | 4-bis-duodecies-vicies-septies |
 | 4-bis-duodecies-trigies | ✅ team DB | Ricognizione e piano della richiesta del §15.16: K-S1 … K-S5, la risposta a D-S2 = (b), la richiesta BE-S1, BE-S2 (2026-10-28) | §15.17 | 4-bis-duodecies-vicies-bis |
 | 4-bis-duodecies-trigies-ter | ✅ **Tid** | D-S2 = (b) e via allo sviluppo di K-S1 … K-S5 (2026-10-28) | §15.17 | 4-bis-duodecies-trigies |
 | 4-bis-duodecies-trigies-quater | ✅ team DB | K-S1 … K-S5 scritti e provati: `20261028-01`, `-02`, script una tantum, 2 pgTAP; regressione 39 file invariata (2026-10-28) | §15.17.1 | 4-bis-duodecies-trigies-ter |
@@ -3808,6 +3809,27 @@ niente per chi la legge oggi), e viaggiano nello stesso apply e nello stesso pas
 
 **Prossimi passi**: il team BE (BE-S1, BE-S2 del
 §15.17); poi Tid lancia lo script K-S2 subito dopo il riavvio del backend in forma 6.
+
+#### 15.17.2 Il passaggio BE: BE-S1, BE-S2 (team BE, 2026-10-28)
+
+| # | Che cosa | Dove |
+| --- | --- | --- |
+| BE-S1 | `CONTEXT_VERSION = 6`: `fattura.origini` da `list_fattura_origini` (il lettore del dettaglio, dopo il cancello della testata), ogni elemento `{livello, tipo, etichetta, codice}` (`tipo` = `tipo_codice_interno`; id e uid fuori, il modello stampa e non naviga); `fattura.origine` tolta | `fattura_document_context_builder.py`; test 0, 2-ter, 4 |
+| BE-S2 | La scheda Critiche legge `uscita_blocco_reason`, `uscita_blocco_reason_key` da `vendite.vw_lotti_gruppi_azioni` (`LEFT JOIN` su `gruppo_key`, filtro costante sul lotto come BE-2); ritirata la `LATERAL` sulla `fn_check`. Nomi e posizioni invariati | `pipeline_repository.list_lotto_segnalazioni`; test 29 di `test_pipeline_repository` |
+| doc | La forma 6 della stampa | `api_fattura_dettaglio.md` |
+
+**Prove (dbdev, transazione annullata).**
+
+* Lo standard stampa la v2 (id 5064) in forma 6; le copie 77 (id 2334) e 2527 (id 3097) sono alla v7 in forma 5.
+* Il contesto della fattura 20025: `origini = [{livello 1, ORDINE_VENDITA, «Ordine», ORD0000075}]`; il render
+  dell'HTML della v2 (`_render_html_with_jinja`, StrictUndefined) stampa «Documenti di origine — Ordine -
+  ORD0000075»; con `origini = []` la sezione non c'è.
+* La scheda Critiche: sulle 29 coppie (lotto, documento) del giornale, nessuna senza riga nella vista e nessun
+  motivo diverso da quello della `fn_check` (la lettura di prima); tre lotti letti in 6-12 ms.
+* Suite Django sul DB provvisto, ruff, mypy: verdi (vedi il commit).
+
+⚠️ Da qui alla fine dello script K-S2 le fatture degli emittenti 32 e 44 non si stampano (guard della forma): è la
+finestra prevista dal §15.16.3, e lo script va lanciato subito.
 
 ## 16. Giro 12: la versione di listino al modello — ricognizione, piano e domande (2026-10-28)
 
