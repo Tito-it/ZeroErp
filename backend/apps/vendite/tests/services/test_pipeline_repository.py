@@ -37,6 +37,7 @@ Indice test eseguiti:
 26) VenditePipelineRepositoryUnitTests.test_gruppi_di_commessa_decodifica_il_jsonb_stringa
 27) VenditePipelineRepositoryUnitTests.test_gruppi_di_commessa_forma_inattesa_ripiega_a_vuoto
 28) VenditePipelineRepositoryUnitTests.test_log_pipeline_fase_passa_la_gruppo_key_per_nome
+29) VenditePipelineRepositoryUnitTests.test_list_lotto_segnalazioni_motivo_dalla_vista_non_si_compone
 """
 
 from types import SimpleNamespace
@@ -617,7 +618,7 @@ class VenditePipelineRepositoryUnitTests(TestCase):
                 #    sceglierne uno sarebbe una scommessa.
                 None,                               # 15 gruppo_key
                 # ⚠️ Le due colonne del blocco restano NULL sulle righe senza
-                #    documento: il `CASE` non chiama nemmeno la check.
+                #    documento: la vista delle azioni non ha la loro riga.
                 None,                               # 16 uscita_blocco_reason
                 None,                               # 17 uscita_blocco_reason_key
                 # ⚠️ Senza chiave non c'e' riferimento: e' lo STESSO NULL, non
@@ -647,8 +648,8 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         cursor.__enter__.return_value = cursor
         cursor.fetchall.return_value = [
             # ⚠️ Riga del GIRO: nessun bersaglio, nessun documento e — di
-            #    conseguenza — nessun motivo di blocco, perche' il `CASE` non
-            #    chiama nemmeno la check, ne' riferimento leggibile, perche'
+            #    conseguenza — nessun motivo di blocco, perche' la vista delle
+            #    azioni non ha la sua riga, ne' riferimento leggibile, perche'
             #    senza chiave non c'e' niente da nominare. Le QUATTRO code sono
             #    `None` insieme, e non e' una coincidenza: senza documento il
             #    verbo non ha oggetto e l'etichetta non ha soggetto.
@@ -666,6 +667,34 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         self.assertIsNone(righe[0]["gruppo_key"])
         self.assertIsNone(righe[0]["uscita_blocco_reason"])
         self.assertIsNone(righe[0]["riferimento"])
+
+    # Scopo: ⭐ IL MOTIVO DEL PULSANTE SPENTO SI LEGGE DALLA SUPERFICIE DEL DB
+    #        (`vendite.vw_lotti_gruppi_azioni`), come nella lista dei documenti
+    #        del lotto: brief-modello-documento-vendita §15.17, BE-S2. La vista
+    #        copre anche i documenti nominati dal giornale (D-S2 = (b)).
+    # ⛔ Se la query tornasse a chiamare la check da se', il motivo avrebbe due
+    #    sedi, e una delle due il presidio del registro non la vede.
+    # 🔴 E il filtro sul lotto e' il PARAMETRO, non un join: scende nei rami
+    #    della UNION della vista.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_list_lotto_segnalazioni_motivo_dalla_vista_non_si_compone(
+        self, mocked_cursor_factory,
+    ):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchall.return_value = []
+        mocked_cursor_factory.return_value = cursor
+
+        VenditePipelineRepository().list_lotto_segnalazioni(lotto_id=6260)
+
+        sql, params = cursor.execute.call_args.args
+        self.assertIn("LEFT JOIN vendite.vw_lotti_gruppi_azioni az", sql)
+        self.assertIn("ON az.lotto_id = %s", sql)
+        self.assertIn("az.uscita_blocco_reason,", sql)
+        self.assertIn("az.uscita_blocco_reason_key,", sql)
+        self.assertNotIn("fn_check_documento_escludibile_da_giro(", sql)
+        # Il lotto e' il primo parametro e l'ultimo (quello della JOIN).
+        self.assertEqual((params[0], params[-1]), (6260, 6260))
 
     # Scopo: Verifica che list_lotto_task_runs mappi correttamente righe runtime task da DB.
     @patch("apps.vendite.db.pipeline_repository.connection.cursor")
