@@ -40,7 +40,6 @@ from apps.core.db._helpers import (
     sql_order_clause,
     sql_lateral_primo_motivo,
     fetch_paged_with_total,
-    jsonb_out,
     row_to_dict,
     rows_to_list,
 )
@@ -227,20 +226,6 @@ _FROM = """
 # Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
 _RICERCA = RicercaFull("vendite.registri_numerazione", ("codice", "descrizione", "prefisso"))
 
-# Colonne jsonb da decodificare: fuori dall'ORM psycopg 3 consegna i jsonb come
-# `str`, e un oggetto servito come stringa arriva al client come testo — che nel
-# template non fallisce, si limita a non avere le sue chiavi. E' proprio il
-# `dettaglio` da cui il frontend prende i parametri della frase.
-_COLONNE_JSONB = ("rimozione_blocco_dettaglio", "forma_blocco_dettaglio")
-
-
-def _decodifica_jsonb(righe: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    for riga in righe:
-        for col in _COLONNE_JSONB:
-            if col in riga:
-                riga[col] = jsonb_out(riga[col])
-    return righe
-
 
 class RegistriRepository:
     """Accesso DB ai registri di numerazione."""
@@ -301,7 +286,7 @@ class RegistriRepository:
         """
         params.extend([limit, offset])
         righe, totale = fetch_paged_with_total(sql, params, offset=offset)
-        return _decodifica_jsonb(righe), totale
+        return righe, totale
 
     # Scopo: il dettaglio di un registro, con lo scope applicato.
     #        Torna None se non esiste O se e' fuori perimetro — che al chiamante
@@ -326,7 +311,7 @@ class RegistriRepository:
             riga = row_to_dict(cursor)
         if riga is None:
             return None
-        return _decodifica_jsonb([riga])[0]
+        return riga
 
     # Scopo: i CONTATORI del registro, in SOLA LETTURA (brief §BE-4).
     # ⛔ Non esiste — e non deve nascere — nessun metodo di scrittura su questa

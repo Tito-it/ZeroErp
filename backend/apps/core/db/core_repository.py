@@ -8,11 +8,11 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from django.db import connection
 
+from apps.core.db._helpers import jsonb_out
 from apps.core.services.service_errors import ServiceError
 
 
@@ -33,16 +33,14 @@ class CoreRepository:
                     detail=f"fn_get_user_profile non ha restituito dati per auth_user_id={auth_user_id}.",
                 )
             assert row is not None
-            result = row[0]
+            # Lettura per posizione: il jsonb arriva come testo (`jsonb_out`).
+            result = jsonb_out(row[0])
             if result is None:
                 raise ServiceError(
                     code="E_CORE_PROFILE_NOT_FOUND",
                     message="Profilo utente non trovato.",
                     detail=f"fn_get_user_profile ha restituito NULL per auth_user_id={auth_user_id}.",
                 )
-            # Il driver DB potrebbe restituire JSONB come stringa
-            if isinstance(result, str):
-                result = json.loads(result)
             return result
 
     # Scopo: Il NOME del fuso dell'azienda (IANA, es. 'Europe/Rome') dalla sede

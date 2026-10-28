@@ -15,6 +15,8 @@
 #        decisa dal DB (`fn_annotazioni_fattura`), nell'ordine dato.
 #        ⭐ Forma 5 dal 2026-10-02: il periodo della riga (`competenza_dal/_al`,
 #        `ha_periodo`) e la quantita' del kit che puo' essere NULL.
+#        ⭐ Forma 6 dal 2026-10-28: `fattura.origini`, la catena dal DB
+#        (`fn_fattura_origini`) al posto di `fattura.origine`.
 #
 # Indice test (0..N):
 #   0. build_context_shape_e_campi
@@ -26,6 +28,7 @@
 #   1-sexies. build_context_kit_senza_quantita_resta_senza (2026-10-02)
 #   2. build_context_riepilogo_iva_propagate
 #   2-bis. build_context_annotazioni_dal_db (2026-10-02)
+#   2-ter. build_context_origini_dal_db (2026-10-28)
 #   3. build_context_id_non_valido_raises_validation
 #   4. build_context_fattura_inesistente_raises_not_found
 #   5. registry_contiene_fattura_dopo_import_modulo
@@ -98,6 +101,7 @@ def _builder(righe: list[dict[str, Any]] | None = None):
     repo.list_fattura_riepilogo_iva.return_value = []
     repo.list_fattura_scadenze.return_value = []
     repo.list_fattura_annotazioni.return_value = []
+    repo.list_fattura_origini.return_value = []
     righe_repo = MagicMock()
     # Le tre colonne del periodo sono del contratto della vista (forma 5) e il
     # builder le legge strette: le righe dei test che non parlano di periodo
@@ -148,8 +152,13 @@ class BuildContextFatturaTests(SimpleTestCase):
         self.assertEqual(fattura["totali"]["a_pagare"], "122,00")
         self.assertEqual(fattura["totali"]["valuta_codice"], "EUR")
         # Chiavi «ricche» sempre presenti (StrictUndefined), None se non sorgentate.
-        for k in ("origine", "pagamento", "utility"):
+        for k in ("origini", "pagamento", "utility"):
             self.assertIn(k, fattura)
+        # Forma 6: `origine` non c'e' piu'. Un modello che la legge si ferma al
+        # render, e il guard della forma lo ferma prima.
+        self.assertNotIn("origine", fattura)
+        # Nessuna origine = lista vuota, non chiave assente (StrictUndefined).
+        self.assertEqual(fattura["origini"], [])
 
         cliente = ctx["cliente"]
         self.assertEqual(cliente["denominazione"], "Cliente Fattura Srl")
@@ -159,11 +168,11 @@ class BuildContextFatturaTests(SimpleTestCase):
         self.assertEqual(cliente["indirizzo"], "Corso Test 12, 00100 Roma RM")
 
         self.assertEqual(ctx["_meta"]["context_code"], "FATTURA")
-        # Forma 5 dal 2026-10-02: la forma 4 (kit coi componenti dentro, i
-        # VALORIZZATI coi numeri loro, le annotazioni di legge) + il periodo di
-        # riga e la quantita' del kit dalla riga padre. Pubblicare/stampare
-        # vuole una versione che la legga.
-        self.assertEqual(ctx["_meta"]["context_version"], 5)
+        # Forma 6 dal 2026-10-28: la forma 5 (kit coi componenti dentro, i
+        # VALORIZZATI coi numeri loro, le annotazioni di legge, il periodo di
+        # riga) con `origini` al posto di `origine`. Pubblicare/stampare vuole
+        # una versione che la legga.
+        self.assertEqual(ctx["_meta"]["context_version"], 6)
         # Nessuna annotazione = lista vuota, non chiave assente (StrictUndefined).
         self.assertEqual(ctx["annotazioni"], [])
         self.assertEqual(ctx["_meta"]["auth_user_id"], 9)
@@ -225,7 +234,7 @@ class BuildContextFatturaTests(SimpleTestCase):
     # 1-ter. Forma 2: il kit e' UNA riga col totale, e i suoi componenti
     #        esposti stanno DENTRO (`componenti`, lista di dict con la
     #        quantita' formattata). Il repository li consegna gia' decodificati
-    #        (`_righe_jsonb`, provato in test_righe_fattura_lista). Nessuna riga
+    #        (il lettore comune, provato in test_rows_to_list_jsonb). Nessuna riga
     #        KIT_COMPONENTE di primo livello.
     def test_build_context_kit_porta_i_componenti_dentro(self) -> None:
         builder, _, _ = _builder([
@@ -400,6 +409,26 @@ class BuildContextFatturaTests(SimpleTestCase):
         ])
         repo.list_fattura_annotazioni.assert_called_once_with(42)
 
+    # 2-ter. Le origini le decide il DB: il builder ne porta livello, tipo
+    #        (codice interno), etichetta e codice nell'ordine ricevuto, senza
+    #        riordinare; id e uid restano fuori (il modello stampa, non naviga).
+    def test_build_context_origini_dal_db(self) -> None:
+        builder, repo, _ = _builder()
+        repo.list_fattura_origini.return_value = [
+            {"livello": 1, "tipo_id": 7, "tipo_codice_interno": "ORDINE",
+             "etichetta": "Ordine", "uid": "u-1", "codice": "ORD-2026-0001"},
+            {"livello": 2, "tipo_id": 3, "tipo_codice_interno": "CONTRATTO",
+             "etichetta": "Contratto", "uid": "u-2", "codice": None},
+        ]
+
+        ctx = builder.build_context(42)
+
+        self.assertEqual(ctx["fattura"]["origini"], [
+            {"livello": 1, "tipo": "ORDINE", "etichetta": "Ordine", "codice": "ORD-2026-0001"},
+            {"livello": 2, "tipo": "CONTRATTO", "etichetta": "Contratto", "codice": None},
+        ])
+        repo.list_fattura_origini.assert_called_once_with(42)
+
 
 class BuildContextFatturaGuardTests(SimpleTestCase):
     """Guard input + 404."""
@@ -423,6 +452,7 @@ class BuildContextFatturaGuardTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
         righe_repo.list_righe.assert_not_called()
         repo.list_fattura_riepilogo_iva.assert_not_called()
+        repo.list_fattura_origini.assert_not_called()
 
 
 class BuilderCodeAndRegistryTests(SimpleTestCase):

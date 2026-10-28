@@ -4,8 +4,6 @@
 
 import { MANAGE_ICONS, STATO_VESTE, STATUS_ICONS } from '../constants'
 
-import { giornoDi, oggiAziendale } from './date'
-
 // --- Resolver generico ---
 // Scopo: Risolve severity da una mappa. Trim automatico, fallback 'secondary'.
 export function resolveSeverity(map, codice) {
@@ -190,27 +188,6 @@ export const STATO_VERSIONE_LISTINO_MAP = {
 }
 export function statoVersioneListinoSeverity(codice) {
   return resolveSeverity(STATO_VERSIONE_LISTINO_MAP, codice)
-}
-
-// Scopo: Calcola lo stato "visibile" di una versione listino in modo data-driven:
-//        se `valido_al` e` valorizzato e strettamente minore di oggi, la versione
-//        e` operativamente CHIUSA anche se lo stato persistito in DB dice ancora
-//        ATTIVA (il job notturno non e` ancora passato). Altrimenti restituisce
-//        lo stato DB. Coerente con il principio fail-safe del brief listini v5
-//        (brief-db-listini-stato-chiusa-sync.md §2): data = fonte di verita`
-//        operativa, stato = flag informativo.
-export function statoVersioneVisibile(versione) {
-  if (!versione) return null
-  const validoAl = versione.valido_al
-  if (validoAl) {
-    // Parsing tollerante: stringa ISO YYYY-MM-DD o Date. ⚠️ Fino al
-    // 2026-10-09 `new Date('YYYY-MM-DD')`, cioe' la mezzanotte UTC: nei fusi
-    // negativi era il giorno prima, e il badge diceva CHIUSA un giorno prima.
-    // E «oggi» e' quello dell'azienda, non del PC.
-    const dataAl = giornoDi(validoAl)
-    if (dataAl && dataAl < oggiAziendale()) return 'CHIUSA'
-  }
-  return versione.stato
 }
 
 // --- Mappa stati preventivo vendita ---

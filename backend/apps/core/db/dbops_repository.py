@@ -18,7 +18,6 @@ from apps.core.db._helpers import (
     colonne_identita,
     escape_ilike,
     fetch_paged_with_total,
-    jsonb_out,
     pattern_contiene,
     predicato_giorno_operativo,
     sql_order_clause,
@@ -673,11 +672,9 @@ class DbopsRepository:
                 executed_at=r["executed_at"], status=r["status"], message=r["message"],
                 duration_ms=r["duration_ms"], tx_id=r["tx_id"], exec_mode=r["exec_mode"],
                 rule_type=r["rule_type"], dry_run=r["dry_run"], rows_affected=r["rows_affected"],
-                # ⛔ `jsonb_out` e non una decodifica a mano (2026-09-19): la
-                #    forma precedente era il BB riscritto, con una parentesi in
-                #    piu' che il presidio `test_coercizione_jsonb_dal_bb` non vedeva.
-                params=jsonb_out(r["params"]),
-                result=jsonb_out(r["result"]),
+                # `params` e `result` decodificati dal lettore comune.
+                params=r["params"],
+                result=r["result"],
             )
             for r in rows
         ]
@@ -787,13 +784,10 @@ class DbopsRepository:
                 **r,
                 # `occurred_at` e' NOT NULL a DB: niente ramo per il None.
                 "occurred_at": r["occurred_at"].isoformat(),
-                # ⛔ `jsonb_out`, non una decodifica a mano: il backend Django per
-                #    psycopg 3 consegna i jsonb come `str` fuori dall'ORM, e il
-                #    BB li decodifica PRESERVANDO il valore com'e' (un decode
-                #    error su una colonna `jsonb` e' un bug da far esplodere).
-                #    La colonna e' NOT NULL DEFAULT '{}', quindi qui arriva
-                #    sempre un oggetto — gli appunti del tecnico, intatti.
-                "context": jsonb_out(r["context"]),
+                # Decodificato dal lettore comune. La colonna e' NOT NULL
+                # DEFAULT '{}', quindi qui arriva sempre un oggetto — gli
+                # appunti del tecnico, intatti.
+                "context": r["context"],
             })
             for r in righe
         ]

@@ -73,6 +73,14 @@
 #        kit (nota di credito parziale), insieme al prezzo. Una versione
 #        scritta per la forma 4 stamperebbe due righe identiche per due mesi
 #        diversi, e un kit senza quantita' come se l'avesse: forma nuova.
+#
+#        ⭐ FORMA 6 dal 2026-10-28 (brief-modello-documento-vendita §15.16,
+#        D-S1): `fattura.origini`, la catena dei documenti di origine nell'
+#        ordine di `vendite.fn_fattura_origini` (la stessa del dettaglio a
+#        video), lista di `{livello, tipo, etichetta, codice}`, vuota se la
+#        fattura non cita niente. Via `fattura.origine` ({codice, tipo}, mai
+#        popolata): una versione scritta per la forma 5 la leggerebbe e il
+#        render StrictUndefined si fermerebbe, per questo e' una forma nuova.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -107,7 +115,7 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
 
     CODE = SORGENTE_FATTURA
     # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
-    CONTEXT_VERSION = 5
+    CONTEXT_VERSION = 6
 
     # Scopo: Iniezione opzionale dei repository per testabilità (mock). In
     #        runtime il default va benissimo: l'istanza è singleton di processo
@@ -127,8 +135,8 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
     #         2. testata via `get_fattura_testata` (None → NOT_FOUND);
     #         3. righe (primo livello, kit coi componenti dentro) + riepilogo
     #            IVA (tabella reale fatture_riepiloghi_iva) + annotazioni di
-    #            legge (decise dal DB);
-    #         4. compone la shape della forma `CONTEXT_VERSION` (5).
+    #            legge (decise dal DB) + origini (catena dal DB);
+    #         4. compone la shape della forma `CONTEXT_VERSION` (6).
     def build_context(
         self,
         sorgente_id: int,
@@ -164,9 +172,14 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             {"codice": a["codice"], "testo": a["testo"]}
             for a in self._repo.list_fattura_annotazioni(sorgente_id)
         ]
+        # Dopo il cancello della testata: il lettore e' INVOKER (vedi
+        # `list_fattura_origini`).
+        origini = [
+            self._shape_origine(o) for o in self._repo.list_fattura_origini(sorgente_id)
+        ]
 
         return {
-            "fattura": self._shape_fattura(testata),
+            "fattura": self._shape_fattura(testata, origini),
             "cliente": self._shape_cliente(testata),
             "righe": righe,
             "riepilogo_iva": riepilogo_iva,
@@ -193,7 +206,9 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
     #        fiscale, date IT/ISO, stato/tipo doc fiscale, emittente, totali).
     #        I totali sono raggruppati in una shape esplicita per il template
     #        (`fattura.totali.imponibile`).
-    def _shape_fattura(self, testata: dict[str, Any]) -> dict[str, Any]:
+    def _shape_fattura(
+        self, testata: dict[str, Any], origini: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         return {
             "id": testata.get("id"),
             "uid": testata.get("uid"),
@@ -250,15 +265,13 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             },
             # Campi «ricchi» del template. Chiavi SEMPRE presenti (StrictUndefined
             # → chiave mancante = errore); il template le guarda con {% if %},
-            # quindi None = riga omessa. `agente`/`origine` NON sono mantenuti
-            # come dato di testata di questa fattura (reseller/sorgente polimorfa
-            # a NULL) → restano None finché il flusso a monte non li popola
-            # (documentato nel brief). `pagamento` è sorgentato (JOIN sotto).
+            # quindi None = riga omessa. `agente` NON e' mantenuto come dato
+            # di testata di questa fattura (reseller a NULL) → resta None
+            # finché il flusso a monte non lo popola (documentato nel brief).
+            # `pagamento` è sorgentato (JOIN sotto).
             "agente_denominazione": testata.get("agente_denominazione"),
-            "origine": {
-                "codice": testata.get("origine_codice"),
-                "tipo": testata.get("origine_tipo"),
-            },
+            # Forma 6: la lista, `[]` se la fattura non cita niente.
+            "origini": origini,
             "pagamento": {
                 "modalita_codice": testata.get("pagamento_modalita_codice"),
                 "termine_codice": testata.get("pagamento_termine_codice"),
@@ -269,6 +282,19 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
                 "descrizione": testata.get("utility_descrizione"),
             },
             "meta": testata.get("meta") or {},
+        }
+
+    # Scopo: Un documento di origine, con le chiavi della forma 6. `tipo` e'
+    #        il codice interno del tipo (stabile), `etichetta` il nome da
+    #        stampare; `codice` puo' essere None. Niente id ne' uid: il
+    #        modello stampa, non naviga.
+    @staticmethod
+    def _shape_origine(origine: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "livello": origine["livello"],
+            "tipo": origine["tipo_codice_interno"],
+            "etichetta": origine["etichetta"],
+            "codice": origine["codice"],
         }
 
     # Scopo: Sotto-dict "cliente" dallo SNAPSHOT congelato
@@ -296,7 +322,7 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
     #        componenti esposti di un kit come LISTA (`[]` fuori dai kit: il
     #        template scorre `riga.componenti` senza chiedersi se c'e').
     #        `componenti` arriva gia' decodificato dal repository
-    #        (`_righe_jsonb`): NULL fuori dai kit. Forma 3: i numeri di un
+    #        (il lettore comune decodifica i jsonb): NULL fuori dai kit. Forma 3: i numeri di un
     #        componente seguono le regole della riga (prezzo e sconto come
     #        misure, importo come importo); su un DESCRITTIVO sono NULL e
     #        restano NULL — e' cio' che dice al template «nel totale del kit».

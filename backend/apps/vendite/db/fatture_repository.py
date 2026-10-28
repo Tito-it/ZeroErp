@@ -118,9 +118,6 @@ class FattureRepository(RigheListaCompletaMixin):
     _righe_ordine_documento = "ordinamento"
     _righe_ordine_documento_extra = ("riga_nr",)
     _righe_chiave = "riga_key"
-    # I componenti esposti di un kit: una LISTA per chi la legge (drawer,
-    # note di riga, contesto di stampa), non il testo del jsonb.
-    _righe_jsonb = ("componenti",)
     _righe_solo_attive = False
     _righe_ordinamento = _ORDER_COLS_RIGHE_FATTURA
     _righe_ricerca = _RICERCA_RIGHE_FATTURA

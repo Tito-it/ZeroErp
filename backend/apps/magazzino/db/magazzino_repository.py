@@ -220,8 +220,6 @@ _MAGAZZINO_COLONNE = """
     m.usa_ubicazioni    AS magazzino_usa_ubicazioni
 """
 
-_JSONB_COLS = ("meta",)
-
 
 # Scopo: la SELECT di testata di una famiglia — testata + magazzino + conteggio
 #        righe. ⚠️ `descrizione` e' `NULL` sulla rettifica, che la colonna non
@@ -421,14 +419,6 @@ class MagazzinoRepository:
     #  `anagrafiche_magazzino_repository` dal 2026-09-21)
     # ══════════════════════════════════════════════════════════════
 
-    # Scopo: Decodifica i jsonb della riga (il driver li consegna come `str`).
-    @staticmethod
-    def _shape(row: dict[str, Any]) -> dict[str, Any]:
-        for col in _JSONB_COLS:
-            if col in row:
-                row[col] = jsonb_out(row[col]) or {}
-        return row
-
     # ══════════════════════════════════════════════════════════════
     #  Magazzini (l'ancora del perimetro)
     # ══════════════════════════════════════════════════════════════
@@ -505,7 +495,7 @@ class MagazzinoRepository:
             limit=limit,
             offset=offset,
         )
-        return [cast(DocumentoInternoRow, self._shape(r)) for r in rows], total
+        return [cast(DocumentoInternoRow, r) for r in rows], total
 
     # Scopo: La testata, o `None` se non esiste / non e' visibile.
     def get_documento(
@@ -515,7 +505,7 @@ class MagazzinoRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(doc_id)])
             rows = rows_to_list(cursor)
-        return self._shape(rows[0]) if rows else None  # type: ignore[return-value]
+        return rows[0] if rows else None  # type: ignore[return-value]
 
     # Scopo: La capability del documento per il dettaglio API: quali azioni di
     #        stato proporre, se «Registra» e' acceso e — se no — il primo
@@ -714,7 +704,7 @@ class MagazzinoRepository:
             limit=limit,
             offset=offset,
         )
-        return [cast(RigaDocumentoInternoRow, self._shape(r)) for r in rows], total
+        return [cast(RigaDocumentoInternoRow, r) for r in rows], total
 
     # Scopo: Una riga DELLA testata indicata: la coppia (documento, riga) e'
     #        la risorsa dell'URL, e una riga di un altro documento non c'e'.
@@ -725,7 +715,7 @@ class MagazzinoRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(riga_id), int(doc_id)])
             rows = rows_to_list(cursor)
-        return self._shape(rows[0]) if rows else None  # type: ignore[return-value]
+        return rows[0] if rows else None  # type: ignore[return-value]
 
     # Scopo: Inserisce una riga. Il guard di famiglia (`E_MAG_DOCUMENTO_
     #        RIGHE_CONGELATE`), i CHECK e l'UNIQUE di posizione rispondono da

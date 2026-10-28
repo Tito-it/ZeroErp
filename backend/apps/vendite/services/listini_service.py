@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, NoReturn
 from uuid import UUID
@@ -31,6 +31,7 @@ from apps.vendite.db.listini_repository import (
     RIGA_CREATE_COLUMNS,
     RIGA_UPDATE_COLUMNS,
     RIGHE_ORDER_COLUMNS,
+    STATO_VERSIONE_ATTIVA,
     VERSIONE_CREATE_COLUMNS,
     VERSIONE_UPDATE_COLUMNS,
     ListiniRepository,
@@ -38,7 +39,6 @@ from apps.vendite.db.listini_repository import (
 
 _ORDER_BY_VALIDI: frozenset[str] = frozenset(LISTINI_ORDER_COLUMNS.keys())
 _RIGHE_ORDER_BY_VALIDI: frozenset[str] = frozenset(RIGHE_ORDER_COLUMNS.keys())
-_STATI_VERSIONE_VALIDI: frozenset[str] = frozenset({"BOZZA", "ATTIVA", "CHIUSA"})
 _LISTINO_NULLABLE_FIELDS: frozenset[str] = frozenset({"meta"})
 _VERSIONE_NULLABLE_FIELDS: frozenset[str] = frozenset({"valido_al", "meta"})
 _RIGA_NULLABLE_FIELDS: frozenset[str] = frozenset(
@@ -525,10 +525,6 @@ def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entit
             ),
         },
         check_constraints={
-            "chk_listini_versioni_stato": (
-                E_VENDITE_VALIDATION,
-                "Stato versione non valido: stato deve essere BOZZA, ATTIVA o CHIUSA.",
-            ),
             "chk_listini_righe_prezzo": (
                 E_VENDITE_VALIDATION,
                 "Prezzo riga non valido: prezzo deve essere >= 0.",
@@ -537,6 +533,26 @@ def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entit
         fallback_code=E_VENDITE_VALIDATION,
         fallback_message="Violazione vincolo DB su listino.",
         context={"entity": entity, "function": function_name},
+    )
+
+
+# Scopo: Un rifiuto del DB su una versione (verbo dell'attivazione, guard per
+#        stato) arriva al client col codice che il DB ha scelto e la sua frase
+#        (BB `ErrorManager.raise_from_database_error`): le regole sono del DB
+#        dal giro 12 (L-4, L-5), qui si trasporta soltanto.
+#        ⛔ Nessun ripiego: un errore senza codice del catalogo (deadlock,
+#        timeout, RAISE nudo) torna al middleware com'e', e non diventa un 400
+#        «dato errato» sul form.
+def _rifiuto_del_db_su_versione(
+    exc: DatabaseError, *, message: str, context: dict[str, Any], function_name: str,
+) -> NoReturn:
+    ErrorManager.raise_from_database_error(
+        exc,
+        known_markers=(),
+        fallback_code=None,
+        message=message,
+        context=context,
+        function_name=function_name,
     )
 
 
@@ -874,51 +890,6 @@ def _validate_riga_articolo_uom(articolo_id: UUID | str, uom_id: int, *, functio
     )
 
 
-# Scopo: Whitelist campi PATCH versione ammessi in base allo stato corrente.
-#        - BOZZA  : tutti i campi modificabili (allineato a _VERSIONE_UPDATE_ALLOWED_KEYS)
-#        - ATTIVA : solo valido_al (programmazione chiusura)
-#        - CHIUSA : nessun campo (stato terminale, modifiche vietate)
-#        Risponde all'esigenza di immutabilita' delle versioni operative dopo
-#        l'attivazione, evitando drift tra listino e snapshot in commesse_attivita.
-#        Il set BOZZA e' derivato da _VERSIONE_UPDATE_ALLOWED_KEYS per evitare
-#        drift silenzioso quando si aggiungono nuove colonne a VERSIONE_UPDATE_COLUMNS.
-_VERSIONE_PATCH_ALLOWED_BY_STATE: dict[str, frozenset[str]] = {
-    "BOZZA": _VERSIONE_UPDATE_ALLOWED_KEYS,
-    "ATTIVA": frozenset({"valido_al"}),
-    "CHIUSA": frozenset(),
-}
-
-
-def _assert_versione_patch_allowed(
-    versione: dict[str, Any],
-    data: dict[str, Any],
-    *,
-    function_name: str,
-) -> None:
-    stato = str(versione["stato"])
-    allowed = _VERSIONE_PATCH_ALLOWED_BY_STATE.get(stato, frozenset())
-    presenti = set(data.keys())
-    non_ammessi = sorted(presenti - allowed)
-    ErrorManager.require(
-        not non_ammessi,
-        code="E_VENDITE_VALIDATION",
-        message="Aggiornamento versione non consentito.",
-        detail=(
-            f"In stato {stato} sono modificabili solo: "
-            f"{sorted(allowed) if allowed else 'nessun campo'}. "
-            f"Campi non ammessi nel payload: {non_ammessi}."
-        ),
-        context={
-            "versione_id": versione["id"],
-            "stato": stato,
-            "campi_non_ammessi": non_ammessi,
-            "campi_ammessi": sorted(allowed),
-        },
-        function_name=function_name,
-        log_to_db=True,
-    )
-
-
 # Scopo: Guard fail-fast che impedisce CRUD righe su versioni non in stato BOZZA.
 #        Le righe di una versione ATTIVA sono immutabili (snapshot in commesse_attivita
 #        e attivita_fatturabili gia` propagati). Le righe di una versione CHIUSA sono
@@ -938,55 +909,6 @@ def _assert_versione_bozza_for_riga_op(
             f"Stato corrente: {stato}."
         ),
         context={"versione_id": versione["id"], "stato": stato},
-        function_name=function_name,
-        log_to_db=True,
-    )
-
-
-# Scopo: Applica la guard di transizione stato versione in modo esplicito lato service.
-#        L'unica transizione manuale ammessa e' BOZZA -> ATTIVA (attivazione).
-#        La transizione ATTIVA -> CHIUSA non e' piu' manuale: la chiusura si
-#        effettua via PATCH valido_al; lo stato CHIUSA viene sincronizzato dal
-#        DB (trigger/job) quando valido_al scende sotto la data corrente.
-#        Vedi brief-db-listini-stato-chiusa-sync.md per il dettaglio DB.
-def _validate_versione_state_transition(
-    versione: dict[str, Any],
-    nuovo_stato: str,
-    *,
-    function_name: str,
-) -> None:
-    stato_corrente = str(versione["stato"])
-    if stato_corrente == nuovo_stato:
-        return
-
-    allowed_transitions: dict[str, frozenset[str]] = {
-        "BOZZA": frozenset({"ATTIVA"}),
-        "ATTIVA": frozenset(),
-        "CHIUSA": frozenset(),
-    }
-    # Messaggio dedicato per il caso ATTIVA -> CHIUSA: l'operazione esiste
-    # ancora ma si esegue via PATCH valido_al. Dirottare l'operatore sul path
-    # corretto invece di un generico "transizione non ammessa". Allineato col
-    # messaggio concordato con il team DB: lato DB esiste la guard speculare
-    # con codice E_VERSIONE_STATO_TRANSIZIONE_INVALIDA (defense-in-depth).
-    if stato_corrente == "ATTIVA" and nuovo_stato == "CHIUSA":
-        ErrorManager.raise_error(
-            code="E_VENDITE_VALIDATION",
-            message="Chiusura versione non consentita via cambio stato.",
-            detail=(
-                "Per chiudere impostare valido_al (PATCH); la chiusura "
-                "avviene automaticamente a finestra scaduta."
-            ),
-            context={"stato_corrente": stato_corrente, "nuovo_stato": nuovo_stato},
-            function_name=function_name,
-            log_to_db=True,
-        )
-    ErrorManager.require(
-        nuovo_stato in allowed_transitions.get(stato_corrente, frozenset()),
-        code="E_VENDITE_VALIDATION",
-        message="Transizione stato versione non valida.",
-        detail=f"Transizione non ammessa: {stato_corrente} -> {nuovo_stato}.",
-        context={"stato_corrente": stato_corrente, "nuovo_stato": nuovo_stato},
         function_name=function_name,
         log_to_db=True,
     )
@@ -1181,7 +1103,7 @@ def fn_create_versione(listino_id: int, payload: dict[str, Any]) -> dict[str, An
 # Scopo: Aggiorna la versione sui soli campi modificabili e restituisce il dettaglio.
 def fn_update_versione(listino_id: int, versione_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_update_versione"
-    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     data = _extract_versione_payload(payload, for_update=True, function_name=function_name)
     _V.require_campi_da_aggiornare(
         data,
@@ -1190,12 +1112,21 @@ def fn_update_versione(listino_id: int, versione_id: int, payload: dict[str, Any
         context={"allowed_nullable_fields": sorted(_VERSIONE_NULLABLE_FIELDS)},
         function_name=function_name,
     )
-    _assert_versione_patch_allowed(versione, data, function_name=function_name)
+    # ⛔ Quali campi si cambiano in quale stato lo dice il DB (L-5, giro 12):
+    #    `vendite.trgfn_listini_versioni_guard_per_stato`, col codice
+    #    E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE. Ritirata la copia del service
+    #    (`_VERSIONE_PATCH_ALLOWED_BY_STATE`).
     repository = ListiniRepository()
     try:
         updated = repository.update_versione(listino_id, versione_id, data)
     except IntegrityError as exc:
         _translate_integrity_error(exc, function_name=function_name, entity="versione")
+    except DatabaseError as exc:
+        _rifiuto_del_db_su_versione(
+            exc, message="Aggiornamento versione non consentito.",
+            context={"listino_id": listino_id, "versione_id": versione_id},
+            function_name=function_name,
+        )
     ErrorManager.require(
         updated,
         code="E_VENDITE_LISTINO_VERSIONE_NOT_FOUND",
@@ -1268,32 +1199,27 @@ def fn_clone_versione(
     return fn_get_versione(listino_id, target_versione_id)
 
 
-# Scopo: Elimina una versione in stato BOZZA con tutte le sue righe (cascata).
+# Scopo: Elimina una versione con tutte le sue righe (cascata).
 #        Decisione O2 (sviluppo-listini-v2): solo BOZZA e' eliminabile, perche'
 #        non e' mai stata visibile al pricing e nessuno snapshot e' propagato.
-#        Versioni ATTIVA/CHIUSA sono storiche e immutabili.
+#        ⛔ La regola la dice il DB (L-5, giro 12): il guard per stato della
+#        versione, E_LISTINO_VERSIONE_NON_ELIMINABILE. Ritirata la copia del
+#        service.
 def fn_delete_versione(listino_id: int, versione_id: int) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_delete_versione"
-    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
-    stato = str(versione["stato"])
-    ErrorManager.require(
-        stato == "BOZZA",
-        code="E_VENDITE_VALIDATION",
-        message="Eliminazione versione non consentita.",
-        detail=(
-            "Solo le versioni in stato BOZZA possono essere eliminate. "
-            f"Stato corrente: {stato}."
-        ),
-        context={"versione_id": versione_id, "stato": stato},
-        function_name=function_name,
-        log_to_db=True,
-    )
+    _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     repository = ListiniRepository()
     try:
         with transaction.atomic():
             deleted = repository.delete_versione(listino_id, versione_id)
     except IntegrityError as exc:
         _translate_integrity_error(exc, function_name=function_name, entity="versione")
+    except DatabaseError as exc:
+        _rifiuto_del_db_su_versione(
+            exc, message="Eliminazione versione non consentita.",
+            context={"listino_id": listino_id, "versione_id": versione_id},
+            function_name=function_name,
+        )
     ErrorManager.require(
         deleted,
         code="E_VENDITE_LISTINO_VERSIONE_NOT_FOUND",
@@ -1306,118 +1232,72 @@ def fn_delete_versione(listino_id: int, versione_id: int) -> dict[str, Any]:
     return {"deleted": True, "id": versione_id}
 
 
-# Scopo: Pianifica le conseguenze di una transizione di stato versione.
-#        Per BOZZA -> ATTIVA calcola l'elenco delle versioni precedenti da
-#        chiudere e la nuova valido_al. Per altre transizioni torna ([], None).
+# Scopo: Il cambio di stato della versione: l'ATTIVAZIONE (BOZZA -> ATTIVA),
+#        l'unico passaggio manuale della matrice (giro 12, L-3 e L-4). Decide il
+#        verbo `vendite.fn_attiva_versione_listino`, in una transazione: i motivi
+#        che vietano (versione spenta, senza prezzi), la chiusura delle versioni
+#        precedenti (decisione D3 di sviluppo-listini-v2) e lo stato attraverso
+#        la porta. Il 403 lo da' la catena dei permessi, dalla riga del passaggio
+#        (`PassaggioDocumento` della view, azione `attiva_listino`).
+#        ATTIVA -> CHIUSA e' di processo: la si programma con la fine (PATCH
+#        `valido_al`) e la scrive il job quando la fine passa; qui nessun verbo
+#        la scrive, quindi chiederla e' un 400 sul campo.
 #
-#        Post-drop chk_listini_versioni_date (2026-04-27): l'autoclose puo'
-#        produrre valido_al = valido_dal (range degenere [X, X+1) di 1 giorno),
-#        coerente col pattern stato-terminale-data-driven. Il caso gap=0
-#        (precedente con stessa decorrenza) non arriva qui: la query
-#        find_versioni_per_autoclose filtra `valido_dal < nuova_valido_dal`
-#        strict, e l'EXCLUDE GIST ex_listini_versioni_no_overlap blocca
-#        l'attivazione con messaggio user-friendly.
-def _plan_versione_state_change(
-    *,
-    repository: "ListiniRepository",
-    versione: dict[str, Any],
-    nuovo_stato: str,
-    listino_id: int,
-    versione_id: int,
-    function_name: str,
-) -> tuple[list[dict[str, Any]], date | None]:
-    if nuovo_stato != "ATTIVA":
-        return [], None
-
-    ErrorManager.require(
-        bool(versione["attivo"]),
-        code="E_VENDITE_VALIDATION",
-        message="Transizione stato versione non valida.",
-        detail="Una versione inattiva non puo' essere attivata.",
-        context={"versione_id": versione_id},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    righe_count = repository.count_active_righe_versione(versione_id)
-    ErrorManager.require(
-        righe_count > 0,
-        code="E_VENDITE_VALIDATION",
-        message="Transizione stato versione non valida.",
-        detail="Una versione BOZZA deve avere almeno una riga attiva prima di diventare ATTIVA.",
-        context={"versione_id": versione_id, "righe_count": righe_count},
-        function_name=function_name,
-        log_to_db=True,
-    )
-
-    nuova_valido_dal = versione.get("valido_dal")
-    assert isinstance(nuova_valido_dal, date)
-    candidates = repository.find_versioni_per_autoclose(
-        listino_id=listino_id,
-        exclude_versione_id=versione_id,
-        nuova_valido_dal=nuova_valido_dal,
-    )
-    nuova_valido_al = nuova_valido_dal - timedelta(days=1)
-
-    return candidates, nuova_valido_al
-
-
-# Scopo: Cambia stato versione con guard su transizioni e presenza righe in attivazione.
-#        Decisione D3 (sviluppo-listini-v2): la transizione BOZZA -> ATTIVA innesca
-#        l'auto-close delle versioni precedenti dello stesso listino (versioni in
-#        stato ATTIVA + attivo con valido_dal < nuova.valido_dal e che si sovrappongono
-#        al nuovo intervallo). La chiusura avviene nella stessa transazione DB:
-#        prima si imposta valido_al = nuova.valido_dal - 1 sulle precedenti, poi si
-#        attiva la nuova. Questo ordine e' necessario per non urtare il vincolo
-#        ex_listini_versioni_no_overlap (GIST exclusion).
-#
-#        Modalita` dry_run: se payload contiene `dry_run=true`, la funzione esegue
-#        tutte le validazioni e calcola le versioni che verrebbero auto-chiuse, ma
-#        NON tocca il DB. Restituisce un envelope di preview per il dialog UI.
+#        Modalita` dry_run: se il payload contiene `dry_run=true` il verbo gira
+#        in un savepoint annullato (rifiuta come il gesto, non scrive) e si
+#        restituisce l'anteprima delle versioni che verrebbero chiuse, dallo
+#        stesso lettore che usa il verbo (`vendite.fn_versioni_listino_da_chiudere`).
+# ⛔ Ritirate nel giro 12 (BE-L2) le copie del service: le transizioni
+#    (`_validate_versione_state_transition`), la pianificazione e il conteggio
+#    delle righe (`_plan_versione_state_change`), la chiusura e l'UPDATE dello
+#    stato nel repository.
 def fn_change_versione_state(listino_id: int, versione_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_change_versione_state"
-    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
-    nuovo_stato = _extract_enum_string(
-        payload,
-        "stato",
-        function_name=function_name,
-        allowed_values=_STATI_VERSIONE_VALIDI,
-        nullable=False,
-        message="Payload stato versione non valido.",
+    # La versione di QUESTO listino: la rotta nomina il listino, il verbo no.
+    _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    message = "Payload stato versione non valido."
+    _V.validate_allowed_keys(
+        payload, allowed=frozenset({"stato", "dry_run"}), function_name=function_name,
+    )
+    nuovo_stato = _V.require_string(
+        payload, "stato", message=message, function_name=function_name,
     )
     ErrorManager.require(
-        nuovo_stato not in {_MISSING, None},
-        code="E_VENDITE_VALIDATION",
-        message="Payload stato versione non valido.",
-        detail="stato obbligatorio.",
-        context={"field": "stato"},
+        nuovo_stato == STATO_VERSIONE_ATTIVA,
+        code=E_VENDITE_VALIDATION,
+        message=message,
+        detail=(
+            f"Da qui si chiede solo {STATO_VERSIONE_ATTIVA} (l'attivazione): la "
+            "chiusura si programma con valido_al e la scrive il job a fine scaduta."
+        ),
+        context={"field": "stato", "stato": nuovo_stato},
         function_name=function_name,
         log_to_db=True,
     )
-    assert isinstance(nuovo_stato, str)
     # ⛔ Un flag del corpo e' un booleano JSON (api.md, tre regole del corpo):
     #    `"true"` e' un 400 sul campo, non un `false` muto che eseguiva davvero
     #    il cambio stato a chi chiedeva l'anteprima (brief-be-verifica-
     #    documentazione-api §B4, 2026-10-21). Gemello di `applica_variazione`.
     dry_run = _V.optional_bool(payload, "dry_run") is True
-    _validate_versione_state_transition(versione, nuovo_stato, function_name=function_name)
 
     repository = ListiniRepository()
-    if str(versione["stato"]) == nuovo_stato:
-        return fn_get_versione(listino_id, versione_id)
-
-    # Pianificazione transizione: per BOZZA -> ATTIVA calcola anche l'autoclose
-    # delle precedenti. Restituisce (autoclose_candidates, nuova_valido_al).
-    # Per ATTIVA -> CHIUSA torna ([], None).
-    autoclose_candidates, nuova_valido_al = _plan_versione_state_change(
-        repository=repository,
-        versione=versione,
-        nuovo_stato=nuovo_stato,
-        listino_id=listino_id,
-        versione_id=versione_id,
-        function_name=function_name,
-    )
-
-    # Modalita` preview: niente UPDATE, restituisco la sintesi delle conseguenze.
+    da_chiudere: list[dict[str, Any]] = []
+    try:
+        if dry_run:
+            # Il verbo gira in un savepoint annullato: l'anteprima rifiuta con
+            # gli stessi codici del gesto, e non scrive.
+            da_chiudere = repository.anteprima_attivazione(versione_id)
+        else:
+            with transaction.atomic():
+                repository.attiva_versione(versione_id)
+    except IntegrityError as exc:
+        _translate_integrity_error(exc, function_name=function_name, entity="versione")
+    except DatabaseError as exc:
+        _rifiuto_del_db_su_versione(
+            exc, message="Attivazione versione non consentita.",
+            context={"listino_id": listino_id, "versione_id": versione_id},
+            function_name=function_name,
+        )
     if dry_run:
         return {
             "dry_run": True,
@@ -1425,43 +1305,15 @@ def fn_change_versione_state(listino_id: int, versione_id: int, payload: dict[st
             "nuovo_stato": nuovo_stato,
             "auto_close": [
                 {
-                    "id": int(row["id"]),
-                    "codice_versione": row.get("codice_versione"),
-                    "valido_dal": row.get("valido_dal"),
-                    "valido_al_prima": row.get("valido_al"),
-                    "valido_al_dopo": nuova_valido_al,
+                    "id": int(row["versione_id"]),
+                    "codice_versione": row["codice_versione"],
+                    "valido_dal": row["valido_dal"],
+                    "valido_al_prima": row["valido_al_prima"],
+                    "valido_al_dopo": row["valido_al_dopo"],
                 }
-                for row in autoclose_candidates
+                for row in da_chiudere
             ],
         }
-
-    try:
-        with transaction.atomic():
-            # 1) Auto-close precedenti PRIMA di attivare la nuova: il vincolo
-            #    GIST exclusion ex_listini_versioni_no_overlap viene verificato
-            #    al COMMIT, ma per chiarezza di intent eseguiamo gli UPDATE in
-            #    quest'ordine. Senza l'auto-close, l'UPDATE che attiva la nuova
-            #    fallirebbe per overlap con le precedenti aperte.
-            if autoclose_candidates and nuova_valido_al is not None:
-                for row in autoclose_candidates:
-                    repository.set_versione_valido_al(
-                        listino_id=listino_id,
-                        versione_id=int(row["id"]),
-                        valido_al=nuova_valido_al,
-                    )
-
-            changed = repository.change_versione_state(listino_id, versione_id, nuovo_stato)
-    except IntegrityError as exc:
-        _translate_integrity_error(exc, function_name=function_name, entity="versione")
-    ErrorManager.require(
-        changed,
-        code="E_VENDITE_LISTINO_VERSIONE_NOT_FOUND",
-        message="Versione listino non trovata.",
-        detail=f"Nessuna versione id={versione_id} per listino id={listino_id}.",
-        context={"listino_id": listino_id, "versione_id": versione_id},
-        function_name=function_name,
-        log_to_db=False,
-    )
     return fn_get_versione(listino_id, versione_id)
 
 

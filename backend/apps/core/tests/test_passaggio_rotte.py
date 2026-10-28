@@ -15,7 +15,7 @@
 Indice test eseguiti:
 1) PassaggioRotteTests.test_il_parametro_e_nel_percorso — il kwarg c'e' nella rotta
 2) PassaggioRotteTests.test_esclusivo_con_permission — mai le due fonti sullo stesso metodo
-3) PassaggioRotteTests.test_le_rotte_attese_dichiarano — DDT, reso, preventivo, ordine, contratto, offerta e commessa sul modello
+3) PassaggioRotteTests.test_le_rotte_attese_dichiarano — DDT, reso, preventivo, ordine, contratto, offerta, commessa, lotto e versione di listino sul modello
 4) PassaggioRotteTests.test_emetti_chiede_lo_stato_al_vocabolario — «Emetti» senza stato fissato
 5) PassaggioTestataDbTests.test_la_testata_e_sul_modello — mappa + matrice con l'azione
 6) PassaggioTestataDbTests.test_emetti_ha_lo_stato_di_emissione — ogni «Emetti» sul modello si emette
@@ -64,7 +64,7 @@ class PassaggioRotteTests(SimpleTestCase):
             with self.subTest(rotta=rotta.percorso, metodo=metodo):
                 self.assertIsNone(getattr(rotta.view, f"{metodo}_permission", None))
 
-    # Il presidio non deve passare a vuoto: le rotte dei giri 5-11 ci sono.
+    # Il presidio non deve passare a vuoto: le rotte dei giri 5-12 ci sono.
     # ⚠️ Il contratto (giro 8) era sul modello ma non in questo elenco: entrato
     #    col giro 9 (brief-modello-documento-vendita §13.6). La commessa (giro
     #    10) non si emette: ha la sola rotta dello stato.
@@ -81,7 +81,9 @@ class PassaggioRotteTests(SimpleTestCase):
                      "commesse/<int:commessa_id>/stato/",
                      # giro 11, il lotto (§15.8 punto 3, §15.13)
                      "lotti/<int:lotto_id>/numera/", "<int:lotto_id>/riporta-a-draft/",
-                     "lotti/<int:lotto_id>/reset-draft/"):
+                     "lotti/<int:lotto_id>/reset-draft/",
+                     # giro 12, la versione di listino (§16.5, BE-L2)
+                     "<int:listino_id>/versioni/<int:ver_id>/stato/"):
             with self.subTest(coda=coda):
                 self.assertTrue(any(p.endswith(coda) for p in percorsi), coda)
 

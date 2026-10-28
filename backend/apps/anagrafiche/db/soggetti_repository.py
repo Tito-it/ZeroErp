@@ -268,16 +268,10 @@ class SoggettiRepository:
         #    disallinea in silenzio al primo parametro in piu' dello scope. Il
         #    BB rilegge la stessa query con `LIMIT 1 OFFSET 0`.
         results, total_count = fetch_paged_with_total(sql, params, offset=offset)
-        # Normalizza ruoli (jsonb_agg): psycopg in alcune configurazioni
-        # ritorna jsonb come stringa anziche' lista. Garantiamo sempre list.
+        # `ruoli` (jsonb_agg) arriva decodificato dal lettore comune; il NULL
+        # diventa lista vuota.
         for r in results:
-            ruoli = r.get("ruoli")
-            if isinstance(ruoli, str):
-                try:
-                    r["ruoli"] = json.loads(ruoli)
-                except (ValueError, TypeError):
-                    r["ruoli"] = []
-            elif ruoli is None:
+            if r.get("ruoli") is None:
                 r["ruoli"] = []
         return results, total_count
 

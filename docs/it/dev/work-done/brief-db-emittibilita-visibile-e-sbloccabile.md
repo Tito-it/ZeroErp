@@ -1290,6 +1290,9 @@ cose, una delle quali smentiva una frase di questo stesso documento:
    Sostituito, guadagnando anche il fail-soft sul percorso del giro a vuoto
    (un payload malformato non scavalca più il messaggio parlante).
 
+   > ⚠️ **Aggiornamento 2026-10-28** (brief-modello-documento-vendita §15.17.3): `_decode_jsonb` è ritirato. Le letture per posizione usano il BB `jsonb_out` di `apps/core/db/_helpers.py`; le letture a dizionari (`row_to_dict`, `rows_to_list`, `fetch_paged_with_total`) decodificano i jsonb da sole.
+
+
 Due rischi **dichiarati e non corretti**, con la ragione: il drift dei nomi
 chiave della terna (verificato da test su entrambi i lati + pgTAP; il fail-fast
 scavalcherebbe il messaggio parlante) e l'edge `fino_a_stato` anteriore

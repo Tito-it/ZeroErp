@@ -1,15 +1,12 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-28 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16; K-S1 … K-S5 applicati e verdi, §15.17.1; tocca al BE. Giro 12, il listino: `-03` … `-32` applicati e verdi, §16.6, §16.7; tocca al BE e al FE, §16.5)
+## ⏭️ Chi riparte — aggiornato al 2026-10-28 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16; K-S1 … K-S5 applicati e verdi, §15.17.1; BE-S1, BE-S2 e lo script K-S2 fatti, §15.17.2; i jsonb dai lettori comuni, §15.17.3. Giro 12, il listino: `-03` … `-32` applicati e verdi, §16.6, §16.7; passaggio BE/FE fatto e rivisto, da committare, §16.8, §16.9)
 
-**Riparte: il team BE e FE**, sul giro 12 (la versione di listino, §16): `20261028-03` … `-31` (con i CSV) e la
-correzione `-32` sono applicati su dbdev e i pgTAP come app sono verdi (Tid, 2026-10-28, §16.6, §16.7); tocca a BE-L1 … BE-L7, FE-L1, FE-L2
-(§16.5, elenco chiuso: finché il backend non segue, l'attivazione dall'applicazione è rifiutata dalla porta e la
-colonna `stato` non c'è più). **Tid**, col dato `attiva_listino` ai profili su dbdev: letto il 2026-10-28 dopo
-l'apply, nessun profilo l'ha. E il **team BE**, sul giro 11: `20261028-01` (lo standard «Fattura di vendita» v2 in forma 6) e `-02` (la vista delle
-azioni di riga copre le segnalazioni, D-S2 = (b)) sono applicati su dbdev e i pgTAP come app sono verdi (Tid,
-2026-10-28, §15.17.1). Il **team BE** (BE-S1, il builder della fattura in forma 6, nella sequenza del §15.16.3: non prima dell'apply; BE-S2,
-la scheda Critiche dalla vista). Il passaggio
+**Riparte: Tid**, sul giro 12 (la versione di listino, §16): il passaggio BE/FE (BE-L1 … BE-L7, FE-L1, FE-L2) è
+fatto, rivisto (§16.9) e verde, da committare (§16.8); il dato `attiva_listino` ai profili su dbdev (nessun profilo l'ha: senza,
+nessuno attiva una versione). **Il team DB**: la cancellazione di una versione come verbo (§16.8, difetto del
+modello: una BOZZA con un composito oggi non si cancella). Il giro 11 lato BE è chiuso e committato (§15.17). **Tid**:
+l'ok alla correzione di `gunicorn.conf.py` (§15.17.3). Il passaggio
 BE/FE del giro 11 è committato (§15.15; suite Django sul DB provvisto 7013 test, vitest 988, verdi). Il **team DB**
 ha in più richieste a priorità bassa: ritirare `E_COMMESSA_AZIONE_NON_AMMESSA` (§14.7); R-1 e R-2 (§14.8); il
 lettore dello stato di cessazione (§11.7). **Tid**, coi dati `emetti_offerta`, `emetti_contratto`, `emetti_ordine`
@@ -125,7 +122,10 @@ contratto né conferma un ordine (§11.7). Giri 5-10: chiusi e committati (detta
 | 4-bis-duodecies-vicies-bis | ✅ **Tid** | La stampa delle origini: **forma 6** (D-S1, 2026-10-27), non `origini` accanto a `origine` | §15.15, §15.16 | 4-bis-duodecies-quindecies |
 | 4-bis-duodecies-vicies-ter | ✅ team BE | Il commit del passaggio BE/FE del giro 11 su `dev/backend-tid`, su richiesta di Tid (2026-10-27) | §15.15 | 4-bis-duodecies-undecies |
 | 4-bis-duodecies-vicies-quater | ✅ team BE | «Riporta in bozza» dalla riga del passaggio (`stato_del_modello="iniziale"`), 2026-10-27 | §15.13, §15.15 | 4-bis-duodecies-duovicies |
-| 4-bis-duodecies-vicies-septies | team BE ⏭️ | Il builder della fattura in forma 6 (`origini` al posto di `origine`), riavvio subito dopo l'apply | §15.16.3 | 4-bis-duodecies-trigies-bis |
+| 4-bis-duodecies-vicies-septies | ✅ team BE | Il builder della fattura in forma 6 (`origini` al posto di `origine`, BE-S1) e la scheda Critiche dalla vista (BE-S2), riavvio (2026-10-28) | §15.16.3, §15.17.2 | 4-bis-duodecies-trigies-bis |
+| 4-bis-duodecies-quadragies-ter | ✅ **Tid** | Lo script una tantum K-S2 sulle copie degli emittenti (dopo il riavvio del BE) e il commit di BE-S1, BE-S2 (2026-10-28) | §15.16.3, §15.17.2 | 4-bis-duodecies-vicies-septies |
+| 4-bis-duodecies-quadragies | ✅ team BE | I jsonb dai lettori comuni e la ristampa fedele (scelta di Tid, 2026-10-28) | §15.17.3 | — |
+| 4-bis-duodecies-quadragies-bis | **Tid** | Ok alla correzione di `gunicorn.conf.py` (il controllo d'avvio in un processo figlio: `kill -HUP` torna a caricare il codice nuovo) | §15.17.3 | — |
 | 4-bis-duodecies-trigies | ✅ team DB | Ricognizione e piano della richiesta del §15.16: K-S1 … K-S5, la risposta a D-S2 = (b), la richiesta BE-S1, BE-S2 (2026-10-28) | §15.17 | 4-bis-duodecies-vicies-bis |
 | 4-bis-duodecies-trigies-ter | ✅ **Tid** | D-S2 = (b) e via allo sviluppo di K-S1 … K-S5 (2026-10-28) | §15.17 | 4-bis-duodecies-trigies |
 | 4-bis-duodecies-trigies-quater | ✅ team DB | K-S1 … K-S5 scritti e provati: `20261028-01`, `-02`, script una tantum, 2 pgTAP; regressione 39 file invariata (2026-10-28) | §15.17.1 | 4-bis-duodecies-trigies-ter |
@@ -137,7 +137,9 @@ contratto né conferma un ordine (§11.7). Giri 5-10: chiusi e committati (detta
 | 4-bis-duodecies-trigies-septies | ✅ team DB | Giro 12 scritto e provato: `20261028-03` … `-31`, CSV, pgTAP nuovo 20/20, 23 pgTAP portati, uno ritirato; regressione 271 file (§16.6) | §16.4 … §16.6 | 4-bis-duodecies-trigies-sexies |
 | 4-bis-duodecies-trigies-octies | ✅ **Tid** | Apply del giro 12 (2026-10-28, 14:36) e pgTAP come app: verdi tranne `test-riferimenti-morti-v1` test 3, un difetto di `-12` (§16.7). Resta il dato `attiva_listino` ai profili su dbdev (nessun profilo l'ha, letto dopo l'apply) | §16.6 | 4-bis-duodecies-trigies-septies |
 | 4-bis-duodecies-trigies-octies-bis | ✅ **Tid** | Apply di `20261028-32` (correzione del verbo dell'attivazione, emersa da `test-riferimenti-morti-v1` come app; 2026-10-28, 15:38) e i due pgTAP come app: verdi | §16.7 | 4-bis-duodecies-trigies-octies |
-| 4-bis-duodecies-trigies-novies | team BE → FE ⏭️ | BE-L1 … BE-L7, FE-L1, FE-L2, dopo l'apply | §16.5 | 4-bis-duodecies-trigies-octies |
+| 4-bis-duodecies-trigies-novies | ✅ team BE → FE | BE-L1 … BE-L7, FE-L1, FE-L2 (2026-10-28) | §16.8 | 4-bis-duodecies-trigies-octies |
+| 4-bis-duodecies-trigies-novies-bis | **Tid** ⏭️ | Commit del passaggio BE/FE del giro 12 (con la revisione critica, §16.9); il dato `attiva_listino` ai profili su dbdev | §16.8, §16.9 | 4-bis-duodecies-trigies-novies |
+| 4-bis-duodecies-trigies-decies | team DB ⏭️ | La cancellazione di una versione come verbo: una BOZZA con un composito oggi non si cancella, e fuori dalla bozza rifiutano prima i guard delle righe | §16.8 | — |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
@@ -3809,6 +3811,97 @@ niente per chi la legge oggi), e viaggiano nello stesso apply e nello stesso pas
 **Prossimi passi**: il team BE (BE-S1, BE-S2 del
 §15.17); poi Tid lancia lo script K-S2 subito dopo il riavvio del backend in forma 6.
 
+#### 15.17.2 Il passaggio BE: BE-S1, BE-S2 (team BE, 2026-10-28)
+
+| # | Che cosa | Dove |
+| --- | --- | --- |
+| BE-S1 | `CONTEXT_VERSION = 6`: `fattura.origini` da `list_fattura_origini` (il lettore del dettaglio, dopo il cancello della testata), ogni elemento `{livello, tipo, etichetta, codice}` (`tipo` = `tipo_codice_interno`; id e uid fuori, il modello stampa e non naviga); `fattura.origine` tolta | `fattura_document_context_builder.py`; test 0, 2-ter, 4 |
+| BE-S2 | La scheda Critiche legge `uscita_blocco_reason`, `uscita_blocco_reason_key` da `vendite.vw_lotti_gruppi_azioni` (`LEFT JOIN` su `gruppo_key`, filtro costante sul lotto come BE-2); ritirata la `LATERAL` sulla `fn_check`. Nomi e posizioni invariati | `pipeline_repository.list_lotto_segnalazioni`; test 29 di `test_pipeline_repository` |
+| doc | La forma 6 della stampa | `api_fattura_dettaglio.md` |
+
+**Prove (dbdev, transazione annullata).**
+
+* Lo standard stampa la v2 (id 5064) in forma 6; le copie 77 (id 2334) e 2527 (id 3097) sono alla v7 in forma 5.
+* Il contesto della fattura 20025: `origini = [{livello 1, ORDINE_VENDITA, «Ordine», ORD0000075}]`; il render
+  dell'HTML della v2 (`_render_html_with_jinja`, StrictUndefined) stampa «Documenti di origine — Ordine -
+  ORD0000075»; con `origini = []` la sezione non c'è.
+* La scheda Critiche: sulle 29 coppie (lotto, documento) del giornale, nessuna senza riga nella vista e nessun
+  motivo diverso da quello della `fn_check` (la lettura di prima); tre lotti letti in 6-12 ms.
+* Suite Django sul DB provvisto, ruff, mypy: verdi (vedi il commit).
+
+⚠️ Da qui alla fine dello script K-S2 le fatture degli emittenti 32 e 44 non si stampano (guard della forma): è la
+finestra prevista dal §15.16.3, e lo script va lanciato subito.
+
+✅ Script K-S2 lanciato da Tid (2026-10-28): copie 77 e 2527 alla v8 in forma 6; il backend riavviato con
+`systemctl restart` (un `kill -HUP` non bastava, §15.17.3); stampa e anteprima della fattura provate in-app.
+
+#### 15.17.3 I jsonb dai lettori comuni, e la ristampa fedele (team BE, 2026-10-28)
+
+**Il difetto.** Il backend Django per psycopg 3 consegna le colonne `jsonb` come **testo** fuori dall'ORM, e
+fino a oggi ogni query se ne doveva ricordare. Chi se ne dimenticava:
+
+* la **ristampa fedele** rifiutava ogni documento, dalla sua nascita (2026-08-03): il contesto congelato arrivava
+  testo e la ristampa vuole un dizionario («senza contesto congelato»). I test del service usavano finti gia'
+  decodificati;
+* i **contesti di stampa** di cinque builder su sei portavano `meta` (testata, righe, `utility.meta`) come
+  stringa, e il contratto anche i `componenti` delle righe: una lista che un `{% for %}` avrebbe scorso carattere
+  per carattere;
+* il **repository dei documenti** serviva alle API `meta` e `context_schema` di template, versioni e asset come
+  stringa.
+
+**Il pezzo comune** (scelta di Tid, 2026-10-28): `row_to_dict`, `rows_to_list` ed `extract_paginated` (quindi
+`fetch_paged_with_total` e `fetch_con_sonda`) decodificano da soli le colonne `jsonb` e `jsonb[]`, scelte dal
+**tipo** che il cursore dichiara, senza un elenco di nomi. Restano fuori le letture per posizione, che usano
+`jsonb_out`.
+
+**Ritirate le copie della regola** sulle letture a dizionari: `_shape` di magazzino (due), di anagrafiche
+magazzino e di pagamenti; `_decodifica_jsonb` di registri, famiglie e `RigheListaMixin` (con l'attributo
+`_righe_jsonb`); `_parse_jsonb_field` delle email; `_normalize_preset_jsonb` dei preset UI; la normalizzazione dei
+ruoli dei soggetti; i `jsonb_out`/`coerce_jsonb_dict` in catalogo, emittenti, vendite (lotti, testata e scadenze
+della fattura), pipeline, indirizzi, accessi, dbops, coda lavori, documenti. Restano, perche' ricevono anche dati
+in ingresso e non solo righe del DB: `_coerce_meta_to_dict` (preventivi), le coercizioni di `meta` nei service di
+offerte e contratti, `coerceJsonbToObject` del frontend; su un oggetto gia' decodificato non fanno niente.
+
+**Prove.**
+
+* `core/tests/db/test_rows_to_list_jsonb.py`: la regola sui tre lettori, e sul driver vero (jsonb e jsonb[]
+  decodificati, `json` gia' oggetto, `text` intatto, NULL resta NULL).
+* `documenti/tests/db/test_jsonb_documenti_db.py`: i cinque lettori (template, versione per template e per id,
+  asset, documento generato); `documenti/tests/db/test_ristampa_fedele_db.py`: un preventivo generato e ristampato.
+* `vendite/tests/db/test_jsonb_contesti_stampa_db.py`: i sei builder su documenti costruiti; si guarda tutto il
+  contesto, non le chiavi note.
+* **Mutazione**: con la decodifica spenta i tre file nuovi diventano rossi (9 fallimenti, 2 errori: DDT e
+  contratto vanno in errore nel builder). Il test della ristampa restava verde finche' il repository decodificava
+  ancora da se': ritirata anche quella copia.
+* ruff, mypy puliti; suite Django sul DB provvisto: 7027 test. ⚠️ 19 errori e 3 fallimenti **non di questo
+  giro**, letti test per test: il giro 12 del listino e' applicato su dbdev senza il suo BE (colonna
+  `listini_versioni.stato` sparita, quattro codici errore senza policy, `test_genera_ordine_da_offerta`); erano
+  rossi anche senza queste modifiche. Il ventesimo, `test_regole_match_si_legge_come_oggetto`, era di questo giro
+  (chiamava `_shape`, ritirato): riscritto sul lettore vero, `get_ente_incasso`.
+
+**Revisione critica dello stesso giro (team BE, 2026-10-28).**
+
+* **Riscrittura di un valore decodificato**: un `dict` passato a `%s::jsonb` è `ProgrammingError`, e una `list`
+  viene castata ad array (provato sul driver vero). Rivisti gli 84 punti `%s::jsonb`: tutti serializzano prima
+  con `json.dumps`, nessuno rilegge da un lettore a dizionari e riscrive il valore crudo.
+* `_helpers.py`: gli OID di `jsonb` e `jsonb[]` dal registro dei tipi di psycopg (`types["jsonb"].oid` /
+  `.array_oid`), non scritti a mano; `extract_paginated` usa `_riga_dict` invece di ripeterne la decodifica.
+* `magazzino_repository`: ritirato il secondo `_JSONB_COLS`, rimasto senza lettori con `_shape`.
+* **Le letture per posizione** che decodificavano a mano passano ai due BB (ok Tid, 2026-10-28): `jsonb_out` in
+  `pipeline_repository.get_step_processes`, `vendite_repository.check_attivita_riportabili_da_emettere`,
+  `core_repository.get_user_profile`, `get_preferenza` di `ui_repository` e `dashboard_repository`, e nei sette
+  punti di `commesse_repository` (ritirato il suo `_decode_jsonb`, helper locale con alias statico);
+  `coerce_jsonb_dict` per `policy_meta`/`run_meta` di `resolve_lotto_task_execution_mode`, che già ripiegavano a
+  `{}`. ⚠️ Un JSON illeggibile ora esplode invece di diventare `[]`/`{}`: una colonna jsonb non lo contiene.
+  `test_get_step_processes_returns_empty_on_invalid_json` è diventato `..._on_null_or_non_list`.
+* Prove: i test dei moduli toccati e `test_coercizione_jsonb_dal_bb` verdi; suite `vendite`, `ui`, `core`,
+  `anagrafiche` (5436 test) con i soli rossi del giro 12 già elencati sopra.
+
+⚠️ **Il riavvio del backend.** Dal 2026-10-24 `backend/gunicorn.conf.py` chiama `django.setup()` nel processo
+principale (`on_starting`, `on_reload`): i worker nati da un `kill -HUP` ereditano i moduli gia' caricati, quindi
+il codice nuovo di quei moduli **non entra**. Serve `sudo systemctl restart zeroerp-gunicorn`. Correzione
+proposta, in attesa dell'ok di Tid: il controllo in un processo figlio usa e getta.
+
 ## 16. Giro 12: la versione di listino al modello — ricognizione, piano e domande (2026-10-28)
 
 Ultimo documento dell'ordine W-1 (Tid, 2026-10-25). Il via al giro: Tid, 2026-10-28. È il D-6 del §8.12, «parte da
@@ -4044,3 +4137,77 @@ Il dato su dbdev (Tid): l'azione `attiva_listino` ai profili che oggi gestiscono
   Nessuna chiamata a cinque argomenti negli altri changeSet del 27 e del 28 ottobre (censiti tutti).
 * **Dopo l'apply (Tid, 2026-10-28)**: `-32` eseguito su dbdev (15:38); come app `vendite/test-listino-versione-al-modello-v1`
   e `dbops/test-riferimenti-morti-v1` verdi. Il giro 12 lato DB è chiuso; resta il passaggio BE/FE (§16.5).
+
+### 16.8 Il passaggio BE/FE del giro 12 (2026-10-28)
+
+Fatto su `dev/backend-tid` l'elenco chiuso del §16.5, tutto; nulla fuori elenco tranne i test portati (sotto).
+
+| # | Fatto | Dove |
+| --- | --- | --- |
+| BE-L1 | Lo stato dal vocabolario con una JOIN; il campo della risposta resta `stato` (il contratto col client non cambia). Lista e dettaglio leggono **una** SELECT (`_SELECT_VERSIONE`: erano due copie identiche). Le scadenze: la versione in vigore da `vendite.fn_listino_versione_in_vigore`, il successore in BOZZA dal vocabolario | `listini_repository.py` |
+| BE-L2 | L'attivazione chiama `vendite.fn_attiva_versione_listino` (`attiva_versione`), l'anteprima `vendite.fn_versioni_listino_da_chiudere` (`versioni_da_chiudere`, stessa forma della risposta di prima). Ritirati `_validate_versione_state_transition`, `_plan_versione_state_change`, `count_active_righe_versione`, `find_versioni_per_autoclose`, `set_versione_valido_al`, `change_versione_state`, `_STATI_VERSIONE_VALIDI`. La rotta `/stato/` chiede solo `ATTIVA` (l'unico passaggio manuale: un altro valore è un 400 sul campo). Il 403 dalla riga del passaggio: `post_passaggio = PassaggioDocumento(vendite.listini_versioni, "ver_id", campo_stato="stato")`, anche sull'anteprima; la rotta entra nel presidio `test_passaggio_rotte` | `listini_service.py`, `views_listini.py` |
+| BE-L3 | Clone e creazione non scrivono lo stato (whitelist del clone senza `stato`, provato) | `listini_repository.clone_versione` |
+| BE-L4 | Ritirati `_VERSIONE_PATCH_ALLOWED_BY_STATE`, `_assert_versione_patch_allowed` e il controllo di `fn_delete_versione`; i rifiuti del DB arrivano col loro codice (`raise_from_database_error`, come rettifica e bundle nello stesso file). ⚠️ Vedi sotto: la cancellazione | `listini_service.py` |
+| BE-L5 | La versione del contratto (fissata o in vigore) da `vendite.fn_listino_versione_operativa`, quella corrente da `vendite.fn_listino_versione_in_vigore`: via la copia sulla colonna testo | `contratti_repository.resolve_contesto_pricing_contratto` |
+| BE-L6 | Policy rigenerata (i quattro codici, `E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI` fra i ritirati); i messaggi di ripiego dei quattro. Il registro `azioni_riga` porta già la riga: nessun codice BE | `error_policies_generated.py`, `error_messages_fallback.py` |
+| BE-L7 | La riga della versione porta `azioni_permesse` (`script.fn_doc_azioni_permesse`), `attivazione_blocco_reason` / `_key` (da `vendite.vw_listini_versioni_azioni`) e `chiusura_programmata` (ATTIVA con la fine scritta) | `_SELECT_VERSIONE` |
+| FE-L1 | «Attiva» visibile solo con `attiva` in `azioni_permesse` (fail-closed), spenta col motivo dal BB `useAzioneRiga('ATTIVA_VERSIONE_LISTINO')`; via `attiva_no_righe` e il conteggio delle righe; chiavi `vendite.listini.azione_reason.versione_spenta` e `…versione_senza_righe` (it, en) | `ListiniSearchTable.vue`, locales |
+| FE-L2 | Ritirato `statoVersioneVisibile` (`severity.js`): lista e drawer della versione mostrano lo stato del DB, e con `chiusura_programmata` un segno con «Chiusura programmata al …» | `ListiniSearchTable.vue`, `VersioneDrawer.vue` |
+
+**Test.** Nuovo `vendite/tests/db/test_listino_versione_modello_db.py` (6, sul DB vero: la riga con stato, passaggi
+e motivo; l'azione della riga; anteprima e attivazione che chiude la precedente; il rifiuto senza prezzi; i rifiuti
+per stato; le scadenze). Riscritti sul contratto nuovo i test del service (il cambio di stato instrada al verbo,
+il service non filtra per stato). Portati al modello quattro test del DB vero che scrivevano lo stato della
+versione a mano (`test_righe_erogazione_obbligatoria_db`, `test_prezzo_riga_commessa_db`,
+`test_listini_in_scadenza_db`, e tramite il primo `test_contratto_esclusione_non_modificabile_db`): la versione
+nasce BOZZA e si attiva con `dbops.fn_pgtap_porta_a_stato`. `test_genera_ordine_da_offerta_db` legge la riga
+della merce: l'ordine espande anche la riga d'appoggio della fixture del listino (§16.4), come nel pgTAP.
+Prova (2026-10-28): suite Django sul DB provvisto 7028 test verdi (1 saltato, 1 fallimento atteso), i 22 rossi del
+giro (19 errori sulla colonna `stato`, l'ordine da offerta, le due guardie sui codici) compresi; vitest 988 verdi;
+cancelli del frontend, ESLint, oxlint, build, ruff e mypy (baseline) puliti. Non provato: in-app (serve il riavvio
+del backend) e il gesto con un profilo che abbia `attiva_listino` (nessuno l'ha su dbdev).
+
+**Difetto del modello, richiesta al team DB (priorità alta: è una regola che il DB oggi non dice).** La
+cancellazione di una versione non è un verbo: la cascata sta nel backend (`listini_repository.delete_versione`:
+componenti, righe, poi la versione), perché le FK `fk_listini_righe_versione` e
+`listini_righe_componenti_listino_versione_id_fkey` sono NO ACTION. Due conseguenze, lette sulla doc e su dbdev
+il 2026-10-28:
+
+* **una BOZZA con un articolo composito non si cancella**: `trgfn_listini_righe_comp_guard_immutabilita_v5`
+  blocca la DELETE **sempre**, anche in bozza (`E_RIGA_LISTINO_VERSIONE_CHIUSA`), contro la decisione O2 («si
+  elimina la BOZZA con le sue righe»). È precedente al giro 12;
+* **fuori dalla BOZZA il rifiuto lo dà il guard delle righe**, prima di quello della versione: su una CHIUSA
+  `E_RIGA_LISTINO_VERSIONE_CHIUSA`, su una ATTIVA con una riga propagata `E_RIGA_LISTINO_PROPAGATA`. Solo una
+  ATTIVA senza righe propagate e senza compositi arriva a `E_LISTINO_VERSIONE_NON_ELIMINABILE`. Prima del giro lo
+  copriva il controllo del backend (BE-L4 l'ha ritirato, come chiesto): il gesto resta rifiutato, ma col codice
+  di un'altra regola. Il frontend propone «Elimina» solo in BOZZA.
+
+Proposta: un verbo `vendite.fn_elimina_versione_listino(p_versione_id)` (prima il guard per stato, poi le righe e
+i componenti di una bozza), oppure FK `ON DELETE CASCADE` con i guard delle righe che lasciano passare la cascata
+di una bozza; il backend chiama il verbo e ritira la cascata. La scelta è del team DB.
+
+### 16.9 Revisione critica del passaggio BE/FE (2026-10-28)
+
+Rilettura del codice non committato del §16.8, su richiesta di Tid: bug, codice fragile, duplicato o cablato.
+Due difetti corretti, una regola del 2 e i valori cablati sistemati con l'ok di Tid. Il difetto della
+cancellazione resta al team DB (§16.8, riga `4-bis-duodecies-trigies-decies`): il backend non lo risolve senza
+ricopiare la regola, e l'ordine delle DELETE non si inverte con le FK NO ACTION.
+
+| # | Trovato | Corretto | Dove |
+| --- | --- | --- | --- |
+| R-L1 | **L'anteprima (`dry_run`) non controllava niente**: leggeva il solo `fn_versioni_listino_da_chiudere` e proponeva la chiusura delle precedenti anche per una versione spenta, senza prezzi o già attiva, che il verbo poi rifiutava. Regressione rispetto a prima del giro (la vecchia anteprima faceva i controlli del service); la doc API la dava per accettabile («il pulsante è già spento»), ma la rotta è un contratto anche per chi il pulsante non lo ha | `ListiniRepository.anteprima_attivazione`: legge le versioni da chiudere, chiama **il verbo vero** in un savepoint e lo annulla (`transaction.set_rollback(True)`, il pattern di `_righe_repo_mixin`). L'anteprima rifiuta con gli stessi codici del gesto e non scrive | `listini_repository.py`, `listini_service.fn_change_versione_state`, `api_listini.md` |
+| R-L2 | **Un errore tecnico del DB diventava un 400 «dato errato»**: `_rifiuto_del_db_su_versione` aveva il ripiego `E_VENDITE_VALIDATION`, quindi un deadlock o un timeout su attiva / modifica / elimina versione arrivava al form come errore sul campo | Nessun ripiego (`fallback_code=None`): l'errore senza codice del catalogo torna com'è al middleware | `listini_service._rifiuto_del_db_su_versione` |
+| R-L3 | **Regola del 2 (FE)**: la lettura fail-closed di `azioni_permesse` era in `useLottoAzioni.verbiPlausibili` e in `ListiniSearchTable` (`puoAttivare`) | BB `azioniPermesse(riga)` / `passaggioPermesso(riga, actionKey)` (ok Tid), consumato dai due; una stringa non vale come elenco. Registrato nel catalogo BB frontend | `core/utils/azioniPermesse.js` (+ spec) |
+| R-L4 | **Codici cablati (FE)**: `'BOZZA'`/`'ATTIVA'` in lista, drawer, form e dialogo d'attivazione; l'`action_key` `'attiva'` come costante locale | `STATO_VERSIONE_LISTINO` e `PASSAGGI_VERSIONE_LISTINO` in `vendite/constants.js`, usati in `ListiniSearchTable`, `VersioneDrawer`, `VersioneFormDrawer`, `AttivaVersioneDialog`. ⚠️ «Chiudi», «Clona», «Elimina» decidono ancora dal codice dello stato: il DB non ha per loro né un passaggio in `azioni_permesse` né un motivo | come a sinistra |
+| R-L5 | `attiva_versione` faceva `int(versione_id)`, gli altri metodi no | tolto | `listini_repository.py` |
+
+**Test.** Service: aggiornato `test_change_state_dry_run_no_db_writes` (passa da `anteprima_attivazione`); nuovi
+`test_change_state_dry_run_rifiuta_come_il_verbo` e `test_change_state_errore_db_senza_codice_resta_tecnico`
+(BB `make_db_error`); indice del file completato (mancava `dry_run_stringa_400`). DB vero
+(`test_listino_versione_modello_db`, ora 7): l'anteprima senza prezzi rifiuta con `E_LISTINO_VERSIONE_SENZA_RIGHE`;
+nuovo `test_l_anteprima_non_scrive` (V2 resta BOZZA, V1 resta aperta). FE: `azioniPermesse.spec.js` (3).
+
+**Prova (2026-10-28).** Service listini + presidio rotte 63 verdi; DB vero (`ZEROERP_TEST_DB_E2E=1`) versione al
+modello, creazione e scadenze verdi; mypy pulito sui due file; vitest `src/vendite` + `src/core/utils` 269 verdi;
+ESLint pulito sui file toccati. Non rigirati: la suite Django completa, ruff (non installato nel venv locale),
+build e in-app.

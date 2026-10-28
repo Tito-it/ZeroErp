@@ -1560,6 +1560,10 @@ class DocumentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             results = rows_to_list(cursor)
+        # ⭐ `context_json` arriva decodificato dal lettore comune: fino al
+        #    2026-10-28 arrivava testo, e la ristampa fedele rifiutava OGNI
+        #    documento («senza contesto congelato»). I test del service lo
+        #    passavano gia' decodificato, e non lo vedevano.
         return results[0] if results else None
 
     # Scopo: Versione template per id SENZA filtri di stato ne' di template.

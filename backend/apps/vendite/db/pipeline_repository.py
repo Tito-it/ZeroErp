@@ -696,25 +696,23 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     --    Senza, le due sono indistinguibili — ed e' la ragione
                     --    per cui l'unica proposta a video era «annulla tutto».
                     s.gruppo_key,
-                    -- ⭐ Il motivo del pulsante spento, dalla STESSA funzione che
-                    --    la madre chiama per rifiutare (§12.5.2).
-                    -- ⛔ IL GUARD E' UN `CASE`, NON UNA `WHERE`, ed e' una
-                    --    lezione pagata: il check SOLLEVA `E_PARAMETRO_INVALIDO`
-                    --    su una chiave vuota, e le righe del GIRO ce l'hanno
-                    --    vuota per costruzione. Una `WHERE s.gruppo_key IS NOT
-                    --    NULL` dentro la LATERAL NON protegge — la sottoquery
-                    --    viene APPIATTITA e la chiamata risale nella proiezione
-                    --    esterna, dove gira su tutte le righe. Provato: apriva la
-                    --    scheda Critiche con un errore, e a fallire era la LISTA,
-                    --    non l'azione.
-                    -- ⭐ `CASE` invece garantisce che il ramo non preso non venga
-                    --    valutato: e' il meccanismo documentato per proteggere una
-                    --    funzione che puo' sollevare.
-                    -- ⚠️ Sulle righe del giro le due colonne restano `NULL`, che
-                    --    NON vuol dire «si puo' fare»: li' il verbo non ha
-                    --    oggetto, e chi rende lo distingue dalla `gruppo_key`.
-                    chk.motivi -> 0 ->> 'reason'     AS uscita_blocco_reason,
-                    chk.motivi -> 0 ->> 'reason_key' AS uscita_blocco_reason_key,
+                    -- ⭐ Il motivo del pulsante spento, letto dalla superficie del
+                    --    DB (`vendite.vw_lotti_gruppi_azioni`, quella che il
+                    --    registro `config.azioni_riga` nomina per
+                    --    ESCLUDI_DOCUMENTO_DA_GIRO), come la lista dei documenti
+                    --    del lotto (BE-2): brief-modello-documento-vendita §15.17,
+                    --    BE-S2. La vista copre anche i documenti nominati dal
+                    --    giornale (D-S2 = (b), `20261028-02`), quindi la `LEFT
+                    --    JOIN` trova la riga di ogni segnalazione con documento.
+                    -- ⛔ Prima la componeva questa query con la `fn_check`
+                    --    (dietro un `CASE`, perche' solleva su una chiave vuota),
+                    --    e il presidio del registro non poteva vederla.
+                    -- ⚠️ Sulle righe del giro le due colonne restano `NULL` (la
+                    --    vista non ha la riga), che NON vuol dire «si puo'
+                    --    fare»: li' il verbo non ha oggetto, e chi rende lo
+                    --    distingue dalla `gruppo_key`.
+                    az.uscita_blocco_reason,
+                    az.uscita_blocco_reason_key,
                     -- ⭐ IL DOCUMENTO COME LO LEGGE UNA PERSONA (`20260908-32`):
                     --    `ORD0036004` invece di `ORDINE_VENDITA:<uuid>`. Non
                     --    sostituisce la chiave, che resta in riga: la chiave la
@@ -740,18 +738,19 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     p_order_by          => %s,
                     p_order_dir         => %s
                 ) s
-                LEFT JOIN LATERAL (
-                    SELECT CASE WHEN s.gruppo_key IS NOT NULL
-                                THEN script.fn_check_documento_escludibile_da_giro(
-                                         %s, s.gruppo_key)
-                           END AS motivi
-                ) chk ON TRUE
+                -- 🔴 Il filtro sul lotto e' COSTANTE (il parametro), come in
+                --    BE-2: scende nei rami della UNION della vista, che
+                --    altrimenti calcolerebbe la check per ogni documento di
+                --    OGNI lotto visibile.
+                LEFT JOIN vendite.vw_lotti_gruppi_azioni az
+                       ON az.lotto_id = %s
+                      AND az.gruppo_key = s.gruppo_key
                 """,
                 [
                     int(lotto_id), origine, livello,
                     bool(solo_attive), bool(solo_job_corrente),
                     safe_limit, safe_offset, order_by or None, order_dir,
-                    # ⚠️ Secondo passaggio dello stesso id: la LATERAL non puo'
+                    # ⚠️ Secondo passaggio dello stesso id: la JOIN non puo'
                     #    leggerlo da `s`, perche' la funzione non lo espone fra le
                     #    colonne. L'ordine e' quello TESTUALE dell'SQL.
                     int(lotto_id),
@@ -1204,26 +1203,16 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             )
             row = cursor.fetchone()
         assert row is not None
-        policy_meta: Any = row[5]
-        run_meta: Any = row[6]
-        if isinstance(policy_meta, str):
-            try:
-                policy_meta = json.loads(policy_meta)
-            except json.JSONDecodeError:
-                policy_meta = {}
-        if isinstance(run_meta, str):
-            try:
-                run_meta = json.loads(run_meta)
-            except json.JSONDecodeError:
-                run_meta = {}
         return TaskExecutionMode(
             execution_mode=str(row[0]),
             annullabile=bool(row[1]),
             resume_mode=str(row[2]) if row[2] is not None else "",
             last_task_stato=row[3],
             last_tentativo=None if row[4] is None else int(row[4]),
-            policy_meta=policy_meta if isinstance(policy_meta, dict) else {},
-            run_meta=run_meta if isinstance(run_meta, dict) else {},
+            # Lettura per posizione: il jsonb arriva come testo, e il NULL (o un
+            # valore non-oggetto) vale «nessun meta».
+            policy_meta=coerce_jsonb_dict(row[5]),
+            run_meta=coerce_jsonb_dict(row[6]),
         )
 
     # Scopo: Apre un nuovo task run in stato IN_ESECUZIONE delegando al DB.
@@ -1715,19 +1704,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         if not row:
             return []
 
-        value = row[0]
-        if isinstance(value, list):
-            return value
-        if isinstance(value, str):
-            # In alcuni ambienti il jsonb puo` arrivare serializzato come stringa.
-            try:
-                decoded = json.loads(value)
-            except json.JSONDecodeError:
-                return []
-            if isinstance(decoded, list):
-                return decoded
-            return []
-        return []
+        # Lettura per posizione: il jsonb arriva come testo (`jsonb_out`).
+        value = jsonb_out(row[0])
+        return value if isinstance(value, list) else []
 
     # Scopo: Gestisce `has_step_processes` nel flusso applicativo del modulo.
     def has_step_processes(
@@ -1991,15 +1970,10 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 [fattura_id],
             )
             righe = rows_to_list(cursor)
-        # ⛔ Il driver restituisce `jsonb` come STRINGA. Senza questa coercion
-        #    il servizio farebbe `dict("{...}")` sul `meta` e — a seconda della
-        #    stringa — o solleverebbe un `ValueError` grezzo in mezzo a un giro
-        #    fiscale, o produrrebbe un dizionario di CARATTERI. E' la stessa
-        #    trappola gia' pagata su `list_attivita_da_fatturare`, dove il
-        #    commento la racconta: i test mockati non la vedono, perche'
-        #    iniettano gia' dei dict.
+        # `meta` arriva decodificato dal lettore comune (il servizio ci fa
+        # `dict(...)`): qui resta solo il NULL, che diventa `{}`.
         for riga in righe:
-            riga["meta"] = coerce_jsonb_dict(riga.get("meta"))
+            riga["meta"] = riga.get("meta") or {}
         return righe
 
     # Scopo: La SECONDA parte di una riga spezzata dal plafond.
@@ -2993,7 +2967,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 "lotto_id": None if r["lotto_id"] is None else int(r["lotto_id"]),
                 "stato": str(r["stato"]),
                 "tentativi": int(r["tentativi"]),
-                "ultimo_errore": jsonb_out(r["ultimo_errore"]),
+                "ultimo_errore": r["ultimo_errore"],
                 "documento_id": (
                     None if r["documento_id"] is None else int(r["documento_id"])
                 ),

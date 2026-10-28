@@ -23,7 +23,6 @@ from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
     fetch_paged_with_total,
-    jsonb_out,
     limiti_pagina,
     row_to_dict,
     sql_lateral_primo_motivo,
@@ -180,15 +179,9 @@ class AccessiRepository:
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608 — WHERE da frammenti letterali + colonne _RICERCA_ACCESSI_ALTRI, ORDER BY da whitelist, LATERAL e colonne da costanti di modulo, valori come parametri
-        rows, total = fetch_paged_with_total(sql, [*params, safe_limit, safe_offset], offset=safe_offset)
-        # ⚠️ Fuori dall'ORM il driver consegna il jsonb come `str`: `vesti`
-        #    va decodificato, o il frontend riceve una stringa al posto della
-        #    lista (e `len()` conterebbe i caratteri). Lo stesso per il
-        #    dettaglio del motivo.
-        for r in rows:
-            r["vesti"] = jsonb_out(r["vesti"])
-            r["delete_dettaglio"] = jsonb_out(r["delete_dettaglio"])
-        return rows, total
+        # `vesti` e il dettaglio del motivo arrivano decodificati dal lettore
+        # comune (`fetch_paged_with_total`).
+        return fetch_paged_with_total(sql, [*params, safe_limit, safe_offset], offset=safe_offset)
 
     # Scopo: Le credenziali di categoria SISTEMA (`anagrafiche.vw_accessi_sistema`):
     #        utenti tecnici dei processi automatici e API_CLIENT. Filtri: tipo,
@@ -274,10 +267,7 @@ class AccessiRepository:
                 """,  # noqa: S608 — frammenti da costanti di modulo, valori come parametri
                 [auth_user_id],
             )
-            cred = row_to_dict(cursor)
-        if cred is not None:
-            cred["delete_dettaglio"] = jsonb_out(cred["delete_dettaglio"])
-        return cred
+            return row_to_dict(cursor)
 
     # Scopo: Il verbo del blocco (`script.fn_blocca_credenziale`): SUPER_ADMIN
     #        (prima riga del verbo), motivo obbligatorio, anti-lockout nel guard.

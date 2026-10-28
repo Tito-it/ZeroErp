@@ -621,11 +621,12 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO": "show_toast_error",  # classe CONFLITTO_STATO
     "E_VENDITE_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA": "show_toast_error",  # classe CONFLITTO_STATO
-    # Guard DB defense-in-depth: rifiuta la transizione manuale
-    # ATTIVA -> CHIUSA (brief-db-listini-stato-chiusa-sync). La chiusura
-    # si esegue via PATCH valido_al; lo stato CHIUSA viene poi sincronizzato
-    # dal job notturno a finestra scaduta. Policy speculare a quella
-    # applicativa nel service listini_service._validate_versione_state_transition.
+    # Il guard di transizione della versione di listino rifiuta un passaggio
+    # fuori dalla matrice (brief-db-listini-stato-chiusa-sync; dal 2026-10-28
+    # legge `config.transizioni_stati_listino_versioni`, giro 12). La chiusura
+    # si programma con PATCH valido_al e la scrive il job a finestra scaduta.
+    # La copia applicativa (`listini_service._validate_versione_state_transition`)
+    # e' ritirata nello stesso giro: la regola e' solo del DB.
     "E_VERSIONE_STATO_TRANSIZIONE_INVALIDA": "show_toast_error",  # classe CONFLITTO_STATO
     "FLUSSI_ESITO_NON_AMMESSO": "highlight_form_fields",  # classe DATO_ERRATO
     "PIVA_NON_VALIDA": "highlight_form_fields",  # classe DATO_ERRATO

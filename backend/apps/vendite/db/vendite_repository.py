@@ -8,7 +8,6 @@
 # Contiene operazioni generiche sullo schema vendite che non appartengono
 # a nessun sottodominio specifico (pipeline, reset, ecc.).
 
-import json
 import logging
 import re
 from datetime import date
@@ -3789,11 +3788,9 @@ class VenditeRepository:
 
         result: list[LottoFattureRow] = []
         for row in rows:
-            # ⚠️ Il `meta` dell'errore si legge UNA volta per riga: `jsonb_out`
-            # fa un `json.loads` (dal cursore RAW il jsonb arriva come stringa),
-            # e chiamarlo una volta per chiave lo ripeterebbe a ogni chiave
-            # nuova — su una lista paginata, per ogni riga.
-            errore_meta = jsonb_out(row["errore_meta"]) or {}
+            # `errore_meta` arriva decodificato dal lettore comune; NULL = nessun
+            # errore.
+            errore_meta = row["errore_meta"] or {}
             result.append(
                 {
                     "id": int(row["id"]),
@@ -4418,14 +4415,6 @@ class VenditeRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = row_to_dict(cursor)
-        if row is not None:
-            # psycopg 3 fuori dall'ORM NON decodifica i jsonb: `meta` arriva
-            # come `str`. Senza questa riga il consumer JSON riceverebbe una
-            # STRINGA al posto dell'oggetto, e chi ci fa `.get()` muore al
-            # primo accesso (BB `jsonb_out`, nato esattamente da questo bug).
-            row["meta"] = jsonb_out(row.get("meta"))
-            row["emittente_snapshot"] = jsonb_out(row.get("emittente_snapshot"))
-            row["cliente_snapshot"] = jsonb_out(row.get("cliente_snapshot"))
         return row
 
     # Scopo: Il legame DOCUMENTO-a-documento della nota di credito
@@ -4526,15 +4515,9 @@ class VenditeRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(fattura_id)])
-            rows = rows_to_list(cursor)
-        # ⚠️ `meta` e' jsonb e da cursor RAW arriva come `str` (psycopg 3 non lo
-        # decodifica fuori dall'ORM). Senza `jsonb_out` il `_shape_scadenza` del
-        # context builder PDF esegue `meta.get("modalita_codice")` su una
-        # stringa → AttributeError → 500 alla prima scadenza con meta non-NULL.
-        # Latente finora solo perche' nessuna scadenza di test ha meta.
-        for row in rows:
-            row["meta"] = jsonb_out(row.get("meta"))
-        return rows
+            # `meta` decodificato dal lettore comune: il `_shape_scadenza` del
+            # context builder ci fa `.get("modalita_codice")`.
+            return rows_to_list(cursor)
 
     # Scopo: Annotazioni di legge della fattura per il context builder (forma 4,
     #        R-3 di brief-db-esigibilita-iva-per-cassa-emittente §11). QUALI
@@ -5649,19 +5632,11 @@ class VenditeRepository:
             )
             row = cursor.fetchone()
             assert row is not None
-        payload = row[0]
-        # ⛔ Il `jsonb` arriva come STRINGA su questa connessione, non come lista
-        #    — misurato il 2026-08-27. Senza questo ramo `list(payload)` itera i
-        #    CARATTERI: `"[]"` diventa `['[', ']']`, cioe' **due motivi** dove non
-        #    ce n'era nessuno, e il verbo risulterebbe bloccato su righe
-        #    perfettamente riportabili. Nessun errore, nessun test rosso: un
-        #    difetto plausibile a video.
-        #    ⚠️ E' lo stesso ramo difensivo di `apps.core.db._helpers.call_jsonb_fn`,
-        #    che qui non si puo' riusare perche' e' annotato `-> dict` e questa
-        #    funzione ritorna un ARRAY. Al secondo consumatore di array si estrae.
-        if isinstance(payload, str):
-            payload = json.loads(payload)
-        return list(payload or [])
+        # ⛔ Lettura per posizione: il `jsonb` arriva come STRINGA, e senza
+        #    `jsonb_out` `list(payload)` itera i CARATTERI — `"[]"` diventa
+        #    `['[', ']']`, cioe' **due motivi** dove non ce n'era nessuno, e il
+        #    verbo risulterebbe bloccato su righe perfettamente riportabili.
+        return list(jsonb_out(row[0]) or [])
 
     # Scopo: Rimette in coda di fatturazione un elenco di attivita' RESIDUE —
     #        la madre DB del verbo «Riporta da emettere».

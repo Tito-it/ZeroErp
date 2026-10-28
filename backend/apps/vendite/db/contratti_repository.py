@@ -554,29 +554,21 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             ),
             -- Versione listino: fissata se ATTIVO (qualunque stato,
             -- inclusa una CHIUSA post-attivazione perche' i prezzi
-            -- snapshot restano fatturabili), altrimenti la versione
-            -- OPERATIVA corrente per DRAFT — regola §6 brief 2026-05-16:
-            -- attivo + stato IN ('ATTIVA','CHIUSA') + validita @> data.
-            -- BOZZA esclusa: e' preparazione, non versione operativa.
+            -- snapshot restano fatturabili), altrimenti quella in vigore
+            -- oggi per DRAFT. ⛔ La regola e' del DB
+            -- (`vendite.fn_listino_versione_operativa`, la stessa che congela
+            -- all'emissione e all'attivazione): fino al 2026-10-28 qui ce
+            -- n'era una copia sulla colonna testo `stato` (giro 12, BE-L5).
             ver AS (
                 SELECT lv.id, lv.codice_versione, lv.listino_id
-                  FROM vendite.listini_versioni lv
-                  JOIN cnt ON cnt.listino_id = lv.listino_id
-                 WHERE lv.attivo = TRUE
-                   AND (
-                       (cnt.listino_versione_id IS NOT NULL
-                            AND lv.id = cnt.listino_versione_id)
-                       OR
-                       (cnt.listino_versione_id IS NULL
-                            AND lv.stato IN ('ATTIVA','CHIUSA')
-                            AND lv.validita @> (SELECT script.fn_data_operativa()))
-                   )
-                 ORDER BY (lv.stato = 'ATTIVA') DESC
-                 LIMIT 1
+                  FROM cnt
+                  JOIN vendite.listini_versioni lv
+                    ON lv.id = vendite.fn_listino_versione_operativa(
+                                   cnt.listino_id, cnt.listino_versione_id)
             ),
             -- Versione operativa CORRENTE del listino oggi (drift detection
-            -- FE 2.4 refactor-contratti-modalita): la versione ATTIVA del
-            -- listino con validita' che include oggi. Serve per confrontare
+            -- FE 2.4 refactor-contratti-modalita): la versione in vigore oggi
+            -- (`vendite.fn_listino_versione_in_vigore`). Serve per confrontare
             -- contro la versione FISSATA dal contratto e segnalare al banner
             -- se il listino ha evoluto post-attivazione contratto (il
             -- contratto resta sulla fissata, ma l'operatore vede che ne
@@ -584,12 +576,10 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             -- ver_corrente coincide con ver, quindi mai drift.
             ver_corrente AS (
                 SELECT lv.id, lv.codice_versione
-                  FROM vendite.listini_versioni lv
-                  JOIN cnt ON cnt.listino_id = lv.listino_id
-                 WHERE lv.attivo = TRUE
-                   AND lv.stato = 'ATTIVA'
-                   AND lv.validita @> (SELECT script.fn_data_operativa())
-                 LIMIT 1
+                  FROM cnt
+                  JOIN vendite.listini_versioni lv
+                    ON lv.id = vendite.fn_listino_versione_in_vigore(
+                                   cnt.listino_id, (SELECT script.fn_data_operativa()))
             )
             SELECT
                 cnt.id AS contratto_id,
