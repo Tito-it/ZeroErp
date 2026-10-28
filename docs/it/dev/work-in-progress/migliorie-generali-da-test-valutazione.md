@@ -1,6 +1,6 @@
 # Migliorie generali da test valutazione
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-27
+## ⏭️ Chi riparte — aggiornato al 2026-10-28
 
 **Riparte: il team DB** su D7 (i 24 rossi dello scratch), e **Tid** con le decisioni che tengono ferme
 le altre voci aperte di §3.
@@ -8,7 +8,7 @@ le altre voci aperte di §3.
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | Tid | D18: le cinque decisioni della catena delle istanze | `brief-db-catena-istanze-pdp.md` §6 | — |
-| 2 | Tid | D31: G-1…G-4 (canone, orario, consumo del contratto in commessa) | `brief-db-contratto-righe-periodiche-in-commessa.md` §4 | — |
+| 2 | team DB | D31: analisi della forma del canone in commessa sulle decisioni G-0 … G-6 di Tid (2026-10-28) | `brief-db-contratto-righe-periodiche-in-commessa.md` §4.1 | — |
 | 3 | Tid | D17 Q-2: riprendere o no le GUC di bypass (rimandata il 2026-10-04) | §3 D17 | — |
 | 4 | Tid | D7: i test legati a dati di macchina; il ramo «ultimo SUPER_ADMIN» | §3 D7 | — |
 | 5 | team DB | D24 (la vista del presidio C2 e i `tgargs`), D6-bis, D11-bis, D16: lavori senza decisioni aperte | §3 | il via di Tid |
@@ -561,7 +561,8 @@ la competenza di tutto il contratto: un canone diventava un addebito unico. D-2 
 `20261013-24` il push manda solo le UNA_TANTUM; la generazione per periodo del canone e le quantità di
 orario e consumo dalle loro fonti si progettano nel brief
 [brief-db-contratto-righe-periodiche-in-commessa.md](brief-db-contratto-righe-periodiche-in-commessa.md).
-📝 Aperto, non iniziato: decisioni G-1…G-4 di Tid (invariato al 2026-10-23).
+📝 Aperto, non iniziato: decisioni G-0 … G-6 prese da Tid il 2026-10-28 (solo il canone; orario e consumo
+aspettano le loro sorgenti); tocca all'analisi del team DB.
 
 ## 4. Cosa NON è un difetto
 
@@ -716,5 +717,5 @@ rossi in CI.
       codice negli argomenti: al team DB (§3). Al rimedio, il BE toglie l'esenzione di
       `E_DOC_EMITTENTE_BA_INCOERENTE`.
 * [ ] **D31** — canone, orario e consumo del contratto in commessa: brief
-      `brief-db-contratto-righe-periodiche-in-commessa` (aperto il 2026-10-13, non iniziato; decisioni G-1…G-4).
+      `brief-db-contratto-righe-periodiche-in-commessa` (aperto il 2026-10-13, non iniziato; decisioni G-0 … G-6 prese il 2026-10-28, analisi del team DB).
 ---

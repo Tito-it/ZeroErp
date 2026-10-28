@@ -1,12 +1,16 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-28 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16; K-S1 … K-S5 applicati e verdi, §15.17.1; BE-S1, BE-S2 e lo script K-S2 fatti, §15.17.2; i jsonb dai lettori comuni, §15.17.3. Giro 12, il listino: `-03` … `-32` applicati e verdi, §16.6, §16.7; passaggio BE/FE fatto e rivisto, da committare, §16.8, §16.9)
+## ⏭️ Chi riparte — aggiornato al 2026-10-28 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16; K-S1 … K-S5 applicati e verdi, §15.17.1; tocca al BE. Giro 12, il listino: `-03` … `-32` applicati, §16.6, §16.7; un pgTAP non portato, corretto, §16.8; tocca al BE e al FE, §16.5)
 
-**Riparte: Tid**, sul giro 12 (la versione di listino, §16): il passaggio BE/FE (BE-L1 … BE-L7, FE-L1, FE-L2) è
-fatto, rivisto (§16.9) e verde, da committare (§16.8); il dato `attiva_listino` ai profili su dbdev (nessun profilo l'ha: senza,
-nessuno attiva una versione). **Il team DB**: la cancellazione di una versione come verbo (§16.8, difetto del
-modello: una BOZZA con un composito oggi non si cancella). Il giro 11 lato BE è chiuso e committato (§15.17). **Tid**:
-l'ok alla correzione di `gunicorn.conf.py` (§15.17.3). Il passaggio
+**Riparte: Tid**, sul giro 12 (la versione di listino, §16): corsa come app di
+`vendite/test-listini-righe-comp-guard-coerenza-bom-v1`, portato dopo l'apply (§16.8). `20261028-03` … `-31` (con i
+CSV) e la correzione `-32` sono applicati su dbdev (Tid, 2026-10-28, §16.6, §16.7). Poi il **team BE e FE**: tocca a BE-L1 … BE-L7, FE-L1, FE-L2
+(§16.5, elenco chiuso: finché il backend non segue, l'attivazione dall'applicazione è rifiutata dalla porta e la
+colonna `stato` non c'è più). **Tid**, col dato `attiva_listino` ai profili su dbdev: letto il 2026-10-28 dopo
+l'apply, nessun profilo l'ha. E il **team BE**, sul giro 11: `20261028-01` (lo standard «Fattura di vendita» v2 in forma 6) e `-02` (la vista delle
+azioni di riga copre le segnalazioni, D-S2 = (b)) sono applicati su dbdev e i pgTAP come app sono verdi (Tid,
+2026-10-28, §15.17.1). Il **team BE** (BE-S1, il builder della fattura in forma 6, nella sequenza del §15.16.3: non prima dell'apply; BE-S2,
+la scheda Critiche dalla vista). Il passaggio
 BE/FE del giro 11 è committato (§15.15; suite Django sul DB provvisto 7013 test, vitest 988, verdi). Il **team DB**
 ha in più richieste a priorità bassa: ritirare `E_COMMESSA_AZIONE_NON_AMMESSA` (§14.7); R-1 e R-2 (§14.8); il
 lettore dello stato di cessazione (§11.7). **Tid**, coi dati `emetti_offerta`, `emetti_contratto`, `emetti_ordine`
@@ -4113,7 +4117,7 @@ Il dato su dbdev (Tid): l'azione `attiva_listino` ai profili che oggi gestiscono
   all'inserimento): lo ha mostrato un test che cambia tipologia dopo la riga d'appoggio della fixture. Tema del
   modello delle righe, preesistente, fuori dal giro.
 * `test-fn-contratto-righe-preview-nuovi-campi-v1`, `test-guard-esclusione-figlio-bundle-v1` e
-  `test-offerta-righe-espanse` leggono ancora listini dal database invece di costruirli (rossi o saltati sullo
+  `test-offerta-righe-espanse` (e `test-listini-righe-comp-guard-coerenza-bom-v1`, §16.8) leggono ancora listini dal database invece di costruirli (rossi o saltati sullo
   scratch, come prima del giro): debito di fixture preesistente.
 
 ### 16.7 Correzione dopo l'apply: il ramo «inesistente» del verbo (2026-10-28)

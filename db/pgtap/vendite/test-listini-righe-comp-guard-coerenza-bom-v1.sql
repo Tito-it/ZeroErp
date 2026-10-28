@@ -32,6 +32,9 @@
 -- attiva aperta, e una versione BOZZA su un listino esistente. Skippa solo
 -- se mancano i seed di base (uom/tipo/gruppo/spesa/iva) o nessun listino.
 -- BEGIN + ROLLBACK isolamento completo.
+--
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione si
+--   inserisce senza stato (nasce BOZZA dal trigger; la colonna stato non c'e' piu').
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -111,10 +114,11 @@ BEGIN
     RETURNING id INTO v_l;
 
     -- Versione BOZZA (obbligatoria per INSERT su listini_righe_componenti),
-    -- finestra script.fn_data_operativa()..script.fn_data_operativa()+400.
+    -- finestra script.fn_data_operativa()..script.fn_data_operativa()+400:
+    -- nasce BOZZA dal trigger.
     INSERT INTO vendite.listini_versioni(
-        listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
-    VALUES (s.listino_id, 'PGTAP_LRCGUARD_' || v_ts, script.fn_data_operativa(), script.fn_data_operativa() + 400, 'BOZZA', TRUE)
+        listino_id, codice_versione, valido_dal, valido_al, attivo)
+    VALUES (s.listino_id, 'PGTAP_LRCGUARD_' || v_ts, script.fn_data_operativa(), script.fn_data_operativa() + 400, TRUE)
     RETURNING id INTO v_versione;
 
     INSERT INTO tmp_ctx VALUES (v_p, v_f, v_l, s.iva_id, v_versione);
