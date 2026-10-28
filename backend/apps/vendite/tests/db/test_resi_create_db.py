@@ -21,7 +21,6 @@ Indice test eseguiti:
 """
 from __future__ import annotations
 
-import json
 import unittest
 
 from django.db import connection, transaction
@@ -92,8 +91,8 @@ class CreateResoDbTests(unittest.TestCase):
                     self.assertEqual(riga["billing_account_id"], mondo["billing_account_id"])
                     self.assertEqual(riga["emittente_fiscale_id"], mondo["emittente_fiscale_id"])
                     self.assertEqual(riga["meta_tipo"], "object")
-                    # ⚠️ Il cursore Django rende il jsonb come TESTO.
-                    self.assertEqual(json.loads(riga["meta"]), _META)
+                    # Il jsonb arriva decodificato dal lettore comune (`row_to_dict`).
+                    self.assertEqual(riga["meta"], _META)
 
                     # Il dettaglio porta il magazzino di rientro con le sue
                     # etichette (3-bis D-3b-a): senza indicarlo, quello della

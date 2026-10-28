@@ -21,7 +21,7 @@ from apps.config.sorgenti import (
     SORGENTE_PREVENTIVO,
 )
 from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI
-from apps.core.db._helpers import call_jsonb_fn, row_to_dict, limiti_pagina
+from apps.core.db._helpers import call_jsonb_fn, jsonb_out, row_to_dict, limiti_pagina
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db._event_log_repo_mixin import EventLogRepositoryMixin
@@ -342,24 +342,12 @@ class PushableRow:
     modalita_pagamento_id: int | None = None
 
 
-def _decode_jsonb(value: Any, default: Any) -> Any:
-    """Decodifica JSONB: gestisce str, dict, list. Unico punto di decodifica."""
-    if isinstance(value, (list, dict)):
-        return value
-    if isinstance(value, str):
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            pass
-    return default
-
-
 def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
     """Scopo: converte una tupla cursor in PushableRow usando la mappa colonne per nome."""
     def _col(name: str) -> Any:
         return row[col_map[name]]
 
-    meta_raw = _decode_jsonb(_col("meta"), {})
+    meta_raw = jsonb_out(_col("meta")) or {}
 
     # Guard: sorgente_uid e segment_key devono essere non-null dal DB.
     raw_sorgente_uid = _col("sorgente_uid")
@@ -440,10 +428,6 @@ class CommesseRepository(EventLogRepositoryMixin):
         if value is None:
             return None
         return json.dumps(value)
-
-    @staticmethod
-    def _decode_jsonb(value: Any, default: Any) -> Any:
-        return _decode_jsonb(value, default)
 
     # --- Gruppo 0: Fetch righe sorgente per push ---
 
@@ -1200,7 +1184,7 @@ class CommesseRepository(EventLogRepositoryMixin):
             )
             row = cursor.fetchone()
         assert row is not None
-        errors_raw = _decode_jsonb(row[3], [])
+        errors_raw = jsonb_out(row[3]) or []
         return BatchUpsertResult(
             total_rows=int(row[0]),
             inserted=int(row[1]),
@@ -1477,11 +1461,9 @@ class CommesseRepository(EventLogRepositoryMixin):
                     # STRINGA (misurato sul DB vero il 2026-08-16: scritto
                     # `list(valore or [])`, `'[]'` diventava `['[', ']']` — e i
                     # mock non potevano vederlo, consegnano gia' una lista).
-                    # Si decodifica con `_decode_jsonb`, l'«unico punto di
-                    # decodifica» che questo file gia' dichiara: fail-soft a
-                    # `[]` su payload malformato, che su un campo diagnostico
-                    # e' meglio di un raise che scavalca il messaggio parlante.
-                    terne_pronte=_decode_jsonb(row[13], []),
+                    # Si decodifica con `jsonb_out` (lettura per posizione);
+                    # il NULL vale «nessuna terna».
+                    terne_pronte=jsonb_out(row[13]) or [],
                 )
                 for row in cursor.fetchall()
             ]
@@ -1567,12 +1549,10 @@ class CommesseRepository(EventLogRepositoryMixin):
             )
             eventi: list[CommessaRegistroEventoRow] = []
             for r in cursor.fetchall():
-                dettaglio = r[3]
-                # ⚠️ Stesso ramo difensivo del verbo «Riporta da emettere»: il
-                #    `jsonb` puo' arrivare come STRINGA, e passarlo cosi' al
-                #    frontend gli farebbe rendere caratteri invece di campi.
-                if isinstance(dettaglio, str):
-                    dettaglio = json.loads(dettaglio)
+                # ⚠️ Lettura per posizione: il `jsonb` arriva come STRINGA, e
+                #    passarlo cosi' al frontend gli farebbe rendere caratteri
+                #    invece di campi (`jsonb_out`).
+                dettaglio = jsonb_out(r[3])
                 eventi.append(
                     {
                         "id": int(r[0]),
@@ -1807,7 +1787,7 @@ class CommesseRepository(EventLogRepositoryMixin):
             for idx, col in enumerate(self._ATTIVITA_COLS):
                 val = raw[idx]
                 if col in self._ATTIVITA_JSONB_COLS:
-                    val = self._decode_jsonb(val, {})
+                    val = jsonb_out(val) or {}
                 elif col in self._ATTIVITA_DATE_COLS and val is not None:
                     val = val.isoformat()
                 elif col in self._ATTIVITA_UUID_COLS and val is not None:
@@ -1917,7 +1897,7 @@ class CommesseRepository(EventLogRepositoryMixin):
             row = cursor.fetchone()
         if not row:
             return None
-        risultato_raw: Any = self._decode_jsonb(row[4], None)
+        risultato_raw: Any = jsonb_out(row[4])
         return CommessaPushLogRow(
             id=int(row[0]),
             run_at=row[1].isoformat() if row[1] else "",

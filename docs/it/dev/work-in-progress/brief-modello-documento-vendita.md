@@ -1,15 +1,14 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-28 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16; K-S1 … K-S5 applicati e verdi, §15.17.1; tocca al BE. Giro 12, il listino: `-03` … `-32` applicati e verdi, §16.6, §16.7; tocca al BE e al FE, §16.5)
+## ⏭️ Chi riparte — aggiornato al 2026-10-28 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16; K-S1 … K-S5 applicati e verdi, §15.17.1; BE-S1, BE-S2 e lo script K-S2 fatti, §15.17.2; i jsonb dai lettori comuni, §15.17.3. Giro 12, il listino: `-03` … `-32` applicati e verdi, §16.6, §16.7; tocca al BE e al FE, §16.5)
 
 **Riparte: il team BE e FE**, sul giro 12 (la versione di listino, §16): `20261028-03` … `-31` (con i CSV) e la
 correzione `-32` sono applicati su dbdev e i pgTAP come app sono verdi (Tid, 2026-10-28, §16.6, §16.7); tocca a BE-L1 … BE-L7, FE-L1, FE-L2
 (§16.5, elenco chiuso: finché il backend non segue, l'attivazione dall'applicazione è rifiutata dalla porta e la
 colonna `stato` non c'è più). **Tid**, col dato `attiva_listino` ai profili su dbdev: letto il 2026-10-28 dopo
-l'apply, nessun profilo l'ha. E il **team BE**, sul giro 11: `20261028-01` (lo standard «Fattura di vendita» v2 in forma 6) e `-02` (la vista delle
-azioni di riga copre le segnalazioni, D-S2 = (b)) sono applicati su dbdev e i pgTAP come app sono verdi (Tid,
-2026-10-28, §15.17.1). Il **team BE** (BE-S1, il builder della fattura in forma 6, nella sequenza del §15.16.3: non prima dell'apply; BE-S2,
-la scheda Critiche dalla vista). Il passaggio
+l'apply, nessun profilo l'ha. Il giro 11 lato BE è chiuso: la stampa della fattura in forma 6 e la scheda Critiche dalla vista (§15.17.2),
+lo script K-S2 lanciato; i jsonb dai lettori comuni e la ristampa fedele (§15.17.3) sono da committare. **Tid**:
+l'ok alla correzione di `gunicorn.conf.py` (§15.17.3). Il passaggio
 BE/FE del giro 11 è committato (§15.15; suite Django sul DB provvisto 7013 test, vitest 988, verdi). Il **team DB**
 ha in più richieste a priorità bassa: ritirare `E_COMMESSA_AZIONE_NON_AMMESSA` (§14.7); R-1 e R-2 (§14.8); il
 lettore dello stato di cessazione (§11.7). **Tid**, coi dati `emetti_offerta`, `emetti_contratto`, `emetti_ordine`
@@ -126,7 +125,9 @@ contratto né conferma un ordine (§11.7). Giri 5-10: chiusi e committati (detta
 | 4-bis-duodecies-vicies-ter | ✅ team BE | Il commit del passaggio BE/FE del giro 11 su `dev/backend-tid`, su richiesta di Tid (2026-10-27) | §15.15 | 4-bis-duodecies-undecies |
 | 4-bis-duodecies-vicies-quater | ✅ team BE | «Riporta in bozza» dalla riga del passaggio (`stato_del_modello="iniziale"`), 2026-10-27 | §15.13, §15.15 | 4-bis-duodecies-duovicies |
 | 4-bis-duodecies-vicies-septies | ✅ team BE | Il builder della fattura in forma 6 (`origini` al posto di `origine`, BE-S1) e la scheda Critiche dalla vista (BE-S2), riavvio (2026-10-28) | §15.16.3, §15.17.2 | 4-bis-duodecies-trigies-bis |
-| 4-bis-duodecies-trigies-septies | **Tid** ⏭️ | Lo script una tantum K-S2 sulle copie degli emittenti, subito dopo il riavvio del BE; poi il commit di BE-S1, BE-S2 | §15.16.3, §15.17.2 | 4-bis-duodecies-vicies-septies |
+| 4-bis-duodecies-quadragies-ter | ✅ **Tid** | Lo script una tantum K-S2 sulle copie degli emittenti (dopo il riavvio del BE) e il commit di BE-S1, BE-S2 (2026-10-28) | §15.16.3, §15.17.2 | 4-bis-duodecies-vicies-septies |
+| 4-bis-duodecies-quadragies | ✅ team BE | I jsonb dai lettori comuni e la ristampa fedele (scelta di Tid, 2026-10-28) | §15.17.3 | — |
+| 4-bis-duodecies-quadragies-bis | **Tid** | Ok alla correzione di `gunicorn.conf.py` (il controllo d'avvio in un processo figlio: `kill -HUP` torna a caricare il codice nuovo) | §15.17.3 | — |
 | 4-bis-duodecies-trigies | ✅ team DB | Ricognizione e piano della richiesta del §15.16: K-S1 … K-S5, la risposta a D-S2 = (b), la richiesta BE-S1, BE-S2 (2026-10-28) | §15.17 | 4-bis-duodecies-vicies-bis |
 | 4-bis-duodecies-trigies-ter | ✅ **Tid** | D-S2 = (b) e via allo sviluppo di K-S1 … K-S5 (2026-10-28) | §15.17 | 4-bis-duodecies-trigies |
 | 4-bis-duodecies-trigies-quater | ✅ team DB | K-S1 … K-S5 scritti e provati: `20261028-01`, `-02`, script una tantum, 2 pgTAP; regressione 39 file invariata (2026-10-28) | §15.17.1 | 4-bis-duodecies-trigies-ter |
@@ -3830,6 +3831,76 @@ niente per chi la legge oggi), e viaggiano nello stesso apply e nello stesso pas
 
 ⚠️ Da qui alla fine dello script K-S2 le fatture degli emittenti 32 e 44 non si stampano (guard della forma): è la
 finestra prevista dal §15.16.3, e lo script va lanciato subito.
+
+✅ Script K-S2 lanciato da Tid (2026-10-28): copie 77 e 2527 alla v8 in forma 6; il backend riavviato con
+`systemctl restart` (un `kill -HUP` non bastava, §15.17.3); stampa e anteprima della fattura provate in-app.
+
+#### 15.17.3 I jsonb dai lettori comuni, e la ristampa fedele (team BE, 2026-10-28)
+
+**Il difetto.** Il backend Django per psycopg 3 consegna le colonne `jsonb` come **testo** fuori dall'ORM, e
+fino a oggi ogni query se ne doveva ricordare. Chi se ne dimenticava:
+
+* la **ristampa fedele** rifiutava ogni documento, dalla sua nascita (2026-08-03): il contesto congelato arrivava
+  testo e la ristampa vuole un dizionario («senza contesto congelato»). I test del service usavano finti gia'
+  decodificati;
+* i **contesti di stampa** di cinque builder su sei portavano `meta` (testata, righe, `utility.meta`) come
+  stringa, e il contratto anche i `componenti` delle righe: una lista che un `{% for %}` avrebbe scorso carattere
+  per carattere;
+* il **repository dei documenti** serviva alle API `meta` e `context_schema` di template, versioni e asset come
+  stringa.
+
+**Il pezzo comune** (scelta di Tid, 2026-10-28): `row_to_dict`, `rows_to_list` ed `extract_paginated` (quindi
+`fetch_paged_with_total` e `fetch_con_sonda`) decodificano da soli le colonne `jsonb` e `jsonb[]`, scelte dal
+**tipo** che il cursore dichiara, senza un elenco di nomi. Restano fuori le letture per posizione, che usano
+`jsonb_out`.
+
+**Ritirate le copie della regola** sulle letture a dizionari: `_shape` di magazzino (due), di anagrafiche
+magazzino e di pagamenti; `_decodifica_jsonb` di registri, famiglie e `RigheListaMixin` (con l'attributo
+`_righe_jsonb`); `_parse_jsonb_field` delle email; `_normalize_preset_jsonb` dei preset UI; la normalizzazione dei
+ruoli dei soggetti; i `jsonb_out`/`coerce_jsonb_dict` in catalogo, emittenti, vendite (lotti, testata e scadenze
+della fattura), pipeline, indirizzi, accessi, dbops, coda lavori, documenti. Restano, perche' ricevono anche dati
+in ingresso e non solo righe del DB: `_coerce_meta_to_dict` (preventivi), le coercizioni di `meta` nei service di
+offerte e contratti, `coerceJsonbToObject` del frontend; su un oggetto gia' decodificato non fanno niente.
+
+**Prove.**
+
+* `core/tests/db/test_rows_to_list_jsonb.py`: la regola sui tre lettori, e sul driver vero (jsonb e jsonb[]
+  decodificati, `json` gia' oggetto, `text` intatto, NULL resta NULL).
+* `documenti/tests/db/test_jsonb_documenti_db.py`: i cinque lettori (template, versione per template e per id,
+  asset, documento generato); `documenti/tests/db/test_ristampa_fedele_db.py`: un preventivo generato e ristampato.
+* `vendite/tests/db/test_jsonb_contesti_stampa_db.py`: i sei builder su documenti costruiti; si guarda tutto il
+  contesto, non le chiavi note.
+* **Mutazione**: con la decodifica spenta i tre file nuovi diventano rossi (9 fallimenti, 2 errori: DDT e
+  contratto vanno in errore nel builder). Il test della ristampa restava verde finche' il repository decodificava
+  ancora da se': ritirata anche quella copia.
+* ruff, mypy puliti; suite Django sul DB provvisto: 7027 test. ⚠️ 19 errori e 3 fallimenti **non di questo
+  giro**, letti test per test: il giro 12 del listino e' applicato su dbdev senza il suo BE (colonna
+  `listini_versioni.stato` sparita, quattro codici errore senza policy, `test_genera_ordine_da_offerta`); erano
+  rossi anche senza queste modifiche. Il ventesimo, `test_regole_match_si_legge_come_oggetto`, era di questo giro
+  (chiamava `_shape`, ritirato): riscritto sul lettore vero, `get_ente_incasso`.
+
+**Revisione critica dello stesso giro (team BE, 2026-10-28).**
+
+* **Riscrittura di un valore decodificato**: un `dict` passato a `%s::jsonb` è `ProgrammingError`, e una `list`
+  viene castata ad array (provato sul driver vero). Rivisti gli 84 punti `%s::jsonb`: tutti serializzano prima
+  con `json.dumps`, nessuno rilegge da un lettore a dizionari e riscrive il valore crudo.
+* `_helpers.py`: gli OID di `jsonb` e `jsonb[]` dal registro dei tipi di psycopg (`types["jsonb"].oid` /
+  `.array_oid`), non scritti a mano; `extract_paginated` usa `_riga_dict` invece di ripeterne la decodifica.
+* `magazzino_repository`: ritirato il secondo `_JSONB_COLS`, rimasto senza lettori con `_shape`.
+* **Le letture per posizione** che decodificavano a mano passano ai due BB (ok Tid, 2026-10-28): `jsonb_out` in
+  `pipeline_repository.get_step_processes`, `vendite_repository.check_attivita_riportabili_da_emettere`,
+  `core_repository.get_user_profile`, `get_preferenza` di `ui_repository` e `dashboard_repository`, e nei sette
+  punti di `commesse_repository` (ritirato il suo `_decode_jsonb`, helper locale con alias statico);
+  `coerce_jsonb_dict` per `policy_meta`/`run_meta` di `resolve_lotto_task_execution_mode`, che già ripiegavano a
+  `{}`. ⚠️ Un JSON illeggibile ora esplode invece di diventare `[]`/`{}`: una colonna jsonb non lo contiene.
+  `test_get_step_processes_returns_empty_on_invalid_json` è diventato `..._on_null_or_non_list`.
+* Prove: i test dei moduli toccati e `test_coercizione_jsonb_dal_bb` verdi; suite `vendite`, `ui`, `core`,
+  `anagrafiche` (5436 test) con i soli rossi del giro 12 già elencati sopra.
+
+⚠️ **Il riavvio del backend.** Dal 2026-10-24 `backend/gunicorn.conf.py` chiama `django.setup()` nel processo
+principale (`on_starting`, `on_reload`): i worker nati da un `kill -HUP` ereditano i moduli gia' caricati, quindi
+il codice nuovo di quei moduli **non entra**. Serve `sudo systemctl restart zeroerp-gunicorn`. Correzione
+proposta, in attesa dell'ok di Tid: il controllo in un processo figlio usa e getta.
 
 ## 16. Giro 12: la versione di listino al modello — ricognizione, piano e domande (2026-10-28)
 

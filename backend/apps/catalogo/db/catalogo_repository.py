@@ -22,7 +22,6 @@ from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
     fetch_con_sonda,
-    jsonb_out,
     fetch_paged_with_total,
     row_to_dict,
     sql_order_clause,
@@ -592,12 +591,8 @@ class CatalogoRepository:
             [documento, documento_id, search, tipo_eccezione, articolo_padre_id],
             limite=safe_limit,
         )
-        # ⚠️ Fuori dall'ORM psycopg 3 consegna il jsonb come `str`: il FE leggerebbe
-        #    `motivo.reason_key` su una stringa, e ogni articolo sembrerebbe
-        #    ammesso. `jsonb_out` decodifica e tiene il NULL, che qui vuol dire
-        #    «ammesso».
-        for riga in righe:
-            riga["motivo"] = jsonb_out(riga["motivo"])
+        # ⚠️ `motivo` arriva decodificato dal lettore comune (`rows_to_list`): il
+        #    NULL resta NULL, e qui vuol dire «ammesso».
         return righe, troncato
 
     # Scopo: Dice se `valore` e' un tipo d'eccezione di contratto/offerta

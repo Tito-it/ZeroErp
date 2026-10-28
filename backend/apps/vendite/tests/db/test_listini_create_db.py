@@ -26,7 +26,6 @@ Indice test eseguiti:
 """
 from __future__ import annotations
 
-import json
 import unittest
 from datetime import date
 from decimal import Decimal
@@ -106,8 +105,8 @@ class CreateListiniDbTests(unittest.TestCase):
             self.assertEqual(r["emittente_soggetto_ruolo_id"], m["emittente_soggetto_ruolo_id"])
             self.assertIs(r["attivo"], True)  # omesso -> DEFAULT
             self.assertEqual(r["meta_tipo"], "object")
-            # ⚠️ Il cursore Django rende il jsonb come TESTO.
-            self.assertEqual(json.loads(r["meta"]), _META_L)
+            # Il jsonb arriva decodificato dal lettore comune (`row_to_dict`).
+            self.assertEqual(r["meta"], _META_L)
 
             # ── create_versione: `valido_al` None esplicito (nullable) ──
             versione_id = repo.create_versione(listino_id, {
@@ -132,7 +131,7 @@ class CreateListiniDbTests(unittest.TestCase):
             self.assertEqual(v["stato"], "BOZZA")  # DEFAULT
             self.assertIs(v["attivo"], True)
             self.assertEqual(v["meta_tipo"], "object")
-            self.assertEqual(json.loads(v["meta"]), _META_V)
+            self.assertEqual(v["meta"], _META_V)
 
             # ── create_riga: articolo come stringa UUID, prezzo Decimal ──
             riga_id = repo.create_riga(versione_id, {
@@ -156,7 +155,7 @@ class CreateListiniDbTests(unittest.TestCase):
             self.assertEqual(rr["prezzo"], Decimal("12.34"))
             self.assertIs(rr["attivo"], True)
             self.assertEqual(rr["meta_tipo"], "object")
-            self.assertEqual(json.loads(rr["meta"]), _META_R)
+            self.assertEqual(rr["meta"], _META_R)
 
             # ── clone_versione: il payload di `fn_clone_versione`
             #    (solo `clonable_fields`), testata forzata BOZZA ──
@@ -185,7 +184,7 @@ class CreateListiniDbTests(unittest.TestCase):
             self.assertEqual(c["stato"], "BOZZA")
             self.assertIs(c["attivo"], True)
             # `meta` NON si clona: DEFAULT del DB.
-            self.assertEqual(json.loads(c["meta"]), {})
+            self.assertEqual(c["meta"], {})
             cur.execute(
                 "SELECT articolo_id::text, uom_id, prezzo, attivo"
                 "  FROM vendite.listini_righe WHERE listino_versione_id = %s",

@@ -46,7 +46,6 @@ from django.db import connection
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
-    jsonb_out,
     rows_to_list,
     sql_order_clause,
 )
@@ -134,8 +133,8 @@ UBICAZIONI_COLONNE: frozenset[str] = frozenset(
 )
 LOTTI_COLONNE: frozenset[str] = frozenset({"codice", "data_arrivo", "data_scadenza", "attivo", "meta"})
 
-# Le colonne jsonb: decodificate in lettura (`_shape`) e dichiarate ai BB di
-# scrittura — un dict va da solo, una STRINGA e' testo JSON (regola jsonb di
+# Le colonne jsonb dichiarate ai BB di scrittura (in lettura le decodifica il
+# lettore comune, `rows_to_list`) — un dict va da solo, una STRINGA e' testo JSON (regola jsonb di
 # Tid del 2026-09-26). Il `None` su `meta` (NOT NULL) lo sistema `meta_mai_null`.
 _JSONB_COLS = ("meta",)
 # I campi opzionali che la madre `fn_crea_magazzino` riceve in `p_campi`:
@@ -210,14 +209,6 @@ def _where(conditions: list[str]) -> str:
 class AnagraficheMagazzinoRepository:
     """Accesso dati delle anagrafiche di `magazzino`: magazzini, ubicazioni, lotti."""
 
-    # Scopo: Decodifica i jsonb della riga (il driver li consegna come `str`).
-    @staticmethod
-    def _shape(row: dict[str, Any]) -> dict[str, Any]:
-        for col in _JSONB_COLS:
-            if col in row:
-                row[col] = jsonb_out(row[col]) or {}
-        return row
-
     # ══════════════════════════════════════════════════════════════
     #  Magazzini
     # ══════════════════════════════════════════════════════════════
@@ -251,7 +242,7 @@ class AnagraficheMagazzinoRepository:
             select_sql=f"{_MAGAZZINI_SELECT} {_where(conditions)}",
             params=params, order_clause=ordinamento, limit=limit, offset=offset,
         )
-        return [cast(MagazzinoRow, self._shape(r)) for r in rows], total
+        return [cast(MagazzinoRow, r) for r in rows], total
 
     # Scopo: Il magazzino, se esiste ed e' nel perimetro; `None` altrimenti.
     #        ⚠️ Anche SPENTO: il dettaglio di un'anagrafica disattivata si legge
@@ -260,7 +251,7 @@ class AnagraficheMagazzinoRepository:
         with connection.cursor() as cursor:
             cursor.execute(f"{_MAGAZZINI_SELECT} WHERE m.id = %s", [int(magazzino_id)])
             rows = rows_to_list(cursor)
-        return self._shape(rows[0]) if rows else None  # type: ignore[return-value]
+        return rows[0] if rows else None  # type: ignore[return-value]
 
     # Scopo: Crea il magazzino con la madre del DB `magazzino.fn_crea_magazzino`:
     #        `codice`, `descrizione`, `indirizzo_dettaglio_id` e i campi
@@ -330,7 +321,7 @@ class AnagraficheMagazzinoRepository:
             select_sql=f"{_UBICAZIONI_SELECT} {_where(conditions)}",
             params=params, order_clause=ordinamento, limit=limit, offset=offset,
         )
-        return [cast(UbicazioneRow, self._shape(r)) for r in rows], total
+        return [cast(UbicazioneRow, r) for r in rows], total
 
     # Scopo: L'ubicazione DEL magazzino, o `None` (inesistente, di un altro
     #        magazzino, o fuori perimetro: la coppia e' la risorsa dell'URL).
@@ -341,7 +332,7 @@ class AnagraficheMagazzinoRepository:
                 [int(ubicazione_id), int(magazzino_id)],
             )
             rows = rows_to_list(cursor)
-        return self._shape(rows[0]) if rows else None  # type: ignore[return-value]
+        return rows[0] if rows else None  # type: ignore[return-value]
 
     # Scopo: Crea l'ubicazione nel magazzino del path. Padre dello stesso
     #        magazzino e niente cicli: lo decide `trgfn_ubicazioni_guard_parent`.
@@ -399,14 +390,14 @@ class AnagraficheMagazzinoRepository:
             select_sql=f"{_LOTTI_SELECT} {_where(conditions)}",
             params=params, order_clause=ordinamento, limit=limit, offset=offset,
         )
-        return [cast(LottoRow, self._shape(r)) for r in rows], total
+        return [cast(LottoRow, r) for r in rows], total
 
     # Scopo: Il lotto, o `None`.
     def get_lotto(self, lotto_id: int) -> LottoRow | None:
         with connection.cursor() as cursor:
             cursor.execute(f"{_LOTTI_SELECT} WHERE l.id = %s", [int(lotto_id)])
             rows = rows_to_list(cursor)
-        return self._shape(rows[0]) if rows else None  # type: ignore[return-value]
+        return rows[0] if rows else None  # type: ignore[return-value]
 
     # Scopo: Crea il lotto dell'articolo. Articolo attivo, chiave (articolo,
     #        codice), scadenza >= arrivo: li decide il DB.
