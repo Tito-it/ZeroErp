@@ -1,0 +1,128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE AZIONI DI RIGA DI UN LOTTO COPRONO ANCHE I DOCUMENTI DEL GIORNALE
+#   Brief: brief-modello-documento-vendita §15.16.2 (D-S2) e §15.17 (K-S4;
+#   D-S2 = (b), Tid 2026-10-28). Corpo di partenza: 20261027-24, verificato
+#   uguale al vivo.
+#
+# ── IL CASO ─────────────────────────────────────────────────────────
+#   La scheda Critiche del lotto (vendite.fn_list_lotto_segnalazioni) ha
+#   il pulsante «togli dal giro» sulle segnalazioni che nominano un
+#   documento (fatturazione_lotti_log.gruppo_key). Il backend ne componeva
+#   il motivo chiamando la fn_check da solo, fuori dal registro
+#   config.azioni_riga: la vista copriva gruppi ed esiti, e una segnalazione
+#   puo' nominare un documento che non sta in nessuno dei due, quindi una
+#   LEFT JOIN vuota avrebbe detto «si puo' togliere».
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   La vista risponde «per ogni documento di cui il lotto parla, si puo'
+#   togliere dal giro?»; il giornale del lotto e' uno dei posti in cui il
+#   lotto parla di un documento. Terzo ramo dell'unione: le righe del
+#   giornale con gruppo_key valorizzata (le altre sono del GIRO, non hanno
+#   un documento), disabilitate comprese (la scheda le mostra a richiesta).
+#   Con il ramo nuovo la LEFT JOIN della scheda e' completa per costruzione.
+#   Stesse colonne, stesso ordine: CREATE OR REPLACE. security_invoker si
+#   riscrive (un REPLACE senza WITH lo azzera). Il giornale ha l'indice su
+#   lotto_id: col filtro sul lotto il ramo legge le sole righe del lotto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261028-02-update-vw-lotti-gruppi-azioni-documenti-del-giornale-mctit.yaml
+
+  - changeSet:
+      id: 20261028-02-update-vw-lotti-gruppi-azioni-documenti-del-giornale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_lotti_gruppi_azioni: i documenti del lotto sono anche quelli nominati dal giornale
+        (fatturazione_lotti_log.gruppo_key), cosi' la scheda Critiche legge il motivo di «togli dal
+        giro» dalla superficie del registro. Brief: brief-modello-documento-vendita §15.17 (K-S4, D-S2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_lotti_gruppi_azioni
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_log
+                columnName: gruppo_key
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_lotti_gruppi_azioni
+              WITH (security_invoker = true) AS
+              WITH documenti AS (
+                  -- I documenti di cui il lotto parla: il perimetro dichiarato,
+                  -- gli esiti (un giro di massa non dichiara il perimetro) e le
+                  -- segnalazioni del giornale che nominano un documento.
+                  SELECT lg.lotto_id, lg.gruppo_key
+                    FROM vendite.fatturazione_lotti_gruppi lg
+                  UNION
+                  SELECT le.lotto_id, le.gruppo_key
+                    FROM vendite.fatturazione_lotti_esiti le
+                  UNION
+                  -- gruppo_key NULL = segnalazione del GIRO: nessun documento.
+                  SELECT ll.lotto_id, ll.gruppo_key
+                    FROM vendite.fatturazione_lotti_log ll
+                   WHERE ll.gruppo_key IS NOT NULL
+              )
+              SELECT d.lotto_id,
+                     d.gruppo_key,
+                     -- Il PRIMO motivo: la madre solleva quello.
+                     chk.motivi -> 0 ->> 'reason'     AS uscita_blocco_reason,
+                     chk.motivi -> 0 ->> 'reason_key' AS uscita_blocco_reason_key,
+                     -- Quanti documenti vengono via insieme, solo dove
+                     -- l'azione e' viva: e' una conseguenza, non un motivo.
+                     CASE WHEN jsonb_array_length(chk.motivi) = 0
+                          THEN jsonb_array_length(
+                                   script.fn_gruppi_trascinati_da_uscita(d.lotto_id, d.gruppo_key))
+                     END AS n_trascinati
+                FROM documenti d
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_documento_escludibile_da_giro(d.lotto_id, d.gruppo_key)
+                           AS motivi
+                ) chk;
+
+              GRANT SELECT ON vendite.vw_lotti_gruppi_azioni TO zeroerp_app;
+
+              COMMENT ON VIEW vendite.vw_lotti_gruppi_azioni IS
+                  'Le AZIONI DI RIGA dei documenti di un lotto di fatturazione (Q-F5): una riga per (lotto_id, gruppo_key), sui documenti di cui il lotto parla = perimetro dichiarato (fatturazione_lotti_gruppi) UNITO agli esiti (fatturazione_lotti_esiti) e alle segnalazioni del giornale che nominano un documento (fatturazione_lotti_log.gruppo_key non NULL, D-S2): la lista dei documenti del lotto e la scheda Critiche la leggono con una LEFT JOIN completa per costruzione. uscita_blocco_reason / uscita_blocco_reason_key: il PRIMO motivo di script.fn_check_documento_escludibile_da_giro (la stessa fn_check che vendite.fn_escludi_documento_da_giro chiama per rifiutare; NULL = si puo'' togliere). n_trascinati: quanti documenti vengono via insieme (script.fn_gruppi_trascinati_da_uscita), solo dove l''azione e'' viva. E'' la superficie dell''azione ESCLUDI_DOCUMENTO_DA_GIRO nel registro config.azioni_riga. security_invoker: i soli lotti del proprio perimetro. Si filtra per lotto_id. Brief: brief-modello-documento-vendita §15.10 (Q-F5 = vista DB, Tid 2026-10-27), §15.17 (D-S2 = (b), Tid 2026-10-28).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo del 20261027-24: gruppi ed esiti.
+              CREATE OR REPLACE VIEW vendite.vw_lotti_gruppi_azioni
+              WITH (security_invoker = true) AS
+              WITH documenti AS (
+                  SELECT lg.lotto_id, lg.gruppo_key
+                    FROM vendite.fatturazione_lotti_gruppi lg
+                  UNION
+                  SELECT le.lotto_id, le.gruppo_key
+                    FROM vendite.fatturazione_lotti_esiti le
+              )
+              SELECT d.lotto_id,
+                     d.gruppo_key,
+                     chk.motivi -> 0 ->> 'reason'     AS uscita_blocco_reason,
+                     chk.motivi -> 0 ->> 'reason_key' AS uscita_blocco_reason_key,
+                     CASE WHEN jsonb_array_length(chk.motivi) = 0
+                          THEN jsonb_array_length(
+                                   script.fn_gruppi_trascinati_da_uscita(d.lotto_id, d.gruppo_key))
+                     END AS n_trascinati
+                FROM documenti d
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_documento_escludibile_da_giro(d.lotto_id, d.gruppo_key)
+                           AS motivi
+                ) chk;

@@ -1,12 +1,12 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-27 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16)
+## ⏭️ Chi riparte — aggiornato al 2026-10-28 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16; K-S1 … K-S5 applicati e verdi, §15.17.1; tocca al BE. Giro 12, il listino: ricognizione e domande, §16)
 
-**Riparte: il team DB**, sul giro 11 (la fattura), con la richiesta del §15.16 (decisione di Tid del 2026-10-27,
-D-S1 = forma 6): la versione 2 dello **standard** «Fattura di vendita» in forma 6 (le origini al posto di `origine`)
-e lo script una tantum per le copie degli emittenti su dbdev; e una domanda, D-S2, sulla superficie delle
-segnalazioni del lotto (scheda Critiche) fuori dal registro delle azioni di riga. Poi **Tid** (apply), poi il
-**team BE** (il builder della fattura in forma 6, nella sequenza del §15.16.3: non prima dell'apply). Il passaggio
+**Riparte: Tid**, sul giro 12 (la versione di listino, §16): le domande L-1 … L-5 e il via allo sviluppo. E il
+**team BE**, sul giro 11: `20261028-01` (lo standard «Fattura di vendita» v2 in forma 6) e `-02` (la vista delle
+azioni di riga copre le segnalazioni, D-S2 = (b)) sono applicati su dbdev e i pgTAP come app sono verdi (Tid,
+2026-10-28, §15.17.1). Il **team BE** (BE-S1, il builder della fattura in forma 6, nella sequenza del §15.16.3: non prima dell'apply; BE-S2,
+la scheda Critiche dalla vista). Il passaggio
 BE/FE del giro 11 è committato (§15.15; suite Django sul DB provvisto 7013 test, vitest 988, verdi). Il **team DB**
 ha in più richieste a priorità bassa: ritirare `E_COMMESSA_AZIONE_NON_AMMESSA` (§14.7); R-1 e R-2 (§14.8); il
 lettore dello stato di cessazione (§11.7). **Tid**, coi dati `emetti_offerta`, `emetti_contratto`, `emetti_ordine`
@@ -122,18 +122,22 @@ contratto né conferma un ordine (§11.7). Giri 5-10: chiusi e committati (detta
 | 4-bis-duodecies-vicies-bis | ✅ **Tid** | La stampa delle origini: **forma 6** (D-S1, 2026-10-27), non `origini` accanto a `origine` | §15.15, §15.16 | 4-bis-duodecies-quindecies |
 | 4-bis-duodecies-vicies-ter | ✅ team BE | Il commit del passaggio BE/FE del giro 11 su `dev/backend-tid`, su richiesta di Tid (2026-10-27) | §15.15 | 4-bis-duodecies-undecies |
 | 4-bis-duodecies-vicies-quater | ✅ team BE | «Riporta in bozza» dalla riga del passaggio (`stato_del_modello="iniziale"`), 2026-10-27 | §15.13, §15.15 | 4-bis-duodecies-duovicies |
-| 4-bis-duodecies-vicies-septies | team BE | Il builder della fattura in forma 6 (`origini` al posto di `origine`), riavvio subito dopo l'apply | §15.16.3 | 4-bis-duodecies-trigies-bis |
-| 4-bis-duodecies-trigies | team DB ⏭️ | Richiesta del §15.16: lo standard «Fattura di vendita» v2 in forma 6, lo script una tantum per le copie degli emittenti; risposta a D-S2 | §15.16 | 4-bis-duodecies-vicies-bis |
-| 4-bis-duodecies-trigies-bis | **Tid** | Apply del giro del §15.16, poi la sequenza del §15.16.3 (riavvio BE, script una tantum) | §15.16.3 | 4-bis-duodecies-trigies |
+| 4-bis-duodecies-vicies-septies | team BE ⏭️ | Il builder della fattura in forma 6 (`origini` al posto di `origine`), riavvio subito dopo l'apply | §15.16.3 | 4-bis-duodecies-trigies-bis |
+| 4-bis-duodecies-trigies | ✅ team DB | Ricognizione e piano della richiesta del §15.16: K-S1 … K-S5, la risposta a D-S2 = (b), la richiesta BE-S1, BE-S2 (2026-10-28) | §15.17 | 4-bis-duodecies-vicies-bis |
+| 4-bis-duodecies-trigies-ter | ✅ **Tid** | D-S2 = (b) e via allo sviluppo di K-S1 … K-S5 (2026-10-28) | §15.17 | 4-bis-duodecies-trigies |
+| 4-bis-duodecies-trigies-quater | ✅ team DB | K-S1 … K-S5 scritti e provati: `20261028-01`, `-02`, script una tantum, 2 pgTAP; regressione 39 file invariata (2026-10-28) | §15.17.1 | 4-bis-duodecies-trigies-ter |
+| 4-bis-duodecies-trigies-bis | ✅ **Tid** | Apply di `20261028-01`, `-02` (2026-10-28, 12:18) e pgTAP come app: verdi; poi la sequenza del §15.16.3 (riavvio BE, script una tantum) | §15.16.3, §15.17 | 4-bis-duodecies-trigies-quater |
 | 4-bis-duodecies-vicies-sexies | ✅ **Tid** → team DB | Il lettore `script.fn_doc_azioni_permesse` (scelta di Tid, 2026-10-27): fatto dal team DB, §15.14; il seguito BE/FE è 4-bis-duodecies-octvicies | §15.14, §15.15 | — |
-| 4-bis-duodecies-vicies-quinquies | team DB | Domanda D-S2: la superficie delle segnalazioni del lotto (scheda Critiche) che compone il motivo di «togli dal giro» fuori dal registro; Tid concorda che la scelta è del team DB (2026-10-27) | §15.15, §15.16 | — |
+| 4-bis-duodecies-vicies-quinquies | ✅ team DB | Domanda D-S2: la superficie delle segnalazioni del lotto (scheda Critiche) fuori dal registro; risposta (b), la vista le copre: confermata da Tid e scritta (`-02`, 2026-10-28) | §15.16, §15.17 | — |
+| 4-bis-duodecies-trigies-quinquies | ✅ team DB | Giro 12, la versione di listino: ricognizione, piano, domande L-1 … L-5 (2026-10-28) | §16 | via di Tid |
+| 4-bis-duodecies-trigies-sexies | **Tid** ⏭️ | L-1 … L-5 e via allo sviluppo del giro 12 | §16.3 | 4-bis-duodecies-trigies-quinquies |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 | 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1 ✅ deciso (c) nel giro 11 (§15.3); D-G2, la prova a video del lotto 2b | §10 | — |
 | 5-ter | ✅ **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, le azioni per riga: nel giro 11, con un pezzo standard (F-5, 2026-10-27); la forma del pezzo è Q-F5 | §12, §15 | — |
 
-Decisioni aperte di Tid: nessuna sul giro 11. Al team DB: la richiesta del §15.16 (forma 6 della stampa fattura, D-S2). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Committati: il passaggio BE/FE del giro 11 (§15.15, `dev/backend-tid`, 2026-10-27), il giro DB 11 (fino a `-26` PR #1964; `-27` … `-39` in `6455df27f`; `-40` … `-50` in `241279d23`, PR #1966; tutto in `dev/backend-tid`), il passaggio BE del giro 10 (§14.7, §14.8, `7901c668a`, PR #1963), il giro DB 10 coi due passi per lo scratch da zero (PR #1962), il passaggio BE del giro 9 (§13.8, PR #1961), il giro DB 9 (`52e18d887`, PR #1960), il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
+Decisioni aperte di Tid: L-1 … L-5 del giro 12 (§16.3). Da committare: il §15.17 del brief e il giro K-S1 … K-S5, applicato e verde, e il §16 (`20261028-01`, `-02`, lo script una tantum, due pgTAP, una pagina manuale). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Committati: il passaggio BE/FE del giro 11 (§15.15, `dev/backend-tid`, 2026-10-27), il giro DB 11 (fino a `-26` PR #1964; `-27` … `-39` in `6455df27f`; `-40` … `-50` in `241279d23`, PR #1966; tutto in `dev/backend-tid`), il passaggio BE del giro 10 (§14.7, §14.8, `7901c668a`, PR #1963), il giro DB 10 coi due passi per lo scratch da zero (PR #1962), il passaggio BE del giro 9 (§13.8, PR #1961), il giro DB 9 (`52e18d887`, PR #1960), il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -3689,3 +3693,209 @@ copre anche le righe delle segnalazioni. Priorità bassa: oggi non sbaglia nient
 ⚠️ Il builder non passa alla forma 6 **prima** dell'apply: col modello in forma 5 pubblicato, ogni stampa di
 fattura si fermerebbe al guard della forma (regola: il BE non va per primo sul contro-pezzo del DB).
 
+
+### 15.17 Ricognizione e piano del team DB sul §15.16 (2026-10-28)
+
+**Il percorso, censito** (doc auto-generata, changelog, pgTAP, guide; fatti di dbdev letti il 2026-10-28).
+
+* **Chi legge `fattura.origine.`**: tre versioni pubblicate valide oggi, tutte in forma 5, nessuna bozza sui
+  tre modelli. Lo standard `fattura_vendita` (template 2733, versione 1, id 3365, seed `20261020-18`) e le copie
+  degli emittenti 32 (template 77, versione 7, id 2334) e 44 (template 2527, versione 7, id 3097). Cinque
+  occorrenze in ognuna, tutte nel riquadro «Origine documento», e il riquadro è **lo stesso testo** nelle tre
+  (stesso md5, dall'`{% if fattura.origine.tipo …` fino alla tabella delle righe). Il censimento del BE (§15.16.1)
+  è confermato. Nessuna versione ha `context_schema` che nomini `origine`; nessuna copia dichiara
+  `derivata_da_versione_id` (la vista dello scarto le mostra `ORIGINE_NON_DICHIARATA`, oggi come dopo).
+* **La nota di credito** non ha un tipo d'output suo (`documenti.tipi_documento_output`: sei tipi, nessuna nota):
+  si stampa col modello della fattura, quindi le sue origini (fattura rettificata, reso, §15.11 Q-F7) arrivano
+  dalla stessa chiave `origini`, senza un pezzo in più.
+* **pgTAP**: nessuno fissa la forma 5 della fattura né il testo del riquadro. **Guide**: la guida del modello
+  (§«Le origini della fattura») dice già «a stampa e dettaglio»; `documenti-e-stampe.md` parla della forma in
+  generale. Nessuna delle due cambia.
+* ⚠️ **Lo scarto dal precedente dell'ordine** (`20261020-25`, forma 3): lì si sostituiva una **parola**
+  (`ordine.origine.tipo` → `…etichetta`, contata due volte); qui si sostituisce un **blocco** (un `if` con un
+  campo diventa un `for` su una lista). La sostituzione resta contata, sul blocco intero: il testo esatto del
+  riquadro del seed, che deve comparire **una** volta; poi, sul risultato, zero `fattura.origine.` e una
+  `fattura.origini`. Un modello ritoccato nel riquadro ferma il changeSet (o lo script) invece di pubblicare una
+  copia a metà.
+
+**Il piano (elenco chiuso).**
+
+| # | Che cosa | Dove |
+| --- | --- | --- |
+| K-S1 (R-S1) | Lo standard «Fattura di vendita», versione 2: il riquadro del §15.16.1 (corpo del BE, etichetta «Documenti di origine»), `versione_contesto = 6`, pubblicata da `script.fn_data_operativa()`; copiata dalla pubblicata valida oggi, sostituzione del blocco contata, idempotente, ferma su una bozza; nella forma del `20261020-25` | `80_data/changelog/20261028-01` |
+| K-S2 (R-S2) | Script una tantum per le copie degli emittenti: per criterio (modelli `FATTURA_VENDITA` non standard, attivi, la cui versione stampata oggi è in forma 5 e legge `fattura.origine.`), stesso blocco sostituito, forma 6, pubblicata dalla data operativa; si ferma annullando tutto su una bozza attiva o su un conteggio diverso; rilanciato non fa niente. Nella forma di `sql-una-tantum-l2b2-copie-ordine-forma-3.sql`; si cancella all'archiviazione | `work-in-progress/sql-una-tantum-copie-fattura-forma-6.sql` |
+| K-S3 (R-S3) | pgTAP nuovo: lo standard ha una sola pubblicata valida oggi, in forma 6, che legge `fattura.origini` e non contiene `fattura.origine.`; nessuna bozza; la versione 1 non è più valida oggi | `documenti/test-template-standard-fattura-forma-6-v1` |
+| K-S4 (D-S2) | La vista `vendite.vw_lotti_gruppi_azioni` copre anche i documenti nominati dal giornale del lotto: un terzo ramo dell'unione, `fatturazione_lotti_log.gruppo_key` non `NULL`. Stesse colonne, stesso ordine (`CREATE OR REPLACE VIEW`), `security_invoker` invariato | `20_code/vendite/20261028-02` |
+| K-S5 (D-S2) | Il presidio del registro esteso: su un lotto costruito con una segnalazione di un documento **fuori** da gruppi ed esiti, ogni riga di `vendite.fn_list_lotto_segnalazioni` con `gruppo_key` ha la sua riga nella vista, col motivo della `fn_check` | `config/test-azioni-riga-registro-v1`, test 8 |
+
+Prova prima dell'apply: SQL estratto di `-01` e `-02` sullo scratch, in transazione, con un secondo giro di `-01`
+(idempotenza); lo script K-S2 su dbdev in transazione annullata, con un secondo giro nella stessa transazione;
+regressione dei pgTAP che nominano modelli, forma dei dati, lotti e segnalazioni, prima e dopo.
+
+⚠️ **K-S1 e K-S2 fanno la stessa sostituzione.** Non è una copia da estrarre (regola del 2): lo script è un dato
+una tantum che si cancella all'archiviazione, come quello dell'ordine; il blocco vecchio e il nuovo sono
+scritti nei due file, e la prova li confronta.
+
+**D-S2, la risposta del team DB: (b), la vista copre le righe delle segnalazioni.** Il motivo è sul modello: la
+vista dice «per ogni documento di cui il lotto parla, si può togliere dal giro?», e il giornale del lotto è uno
+dei posti in cui il lotto parla di un documento. Oggi il dominio della vista è gruppi ∪ esiti (§15.11); col
+ramo del giornale la `LEFT JOIN` della scheda Critiche è completa **per costruzione**, e il `NULL` sulle righe
+del giro (`gruppo_key` vuota) resta quello di oggi. Completa la decisione del §15.10 (F-5, Q-F5 = vista DB), non
+la revoca. La (a) non regge sul registro: `config.azioni_riga` ha **una** riga per azione
+(`uq_azioni_riga_codice_interno`) e il BB `useAzioneRiga(codice)` la legge per codice; una seconda superficie
+vorrebbe un secondo codice per lo stesso verbo, o il registro per (azione, superficie), e una seconda vista che
+chiama la stessa `fn_check`: la seconda copia che il registro esiste per evitare. Il giornale ha l'indice su
+`lotto_id`, quindi col filtro costante del BE (BE-2, §15.15) il ramo nuovo legge le sole righe del lotto.
+
+**Richiesta al team BE, dopo l'apply (elenco chiuso; si aggiunge a quella del §15.16.3).**
+
+| # | Che cosa | Dove |
+| --- | --- | --- |
+| BE-S1 | Il builder della fattura a `CONTEXT_VERSION = 6` (§15.16.3 punto 3): invariato | builder della fattura |
+| BE-S2 | La scheda Critiche legge `uscita_blocco_reason` e `uscita_blocco_reason_key` da `vendite.vw_lotti_gruppi_azioni` (`LEFT JOIN` su `gruppo_key`, filtro costante sul lotto come in BE-2) e ritira la `LATERAL` su `script.fn_check_documento_escludibile_da_giro`; nomi e posizioni delle colonne invariati | `pipeline_repository.list_lotto_segnalazioni` |
+
+La sequenza del §15.16.3 è confermata: K-S4 e BE-S2 non hanno vincoli d'ordine (la vista estesa non cambia
+niente per chi la legge oggi), e viaggiano nello stesso apply e nello stesso passaggio BE.
+
+**Domande per Tid.** D-S2 = (b), come sopra? E il via allo sviluppo di K-S1 … K-S5. ✅ Tid, 2026-10-28: sì a entrambe.
+
+#### 15.17.1 Scritto e provato (2026-10-28; ✅ Tid: D-S2 = (b), via)
+
+| File | Che cosa |
+| --- | --- |
+| `80_data/changelog/20261028-01-template-standard-fattura-vendita-origini-forma-6` | K-S1: lo standard «Fattura di vendita» v2, forma 6, «Documenti di origine» (il corpo del §15.16.1); i due blocchi composti riga per riga (`array_to_string`), così spazi e a capo non dipendono dall'indentazione del YAML |
+| `20_code/vendite/20261028-02-update-vw-lotti-gruppi-azioni-documenti-del-giornale` | K-S4: il ramo del giornale (`gruppo_key` non `NULL`, disabilitate comprese); `security_invoker` riscritto, GRANT e COMMENT; il rollback torna al corpo del `20261027-24` |
+| `work-in-progress/sql-una-tantum-copie-fattura-forma-6.sql` | K-S2: lo script per le copie degli emittenti (si lancia **dopo** il riavvio del BE in forma 6, §15.16.3 punto 4) |
+| `db/pgtap/documenti/test-template-standard-fattura-forma-6-v1.sql` | K-S3, nuovo, 6 test |
+| `db/pgtap/config/test-azioni-riga-registro-v1.sql` | K-S5: test 8, su un lotto costruito con una segnalazione di un documento fuori da gruppi ed esiti (e una del giro, che non conta) |
+| `dbzero/vendite/manual/vw_lotti_gruppi_azioni.md` | il dominio della vista, le due letture del BE |
+
+**Prove.**
+
+* **Scratch `zeroerp_ruoli`, come owner, transazione annullata**: SQL estratto dei due changeSet (dal YAML, non
+  riscritto), con il `-01` lanciato due volte. Lo standard passa a v1 `OBSOLETA` `[2000-01-01, 2026-10-28)` e v2
+  `PUBBLICATA` forma 6 dal 2026-10-28, zero `fattura.origine.`; il secondo `-01` non fa niente (idempotente). La
+  vista resta `security_invoker`, l'app la legge.
+* **pgTAP, senza e con l'SQL del giro** (dopo la riga `BEGIN;`): il nuovo 2/6 → 6/6; il registro 7/8 → 8/8 (il
+  test 8 è rosso senza il ramo del giornale).
+* **Regressione**: 39 file che nominano modelli, forma dei dati, lotti, giornale, segnalazioni, registro: cambiano
+  solo i due di questo giro. Sei rossi già presenti, **le stesse asserzioni** prima e dopo: test di RLS e di scope
+  rossi da owner per costruzione (`test-documenti-generati-eventi` 16, `test-documenti-template-standard-app-v1`
+  1-5, `test-annullamento-chiude-la-vita-v1`, `test-lotti-fermi-verdetto-a-db-v1`), `test-uscita-documento-dal-giro-v1`
+  (un errore senza un `not ok`), `test-vw-giornale-entita` (si ferma su `p_tipo_doc_fiscale_id obbligatorio`,
+  fixture d'altro cantiere).
+* **dbdev, transazione annullata**: `-01`, `-02` e lo script K-S2 insieme. Lo script porta le copie 77
+  (emittente 32) e 2527 (emittente 44) dalla versione 7 alla 8, forma 6; con un secondo giro nella stessa
+  transazione non trova più niente. Alla fine i tre modelli che stampano la fattura sono in forma 6 e nessuno
+  legge `fattura.origine.`. La vista estesa: 155 righe, nessun doppione.
+* Cancelli statici verdi; `guardrail_pgtap_preambolo` resta rosso solo per
+  `config/test-grammatica-presidio-tipo-documento-v1`, non di questo giro (§15.11).
+* `%TYPE` (richiamo di Tid, 2026-10-28): nel blocco del `-01` e nello script, i due blocchi e le chiavi sono
+  `html_template%TYPE`, la data di pubblicazione `valido_dal%TYPE`, la forma `versione_contesto%TYPE`; restano
+  `text`/`integer` solo il nome del brief (un valore di `meta`) e i conteggi, col commento. Prove rifatte dopo:
+  stessi esiti (6/6, 8/8, dbdev come sopra).
+* Non provato prima dell'apply: i pgTAP **come app** (li lancia Tid), il giro BE.
+* ✅ **Apply su dbdev** (Tid, 2026-10-28 12:18): `-01` e `-02` `EXECUTED`; lo standard stampa la versione 2 in forma
+  6, le copie 77 e 2527 sono ancora alla 7 in forma 5 (le porta lo script, dopo il giro BE). ✅ **pgTAP come app**:
+  verdi.
+
+**Prossimi passi**: il team BE (BE-S1, BE-S2 del
+§15.17); poi Tid lancia lo script K-S2 subito dopo il riavvio del backend in forma 6.
+
+## 16. Giro 12: la versione di listino al modello — ricognizione, piano e domande (2026-10-28)
+
+Ultimo documento dell'ordine W-1 (Tid, 2026-10-25). Il via al giro: Tid, 2026-10-28. È il D-6 del §8.12, «parte da
+zero»: la guida §10 segna ❌ in quattro colonne su sei. Brief vicini verificati: `brief-db-provenienza-prezzo-segue-il-prezzo`
+(la provenienza del prezzo sulle righe, non lo stato della versione) e `listini-fornitori` (analisi degli
+acquisti, ferma): nessuno tocca lo stato della versione.
+
+### 16.1 Com'è oggi (doc auto-generata, dbdev, `backend/`, `frontend/`, 2026-10-28)
+
+**Il database.**
+
+* `vendite.listini_versioni.stato` è `varchar(16)` col `CHECK` `chk_listini_versioni_stato` (BOZZA, ATTIVA, CHIUSA),
+  DEFAULT `'BOZZA'`: nessun vocabolario, nessuna matrice. La versione non è nella mappa delle testate
+  (`script.fn_doc_stato_modello`), che vuole una colonna d'id verso un vocabolario.
+* Lo stato regge due vincoli: `chk_listini_versioni_chiusa_con_fine` (CHIUSA ⇒ `valido_al`) e l'esclusione
+  `ex_listini_versioni_no_overlap` (niente sovrapposizioni fra versioni attive **e chiuse** dello stesso listino,
+  `WHERE stato IN ('ATTIVA','CHIUSA')`).
+* I passaggi sono scritti nel guard `trgfn_listini_versioni_guard_transizione_stato` (`20260424-01`): BOZZA → ATTIVA
+  sempre; ATTIVA → CHIUSA solo con `valido_al` passato; nient'altro.
+* **Nessuna funzione DB scrive lo stato a mano**. Lo scrive il job `chiusura_scadenze_daily`
+  (`dbops.fn_apply_chiusura_scadenze`, riga 1 di `dbops.automazione_chiusura_scadenze`, `tipo_stato = VARCHAR`):
+  un `UPDATE` dinamico ATTIVA → CHIUSA a finestra scaduta. Per le testate sotto la porta il job chiama il verbo di
+  chiusura, ma il verbo è scritto nel corpo per **una** testata (`IF … = 'vendite.contratti' THEN
+  vendite.fn_cessa_contratti_scaduti()`).
+* Lettori dei letterali di stato: nove funzioni (`fn_listino_versione_in_vigore`, `fn_resolve_prezzo_listino_v2_esito`,
+  `fn_check_listino_congelabile`, `fn_check_listino_provenienza`, `fn_listino_ha_storia`,
+  `fn_articolo_righe_vive_non_ammesse`, i guard di righe e componenti, la fixture `fn_pgtap_crea_listino`); le viste
+  `vw_contratti_lista` e `vw_offerte_commerciali_lista` leggono la tabella. Le righe sono già immutabili fuori da
+  BOZZA nel DB (`trgfn_listini_righe_guard_stato`, `…_comp_guard_immutabilita_v5`).
+* Nessuna azione di processo per il listino; la nascita in BOZZA la dice il DEFAULT, senza guard (P-3 l'aveva
+  lasciata fuori finché non avesse un vocabolario).
+
+**Il backend e il frontend** (lo stato lo scrive il backend, `listini_repository.change_versione_state`, un
+`UPDATE`; permesso: il livello sul modello `vendite.listino`). Regole del dominio che stanno **solo** lì:
+
+| Regola | Dove |
+| --- | --- |
+| i passaggi (copia del guard) e il rifiuto dedicato di ATTIVA → CHIUSA | `listini_service._validate_versione_state_transition` (cita un brief che non esiste, §3.3) |
+| l'attivazione vuole una versione attiva e **almeno una riga** (standalone + compositi distinti) | `_plan_versione_state_change`, `count_active_righe_versione` |
+| all'attivazione si **chiudono le versioni precedenti** (`valido_al` = decorrenza nuova − 1), nella stessa transazione, con l'anteprima (`dry_run`) | `_plan_versione_state_change`, `find_versioni_per_autoclose`, `set_versione_valido_al` |
+| campi modificabili per stato (BOZZA: tutti; ATTIVA: `valido_al`; CHIUSA: nessuno) | `_VERSIONE_PATCH_ALLOWED_BY_STATE` (nel DB c'è solo la metà di CHIUSA, sulle date) |
+| si cancella solo una versione in BOZZA | `fn_delete_versione` |
+| righe solo in BOZZA | `_assert_versione_bozza_for_riga_op`, `fn_rettifica_controllata_riga` (copia del guard DB) |
+| lo «stato visibile»: CHIUSA se `valido_al` è passato anche se il DB dice ATTIVA (il job non è ancora passato); «Attiva» spento senza righe | `ListiniSearchTable.vue` (`statoVersioneVisibile`, `righe_count`) |
+
+Le fixture: 13 pgTAP scrivono lo stato della versione con un `UPDATE` (su 31 che leggono la tabella).
+
+### 16.2 Il piano (secondo le decisioni del §16.3)
+
+| Pezzo | Che cosa |
+| --- | --- |
+| vocabolario | `config.stati_doc_listino_versioni` (CSV), BOZZA, ATTIVA, CHIUSA, con le colonne dei gemelli (stato iniziale, …) |
+| colonna | `stato` testo → id verso il vocabolario (L-1); CHECK, esclusione e lettori portati |
+| matrice | `config.transizioni_stati_listino_versioni` (CSV): BOZZA → ATTIVA manuale (con l'azione di L-3), ATTIVA → CHIUSA di processo (L-2); il guard di transizione legge la matrice, gli `IF` si ritirano |
+| mappa | la versione entra in `script.fn_doc_stato_modello`; la porta `_a05_` montata |
+| nascita | il guard della nascita nello stato iniziale (N-1), come le altre testate |
+| verbi | `fn_attiva_versione_listino` (L-4: le regole dell'attivazione e la chiusura delle precedenti, DEFINER, sul verbo comune), la proiezione della chiusura a scadenza (L-2) |
+| job | il verbo di chiusura dichiarato nella riga di `dbops.automazione_chiusura_scadenze` (L-2), non nel corpo |
+| capability | i motivi dell'attivazione da una `fn_check` (niente righe, versione spenta), per riga di lista con `azioni_permesse` |
+| regole per stato | L-5 |
+| fixture | i 13 `UPDATE` al verbo o a `fn_pgtap_porta_a_stato`; `fn_pgtap_crea_listino` sul vocabolario |
+| guida | riga della versione di listino al §10; `gestione-listini` rimanda al modello |
+
+**Richiesta al BE e al FE** (a giro DB provato, elenco chiuso come sempre): l'attivazione dal verbo (con l'anteprima
+dal lettore DB), il 403 dalla riga del passaggio, le copie della tabella del §16.1 ritirate, il kebab da
+`azioni_permesse` e dal motivo del DB, lo «stato visibile» del frontend ritirato (L-2).
+
+### 16.3 Domande per Tid
+
+* **L-1. La forma dello stato.** Proposta: **colonna d'id** verso il vocabolario, come le otto testate già al modello:
+  i pezzi comuni (mappa, verbo, porta, `fn_doc_azioni_permesse`) la presuppongono. Il costo è l'esclusione
+  `ex_listini_versioni_no_overlap`: il suo `WHERE` non può leggere il vocabolario, quindi si riscrive sugli **id del
+  seed** (CSV con id espliciti, stabili), con un presidio pgTAP che li confronta coi codici ATTIVA e CHIUSA; e la
+  conversione sul posto della colonna, coi nove lettori DB e quelli del backend. Alternativa: la colonna resta il
+  **codice**, con una FK sul codice del vocabolario (come lo stato del job del lotto, P-1): esclusione e lettori
+  restano com'è, ma i pezzi comuni vanno estesi a una testata che scrive il codice, cioè si tocca il verbo comune di
+  tutte le testate.
+* **L-2. CHIUSA.** Resta uno stato **scritto**, da un passaggio di processo (ATTIVA → CHIUSA, `manuale = false`) che
+  scrive solo la proiezione della scadenza, `vendite.fn_chiudi_versioni_listino_scadute`, chiamata dal job: gemello
+  di `fn_cessa_contratti_scaduti`. Regola del 2: la seconda testata sotto la porta col suo verbo di chiusura, quindi il
+  verbo si **dichiara** in una colonna di `dbops.automazione_chiusura_scadenze` e l'`IF` sul contratto si ritira.
+  Lo «stato visibile» del frontend si ritira: fra la scadenza e il passaggio del job la versione è ATTIVA con
+  `valido_al` passato, e la lista la mostra con la chiusura programmata (come la cessazione programmata del
+  contratto), letta dal DB. Alternativa: CHIUSA **derivata** dalla data (non più scritta): toglie il job e la
+  finestra, ma lo stato non è più un dato e l'esclusione e il CHECK cambiano significato.
+* **L-3. L'azione.** L'attivazione è il passaggio pesante del listino: mette i prezzi in uso e chiude la versione
+  precedente. Proposta: un'azione nuova, `attiva_listino`, sulla riga BOZZA → ATTIVA (gemella di `emetti_*`); va
+  concessa ai profili che oggi gestiscono i listini (dato su dbdev, Tid). Alternativa: nessuna azione, decide il
+  livello sul documento (M-3), come oggi.
+* **L-4. Le regole dell'attivazione nel verbo.** Proposta: `vendite.fn_attiva_versione_listino(p_versione_id)`, una
+  transazione: prima ciò che vieta (versione spenta, nessuna riga: `fn_check_versione_listino_attivabile`, motivi
+  anche per la capability), poi la chiusura delle precedenti (`valido_al` = decorrenza − 1), poi lo stato dal verbo
+  comune. Più il lettore dell'anteprima (le versioni che verrebbero chiuse), per il `dry_run`. Le copie del backend
+  si ritirano. Non è una revoca: la regola D3 di `sviluppo-listini-v2` resta com'è, cambia la sede.
+* **L-5. Le regole per stato fuori dal passaggio** (campi modificabili di ATTIVA e CHIUSA, cancellazione solo in
+  BOZZA): oggi solo nel backend. Proposta: **nello stesso giro**, nel guard della versione (una regola, il backend
+  traduce il codice). Alternativa: un brief a parte, fuori dal modello del cambio di stato.
