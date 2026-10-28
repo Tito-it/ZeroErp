@@ -205,6 +205,10 @@ function handleOpenDetail() {
 }
 
 // Scopo: reset stato quando il drawer viene aperto
+// ⚠️ `immediate`: la topbar monta il drawer alla PRIMA apertura
+//    (`ricercaMontata` in AppTopbar), quindi nasce con `visible` gia' true e
+//    un watch senza `immediate` non scatta mai su quella apertura — la combo
+//    dei tipi ruolo restava vuota fino alla seconda.
 watch(() => props.visible, (newVal) => {
   if (newVal) {
     if (tipiRuolo.value.length === 0) {
@@ -212,7 +216,7 @@ watch(() => props.visible, (newVal) => {
     }
     expandedRows.value = {}
   }
-})
+}, { immediate: true })
 </script>
 
 <template>
