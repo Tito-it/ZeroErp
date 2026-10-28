@@ -20,9 +20,40 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from django.db import connection, transaction
+
+
+# Scopo: Un cursore che vede lo scope di DIRITTO dell'utente: la GUC
+#        dell'emittente attivo e' vuota finche' il blocco e' aperto, e torna
+#        quella di prima alla sua chiusura.
+#
+#        ⛔ Il ripristino e' esplicito, e non e' un di piu': `SET LOCAL` si
+#        annulla al commit della transazione ESTERNA, non all'uscita di
+#        `transaction.atomic()`, che dentro una richiesta e' un savepoint.
+#        Dal 2026-09-25 `SolaLetturaMiddleware` apre una transazione attorno a
+#        ogni GET: in `/me/` la GUC restava vuota per il resto della
+#        richiesta, e il perimetro calcolato dopo diceva «tutti gli emittenti»
+#        a chi ne aveva scelto uno.
+#        Su un errore non serve ripristinare: il rollback del blocco annulla
+#        anche il `SET LOCAL`.
+@contextmanager
+def _cursore_scope_di_diritto() -> Iterator[Any]:
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT current_setting('app.current_emittente_id', true), "
+                "set_config('app.current_emittente_id', '', true)"
+            )
+            precedente = cursor.fetchone()[0]
+            yield cursor
+            cursor.execute(
+                "SELECT set_config('app.current_emittente_id', %s, true)",
+                [precedente or ""],
+            )
 
 
 class EmittenteAttivoRepository:
@@ -98,33 +129,28 @@ class EmittenteAttivoRepository:
     #        l'emittente esiste ed è ATTIVO, e rientra nello scope di diritto
     #        dell'utente (super admin: qualunque; operatore: la sua whitelist).
     #
-    #        ⚠️ `SET LOCAL` dell'emittente attivo a stringa vuota, nella stessa
-    #        transazione della verifica: dal 2026-08-04
-    #        `fn_check_user_emittente_scope` **legge la GUC** e nega tutto ciò
-    #        che non coincide con l'emittente corrente. Senza azzerarla, un
-    #        super admin dentro A che chiede «posso passare ad B?» si
-    #        sentirebbe rispondere di no — e resterebbe prigioniero della sua
-    #        stessa scelta. Azzerata in `LOCAL`, si ripristina da sé al commit.
+    #        ⚠️ Lo scope di DIRITTO, col cursore `_cursore_scope_di_diritto`:
+    #        dal 2026-08-04 `fn_check_user_emittente_scope` **legge la GUC** e
+    #        nega tutto ciò che non coincide con l'emittente corrente. Senza
+    #        azzerarla, un super admin dentro A che chiede «posso passare ad
+    #        B?» si sentirebbe rispondere di no — e resterebbe prigioniero
+    #        della sua stessa scelta.
     #
     #        La canonica resta l'unica sede della regola: qui si toglie di
     #        mezzo il filtro di sessione per interrogare lo scope di DIRITTO,
     #        non si riscrive il criterio.
     def is_scelta_valida(self, auth_user_id: int, emittente_fiscale_id: int) -> bool:
-        with transaction.atomic():
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT set_config('app.current_emittente_id', '', true)"
-                )
-                cursor.execute(
-                    """
-                    SELECT ef.attivo
-                       AND script.fn_check_user_emittente_scope(%s, ef.id)
-                      FROM anagrafiche.emittenti_fiscali ef
-                     WHERE ef.id = %s
-                    """,
-                    [auth_user_id, emittente_fiscale_id],
-                )
-                row = cursor.fetchone()
+        with _cursore_scope_di_diritto() as cursor:
+            cursor.execute(
+                """
+                SELECT ef.attivo
+                   AND script.fn_check_user_emittente_scope(%s, ef.id)
+                  FROM anagrafiche.emittenti_fiscali ef
+                 WHERE ef.id = %s
+                """,
+                [auth_user_id, emittente_fiscale_id],
+            )
+            row = cursor.fetchone()
         return bool(row[0]) if row else False
 
     # Scopo: Emittenti fra cui l'utente può scegliere — alimenta la combo di
@@ -140,28 +166,24 @@ class EmittenteAttivoRepository:
     def list_selezionabili(
         self, auth_user_id: int, solo_id: int | None = None
     ) -> list[dict[str, Any]]:
-        with transaction.atomic():
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT set_config('app.current_emittente_id', '', true)"
-                )
-                cursor.execute(
-                    """
-                    SELECT ef.id,
-                           ef.codice,
-                           s.ragione_sociale_completa,
-                           ef.soggetto_ruolo_id
-                      FROM anagrafiche.emittenti_fiscali ef
-                      JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
-                      JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
-                     WHERE ef.attivo
-                       AND script.fn_check_user_emittente_scope(%s, ef.id)
-                       AND (%s::bigint IS NULL OR ef.id = %s::bigint)
-                     ORDER BY s.ragione_sociale_completa, ef.codice
-                    """,
-                    [auth_user_id, solo_id, solo_id],
-                )
-                rows = cursor.fetchall()
+        with _cursore_scope_di_diritto() as cursor:
+            cursor.execute(
+                """
+                SELECT ef.id,
+                       ef.codice,
+                       s.ragione_sociale_completa,
+                       ef.soggetto_ruolo_id
+                  FROM anagrafiche.emittenti_fiscali ef
+                  JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
+                  JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
+                 WHERE ef.attivo
+                   AND script.fn_check_user_emittente_scope(%s, ef.id)
+                   AND (%s::bigint IS NULL OR ef.id = %s::bigint)
+                 ORDER BY s.ragione_sociale_completa, ef.codice
+                """,
+                [auth_user_id, solo_id, solo_id],
+            )
+            rows = cursor.fetchall()
         return [
             {
                 "emittente_fiscale_id": int(r[0]),
