@@ -3337,7 +3337,6 @@
       "aggiungi_versione": "Aggiungi Versione",
       "aggiungi_riga": "Aggiungi Riga",
       "attiva": "Attiva",
-      "attiva_no_righe": "Aggiungi almeno una riga di listino prima di attivare",
       "chiudi": "Chiudi",
       "test_prezzo": "Test Prezzo",
       "esegui_test": "Esegui Test",
@@ -3387,6 +3386,11 @@
       "attivazione_valido_al_prima": "Valido al (prima)",
       "attivazione_valido_al_dopo": "Valido al (dopo)",
       "conferma_attivazione": "Conferma e attiva",
+      "chiusura_programmata_al": "Chiusura programmata: la versione resta attiva fino al {data} compreso, poi il job la chiude.",
+      "azione_reason": {
+        "versione_spenta": "La versione è spenta: riaccenderla prima di attivarla.",
+        "versione_senza_righe": "La versione non ha prezzi: aggiungere almeno una riga prima di attivarla."
+      },
       "elimina_versione": "Elimina versione",
       "versione_eliminata": "Versione eliminata",
       "elimina_listino": "Elimina listino (mai usato)",

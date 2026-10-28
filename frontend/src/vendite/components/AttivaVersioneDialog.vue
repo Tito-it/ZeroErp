@@ -16,6 +16,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { changeVersioneStato, updateVersione } from '../api/listini'
 import { displayDate, toDateString, parseIsoDate } from '../../core/utils/date'
 import { DATE_FORMAT } from '../../core/constants'
+import { STATO_VERSIONE_LISTINO } from '../constants'
 import AppDialog from '../../core/components/AppDialog.vue'
 // DataTable grezza: anteprima dry_run delle versioni che l'attivazione
 // chiuderebbe, dentro il dialog di conferma — non paginata, non configurabile.
@@ -54,10 +55,11 @@ async function loadPreview() {
   previewError.value = null
   previewLoading.value = true
   try {
-    // dry_run=true: il backend valida tutto e restituisce la lista versioni che
-    // verrebbero auto-chiuse, senza scrivere nulla nel DB.
+    // dry_run=true: il verbo del DB gira in un savepoint annullato (rifiuta come
+    // il gesto vero) e il backend restituisce le versioni che verrebbero
+    // auto-chiuse, senza scrivere nulla.
     const res = await changeVersioneStato(props.listinoId, props.versione.id, {
-      stato: 'ATTIVA',
+      stato: STATO_VERSIONE_LISTINO.ATTIVA,
       dry_run: true,
     })
     preview.value = res.data?.data ?? res.data
@@ -128,7 +130,7 @@ async function handleConfirm() {
   // Chiamata reale: niente dry_run, esegue auto-close + transizione in transazione.
   // Il valido_dal e' gia' stato persistito da onDateChange (se modificato).
   const result = await execute(
-    () => changeVersioneStato(props.listinoId, props.versione.id, { stato: 'ATTIVA' }),
+    () => changeVersioneStato(props.listinoId, props.versione.id, { stato: STATO_VERSIONE_LISTINO.ATTIVA }),
     { successMessage: t('vendite.listini.stato_aggiornato') },
   )
   if (result !== null) {

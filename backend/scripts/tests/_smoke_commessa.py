@@ -29,8 +29,11 @@ from typing import Any
 
 
 # Scopo: crea (o ritrova, e' un upsert sul segment_key) una riga NORMALE di
-#        commessa con prezzo bloccato, sorgente la commessa stessa. Gli stati
-#        di default sono quelli della funzione (BOZZA, NON_EMESSA).
+#        commessa con prezzo bloccato. Gli stati di default sono quelli della
+#        funzione (BOZZA, NON_EMESSA). La sorgente di default e' la commessa
+#        stessa; `sorgente_codice`/`sorgente_uid` dati = un'altra sorgente
+#        (es. `DDT_VENDITA` e l'uid della bolla: la riga che il push della
+#        bolla scriverebbe, su cui la partita di merce si aggancia).
 # Ritorna: l'id della riga di commessa.
 def crea_riga_commessa(
     cur: Any,
@@ -51,6 +54,8 @@ def crea_riga_commessa(
     stato_approvazione: str = "BOZZA",
     stato_emissione: str = "NON_EMESSA",
     meta: str = "{}",
+    sorgente_codice: str = "COMMESSA",
+    sorgente_uid: str | None = None,
 ) -> int:
     cur.execute(
         """
@@ -68,7 +73,7 @@ def crea_riga_commessa(
             p_prezzo_bloccato => true,
             p_stato_approvazione => %s, p_stato_emissione => %s,
             p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s
-                                    WHERE s.codice_interno = 'COMMESSA' AND s.attivo),
+                                    WHERE s.codice_interno = %s AND s.attivo),
             p_sorgente_uid => %s::text,
             p_meta => %s::jsonb
         )
@@ -76,6 +81,7 @@ def crea_riga_commessa(
         [commessa_id, segment_key, articolo_id, istanza_utility_id,
          data_attivita, uom_id, quantita, competenza_mese, competenza_dal,
          competenza_al, prezzo, tipo_doc_fiscale_id, valuta_id,
-         stato_approvazione, stato_emissione, commessa_id, meta],
+         stato_approvazione, stato_emissione, sorgente_codice,
+         sorgente_uid if sorgente_uid is not None else commessa_id, meta],
     )
     return int(cur.fetchone()[0])

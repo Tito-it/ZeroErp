@@ -31,13 +31,27 @@
 # compresi): e' l'unico effetto che sopravvive al rollback, ed e' innocuo —
 # un progressivo con un buco, non un documento.
 #
-# ⚠️ SI GIRA SUI DATI VERI DELLA CODA, non su un fixture. Costruire da zero
-# ordine -> DDT -> consegna -> reso -> fattura della merce sarebbe un fixture
-# piu' grande del sistema in prova, e proverebbe il fixture. La coda accrediti
-# di questo ambiente ha righe reali (la 24 e' il caso KIT indicato dal brief):
-# quelle sono la materia giusta. Se la coda e' vuota lo smoke SALTA e lo dice.
+# ⭐ LA MATERIA SI COSTRUISCE (rev 2026-10-28, ok Tid). Fino a quel giorno lo
+# smoke girava sulla coda accrediti REALE («costruire ordine -> DDT -> reso ->
+# fattura sarebbe un fixture piu' grande del sistema in prova»): su dbdev la
+# coda aveva una sola riga semplice e nessun kit, e i test 14 e 15 SALTAVANO —
+# copertura zero, letta come SENZA_MATERIA nella baseline. E' la forma del
+# «verde per sottrazione» (AGENTS.md, corollario sui test): un ramo che si
+# distingue solo quando la coda ha un kit si prova COSTRUENDO il kit.
+# Il fixture non si scrive qui: lo danno i builder del DB, gli stessi dei pgTAP
+# dell'accredito (`dbops.fn_pgtap_crea_ddt_da_ordine`, `fn_pgtap_fattura_attivita`,
+# `fn_pgtap_crea_reso`), sull'emittente di prova. Tre PARTITE separate —
+# merce consegnata 10, fatturata 10, resa 3, accredito dovuto 3 — perche'
+# l'accredito di una non possa pareggiare l'altra:
+#   A  semplice -> il giro completo (1-13)
+#   B  semplice -> l'annullo (14)
+#   K  kit di due componenti -> la rettifica per componente (15). La parentela
+#      del kit vive nel `segment_key` (`#CMP:`) e nel meta (contratto
+#      apps/vendite/services/_kit_meta.py): e' scritta come la scrive il push
+#      della bolla, come fa il pgTAP test-accredito-kit-meta-v1.
 #
-# Indice test (1..14):
+# Indice test (0..15):
+#   0  la materia costruita e' in coda, con l'accredito dovuto atteso
 #   1  il verbo ritorna UNA riga per rettifica creata (RETURNS TABLE, non uno scalare)
 #   2  ogni rettifica e' RETTIFICA, con quantita' NEGATIVA (D-NC-2: il segno e' nel numero)
 #   3  il prezzo e' COPIATO dalla riga di fattura rettificata, mai ricalcolato (N-1)
@@ -55,14 +69,16 @@
 #  14  P-5: l'annullo toglie il ponte e la coda RISALE (la merce torna accreditabile)
 #  15  🔴 KIT: la rettifica di un componente attraversa il generatore
 #
-# ⚠️ LA CODA SI CLASSIFICA PRIMA DI SCEGLIERE. Le sue righe non sono
-# equivalenti: quelle su un articolo COMPOSITO producono una rettifica per
-# componente, con `#CMP:` nel segment_key, e imboccano nel generatore il ramo
-# dello snapshot kit. Il giro completo (9-13) si esercita su una riga SEMPLICE
-# e il caso kit ha il test 15 tutto suo — perche' un unico test misto direbbe
-# «rosso» senza dire QUALE meta' e' rotta.
+# ⚠️ LE PARTITE NON SONO EQUIVALENTI. Quella del kit produce una rettifica per
+# componente, con `#CMP:` nel segment_key, e imbocca nel generatore il ramo
+# dello snapshot kit. Il giro completo (9-13) si esercita sulla partita
+# SEMPLICE e il kit ha il test 15 tutto suo — perche' un unico test misto
+# direbbe «rosso» senza dire QUALE meta' e' rotta. La classificazione si
+# VERIFICA comunque (test 0): una partita costruita come kit che non producesse
+# rettifiche `#CMP:` farebbe passare il 15 per la ragione sbagliata.
 # ------------------------------------------------------------
 
+import json
 import uuid
 from decimal import Decimal
 
@@ -71,9 +87,22 @@ from django.db import connection, transaction
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services import resi_service
+from apps.vendite.services._kit_meta import (
+    META_KEY_COEFF_QTA,
+    META_KEY_COMPONENTE_DI,
+    META_KEY_ESPOSIZIONE,
+    META_KEY_QTA_PADRE,
+    META_KEY_UOM_PADRE,
+    segment_key_componente,
+)
 from apps.vendite.services.fatture_righe_service import FattureRigheService
+from scripts.tests._smoke_commessa import crea_riga_commessa
 from scripts.tests._smoke_contesto import apri_contesto_smoke
-from scripts.tests._smoke_fatturazione import crea_lotto_di_prova
+from scripts.tests._smoke_fatturazione import (
+    costruisci_base_fatturazione,
+    crea_articolo_di_prova,
+    crea_lotto_di_prova,
+)
 
 FAIL: list[str] = []
 SKIP: list[str] = []
@@ -157,6 +186,159 @@ def prepara_lotto(cur, ca_ids, *, marker):
     return lotto_id, af_righe
 
 
+# Scopo: gli step che il giro vero fa PRIMA del numero, sulle fatture di un
+#        lotto: ricalcolo IVA, poi piano rate. Non e' una formalita':
+#        `fn_assign_numero_fattura` RIFIUTA un documento senza totali, senza
+#        riepilogo IVA o, se il totale non e' zero, senza piano rate che quadri.
+#        «La numerazione consuma un progressivo e nextval non torna indietro»,
+#        quindi la coerenza si verifica prima di prendere il numero.
+# ⛔ Fino al 2026-10-18 lo smoke saltava il piano rate sulla nota: «sull'NC le
+#    rate non servono, il guard le chiede solo se il totale e' positivo». Dalla
+#    rev 2026-09-17 (P-5) il guard chiede «<> 0»: la nota di credito ha UNA
+#    rata negativa uguale al totale, e lo smoke si fermava su «piano rate
+#    assente».
+def chiudi_per_numerazione(repo, lotto_id):
+    repo.run_ricalcola_iva_lotto_task(lotto_id=lotto_id)
+    repo.run_genera_scadenze_lotto_task(lotto_id=lotto_id)
+
+
+# Scopo: un SEZIONALE delle note di credito distinto da quello delle fatture,
+#        sull'emittente di prova: la natura NOTA_CREDITO dei suoi tipi
+#        documento si mappa (`vendite.tipi_doc_fiscale_registri`) su un altro
+#        registro dell'emittente (`script.fn_pgtap_registro_fattura`, che salta
+#        lo standard). Ritorna l'id del registro.
+# ⚠️ PERCHE' SI COSTRUISCE. Il provisioning (C2-12) mappa la natura NC sul
+#    registro delle fatture: note e fatture in un'unica numerazione, che e'
+#    ammessa. Su quella configurazione la nota sul registro fatture e' GIUSTA,
+#    e il test 11 non potrebbe distinguere il difetto che presidia — un
+#    sezionale NC mappato che la nota non raggiunge. Fino al 2026-10-28 il
+#    test confrontava il codice con la sigla 'NC' di una installazione.
+def mappa_sezionale_nc(cur, t, natura_nc):
+    cur.execute("SELECT script.fn_pgtap_registro_fattura(%s)", [t["emittente_sr_id"]])
+    registro_nc = int(cur.fetchone()[0])
+    # ⚠️ Scollegare e POI collegare, non un UPDATE del registro: il guard della
+    #    coppia unica (BEFORE UPDATE) vede ancora la riga stessa sul registro
+    #    vecchio e la conta come occupante (E_REGISTRO_COPPIA_GIA_COPERTA). La
+    #    strada e' quella che indica il suo hint.
+    cur.execute(
+        """
+        DELETE FROM vendite.tipi_doc_fiscale_registri m
+         USING vendite.registri_fatturazione r
+         WHERE r.id = m.registro_id
+           AND r.emittente_soggetto_ruolo_id = %s
+           AND m.natura_doc_id = %s
+        RETURNING m.tipo_doc_fiscale_id, m.serie
+        """,
+        [t["emittente_sr_id"], natura_nc],
+    )
+    coppie = cur.fetchall()
+    if not coppie:
+        raise SystemExit(
+            "SENZA_CONTESTO: l'emittente di prova non ha una mappatura per la "
+            "natura NOTA_CREDITO da spostare (provisioning C2-12).")
+    for tipo_doc_id, serie in coppie:
+        cur.execute(
+            "INSERT INTO vendite.tipi_doc_fiscale_registri"
+            " (tipo_doc_fiscale_id, registro_id, natura_doc_id, serie, meta)"
+            " VALUES (%s, %s, %s, %s, '{\"smoke\": \"nota-credito-resi\"}'::jsonb)",
+            [tipo_doc_id, registro_nc, natura_nc, serie],
+        )
+    return registro_nc
+
+
+# La forma di ogni partita: consegnati e fatturati 10, resi 3 -> dovuto 3.
+QTA_CONSEGNATA = Decimal(10)
+QTA_RESA = Decimal(3)
+PREZZO = Decimal("25.00")
+
+
+# Scopo: una PARTITA di merce del cliente della base, con la sua commessa:
+#        bolla CONSEGNATA da un ordine (`dbops.fn_pgtap_crea_ddt_da_ordine`),
+#        le righe di commessa che il push della bolla scriverebbe (sorgente
+#        DDT_VENDITA, segmento della riga di bolla), fatturate per intero
+#        (`dbops.fn_pgtap_fattura_attivita`) su un lotto e NUMERATE per la via
+#        vera, e il reso a credito confermato di
+#        QTA_RESA (`dbops.fn_pgtap_crea_reso`). Ritorna l'id della riga di reso.
+#        `componenti` dato = [(articolo_id, uom_id, coeff)]: la partita e' un
+#        KIT, e le righe di commessa sono una per componente, col segmento
+#        `#CMP:` e il meta del kit (`_kit_meta`: TUTTE le chiavi che il push
+#        scrive — la rettifica le eredita in blocco, e il generatore rifiuta un
+#        componente senza `uom_padre_id`), prezzo ripartito sui
+#        coefficienti cosi' che il kit valga PREZZO a unita' padre.
+# ⚠️ La fattura rettificata dev'essere NUMERATA: la nota di credito cita numero
+#    e data del documento che corregge (TD04, DatiFattureCollegate), e la sua
+#    numerazione rifiuta E_FATTURA_RETTIFICATA_SENZA_NUMERO. Il builder la
+#    lascia in bozza, e il seguito e' del chiamante.
+# ⚠️ Una commessa per partita: la prova del giro (8) emette le attivita'
+#    fatturabili dell'INTERA commessa, e quelle delle altre partite finirebbero
+#    nel conto della merce su cui lavorano l'annullo e il kit.
+def costruisci_partita(cur, t, *, articolo_id, uom_id, componenti=None):
+    cur.execute(
+        "SELECT commessa_id FROM dbops.fn_pgtap_crea_commessa("
+        " 'smoke nota credito', NULL, %s, p_con_sorgente_root => true)",
+        [t["billing_account_id"]],
+    )
+    commessa_id = cur.fetchone()[0]
+    cur.execute(
+        "SELECT ddt_id, ddt_uid, ddt_riga_id FROM dbops.fn_pgtap_crea_ddt_da_ordine("
+        " 'smoke nota credito', p_billing_account_id => %s, p_quantita => %s,"
+        " p_prezzo => %s, p_articolo_id => %s, p_fatturazione_trigger => 'CONSEGNATO')",
+        [t["billing_account_id"], QTA_CONSEGNATA, PREZZO, articolo_id],
+    )
+    ddt_id, ddt_uid, ddt_riga_id = cur.fetchone()
+    cur.execute("SELECT script.fn_segment_key('DDT_VENDITA', %s::text, %s)",
+                [ddt_uid, ddt_riga_id])
+    segmento = cur.fetchone()[0]
+
+    if not componenti:
+        righe = [(articolo_id, uom_id, segmento, QTA_CONSEGNATA, PREZZO, "{}")]
+    else:
+        prezzo_cmp = PREZZO / sum(Decimal(c) for (_a, _u, c) in componenti)
+        righe = [
+            (c_art, c_uom, segment_key_componente(segmento, c_art),
+             QTA_CONSEGNATA * c, prezzo_cmp,
+             json.dumps({META_KEY_COEFF_QTA: c,
+                         META_KEY_COMPONENTE_DI: str(articolo_id),
+                         META_KEY_ESPOSIZIONE: "DESCRITTIVO",
+                         META_KEY_QTA_PADRE: int(QTA_CONSEGNATA),
+                         META_KEY_UOM_PADRE: uom_id}))
+            for (c_art, c_uom, c) in componenti
+        ]
+    attivita = [
+        crea_riga_commessa(
+            cur, commessa_id=commessa_id, segment_key=seg, articolo_id=art,
+            istanza_utility_id=t["istanza_utility_id"], uom_id=uom,
+            data_attivita=t["data"], competenza_mese=t["competenza_mese"],
+            competenza_dal=t["data"], competenza_al=t["data"],
+            quantita=qta, prezzo=prezzo,
+            tipo_doc_fiscale_id=t["tipo_doc_fiscale_id"], valuta_id=t["valuta_id"],
+            stato_approvazione="APPROVATA", meta=meta,
+            sorgente_codice="DDT_VENDITA", sorgente_uid=str(ddt_uid),
+        )
+        for (art, uom, seg, qta, prezzo, meta) in righe
+    ]
+    lotto_id = crea_lotto_di_prova(
+        cur, t, codice=f"SMOKE-NC-ORIGINE-{uuid.uuid4().hex[:8]}",
+        lock_batch_id=str(uuid.uuid4()),
+    )
+    cur.execute(
+        "SELECT DISTINCT fattura_id FROM dbops.fn_pgtap_fattura_attivita("
+        " 'smoke nota credito', %s, p_lotto_id => %s)",
+        [attivita, lotto_id],
+    )
+    fatture = sorted(int(r[0]) for r in cur.fetchall())
+    repo = VenditePipelineRepository()
+    chiudi_per_numerazione(repo, lotto_id)
+    for fattura_id in fatture:
+        repo.numera_fattura_opz_emessa(fattura_id)
+    cur.execute(
+        "SELECT resi_riga_id FROM dbops.fn_pgtap_crea_reso("
+        " 'smoke nota credito', %s, %s, p_ddt_riga_id => %s)",
+        [ddt_id, QTA_RESA, ddt_riga_id],
+    )
+    return int(cur.fetchone()[0])
+
+
 with transaction.atomic():
     with connection.cursor() as cur:
         # Contesto operatore: la coda, le fatture e i lotti sono sotto RLS.
@@ -164,39 +346,47 @@ with transaction.atomic():
         # somiglia a un dato (memoria feedback_rls_query_contesto_sistema).
         apri_contesto_smoke(cur)
 
-        # ── Materia: le righe della coda, accreditate una per una in un
-        #    SAVEPOINT proprio e poi classificate per forma della rettifica.
-        #    ⚠️ Le righe non sono indipendenti fra loro: due righe di reso
-        #    sulla stessa riga di DDT condividono la partita, quindi
-        #    accreditare la prima puo' azzerare il dovuto della seconda. Una
-        #    riga che esce dalla coda per questo NON e' un errore dello smoke:
-        #    si salta e si dice.
+        # ── Materia: tre partite costruite sull'emittente di prova (vedi in
+        #    testa). Lo smoke da qui in poi vede solo il suo perimetro.
+        t = costruisci_base_fatturazione(cur, marker="NC-RESI")
+        cur.execute("SELECT config.fn_get_natura_doc_fiscale_id('NOTA_CREDITO')")
+        natura_nc = int(cur.fetchone()[0])
+        registro_nc = mappa_sezionale_nc(cur, t, natura_nc)
+        riga_id = costruisci_partita(
+            cur, t, articolo_id=t["articolo_id"], uom_id=t["uom_id"])
+        riga_annullo = costruisci_partita(
+            cur, t, articolo_id=t["articolo_id"], uom_id=t["uom_id"])
+        padre_id, padre_uom = crea_articolo_di_prova(cur, prefisso="SMOKE-NC-KIT")
+        componenti = [
+            (*crea_articolo_di_prova(cur, prefisso=f"SMOKE-NC-CMP{n}"), coeff)
+            for n, coeff in ((1, 2), (2, 3))
+        ]
+        riga_kit = costruisci_partita(
+            cur, t, articolo_id=padre_id, uom_id=padre_uom, componenti=componenti)
+        costruite = {"semplice": riga_id, "annullo": riga_annullo, "kit": riga_kit}
+
+        # ══════════════════════════════════════════════════════════
+        #  0 · LA MATERIA E' IN CODA (come il test 1 dei pgTAP dell'accredito)
+        # ══════════════════════════════════════════════════════════
+        # ⚠️ Senza questa prova un fixture che non entra in coda farebbe
+        #    fallire il verbo con un errore che sembra suo.
         cur.execute(
-            """
-            SELECT resi_riga_id, accredito_dovuto, etichetta
-              FROM vendite.vw_resi_da_accreditare
-             ORDER BY resi_riga_id
-            """
+            "SELECT resi_riga_id, accredito_dovuto FROM vendite.vw_resi_da_accreditare"
+            " WHERE resi_riga_id = ANY(%s)",
+            [list(costruite.values())],
         )
-        coda = cur.fetchall()
-        if not coda:
+        dovuti = {int(r[0]): Decimal(r[1]) for r in cur.fetchall()}
+        check("0 la materia costruita e' in coda con l'accredito dovuto atteso",
+              all(dovuti.get(r) == QTA_RESA for r in costruite.values()),
+              str({k: str(dovuti.get(r)) for k, r in costruite.items()}))
+        if FAIL:
             raise SystemExit(
-                "Coda accrediti VUOTA su questo ambiente: lo smoke non ha materia. "
-                "Non e' un verde."
-            )
+                "=== ESITO: FALLITO — la materia costruita non e' in coda: "
+                "il resto non proverebbe niente ===")
 
-        accreditate: dict[int, list] = {}
-        for (rid, _dovuto, _etichetta) in coda:
-            rid = int(rid)
-            try:
-                with transaction.atomic():
-                    accreditate[rid] = resi_service.accredita_riga_reso(rid)["accrediti"]
-            except ServiceError as exc:
-                print(f"  ---  riga {rid} non accreditata ({exc.code}): "
-                      "la partita e' gia' pareggiata da una riga precedente")
-
-        if not accreditate:
-            raise SystemExit("Nessuna riga della coda accreditabile: niente da provare.")
+        accreditate: dict[int, list] = {
+            r: resi_service.accredita_riga_reso(r)["accrediti"] for r in costruite.values()
+        }
 
         cur.execute(
             "SELECT id, segment_key FROM vendite.commesse_attivita WHERE id = ANY(%s)",
@@ -210,18 +400,10 @@ with transaction.atomic():
             return any("#CMP:" in (segmenti.get(int(a["commessa_attivita_id"])) or "")
                        for a in accreditate[rid])
 
-        semplici = [r for r in accreditate if not _e_kit(r)]
-        kit = [r for r in accreditate if _e_kit(r)]
-        print(f"\ncoda accrediti: {len(coda)} righe, accreditate {len(accreditate)} — "
-              f"semplici={semplici} kit={kit}\n")
-
-        riga_id = semplici[0] if semplici else kit[0]
-        # L'annullo si prova sulla riga con PIU' rettifiche: e' il caso che
-        # conta (C-2 del team DB — l'annullo e' tutto-o-niente sull'INSIEME),
-        # e resta esercitabile perche' quella riga non entra nel giro.
-        candidati_annullo = [r for r in accreditate if r != riga_id]
-        riga_annullo = (max(candidati_annullo, key=lambda r: len(accreditate[r]))
-                        if candidati_annullo else None)
+        check("0-bis le partite sono della forma costruita (semplici senza #CMP:, kit con)",
+              not _e_kit(riga_id) and not _e_kit(riga_annullo) and _e_kit(riga_kit)
+              and len(accreditate[riga_kit]) == len(componenti),
+              f"rettifiche kit={len(accreditate[riga_kit])}")
 
         # ══════════════════════════════════════════════════════════
         #  1-5 · IL VERBO (B1 + madre fn_accredita_riga_reso)
@@ -253,8 +435,6 @@ with transaction.atomic():
               all(r[12] is not None and r[3] == r[12] for r in rettifiche),
               f"{[(str(r[3]), str(r[12])) for r in rettifiche]}")
 
-        cur.execute("SELECT config.fn_get_natura_doc_fiscale_id('NOTA_CREDITO')")
-        natura_nc = int(cur.fetchone()[0])
         check("4 natura NOTA_CREDITO + puntatore alla riga rettificata",
               all(r[4] == natura_nc and r[5] is not None for r in rettifiche))
 
@@ -361,27 +541,24 @@ with transaction.atomic():
             check("10-bis la testata dichiara natura NOTA_CREDITO",
                   bool(testate) and all(t[1] == natura_nc for t in testate),
                   f"{[(t[0], t[1]) for t in testate]}")
+            # Il sezionale della nota e' quello mappato per la natura NC
+            # (costruito distinto, vedi mappa_sezionale_nc), e NON quello della
+            # fattura che rettifica.
+            cur.execute(
+                "SELECT DISTINCT registro_id FROM vendite.fatture WHERE id = ANY(%s)",
+                [sorted(fatture_orig)],
+            )
+            registri_orig = {int(r[0]) for r in cur.fetchall()}
             check("11 il documento nasce sul registro delle note di credito",
-                  bool(testate) and all(t[3] == "NC" for t in testate),
-                  f"{[(t[0], t[3]) for t in testate]}")
+                  bool(testate) and all(int(f[2]) == registro_nc for f in testate)
+                  and registro_nc not in registri_orig,
+                  f"{[(f[0], f[3]) for f in testate]} sezionale NC={registro_nc} "
+                  f"registri rettificati={sorted(registri_orig)}")
 
             # ── 12 · numerazione (la sola parte irreversibile in esercizio:
             #    qui vive dentro la transazione che verra' annullata).
-            # ⚠️ Prima vanno chiusi gli step che il giro vero fa prima del
-            #    numero — ricalcolo IVA, poi piano rate — e non e' una
-            #    formalita': `fn_assign_numero_fattura` RIFIUTA un documento
-            #    senza totali, senza riepilogo IVA o, se il totale non e' zero,
-            #    senza piano rate che quadri. «La numerazione consuma un
-            #    progressivo e nextval non torna indietro», quindi la coerenza
-            #    si verifica prima di prendere il numero.
-            # ⛔ Fino al 2026-10-18 lo smoke saltava il piano rate: «sull'NC le
-            #    rate non servono, il guard le chiede solo se il totale e'
-            #    positivo». Dalla rev 2026-09-17 (P-5) il guard chiede «<> 0»:
-            #    la nota di credito ha UNA rata negativa uguale al totale, e lo
-            #    smoke si fermava su «piano rate assente».
             repo = VenditePipelineRepository()
-            repo.run_ricalcola_iva_lotto_task(lotto_id=lotto_id)
-            repo.run_genera_scadenze_lotto_task(lotto_id=lotto_id)
+            chiudi_per_numerazione(repo, lotto_id)
             cur.execute(
                 """
                 SELECT f.id, f.totale_a_pagare, count(fs.id),
@@ -402,14 +579,15 @@ with transaction.atomic():
             for fattura_id in sorted(fatture_nc):
                 repo.numera_fattura_opz_emessa(fattura_id)
             cur.execute(
-                "SELECT f.id, f.numero, f.anno, r.codice FROM vendite.fatture f"
+                "SELECT f.id, f.numero, f.anno, r.codice, r.id FROM vendite.fatture f"
                 "  JOIN vendite.registri_fatturazione r ON r.id = f.registro_id"
                 " WHERE f.id = ANY(%s)",
                 [sorted(fatture_nc)],
             )
             numerate = cur.fetchall()
             check("12 la numerazione assegna un numero sul sezionale NC",
-                  bool(numerate) and all(n[1] is not None and n[3] == "NC" for n in numerate),
+                  bool(numerate) and all(n[1] is not None and int(n[4]) == registro_nc
+                                         for n in numerate),
                   f"{[(n[0], n[1], n[3]) for n in numerate]}")
 
             # ── 13 · B6: il legame documentale, per la via del task.
@@ -433,63 +611,55 @@ with transaction.atomic():
         # ⚠️ Tutto dentro un SAVEPOINT proprio, annullato subito: il lotto e le
         #    attivita' fatturabili di questa prova non devono disturbare il
         #    test 14, che lavora sulle stesse rettifiche.
-        if not kit:
-            skip("15 la rettifica di un componente di kit",
-                 "nessuna riga di coda su articolo composito")
-        else:
-            riga_kit = kit[0]
-            ca_kit = [int(a["commessa_attivita_id"]) for a in accreditate[riga_kit]]
-            esito_kit = None
-            try:
-                with transaction.atomic():
-                    lotto_kit, af_kit = prepara_lotto(cur, ca_kit, marker="KIT")
-                    # Fixture degenere: senza attivita' fatturabili il
-                    # generatore non e' stato attraversato, e dirlo e' diverso
-                    # dal dare la colpa al generatore con l'errore che
-                    # produrrebbe un lotto None.
-                    if not af_kit:
-                        esito_kit = "nessuna attivita' fatturabile per le rettifiche del kit"
-                    else:
-                        FattureRigheService().generate_fatture_righe(lotto_kit)
-                    transaction.set_rollback(True)
-            except ServiceError as exc:
-                esito_kit = f"{exc.code}: {exc.detail or exc}"
-            check("15 la rettifica di un componente di kit attraversa il generatore",
-                  esito_kit is None, esito_kit or "")
+        ca_kit = [int(a["commessa_attivita_id"]) for a in accreditate[riga_kit]]
+        esito_kit = None
+        try:
+            with transaction.atomic():
+                lotto_kit, af_kit = prepara_lotto(cur, ca_kit, marker="KIT")
+                # Fixture degenere: senza attivita' fatturabili il
+                # generatore non e' stato attraversato, e dirlo e' diverso
+                # dal dare la colpa al generatore con l'errore che
+                # produrrebbe un lotto None.
+                if not af_kit:
+                    esito_kit = "nessuna attivita' fatturabile per le rettifiche del kit"
+                else:
+                    FattureRigheService().generate_fatture_righe(lotto_kit)
+                transaction.set_rollback(True)
+        except ServiceError as exc:
+            esito_kit = f"{exc.code}: {exc.detail or exc}"
+        check("15 la rettifica di un componente di kit attraversa il generatore",
+              esito_kit is None, esito_kit or "")
 
         # ══════════════════════════════════════════════════════════
         #  14 · P-5 · L'ANNULLO (cio' che B2-bis andra' a vestire)
         # ══════════════════════════════════════════════════════════
-        if riga_annullo is None:
-            skip("14 l'annullo dell'accredito", "una sola riga in coda: nessuna materia")
-        else:
-            esito2 = {"accrediti": accreditate[riga_annullo]}
-            cur.execute(
-                "SELECT COALESCE(SUM(accredito_dovuto),0) FROM vendite.vw_resi_da_accreditare"
-                " WHERE resi_riga_id = %s",
-                [riga_annullo],
-            )
-            dovuto_accreditato = Decimal(cur.fetchone()[0])
-            cur.execute(
-                "SELECT count(*) FROM vendite.fn_annulla_accredito_riga_reso(%s, %s)",
-                [riga_annullo, "smoke: annullo di prova"],
-            )
-            tolte = int(cur.fetchone()[0])
-            cur.execute(
-                "SELECT count(*) FROM vendite.resi_righe_accrediti WHERE resi_riga_id = %s",
-                [riga_annullo],
-            )
-            ponte_dopo = int(cur.fetchone()[0])
-            cur.execute(
-                "SELECT COALESCE(SUM(accredito_dovuto),0) FROM vendite.vw_resi_da_accreditare"
-                " WHERE resi_riga_id = %s",
-                [riga_annullo],
-            )
-            dovuto_risalito = Decimal(cur.fetchone()[0])
-            check("14 l'annullo toglie il ponte e la coda RISALE",
-                  tolte == len(esito2["accrediti"]) and ponte_dopo == 0
-                  and dovuto_accreditato == 0 and dovuto_risalito > 0,
-                  f"tolte={tolte} ponte={ponte_dopo} dovuto {dovuto_accreditato}->{dovuto_risalito}")
+        esito2 = {"accrediti": accreditate[riga_annullo]}
+        cur.execute(
+            "SELECT COALESCE(SUM(accredito_dovuto),0) FROM vendite.vw_resi_da_accreditare"
+            " WHERE resi_riga_id = %s",
+            [riga_annullo],
+        )
+        dovuto_accreditato = Decimal(cur.fetchone()[0])
+        cur.execute(
+            "SELECT count(*) FROM vendite.fn_annulla_accredito_riga_reso(%s, %s)",
+            [riga_annullo, "smoke: annullo di prova"],
+        )
+        tolte = int(cur.fetchone()[0])
+        cur.execute(
+            "SELECT count(*) FROM vendite.resi_righe_accrediti WHERE resi_riga_id = %s",
+            [riga_annullo],
+        )
+        ponte_dopo = int(cur.fetchone()[0])
+        cur.execute(
+            "SELECT COALESCE(SUM(accredito_dovuto),0) FROM vendite.vw_resi_da_accreditare"
+            " WHERE resi_riga_id = %s",
+            [riga_annullo],
+        )
+        dovuto_risalito = Decimal(cur.fetchone()[0])
+        check("14 l'annullo toglie il ponte e la coda RISALE",
+              tolte == len(esito2["accrediti"]) and ponte_dopo == 0
+              and dovuto_accreditato == 0 and dovuto_risalito > 0,
+              f"tolte={tolte} ponte={ponte_dopo} dovuto {dovuto_accreditato}->{dovuto_risalito}")
 
     # Niente persiste: rettifiche, ponte, lotto, fattura, numero e legame
     # spariscono con la transazione.
@@ -502,5 +672,13 @@ if FAIL:
     print(f"ROSSI: {len(FAIL)}")
     for f in FAIL:
         print(f"  - {f}")
+    print("=== ESITO: FALLITO ===")
     raise SystemExit(1)
-print("SMOKE NOTA DI CREDITO: tutto verde (nessuna scrittura persistita)")
+# ⚠️ La forma della riga e' il contratto di scripts/smoke-baseline.sh, che
+#    classifica dall'output: fino al 2026-10-28 la chiusura era «tutto verde»
+#    in minuscolo, e lo smoke non e' mai stato letto VERDE. Un passo saltato
+#    e' copertura zero: niente «TUTTO VERDE».
+if SKIP:
+    print("=== ESITO: PARZIALE (passi saltati, nessuna scrittura persistita) ===")
+else:
+    print("=== ESITO: TUTTO VERDE (nessuna scrittura persistita) ===")

@@ -73,8 +73,8 @@ _FIXTURE = (
     "CREATE TEMP TABLE _l ON COMMIT DROP AS SELECT * FROM dbops.fn_pgtap_crea_listino("
     " (SELECT utility_id FROM _c), 'L0 prezzo riga', '2020-01-01'::date, '2020-12-31'::date)",
     "CREATE TEMP TABLE _v2 ON COMMIT DROP AS WITH ins AS ("
-    " INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)"
-    " SELECT listino_id, 'L0_V2', '2021-01-01'::date, 'BOZZA' FROM _l RETURNING id"
+    " INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)"
+    " SELECT listino_id, 'L0_V2', '2021-01-01'::date FROM _l RETURNING id"
     ") SELECT id FROM ins",
     # ⛔ L'articolo nasce GIA' della tipologia del listino, e solo dopo va sulla
     #    riga di commessa: un articolo usato non cambia la tipologia (guard
@@ -113,7 +113,10 @@ _FIXTURE = (
     " articolo_padre_id, articolo_figlio_id, prezzo, valido_dal)"
     f" SELECT (SELECT id FROM _v2), ac.id, ac.prodotto_id, ac.componente_id, {_PREZZO_KIT}, '2021-01-01'"
     " FROM catalogo.articoli_componenti ac WHERE ac.prodotto_id = (SELECT id FROM _p)",
-    "UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM _v2)",
+    # Nasce BOZZA e si attiva dal verbo, con le righe gia' scritte (giro 12,
+    # brief-modello-documento-vendita §16: lo stato non si scrive a mano).
+    "SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass,"
+    " (SELECT id FROM _v2), 'ATTIVA')",
     "INSERT INTO anagrafiche.categorie_clienti_listini (categoria_cliente_id, utility_id,"
     " emittente_soggetto_ruolo_id, classe_utenza_id, listino_id, valido_dal)"
     " SELECT (SELECT id FROM _cat), c.utility_id, c.emittente_soggetto_ruolo_id, NULL,"

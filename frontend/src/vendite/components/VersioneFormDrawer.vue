@@ -10,6 +10,7 @@ import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPrese
 import { useListiniStore } from '../stores/listini'
 import { createVersione } from '../api/listini'
 import { getVersioneNewDefaults } from '../api/formDefaults'
+import { STATO_VERSIONE_LISTINO } from '../constants'
 import { toDateString, addDaysToToday, parseIsoDate } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import AppDrawer from '../../core/components/AppDrawer.vue'
@@ -84,7 +85,7 @@ const bozzeEsistenti = computed(() => {
   if (beExistingDrafts.value !== null) return beExistingDrafts.value
   if (!props.listino?.id) return []
   const versioni = listiniStore.versioniByListino[props.listino.id] || []
-  return versioni.filter(v => v.stato === 'BOZZA')
+  return versioni.filter(v => v.stato === STATO_VERSIONE_LISTINO.BOZZA)
 })
 
 async function handleSave() {

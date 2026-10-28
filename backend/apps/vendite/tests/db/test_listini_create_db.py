@@ -9,8 +9,9 @@
 #        riletti sono quelli scritti: stringhe strippate, `meta` dict ->
 #        `::jsonb` riletto come oggetto, `valido_al` None -> NULL (questi
 #        metodi NON usano `skip_none`: None scrive NULL), colonne omesse ->
-#        DEFAULT (`attivo`, `stato` BOZZA), whitelist RIGIDA (chiave estranea
-#        -> RuntimeError, nessuna riga).
+#        DEFAULT (`attivo`), lo stato BOZZA dalla nascita (lo stato iniziale
+#        del vocabolario: il backend non lo scrive, giro 12 BE-L3), whitelist
+#        RIGIDA (chiave estranea -> RuntimeError, nessuna riga).
 # Note: ⚠️ Il mondo si COSTRUISCE (regola zero): azienda, operatore e cliente
 #       da `dbops.fn_pgtap_crea_mondo_cliente` (apre il contesto: il guard
 #       emittente_scope del listino lo vuole), la TIPOLOGIA ammessa per la
@@ -116,9 +117,11 @@ class CreateListiniDbTests(unittest.TestCase):
                 "meta": _META_V,
             })
             cur.execute(
-                "SELECT listino_id, codice_versione, valido_dal, valido_al, stato, attivo,"
-                "       meta, jsonb_typeof(meta) AS meta_tipo"
-                "  FROM vendite.listini_versioni WHERE id = %s",
+                "SELECT v.listino_id, v.codice_versione, v.valido_dal, v.valido_al,"
+                "       s.codice_interno AS stato, v.attivo, v.meta, jsonb_typeof(v.meta) AS meta_tipo"
+                "  FROM vendite.listini_versioni v"
+                "  JOIN config.stati_doc_listino_versioni s ON s.id = v.stato_doc_listino_versione_id"
+                " WHERE v.id = %s",
                 [versione_id],
             )
             v = row_to_dict(cur)
@@ -128,7 +131,7 @@ class CreateListiniDbTests(unittest.TestCase):
             self.assertEqual(v["codice_versione"], "V001")
             self.assertEqual(v["valido_dal"], date(2083, 1, 1))
             self.assertIsNone(v["valido_al"])
-            self.assertEqual(v["stato"], "BOZZA")  # DEFAULT
+            self.assertEqual(v["stato"], "BOZZA")  # la nascita
             self.assertIs(v["attivo"], True)
             self.assertEqual(v["meta_tipo"], "object")
             self.assertEqual(v["meta"], _META_V)
@@ -158,7 +161,7 @@ class CreateListiniDbTests(unittest.TestCase):
             self.assertEqual(rr["meta"], _META_R)
 
             # ── clone_versione: il payload di `fn_clone_versione`
-            #    (solo `clonable_fields`), testata forzata BOZZA ──
+            #    (solo `clonable_fields`), testata BOZZA dalla nascita ──
             clone_id = repo.clone_versione(
                 listino_id=listino_id,
                 src_versione_id=versione_id,
@@ -170,8 +173,11 @@ class CreateListiniDbTests(unittest.TestCase):
             )
             self.assertNotEqual(clone_id, versione_id)
             cur.execute(
-                "SELECT listino_id, codice_versione, valido_dal, valido_al, stato, attivo, meta"
-                "  FROM vendite.listini_versioni WHERE id = %s",
+                "SELECT v.listino_id, v.codice_versione, v.valido_dal, v.valido_al,"
+                "       s.codice_interno AS stato, v.attivo, v.meta"
+                "  FROM vendite.listini_versioni v"
+                "  JOIN config.stati_doc_listino_versioni s ON s.id = v.stato_doc_listino_versione_id"
+                " WHERE v.id = %s",
                 [clone_id],
             )
             c = row_to_dict(cur)
@@ -198,7 +204,8 @@ class CreateListiniDbTests(unittest.TestCase):
 
     # Scopo: whitelist RIGIDA — una chiave estranea e' RuntimeError PRIMA
     #        dell'INSERT (nessuna riga, nessun errore di database), anche sulla
-    #        testata del clone (attivo/meta non si clonano).
+    #        testata del clone (attivo/meta non si clonano, lo stato non si
+    #        scrive: giro 12, BE-L3).
     def test_una_colonna_fuori_whitelist_e_rifiutata(self):
         def _prova(cur, m):
             repo = ListiniRepository()
@@ -222,6 +229,12 @@ class CreateListiniDbTests(unittest.TestCase):
                     listino_id=0, src_versione_id=0,
                     target_data={"codice_versione": "V", "valido_dal": date(2083, 1, 1),
                                  "meta": {}},
+                )
+            with self.assertRaisesRegex(RuntimeError, "colonne non ammesse: stato"):
+                repo.clone_versione(
+                    listino_id=0, src_versione_id=0,
+                    target_data={"codice_versione": "V", "valido_dal": date(2083, 1, 1),
+                                 "stato": "ATTIVA"},
                 )
 
         self._nel_mondo(_prova)

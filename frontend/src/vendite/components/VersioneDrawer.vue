@@ -22,7 +22,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { displayDate } from '../../core/utils/date'
 import { formatIvaLabel, formatNumber } from '../../core/utils/format'
-import { statoVersioneListinoSeverity, statoVersioneVisibile } from '../../core/utils/severity'
+import { statoVersioneListinoSeverity } from '../../core/utils/severity'
 import {
   createRiga,
   updateRiga,
@@ -34,6 +34,7 @@ import {
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
 import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import { useListiniRigheStore } from '../stores/listiniRighe'
+import { STATO_VERSIONE_LISTINO } from '../constants'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import AttivoTag from '../../core/components/AttivoTag.vue'
@@ -171,7 +172,7 @@ watch(
   { immediate: true },
 )
 
-const isBozza = computed(() => props.versione?.stato === 'BOZZA')
+const isBozza = computed(() => props.versione?.stato === STATO_VERSIONE_LISTINO.BOZZA)
 
 // Scopo: ricarica la lista. Dal 2026-08-03 i compositi arrivano dallo STESSO
 // endpoint paginato delle righe standalone (UNION lato BE), quindi una fetch
@@ -497,7 +498,7 @@ const annullaForm = () => inline.chiudiConConferma(closeForm)
       </div>
       <div class="form-field">
         <label>{{ t('vendite.listini.col_stato') }}</label>
-        <Tag :value="statoVersioneVisibile(versione)" :severity="statoVersioneListinoSeverity(statoVersioneVisibile(versione))" />
+        <Tag :value="versione?.stato" :severity="statoVersioneListinoSeverity(versione?.stato)" />
       </div>
     </div>
     <div class="form-grid-2col">
