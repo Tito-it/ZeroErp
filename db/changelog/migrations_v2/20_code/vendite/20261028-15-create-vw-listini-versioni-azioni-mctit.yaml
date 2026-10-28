@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AZIONE DI RIGA «ATTIVA» DELLE VERSIONI DI LISTINO: UNA VISTA DB
+#   Brief: brief-modello-documento-vendita §16 (L-4 di Tid, 2026-10-28).
+#   Forma: vendite.vw_lotti_gruppi_azioni (20261027-24), la prima superficie
+#   del registro config.azioni_riga.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Il pulsante «Attiva» della lista delle versioni si spegneva nel
+#   frontend sul conteggio delle righe (ListiniSearchTable.vue,
+#   righe_count), con la regola del backend. Ora la regola e'
+#   script.fn_check_versione_listino_attivabile, e il suo motivo si legge da
+#   qui: la riga ATTIVA_VERSIONE_LISTINO del registro config.azioni_riga
+#   (80_data) nomina questa vista come superficie, il presidio del registro
+#   la verifica (vista viva, security_invoker, colonne, dipendenza dalla
+#   fn_check, verbo che la chiama).
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   Una riga per versione: il PRIMO motivo (NULL = niente lo vieta). Chi
+#   puo' attivare da quale stato lo dice la riga lista con
+#   script.fn_doc_azioni_permesse: la vista non ripete lo stato.
+#   security_invoker: sotto RLS i soli listini del proprio perimetro. Chi
+#   legge filtra per listino_id o per id.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261028-15-create-vw-listini-versioni-azioni-mctit.yaml
+
+  - changeSet:
+      id: 20261028-15-create-vw-listini-versioni-azioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_listini_versioni_azioni: per ogni versione di listino il motivo per cui «Attiva»
+        e' spento; la superficie dell'azione ATTIVA_VERSIONE_LISTINO del registro
+        config.azioni_riga. Brief: brief-modello-documento-vendita §16 (L-4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_versione_listino_attivabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW vendite.vw_listini_versioni_azioni
+              WITH (security_invoker = true) AS
+              SELECT lv.id         AS versione_id,
+                     lv.listino_id,
+                     -- Il PRIMO motivo: il verbo e il guard sollevano quello.
+                     chk.motivi -> 0 ->> 'reason'     AS attivazione_blocco_reason,
+                     chk.motivi -> 0 ->> 'reason_key' AS attivazione_blocco_reason_key
+                FROM vendite.listini_versioni lv
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_versione_listino_attivabile(lv.id) AS motivi
+                ) chk;
+
+              GRANT SELECT ON vendite.vw_listini_versioni_azioni TO zeroerp_app;
+
+              COMMENT ON VIEW vendite.vw_listini_versioni_azioni IS
+                  'Le AZIONI DI RIGA delle versioni di listino: una riga per versione (versione_id, listino_id). attivazione_blocco_reason / attivazione_blocco_reason_key: il PRIMO motivo di script.fn_check_versione_listino_attivabile (la stessa fn_check che vendite.fn_attiva_versione_listino e il guard di transizione sollevano; NULL = niente vieta l''attivazione). Lo stato non c''e'': chi puo'' attivare da quale stato lo dice la riga lista (script.fn_doc_azioni_permesse). E'' la superficie dell''azione ATTIVA_VERSIONE_LISTINO nel registro config.azioni_riga. security_invoker: i soli listini del proprio perimetro. Si filtra per listino_id o versione_id. Prima il pulsante si spegneva nel frontend sul conteggio delle righe. Brief: brief-modello-documento-vendita §16 (L-4, Tid 2026-10-28).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_listini_versioni_azioni;

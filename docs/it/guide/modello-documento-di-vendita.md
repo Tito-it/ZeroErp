@@ -1,6 +1,6 @@
 # Guida — Il modello del documento di vendita
 
-> **Ultimo aggiornamento**: 27 ottobre 2026
+> **Ultimo aggiornamento**: 28 ottobre 2026
 >
 > **Destinatari**: chi lavora su un documento di vendita o d'acquisto — sviluppatori database,
 > backend, frontend e analisti funzionali. Prima di cambiare come un documento nasce, cambia stato,
@@ -302,7 +302,9 @@ motivazione chiesta dal database, la conferma dei legami all'annullo di una revi
 portata il 26 ottobre 2026 lato database; il backend la segue (il 403 dalla riga del passaggio, la firma
 nuova del verbo). La fattura, col suo lotto, è stata portata il 27 ottobre 2026 lato database; il backend
 la segue (il 403 dalla riga del passaggio su «numera» e «riporta in bozza», il giro della pipeline dai
-verbi invece che con gli `UPDATE`, lo stato del job senza la sua copia delle regole).
+verbi invece che con gli `UPDATE`, lo stato del job senza la sua copia delle regole). La versione di
+listino è stata portata il 28 ottobre 2026 lato database; il backend non la segue ancora: finché non
+chiama il verbo dell'attivazione, l'attivazione dall'applicazione è rifiutata dalla porta.
 
 | Documento | Nasce in bozza (§3) | Matrice in tabella (§4) | Verbo di stato (§5) | Azione sul passaggio (§6) | Emissione (§7) | Annullo (§8) |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -314,7 +316,7 @@ verbi invece che con gli `UPDATE`, lo stato del job senza la sua copia delle reg
 | Reso | ✅ | ✅ | ✅ `fn_conferma_reso`, `fn_annulla_reso` sul verbo comune, con la porta | ✅ `conferma_reso` sulla riga di conferma e annullo del confermato | — la conferma fa da emissione | ✅ verbo |
 | Commessa | ✅ | ✅ (tabella in `vendite`, non in `config`) | ✅ `fn_cambia_stato_commessa` sul verbo comune, con la porta; il passaggio a pronta della push dalla proiezione `fn_commessa_proietta_stato_emittibile` | ✅ `cambia_stato_commessa` su «rendi pronta», «riapri», «chiudi» e sull'annullo di una commessa non in bozza | — nasce dalla push | ✅ `fn_annulla_commessa` → verbo di stato |
 | Fattura (col lotto) | ✅ | ✅ (`config.stati_doc_fiscale_transizioni`, con passaggi solo del lotto e solo della fattura singola) | ✅ il lotto `fn_cambia_stato_lotto` (passaggi manuali) e `fn_lotto_proietta_stato_step` (il giro), la fattura `fn_fattura_proietta_stato`, con la porta su entrambi | ✅ `numera_fatture_lotti` su «numera» e «riporta in bozza»; l'annullo della bozza senza azione | — la pipeline (numera) | — la nota di credito; prima della numerazione, «togli dal lotto»; il lotto in bozza si annulla |
-| Versione di listino | ❌ stato testo con `CHECK`, senza vocabolario | ❌ passaggi nel guard e ricopiati in Python | ❌ `UPDATE` dal backend | ❌ nessuna azione | — | — |
+| Versione di listino | ✅ | ✅ (`config.transizioni_stati_listino_versioni`) | ✅ `fn_attiva_versione_listino` sul verbo comune, con la porta: chiude anche le versioni precedenti che si sovrappongono; la chiusura a scadenza da `fn_chiudi_versioni_listino_scadute` (il job) | ✅ `attiva_listino` su «Attiva» | — l'attivazione mette i prezzi in uso; la versione non si stampa | — non si annulla: in bozza si elimina, attiva si chiude con la fine validità |
 | Ordine e DDT d'acquisto | ✅ | ❌ nessun guard di transizione | ❌ | ❌ | ❌ | ❌ |
 
 Le azioni a catalogo che nessuno usava — `genera_fattura`, `approva_fattura`, `emetti_fattura` — sono

@@ -31,13 +31,14 @@ AS $function$
         ('vendite.resi'::regclass,                'stato_doc_reso_id',       'config.stati_doc_reso'::regclass,       'config.transizioni_stati_reso'::regclass,        'stato_da_id',   'stato_a_id',  'attivo',  ''),
         ('vendite.commesse'::regclass,            'stato_commessa_id',       'vendite.stati_commessa'::regclass,      'vendite.transizioni_stati_commessa'::regclass,   'stato_da_id',   'stato_a_id',  'attivo',  ''),
         ('vendite.fatture'::regclass,             'stato_doc_fiscale_id',    'config.stati_doc_fiscale'::regclass,    'config.stati_doc_fiscale_transizioni'::regclass, 'stato_from_id', 'stato_to_id', 'ammesso', 'AND t.solo_lotto IS FALSE'),
-        ('vendite.fatturazione_lotti'::regclass,  'stato_doc_fiscale_id',    'config.stati_doc_fiscale'::regclass,    'config.stati_doc_fiscale_transizioni'::regclass, 'stato_from_id', 'stato_to_id', 'ammesso', 'AND t.solo_fattura IS FALSE')
+        ('vendite.fatturazione_lotti'::regclass,  'stato_doc_fiscale_id',    'config.stati_doc_fiscale'::regclass,    'config.stati_doc_fiscale_transizioni'::regclass, 'stato_from_id', 'stato_to_id', 'ammesso', 'AND t.solo_fattura IS FALSE'),
+        ('vendite.listini_versioni'::regclass,    'stato_doc_listino_versione_id', 'config.stati_doc_listino_versioni'::regclass, 'config.transizioni_stati_listino_versioni'::regclass, 'stato_da_id', 'stato_a_id', 'attivo', '')
       ) AS m(tab, col, voc, mat, da, a, vivo, filtro)
      WHERE m.tab = p_testata;
 $function$
 
 COMMENT ON FUNCTION script.fn_doc_stato_modello(p_testata regclass)
-IS 'BB del modello del documento: per una testata, dove sta il suo stato (colonna_stato, vocabolario) e quale matrice ne dice i passaggi (matrice, con i nomi delle sue colonne da / a / passaggio vivo, e il filtro in piu'' della fattura e del lotto, che condividono config.stati_doc_fiscale_transizioni). Nessuna riga: la testata non ha una matrice. E'' codice, non configurazione: una testata nuova entra riscrivendo la funzione. Consumatori: il verbo comune (script.fn_doc_passaggio, script.fn_doc_scrivi_stato), la porta script.trgfn_doc_stato_solo_dal_verbo, la fixture dbops.fn_pgtap_porta_a_stato. Brief: brief-modello-documento-vendita §7 (S-2, Tid 2026-10-25).';
+IS 'BB del modello del documento: per una testata, dove sta il suo stato (colonna_stato, vocabolario) e quale matrice ne dice i passaggi (matrice, con i nomi delle sue colonne da / a / passaggio vivo, e il filtro in piu'' della fattura e del lotto, che condividono config.stati_doc_fiscale_transizioni). Nessuna riga: la testata non ha una matrice. E'' codice, non configurazione: una testata nuova entra riscrivendo la funzione. Consumatori: il verbo comune (script.fn_doc_passaggio, script.fn_doc_scrivi_stato), la porta script.trgfn_doc_stato_solo_dal_verbo, la fixture dbops.fn_pgtap_porta_a_stato. Testate: le otto di vendita col lotto di fatturazione, e dal 2026-10-28 la versione di listino (20261028-06, §16). Brief: brief-modello-documento-vendita §7 (S-2, Tid 2026-10-25).';
 ```
 
 </div>

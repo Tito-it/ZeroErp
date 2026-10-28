@@ -5,13 +5,24 @@
 -- Test: framework dbops.fn_apply_chiusura_scadenze()
 --       (migration 20260426-02-create-fn-apply-chiusura-scadenze).
 --
--- Indice test (1..6):
---   1) Esecuzione VARCHAR (listini_versioni): chiude versione ATTIVA scaduta
---   2) Esecuzione FK (contratti): chiude contratto ATTIVO scaduto
+-- Indice test (1..8):
+--   1) Esecuzione col verbo (listini_versioni, FK sotto la porta): chiude
+--      versione ATTIVA scaduta
+--   2) Esecuzione col verbo (contratti, FK sotto la porta): chiude contratto
+--      ATTIVO scaduto
 --   3) Idempotenza: rerun della fn non chiude righe gia' chiuse (no-op)
 --   4) Pre-check tabella inesistente -> raise E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA
 --   5) Pre-check colonna inesistente -> raise
 --   6) Pre-check codice FK inesistente -> raise
+--   7) Testata sotto la porta senza verbo_chiusura -> raise
+--   8) verbo_chiusura che non e' una funzione viva -> raise
+--
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione di
+--   listino ha lo stato nel vocabolario (stato_doc_listino_versione_id, FK) e la
+--   porta; testate sotto la porta si chiudono col verbo dichiarato in
+--   verbo_chiusura (20261028-05, -14). Test 1 e 2 dichiarano il verbo; 7 e 8
+--   nuovi. ⚠️ Il ramo VARCHAR non ha piu' una testata configurata: lo coprono
+--   solo i pre-check 4 e 5 (che falliscono prima dell'esecuzione).
 --
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): il contratto nasce in
 --   bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima nasceva
@@ -55,7 +66,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   una riga nuova ne cambierebbe la natura senza che nessuno se ne accorga.
 --   Le fixture qui sotto usano DOMINIO: sono gli stessi bersagli del seed reale
 --   (contratti e listini portano entrambi l'emittente).
-SELECT plan(6);
+SELECT plan(8);
 
 -- Rimuove le righe seed durante il test per evitare conflitti con
 -- l'UNIQUE su (schema_tabella, nome_tabella). Il ROLLBACK finale
@@ -143,21 +154,25 @@ SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', t.contratto_id, 'ATTIVO
 INSERT INTO dbops.automazione_chiusura_scadenze (
     id, schema_tabella, nome_tabella, col_stato, tipo_stato,
     col_valido_al, stato_attivo_codice, stato_chiuso_codice,
-    attivo, descrizione, classe
+    fk_lookup_schema, fk_lookup_table, fk_lookup_codice_col, fk_lookup_id_col,
+    attivo, descrizione, classe, verbo_chiusura
 ) VALUES (
-    1001, 'vendite', 'listini_versioni', 'stato', 'VARCHAR',
+    1001, 'vendite', 'listini_versioni', 'stato_doc_listino_versione_id', 'FK',
     'valido_al', 'ATTIVA', 'CHIUSA',
-    true, 'pgtap test 1', 'DOMINIO'
+    'config', 'stati_doc_listino_versioni', 'codice_interno', 'id',
+    true, 'pgtap test 1', 'DOMINIO', 'vendite.fn_chiudi_versioni_listino_scadute'
 );
 
 -- Esegui il framework.
 DO $$ BEGIN PERFORM dbops.fn_apply_chiusura_scadenze(); END $$;
 
 SELECT is(
-    (SELECT stato FROM vendite.listini_versioni
-      WHERE id = (SELECT listino_versione_id FROM tmp_listino)),
+    (SELECT s.codice_interno
+       FROM vendite.listini_versioni lv
+       JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+      WHERE lv.id = (SELECT listino_versione_id FROM tmp_listino)),
     'CHIUSA'::varchar,
-    'Framework VARCHAR: versione listino scaduta passa a CHIUSA'
+    'Framework col verbo: versione listino scaduta passa a CHIUSA'
 );
 
 -- Disattiva la riga di config per test 2 (no double processing).
@@ -170,12 +185,12 @@ INSERT INTO dbops.automazione_chiusura_scadenze (
     id, schema_tabella, nome_tabella, col_stato, tipo_stato,
     col_valido_al, stato_attivo_codice, stato_chiuso_codice,
     fk_lookup_schema, fk_lookup_table, fk_lookup_codice_col, fk_lookup_id_col,
-    attivo, descrizione, classe
+    attivo, descrizione, classe, verbo_chiusura
 ) VALUES (
     1002, 'vendite', 'contratti', 'stato_doc_contratto_id', 'FK',
     'valido_al', 'ATTIVO', 'CESSATO',
     'config', 'stati_doc_contratti', 'codice_interno', 'id',
-    true, 'pgtap test 2', 'DOMINIO'
+    true, 'pgtap test 2', 'DOMINIO', 'vendite.fn_cessa_contratti_scaduti'
 );
 
 DO $$ BEGIN PERFORM dbops.fn_apply_chiusura_scadenze(); END $$;
@@ -186,7 +201,7 @@ SELECT is(
        JOIN config.stati_doc_contratti sd ON sd.id = c.stato_doc_contratto_id
       WHERE c.id = (SELECT contratto_id FROM tmp_contratto)),
     'CESSATO'::varchar,
-    'Framework FK: contratto scaduto passa a CESSATO via lookup codice_interno'
+    'Framework col verbo: contratto scaduto passa a CESSATO'
 );
 
 -- =============================================================
@@ -275,6 +290,42 @@ SELECT throws_ok(
     'P0001',
     NULL,
     'Pre-check codice FK attivo inesistente solleva E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA'
+);
+
+DELETE FROM dbops.automazione_chiusura_scadenze WHERE id = 1005;
+
+-- =============================================================
+-- 7) Testata sotto la porta senza verbo -> raise
+-- =============================================================
+INSERT INTO dbops.automazione_chiusura_scadenze (
+    id, schema_tabella, nome_tabella, col_stato, tipo_stato,
+    col_valido_al, stato_attivo_codice, stato_chiuso_codice,
+    fk_lookup_schema, fk_lookup_table, fk_lookup_codice_col, fk_lookup_id_col,
+    attivo, descrizione, classe
+) VALUES (
+    1006, 'vendite', 'listini_versioni', 'stato_doc_listino_versione_id', 'FK',
+    'valido_al', 'ATTIVA', 'CHIUSA',
+    'config', 'stati_doc_listino_versioni', 'codice_interno', 'id',
+    true, 'pgtap test 7', 'DOMINIO'
+);
+
+SELECT throws_like(
+    $$SELECT dbops.fn_apply_chiusura_scadenze()$$,
+    '%non ha il verbo di chiusura%',
+    'Testata sotto la porta senza verbo_chiusura: E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA'
+);
+
+-- =============================================================
+-- 8) verbo_chiusura che non e' una funzione viva -> raise
+-- =============================================================
+UPDATE dbops.automazione_chiusura_scadenze
+   SET verbo_chiusura = 'vendite.fn_pgtap_verbo_che_non_esiste'
+ WHERE id = 1006;
+
+SELECT throws_like(
+    $$SELECT dbops.fn_apply_chiusura_scadenze()$$,
+    '%non e'' una funzione senza argomenti%',
+    'verbo_chiusura che non esiste: E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA'
 );
 
 SELECT * FROM finish();

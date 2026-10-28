@@ -18,7 +18,6 @@ db/pgtap/vendite/test-contratti-utilities-guard-tipo-classe-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-documento-trattenuto-da-lotto-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-contratto-righe-preview-nuovi-campi-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-guard-congelamento-fusione-v1.sql	ASSERZIONE
-db/pgtap/vendite/test-listini-versioni-guard-transizione-stato-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-numero-prefisso-registro-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-offerta-righe-espanse.sql	ASSERZIONE
 db/pgtap/vendite/test-refactor-qta-operativa-preventivi-v1.sql	ASSERZIONE

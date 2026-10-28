@@ -8,6 +8,12 @@
 --   vocabolari (20261024-07), montaggio su vendite e acquisti (20261024-11/-12).
 --   Brief: brief-modello-documento-vendita §4-bis/§4-ter (N-1 … N-3, P-1 … P-3
 --   di Tid, 2026-10-24).
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione di
+--   listino ha il suo vocabolario (config.stati_doc_listino_versioni) e la
+--   nascita (20261028-10), fuori da P-3 finche' non aveva un vocabolario.
+-- ⚠️ Attesa cambiata: test 3 e 4 (otto -> nove vocabolari), 5 (la versione di
+--   listino nel perimetro atteso: non e' una sorgente DOCUMENTO) e 6 (dieci ->
+--   undici testate).
 --
 -- Semantica attesa (il contratto, non l'implementazione):
 --   - ogni vocabolario degli stati delle testate dichiara UNO stato iniziale,
@@ -26,11 +32,11 @@
 -- Elenco test (plan 18):
 --   1) script.fn_stato_iniziale_id(regclass) esiste
 --   2) script.trgfn_doc_stato_iniziale() esiste
---   3) gli otto vocabolari hanno uno e un solo stato iniziale, attivo
---   4) gli otto vocabolari hanno l'indice unico parziale e il CHECK
+--   3) i nove vocabolari hanno uno e un solo stato iniziale, attivo
+--   4) i nove vocabolari hanno l'indice unico parziale e il CHECK
 --   5) montaggio: ogni testata con FK verso un vocabolario con `iniziale`
 --      monta il BB su quella colonna e quel vocabolario, e viceversa
---   6) montaggio: dieci testate (otto di vendita, due d'acquisto)
+--   6) montaggio: undici testate (otto di vendita, due d'acquisto, la versione di listino)
 --   7) il trigger della nascita e' il primo BEFORE INSERT di ogni testata
 --   8) il lettore rende lo stato iniziale dichiarato (ordini: DRAFT)
 --   9) un ordine creato senza dire lo stato nasce DRAFT
@@ -59,13 +65,14 @@ SELECT has_function('script', 'fn_stato_iniziale_id', ARRAY['regclass'],
 SELECT has_function('script', 'trgfn_doc_stato_iniziale', ARRAY[]::text[],
     'script.trgfn_doc_stato_iniziale() esiste');
 
--- Gli otto vocabolari delle testate.
+-- I nove vocabolari delle testate.
 CREATE TEMP TABLE t_vocabolari AS
 SELECT v::regclass AS voc
   FROM unnest(ARRAY['config.stati_doc_preventivi', 'config.stati_doc_offerte',
                     'config.stati_doc_contratti',  'config.stati_doc_ordini',
                     'config.stati_doc_ddt',        'config.stati_doc_reso',
-                    'config.stati_doc_fiscale',    'vendite.stati_commessa']) AS v;
+                    'config.stati_doc_fiscale',    'vendite.stati_commessa',
+                    'config.stati_doc_listino_versioni']) AS v;
 
 -- 3) Uno e un solo stato iniziale, attivo, per vocabolario
 CREATE TEMP TABLE t_iniziali (voc regclass, n integer, attivi integer);
@@ -82,8 +89,8 @@ END $$;
 
 SELECT is(
     (SELECT count(*)::integer FROM t_iniziali WHERE n = 1 AND attivi = 1),
-    8,
-    'gli otto vocabolari hanno uno e un solo stato iniziale, attivo'
+    9,
+    'i nove vocabolari hanno uno e un solo stato iniziale, attivo'
 );
 
 -- 4) Il presidio dello schema: indice unico parziale e CHECK su tutti e otto
@@ -97,8 +104,8 @@ SELECT is(
                      WHERE c.conrelid = v.voc AND c.contype = 'c'
                        -- forma stampata da PostgreSQL: CHECK (((NOT iniziale) OR attivo))
                        AND pg_get_constraintdef(c.oid) = 'CHECK (((NOT iniziale) OR attivo))')),
-    8,
-    'gli otto vocabolari hanno l''indice unico parziale su iniziale e il CHECK «iniziale e'' attivo»'
+    9,
+    'i nove vocabolari hanno l''indice unico parziale su iniziale e il CHECK «iniziale e'' attivo»'
 );
 
 -- Il montaggio atteso, dal catalogo: ogni tabella con una FK a colonna
@@ -116,7 +123,8 @@ SELECT c.conrelid AS tab, a.attname::text AS col, c.confrelid AS voc
                 WHERE x.attrelid = c.confrelid AND x.attname = 'iniziale' AND NOT x.attisdropped)
    AND (c.conrelid IN (SELECT s.target_table FROM config.sorgenti s
                         WHERE s.categoria = 'DOCUMENTO' AND s.target_table IS NOT NULL)
-        OR c.conrelid IN ('acquisti.ordini'::regclass, 'acquisti.ddt'::regclass));
+        OR c.conrelid IN ('acquisti.ordini'::regclass, 'acquisti.ddt'::regclass,
+                          'vendite.listini_versioni'::regclass));
 
 CREATE TEMP TABLE t_montato AS
 SELECT g.tgrelid AS tab, g.tgname::text AS nome,
@@ -136,11 +144,12 @@ SELECT is(
     'ogni testata con un vocabolario degli stati monta il BB su quella colonna e quel vocabolario, e nessun altro montaggio'
 );
 
--- 6) Dieci testate: le otto di vendita e le due d'acquisto (P-3)
+-- 6) Undici testate: le otto di vendita, le due d'acquisto (P-3), la versione
+--    di listino (giro 12)
 SELECT is(
     (SELECT count(DISTINCT tab)::integer FROM t_montato),
-    10,
-    'il BB e'' montato su dieci testate: otto di vendita, due d''acquisto'
+    11,
+    'il BB e'' montato su undici testate: otto di vendita, due d''acquisto, la versione di listino'
 );
 
 -- 7) Il primo BEFORE INSERT di ogni testata: chi legge lo stato lo trova gia'

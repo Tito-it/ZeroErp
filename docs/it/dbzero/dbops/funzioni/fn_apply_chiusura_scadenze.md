@@ -34,8 +34,8 @@ AS $function$
           --   2026-10-26, 20261026-08, brief-modello-documento-vendita §11,
           --   Y-2): lo stato lo scrive solo un verbo, e l'UPDATE dinamico
           --   sarebbe rifiutato (E_DOC_STATO_SOLO_DAL_VERBO). Per loro il
-          --   framework chiama il verbo di chiusura della testata (oggi il
-          --   contratto: vendite.fn_cessa_contratti_scaduti); una testata
+          --   framework chiama il verbo di chiusura della testata, dichiarato
+          --   in verbo_chiusura del registro (rev 2026-10-28); una testata
           --   sotto la porta senza verbo di chiusura e' una configurazione
           --   non valida. La GUC app.cessazione_automatica e' ritirata: la
           --   accendeva qui per il guard del contratto, e la poteva accendere
@@ -57,6 +57,7 @@ AS $function$
               v_id_chiuso        bigint;
               v_id_attivo        bigint;
               v_col_count        smallint;
+              v_verbo            regprocedure;  -- il verbo di chiusura, risolto dal catalogo
           BEGIN
               FOR v_row IN
                   SELECT *
@@ -225,10 +226,7 @@ AS $function$
                                   WHERE tg.tgrelid = to_regclass(format('%I.%I', v_row.schema_tabella, v_row.nome_tabella))
                                     AND tg.tgfoid  = 'script.trgfn_doc_stato_solo_dal_verbo()'::regprocedure
                                     AND NOT tg.tgisinternal) THEN
-                          IF to_regclass(format('%I.%I', v_row.schema_tabella, v_row.nome_tabella))
-                             = 'vendite.contratti'::regclass THEN
-                              v_count := vendite.fn_cessa_contratti_scaduti();
-                          ELSE
+                          IF v_row.verbo_chiusura IS NULL THEN
                               PERFORM script.fn_log_and_raise_error(
                                   'database',
                                   'fn_apply_chiusura_scadenze',
@@ -243,6 +241,29 @@ AS $function$
                                   'lo stato si scrive solo da un verbo, e la testata non ha il verbo di chiusura'
                               );
                           END IF;
+                          
+                          -- Il verbo dichiarato (rev 2026-10-28, 20261028-14): una
+                          -- funzione viva, senza argomenti. L'identificatore lo da' il
+                          -- catalogo, non il testo del registro.
+                          v_verbo := to_regprocedure(v_row.verbo_chiusura || '()');
+                          IF v_verbo IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  'fn_apply_chiusura_scadenze',
+                                  'E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA',
+                                  jsonb_build_object(
+                                      'config_id',      v_row.id,
+                                      'target',         v_target_key,
+                                      'verbo_chiusura', v_row.verbo_chiusura,
+                                      'motivo',         'verbo_di_chiusura_inesistente'
+                                  ),
+                                  NULL::uuid,
+                                  v_target_key,
+                                  'il verbo di chiusura dichiarato non e'' una funzione senza argomenti'
+                              );
+                          END IF;
+                          
+                          EXECUTE format('SELECT %s()', v_verbo::regproc) INTO v_count;
                       ELSE
                       -- UPDATE con id risolti.
                       v_sql := format(
@@ -317,7 +338,7 @@ AS $function$
           $function$
 
 COMMENT ON FUNCTION dbops.fn_apply_chiusura_scadenze(p_classe text)
-IS 'Framework di chiusura per scadenza: chiude lo stato gestionale (CHIUSA/CESSATO) sulle tabelle configurate in dbops.automazione_chiusura_scadenze quando valido_al < CURRENT_DATE. ⭐ Rev 2026-09-04: prende p_classe e lavora SOLO i bersagli di quella classe. p_classe NULL = tutte, che e'' il comportamento storico — il job pgAgent chiama senza argomenti e non e'' stato toccato. ⛔ Il filtro NON e'' il cancello: il cancello e'' il NOT NULL su automazione_chiusura_scadenze.classe, che obbliga ogni riga nuova a dichiarare la propria natura. Il filtro serve quando i bersagli di DOMINIO migreranno sulla coda (lavoro di backend): da li'' il worker chiamera'' con DOMINIO e pgAgent con AMMINISTRAZIONE, e i due mondi smetteranno di mescolarsi. Brief: brief-db-processi-automatici-identita-e-perimetro §6. ⭐ rev 2026-10-26 (20261026-08, brief-modello-documento-vendita §11, Y-2): una testata sotto la porta del modello del documento (script.trgfn_doc_stato_solo_dal_verbo) non si chiude con l''UPDATE dinamico ma col suo verbo di chiusura, oggi il contratto (vendite.fn_cessa_contratti_scaduti); sotto la porta senza verbo: E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA. La GUC app.cessazione_automatica e'' ritirata.';
+IS 'Framework di chiusura per scadenza: chiude lo stato gestionale (CHIUSA/CESSATO) sulle tabelle configurate in dbops.automazione_chiusura_scadenze quando valido_al < CURRENT_DATE. ⭐ Rev 2026-09-04: prende p_classe e lavora SOLO i bersagli di quella classe. p_classe NULL = tutte, che e'' il comportamento storico — il job pgAgent chiama senza argomenti e non e'' stato toccato. ⛔ Il filtro NON e'' il cancello: il cancello e'' il NOT NULL su automazione_chiusura_scadenze.classe, che obbliga ogni riga nuova a dichiarare la propria natura. Il filtro serve quando i bersagli di DOMINIO migreranno sulla coda (lavoro di backend): da li'' il worker chiamera'' con DOMINIO e pgAgent con AMMINISTRAZIONE, e i due mondi smetteranno di mescolarsi. Brief: brief-db-processi-automatici-identita-e-perimetro §6. ⭐ rev 2026-10-26 (20261026-08, brief-modello-documento-vendita §11, Y-2): una testata sotto la porta del modello del documento (script.trgfn_doc_stato_solo_dal_verbo) non si chiude con l''UPDATE dinamico ma col suo verbo di chiusura, oggi il contratto (vendite.fn_cessa_contratti_scaduti); sotto la porta senza verbo: E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA. La GUC app.cessazione_automatica e'' ritirata. ⭐ rev 2026-10-28 (20261028-14, brief-modello-documento-vendita §16, L-2): il verbo di chiusura si legge da dbops.automazione_chiusura_scadenze.verbo_chiusura (il contratto e la versione di listino), non piu'' da un IF sul contratto; verbo assente o non una funzione viva senza argomenti: E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA.';
 ```
 
 </div>

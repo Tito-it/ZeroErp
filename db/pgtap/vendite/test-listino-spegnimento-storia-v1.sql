@@ -1,6 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la BOZZA nasce senza stato (trigger
+--   della nascita); lo stato si legge dal vocabolario config.stati_doc_listino_versioni.
+-- ⚠️ Attesa cambiata: test 6 (una versione non nasce CHIUSA: la nascita in uno stato diverso dallo
+--   stato iniziale e' rifiutata prima del CHECK, E_DOC_STATO_INIZIALE_NON_VALIDO).
 --
 -- Test: un listino con storia non si spegne con l'interruttore; una versione
 --   CHIUSA ha sempre la fine validita'.
@@ -25,7 +29,7 @@
 --   3) listino senza versioni: non ha storia
 --   4) spegnere il listino con storia -> E_LISTINO_CON_STORIA_NON_SPEGNIBILE
 --   5) spegnere il listino senza versioni: passa
---   6) versione inserita CHIUSA senza valido_al -> chk_listini_versioni_chiusa_con_fine
+--   6) versione inserita CHIUSA senza valido_al -> E_DOC_STATO_INIZIALE_NON_VALIDO
 --   7) il codice e' registrato, classe CONFLITTO_STATO
 --
 -- ⚠️ I rifiuti si asseriscono sul CODICE (CONSTRAINT_NAME dell'eccezione, o il
@@ -87,8 +91,8 @@ WITH ins AS (
 )
 SELECT min(id) AS con_bozza, max(id) AS vuoto FROM ins;
 
-INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
-SELECT con_bozza, 'PGTAP_BOZZA', script.fn_data_operativa(), 'BOZZA' FROM t_senza;
+INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
+SELECT con_bozza, 'PGTAP_BOZZA', script.fn_data_operativa() FROM t_senza;
 
 -- ============================================================
 -- 1-3) La storia
@@ -132,11 +136,13 @@ SELECT is(
 -- ============================================================
 SELECT is(
     pg_temp.codice_errore(format(
-        $$INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
-          VALUES (%s, 'PGTAP_CHIUSA', DATE '2020-01-01', 'CHIUSA')$$,
-        (SELECT con_bozza FROM t_senza))),
-    'chk_listini_versioni_chiusa_con_fine',
-    '6) una versione inserita gia'' CHIUSA senza fine validita'' -> chk_listini_versioni_chiusa_con_fine'
+        $$INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal,
+                                                stato_doc_listino_versione_id)
+          VALUES (%s, 'PGTAP_CHIUSA', DATE '2020-01-01', %s)$$,
+        (SELECT con_bozza FROM t_senza),
+        script.fn_doc_stato_id('vendite.listini_versioni'::regclass, 'CHIUSA'))),
+    'E_DOC_STATO_INIZIALE_NON_VALIDO',
+    '6) una versione inserita gia'' CHIUSA senza fine validita'' -> E_DOC_STATO_INIZIALE_NON_VALIDO (non nasce CHIUSA)'
 );
 
 -- ============================================================

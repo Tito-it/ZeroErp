@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA VERSIONE DI LISTINO: LO STATO DIVENTA UN ID DEL VOCABOLARIO
+#   Brief: brief-modello-documento-vendita §16 (L-1 di Tid, 2026-10-28).
+#   Vocabolario: 20261028-03 (seed 20261028-27); FK: 20261028-31 (90_end).
+#
+# ── LA FORMA: CONVERSIONE SUL POSTO ─────────────────────────────────
+#   stato varchar(16) -> stato_doc_listino_versione_id bigint, con un
+#   ALTER COLUMN … TYPE … USING sui soli valori: e' DDL, nessun trigger di
+#   riga scatta (i guard di riga rifiuterebbero un backfill per UPDATE),
+#   nessun momento con due colonne. Gli id sono quelli del seed:
+#   1 BOZZA, 2 ATTIVA, 3 CHIUSA.
+#
+# ── LE DIPENDENZE DELLA COLONNA (pg_depend, letto il 2026-10-28) ────
+#   Nessuna vista e nessuna funzione BEGIN ATOMIC. Si tolgono prima e si
+#   rimettono dopo:
+#   * i due trigger scritti a mano che la nominano (UPDATE OF stato, WHEN
+#     old.stato): li rimontano, sulle funzioni riscritte, 20261028-08 (il
+#     guard di transizione) e 20261028-09 (il guard per stato, che prende
+#     anche le date della chiusa);
+#   * chk_listini_versioni_stato (i tre valori): lo sostituisce la FK al
+#     vocabolario (90_end);
+#   * chk_listini_versioni_chiusa_con_fine e ex_listini_versioni_no_overlap:
+#     si riscrivono sugli id. ⚠️ Un vincolo non legge un'altra tabella,
+#     quindi gli id 2 e 3 sono scritti qui: il pgTAP del giro li confronta
+#     coi codici del vocabolario. Stesso NOME dell'esclusione: il backend la
+#     traduce per nome (E_VENDITE_LISTINO_VERSIONE_OVERLAP) e il registro
+#     dbops.automazione_overlap la cerca per nome (il suo predicato si
+#     allinea in 80_data, 20261028-30, come il 20260928-42).
+#   * il DEFAULT 'BOZZA': lo stato iniziale lo mette il trigger della nascita
+#     (20261028-10), come per le altre testate.
+#   Un corpo plpgsql che nomina la colonna non e' una dipendenza: gli undici
+#   corpi si riscrivono in 20_code nello stesso giro (20261028-08, -09,
+#   -16 … -25).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261028-04-alter-listini-versioni-stato-al-vocabolario-mctit.yaml
+
+  - changeSet:
+      id: 20261028-04-alter-listini-versioni-stato-al-vocabolario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.listini_versioni: stato (testo col CHECK) diventa stato_doc_listino_versione_id
+        (id di config.stati_doc_listino_versioni), conversione sul posto; CHECK della chiusa ed
+        esclusione delle sovrapposizioni riscritti sugli id. Brief:
+        brief-modello-documento-vendita §16 (L-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: listini_versioni
+                columnName: stato
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: listini_versioni
+                    columnName: stato_doc_listino_versione_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_versioni_a10_guard_transizione_stato_upd
+                  ON vendite.listini_versioni;
+              DROP TRIGGER IF EXISTS trg_listini_versioni_a10_guard_date_chiusa_upd
+                  ON vendite.listini_versioni;
+
+              ALTER TABLE vendite.listini_versioni
+                  DROP CONSTRAINT ex_listini_versioni_no_overlap,
+                  DROP CONSTRAINT chk_listini_versioni_stato,
+                  DROP CONSTRAINT chk_listini_versioni_chiusa_con_fine;
+
+              ALTER TABLE vendite.listini_versioni
+                  ALTER COLUMN stato DROP DEFAULT;
+
+              ALTER TABLE vendite.listini_versioni
+                  ALTER COLUMN stato TYPE bigint
+                  USING CASE stato
+                            WHEN 'BOZZA'  THEN 1
+                            WHEN 'ATTIVA' THEN 2
+                            WHEN 'CHIUSA' THEN 3
+                        END;
+
+              ALTER TABLE vendite.listini_versioni
+                  RENAME COLUMN stato TO stato_doc_listino_versione_id;
+
+              -- Una versione CHIUSA (id 3) ha la sua data di fine.
+              ALTER TABLE vendite.listini_versioni
+                  ADD CONSTRAINT chk_listini_versioni_chiusa_con_fine
+                  CHECK (stato_doc_listino_versione_id <> 3 OR valido_al IS NOT NULL);
+
+              -- Per ogni data, al piu' una versione in vigore: ATTIVA (2) o
+              -- CHIUSA (3), attiva; le BOZZE restano fuori.
+              ALTER TABLE vendite.listini_versioni
+                  ADD CONSTRAINT ex_listini_versioni_no_overlap
+                  EXCLUDE USING gist (
+                      listino_id WITH =,
+                      validita   WITH &&
+                  )
+                  WHERE (attivo IS TRUE AND stato_doc_listino_versione_id IN (2, 3));
+
+              COMMENT ON COLUMN vendite.listini_versioni.stato_doc_listino_versione_id IS
+                  'Lo stato della versione: id di config.stati_doc_listino_versioni (FK). Nasce nello stato iniziale (trigger della nascita); si cambia solo dai verbi (porta): vendite.fn_attiva_versione_listino (BOZZA -> ATTIVA, con la chiusura delle precedenti) e vendite.fn_chiudi_versioni_listino_scadute (ATTIVA -> CHIUSA, dal job). ⚠️ Gli id 2 (ATTIVA) e 3 (CHIUSA) sono scritti in ex_listini_versioni_no_overlap e in chk_listini_versioni_chiusa_con_fine. Fino al 2026-10-28 era la colonna testo stato. Brief: brief-modello-documento-vendita §16 (L-1).';
+              COMMENT ON CONSTRAINT chk_listini_versioni_chiusa_con_fine ON vendite.listini_versioni IS
+                  'Una versione CHIUSA (id 3 di config.stati_doc_listino_versioni) ha valido_al. L''id e'' scritto qui perche'' un CHECK non legge un''altra tabella: lo confronta col codice il pgTAP vendite/test-listino-versione-al-modello-v1.';
+              COMMENT ON CONSTRAINT ex_listini_versioni_no_overlap ON vendite.listini_versioni IS
+                  'Per ogni data al piu'' una versione in vigore dello stesso listino: le versioni attive in stato ATTIVA (id 2) o CHIUSA (id 3) non si sovrappongono. Gli id sono scritti qui perche'' il predicato non legge un''altra tabella: li confronta coi codici il pgTAP vendite/test-listino-versione-al-modello-v1. Il backend lo traduce per nome in E_VENDITE_LISTINO_VERSIONE_OVERLAP; il registro dbops.automazione_overlap lo cerca per nome.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                  DROP CONSTRAINT IF EXISTS ex_listini_versioni_no_overlap,
+                  DROP CONSTRAINT IF EXISTS chk_listini_versioni_chiusa_con_fine;
+              ALTER TABLE vendite.listini_versioni
+                  RENAME COLUMN stato_doc_listino_versione_id TO stato;
+              ALTER TABLE vendite.listini_versioni
+                  ALTER COLUMN stato TYPE varchar(16)
+                  USING CASE stato WHEN 1 THEN 'BOZZA' WHEN 2 THEN 'ATTIVA' WHEN 3 THEN 'CHIUSA' END;
+              ALTER TABLE vendite.listini_versioni
+                  ALTER COLUMN stato SET DEFAULT 'BOZZA';
+              ALTER TABLE vendite.listini_versioni
+                  ADD CONSTRAINT chk_listini_versioni_stato
+                      CHECK (stato::text = ANY (ARRAY['BOZZA', 'ATTIVA', 'CHIUSA'])),
+                  ADD CONSTRAINT chk_listini_versioni_chiusa_con_fine
+                      CHECK (stato::text <> 'CHIUSA' OR valido_al IS NOT NULL),
+                  ADD CONSTRAINT ex_listini_versioni_no_overlap
+                      EXCLUDE USING gist (listino_id WITH =, validita WITH &&)
+                      WHERE (attivo IS TRUE AND stato::text = ANY (ARRAY['ATTIVA', 'CHIUSA']));

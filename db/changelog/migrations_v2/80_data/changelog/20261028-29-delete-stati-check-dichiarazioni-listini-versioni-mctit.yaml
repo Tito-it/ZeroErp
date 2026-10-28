@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PRESIDIO C1: LA COLONNA DI STATO DELLA VERSIONE DI LISTINO NON HA PIU' IL CHECK
+#   Brief: brief-modello-documento-vendita §16 (L-1 di Tid, 2026-10-28).
+#
+#   dbops.stati_check_dichiarazioni dichiarava ATTIVA e CHIUSA di
+#   vendite.listini_versioni.stato come scritti dall'applicazione. Il
+#   20261028-04 ha tolto il CHECK (chk_listini_versioni_stato): la colonna e'
+#   diventata stato_doc_listino_versione_id, con la FK al vocabolario, e il
+#   presidio dei valori di un CHECK non la guarda piu'. Le due righe sarebbero
+#   DEBITO_ESTINTO. Tolte anche dal CSV (il mirror loadUpdateData non
+#   cancella).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261028-29-delete-stati-check-dichiarazioni-listini-versioni-mctit.yaml
+
+  - changeSet:
+      id: 20261028-29-delete-stati-check-dichiarazioni-listini-versioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Presidio C1: via da dbops.stati_check_dichiarazioni le due righe di
+        vendite.listini_versioni.stato (ATTIVA, CHIUSA): la colonna non ha piu' il CHECK dei valori
+        (20261028-04). Tolte anche dal CSV. Brief: brief-modello-documento-vendita §16 (L-1).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: stati_check_dichiarazioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.stati_check_dichiarazioni d
+               WHERE (d.schema_tabella, d.nome_tabella, d.colonna) =
+                     ('vendite', 'listini_versioni', 'stato')
+                 AND d.valore IN ('ATTIVA', 'CHIUSA');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le righe tornano dal CSV di prima (git): il CHECK lo rimette
+              -- solo il rollback del 20261028-04.
+              SELECT 1;

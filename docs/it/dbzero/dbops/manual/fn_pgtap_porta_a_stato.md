@@ -31,7 +31,13 @@ END $x$;
 Ritorna il `codice_interno` dello stato raggiunto.
 
 **Le testate che conosce**: preventivo, offerta, contratto, ordine, DDT, reso,
-commessa, fattura e il **lotto di fatturazione** (rev `20261024-22` e `-30`).
+commessa, fattura, il **lotto di fatturazione** (rev `20261024-22` e `-30`) e la
+**versione di listino** (rev `20261028-24`).
+
+* **La versione di listino**: ATTIVA dal verbo `vendite.fn_attiva_versione_listino`
+  (chiude anche le versioni precedenti che si sovrappongono); CHIUSA, passaggio di
+  processo, da `vendite.fn_chiudi_versioni_listino_scadute`, che vuole la fine validità
+  già passata: la scrive il test prima di chiederla.
 
 * **La fattura** usa la matrice `config.stati_doc_fiscale_transizioni` con i soli
   passaggi della fattura singola (`solo_lotto = false`).

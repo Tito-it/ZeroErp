@@ -1,6 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): le bozze nascono senza stato e
+--   prendono un prezzo (un articolo del test) prima dell'attivazione; i passaggi dal verbo
+--   (dbops.fn_pgtap_porta_a_stato); il vincolo e il registro overlap sugli id del vocabolario
+--   config.stati_doc_listino_versioni.
+-- ⚠️ Attesa cambiata: test 6 (il guard delle date della CHIUSA e' ritirato, assorbito dal guard per
+--   stato: il rifiuto ha il messaggio di E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE).
 --
 -- Test: la versione del listino in vigore a una data, in UNA sede.
 --   vendite.fn_listino_versione_in_vigore, il vincolo
@@ -35,7 +41,7 @@
 --    3) il registro dbops.automazione_overlap dice lo stesso predicato del vincolo
 --    4) V1 ATTIVA: in vigore nel suo periodo, NULL fuori
 --    5) V1 si chiude (fine gia' passata)
---    6) ⛔ le date di V1 CHIUSA non si spostano (messaggio del codice)
+--    6) ⛔ le date di V1 CHIUSA non si spostano (guard per stato, messaggio del codice)
 --    7) un UPDATE che riscrive le STESSE date di una CHIUSA passa
 --    8) ⛔ una versione che si sovrappone alla CHIUSA non diventa ATTIVA
 --    9) V2 diventa ATTIVA sul periodo libero
@@ -75,13 +81,23 @@ $fx$;
 -- Scopo: una versione in BOZZA del listino della fixture.
 CREATE OR REPLACE FUNCTION pg_temp.bozza(p_codice text, p_dal date)
 RETURNS bigint LANGUAGE sql AS $fx$
-  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
-  SELECT listino_id, p_codice, p_dal, 'BOZZA' FROM tmp_lvv_listino
+  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
+  SELECT listino_id, p_codice, p_dal FROM tmp_lvv_listino
   RETURNING id;
 $fx$;
 
 CREATE TEMP TABLE tmp_lvv_v2 AS SELECT pg_temp.bozza('PGTAP_LVV_V2', '2021-01-01') AS id;
 CREATE TEMP TABLE tmp_lvv_vx AS SELECT pg_temp.bozza('PGTAP_LVV_VX', '2020-06-01') AS id;
+
+-- Un prezzo in V2 e in VX: una versione si attiva solo con un prezzo.
+CREATE TEMP TABLE tmp_lvv_art AS
+SELECT dbops.fn_pgtap_crea_articolo(
+           'PGTAP_LVV_ART_' || substr(md5(clock_timestamp()::text || random()::text), 1, 12),
+           false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_lvv_listino)) AS id;
+
+SELECT dbops.fn_pgtap_listino_aggiungi_articoli(v.id, ARRAY[(SELECT id FROM tmp_lvv_art)], 100)
+  FROM (SELECT id FROM tmp_lvv_v2 UNION ALL SELECT id FROM tmp_lvv_vx) v;
 
 -- ============================================================
 -- 1..3 — forma
@@ -92,7 +108,12 @@ SELECT ok(
     '1) fn_listino_versione_in_vigore: STABLE, non STRICT, SECURITY INVOKER');
 
 SELECT ok(
-    (SELECT pg_get_constraintdef(c.oid) ~ 'ATTIVA' AND pg_get_constraintdef(c.oid) ~ 'CHIUSA'
+    (SELECT substring(pg_get_constraintdef(c.oid) FROM ' WHERE (.*)$')
+                ~ format('stato_doc_listino_versione_id.*\m%s\M',
+                         script.fn_doc_stato_id('vendite.listini_versioni'::regclass, 'ATTIVA'))
+        AND substring(pg_get_constraintdef(c.oid) FROM ' WHERE (.*)$')
+                ~ format('stato_doc_listino_versione_id.*\m%s\M',
+                         script.fn_doc_stato_id('vendite.listini_versioni'::regclass, 'CHIUSA'))
        FROM pg_constraint c
       WHERE c.conrelid = 'vendite.listini_versioni'::regclass
         AND c.conname = 'ex_listini_versioni_no_overlap' AND c.contype = 'x'),
@@ -104,7 +125,7 @@ SELECT ok(
 --    normalizzato: si confronta il SIGNIFICATO. Il predicato del registro diventa
 --    il CHECK di una tabella temporanea con le stesse colonne, e PostgreSQL
 --    normalizza le due espressioni allo stesso modo.
-CREATE TEMP TABLE tmp_lvv_pred (attivo boolean, stato character varying(16));
+CREATE TEMP TABLE tmp_lvv_pred (attivo boolean, stato_doc_listino_versione_id bigint);
 DO $pred$
 BEGIN
     EXECUTE format('ALTER TABLE tmp_lvv_pred ADD CONSTRAINT chk_pred CHECK (%s)',
@@ -130,15 +151,15 @@ SELECT ok(
     '4) V1 ATTIVA: in vigore nel 2020, NULL nel 2021 (V2 e'' ancora BOZZA)');
 
 SELECT lives_ok(
-    $$UPDATE vendite.listini_versioni SET stato = 'CHIUSA'
-       WHERE id = (SELECT listino_versione_id FROM tmp_lvv_listino)$$,
+    $$SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni',
+           (SELECT listino_versione_id FROM tmp_lvv_listino), 'CHIUSA')$$,
     '5) V1 si chiude: la sua fine e'' gia'' passata');
 
 SELECT throws_like(
     $$UPDATE vendite.listini_versioni SET valido_al = NULL
        WHERE id = (SELECT listino_versione_id FROM tmp_lvv_listino)$$,
-    '%chiusa: le sue date di validita%',
-    '6) le date di V1 CHIUSA non si spostano: il guard rifiuta col messaggio del codice');
+    '%CHIUSA: il campo valido_al non si puo''%',
+    '6) le date di V1 CHIUSA non si spostano: il guard per stato rifiuta col messaggio di E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE');
 
 SELECT lives_ok(
     $$UPDATE vendite.listini_versioni SET valido_al = '2020-12-31'
@@ -151,13 +172,13 @@ SELECT lives_ok(
 -- ⛔ Il buco che l'esclusione solo-ATTIVA lasciava aperto: VX parte a giugno 2020,
 --    dentro il periodo di V1 CHIUSA.
 SELECT throws_ok(
-    $$UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM tmp_lvv_vx)$$,
+    $$SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT id FROM tmp_lvv_vx), 'ATTIVA')$$,
     '23P01',
     NULL,
     '8) una versione che copre il periodo di una CHIUSA non diventa ATTIVA');
 
 SELECT lives_ok(
-    $$UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM tmp_lvv_v2)$$,
+    $$SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT id FROM tmp_lvv_v2), 'ATTIVA')$$,
     '9) V2 diventa ATTIVA sul periodo libero');
 
 SELECT is(pg_temp.in_vigore(script.fn_data_operativa()), (SELECT id FROM tmp_lvv_v2),
@@ -172,11 +193,13 @@ SELECT is(pg_temp.in_vigore('2020-06-01'), (SELECT listino_versione_id FROM tmp_
 -- ⚠️ Presidio sul TESTO, commenti tolti: prende la ricopiatura della forma che
 --    c'era (lo stato ATTIVA/CHIUSA scritto su listini_versioni), non una
 --    riscrittura con altri nomi. Perimetro: le funzioni di vendite e script.
+-- rev 2026-10-28 (§16): anche la forma del vocabolario, `codice_interno IN
+--    ('ATTIVA', 'CHIUSA')`, quella che la sede unica scrive da oggi.
 SELECT is(
     (SELECT count(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname IN ('vendite', 'script')
         AND p.proname <> 'fn_listino_versione_in_vigore'
-        AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'stato\s+IN\s*\(\s*''ATTIVA''\s*,\s*''CHIUSA''\s*\)'),
+        AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ '(stato|codice_interno)\s+IN\s*\(\s*''ATTIVA''\s*,\s*''CHIUSA''\s*\)'),
     0,
     '12) nessuna copia della regola «ATTIVA o CHIUSA» fuori dalla sede unica');
 

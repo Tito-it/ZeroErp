@@ -283,7 +283,6 @@ db/pgtap/vendite/test-guard-uscita-commessa-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-limite-emissione-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-lista-commessa-attivita-fatturata-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-listini-righe-guard-tipologia-v1.sql	ASSERZIONE
-db/pgtap/vendite/test-listini-versioni-guard-transizione-stato-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-logs-guard-delete.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-lotti-attivita-stato-esecuzione-v2.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-lotti-gruppi-esito.sql	ERRORE_FIXTURE

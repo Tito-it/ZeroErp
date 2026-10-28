@@ -57,3 +57,7 @@ databaseChangeLog:
               #   runOnChange: la colonna si aggiunge qui, non con un secondo
               #   loader sullo stesso CSV.
               - column: { name: classe, type: STRING }
+              # ⭐ 2026-10-28: il verbo di chiusura di una testata sotto la porta
+              #   del modello (20261028-05, brief-modello-documento-vendita §16,
+              #   L-2). NULL col token NULL (nullValue).
+              - column: { name: verbo_chiusura, type: STRING }

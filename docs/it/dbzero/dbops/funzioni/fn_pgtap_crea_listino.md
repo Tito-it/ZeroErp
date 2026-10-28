@@ -33,13 +33,20 @@ AS $function$
 --   (config.listini_tipologie_utilities, guard
 --   trgfn_listini_guard_tipologia_utility): una qualunque sbatterebbe
 --   sul guard per le utility che non la prevedono.
--- ⛔ Le RIGHE del listino non le scrive: prezzi e componenti sono il
---   caso del test.
+-- ⛔ Le RIGHE del listino del test non le scrive: prezzi e componenti
+--   sono il caso del test. Ne scrive UNA d'appoggio, su un articolo suo
+--   (rev 2026-10-28, 20261028-25): una versione si attiva solo con un
+--   prezzo (script.fn_check_versione_listino_attivabile), e si attiva dal
+--   verbo (vendite.fn_attiva_versione_listino, via
+--   dbops.fn_pgtap_porta_a_stato). Chi conta le righe della versione ne
+--   trova una in piu': quella d'appoggio, il suo articolo ha il codice
+--   PGTAP_LST_ART_<casuale>.
 DECLARE
     v_emittente_sr vendite.listini.emittente_soggetto_ruolo_id%TYPE;
     v_tipologia    vendite.listini.tipologia_id%TYPE;
     v_listino      vendite.listini.id%TYPE;
     v_versione     vendite.listini_versioni.id%TYPE;
+    v_articolo     catalogo.articoli.id%TYPE;
 BEGIN
     v_emittente_sr := script.fn_pgtap_emittente_sr_operatore();
 
@@ -76,18 +83,29 @@ BEGIN
     )
     RETURNING id INTO v_listino;
 
+    -- Nasce in bozza (trigger della nascita).
     INSERT INTO vendite.listini_versioni (
-        listino_id, codice_versione, valido_dal, valido_al, stato
+        listino_id, codice_versione, valido_dal, valido_al
     )
-    VALUES (v_listino, 'PGTAP_V1', p_valido_dal, p_valido_al, 'ATTIVA')
+    VALUES (v_listino, 'PGTAP_V1', p_valido_dal, p_valido_al)
     RETURNING id INTO v_versione;
+
+    -- La riga d'appoggio: un articolo suo, della tipologia del listino.
+    v_articolo := dbops.fn_pgtap_crea_articolo(
+        'PGTAP_LST_ART_' || substr(md5(clock_timestamp()::text || random()::text), 1, 12),
+        false,
+        p_listino_tipologia_id => v_tipologia);
+    PERFORM dbops.fn_pgtap_listino_aggiungi_articoli(v_versione, ARRAY[v_articolo]);
+
+    -- Attiva dal verbo.
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass, v_versione, 'ATTIVA');
 
     RETURN QUERY SELECT v_listino, v_versione, v_tipologia;
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_listino(p_utility_id integer, p_etichetta text, p_valido_dal date, p_valido_al date)
-IS 'Fixture pgTAP: un listino con una versione ATTIVA, dell''emittente di chi agisce (contesto aperto prima), per l''utility scelta; tipologia = la prima ammessa per l''utility. Date della versione a scelta (default: da oggi, aperta). Le righe restano al test. Brief: brief-db-fixture-che-costruiscono-giro-2.';
+IS 'Fixture pgTAP: un listino con una versione ATTIVA, dell''emittente di chi agisce (contesto aperto prima), per l''utility scelta; tipologia = la prima ammessa per l''utility. Date della versione a scelta (default: da oggi, aperta). Le righe restano al test. Brief: brief-db-fixture-che-costruiscono-giro-2. Rev 2026-10-28 (20261028-25, brief-modello-documento-vendita §16): la versione nasce in bozza, prende una riga d''appoggio (un articolo suo, PGTAP_LST_ART_<casuale>) e si attiva dal verbo (dbops.fn_pgtap_porta_a_stato -> vendite.fn_attiva_versione_listino).';
 ```
 
 </div>

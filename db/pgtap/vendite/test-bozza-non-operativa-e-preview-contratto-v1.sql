@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): le versioni di listino nascono senza stato (BOZZA); la PGTAP-MX-ATTIVA riceve la riga e poi si attiva dalla fixture dbops.fn_pgtap_porta_a_stato, non nasce piu' ATTIVA.
 --
 -- Test: Bug A (BOZZA non operativa) + Bug B (fn_contratto_righe_preview)
 --       Migrations: 20260516-01..04
@@ -114,8 +115,8 @@ SELECT id FROM ins;
 
 CREATE TEMP TABLE tmp_ver_bozza_only AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, stato)
-    SELECT id, 'PGTAP-BO-V1', '2070-01-01'::date, 'BOZZA'
+    INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal)
+    SELECT id, 'PGTAP-BO-V1', '2070-01-01'::date
       FROM tmp_lst_bozza_only
     RETURNING id
 )
@@ -140,13 +141,13 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
--- BOZZA (no no-overlap con ATTIVA: il vincolo è solo su stato=ATTIVA).
+-- BOZZA (no no-overlap con ATTIVA: il vincolo non guarda la BOZZA).
 -- valido_dal = script.fn_data_operativa(): il freeze trigger usa script.fn_data_operativa() per il lookup,
 -- quindi entrambe le versioni devono coprire script.fn_data_operativa() per essere trovate.
 CREATE TEMP TABLE tmp_ver_mixed_bozza AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, stato)
-    SELECT id, 'PGTAP-MX-BOZZA', script.fn_data_operativa(), 'BOZZA'
+    INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal)
+    SELECT id, 'PGTAP-MX-BOZZA', script.fn_data_operativa()
       FROM tmp_lst_mixed
     RETURNING id
 )
@@ -156,12 +157,12 @@ INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prez
 SELECT v.id, a.id, ctx.uom_id, 99.99
   FROM tmp_ver_mixed_bozza v, tmp_bozza_art a, tmp_bozza_ctx ctx;
 
--- ATTIVA per stesso listino (INSERT diretto: guard solo su UPDATE OF stato).
+-- ATTIVA per stesso listino: nasce BOZZA, riceve la riga, si attiva dal verbo.
 -- valido_dal = script.fn_data_operativa(): freeze trigger la troverà e farà snapshot.
 CREATE TEMP TABLE tmp_ver_mixed_attiva AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, stato)
-    SELECT id, 'PGTAP-MX-ATTIVA', script.fn_data_operativa(), 'ATTIVA'
+    INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal)
+    SELECT id, 'PGTAP-MX-ATTIVA', script.fn_data_operativa()
       FROM tmp_lst_mixed
     RETURNING id
 )
@@ -170,6 +171,9 @@ SELECT id FROM ins;
 INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
 SELECT v.id, a.id, ctx.uom_id, 44.00
   FROM tmp_ver_mixed_attiva v, tmp_bozza_art a, tmp_bozza_ctx ctx;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass, v.id, 'ATTIVA')
+  FROM tmp_ver_mixed_attiva v;
 
 -- -------------------------------------------------------
 -- Contratto PGTAP_BO_CNT: listino BOZZA-only, date 2070

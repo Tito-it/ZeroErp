@@ -3,6 +3,8 @@
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto passa da
 --   dbops.fn_pgtap_porta_a_stato (il verbo del contratto), non da un UPDATE dello stato: la porta lo
 --   ferma. Nessuna attesa cambiata.
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione nasce senza stato
+--   (BOZZA) e diventa ATTIVA da dbops.fn_pgtap_porta_a_stato, non da un UPDATE dello stato.
 -- pgTAP test per Zero ERP
 --
 -- Test: fn_resolve_prezzo_listino_v2 — logica bundle-prioritario
@@ -93,8 +95,8 @@ SELECT * FROM dbops.fn_pgtap_crea_listino(
 
 CREATE TEMP TABLE tmp_bnd_ver AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, stato)
-    SELECT listino_id, 'PGTAP_BND_V2', script.fn_data_operativa(), script.fn_data_operativa() + 400, 'BOZZA' FROM tmp_bnd_listino
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al)
+    SELECT listino_id, 'PGTAP_BND_V2', script.fn_data_operativa(), script.fn_data_operativa() + 400 FROM tmp_bnd_listino
     RETURNING id
 )
 SELECT id FROM ins;
@@ -137,7 +139,7 @@ SELECT (SELECT id FROM tmp_bnd_ver), ac.id, ac.prodotto_id, ac.componente_id, 75
 INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
 VALUES ((SELECT id FROM tmp_bnd_ver), pg_temp.art('F2'), pg_temp.uom('F2'), 100.00);
 
-UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM tmp_bnd_ver);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT id FROM tmp_bnd_ver), 'ATTIVA');
 
 -- La matrice categoria -> listino (valido_al NULL = aperta): e' lo stadio
 -- CATEGORIA, quello che i test 2..6 attraversano (nessun contratto ancora).

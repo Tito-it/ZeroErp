@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione di oggi del listino nasce
+--   in bozza senza stato e si attiva dal verbo (dbops.fn_pgtap_porta_a_stato), non con un UPDATE dello stato.
 -- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'emissione di OFF_EMETTI (prima del 13) dal
 --   verbo vendite.fn_cambia_stato_offerta, con emetti_offerta concessa all'utente del contesto, non con
 --   un UPDATE dello stato: la porta dell'offerta lo ferma. Nessuna attesa cambiata.
@@ -209,8 +211,8 @@ SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _m), 'R-DB',
 
 CREATE TEMP TABLE _v AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
-    SELECT listino_id, 'PGTAP_RDB_V2', '2021-01-01'::date, 'BOZZA' FROM _l
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
+    SELECT listino_id, 'PGTAP_RDB_V2', '2021-01-01'::date FROM _l
     RETURNING id
 )
 SELECT id FROM ins;
@@ -227,7 +229,7 @@ INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, pre
 SELECT (SELECT id FROM _v), a.id, a.uom_id, 100.00
   FROM catalogo.articoli a WHERE a.id = pg_temp.art('A');
 
-UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM _v);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT id FROM _v), 'ATTIVA');
 
 -- Il secondo listino: stessa utility, stessa azienda.
 CREATE TEMP TABLE _l2 AS

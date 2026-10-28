@@ -1,6 +1,6 @@
 # Guida — Gestione Listini e Pricing
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 28 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA
 >
@@ -59,7 +59,7 @@ Non ci sono tie-break: la struttura dati **garantisce** che ogni stadio produca 
 
 Un listino contiene:
 
-* **Versioni** (`listini_versioni`) — finestre temporali con stato BOZZA → ATTIVA → CHIUSA. Solo una versione ATTIVA per listino nel periodo (vincolo `EXCLUDE`).
+* **Versioni** (`listini_versioni`) — finestre temporali con stato BOZZA → ATTIVA → CHIUSA. Per ogni data al più una versione in vigore (ATTIVA o CHIUSA) per listino (vincolo `EXCLUDE`).
 * **Righe** (`listini_righe`) — per ogni versione: (articolo, uom) → prezzo. Forma pura, senza dimensioni di scope.
 
 ⭐ **Come finisce un listino.** Dipende dalla sua **storia**: un listino ha storia se ha
@@ -72,6 +72,24 @@ non conta ([vendite.fn_listino_ha_storia](/dbzero/vendite/funzioni/fn_listino_ha
   scadenza la versione passa CHIUSA. Chi prova a spegnerlo riceve
   `E_LISTINO_CON_STORIA_NON_SPEGNIBILE`, con questo rimedio.
 * Una versione CHIUSA ha **sempre** la fine validità: è un periodo di prezzi finito.
+
+⭐ **Lo stato di una versione** segue il [modello del documento di vendita](/guide/modello-documento-di-vendita):
+gli stati sono un vocabolario ([config.stati_doc_listino_versioni](/dbzero/config/tabelle/stati_doc_listino_versioni)),
+i passaggi una matrice ([config.transizioni_stati_listino_versioni](/dbzero/config/tabelle/transizioni_stati_listino_versioni)),
+e lo stato lo cambiano solo due operazioni del database.
+
+* **Attiva** ([vendite.fn_attiva_versione_listino](/dbzero/vendite/funzioni/fn_attiva_versione_listino)), con
+  l'azione `attiva_listino`: la versione deve essere accesa e avere almeno un prezzo (una riga, o un
+  composito col prezzo bundle); le versioni attive precedenti che si sovrappongono si chiudono il giorno
+  prima della decorrenza nuova, nella stessa operazione. Il dialogo di conferma mostra quali, dallo stesso
+  lettore ([vendite.fn_versioni_listino_da_chiudere](/dbzero/vendite/funzioni/fn_versioni_listino_da_chiudere)).
+* **La chiusura a scadenza**: una versione ATTIVA con la fine validità passata diventa CHIUSA col job
+  della chiusura per scadenza ([vendite.fn_chiudi_versioni_listino_scadute](/dbzero/vendite/funzioni/fn_chiudi_versioni_listino_scadute)).
+  Fra la scadenza e il passaggio del job la versione è ATTIVA con la chiusura programmata.
+
+Che cosa si cambia in ogni stato: in **bozza** tutto, e la versione si può eliminare; di una versione
+**attiva** solo la fine validità; di una **chiusa** niente. Una versione nasce sempre in bozza.
+Per cambiare i prezzi di una versione in uso si crea una versione nuova (anche clonandola) e la si attiva.
 
 ### 2.2 Categoria cliente
 
@@ -498,7 +516,7 @@ Il campo ha dominio CHECK `FIXED | FORMULA | SCAGLIONI` ed è predisposto per es
 1. Admin: crea listino (codice, descrizione, utility, tipologia) — emittente derivato dall'operatore
 2. Crea versione BOZZA con `valido_dal`
 3. Popola righe prezzo (articoli coerenti con tipologia)
-4. Attiva versione → BOZZA passa ad ATTIVA; eventuali versioni precedenti autoclose
+4. Attiva versione → BOZZA passa ad ATTIVA; le versioni precedenti che si sovrappongono si chiudono il giorno prima (§2.1)
 
 ### 8.2 Assegnare un listino a un cliente (scope categoria)
 
@@ -531,7 +549,7 @@ Il database rafforza la determinismo con vincoli espliciti (non è "responsabili
 | `ex_contratti_no_overlap`                     | `contratti`                 | Un solo contratto attivo per (BA, istanza, utility, ambito) nel periodo       |
 | `ex_categ_cli_listini_no_overlap`             | `categorie_clienti_listini` | Una sola riga matrice per (categoria, utility, emittente, classe) nel periodo |
 | `ex_promo_articoli_no_overlap`                | `promo_articoli`            | Una sola promo attiva per (articolo, uom) nel periodo                         |
-| `ex_listini_versioni_no_overlap`              | `listini_versioni`          | Una sola versione ATTIVA per listino nel periodo                              |
+| `ex_listini_versioni_no_overlap`              | `listini_versioni`          | Una sola versione in vigore (ATTIVA o CHIUSA) per listino nel periodo         |
 | `uq_listini_righe_key_attiva`                 | `listini_righe`             | Una sola riga attiva per (versione, articolo, uom)                            |
 | `script.fn_check_articolo_riga` (guard `script.trgfn_righe_guard_articolo_ammesso`) | check + trigger | Articolo e listino della stessa tipologia; niente solo componente; il kit coi componenti (dal 2026-10-13) |
 | `trgfn_contratti_modalita_c_righe_complete`   | trigger                     | Modalità C: attivazione blocca se righe incomplete                            |

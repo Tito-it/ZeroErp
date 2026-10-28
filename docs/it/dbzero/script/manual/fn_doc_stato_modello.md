@@ -23,6 +23,9 @@ tabella ne elenca i passaggi ammessi:
 
 Nessuna riga: la tabella non è un documento con una matrice.
 
+Le testate: preventivo, offerta, contratto, ordine, DDT, reso, commessa, fattura, lotto di
+fatturazione e, dal 28-10-2026, la versione di listino (§16 del brief).
+
 ### Regole
 
 * È **codice, non configurazione**: una testata nuova entra con un changeSet che

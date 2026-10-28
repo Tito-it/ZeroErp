@@ -14,7 +14,9 @@ Guide: [pgTAP — come si scrive un test](/guide/pgtap-come-si-scrive-un-test) �
 (rev 2026-09-23 — D7, lotto 2)
 
 **Un listino con una versione ATTIVA**, dell'azienda di chi agisce, per l'utility scelta dal
-test. `vendite.listini` è anagrafica: su un database ricostruito è vuota, e «il primo listino
+test. ⭐ Rev 2026-10-28: la versione nasce in bozza, prende **una riga d'appoggio** (un articolo
+suo, codice `PGTAP_LST_ART_<casuale>`) e si attiva dal verbo, via `dbops.fn_pgtap_porta_a_stato`:
+una versione si attiva solo con un prezzo. Chi conta le righe della versione ne trova una in più. `vendite.listini` è anagrafica: su un database ricostruito è vuota, e «il primo listino
 attivo» non esiste.
 
 ```sql
