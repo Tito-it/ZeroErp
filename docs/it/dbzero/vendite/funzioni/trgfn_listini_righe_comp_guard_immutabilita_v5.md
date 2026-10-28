@@ -22,7 +22,7 @@ AS $function$
 --   Il check periodo usa valido_dal/valido_al: validita e' STORED generated,
 --   non disponibile nei BEFORE trigger (D-OPEN-1).
 DECLARE
-    v_stato   vendite.listini_versioni.stato%TYPE;
+    v_stato   config.stati_doc_listino_versioni.codice_interno%TYPE;
     v_riga_id vendite.listini_righe_componenti.id%TYPE;
 BEGIN
     v_riga_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.id ELSE NEW.id END;
@@ -42,8 +42,9 @@ BEGIN
     END IF;
 
     -- Legge stato versione
-    SELECT lv.stato INTO v_stato
+    SELECT s.codice_interno INTO v_stato
       FROM vendite.listini_versioni lv
+      JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
      WHERE lv.id = NEW.listino_versione_id;
 
     -- INSERT: solo in versione BOZZA
@@ -88,7 +89,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_listini_righe_comp_guard_immutabilita_v5()
-IS 'Trigger BEFORE INS/UPD/DEL su listini_righe_componenti: immutabilita'' v5. DELETE sempre bloccato (usare attivo=FALSE). INSERT solo in BOZZA. UPDATE prezzo/iva_id/valido_dal/valido_al bloccato in non-BOZZA. Raise E_RIGA_LISTINO_VERSIONE_CHIUSA (362). rev 2026-05-14.';
+IS 'Trigger BEFORE INS/UPD/DEL su listini_righe_componenti: immutabilita'' v5. DELETE sempre bloccato (usare attivo=FALSE). INSERT solo in BOZZA. UPDATE prezzo/iva_id/valido_dal/valido_al bloccato in non-BOZZA. Raise E_RIGA_LISTINO_VERSIONE_CHIUSA (362). rev 2026-05-14. Rev 2026-10-28 (20261028-22, brief-modello-documento-vendita §16, L-1): lo stato della versione di listino si legge dal vocabolario config.stati_doc_listino_versioni (codice_interno), non piu'' dalla colonna testo stato.';
 ```
 
 </div>

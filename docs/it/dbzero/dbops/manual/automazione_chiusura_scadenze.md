@@ -40,6 +40,15 @@ validata).
 
 ---
 
+### ⭐ Il verbo di chiusura (rev 2026-10-28)
+
+* **`verbo_chiusura`** *(text NULL)* – per una testata sotto la porta del modello del documento:
+  il verbo che chiude le righe scadute (`schema.funzione`, senza argomenti, ritorna quante ne ha
+  chiuse). Oggi `vendite.fn_cessa_contratti_scaduti` (contratti) e
+  `vendite.fn_chiudi_versioni_listino_scadute` (versioni di listino, che dal 28-10-2026 hanno lo
+  stato nel vocabolario `config.stati_doc_listino_versioni`: `tipo_stato = FK`). NULL = nessuna
+  porta, il framework fa l'`UPDATE` dinamico.
+
 ### Campi chiave e semantica
 
 * **`id`** *(smallserial PK)* – id tecnico della riga di config.

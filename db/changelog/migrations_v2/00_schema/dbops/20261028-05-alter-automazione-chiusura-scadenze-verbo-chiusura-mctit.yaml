@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO DI CHIUSURA SI DICHIARA NEL REGISTRO DEL JOB
+#   Brief: brief-modello-documento-vendita §16 (L-2 di Tid, 2026-10-28).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Per una testata sotto la porta del modello lo stato lo scrive solo un
+#   verbo, e dbops.fn_apply_chiusura_scadenze chiamava quello del contratto
+#   con un IF scritto nel corpo (vendite.contratti ->
+#   vendite.fn_cessa_contratti_scaduti, 20261026-08). La versione di listino
+#   e' la seconda testata sotto la porta con una chiusura a scadenza (regola
+#   del 2): il verbo diventa una colonna del registro, il job lo legge e
+#   l'IF si ritira (20261028-14). I valori nel CSV (80_data).
+#   ⚠️ Testo, non regprocedure: un reg* salva l'OID e stampa un numero quando
+#   la funzione sparisce, senza errore. Che punti a una funzione viva lo
+#   controlla il job prima di chiamarla, e il pgTAP del giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261028-05-alter-automazione-chiusura-scadenze-verbo-chiusura-mctit.yaml
+
+  - changeSet:
+      id: 20261028-05-alter-automazione-chiusura-scadenze-verbo-chiusura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.automazione_chiusura_scadenze.verbo_chiusura: il verbo che chiude le righe scadute di
+        una testata sotto la porta del modello (schema.funzione, senza argomenti). Brief:
+        brief-modello-documento-vendita §16 (L-2).
+      preConditions:
+        - onFail: HALT
+        - not:
+            - columnExists:
+                schemaName: dbops
+                tableName: automazione_chiusura_scadenze
+                columnName: verbo_chiusura
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automazione_chiusura_scadenze
+                  ADD COLUMN verbo_chiusura text,
+                  ADD CONSTRAINT chk_automazione_chiusura_scadenze_verbo_qualificato
+                      CHECK (verbo_chiusura IS NULL
+                             OR verbo_chiusura ~ '^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$');
+
+              COMMENT ON COLUMN dbops.automazione_chiusura_scadenze.verbo_chiusura IS
+                  'Il verbo che chiude le righe scadute della testata, quando la testata e'' sotto la porta del modello del documento (script.trgfn_doc_stato_solo_dal_verbo): schema.funzione, senza argomenti, ritorna quante righe ha chiuso. NULL = nessuna porta, il job fa l''UPDATE dinamico. Una testata sotto la porta senza verbo e'' una configurazione non valida (E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA). Testo e non regprocedure: che punti a una funzione viva lo controlla il job. Brief: brief-modello-documento-vendita §16 (L-2, Tid 2026-10-28).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.automazione_chiusura_scadenze
+                  DROP CONSTRAINT IF EXISTS chk_automazione_chiusura_scadenze_verbo_qualificato,
+                  DROP COLUMN IF EXISTS verbo_chiusura;

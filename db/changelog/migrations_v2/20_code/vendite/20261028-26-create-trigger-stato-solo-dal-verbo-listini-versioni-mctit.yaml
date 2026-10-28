@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA SULLA VERSIONE DI LISTINO: LO STATO SOLO DAI VERBI
+#   Brief: brief-modello-documento-vendita §16 (giro 12); la porta e' S-1 (b)
+#   (Tid, 2026-10-25), come sulle altre testate.
+#
+#   Monta il BB script.trgfn_doc_stato_solo_dal_verbo (fascia _a05_) su
+#   UPDATE OF stato_doc_listino_versione_id. Da qui lo stato della versione
+#   lo scrivono solo i suoi verbi, con script.fn_doc_scrivi_stato:
+#   vendite.fn_attiva_versione_listino (BOZZA -> ATTIVA) e
+#   vendite.fn_chiudi_versioni_listino_scadute (ATTIVA -> CHIUSA, dal job,
+#   dichiarato in dbops.automazione_chiusura_scadenze.verbo_chiusura). Un
+#   UPDATE diretto: E_DOC_STATO_SOLO_DAL_VERBO.
+#   ⚠️ Il backend scriveva lo stato con un UPDATE
+#   (listini_repository.change_versione_state): dopo l'apply e' rifiutato,
+#   finche' il backend non chiama il verbo (richiesta del §16).
+#   Ultimo dei changeSet di codice del giro: prima sono passati ai verbi la
+#   fixture (20261028-24, -25) e il job (20261028-14).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261028-26-create-trigger-stato-solo-dal-verbo-listini-versioni-mctit.yaml
+
+  - changeSet:
+      id: 20261028-26-create-trigger-stato-solo-dal-verbo-listini-versioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La porta su vendite.listini_versioni: lo stato si cambia solo dai verbi della versione di
+        listino. Brief: brief-modello-documento-vendita §16 (S-1 b per la versione di listino).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: listini_versioni
+            columnName: stato_doc_listino_versione_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_listini_versioni_a05_stato_solo_dal_verbo_upd
+                  BEFORE UPDATE OF stato_doc_listino_versione_id ON vendite.listini_versioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_stato_solo_dal_verbo();
+
+              COMMENT ON TRIGGER trg_listini_versioni_a05_stato_solo_dal_verbo_upd ON vendite.listini_versioni IS
+                  'La porta (BB script.trgfn_doc_stato_solo_dal_verbo): lo stato della versione di listino si cambia solo dai suoi verbi (vendite.fn_attiva_versione_listino; la chiusura a scadenza da vendite.fn_chiudi_versioni_listino_scadute), che scrivono con script.fn_doc_scrivi_stato. Un UPDATE diretto: E_DOC_STATO_SOLO_DAL_VERBO. Fascia _a05_. Brief: brief-modello-documento-vendita §16 (S-1 b, Tid 2026-10-25/28).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_versioni_a05_stato_solo_dal_verbo_upd ON vendite.listini_versioni;

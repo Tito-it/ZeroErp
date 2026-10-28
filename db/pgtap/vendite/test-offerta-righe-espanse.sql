@@ -1,6 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione nasce in bozza (senza
+--   stato), prende la riga e si attiva dal verbo (dbops.fn_pgtap_porta_a_stato).
 --
 -- Test: core fn_espandi_listino_versione + fn_offerta_righe_espanse
 --       + regressione fn_contratto_righe_preview (rifattorizzata sul core).
@@ -65,8 +67,8 @@ SELECT id FROM ins;
 
 CREATE TEMP TABLE tmp_ole_ver AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, stato)
-    SELECT id, 'PGTAP-OLE-V1', script.fn_data_operativa(), 'ATTIVA'
+    INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal)
+    SELECT id, 'PGTAP-OLE-V1', script.fn_data_operativa()
       FROM tmp_ole_lst
     RETURNING id
 )
@@ -75,6 +77,9 @@ SELECT id FROM ins;
 INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
 SELECT v.id, a.id, ctx.uom_id, 100.00
   FROM tmp_ole_ver v, tmp_ole_art a, tmp_ole_ctx ctx;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', v.id, 'ATTIVA')
+  FROM tmp_ole_ver v;
 
 -- ============================================================
 SELECT plan(9);

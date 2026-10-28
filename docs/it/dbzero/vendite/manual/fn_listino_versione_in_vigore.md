@@ -11,7 +11,7 @@
 > **Ciò che la rende univoca:**
 >
 > • [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni) — vincolo `ex_listini_versioni_no_overlap`
-> • [vendite.trgfn_listini_versioni_guard_date_chiusa](/dbzero/vendite/funzioni/trgfn_listini_versioni_guard_date_chiusa)
+> • [vendite.trgfn_listini_versioni_guard_per_stato](/dbzero/vendite/funzioni/trgfn_listini_versioni_guard_per_stato)
 >
 > **Verifica:** `db/pgtap/vendite/test-listino-versione-in-vigore-v1.sql`
 
@@ -44,7 +44,7 @@ due risposte **si chiude**. Le sette copie sono state ritirate nello stesso giro
 | --- | --- |
 | una versione passa ad ATTIVA → CHIUSA solo a fine validità già passata | `trgfn_listini_versioni_guard_transizione_stato` |
 | due versioni **ATTIVE o CHIUSE** dello stesso listino non si sovrappongono | `ex_listini_versioni_no_overlap` (esteso a CHIUSA il 2026-09-28) |
-| le date di una versione **CHIUSA** non si modificano | `trgfn_listini_versioni_guard_date_chiusa` |
+| di una versione **CHIUSA** non si modifica niente, date comprese (rev 2026-10-28) | `trgfn_listini_versioni_guard_per_stato` |
 
 Per questo la funzione **non ordina né limita**: se un giorno le righe fossero
 due, il difetto sarebbe il vincolo, e va corretto lì. «Una» e «tutte le valide»

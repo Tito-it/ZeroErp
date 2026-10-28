@@ -76,6 +76,7 @@ search:
 - [stati_doc_ddt](manual/stati_doc_ddt.md) — (latest review 29-03-2026) `config.stati_doc_ddt` definisce gli **stati documento** dei Documenti di Trasporto. Centralizza il vocabolario di stato usato nel ciclo logistico, dalla emissione alla consegna o agli eventuali esiti finali.
 - [stati_doc_fiscale](manual/stati_doc_fiscale.md) — (latest review 23-01-2026) `config.stati_doc_fiscale` definisce gli **stati documento** utilizzati dal ciclo fatturazione. Gli stessi stati possono essere applicati sia alle **fatture** sia ai **lotti**, tramite flag di applicabilita`.
 - [stati_doc_fiscale_transizioni](manual/stati_doc_fiscale_transizioni.md) — (latest review 24-01-2026) `config.stati_doc_fiscale_transizioni` definisce le **transizioni ammesse** tra stati documento, con validita` separata per **lotti** e **fatture**.
+- [stati_doc_listino_versioni](manual/stati_doc_listino_versioni.md)
 - [stati_doc_offerte](manual/stati_doc_offerte.md) — (latest review 2026-10-26) `config.stati_doc_offerte` definisce gli **stati documento** del ciclo di vita delle offerte commerciali, dalla bozza fino all'accettazione, al rifiuto o al superamento.
 - [stati_doc_offerte_transizioni](manual/stati_doc_offerte_transizioni.md) — (latest review 2026-10-26)
 - [stati_doc_ordini](manual/stati_doc_ordini.md) — (latest review 29-03-2026) `config.stati_doc_ordini` definisce gli **stati documento** del ciclo ordine di vendita. Raccoglie in un catalogo unico le fasi di avanzamento commerciale e operativo dell'ordine, dalla bozza fino all'evasione o chiusura.
@@ -120,6 +121,7 @@ search:
 - [transizioni_stati_contratti](manual/transizioni_stati_contratti.md) — (rev 2026-05-28)
 - [transizioni_stati_ddt](manual/transizioni_stati_ddt.md) — (rev 2026-07-09)
 - [transizioni_stati_flussi_pratiche](manual/transizioni_stati_flussi_pratiche.md) — `config.transizioni_stati_flussi_pratiche` definisce la **matrice delle transizioni ammesse** tra stati dei flussi pratica. Il trigger guard `trgfn_flussi_guard_transizione` consulta questa tabella per bloccare qualsiasi transizione non configurata.
+- [transizioni_stati_listino_versioni](manual/transizioni_stati_listino_versioni.md)
 - [transizioni_stati_lotto_job](manual/transizioni_stati_lotto_job.md)
 - [transizioni_stati_ordini](manual/transizioni_stati_ordini.md) — (rev 2026-06-05)
 - [transizioni_stati_pratiche](manual/transizioni_stati_pratiche.md) — `config.transizioni_stati_pratiche` definisce la **matrice delle transizioni ammesse** tra stati delle pratiche. Il trigger guard `trgfn_pratiche_guard_transizione` consulta questa tabella per bloccare qualsiasi transizione non configurata.

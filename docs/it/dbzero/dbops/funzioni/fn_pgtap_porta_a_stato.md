@@ -55,6 +55,11 @@ AS $function$
 --   vendite.fn_cambia_stato_commessa, firma senza p_user). Lo stato
 --   emittibile della push si costruisce anche da qui, dal passaggio
 --   manuale «rendi pronta» (il test scrive prima le righe approvate).
+-- rev 2026-10-28 (20261028-24, §16): la versione di listino ha la
+--   porta. ATTIVA dal verbo vendite.fn_attiva_versione_listino (chiude
+--   anche le precedenti); CHIUSA, di processo, da
+--   vendite.fn_chiudi_versioni_listino_scadute: il test scrive prima
+--   valido_al passata (la versione ATTIVA la accetta).
 -- rev 2026-10-27 (20261027-20, §15): fattura e lotto hanno la porta. Per
 --   loro il percorso comprende anche i passaggi di PROCESSO (la pipeline li
 --   scrive tutti): il lotto passa dal suo verbo sui passaggi manuali
@@ -111,17 +116,19 @@ BEGIN
            AND t.tgfoid  = 'script.trgfn_doc_stato_solo_dal_verbo()'::regprocedure
            AND NOT t.tgisinternal);
     IF v_porta THEN
-        -- Il percorso, sotto la porta: i soli passaggi manuali. Fattura e
-        -- lotto anche quelli di processo (rev 2026-10-27): ogni passo ha
-        -- il suo verbo.
-        IF p_testata NOT IN ('vendite.fatture'::regclass, 'vendite.fatturazione_lotti'::regclass) THEN
+        -- Il percorso, sotto la porta: i soli passaggi manuali. Fattura,
+        -- lotto (rev 2026-10-27) e versione di listino (rev 2026-10-28)
+        -- anche quelli di processo: ogni passo ha il suo verbo.
+        IF p_testata NOT IN ('vendite.fatture'::regclass, 'vendite.fatturazione_lotti'::regclass,
+                             'vendite.listini_versioni'::regclass) THEN
             v_filtro := v_filtro || ' AND COALESCE((t.meta ->> ''manuale'')::boolean, true)';
         END IF;
         IF p_testata NOT IN ('vendite.ddt'::regclass, 'vendite.resi'::regclass,
                              'vendite.preventivi'::regclass, 'vendite.ordini'::regclass,
                              'vendite.contratti'::regclass, 'vendite.offerte_commerciali'::regclass,
                              'vendite.commesse'::regclass, 'vendite.fatture'::regclass,
-                             'vendite.fatturazione_lotti'::regclass) THEN
+                             'vendite.fatturazione_lotti'::regclass,
+                             'vendite.listini_versioni'::regclass) THEN
             RAISE EXCEPTION
                 'fn_pgtap_porta_a_stato: % ha la porta ma la fixture non conosce il suo verbo',
                 p_testata;
@@ -206,6 +213,18 @@ BEGIN
                 END IF;
             ELSIF p_testata = 'vendite.fatture'::regclass THEN
                 PERFORM vendite.fn_fattura_proietta_stato(p_id, v_passo);
+            ELSIF p_testata = 'vendite.listini_versioni'::regclass THEN
+                -- Manuale: l'attivazione (con la chiusura delle precedenti);
+                -- di processo: la chiusura a scadenza, che vuole valido_al
+                -- passata (rev 2026-10-28).
+                IF v_codice = 'ATTIVA' THEN
+                    PERFORM 1 FROM vendite.fn_attiva_versione_listino(p_id);
+                ELSIF v_codice = 'CHIUSA' THEN
+                    PERFORM vendite.fn_chiudi_versioni_listino_scadute();
+                ELSE
+                    RAISE EXCEPTION
+                        'fn_pgtap_porta_a_stato: nessun verbo della versione di listino porta a %', v_codice;
+                END IF;
             ELSIF p_testata = 'vendite.offerte_commerciali'::regclass THEN
                 -- La motivazione dove la riga del passaggio la chiede.
                 PERFORM 1 FROM vendite.fn_cambia_stato_offerta(
@@ -246,7 +265,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_porta_a_stato(p_testata regclass, p_id bigint, p_stato text)
-IS 'Fixture pgTAP: porta una testata di vendita dallo stato corrente allo stato p_stato (codice_interno) per il percorso piu'' corto della sua matrice dei passaggi, sotto i guard veri: le condizioni d''uscita dalla bozza (righe, indirizzi, prezzi…) le scrive prima il test. La mappa delle testate (colonna di stato, vocabolario, matrice, filtro della fattura e del lotto) la legge da script.fn_doc_stato_modello. Testate senza la porta: un UPDATE per passo, tutti i passaggi della matrice (la fattura i soli solo_lotto = false, il lotto VUOTO i soli solo_fattura = false; un lotto con fatture si muove col verbo vendite.fn_sync_lotto_fatture_stato). Testate con la porta (script.trgfn_doc_stato_solo_dal_verbo montato, letto dal catalogo): ogni passo e'' il verbo del documento — bolla vendite.fn_cambia_stato_ddt, preventivo vendite.fn_cambia_stato_preventivo, reso vendite.fn_conferma_reso / vendite.fn_annulla_reso — sui soli passaggi manuali (quelli di processo li scrive il verbo che ne e'' la causa), e l''azione del passaggio (script.fn_doc_passaggio) viene CONCESSA all''utente del contesto con dbops.fn_pgtap_concedi_azione: la fixture porta lo stato, non prova il permesso. Restituisce il codice_interno dello stato raggiunto. Un documento nasce solo nello stato iniziale (script.trgfn_doc_stato_iniziale): una fixture che vuole un documento avanti lo crea e lo porta avanti da qui. Errori del chiamante (testata non gestita, id, stato o percorso inesistenti, porta senza verbo noto): RAISE EXCEPTION. rev 2026-10-24: tutte le testate (brief-modello-documento-vendita N-1); 20261024-30: il lotto di fatturazione (R-4); 20261025-19: la mappa comune e i verbi sotto la porta (§7). 20261025-48: il preventivo sotto la porta col suo verbo; lo stato voluto da script.fn_doc_stato_id (§8). 20261025-82: l''ordine sotto la porta col suo verbo (vendite.fn_cambia_stato_ordine); EVASO e PARZIALMENTE_EVASO sono di processo e non si raggiungono da qui: si costruiscono evadendo (dbops.fn_pgtap_crea_ddt_da_ordine) (§9). rev 2026-10-26 (20261026-12, brief-modello-documento-vendita §11): il contratto ha la porta, ogni passo e'' il suo verbo (vendite.fn_cambia_stato_contratto); CESSATO vuole valido_al arrivata, che scrive il test. rev 2026-10-26 (20261026-28, brief-modello-documento-vendita §13): l''offerta ha la porta, ogni passo e'' il suo verbo (vendite.fn_cambia_stato_offerta), con una motivazione della fixture dove la riga del passaggio la chiede (rifiuto, annulli). SUPERATA e'' di processo: si costruisce creando una revisione; l''annullo con legami passa da vendite.fn_annulla_offerta. rev 2026-10-26 (20261026-36, brief-modello-documento-vendita §14): la commessa ha la porta, ogni passo e'' il suo verbo (vendite.fn_cambia_stato_commessa, firma senza p_user). rev 2026-10-27 (20261027-20, brief-modello-documento-vendita §15): fattura e lotto hanno la porta; per loro il percorso comprende anche i passaggi di processo, e ogni passo e'' un verbo: il lotto vendite.fn_cambia_stato_lotto sui passaggi manuali (con l''azione concessa all''utente del contesto) e vendite.fn_lotto_proietta_stato_step sugli altri, la fattura vendite.fn_fattura_proietta_stato. Un lotto con fatture si muove col giro (le fatture con vendite.fn_sync_lotto_fatture_stato).';
+IS 'Fixture pgTAP: porta una testata di vendita dallo stato corrente allo stato p_stato (codice_interno) per il percorso piu'' corto della sua matrice dei passaggi, sotto i guard veri: le condizioni d''uscita dalla bozza (righe, indirizzi, prezzi…) le scrive prima il test. La mappa delle testate (colonna di stato, vocabolario, matrice, filtro della fattura e del lotto) la legge da script.fn_doc_stato_modello. Testate senza la porta: un UPDATE per passo, tutti i passaggi della matrice (la fattura i soli solo_lotto = false, il lotto VUOTO i soli solo_fattura = false; un lotto con fatture si muove col verbo vendite.fn_sync_lotto_fatture_stato). Testate con la porta (script.trgfn_doc_stato_solo_dal_verbo montato, letto dal catalogo): ogni passo e'' il verbo del documento — bolla vendite.fn_cambia_stato_ddt, preventivo vendite.fn_cambia_stato_preventivo, reso vendite.fn_conferma_reso / vendite.fn_annulla_reso — sui soli passaggi manuali (quelli di processo li scrive il verbo che ne e'' la causa), e l''azione del passaggio (script.fn_doc_passaggio) viene CONCESSA all''utente del contesto con dbops.fn_pgtap_concedi_azione: la fixture porta lo stato, non prova il permesso. Restituisce il codice_interno dello stato raggiunto. Un documento nasce solo nello stato iniziale (script.trgfn_doc_stato_iniziale): una fixture che vuole un documento avanti lo crea e lo porta avanti da qui. Errori del chiamante (testata non gestita, id, stato o percorso inesistenti, porta senza verbo noto): RAISE EXCEPTION. rev 2026-10-24: tutte le testate (brief-modello-documento-vendita N-1); 20261024-30: il lotto di fatturazione (R-4); 20261025-19: la mappa comune e i verbi sotto la porta (§7). 20261025-48: il preventivo sotto la porta col suo verbo; lo stato voluto da script.fn_doc_stato_id (§8). 20261025-82: l''ordine sotto la porta col suo verbo (vendite.fn_cambia_stato_ordine); EVASO e PARZIALMENTE_EVASO sono di processo e non si raggiungono da qui: si costruiscono evadendo (dbops.fn_pgtap_crea_ddt_da_ordine) (§9). rev 2026-10-26 (20261026-12, brief-modello-documento-vendita §11): il contratto ha la porta, ogni passo e'' il suo verbo (vendite.fn_cambia_stato_contratto); CESSATO vuole valido_al arrivata, che scrive il test. rev 2026-10-26 (20261026-28, brief-modello-documento-vendita §13): l''offerta ha la porta, ogni passo e'' il suo verbo (vendite.fn_cambia_stato_offerta), con una motivazione della fixture dove la riga del passaggio la chiede (rifiuto, annulli). SUPERATA e'' di processo: si costruisce creando una revisione; l''annullo con legami passa da vendite.fn_annulla_offerta. rev 2026-10-26 (20261026-36, brief-modello-documento-vendita §14): la commessa ha la porta, ogni passo e'' il suo verbo (vendite.fn_cambia_stato_commessa, firma senza p_user). rev 2026-10-27 (20261027-20, brief-modello-documento-vendita §15): fattura e lotto hanno la porta; per loro il percorso comprende anche i passaggi di processo, e ogni passo e'' un verbo: il lotto vendite.fn_cambia_stato_lotto sui passaggi manuali (con l''azione concessa all''utente del contesto) e vendite.fn_lotto_proietta_stato_step sugli altri, la fattura vendite.fn_fattura_proietta_stato. Un lotto con fatture si muove col giro (le fatture con vendite.fn_sync_lotto_fatture_stato). Rev 2026-10-28 (20261028-24, brief-modello-documento-vendita §16): la versione di listino ha la porta; ATTIVA da vendite.fn_attiva_versione_listino, CHIUSA (di processo, con valido_al passata scritta dal test) da vendite.fn_chiudi_versioni_listino_scadute.';
 ```
 
 </div>

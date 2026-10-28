@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DI TRANSIZIONE DELLA VERSIONE DI LISTINO LEGGE LA MATRICE
+#   Brief: brief-modello-documento-vendita §16 (L-1, L-4 di Tid,
+#   2026-10-28). Corpo di partenza: il vivo (20260424-01), uguale alla doc
+#   auto-generata. Forma: il guard del contratto (20261026-04).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────────
+#   * I passaggi dalla matrice config.transizioni_stati_listino_versioni
+#     (20261028-03), non piu' dagli IF del corpo. Stessi passaggi: BOZZA ->
+#     ATTIVA, ATTIVA -> CHIUSA.
+#   * -> CHIUSA: valido_al c'e' ed e' passata (< data operativa), come prima.
+#   * -> ATTIVA: solleva il primo motivo di
+#     script.fn_check_versione_listino_attivabile (spenta, senza prezzi):
+#     prima la regola stava solo nel backend.
+#   * La colonna e' stato_doc_listino_versione_id (20261028-04): il trigger,
+#     tolto la', si rimonta qui su UPDATE OF della colonna nuova. Stesso
+#     nome, stesso codice d'errore (E_VERSIONE_STATO_TRANSIZIONE_INVALIDA),
+#     stessi quattro segnaposto (versione, da, a, valido_al), ora coi codici
+#     del vocabolario.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261028-08-update-trgfn-listini-versioni-guard-transizione-stato-matrice-mctit.yaml
+
+  - changeSet:
+      id: 20261028-08-update-trgfn-listini-versioni-guard-transizione-stato-matrice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_listini_versioni_guard_transizione_stato: i passaggi dalla matrice
+        config.transizioni_stati_listino_versioni; verso ATTIVA il primo motivo di
+        script.fn_check_versione_listino_attivabile; trigger rimontato sulla colonna nuova. Brief:
+        brief-modello-documento-vendita §16 (L-1, L-4).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: transizioni_stati_listino_versioni }
+            - columnExists:
+                schemaName: vendite
+                tableName: listini_versioni
+                columnName: stato_doc_listino_versione_id
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_check_versione_listino_attivabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_versioni_guard_transizione_stato()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: i passaggi di stato di una versione di listino, dalla
+              --   matrice config.transizioni_stati_listino_versioni (nessun grafo
+              --   scritto qui: rev 2026-10-28, 20261028-08). Poi le condizioni:
+              --   -> CHIUSA: valido_al valorizzata e passata (< data operativa);
+              --   -> ATTIVA: il primo motivo di
+              --      script.fn_check_versione_listino_attivabile (spenta, senza
+              --      prezzi), lo stesso che spegne «Attiva» nella lista.
+              -- Lo scrivono solo i verbi (porta): vendite.fn_attiva_versione_listino
+              --   e vendite.fn_chiudi_versioni_listino_scadute.
+              DECLARE
+                  v_codice_da config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_codice_a  config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_ammessa   boolean := false;
+              BEGIN
+                  SELECT
+                      max(CASE WHEN s.id = OLD.stato_doc_listino_versione_id THEN s.codice_interno END),
+                      max(CASE WHEN s.id = NEW.stato_doc_listino_versione_id THEN s.codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM config.stati_doc_listino_versioni s
+                   WHERE s.id IN (OLD.stato_doc_listino_versione_id, NEW.stato_doc_listino_versione_id);
+
+                  -- Regola 1: il passaggio esiste ed e' attivo in matrice.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.transizioni_stati_listino_versioni t
+                       WHERE t.stato_da_id = OLD.stato_doc_listino_versione_id
+                         AND t.stato_a_id  = NEW.stato_doc_listino_versione_id
+                         AND t.attivo IS TRUE
+                  ) INTO v_ammessa;
+
+                  -- La chiusura: la data di fine c'e' ed e' passata. Prima e' una
+                  -- chiusura programmata (solo la data): lo stato lo scrive il
+                  -- job, quando la finestra scade.
+                  IF v_ammessa AND v_codice_a = 'CHIUSA' THEN
+                      v_ammessa := NEW.valido_al IS NOT NULL
+                                   AND NEW.valido_al < (SELECT script.fn_data_operativa());
+                  END IF;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_VERSIONE_STATO_TRANSIZIONE_INVALIDA',
+                          jsonb_build_object(
+                              'versione_id', NEW.id,
+                              'listino_id',  NEW.listino_id,
+                              'stato_da',    v_codice_da,
+                              'stato_a',     v_codice_a,
+                              'valido_al',   NEW.valido_al),
+                          NEW.tx_id,
+                          NEW.id::text,
+                          COALESCE(v_codice_da, 'NULL'),
+                          COALESCE(v_codice_a,  'NULL'),
+                          COALESCE(NEW.valido_al::text, 'NULL'));
+                  END IF;
+
+                  -- L'attivazione: cio' che la vieta oltre la matrice (spenta,
+                  -- senza prezzi). ⭐ Il predicato e'
+                  -- script.fn_check_versione_listino_attivabile, lo stesso della
+                  -- superficie della lista e del verbo: qui si solleva soltanto.
+                  IF v_codice_a = 'ATTIVA' THEN
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database', TG_NAME::text,
+                          script.fn_check_versione_listino_attivabile(NEW.id),
+                          NULL,
+                          NEW.tx_id,
+                          jsonb_build_object(
+                              'versione_id', NEW.id,
+                              'listino_id',  NEW.listino_id,
+                              'stato_da',    v_codice_da,
+                              'stato_a',     v_codice_a));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_listini_versioni_guard_transizione_stato() IS
+                  'Guard dei passaggi di stato di una versione di listino (BEFORE UPDATE OF stato_doc_listino_versione_id, quando lo stato cambia): il passaggio dev''essere attivo in config.transizioni_stati_listino_versioni (E_VERSIONE_STATO_TRANSIZIONE_INVALIDA); -> CHIUSA vuole valido_al passata; -> ATTIVA solleva il primo motivo di script.fn_check_versione_listino_attivabile (spenta, senza prezzi). Lo stato lo scrivono solo i verbi, dietro la porta: vendite.fn_attiva_versione_listino e vendite.fn_chiudi_versioni_listino_scadute. Rev 2026-10-28 (20261028-08): i passaggi dalla matrice, non piu'' dagli IF; la regola dell''attivazione dal backend. Brief: brief-modello-documento-vendita §16 (L-1, L-4).';
+
+              CREATE TRIGGER trg_listini_versioni_a10_guard_transizione_stato_upd
+                  BEFORE UPDATE OF stato_doc_listino_versione_id ON vendite.listini_versioni
+                  FOR EACH ROW
+                  WHEN (OLD.stato_doc_listino_versione_id IS DISTINCT FROM NEW.stato_doc_listino_versione_id)
+                  EXECUTE FUNCTION vendite.trgfn_listini_versioni_guard_transizione_stato();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo vecchio nominava la colonna stato, che il rollback
+              -- del 20261028-04 rimette: si torna con quello.
+              DROP TRIGGER IF EXISTS trg_listini_versioni_a10_guard_transizione_stato_upd
+                  ON vendite.listini_versioni;

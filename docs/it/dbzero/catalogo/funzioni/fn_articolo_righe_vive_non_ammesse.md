@@ -78,7 +78,8 @@ BEGIN
                 SELECT 'LISTINO_VERSIONE', r.listino_versione_id, r.id, NULL, NULL, NULL, NULL
                   FROM vendite.listini_righe r
                   JOIN vendite.listini_versioni lv ON lv.id = r.listino_versione_id
-                 WHERE r.articolo_id = p_articolo_id AND r.attivo AND lv.stato <> 'CHIUSA'
+                  JOIN config.stati_doc_listino_versioni sv ON sv.id = lv.stato_doc_listino_versione_id
+                 WHERE r.articolo_id = p_articolo_id AND r.attivo AND sv.codice_interno <> 'CHIUSA'
                 UNION ALL
                 SELECT 'PROMO_ARTICOLO', p.id, p.id, NULL, NULL, NULL, NULL
                   FROM vendite.promo_articoli p
@@ -93,7 +94,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION catalogo.fn_articolo_righe_vive_non_ammesse(p_articolo_id uuid)
-IS 'Le righe VIVE di un articolo che la check dei guard di riga non ammette: {documento (codice di config.tipi_entita), documento_id, riga_id, motivo = il primo motivo della riga intera, script.fn_check_riga_documento_su_contesto, con la natura, il tipo d''eccezione, l''erogazione e la fonte della riga}; solo le righe con un motivo. Viva = attiva, e il documento non e'' chiuso: fase dello stato diversa da CHIUSO per preventivo, ordine, bolla, offerta e contratto; versione di listino non CHIUSA; promo col periodo non finito alla data operativa (script.fn_data_operativa). Le sette tabelle sono quelle dove e'' montato script.trgfn_righe_guard_articolo_ammesso (per la promo documento_id = riga_id = id della promo). SECURITY INVOKER: sotto RLS chi la chiama vede le sue righe; il verbo catalogo.fn_articolo_correggi_struttura (SECURITY DEFINER) la chiama su tutte le aziende, prima e dopo la correzione, e rifiuta solo le righe che la correzione rende non ammesse (A-11 di brief-db-articoli-ammessi-per-documento). Nasce il 2026-10-18 (§9.8.6). Rev 2026-10-21 (20261021-55, brief-db-offerta-emissione-ed-erogazione §I.2): la check e'' la riga intera, su offerta e contratto anche erogazione e fonte; una correzione della struttura non porta piu'' una riga fuori dal perimetro d''erogazione senza essere fermata.';
+IS 'Le righe VIVE di un articolo che la check dei guard di riga non ammette: {documento (codice di config.tipi_entita), documento_id, riga_id, motivo = il primo motivo della riga intera, script.fn_check_riga_documento_su_contesto, con la natura, il tipo d''eccezione, l''erogazione e la fonte della riga}; solo le righe con un motivo. Viva = attiva, e il documento non e'' chiuso: fase dello stato diversa da CHIUSO per preventivo, ordine, bolla, offerta e contratto; versione di listino non CHIUSA; promo col periodo non finito alla data operativa (script.fn_data_operativa). Le sette tabelle sono quelle dove e'' montato script.trgfn_righe_guard_articolo_ammesso (per la promo documento_id = riga_id = id della promo). SECURITY INVOKER: sotto RLS chi la chiama vede le sue righe; il verbo catalogo.fn_articolo_correggi_struttura (SECURITY DEFINER) la chiama su tutte le aziende, prima e dopo la correzione, e rifiuta solo le righe che la correzione rende non ammesse (A-11 di brief-db-articoli-ammessi-per-documento). Nasce il 2026-10-18 (§9.8.6). Rev 2026-10-21 (20261021-55, brief-db-offerta-emissione-ed-erogazione §I.2): la check e'' la riga intera, su offerta e contratto anche erogazione e fonte; una correzione della struttura non porta piu'' una riga fuori dal perimetro d''erogazione senza essere fermata. Rev 2026-10-28 (20261028-16, brief-modello-documento-vendita §16, L-1): lo stato della versione di listino si legge dal vocabolario config.stati_doc_listino_versioni (codice_interno), non piu'' dalla colonna testo stato.';
 ```
 
 </div>

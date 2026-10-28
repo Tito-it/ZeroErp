@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA VERSIONE DI LISTINO: LA FK DELLO STATO VERSO IL VOCABOLARIO
+#   Brief: brief-modello-documento-vendita §16 (L-1 di Tid, 2026-10-28).
+#
+#   vendite.listini_versioni.stato_doc_listino_versione_id (20261028-04) ->
+#   config.stati_doc_listino_versioni.id. Al posto del CHECK dei tre valori.
+#   In 90_end, dopo il seed (20261028-27): su un database con versioni la FK
+#   valida le righe, e il vocabolario deve esserci. Se una riga e' fuori
+#   (un valore che la conversione non conosceva: CASE -> NULL, che il NOT
+#   NULL avrebbe gia' fermato) lo dice con una frase, non con un 23503.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261028-31-fk-listini-versioni-stato-vocabolario-mctit.yaml
+
+  - changeSet:
+      id: 20261028-31-fk-listini-versioni-stato-vocabolario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        FK fk_listini_versioni_stato (vendite.listini_versioni.stato_doc_listino_versione_id ->
+        config.stati_doc_listino_versioni.id), dopo il seed. Brief:
+        brief-modello-documento-vendita §16 (L-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: stati_doc_listino_versioni }
+            - columnExists:
+                schemaName: vendite
+                tableName: listini_versioni
+                columnName: stato_doc_listino_versione_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $fk$
+              DECLARE
+                  -- un elenco di id per il messaggio: nessuna colonna di cui sia il riflesso
+                  v_fuori text;
+              BEGIN
+                  SELECT string_agg(DISTINCT lv.stato_doc_listino_versione_id::text, ', ') INTO v_fuori
+                    FROM vendite.listini_versioni lv
+                   WHERE NOT EXISTS (SELECT 1 FROM config.stati_doc_listino_versioni s
+                                      WHERE s.id = lv.stato_doc_listino_versione_id);
+                  IF v_fuori IS NOT NULL THEN
+                      RAISE EXCEPTION
+                        'Impossibile legare vendite.listini_versioni.stato_doc_listino_versione_id al vocabolario: id fuori da config.stati_doc_listino_versioni (%). '
+                        'Controllare il CSV 80_data/sql/config/stati_doc_listino_versioni.csv.',
+                        v_fuori;
+                  END IF;
+              END
+              $fk$;
+
+              ALTER TABLE vendite.listini_versioni
+                  ADD CONSTRAINT fk_listini_versioni_stato
+                      FOREIGN KEY (stato_doc_listino_versione_id)
+                      REFERENCES config.stati_doc_listino_versioni (id);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni DROP CONSTRAINT IF EXISTS fk_listini_versioni_stato;

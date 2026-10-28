@@ -18,6 +18,8 @@
 --   va a PRONTA_FATTURAZIONE con dbops.fn_pgtap_porta_a_stato (dal verbo, con
 --   l'azione cambia_stato_commessa concessa dalla fixture), non piu' con un
 --   UPDATE dello stato, che la porta rifiuta (E_DOC_STATO_SOLO_DAL_VERBO).
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione in
+--   BOZZA dei test 13-14 nasce senza la colonna di stato (una versione nasce BOZZA).
 --
 -- Semantica attesa (il contratto, non l'implementazione):
 --   - una riga di commessa o un'attivita' fatturabile che cita una riga di
@@ -343,8 +345,8 @@ SELECT is(
 -- quella attiva), con la sua riga per a1 nella UoM u1.
 CREATE TEMP TABLE t_vb AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
-    SELECT l.listino_id, 'PGT_BOZZA', '2099-01-01'::date, 'BOZZA' FROM t_l l
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
+    SELECT l.listino_id, 'PGT_BOZZA', '2099-01-01'::date FROM t_l l
     RETURNING id
 )
 SELECT id AS vb FROM ins;

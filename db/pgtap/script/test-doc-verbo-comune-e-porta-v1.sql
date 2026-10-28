@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione di listino e' portata al
+--   modello. Test 9 e 10: la porta anche sulla versione di listino, dieci testate.
+-- ⚠️ Attesa cambiata: test 9 (la lista dichiarata + vendite.listini_versioni) e 10 (il conteggio
+--   9 -> 10), perche' il giro 12 monta la porta (20261028-26).
 -- rev 2026-10-27 (brief-modello-documento-vendita §15, giro 11): fattura e lotto sono portati al
 --   modello. Test 9 e 10: la porta anche su fattura e lotto, nove testate. Test 8: con la fattura
 --   non resta nella mappa un documento senza la colonna dell'azione; il documento «non ancora
@@ -79,7 +83,7 @@
 --   6) il lettore: DRAFT->EMESSO manuale con emetti_ddt; CONSEGNATO->RESO di processo
 --   7) il lettore: un passaggio fuori matrice -> nessuna riga
 --   8) il lettore su un documento non ancora portato al modello: chiamata non valida
---   9) montaggio della porta: bolla, reso, preventivo (giro 6), ordine (giro 7), contratto (giro 8), offerta (giro 9), commessa (giro 10), fattura e lotto (giro 11), e nessun'altra testata
+--   9) montaggio della porta: bolla, reso, preventivo (giro 6), ordine (giro 7), contratto (giro 8), offerta (giro 9), commessa (giro 10), fattura e lotto (giro 11), versione di listino (giro 12), e nessun'altra testata
 --  10) montaggio della porta: BEFORE UPDATE OF la colonna di stato della mappa
 --  11) le due porte del registro ritirate (E_DDT_/E_RESO_STATO_SOLO_DA_VERBO
 --      obsoleti, nessuna funzione li solleva piu')
@@ -224,8 +228,9 @@ SELECT is(
                          'vendite.preventivi'::regclass, 'vendite.ordini'::regclass,
                          'vendite.contratti'::regclass, 'vendite.offerte_commerciali'::regclass,
                          'vendite.commesse'::regclass, 'vendite.fatture'::regclass,
-                         'vendite.fatturazione_lotti'::regclass]) x),
-    'la porta e'' montata su bolla, reso, preventivo, ordine, contratto, offerta, commessa, fattura e lotto, e su nessun''altra testata'
+                         'vendite.fatturazione_lotti'::regclass,
+                         'vendite.listini_versioni'::regclass]) x),
+    'la porta e'' montata su bolla, reso, preventivo, ordine, contratto, offerta, commessa, fattura, lotto e versione di listino, e su nessun''altra testata'
 );
 
 SELECT is(
@@ -235,7 +240,7 @@ SELECT is(
       WHERE p.def LIKE '%BEFORE UPDATE OF ' || m.colonna_stato || ' ON %'
         AND p.def LIKE '%FOR EACH ROW%'
         AND p.nome LIKE 'trg\_%\_a05\_stato\_solo\_dal\_verbo\_upd'),
-    9,
+    10,
     'la porta: BEFORE UPDATE OF la colonna di stato della mappa, per riga, fascia _a05_'
 );
 

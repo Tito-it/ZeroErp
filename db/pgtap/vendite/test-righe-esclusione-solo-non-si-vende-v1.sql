@@ -1,6 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione di oggi nasce in bozza
+--   senza stato e si attiva dal verbo (dbops.fn_pgtap_porta_a_stato), non con un UPDATE dello stato.
 --
 -- Test: righe di contratto e di offerta — l'esclusione e' solo «non si vende»,
 --   e le due tabelle obbediscono alle stesse regole. Decisione di Tid del
@@ -89,8 +91,8 @@ SELECT * FROM dbops.fn_pgtap_crea_listino(
 
 CREATE TEMP TABLE tmp_rsv_ver AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
-    SELECT listino_id, 'PGTAP_RSV_V2', '2021-01-01'::date, 'BOZZA' FROM tmp_rsv_listino
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
+    SELECT listino_id, 'PGTAP_RSV_V2', '2021-01-01'::date FROM tmp_rsv_listino
     RETURNING id
 )
 SELECT id FROM ins;
@@ -124,7 +126,7 @@ SELECT (SELECT id FROM tmp_rsv_ver), ac.id,
   FROM catalogo.articoli_componenti ac
  WHERE ac.prodotto_id = pg_temp.art('P') AND ac.componente_id = pg_temp.art('F');
 
-UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM tmp_rsv_ver);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT id FROM tmp_rsv_ver), 'ATTIVA');
 
 CREATE TEMP TABLE tmp_rsv_contratto AS
 WITH ins AS (

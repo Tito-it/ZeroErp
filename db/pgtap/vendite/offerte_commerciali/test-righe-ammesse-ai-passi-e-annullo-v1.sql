@@ -17,8 +17,10 @@
 --   scrive); l'emissione, il push, l'attivazione e la correzione di un articolo si'.
 --
 -- ⚠️ Fixture COSTRUITA: cliente e BA da dbops.fn_pgtap_crea_cliente_ba, listino da
---   dbops.fn_pgtap_crea_listino (versione in vigore da oggi, senza righe: le righe
---   espanse dell'offerta sono le sue sole eccezioni), articoli senza tipologia:
+--   dbops.fn_pgtap_crea_listino (versione in vigore da oggi con la sola riga
+--   d'appoggio della fixture: rev 2026-10-28, una versione si attiva solo con un
+--   prezzo; le righe espanse dell'offerta sono quella e le sue eccezioni),
+--   articoli senza tipologia:
 --     R  SERVIZIO_RICORRENTE   CANONE/FISSA*, CONSUMO/MANUALE (dalla natura)
 --     M  MERCE                 UNA_TANTUM/FISSA*, UNA_TANTUM/MANUALE
 --   Poi la combinazione CONSUMO/MANUALE esce dal vocabolario della natura
@@ -342,7 +344,10 @@ SELECT is(
        FROM vendite.ordini o
        JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
       WHERE o.id = pg_temp.doc('ORDINE')),
-    'DRAFT OFFERTA_COMMERCIALE true 1 1 2.00 10.00',
+    -- ⚠️ rev 2026-10-28 (brief-modello-documento-vendita §16): la riga della
+    --   merce e' la 2, perche' la 1 e' la riga d'appoggio del listino della
+    --   fixture, espansa nell'ordine (una versione in vigore ha un prezzo).
+    'DRAFT OFFERTA_COMMERCIALE true 1 2 2.00 10.00',
     '13) la merce: l''ordine DRAFT, con la provenienza e la riga espansa al prezzo negoziato');
 
 SELECT is(

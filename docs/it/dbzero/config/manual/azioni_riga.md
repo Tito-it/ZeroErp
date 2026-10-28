@@ -10,8 +10,8 @@
 (27-10-2026 — brief `brief-modello-documento-vendita` §15.10, D-N1, F-5, Q-F5)
 
 **Il registro delle azioni di riga.** Un pulsante su una riga di elenco (togliere un documento dal
-giro di un lotto, e domani le azioni per riga degli altri documenti) ha tre pezzi che devono dire la
-stessa cosa:
+giro di un lotto, attivare una versione di listino, e domani le azioni per riga degli altri
+documenti) ha tre pezzi che devono dire la stessa cosa:
 
 * la **funzione che esegue l'azione** (`verbo`), che la rifiuta col primo motivo della sua `fn_check`;
 * la **vista** che il frontend legge (`superficie`), con una riga per riga dell'elenco e le due colonne

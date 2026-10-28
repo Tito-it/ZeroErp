@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE VIVE DI UN ARTICOLO: LA VERSIONE DI LISTINO DAL VOCABOLARIO
+#   Brief: brief-modello-documento-vendita §16 (giro 12; L-1 di Tid,
+#   2026-10-28). Corpo di partenza: 20261021-55, uguale al vivo.
+#
+#   La colonna stato (testo col CHECK) e' diventata stato_doc_listino_versione_id
+#   (id del vocabolario config.stati_doc_listino_versioni, 20261028-04). Qui il
+#   codice si legge dal vocabolario con una JOIN; i confronti coi codici
+#   (codice_interno, la chiave stabile) restano quelli di prima. Nient'altro cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261028-16-update-fn-articolo-righe-vive-non-ammesse-stato-versione-listino-mctit.yaml
+
+  - changeSet:
+      id: 20261028-16-update-fn-articolo-righe-vive-non-ammesse-stato-versione-listino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.fn_articolo_righe_vive_non_ammesse: le righe vive di un articolo: la versione di
+        listino dal vocabolario. Brief: brief-modello-documento-vendita §16 (L-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: listini_versioni
+                columnName: stato_doc_listino_versione_id
+            - tableExists: { schemaName: config, tableName: stati_doc_listino_versioni }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.fn_articolo_righe_vive_non_ammesse(
+                  p_articolo_id catalogo.articoli.id%TYPE)
+              RETURNS TABLE (
+                  -- Nudi DICHIARATI (invariati: un CREATE OR REPLACE non cambia i tipi
+                  -- del risultato): il codice del documento e' text per i chiamanti che
+                  -- lo confrontano; documento_id e riga_id sono id polimorfi (sette
+                  -- tabelle); motivo e' un elemento jsonb di una check.
+                  documento text, documento_id bigint, riga_id bigint, motivo jsonb)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Le righe VIVE dell'articolo che la check dei guard di
+                  --   riga non ammette, col primo motivo. Viva = attiva, e il
+                  --   documento non e' chiuso. Le sette tabelle sono quelle di
+                  --   script.trgfn_righe_guard_articolo_ammesso.
+                  -- Rev 2026-10-21 (20261021-55, brief-db-offerta-emissione-ed-
+                  --   erogazione §I.2): la check e' la riga INTERA,
+                  --   script.fn_check_riga_documento_su_contesto — su offerta e
+                  --   contratto anche erogazione e fonte. Prima una correzione della
+                  --   tipologia (catalogo.fn_articolo_correggi_struttura) poteva portare
+                  --   una riga fuori dal perimetro d'erogazione senza essere fermata.
+                  -- =========================================================
+                  RETURN QUERY
+                  SELECT g.documento, g.documento_id, g.riga_id, g.motivo
+                    FROM (
+                        SELECT v.documento, v.documento_id, v.riga_id,
+                               script.fn_check_riga_documento_su_contesto(
+                                   script.fn_articolo_riga_contesto(
+                                       v.documento, v.documento_id, v.tipo_eccezione),
+                                   p_articolo_id, v.natura_vendita_id,
+                                   v.tipo_erogazione, v.fonte) -> 0 AS motivo
+                          FROM (
+                              SELECT 'PREVENTIVO'::text, r.preventivo_id, r.id, r.natura_vendita_id,
+                                     NULL::vendite.tipo_eccezione_contratto,
+                                     NULL::varchar, NULL::varchar
+                                FROM vendite.preventivi_righe r
+                                JOIN vendite.preventivi t ON t.id = r.preventivo_id
+                                JOIN config.stati_doc_preventivi s ON s.id = t.stato_doc_preventivo_id
+                               WHERE r.articolo_id = p_articolo_id AND r.attivo AND s.fase <> 'CHIUSO'
+                              UNION ALL
+                              SELECT 'ORDINE_VENDITA', r.ordine_id, r.id, r.natura_vendita_id, NULL, NULL, NULL
+                                FROM vendite.ordini_righe r
+                                JOIN vendite.ordini t ON t.id = r.ordine_id
+                                JOIN config.stati_doc_ordini s ON s.id = t.stato_doc_ordine_id
+                               WHERE r.articolo_id = p_articolo_id AND r.attivo AND s.fase <> 'CHIUSO'
+                              UNION ALL
+                              SELECT 'DDT_VENDITA', r.ddt_id, r.id, r.natura_vendita_id, NULL, NULL, NULL
+                                FROM vendite.ddt_righe r
+                                JOIN vendite.ddt t ON t.id = r.ddt_id
+                                JOIN config.stati_doc_ddt s ON s.id = t.stato_doc_ddt_id
+                               WHERE r.articolo_id = p_articolo_id AND r.attivo AND s.fase <> 'CHIUSO'
+                              UNION ALL
+                              SELECT 'OFFERTA_COMMERCIALE', r.offerta_id, r.id, NULL, r.tipo_eccezione,
+                                     r.tipo_erogazione, r.fonte_quantita_attesa
+                                FROM vendite.offerte_commerciali_eccezioni r
+                                JOIN vendite.offerte_commerciali t ON t.id = r.offerta_id
+                                JOIN config.stati_doc_offerte s ON s.id = t.stato_doc_offerta_id
+                               WHERE r.articolo_id = p_articolo_id AND r.attivo AND s.fase <> 'CHIUSO'
+                              UNION ALL
+                              SELECT 'CONTRATTO', r.contratto_id, r.id, NULL, r.tipo_eccezione,
+                                     r.tipo_erogazione, r.fonte_quantita_attesa
+                                FROM vendite.contratti_righe r
+                                JOIN vendite.contratti t ON t.id = r.contratto_id
+                                JOIN config.stati_doc_contratti s ON s.id = t.stato_doc_contratto_id
+                               WHERE r.articolo_id = p_articolo_id AND r.attivo AND s.fase <> 'CHIUSO'
+                              UNION ALL
+                              SELECT 'LISTINO_VERSIONE', r.listino_versione_id, r.id, NULL, NULL, NULL, NULL
+                                FROM vendite.listini_righe r
+                                JOIN vendite.listini_versioni lv ON lv.id = r.listino_versione_id
+                                JOIN config.stati_doc_listino_versioni sv ON sv.id = lv.stato_doc_listino_versione_id
+                               WHERE r.articolo_id = p_articolo_id AND r.attivo AND sv.codice_interno <> 'CHIUSA'
+                              UNION ALL
+                              SELECT 'PROMO_ARTICOLO', p.id, p.id, NULL, NULL, NULL, NULL
+                                FROM vendite.promo_articoli p
+                               WHERE p.articolo_id = p_articolo_id AND p.attivo
+                                 AND (upper_inf(p.validita)
+                                      OR upper(p.validita) > script.fn_data_operativa())
+                          ) v(documento, documento_id, riga_id, natura_vendita_id, tipo_eccezione,
+                              tipo_erogazione, fonte)
+                    ) g
+                   WHERE g.motivo IS NOT NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.fn_articolo_righe_vive_non_ammesse(uuid) IS
+                  'Le righe VIVE di un articolo che la check dei guard di riga non ammette: {documento (codice di config.tipi_entita), documento_id, riga_id, motivo = il primo motivo della riga intera, script.fn_check_riga_documento_su_contesto, con la natura, il tipo d''eccezione, l''erogazione e la fonte della riga}; solo le righe con un motivo. Viva = attiva, e il documento non e'' chiuso: fase dello stato diversa da CHIUSO per preventivo, ordine, bolla, offerta e contratto; versione di listino non CHIUSA; promo col periodo non finito alla data operativa (script.fn_data_operativa). Le sette tabelle sono quelle dove e'' montato script.trgfn_righe_guard_articolo_ammesso (per la promo documento_id = riga_id = id della promo). SECURITY INVOKER: sotto RLS chi la chiama vede le sue righe; il verbo catalogo.fn_articolo_correggi_struttura (SECURITY DEFINER) la chiama su tutte le aziende, prima e dopo la correzione, e rifiuta solo le righe che la correzione rende non ammesse (A-11 di brief-db-articoli-ammessi-per-documento). Nasce il 2026-10-18 (§9.8.6). Rev 2026-10-21 (20261021-55, brief-db-offerta-emissione-ed-erogazione §I.2): la check e'' la riga intera, su offerta e contratto anche erogazione e fonte; una correzione della struttura non porta piu'' una riga fuori dal perimetro d''erogazione senza essere fermata. Rev 2026-10-28 (20261028-16, brief-modello-documento-vendita §16, L-1): lo stato della versione di listino si legge dal vocabolario config.stati_doc_listino_versioni (codice_interno), non piu'' dalla colonna testo stato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo di prima nominava la colonna stato, che solo il
+              -- rollback del 20261028-04 rimette: si torna dal 20261021-55.
+              SELECT 1;

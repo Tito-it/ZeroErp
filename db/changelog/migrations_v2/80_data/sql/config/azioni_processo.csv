@@ -42,3 +42,4 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 41,2,emetti_ordine,Emette (conferma) un ordine o annulla un ordine confermato,f,t,{},2026-10-25 00:00:00+02,mctit,2026-10-25 00:00:00+02,mctit,TUTTO
 42,2,emetti_contratto,Attiva (emette) un contratto o lo cessa (anche con una data futura: la cessazione programmata),f,t,{},2026-10-26 00:00:00+01,mctit,2026-10-26 00:00:00+01,mctit,TUTTO
 43,2,emetti_offerta,Emette un'offerta o annulla un'offerta accettata,f,t,{},2026-10-26 00:00:00+01,mctit,2026-10-26 00:00:00+01,mctit,TUTTO
+44,2,attiva_listino,Attiva una versione di listino: mette i suoi prezzi in uso e chiude la versione precedente,f,t,{},2026-10-28 00:00:00+01,mctit,2026-10-28 00:00:00+01,mctit,TUTTO

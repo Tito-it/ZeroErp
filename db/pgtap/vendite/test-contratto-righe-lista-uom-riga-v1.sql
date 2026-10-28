@@ -1,6 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione nasce
+--   senza stato (BOZZA) e diventa ATTIVA da dbops.fn_pgtap_porta_a_stato, non da un
+--   UPDATE dello stato (la colonna non c'e' piu').
 --
 -- Test: le righe del contratto escono nell'UdM della RIGA, e portano ordine e
 --   uom_operativa_id della riga di contratti_righe — vendite.fn_contratto_righe_preview.
@@ -55,9 +58,9 @@ SELECT (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo ORDER BY u.id LI
        (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo ORDER BY u.id LIMIT 1 OFFSET 1) AS u2;
 
 -- Il listino (prima degli articoli: la sua tipologia serve alla loro nascita).
--- ⚠️ La versione del builder nasce ATTIVA, e le righe non si scrivono su una
---    versione ATTIVA. La si fa finire nel 2020, e la versione che copre OGGI si
---    costruisce qui: BOZZA, righe, poi ATTIVA (come test-contratto-righe-lista-v1).
+-- ⚠️ La versione del builder nasce ATTIVA, con una riga d'appoggio sua. La si fa
+--    finire nel 2020, e la versione che copre OGGI si costruisce qui: BOZZA,
+--    righe, poi ATTIVA dal verbo (come test-contratto-righe-lista-v1).
 CREATE TEMP TABLE tmp_cru_listino AS
 SELECT * FROM dbops.fn_pgtap_crea_listino(
     (SELECT utility_id FROM tmp_cru_mondo), 'uom riga contratto',
@@ -65,8 +68,8 @@ SELECT * FROM dbops.fn_pgtap_crea_listino(
 
 CREATE TEMP TABLE tmp_cru_ver AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
-    SELECT listino_id, 'PGTAP_CRU_V2', '2021-01-01'::date, 'BOZZA' FROM tmp_cru_listino
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
+    SELECT listino_id, 'PGTAP_CRU_V2', '2021-01-01'::date FROM tmp_cru_listino
     RETURNING id
 )
 SELECT id FROM ins;
@@ -107,7 +110,7 @@ INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, pre
 SELECT (SELECT id FROM tmp_cru_ver), a.id, (SELECT u1 FROM tmp_cru_uom), 100.00
   FROM tmp_cru_art a WHERE a.sigla IN ('A', 'B');
 
-UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM tmp_cru_ver);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT id FROM tmp_cru_ver), 'ATTIVA');
 
 -- Il contratto in bozza sul listino.
 CREATE TEMP TABLE tmp_cru_contratto AS

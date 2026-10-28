@@ -56,7 +56,7 @@ search:
 - [listini](manual/listini.md) — La tabella `vendite.listini` rappresenta la testata anagrafica dei listini prezzo del dominio vendite.
 - [listini_righe](manual/listini_righe.md) — La tabella `vendite.listini_righe` contiene i prezzi elementari per articolo/UOM, eventualmente specializzati per contesto (BA, utility, emittente fiscale).
 - [listini_righe_componenti](manual/listini_righe_componenti.md)
-- [listini_versioni](manual/listini_versioni.md) — (latest review 09-04-2026)
+- [listini_versioni](manual/listini_versioni.md) — (ultima revisione 28-10-2026 — brief `brief-modello-documento-vendita` §16)
 - [note](manual/note.md) — `vendite.note` gestisce **note testuali** ancorabili sia alla **testata** del documento sia alla **riga**, con controllo di posizionamento e ordinamento di rendering. È una tabella **partizionata per `target_tipo`** per garantire prestazioni e manutenzione più semplici, con **FK forti** verso le rispettive testate/righe nelle singole partizioni.
 - [note_attivita_fatturabili](manual/note_attivita_fatturabili.md) — `vendite.note_attivita_fatturabili` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
 - [note_contratto](manual/note_contratto.md) — `vendite.note_contratto` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
@@ -111,6 +111,7 @@ search:
 - [fn_approva_commessa_attivita](manual/fn_approva_commessa_attivita.md) — (rev 2026-06-07) `vendite.fn_approva_commessa_attivita(p_commessa_id, p_righe_ids, p_user)` porta le righe `commesse_attivita` da `stato_approvazione = 'BOZZA'` a `'APPROVATA'`.
 - [fn_assegna_numero_documento](manual/fn_assegna_numero_documento.md) — (rev 2026-08-31, sera)
 - [fn_assign_numero_fattura](manual/fn_assign_numero_fattura.md) — (latest review 09-02-2026) La funzione **`vendite.fn_assign_numero_fattura()`** assegna il progressivo in base al registro e aggiorna `anno`, `serie` e `numero` sulla testata fattura.
+- [fn_attiva_versione_listino](manual/fn_attiva_versione_listino.md)
 - [fn_batch_upsert_commessa_attivita](manual/fn_batch_upsert_commessa_attivita.md) — (latest review 15-04-2026)
 - [fn_build_fattura_key](manual/fn_build_fattura_key.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_build_fattura_key()`** costruisce la **chiave logica** di aggregazione documento a partire da una riga di `attivita_fatturabili`.
 - [fn_build_gruppo_fatturabile_key](manual/fn_build_gruppo_fatturabile_key.md) — Costruire la chiave del **gruppo fatturabile** di una riga di commessa. È l'**unica fonte di verità** della chiave: la usano sia l'elenco che l'operatore legge, sia i filtri che l'emissione applica. Se la forma cambiasse qui, cambierebbe ovunque insieme.
@@ -132,6 +133,7 @@ search:
 - [fn_check_listino_provenienza](manual/fn_check_listino_provenienza.md) — (rev 2026-10-16, brief `brief-db-coerenza-listino-della-riga-di-commessa`, decisioni di Tid)
 - [fn_chiudi_contratto_per_successione](manual/fn_chiudi_contratto_per_successione.md) — `vendite.fn_chiudi_contratto_per_successione(...)` è la **seconda metà** del meccanismo di successione: dopo che [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) ha individuato un contratto in conflitto, questa funzione lo **accorcia** per fare spazio al nuovo, impostando:
 - [fn_chiudi_riconsegna_reso](manual/fn_chiudi_riconsegna_reso.md) — (rev 2026-07-26)
+- [fn_chiudi_versioni_listino_scadute](manual/fn_chiudi_versioni_listino_scadute.md)
 - [fn_classe_emittibilita_per_giro](manual/fn_classe_emittibilita_per_giro.md) — (latest review 12-09-2026)
 - [fn_cleanup_fatture_by_ids](manual/fn_cleanup_fatture_by_ids.md) — (latest review 03-08-2026)  
 - [fn_close_commessa_push_run](manual/fn_close_commessa_push_run.md) — `vendite.fn_close_commessa_push_run` **chiude** il giro aperto in testa alla corsa: gli scrive sopra l'esito, il risultato per handler e la durata.
@@ -303,6 +305,7 @@ search:
 - [fn_sync_fatture_log_critical_lotto](manual/fn_sync_fatture_log_critical_lotto.md) — (latest review 20-02-2026)   La funzione **`vendite.fn_sync_fatture_log_critical_lotto()`** sincronizza in modo set-based:
 - [fn_sync_lotto_fatture_stato](manual/fn_sync_lotto_fatture_stato.md) — (latest review 30-01-2026)   La funzione **`vendite.fn_sync_lotto_fatture_stato()`** allinea lo stato documentale delle fatture collegate a un lotto.
 - [fn_upsert_commessa_attivita](manual/fn_upsert_commessa_attivita.md) — (latest review 15-04-2026)
+- [fn_versioni_listino_da_chiudere](manual/fn_versioni_listino_da_chiudere.md)
 - [trgfn_attivita_fatturabili_guard_ba_coerenza](manual/trgfn_attivita_fatturabili_guard_ba_coerenza.md) — (latest review 10-09-2026)
 - [trgfn_attivita_fatturabili_guard_commessa](manual/trgfn_attivita_fatturabili_guard_commessa.md) — (latest review 24-02-2026)   La funzione trigger `vendite.trgfn_attivita_fatturabili_guard_commessa()` applica il guardrail anti-bypass sul dominio `attivita_fatturabili`, impedendo scritture senza collegamento commessa quando il flag è attivo.
 - [trgfn_attivita_fatturabili_guard_fatturato](manual/trgfn_attivita_fatturabili_guard_fatturato.md) — (latest review 26-01-2026) La funzione **`vendite.trgfn_attivita_fatturabili_guard_fatturato()`** blocca modifiche o cancellazioni di righe di `vendite.attivita_fatturabili` che risultano gia` agganciate a una riga di fattura.
@@ -368,8 +371,8 @@ search:
 - [trgfn_listini_guard_tipologia_utility](manual/trgfn_listini_guard_tipologia_utility.md) — Guard defense-in-depth: verifica che la coppia `(utility_id, tipologia_id)` su `vendite.listini` sia ammessa dalla matrice `config.listini_tipologie_utilities` con `attivo = true`.
 - [trgfn_listini_righe_comp_guard_immutabilita_v5](manual/trgfn_listini_righe_comp_guard_immutabilita_v5.md)
 - [trgfn_listini_righe_guard_stato](manual/trgfn_listini_righe_guard_stato.md) — Guard N6 — terzo livello di protezione: impedisce la modifica o cancellazione di righe listino quando lo stato della versione padre non lo consente o quando la riga e` gia` stata propagata a valle (commesse, attivita` fatturabili).
-- [trgfn_listini_versioni_guard_date_chiusa](manual/trgfn_listini_versioni_guard_date_chiusa.md) — (funzione nata il 2026-09-28, `20260928-34`)
-- [trgfn_listini_versioni_guard_transizione_stato](manual/trgfn_listini_versioni_guard_transizione_stato.md) — (latest review 26-04-2026)
+- [trgfn_listini_versioni_guard_per_stato](manual/trgfn_listini_versioni_guard_per_stato.md)
+- [trgfn_listini_versioni_guard_transizione_stato](manual/trgfn_listini_versioni_guard_transizione_stato.md)
 - [trgfn_logs_guard_delete](manual/trgfn_logs_guard_delete.md) — (rev 2026-09-18 — Passo D di `analisi-osservabilita-log.md`)   La funzione trigger **`vendite.trgfn_logs_guard_delete()`** protegge i log funzionali (`fatture_log`, `fatturazione_lotti_log`) dalla cancellazione **accidentale**, distinguendo però fra **cancellare la storia** e **ritirare ciò che è scaduto**.
 - [trgfn_lotto_fatture_guard_stato_coerente](manual/trgfn_lotto_fatture_guard_stato_coerente.md) — (rev 2026-08-21)
 - [trgfn_offerte_commerciali_default_valuta](manual/trgfn_offerte_commerciali_default_valuta.md) — (rev 2026-08-21)
@@ -436,6 +439,7 @@ search:
 - [vw_fattura_righe_lista](manual/vw_fattura_righe_lista.md) — (vista nata il 2026-09-28, `20260928-28`)
 - [vw_fatture_scadenze_lista](manual/vw_fatture_scadenze_lista.md) — (rev 2026-09-17)
 - [vw_fondi_fattura_da_decidere](manual/vw_fondi_fattura_da_decidere.md) — (latest review 15-08-2026)
+- [vw_listini_versioni_azioni](manual/vw_listini_versioni_azioni.md)
 - [vw_lotti_fase](manual/vw_lotti_fase.md) — **In che fase è questo lotto**, e in un posto solo.
 - [vw_lotti_fatture_incoerenti](manual/vw_lotti_fatture_incoerenti.md) — (rev 2026-10-24, R-1)
 - [vw_lotti_gruppi_azioni](manual/vw_lotti_gruppi_azioni.md)

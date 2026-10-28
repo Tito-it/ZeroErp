@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SEED DELLA MATRICE DEI PASSAGGI DELLA VERSIONE DI LISTINO
+#   Brief: brief-modello-documento-vendita §16 (L-2, L-3 di Tid,
+#   2026-10-28). Tabella: 20261028-03. Mirror del CSV (runOnChange, ANY).
+#   * 1: BOZZA -> ATTIVA, manuale, azione attiva_listino (L-3; la riga del
+#     catalogo e' nel CSV azioni_processo, caricato prima);
+#   * 2: ATTIVA -> CHIUSA, di processo (manuale = false): lo scrive solo
+#     vendite.fn_chiudi_versioni_listino_scadute, a finestra scaduta (L-2).
+#   ⚠️ azione_processo_codename NULL si scrive col token NULL (nullValue):
+#   una cella vuota diventerebbe '' e la FK al catalogo la rifiuterebbe.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261028-28-seed-transizioni-stati-listino-versioni-mctit.yaml
+
+  - changeSet:
+      id: 20261028-28-seed-transizioni-stati-listino-versioni
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: transizioni_stati_listino_versioni
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/transizioni_stati_listino_versioni.csv
+            tableName: transizioni_stati_listino_versioni
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: stato_da_id, type: STRING }
+              - column: { name: stato_a_id, type: STRING }
+              - column: { name: azione_processo_codename, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update, type: STRING }

@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione di oggi nasce in bozza
+--   senza stato e si attiva dal verbo (dbops.fn_pgtap_porta_a_stato), non con un UPDATE dello stato.
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto passa da
 --   dbops.fn_pgtap_porta_a_stato (il verbo del contratto), non da un UPDATE dello stato: la porta lo
 --   ferma. Nessuna attesa cambiata.
@@ -86,8 +88,8 @@ SELECT * FROM dbops.fn_pgtap_crea_listino(
 
 CREATE TEMP TABLE tmp_ero_ver AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
-    SELECT listino_id, 'PGTAP_ERO_V2', '2021-01-01'::date, 'BOZZA' FROM tmp_ero_listino
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
+    SELECT listino_id, 'PGTAP_ERO_V2', '2021-01-01'::date FROM tmp_ero_listino
     RETURNING id
 )
 SELECT id FROM ins;
@@ -111,7 +113,7 @@ SELECT (SELECT id FROM tmp_ero_ver), a.id, ar.uom_id, 100.00
   FROM tmp_ero_art a JOIN catalogo.articoli ar ON ar.id = a.id
  WHERE a.sigla IN ('A', 'C');
 
-UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM tmp_ero_ver);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT id FROM tmp_ero_ver), 'ATTIVA');
 
 -- Il contratto in BOZZA: il rifiuto «fuori bozza» del documento non c'entra.
 CREATE TEMP TABLE tmp_ero_contratto AS

@@ -45,6 +45,7 @@
 -- ⚠️ Attesa cambiata: test 2-10 provavano la transizione con l'UPDATE diretto dello stato,
 --   che ora la porta rifiuta sempre; provano la stessa transizione, con lo stesso esito
 --   atteso, chiesta al verbo di stato.
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione 2022 dello slot B si chiude dalla fixture dbops.fn_pgtap_porta_a_stato (chiusura di processo), non con l'UPDATE dello stato.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -120,8 +121,8 @@ INSERT INTO tmp_sm_ids SELECT 'A', id FROM ins;
 --   (ATTIVA -> CHIUSA e' ammessa perche' valido_al e' passato). Prima era «la
 --   prima versione non ATTIVA di un listino qualsiasi», scollegata dal listino.
 --   Lo slot A non cambia esito: il listino resta senza versione in vigore.
-UPDATE vendite.listini_versioni SET stato = 'CHIUSA'
- WHERE id = (SELECT listino_versione_id FROM tmp_sm_listino_scaduto);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass,
+                                    (SELECT listino_versione_id FROM tmp_sm_listino_scaduto), 'CHIUSA');
 
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (

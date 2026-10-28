@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE VERSIONI CHE L'ATTIVAZIONE DI UNA NUOVA CHIUDE
+#   Brief: brief-modello-documento-vendita §16 (L-4 di Tid, 2026-10-28).
+#
+# ── LA REGOLA (decisione D3 di sviluppo-listini-v2, invariata) ───────
+#   Attivare una versione chiude le versioni ATTIVE dello stesso listino
+#   che la precedono e si sovrappongono al suo periodo: prendono
+#   valido_al = decorrenza della nuova - 1, cosi' l'esclusione
+#   ex_listini_versioni_no_overlap regge. Stava nel backend
+#   (listini_service._plan_versione_state_change,
+#   listini_repository.find_versioni_per_autoclose), con l'anteprima per il
+#   dialogo di conferma (dry_run).
+#   Il lettore e' uno: lo chiama il verbo vendite.fn_attiva_versione_listino
+#   per chiuderle, e il backend per l'anteprima. Quello che si mostra e'
+#   quello che si fa.
+#   Stesso predicato del backend: attive, ATTIVA, valido_dal < decorrenza
+#   nuova (strettamente: la stessa decorrenza la rifiuta l'esclusione), e
+#   periodo che tocca [decorrenza, oltre). SECURITY INVOKER: sotto RLS i soli
+#   listini del perimetro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261028-11-create-fn-versioni-listino-da-chiudere-mctit.yaml
+
+  - changeSet:
+      id: 20261028-11-create-fn-versioni-listino-da-chiudere
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_versioni_listino_da_chiudere: le versioni attive dello stesso listino che
+        l'attivazione di una versione chiuderebbe, con la data di fine nuova. Brief:
+        brief-modello-documento-vendita §16 (L-4).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: listini_versioni
+            columnName: stato_doc_listino_versione_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_versioni_listino_da_chiudere(
+                  p_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS TABLE(versione_id     vendite.listini_versioni.id%TYPE,
+                             codice_versione vendite.listini_versioni.codice_versione%TYPE,
+                             valido_dal      vendite.listini_versioni.valido_dal%TYPE,
+                             valido_al_prima vendite.listini_versioni.valido_al%TYPE,
+                             valido_al_dopo  vendite.listini_versioni.valido_al%TYPE)
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+                  -- Scopo: le versioni che l'attivazione di p_versione_id chiude,
+                  --   con la data di fine che prenderebbero. Vedi l'intestazione
+                  --   del changeSet 20261028-11.
+                  SELECT p.id, p.codice_versione, p.valido_dal, p.valido_al,
+                         n.valido_dal - 1
+                    FROM vendite.listini_versioni n
+                    JOIN vendite.listini_versioni p
+                      ON p.listino_id = n.listino_id
+                     AND p.id <> n.id
+                    JOIN config.stati_doc_listino_versioni s
+                      ON s.id = p.stato_doc_listino_versione_id
+                   WHERE n.id = p_versione_id
+                     AND p.attivo IS TRUE
+                     AND s.codice_interno = 'ATTIVA'
+                     AND p.valido_dal < n.valido_dal
+                     AND p.validita && daterange(n.valido_dal, NULL, '[)')
+                   ORDER BY p.valido_dal, p.id;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_versioni_listino_da_chiudere(bigint) IS
+                  'Le versioni che l''attivazione di p_versione_id chiude (decisione D3 di sviluppo-listini-v2): attive, in stato ATTIVA, dello stesso listino, con decorrenza precedente e periodo che tocca la decorrenza nuova; valido_al_dopo = decorrenza nuova - 1. Ordinate per decorrenza. Lo chiama il verbo vendite.fn_attiva_versione_listino per chiuderle e il backend per l''anteprima del dialogo (dry_run): quello che si mostra e'' quello che si fa. Prima stava nel backend (listini_repository.find_versioni_per_autoclose). SECURITY INVOKER, STABLE. Brief: brief-modello-documento-vendita §16 (L-4, Tid 2026-10-28).';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_versioni_listino_da_chiudere(bigint) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_versioni_listino_da_chiudere(bigint);

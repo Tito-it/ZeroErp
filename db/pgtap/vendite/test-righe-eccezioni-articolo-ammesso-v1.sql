@@ -1,6 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione di oggi nasce in bozza
+--   senza stato e si attiva dal verbo (dbops.fn_pgtap_porta_a_stato), non con un UPDATE dello stato.
 --
 -- Quali articoli ammette una riga d'eccezione di offerta e di contratto: la
 -- stessa check per tipo di riga di preventivo, ordine e bolla, col tipo
@@ -90,8 +92,8 @@ UPDATE vendite.listini l
 
 CREATE TEMP TABLE _ver AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
-    SELECT listino_id, 'PGTAP_EAA_V2', '2021-01-01'::date, 'BOZZA' FROM _listino
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
+    SELECT listino_id, 'PGTAP_EAA_V2', '2021-01-01'::date FROM _listino
     RETURNING id
 )
 SELECT id FROM ins;
@@ -142,7 +144,7 @@ SELECT (SELECT id FROM _ver), ac.id, pg_temp.art('P'), pg_temp.art('F'), 50.00, 
   FROM catalogo.articoli_componenti ac
  WHERE ac.prodotto_id = pg_temp.art('P') AND ac.componente_id = pg_temp.art('F');
 
-UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM _ver);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT id FROM _ver), 'ATTIVA');
 
 -- Due contratti DRAFT, col listino e senza; un'offerta BOZZA col listino.
 CREATE TEMP TABLE _ctr AS

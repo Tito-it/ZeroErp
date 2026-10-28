@@ -1,0 +1,4 @@
+id,codice_interno,descrizione,ordine,iniziale,terminale,attivo,meta,data_insert,user_insert,data_update,user_update
+1,BOZZA,Bozza,10,t,f,t,{},2026-10-28 00:00:00+01,mctit,2026-10-28 00:00:00+01,mctit
+2,ATTIVA,Attiva,20,f,f,t,{},2026-10-28 00:00:00+01,mctit,2026-10-28 00:00:00+01,mctit
+3,CHIUSA,Chiusa,30,f,t,t,{},2026-10-28 00:00:00+01,mctit,2026-10-28 00:00:00+01,mctit
