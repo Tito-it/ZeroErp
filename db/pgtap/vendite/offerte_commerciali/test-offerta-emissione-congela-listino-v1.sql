@@ -13,6 +13,7 @@
 --       firma passa da text a character varying (test 2).
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto (19, 20a, 21a) dal verbo vendite.fn_cambia_stato_contratto, non piu' con l'UPDATE diretto dello stato che la porta ora rifiuta; prima del 18 si concede emetti_contratto, senza la quale la capability nasconde «Attiva». Nessuna attesa cambiata.
 -- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta dal verbo — l'emissione (9, 13, 15a, 17) con vendite.fn_cambia_stato_offerta, non piu' con l'UPDATE diretto dello stato che la porta ora rifiuta; in testa si concede emetti_offerta, senza la quale la capability nasconde «Emetti» (8, 11, 12, 16). Nessuna attesa cambiata.
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione 2022 si chiude dalla fixture dbops.fn_pgtap_porta_a_stato (chiusura di processo), non con l'UPDATE dello stato.
 --
 --       ⭐ Il test 8 e' il difetto del collaudo: un'offerta in BOZZA senza
 --       versione fissata, su un listino che una versione in vigore ce l'ha,
@@ -274,9 +275,9 @@ SELECT is(
 -- ============================================================
 -- 16-17) Versione fissata e CHIUSA
 -- ============================================================
--- La versione 2022 e' scaduta: la chiusura passa il guard di transizione.
-UPDATE vendite.listini_versioni SET stato = 'CHIUSA'
- WHERE id = (SELECT versione_scad FROM tmp_cl_ctx);
+-- La versione 2022 e' scaduta: la chiusura di processo la prende.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass,
+                                    (SELECT versione_scad FROM tmp_cl_ctx), 'CHIUSA');
 
 DO $fx$ BEGIN
     PERFORM pg_temp.offerta('D', (SELECT listino_scad FROM tmp_cl_ctx),

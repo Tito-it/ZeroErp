@@ -1,6 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione nasce
+--   senza stato (BOZZA) e diventa ATTIVA da dbops.fn_pgtap_porta_a_stato, non da un
+--   UPDATE dello stato (la colonna non c'e' piu').
 --
 -- Test: le righe del contratto come LISTA — vendite.fn_contratto_righe_preview
 --   con chiave di riga, azioni per origine e «Escludi» spento col motivo; la
@@ -71,8 +74,8 @@ SELECT * FROM dbops.fn_pgtap_crea_listino(
 
 CREATE TEMP TABLE tmp_crl_ver AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
-    SELECT listino_id, 'PGTAP_CRL_V2', '2021-01-01'::date, 'BOZZA' FROM tmp_crl_listino
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
+    SELECT listino_id, 'PGTAP_CRL_V2', '2021-01-01'::date FROM tmp_crl_listino
     RETURNING id
 )
 SELECT id FROM ins;
@@ -109,7 +112,7 @@ SELECT (SELECT id FROM tmp_crl_ver), ac.id,
   FROM catalogo.articoli_componenti ac
  WHERE ac.prodotto_id = pg_temp.art('P') AND ac.componente_id = pg_temp.art('F');
 
-UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM tmp_crl_ver);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT id FROM tmp_crl_ver), 'ATTIVA');
 
 -- Il contratto in bozza sul listino (versione operativa: la ATTIVA di oggi).
 CREATE TEMP TABLE tmp_crl_contratto AS

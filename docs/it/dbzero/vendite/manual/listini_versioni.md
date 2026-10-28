@@ -56,174 +56,57 @@ attivo. ⇒ I vincoli differiti si chiudono **nei panni di chi ha scritto**.
 ---
 
 ### 🎯 Scopo Principale
-(latest review 09-04-2026)
+(ultima revisione 28-10-2026 — brief `brief-modello-documento-vendita` §16)
 
 La tabella `vendite.listini_versioni` gestisce il versionamento temporale dei listini.
-Ogni versione definisce una **finestra di validita atomica** dei prezzi: tutte le righe
-prezzo (`vendite.listini_righe`) ereditano l'intervallo temporale dalla versione che
-le contiene — le righe **non hanno date proprie**.
-
-Per cambiare i prezzi di un listino in un nuovo periodo (es. annuale), si crea una
-**nuova versione** con il nuovo intervallo, non si modifica la versione esistente.
-Vedi sezione *Workflow clone + publish* qui sotto.
+Ogni versione definisce una **finestra di validità atomica** dei prezzi: tutte le righe
+prezzo (`vendite.listini_righe`) ereditano l'intervallo dalla versione che le contiene —
+le righe **non hanno date proprie**. Per cambiare i prezzi in un nuovo periodo si crea una
+**nuova versione** (anche clonando) e la si attiva.
 
 ---
 
 ### Regole principali
 
-* univocita` per `listino_id + codice_versione`;
-* `stato` ammessi:
-  * `BOZZA`
-  * `ATTIVA`
-  * `CHIUSA`
-* `valido_al` maggiore di `valido_dal` se valorizzato;
-* ⭐ una versione **CHIUSA ha sempre `valido_al`** (CHECK `chk_listini_versioni_chiusa_con_fine`,
-  rev 2026-10-22): anche se inserita già chiusa, strada che il guard di transizione (solo
-  UPDATE) non vede. Su quella data poggia la chiusura di un listino con storia;
-* no overlap temporale **tra versioni `stato = 'ATTIVA'`** dello stesso listino
-  (`ex_listini_versioni_no_overlap`, fix `20260409-01`). **BOZZE e CHIUSE possono
-  coesistere** con un'ATTIVA (e tra loro) anche su intervalli sovrapposti — vedi
-  sezione *Workflow clone + publish* qui sotto.
+* univocità per `listino_id + codice_versione`;
+* `valido_al` maggiore o uguale a `valido_dal` se valorizzato;
+* una versione **CHIUSA ha sempre `valido_al`** (`chk_listini_versioni_chiusa_con_fine`);
+* per ogni data **al più una versione in vigore** dello stesso listino: le versioni attive in
+  stato ATTIVA o CHIUSA non si sovrappongono (`ex_listini_versioni_no_overlap`). Le BOZZE
+  restano fuori: si preparano in anticipo accanto alla versione in uso. La domanda «quale
+  versione vale in questa data» ha una sede sola:
+  [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore).
 
 ---
 
-### Workflow stato e transizioni (dal 2026-04-24)
+### Lo stato, sul modello del documento
 
-Le transizioni di stato sono **vincolate da guard trigger**
-(`trg_listini_versioni_a10_guard_transizione_stato_upd` →
-`vendite.trgfn_listini_versioni_guard_transizione_stato`,
-migration `20260424-01-...`).
+Lo stato è `stato_doc_listino_versione_id`, id del vocabolario
+[config.stati_doc_listino_versioni](/dbzero/config/tabelle/stati_doc_listino_versioni)
+(BOZZA, ATTIVA, CHIUSA); i passaggi sono nella matrice
+[config.transizioni_stati_listino_versioni](/dbzero/config/tabelle/transizioni_stati_listino_versioni).
+Le regole comuni stanno nella [guida del modello](/guide/modello-documento-di-vendita).
 
-Matrice transizioni ammesse:
+| Pezzo | Oggetto |
+| --- | --- |
+| nascita in BOZZA | `trg_listini_versioni_a05_stato_iniziale_ins` (BB `script.trgfn_doc_stato_iniziale`) |
+| porta: lo stato solo dai verbi | `trg_listini_versioni_a05_stato_solo_dal_verbo_upd` (BB `script.trgfn_doc_stato_solo_dal_verbo`) |
+| passaggi dalla matrice; verso ATTIVA i motivi dell'attivazione; verso CHIUSA la fine passata | [trgfn_listini_versioni_guard_transizione_stato](/dbzero/vendite/funzioni/trgfn_listini_versioni_guard_transizione_stato) |
+| che cosa si cambia e si cancella, stato per stato | [trgfn_listini_versioni_guard_per_stato](/dbzero/vendite/funzioni/trgfn_listini_versioni_guard_per_stato) |
+| «Attiva» (BOZZA → ATTIVA), con la chiusura delle precedenti | [fn_attiva_versione_listino](/dbzero/vendite/funzioni/fn_attiva_versione_listino), azione `attiva_listino` |
+| le precedenti che l'attivazione chiude (anche l'anteprima) | [fn_versioni_listino_da_chiudere](/dbzero/vendite/funzioni/fn_versioni_listino_da_chiudere) |
+| perché «Attiva» è spento (spenta, senza prezzi) | [script.fn_check_versione_listino_attivabile](/dbzero/script/funzioni/fn_check_versione_listino_attivabile), superficie [vw_listini_versioni_azioni](/dbzero/vendite/views/vw_listini_versioni_azioni) |
+| la chiusura a scadenza (ATTIVA → CHIUSA, di processo) | [fn_chiudi_versioni_listino_scadute](/dbzero/vendite/funzioni/fn_chiudi_versioni_listino_scadute), dal job `chiusura_scadenze_daily` ([dbops.automazione_chiusura_scadenze](/dbzero/dbops/tabelle/automazione_chiusura_scadenze), colonna `verbo_chiusura`) |
 
-| Da      | A       | Ammessa | Condizione                                               |
-|---------|---------|---------|----------------------------------------------------------|
-| BOZZA   | ATTIVA  | si      | —                                                        |
-| ATTIVA  | CHIUSA  | si      | `valido_al IS NOT NULL AND valido_al < CURRENT_DATE`     |
-| BOZZA   | CHIUSA  | **no**  | una bozza si cancella, non si chiude                     |
-| ATTIVA  | BOZZA   | **no**  | immutabile all'indietro                                  |
-| CHIUSA  | *       | **no**  | stato terminale                                          |
+Che cosa si cambia: in **BOZZA** tutto, e la versione si elimina; di una **ATTIVA** solo
+`valido_al` (la chiusura programmata, o quella delle precedenti all'attivazione di una nuova);
+di una **CHIUSA** niente. Si chiude una versione impostandone la fine: lo stato CHIUSA lo
+scrive il job alla scadenza. Fra la scadenza e il job la versione è ATTIVA con la fine passata:
+non è più in vigore (decidono le date).
 
-Violazione → `script.fn_log_and_raise_error` con codice
-`E_VERSIONE_STATO_TRANSIZIONE_INVALIDA` (id 391 in `config.messaggi_errore`).
-
-**Principio di applicabilita'** (linee-guida-sql §7c aggiornato 2026-05-16):
-una versione e' **operativamente applicabile** quando e' nel range di date
-**e** il suo stato e' **operativo**. Stati operativi: `('ATTIVA','CHIUSA')`.
-
-Lo stato `BOZZA` e' uno stato di **preparazione**, non operativo: due versioni
-BOZZA e ATTIVA possono coesistere in overlap di date per design (workflow
-clone+publish). Per questo i lookup operativi devono filtrare:
-
-```sql
-WHERE lv.attivo = TRUE
-  AND lv.stato  IN ('ATTIVA', 'CHIUSA')
-  AND lv.validita @> data_riferimento
-ORDER BY (lv.stato = 'ATTIVA') DESC
-LIMIT 1;
-```
-
-Il `LIMIT 1` con `ORDER BY (stato='ATTIVA') DESC` garantisce determinismo:
-se per la stessa data coesistono una ATTIVA e una CHIUSA (transiente),
-viene preferita l'ATTIVA. Il no-overlap constraint (`ex_listini_versioni_no_overlap`)
-garantisce al piu' una ATTIVA per listino su ogni data.
-
-Funzioni che applicano questa regola: `fn_resolve_prezzo_listino_v2`,
-`trgfn_contratti_freeze_listino_versione` e `fn_documento_listino_operativo`, che la
-dice per le righe di contratti e offerte (lista delle righe, guard delle eccezioni).
-
-**INSERT non vincolato**: il guard scatta solo su UPDATE OF stato.
-Consente seed/import di versioni direttamente in ATTIVA o CHIUSA.
-
-**Path utente per chiudere una versione**: non esiste piu' un'azione
-manuale "cambia stato a CHIUSA". L'utente imposta `valido_al` (PATCH);
-la chiusura di stato avviene automaticamente alla scadenza tramite
-il job notturno descritto qui sotto.
-
----
-
-### Chiusura automatica via framework `dbops.automazione_chiusura_scadenze`
-
-Dal **2026-04-26** la chiusura automatica delle versioni listino e'
-gestita dal **framework parametrico** `dbops.fn_apply_chiusura_scadenze()`,
-invocato dal job pgAgent unico `chiusura_scadenze_daily` (daily 00:05).
-
-La configurazione vive in `dbops.automazione_chiusura_scadenze`
-(riga `id=1`):
-
-* `schema_tabella='vendite'`, `nome_tabella='listini_versioni'`
-* `tipo_stato='VARCHAR'`, `col_stato='stato'`
-* `stato_attivo_codice='ATTIVA'`, `stato_chiuso_codice='CHIUSA'`
-
-Il framework esegue UPDATE dinamico equivalente a:
-
-```sql
-UPDATE vendite.listini_versioni
-   SET stato = 'CHIUSA'
- WHERE stato = 'ATTIVA'
-   AND valido_al IS NOT NULL
-   AND valido_al < CURRENT_DATE;
-```
-
-L'UPDATE attraversa il guard `trg_listini_versioni_a10_guard_transizione_stato_upd`
-e lo soddisfa per costruzione. Nessun bypass.
-
-> **Nota storica**: la funzione specifica `vendite.fn_listini_versioni_close_scadute()`
-> (creata il 24-04-2026) e' stata droppata il 26-04-2026 dalla migration
-> `20260426-04`. La logica e' stata promossa al nucleo `dbops` come
-> framework riusabile da N tabelle (manifesto sviluppo concentrico §7:
-> due consumatori reali → astrazione validata).
-
-Conseguenze UX:
-
-* fra l'impostazione di `valido_al = CURRENT_DATE` e le 00:05 del
-  giorno successivo lo **stato resta ATTIVA**; l'applicabilita'
-  operativa e' gia' falsa (le date comandano).
-* Semantica: `valido_al = oggi` significa "ultimo giorno di validita' = oggi";
-  la chiusura scatta dalle 00:05 di domani.
-* badge UI basati solo su `stato` mostreranno ATTIVA finche' il job non
-  scatta. Se serve feedback immediato, usare `valido_al <= CURRENT_DATE`
-  (o `NOT (validita @> CURRENT_DATE)`) invece dello stato.
-
-Riferimenti:
-
-* [Catalogo processi pgAgent funzionali](/guide/processi-pgagent-funzionali)
-* [linee-guida-sql §7c](/linee-guida-sql) — pattern "ciclo stato + finestra di validita'"
-
-> 🗑️ **Campo `priorita` RIMOSSO il 2026-04-09 (Fase 2 refactor)**. Con l'invariante
-> univocita per versione `ATTIVA` garantita dall'EXCLUDE constraint
-> (`ex_listini_versioni_no_overlap`), due versioni `ATTIVA` sovrapposte
-> sono impossibili → niente tie-break tra versioni → la priorita non
-> discriminava piu nulla. La colonna e il check constraint
-> `chk_listini_versioni_priorita` sono stati droppati con la migration
-> `20260409-05-drop-priorita-listini-versioni`. Vedi
-> [WIP listini-commercio §5](/dev/work-done/listini-commercio).
-
----
-
-### Workflow clone + publish
-
-Una nuova versione viene tipicamente preparata **in anticipo** rispetto alla data
-di entrata in vigore:
-
-1. **Clone**: il backend crea una nuova riga con `stato = 'BOZZA'`,
-   `valido_dal` futura (es. oggi+30gg) e `valido_al` NULL. La BOZZA può
-   coesistere con la versione `'ATTIVA'` corrente perché il vincolo
-   `ex_listini_versioni_no_overlap` filtra solo `attivo IS TRUE AND stato = 'ATTIVA'`.
-2. **Edit**: l'utente modifica le righe della BOZZA finché non è pronta.
-3. **Publish (D3)**: nella stessa transazione il backend
-   * imposta `valido_al = nuova.valido_dal - 1` sulle versioni precedenti `'ATTIVA'`
-     (autoclose),
-   * cambia `stato = 'ATTIVA'` sulla nuova versione.
-   L'invariante "una sola `'ATTIVA'` per listino sull'intervallo" viene
-   garantito dall'EXCLUDE alla fine della transazione.
-
-> **Storia del vincolo**: in versioni precedenti il filtro era solo
-> `WHERE (attivo IS TRUE)`, e l'INSERT della BOZZA "in anticipo" falliva per
-> overlap con la riga ATTIVA. Il fix `20260409-01-fix-listini-versioni-overlap-stato`
-> ha ristretto il filtro a `(attivo IS TRUE AND stato = 'ATTIVA')`,
-> riallineando il vincolo DB al workflow applicativo e al messaggio del
-> translator backend ("Esiste già una versione attiva sovrapposta").
+⚠️ Gli id di ATTIVA (2) e CHIUSA (3) sono scritti nel predicato dell'esclusione e nel CHECK
+della chiusa (un vincolo non legge un'altra tabella); il pgTAP
+`vendite/test-listino-versione-al-modello-v1` li confronta coi codici del vocabolario.
 
 ---
 
@@ -231,30 +114,17 @@ di entrata in vigore:
 
 * garantire coerenza storica prezzi per data di riferimento;
 * supportare publish controllata di nuove versioni;
-* finestre temporali "atomiche" per i prezzi: ogni versione e una *fotografia*
+* finestre temporali "atomiche" per i prezzi: ogni versione è una *fotografia*
   immutabile dei prezzi validi nel suo intervallo.
 
 ### Asimmetrie del modello (note operative)
 
-* **Le righe non hanno date proprie**: per cambiare un prezzo a meta intervallo
+* **Le righe non hanno date proprie**: per cambiare un prezzo a metà intervallo
   bisogna creare una nuova versione e ricopiare *tutte* le righe (anche quelle
-  invariate). Mitigazione: funzione/endpoint di "clone con override massivo"
-  lato backend (TODO).
-* **Una versione = una sola valuta**: il modello attuale e implicitamente
-  monovaluta (nessuna colonna `valuta_id` su `listini_versioni`). Per supportare
-  valuta multipla in futuro andra aggiunta una colonna additiva. Vedi
-  [WIP listini-commercio §6.4](/dev/work-done/listini-commercio).
-* **`pricing_mode` non ancora esplicito**: il modello v1 e dichiaratamente
-  `FIXED` per tutte le righe (prezzo unitario costante). I modi `SCAGLIONI` e
-  `FORMULA` previsti per v2 non sono ancora rappresentati nello schema. Vedi
-  [WIP listini-commercio §6.6](/dev/work-done/listini-commercio).
-
----
-
-<!-- rev-2026-09-28-liste-righe -->
-### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
-
-**La versione in vigore a una data è al più una, per costruzione** (`20260928-33`/`-34`, decisione di Tid): `ex_listini_versioni_no_overlap` vale per le versioni ATTIVE **e CHIUSE** (prima una versione nuova poteva coprire il periodo di una chiusa), e le date di una versione CHIUSA non si modificano più ([trgfn_listini_versioni_guard_date_chiusa](/dbzero/vendite/funzioni/trgfn_listini_versioni_guard_date_chiusa), `E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI`). La domanda «quale versione vale in questa data» ha una sede sola: [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore). Il registro `dbops.automazione_overlap` porta lo stesso predicato (`20260928-42`).
+  invariate).
+* **Una versione = una sola valuta**: il modello è implicitamente monovaluta
+  (nessuna colonna `valuta_id` su `listini_versioni`).
+* **`pricing_mode` non ancora esplicito**: le righe hanno un prezzo unitario costante.
 
 ---
 

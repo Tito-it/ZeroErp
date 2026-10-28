@@ -28,6 +28,7 @@
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | classe | text | NO |  |
+| verbo_chiusura | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -35,6 +36,7 @@
 | CHECK | chk_automazione_chiusura_scadenze_classe |  |
 | CHECK | chk_automazione_chiusura_scadenze_fk_coerente |  |
 | CHECK | chk_automazione_chiusura_scadenze_tipo_stato |  |
+| CHECK | chk_automazione_chiusura_scadenze_verbo_qualificato |  |
 | PRIMARY KEY | pk_automazione_chiusura_scadenze | id |
 | UNIQUE | uq_automazione_chiusura_scadenze_target | schema_tabella, nome_tabella |
 

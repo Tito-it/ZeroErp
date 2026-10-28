@@ -22,13 +22,14 @@ AS $function$
 --   CHIUSA → blocca sempre
 -- Perimetro: solo UPDATE e DELETE (INSERT su ATTIVA e` ammesso come rettifica).
 DECLARE
-    v_stato vendite.listini_versioni.stato%TYPE;
+    v_stato config.stati_doc_listino_versioni.codice_interno%TYPE;
     v_propagata boolean;
 BEGIN
     -- Recupera stato della versione padre
-    SELECT lv.stato
+    SELECT s.codice_interno
       INTO v_stato
       FROM vendite.listini_versioni lv
+      JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
      WHERE lv.id = OLD.listino_versione_id;
 
     -- BOZZA: modifica libera
@@ -93,7 +94,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_listini_righe_guard_stato()
-IS 'Guard N6: protegge righe listino in base a stato versione. BOZZA=passa, ATTIVA=solo se non propagata, CHIUSA=blocca. Solo UPDATE/DELETE.';
+IS 'Guard N6: protegge righe listino in base a stato versione. BOZZA=passa, ATTIVA=solo se non propagata, CHIUSA=blocca. Solo UPDATE/DELETE. Rev 2026-10-28 (20261028-23, brief-modello-documento-vendita §16, L-1): lo stato della versione di listino si legge dal vocabolario config.stati_doc_listino_versioni (codice_interno), non piu'' dalla colonna testo stato.';
 ```
 
 </div>

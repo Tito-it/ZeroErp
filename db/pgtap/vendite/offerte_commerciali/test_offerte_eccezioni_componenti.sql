@@ -4,6 +4,7 @@
 -- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta si
 --   cambia solo dal verbo; l'offerta COMPOSITA del test 20 arriva ad ACCETTATA con
 --   dbops.fn_pgtap_porta_a_stato invece dei due UPDATE di stato.
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione di listino PGTAP_OCE_V2 nasce senza stato (BOZZA) e si attiva dalla fixture dbops.fn_pgtap_porta_a_stato, non con l'UPDATE dello stato.
 -- Test: vendite.offerte_commerciali_eccezioni_componenti
 --       + fn_offerta_eccezione_componenti_init
 --       + fn_offerta_eccezione_componenti_preview
@@ -86,7 +87,7 @@ SELECT * FROM dbops.fn_pgtap_crea_listino(
 
 -- La tipologia del listino (rev 2026-10-21, I-D6): una della utility che ammette la
 -- FISSA (il kit) e una fonte a valle (il rifiuto del test 16). Il listino e' appena
--- nato, senza righe: la tipologia si sceglie qui. Se la utility non ne ha una, la
+-- nato (la sola riga d'appoggio della versione 2020 del builder): la tipologia si sceglie qui. Se la utility non ne ha una, la
 -- fixture muore: NOT NULL, mai uno skip.
 UPDATE tmp_oce_listino t
    SET tipologia_id = (
@@ -110,8 +111,8 @@ UPDATE vendite.listini l
 
 CREATE TEMP TABLE tmp_oce_ver AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
-    SELECT listino_id, 'PGTAP_OCE_V2', '2021-01-01'::date, 'BOZZA' FROM tmp_oce_listino
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
+    SELECT listino_id, 'PGTAP_OCE_V2', '2021-01-01'::date FROM tmp_oce_listino
     RETURNING id
 )
 SELECT id FROM ins;
@@ -148,7 +149,7 @@ SELECT (SELECT id FROM tmp_oce_ver), ac.id, ac.prodotto_id, ac.componente_id, 40
   FROM catalogo.articoli_componenti ac
  WHERE ac.prodotto_id = pg_temp.oce('P');
 
-UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM tmp_oce_ver);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass, (SELECT id FROM tmp_oce_ver), 'ATTIVA');
 
 CREATE TEMP TABLE tmp_oce_comp AS
 SELECT pg_temp.oce('P') AS articolo_composito_id;

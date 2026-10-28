@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL REGISTRO DELLE ESCLUSIONI: IL PREDICATO DELLE VERSIONI DI LISTINO SUGLI ID
+#   Brief: brief-modello-documento-vendita §16 (L-1 di Tid, 2026-10-28).
+#   Precedente: 20260928-42 (lo stesso registro, l'altra volta che il
+#   predicato e' cambiato).
+#
+#   ex_listini_versioni_no_overlap e' stata riscritta dal 20261028-04 sulla
+#   colonna nuova (stato_doc_listino_versione_id IN (2, 3)). Il framework
+#   salta un vincolo che esiste gia', ma il registro e' la sede da cui lo
+#   ricreerebbe: il suo predicato si allinea, o un giorno ricreerebbe il
+#   vincolo sulla colonna stato, che non c'e' piu'. Il registro non ha un CSV
+#   (lo semina il 20260602-10): la riga si aggiorna qui, come il 20260928-42.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261028-30-update-automazione-overlap-listini-versioni-stato-id-mctit.yaml
+
+  - changeSet:
+      id: 20261028-30-update-automazione-overlap-listini-versioni-stato-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il registro dbops.automazione_overlap per vendite.listini_versioni prende il predicato
+        sugli id del vocabolario (ATTIVA 2, CHIUSA 3), come il vincolo riscritto dal 20261028-04.
+        Brief: brief-modello-documento-vendita §16 (L-1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM dbops.automazione_overlap
+               WHERE target_schema = 'vendite' AND target_table = 'listini_versioni'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE dbops.automazione_overlap
+                 SET where_predicate = 'attivo IS TRUE AND stato_doc_listino_versione_id IN (2, 3)',
+                     note            = 'refactor-overlap-v2 fase2: parziale attivo + ATTIVA/CHIUSA '
+                                       '(esteso a CHIUSA il 2026-09-28, brief-db-liste-righe-documento §8.15; '
+                                       'sugli id del vocabolario config.stati_doc_listino_versioni dal 2026-10-28, '
+                                       'brief-modello-documento-vendita §16)'
+               WHERE target_schema = 'vendite'
+                 AND target_table  = 'listini_versioni';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              UPDATE dbops.automazione_overlap
+                 SET where_predicate = 'attivo IS TRUE AND (stato)::text IN (''ATTIVA'', ''CHIUSA'')',
+                     note            = 'refactor-overlap-v2 fase2: parziale attivo + ATTIVA/CHIUSA '
+                                       '(esteso a CHIUSA il 2026-09-28, brief-db-liste-righe-documento §8.15)'
+               WHERE target_schema = 'vendite'
+                 AND target_table  = 'listini_versioni';

@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHE COSA VIETA DI ATTIVARE UNA VERSIONE DI LISTINO
+#   Brief: brief-modello-documento-vendita §16 (L-4 di Tid, 2026-10-28).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Le due regole dell'attivazione stavano solo nel backend
+#   (listini_service._plan_versione_state_change,
+#   listini_repository.count_active_righe_versione): una versione spenta
+#   non si attiva, e una versione senza prezzi nemmeno. L-4: la regola va
+#   nel database, una volta; la chiamano il guard di transizione (che
+#   solleva il primo motivo), il verbo vendite.fn_attiva_versione_listino
+#   (prima di chiudere le precedenti) e la superficie della lista
+#   vendite.vw_listini_versioni_azioni (il motivo del pulsante spento).
+#
+# ── I MOTIVI (il primo e' quello che si solleva) ────────────────────
+#   1. la versione e' spenta (attivo = false);
+#   2. la versione non ha prezzi: nessuna riga attiva e nessun composito
+#      con prezzo bundle (componenti attivi). E' la regola del backend:
+#      un listino di soli compositi si attiva.
+#   Lo stato non e' un motivo: chi puo' attivare da quale stato lo dice la
+#   matrice (e la riga lista lo legge da script.fn_doc_azioni_permesse).
+#   Versione inesistente o fuori perimetro: nessun motivo (come le altre
+#   fn_check: non giudica cio' che non vede; il verbo la cerca prima).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261028-07-create-fn-check-versione-listino-attivabile-mctit.yaml
+
+  - changeSet:
+      id: 20261028-07-create-fn-check-versione-listino-attivabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_versione_listino_attivabile: perche' una versione di listino non si attiva
+        (spenta, senza prezzi). Brief: brief-modello-documento-vendita §16 (L-4).
+      preConditions:
+        - onFail: HALT
+        - not:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_check_versione_listino_attivabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_check_versione_listino_attivabile(
+                  p_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_versione vendite.listini_versioni%ROWTYPE;
+                  v_riga_id  vendite.listini_righe.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: dire perche' una versione di listino NON si attiva.
+                  --   '[]' = si attiva. Non solleva: sollevare e' del guard di
+                  --   transizione e del verbo, che la chiamano, come la
+                  --   superficie della lista (linee-guida-sql §12.5.2).
+                  -- =========================================================
+                  SELECT lv.* INTO v_versione
+                    FROM vendite.listini_versioni lv
+                   WHERE lv.id = p_versione_id;
+                  IF NOT FOUND THEN
+                      RETURN jsonb_build_array();
+                  END IF;
+
+                  -- 1. La versione e' spenta.
+                  IF v_versione.attivo IS NOT TRUE THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_LISTINO_VERSIONE_SPENTA',
+                          'reason',     'VERSIONE_SPENTA',
+                          'reason_key', 'vendite.listini.azione_reason.versione_spenta',
+                          'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
+                                                           'listino_id', v_versione.listino_id),
+                          'valori',     jsonb_build_array(v_versione.codice_versione)));
+                  END IF;
+
+                  -- 2. La versione non ha prezzi: ne' una riga attiva, ne' un
+                  --    composito col prezzo bundle.
+                  SELECT r.id INTO v_riga_id
+                    FROM vendite.listini_righe r
+                   WHERE r.listino_versione_id = v_versione.id
+                     AND r.attivo IS TRUE
+                   LIMIT 1;
+                  IF NOT FOUND THEN
+                      SELECT c.id INTO v_riga_id
+                        FROM vendite.listini_righe_componenti c
+                       WHERE c.listino_versione_id = v_versione.id
+                         AND c.attivo IS TRUE
+                       LIMIT 1;
+                  END IF;
+                  IF NOT FOUND THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_LISTINO_VERSIONE_SENZA_RIGHE',
+                          'reason',     'VERSIONE_SENZA_RIGHE',
+                          'reason_key', 'vendite.listini.azione_reason.versione_senza_righe',
+                          'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
+                                                           'listino_id', v_versione.listino_id),
+                          'valori',     jsonb_build_array(v_versione.codice_versione)));
+                  END IF;
+
+                  RETURN jsonb_build_array();
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_versione_listino_attivabile(bigint) IS
+                  'Perche'' una versione di listino NON si attiva: jsonb array di motivi (codice, reason, reason_key, dettaglio, valori), il primo e'' quello che si solleva; ''[]'' = si attiva. Motivi: 1. E_LISTINO_VERSIONE_SPENTA (attivo = false); 2. E_LISTINO_VERSIONE_SENZA_RIGHE (nessuna riga attiva e nessun composito con prezzo bundle). Lo stato non e'' un motivo: lo giudica la matrice. Versione inesistente o fuori perimetro: ''[]''. Non solleva. La chiamano il guard vendite.trgfn_listini_versioni_guard_transizione_stato (-> ATTIVA), il verbo vendite.fn_attiva_versione_listino (prima di chiudere le precedenti) e la superficie vendite.vw_listini_versioni_azioni (registro config.azioni_riga). Prima la regola stava solo nel backend (listini_service._plan_versione_state_change). SECURITY INVOKER, STABLE. Brief: brief-modello-documento-vendita §16 (L-4, Tid 2026-10-28).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_versione_listino_attivabile(bigint);

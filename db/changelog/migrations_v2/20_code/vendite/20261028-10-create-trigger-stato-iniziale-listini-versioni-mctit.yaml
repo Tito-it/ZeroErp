@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA VERSIONE DI LISTINO NASCE NEL SUO STATO INIZIALE
+#   Brief: brief-modello-documento-vendita §16 (giro 12); la regola e'
+#   N-1 … N-3 (§4-bis, Tid 2026-10-24), che P-3 aveva lasciato fuori per il
+#   listino finche' non avesse un vocabolario (ora 20261028-03).
+#
+#   Monta il BB script.trgfn_doc_stato_iniziale (20261024-10), come sulle
+#   altre testate (20261024-11): stato assente -> lo stato iniziale del
+#   vocabolario (BOZZA); altro stato -> E_DOC_STATO_INIZIALE_NON_VALIDO.
+#   Prende il posto del DEFAULT 'BOZZA' tolto dal 20261028-04. Fascia _a05_:
+#   prima di ogni altro trigger BEFORE INSERT.
+#   ⚠️ Una versione «gia' attiva» non nasce piu': si crea in bozza e si
+#   attiva col verbo (vendite.fn_attiva_versione_listino), nella stessa
+#   transazione. Le fixture pgTAP lo fanno da dbops.fn_pgtap_crea_listino
+#   (20261028-25).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261028-10-create-trigger-stato-iniziale-listini-versioni-mctit.yaml
+
+  - changeSet:
+      id: 20261028-10-create-trigger-stato-iniziale-listini-versioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta script.trgfn_doc_stato_iniziale (BEFORE INSERT, _a05_) su vendite.listini_versioni.
+        Brief: brief-modello-documento-vendita §16 (N-1 per la versione di listino).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: listini_versioni
+                columnName: stato_doc_listino_versione_id
+            - tableExists: { schemaName: config, tableName: stati_doc_listino_versioni }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_listini_versioni_a05_stato_iniziale_ins
+                  BEFORE INSERT ON vendite.listini_versioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_stato_iniziale(
+                      'stato_doc_listino_versione_id', 'config.stati_doc_listino_versioni');
+
+              COMMENT ON TRIGGER trg_listini_versioni_a05_stato_iniziale_ins ON vendite.listini_versioni IS
+                  'Nascita nello stato iniziale (BB script.trgfn_doc_stato_iniziale): stato assente -> lo stato iniziale di config.stati_doc_listino_versioni; altro stato -> E_DOC_STATO_INIZIALE_NON_VALIDO. Fascia _a05_: prima di ogni altro trigger BEFORE INSERT. Brief: brief-modello-documento-vendita §16 (N-1 … N-3 per la versione di listino, Tid 2026-10-28).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_versioni_a05_stato_iniziale_ins ON vendite.listini_versioni;

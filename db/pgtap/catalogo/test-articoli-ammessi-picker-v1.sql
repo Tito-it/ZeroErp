@@ -2,6 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   la natura merce ha destinazione ORDINE_VENDITA, il codice della sorgente (era ORDINE).
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione propria nasce senza stato (BOZZA) e si attiva dalla fixture dbops.fn_pgtap_porta_a_stato, non con l'UPDATE dello stato.
 -- pgTAP test per Zero ERP
 --
 -- Il picker degli articoli di una riga (catalogo.fn_articoli_ammessi): i
@@ -89,8 +90,8 @@ SELECT * FROM dbops.fn_pgtap_crea_listino(
 
 CREATE TEMP TABLE _ver AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
-    SELECT listino_id, 'PGTAP_AMM4_V2', '2021-01-01'::date, 'BOZZA' FROM _listino
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
+    SELECT listino_id, 'PGTAP_AMM4_V2', '2021-01-01'::date FROM _listino
     RETURNING id
 )
 SELECT id FROM ins;
@@ -120,7 +121,7 @@ UPDATE catalogo.articoli SET attivo = FALSE WHERE id = pg_temp.art('X');
 
 SELECT dbops.fn_pgtap_listino_aggiungi_articoli(
     (SELECT id FROM _ver), ARRAY[pg_temp.art('A')], 100.00);
-UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM _ver);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass, (SELECT id FROM _ver), 'ATTIVA');
 
 CREATE TEMP TABLE _ctr AS
 WITH ins AS (

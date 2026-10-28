@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHE COSA SI CAMBIA DI UNA VERSIONE DI LISTINO, STATO PER STATO
+#   Brief: brief-modello-documento-vendita §16 (L-5 di Tid, 2026-10-28:
+#   nello stesso giro, nel guard della versione).
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   Stava nel backend (listini_service._VERSIONE_PATCH_ALLOWED_BY_STATE,
+#   fn_delete_versione); il database ne aveva solo un pezzo, le date di una
+#   CHIUSA (vendite.trgfn_listini_versioni_guard_date_chiusa, 20260928-34).
+#   * BOZZA: tutto si cambia, e la versione si cancella.
+#   * ATTIVA: si cambia solo valido_al (la chiusura programmata; anche la
+#     chiusura delle precedenti all'attivazione di una nuova); i prezzi sono
+#     in uso.
+#   * CHIUSA: niente; e' la storia dei prezzi di un periodo.
+#   * Si cancella solo una BOZZA: una versione attiva o chiusa e' stata
+#     visibile ai prezzi (decisione O2 di sviluppo-listini-v2).
+#   Lo stato non e' un campo di questa regola: i suoi passaggi li giudica
+#   il guard di transizione (matrice), e lo scrive solo un verbo (porta).
+#   Le colonne d'audit (data_update, user_update, tx_id) e la generata
+#   validita non contano.
+#
+# ── UN GUARD SOLO ───────────────────────────────────────────────────
+#   Il guard delle date della chiusa e' una meta' di questa regola (le date
+#   di una CHIUSA): si ritira, col suo codice
+#   (E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI, obsoleto dal 2026-10-28 nel
+#   CSV). Il trigger e' gia' stato tolto dal 20261028-04 (nominava la
+#   colonna stato). Codici nuovi: E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE
+#   (il primo campo cambiato, nell'ordine delle colonne) e
+#   E_LISTINO_VERSIONE_NON_ELIMINABILE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261028-09-create-trgfn-listini-versioni-guard-per-stato-mctit.yaml
+
+  - changeSet:
+      id: 20261028-09-create-trgfn-listini-versioni-guard-per-stato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_listini_versioni_guard_per_stato: i campi che si cambiano e la cancellazione,
+        stato per stato (BOZZA tutto; ATTIVA solo valido_al; CHIUSA niente; si cancella solo una
+        BOZZA). Ritira vendite.trgfn_listini_versioni_guard_date_chiusa. Brief:
+        brief-modello-documento-vendita §16 (L-5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: stati_doc_listino_versioni }
+            - columnExists:
+                schemaName: vendite
+                tableName: listini_versioni
+                columnName: stato_doc_listino_versione_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.trgfn_listini_versioni_guard_per_stato()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: che cosa si cambia di una versione di listino nello
+              --   stato in cui e' (BEFORE UPDATE), e se si cancella (BEFORE
+              --   DELETE). Vedi l'intestazione del changeSet 20261028-09.
+              DECLARE
+                  v_stato  config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  -- Nomi di colonna della tabella: nessuna colonna di cui
+                  -- siano il riflesso.
+                  v_libere text[] := ARRAY['data_update', 'user_update', 'tx_id', 'validita',
+                                           'stato_doc_listino_versione_id'];
+                  v_campo  text;
+              BEGIN
+                  SELECT s.codice_interno INTO v_stato
+                    FROM config.stati_doc_listino_versioni s
+                   WHERE s.id = OLD.stato_doc_listino_versione_id;
+
+                  IF TG_OP = 'DELETE' THEN
+                      IF v_stato IS DISTINCT FROM 'BOZZA' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', TG_NAME::text, 'E_LISTINO_VERSIONE_NON_ELIMINABILE',
+                              jsonb_build_object('versione_id', OLD.id, 'listino_id', OLD.listino_id,
+                                                 'stato', v_stato),
+                              OLD.tx_id,
+                              OLD.codice_versione::text,
+                              COALESCE(v_stato, 'NULL'));
+                      END IF;
+                      RETURN OLD;
+                  END IF;
+
+                  IF v_stato = 'BOZZA' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ATTIVA: in piu' si cambia valido_al. CHIUSA: niente.
+                  IF v_stato = 'ATTIVA' THEN
+                      v_libere := array_append(v_libere, 'valido_al');
+                  END IF;
+
+                  -- Il primo campo cambiato fuori da quelli liberi, nell'ordine
+                  -- delle colonne della tabella.
+                  SELECT a.attname INTO v_campo
+                    FROM pg_catalog.pg_attribute a
+                   WHERE a.attrelid = TG_RELID
+                     AND a.attnum > 0
+                     AND NOT a.attisdropped
+                     AND a.attname <> ALL (v_libere)
+                     AND (to_jsonb(NEW) -> a.attname) IS DISTINCT FROM (to_jsonb(OLD) -> a.attname)
+                   ORDER BY a.attnum
+                   LIMIT 1;
+
+                  IF FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE',
+                          jsonb_build_object('versione_id', OLD.id, 'listino_id', OLD.listino_id,
+                                             'stato', v_stato, 'campo', v_campo),
+                          NEW.tx_id,
+                          OLD.codice_versione::text,
+                          COALESCE(v_stato, 'NULL'),
+                          v_campo);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_listini_versioni_guard_per_stato() IS
+                  'Guard di una versione di listino, stato per stato (BEFORE UPDATE e BEFORE DELETE): BOZZA tutto si cambia e si cancella; ATTIVA si cambia solo valido_al (la chiusura programmata, e quella delle precedenti all''attivazione di una nuova); CHIUSA niente. Si cancella solo una BOZZA (E_LISTINO_VERSIONE_NON_ELIMINABILE); un altro campo cambiato fuori dalla BOZZA: E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE, col primo campo nell''ordine delle colonne. Lo stato non e'' un campo di questa regola (guard di transizione, porta); le colonne d''audit e la generata validita non contano. Prima la regola stava nel backend (listini_service._VERSIONE_PATCH_ALLOWED_BY_STATE, fn_delete_versione), e il database ne aveva solo le date della CHIUSA (vendite.trgfn_listini_versioni_guard_date_chiusa, ritirata qui). Brief: brief-modello-documento-vendita §16 (L-5, Tid 2026-10-28).';
+
+              CREATE TRIGGER trg_listini_versioni_a10_guard_per_stato_upd
+                  BEFORE UPDATE ON vendite.listini_versioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_listini_versioni_guard_per_stato();
+
+              CREATE TRIGGER trg_listini_versioni_a10_guard_per_stato_dlt
+                  BEFORE DELETE ON vendite.listini_versioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_listini_versioni_guard_per_stato();
+
+              -- Il guard delle date della CHIUSA e' una meta' di questa regola:
+              -- si ritira (il suo trigger l'ha tolto il 20261028-04).
+              DROP FUNCTION IF EXISTS vendite.trgfn_listini_versioni_guard_date_chiusa();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_versioni_a10_guard_per_stato_upd ON vendite.listini_versioni;
+              DROP TRIGGER IF EXISTS trg_listini_versioni_a10_guard_per_stato_dlt ON vendite.listini_versioni;
+              DROP FUNCTION IF EXISTS vendite.trgfn_listini_versioni_guard_per_stato();

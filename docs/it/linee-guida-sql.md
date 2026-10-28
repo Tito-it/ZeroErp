@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 27 ottobre 2026
+> **Ultimo aggiornamento**: 28 ottobre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -751,15 +751,15 @@ La logica di chiusura per scadenza e' centralizzata in un framework parametrico.
 
 **Tipologie supportate** (colonna `tipo_stato`):
 
-* **VARCHAR**: `stato` e' colonna varchar diretta + CHECK constraint. Esempio `vendite.listini_versioni` con `stato IN ('BOZZA','ATTIVA','CHIUSA')`.
-* **FK**: `stato` e' FK a tabella catalogo, codici espressi come `codice_interno` (immutabile per `lock_columns`). Esempio `vendite.contratti.stato_doc_contratto_id` -> `config.stati_doc_contratti`.
+* **VARCHAR**: `stato` e' colonna varchar diretta + CHECK constraint. Oggi nessuna testata configurata la usa.
+* **FK**: `stato` e' FK a tabella catalogo, codici espressi come `codice_interno` (immutabile per `lock_columns`). Esempi `vendite.contratti.stato_doc_contratto_id` -> `config.stati_doc_contratti` e `vendite.listini_versioni.stato_doc_listino_versione_id` -> `config.stati_doc_listino_versioni`.
 
 **Esempio righe seed** (`80_data/sql/dbops/automazione_chiusura_scadenze.csv`):
 
 ```csv
-schema_tabella,nome_tabella,col_stato,tipo_stato,stato_attivo_codice,stato_chiuso_codice,fk_lookup_schema,fk_lookup_table
-vendite,listini_versioni,stato,VARCHAR,ATTIVA,CHIUSA,,
-vendite,contratti,stato_doc_contratto_id,FK,ATTIVO,CESSATO,config,stati_doc_contratti
+schema_tabella,nome_tabella,col_stato,tipo_stato,stato_attivo_codice,stato_chiuso_codice,fk_lookup_schema,fk_lookup_table,verbo_chiusura
+vendite,listini_versioni,stato_doc_listino_versione_id,FK,ATTIVA,CHIUSA,config,stati_doc_listino_versioni,vendite.fn_chiudi_versioni_listino_scadute
+vendite,contratti,stato_doc_contratto_id,FK,ATTIVO,CESSATO,config,stati_doc_contratti,vendite.fn_cessa_contratti_scaduti
 ```
 
 #### Componenti tabella-specifici (NON generalizzati nel framework)
@@ -774,12 +774,12 @@ La generalizzazione del guard transizione e' rinviata: serviranno almeno tre cas
 
 **Casi gia' applicati**:
 
-* `vendite.listini_versioni` (VARCHAR, ciclo `BOZZA -> ATTIVA -> CHIUSA`)
+* `vendite.listini_versioni` (FK, ciclo `BOZZA -> ATTIVA -> CHIUSA`)
 * `vendite.contratti` (FK, ciclo `DRAFT -> ATTIVO -> CESSATO`)
 
-⭐ **Una testata sotto la porta del modello del documento** (dal 2026-10-26: il contratto) non si chiude
-con l'`UPDATE` dinamico, che la porta rifiuterebbe: il framework chiama il **verbo di chiusura** della
-testata (`vendite.fn_cessa_contratti_scaduti`), che scrive lo stato dalla scrittura comune. Una testata
+⭐ **Una testata sotto la porta del modello del documento** (il contratto e la versione di listino) non si
+chiude con l'`UPDATE` dinamico, che la porta rifiuterebbe: il framework chiama il **verbo di chiusura**
+dichiarato nella colonna `verbo_chiusura` del registro, che scrive lo stato dalla scrittura comune. Una testata
 sotto la porta senza verbo di chiusura e' una configurazione non valida
 (`E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA`). La regola del modello sta nella
 [guida del modello del documento](/guide/modello-documento-di-vendita), §5.

@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN LISTINO CON STORIA: LO STATO DELLA VERSIONE DAL VOCABOLARIO
+#   Brief: brief-modello-documento-vendita §16 (giro 12; L-1 di Tid,
+#   2026-10-28). Corpo di partenza: 20261022-03, uguale al vivo.
+#
+#   La colonna stato (testo col CHECK) e' diventata stato_doc_listino_versione_id
+#   (id del vocabolario config.stati_doc_listino_versioni, 20261028-04). Qui il
+#   codice si legge dal vocabolario con una JOIN; i confronti coi codici
+#   (codice_interno, la chiave stabile) restano quelli di prima. Nient'altro cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261028-19-update-fn-listino-ha-storia-stato-versione-listino-mctit.yaml
+
+  - changeSet:
+      id: 20261028-19-update-fn-listino-ha-storia-stato-versione-listino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_listino_ha_storia: un listino con storia: lo stato della versione dal
+        vocabolario. Brief: brief-modello-documento-vendita §16 (L-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: listini_versioni
+                columnName: stato_doc_listino_versione_id
+            - tableExists: { schemaName: config, tableName: stati_doc_listino_versioni }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_listino_ha_storia(
+                  p_listino_id vendite.listini.id%TYPE)
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   true se il listino ha almeno una versione USCITA DALLA
+                  --   BOZZA (oggi ATTIVA o CHIUSA), anche spenta. Una BOZZA non
+                  --   conta. Listino NULL: false.
+                  -- ⚠️ Non e' la regola «in vigore a una data»
+                  --   (vendite.fn_listino_versione_in_vigore): qui non c'e'
+                  --   data ne' filtro su attivo.
+                  -- =========================================================
+                  RETURN EXISTS (
+                      SELECT 1
+                        FROM vendite.listini_versioni v
+                        JOIN config.stati_doc_listino_versioni s ON s.id = v.stato_doc_listino_versione_id
+                       WHERE v.listino_id = p_listino_id
+                         AND s.codice_interno <> 'BOZZA');
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_listino_ha_storia(bigint) IS
+                  'True se il listino ha STORIA: almeno una versione uscita dalla bozza (stato <> BOZZA: oggi ATTIVA o CHIUSA), anche spenta (D-1 di Tid, 2026-10-22). Non e'' la regola «in vigore a una data» di vendite.fn_listino_versione_in_vigore: qui non c''e'' data ne'' filtro su attivo. Una BOZZA non conta: nessuno ci ha mai preso un prezzo. Gli stati di una versione non tornano indietro, quindi «ha oggi ATTIVA o CHIUSA» = «ha avuto una versione attiva». Un listino con storia non si spegne con l''interruttore: si chiude con la fine validita'' della versione (vendite.trgfn_listini_guard_spegnimento_storia). Sede unica della regola: la legge anche il backend per mostrare il toggle «Attivo» solo a un listino senza storia. SECURITY INVOKER, STABLE. Richiesta BE §9.8 di brief-be-utenti-di-sviluppo. Rev 2026-10-28 (20261028-19, brief-modello-documento-vendita §16, L-1): lo stato della versione di listino si legge dal vocabolario config.stati_doc_listino_versioni (codice_interno), non piu'' dalla colonna testo stato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo di prima nominava la colonna stato, che solo il
+              -- rollback del 20261028-04 rimette: si torna dal 20261022-03.
+              SELECT 1;

@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione PGTAP_CEN_V2 nasce senza stato (BOZZA) e si attiva dalla fixture dbops.fn_pgtap_porta_a_stato, non con l'UPDATE dello stato.
 --
 -- Test: un'esclusione del contratto non si modifica — si crea (Escludi) e si
 --   cancella (Ripristina articolo), e basta. Decisione di Tid del 2026-10-04.
@@ -69,8 +70,8 @@ SELECT * FROM dbops.fn_pgtap_crea_listino(
 
 CREATE TEMP TABLE tmp_cen_ver AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
-    SELECT listino_id, 'PGTAP_CEN_V2', '2021-01-01'::date, 'BOZZA' FROM tmp_cen_listino
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
+    SELECT listino_id, 'PGTAP_CEN_V2', '2021-01-01'::date FROM tmp_cen_listino
     RETURNING id
 )
 SELECT id FROM ins;
@@ -91,7 +92,7 @@ INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, pre
 SELECT (SELECT id FROM tmp_cen_ver), a.id, ar.uom_id, 100.00
   FROM tmp_cen_art a JOIN catalogo.articoli ar ON ar.id = a.id;
 
-UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM tmp_cen_ver);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass, (SELECT id FROM tmp_cen_ver), 'ATTIVA');
 
 -- Il contratto in BOZZA: il rifiuto «fuori bozza» del documento non c'entra.
 CREATE TEMP TABLE tmp_cen_contratto AS

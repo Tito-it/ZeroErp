@@ -1,0 +1,3 @@
+id,stato_da_id,stato_a_id,azione_processo_codename,attivo,meta,data_insert,user_insert,data_update,user_update
+1,1,2,attiva_listino,t,"{""action_key"":""attiva"",""label_key"":""vendite.listini.attiva"",""requires_confirm"":true,""manuale"":true}",2026-10-28 00:00:00+01,mctit,2026-10-28 00:00:00+01,mctit
+2,2,3,NULL,t,"{""manuale"":false}",2026-10-28 00:00:00+01,mctit,2026-10-28 00:00:00+01,mctit

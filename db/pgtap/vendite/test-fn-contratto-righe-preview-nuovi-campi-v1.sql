@@ -1,6 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione nasce
+--   senza stato (BOZZA), riceve le righe e diventa ATTIVA da dbops.fn_pgtap_porta_a_stato.
 --
 -- Test: vendite.fn_contratto_righe_preview — 4 nuove colonne output
 --       Migration: 20260519-07
@@ -124,13 +126,13 @@ SELECT id FROM ins;
 
 -- Versione ATTIVA con valido_dal nel passato → validita @> script.fn_data_operativa() = TRUE
 -- Necessario perché fn_contratto_righe_preview fa lookup con validita @> script.fn_data_operativa().
+-- Nasce BOZZA, riceve le righe, poi diventa ATTIVA dal verbo.
 CREATE TEMP TABLE tmp_prv_ver AS
 WITH ins AS (
-    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
     SELECT id,
            'PGTAP-PRV-V1-' || substr(gen_random_uuid()::text, 1, 4),
-           '2020-01-01'::date,
-           'ATTIVA'
+           '2020-01-01'::date
       FROM tmp_prv_listino
     RETURNING id
 )
@@ -142,6 +144,9 @@ INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, pre
 SELECT v.id, a.articolo_id, ctx.uom_id, 100.00
   FROM tmp_prv_ver v, tmp_prv_arts a, tmp_prv_ctx ctx
  WHERE a.seq IN (1, 2);
+
+-- FROM tmp_prv_ver: senza un listino da copiare la versione non nasce, e il test 2 lo dice.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', v.id, 'ATTIVA') FROM tmp_prv_ver v;
 
 -- Contratto DRAFT collegato al listino (listino_versione_id = NULL → lookup operativo)
 CREATE TEMP TABLE tmp_prv_contratto AS

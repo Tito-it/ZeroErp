@@ -1,6 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): lo stato della versione
+--   si legge dal vocabolario config.stati_doc_listino_versioni (codice_interno).
 --
 -- Test: §6.1 Guard ESCLUSIONE su figlio bundle vietata
 --       Migration: 20260516-05
@@ -59,10 +61,11 @@ SELECT
     lv.id                   AS listino_versione_id
   FROM vendite.listini_righe_componenti lrc
   JOIN vendite.listini_versioni lv ON lv.id = lrc.listino_versione_id
+  JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
  WHERE lrc.attivo  = TRUE
    AND lrc.validita @> script.fn_data_operativa()
    AND lv.attivo   = TRUE
-   AND lv.stato    IN ('ATTIVA', 'CHIUSA')
+   AND s.codice_interno IN ('ATTIVA', 'CHIUSA')
    AND lv.validita @> script.fn_data_operativa()
    -- 2026-10-08 (§F.2): un bundle di un listino dell'emittente di chi agisce, perche'
    --   il contratto del fixture e' suo.
