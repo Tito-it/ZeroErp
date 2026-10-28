@@ -1,9 +1,10 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-28 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16; K-S1 … K-S5 applicati e verdi, §15.17.1; tocca al BE. Giro 12, il listino: `-03` … `-32` applicati e verdi, §16.6, §16.7; tocca al BE e al FE, §16.5)
+## ⏭️ Chi riparte — aggiornato al 2026-10-28 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16; K-S1 … K-S5 applicati e verdi, §15.17.1; tocca al BE. Giro 12, il listino: `-03` … `-32` applicati, §16.6, §16.7; un pgTAP non portato, corretto, §16.8; tocca al BE e al FE, §16.5)
 
-**Riparte: il team BE e FE**, sul giro 12 (la versione di listino, §16): `20261028-03` … `-31` (con i CSV) e la
-correzione `-32` sono applicati su dbdev e i pgTAP come app sono verdi (Tid, 2026-10-28, §16.6, §16.7); tocca a BE-L1 … BE-L7, FE-L1, FE-L2
+**Riparte: Tid**, sul giro 12 (la versione di listino, §16): corsa come app di
+`vendite/test-listini-righe-comp-guard-coerenza-bom-v1`, portato dopo l'apply (§16.8). `20261028-03` … `-31` (con i
+CSV) e la correzione `-32` sono applicati su dbdev (Tid, 2026-10-28, §16.6, §16.7). Poi il **team BE e FE**: tocca a BE-L1 … BE-L7, FE-L1, FE-L2
 (§16.5, elenco chiuso: finché il backend non segue, l'attivazione dall'applicazione è rifiutata dalla porta e la
 colonna `stato` non c'è più). **Tid**, col dato `attiva_listino` ai profili su dbdev: letto il 2026-10-28 dopo
 l'apply, nessun profilo l'ha. E il **team BE**, sul giro 11: `20261028-01` (lo standard «Fattura di vendita» v2 in forma 6) e `-02` (la vista delle
@@ -138,7 +139,8 @@ contratto né conferma un ordine (§11.7). Giri 5-10: chiusi e committati (detta
 | 4-bis-duodecies-trigies-septies | ✅ team DB | Giro 12 scritto e provato: `20261028-03` … `-31`, CSV, pgTAP nuovo 20/20, 23 pgTAP portati, uno ritirato; regressione 271 file (§16.6) | §16.4 … §16.6 | 4-bis-duodecies-trigies-sexies |
 | 4-bis-duodecies-trigies-octies | ✅ **Tid** | Apply del giro 12 (2026-10-28, 14:36) e pgTAP come app: verdi tranne `test-riferimenti-morti-v1` test 3, un difetto di `-12` (§16.7). Resta il dato `attiva_listino` ai profili su dbdev (nessun profilo l'ha, letto dopo l'apply) | §16.6 | 4-bis-duodecies-trigies-septies |
 | 4-bis-duodecies-trigies-octies-bis | ✅ **Tid** | Apply di `20261028-32` (correzione del verbo dell'attivazione, emersa da `test-riferimenti-morti-v1` come app; 2026-10-28, 15:38) e i due pgTAP come app: verdi | §16.7 | 4-bis-duodecies-trigies-octies |
-| 4-bis-duodecies-trigies-novies | team BE → FE ⏭️ | BE-L1 … BE-L7, FE-L1, FE-L2, dopo l'apply | §16.5 | 4-bis-duodecies-trigies-octies |
+| 4-bis-duodecies-trigies-octies-ter | **Tid** ⏭️ | Corsa come app di `vendite/test-listini-righe-comp-guard-coerenza-bom-v1` (scriveva ancora `stato`; sullo scratch saltava, §16.8) | §16.8 | 4-bis-duodecies-trigies-octies-bis |
+| 4-bis-duodecies-trigies-novies | team BE → FE | BE-L1 … BE-L7, FE-L1, FE-L2, dopo l'apply | §16.5 | 4-bis-duodecies-trigies-octies |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
@@ -4042,7 +4044,7 @@ Il dato su dbdev (Tid): l'azione `attiva_listino` ai profili che oggi gestiscono
   all'inserimento): lo ha mostrato un test che cambia tipologia dopo la riga d'appoggio della fixture. Tema del
   modello delle righe, preesistente, fuori dal giro.
 * `test-fn-contratto-righe-preview-nuovi-campi-v1`, `test-guard-esclusione-figlio-bundle-v1` e
-  `test-offerta-righe-espanse` leggono ancora listini dal database invece di costruirli (rossi o saltati sullo
+  `test-offerta-righe-espanse` (e `test-listini-righe-comp-guard-coerenza-bom-v1`, §16.8) leggono ancora listini dal database invece di costruirli (rossi o saltati sullo
   scratch, come prima del giro): debito di fixture preesistente.
 
 ### 16.7 Correzione dopo l'apply: il ramo «inesistente» del verbo (2026-10-28)
@@ -4066,3 +4068,27 @@ Il dato su dbdev (Tid): l'azione `attiva_listino` ai profili che oggi gestiscono
   Nessuna chiamata a cinque argomenti negli altri changeSet del 27 e del 28 ottobre (censiti tutti).
 * **Dopo l'apply (Tid, 2026-10-28)**: `-32` eseguito su dbdev (15:38); come app `vendite/test-listino-versione-al-modello-v1`
   e `dbops/test-riferimenti-morti-v1` verdi. Il giro 12 lato DB è chiuso; resta il passaggio BE/FE (§16.5).
+
+### 16.8 Correzione dopo l'apply: un pgTAP non portato (2026-10-28)
+
+* **Che cosa ha visto Tid**: `vendite/test-listini-righe-comp-guard-coerenza-bom-v1`, come app su dbdev, si ferma
+  nel setup: `la colonna "stato" della relazione "listini_versioni" non esiste` (l'`INSERT` della versione BOZZA
+  scriveva ancora `stato = 'BOZZA'`).
+* **Perché il porting e la regressione non l'hanno visto**: il file era nella regressione (§16.6) e dava 7/7 prima
+  e dopo il giro, ma sullo scratch **salta tutti e sette i test**: pesca «il primo listino attivo» dal database, e
+  lo scratch non ne ha. Un `skip` pgTAP si conta come `ok`. Il censimento dei file da portare guardava i rossi, non i
+  salti.
+* **Correzione**: l'`INSERT` senza la colonna (la versione nasce BOZZA dal trigger), riga di revisione in testa.
+  Nessuna attesa cambia. Su dbdev, come owner, in transazione annullata: 7/7, nessun salto.
+* **Il censimento rifatto, per non dipendere dai salti**:
+  * statico su tutto `db/pgtap/`: ogni `INSERT` su `vendite.listini_versioni` con `stato` nelle colonne, ogni `UPDATE …
+    SET stato`, ogni lettura `<alias>.stato` su un alias della versione, le letture senza alias. Resta solo
+    questo file, ora corretto;
+  * di corsa: i 90 file che nominano versioni, righe di listino, la fixture, il verbo o la chiusura a scadenza,
+    sullo scratch; i 12 che vi saltano o vi sono rossi, ripassati su dbdev come owner. Tutti arrivano in fondo;
+    i rossi sono quelli da owner già dichiarati (`[rosso da owner]`, RLS, GUC del ritiro), nessuno sul listino.
+    I sette salti di `script/test-fn-check-prezzi-autorizzati-v1` sono voluti e precedenti al giro (casi non
+    costruibili dalle porte del preventivo).
+* Il file si aggiunge al debito di fixture del §16.6 (legge listini dal database invece di costruirli: in CI e
+  sullo scratch non misura niente).
+* Tocca a **Tid**: corsa come app di `vendite/test-listini-righe-comp-guard-coerenza-bom-v1`.
