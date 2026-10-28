@@ -190,8 +190,14 @@ Nessuna modifica applicativa è stata necessaria: il percorso operatore legge gl
   `kit_uom_id`), non più media e massimo dei componenti; su un kit i cui
   componenti non dicono lo stesso numero di kit (nota di credito parziale)
   `quantita` e `prezzo_unitario` sono **NULL** e resta l'importo — non è un
-  errore. Il contesto di stampa è alla **forma 5** e la stampa la legge solo
-  la v7 del template (brief-db-bom-flag-quantita-e-kit-in-fattura, R-BE-B6).
+  errore. Il contesto di stampa era alla **forma 5** e la stampa la leggeva
+  solo la v7 del template (brief-db-bom-flag-quantita-e-kit-in-fattura, R-BE-B6).
+  ⭐ **Dal 2026-10-28 la stampa è alla forma 6**: `fattura.origini` porta la
+  stessa catena di `origini` di questo dettaglio (`vendite.fn_fattura_origini`,
+  nello stesso ordine), ridotta a `{livello, tipo, etichetta, codice}` (`tipo` =
+  `tipo_codice_interno`), `[]` se la fattura non cita niente; `fattura.origine`
+  non c'è più. La legge lo standard «Fattura di vendita» v2
+  (brief-modello-documento-vendita §15.16, §15.17).
 - Nessun verbo di modifica su questo path: la fattura è prodotta dalla pipeline
   e oltre la soglia di congelamento le righe sono congelate a DB
   (`trgfn_fattura_satellite_guard_congelamento`, `E_FATTURA_RIGA_CONGELATA`).
